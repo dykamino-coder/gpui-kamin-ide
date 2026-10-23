@@ -18,7 +18,7 @@ pub(super) fn contained_image(
     if let Some(ContainedSize {
         content: (cw, ch),
         holder: (holder_w, holder_h),
-    }) = contained_size(&e.style.computed())
+    }) = contained_size(&e.style.used())
     {
         let mut d = d;
         if let Some(w) = holder_w {
@@ -35,26 +35,24 @@ pub(super) fn contained_image(
             .strip_prefix("file:///")
             .or_else(|| src.strip_prefix("file://"))
             .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-        let mut image = match crate::paint::background::element_source(
-            local.unwrap_or(src),
-            &e.style.computed(),
-        ) {
-            Some(crate::paint::background::Source::Vector { markup, .. })
-                if cw > 0.0 && ch > 0.0 =>
-            {
-                match crate::svg::raster::rasterize(&markup, cw, ch) {
-                    Some(r) => gpui::img(r),
-                    None => gpui::img(SharedString::from(src.to_string())),
+        let mut image =
+            match crate::paint::background::element_source(local.unwrap_or(src), &e.style.used()) {
+                Some(crate::paint::background::Source::Vector { markup, .. })
+                    if cw > 0.0 && ch > 0.0 =>
+                {
+                    match crate::svg::raster::rasterize(&markup, cw, ch) {
+                        Some(r) => gpui::img(r),
+                        None => gpui::img(SharedString::from(src.to_string())),
+                    }
                 }
-            }
-            Some(crate::paint::background::Source::Raster(ready)) => gpui::img(ready)
-                .preserve_natural_pixels(true)
-                .pixelated(e.style.cascaded().image_pixelated == Some(true)),
-            _ => match local {
-                Some(path) => gpui::img(std::path::PathBuf::from(path)),
-                None => gpui::img(SharedString::from(src.to_string())),
-            },
-        };
+                Some(crate::paint::background::Source::Raster(ready)) => gpui::img(ready)
+                    .preserve_natural_pixels(true)
+                    .pixelated(e.style.cascaded().image_pixelated == Some(true)),
+                _ => match local {
+                    Some(path) => gpui::img(std::path::PathBuf::from(path)),
+                    None => gpui::img(SharedString::from(src.to_string())),
+                },
+            };
         // Подгонка содержимого замещаемой коробки считается от ПРИРОДНОГО
         // размера картинки, который у самой картинки никуда не делся:
         // обособление меняет коробку, а не объект. У Blink это два разных
@@ -68,7 +66,7 @@ pub(super) fn contained_image(
         // посчитанными сторонами содержимого и снятым обособлением — это и
         // есть второй такт, «laying out in-place» (css-contain-2
         // Overview.bs:702-707).
-        if e.style.computed().object_fit.is_some() || e.style.computed().object_position.is_some() {
+        if e.style.used().object_fit.is_some() || e.style.used().object_position.is_some() {
             let mut fitted = e.clone();
             fitted.style.used_mut().width = Some(Len::Px(cw));
             fitted.style.used_mut().height = Some(Len::Px(ch));

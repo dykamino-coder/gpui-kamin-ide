@@ -16,7 +16,7 @@ pub(crate) fn place_named_areas(areas: &[Vec<String>], children: Vec<Node>) -> V
         .into_iter()
         .map(|n| match n {
             Node::Element(mut e) => {
-                let Some(name) = e.style.computed().grid_area_name.clone() else {
+                let Some(name) = e.style.used().grid_area_name.clone() else {
                     return Node::Element(e);
                 };
                 // Прямоугольник имени: первая и последняя строка, первый и

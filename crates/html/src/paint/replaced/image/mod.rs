@@ -51,8 +51,7 @@ fn view_boxed(
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let source =
-        crate::paint::background::element_source(local.unwrap_or(src), &e.style.computed())?;
+    let source = crate::paint::background::element_source(local.unwrap_or(src), &e.style.used())?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
     let crate::paint::background::Source::Raster(ready) = source else {
@@ -61,7 +60,7 @@ fn view_boxed(
     let ViewBoxSize {
         view: (vx, vy, vw, vh),
         size: (bw, bh),
-    } = view_box_size(&e.style.computed(), vb, (w0, h0))?;
+    } = view_box_size(&e.style.used(), vb, (w0, h0))?;
     let mut boxed = e.clone();
     boxed.style.used_mut().object_view_box = None;
     boxed.style.used_mut().width = Some(Len::Px(bw));

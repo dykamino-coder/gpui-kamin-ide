@@ -32,7 +32,7 @@ pub(crate) use inline_runs::transpose_tree;
 /// `margin-left + border + padding + width + … = containing block width`).
 /// Только обычный блок потока — у прочих ширину решает своя раскладка.
 pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
-    let s = &c.style.computed();
+    let s = &c.style.used();
     // Блочный flex-контейнер и сетка в потоке занимают ширину как блок
     // (css-flexbox-1 §9.2 / css-grid-2 §6.1: «block-level … sized as a
     // block»); ширину ИХ детей решает `items_kind`.
@@ -86,7 +86,7 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
 /// элемента, как прежде.
 pub(super) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
     use crate::style::computed::FlexDir;
-    let s = &*c.style.computed();
+    let s = &*c.style.used();
     if k.inline
         || s.display != Some(Display::Flex)
         || s.webkit_box == Some(true)
@@ -100,7 +100,7 @@ pub(super) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
     let mut kk = k.clone();
     // База в точках здесь не ставится: при `min-height: auto` элемент не
     // меньше своего содержимого (§4.5), а этой меры у нас нет.
-    if k.style.computed().basis_content != Some(true) {
+    if k.style.used().basis_content != Some(true) {
         return None;
     }
     kk.style.used_mut().height = None;
@@ -115,7 +115,7 @@ pub(super) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
 /// цветом по ширине копии — это точно, лишь когда у коробки сплошной фон без
 /// картинки и скруглений, а видимые боковые рамки того же цвета. Иначе `None`.
 pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
-    let s = &c.style.computed();
+    let s = &c.style.used();
     let bg = s.background?;
     if s.bg_image.is_some()
         || s.webkit_box == Some(true)
@@ -143,7 +143,7 @@ pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
 /// Как ширина детей коробки `c` известна мере строк (`LineFrame::items`).
 pub(super) fn items_kind(c: &Element) -> u8 {
     use crate::style::computed::FlexDir;
-    let s = &*c.style.computed();
+    let s = &*c.style.used();
     match s.display {
         Some(Display::Flex) => {
             let col = matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
@@ -170,7 +170,7 @@ pub(super) fn items_kind(c: &Element) -> u8 {
 pub(crate) fn inline_content(k: &Element) -> bool {
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)
-            if !x.inline || x.style.computed().display == Some(Display::Block))
+            if !x.inline || x.style.used().display == Some(Display::Block))
     };
     k.children.iter().any(|n| !is_blank(n)) && !k.children.iter().any(block_kid)
 }

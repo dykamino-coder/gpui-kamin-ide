@@ -45,30 +45,30 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
-        && c.style.computed().is_caption != Some(true)
+        && c.style.used().is_caption != Some(true)
         && c.tag != "caption"
-        && matches!(c.style.computed().display, None | Some(Display::Block))
-        && (c.style.computed().clear.is_none() || band_clear_supported(c))
-        && c.style.computed().position.is_none()
+        && matches!(c.style.used().display, None | Some(Display::Block))
+        && (c.style.used().clear.is_none() || band_clear_supported(c))
+        && c.style.used().position.is_none()
         // A paint group is painted with all its descendants; an absolute
         // descendant may need it as its containing block (transform,
         // filter) and would otherwise leave the group with its lift.
-        && !(paint_group(&c.style.computed()) && positioned_inside(&c.children))
-        && (matches!(c.style.computed().width, None | Some(Len::Auto))
-            || (band_em(&c.style.computed(), em).and_then(|em| band_edge(&c.style.computed().width, em)).is_some()
-                && c.style.computed().border_box != Some(true)))
-        && matches!(c.style.computed().height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
-        && c.style.computed().min_height.is_none()
-        && c.style.computed().max_height.is_none()
-        && band_margins(&c.style.computed(), em).is_some()
+        && !(paint_group(&c.style.used()) && positioned_inside(&c.children))
+        && (matches!(c.style.used().width, None | Some(Len::Auto))
+            || (band_em(&c.style.used(), em).and_then(|em| band_edge(&c.style.used().width, em)).is_some()
+                && c.style.used().border_box != Some(true)))
+        && matches!(c.style.used().height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
+        && c.style.used().min_height.is_none()
+        && c.style.used().max_height.is_none()
+        && band_margins(&c.style.used(), em).is_some()
         && band_inset(c, em).is_some()
 }
 
 /// Рамка плюс отступ коробки (верх, право, низ, лево) для `Kind::Nest`.
 fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::Edge; 4]> {
     use crate::layout::float::band_flow::Edge;
-    let em = band_em(&c.style.computed(), em)?;
-    let b = c.style.computed().borders();
+    let em = band_em(&c.style.used(), em)?;
+    let b = c.style.used().borders();
     let side = |p: &Option<Len>, b: &Option<Len>| -> Option<Edge> {
         let pe = band_edge(p, em)?;
         let be = match band_edge(b, em)? {
@@ -83,10 +83,10 @@ fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::
         })
     };
     Some([
-        side(&c.style.computed().padding.top, &b.top)?,
-        side(&c.style.computed().padding.right, &b.right)?,
-        side(&c.style.computed().padding.bottom, &b.bottom)?,
-        side(&c.style.computed().padding.left, &b.left)?,
+        side(&c.style.used().padding.top, &b.top)?,
+        side(&c.style.used().padding.right, &b.right)?,
+        side(&c.style.used().padding.bottom, &b.bottom)?,
+        side(&c.style.used().padding.left, &b.left)?,
     ])
 }
 
@@ -104,9 +104,9 @@ pub(super) fn band_nest(
     }
     let vcx = opts.cx.vcx();
     // The step-8 key of a paint group comes before its descendants' keys.
-    let group_key = paint_group(&c.style.computed()).then(|| opts.cx.next_paint_key());
+    let group_key = paint_group(&c.style.used()).then(|| opts.cx.next_paint_key());
     let cb = opts.cx.cb_width;
-    let inner_em = band_em(&c.style.computed(), em)?;
+    let inner_em = band_em(&c.style.used(), em)?;
     let mut merged = box_style(inherited, &c.style, vcx);
     let height = crate::layout::block::available_height::inner(
         &merged,
@@ -141,10 +141,10 @@ pub(super) fn band_nest(
         kids,
         inset: band_inset(c, em)?,
         height,
-        width: if matches!(c.style.computed().width, None | Some(Len::Auto)) {
+        width: if matches!(c.style.used().width, None | Some(Len::Auto)) {
             None
         } else {
-            Some(band_edge(&c.style.computed().width, inner_em)?)
+            Some(band_edge(&c.style.used().width, inner_em)?)
         },
     })
 }
@@ -165,8 +165,7 @@ pub(super) fn band_seq(
     let mut chunk: Vec<Node> = vec![];
     let mut probes = vec![];
     for n in nodes {
-        let float =
-            matches!(&n, Node::Element(c) if c.style.computed().float.is_some_and(|f| f != 0));
+        let float = matches!(&n, Node::Element(c) if c.style.used().float.is_some_and(|f| f != 0));
         if !float {
             chunk.push(n);
             continue;
@@ -178,7 +177,7 @@ pub(super) fn band_seq(
         // the same BFC. Match the measured host's orthogonal-float gate;
         // a text-free vertical float does not need inline text measurement.
         if (f.style.cascaded().wm().vertical() && band_float_m(f, em).is_none())
-            || band_margins(&f.style.computed(), em).is_none()
+            || band_margins(&f.style.used(), em).is_none()
         {
             return None;
         }

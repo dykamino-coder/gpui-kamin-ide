@@ -27,10 +27,10 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
     // `vh`/`vw` — от page area; `bottom: -200vh` тянет низ коробки на две
     // area ниже листа (эталоны `fixedpos-001..009`: копии `bottom: -N00vh` и
     // `top: N00vh` — досягаемость была нулевой, лист один).
-    let lens = crate::style::computed::LenCx::box_viewport(cx.viewport, &e.style.computed());
+    let lens = crate::style::computed::LenCx::box_viewport(cx.viewport, &e.style.used());
     let len = |l: &Option<Len>| lens.px_strict(*l, vcx);
-    let top = len(&e.style.computed().inset.top).unwrap_or(0.0);
-    let from_bottom = len(&e.style.computed().inset.bottom)
+    let top = len(&e.style.used().inset.top).unwrap_or(0.0);
+    let from_bottom = len(&e.style.used().inset.bottom)
         .and_then(|b| cx.viewport.map(|v| v.1 - b))
         .unwrap_or(0.0);
     // Мера `None` (строчное содержимое) — не «пусто»: хотя бы точка высоты,
@@ -46,7 +46,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
             }
         });
     let clipped = matches!(
-        e.style.computed().overflow_y,
+        e.style.used().overflow_y,
         Some(crate::style::computed::Overflow::Hidden)
             | Some(crate::style::computed::Overflow::Clip)
             | Some(crate::style::computed::Overflow::Scroll)
@@ -57,7 +57,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
         e.children
             .iter()
             .filter_map(|n| match n {
-                Node::Element(k) if !k.inline && !out_of_flow(&k.style.computed()) => {
+                Node::Element(k) if !k.inline && !out_of_flow(&k.style.used()) => {
                     shape_full(k, 3, cx, vcx).map(|s| s.height + s.margin_top + s.margin_bottom)
                 }
                 _ => None,
@@ -75,7 +75,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
             .iter()
             .filter_map(|n| match n {
                 Node::Element(k)
-                    if k.style.computed().position
+                    if k.style.used().position
                         == Some(crate::style::computed::Position::Absolute) =>
                 {
                     Some(oof_reach(k, cx, vcx))
@@ -95,16 +95,16 @@ pub(crate) fn page_monolith(e: &Element) -> bool {
     let scrolls = |o: Option<crate::style::computed::Overflow>| {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
-    e.style.computed().break_inside_avoid
-        || e.style.computed().contain_size == Some(true)
-        || scrolls(e.style.computed().overflow_x)
-        || scrolls(e.style.computed().overflow_y)
+    e.style.used().break_inside_avoid
+        || e.style.used().contain_size == Some(true)
+        || scrolls(e.style.used().overflow_x)
+        || scrolls(e.style.used().overflow_y)
         || matches!(
             e.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
         )
         || matches!(
-            e.style.computed().display,
+            e.style.used().display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
         )
 }

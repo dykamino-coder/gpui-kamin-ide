@@ -24,12 +24,12 @@ pub(crate) fn prepare_children(
     let vcx = opts.cx.vcx();
     let stripped: Vec<Node>;
     let nodes = if nodes.iter().any(
-        |n| matches!(n, Node::Element(e) if e.style.computed().skip_content == Some(true) && !e.children.is_empty()),
+        |n| matches!(n, Node::Element(e) if e.style.used().skip_content == Some(true) && !e.children.is_empty()),
     ) {
         stripped = nodes
             .iter()
             .map(|n| match n {
-                Node::Element(e) if e.style.computed().skip_content == Some(true) => {
+                Node::Element(e) if e.style.used().skip_content == Some(true) => {
                     let mut copy = e.clone();
                     copy.children.clear();
                     Node::Element(copy)
@@ -118,25 +118,25 @@ pub(crate) fn prepare_children(
                 // 100 в 200). Таблица и замещаемый размер по содержимому уже
                 // имеют — им только поля.
                 Node::Element(mut e)
-                    if in_flow(&e.style.computed())
+                    if in_flow(&e.style.used())
                         && !inline_level_box(&e)
                         && !inherited.wm().vertical()
                         && matches!(
-                            e.style.computed().justify_self,
+                            e.style.used().justify_self,
                             Some(Align::Start) | Some(Align::Center) | Some(Align::End)
                         ) =>
                 {
                     let auto = |l: Option<Len>| l == Some(Len::Auto);
-                    let table = e.tag == "table" || e.style.computed().display == Some(Display::Table);
-                    if matches!(e.style.computed().width, None | Some(Len::Auto))
+                    let table = e.tag == "table" || e.style.used().display == Some(Display::Table);
+                    if matches!(e.style.used().width, None | Some(Len::Auto))
                         && !table
                         && !replaced_tag(&e)
                     {
                         e.style.used_mut().width = Some(Len::FitContent);
                     }
-                    if !auto(e.style.computed().margin.left) && !auto(e.style.computed().margin.right) {
+                    if !auto(e.style.used().margin.left) && !auto(e.style.used().margin.right) {
                         let rtl = inherited.wm().rtl();
-                        match (e.style.computed().justify_self, rtl) {
+                        match (e.style.used().justify_self, rtl) {
                             (Some(Align::Center), _) => {
                                 e.style.used_mut().margin.left = Some(Len::Auto);
                                 e.style.used_mut().margin.right = Some(Len::Auto);
@@ -150,19 +150,19 @@ pub(crate) fn prepare_children(
                     Node::Element(e)
                 }
                 Node::Element(mut e)
-                    if in_flow(&e.style.computed())
+                    if in_flow(&e.style.used())
                         // Orthogonal auto block size fits content; its margins
                         // position it in the containing block (WM 4 section 7.3).
                         && (e.style.cascaded().vertical_decl().or(inherited.vertical_decl()) == Some(true))
                             == (inherited.wm().vertical())
-                        && matches!(e.style.computed().width, None | Some(Len::Auto))
-                        && (e.style.computed().margin.left == Some(Len::Auto)
-                            || e.style.computed().margin.right == Some(Len::Auto)) =>
+                        && matches!(e.style.used().width, None | Some(Len::Auto))
+                        && (e.style.used().margin.left == Some(Len::Auto)
+                            || e.style.used().margin.right == Some(Len::Auto)) =>
                 {
-                    if e.style.computed().margin.left == Some(Len::Auto) {
+                    if e.style.used().margin.left == Some(Len::Auto) {
                         e.style.used_mut().margin.left = Some(Len::Px(0.0));
                     }
-                    if e.style.computed().margin.right == Some(Len::Auto) {
+                    if e.style.used().margin.right == Some(Len::Auto) {
                         e.style.used_mut().margin.right = Some(Len::Px(0.0));
                     }
                     Node::Element(e)

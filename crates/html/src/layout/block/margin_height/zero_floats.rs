@@ -17,7 +17,7 @@ use crate::text::text_box::blank_text;
 /// Borders and padding stop margin collapse but do not make floats in-flow.
 /// Prove only zero-height block content; unknown line boxes stay on layout.
 fn zero_inflow(e: &Element, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
-    let st = e.style.computed();
+    let st = e.style.used();
     if !in_flow(&st)
         || own_context(e)
         || inline_level_box(e)
@@ -47,10 +47,10 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         // inline-block/-flex/-grid is inline-level content in flow: it sits in
         // a line box, which the auto height counts (§10.6.3). `in_flow` is the
         // block-stack predicate and rejects those too.
-        Node::Element(e) if out_of_flow(&e.style.computed()) => return true,
+        Node::Element(e) if out_of_flow(&e.style.used()) => return true,
         Node::Element(e) => e,
     };
-    let st = e.style.computed();
+    let st = e.style.used();
     if st.display == Some(Display::None) {
         return true;
     }
@@ -93,11 +93,11 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &BoxStyle, vcx: V
         let Node::Element(e) = node else { continue };
         let has_float = e.children.iter().any(|node| {
             matches!(node,
-            Node::Element(child) if child.style.computed().float.is_some_and(|side| side != 0))
+            Node::Element(child) if child.style.used().float.is_some_and(|side| side != 0))
         });
         // Our float host carries floats to later boxes and to the formatting
         // root only through this block's height (see `dom::float_tail`).
-        if has_float && e.style.computed().float_tail && zero_inflow(e, inherited, vcx) {
+        if has_float && e.style.used().float_tail && zero_inflow(e, inherited, vcx) {
             e.marks.auto_zero_height = true;
         }
     }

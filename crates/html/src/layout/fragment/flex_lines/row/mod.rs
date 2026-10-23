@@ -40,10 +40,10 @@ pub(super) fn flex_row_lines_of(
     col_w: Option<f32>,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
-    if flex_gap_rules(&c.style.computed()) {
+    if flex_gap_rules(&c.style.used()) {
         return None;
     }
-    let s = &c.style.computed();
+    let s = &c.style.used();
     if !plain_container(c)
         || !matches!(s.flex_dir, None | Some(FlexDir::Row))
         || s.wm().rtl()
@@ -67,7 +67,7 @@ pub(super) fn flex_row_lines_of(
     let mut items: Vec<&Element> = Vec::new();
     for n in c.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
-        let ks = &*k.style.computed();
+        let ks = &*k.style.used();
         if !plain_item(k) || ks.min_height.is_some() || row_item_width(ks, main).is_none() {
             return None;
         }
@@ -76,7 +76,7 @@ pub(super) fn flex_row_lines_of(
     if items.is_empty() {
         return None;
     }
-    items.sort_by_key(|k| k.style.computed().order.unwrap_or(0));
+    items.sort_by_key(|k| k.style.used().order.unwrap_or(0));
     // Строки по внешней ширине элементов (главная ось).
     let mut lines: Vec<Vec<(f32, Element, Shape)>> = Vec::new();
     let mut used = 0.0f32;
@@ -89,8 +89,7 @@ pub(super) fn flex_row_lines_of(
     // `multi-line-row-flex-fragmentation-053/060/062`. Такие элементы —
     // прежним путём.
     let widened = items.iter().any(|k| {
-        !matches!(k.style.computed().width, Some(Len::Px(_)))
-            || k.style.computed().flex_basis.is_some()
+        !matches!(k.style.used().width, Some(Len::Px(_))) || k.style.used().flex_basis.is_some()
     });
     let mut single = true;
     let mut risky = false;
@@ -98,22 +97,22 @@ pub(super) fn flex_row_lines_of(
         risky |= carries_abspos(k, 4) || constrained_inside(k, 4);
     }
     for k in items {
-        let kb = k.style.computed().borders();
+        let kb = k.style.used().borders();
         // Гипотетический главный размер (css-flexbox-1 §9.2 шаг 3):
         // `flex-basis` в точках/процентах, иначе `width`; проценты — от
         // главного размера контейнера (§9.2 «percentage … against the flex
         // container's inner main size»). Копия элемента несёт его в точках:
         // в стопке он рисуется блоком в колонке.
-        let w = row_item_width(&k.style.computed(), main)?;
+        let w = row_item_width(&k.style.used(), main)?;
         let mut k = k.clone();
         k.style.used_mut().width = Some(Len::Px(w));
         k.style.used_mut().flex_basis = None;
         let k = &k;
-        let w = if k.style.computed().border_box == Some(true) {
+        let w = if k.style.used().border_box == Some(true) {
             w
         } else {
-            w + side(&k.style.computed().padding.left)?
-                + side(&k.style.computed().padding.right)?
+            w + side(&k.style.used().padding.left)?
+                + side(&k.style.used().padding.right)?
                 + side(&kb.left)?
                 + side(&kb.right)?
         };

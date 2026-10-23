@@ -25,7 +25,7 @@ pub(crate) fn transitioned(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let seconds = e.style.computed().transition?;
+    let seconds = e.style.used().transition?;
     let hover = e.hover.clone()?;
     let id = e.state_id("html-transition", opts.cx.vcx());
     let node = e.clone();
@@ -33,7 +33,7 @@ pub(crate) fn transitioned(
     let opts = opts.clone();
     let build = std::rc::Rc::new(move |k: f32| {
         let mut mixed = node.clone();
-        mixed.style = node.style.computed().blend(hover.cascaded(), k).into();
+        mixed.style = node.style.used().blend(hover.cascaded(), k).into();
         // Слой наведения снят: его роль уже сыграла доля перехода, иначе
         // стиль прыгнул бы поверх плавного.
         mixed.hover = None;

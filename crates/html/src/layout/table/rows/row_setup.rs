@@ -28,7 +28,7 @@ pub(super) fn cell_spans(
     col_ix: usize,
     cell: &Element,
 ) -> CellSpans {
-    let st = cell.style.computed();
+    let st = cell.style.used();
     // Объединение ячеек: без него ячейка занимала одну дорожку, и всё
     // правее неё съезжало на колонку влево.
     let span_cols: u16 = cell
@@ -84,7 +84,7 @@ pub(super) fn row_band_probes(
     carry: crate::layout::table::anon::RowCarry<'_>,
     cx: &LayoutCx,
 ) -> RowBands {
-    let rs = row.style.computed();
+    let rs = row.style.used();
     // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
@@ -113,11 +113,11 @@ pub(super) fn row_band_probes(
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
     let grp_band: Option<crate::layout::table::probes::RowRects> = carry.group.and_then(|g| {
-        (g.style.computed().collapsed != Some(true)
-            && (g.style.computed().bg_image.is_some()
-                || g.style.computed().gradient_raw.is_some()
-                || !g.style.computed().shadows.is_empty()
-                || g.style.computed().outline.is_some()))
+        (g.style.used().collapsed != Some(true)
+            && (g.style.used().bg_image.is_some()
+                || g.style.used().gradient_raw.is_some()
+                || !g.style.used().shadows.is_empty()
+                || g.style.used().outline.is_some()))
         .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.group)
@@ -130,7 +130,7 @@ pub(super) fn row_band_probes(
         // Полоса ради одной обводки цвет не красит: сплошной цвет группы
         // без картинки несут ячейки (`collect_rows`), второй слой удвоил
         // бы полупрозрачный.
-        if band_style.bg_image.is_none() && g.style.computed().shadows.is_empty() {
+        if band_style.bg_image.is_none() && g.style.used().shadows.is_empty() {
             band_style.background = None;
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
@@ -163,7 +163,7 @@ pub(super) fn push_empty_row_track(
             .iter()
             .any(|n| matches!(n, Node::Element(c) if is_cell(c)))
         && occupied.iter().all(|o| *o == 0)
-        && let Some(Len::Px(h)) = row.style.computed().height
+        && let Some(Len::Px(h)) = row.style.used().height
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
@@ -180,7 +180,7 @@ pub(super) fn cell_cascaded_style(
     cell: &Element,
     vcx: ValueCx<'_>,
 ) -> BoxStyle {
-    let st = cell.style.computed();
+    let st = cell.style.used();
     let mut cm = box_style(row_style, &cell.style, vcx);
     pseudo_line_layers::install(cell, &mut cm, vcx);
     // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/

@@ -41,7 +41,7 @@ pub(crate) fn position_element(
         )
     };
     let positioned_out = matches!(
-        e.style.computed().position,
+        e.style.used().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     );
@@ -55,10 +55,10 @@ pub(crate) fn position_element(
     let auto_len = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     let holder_axis = if positioned_out
         && e.style.cascaded().writing_mode.is_none()
-        && auto_len(e.style.computed().height)
-        && kw_len(e.style.computed().max_height)
-        && edge_set(e.style.computed().inset.top)
-        && edge_set(e.style.computed().inset.bottom)
+        && auto_len(e.style.used().height)
+        && kw_len(e.style.used().max_height)
+        && edge_set(e.style.used().inset.top)
+        && edge_set(e.style.used().inset.bottom)
     {
         Some(true)
     } else if positioned_out
@@ -71,9 +71,9 @@ pub(crate) fn position_element(
         // `left/right` во всё окно (`div-{min,max,fit}-content-
         // orthogonal-*`: 13.5 %). Ветка высоты выше гейт сохраняет: в
         // вертикальном письме это строчная ось, её пары не разбирались.
-        && auto_len(e.style.computed().width) && kw_len(e.style.computed().max_width)
-        && edge_set(e.style.computed().inset.left)
-        && edge_set(e.style.computed().inset.right)
+        && auto_len(e.style.used().width) && kw_len(e.style.used().max_width)
+        && edge_set(e.style.used().inset.left)
+        && edge_set(e.style.used().inset.right)
     {
         Some(false)
     } else {
@@ -81,9 +81,8 @@ pub(crate) fn position_element(
     };
     // Липкая коробка сдвигает своё поддерево на подготовке: щупы внутри
     // вычитают сдвиг (`ShiftLink`), поэтому звено заводится ДО сборки.
-    let sticky_link = (e.style.computed().position
-        == Some(crate::style::computed::Position::Sticky))
-    .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.sticky.as_ref()));
+    let sticky_link = (e.style.used().position == Some(crate::style::computed::Position::Sticky))
+        .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.sticky.as_ref()));
     let sticky_opts = sticky_link
         .as_ref()
         .map(|link| opts.inner(|cx| cx.sticky = Some(link.clone())));
@@ -95,11 +94,11 @@ pub(crate) fn position_element(
         crate::paint::effects::grouped::block_group(animated(e, inherited, opts), e, inherited, vcx)
     };
     let built = match root_box {
-        Some(area) if e.style.computed().root_box && e.style.computed().canvas_bg => {
+        Some(area) if e.style.used().root_box && e.style.used().canvas_bg => {
             crate::paint::background::record_root_box(
                 built,
                 area,
-                &e.style.computed(),
+                &e.style.used(),
                 opts.base_size(),
                 opts.cx.vcx(),
             )
@@ -107,7 +106,7 @@ pub(crate) fn position_element(
         _ => built,
     };
     let built = vertical_hug(built, e, inherited);
-    let built = sticky_wrap(built, &e.style.computed(), frame, layer_ok, sticky_link);
+    let built = sticky_wrap(built, &e.style.used(), frame, layer_ok, sticky_link);
     let opts = outer_opts;
     // Таблица сжимается по содержимому (§17.5.2.2), и выражено это у
     // нас гибким рядом. В контейнере с БЛОЧНОЙ раскладкой гибкого
@@ -116,14 +115,14 @@ pub(crate) fn position_element(
     // табличными детьми.
     let table_child = e.tag == "table"
         || matches!(
-            e.style.computed().display,
+            e.style.used().display,
             Some(Display::Table) | Some(Display::InlineTable)
         );
     let block_parent = matches!(
         inherited.display,
         Some(Display::Block) | Some(Display::ListItem) | Some(Display::TableCell)
     );
-    let built = if table_child && block_parent && e.style.computed().width.is_none() {
+    let built = if table_child && block_parent && e.style.used().width.is_none() {
         div().flex().flex_row().child(built).into_any_element()
     } else {
         built

@@ -15,7 +15,7 @@ pub(super) fn zero(l: &Option<Len>) -> bool {
 }
 
 pub(super) fn plain_container(c: &Element) -> bool {
-    let s = &c.style.computed();
+    let s = &c.style.used();
     let b = s.borders();
     if c.inline
         || s.display != Some(Display::Flex)
@@ -61,7 +61,7 @@ pub(super) fn plain_container(c: &Element) -> bool {
 }
 
 pub(super) fn plain_item(k: &Element) -> bool {
-    let s = &k.style.computed();
+    let s = &k.style.used();
     !k.inline
         && !out_of_flow(s)
         && matches!(

@@ -23,12 +23,10 @@ pub(super) fn table_grid_box(
                 .iter()
                 .map(|row| {
                     let cell_h = |c: &Node| match c {
-                        Node::Element(cell) if is_cell(cell) => {
-                            px_strict(cell.style.computed().height)
-                        }
+                        Node::Element(cell) if is_cell(cell) => px_strict(cell.style.used().height),
                         _ => None,
                     };
-                    let own = px_strict(row.style.computed().height);
+                    let own = px_strict(row.style.used().height);
                     match own
                         .into_iter()
                         .chain(row.children.iter().filter_map(cell_h))
@@ -56,11 +54,11 @@ pub(super) fn table_grid_box(
         && !e.style.cascaded().wm().vertical()
         && row_elements
             .iter()
-            .any(|r| matches!(r.style.computed().height, Some(Len::Px(h)) if h > 0.0)))
+            .any(|r| matches!(r.style.used().height, Some(Len::Px(h)) if h > 0.0)))
     .then(|| {
         row_elements
             .iter()
-            .map(|row| match row.style.computed().height {
+            .map(|row| match row.style.used().height {
                 Some(Len::Px(h)) if h > 0.0 => gpui::GridTrack::MinMax(Box::new((
                     gpui::GridTrack::Pixels(px(h)),
                     gpui::GridTrack::Auto,
@@ -116,7 +114,7 @@ pub(super) fn paint_table_border(
     mut outer: gpui::Div,
 ) -> gpui::Div {
     if collapse
-        && (bw.iter().any(|w| *w > 0.0) || e.style.computed().border_side_styles.contains(&Some(1)))
+        && (bw.iter().any(|w| *w > 0.0) || e.style.used().border_side_styles.contains(&Some(1)))
     {
         // Рамка самой таблицы — участник разбора конфликтов: её кромки
         // уходят в тот же слой (EdgePainter), линии — внутренние края
@@ -127,9 +125,8 @@ pub(super) fn paint_table_border(
             b: 0.0,
             a: 1.0,
         };
-        let side_colour = |i: usize| {
-            e.style.computed().border_colors[i].resolve(inherited.color.unwrap_or(black))
-        };
+        let side_colour =
+            |i: usize| e.style.used().border_colors[i].resolve(inherited.color.unwrap_or(black));
         let colors = [
             side_colour(0),
             side_colour(1),
@@ -137,7 +134,7 @@ pub(super) fn paint_table_border(
             side_colour(3),
         ];
         let side_style = |i: usize| {
-            e.style.computed().border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 })
+            e.style.used().border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         // Линия рамки СТОЛА — та же ЛИНИЯ СЕТКИ, на которой стоят кромки

@@ -36,8 +36,8 @@ pub(super) fn prepare(
     let merged = box_style(inherited, &e.style, vcx);
     let scale = scale * super::geometry::scale(e);
     if e.tag.eq_ignore_ascii_case("foreignObject") {
-        let w = length(e.style.computed().width, e.attr("width"), viewport.0, vcx);
-        let h = length(e.style.computed().height, e.attr("height"), viewport.1, vcx);
+        let w = length(e.style.used().width, e.attr("width"), viewport.0, vcx);
+        let h = length(e.style.used().height, e.attr("height"), viewport.1, vcx);
         if w <= 0.0 || h <= 0.0 {
             e.children.clear();
             return;
@@ -61,7 +61,7 @@ pub(super) fn prepare(
             html.tag = "div".into();
             html.attrs.clear();
             html.marks = Default::default();
-            html.style = merged.into();
+            html.style = crate::dom::SharedStyle::layout_made(merged);
             html.style.used_mut().width = Some(Len::Px(w));
             html.style.used_mut().height = Some(Len::Px(h));
             html.style.used_mut().display = Some(Display::Block);

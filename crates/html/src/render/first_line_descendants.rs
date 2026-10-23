@@ -21,12 +21,12 @@ pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     for node in &mut nodes {
         match node {
             Node::Text(t) if blank_text(t) => continue,
-            Node::Element(e) if out_of_flow(&e.style.computed()) => continue,
+            Node::Element(e) if out_of_flow(&e.style.used()) => continue,
             Node::Element(e)
                 if block_level_in_flow(e)
                     && !table_box(e)
                     && matches!(
-                        e.style.computed().display,
+                        e.style.used().display,
                         None | Some(Display::Block | Display::ListItem)
                     )
                     && e.first_line.is_none() =>

@@ -25,16 +25,16 @@ pub(crate) fn serial_table_parallel(
     let mut nested = false;
     for n in fixed.iter().filter(|n| !is_blank(n)) {
         let Node::Element(part) = n else { return None };
-        if part.tag == "caption" || part.style.computed().is_caption == Some(true) {
+        if part.tag == "caption" || part.style.used().is_caption == Some(true) {
             nested |= parallel(part, depth - 1);
-        } else if part.tag == "tr" || part.style.computed().display == Some(Display::TableRow) {
+        } else if part.tag == "tr" || part.style.used().display == Some(Display::TableRow) {
             rows.push(part);
         } else if matches!(part.tag.as_str(), "thead" | "tbody" | "tfoot")
-            || part.style.computed().row_group_kind.is_some()
+            || part.style.used().row_group_kind.is_some()
         {
             for n in part.children.iter().filter(|n| !is_blank(n)) {
                 let Node::Element(row) = n else { return None };
-                if row.tag != "tr" && row.style.computed().display != Some(Display::TableRow) {
+                if row.tag != "tr" && row.style.used().display != Some(Display::TableRow) {
                     return None;
                 }
                 rows.push(row);
@@ -136,7 +136,7 @@ mod tests {
             serial_table_parallel(
                 &table,
                 4,
-                |e, _| e.style.computed().display == Some(Display::Grid),
+                |e, _| e.style.used().display == Some(Display::Grid),
                 vcx
             ),
             Some(true)

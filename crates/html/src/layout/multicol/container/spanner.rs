@@ -38,7 +38,7 @@ pub(crate) fn multicol_spanner_segments(
     let mut kids = e.children.clone();
     if e.tag == "fieldset"
         && let Some(i) = kids.iter().position(
-            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style.computed())),
+            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style.used())),
         )
     {
         let legend = kids.remove(i);
@@ -105,7 +105,7 @@ pub(crate) fn multicol_spanner_segments(
                 sub.style.used_mut().mask_image = None;
                 sub.style.used_mut().backdrop_blur = None;
                 if matches!(
-                    sub.style.computed().position,
+                    sub.style.used().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 ) {

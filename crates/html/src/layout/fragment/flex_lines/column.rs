@@ -18,10 +18,10 @@ pub(super) fn flex_lines_of(
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
     use crate::style::computed::FlexDir;
-    if flex_gap_rules(&c.style.computed()) {
+    if flex_gap_rules(&c.style.used()) {
         return None;
     }
-    let s = &*c.style.computed();
+    let s = &*c.style.used();
     if !plain_container(c) || s.flex_dir != Some(FlexDir::Col) {
         return None;
     }
@@ -37,7 +37,7 @@ pub(super) fn flex_lines_of(
     let mut items: Vec<&Element> = Vec::new();
     for n in c.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
-        let ks = &*k.style.computed();
+        let ks = &*k.style.used();
         if !plain_item(k) || ks.flex_basis.is_some() {
             return None;
         }
@@ -47,32 +47,32 @@ pub(super) fn flex_lines_of(
         return None;
     }
     // Визуальный порядок (`order`, стабильно), как в `blocks()`.
-    items.sort_by_key(|k| k.style.computed().order.unwrap_or(0));
+    items.sort_by_key(|k| k.style.used().order.unwrap_or(0));
     // Мера и внешний поперечный размер элемента; `None` у ширины — `auto`.
     let mut measured: Vec<(Element, Shape, Option<f32>)> = Vec::with_capacity(items.len());
     for k in items {
         let sh = shape_full(k, 4, ShapeCx::COLUMNS, vcx)?;
-        let kb = k.style.computed().borders();
+        let kb = k.style.used().borders();
         let side = |l: &Option<Len>| match l {
             None => Some(0.0),
             Some(Len::Px(v)) => Some(*v),
             _ => None,
         };
-        let w = match k.style.computed().width {
+        let w = match k.style.used().width {
             Some(Len::Px(w)) => {
-                let extra = if k.style.computed().border_box == Some(true) {
+                let extra = if k.style.used().border_box == Some(true) {
                     0.0
                 } else {
-                    side(&k.style.computed().padding.left)?
-                        + side(&k.style.computed().padding.right)?
+                    side(&k.style.used().padding.left)?
+                        + side(&k.style.used().padding.right)?
                         + side(&kb.left)?
                         + side(&kb.right)?
                 };
                 Some(w + extra)
             }
             None | Some(Len::Auto)
-                if zero(&k.style.computed().padding.left)
-                    && zero(&k.style.computed().padding.right)
+                if zero(&k.style.used().padding.left)
+                    && zero(&k.style.used().padding.right)
                     && zero(&kb.left)
                     && zero(&kb.right)
                     && k.children.iter().all(is_blank) =>

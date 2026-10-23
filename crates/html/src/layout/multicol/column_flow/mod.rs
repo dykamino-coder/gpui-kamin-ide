@@ -46,14 +46,14 @@ pub(crate) fn column_flow(
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let stretch = match inherited.height.or(e.style.computed().height) {
+    let stretch = match inherited.height.or(e.style.used().height) {
         Some(Len::Px(h)) if h > 0.0 => {
-            if e.style.computed().border_box == Some(true) {
-                let b = e.style.computed().borders();
+            if e.style.used().border_box == Some(true) {
+                let b = e.style.used().borders();
                 (|| {
                     Some(
-                        h - px(&e.style.computed().padding.top)?
-                            - px(&e.style.computed().padding.bottom)?
+                        h - px(&e.style.used().padding.top)?
+                            - px(&e.style.used().padding.bottom)?
                             - px(&b.top)?
                             - px(&b.bottom)?,
                     )
@@ -91,7 +91,7 @@ fn column_flow_in(
     // знает только строки — такой поток идёт стопкой со статическими местами.
     if e.children.iter().any(|n| {
         matches!(n, Node::Element(c) if c.inline && matches!(
-            c.style.computed().position,
+            c.style.used().position,
             Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
         ))
     }) {
@@ -99,7 +99,7 @@ fn column_flow_in(
     }
     let all_inline = e.children.iter().all(|n| match n {
         Node::Text(_) => true,
-        Node::Element(child) => child.inline && child.style.computed().display.is_none(),
+        Node::Element(child) => child.inline && child.style.used().display.is_none(),
     });
     if let Some(value) =
         non_inline_columns(e, inherited, opts, count, col_w, whole, stretch, all_inline)
@@ -144,7 +144,7 @@ fn column_flow_in(
     // `column-gap: -1em` доезжает `Px(-20)`: промежуток `[0,∞]` (css-align-3
     // §column-row-gap), отрицательный невалиден — умолчание
     // (`multicol-gap-negative-001`).
-    let gap = match inherited.column_gap.or(e.style.computed().column_gap) {
+    let gap = match inherited.column_gap.or(e.style.used().column_gap) {
         Some(Len::Px(v)) if v >= 0.0 => v,
         _ => size,
     };
@@ -155,10 +155,10 @@ fn column_flow_in(
         _ => 3.0,
     };
     let rule_owned: Option<(f32, crate::style::values::value::Color)> =
-        if e.style.computed().column_rule_visible == Some(true) {
+        if e.style.used().column_rule_visible == Some(true) {
             Some((
-                rule_px(&e.style.computed().column_rule_width, size),
-                e.style.computed().column_rule_color.resolve(
+                rule_px(&e.style.used().column_rule_width, size),
+                e.style.used().column_rule_color.resolve(
                     inherited
                         .color
                         .unwrap_or(crate::style::values::value::Color::BLACK),
@@ -200,8 +200,8 @@ fn column_flow_in(
             // `column-fill: auto` с заданной высотой: колонки заполняются
             // подряд до неё (css-multicol-1 §3.3).
             match (
-                e.style.computed().column_fill_auto,
-                inherited.height.or(e.style.computed().height),
+                e.style.used().column_fill_auto,
+                inherited.height.or(e.style.used().height),
                 inherited.max_height,
             ) {
                 (Some(true), Some(Len::Px(h)), _) if h > 0.0 => Some(h),

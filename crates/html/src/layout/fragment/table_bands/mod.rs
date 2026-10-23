@@ -28,7 +28,7 @@ pub(crate) use serial::serial_table_parallel;
 pub(crate) fn table_box(c: &Element) -> bool {
     c.tag == "table"
         || matches!(
-            c.style.computed().display,
+            c.style.used().display,
             Some(Display::Table) | Some(Display::InlineTable)
         )
 }

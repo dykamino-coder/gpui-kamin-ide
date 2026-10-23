@@ -22,7 +22,7 @@ pub(super) fn unfloated_flow(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     let floated = nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.computed().float.is_some_and(|f| f != 0),
+        Node::Element(e) => e.style.used().float.is_some_and(|f| f != 0),
         Node::Text(_) => false,
     });
     if !floated {
@@ -58,11 +58,11 @@ pub(super) fn prepare_float_nodes(
     let nodes: Vec<Node> = nodes
         .into_iter()
         .map(|n| match n {
-            Node::Element(mut e) if e.style.computed().display == Some(Display::Contents) => {
+            Node::Element(mut e) if e.style.used().display == Some(Display::Contents) => {
                 e.style.used_mut().float = None;
                 Node::Element(e)
             }
-            Node::Element(mut e) if e.style.computed().float.is_some_and(|f| f != 0) => {
+            Node::Element(mut e) if e.style.used().float.is_some_and(|f| f != 0) => {
                 // Font-relative margins use the float's computed font, before
                 // the band planner takes ownership of its margin box.
                 e.style.used_mut().margin =
@@ -125,7 +125,7 @@ pub(super) fn prepare_float_nodes(
         && let Some(b) =
             (a + 1..nodes.len()).find(|&k| !is_blank(&nodes[k]) && !phantom_inline(&nodes[k]))
         && let Node::Element(n) = &nodes[b]
-        && (match n.style.computed().clear {
+        && (match n.style.used().clear {
             Some(0) => true,
             Some(c) if c < 0 => left,
             Some(_) => right,
@@ -168,7 +168,7 @@ pub(super) fn host_for_run(
             Node::Element(c) => {
                 !inline_level(c)
                     || c.tag == "br"
-                    || out_of_flow(&c.style.computed())
+                    || out_of_flow(&c.style.used())
                     || c.marks.shape_flow.is_some()
             }
         })
@@ -215,7 +215,7 @@ pub(super) fn wrap_into_host(
         // (`below-float3`: абсолют перед флоатом).
         if host.marks.shape_flow.is_some()
             && out.iter().all(|n| {
-                is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style.computed()))
+                is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style.used()))
             })
         {
             host.first_line = parent.first_line.as_deref().cloned().map(Into::into);

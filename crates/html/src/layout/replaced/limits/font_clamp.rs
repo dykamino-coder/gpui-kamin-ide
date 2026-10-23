@@ -109,7 +109,7 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
         )
     };
-    let c = &*e.style.computed();
+    let c = &*e.style.used();
     if !(kw(c.min_width) || kw(c.max_width) || kw(c.min_height) || kw(c.max_height)) {
         return e.clone();
     }

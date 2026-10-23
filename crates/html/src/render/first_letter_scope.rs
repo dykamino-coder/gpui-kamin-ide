@@ -66,14 +66,14 @@ fn in_flow(node: &Node, spaces: bool, newlines: bool) -> bool {
             !blank_text(t) || (spaces && !t.is_empty()) || (newlines && t.contains('\n'))
         }
         Node::Element(e)
-            if out_of_flow(&e.style.computed())
-                || e.style.computed().display == Some(Display::None)
-                || e.style.computed().first_letter_excluded
+            if out_of_flow(&e.style.used())
+                || e.style.used().display == Some(Display::None)
+                || e.style.used().first_letter_excluded
                 || e.tag == "::marker" =>
         {
             false
         }
-        Node::Element(e) if e.style.computed().display == Some(Display::Contents) => {
+        Node::Element(e) if e.style.used().display == Some(Display::Contents) => {
             e.children.iter().any(|n| {
                 in_flow(
                     n,

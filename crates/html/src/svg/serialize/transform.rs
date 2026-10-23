@@ -23,7 +23,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // SVG without a CSS layout box uses the nearest viewport by default.
     // Blink TransformHelper::ComputeReferenceBox and css-transforms-1 agree:
     // fill/stroke boxes use object bounds; view-box uses viewport dimensions.
-    let ref_box = match super::svg_box_style(&e.style.computed()).0 {
+    let ref_box = match super::svg_box_style(&e.style.used()).0 {
         Some(k @ (1 | 2)) => Some(reference_box(e, k == 2).unwrap_or((fx, fy, fw, fh))),
         _ => None,
     };
@@ -37,8 +37,8 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // и у атрибута, точки — от её начала при явной коробке, иначе как есть
     // (`transform-box/fill-box-*`, `svg-origin-relative-length-*`).
     let style_origin = match (
-        e.style.computed().transform_origin,
-        e.style.computed().transform_origin_px,
+        e.style.used().transform_origin,
+        e.style.used().transform_origin_px,
     ) {
         (_, (Some(px), Some(py))) => Some((from_box(px, bx), from_box(py, by))),
         (Some((kx, ky)), (px, py)) => Some((
@@ -63,7 +63,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // Матрица функций В ПОРЯДКЕ ЗАПИСИ (см. `computed::Transform::lin`);
     // проценты сдвига — от опорной коробки фигуры (css-transforms-1
     // §transform-box: доля — от выбранной reference box).
-    let style_t = e.style.computed().transform.as_ref().map(|t| {
+    let style_t = e.style.used().transform.as_ref().map(|t| {
         let unit = t.lin == [[1.0, 0.0], [0.0, 1.0]] && t.tr == [[0.0; 3]; 2];
         if unit {
             return String::new();
@@ -96,7 +96,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // уже сдвигает `paint/apply/` — иначе сдвиг лёг бы дважды.
     let ind_t = e
         .style
-        .computed()
+        .used()
         .translate
         .filter(|_| e.tag != "svg")
         .and_then(|(x, y)| {
@@ -130,10 +130,10 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
         prefix.push_str(&format!("translate({dx} {dy}) "));
     }
     if e.tag != "svg" {
-        if let Some(angle) = e.style.computed().rotate_prop {
+        if let Some(angle) = e.style.used().rotate_prop {
             prefix.push_str(&format!("rotate({}) ", angle.to_degrees()));
         }
-        if let Some((x, y)) = e.style.computed().scale_prop {
+        if let Some((x, y)) = e.style.used().scale_prop {
             prefix.push_str(&format!("scale({x} {y}) "));
         }
     }
@@ -150,7 +150,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
         // Сдвиг от `translate:` — такой же повод перебить презентационный
         // атрибут, как и своё свойство `transform`: без этой ветки собранная
         // строка терялась, а в разметку уходил нетронутый атрибут.
-        (None, Some(t)) if e.style.computed().transform.is_some() || ind_t.is_some() => Some(t),
+        (None, Some(t)) if e.style.used().transform.is_some() || ind_t.is_some() => Some(t),
         _ => None,
     };
     (combined, attr_bad)

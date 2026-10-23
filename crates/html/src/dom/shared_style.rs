@@ -50,7 +50,7 @@ impl SharedStyle {
                 .explicit_inherit
                 .contains(&crate::style::cascade::inherited_value::Property::VerticalAlign);
         if declared {
-            self.computed().vertical_align
+            self.used().vertical_align
         } else {
             None
         }
@@ -69,19 +69,31 @@ impl SharedStyle {
         &self.computed
     }
 
-    /// The element's computed style with layout's used values. A style that
-    /// was never materialized has one stage (document preparation, a box
-    /// layout made): the style itself is returned.
+    /// The element's computed style (css-cascade-5 §4.4): the style materialized
+    /// from the cascaded one; layout's used values are not in it.
+    ///
+    /// TRANSITIONAL(cascade-7b layout-made styles): a style that was never
+    /// materialized (document preparation before materialization, a box layout
+    /// made, `SharedStyle::layout_made`) has one stage, returned here. Remove
+    /// when layout-made boxes stop being elements with a style handle.
     pub fn computed(&self) -> Rc<Computed> {
+        self.base()
+    }
+
+    /// The style layout reads (css-cascade-5 §4.5): the computed style with
+    /// layout's used values (`used_mut`) laid over it.
+    pub fn used(&self) -> Rc<Computed> {
         match &self.used {
             Some(used) => used.clone(),
             None => self.base(),
         }
     }
 
-    /// Layout's used-value layer, copy-on-write over the computed style. A
-    /// style that was never materialized has one stage, and that stage is
-    /// edited.
+    /// Layout's used-value layer, copy-on-write over the computed style.
+    ///
+    /// TRANSITIONAL(cascade-7b layout-made styles): a style that was never
+    /// materialized has one stage, and that stage is edited. Remove with the
+    /// single-stage styles (`computed`).
     pub(crate) fn used_mut(&mut self) -> &mut Computed {
         if self.used.is_none() && self.computed.any().is_none() {
             return Rc::make_mut(&mut self.cascaded);
@@ -128,8 +140,10 @@ mod tests {
         let mut copy = original.clone();
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
         copy.used_mut().width = Some(Len::Px(100.0));
-        assert_eq!(original.computed().width, Some(Len::Pct(0.5)));
-        assert_eq!(copy.computed().width, Some(Len::Px(100.0)));
+        assert_eq!(original.used().width, Some(Len::Pct(0.5)));
+        assert_eq!(copy.used().width, Some(Len::Px(100.0)));
+        // The computed stage is the materialized style, without the used value.
+        assert_eq!(copy.computed().width, Some(Len::Pct(0.5)));
         // Neither the cascaded nor the materialized computed style changed.
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
         assert!(Rc::ptr_eq(
@@ -157,7 +171,7 @@ mod tests {
         node.style.cascaded_mut().width = Some(Len::Pct(0.5));
         let mut copy = node.clone();
         copy.style.used_mut().width = Some(Len::Px(100.0));
-        assert_eq!(node.style.computed().width, Some(Len::Pct(0.5)));
+        assert_eq!(node.style.used().width, Some(Len::Pct(0.5)));
         assert!(Rc::ptr_eq(
             node.anim.as_ref().unwrap(),
             copy.anim.as_ref().unwrap()

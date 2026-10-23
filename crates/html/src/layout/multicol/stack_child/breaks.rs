@@ -95,8 +95,8 @@ fn recorded(empty: bool, measured: bool, flow_lines: bool) -> Recorded {
 /// такой копии остаются у оценки строк (`line_run_shape`).
 pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::Computed) -> bool {
     fn trims(e: &Element, depth: u8) -> bool {
-        e.style.computed().text_box_trim_start
-            || e.style.computed().text_box_trim_end
+        e.style.used().text_box_trim_start
+            || e.style.used().text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
             || (depth > 0

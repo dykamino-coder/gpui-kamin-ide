@@ -35,7 +35,7 @@ pub(super) fn inline_sides(
         Some(Len::Pct(k)) => cb.map_or(0.0, |w| k * w),
         _ => 0.0,
     };
-    let border = e.style.computed().borders();
+    let border = e.style.used().borders();
     // Боковой отступ строчной коробки занимает место в строке ВСЕГДА (§8.4),
     // фон там задан или нет: `padding-right: 4em` двигает следующее слово и
     // рвёт строку. Прежде отступ гасился при заданном фоне — считалось, что
@@ -52,8 +52,8 @@ pub(super) fn inline_sides(
     let flat = |s: crate::style::computed::Sides| {
         super::physical_sides::project(flow, [s.top, s.right, s.bottom, s.left]).map(px_of)
     };
-    let margin = flat(e.style.computed().margin);
-    let padding = flat(e.style.computed().padding);
+    let margin = flat(e.style.used().margin);
+    let padding = flat(e.style.used().padding);
     let border = flat(border);
     (
         (margin[3], margin[1]),

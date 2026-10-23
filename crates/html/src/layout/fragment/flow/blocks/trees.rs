@@ -15,10 +15,10 @@ use crate::style::computed::Display;
 /// детей иначе — их границы дают свои контексты (строки — `Paragraph`).
 pub(super) fn stacks_blocks(e: &Element) -> bool {
     matches!(
-        e.style.computed().display,
+        e.style.used().display,
         None | Some(Display::Block) | Some(Display::ListItem)
-    ) && e.style.computed().webkit_box != Some(true)
-        && !crate::layout::multicol::spanner::multicol_container(&e.style.computed())
+    ) && e.style.used().webkit_box != Some(true)
+        && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
         && !table_box(e)
         && !matches!(e.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
 }
@@ -30,7 +30,7 @@ pub(crate) fn stacked_tree(e: &Element, depth: u8) -> bool {
     stacks_blocks(e)
         && (depth == 0
             || e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style.computed()) || k.inline => {
+                Node::Element(k) if out_of_flow(&k.style.used()) || k.inline => {
                     !holds_blocks(k) || stacked_tree(k, depth - 1)
                 }
                 Node::Element(k) => {
@@ -50,7 +50,7 @@ pub(crate) fn table_tree(e: &Element, depth: u8) -> bool {
             Node::Element(k) if k.inline => true,
             Node::Element(k)
                 if matches!(
-                    k.style.computed().display,
+                    k.style.used().display,
                     Some(Display::TableRow)
                         | Some(Display::TableRowGroup)
                         | Some(Display::TableCell)
@@ -71,9 +71,9 @@ pub(crate) fn table_tree(e: &Element, depth: u8) -> bool {
 /// Строчная коробка с поточным блоком внутри (на любой глубине строчных).
 pub(super) fn holds_blocks(e: &Element) -> bool {
     e.children.iter().any(|n| match n {
-        Node::Element(k) if out_of_flow(&k.style.computed()) => false,
+        Node::Element(k) if out_of_flow(&k.style.used()) => false,
         Node::Element(k) if !k.inline => true,
-        Node::Element(k) => k.style.computed().display.is_none() && holds_blocks(k),
+        Node::Element(k) => k.style.used().display.is_none() && holds_blocks(k),
         _ => false,
     })
 }

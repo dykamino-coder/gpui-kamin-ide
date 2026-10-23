@@ -36,8 +36,8 @@ pub(super) fn split(mut nodes: Vec<Node>, preserve: bool) -> (Option<Vec<Node>>,
             }
             Node::Element(c)
                 if inline_level(c)
-                    && !atomic_inline(&c.style.computed())
-                    && !out_of_flow(&c.style.computed())
+                    && !atomic_inline(&c.style.used())
+                    && !out_of_flow(&c.style.used())
                     && !replaced_tag(c) =>
             {
                 // CSS 2.1 section 9.5.1 rule 6: a break inside an inline

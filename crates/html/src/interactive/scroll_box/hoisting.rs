@@ -46,12 +46,10 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &BoxStyle, opts: &Re
             let Node::Element(c) = &e.children[i] else {
                 return false;
             };
-            let x_set =
-                edge_set(c.style.computed().inset.left) || edge_set(c.style.computed().inset.right);
-            let y_set =
-                edge_set(c.style.computed().inset.top) || edge_set(c.style.computed().inset.bottom);
-            c.style.computed().position == Some(Position::Absolute)
-                && c.style.computed().z_index.unwrap_or(0) >= 0
+            let x_set = edge_set(c.style.used().inset.left) || edge_set(c.style.used().inset.right);
+            let y_set = edge_set(c.style.used().inset.top) || edge_set(c.style.used().inset.bottom);
+            c.style.used().position == Some(Position::Absolute)
+                && c.style.used().z_index.unwrap_or(0) >= 0
                 && x_set
                 && y_set
                 && !stays_positioned(&e.children[i + 1..])

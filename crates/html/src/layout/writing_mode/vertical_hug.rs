@@ -34,8 +34,8 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
         // его строчная ось горизонтальна.
         if ch.inline
             || ch.style.cascaded().vertical_decl() == Some(false)
-            || !crate::layout::box_kind::in_flow(&ch.style.computed())
-            || !auto_inline(&ch.style.computed())
+            || !crate::layout::box_kind::in_flow(&ch.style.used())
+            || !auto_inline(&ch.style.used())
         {
             continue;
         }
@@ -43,7 +43,7 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
             // Auto inline tracks need a contribution before stretch can resolve their size.
             auto_inline(own)
                 || matches!(
-                    ch.style.computed().justify_self.or(own.justify_items),
+                    ch.style.used().justify_self.or(own.justify_items),
                     Some(Align::Start)
                         | Some(Align::Center)
                         | Some(Align::End)
@@ -51,7 +51,7 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
                 )
         } else {
             !matches!(
-                ch.style.computed().display,
+                ch.style.used().display,
                 Some(Display::Flex) | Some(Display::Grid) | Some(Display::Table)
             )
         };
@@ -84,10 +84,7 @@ mod tests {
             let Node::Element(child) = &out[0] else {
                 unreachable!()
             };
-            (
-                child.style.computed().hug_inline,
-                child.style.computed().hug_claim,
-            )
+            (child.style.used().hug_inline, child.style.used().hug_claim)
         };
         assert_eq!(claimed(child.clone(), &parent), (true, true));
         parent.height = Some(Len::Px(50.0));

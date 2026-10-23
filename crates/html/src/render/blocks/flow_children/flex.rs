@@ -7,7 +7,7 @@ use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn flex_child(mut e: crate::dom::Element, inherited: &Computed) -> Node {
-    if e.style.computed().flex_shrink.is_none() {
+    if e.style.used().flex_shrink.is_none() {
         e.style.used_mut().flex_shrink = Some(1.0);
     }
     // `vertical-align` на элементе гибкого контейнера не
@@ -24,19 +24,17 @@ pub(crate) fn flex_child(mut e: crate::dom::Element, inherited: &Computed) -> No
         Some(FlexDir::Col) | Some(FlexDir::ColReverse)
     );
     if row
-        && e.style.computed().contains_width()
-        && matches!(e.style.computed().width, None | Some(Len::Auto))
+        && e.style.used().contains_width()
+        && matches!(e.style.used().width, None | Some(Len::Auto))
     {
-        e.style.used_mut().width = Some(Len::Px(
-            e.style.computed().contain_intrinsic.0.unwrap_or(0.0),
-        ));
+        e.style.used_mut().width = Some(Len::Px(e.style.used().contain_intrinsic.0.unwrap_or(0.0)));
     }
     // Поперечный размер элемента ряда с `height: auto` при
     // растяжке даёт строка (css-flexbox-1 §9.4 п.11), и
     // обособление высоты обязано ей уступить (`apply_box`).
     // `auto`-поле по поперечной оси растяжку отменяет.
-    let stretches = e.style.computed().align_self_normal
-        || match e.style.computed().align_self {
+    let stretches = e.style.used().align_self_normal
+        || match e.style.used().align_self {
             Some(Align::Stretch) => true,
             None => matches!(inherited.align_items, None | Some(Align::Stretch)),
             _ => false,
@@ -44,10 +42,10 @@ pub(crate) fn flex_child(mut e: crate::dom::Element, inherited: &Computed) -> No
     if row
         && !inherited.wm().vertical()
         && stretches
-        && e.style.computed().contains_height()
-        && matches!(e.style.computed().height, None | Some(Len::Auto))
-        && e.style.computed().margin.top != Some(Len::Auto)
-        && e.style.computed().margin.bottom != Some(Len::Auto)
+        && e.style.used().contains_height()
+        && matches!(e.style.used().height, None | Some(Len::Auto))
+        && e.style.used().margin.top != Some(Len::Auto)
+        && e.style.used().margin.bottom != Some(Len::Auto)
     {
         e.style.used_mut().cross_stretched = true;
     }

@@ -40,7 +40,7 @@ pub(crate) fn flush_inline(
         if let Some(drop) = drop {
             let mut host = e.clone();
             if !first
-                && host.style.computed().display == Some(crate::style::computed::Display::ListItem)
+                && host.style.used().display == Some(crate::style::computed::Display::ListItem)
             {
                 // The marker is the first child, never a continuation's child.
                 host.style.used_mut().no_marker = Some(true);
@@ -58,7 +58,7 @@ pub(crate) fn flush_inline(
         return;
     }
     let mut host = e.clone();
-    if !first && host.style.computed().display == Some(crate::style::computed::Display::ListItem) {
+    if !first && host.style.used().display == Some(crate::style::computed::Display::ListItem) {
         // The marker is the first child, never a continuation's child.
         host.style.used_mut().no_marker = Some(true);
         host.style.used_mut().marker_text = None;

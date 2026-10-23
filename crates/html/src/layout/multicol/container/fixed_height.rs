@@ -10,20 +10,20 @@ pub(super) fn fixed_column_height(
     nest_rows: Option<f32>,
 ) -> Option<f32> {
     if let Some(hh) = nest_rows {
-        (e.style.computed().column_fill_auto == Some(true)).then_some(hh)
-    } else if e.style.computed().column_fill_auto == Some(true) {
+        (e.style.used().column_fill_auto == Some(true)).then_some(hh)
+    } else if e.style.used().column_fill_auto == Some(true) {
         col_h.or(
             match if col_vert {
-                e.style.computed().width
+                e.style.used().width
             } else {
-                e.style.computed().height
+                e.style.used().height
             } {
                 Some(Len::Px(h)) => Some(h),
                 // Высота авто при заданном `max-height`: колонки заполняются
                 // подряд до него (css-multicol-1 §column-fill `auto`; Blink
                 // `ConstrainColumnBlockSize` берёт `LogicalMaxHeight()`), как
                 // в текстовом пути `column_flow` (`columnfill-auto-max-height-003`).
-                None | Some(Len::Auto) if !col_vert => match e.style.computed().max_height {
+                None | Some(Len::Auto) if !col_vert => match e.style.used().max_height {
                     Some(Len::Px(m)) if m > 0.0 => Some(m),
                     _ => None,
                 },

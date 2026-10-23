@@ -40,7 +40,7 @@ pub(crate) fn for_element(
     } else {
         content_sized(
             el,
-            &element.style.computed(),
+            &element.style.used(),
             &crate::style::cascade::materialize::box_style(parent, &element.style, vcx),
             placement,
             vcx,

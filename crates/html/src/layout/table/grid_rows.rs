@@ -34,7 +34,7 @@ pub(crate) fn grid_rows<R>(
         "thead" => Some(0u8),
         "tbody" => Some(1),
         "tfoot" => Some(2),
-        _ => g.style.computed().row_group_kind,
+        _ => g.style.used().row_group_kind,
     };
     let first_of = |k: u8| {
         fixed.iter().find_map(|n| match n {

@@ -47,8 +47,8 @@ pub(crate) fn paint_element(
     let geometry_layer_ok = !opts.cx.paint_depth.deferred();
     let opts = &*opts.inner(|cx| {
         cx.paint_depth = cx.paint_depth.enter(
-            defers(&e.style.computed(), inherited, under_tf),
-            stacking_context(&e.style.computed()),
+            defers(&e.style.used(), inherited, under_tf),
+            stacking_context(&e.style.used()),
         );
     });
     if let Some(el) = scrollable(e, inherited, opts) {
@@ -56,17 +56,11 @@ pub(crate) fn paint_element(
         // preserve the parent 3D context, backface and plane as for other boxes.
         let el = crate::paint::effects::transform::transformed(
             el,
-            &e.style.computed(),
+            &e.style.used(),
             inherited,
             opts.cx.vcx(),
         );
-        out.push(layered(
-            el,
-            &e.style.computed(),
-            inherited,
-            layer_ok,
-            under_tf,
-        ));
+        out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
         return;
     }
     if let Some(el) = resizable(e, inherited, opts) {
@@ -76,18 +70,12 @@ pub(crate) fn paint_element(
     if let Some(el) = transitioned(e, inherited, opts) {
         // Наложение считается и для узла с переходом: раньше ветка
         // уходила мимо, и `z-index` у него пропадал.
-        out.push(layered(
-            el,
-            &e.style.computed(),
-            inherited,
-            layer_ok,
-            under_tf,
-        ));
+        out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
         return;
     }
     // `display: contents` — своей коробки у элемента нет: дети
     // становятся детьми родителя, и стиль самого элемента исчезает.
-    if e.style.computed().display == Some(Display::Contents) {
+    if e.style.used().display == Some(Display::Contents) {
         let mut merged = box_style(inherited, &e.style, vcx);
         // Своей коробки нет — значит и объёмный контекст она не
         // обрывает: дети берут ячейки ДЕДА (css-display-3
@@ -132,14 +120,14 @@ pub(crate) fn paint_element(
     };
     let hoist_margins = content_sized_wraps(e)
         && !replaced_tag(e)
-        && (negative(e.style.computed().margin.left) || negative(e.style.computed().margin.right));
+        && (negative(e.style.used().margin.left) || negative(e.style.used().margin.right));
     // Размещение в сетке тоже уезжает на обёртку (см.
     // `content_sized`): в дорожках родителя стоит она. Внутри обёртки
     // (своя сетка в одну дорожку) элемент с прежним `grid-row: 2`
     // уходил бы в её неявный ряд. Прежде обёртка без размещения
     // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
     // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
-    let placement = crate::paint::apply::grid_item_placement(&e.style.computed());
+    let placement = crate::paint::apply::grid_item_placement(&e.style.used());
     let hoist_place = content_sized_wraps(e)
         && !replaced_tag(e)
         && (placement.0.is_some() || placement.1.is_some());
@@ -185,7 +173,7 @@ pub(crate) fn paint_element(
     // фон body — красит всю область просмотра, включая место за
     // полями. Слой absolute от родителя-корня растягивается на всё
     // окно, с самой коробки краска снимается (иначе двойная альфа).
-    let canvas_paint = e.style.computed().canvas_bg;
+    let canvas_paint = e.style.used().canvas_bg;
     // Тело под корнем-донором фона холста при `vertical-rl`: его
     // margin-box (плюс рамка/отбивка корня) — коробка корня по
     // содержимому; её левый край пишется на подготовке тела.

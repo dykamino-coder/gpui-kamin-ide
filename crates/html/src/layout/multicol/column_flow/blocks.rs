@@ -30,9 +30,7 @@ pub(super) fn non_inline_columns(
         let (Some(Node::Element(only)), None) = (blocks.next(), blocks.next()) else {
             return Some(None);
         };
-        if only.style.computed().position.is_some()
-            || only.style.computed().float.is_some_and(|f| f != 0)
-        {
+        if only.style.used().position.is_some() || only.style.used().float.is_some_and(|f| f != 0) {
             return Some(None);
         }
         // Пункт списка — не «тот же поток»: его `::marker` (css-lists-3 §3)

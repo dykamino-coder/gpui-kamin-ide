@@ -12,14 +12,14 @@ pub(super) fn zero(v: Option<Len>) -> bool {
 // Other formatting contexts own their block offsets. They need a positioning
 // adapter before their descendants can participate in this block-flow pass.
 pub(super) fn block(c: &Element) -> bool {
-    let border = c.style.computed().borders();
+    let border = c.style.used().borders();
     !c.inline
-        && matches!(c.style.computed().display, None | Some(Display::Block))
-        && !multicol_container(&c.style.computed())
-        && !c.style.computed().bdb_clone
-        && c.style.computed().float.unwrap_or(0) == 0
-        && zero(c.style.computed().padding.top)
-        && zero(c.style.computed().padding.bottom)
+        && matches!(c.style.used().display, None | Some(Display::Block))
+        && !multicol_container(&c.style.used())
+        && !c.style.used().bdb_clone
+        && c.style.used().float.unwrap_or(0) == 0
+        && zero(c.style.used().padding.top)
+        && zero(c.style.used().padding.bottom)
         && zero(border.top)
         && zero(border.bottom)
 }

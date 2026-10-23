@@ -15,7 +15,7 @@ fn has_clearable(nodes: &[Node]) -> bool {
     let floats = |c: &Computed| c.float.is_some_and(|f| f != 0) || c.initial_letter.is_some();
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
-            floats(&e.style.computed())
+            floats(&e.style.used())
                 || e.first_letter
                     .as_ref()
                     .is_some_and(|l| floats(l.cascaded()))
@@ -28,7 +28,7 @@ fn has_clearable(nodes: &[Node]) -> bool {
 
 fn has_clear(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.computed().clear.is_some() || has_clear(&e.children),
+        Node::Element(e) => e.style.used().clear.is_some() || has_clear(&e.children),
         Node::Text(_) => false,
     })
 }
@@ -73,16 +73,16 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
     let Some(cb) = cb else {
         return false;
     };
-    let Some(Len::Px(w)) = n.style.computed().width else {
+    let Some(Len::Px(w)) = n.style.used().width else {
         return false;
     };
-    let b = n.style.computed().borders();
-    let bw = if n.style.computed().border_box == Some(true) {
+    let b = n.style.used().borders();
+    let bw = if n.style.used().border_box == Some(true) {
         Some(w)
     } else {
         match (
-            px_missing_zero(n.style.computed().padding.left),
-            px_missing_zero(n.style.computed().padding.right),
+            px_missing_zero(n.style.used().padding.left),
+            px_missing_zero(n.style.used().padding.right),
             px_missing_zero(b.left),
             px_missing_zero(b.right),
         ) {
@@ -91,9 +91,9 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
         }
     };
     (!n.inline || inline_marked_block(n))
-        && in_flow(&n.style.computed())
+        && in_flow(&n.style.used())
         && matches!(
-            n.style.computed().display,
+            n.style.used().display,
             None | Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid)
         )
         && own_context(n)

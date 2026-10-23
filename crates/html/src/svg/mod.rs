@@ -68,10 +68,10 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
         for c in &e.children {
             if let Node::Element(el) = c {
                 let own = if horiz {
-                    px_len(el.style.computed().width)
+                    px_len(el.style.used().width)
                         .or_else(|| el.attr("width").and_then(|v| v.parse().ok()))
                 } else {
-                    px_len(el.style.computed().height)
+                    px_len(el.style.used().height)
                         .or_else(|| el.attr("height").and_then(|v| v.parse().ok()))
                 };
                 let at = if horiz {
@@ -98,7 +98,7 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
                             && t.scale == (1.0, 1.0)
                             && t.translate_pct == (0.0, 0.0)
                     };
-                    match el.style.computed().transform.as_ref() {
+                    match el.style.used().transform.as_ref() {
                         Some(t) if pure(t) => {
                             dx += t.translate.0;
                             dy += t.translate.1;
@@ -106,7 +106,7 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
                         Some(_) => continue,
                         None => {}
                     }
-                    if let Some((tx, ty)) = el.style.computed().translate {
+                    if let Some((tx, ty)) = el.style.used().translate {
                         dx += px_len(Some(tx)).unwrap_or(0.0);
                         dy += px_len(Some(ty)).unwrap_or(0.0);
                     }
@@ -118,16 +118,16 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
     };
     // `contain: paint` перебивает видимое переполнение: край обрезки —
     // коробка плюс `overflow-clip-margin` (css-overflow-3 §overflow-clip).
-    let contained = e.style.computed().contain_paint == Some(true);
+    let contained = e.style.used().contain_paint == Some(true);
     let clip_margin = if contained {
-        e.style.computed().clip_margin.unwrap_or(0.0)
+        e.style.used().clip_margin.unwrap_or(0.0)
     } else {
         0.0
     };
-    let visible_y = !contained
-        && e.style.computed().overflow_y == Some(crate::style::computed::Overflow::Visible);
-    let visible_x = !contained
-        && e.style.computed().overflow_x == Some(crate::style::computed::Overflow::Visible);
+    let visible_y =
+        !contained && e.style.used().overflow_y == Some(crate::style::computed::Overflow::Visible);
+    let visible_x =
+        !contained && e.style.used().overflow_x == Some(crate::style::computed::Overflow::Visible);
     let rw = if visible_x {
         w.max(child_extent(true))
     } else {
@@ -158,7 +158,7 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
                 .attr("transform")
                 .and_then(translate_only)
                 .unwrap_or((0.0, 0.0));
-            match el.style.computed().transform.as_ref() {
+            match el.style.used().transform.as_ref() {
                 Some(t)
                     if t.rotate_rad == 0.0
                         && t.skew_rad == (0.0, 0.0)
@@ -171,7 +171,7 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
                 Some(_) => continue,
                 None => {}
             }
-            if let Some((tx, ty)) = el.style.computed().translate {
+            if let Some((tx, ty)) = el.style.used().translate {
                 dx += px_len(Some(tx)).unwrap_or(0.0);
                 dy += px_len(Some(ty)).unwrap_or(0.0);
             }
@@ -186,7 +186,7 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let mut img = device_image::element(serialize_sized(e, rw, rh, nx, ny, vcx), cw, ch)?;
     // CSS-фон самого <svg> (`svg { background: green }`): канва растра
     // прозрачна, фон красится коробкой картинки (svg-scale-001 и родня).
-    if let Some(bg) = e.style.computed().background {
+    if let Some(bg) = e.style.used().background {
         use gpui::Styled as _;
         img = img.bg(bg.to_hsla());
     }

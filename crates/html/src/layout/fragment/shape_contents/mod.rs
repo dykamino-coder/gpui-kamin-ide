@@ -53,7 +53,7 @@ pub(super) fn shape_contents(
     let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
     // Нет значения — ноль; нерешённое: `strict` (высота) — непроходимо,
     // иначе (поля, отступы, рамки) ничего не добавляет.
-    let lens = LenCx::box_viewport(cx.viewport, &c.style.computed());
+    let lens = LenCx::box_viewport(cx.viewport, &c.style.used());
     let px_or = |l: &Option<Len>, strict: bool| {
         if strict {
             lens.px_missing_zero(*l, vcx)
@@ -64,15 +64,15 @@ pub(super) fn shape_contents(
     // Коробка из одних флоатов (`float_only_box`): мера — высота их ряда,
     // точек разреза внутри нет (флоаты пустые), рамка сверху — монолит, как
     // у общей ветки ниже.
-    if matches!(c.style.computed().height, None | Some(Len::Auto))
-        && c.style.computed().min_height.is_none()
+    if matches!(c.style.used().height, None | Some(Len::Auto))
+        && c.style.used().min_height.is_none()
         && let Some(tall) = float_only_box(c)
     {
-        let b = c.style.computed().borders();
-        let top = px_or(&c.style.computed().padding.top, false)? + px_or(&b.top, false)?;
-        let bot = px_or(&c.style.computed().padding.bottom, false)? + px_or(&b.bottom, false)?;
-        let mt = px_or(&c.style.computed().margin.top, false)?;
-        let mb = px_or(&c.style.computed().margin.bottom, false)?;
+        let b = c.style.used().borders();
+        let top = px_or(&c.style.used().padding.top, false)? + px_or(&b.top, false)?;
+        let bot = px_or(&c.style.used().padding.bottom, false)? + px_or(&b.bottom, false)?;
+        let mt = px_or(&c.style.used().margin.top, false)?;
+        let mb = px_or(&c.style.used().margin.bottom, false)?;
         let solid = if top > 0.0 {
             vec![(0.0, top)]
         } else {
@@ -106,9 +106,9 @@ pub(super) fn shape_contents(
             None => {}
         }
     }
-    let b = c.style.computed().borders();
-    let mt = px_or(&c.style.computed().margin.top, false)?;
-    let mb = px_or(&c.style.computed().margin.bottom, false)?;
+    let b = c.style.used().borders();
+    let mt = px_or(&c.style.used().margin.top, false)?;
+    let mb = px_or(&c.style.used().margin.bottom, false)?;
     // Бюджет разжатия — ОДИН на путь. Мера потока снимает обрезку заданной
     // высотой только у ВЕРХНЕЙ ограниченной коробки: по css-break-3 §3
     // вложенная ограниченная коробка заводит СВОЙ параллельный поток, и её
@@ -124,11 +124,11 @@ pub(super) fn shape_contents(
     // (`overflowed-block-with-room-after-000`: 70 > 200 > 70+60+70).
     let unclamp = cx.unclamped;
     let cx = ShapeCx {
-        unclamped: cx.unclamped && c.style.computed().height.is_none(),
+        unclamped: cx.unclamped && c.style.used().height.is_none(),
         ..cx
     };
-    let top = px_or(&c.style.computed().padding.top, false)? + px_or(&b.top, false)?;
-    let bot = px_or(&c.style.computed().padding.bottom, false)? + px_or(&b.bottom, false)?;
+    let top = px_or(&c.style.used().padding.top, false)? + px_or(&b.top, false)?;
+    let bot = px_or(&c.style.used().padding.bottom, false)? + px_or(&b.bottom, false)?;
     if let Some(measure) = crate::layout::fragment::flex_lines::measure_rows(
         c, depth, cx, unclamp, top, bot, mt, mb, vcx,
     ) {
@@ -138,7 +138,7 @@ pub(super) fn shape_contents(
     if !cx.paged
         && inline_content(c)
         && matches!(
-            c.style.computed().display,
+            c.style.used().display,
             None | Some(Display::Block) | Some(Display::ListItem)
         )
         && let Some(s) = line_run_shape(c, top, bot, mt, mb, vcx)
@@ -154,23 +154,23 @@ pub(super) fn shape_contents(
     // обе блочные). Порядок — визуальный: копия раскладывается уже
     // переставленной (`reorder` в `blocks()`).
     let flex_items = matches!(
-        c.style.computed().display,
+        c.style.used().display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) && c.style.computed().webkit_box != Some(true)
+    ) && c.style.used().webkit_box != Some(true)
         && !(matches!(
-            c.style.computed().flex_dir,
+            c.style.used().flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
-        ) && c.style.computed().flex_wrap != Some(true));
+        ) && c.style.used().flex_wrap != Some(true));
     let flex_col = flex_items
         && !c.style.cascaded().wm().vertical()
-        && c.style.computed().flex_wrap != Some(true)
+        && c.style.used().flex_wrap != Some(true)
         && matches!(
-            c.style.computed().flex_dir,
+            c.style.used().flex_dir,
             Some(crate::style::computed::FlexDir::Col)
                 | Some(crate::style::computed::FlexDir::ColReverse)
         );
-    let flex_gap = match c.style.computed().gap {
+    let flex_gap = match c.style.used().gap {
         Some((Some(Len::Px(v)), _)) if flex_items && !c.style.cascaded().wm().vertical() => {
             v.max(0.0)
         }
@@ -178,7 +178,7 @@ pub(super) fn shape_contents(
     };
     if flex_items {
         kids.sort_by_key(|n| match n {
-            Node::Element(e) => e.style.computed().order.unwrap_or(0),
+            Node::Element(e) => e.style.used().order.unwrap_or(0),
             Node::Text(_) => 0,
         });
     }

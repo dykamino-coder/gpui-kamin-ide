@@ -4,7 +4,7 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 
 pub(super) fn borrowed<'a>(element: &'a Element, merged: &Computed) -> Option<&'a [Node]> {
-    if element.style.computed().grid_areas.is_some() || merged.wm().vertical() {
+    if element.style.used().grid_areas.is_some() || merged.wm().vertical() {
         return None;
     }
     // Horizontal preparation only adjusts non-inline vertical children.

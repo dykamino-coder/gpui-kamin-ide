@@ -12,28 +12,28 @@ pub(super) fn zero_width_cols(
     cb_px: Option<f32>,
 ) -> Vec<bool> {
     let vertical = e.style.cascaded().wm().vertical();
-    let axes = super::axes::Axes::new(&e.style.computed());
+    let axes = super::axes::Axes::new(&e.style.used());
     let zero_cols: Vec<bool> = {
         let px_of = px_strict;
         // Ширина стола ДОЛЕЙ решается от содержащего блока: `width: 80%` в
         // шестистах сорока — это 512 (`fixed-table-layout-023`).
         let своя_ширина = match if vertical {
-            e.style.computed().height
+            e.style.used().height
         } else {
-            e.style.computed().width
+            e.style.used().width
         } {
             Some(Len::Px(v)) => Some(v),
             Some(Len::Pct(k)) if !vertical => cb_px.filter(|v| *v > 0.0).map(|cb| cb * k),
             _ => None,
         };
-        match (e.style.computed().table_fixed == Some(true), своя_ширина) {
+        match (e.style.used().table_fixed == Some(true), своя_ширина) {
             (true, Some(tw)) => {
                 let side = |l: Option<Len>| px_of(l).unwrap_or(0.0);
-                let tbz = e.style.computed().borders();
+                let tbz = e.style.used().borders();
                 let gap = if e.style.cascaded().border_collapse == Some(true) {
                     0.0
                 } else {
-                    match e.style.computed().border_spacing {
+                    match e.style.used().border_spacing {
                         Some((Some(Len::Px(g)), _)) => g,
                         _ => 0.0,
                     }
@@ -68,9 +68,9 @@ pub(super) fn zero_width_cols(
                         // пятьдесят, и вместе со своим отступом дорожка
                         // забирает всё место (`fixed-table-layout-025`).
                         let своя = match if vertical {
-                            cell.style.computed().height
+                            cell.style.used().height
                         } else {
-                            cell.style.computed().width
+                            cell.style.used().width
                         } {
                             Some(Len::Px(v)) => Some(v),
                             Some(Len::Pct(k)) => Some(base.max(0.0) * k),
@@ -81,8 +81,8 @@ pub(super) fn zero_width_cols(
                             && let Some(slot) = declared.get_mut(i)
                             && slot.is_none()
                         {
-                            let b = cell.style.computed().borders();
-                            let p = &cell.style.computed().padding;
+                            let b = cell.style.used().borders();
+                            let p = &cell.style.used().padding;
                             let extra = axes.logical([
                                 side(p.top) + side(b.top),
                                 side(p.right) + side(b.right),

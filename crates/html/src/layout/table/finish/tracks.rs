@@ -26,9 +26,9 @@ pub(super) fn table_tracks(
     let mut col_widths = col_widths.to_vec();
     let vertical = e.style.cascaded().wm().vertical();
     let inline_size = if vertical {
-        e.style.computed().height
+        e.style.used().height
     } else {
-        e.style.computed().width
+        e.style.used().width
     };
     let first_row_widths = first_row_widths_of(
         e,
@@ -57,7 +57,7 @@ pub(super) fn table_tracks(
         .collect();
     let tracks = track_list_collapsed(
         cols,
-        e.style.computed().table_fixed == Some(true),
+        e.style.used().table_fixed == Some(true),
         &first_row_widths,
         &col_widths,
         cols_collapsed,
@@ -76,11 +76,11 @@ pub(super) fn table_tracks(
                     Some(Len::Px(w)) => w,
                     _ => 0.0,
                 };
-                let bs = e.style.computed().borders();
+                let bs = e.style.used().borders();
                 let gap = if e.style.cascaded().border_collapse == Some(true) {
                     0.0
                 } else {
-                    match e.style.computed().border_spacing {
+                    match e.style.used().border_spacing {
                         Some((Some(Len::Px(g)), _)) => g,
                         _ => 0.0,
                     }
@@ -101,8 +101,8 @@ pub(super) fn table_tracks(
     // схлопывался по содержимому, и вся середина уезжала.
     // Считается и от min-height: минимум так же растягивает таблицу, и
     // остаток обязан достаться безвысотным рядам.
-    let table_tall = matches!(e.style.computed().height, Some(Len::Px(_)))
-        || matches!(e.style.computed().min_height, Some(Len::Px(_)))
+    let table_tall = matches!(e.style.used().height, Some(Len::Px(_)))
+        || matches!(e.style.used().min_height, Some(Len::Px(_)))
         // Доля высоты, которая РАЗРЕШАЕТСЯ (содержащий блок определён), —
         // такая же заданная высота: css-tables-3 «a 'height' property with a
         // value other than auto … will eventually be distributed to the height
@@ -112,7 +112,7 @@ pub(super) fn table_tracks(
         // а ряды-доли в неопределённой высоте выравниваются по самому высокому.
         // Эталоны `fr-unit-ref`, `display-grid-ref`: стол `height:100%` в
         // абсолюте 400×100 держал ряды по тексту вместо 30/70.
-        || (matches!(e.style.computed().height, Some(Len::Pct(_)))
+        || (matches!(e.style.used().height, Some(Len::Pct(_)))
             && inherited.cb_height_def
             && !inherited.stretched);
     (first_row_widths, tracks, table_tall)
@@ -128,7 +128,7 @@ pub(super) fn first_row_widths_of(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Option<f32>> {
     let vertical = e.style.cascaded().wm().vertical();
-    let axes = super::super::axes::Axes::new(&e.style.computed());
+    let axes = super::super::axes::Axes::new(&e.style.used());
     let first_row_widths: Vec<Option<f32>> = row_elements
         .first()
         .map(|row| {
@@ -149,10 +149,10 @@ pub(super) fn first_row_widths_of(
                         Some(Len::Px(p)) => p,
                         _ => 0.0,
                     };
-                    let extra = if cell.style.computed().border_box == Some(true) {
+                    let extra = if cell.style.used().border_box == Some(true) {
                         0.0
                     } else {
-                        let b = cell.style.computed().borders();
+                        let b = cell.style.used().borders();
                         let border = axes.logical([
                             side(b.top),
                             side(b.right),
@@ -160,7 +160,7 @@ pub(super) fn first_row_widths_of(
                             side(b.left),
                         ]);
                         let border = border[1] + border[3];
-                        let pad = &cell.style.computed().padding;
+                        let pad = &cell.style.used().padding;
                         let pad = axes.logical([
                             side(pad.top),
                             side(pad.right),
@@ -192,9 +192,9 @@ pub(super) fn first_row_widths_of(
                     // требует ещё нижней грани ширины стола по сумме
                     // дорожек — возвращать вместе с ней.
                     match if vertical {
-                        cell.style.computed().height
+                        cell.style.used().height
                     } else {
-                        cell.style.computed().width
+                        cell.style.used().width
                     } {
                         Some(Len::Px(v)) if span == 1 => out.push(Some(v + extra)),
                         // Ширина в единицах шрифта — кеглем САМОЙ ячейки
@@ -203,8 +203,8 @@ pub(super) fn first_row_widths_of(
                         // (§17.5.2.1) не складывался (`separated-border-model-004c`).
                         Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
                             let size = super::super::col_measure::cell_font_px(
-                                cell.style.computed().font_size,
-                                row.style.computed().font_size,
+                                cell.style.used().font_size,
+                                row.style.used().font_size,
                                 table_font,
                             );
                             let family = cell
@@ -221,9 +221,9 @@ pub(super) fn first_row_widths_of(
                         // «a percentage value ... of the table width»).
                         // Известна, только когда ширина таблицы в точках.
                         Some(Len::Pct(p)) if span == 1 => match if vertical {
-                            e.style.computed().height
+                            e.style.used().height
                         } else {
-                            e.style.computed().width
+                            e.style.used().width
                         } {
                             Some(Len::Px(tw)) => {
                                 let gaps = spacing.0 * (f32::from(cols) + 1.0);

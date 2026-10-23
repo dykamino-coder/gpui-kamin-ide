@@ -53,9 +53,9 @@ pub(super) fn band_host_m_tail(
     // остаётся распорке флекс-ряда (`adjoining-float-nested-forced-clearance-003`).
     if flows
         && let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
-        && next.style.computed().clear.is_some()
+        && next.style.used().clear.is_some()
         && !band_clear_supported(next)
-        && !zero_len(next.style.computed().margin.top)
+        && !zero_len(next.style.used().margin.top)
     {
         return None;
     }

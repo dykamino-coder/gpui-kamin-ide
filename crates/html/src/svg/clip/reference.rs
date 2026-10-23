@@ -28,13 +28,13 @@ pub(super) fn stroke_half(e: &Element) -> f32 {
     let paint = e
         .attr("stroke")
         .map(str::to_string)
-        .or_else(|| e.style.computed().svg_stroke.clone());
+        .or_else(|| e.style.used().svg_stroke.clone());
     if paint.as_deref().is_none_or(|s| s.trim() == "none") {
         return 0.0;
     }
     e.attr("stroke-width")
         .map(str::to_string)
-        .or_else(|| e.style.computed().svg_stroke_width.clone())
+        .or_else(|| e.style.used().svg_stroke_width.clone())
         .and_then(|w| w.trim().trim_end_matches("px").parse::<f32>().ok())
         .unwrap_or(1.0)
         * 0.5
@@ -54,10 +54,10 @@ pub(crate) fn shape_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32
     };
     let (x, y, w, h) = match e.tag.to_ascii_lowercase().as_str() {
         "rect" | "image" => (
-            num("x").or(css(e.style.computed().svg_x)).unwrap_or(0.0),
-            num("y").or(css(e.style.computed().svg_y)).unwrap_or(0.0),
-            num("width").or(css(e.style.computed().width))?,
-            num("height").or(css(e.style.computed().height))?,
+            num("x").or(css(e.style.used().svg_x)).unwrap_or(0.0),
+            num("y").or(css(e.style.used().svg_y)).unwrap_or(0.0),
+            num("width").or(css(e.style.used().width))?,
+            num("height").or(css(e.style.used().height))?,
         ),
         "circle" => {
             let r = num("r")?;
@@ -75,8 +75,7 @@ pub(crate) fn shape_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32
             let mut acc: Option<(f32, f32, f32, f32)> = None;
             for n in &e.children {
                 let Node::Element(c) = n else { continue };
-                if c.style.computed().transform.is_some() || c.style.computed().translate.is_some()
-                {
+                if c.style.used().transform.is_some() || c.style.used().translate.is_some() {
                     return None;
                 }
                 let (dx, dy) = match c.attr("transform") {
@@ -162,7 +161,7 @@ pub(crate) fn reference_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32,
         }
         _ => return None,
     };
-    let non_scaling = e.style.computed().svg_non_scaling == Some(true)
+    let non_scaling = e.style.used().svg_non_scaling == Some(true)
         || e.attrs
             .iter()
             .any(|(k, v)| k == "vector-effect" && v.trim() == "non-scaling-stroke");
@@ -171,14 +170,14 @@ pub(crate) fn reference_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32,
         .iter()
         .find(|(k, _)| k == "stroke")
         .map(|(_, v)| v.clone())
-        .or_else(|| e.style.computed().svg_stroke.clone());
+        .or_else(|| e.style.used().svg_stroke.clone());
     if !stroke || non_scaling || paint.as_deref().is_none_or(|p| p.trim() == "none") {
         return Some(fill);
     }
     let sw = num("stroke-width")
         .or_else(|| {
             e.style
-                .computed()
+                .used()
                 .svg_stroke_width
                 .as_deref()
                 .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())

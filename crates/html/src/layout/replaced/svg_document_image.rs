@@ -38,7 +38,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         Some(Len::Px(p)) => (p - v).abs() < 0.01,
         _ => false,
     };
-    if !fits(e.style.computed().width, w) || !fits(e.style.computed().height, h) {
+    if !fits(e.style.used().width, w) || !fits(e.style.used().height, h) {
         return None;
     }
     let html = format!(
@@ -58,7 +58,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     Some(
         opts.cx
             .build
-            .styled_box(e, &BoxStyle::shared(e.style.computed()), &opts.cx)
+            .styled_box(e, &BoxStyle::shared(e.style.used()), &opts.cx)
             .w(px(w))
             .h(px(h))
             .overflow_hidden()

@@ -39,13 +39,13 @@ fn inner_by(k: &Element, struts: &Struts) -> f32 {
 
 /// Content block size for a border-box size `h` of `k` (lengths in px).
 fn content_height(k: &Element, h: f32) -> Option<f32> {
-    if k.style.computed().border_box == Some(true) {
+    if k.style.used().border_box == Some(true) {
         return Some(h);
     }
-    let b = k.style.computed().borders();
+    let b = k.style.used().borders();
     Some(
-        h - px_auto_zero(k.style.computed().padding.top)?
-            - px_auto_zero(k.style.computed().padding.bottom)?
+        h - px_auto_zero(k.style.used().padding.top)?
+            - px_auto_zero(k.style.used().padding.bottom)?
             - px_auto_zero(b.top)?
             - px_auto_zero(b.bottom)?,
     )
@@ -61,19 +61,19 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
     if struts.is_empty() {
         return true;
     }
-    let as_margin = layout_parent(&c.style.computed());
-    let row = row_flex(&c.style.computed());
+    let as_margin = layout_parent(&c.style.used());
+    let row = row_flex(&c.style.used());
     // A column flex keeps every item's main size from before fragmentation;
     // an item may grow to encompass its fragmented content (Blink
     // `MinBlockSizeShouldEncompassIntrinsicSize`, flex_layout_algorithm.cc).
-    let column = column_flex(&c.style.computed());
-    let can_shrink_box = matches!(c.style.computed().height, Some(Len::Px(_)));
+    let column = column_flex(&c.style.used());
+    let can_shrink_box = matches!(c.style.used().height, Some(Len::Px(_)));
     let moved = column && inner_by(c, struts) > 0.0;
     // Row gaps carried by the items' margins (`Strut::gap`).
     let gap_rows = c.children.iter().any(
         |n| matches!(n, Node::Element(k) if struts.get(&k.node_id).is_some_and(|s| s.gap > 0.0)),
     );
-    if gap_rows && let Some((_, col)) = c.style.computed().gap {
+    if gap_rows && let Some((_, col)) = c.style.used().gap {
         c.style.used_mut().gap = Some((Some(Len::Px(0.0)), col));
     }
     let mut i = 0;
@@ -81,13 +81,13 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
         let mut spacer = None;
         if let Node::Element(k) = &mut c.children[i] {
             if column && let Some(st) = struts.get(&k.node_id) {
-                let can_shrink = can_shrink_box && k.style.computed().flex_shrink != Some(0.0);
-                let auto_h = matches!(k.style.computed().height, None | Some(Len::Auto));
+                let can_shrink = can_shrink_box && k.style.used().flex_shrink != Some(0.0);
+                let auto_h = matches!(k.style.used().height, None | Some(Len::Auto));
                 let basis_auto =
-                    matches!(k.style.computed().flex_basis, None | Some(Len::Auto)) && auto_h;
+                    matches!(k.style.used().flex_basis, None | Some(Len::Auto)) && auto_h;
                 let encompass = !monolith_box(k)
                     && ((basis_auto && !can_shrink)
-                        || (auto_h && (!can_shrink || k.style.computed().min_height.is_none())));
+                        || (auto_h && (!can_shrink || k.style.used().min_height.is_none())));
                 // A definite block size stays: pushed content overflows it as
                 // in the unfragmented flow thread.
                 let grown = st.size + if auto_h { inner_by(k, struts) } else { 0.0 };
@@ -109,21 +109,21 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                 }
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.gap > 0.0 && gap_rows) {
-                let Some(m) = px_auto_zero(k.style.computed().margin.top) else {
+                let Some(m) = px_auto_zero(k.style.used().margin.top) else {
                     return false;
                 };
                 k.style.used_mut().margin.top = Some(Len::Px(m + st.gap));
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {
-                if k.style.computed().float.is_some_and(|f| f != 0) {
+                if k.style.used().float.is_some_and(|f| f != 0) {
                     // BandFlow consumes the same strut as a placement ceiling.
                     // A normal-flow spacer would move the surrounding lines.
                 } else if as_margin {
-                    let Some(m) = px_auto_zero(k.style.computed().margin.top) else {
+                    let Some(m) = px_auto_zero(k.style.used().margin.top) else {
                         return false;
                     };
                     k.style.used_mut().margin.top = Some(Len::Px(m + st.by));
-                    if row && matches!(k.style.computed().height, None | Some(Len::Auto)) {
+                    if row && matches!(k.style.used().height, None | Some(Len::Auto)) {
                         let Some(h) = content_height(k, st.size) else {
                             return false;
                         };

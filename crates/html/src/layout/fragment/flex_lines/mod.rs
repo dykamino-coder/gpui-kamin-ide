@@ -88,7 +88,7 @@ pub(crate) fn split_flex_lines(
             Some(lines) => {
                 group += 1;
                 let pm = box_style(merged, &c.style, vcx);
-                let h = px_lossy_zero(c.style.computed().height);
+                let h = px_lossy_zero(c.style.used().height);
                 // Коробка контейнера — ПЕРВОЙ «строкой» группы: рисуется под
                 // элементами (фон контейнера, `multi-line-column-flex-
                 // fragmentation-033`) и занимает свою высоту, даже когда строки
@@ -157,9 +157,9 @@ pub(crate) fn split_flex_lines(
                         }
                         // `break-inside: avoid` без настоящего монолита
                         // (`flow::Par::avoid_only`).
-                        let avoid_only = e.style.computed().break_inside_avoid
+                        let avoid_only = e.style.used().break_inside_avoid
                             && !size_monolith(&e)
-                            && visible_overflow(&e.style.computed());
+                            && visible_overflow(&e.style.used());
                         out.push((e, sh));
                         par.push(crate::layout::fragment::types::Par {
                             group,
@@ -190,9 +190,9 @@ pub(crate) fn split_flex_lines(
                         group += 1;
                         let m = items.len();
                         for (ii, (dx, e, sh)) in items.into_iter().enumerate() {
-                            let avoid_only = e.style.computed().break_inside_avoid
+                            let avoid_only = e.style.used().break_inside_avoid
                                 && !size_monolith(&e)
-                                && visible_overflow(&e.style.computed());
+                                && visible_overflow(&e.style.used());
                             out.push((e, sh));
                             par.push(crate::layout::fragment::types::Par {
                                 group,

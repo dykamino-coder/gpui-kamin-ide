@@ -91,17 +91,17 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         .used_mut()
         .resolve_viewport(opts.viewport, vcx);
     let in_flow = !matches!(
-        e.style.computed().position,
+        e.style.used().position,
         Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
     );
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.computed().width
+        && let Some(Len::Pct(k)) = resolved.style.used().width
         && let Some(width) = opts.cx.avail_w
     {
         resolved.style.used_mut().width = Some(Len::Px(k * width));
     }
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.computed().height
+        && let Some(Len::Pct(k)) = resolved.style.used().height
         && let Some(height) = opts.cx.avail_h
     {
         resolved.style.used_mut().height = Some(Len::Px(k * height));
@@ -113,7 +113,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     // `box-sizing: content-box`), а раскладка меряет `w`/`h` как border-box:
     // без поправки `border: 1px` съедал 300×150 изнутри
     // (`responsive-iframe-unsized-ref`: 302×152).
-    let st = &*e.style.computed();
+    let st = &*e.style.used();
     let px_sum = |sides: &[Option<Len>]| -> f32 {
         sides
             .iter()
@@ -180,7 +180,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             let mut frame = opts
                 .cx
                 .build
-                .styled_box(e, &BoxStyle::shared(e.style.computed()), &opts.cx)
+                .styled_box(e, &BoxStyle::shared(e.style.used()), &opts.cx)
                 .w(px(outer_w));
             // CSS 2.2 §10.8.1 / CSS Inline 3 §A.3: a replaced iframe has no
             // baseline from its embedded document; synthesize from its own box.

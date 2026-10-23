@@ -28,18 +28,18 @@ fn holds_grid(e: &Element, depth: u8) -> bool {
         || (depth > 0
             && e.children.iter().any(|n| {
                 matches!(n, Node::Element(k)
-                    if !k.inline && !out_of_flow(&k.style.computed()) && holds_grid(k, depth - 1))
+                    if !k.inline && !out_of_flow(&k.style.used()) && holds_grid(k, depth - 1))
             }))
 }
 
 /// `item` — элемент сетки: его `inline-block` блокифицирован; `lines` —
 /// строчное содержимое допустимо (вне элементов сетки).
 fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
-    if crate::layout::multicol::spanner::multicol_container(&e.style.computed())
-        || e.style.computed().webkit_box == Some(true)
+    if crate::layout::multicol::spanner::multicol_container(&e.style.used())
+        || e.style.used().webkit_box == Some(true)
         || crate::layout::fragment::table_bands::table_box(e)
         || crate::layout::fragment::clone::clone_dec(e).is_some()
-        || !crate::layout::page::paged::visible_overflow(&e.style.computed())
+        || !crate::layout::page::paged::visible_overflow(&e.style.used())
     {
         return false;
     }
@@ -48,15 +48,13 @@ fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
         // элементов их взять не у кого.
         let items = e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-                if !out_of_flow(&k.style.computed()) && !matches!(k.style.computed().display, Some(Display::None)))
+                if !out_of_flow(&k.style.used()) && !matches!(k.style.used().display, Some(Display::None)))
         });
         return depth > 0
             && items
             && e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style.computed()) => false,
-                Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => {
-                    true
-                }
+                Node::Element(k) if out_of_flow(&k.style.used()) => false,
+                Node::Element(k) if matches!(k.style.used().display, Some(Display::None)) => true,
                 Node::Element(k) => {
                     monolith_blockified(k) || measured_tree(k, depth - 1, true, false)
                 }
@@ -64,13 +62,13 @@ fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
             });
     }
     let block = matches!(
-        e.style.computed().display,
+        e.style.used().display,
         None | Some(Display::Block) | Some(Display::ListItem)
-    ) || (item && e.style.computed().display == Some(Display::InlineBlock));
+    ) || (item && e.style.used().display == Some(Display::InlineBlock));
     block
         && (depth == 0
             || e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style.computed()) => false,
+                Node::Element(k) if out_of_flow(&k.style.used()) => false,
                 Node::Element(_) | Node::Text(_) if !lines && !is_blank(n) && n_inline(n) => false,
                 // Строчная коробка: блоки внутри неё — соседи потока
                 // (CSS 2.1 §9.2.1.1), остальное — строки.

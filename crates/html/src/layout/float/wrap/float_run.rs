@@ -61,7 +61,7 @@ fn floats_alone(
         .iter()
         .take_while(|n| {
             is_blank(n)
-                || matches!(n, Node::Element(e) if e.style.computed().float.is_some_and(|f| f != 0))
+                || matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0))
         })
         .map(|n| match n {
             Node::Element(f) if !is_blank(n) && band_float_m(f, em).is_none() => {

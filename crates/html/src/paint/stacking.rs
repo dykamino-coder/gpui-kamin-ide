@@ -32,7 +32,7 @@ pub(crate) fn blends_inside(nodes: &[Node], depth: usize) -> bool {
     depth < 32
         && nodes.iter().any(|n| match n {
             Node::Element(c) => {
-                c.style.computed().blend.is_some_and(|b| b != 0)
+                c.style.used().blend.is_some_and(|b| b != 0)
                     || blends_inside(&c.children, depth + 1)
             }
             Node::Text(_) => false,

@@ -28,13 +28,13 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     for node in &mut nodes {
         match node {
             Node::Text(t) if blank_text(t) => continue,
-            Node::Element(e) if out_of_flow(&e.style.computed()) || e.tag == "::marker" => continue,
+            Node::Element(e) if out_of_flow(&e.style.used()) || e.tag == "::marker" => continue,
             Node::Element(e)
                 if block_level_in_flow(e)
-                    && e.style.computed().position.is_none()
+                    && e.style.used().position.is_none()
                     && !table_box(e)
                     && matches!(
-                        e.style.computed().display,
+                        e.style.used().display,
                         None | Some(Display::Block | Display::ListItem)
                     )
                     && e.first_letter.is_none()

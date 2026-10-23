@@ -23,14 +23,13 @@ pub(crate) fn scrollable(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    if e.style.computed().scroller || e.tag == "frameset" || crate::layout::box_kind::real_inline(e)
-    {
+    if e.style.used().scroller || e.tag == "frameset" || crate::layout::box_kind::real_inline(e) {
         return None;
     }
     use crate::style::computed::Overflow;
     // Eligibility follows computed overflow; the initially visible opposite
     // axis becomes auto even when it has no declaration (Overflow 3 §3).
-    if ![e.style.computed().overflow_x, e.style.computed().overflow_y]
+    if ![e.style.used().overflow_x, e.style.used().overflow_y]
         .into_iter()
         .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
     {
@@ -90,7 +89,7 @@ pub(crate) fn scrollable(
             // высотой в точках (у гибкого и сеточного долю решает раскладка, у
             // абсолюта содержащий блок другой); `border-box` родителя — мимо,
             // его `height` не высота содержимого.
-            if in_flow(&node.style.computed())
+            if in_flow(&node.style.used())
                 && matches!(inherited.display, None | Some(Display::Block))
                 && inherited.border_box != Some(true)
                 && let Some(Len::Px(ph)) = inherited.height
@@ -100,14 +99,14 @@ pub(crate) fn scrollable(
                     Some(Len::Pct(k)) => Some(Len::Px(k * ph)),
                     other => other,
                 };
-                inner.style.used_mut().height = of(inner.style.computed().height);
-                inner.style.used_mut().min_height = of(inner.style.computed().min_height);
-                inner.style.used_mut().max_height = of(inner.style.computed().max_height);
+                inner.style.used_mut().height = of(inner.style.used().height);
+                inner.style.used_mut().min_height = of(inner.style.used().min_height);
+                inner.style.used_mut().max_height = of(inner.style.used().max_height);
             }
             // Наружный отступ принадлежит коробке, а не видимой области:
             // оставленный внутри, он увеличивал ленту на свою величину, и
             // содержимое было видно ниже края панели.
-            let outer_margin = inner.style.computed().margin;
+            let outer_margin = inner.style.used().margin;
             inner.style.used_mut().margin = Default::default();
             let target = crate::interactive::scroll_target::Target::new(
                 node.node_id,
@@ -135,7 +134,7 @@ pub(crate) fn scrollable(
             // прокрутки (0) давал ленте ужаться под первым же потолком
             // родителя до нуля (`line-clamp-007`: `overflow:auto`-ребёнок
             // клэмп-контейнера пропадал целиком).
-            if let Some(shrink) = node.style.computed().flex_shrink {
+            if let Some(shrink) = node.style.used().flex_shrink {
                 d.style().flex_shrink = Some(shrink);
             }
             if h {
@@ -169,7 +168,7 @@ pub(crate) fn scrollable(
                     .zip(side(sized.padding.right))
                     .zip(side(b.left).zip(side(b.right)))
                     .map(|((pl, pr), (bl, br))| pl + pr + bl + br);
-                let lane = if inner.style.computed().border_box == Some(true) {
+                let lane = if inner.style.used().border_box == Some(true) {
                     Some(w)
                 } else {
                     edges.map(|e| w + e)
@@ -187,7 +186,7 @@ pub(crate) fn scrollable(
                         inherited.display,
                         Some(Display::Flex) | Some(Display::InlineFlex)
                     );
-                    if node.style.computed().flex_shrink.is_none() && !flex_item {
+                    if node.style.used().flex_shrink.is_none() && !flex_item {
                         d = d.flex_shrink_0();
                     }
                 }
@@ -220,7 +219,7 @@ pub(crate) fn resizable(
     if e.style.cascaded().pointer_events_none == Some(true) {
         return None;
     }
-    let (horizontal, vertical) = e.style.computed().resize?;
+    let (horizontal, vertical) = e.style.used().resize?;
     let axis = match (horizontal, vertical) {
         (true, true) => crate::interactive::resizable::ResizeAxis::Both,
         (true, false) => crate::interactive::resizable::ResizeAxis::Horizontal,

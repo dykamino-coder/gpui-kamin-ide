@@ -47,9 +47,9 @@ pub(super) fn collapse_flow_kids(
             _ => continue,
         };
         // Out-of-flow boxes neither collapse nor interrupt adjacent block margins.
-        if child.style.computed().float.is_some_and(|f| f != 0)
+        if child.style.used().float.is_some_and(|f| f != 0)
             || matches!(
-                child.style.computed().position,
+                child.style.used().position,
                 Some(
                     crate::style::computed::Position::Absolute
                         | crate::style::computed::Position::Fixed
@@ -77,19 +77,19 @@ pub(super) fn collapse_flow_kids(
         // список, что у `lead_margin` в `element()`; текст перед первым
         // блоком — строка, и она поля разделяет.
         let own_context = child.inline
-            || child.style.computed().display.is_some()
+            || child.style.used().display.is_some()
             || !matches!(
-                child.style.computed().overflow_x,
+                child.style.used().overflow_x,
                 None | Some(crate::style::computed::Overflow::Visible)
             )
             || !matches!(
-                child.style.computed().overflow_y,
+                child.style.used().overflow_y,
                 None | Some(crate::style::computed::Overflow::Visible)
             )
-            || child.style.computed().flow_root == Some(true)
-            || child.style.computed().align_content_block
-            || child.style.computed().contain_layout == Some(true)
-            || child.style.computed().contain_paint == Some(true);
+            || child.style.used().flow_root == Some(true)
+            || child.style.used().align_content_block
+            || child.style.used().contain_layout == Some(true)
+            || child.style.used().contain_paint == Some(true);
         let text_first = child
             .children
             .iter()
@@ -100,14 +100,14 @@ pub(super) fn collapse_flow_kids(
         }
         // В обратном потоке ведущая сторона — правая.
         let lead = if reverse {
-            child.style.computed().margin.right
+            child.style.used().margin.right
         } else {
-            child.style.computed().margin.left
+            child.style.used().margin.left
         };
         // Доли кегля разрешаются здесь же: голый разбор точек считал `1em`
         // нулём и ЗАПИСЫВАЛ ноль — поле абзаца вдоль вертикального потока
         // пропадало вовсе (wm-propagation-body-*).
-        let lead_px = margin_px(lead, &child.style.computed(), vcx).unwrap_or(0.0);
+        let lead_px = margin_px(lead, &child.style.used(), vcx).unwrap_or(0.0);
         // Пустой блок пропускает поля СКВОЗЬ себя: хвост предыдущего брата,
         // его ведущее и его хвостовое поле сливаются в одно (наибольшее из
         // неотрицательных), и оно же становится хвостом для следующего.
@@ -119,11 +119,11 @@ pub(super) fn collapse_flow_kids(
         // `-vlr-023` — пустой `widthless-static` перед абсолютом) не должен
         // получить новый `trailing`. Отрицательные поля — прежним путём.
         let tail = if reverse {
-            child.style.computed().margin.left
+            child.style.used().margin.left
         } else {
-            child.style.computed().margin.right
+            child.style.used().margin.right
         };
-        let tail_px = margin_px(tail, &child.style.computed(), vcx).unwrap_or(0.0);
+        let tail_px = margin_px(tail, &child.style.used(), vcx).unwrap_or(0.0);
         let prev = trailing.unwrap_or(0.0);
         if tail_px > 0.0 && lead_px >= 0.0 && prev >= 0.0 && collapses_through(child) {
             let combined = prev.max(lead_px).max(tail_px);

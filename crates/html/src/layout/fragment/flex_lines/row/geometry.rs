@@ -27,7 +27,7 @@ pub(crate) struct FlexRow {
 }
 
 pub(crate) fn row_container(c: &Element) -> bool {
-    let s = &c.style.computed();
+    let s = &c.style.used();
     s.display == Some(Display::Flex)
         && s.webkit_box != Some(true)
         && matches!(s.flex_dir, None | Some(FlexDir::Row))
@@ -80,7 +80,7 @@ pub(crate) fn collect_rows(
             let s = item.element.style.used_mut();
             if matches!(s.height, None | Some(Len::Auto))
                 && !matches!(
-                    s.align_self.or(c.style.computed().align_items),
+                    s.align_self.or(c.style.used().align_items),
                     Some(Align::Start)
                 )
                 && item.shape.height + item.shape.margin_top + item.shape.margin_bottom

@@ -18,7 +18,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
     fn walk(nodes: &[Node], cells: &mut Vec<Node>, run: &mut Vec<Node>, vcx: ValueCx<'_>) {
         for child in nodes {
             match child {
-                Node::Element(el) if el.style.computed().display == Some(Display::Contents) => {
+                Node::Element(el) if el.style.used().display == Some(Display::Contents) => {
                     // Дети растворённого получают его наследуемое (цвет,
                     // шрифт) — вычисленный стиль растворённого передаётся вниз донором.
                     let donor = BoxStyle::shared(el.style.computed());
@@ -28,7 +28,9 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                         .cloned()
                         .map(|n| match n {
                             Node::Element(mut ge) => {
-                                ge.style = box_style(&donor, &ge.style, vcx).into();
+                                ge.style = crate::dom::SharedStyle::layout_made(box_style(
+                                    &donor, &ge.style, vcx,
+                                ));
                                 Node::Element(ge)
                             }
                             // Голый текст стиля не несёт: наследуемое от
@@ -54,7 +56,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                 Node::Element(el)
                     if el.tag == "tr"
                         || matches!(
-                            el.style.computed().display,
+                            el.style.used().display,
                             Some(Display::TableRow) | Some(Display::TableRowGroup)
                         ) =>
                 {
@@ -74,10 +76,10 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
     }
     let needs_fix = row.children.iter().any(|c| match c {
         Node::Element(el) => {
-            el.style.computed().display == Some(Display::Contents)
+            el.style.used().display == Some(Display::Contents)
                 || el.tag == "tr"
                 || matches!(
-                    el.style.computed().display,
+                    el.style.used().display,
                     Some(Display::TableRow) | Some(Display::TableRowGroup)
                 )
                 || !is_cell(el)
@@ -141,10 +143,10 @@ fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<No
                 if !in_group && col_role(el).is_some() {
                     continue;
                 }
-                let group = el.style.computed().display == Some(Display::TableRowGroup)
+                let group = el.style.used().display == Some(Display::TableRowGroup)
                     || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot");
-                let row = el.tag == "tr" || el.style.computed().display == Some(Display::TableRow);
-                let is_cap = el.tag == "caption" || el.style.computed().is_caption == Some(true);
+                let row = el.tag == "tr" || el.style.used().display == Some(Display::TableRow);
+                let is_cap = el.tag == "caption" || el.style.used().is_caption == Some(true);
                 if group && !in_group {
                     // Группа рядов чинится ИЗНУТРИ тоже: contents и бесхозное
                     // содержимое встречаются и там.
@@ -175,15 +177,15 @@ fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<No
                 let inline_like = |n: Option<&Node>| match n {
                     Some(Node::Text(t)) => !t.trim().is_empty(),
                     Some(Node::Element(el)) => {
-                        el.style.computed().display != Some(Display::Contents)
+                        el.style.used().display != Some(Display::Contents)
                             && col_role(el).is_none()
                             && !is_cell(el)
                             && el.tag != "caption"
-                            && el.style.computed().is_caption != Some(true)
+                            && el.style.used().is_caption != Some(true)
                             && el.tag != "tr"
                             && !matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot")
                             && !matches!(
-                                el.style.computed().display,
+                                el.style.used().display,
                                 Some(Display::TableRow) | Some(Display::TableRowGroup)
                             )
                     }
@@ -210,7 +212,7 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
             out.push(n.clone());
             continue;
         };
-        if el.style.computed().display != Some(Display::Contents) {
+        if el.style.used().display != Some(Display::Contents) {
             out.push(n.clone());
             continue;
         }
@@ -220,7 +222,8 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
         for g in flatten_contents(&el.children, vcx) {
             match g {
                 Node::Element(mut ge) => {
-                    ge.style = box_style(&donor, &ge.style, vcx).into();
+                    ge.style =
+                        crate::dom::SharedStyle::layout_made(box_style(&donor, &ge.style, vcx));
                     out.push(Node::Element(ge));
                 }
                 Node::Text(t) if !t.trim().is_empty() => {
@@ -256,7 +259,7 @@ mod tests {
         );
         fn table(nodes: &[Node]) -> Option<&Element> {
             nodes.iter().find_map(|n| match n {
-                Node::Element(e) if e.style.computed().display == Some(Display::Table) => Some(e),
+                Node::Element(e) if e.style.used().display == Some(Display::Table) => Some(e),
                 Node::Element(e) => table(&e.children),
                 _ => None,
             })
@@ -270,6 +273,6 @@ mod tests {
                 _ => None,
             })
             .expect("row");
-        assert_eq!(row.style.computed().font_size, Some(Len::Px(30.0)));
+        assert_eq!(row.style.used().font_size, Some(Len::Px(30.0)));
     }
 }

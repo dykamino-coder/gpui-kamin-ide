@@ -50,8 +50,8 @@ pub(super) fn blank_box(
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
-        let bs = e.style.computed().borders();
-        let padding = e.style.computed().padding;
+        let bs = e.style.used().borders();
+        let padding = e.style.used().padding;
         let flat = physical_sides::project(
             inherited,
             [
@@ -98,8 +98,8 @@ pub(super) fn blank_box(
         // выходила нулевой высоты — рамка `border-left` и фон
         // под отступом не рисовались вовсе.
         let mut sized = merged.clone();
-        sized.width = copy.style.computed().width;
-        sized.height = copy.style.computed().height;
+        sized.width = copy.style.used().width;
+        sized.height = copy.style.used().height;
         sized.margin = Default::default();
         sized.position = None;
         physical_sides::project_box(inherited, copy.style.used_mut());

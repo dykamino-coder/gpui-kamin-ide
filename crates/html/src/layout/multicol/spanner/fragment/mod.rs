@@ -20,14 +20,14 @@ pub(super) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last
     if kids.iter().any(|n| !is_blank(n)) {
         return true;
     }
-    let b = &c.style.computed().border_width;
+    let b = &c.style.used().border_width;
     (first
-        && (spanner_edge(&c.style.computed().margin.top)
-            || spanner_edge(&c.style.computed().padding.top)
+        && (spanner_edge(&c.style.used().margin.top)
+            || spanner_edge(&c.style.used().padding.top)
             || spanner_edge(&b.top)))
         || (last
-            && (spanner_edge(&c.style.computed().margin.bottom)
-                || spanner_edge(&c.style.computed().padding.bottom)
+            && (spanner_edge(&c.style.used().margin.bottom)
+                || spanner_edge(&c.style.used().padding.bottom)
                 || spanner_edge(&b.bottom)))
 }
 
@@ -90,7 +90,7 @@ pub(super) fn spanner_height_share(
     bodies: &[Vec<Node>],
     vcx: ValueCx<'_>,
 ) -> Option<Vec<Option<f32>>> {
-    let Some(Len::Px(total)) = c.style.computed().height else {
+    let Some(Len::Px(total)) = c.style.used().height else {
         return None;
     };
     let n = bodies.len();
@@ -112,7 +112,7 @@ pub(super) fn spanner_height_share(
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let edge = px(&c.style.computed().padding.top)? + px(&c.style.computed().borders().top)?;
+    let edge = px(&c.style.used().padding.top)? + px(&c.style.used().borders().top)?;
     let mut left = total;
     let mut out = Vec::with_capacity(n);
     for (i, b) in bodies.iter().enumerate() {

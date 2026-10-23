@@ -29,7 +29,7 @@ pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
 pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec<Node> {
     let need = nodes.iter().any(|n| match n {
         Node::Element(e) => {
-            real_inline(e) && !out_of_flow(&e.style.computed()) && contains_block(&e.children)
+            real_inline(e) && !out_of_flow(&e.style.used()) && contains_block(&e.children)
         }
         Node::Text(_) => false,
     });
@@ -42,7 +42,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
             out.push(node.clone());
             continue;
         };
-        if !real_inline(e) || out_of_flow(&e.style.computed()) || !contains_block(&e.children) {
+        if !real_inline(e) || out_of_flow(&e.style.used()) || !contains_block(&e.children) {
             out.push(node.clone());
             continue;
         }
@@ -53,7 +53,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
         // отбивка или поле ненулевой толщины.
         let has_edge = |side: usize| {
             let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.0);
-            let st = &*e.style.computed();
+            let st = &*e.style.used();
             let (b, p, m) = if side == 1 {
                 (st.borders().right, st.padding.right, st.margin.right)
             } else {
@@ -107,11 +107,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 block.style.used_mut().hoisted_block = true;
                 // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
                 // Preserve inherited marker properties before hoisting the block.
-                let (own, host, decl) = (
-                    block.style.computed(),
-                    e.style.computed(),
-                    e.style.cascaded(),
-                );
+                let (own, host, decl) = (block.style.used(), e.style.used(), e.style.cascaded());
                 let list_type = block.style.cascaded().list_style_type.clone();
                 let inside = block
                     .style
@@ -129,13 +125,12 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // каждый слой решает свою долю от того же содержащего блока
                 // (`position-relative-001/002`), а `fixed` едет вместе со
                 // своей статической позицией (`-003`).
-                let host_shift = e.style.computed().position
+                let host_shift = e.style.used().position
                     == Some(crate::style::computed::Position::Relative)
-                    && (e.style.computed().inset.left.is_some()
-                        || e.style.computed().inset.top.is_some());
+                    && (e.style.used().inset.left.is_some() || e.style.used().inset.top.is_some());
                 let wrap_shift = host_shift
                     && matches!(
-                        block.style.computed().position,
+                        block.style.used().position,
                         Some(crate::style::computed::Position::Relative)
                             | Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
@@ -143,11 +138,11 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 if host_shift && !wrap_shift {
                     block.style.used_mut().position =
                         Some(crate::style::computed::Position::Relative);
-                    if block.style.computed().inset.left.is_none() {
-                        block.style.used_mut().inset.left = e.style.computed().inset.left;
+                    if block.style.used().inset.left.is_none() {
+                        block.style.used_mut().inset.left = e.style.used().inset.left;
                     }
-                    if block.style.computed().inset.top.is_none() {
-                        block.style.used_mut().inset.top = e.style.computed().inset.top;
+                    if block.style.used().inset.top.is_none() {
+                        block.style.used_mut().inset.top = e.style.used().inset.top;
                     }
                 }
                 // `inherit` на размере вынесенного блока брал бы значение уже
@@ -155,7 +150,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // хозяина. Значение забирается здесь, пока связь ещё видна.
                 use crate::style::css::LonghandId as L;
                 if block.style.cascaded().inherit_longhands.contains(L::Width) {
-                    block.style.used_mut().width = e.style.computed().width;
+                    block.style.used_mut().width = e.style.used().width;
                     block
                         .style
                         .used_mut()
@@ -163,7 +158,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                         .set(L::Width, false);
                 }
                 if block.style.cascaded().inherit_longhands.contains(L::Height) {
-                    block.style.used_mut().height = e.style.computed().height;
+                    block.style.used_mut().height = e.style.used().height;
                     block
                         .style
                         .used_mut()
@@ -173,20 +168,18 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // Прозрачность и слой хозяина действуют на ВЕСЬ разорванный
                 // элемент, включая вынесенный блок: раньше блок был куском
                 // строки и получал их заодно с ней.
-                if e.style.computed().opacity.is_some() && block.style.computed().opacity.is_none()
-                {
-                    block.style.used_mut().opacity = e.style.computed().opacity;
+                if e.style.used().opacity.is_some() && block.style.used().opacity.is_none() {
+                    block.style.used_mut().opacity = e.style.used().opacity;
                 }
-                if e.style.computed().z_index.is_some() && block.style.computed().z_index.is_none()
-                {
-                    block.style.used_mut().z_index = e.style.computed().z_index;
+                if e.style.used().z_index.is_some() && block.style.used().z_index.is_none() {
+                    block.style.used_mut().z_index = e.style.used().z_index;
                 }
                 if wrap_shift {
                     let mut shifter = anon_element("anon-relshift", vec![Node::Element(block)]);
                     shifter.style.used_mut().position =
                         Some(crate::style::computed::Position::Relative);
-                    shifter.style.used_mut().inset.left = e.style.computed().inset.left;
-                    shifter.style.used_mut().inset.top = e.style.computed().inset.top;
+                    shifter.style.used_mut().inset.left = e.style.used().inset.left;
+                    shifter.style.used_mut().inset.top = e.style.used().inset.top;
                     out.push(Node::Element(shifter));
                     continue;
                 }
@@ -209,7 +202,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 continue;
             };
             // `box-decoration-break: clone` keeps every side on every fragment.
-            if host.style.computed().bdb_clone {
+            if host.style.used().bdb_clone {
                 continue;
             }
             // Physical sides: 1 = right, 3 = left.

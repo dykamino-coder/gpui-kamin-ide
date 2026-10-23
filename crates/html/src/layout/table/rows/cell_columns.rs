@@ -18,7 +18,7 @@ use crate::style::computed::{Computed, Display};
 /// Дети ячейки для раскладки: у многоколоночной ячейки — одна анонимная
 /// блочная коробка-поток с её колоночными свойствами, иначе `None`.
 pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
-    let s = &cell.style.computed();
+    let s = &cell.style.used();
     if !multicol_container(s) || cell.children.is_empty() {
         return None;
     }

@@ -38,14 +38,14 @@ pub(crate) fn inline_node(
         // `atom_element` (`x_set != y_set`).
         Node::Element(e)
             if matches!(
-                e.style.computed().position,
+                e.style.used().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) && !at_static_position(&e.style.computed())
+            ) && !at_static_position(&e.style.used())
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.computed().inset.left) || edge(e.style.computed().inset.right))
-                        && (edge(e.style.computed().inset.top) || edge(e.style.computed().inset.bottom))
+                    (edge(e.style.used().inset.left) || edge(e.style.used().inset.right))
+                        && (edge(e.style.used().inset.top) || edge(e.style.used().inset.bottom))
                 }
                 // Поле формы и заменяемый элемент строит СВОЙ путь
                 // (`forms::element`, картинка), и краями он распоряжается
@@ -70,7 +70,7 @@ pub(crate) fn inline_node(
             if inherited.band_kid
                 && !ordered_context
                 && matches!(
-                    e.style.computed().position,
+                    e.style.used().position,
                     Some(
                         crate::style::computed::Position::Absolute
                             | crate::style::computed::Position::Fixed
@@ -92,27 +92,26 @@ pub(crate) fn inline_node(
         // такой абсолют остаётся прежним блочным путём
         // (`left-applies-to-012/014`: абсолют — единственный ребёнок).
         Node::Element(e)
-            if e.style.computed().abs_inline_level
+            if e.style.used().abs_inline_level
                 && !ordered_context
                 && pending.iter().any(|p| match p {
                     Node::Text(t) => !t.trim().is_empty(),
                     Node::Element(x) => !matches!(
-                        x.style.computed().position,
+                        x.style.used().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ),
                 })
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.computed().inset.left) || edge(e.style.computed().inset.right))
-                        != (edge(e.style.computed().inset.top)
-                            || edge(e.style.computed().inset.bottom))
+                    (edge(e.style.used().inset.left) || edge(e.style.used().inset.right))
+                        != (edge(e.style.used().inset.top) || edge(e.style.used().inset.bottom))
                 } =>
         {
             true
         }
-        Node::Element(e) => match e.style.computed().display {
-            Some(Display::ListItem) if e.style.computed().inline_display == Some(true) => {
+        Node::Element(e) => match e.style.used().display {
+            Some(Display::ListItem) if e.style.used().inline_display == Some(true) => {
                 !ordered_context
             }
             // Явно заявленная инлайновая коробка остаётся в строке даже у
@@ -130,7 +129,7 @@ pub(crate) fn inline_node(
             // семьи `grid-lanes-intrinsic-sizing-*` написаны на
             // `display: inline-grid`, и без этой строки девять сеток
             // вставали столбиком вместо ряда.
-            Some(Display::GridLanes) if e.style.computed().lanes_inline => !ordered_context,
+            Some(Display::GridLanes) if e.style.used().lanes_inline => !ordered_context,
             // `display: contents` without block-level descendants: its
             // children are inline-level boxes and text runs of THIS
             // container (css-display-3 §2.5 «as if they replaced the
@@ -172,7 +171,7 @@ pub(crate) fn inline_node(
             None => {
                 e.inline
                     && (!ordered_context || e.tag == "br")
-                    && e.style.computed().float.is_none_or(|f| f == 0)
+                    && e.style.used().float.is_none_or(|f| f == 0)
             }
         },
     }

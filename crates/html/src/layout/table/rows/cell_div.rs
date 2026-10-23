@@ -34,32 +34,32 @@ pub(super) fn cell_box_div(
             _ => merged,
         };
         c.used_mut().padding = crate::style::computed::Sides {
-            top: fixup(c.computed().padding.top, cm.padding.top),
-            right: fixup(c.computed().padding.right, cm.padding.right),
-            bottom: fixup(c.computed().padding.bottom, cm.padding.bottom),
-            left: fixup(c.computed().padding.left, cm.padding.left),
+            top: fixup(c.used().padding.top, cm.padding.top),
+            right: fixup(c.used().padding.right, cm.padding.right),
+            bottom: fixup(c.used().padding.bottom, cm.padding.bottom),
+            left: fixup(c.used().padding.left, cm.padding.left),
         };
-        c.used_mut().height = fixup(c.computed().height, cm.height);
+        c.used_mut().height = fixup(c.used().height, cm.height);
         // Толщина рамки — тем же правилом: `border: 1em solid` у
         // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
         c.used_mut().border_width = crate::style::computed::Sides {
-            top: fixup(c.computed().border_width.top, cm.border_width.top),
-            right: fixup(c.computed().border_width.right, cm.border_width.right),
-            bottom: fixup(c.computed().border_width.bottom, cm.border_width.bottom),
-            left: fixup(c.computed().border_width.left, cm.border_width.left),
+            top: fixup(c.used().border_width.top, cm.border_width.top),
+            right: fixup(c.used().border_width.right, cm.border_width.right),
+            bottom: fixup(c.used().border_width.bottom, cm.border_width.bottom),
+            left: fixup(c.used().border_width.left, cm.border_width.left),
         };
         // Background size and position in font units — the same rule: the
         // painter sees no font size on the raw style and used 16px
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
-        c.used_mut().bg_pos.x = fixup(c.computed().bg_pos.x, cm.bg_pos.x);
-        c.used_mut().bg_pos.y = fixup(c.computed().bg_pos.y, cm.bg_pos.y);
+        c.used_mut().bg_pos.x = fixup(c.used().bg_pos.x, cm.bg_pos.x);
+        c.used_mut().bg_pos.y = fixup(c.used().bg_pos.y, cm.bg_pos.y);
         if let (
             crate::style::computed::BgSize::Fixed(w, h),
             crate::style::computed::BgSize::Fixed(mw, mh),
-        ) = (c.computed().bg_size, cm.bg_size)
+        ) = (c.used().bg_size, cm.bg_size)
         {
             c.used_mut().bg_size =
                 crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
@@ -74,22 +74,22 @@ pub(super) fn cell_box_div(
     let collapsed = crate::layout::table::anon::row_collapsed(row, carry.group);
     let bg_layered = paint_layers
         && !collapsed
-        && box_style.computed().bg_clip.is_none()
-        && box_style.computed().gradient.is_none()
-        && box_style.computed().bg_image.is_none()
+        && box_style.used().bg_clip.is_none()
+        && box_style.used().gradient.is_none()
+        && box_style.used().bg_image.is_none()
         && box_style.cascaded().hidden != Some(true)
-        && box_style.computed().opacity.is_none_or(|o| o >= 1.0)
-        && box_style.computed().transform.is_none()
-        && box_style.computed().translate.is_none()
-        && box_style.computed().filter.is_none();
+        && box_style.used().opacity.is_none_or(|o| o >= 1.0)
+        && box_style.used().transform.is_none()
+        && box_style.used().translate.is_none()
+        && box_style.used().filter.is_none();
     let mut box_style = box_style;
-    let own_bg = box_style.computed().background;
+    let own_bg = box_style.used().background;
     if bg_layered {
         box_style.used_mut().background = None;
     }
     let mut d = cx
         .build
-        .styled_box(cell, &BoxStyle::shared(box_style.computed()), cx);
+        .styled_box(cell, &BoxStyle::shared(box_style.used()), cx);
     if collapsed {
         d.style().opacity = Some(0.0);
     }
@@ -103,7 +103,7 @@ pub(super) fn cell_box_div(
         // ячейка его не дублирует, иначе цвет ложится поверх
         // картинки. Ряду только с тенью цвет оставляют ячейки.
         let picture =
-            row.style.computed().bg_image.is_some() || row.style.computed().gradient_raw.is_some();
+            row.style.used().bg_image.is_some() || row.style.used().gradient_raw.is_some();
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);
@@ -127,13 +127,12 @@ pub(super) fn cell_box_div(
     // A relatively positioned cell's own percentage insets resolve
     // against the row's specified height (`position-relative-013`),
     // not the table grid the cell is laid out in; the row offset adds.
-    let own_pct = cell.style.computed().position
-        == Some(crate::style::computed::Position::Relative)
+    let own_pct = cell.style.used().position == Some(crate::style::computed::Position::Relative)
         && [
-            cell.style.computed().inset.left,
-            cell.style.computed().inset.right,
-            cell.style.computed().inset.top,
-            cell.style.computed().inset.bottom,
+            cell.style.used().inset.left,
+            cell.style.used().inset.right,
+            cell.style.used().inset.top,
+            cell.style.used().inset.bottom,
         ]
         .iter()
         .any(|l| matches!(l, Some(Len::Pct(_))));

@@ -19,9 +19,9 @@ pub(crate) fn absorb_margin(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> f32 {
     let own = if tail_side == reverse {
-        margin_px(e.style.computed().margin.left, &e.style.computed(), vcx)
+        margin_px(e.style.used().margin.left, &e.style.used(), vcx)
     } else {
-        margin_px(e.style.computed().margin.right, &e.style.computed(), vcx)
+        margin_px(e.style.used().margin.right, &e.style.used(), vcx)
     }
     .unwrap_or(0.0);
     // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
@@ -30,14 +30,14 @@ pub(crate) fn absorb_margin(
     if e.style.cascaded().vertical_decl() == Some(false) {
         return own;
     }
-    let b = e.style.computed().borders();
+    let b = e.style.used().borders();
     let (border, pad) = if tail_side == reverse {
-        (b.left, e.style.computed().padding.left)
+        (b.left, e.style.used().padding.left)
     } else {
-        (b.right, e.style.computed().padding.right)
+        (b.right, e.style.used().padding.right)
     };
-    let sealed = margin_px(border, &e.style.computed(), vcx).unwrap_or(0.0) > 0.0
-        || margin_px(pad, &e.style.computed(), vcx).unwrap_or(0.0) > 0.0;
+    let sealed = margin_px(border, &e.style.used(), vcx).unwrap_or(0.0) > 0.0
+        || margin_px(pad, &e.style.used(), vcx).unwrap_or(0.0) > 0.0;
     if sealed {
         return own;
     }
@@ -45,10 +45,10 @@ pub(crate) fn absorb_margin(
         let mut it = e.children.iter_mut().filter_map(|n| match n {
             Node::Element(c)
                 if !matches!(
-                    c.style.computed().position,
+                    c.style.used().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
-                ) && c.style.computed().display.is_none() =>
+                ) && c.style.used().display.is_none() =>
             {
                 Some(c)
             }
@@ -118,31 +118,31 @@ pub(crate) fn collapses_through(e: &Element) -> bool {
         Some(Len::Px(v)) => v == 0.0,
         _ => false,
     };
-    let b = e.style.computed().borders();
-    e.style.computed().display.is_none()
+    let b = e.style.used().borders();
+    e.style.used().display.is_none()
         && e.style.cascaded().writing_mode.is_none()
         && e.style.cascaded().flow_mode().is_none()
         && !matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
         && matches!(
-            e.style.computed().overflow_x,
+            e.style.used().overflow_x,
             None | Some(crate::style::computed::Overflow::Visible)
         )
         && matches!(
-            e.style.computed().overflow_y,
+            e.style.used().overflow_y,
             None | Some(crate::style::computed::Overflow::Visible)
         )
-        && e.style.computed().flow_root != Some(true)
-        && e.style.computed().contain_layout != Some(true)
-        && e.style.computed().contain_paint != Some(true)
-        && none_or_zero(e.style.computed().width)
-        && none_or_zero(e.style.computed().min_width)
+        && e.style.used().flow_root != Some(true)
+        && e.style.used().contain_layout != Some(true)
+        && e.style.used().contain_paint != Some(true)
+        && none_or_zero(e.style.used().width)
+        && none_or_zero(e.style.used().min_width)
         && none_or_zero(b.left)
         && none_or_zero(b.right)
-        && none_or_zero(e.style.computed().padding.left)
-        && none_or_zero(e.style.computed().padding.right)
+        && none_or_zero(e.style.used().padding.left)
+        && none_or_zero(e.style.used().padding.right)
         && e.children.iter().all(is_blank)
 }

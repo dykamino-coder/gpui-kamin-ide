@@ -31,12 +31,12 @@ pub(crate) fn shape_flex_lines(
         let m = line.len();
         for (ii, (_, e, sh)) in line.iter_mut().enumerate() {
             // `height: auto` тянется на строку — полом.
-            if matches!(e.style.computed().height, None | Some(Len::Auto))
+            if matches!(e.style.used().height, None | Some(Len::Auto))
                 && sh.height + sh.margin_top + sh.margin_bottom < cross - 0.01
             {
-                let eb = e.style.computed().borders();
-                let edges = side(&e.style.computed().padding.top).unwrap_or(0.0)
-                    + side(&e.style.computed().padding.bottom).unwrap_or(0.0)
+                let eb = e.style.used().borders();
+                let edges = side(&e.style.used().padding.top).unwrap_or(0.0)
+                    + side(&e.style.used().padding.bottom).unwrap_or(0.0)
                     + side(&eb.top).unwrap_or(0.0)
                     + side(&eb.bottom).unwrap_or(0.0);
                 let content = (cross - sh.margin_top - sh.margin_bottom - edges).max(0.0);

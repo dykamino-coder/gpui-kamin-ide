@@ -33,7 +33,7 @@ pub(super) fn collapsed_cell_edge(
     // рамка рисовалась коробкой — чёрным блоком без разбора
     // конфликтов (`border-conflict-element-001d/001e`).
     let b = {
-        let own = cell.style.computed().borders();
+        let own = cell.style.used().borders();
         let merged = cm.borders();
         let pick = |o: Option<Len>, m: Option<Len>| match o {
             Some(Len::Px(_)) | None => o,
@@ -57,7 +57,7 @@ pub(super) fn collapsed_cell_edge(
     // §border-color, initial: currentcolor), а не чёрный: `td.blue
     // {color: blue; border: solid 1em}` красил кромку чёрным.
     let side_colour =
-        |i: usize| cell.style.computed().border_colors[i].resolve(cm.color.unwrap_or(black));
+        |i: usize| cell.style.used().border_colors[i].resolve(cm.color.unwrap_or(black));
     let colors = [
         side_colour(0),
         side_colour(1),
@@ -65,7 +65,7 @@ pub(super) fn collapsed_cell_edge(
         side_colour(3),
     ];
     let side_style = |i: usize| {
-        cell.style.computed().border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
+        cell.style.used().border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
     };
     let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
     // Половина кромки лежит ВНУТРИ ячейки и место занимает
@@ -90,10 +90,10 @@ pub(super) fn collapsed_cell_edge(
         Some(Len::Px(base + win[i] / 2.0))
     };
     cell.style.used_mut().padding = crate::style::computed::Sides {
-        top: half(0, cell.style.computed().padding.top, merged_pad.top),
-        right: half(1, cell.style.computed().padding.right, merged_pad.right),
-        bottom: half(2, cell.style.computed().padding.bottom, merged_pad.bottom),
-        left: half(3, cell.style.computed().padding.left, merged_pad.left),
+        top: half(0, cell.style.used().padding.top, merged_pad.top),
+        right: half(1, cell.style.used().padding.right, merged_pad.right),
+        bottom: half(2, cell.style.used().padding.bottom, merged_pad.bottom),
+        left: half(3, cell.style.used().padding.left, merged_pad.left),
     };
 
     cell.style.used_mut().border_width = Default::default();
@@ -120,11 +120,11 @@ pub(super) fn collapsed_group_edges(
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
 ) -> gpui::Div {
-    let b = g.style.computed().borders();
+    let b = g.style.used().borders();
     let default_w = if rules_groups { 1.0 } else { 0.0 };
     let axes = super::axes::Axes::new(inherited);
     let own = axes.logical([b.top, b.right, b.bottom, b.left]);
-    let visible = axes.logical(g.style.computed().border_visible);
+    let visible = axes.logical(g.style.used().border_visible);
     let widths = std::array::from_fn(|i| {
         if matches!(i, 0 | 2) && own[i].is_none() && visible[i].is_none() {
             default_w
@@ -141,7 +141,7 @@ pub(super) fn collapsed_group_edges(
     // Нулевая толщина у `hidden` не значит «кромки нет»: скрытая
     // кромка ГАСИТ соседей (§17.6.2.1), поэтому в разбор она
     // обязана попасть наравне с видимыми.
-    let hidden_grp = g.style.computed().border_side_styles.contains(&Some(1));
+    let hidden_grp = g.style.used().border_side_styles.contains(&Some(1));
     if widths.iter().any(|w| *w > 0.0) || hidden_grp {
         let black = crate::style::values::value::Color {
             r: 0.0,
@@ -155,7 +155,7 @@ pub(super) fn collapsed_group_edges(
             .color
             .or(inherited.color)
             .unwrap_or(black);
-        let side_colour = |k: usize| g.style.computed().border_colors[k].resolve(current);
+        let side_colour = |k: usize| g.style.used().border_colors[k].resolve(current);
         let colors = [
             side_colour(0),
             side_colour(1),
@@ -163,7 +163,7 @@ pub(super) fn collapsed_group_edges(
             side_colour(3),
         ];
         let side_style = |k: usize| {
-            g.style.computed().border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+            g.style.used().border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         d = d.child(crate::layout::table::probes::edge_probe(

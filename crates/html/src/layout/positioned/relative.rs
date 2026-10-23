@@ -26,12 +26,12 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
     fn movable(e: &Element) -> bool {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
-        ) && !at_static_position(&e.style.computed())
-            && (edge(e.style.computed().inset.left) || edge(e.style.computed().inset.right))
-            && (edge(e.style.computed().inset.top) || edge(e.style.computed().inset.bottom))
+        ) && !at_static_position(&e.style.used())
+            && (edge(e.style.used().inset.left) || edge(e.style.used().inset.right))
+            && (edge(e.style.used().inset.top) || edge(e.style.used().inset.bottom))
             && !matches!(
                 e.tag.as_str(),
                 "input" | "textarea" | "select" | "button" | "img" | "svg" | "canvas"
@@ -42,11 +42,11 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
     // §3, css-contain-2 §3.2).
     fn passable(e: &Element) -> bool {
         real_inline(e)
-            && e.style.computed().position.is_none()
-            && e.style.computed().transform.is_none()
-            && e.style.computed().contain_layout != Some(true)
-            && e.style.computed().contain_paint != Some(true)
-            && !crate::text::inline::establishes_cb(&e.style.computed())
+            && e.style.used().position.is_none()
+            && e.style.used().transform.is_none()
+            && e.style.used().contain_layout != Some(true)
+            && e.style.used().contain_paint != Some(true)
+            && !crate::text::inline::establishes_cb(&e.style.used())
     }
     fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &BoxStyle, vcx: ValueCx<'_>) {
         let parent = box_style_unpainted(inherited, &e.style, vcx);
@@ -57,7 +57,9 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
                     // Hoisting changes the layout parent, never the CSS
                     // inheritance parent (CSS Cascade 4 §7). Resolve inherited
                     // values before passing through the inline ancestor.
-                    k.style = box_style_unpainted(&parent, &k.style, vcx).into();
+                    k.style = crate::dom::SharedStyle::layout_made(box_style_unpainted(
+                        &parent, &k.style, vcx,
+                    ));
                     out.push(Node::Element(k));
                 }
                 Node::Element(mut k) if passable(&k) => {
@@ -109,15 +111,12 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
 /// against the parent's percentage-resolution size, crbug.com/1227884,
 /// `position-relative-011/012`).
 pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32) {
-    if e.style.computed().position != Some(crate::style::computed::Position::Relative) {
+    if e.style.used().position != Some(crate::style::computed::Position::Relative) {
         return (0.0, 0.0);
     }
     let basis = px_strict;
     let (bw, bh) = parent.map_or((None, None), |p| {
-        (
-            basis(p.style.computed().width),
-            basis(p.style.computed().height),
-        )
+        (basis(p.style.used().width), basis(p.style.used().height))
     });
     let len = |l: Option<Len>, base: Option<f32>| match l {
         Some(Len::Px(v)) => Some(v),
@@ -132,16 +131,8 @@ pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32
             _ => 0.0,
         };
     (
-        side(
-            e.style.computed().inset.left,
-            e.style.computed().inset.right,
-            bw,
-        ),
-        side(
-            e.style.computed().inset.top,
-            e.style.computed().inset.bottom,
-            bh,
-        ),
+        side(e.style.used().inset.left, e.style.used().inset.right, bw),
+        side(e.style.used().inset.top, e.style.used().inset.bottom, bh),
     )
 }
 
@@ -162,20 +153,14 @@ pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
     let (mut dx, mut dy) = (0.0f32, 0.0f32);
     let mut cur = e;
     loop {
-        if cur.style.computed().position == Some(crate::style::computed::Position::Relative) {
+        if cur.style.used().position == Some(crate::style::computed::Position::Relative) {
             let px_side = |a: Option<Len>, b: Option<Len>| match (a, b) {
                 (Some(Len::Px(v)), _) => Some(v),
                 (_, Some(Len::Px(v))) => Some(-v),
                 _ => None,
             };
-            let hx = px_side(
-                cur.style.computed().inset.left,
-                cur.style.computed().inset.right,
-            );
-            let hy = px_side(
-                cur.style.computed().inset.top,
-                cur.style.computed().inset.bottom,
-            );
+            let hx = px_side(cur.style.used().inset.left, cur.style.used().inset.right);
+            let hy = px_side(cur.style.used().inset.top, cur.style.used().inset.bottom);
             if let Some(v) = hx {
                 dx += v;
                 cur.style.used_mut().inset.left = None;
@@ -199,9 +184,9 @@ pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
             // фрагменту он накладывается по css-break-3 §5.5
             // (`out-of-flow-in-multicolumn-058/059`: цепочка `span.rel`).
             (Some((i, Node::Element(k))), None)
-                if (!k.inline || k.style.computed().display.is_none())
+                if (!k.inline || k.style.used().display.is_none())
                     && matches!(
-                        k.style.computed().position,
+                        k.style.used().position,
                         None | Some(crate::style::computed::Position::Relative)
                     ) =>
             {

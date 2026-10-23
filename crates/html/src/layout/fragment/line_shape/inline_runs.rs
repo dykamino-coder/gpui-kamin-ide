@@ -15,9 +15,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// ненулевых полях в точках — иначе копия прежняя.
 pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
     let nz = |l: &Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
-    if vertical
-        || !(nz(&copy.style.computed().margin.left) || nz(&copy.style.computed().margin.right))
-    {
+    if vertical || !(nz(&copy.style.used().margin.left) || nz(&copy.style.used().margin.right)) {
         return el;
     }
     div()
@@ -37,7 +35,7 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     let inline_level = |n: &Node| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
-            k.inline && !out_of_flow(&k.style.computed()) && k.style.computed().display.is_none()
+            k.inline && !out_of_flow(&k.style.used()) && k.style.used().display.is_none()
         }
     };
     if !e.children.iter().any(|n| inline_level(n) && !is_blank(n)) {
@@ -68,7 +66,7 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     // строку (css-inline-3 §4.2). Строки ушли в анонимные блоки — флаг едет
     // туда, где строка: первому анонимному, если он первый ребёнок, и
     // последнему, если последний (`text-box-trim-multicol-001`).
-    if e.style.computed().text_box_trim_start || e.style.computed().text_box_trim_end {
+    if e.style.used().text_box_trim_start || e.style.used().text_box_trim_end {
         let flow: Vec<usize> = out
             .iter()
             .enumerate()
@@ -76,14 +74,14 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
             .map(|(i, _)| i)
             .collect();
         let anon = |n: &Node| matches!(n, Node::Element(k) if k.tag == "anon-block");
-        if e.style.computed().text_box_trim_start
+        if e.style.used().text_box_trim_start
             && let Some(&i) = flow.first()
             && anon(&out[i])
             && let Node::Element(k) = &mut out[i]
         {
             k.style.used_mut().text_box_trim_start = true;
         }
-        if e.style.computed().text_box_trim_end
+        if e.style.used().text_box_trim_end
             && let Some(&i) = flow.last()
             && anon(&out[i])
             && let Node::Element(k) = &mut out[i]
@@ -134,23 +132,23 @@ pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
     std::mem::swap(&mut style.width, &mut style.height);
     std::mem::swap(&mut style.min_width, &mut style.min_height);
     std::mem::swap(&mut style.max_width, &mut style.max_height);
-    t.style.used_mut().padding = turn(&c.style.computed().padding);
-    t.style.used_mut().margin = turn(&c.style.computed().margin);
-    t.style.used_mut().border_width = turn(&c.style.computed().border_width);
-    t.style.used_mut().inset = turn(&c.style.computed().inset);
+    t.style.used_mut().padding = turn(&c.style.used().padding);
+    t.style.used_mut().margin = turn(&c.style.used().margin);
+    t.style.used_mut().border_width = turn(&c.style.used().border_width);
+    t.style.used_mut().inset = turn(&c.style.used().inset);
     // Видимость рамки — `[верх, право, низ, лево]` (`Computed::borders`).
-    let v = c.style.computed().border_visible;
+    let v = c.style.used().border_visible;
     t.style.used_mut().border_visible = if rl {
         [v[1], v[2], v[3], v[0]]
     } else {
         [v[3], v[2], v[1], v[0]]
     };
     // Обрезка ПО ОСИ ПОТОКА: в вертикальном письме это `overflow-x`.
-    t.style.used_mut().overflow_y = c.style.computed().overflow_x;
-    t.style.used_mut().overflow_x = c.style.computed().overflow_y;
+    t.style.used_mut().overflow_y = c.style.used().overflow_x;
+    t.style.used_mut().overflow_x = c.style.used().overflow_y;
     // `border-spacing` физическое (`horizontal vertical`), ряды таблицы идут
     // по оси потока: между рядами в вертикали — ГОРИЗОНТАЛЬНАЯ составляющая.
-    if let Some((x, y)) = c.style.computed().border_spacing {
+    if let Some((x, y)) = c.style.used().border_spacing {
         t.style.used_mut().border_spacing = Some((y, x));
     }
     t.children = c

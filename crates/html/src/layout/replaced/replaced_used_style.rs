@@ -36,29 +36,29 @@ pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
             Some(Len::MinContent | Len::MaxContent | Len::FitContent)
         )
     };
-    let indefinite_height = matches!(element.style.computed().height, Some(Len::Pct(_)))
-        && !element.style.computed().cb_height_def_hint
-        && !element.style.computed().root_box
+    let indefinite_height = matches!(element.style.used().height, Some(Len::Pct(_)))
+        && !element.style.used().cb_height_def_hint
+        && !element.style.used().root_box
         && !matches!(
-            element.style.computed().position,
+            element.style.used().position,
             Some(Position::Absolute | Position::Fixed)
         );
     let percentage_limit = containing_width.is_some()
-        && matches!(element.style.computed().min_width, Some(Len::Pct(_)))
+        && matches!(element.style.used().min_width, Some(Len::Pct(_)))
         || containing_width.is_some()
-            && matches!(element.style.computed().max_width, Some(Len::Pct(_)));
-    if !keyword(element.style.computed().width)
-        && !keyword(element.style.computed().height)
+            && matches!(element.style.used().max_width, Some(Len::Pct(_)));
+    if !keyword(element.style.used().width)
+        && !keyword(element.style.used().height)
         && !indefinite_height
         && !percentage_limit
     {
         return None;
     }
     let mut normalized = element.clone();
-    if keyword(normalized.style.computed().width) {
+    if keyword(normalized.style.used().width) {
         normalized.style.used_mut().width = None;
     }
-    if keyword(normalized.style.computed().height) || indefinite_height {
+    if keyword(normalized.style.used().height) || indefinite_height {
         normalized.style.used_mut().height = None;
     }
     // The outer box and its content must constrain the same intrinsic ratio.
@@ -144,8 +144,8 @@ mod tests {
         image.style.used_mut().height = Some(Len::Pct(1.0));
         image.style.used_mut().max_width = Some(Len::Pct(1.0));
         let normalized = normalize(&image, Some(100.0)).unwrap();
-        assert_eq!(normalized.style.computed().height, None);
-        assert_eq!(normalized.style.computed().max_width, Some(Len::Px(100.0)));
+        assert_eq!(normalized.style.used().height, None);
+        assert_eq!(normalized.style.used().max_width, Some(Len::Px(100.0)));
         assert_eq!(
             crate::layout::replaced::limits::css2_replaced_limits(
                 200.0,

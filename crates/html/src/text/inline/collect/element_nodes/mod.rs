@@ -33,7 +33,7 @@ pub(super) fn collect_element(
     gap_at: &mut Option<usize>,
     from: usize,
 ) {
-    let st = e.style.computed();
+    let st = e.style.used();
     let doc = cx.layout.doc().clone();
     let vcx = doc.frame_values();
     if special_node(e, inherited, atom, has_text, cx, out) {

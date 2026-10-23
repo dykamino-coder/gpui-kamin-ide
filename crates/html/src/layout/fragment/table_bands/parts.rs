@@ -13,7 +13,7 @@ pub(crate) fn cell_settings(c: &Element, cx: ShapeCx) -> Option<(f32, ShapeCx)> 
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let spacing = match &c.style.computed().border_spacing {
+    let spacing = match &c.style.used().border_spacing {
         Some((_, y)) => px_of(y)?,
         None => 0.0,
     };
@@ -21,13 +21,13 @@ pub(crate) fn cell_settings(c: &Element, cx: ShapeCx) -> Option<(f32, ShapeCx)> 
 }
 
 pub(crate) fn is_row(e: &Element) -> bool {
-    e.tag == "tr" || e.style.computed().display == Some(Display::TableRow)
+    e.tag == "tr" || e.style.used().display == Some(Display::TableRow)
 }
 
 fn is_group(e: &Element) -> bool {
     matches!(e.tag.as_str(), "thead" | "tbody" | "tfoot")
-        || e.style.computed().display == Some(Display::TableRowGroup)
-        || e.style.computed().row_group_kind.is_some()
+        || e.style.used().display == Some(Display::TableRowGroup)
+        || e.style.used().row_group_kind.is_some()
 }
 
 /// Подписи обрабатывает вызывающий; остальные части сортируются стабильно.
@@ -46,7 +46,7 @@ pub(crate) fn ordered_parts<'a>(
             "thead" => Some(0u8),
             "tbody" => Some(1),
             "tfoot" => Some(2),
-            _ => e.style.computed().row_group_kind,
+            _ => e.style.used().row_group_kind,
         };
         let kind = match role {
             Some(0) if !head => {

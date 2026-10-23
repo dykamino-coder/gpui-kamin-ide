@@ -35,8 +35,8 @@ pub(crate) fn measure(
 ) -> Option<Measure> {
     let cx = ShapeCx {
         legacy_oof: cx.legacy_oof
-            || element.style.computed().bdb_clone
-            || crate::layout::multicol::spanner::multicol_container(&element.style.computed()),
+            || element.style.used().bdb_clone
+            || crate::layout::multicol::spanner::multicol_container(&element.style.used()),
         ..cx
     };
     let mut m = shape_contents(element, depth, cx, vcx)?;
@@ -47,16 +47,16 @@ pub(crate) fn measure(
     }
     let shape = &mut m.shape;
     // Рамка и отступ: нерешённое ничего не добавляет к мере.
-    let lens = LenCx::box_viewport(cx.viewport, &element.style.computed());
+    let lens = LenCx::box_viewport(cx.viewport, &element.style.used());
     let resolve = |value: Option<Len>| lens.px_lossy_zero(value, vcx);
-    let border = element.style.computed().borders();
-    let decoration = resolve(element.style.computed().padding.top)
-        + resolve(element.style.computed().padding.bottom)
+    let border = element.style.used().borders();
+    let decoration = resolve(element.style.used().padding.top)
+        + resolve(element.style.used().padding.bottom)
         + resolve(border.top)
         + resolve(border.bottom);
     let height = constrain(
         shape.height,
-        &element.style.computed(),
+        &element.style.used(),
         decoration,
         cx.viewport,
         cx.unclamped,

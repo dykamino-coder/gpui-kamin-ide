@@ -137,6 +137,6 @@ fn a_fragmented_row_gap_does_not_expand_the_next_row() {
             .0
             .children
             .iter()
-            .all(|n| { matches!(n, Node::Element(k) if k.style.computed().margin.top.is_none()) })
+            .all(|n| { matches!(n, Node::Element(k) if k.style.used().margin.top.is_none()) })
     );
 }

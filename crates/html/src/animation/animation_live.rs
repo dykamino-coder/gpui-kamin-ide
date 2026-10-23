@@ -33,7 +33,7 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     transformed(
         opts.cx.build.element(e, inherited, opts),
-        &e.style.computed(),
+        &e.style.used(),
         inherited,
         opts.cx.vcx(),
     )
@@ -53,7 +53,7 @@ fn sample_live(
 
 pub(crate) fn animated(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
-    let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.computed().animation.clone()) else {
+    let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.used().animation.clone()) else {
         return painted(e, inherited, opts);
     };
     if let Some(frozen) = bake_frozen(e, false, vcx) {
@@ -126,7 +126,7 @@ mod tests {
             .style
             .used_mut()
             .apply_one("animation", "move 1s linear", vcx);
-        let own = source.style.computed();
+        let own = source.style.used();
         let spec = own.animation.as_ref().unwrap();
         let mut start = source.style.cascaded().clone();
         start.apply_one("margin", "0px", vcx);
@@ -139,21 +139,18 @@ mod tests {
         for (ms, x) in [(0, 0.0), (250, 50.0), (500, 100.0), (750, 150.0)] {
             let delta = (f64::from(ms) / 1000.0 / period) as f32;
             let sampled = sample_live(&source, &frames, spec, f64::from(delta) * period, vcx);
-            assert_eq!(sampled.style.computed().margin.left, Some(Len::Px(x)));
-            assert_eq!(sampled.style.computed().margin.top, Some(Len::Px(x)));
-            assert_eq!(sampled.style.computed().margin.right, Some(Len::Px(x)));
-            assert_eq!(sampled.style.computed().margin.bottom, Some(Len::Px(x)));
-            assert_eq!(sampled.style.computed().transform.unwrap().translate.0, x);
+            assert_eq!(sampled.style.used().margin.left, Some(Len::Px(x)));
+            assert_eq!(sampled.style.used().margin.top, Some(Len::Px(x)));
+            assert_eq!(sampled.style.used().margin.right, Some(Len::Px(x)));
+            assert_eq!(sampled.style.used().margin.bottom, Some(Len::Px(x)));
+            assert_eq!(sampled.style.used().transform.unwrap().translate.0, x);
         }
         // GPUI clamps a completed one-shot to delta=1, including at 1500 ms.
         let expired = sample_live(&source, &frames, spec, period, vcx);
+        assert_eq!(expired.style.used().margin, source.style.used().margin);
         assert_eq!(
-            expired.style.computed().margin,
-            source.style.computed().margin
-        );
-        assert_eq!(
-            expired.style.computed().transform,
-            source.style.computed().transform
+            expired.style.used().transform,
+            source.style.used().transform
         );
     }
 }

@@ -29,36 +29,36 @@ pub(crate) fn refusal(
     // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
     fn gapped(e: &Element, depth: u8) -> bool {
         (matches!(
-            e.style.computed().display,
+            e.style.used().display,
             Some(Display::Flex) | Some(Display::Grid)
-        ) && e.style.computed().gap.is_some()
-            && super::row_gap(&e.style.computed()).is_none())
+        ) && e.style.used().gap.is_some()
+            && super::row_gap(&e.style.used()).is_none())
             || (depth > 0
                 && e.children.iter().any(
                     |n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k, depth - 1)),
                 ))
     }
     fn has_flex(e: &Element, depth: u8) -> bool {
-        e.style.computed().display == Some(Display::Flex)
+        e.style.used().display == Some(Display::Flex)
             || (depth > 0
                 && e.children.iter().any(
                     |n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k, depth - 1)),
                 ))
     }
     if c.inline
-        || out_of_flow(&c.style.computed())
+        || out_of_flow(&c.style.used())
         || !matches!(
-            c.style.computed().display,
+            c.style.used().display,
             Some(Display::Block) | Some(Display::Flex) | None
         )
     {
         return Some("display");
     }
     if monolith_box(c)
-        || crate::layout::multicol::spanner::multicol_container(&c.style.computed())
-        || !crate::layout::page::paged::visible_overflow(&c.style.computed())
-        || c.style.computed().bdb_clone
-        || c.style.computed().column_span == Some(true)
+        || crate::layout::multicol::spanner::multicol_container(&c.style.used())
+        || !crate::layout::page::paged::visible_overflow(&c.style.used())
+        || c.style.used().bdb_clone
+        || c.style.used().column_span == Some(true)
     {
         return Some("box");
     }

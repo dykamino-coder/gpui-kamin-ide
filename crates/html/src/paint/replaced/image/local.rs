@@ -23,7 +23,7 @@ pub(super) fn fit_local_image(
 ) -> AnyElement {
     let (picture, узкая) = sizing.picture();
     let mut image = draw(image, picture, vectorize);
-    image = match e.style.computed().object_fit.as_deref() {
+    image = match e.style.used().object_fit.as_deref() {
         Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
         Some("contain") => image.object_fit(gpui::ObjectFit::Contain),
         Some("scale-down") => image.object_fit(gpui::ObjectFit::ScaleDown),
@@ -37,7 +37,7 @@ pub(super) fn fit_local_image(
     };
     let fills_holder = holder_ratio::apply(
         &mut d,
-        &BoxStyle::shared(e.style.computed()),
+        &BoxStyle::shared(e.style.used()),
         sizing.ratio(),
         узкая.is_some(),
         vcx,
@@ -45,11 +45,11 @@ pub(super) fn fit_local_image(
     if fills_holder {
         image = image.size_full().object_fit(gpui::ObjectFit::Fill);
     }
-    let image = position(image, &e.style.computed(), vcx);
+    let image = position(image, &e.style.used(), vcx);
     if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
-        crate::paint::background::element_source(local.unwrap_or(src), &e.style.computed())
+        crate::paint::background::element_source(local.unwrap_or(src), &e.style.used())
     {
-        let mut style = (*e.style.computed()).clone();
+        let mut style = (*e.style.used()).clone();
         if fills_holder {
             style.object_fit = Some("fill".into());
         }
@@ -120,7 +120,7 @@ pub(super) fn local_image_source<'a>(
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let own = crate::paint::background::element_source(local.unwrap_or(src), &e.style.computed())
+    let own = crate::paint::background::element_source(local.unwrap_or(src), &e.style.used())
         .and_then(|s| match s {
             crate::paint::background::Source::Raster(image) => Some(image),
             filtered @ crate::paint::background::Source::Filtered { .. } => filtered.raster(
@@ -131,16 +131,16 @@ pub(super) fn local_image_source<'a>(
             | crate::paint::background::Source::Gradient { .. }
             | crate::paint::background::Source::Shape { .. } => None,
         });
-    let wants_pipe = e.style.computed().object_position.is_some()
+    let wants_pipe = e.style.used().object_position.is_some()
         || e.style
-            .computed()
+            .used()
             .object_fit
             .as_deref()
             .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
     let mut d = d;
     if !wants_pipe
         && !matches!(
-            e.style.computed().content_image(),
+            e.style.used().content_image(),
             Some(crate::style::computed::ImageSource::Filter { .. })
         )
         && let Some(image) = super::grid_measured::measured(e, local.unwrap_or(src), &mut d, vcx)
@@ -158,7 +158,7 @@ pub(super) fn local_image_source<'a>(
     };
     // css-images-3 §image-rendering: `pixelated` scales by nearest neighbour.
     image = image.pixelated(e.style.cascaded().image_pixelated == Some(true));
-    if e.style.computed().filter.is_some_and(|f| f.grayscale > 0.5) {
+    if e.style.used().filter.is_some_and(|f| f.grayscale > 0.5) {
         image = image.grayscale(true);
     }
     // Содержимое замещаемого режется кривой ВНУТРЕННЕГО края его поля
@@ -166,7 +166,7 @@ pub(super) fn local_image_source<'a>(
     // is clipped to the curve of the content edge»): радиус угла минус
     // рамка и отбивка прилегающих сторон (`origin-*-box_with_radius-ref`:
     // `img { border-top-left-radius: 60px }`).
-    let [tl, tr, br, bl] = content_radii(&e.style.computed());
+    let [tl, tr, br, bl] = content_radii(&e.style.used());
     if tl > 0.0 {
         image = image.rounded_tl(px(tl));
     }

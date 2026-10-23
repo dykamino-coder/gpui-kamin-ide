@@ -85,8 +85,8 @@ mod tests {
                     let Node::Element(item) = node else {
                         panic!("element expected")
                     };
-                    assert_eq!(item.style.computed().margin.left, Some(Len::Px(12.0)));
-                    assert_eq!(item.style.computed().margin.right, Some(Len::Px(6.0)));
+                    assert_eq!(item.style.used().margin.left, Some(Len::Px(12.0)));
+                    assert_eq!(item.style.used().margin.right, Some(Len::Px(6.0)));
                 }
             }
         }
@@ -109,8 +109,8 @@ mod tests {
         let Node::Element(second) = &result[1] else {
             panic!("element expected")
         };
-        assert_eq!(second.style.computed().margin.left, Some(Len::Px(6.0)));
-        assert_eq!(second.style.computed().margin.right, Some(Len::Px(6.0)));
+        assert_eq!(second.style.used().margin.left, Some(Len::Px(6.0)));
+        assert_eq!(second.style.used().margin.right, Some(Len::Px(6.0)));
     }
 
     #[test]
@@ -128,8 +128,8 @@ mod tests {
                 let Node::Element(item) = &output[index] else {
                     unreachable!()
                 };
-                assert_eq!(item.style.computed().margin.left, Some(Len::Px(12.0)));
-                assert_eq!(item.style.computed().margin.right, Some(Len::Px(6.0)));
+                assert_eq!(item.style.used().margin.left, Some(Len::Px(12.0)));
+                assert_eq!(item.style.used().margin.right, Some(Len::Px(6.0)));
             }
         }
     }
@@ -146,7 +146,7 @@ mod tests {
                 unreachable!()
             };
             assert_eq!(
-                second.style.computed().margin.left,
+                second.style.used().margin.left,
                 Some(Len::Px(expected_left))
             );
         }

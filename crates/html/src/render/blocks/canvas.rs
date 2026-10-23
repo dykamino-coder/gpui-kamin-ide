@@ -15,7 +15,7 @@ pub(crate) fn canvas_layer(
     opts: &RenderOpts,
     out: &mut Vec<gpui::AnyElement>,
 ) -> Option<crate::paint::background::RootMeasurement> {
-    let st = e.style.computed();
+    let st = e.style.used();
     let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
     let measurement = measured.clone();
     let vcx = opts.cx.vcx();

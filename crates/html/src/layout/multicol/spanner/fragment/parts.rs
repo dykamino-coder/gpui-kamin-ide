@@ -64,8 +64,8 @@ pub(crate) fn spanner_parts(kids: &[Node], vcx: ValueCx<'_>) -> Vec<SpanPart> {
                             let keep = share.is_none() && first && shown <= 1;
                             if spanner_frag_visible(c, &b, first, last)
                                 || own.is_some_and(|v| v > 0.0)
-                                || (keep && c.style.computed().height.is_some())
-                                || (keep && c.style.computed().min_height.is_some())
+                                || (keep && c.style.used().height.is_some())
+                                || (keep && c.style.used().min_height.is_some())
                             {
                                 let mut f = spanner_fragment(c, b, first, last, keep, bi);
                                 if let Some(v) = own {
@@ -88,11 +88,11 @@ pub(crate) fn spanner_parts(kids: &[Node], vcx: ValueCx<'_>) -> Vec<SpanPart> {
                             // (`spanner-in-opacity`). Трансформ и фильтр
                             // сюда не попадают вовсе: они барьер
                             // (`passes_spanner`).
-                            let s = match (c.style.computed().opacity, &s) {
+                            let s = match (c.style.used().opacity, &s) {
                                 (Some(o), Node::Element(sp)) if o < 1.0 => {
                                     let mut sp = sp.clone();
                                     sp.style.used_mut().opacity =
-                                        Some(sp.style.computed().opacity.unwrap_or(1.0) * o);
+                                        Some(sp.style.used().opacity.unwrap_or(1.0) * o);
                                     Node::Element(sp)
                                 }
                                 _ => s,
