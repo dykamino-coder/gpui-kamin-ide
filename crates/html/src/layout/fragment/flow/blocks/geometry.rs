@@ -155,8 +155,11 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
             for pair in inside.windows(2) {
                 out.cuts.push((pair[0].bottom, pair[1].top));
             }
-            out.solid
-                .extend(inside.iter().map(|l| (l.top.max(top), l.bottom.min(bottom))));
+            out.solid.extend(
+                inside
+                    .iter()
+                    .map(|l| (l.top.max(top), l.bottom.min(bottom))),
+            );
         }
     }
     if let Some(t) = &b.table {

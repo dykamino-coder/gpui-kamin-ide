@@ -107,9 +107,10 @@ impl Hooks for Watch {
         };
         match access {
             super::owner::Access::Hidden => {}
-            super::owner::Access::Escape(mask) => window.with_content_mask_replaced(mask, |window| {
-                window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx))
-            }),
+            super::owner::Access::Escape(mask) => window
+                .with_content_mask_replaced(mask, |window| {
+                    window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx))
+                }),
             super::owner::Access::Normal => {
                 window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx))
             }

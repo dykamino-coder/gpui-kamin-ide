@@ -70,7 +70,8 @@ pub(super) fn measure(
                 // подписи, заданная высота), а не оценка.
                 let geometry = w.laid(origin, window);
                 let flex = !geometry.flexes.is_empty();
-                if let Some(root) = w.blocks().filter(|b| b.table.is_some() || flex)
+                let regrown = k.regrow.as_ref().is_some_and(|r| r.laid_h);
+                if let Some(root) = w.blocks().filter(|b| b.table.is_some() || flex || regrown)
                     && k.float_id.is_none()
                     && let Some((_, bottom)) = geometry.at(root.id)
                 {

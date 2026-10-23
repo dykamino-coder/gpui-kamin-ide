@@ -26,8 +26,17 @@ impl Watched {
     /// Линии берутся из раскладки до первого роста.
     pub(crate) fn pin_flex_lines(&self, laid: &crate::layout::fragment::flow::blocks::Laid) {
         let mut pins = self.flex_lines.borrow_mut();
-        for frame in laid.flexes.values().filter(|f| f.column && f.lines.len() > 1) {
-            if frame.lines.iter().flat_map(|l| &l.items).any(|id| pins.contains_key(id)) {
+        for frame in laid
+            .flexes
+            .values()
+            .filter(|f| f.column && f.lines.len() > 1)
+        {
+            if frame
+                .lines
+                .iter()
+                .flat_map(|l| &l.items)
+                .any(|id| pins.contains_key(id))
+            {
                 continue;
             }
             for line in &frame.lines {
