@@ -18,7 +18,8 @@ macro_rules! inherited_eq {
 inherited_eq! {
     accent_color, auto_phrase, autospace_alpha, autospace_numeric, balance_lines,
     border_collapse, border_spacing, break_after_spaces, break_anywhere, break_anywhere_strict,
-    break_word, caption_bottom, caret_color, clamp_legacy, clamp_mark, color, combine_upright,
+    break_word, caption_bottom, caret_color, clamp_legacy, clamp_mark, color,
+    combine_upright,
     cursor, emphasis_auto_shape, emphasis_color, emphasis_left, emphasis_position_auto,
     emphasis_under, empty_cells_hide, flat_mode, font_adjust_base, font_alternates,
     font_families, font_family, font_features, font_kerning, font_oblique_angle,
@@ -27,7 +28,7 @@ inherited_eq! {
     hyphen_limit_chars, hyphen_limit_lines, hyphenate, hyphens_auto, image_orient_none,
     image_pixelated, italic, justify_chars, keep_all, keep_spaces, lang, letter_spacing,
     line_break_loose, line_height, list_style_image, list_style_inside, list_style_type,
-    math_compact, math_level, math_operator_form, math_shift, monospace, no_justify, no_select,
+    math_compact, math_level, math_operator_form, math_shift, monospace, no_justify,
     nowrap, oblique, orphans, pointer_events_none, preserve_newlines, rtl, ruby_align,
     ruby_justify, ruby_merge, ruby_overhang, ruby_under, skip_ink, skip_spaces, tab_size,
     tab_size_len, text_align, text_align_last, text_box_edge_set, text_box_over, text_box_under,

@@ -956,7 +956,10 @@ pub struct Computed {
     pub width_from_inline: bool,
     /// `hyphens`: разрешён ли перенос по мягкому переносу.
     pub hyphenate: Option<bool>,
-    /// `user-select: none` — текст не выделяется.
+    /// Вычисленное `user-select` (`None` — начальное `auto`); не наследуется.
+    pub user_select: Option<crate::style::computed::UserSelect>,
+    /// Используемое `user-select` — текст не выделяется (`Some(true)`);
+    /// `auto` решается по коробке-родителю (`inherit::box_stage`).
     pub no_select: Option<bool>,
     /// `frame-sizing: content-height` (css-sizing-4
     /// §frame-sizing): высота `<iframe>` — по содержимому вложенного

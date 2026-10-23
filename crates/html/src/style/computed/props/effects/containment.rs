@@ -151,11 +151,8 @@ impl Computed {
                 )
             }
             "user-select" | "-webkit-user-select" => {
-                css_wide_reset!(self, no_select);
-                if !matches!(v, "auto" | "text" | "none" | "all" | "contain") {
-                    return;
-                }
-                self.no_select = accept_parsed!(self, Some(matches!(v, "none")))
+                css_wide_reset!(self, user_select);
+                self.user_select = apply_parsed!(self, crate::style::computed::UserSelect::parse(v))
             }
             _ => *hit = false,
         }
