@@ -52,7 +52,15 @@ impl<'a> ComputeCx<'a> {
     /// После фазы `phase`: её итоги становятся входами следующих.
     pub fn after(&mut self, phase: Phase, style: &Computed) {
         match phase {
-            Phase::CascadeAffecting => self.wm = style.wm(),
+            Phase::CascadeAffecting => {
+                self.wm = style.wm();
+                // Своё `color-scheme` — используемая схема элемента и его
+                // потомков; незаданное наследует схему родителя, с которой
+                // контекст пришёл.
+                if let Some(scheme) = &style.color_scheme {
+                    self.vcx = crate::style::values::value::resolve_scheme(scheme, self.vcx);
+                }
+            }
             Phase::Font if self.element.root => set_root_from(style, self.vcx),
             _ => {}
         }

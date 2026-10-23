@@ -18,7 +18,7 @@ macro_rules! inherited_eq {
 inherited_eq! {
     accent_color, auto_phrase, autospace_alpha, autospace_numeric, balance_lines,
     border_collapse, border_spacing, break_after_spaces, break_anywhere, break_anywhere_strict,
-    break_word, caption_bottom, caret_color, clamp_legacy, clamp_mark, color,
+    break_word, caption_bottom, caret_color, clamp_legacy, clamp_mark, color, color_scheme,
     combine_upright,
     cursor, emphasis_auto_shape, emphasis_color, emphasis_left, emphasis_position_auto,
     emphasis_under, empty_cells_hide, flat_mode, font_adjust_base, font_alternates,

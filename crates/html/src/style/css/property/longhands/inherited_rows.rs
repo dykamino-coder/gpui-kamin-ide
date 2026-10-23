@@ -2,7 +2,7 @@
 //! ненаследуемые части их сокращений: `text-box-trim`, `max-lines`,
 //! `continue`): списки и кавычки (css-lists-3, css-content-3), письмо
 //! (css-writing-modes-4, MathML Core), цвет (css-color-4), взаимодействие
-//! (css-ui-4, css-scrollbars-1, css-images-3), SVG (css-fill-stroke-3),
+//! (css-ui-4, css-scrollbars-1, css-images-3, css-color-adjust-1), SVG (css-fill-stroke-3),
 //! таблицы и фрагментация (CSS 2.1 §17, css-break-3), строчный текст
 //! (css-text-4, css-text-decor-4, css-ruby-1, css-inline-3, css-overflow-4).
 //! Строки дописываются к таблице `longhands!` вызовом с продолжением.
@@ -23,6 +23,7 @@ macro_rules! with_inherited_rows {
         MathShift = "math-shift", "normal", true, Writing, N;
         MathStyle = "math-style", "normal", true, Writing, N;
         Color = "color", "canvastext", true, Color, N;
+        ColorScheme = "color-scheme", "normal", true, Color, N;
         Cursor = "cursor", "auto", true, Ui, N;
         PointerEvents = "pointer-events", "auto", true, Ui, N;
         Visibility = "visibility", "visible", true, Ui, N;
