@@ -66,12 +66,11 @@ impl Computed {
                 self.set_grid_line(key, v);
             }
             "grid-template-areas" => {
-                // Явное `inherit` — запись родителя (её переносит
-                // `doc::settle_explicit_inherit`): прежде слово само шло в
-                // область `inherit`, а `grid-area: a` у детей не находил
-                // области (`grid-placement-using-named-grid-lines-008`).
-                self.grid_areas_inherit = v.trim().eq_ignore_ascii_case("inherit");
-                if self.grid_areas_inherit {
+                // Явное `inherit` — запись родителя (её копирует стадия
+                // вычисленных значений, `compute::longhands`): прежде слово
+                // само шло в область `inherit`, а `grid-area: a` у детей не
+                // находил области (`grid-placement-using-named-grid-lines-008`).
+                if v.trim().eq_ignore_ascii_case("inherit") {
                     return;
                 }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.

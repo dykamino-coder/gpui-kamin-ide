@@ -141,10 +141,6 @@ pub(crate) mod inh {
     pub(crate) const TRANSFORM_ORIGIN: u32 = 1 << 11;
     /// `overflow-clip-margin: inherit` — коробка отсчёта и поле родителя.
     pub(crate) const CLIP_MARGIN: u32 = 1 << 15;
-    /// `column-rule-color: inherit` — скалярный цвет и список линеек родителя.
-    pub(crate) const COLUMN_RULE_C: u32 = 1 << 16;
-    /// `row-rule-color: inherit`.
-    pub(crate) const ROW_RULE_C: u32 = 1 << 17;
     /// `corner-shape: inherit` — параметры углов родителя.
     pub(crate) const CORNER_SHAPE: u32 = 1 << 18;
     /// `border-radius: inherit` — радиусы углов родителя.

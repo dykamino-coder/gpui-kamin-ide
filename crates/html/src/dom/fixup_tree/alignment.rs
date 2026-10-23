@@ -1,75 +1,41 @@
-//! Правки `align-self` по собранному дереву: наследование от DOM-родителя и
-//! применимость к контейнеру.
-//! `align_self_from_dom_parent`: `align-self: inherit` берёт авторское значение
-//! DOM-родителя (css-cascade-4 §7.3), а у потокового ребёнка блочного
-//! контейнера авторское `align-self` гасится — свойство применимо лишь к
-//! элементам flex/grid и абсолютным (css-align-3 §6.1), наш блок собран
-//! колонкой flex. `grid_table_items_keep_stretch`: стол-элемент сетки сохраняет
-//! растяжку по дорожке (css-align-3 §6.2), а не сжатие по содержимому.
+//! Правки `align-self` по собранному дереву: применимость к контейнеру.
+//! `align_self_from_dom_parent`: у потокового ребёнка блочного контейнера
+//! авторское `align-self` гасится — свойство применимо лишь к элементам
+//! flex/grid и абсолютным (css-align-3 §6.1), наш блок собран колонкой flex.
+//! `align-self: inherit` берёт вычисленное значение родителя в стадии
+//! вычисленных значений (`style::cascade::compute::longhands`).
+//! `grid_table_items_keep_stretch`: стол-элемент сетки сохраняет растяжку по
+//! дорожке (css-align-3 §6.2), а не сжатие по содержимому.
 
 use crate::dom::*;
 use crate::style::computed::{Display, Position};
 
-/// `align-self` от ДОМ-родителя: слово `inherit` и неприменимость к блоку.
+/// Неприменимость `align-self` к ребёнку блока.
 ///
-/// 1. `align-self: inherit` (css-cascade-4 §7.3) — вычисленное значение
-///    родителя. Прежде слово отбрасывалось разбором, и элемент брал
-///    `align-items` контейнера (`flexbox-align-self-vert-001`,
-///    `-horiz-001-block`: `inherit` ждёт `flex-end` от `.flexbox`).
-///    Берётся АВТОРСКОЕ значение родителя (`align_self_decl`), даже когда
-///    у самого родителя оно погашено пунктом 2: гашение — про
-///    использованное значение, вычисленное остаётся.
-/// 2. css-align-3 §6.1: `align-self` «Applies to: flex items, grid items,
-///    and absolutely-positioned boxes». Наш блок собран колонкой flex, и
-///    авторское `align-self: flex-end` у блока в `body` уводило его к
-///    правому краю (`flexbox-align-self-vert-001`, `-vert-rtl-001`).
-///    Blink читает свойство только в раскладке flex/grid
-///    (Blink `flex_layout_algorithm.cc`, `ResolvedAlignSelf`). Гасится только
-///    авторское значение и ДО сборки: приёмы сборки пишут в то же поле позже
-///    (`render::blocks`: rtl-прижим блока с шириной, `blocks()`, флоаты, столы)
-///    и видят пустое поле, как без автора. Гашение в каскаде без признака
-///    авторства их ломало бы — этот путь гасит только авторское. Родитель
-///    `display: contents` — настоящий
-///    контейнер выше, такие дети не трогаются; корневой уровень тоже.
+/// css-align-3 §6.1: `align-self` «Applies to: flex items, grid items, and
+/// absolutely-positioned boxes». Наш блок собран колонкой flex, и авторское
+/// `align-self: flex-end` у блока в `body` уводило его к правому краю
+/// (`flexbox-align-self-vert-001`, `-vert-rtl-001`). Blink читает свойство
+/// только в раскладке flex/grid (Blink `flex_layout_algorithm.cc`,
+/// `ResolvedAlignSelf`). Гасится только авторское значение и ДО сборки:
+/// приёмы сборки пишут в то же поле позже (`render::blocks`: rtl-прижим блока
+/// с шириной, `blocks()`, флоаты, столы) и видят пустое поле, как без автора.
+/// Гашение — про используемое значение: объявленное (`align_self_decl`)
+/// остаётся и наследуется словом `inherit`. Родитель `display: contents` —
+/// настоящий контейнер выше, такие дети не трогаются; корневой уровень тоже.
 pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         let s = el.style.cascaded_mut();
-        match parent {
-            Some(p) => {
-                if s.align_self_inherit {
-                    s.align_self = p.value;
-                    s.align_self_decl = Some(p.value);
-                    s.align_self_inherit = false;
-                    (
-                        s.align_self_safe,
-                        s.align_self_normal,
-                        s.align_self_own_axis,
-                        s.align_self_flex_kw,
-                        s.align_self_last,
-                    ) = p.flags;
-                }
-                if p.block
-                    && s.align_self.is_some()
-                    && s.align_self_decl == Some(s.align_self)
-                    && !matches!(s.position, Some(Position::Absolute) | Some(Position::Fixed))
-                {
-                    s.align_self = None;
-                    s.align_self_normal = false;
-                }
-            }
-            None => s.align_self_inherit = false,
+        if parent.is_some_and(|p| p.block)
+            && s.align_self.is_some()
+            && s.align_self_decl == Some(s.align_self)
+            && !matches!(s.position, Some(Position::Absolute) | Some(Position::Fixed))
+        {
+            s.align_self = None;
+            s.align_self_normal = false;
         }
         let me = ParentAlign {
-            // Вычисленное значение для `inherit` детей — авторское, если было.
-            value: s.align_self_decl.unwrap_or(s.align_self),
-            flags: (
-                s.align_self_safe,
-                s.align_self_normal,
-                s.align_self_own_axis,
-                s.align_self_flex_kw,
-                s.align_self_last,
-            ),
             block: matches!(
                 s.display,
                 None | Some(Display::Block)
@@ -84,9 +50,6 @@ pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&Par
 
 /// Что дети берут у родителя в `align_self_from_dom_parent`.
 pub(crate) struct ParentAlign {
-    pub(crate) value: Option<crate::style::computed::Align>,
-    /// safe, normal, own_axis, flex_kw, last.
-    pub(crate) flags: (bool, bool, bool, bool, bool),
     /// Родитель — блочный контейнер (не flex/grid/contents/таблица).
     pub(crate) block: bool,
 }
