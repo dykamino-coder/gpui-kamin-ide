@@ -15,8 +15,8 @@ const KEYWORD_PX: [f32; 8] = [9.0, 10.0, 13.0, 16.0, 18.0, 24.0, 32.0, 48.0];
 impl Computed {
     /// Вычисленный кегль в точках при кегле родителя `parent_px`; `family` —
     /// семейство для замера `ch`/`ex`/`ic`/`cap`. `None` — кегль не задан
-    /// (наследуется) или зависит от того, чего здесь нет (единицы окна и
-    /// `lh` в `calc()`).
+    /// (наследуется) или зависит от недоступной метрики (`lh` в `calc()`
+    /// либо единицы окна до появления размеров viewport).
     ///
     /// Единицы шрифта в самом `font-size` меряются кеглем РОДИТЕЛЯ
     /// (css-values-4 §6.1.1: «when used in the value of the font-size
@@ -39,7 +39,13 @@ impl Computed {
         }
         let metrics = || crate::text::metrics::ch_ex_px(family, parent_px, vcx);
         let ic = || crate::text::metrics::ic_px(family, parent_px, vcx);
-        Some(match self.font_size? {
+        let size = self.font_size?;
+        let size = if vcx.viewport.0 > 0.0 && vcx.viewport.1 > 0.0 {
+            size.fold_viewport(self.viewport_cx(vcx.viewport), vcx)
+        } else {
+            size
+        };
+        Some(match size {
             Len::Px(px) => px,
             Len::Em(k) | Len::Pct(k) => k * parent_px,
             Len::EmPx(k, add) => k * parent_px + add,

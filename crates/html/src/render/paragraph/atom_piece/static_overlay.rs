@@ -33,6 +33,15 @@ pub(crate) fn static_overlay(
     group_style.mask_image = merged.mask_image.clone();
     merged.position = None;
     merged.abs_static = true;
+    // Самостоятельная коробка сохраняет computed-письмо; поворот содержащей
+    // строки отменяется обёрткой, как у атомарного строчного контекста.
+    let physical = inherited.inline_format == Some(crate::style::computed::InlineFormat::Turned)
+        && crate::layout::writing_mode::rotated_atom::text_turn(&opts.cx);
+    if physical {
+        merged.turned_line = false;
+        merged.lines_reversed = None;
+        merged.para_vertical = None;
+    }
     // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
     // путь блоков давал пустую коробку (clip-path-ellipse-2-ref).
     // Картинка — тем же порядком: у неё детей нет вовсе, и путь
@@ -62,6 +71,18 @@ pub(crate) fn static_overlay(
             &group_style,
             vcx,
         )
+    };
+    let inner = if physical {
+        crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
+            inner,
+            inherited.wm().line().line_turn()
+                == crate::style::computed::writing_mode::Turn::CounterClockwise,
+            !inherited.wm().alphabetic_baseline(),
+            opts.cx.deferred.vertical_paint.clone(),
+        )
+        .hooked()
+    } else {
+        inner
     };
     // Transform the actual out-of-flow box before anchoring it; the
     // paragraph overlay has zero advance and is not a transform reference box.

@@ -11,7 +11,7 @@ pub(super) fn zero_width_cols(
     from_cols: &[Option<f32>],
     cb_px: Option<f32>,
 ) -> Vec<bool> {
-    let vertical = e.style.cascaded().wm().vertical();
+    let vertical = e.style.used().wm().vertical();
     let axes = super::axes::Axes::new(&e.style.used());
     let zero_cols: Vec<bool> = {
         let px_of = px_strict;

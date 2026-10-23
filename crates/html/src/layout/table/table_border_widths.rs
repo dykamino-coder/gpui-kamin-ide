@@ -168,7 +168,7 @@ mod tests {
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 true,
-                table.style.cascaded().wm().sideways(),
+                table.style.used().wm().sideways(),
             ));
         table.style.used_mut().border_collapse = Some(true);
         table.style.used_mut().border_width.right = Some(Len::Px(20.0));
@@ -189,8 +189,8 @@ mod tests {
         table.style.used_mut().writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 false,
-                table.style.cascaded().wm().block_rl(),
-                table.style.cascaded().wm().sideways(),
+                table.style.used().wm().block_rl(),
+                table.style.used().wm().sideways(),
             ));
         table.style.used_mut().border_width = Sides::default();
         let (widths, _) = resolve(&table, &[&row], &[None], &[1], 2, (16.0, ""), vcx);

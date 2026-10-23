@@ -39,6 +39,7 @@ pub(crate) fn piece(
         return None;
     }
     merged.combine_upright = Some(None);
+    merged.inline_format = Some(crate::style::computed::InlineFormat::Combined);
     // An explicit zero overrides inherited spacing in nested inline descendants.
     merged.letter_spacing = Some(Len::Px(0.0));
     let em = match merged.font_size {

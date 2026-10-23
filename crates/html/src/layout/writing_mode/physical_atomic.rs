@@ -9,7 +9,7 @@ use gpui::{
     TransformationMatrix, Window, point, px, size,
 };
 
-pub(super) struct PhysicalAtomic {
+pub(crate) struct PhysicalAtomic {
     paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
     child: AnyElement,
     root: Option<LayoutId>,
@@ -19,7 +19,7 @@ pub(super) struct PhysicalAtomic {
 }
 
 impl PhysicalAtomic {
-    pub(super) fn new(
+    pub(crate) fn new(
         child: AnyElement,
         ccw: bool,
         central: bool,

@@ -66,7 +66,7 @@ pub(super) fn table_outer_box(
             // БЛОЧНАЯ ось, где border-box верен; вместо этого краи инлайн-оси
             // добавляются к самой величине. Гейт тот же, что у
             // транспонирования решётки и у `spacing_phys`.
-            if e.style.cascaded().wm().vertical()
+            if e.style.used().wm().vertical()
                 && let Some(Len::Px(h)) = c.height
             {
                 // Сросшийся стол несёт свои краи не рамкой, а паддингом в

@@ -40,10 +40,10 @@ impl Axes {
 pub(super) fn inherited(e: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Option<Element> {
     let style = crate::style::cascade::materialize::box_style(parent, &e.style, vcx);
     if (
-        e.style.cascaded().writing_mode,
-        e.style.cascaded().flat_mode,
-        e.style.cascaded().rtl,
-        e.style.cascaded().text_orientation,
+        e.style.used().writing_mode,
+        e.style.used().flat_mode,
+        e.style.used().rtl,
+        e.style.used().text_orientation,
     ) == (
         style.writing_mode,
         style.flat_mode,
@@ -63,6 +63,38 @@ pub(super) fn inherited(e: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn table_axes_read_inherited_computed_writing_mode() {
+        use crate::dom::Node;
+        use crate::style::cascade::materialize::{box_style, materialize};
+        use std::rc::Rc;
+        let parsed = crate::dom::parse(
+            r#"<div style="writing-mode:vertical-rl;direction:rtl"><table><tr><td>x</td></tr></table></div>"#,
+            "",
+        );
+        fn find<'a>(nodes: &'a [Node], tag: &str) -> Option<&'a Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == tag => Some(e),
+                Node::Element(e) => find(&e.children, tag),
+                _ => None,
+            })
+        }
+        materialize(
+            &parsed.nodes,
+            &Rc::new(Computed::default()),
+            parsed.values(),
+        );
+        let table = find(&parsed.nodes, "table").unwrap();
+        assert!(table.style.cascaded().writing_mode.is_none());
+        let style = box_style(&BoxStyle::default(), &table.style, parsed.values());
+        let inherited = inherited(table, &BoxStyle::default(), parsed.values());
+        let table = inherited.as_ref().unwrap_or(table);
+        assert_eq!(
+            Axes::new(&table.style.used()).logical([0, 1, 2, 3]),
+            [1, 0, 3, 2]
+        );
+        assert_eq!(table.style.used().wm(), style.wm());
+    }
     #[test]
     fn logical_table_edges_follow_the_grid_progression() {
         for (vertical, rl, sideways, rtl, expected) in [

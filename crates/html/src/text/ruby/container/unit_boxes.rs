@@ -118,18 +118,14 @@ pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> A
         block.style.used_mut().display = Some(Display::Block);
         block.style.used_mut().inline_display = None;
         block.style.used_mut().ruby_role = None;
+        block.style.used_mut().ruby_unit = true;
+        block.style.used_mut().nowrap = Some(true);
         block.style.used_mut().text_indent = Some(Len::Px(0.0));
         block.style.used_mut().text_indent_each_line = Some(false);
         block.style.used_mut().text_indent_hanging = Some(false);
-        // `ruby-align`, заданный на самой базе (css-ruby-1 §4.3, «Applies
-        // to: ruby bases, …»), выравнивает её содержимое СВОИМ значением, а
-        // не значением контейнера (`ruby-align-001a`: `<rb style=
-        // "ruby-align: start">`). Аннотации выравнивает свой путь.
-        if block.style.cascaded().ruby_align.is_some()
-            && ruby_role(k) == Some(crate::style::computed::RubyRole::Base)
-        {
-            super::stacks::align_units(block.style.used_mut());
-        }
+        // База и аннотация выравнивают содержимое своим computed
+        // `ruby-align` (css-ruby-1 §4.3), включая унаследованное значение.
+        super::stacks::align_units(block.style.used_mut());
         return div()
             .children(
                 opts.cx

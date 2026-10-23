@@ -163,7 +163,7 @@ pub(super) fn push_empty_row_track(
     // (20+2 против 10+12). Заглушка на всю ширину ставится только когда
     // ряд не накрыт охватом сверху — иначе авторазмещение унесло бы её
     // в следующий ряд.
-    if !e.style.cascaded().wm().vertical()
+    if !e.style.used().wm().vertical()
         && !row
             .children
             .iter()
@@ -173,7 +173,7 @@ pub(super) fn push_empty_row_track(
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
-        if !e.style.cascaded().wm().vertical() {
+        if !e.style.used().wm().vertical() {
             ph = ph.col_start(1).row_start(row_ix);
         }
         cells.push(ph.into_any_element());
@@ -204,7 +204,7 @@ pub(super) fn cell_cascaded_style(
     // нему (table-cell-002: td vertical-rl с max-height 100 —
     // зелёный квадрат из двух колонок).
     // Высота в `ch` разрешается позже, с письмом ряда (`cell_heights`).
-    if cell.style.cascaded().wm().vertical()
+    if cell.style.used().wm().vertical()
         && cm.ortho_limit.is_none()
         && !matches!(cell.style.cascaded().height, Some(Len::Ch(_)))
         && let Some(Len::Px(h)) = st.height.or(st.max_height)
@@ -221,7 +221,7 @@ pub(super) fn cell_cascaded_style(
     // (гейт транспонирования решётки и spacing_phys), предел уже задан.
     // У анонимной обёртки table-cell (anon_element("table", …),
     // Computed::default()) своё письмо пусто: line-box-direction-* не затронуты.
-    if e.style.cascaded().wm().vertical() && cm.ortho_limit.is_some() {
+    if e.style.used().wm().vertical() && cm.ortho_limit.is_some() {
         cm.ortho_col = true;
     }
     cm

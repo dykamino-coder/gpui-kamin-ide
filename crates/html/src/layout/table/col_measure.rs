@@ -50,9 +50,8 @@ pub(super) fn measure_col_widths(
                 // (вертикальное письмо в htb-таблице) `block-size` лёг в
                 // height (размеры при вертикали не переставляются, см.
                 // resolve_logical) — он и задаёт колонку.
-                let table_vertical =
-                    e.style.cascaded().wm().vertical() || inherited.wm().vertical();
-                let orthogonal = cell.style.cascaded().wm().vertical() && !table_vertical;
+                let table_vertical = e.style.used().wm().vertical() || inherited.wm().vertical();
+                let orthogonal = cell.style.used().wm().vertical() && !table_vertical;
                 let (declared, source) = if table_vertical || orthogonal {
                     // У ортогональной ячейки width несёт ЛОГИЧЕСКИЙ
                     // inline-size — физически это ВЫСОТА, не колонка

@@ -147,6 +147,7 @@ head, title, meta, link, template { display: none }
     q::before { content: open-quote }
     q::after { content: close-quote }
     rp { display: none }
+    ruby, rt { text-indent: 0 }
     rb, rt, rtc { white-space: nowrap }
     rt, rtc { font-size: 50%; line-height: 1; text-emphasis: none; text-justify: ruby }
     rtc > rt { font-size: 100% }
