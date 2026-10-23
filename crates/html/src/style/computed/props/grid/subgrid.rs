@@ -112,6 +112,7 @@ fn names(v: &str) -> Option<(Vec<String>, &str)> {
                 | "unset"
                 | "revert"
                 | "revert-layer"
+                | "revert-rule"
                 | "default"
         )
     }) {
@@ -164,6 +165,7 @@ mod tests {
             "subgrid repeat(2,\u{a0}[b])",
             "subgrid [span]",
             "subgrid [inherit]",
+            "subgrid [ReVeRt-RuLe]",
             "subgrid [[a]]",
             "subgrid [a",
             "subgrid repeat(auto-fill, [a]) repeat(auto-fill, [b])",
