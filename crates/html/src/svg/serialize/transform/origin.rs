@@ -3,7 +3,10 @@
 //! от коробки, абсолютные единицы в px; длины отсчитываются от рамки фигуры только при
 //! `transform-box: fill-box`, по умолчанию — от вьюпорта.
 
-use crate::defaults::MEDIUM_FONT_SIZE_PX;
+// CSS Values §6.2: 1pc = 12pt = 1/6in = 16px, независимо от шрифта.
+// https://www.w3.org/TR/css-values-3/#absolute-lengths
+const CSS_PX_PER_PICA: f32 = 16.0;
+
 pub(super) fn parse(
     raw: &str,
     bounds: (f32, f32, f32, f32),
@@ -32,7 +35,7 @@ pub(super) fn parse(
                 } else if let Some(n) = t.strip_suffix("pt") {
                     (n, 96.0 / 72.0)
                 } else if let Some(n) = t.strip_suffix("pc") {
-                    (n, MEDIUM_FONT_SIZE_PX)
+                    (n, CSS_PX_PER_PICA)
                 } else if let Some(n) = t.strip_suffix('q').or_else(|| t.strip_suffix('Q')) {
                     (n, 96.0 / 101.6)
                 } else {
@@ -75,4 +78,16 @@ pub(super) fn parse(
         _ => return None,
     };
     Some((ox, oy))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn picas_are_absolute_css_lengths() {
+        let bounds = (10.0, 20.0, 100.0, 80.0);
+        for value in ["6pc 1pc", "1in 12pt", "96px 16px"] {
+            assert_eq!(super::parse(value, bounds, false), Some((96.0, 16.0)));
+            assert_eq!(super::parse(value, bounds, true), Some((106.0, 36.0)));
+        }
+    }
 }
