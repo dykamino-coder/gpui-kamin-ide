@@ -101,8 +101,9 @@ pub(super) fn cell_box_div(
         // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
         // ячейка его не дублирует, иначе цвет ложится поверх
         // картинки. Ряду только с тенью цвет оставляют ячейки.
-        let picture =
-            row.style.computed().bg_image.is_some() || row.style.computed().gradient_raw.is_some();
+        let picture = row.style.computed().bg_image.is_some()
+            || row.style.computed().gradient_raw.is_some()
+            || (row.style.computed().background.is_some() && row.style.computed().bg_clip.is_some());
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);

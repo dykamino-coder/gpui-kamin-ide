@@ -2,7 +2,6 @@
 
 mod clipping;
 use crate::style::computed::BoxStyle;
-pub(crate) use clipping::clip_layer;
 use clipping::shows_inside;
 
 mod clamp;
@@ -11,7 +10,7 @@ use crate::dom::whitespace::is_blank;
 use crate::layout::block::margin_height;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::writing_mode::native_intrinsic;
-use crate::paint::apply::{apply, apply_hover};
+use crate::paint::apply::{apply_for_decorations, apply_hover};
 use crate::paint::decorations::decorations;
 use gpui::{ParentElement, Styled, div};
 
@@ -72,7 +71,7 @@ pub(crate) fn styled_div_with(
         c
     };
     let auto_height = margin_height::used_style(e, paint);
-    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint), vcx);
+    let mut d = apply_for_decorations(div(), auto_height.as_ref().unwrap_or(paint), vcx);
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     }

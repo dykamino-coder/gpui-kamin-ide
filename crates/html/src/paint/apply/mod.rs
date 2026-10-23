@@ -9,7 +9,7 @@
 use crate::document::state::ValueCx;
 use crate::style::computed::{Align, BoxStyle, Computed, Gradient};
 use crate::style::values::value::Len;
-use gpui::{Div, InteractiveElement, Styled, px, relative};
+use gpui::{Div, InteractiveElement, ParentElement, Styled, px, relative};
 mod contained_intrinsic;
 pub(crate) mod intrinsic_size;
 use crate::paint::apply::contained_intrinsic::empty_contained_size;
@@ -169,6 +169,16 @@ mod grid_content_baseline;
 pub(crate) mod item_metadata;
 
 pub fn apply(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
+    let mut d = apply_for_decorations(d, c, vcx);
+    if let Some(layer) = crate::paint::background::inset_color_layer(c, vcx) {
+        d = d.child(layer);
+    }
+    d
+}
+
+/// Полная сборка декораций вставляет общий цвет после backdrop и до картинок.
+/// Остальные держатели получают тот же слой непосредственно через `apply`.
+pub(crate) fn apply_for_decorations(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     let mut d = d;
     d = apply_layout(d, c, vcx);
     // CSS 2.1 §10.8.1: an inline-block's baseline is that of its last in-flow

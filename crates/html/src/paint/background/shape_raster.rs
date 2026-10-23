@@ -22,13 +22,13 @@ const CORNER_K_FLAT: f32 = 16.0;
 /// Разобранная запись `rrect(...)`: радиусы в физических точках, ужатые
 /// одним множителем (§5.5); K по углам; `ring` — толщины рамки t/r/b/l в
 /// физических точках (кольцо = контур минус его сжатие на толщину).
-struct Rrect {
+pub(super) struct Rrect {
     pub(crate) corners: [(f32, f32); 4],
     pub(crate) k: [f32; 4],
     pub(crate) ring: Option<[f32; 4]>,
 }
 
-fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rrect> {
+pub(super) fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rrect> {
     let (main, ring) = match args.split_once('/') {
         Some((a, b)) => (a, Some(b)),
         None => (args, None),

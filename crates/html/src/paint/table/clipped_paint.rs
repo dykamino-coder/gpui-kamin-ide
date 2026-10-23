@@ -55,9 +55,12 @@ impl LayerPaint for CellsClipped {
                 // Цвет ряда — под картинкой, в тех же прямоугольниках: на
                 // ячейки его в этом случае не переносят (иначе он закрашивал
                 // бы картинку, рисуясь позже полосы).
-                if let Some(bg) = self.style.background {
-                    window.paint_quad(gpui::fill(rect, bg.to_hsla()));
-                }
+                crate::paint::background::paint_color(
+                    &self.style,
+                    crate::paint::background::ColorBox::TableBand(positioning),
+                    window,
+                    self.values.vcx(),
+                );
                 crate::paint::background::paint_area(
                     &self.style,
                     positioning,
