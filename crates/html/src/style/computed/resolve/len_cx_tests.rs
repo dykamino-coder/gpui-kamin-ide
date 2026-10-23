@@ -115,9 +115,13 @@ fn calc_viewport_terms_fold_with_a_viewport_only() {
 fn box_viewport_reads_the_writing_axis() {
     let doc = DocState::new(Media::default());
     let vcx = doc.values();
-    let style = Computed {
-        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::VerticalRl),
-        ..Default::default()
+    let style = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.writing_mode =
+            Some(crate::style::computed::writing_mode::WritingModeKw::VerticalRl);
+        with_inherited
     };
     let vi = Len::parse("10vi", vcx).unwrap();
     assert_eq!(

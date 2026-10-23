@@ -113,16 +113,19 @@ mod tests {
             a: 1.0,
         });
         element.style.used_mut().rotate_prop = Some(10.0);
-        let frame = Computed {
-            width: Some(Len::Pct(0.5)),
-            color: Some(Color {
+        let frame = {
+            let mut with_inherited = Computed {
+                width: Some(Len::Pct(0.5)),
+                rotate_prop: Some(20.0),
+                ..Computed::default()
+            };
+            with_inherited.color = Some(Color {
                 r: 1.0,
                 g: 0.0,
                 b: 0.0,
                 a: 1.0,
-            }),
-            rotate_prop: Some(20.0),
-            ..Computed::default()
+            });
+            with_inherited
         };
         let sampled = sample(&element, &frame, false);
         assert_eq!(sampled.style.computed().width, frame.width);

@@ -57,9 +57,12 @@ mod tests {
     fn text_entry_clamps_only_short_lines() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = Computed {
-            font_size: Some(Len::Px(60.)),
-            ..Computed::default()
+        let mut c = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(60.));
+            with_inherited
         };
         let normal = text_style(&c, vcx).line_height;
         c.line_height = Some(Len::Px(1.));

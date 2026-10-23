@@ -120,9 +120,12 @@ mod tests {
     fn font_relative_layers_resolve_before_they_are_queried() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = Computed {
-            font_size: Some(Len::Px(30.0)),
-            ..Computed::default()
+        let mut c = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(30.0));
+            with_inherited
         };
         c.apply_one("background-image", "url(a), url(b)", vcx);
         c.apply_one("background-size", "1em 2em, 3em 4em", vcx);

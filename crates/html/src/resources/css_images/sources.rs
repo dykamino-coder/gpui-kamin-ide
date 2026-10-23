@@ -113,10 +113,8 @@ mod tests {
     fn fallback_current_color_resolves_after_inheritance_with_alpha() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let c = Computed {
-            color: Color::parse("rgba(0, 128, 0, 0.5)", vcx),
-            ..Computed::default()
-        };
+        let mut c = Computed::default();
+        c.color = Color::parse("rgba(0, 128, 0, 0.5)", vcx);
         let mut src =
             ImageSource::parse("image('data:text/plain,invalid', currentColor)", vcx).unwrap();
         src.resolve_colors(c.color.unwrap());

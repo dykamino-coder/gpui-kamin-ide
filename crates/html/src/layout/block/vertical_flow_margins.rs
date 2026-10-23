@@ -70,12 +70,16 @@ mod tests {
             Display::GridLanes,
         ] {
             for reverse in [false, true] {
-                let parent = Computed {
-                    display: Some(display),
-                    writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                        true, false, false,
-                    )),
-                    ..Computed::default()
+                let parent = {
+                    let mut with_inherited = Computed {
+                        display: Some(display),
+                        ..Computed::default()
+                    };
+                    with_inherited.writing_mode =
+                        Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                            true, false, false,
+                        ));
+                    with_inherited
                 };
                 for node in children(items(), &parent, reverse, Some(0.0), vcx) {
                     let Node::Element(item) = node else {
@@ -92,11 +96,14 @@ mod tests {
     fn ordinary_vertical_blocks_still_collapse_adjacent_positive_margins() {
         let metric_doc = crate::document::state::DocState::new(Default::default());
         let vcx = metric_doc.values();
-        let parent = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let parent = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         let result = children(items(), &parent, false, None, vcx);
         let Node::Element(second) = &result[1] else {

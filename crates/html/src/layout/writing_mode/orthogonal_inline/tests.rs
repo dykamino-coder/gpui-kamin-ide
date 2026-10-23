@@ -19,12 +19,15 @@ fn parallel_table_column_uses_its_track_measure() {
 }
 #[test]
 fn percentage_uses_fallback_but_fixed_parent_keeps_its_own_basis() {
-    let mut child = Computed {
-        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        )),
-        height: Some(Len::Pct(0.5)),
-        ..Computed::default()
+    let mut child = {
+        let mut with_inherited = Computed {
+            height: Some(Len::Pct(0.5)),
+            ..Computed::default()
+        };
+        with_inherited.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
+        with_inherited
     };
     resolve(&mut child, &Computed::default(), (800.0, 600.0), false);
     assert_eq!(child.height, Some(Len::Px(300.0)));
@@ -55,11 +58,14 @@ fn nearest_indefinite_scroller_replaces_an_outer_fixed_scroller() {
     };
     resolve(&mut inner, &outer, (800.0, 600.0), false);
     assert_eq!(inner.orthogonal_scrollport.unwrap()[1].size, None);
-    let mut child = Computed {
-        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        )),
-        ..Computed::default()
+    let mut child = {
+        let mut with_inherited = Computed {
+            ..Computed::default()
+        };
+        with_inherited.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
+        with_inherited
     };
     resolve(&mut child, &inner, (800.0, 600.0), false);
     assert_eq!(child.orthogonal_inline.unwrap().available, 600.0);
@@ -73,18 +79,24 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
         min: None,
         max: None,
     };
-    let parent = Computed {
-        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        )),
-        orthogonal_inline: Some(c),
-        ..Computed::default()
+    let parent = {
+        let mut with_inherited = Computed {
+            orthogonal_inline: Some(c),
+            ..Computed::default()
+        };
+        with_inherited.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
+        with_inherited
     };
-    let mut child = Computed {
-        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        )),
-        ..Computed::default()
+    let mut child = {
+        let mut with_inherited = Computed {
+            ..Computed::default()
+        };
+        with_inherited.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
+        with_inherited
     };
     resolve(&mut child, &parent, (800.0, 600.0), false);
     assert_eq!(child.orthogonal_inline, Some(c));
@@ -103,11 +115,14 @@ fn percentage_margins_use_cb_width_and_clip_does_not_replace_scrollport() {
         height: Some(Len::Px(200.0)),
         ..Computed::default()
     };
-    let mut child = Computed {
-        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        )),
-        ..Computed::default()
+    let mut child = {
+        let mut with_inherited = Computed {
+            ..Computed::default()
+        };
+        with_inherited.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
+        with_inherited
     };
     child.margin.top = Some(Len::Pct(0.1));
     child.margin.bottom = Some(Len::Pct(0.1));

@@ -249,52 +249,13 @@ pub struct Computed {
     /// Внутренние тени (`box-shadow: inset`) — отдельным списком: рисуются
     /// поверх заливки, а не под фигурой.
     pub inset_shadows: Vec<Shadow>,
-
-    pub color: Option<Color>,
-    pub font_size: Option<Len>,
-    pub font_weight: Option<u16>,
     pub(crate) font_weight_step: i8,
-    pub italic: Option<bool>,
-    /// `font-style: oblique` отдельно от `italic`: набору наклон один
-    /// (`italic` держит оба), а подбору лица это РАЗНЫЕ запросы (css-fonts-4
-    /// §font-style-matching) — от выбранного лица зависит `size-adjust`
-    /// (`fonts::size_adjust`, `italic-oblique-fallback`).
-    pub oblique: Option<bool>,
-    /// Requested oblique angle in degrees, inherited with font-style.
-    pub font_oblique_angle: Option<f32>,
-    /// Synthesis is allowed for oblique requests, but not italic fallback.
-    pub font_oblique_only: Option<bool>,
     pub underline: Option<bool>,
     pub line_through: Option<bool>,
-    pub line_height: Option<Len>,
-    /// `orphans`/`widows` (css-break-3 §4.4 «Breaks Between Lines»): сколько
-    /// строк блока обязано остаться до/после разрыва внутри него. Наследуются,
-    /// начальное значение 2 (`None` = 2).
-    pub orphans: Option<u16>,
-    pub widows: Option<u16>,
-    pub text_align: Option<TextAlign>,
-    /// `text-align-last` — выключка ПОСЛЕДНЕЙ строки абзаца. Отдельное
-    /// свойство, потому что по умолчанию последняя строка не растягивается:
-    /// иначе абзац из одного слова разъехался бы во всю ширину. `Some(None)`
-    /// — `auto`, `None` — от родителя.
-    pub text_align_last: Option<Option<TextAlign>>,
     /// `match-parent` (css-text-3 §text-align): бит 1 — у `text-align-all`,
     /// бит 2 — у `text-align-last`; решается при наследовании по письму
     /// РОДИТЕЛЯ (`inherit_fonts`).
     pub text_align_match_parent: u8,
-    /// `image-rendering` (css-images-3 §image-rendering), наследуется:
-    /// `Some(true)` — `pixelated`/`crisp-edges`, растр масштабируется без
-    /// сглаживания; `Some(false)` — `auto`/`smooth`/`high-quality`.
-    pub image_pixelated: Option<bool>,
-    /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
-    pub no_justify: Option<bool>,
-    /// CSS Text 4: ruby annotation justification excludes word spaces.
-    pub ruby_justify: Option<bool>,
-    /// `text-justify` expansion opportunities (css-text-3 §7.3): `Some(0)`
-    /// `inter-word` (word separators only), `Some(2)` `inter-character` /
-    /// `distribute` (between typographic character units), `None`/`Some(1)`
-    /// `auto` (word separators plus CJK ideographs, as Blink).
-    pub justify_chars: Option<u8>,
     /// Internal ruby unit promoted to a technical block for layout.
     pub ruby_unit: bool,
     /// Blink-compatible forced break suppression within ruby inline content.
@@ -303,39 +264,11 @@ pub struct Computed {
     /// `text-box-trim` — срезать полулидинг первой/последней строки блока.
     pub text_box_trim_start: bool,
     pub text_box_trim_end: bool,
-    /// `text-box-edge` — метрики верхнего и нижнего краёв среза.
-    pub text_box_over: TextEdge,
-    pub text_box_under: TextEdge,
-    /// `text-box-edge` задан явно (в т.ч. `auto`/`text`): свойство
-    /// наследуемое, и явное значение перекрывает унаследованное, а начальное
-    /// `Text` от него неотличимо без флага
-    /// (`text-box-trim-not-ignore-nested-text-box-edge`).
-    pub text_box_edge_set: bool,
-    pub hanging: Option<Hanging>,
-    pub nowrap: Option<bool>,
-    /// Переводы строк значимы (`white-space: pre*`).
-    pub preserve_newlines: Option<bool>,
-    /// Пробелы значимы. У `pre-line` переводы строк значимы, а пробелы нет —
-    /// без отдельного поля он схлопывал и то и другое.
-    pub keep_spaces: Option<bool>,
-    pub monospace: Option<bool>,
-    /// First available family supplies font-relative metrics.
-    pub font_family: Option<String>,
-    pub(crate) font_families: Option<Vec<String>>,
     /// Есть ли у рамки ВИДИМЫЙ рисунок. Толщина без рисунка не считается:
     /// начальное значение `border-style` — `none`, и по CSS такая рамка
     /// вычисляется в ноль (`descendant-static-position-001`: коробка выходила
     /// шире на заданную, но не нарисованную рамку).
     pub border_visible: [Option<bool>; 4],
-    /// `border-collapse: collapse` — зазор между ячейками пропадает.
-    pub border_collapse: Option<bool>,
-    /// `empty-cells: hide` — у ПУСТОЙ ячейки не рисуются ни фон, ни рамка
-    /// (CSS 2.1 §17.6.1.1). Свойство наследуемое.
-    pub empty_cells_hide: Option<bool>,
-    /// Форма курсора: у GPUI набор совпадает с CSS почти буква в букву.
-    pub cursor: Option<String>,
-    /// `visibility: hidden` — место занимает, но не рисуется.
-    pub hidden: Option<bool>,
     /// `visibility: collapse` — не «невидимый», а ВЫБРОШЕННЫЙ из строки
     /// гибкого контейнера: перенос и размеры считаются без него.
     pub collapsed: Option<bool>,
@@ -348,7 +281,6 @@ pub struct Computed {
     /// Маска-изображение (`mask-image: url(...)|<gradient>`): источник
     /// строкой до растра при сборке группы.
     pub mask_image: Option<Vec<ImageSource>>,
-    pub letter_spacing: Option<Len>,
     pub ellipsis: Option<bool>,
     /// Маркер обрезки `text-overflow: <string>` (css-overflow-4 §5);
     /// None при ellipsis — многоточие по умолчанию.
@@ -357,20 +289,9 @@ pub struct Computed {
     /// наследуемое, значение родителя переносит `doc::settle_explicit_inherit`
     /// (`text-overflow-004`).
     pub text_overflow_inherit: bool,
-    /// `block-ellipsis` (css-overflow-4 §block-ellipsis): `None` — от
-    /// родителя (у корня — начальное `no-ellipsis`), `Some(None)` — `ellipsis`
-    /// (U+2026), пустая строка — `no-ellipsis`, иначе строка-знак. Отдельно
-    /// от `overflow_marker`: `text-overflow` относится к строчной оси и
-    /// знака на строке обрыва `line-clamp` не задаёт.
-    pub clamp_mark: Option<Option<String>>,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
     /// точками.
     pub no_marker: Option<bool>,
-    /// Вид маркера, если документ его задал.
-    pub list_style_type: Option<String>,
-    /// `list-style-position: inside` — маркер идёт первым куском содержимого
-    /// пункта, а не отдельной колонкой снаружи (css-lists-3 §4).
-    pub list_style_inside: Option<bool>,
     /// Строковый маркер: `list-style-type: "→ "` (css-lists-3 §3).
     pub marker_text: Option<String>,
     /// Слой `::marker` (css-lists-3 §marker-properties): ТОЛЬКО объявления
@@ -389,10 +310,6 @@ pub struct Computed {
     /// отдельная метка.
     pub content_none: Option<bool>,
     pub object_fit: Option<String>,
-    /// `image-orientation: none` (css-images-3 §5.4) — НЕ разворачивать растр
-    /// по метке EXIF. Начальное значение свойства — `from-image`, поэтому
-    /// хранится именно отказ, а не разрешение.
-    pub image_orient_none: Option<bool>,
 
     /// `aspect-ratio` — отношение ширины к высоте.
     pub aspect_ratio: Option<f32>,
@@ -547,8 +464,6 @@ pub struct Computed {
     /// 0 none, 1 hidden, 3 inset, 4 groove, 5 outset, 6 ridge, 7 dotted,
     /// 8 dashed, 9 solid, 10 double. `None` — стиль не задавался.
     pub border_side_styles: [Option<u8>; 4],
-    /// `caption-side: bottom` — заголовок таблицы под сеткой.
-    pub caption_bottom: Option<bool>,
     pub border_dashed: Option<bool>,
     /// `border-style: dotted` — точечный узор.
     pub border_dotted: Option<bool>,
@@ -562,16 +477,12 @@ pub struct Computed {
     /// Resolved opaque, constant background stacks retain their clip regions.
     pub(crate) flat_text_background: Option<Color>,
     pub(crate) flat_border_background: Option<Color>,
-    /// `border-spacing` таблицы: горизонтальный и вертикальный зазор.
-    pub border_spacing: Option<(Option<Len>, Option<Len>)>,
     pub outline: Option<Outline>,
     /// `backdrop-filter: blur(N)` — размытие того, что под элементом.
     pub backdrop_blur: Option<f32>,
     /// `backdrop-filter`: цветовые функции списка (без размытия). Рисуются
     /// матрицей 4×5 тем же проходом подложки (`Filter::color_matrix`).
     pub backdrop_color: Option<Filter>,
-
-    pub word_spacing: Option<Len>,
     /// Межбуквенный интервал ПОСЛЕ последнего знака этого куска.
     ///
     /// На границе двух элементов зазор задаёт не сам кусок, а ближайший общий
@@ -580,24 +491,6 @@ pub struct Computed {
     /// границу только сборке кусков, она поле и ставит; из стилей документа
     /// оно не приходит и по дереву не наследуется.
     pub letter_spacing_after: Option<Len>,
-    pub text_transform: Option<TextTransform>,
-    /// Добавки `text-transform` к регистру (css-text-3 §2.1: значение —
-    /// `[ case ] || full-width || full-size-kana`, плюс `math-auto`
-    /// MathML Core §2.1.5): `TT_FULL_WIDTH` | `TT_KANA` | `TT_MATH`. Живут
-    /// вместе с `text_transform` и наследуются вместе с ним.
-    pub text_transform_flags: u8,
-    pub text_indent: Option<Len>,
-    /// `text-indent: … each-line` — отступ повторяется после жёстких разрывов.
-    pub text_indent_each_line: Option<bool>,
-    /// `text-indent: … hanging` — отступ получают все строки, КРОМЕ первой.
-    pub text_indent_hanging: Option<bool>,
-    /// `word-break: break-all` и родня — рвать слово, а не переносить целиком.
-    pub break_anywhere: Option<bool>,
-    /// `overflow-wrap: break-word|anywhere` — рвать слово, ТОЛЬКО если иначе
-    /// оно не влезает в строку целиком.
-    pub break_word: Option<bool>,
-    /// `text-wrap: balance` — строки абзаца одной длины.
-    pub balance_lines: Option<bool>,
     /// `unicode-bidi: bidi-override` (и тег `<bdo>`) — порядок знаков задан
     /// силой, разбор двунаправленности внутри куска не работает.
     pub bidi_override: Option<bool>,
@@ -614,32 +507,8 @@ pub struct Computed {
     /// `unicode-bidi: plaintext` — сторона письма решается для каждого абзаца
     /// между жёсткими разрывами. HTML ставит это правило на `dir="auto"`.
     pub bidi_plaintext: Option<bool>,
-    /// `line-break: anywhere` — разрыв разрешён В ЛЮБОМ месте, включая
-    /// соседство с пробелом. Это НЕ то же самое, что `word-break: break-all`:
-    /// тот рвёт только внутри слова.
-    pub break_anywhere_strict: Option<bool>,
-    /// `line-break: normal` (1) / `loose` (2): уровень строгости переноса
-    /// CJK (css-text-3 §5.2); `auto`/`strict`/`anywhere` — `None`.
-    pub line_break_loose: Option<u8>,
-    /// `word-break: keep-all` — иероглифическое письмо переносится ТОЛЬКО по
-    /// пробелам, между знаками разрыв запрещён.
-    pub keep_all: Option<bool>,
-    /// `word-break: auto-phrase`: normal fallback with conditional hyphenation.
-    pub auto_phrase: Option<bool>,
-    /// `white-space: break-spaces` — сохранённый пробел НЕ свисает за край:
-    /// он занимает место в строке, и после каждого такого пробела разрешён
-    /// перенос. Отличие от `pre-wrap`, где хвостовые пробелы висят снаружи.
-    pub break_after_spaces: Option<bool>,
     /// `-webkit-line-clamp`: сколько строк оставить.
     pub line_clamp: Option<u32>,
-    /// `-webkit-line-clamp`: действует ТОЛЬКО в паре с
-    /// `display: -webkit-box` и `-webkit-box-orient: vertical`
-    /// (css-overflow-3 §webkit-line-clamp) — поэтому своё поле и гейт.
-    /// Какое сокращение записало `line_clamp` последним: `-webkit-line-clamp`
-    /// ставит `continue: -webkit-legacy`, который действует только при
-    /// `display: -webkit-box` с вертикальной ориентацией (css-overflow-4
-    /// §5.1); оба сокращения — одни лонгхенды, побеждает последнее.
-    pub clamp_legacy: Option<bool>,
     /// `auto` в `max-lines` (css-overflow-4 §max-lines): контейнер обрезки
     /// режет и по своей высоте; `None` — начальное `auto`.
     pub clamp_auto: Option<bool>,
@@ -655,22 +524,6 @@ pub struct Computed {
     pub svg_x: Option<Len>,
     pub svg_y: Option<Len>,
     pub webkit_box: Option<bool>,
-    pub webkit_box_vertical: Option<bool>,
-    /// `text-fit` — подбор кегля под ширину коробки; `Some(None)` — `none`.
-    pub text_fit: Option<Option<TextFit>>,
-    /// `hyphenate-character` — чем показывать перенос слова. Пусто — ничем.
-    pub hyphen_char: Option<String>,
-    /// `hyphens: auto` — слогораздел ставит сам движок, а не разметка.
-    pub hyphens_auto: Option<bool>,
-    /// Minimum word, prefix and suffix lengths; None components mean auto.
-    pub hyphen_limit_chars: Option<[Option<usize>; 3]>,
-    /// Maximum consecutive hyphenated lines; usize::MAX means no-limit.
-    pub hyphen_limit_lines: Option<usize>,
-    /// Язык узла (атрибут `lang`): по нему выбираются образцы слогораздела.
-    pub lang: Option<String>,
-    /// `vertical-align` внутри строки и ячейки таблицы.
-    pub vertical_align: Option<Align>,
-    pub pointer_events_none: Option<bool>,
     /// `table-layout: fixed` — колонки равной ширины, без замера содержимого.
     pub table_fixed: Option<bool>,
     /// `column-count` — на сколько колонок резать содержимое.
@@ -689,14 +542,6 @@ pub struct Computed {
     pub column_gap: Option<Len>,
     /// `translate` — визуальный сдвиг, не меняющий раскладку.
     pub translate: Option<(Len, Len)>,
-    /// `text-shadow`: смещение, размытие и цвет — ПЕРВАЯ (верхняя) тень списка.
-    pub text_shadow: Option<Shadow>,
-    /// Остальные тени `text-shadow` в порядке записи: свойство — СПИСОК, и
-    /// «the first shadow is on top» (css-text-decor-3 Overview.bs:881-882).
-    /// Первая живёт в `text_shadow`: на неё смотрят зум и наследование.
-    /// Прежде хвост отбрасывался — `-1em 0em orange, 1em 0em blue` у эталона
-    /// `box-shadow-multiple-001-ref` рисовал одну оранжевую.
-    pub text_shadow_rest: Vec<Shadow>,
     /// `text-shadow` с длинами в единицах шрифта ждёт своего кегля, как
     /// `shadow_raw` у `box-shadow` (вычисленное значение — «three absolute
     /// lengths», css-text-decor-3 Overview.bs:868-869), и разбирается в
@@ -711,8 +556,6 @@ pub struct Computed {
     pub animation_easing: Option<crate::animation::easing::Easing>,
     /// `transition` — длительность перехода в секундах.
     pub transition: Option<f32>,
-    /// `direction: rtl` — письмо справа налево.
-    pub rtl: Option<bool>,
     /// `resize` — по каким осям элемент тянется мышью.
     pub resize: Option<(bool, bool)>,
     /// `transform`/`rotate`/`scale`: поворот в радианах и масштаб по осям.
@@ -812,9 +655,6 @@ pub struct Computed {
     /// -1 слева, 1 справа, 0 с обеих. Стороны различаются, потому что
     /// `clear: left` мимо правого флоата проходит насквозь (CSS 2.1 §9.5.2).
     pub clear: Option<i8>,
-    /// `text-combine-upright`: сколько знаков сжимается в один кегль
-    /// (0 — `all`, 2..=4 — `digits N`; `Some(None)` — `none`). Наследуется.
-    pub combine_upright: Option<Option<u8>>,
     /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
     /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
@@ -852,22 +692,10 @@ pub struct Computed {
     /// Повёрнутый абзац `vertical-lr`: строки-колонки идут слева направо —
     /// подача строк снизу вверх (см. `Paragraph::reversed_lines`).
     pub lines_reversed: Option<bool>,
-    /// `overflow-wrap: anywhere` — в отличие от `break-word`, меняет размер
-    /// по минимальному содержимому.
-    pub wrap_anywhere: Option<bool>,
-    /// `word-space-transform` — чем ПОКАЗЫВАТЬ точку переноса (`<wbr>`,
-    /// нулевой пробел): обычным пробелом или идеографическим. Точкой переноса
-    /// она при этом быть не перестаёт.
-    pub word_space_char: Option<char>,
     /// Edge spacer of an inline box (`inline::SPACER`): (box id, physical
     /// left edge, the box's own direction is rtl). Bidi reordering moves the edges to
     /// the box's visually outermost fragments (CSS 2.1 §8.6).
     pub spacer_edge: Option<(u32, bool, bool)>,
-    /// `text-autospace` — зазор в 1/8 кегля между иероглифом и соседней
-    /// буквой или цифрой (css-text-4 §7). Наследуется, поэтому живёт здесь;
-    /// сами зазоры расставляет `inline::autospace_pieces` по кускам абзаца.
-    pub autospace_alpha: Option<bool>,
-    pub autospace_numeric: Option<bool>,
     /// Сдвиг куска по вертикали в долях кегля: `vertical-align: super` и
     /// `sub`. Не наследуется — принадлежит самому куску.
     pub vertical_shift: Option<f32>,
@@ -920,12 +748,6 @@ pub struct Computed {
     /// потребители обязаны отличать её от настоящего `width`
     /// (table-cell-align-005 против table-progression-htb-001).
     pub width_from_inline: bool,
-    /// `hyphens`: разрешён ли перенос по мягкому переносу.
-    pub hyphenate: Option<bool>,
-    /// Вычисленное `color-scheme` (css-color-adjust-1 §2.1): `normal` или
-    /// список схем через пробел (`light dark`, `only light`); `None` у
-    /// каскадного стиля — не задано (наследуется).
-    pub color_scheme: Option<String>,
     /// Вычисленное `user-select` (`None` — начальное `auto`); не наследуется.
     pub user_select: Option<crate::style::computed::UserSelect>,
     /// Используемое `user-select` — текст не выделяется (`Some(true)`);
@@ -1064,26 +886,6 @@ pub struct Computed {
     /// Слоёв композитора у нас нет, поэтому от обещания остаётся ровно то,
     /// что дало бы само свойство: содержащий блок и контекст наложения.
     pub will_change: u8,
-    /// `font-stretch` — ширина начертания в процентах от обычной.
-    ///
-    /// Это НЕ возможность OpenType: узкое начертание — отдельный шрифт
-    /// семейства, и выбирается он при подборе.
-    pub font_stretch: Option<f32>,
-    /// `font-size-adjust` (css-fonts-5): метрика (0 ex-height, 1 cap-height,
-    /// 2 ch-width, 3 ic-width, 4 ic-height; `u8::MAX` — `none`) и желаемая
-    /// доля кегля (`NaN` — `from-font`). Наследуется.
-    pub font_size_adjust: Option<(u8, f32)>,
-    /// Вычисленный кегль и заданная высота строки ДО подгонки кегля. Детям
-    /// уходит ИМЕННО вычисленный кегль («otherwise the effect would
-    /// compound»), и от него же считаются `em` и числовой `line-height`.
-    /// Пусто, пока используемый кегль равен вычисленному.
-    pub font_adjust_base: Option<(f32, Option<Len>)>,
-    /// `tab-size` — во сколько пробелов раскрывается табуляция.
-    pub tab_size: Option<f32>,
-    /// `tab-size` в ДЛИНЕ: шаг табуляции задан не числом знаков, а величиной.
-    /// Наследуется абсолютным (`tab-size-inheritance-001`), поэтому к детям
-    /// уходит уже в точках — перевод делает `style::cascade::inherit`.
-    pub tab_size_len: Option<Len>,
     /// `contain: paint` — содержимое обрезается по коробке.
     pub contain_paint: Option<bool>,
     /// `contain: size` — коробка меряется ПУСТОЙ (css-contain-1 §3):
@@ -1284,19 +1086,10 @@ pub struct Computed {
     /// написан; `None` — не задан. `0`/`0%` по спеке читаются единицей.
     /// Читает его стадия вычисленных значений (`style::cascade::compute::zoom`).
     pub zoom: Option<f32>,
-    /// Действующий зум («effective zoom», §599): произведение по цепочке
-    /// предков вместе со своим. `None` ≡ 1 — выведенный `Default`
-    /// тождество, и страница без `zoom` не несёт ни множителя, ни ветки.
-    /// Ставит стадия вычисленных значений; коробка, которую сделала
-    /// раскладка, несёт зум своего родителя.
-    pub zoom_eff: Option<f32>,
     /// Длины стиля ещё не домножены на действующий зум: стиль — выход
     /// каскада. Вычисленный стиль и стиль коробки раскладки несут
     /// используемые точки, и стадия зума их не трогает.
     pub(crate) zoom_pending: bool,
-    /// `<foreignObject>`: его содержимое раскладывается в единицах SVG и
-    /// масштабируется вместе с ним, поэтому дети начинают без зума.
-    pub(crate) zoom_boundary: bool,
     /// `column-rule-*`: линейка между колонками.
     pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
@@ -1422,6 +1215,322 @@ pub struct Computed {
     pub counter_increment: Option<String>,
     /// `counter-set` — присвоить счётчику значение (css-lists-3 §5).
     pub counter_set: Option<String>,
+    /// `text-decoration-line` самой коробки (биты `DECOR_*`); пусто — не
+    /// задано (`none`). Не наследуется: потомкам линии достаются через
+    /// `decors` (css-text-decor-3 §2 «propagated»).
+    pub td_lines: Option<u8>,
+    /// `text-decoration-style` (не наследуется).
+    pub td_style: Option<DecorStyle>,
+    /// `text-decoration-color` (не наследуется; начальное — `currentcolor`).
+    pub td_color: StyleColor,
+    /// `text-decoration-thickness` (не наследуется).
+    pub td_thickness: Option<DecorLen>,
+    /// `text-decoration-inset` (css-text-decor-4 §4.1, не наследуется):
+    /// `None` — 0, `Some(None)` — `auto`.
+    pub td_inset: Option<Option<[DecorLen; 2]>>,
+    /// Блочный тег (`<p>`, `<div>`…): при пустом `display` коробка блочная
+    /// (`dom`, не наследуется) — украшениям нужна своя строчная коробка.
+    pub block_tag: bool,
+    /// Украшения, наложенные на текст коробки её предками и ею самой
+    /// (css-text-decor-3 §2.1), от внешнего к внутреннему.
+    pub decors: Vec<Decor>,
+    /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
+    /// наследуется. `display` при этом остаётся строчным (`InlineBlock` +
+    /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
+    /// остаются как есть, роль читается отдельно.
+    pub ruby_role: Option<RubyRole>,
+    /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
+    pub appearance: Option<crate::style::computed::Appearance>,
+    /// Element used color scheme, shared by CSS system colours and native controls.
+    pub dark_color_scheme: bool,
+    /// Preferred scheme exposed by this element to an embedded document.
+    pub embedding_dark_scheme: bool,
+    /// Specified initial color, resolved specially for quirks HTML tables.
+    pub(crate) color_initial: bool,
+    /// DOM identity of this decorating box; never inherited.
+    pub decor_box: u64,
+    /// Flex item of a MULTI-line flex container (`flex-wrap` other than `nowrap`):
+    /// its line's cross size comes from the items' hypothetical sizes, so an
+    /// orthogonal item cannot take its inline size from the line. Set with
+    /// `flex_item` by `render::blocks`; not inherited.
+    pub(crate) flex_line_wraps: bool,
+    /// An explicit unsafe overflow position for block content alignment.
+    pub align_content_unsafe: bool,
+    /// Generated inline controls have no bytes in first-line source offsets.
+    pub inline_control: bool,
+    /// Definite content inline size (physical height) of a box in vertical flow: the basis of
+    /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
+    /// Set by `render::element`; not inherited.
+    pub(crate) inline_definite: Option<f32>,
+    /// A piece of a float-band host (`layout::float::band_flow_host`): the host resolves its
+    /// percentages against the band layout and places it; not inherited.
+    pub(crate) band_kid: bool,
+    /// Namespace identity and the winning MathML inner display type.
+    pub(crate) mathml: bool,
+    pub(crate) math_layout: Option<Display>,
+    pub(crate) math_depth: Option<super::math_style::Depth>,
+    pub(crate) math_font_size: bool,
+    /// SVG 2 geometry properties `cx`, `cy`, `r`, `rx`, `ry`, `d` from the
+    /// cascade, already in attribute syntax (`svg::serialize::geometry`);
+    /// not inherited.
+    pub svg_geometry: Vec<(&'static str, String)>,
+    /// Parse-time acceptance, armed only for a capability query.
+    pub(crate) declaration_parse: super::ParseResult,
+    /// Rotation model: inside the horizontal clone of a turned vertical paragraph
+    /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
+    pub(crate) turned_line: bool,
+    /// The writing mode of the containing block (the parent's line mode: a turned
+    /// paragraph counts as vertical). Set at inheritance; the overflowing inset and
+    /// alignment edges follow it (css-writing-modes-4 §7.1, CSS 2.1 §9.4.3).
+    pub(crate) cb_wm: super::writing_mode::WritingMode,
+    /// Computed image alpha source for shape-outside; basic shapes use shape_outside.
+    pub(crate) shape_image: Option<super::ImageSource>,
+    /// The style of the initial containing block (`RenderOpts::root_style`),
+    /// whose box is the embedder's; not inherited.
+    pub(crate) icb: bool,
+    /// Retained calc-size sizing basis: preferred, minimum, maximum, X/Y.
+    pub calc_size_basis: [Option<CalcSizeBasis>; 6],
+    /// calc-size calculations for max-width and max-height.
+    pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
+    /// Experimental CSS path-length; Auto represents none. Not inherited.
+    pub(crate) svg_path_length: Option<Len>,
+    /// The declaration being applied is a CSS-wide keyword (css-cascade-5 §7.3):
+    /// slots whose grammar does not resolve the keyword take their empty
+    /// (initial) representation. Set only around one property dispatch.
+    pub(crate) css_wide_value: bool,
+    /// `color` with a function of `currentcolor` (`color-mix()`, relative
+    /// color): computed against the PARENT's color when merged (css-color-4
+    /// §6.4, css-color-5 §2), then inherited as the absolute `color`. Own style only.
+    pub(crate) color_function: Option<crate::style::values::value::StyleColor>,
+    /// `mask-border-source/-slice/-width/-outset/-repeat` (css-masking-1 §8);
+    /// `None` — все части начальные. Not inherited.
+    pub(crate) mask_border: Option<BorderImage>,
+    /// `mask-border-mode: luminance` (§8.7); initial `alpha`. Not inherited.
+    pub(crate) mask_border_luminance: bool,
+    /// Группы тегов `font_features`, заданные своими `font-variant-*`
+    /// (разряд — группа `props::font::variants::GROUP_TAGS`): незаданная
+    /// группа наследуется от родителя отдельно от прочих (css-fonts-4 §6).
+    pub(crate) font_variant_set: u8,
+    /// `continue: collapse` (css-overflow-4 §5.4): коробка — контейнер
+    /// обрезки строк. Не наследуется; `-webkit-legacy` — `clamp_legacy`.
+    pub(crate) clamp_continue: Option<bool>,
+    /// Наследуемые значения — одной группой за общим указателем (копия при
+    /// записи): дети без своих наследуемых объявлений делят её с родителем.
+    pub(crate) inh: InheritedGroup,
+}
+
+/// Наследуемые вычисленные значения элемента (css-cascade-5 §7.2): всё, что
+/// стадия вычисленных значений берёт у родителя. Одна группа на элемент за
+/// общим указателем — как группы `ComputedStyle` у Blink и структуры стиля у
+/// Stylo: копия стиля не копирует группу, правка копирует только её.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InheritedStyle {
+    pub color: Option<Color>,
+    pub font_size: Option<Len>,
+    pub font_weight: Option<u16>,
+    pub italic: Option<bool>,
+    /// `font-style: oblique` отдельно от `italic`: набору наклон один
+    /// (`italic` держит оба), а подбору лица это РАЗНЫЕ запросы (css-fonts-4
+    /// §font-style-matching) — от выбранного лица зависит `size-adjust`
+    /// (`fonts::size_adjust`, `italic-oblique-fallback`).
+    pub oblique: Option<bool>,
+    /// Requested oblique angle in degrees, inherited with font-style.
+    pub font_oblique_angle: Option<f32>,
+    /// Synthesis is allowed for oblique requests, but not italic fallback.
+    pub font_oblique_only: Option<bool>,
+    pub line_height: Option<Len>,
+    /// `orphans`/`widows` (css-break-3 §4.4 «Breaks Between Lines»): сколько
+    /// строк блока обязано остаться до/после разрыва внутри него. Наследуются,
+    /// начальное значение 2 (`None` = 2).
+    pub orphans: Option<u16>,
+    pub widows: Option<u16>,
+    pub text_align: Option<TextAlign>,
+    /// `text-align-last` — выключка ПОСЛЕДНЕЙ строки абзаца. Отдельное
+    /// свойство, потому что по умолчанию последняя строка не растягивается:
+    /// иначе абзац из одного слова разъехался бы во всю ширину. `Some(None)`
+    /// — `auto`, `None` — от родителя.
+    pub text_align_last: Option<Option<TextAlign>>,
+    /// `image-rendering` (css-images-3 §image-rendering), наследуется:
+    /// `Some(true)` — `pixelated`/`crisp-edges`, растр масштабируется без
+    /// сглаживания; `Some(false)` — `auto`/`smooth`/`high-quality`.
+    pub image_pixelated: Option<bool>,
+    /// `text-justify: none` — выключка запрещена, строка идёт как `start`.
+    pub no_justify: Option<bool>,
+    /// CSS Text 4: ruby annotation justification excludes word spaces.
+    pub ruby_justify: Option<bool>,
+    /// `text-justify` expansion opportunities (css-text-3 §7.3): `Some(0)`
+    /// `inter-word` (word separators only), `Some(2)` `inter-character` /
+    /// `distribute` (between typographic character units), `None`/`Some(1)`
+    /// `auto` (word separators plus CJK ideographs, as Blink).
+    pub justify_chars: Option<u8>,
+    /// `text-box-edge` — метрики верхнего и нижнего краёв среза.
+    pub text_box_over: TextEdge,
+    pub text_box_under: TextEdge,
+    /// `text-box-edge` задан явно (в т.ч. `auto`/`text`): свойство
+    /// наследуемое, и явное значение перекрывает унаследованное, а начальное
+    /// `Text` от него неотличимо без флага
+    /// (`text-box-trim-not-ignore-nested-text-box-edge`).
+    pub text_box_edge_set: bool,
+    pub hanging: Option<Hanging>,
+    pub nowrap: Option<bool>,
+    /// Переводы строк значимы (`white-space: pre*`).
+    pub preserve_newlines: Option<bool>,
+    /// Пробелы значимы. У `pre-line` переводы строк значимы, а пробелы нет —
+    /// без отдельного поля он схлопывал и то и другое.
+    pub keep_spaces: Option<bool>,
+    pub monospace: Option<bool>,
+    /// First available family supplies font-relative metrics.
+    pub font_family: Option<String>,
+    pub(crate) font_families: Option<Vec<String>>,
+    /// `border-collapse: collapse` — зазор между ячейками пропадает.
+    pub border_collapse: Option<bool>,
+    /// `empty-cells: hide` — у ПУСТОЙ ячейки не рисуются ни фон, ни рамка
+    /// (CSS 2.1 §17.6.1.1). Свойство наследуемое.
+    pub empty_cells_hide: Option<bool>,
+    /// Форма курсора: у GPUI набор совпадает с CSS почти буква в букву.
+    pub cursor: Option<String>,
+    /// `visibility: hidden` — место занимает, но не рисуется.
+    pub hidden: Option<bool>,
+    pub letter_spacing: Option<Len>,
+    /// `block-ellipsis` (css-overflow-4 §block-ellipsis): `None` — от
+    /// родителя (у корня — начальное `no-ellipsis`), `Some(None)` — `ellipsis`
+    /// (U+2026), пустая строка — `no-ellipsis`, иначе строка-знак. Отдельно
+    /// от `overflow_marker`: `text-overflow` относится к строчной оси и
+    /// знака на строке обрыва `line-clamp` не задаёт.
+    pub clamp_mark: Option<Option<String>>,
+    /// Вид маркера, если документ его задал.
+    pub list_style_type: Option<String>,
+    /// `list-style-position: inside` — маркер идёт первым куском содержимого
+    /// пункта, а не отдельной колонкой снаружи (css-lists-3 §4).
+    pub list_style_inside: Option<bool>,
+    /// `image-orientation: none` (css-images-3 §5.4) — НЕ разворачивать растр
+    /// по метке EXIF. Начальное значение свойства — `from-image`, поэтому
+    /// хранится именно отказ, а не разрешение.
+    pub image_orient_none: Option<bool>,
+    /// `caption-side: bottom` — заголовок таблицы под сеткой.
+    pub caption_bottom: Option<bool>,
+    /// `border-spacing` таблицы: горизонтальный и вертикальный зазор.
+    pub border_spacing: Option<(Option<Len>, Option<Len>)>,
+
+    pub word_spacing: Option<Len>,
+    pub text_transform: Option<TextTransform>,
+    /// Добавки `text-transform` к регистру (css-text-3 §2.1: значение —
+    /// `[ case ] || full-width || full-size-kana`, плюс `math-auto`
+    /// MathML Core §2.1.5): `TT_FULL_WIDTH` | `TT_KANA` | `TT_MATH`. Живут
+    /// вместе с `text_transform` и наследуются вместе с ним.
+    pub text_transform_flags: u8,
+    pub text_indent: Option<Len>,
+    /// `text-indent: … each-line` — отступ повторяется после жёстких разрывов.
+    pub text_indent_each_line: Option<bool>,
+    /// `text-indent: … hanging` — отступ получают все строки, КРОМЕ первой.
+    pub text_indent_hanging: Option<bool>,
+    /// `word-break: break-all` и родня — рвать слово, а не переносить целиком.
+    pub break_anywhere: Option<bool>,
+    /// `overflow-wrap: break-word|anywhere` — рвать слово, ТОЛЬКО если иначе
+    /// оно не влезает в строку целиком.
+    pub break_word: Option<bool>,
+    /// `text-wrap: balance` — строки абзаца одной длины.
+    pub balance_lines: Option<bool>,
+    /// `line-break: anywhere` — разрыв разрешён В ЛЮБОМ месте, включая
+    /// соседство с пробелом. Это НЕ то же самое, что `word-break: break-all`:
+    /// тот рвёт только внутри слова.
+    pub break_anywhere_strict: Option<bool>,
+    /// `line-break: normal` (1) / `loose` (2): уровень строгости переноса
+    /// CJK (css-text-3 §5.2); `auto`/`strict`/`anywhere` — `None`.
+    pub line_break_loose: Option<u8>,
+    /// `word-break: keep-all` — иероглифическое письмо переносится ТОЛЬКО по
+    /// пробелам, между знаками разрыв запрещён.
+    pub keep_all: Option<bool>,
+    /// `word-break: auto-phrase`: normal fallback with conditional hyphenation.
+    pub auto_phrase: Option<bool>,
+    /// `white-space: break-spaces` — сохранённый пробел НЕ свисает за край:
+    /// он занимает место в строке, и после каждого такого пробела разрешён
+    /// перенос. Отличие от `pre-wrap`, где хвостовые пробелы висят снаружи.
+    pub break_after_spaces: Option<bool>,
+    /// `-webkit-line-clamp`: действует ТОЛЬКО в паре с
+    /// `display: -webkit-box` и `-webkit-box-orient: vertical`
+    /// (css-overflow-3 §webkit-line-clamp) — поэтому своё поле и гейт.
+    /// Какое сокращение записало `line_clamp` последним: `-webkit-line-clamp`
+    /// ставит `continue: -webkit-legacy`, который действует только при
+    /// `display: -webkit-box` с вертикальной ориентацией (css-overflow-4
+    /// §5.1); оба сокращения — одни лонгхенды, побеждает последнее.
+    pub clamp_legacy: Option<bool>,
+    pub webkit_box_vertical: Option<bool>,
+    /// `text-fit` — подбор кегля под ширину коробки; `Some(None)` — `none`.
+    pub text_fit: Option<Option<TextFit>>,
+    /// `hyphenate-character` — чем показывать перенос слова. Пусто — ничем.
+    pub hyphen_char: Option<String>,
+    /// `hyphens: auto` — слогораздел ставит сам движок, а не разметка.
+    pub hyphens_auto: Option<bool>,
+    /// Minimum word, prefix and suffix lengths; None components mean auto.
+    pub hyphen_limit_chars: Option<[Option<usize>; 3]>,
+    /// Maximum consecutive hyphenated lines; usize::MAX means no-limit.
+    pub hyphen_limit_lines: Option<usize>,
+    /// Язык узла (атрибут `lang`): по нему выбираются образцы слогораздела.
+    pub lang: Option<String>,
+    /// `vertical-align` внутри строки и ячейки таблицы.
+    pub vertical_align: Option<Align>,
+    pub pointer_events_none: Option<bool>,
+    /// `text-shadow`: смещение, размытие и цвет — ПЕРВАЯ (верхняя) тень списка.
+    pub text_shadow: Option<Shadow>,
+    /// Остальные тени `text-shadow` в порядке записи: свойство — СПИСОК, и
+    /// «the first shadow is on top» (css-text-decor-3 Overview.bs:881-882).
+    /// Первая живёт в `text_shadow`: на неё смотрят зум и наследование.
+    /// Прежде хвост отбрасывался — `-1em 0em orange, 1em 0em blue` у эталона
+    /// `box-shadow-multiple-001-ref` рисовал одну оранжевую.
+    pub text_shadow_rest: Vec<Shadow>,
+    /// `direction: rtl` — письмо справа налево.
+    pub rtl: Option<bool>,
+    /// `text-combine-upright`: сколько знаков сжимается в один кегль
+    /// (0 — `all`, 2..=4 — `digits N`; `Some(None)` — `none`). Наследуется.
+    pub combine_upright: Option<Option<u8>>,
+    /// `overflow-wrap: anywhere` — в отличие от `break-word`, меняет размер
+    /// по минимальному содержимому.
+    pub wrap_anywhere: Option<bool>,
+    /// `word-space-transform` — чем ПОКАЗЫВАТЬ точку переноса (`<wbr>`,
+    /// нулевой пробел): обычным пробелом или идеографическим. Точкой переноса
+    /// она при этом быть не перестаёт.
+    pub word_space_char: Option<char>,
+    /// `text-autospace` — зазор в 1/8 кегля между иероглифом и соседней
+    /// буквой или цифрой (css-text-4 §7). Наследуется, поэтому живёт здесь;
+    /// сами зазоры расставляет `inline::autospace_pieces` по кускам абзаца.
+    pub autospace_alpha: Option<bool>,
+    pub autospace_numeric: Option<bool>,
+    /// `hyphens`: разрешён ли перенос по мягкому переносу.
+    pub hyphenate: Option<bool>,
+    /// Вычисленное `color-scheme` (css-color-adjust-1 §2.1): `normal` или
+    /// список схем через пробел (`light dark`, `only light`); `None` у
+    /// каскадного стиля — не задано (наследуется).
+    pub color_scheme: Option<String>,
+    /// `font-stretch` — ширина начертания в процентах от обычной.
+    ///
+    /// Это НЕ возможность OpenType: узкое начертание — отдельный шрифт
+    /// семейства, и выбирается он при подборе.
+    pub font_stretch: Option<f32>,
+    /// `font-size-adjust` (css-fonts-5): метрика (0 ex-height, 1 cap-height,
+    /// 2 ch-width, 3 ic-width, 4 ic-height; `u8::MAX` — `none`) и желаемая
+    /// доля кегля (`NaN` — `from-font`). Наследуется.
+    pub font_size_adjust: Option<(u8, f32)>,
+    /// Вычисленный кегль и заданная высота строки ДО подгонки кегля. Детям
+    /// уходит ИМЕННО вычисленный кегль («otherwise the effect would
+    /// compound»), и от него же считаются `em` и числовой `line-height`.
+    /// Пусто, пока используемый кегль равен вычисленному.
+    pub font_adjust_base: Option<(f32, Option<Len>)>,
+    /// `tab-size` — во сколько пробелов раскрывается табуляция.
+    pub tab_size: Option<f32>,
+    /// `tab-size` в ДЛИНЕ: шаг табуляции задан не числом знаков, а величиной.
+    /// Наследуется абсолютным (`tab-size-inheritance-001`), поэтому к детям
+    /// уходит уже в точках — перевод делает `style::cascade::inherit`.
+    pub tab_size_len: Option<Len>,
+    /// Действующий зум («effective zoom», §599): произведение по цепочке
+    /// предков вместе со своим. `None` ≡ 1 — выведенный `Default`
+    /// тождество, и страница без `zoom` не несёт ни множителя, ни ветки.
+    /// Ставит стадия вычисленных значений; коробка, которую сделала
+    /// раскладка, несёт зум своего родителя.
+    pub zoom_eff: Option<f32>,
+    /// `<foreignObject>`: его содержимое раскладывается в единицах SVG и
+    /// масштабируется вместе с ним, поэтому дети начинают без зума.
+    pub(crate) zoom_boundary: bool,
     /// Возможности шрифта (`font-feature-settings`, `font-variant`).
     pub font_features: Vec<(String, u32)>,
     /// Значение СВОЙСТВА `font-feature-settings` целиком (`normal` — пустой
@@ -1453,34 +1562,15 @@ pub struct Computed {
     /// `text-emphasis-color` (css-text-decor-3 §5.2), наследуемое: `None` —
     /// не задано (у слитого стиля — начальное `currentcolor`).
     pub emphasis_color: Option<StyleColor>,
-    /// `text-decoration-line` самой коробки (биты `DECOR_*`); пусто — не
-    /// задано (`none`). Не наследуется: потомкам линии достаются через
-    /// `decors` (css-text-decor-3 §2 «propagated»).
-    pub td_lines: Option<u8>,
-    /// `text-decoration-style` (не наследуется).
-    pub td_style: Option<DecorStyle>,
-    /// `text-decoration-color` (не наследуется; начальное — `currentcolor`).
-    pub td_color: StyleColor,
-    /// `text-decoration-thickness` (не наследуется).
-    pub td_thickness: Option<DecorLen>,
-    /// `text-decoration-inset` (css-text-decor-4 §4.1, не наследуется):
-    /// `None` — 0, `Some(None)` — `auto`.
-    pub td_inset: Option<Option<[DecorLen; 2]>>,
     /// `text-underline-offset` (наследуется).
     pub underline_offset: Option<DecorLen>,
     /// `text-underline-position` (наследуется), биты `UPOS_*`.
     pub underline_pos: Option<u8>,
-    /// Блочный тег (`<p>`, `<div>`…): при пустом `display` коробка блочная
-    /// (`dom`, не наследуется) — украшениям нужна своя строчная коробка.
-    pub block_tag: bool,
     /// `text-decoration-skip-ink` (наследуется): 0 `none`, 1 `auto`, 2 `all`.
     pub skip_ink: Option<u8>,
     /// `text-decoration-skip-spaces` (наследуется): 1 `start`, 2 `end`,
     /// 4 `all`, 0 `none`; пусто — начальное `start end`.
     pub skip_spaces: Option<u8>,
-    /// Украшения, наложенные на текст коробки её предками и ею самой
-    /// (css-text-decor-3 §2.1), от внешнего к внутреннему.
-    pub decors: Vec<Decor>,
     /// `ruby-position` (css-ruby-1 §4.1): `Some(true)` — аннотация ПОД базой
     /// (`under`), `Some(false)` — над (`over`/`alternate`/`inter-character`),
     /// `None` — не задано. Наследуется (`style::cascade::inherit`). Прежде делил флаг
@@ -1492,103 +1582,26 @@ pub struct Computed {
     pub ruby_overhang: Option<RubyOverhang>,
     /// CSS Ruby §ruby-merge: 0 separate, 1 merge, 2 auto.
     pub ruby_merge: Option<u8>,
-    /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
-    /// наследуется. `display` при этом остаётся строчным (`InlineBlock` +
-    /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
-    /// остаются как есть, роль читается отдельно.
-    pub ruby_role: Option<RubyRole>,
     /// `caret-color` поля ввода, наследуемое: `None` — не задано (у слитого
     /// стиля — начальное `auto`).
     pub caret_color: Option<ColorOrAuto>,
     /// `accent-color` флажков и переключателей, наследуемое (css-ui-4
     /// §accent-color): `None` — не задано (у слитого стиля — `auto`).
     pub accent_color: Option<ColorOrAuto>,
-    /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
-    pub appearance: Option<crate::style::computed::Appearance>,
-    /// Element used color scheme, shared by CSS system colours and native controls.
-    pub dark_color_scheme: bool,
-    /// Preferred scheme exposed by this element to an embedded document.
-    pub embedding_dark_scheme: bool,
-    /// Specified initial color, resolved specially for quirks HTML tables.
-    pub(crate) color_initial: bool,
-    /// DOM identity of this decorating box; never inherited.
-    pub decor_box: u64,
-    /// Flex item of a MULTI-line flex container (`flex-wrap` other than `nowrap`):
-    /// its line's cross size comes from the items' hypothetical sizes, so an
-    /// orthogonal item cannot take its inline size from the line. Set with
-    /// `flex_item` by `render::blocks`; not inherited.
-    pub(crate) flex_line_wraps: bool,
-    /// An explicit unsafe overflow position for block content alignment.
-    pub align_content_unsafe: bool,
-    /// Generated inline controls have no bytes in first-line source offsets.
-    pub inline_control: bool,
-    /// Definite content inline size (physical height) of a box in vertical flow: the basis of
-    /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
-    /// Set by `render::element`; not inherited.
-    pub(crate) inline_definite: Option<f32>,
-    /// A piece of a float-band host (`layout::float::band_flow_host`): the host resolves its
-    /// percentages against the band layout and places it; not inherited.
-    pub(crate) band_kid: bool,
-    /// Namespace identity and the winning MathML inner display type.
-    pub(crate) mathml: bool,
-    pub(crate) math_layout: Option<Display>,
     pub(crate) math_compact: Option<bool>,
     pub(crate) math_shift: Option<bool>,
-    pub(crate) math_depth: Option<super::math_style::Depth>,
     pub(crate) math_level: i32,
-    pub(crate) math_font_size: bool,
     pub(crate) math_operator_form: Option<u8>,
-    /// SVG 2 geometry properties `cx`, `cy`, `r`, `rx`, `ry`, `d` from the
-    /// cascade, already in attribute syntax (`svg::serialize::geometry`);
-    /// not inherited.
-    pub svg_geometry: Vec<(&'static str, String)>,
-    /// Parse-time acceptance, armed only for a capability query.
-    pub(crate) declaration_parse: super::ParseResult,
     /// `writing-mode` (css-writing-modes-4 §3.1): declared on the own style, inherited in
     /// the merged one; `None` = not declared. Read through `Computed::wm()`.
     pub(crate) writing_mode: Option<super::writing_mode::WritingModeKw>,
     /// Rotation model: the vertical mode whose lines this horizontal clone typesets laid
     /// flat (turned paragraph, upright stack). Inherited; read through `Computed::wm()`.
     pub(crate) flat_mode: Option<super::writing_mode::WritingModeKw>,
-    /// Rotation model: inside the horizontal clone of a turned vertical paragraph
-    /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
-    pub(crate) turned_line: bool,
-    /// The writing mode of the containing block (the parent's line mode: a turned
-    /// paragraph counts as vertical). Set at inheritance; the overflowing inset and
-    /// alignment edges follow it (css-writing-modes-4 §7.1, CSS 2.1 §9.4.3).
-    pub(crate) cb_wm: super::writing_mode::WritingMode,
     /// `text-orientation` (css-writing-modes-4 §5.1); `None` = not declared. `upright` also
     /// changes `ch` (the zero advances along the vertical line), `sideways` makes the
     /// alphabetic baseline dominant (§4.2). Read through `Computed::wm()`.
     pub(crate) text_orientation: Option<super::writing_mode::TextOrientation>,
-    /// Computed image alpha source for shape-outside; basic shapes use shape_outside.
-    pub(crate) shape_image: Option<super::ImageSource>,
-    /// The style of the initial containing block (`RenderOpts::root_style`),
-    /// whose box is the embedder's; not inherited.
-    pub(crate) icb: bool,
-    /// Retained calc-size sizing basis: preferred, minimum, maximum, X/Y.
-    pub calc_size_basis: [Option<CalcSizeBasis>; 6],
-    /// calc-size calculations for max-width and max-height.
-    pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
-    /// Experimental CSS path-length; Auto represents none. Not inherited.
-    pub(crate) svg_path_length: Option<Len>,
-    /// The declaration being applied is a CSS-wide keyword (css-cascade-5 §7.3):
-    /// slots whose grammar does not resolve the keyword take their empty
-    /// (initial) representation. Set only around one property dispatch.
-    pub(crate) css_wide_value: bool,
-    /// `color` with a function of `currentcolor` (`color-mix()`, relative
-    /// color): computed against the PARENT's color when merged (css-color-4
-    /// §6.4, css-color-5 §2), then inherited as the absolute `color`. Own style only.
-    pub(crate) color_function: Option<crate::style::values::value::StyleColor>,
-    /// `mask-border-source/-slice/-width/-outset/-repeat` (css-masking-1 §8);
-    /// `None` — все части начальные. Not inherited.
-    pub(crate) mask_border: Option<BorderImage>,
-    /// `mask-border-mode: luminance` (§8.7); initial `alpha`. Not inherited.
-    pub(crate) mask_border_luminance: bool,
-    /// Группы тегов `font_features`, заданные своими `font-variant-*`
-    /// (разряд — группа `props::font::variants::GROUP_TAGS`): незаданная
-    /// группа наследуется от родителя отдельно от прочих (css-fonts-4 §6).
-    pub(crate) font_variant_set: u8,
     /// `font-variant-emoji` (css-fonts-4 §6.13): 0 normal, 1 text, 2 emoji,
     /// 3 unicode; `None` — от родителя. Выбор представления эмодзи шрифтовой
     /// системой не управляется.
@@ -1603,7 +1616,39 @@ pub struct Computed {
     /// `word-break`; используемое значение складывается с `overflow-wrap:
     /// anywhere` у читателя (`text::paragraph::breaking`).
     pub(crate) word_break_word: Option<bool>,
-    /// `continue: collapse` (css-overflow-4 §5.4): коробка — контейнер
-    /// обрезки строк. Не наследуется; `-webkit-legacy` — `clamp_legacy`.
-    pub(crate) clamp_continue: Option<bool>,
+}
+
+/// Группа наследуемых значений за общим указателем. Равенство — сначала по
+/// указателю (Blink `InheritedEqual`: общая группа — одни и те же данные).
+#[derive(Clone, Debug)]
+pub struct InheritedGroup(pub(crate) std::rc::Rc<InheritedStyle>);
+
+thread_local! {
+    static INITIAL_INHERITED: std::rc::Rc<InheritedStyle> = std::rc::Rc::default();
+}
+
+impl Default for InheritedGroup {
+    fn default() -> Self {
+        Self(INITIAL_INHERITED.with(std::rc::Rc::clone))
+    }
+}
+
+impl PartialEq for InheritedGroup {
+    fn eq(&self, other: &Self) -> bool {
+        std::rc::Rc::ptr_eq(&self.0, &other.0) || *self.0 == *other.0
+    }
+}
+
+impl std::ops::Deref for Computed {
+    type Target = InheritedStyle;
+
+    fn deref(&self) -> &InheritedStyle {
+        &self.inh.0
+    }
+}
+
+impl std::ops::DerefMut for Computed {
+    fn deref_mut(&mut self) -> &mut InheritedStyle {
+        std::rc::Rc::make_mut(&mut self.inh.0)
+    }
 }

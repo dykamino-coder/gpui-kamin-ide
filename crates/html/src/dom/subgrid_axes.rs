@@ -64,21 +64,29 @@ mod tests {
     #[test]
     fn linked_axis_maps_parallel_and_orthogonal_writing_modes() {
         for vertical in [false, true] {
-            let parent = Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    vertical, false, false,
-                )),
-                ..Computed::default()
+            let parent = {
+                let mut with_inherited = Computed {
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode =
+                    Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                        vertical, false, false,
+                    ));
+                with_inherited
             };
             for orthogonal in [false, true] {
-                let child = Computed {
-                    writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                        vertical != orthogonal,
-                        false,
-                        false,
-                    )),
-                    subgrid_cols: true,
-                    ..Computed::default()
+                let child = {
+                    let mut with_inherited = Computed {
+                        subgrid_cols: true,
+                        ..Computed::default()
+                    };
+                    with_inherited.writing_mode =
+                        Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                            vertical != orthogonal,
+                            false,
+                            false,
+                        ));
+                    with_inherited
                 };
                 assert_eq!(linked(&parent, &child, false), !orthogonal);
                 assert_eq!(linked(&parent, &child, true), orthogonal);

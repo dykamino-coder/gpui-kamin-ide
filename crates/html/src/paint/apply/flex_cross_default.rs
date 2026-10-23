@@ -16,12 +16,15 @@ mod tests {
     #[test]
     fn logical_vertical_columns_do_not_get_a_physical_bottom_default() {
         for display in [Display::Flex, Display::InlineFlex] {
-            let mut c = Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    true, true, false,
-                )),
-                display: Some(display),
-                ..Computed::default()
+            let mut c = {
+                let mut with_inherited = Computed {
+                    display: Some(display),
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(true, true, false),
+                );
+                with_inherited
             };
             for physical in [FlexDir::Row, FlexDir::RowReverse] {
                 assert!(!ends_on_x(&c, Some(physical)));

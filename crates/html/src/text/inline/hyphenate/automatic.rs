@@ -154,9 +154,12 @@ mod tests {
     use super::*;
 
     fn style(lang: &str) -> Computed {
-        Computed {
-            lang: Some(lang.into()),
-            ..Computed::default()
+        {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.lang = Some(lang.into());
+            with_inherited
         }
     }
 
@@ -186,9 +189,10 @@ mod tests {
     fn manual_priority_is_per_word_and_words_span_markup() {
         let make = |text: &str| Piece::Text {
             text: text.into(),
-            style: Computed {
-                hyphens_auto: Some(true),
-                ..style("en")
+            style: {
+                let mut with_inherited = Computed { ..style("en") };
+                with_inherited.hyphens_auto = Some(true);
+                with_inherited
             },
         };
         let mut pieces = [make("exam\u{ad}ple example"), make(" exam"), make("ple")];

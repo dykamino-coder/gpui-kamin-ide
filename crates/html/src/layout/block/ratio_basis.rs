@@ -42,12 +42,15 @@ mod tests {
             aspect_ratio: Some(1.0),
             ..Computed::default()
         };
-        let mut child = Computed {
-            height: Some(Len::Pct(1.0)),
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let mut child = {
+            let mut with_inherited = Computed {
+                height: Some(Len::Pct(1.0)),
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         resolve(&mut child, &parent, (800.0, 600.0), false);
         assert_eq!(child.height, Some(Len::Px(100.0)));

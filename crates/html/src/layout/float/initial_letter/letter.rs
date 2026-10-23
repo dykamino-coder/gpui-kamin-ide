@@ -75,25 +75,28 @@ pub(super) fn initial_letter_style(
     } else {
         0.0
     };
-    let mut style = Computed {
-        // Сторона — начало строки: rtl отправляет буквицу вправо.
-        float: Some(if rtl { 1 } else { -1 }),
-        // Both sizes in points: the width carries the letter line's inner
-        // indent and leading spaces, and the bands shorten the lines by it.
-        width: Some(Len::Px(
-            crate::text::metrics::ch_ex_px(&letter_family, letter_px, vcx).0 + indent + lead_w,
-        )),
-        height: Some(Len::Px(box_h)),
-        font_size: Some(Len::Px(letter_px)),
-        line_height: Some(Len::Px(box_h)),
-        font_family: Some(letter_family),
-        font_weight: first.font_weight,
-        italic: first.italic,
-        color,
-        background: (first.background != inherited.background)
-            .then_some(first.background)
-            .flatten(),
-        ..Computed::default()
+    let mut style = {
+        let mut with_inherited = Computed {
+            // Сторона — начало строки: rtl отправляет буквицу вправо.
+            float: Some(if rtl { 1 } else { -1 }),
+            // Both sizes in points: the width carries the letter line's inner
+            // indent and leading spaces, and the bands shorten the lines by it.
+            width: Some(Len::Px(
+                crate::text::metrics::ch_ex_px(&letter_family, letter_px, vcx).0 + indent + lead_w,
+            )),
+            height: Some(Len::Px(box_h)),
+            background: (first.background != inherited.background)
+                .then_some(first.background)
+                .flatten(),
+            ..Computed::default()
+        };
+        with_inherited.font_size = Some(Len::Px(letter_px));
+        with_inherited.line_height = Some(Len::Px(box_h));
+        with_inherited.font_family = Some(letter_family);
+        with_inherited.font_weight = first.font_weight;
+        with_inherited.italic = first.italic;
+        with_inherited.color = color;
+        with_inherited
     };
     // Картинки фона слоя первой буквы (css-pseudo-4 §3.6: к `::first-letter`
     // применимы все свойства фона) — со своими размером, положением,

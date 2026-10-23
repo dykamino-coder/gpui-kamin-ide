@@ -52,9 +52,12 @@ mod tests {
     #[test]
     fn nested_first_line_skips_positioned_children_at_each_level() {
         let doc = crate::document::state::DocState::new(Default::default());
-        let first = Computed {
-            font_size: Some(Len::Px(32.)),
-            ..Default::default()
+        let first = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Px(32.));
+            with_inherited
         };
         let parent = Computed {
             first_line_own: Some(Box::new(first)),

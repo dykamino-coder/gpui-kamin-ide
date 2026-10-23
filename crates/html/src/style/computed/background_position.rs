@@ -132,10 +132,13 @@ mod tests {
     fn computed_relative_lengths_survive_a_different_inherited_font() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut parent = Computed {
-            font_size: Some(Len::Px(20.0)),
-            line_height: Some(Len::Pct(2.0)),
-            ..Computed::default()
+        let mut parent = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(20.0));
+            with_inherited.line_height = Some(Len::Pct(2.0));
+            with_inherited
         };
         parent.apply_one("background-position", "min(100%, 1em) max(100%, 1lh)", vcx);
         parent.resolve_image_lengths(vcx);
@@ -152,10 +155,13 @@ mod tests {
     fn layer_position_expressions_resolve_the_owning_line_height() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = Computed {
-            font_size: Some(Len::Px(30.0)),
-            line_height: Some(Len::Px(80.0)),
-            ..Computed::default()
+        let mut c = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(30.0));
+            with_inherited.line_height = Some(Len::Px(80.0));
+            with_inherited
         };
         c.apply_one("background-image", "url(a), url(b)", vcx);
         c.apply_one(

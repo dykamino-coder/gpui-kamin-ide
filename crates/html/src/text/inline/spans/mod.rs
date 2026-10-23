@@ -129,13 +129,16 @@ pub fn decor_spans(
                         .decors
                         .iter()
                         .map(|d| {
-                            let probe = Computed {
-                                font_family: d.font.family.clone(),
-                                monospace: d.font.monospace,
-                                font_weight: d.font.weight,
-                                italic: d.font.italic,
-                                font_stretch: d.font.stretch,
-                                ..Computed::default()
+                            let probe = {
+                                let mut with_inherited = Computed {
+                                    ..Computed::default()
+                                };
+                                with_inherited.font_family = d.font.family.clone();
+                                with_inherited.monospace = d.font.monospace;
+                                with_inherited.font_weight = d.font.weight;
+                                with_inherited.italic = d.font.italic;
+                                with_inherited.font_stretch = d.font.stretch;
+                                with_inherited
                             };
                             DecorItem {
                                 decor: d.clone(),

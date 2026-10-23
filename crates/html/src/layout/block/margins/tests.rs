@@ -38,10 +38,13 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let painted = used_style(block, block.style.cascaded())
             .unwrap_or_else(|| block.style.cascaded().clone());
         assert_eq!(painted.height, Some(Len::Px(0.0)));
-        let mut child = Computed {
-            writing_mode: Some(WritingModeKw::new(true, false, false)),
-            floated_box: true,
-            ..Default::default()
+        let mut child = {
+            let mut with_inherited = Computed {
+                floated_box: true,
+                ..Default::default()
+            };
+            with_inherited.writing_mode = Some(WritingModeKw::new(true, false, false));
+            with_inherited
         };
         orthogonal_inline::resolve(&mut child, &block.style.computed(), (800.0, 600.0), false);
         let available = child.orthogonal_inline.expect("root constraint").available;

@@ -29,45 +29,47 @@ pub(super) fn piped_image(
                 y: Some(Len::Pct(0.5)),
             });
         use crate::style::computed::BgSize;
-        let bgc = crate::style::computed::Computed {
-            bg_image: Some(
-                e.style
-                    .computed()
-                    .content_image()
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        crate::style::computed::ImageSource::Url(local.unwrap_or(src).to_string())
-                    }),
-            ),
-            bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
-            bg_pos: pos,
+        let bgc = {
+            let mut with_inherited =
+                crate::style::computed::Computed {
+                    bg_image: Some(e.style.computed().content_image().cloned().unwrap_or_else(
+                        || {
+                            crate::style::computed::ImageSource::Url(
+                                local.unwrap_or(src).to_string(),
+                            )
+                        },
+                    )),
+                    bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
+                    bg_pos: pos,
+                    bg_size: match e.style.computed().object_fit.as_deref() {
+                        Some("contain") => BgSize::Contain,
+                        Some("cover") => BgSize::Cover,
+                        Some("none") => BgSize::Auto,
+                        Some("scale-down") => {
+                            // Меньшее из `none` и `contain`: влезает — своим
+                            // размером, нет — вписать.
+                            let fits = crate::resources::css_images::element_source(
+                                local.unwrap_or(src),
+                                &e.style.computed(),
+                                vcx,
+                            )
+                            .map(crate::paint::background::Source::from_cpu)
+                            .map(|s| s.intrinsic())
+                            .is_some_and(|i| {
+                                i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
+                            });
+                            if fits { BgSize::Auto } else { BgSize::Contain }
+                        }
+                        _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
+                    },
+                    ..Default::default()
+                };
             // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
             // положить руками: иначе `image-orientation: none` вместе с
             // `object-fit`/`object-position` уходил бы мимо ключа источника.
-            image_orient_none: e.style.cascaded().image_orient_none,
-            image_pixelated: e.style.cascaded().image_pixelated,
-            bg_size: match e.style.computed().object_fit.as_deref() {
-                Some("contain") => BgSize::Contain,
-                Some("cover") => BgSize::Cover,
-                Some("none") => BgSize::Auto,
-                Some("scale-down") => {
-                    // Меньшее из `none` и `contain`: влезает — своим
-                    // размером, нет — вписать.
-                    let fits = crate::resources::css_images::element_source(
-                        local.unwrap_or(src),
-                        &e.style.computed(),
-                        vcx,
-                    )
-                    .map(crate::paint::background::Source::from_cpu)
-                    .map(|s| s.intrinsic())
-                    .is_some_and(|i| {
-                        i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
-                    });
-                    if fits { BgSize::Auto } else { BgSize::Contain }
-                }
-                _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
-            },
-            ..Default::default()
+            with_inherited.image_orient_none = e.style.cascaded().image_orient_none;
+            with_inherited.image_pixelated = e.style.cascaded().image_pixelated;
+            with_inherited
         };
         // `overflow: visible` на замещаемом (HTML §rendering: UA-правило
         // `img { overflow: clip; overflow-clip-margin: content-box }`,
