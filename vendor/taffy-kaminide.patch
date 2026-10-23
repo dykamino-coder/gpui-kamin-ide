@@ -2162,7 +2162,7 @@ index 0000000000000000000000000000000000000000..a4e022902e6087ae2d05432cebc4bc61
 +#[path = "../tree/flex_main_fit_tests.rs"]
 +mod tests;
 diff --git a/vendor/taffy/src/compute/flexbox.rs b/vendor/taffy/src/compute/flexbox.rs
-index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..480965897162b82f891f09ef704efb6f8333dc87
+index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..e44e9ab9540929a662daf1873087a311fb9677fc
 --- a/vendor/taffy/src/compute/flexbox.rs
 +++ b/vendor/taffy/src/compute/flexbox.rs
 @@ -1,0 +2,5 @@
@@ -3276,7 +3276,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..480965897162b82f891f09ef704efb6f
 +    while !items.is_empty() {
 +        let count = lines[start..].iter().take_while(|&&line| line == lines[start]).count();
 +        let (line_items, rest) = items.split_at_mut(count);
-+        out.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
++        out.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
 +        items = rest;
 +        start += count;
 +    }

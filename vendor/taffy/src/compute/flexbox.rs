@@ -1918,7 +1918,7 @@ fn pinned_flex_lines<'a>(lines: &[usize], flex_items: &'a mut [FlexItem]) -> Vec
     while !items.is_empty() {
         let count = lines[start..].iter().take_while(|&&line| line == lines[start]).count();
         let (line_items, rest) = items.split_at_mut(count);
-        out.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
+        out.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
         items = rest;
         start += count;
     }

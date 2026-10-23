@@ -8,9 +8,9 @@ use crate::style::computed::Display;
 pub(crate) fn empty_floats(e: &Element) -> bool {
     fn walk(e: &Element) -> Option<bool> {
         if !matches!(
-            e.style.display,
+            e.style.computed().display,
             None | Some(Display::Block | Display::ListItem)
-        ) || !crate::layout::page::paged::visible_overflow(&e.style)
+        ) || !crate::layout::page::paged::visible_overflow(&e.style.computed())
         {
             return None;
         }
@@ -26,9 +26,9 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
         let mut floats = false;
         for n in children(&e.children).filter(|n| !is_blank(n)) {
             let Node::Element(f) = n else { return None };
-            if f.style.float.is_some_and(|s| s != 0) {
+            if f.style.computed().float.is_some_and(|s| s != 0) {
                 let mut flow = f.clone();
-                flow.style.float = None;
+                flow.style.used_mut().float = None;
                 if !children(&f.children).all(is_blank) || !super::independent_copy(&flow) {
                     return None;
                 }
@@ -41,8 +41,8 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
     }
     // Вся проверка относится к блочной оси. BandFlow сохраняет физическое
     // дерево; транспонирование нужно только для метаданных допуска.
-    if e.style.wm().vertical() {
-        super::logical_copy(e, e.style.wm().block_rl())
+    if e.style.computed().wm().vertical() {
+        super::logical_copy(e, e.style.computed().wm().block_rl())
             .is_some_and(|logical| walk(&logical) == Some(true))
     } else {
         walk(e) == Some(true)

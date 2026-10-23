@@ -50,7 +50,9 @@ impl FlowMeasure {
     ) -> Vec<ContentLine> {
         let mut out = Vec::new();
         self.records.for_each(window, |bounds, record| {
-            let Some(offset) = record.offset(origin, size, axis, bounds) else { return; };
+            let Some(offset) = record.offset(origin, size, axis, bounds) else {
+                return;
+            };
             out.extend(record.content.borrow().iter().cloned().map(|mut l| {
                 l.top += offset;
                 l.bottom += offset;

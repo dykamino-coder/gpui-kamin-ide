@@ -35,12 +35,10 @@ pub(crate) fn fragment_box(
     crate::layout::block::struts::pin_inherited_margins(&mut element, true, true, vcx);
     let lengths = crate::style::computed::LenCx {
         basis: Some(width),
-        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style)
+        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.computed())
     };
-    for margin in [
-        &mut element.style.margin.top,
-        &mut element.style.margin.bottom,
-    ] {
+    let used = element.style.used_mut();
+    for margin in [&mut used.margin.top, &mut used.margin.bottom] {
         if let Some(px) = lengths.px_strict(*margin, vcx) {
             *margin = Some(Len::Px(px));
         }
@@ -63,12 +61,10 @@ pub(crate) fn vertical_fragment_box(
     flow::absorb_margin(&mut element, true, reverse, vcx);
     let lengths = crate::style::computed::LenCx {
         basis: Some(width),
-        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style)
+        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.computed())
     };
-    for margin in [
-        &mut element.style.margin.left,
-        &mut element.style.margin.right,
-    ] {
+    let used = element.style.used_mut();
+    for margin in [&mut used.margin.left, &mut used.margin.right] {
         if let Some(px) = lengths.px_strict(*margin, vcx) {
             *margin = Some(Len::Px(px));
         }
@@ -83,7 +79,10 @@ pub(crate) fn fragment_margins(c: &crate::dom::Element) -> Option<(f32, f32)> {
         None | Some(Len::Auto) => Some(0.0),
         _ => None,
     };
-    Some((m(&c.style.margin.top)?, m(&c.style.margin.bottom)?))
+    Some((
+        m(&c.style.computed().margin.top)?,
+        m(&c.style.computed().margin.bottom)?,
+    ))
 }
 
 /// Схлопывание вертикальных отступов соседних блоков.

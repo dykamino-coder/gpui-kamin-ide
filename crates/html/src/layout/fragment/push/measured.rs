@@ -172,7 +172,7 @@ fn atomic_inline_flow(e: &Element) -> bool {
         return false;
     }
     crate::layout::fragment::flow::box_children::children(&e.children).any(|n| match n {
-        Node::Element(k) if crate::layout::box_kind::out_of_flow(&k.style) => false,
+        Node::Element(k) if crate::layout::box_kind::out_of_flow(&k.style.computed()) => false,
         Node::Element(k) => {
             crate::layout::fragment::flex_lines::inline_display(k)
                 || (!crate::layout::fragment::clone::monolith_box(k) && atomic_inline_flow(k))

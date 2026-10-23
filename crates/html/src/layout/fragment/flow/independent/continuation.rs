@@ -5,7 +5,7 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 pub(super) fn continuation(e: &Element) -> bool {
-    if e.style.display == Some(Display::None) {
+    if e.style.computed().display == Some(Display::None) {
         return false;
     }
     // TRANSITIONAL(F2-4): flex_breaks экспортирует лишь первый монолит потока. Нужны
@@ -16,7 +16,7 @@ pub(super) fn continuation(e: &Element) -> bool {
         || parallel_overflow(e)
         // TRANSITIONAL(F2-1): доля блочного размера зависит от исходного definite CB,
         // который замер MaxContent отдельной копии не сохраняет.
-        || [e.style.height, e.style.min_height, e.style.max_height]
+        || [e.style.computed().height, e.style.computed().min_height, e.style.computed().max_height]
             .iter().any(|l| matches!(l, Some(Len::Pct(_))))
         || inline_continuation(e)
         || e.children.iter().any(|n| matches!(n, Node::Element(k) if continuation(k)))
@@ -27,7 +27,7 @@ pub(super) fn inline_continuation(e: &Element) -> bool {
     // собственные края/строчные продолжения; обычный рекордер строк их не хранит.
     e.first_letter
         .as_ref()
-        .is_some_and(|s| s.initial_letter.is_some())
+        .is_some_and(|s| s.computed().initial_letter.is_some())
         || e.tag == "ruby"
         || e.children
             .iter()
@@ -37,9 +37,13 @@ pub(super) fn inline_continuation(e: &Element) -> bool {
 /// TRANSITIONAL(F2-1): normal flow, остаток min-height и переполнение
 /// продолжаются отдельно; очистка детей до допуска не должна терять это.
 pub(crate) fn parallel_overflow(e: &Element) -> bool {
-    crate::layout::page::paged::visible_overflow(&e.style)
-        && [e.style.height, e.style.min_height, e.style.max_height]
-            .iter()
-            .any(|l| !matches!(l, None | Some(Len::Auto)))
+    crate::layout::page::paged::visible_overflow(&e.style.computed())
+        && [
+            e.style.computed().height,
+            e.style.computed().min_height,
+            e.style.computed().max_height,
+        ]
+        .iter()
+        .any(|l| !matches!(l, None | Some(Len::Auto)))
         && e.children.iter().any(|n| matches!(n, Node::Element(_)))
 }

@@ -24,9 +24,9 @@ pub(super) fn push(
                 unreachable!()
             };
             let margin = if reverse {
-                &mut child.style.margin.right
+                &mut child.style.used_mut().margin.right
             } else {
-                &mut child.style.margin.left
+                &mut child.style.used_mut().margin.left
             };
             *margin = Some(Len::Px(px_lossy_zero(*margin) + grow));
             return true;
@@ -41,25 +41,25 @@ pub(super) fn push(
             .find(|n| !crate::dom::whitespace::is_blank(n));
         let tail = if let Some(Node::Element(k)) = previous {
             if reverse {
-                k.style.margin.left.take()
+                k.style.used_mut().margin.left.take()
             } else {
-                k.style.margin.right.take()
+                k.style.used_mut().margin.right.take()
             }
         } else {
             None
         };
         let mut spacer = crate::layout::table::anon::anon_element("div", Vec::new());
         spacer.node_id = id ^ crate::layout::fragment::flow::blocks::STRUT_ID;
-        spacer.style.width = Some(Len::Px(grow));
-        spacer.style.flex_shrink = Some(0.0);
+        spacer.style.used_mut().width = Some(Len::Px(grow));
+        spacer.style.used_mut().flex_shrink = Some(0.0);
         if reverse {
-            spacer.style.margin.left = tail;
+            spacer.style.used_mut().margin.left = tail;
         } else {
-            spacer.style.margin.right = tail;
+            spacer.style.used_mut().margin.right = tail;
         }
         parent.children.insert(at, Node::Element(spacer));
-        if let Some(Len::Px(width)) = parent.style.width {
-            parent.style.width = Some(Len::Px(width + grow));
+        if let Some(Len::Px(width)) = parent.style.computed().width {
+            parent.style.used_mut().width = Some(Len::Px(width + grow));
         }
         return true;
     }
@@ -103,13 +103,13 @@ mod tests {
             let Node::Element(child) = &host.children[0] else {
                 panic!("child")
             };
-            assert_eq!(child.style.width, Some(Len::Px(20.0)));
+            assert_eq!(child.style.computed().width, Some(Len::Px(20.0)));
             assert_eq!(
-                child.style.margin.left,
+                child.style.computed().margin.left,
                 Some(Len::Px(if reverse { 3.0 } else { 14.0 }))
             );
             assert_eq!(
-                child.style.margin.right,
+                child.style.computed().margin.right,
                 Some(Len::Px(if reverse { 18.0 } else { 7.0 }))
             );
         }
@@ -141,12 +141,18 @@ mod tests {
                 panic!("next")
             };
             assert_eq!(next.node_id, id);
-            assert_eq!(spacer.style.width, Some(Len::Px(13.0)));
-            assert_eq!(host.style.width, Some(Len::Px(93.0)));
+            assert_eq!(spacer.style.computed().width, Some(Len::Px(13.0)));
+            assert_eq!(host.style.computed().width, Some(Len::Px(93.0)));
             let (before, after) = if reverse {
-                (previous.style.margin.left, spacer.style.margin.left)
+                (
+                    previous.style.computed().margin.left,
+                    spacer.style.computed().margin.left,
+                )
             } else {
-                (previous.style.margin.right, spacer.style.margin.right)
+                (
+                    previous.style.computed().margin.right,
+                    spacer.style.computed().margin.right,
+                )
             };
             assert_eq!(before, None);
             assert_eq!(after, Some(Len::Px(if reverse { 5.0 } else { 9.0 })));

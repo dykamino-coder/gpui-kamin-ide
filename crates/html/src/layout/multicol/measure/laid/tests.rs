@@ -22,7 +22,7 @@ fn copies_export_collapsed_margins_before_root_layout() {
     let measured = RefCell::default();
     let kids = children(
         root(&tree),
-        &Computed::default(),
+        &BoxStyle::default(),
         tree.values(),
         100.0,
         &measured,
@@ -34,7 +34,7 @@ fn copies_export_collapsed_margins_before_root_layout() {
         panic!("inner")
     };
     assert_eq!(
-        inner.style.margin.top,
+        inner.style.computed().margin.top,
         Some(crate::style::values::value::Len::Px(0.0))
     );
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
@@ -54,7 +54,7 @@ fn sibling_with_its_own_fragment_state_keeps_the_whole_preplan() {
         assert!(
             children(
                 root(&tree),
-                &Computed::default(),
+                &BoxStyle::default(),
                 tree.values(),
                 100.0,
                 &measured
@@ -73,13 +73,13 @@ fn pending_tree_waits_for_width_without_resolving_percentages() {
         "",
     );
     let host = root(&tree);
-    let pending = pending(host, &Computed::default(), tree.values()).expect("deferred tree");
+    let pending = pending(host, &BoxStyle::default(), tree.values()).expect("deferred tree");
     assert_eq!(
-        pending[0].0.style.margin.top,
+        pending[0].0.style.computed().margin.top,
         Some(crate::style::values::value::Len::Pct(0.1))
     );
     let measured = RefCell::default();
-    let kids = children(host, &Computed::default(), tree.values(), 120.0, &measured)
+    let kids = children(host, &BoxStyle::default(), tree.values(), 120.0, &measured)
         .expect("definite width");
     assert_eq!(kids[0].1.margin_top, 12.0);
     assert_eq!(kids[0].1.height, 0.0);
@@ -103,7 +103,7 @@ fn vertical_copies_export_logical_margins_without_estimating_width() {
         let measured = RefCell::default();
         let kids = vertical_children(
             &host,
-            &Computed::default(),
+            &BoxStyle::default(),
             tree.values(),
             100.0,
             reverse,
@@ -126,10 +126,10 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
     let host = super::super::block_floats(root(&tree), |_| false, Some(100.0))
         .expect("full-width float is a block in the stack");
     let measured = RefCell::default();
-    let kids = children(&host, &Computed::default(), tree.values(), 100.0, &measured)
+    let kids = children(&host, &BoxStyle::default(), tree.values(), 100.0, &measured)
         .expect("converted float has one ordinary block flow");
     assert!(kids[0].0.marks.float_block);
-    assert!(kids[0].0.style.float.is_none());
+    assert!(kids[0].0.style.computed().float.is_none());
     assert_eq!(kids[0].1.height, 0.0);
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
 }
@@ -141,14 +141,14 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
         "",
     );
     let host = root(&tree);
-    let pending = pending(host, &Computed::default(), tree.values()).expect("deferred calc");
+    let pending = pending(host, &BoxStyle::default(), tree.values()).expect("deferred calc");
     assert!(matches!(
-        pending[0].0.style.margin.top,
+        pending[0].0.style.computed().margin.top,
         Some(crate::style::values::value::Len::Calc(_))
     ));
     for width in [100.0, 200.0] {
         let measured = RefCell::default();
-        let kids = children(host, &Computed::default(), tree.values(), width, &measured)
+        let kids = children(host, &BoxStyle::default(), tree.values(), width, &measured)
             .expect("definite calc basis");
         assert_eq!(kids[0].1.margin_top, width * 0.2 + 7.0);
         assert_eq!(kids[0].1.height, 0.0);
@@ -156,7 +156,7 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
             panic!("inner")
         };
         assert_eq!(
-            inner.style.margin.top,
+            inner.style.computed().margin.top,
             Some(crate::style::values::value::Len::Px(0.0))
         );
     }
@@ -172,16 +172,16 @@ fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
             "",
         );
         let host = root(&tree);
-        let pending = pending_vertical(host, &Computed::default(), tree.values(), reverse)
+        let pending = pending_vertical(host, &BoxStyle::default(), tree.values(), reverse)
             .expect("deferred vertical calc");
         assert!(matches!(
-            pending[0].0.style.margin.left,
+            pending[0].0.style.computed().margin.left,
             Some(crate::style::values::value::Len::Calc(_))
         ));
         let measured = RefCell::default();
         let kids = vertical_children(
             host,
-            &Computed::default(),
+            &BoxStyle::default(),
             tree.values(),
             100.0,
             reverse,
@@ -200,7 +200,7 @@ fn cross_copy_clearance_keeps_the_existing_f2_preplan() {
         "",
     );
     let host = root(&tree);
-    let merged = Computed::default();
+    let merged = BoxStyle::default();
     let measured = RefCell::default();
     assert!(children(host, &merged, tree.values(), 100.0, &measured).is_none());
     assert!(pending(host, &merged, tree.values()).is_none());

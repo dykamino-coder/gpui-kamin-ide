@@ -8,7 +8,7 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::layout::fragment::{Shape, paginate};
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use std::cell::RefCell;
 
 /// TRANSITIONAL(F2-1): разрываемый float и обтекающий текст имеют разные consumed/resume.
@@ -17,22 +17,28 @@ pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
     fn separate(e: &Element) -> bool {
         // ADR P-19 TRANSITIONAL(F2-1): поля float не усекаются как поля обычного
         // блока; перенос margin box требует отдельного consumed/resume.
-        (e.style.float.is_some_and(|f| f != 0)
-            && [e.style.margin.top, e.style.margin.bottom]
-                .iter()
-                .any(|l| !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))))
+        (e.style.computed().float.is_some_and(|f| f != 0)
+            && [
+                e.style.computed().margin.top,
+                e.style.computed().margin.bottom,
+            ]
+            .iter()
+            .any(|l| !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))))
             || crate::layout::fragment::flow::parallel_overflow(e)
-            || e.style.bdb_clone
-            || e.style.text_box_trim_start
-            || e.style.text_box_trim_end
+            || e.style.computed().bdb_clone
+            || e.style.computed().text_box_trim_start
+            || e.style.computed().text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
-            || e.style.wm().vertical()
-            || e.style.column_span == Some(true)
-            || crate::layout::multicol::spanner::multicol_container(&e.style)
-            || matches!(e.style.display, Some(Display::Flex | Display::Grid))
-            || (out_of_flow(&e.style)
-                && (e.style.float.unwrap_or(0) == 0
+            || e.style.computed().wm().vertical()
+            || e.style.computed().column_span == Some(true)
+            || crate::layout::multicol::spanner::multicol_container(&e.style.computed())
+            || matches!(
+                e.style.computed().display,
+                Some(Display::Flex | Display::Grid)
+            )
+            || (out_of_flow(&e.style.computed())
+                && (e.style.computed().float.unwrap_or(0) == 0
                     || !crate::layout::fragment::clone::content_monolith_blockified(e)))
             || e.children
                 .iter()
@@ -48,7 +54,7 @@ pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
 
 pub(crate) fn pending(
     host: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(Element, Shape)>> {
     prepare(host, merged, vcx, None, &RefCell::default())
@@ -56,7 +62,7 @@ pub(crate) fn pending(
 
 pub(crate) fn children(
     host: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
@@ -66,7 +72,7 @@ pub(crate) fn children(
 
 fn prepare(
     host: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
     width: Option<f32>,
     measured: &RefCell<Vec<(u64, f32)>>,
@@ -150,10 +156,10 @@ mod tests {
             cx: Default::default(),
             frag: Default::default(),
         };
-        opts.cx.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+        opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
         let recipe = Recipe::new(
             host(&tree),
-            &Computed::default(),
+            &BoxStyle::default(),
             &opts,
             2,
             0.0,
@@ -193,7 +199,7 @@ mod tests {
         };
         let recipe = Recipe::new(
             host(&tree),
-            &Computed::default(),
+            &BoxStyle::default(),
             &opts,
             2,
             0.0,
@@ -232,7 +238,7 @@ mod tests {
         ] {
             let tree = crate::dom::parse(&format!("<div><div>{special}</div></div>"), "");
             assert!(
-                pending(host(&tree), &Computed::default(), tree.values()).is_none(),
+                pending(host(&tree), &BoxStyle::default(), tree.values()).is_none(),
                 "{special}"
             );
         }

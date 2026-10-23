@@ -29,8 +29,10 @@ pub(crate) fn refusal(
     // Flex gaps adjoining a break are truncated (Blink
     // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
     fn gapped(e: &Element) -> bool {
-        (matches!(e.style.computed().display, Some(Display::Flex) | Some(Display::Grid))
-            && e.style.computed().gap.is_some()
+        (matches!(
+            e.style.computed().display,
+            Some(Display::Flex) | Some(Display::Grid)
+        ) && e.style.computed().gap.is_some()
             && super::row_gap(&e.style.computed()).is_none())
             || (children(&e.children)
                 .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k))))

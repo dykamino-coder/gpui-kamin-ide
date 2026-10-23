@@ -4,7 +4,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::types::{Rows, StackAxis};
 use crate::layout::multicol::{column_stack::ColumnStack, deferred::Recipe};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 fn host(nodes: &[Node]) -> &Element {
     fn find(nodes: &[Node]) -> Option<&Element> {
@@ -50,7 +50,7 @@ fn reserve_views(axis: StackAxis, mode: &str) {
     };
     let recipe = Recipe::new(
         host(&tree),
-        &Computed::default(),
+        &BoxStyle::default(),
         &opts,
         2,
         0.0,

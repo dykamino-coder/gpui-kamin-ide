@@ -194,9 +194,15 @@ impl Watched {
                     }
                     boxes.insert(id, (normal, normal + length));
                     let margin = match projection.axis {
-                        crate::layout::fragment::types::StackAxis::Horizontal => (item.margin_top, item.margin_bottom),
-                        crate::layout::fragment::types::StackAxis::VerticalLr => (item.margin_left, item.margin_right),
-                        crate::layout::fragment::types::StackAxis::VerticalRl => (item.margin_right, item.margin_left),
+                        crate::layout::fragment::types::StackAxis::Horizontal => {
+                            (item.margin_top, item.margin_bottom)
+                        }
+                        crate::layout::fragment::types::StackAxis::VerticalLr => {
+                            (item.margin_left, item.margin_right)
+                        }
+                        crate::layout::fragment::types::StackAxis::VerticalRl => {
+                            (item.margin_right, item.margin_left)
+                        }
                     };
                     margins.insert(id, margin);
                     top = top.min(normal);

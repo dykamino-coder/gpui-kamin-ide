@@ -5,7 +5,7 @@ use crate::dom::{Element, Node};
 use crate::layout::block::margins::{fragment_box, fragment_margins};
 use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 pub(super) struct Group {
     pub(super) nodes: Vec<Node>,
@@ -18,7 +18,7 @@ pub(super) struct Group {
 /// и рекордера, но не заменяет настоящее дерево в native layout.
 pub(super) fn vertical_group(
     nodes: &[Node],
-    root: &Computed,
+    root: &BoxStyle,
     inline: f32,
     head: f32,
     rl: bool,
@@ -54,7 +54,7 @@ pub(super) fn vertical_group(
 
 pub(super) fn group(
     nodes: &[Node],
-    root: &Computed,
+    root: &BoxStyle,
     width: f32,
     top: f32,
     vcx: ValueCx<'_>,
@@ -62,13 +62,13 @@ pub(super) fn group(
     let [Node::Element(e)] = nodes else {
         return None;
     };
-    let floated = e.style.float.is_some_and(|f| f != 0);
+    let floated = e.style.computed().float.is_some_and(|f| f != 0);
     let float_extent = empty_floats(e);
     let eligible = if floated {
         // ADR P-19 TRANSITIONAL(F2-1): только монолит не несёт собственного продолжения
         // строк. Поля float остаются внутри BandFlow и не схлопываются.
         let mut flow = e.clone();
-        flow.style.float = None;
+        flow.style.used_mut().float = None;
         crate::layout::fragment::clone::content_monolith_blockified(e) && independent_copy(&flow)
     } else {
         independent_copy(e) || float_extent
@@ -106,10 +106,15 @@ fn decorated_lines(e: &Element) -> bool {
             Node::Element(k) => text(k),
         })
     }
-    let b = e.style.borders();
-    let decorated = [b.top, b.bottom, e.style.padding.top, e.style.padding.bottom]
-        .iter()
-        .any(|l| !matches!(l, None | Some(Len::Px(0.0))));
+    let b = e.style.computed().borders();
+    let decorated = [
+        b.top,
+        b.bottom,
+        e.style.computed().padding.top,
+        e.style.computed().padding.bottom,
+    ]
+    .iter()
+    .any(|l| !matches!(l, None | Some(Len::Px(0.0))));
     (decorated && text(e))
         || e.children
             .iter()

@@ -22,7 +22,7 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
     use super::blocks::{flex_tree, grid_tree, stacked_tree, table_tree};
     !c.inline
         && !c.marks.paginate
-        && c.style.column_span != Some(true)
+        && c.style.computed().column_span != Some(true)
         && crate::layout::fragment::clone::clone_dec(c).is_none()
         && (super::empty_floats(&logical)
             || (!separate(c, true)
@@ -37,8 +37,8 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
 pub(crate) fn logical_copy(c: &Element, rl: bool) -> Option<Element> {
     fn horizontal(e: &mut Element) {
         use crate::style::computed::writing_mode::WritingModeKw::HorizontalTb;
-        e.style.writing_mode = Some(HorizontalTb);
-        e.style.flat_mode = Some(HorizontalTb);
+        e.style.used_mut().writing_mode = Some(HorizontalTb);
+        e.style.used_mut().flat_mode = Some(HorizontalTb);
         for n in &mut e.children {
             if let Node::Element(k) = n {
                 horizontal(k);
@@ -51,19 +51,22 @@ pub(crate) fn logical_copy(c: &Element, rl: bool) -> Option<Element> {
 }
 
 fn separate(e: &Element, vertical: bool) -> bool {
-    if e.style.display == Some(Display::None) {
+    if e.style.computed().display == Some(Display::None) {
         return false;
     }
-    (e.style.display != Some(Display::Contents)
-        && (e.style.bdb_clone
-            || e.style.text_box_trim_start
-            || e.style.text_box_trim_end
+    (e.style.computed().display != Some(Display::Contents)
+        && (e.style.computed().bdb_clone
+            || e.style.computed().text_box_trim_start
+            || e.style.computed().text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
-            || (!vertical && e.style.vertical_decl() == Some(true))
-            || e.style.float.is_some_and(|f| f != 0)
-            || matches!(e.style.position, Some(Position::Absolute | Position::Fixed))
-            || crate::layout::multicol::spanner::multicol_container(&e.style)))
+            || (!vertical && e.style.computed().vertical_decl() == Some(true))
+            || e.style.computed().float.is_some_and(|f| f != 0)
+            || matches!(
+                e.style.computed().position,
+                Some(Position::Absolute | Position::Fixed)
+            )
+            || crate::layout::multicol::spanner::multicol_container(&e.style.computed())))
         || e.children
             .iter()
             .any(|n| matches!(n, Node::Element(k) if separate(k, vertical)))
@@ -125,10 +128,16 @@ mod tests {
                 let physical = authored(&tree);
                 assert!(vertical_copy(physical, rl), "{mode}: {body}");
                 let logical = logical_copy(physical, rl).unwrap();
-                assert!(!logical.style.wm().vertical());
-                assert!(physical.style.wm().vertical());
-                assert_eq!(logical.style.height, physical.style.width);
-                assert_eq!(logical.style.width, physical.style.height);
+                assert!(!logical.style.computed().wm().vertical());
+                assert!(physical.style.computed().wm().vertical());
+                assert_eq!(
+                    logical.style.computed().height,
+                    physical.style.computed().width
+                );
+                assert_eq!(
+                    logical.style.computed().width,
+                    physical.style.computed().height
+                );
                 let blocks = BlockBox::collect(&logical, ShapeCx::COLUMNS, tree.values());
                 if body.starts_with("<table") {
                     assert_eq!(blocks.table_keys().len(), 1);
@@ -162,25 +171,26 @@ mod tests {
                 "",
             );
             let mut physical = authored(&tree).clone();
-            physical.style.border_visible = [Some(true), Some(true), Some(false), Some(false)];
+            physical.style.used_mut().border_visible =
+                [Some(true), Some(true), Some(false), Some(false)];
             assert!(vertical_copy(&physical, rl));
             assert!(super::super::transpose_tree(&physical, rl).is_none());
             let logical = logical_copy(&physical, rl).unwrap();
             assert_eq!(
-                logical.style.margin.top,
+                logical.style.computed().margin.top,
                 Some(Len::Px(if rl { 2.0 } else { 4.0 }))
             );
             assert_eq!(
-                logical.style.margin.bottom,
+                logical.style.computed().margin.bottom,
                 Some(Len::Px(if rl { 4.0 } else { 2.0 }))
             );
-            assert_eq!(logical.style.margin.left, Some(Len::Px(3.0)));
-            assert_eq!(logical.style.margin.right, Some(Len::Px(1.0)));
+            assert_eq!(logical.style.computed().margin.left, Some(Len::Px(3.0)));
+            assert_eq!(logical.style.computed().margin.right, Some(Len::Px(1.0)));
             assert_eq!(
-                logical.style.border_visible,
+                logical.style.computed().border_visible,
                 [Some(rl), Some(true), Some(!rl), Some(false)]
             );
-            assert!(physical.style.wm().vertical());
+            assert!(physical.style.computed().wm().vertical());
         }
     }
 }

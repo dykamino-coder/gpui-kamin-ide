@@ -7,14 +7,14 @@ use crate::layout::multicol::column_stack::ColumnStack;
 use crate::layout::multicol::container::kids::{column_kids, stack_children};
 use crate::layout::multicol::measure::laid;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, App, Pixels, Window};
 use std::cell::RefCell;
 
 /// Исходное дерево, без LayoutId и изменяемых рекордеров от пробной раскладки.
 pub(crate) struct Recipe {
     pub(crate) host: Element,
-    pub(crate) merged: Computed,
+    pub(crate) merged: BoxStyle,
     pub(crate) opts: RenderOpts,
     pub(crate) count: u16,
     pub(crate) gap: f32,
@@ -28,7 +28,7 @@ impl Recipe {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         host: &Element,
-        merged: &Computed,
+        merged: &BoxStyle,
         opts: &RenderOpts,
         count: u16,
         gap: f32,
@@ -71,10 +71,11 @@ impl Recipe {
             .filter_map(|n| {
                 let Node::Element(c) = n else { return None };
                 Some(side_margin_wrap(
-                    self.opts
-                        .cx
-                        .build
-                        .element(c, &self.merged, &self.opts.in_stack_copy()),
+                    self.opts.cx.contracts.build.element(
+                        c,
+                        &self.merged,
+                        &self.opts.in_stack_copy(),
+                    ),
                     c,
                     false,
                 ))

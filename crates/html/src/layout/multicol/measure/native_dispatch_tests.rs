@@ -4,7 +4,7 @@ use super::stack_plan;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::types::Rows;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 fn host(nodes: &[Node]) -> &Element {
@@ -76,9 +76,9 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                         "vertical-rl" => WritingModeKw::VerticalRl,
                         _ => WritingModeKw::HorizontalTb,
                     };
-                    e.style.writing_mode = Some(wm);
-                    e.style.flat_mode = Some(wm);
-                    e.style.rtl = Some(rtl);
+                    e.style.used_mut().writing_mode = Some(wm);
+                    e.style.used_mut().flat_mode = Some(wm);
+                    e.style.used_mut().rtl = Some(rtl);
                     for n in &mut e.children {
                         if let Node::Element(k) = n {
                             writing(k, mode, rtl);
@@ -87,7 +87,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                 }
                 writing(&mut root, mode, rtl);
                 for auto in [false, true] {
-                    root.style.column_fill_auto = Some(auto);
+                    root.style.used_mut().column_fill_auto = Some(auto);
                     for width in [None, Some(Len::Px(240.0))] {
                         for rows in [
                             None,
@@ -99,11 +99,11 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                             }),
                         ] {
                             let mut opts = opts();
-                            opts.cx.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+                            opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
                             let plan = stack_plan(
                                 &root,
-                                &root.style,
-                                &Computed::default(),
+                                &BoxStyle::shared(root.style.computed()),
+                                &BoxStyle::default(),
                                 &opts,
                                 2,
                                 0.0,
@@ -157,8 +157,8 @@ fn continuation_groups_keep_their_explicit_f2_routes() {
         let opts = opts();
         let plan = stack_plan(
             root,
-            &root.style,
-            &Computed::default(),
+            &BoxStyle::shared(root.style.computed()),
+            &BoxStyle::default(),
             &opts,
             2,
             0.0,
@@ -176,8 +176,14 @@ fn continuation_groups_keep_their_explicit_f2_routes() {
             };
             assert!(!crate::layout::fragment::flow::independent_copy(flex));
             assert!(
-                super::laid::children(root, &root.style, tree.values(), 120.0, &Default::default())
-                    .is_none()
+                super::laid::children(
+                    root,
+                    &BoxStyle::shared(root.style.computed()),
+                    tree.values(),
+                    120.0,
+                    &Default::default()
+                )
+                .is_none()
             );
             assert!(plan.stackable.is_some());
         } else {

@@ -63,8 +63,8 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
 fn fieldset_fragment_keeps_child_end_margin_inside_its_bfc() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut child = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
-    child.style.height = Some(Len::Px(70.0));
-    child.style.margin.bottom = Some(Len::Px(50.0));
+    child.style.used_mut().height = Some(Len::Px(70.0));
+    child.style.used_mut().margin.bottom = Some(Len::Px(50.0));
     let fieldset = Element::synthetic(
         "fieldset",
         Computed::default(),
@@ -76,5 +76,5 @@ fn fieldset_fragment_keeps_child_end_margin_inside_its_bfc() {
     let Node::Element(child) = &fieldset.children[0] else {
         panic!("child")
     };
-    assert_eq!(child.style.margin.bottom, Some(Len::Px(50.0)));
+    assert_eq!(child.style.computed().margin.bottom, Some(Len::Px(50.0)));
 }

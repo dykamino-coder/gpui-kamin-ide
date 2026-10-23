@@ -9,8 +9,8 @@ pub(crate) fn children(nodes: &[Node]) -> impl Iterator<Item = &Node> {
     std::iter::from_fn(move || {
         loop {
             match stack.last_mut()?.next() {
-                Some(Node::Element(e)) if e.style.display == Some(Display::None) => {}
-                Some(Node::Element(e)) if e.style.display == Some(Display::Contents) => {
+                Some(Node::Element(e)) if e.style.computed().display == Some(Display::None) => {}
+                Some(Node::Element(e)) if e.style.computed().display == Some(Display::Contents) => {
                     stack.push(e.children.iter());
                 }
                 Some(n) => return Some(n),
@@ -27,25 +27,27 @@ pub(crate) fn children(nodes: &[Node]) -> impl Iterator<Item = &Node> {
 /// а голый текст получает анонимную строчную коробку, как при table fixup.
 pub(crate) fn projected(
     nodes: &[Node],
-    parent: &crate::style::computed::Computed,
+    parent: &crate::style::computed::BoxStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Node> {
-    use crate::style::cascade::inherit::inherit_unpainted;
+    use crate::style::cascade::{inherit::inherit_unpainted, materialize::box_style_unpainted};
     use crate::style::computed::Computed;
     let mut out = Vec::new();
     for n in nodes {
         match n {
-            Node::Element(e) if e.style.display == Some(Display::None) => {}
-            Node::Element(e) if e.style.display == Some(Display::Contents) => {
-                let merged = inherit_unpainted(parent, &e.style, vcx);
+            Node::Element(e) if e.style.computed().display == Some(Display::None) => {}
+            Node::Element(e) if e.style.computed().display == Some(Display::Contents) => {
+                let merged = box_style_unpainted(parent, &e.style, vcx);
                 let promoted: Vec<_> = e
                     .children
                     .iter()
                     .map(|n| match n {
                         Node::Element(k) => {
                             let mut k = k.clone();
-                            k.style =
-                                resolved_copy(inherit_unpainted(&merged, &k.style, vcx)).into();
+                            k.style = resolved_copy(
+                                box_style_unpainted(&merged, &k.style, vcx).into_computed(),
+                            )
+                            .into();
                             Node::Element(k)
                         }
                         Node::Text(t) => {
@@ -54,11 +56,10 @@ pub(crate) fn projected(
                                 vec![Node::Text(t.clone())],
                             );
                             span.inline = true;
-                            span.style = resolved_copy(inherit_unpainted(
-                                &merged,
-                                &Computed::default(),
-                                vcx,
-                            ))
+                            span.style = resolved_copy(
+                                inherit_unpainted(&merged, &Computed::default(), vcx)
+                                    .into_computed(),
+                            )
                             .into();
                             Node::Element(span)
                         }
@@ -78,24 +79,10 @@ pub(crate) fn projected(
 fn resolved_copy(mut c: crate::style::computed::Computed) -> crate::style::computed::Computed {
     c.explicit_inherit.clear();
     c.inherit_bits = 0;
-    c.grid_areas_inherit = false;
+    c.inherit_longhands = Default::default();
     c.border_inherit = false;
-    c.border_inherit_w = [false; 4];
-    c.border_inherit_s = [false; 4];
-    c.border_inherit_c = [false; 4];
-    c.padding_inherit = false;
-    c.margin_inherit = [false; 4];
-    c.padding_inherit_side = [false; 4];
     c.shadow_inherit = false;
-    c.background_inherit = false;
-    c.background_all_inherit = false;
-    c.width_inherit = false;
-    c.height_inherit = false;
-    c.minmax_inherit = [false; 4];
-    c.inset_inherit = [false; 4];
     c.text_overflow_inherit = false;
-    c.align_self_inherit = false;
-    c.align_inherit = 0;
     c.bidi_inherit = false;
     c.clear_inherit = false;
     c.content_inherit = false;

@@ -5,7 +5,7 @@ use crate::layout::fragment::{
     ShapeCx,
     flow::{blocks::BlockBox, independent_copy, vertical_copy},
 };
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 fn root(nodes: &[Node]) -> &Element {
@@ -39,7 +39,7 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
             // давать тот же набор коробок без повторного разбора DOM.
             let mut hidden = e.clone();
             hidden.node_id = u64::MAX;
-            hidden.style.display = Some(crate::style::computed::Display::None);
+            hidden.style.used_mut().display = Some(crate::style::computed::Display::None);
             let hidden_id = hidden.node_id;
             let Node::Element(contents) = &mut e.children[0] else {
                 panic!("contents")
@@ -78,24 +78,24 @@ fn promoted_copies_keep_inheritance_without_contents_box_properties() {
         "",
     );
     let e = root(&tree);
-    let nodes = projected(&e.children, &Computed::default(), tree.values());
+    let nodes = projected(&e.children, &BoxStyle::default(), tree.values());
     assert_eq!(nodes.len(), 2);
     let [Node::Element(text), Node::Element(block)] = nodes.as_slice() else {
         panic!("copies")
     };
     assert!(text.inline);
-    assert_eq!(text.style.font_size, Some(Len::Px(30.0)));
-    assert_eq!(block.style.font_size, Some(Len::Px(60.0)));
-    assert_eq!(text.style.color, block.style.color);
-    assert_eq!(text.style.padding.top, None);
-    assert_eq!(block.style.padding.top, None);
+    assert_eq!(text.style.computed().font_size, Some(Len::Px(30.0)));
+    assert_eq!(block.style.computed().font_size, Some(Len::Px(60.0)));
+    assert_eq!(text.style.computed().color, block.style.computed().color);
+    assert_eq!(text.style.computed().padding.top, None);
+    assert_eq!(block.style.computed().padding.top, None);
     let resolved = crate::style::cascade::inherit::inherit_unpainted(
-        &Computed::default(),
-        &block.style,
+        &BoxStyle::default(),
+        &block.style.computed(),
         tree.values(),
     );
-    assert_eq!(resolved.font_size, block.style.font_size);
-    assert_eq!(resolved.color, block.style.color);
+    assert_eq!(resolved.font_size, block.style.computed().font_size);
+    assert_eq!(resolved.color, block.style.computed().color);
 }
 
 #[test]
@@ -106,12 +106,12 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
         "",
     );
     let root = root(&tree);
-    let parent = inherit_unpainted(&Computed::default(), &root.style, tree.values());
+    let parent = inherit_unpainted(&BoxStyle::default(), &root.style.computed(), tree.values());
     let projected = projected(&root.children, &parent, tree.values());
     let [Node::Element(copy)] = projected.as_slice() else {
         panic!("one copy")
     };
-    let rebound = inherit_unpainted(&parent, &copy.style, tree.values());
+    let rebound = inherit_unpainted(&parent, &copy.style.computed(), tree.values());
     // Вложенный contents наследует только явно запрошенные box-свойства:
     // без собственных padding/margin/width он передаёт начальные значения.
     assert_eq!(rebound.padding.top, None);
@@ -127,15 +127,17 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
     let Node::Element(inner) = &mut outer.children[0] else {
         panic!("inner")
     };
-    inner.style.padding_inherit = true;
-    inner.style.margin_inherit = [true; 4];
-    inner.style.width_inherit = true;
-    inner.style.background_inherit = true;
+    for property in ["padding", "margin", "width", "background"] {
+        inner
+            .style
+            .cascaded_mut()
+            .apply_one(property, "inherit", tree.values());
+    }
     let projected = super::projected(&contents, &parent, tree.values());
     let [Node::Element(copy)] = projected.as_slice() else {
         panic!("one copy")
     };
-    let rebound = inherit_unpainted(&parent, &copy.style, tree.values());
+    let rebound = inherit_unpainted(&parent, &copy.style.computed(), tree.values());
     assert_eq!(rebound.padding.top, Some(Len::Px(11.0)));
     assert_eq!(rebound.margin.top, Some(Len::Px(12.0)));
     assert_eq!(rebound.width, Some(Len::Px(13.0)));

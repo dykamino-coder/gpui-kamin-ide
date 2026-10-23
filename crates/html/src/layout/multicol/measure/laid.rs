@@ -8,14 +8,14 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::Shape;
 use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use std::cell::RefCell;
 
 /// Все соседи должны измеряться до плана: предварительные планы clone и
 /// вложенных рядов иначе прочитали бы ещё не разложенные высоты соседей.
 pub(crate) fn children(
     host: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
@@ -31,7 +31,9 @@ pub(crate) fn children(
     if !flow.iter().all(|n| match n {
         // ADR P-19 TRANSITIONAL(F2-2): static position зависит от разложенных соседей;
         // удаление OOF до замера теряет его исходное место в потоке.
-        Node::Element(c) => !out_of_flow(&c.style) && (independent_copy(c) || empty_floats(c)),
+        Node::Element(c) => {
+            !out_of_flow(&c.style.computed()) && (independent_copy(c) || empty_floats(c))
+        }
         _ => false,
     }) {
         return None;
@@ -39,7 +41,7 @@ pub(crate) fn children(
     let kids: Option<Vec<_>> = flow
         .into_iter()
         .filter_map(|n| match n {
-            Node::Element(c) if !out_of_flow(&c.style) => Some(c),
+            Node::Element(c) if !out_of_flow(&c.style.computed()) => Some(c),
             _ => None,
         })
         .map(|c| {
@@ -67,7 +69,7 @@ pub(crate) fn children(
 /// Числовые поля этой записи не участвуют в плане: deferred строит её заново.
 pub(crate) fn pending(
     host: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(Element, Shape)>> {
     // ADR P-19 TRANSITIONAL(F2-1): clearance следующей копии зависит от float bands предыдущей.
@@ -95,7 +97,7 @@ pub(crate) fn pending(
 /// свойства краёв читает только метадата рекордера, без оценки размера.
 pub(crate) fn vertical_children(
     host: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
     width: f32,
     reverse: bool,
@@ -125,9 +127,15 @@ pub(crate) fn vertical_children(
                 _ => None,
             };
             let (start, end) = if reverse {
-                (c.style.margin.right, c.style.margin.left)
+                (
+                    c.style.computed().margin.right,
+                    c.style.computed().margin.left,
+                )
             } else {
-                (c.style.margin.left, c.style.margin.right)
+                (
+                    c.style.computed().margin.left,
+                    c.style.computed().margin.right,
+                )
             };
             Some((
                 c,
@@ -149,7 +157,7 @@ pub(crate) fn vertical_children(
 /// Вертикальное исходное дерево до определения строчного размера.
 pub(crate) fn pending_vertical(
     host: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
     reverse: bool,
 ) -> Option<Vec<(Element, Shape)>> {

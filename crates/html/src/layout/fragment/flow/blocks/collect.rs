@@ -110,9 +110,17 @@ pub(super) fn push_kids(
             // Внепоточные соседей не двигают (CSS 2.1 §9.3.1) и границу
             // соседей не прерывают.
             Node::Element(k) if out_of_flow(&k.style.computed()) => continue,
-            Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => continue,
-            Node::Element(k) if !k.inline && k.style.computed().display != Some(Display::Contents) => k,
-            Node::Element(k) if k.inline && k.style.computed().display.is_none() && holds_blocks(k) => {
+            Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => {
+                continue;
+            }
+            Node::Element(k)
+                if !k.inline && k.style.computed().display != Some(Display::Contents) =>
+            {
+                k
+            }
+            Node::Element(k)
+                if k.inline && k.style.computed().display.is_none() && holds_blocks(k) =>
+            {
                 push_kids(&k.children, out, adjoins, cx, vcx);
                 continue;
             }

@@ -10,7 +10,7 @@ fn empty_page_grid_uses_native_group_without_estimated_shape() {
         "",
     );
     let nodes = [Node::Element(authored(&tree).clone())];
-    let p = group(&nodes, &Computed::default(), 120.0, 0.0, tree.values()).unwrap();
+    let p = group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).unwrap();
     assert!(p.blocks);
     let Node::Element(e) = &p.nodes[0] else {
         panic!("grid")
@@ -42,23 +42,23 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
         "",
     );
     let nodes = [Node::Element(authored(&tree).clone())];
-    let p = group(&nodes, &Computed::default(), 120.0, 15.0, tree.values())
+    let p = group(&nodes, &BoxStyle::default(), 120.0, 15.0, tree.values())
         .expect("native monolithic float");
     assert!(!p.blocks);
     assert_eq!(p.margins, (0.0, 0.0, 0.0));
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float")
     };
-    assert_eq!(e.style.float, Some(-1));
-    assert_eq!(e.style.margin.top, Some(Len::Px(24.0)));
-    assert_eq!(e.style.margin.bottom, Some(Len::Px(12.0)));
+    assert_eq!(e.style.computed().float, Some(-1));
+    assert_eq!(e.style.computed().margin.top, Some(Len::Px(24.0)));
+    assert_eq!(e.style.computed().margin.bottom, Some(Len::Px(12.0)));
 }
 
 #[test]
 fn flowing_page_float_requires_its_own_continuation() {
     let tree = crate::dom::parse("<div style='float:left;width:20px'>flowing text</div>", "");
     let nodes = [Node::Element(authored(&tree).clone())];
-    assert!(group(&nodes, &Computed::default(), 120.0, 0.0, tree.values()).is_none());
+    assert!(group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).is_none());
 }
 
 #[test]
@@ -68,12 +68,12 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
         "",
     );
     let nodes = [Node::Element(authored(&tree).clone())];
-    let p = group(&nodes, &Computed::default(), 120.0, 0.0, tree.values()).unwrap();
+    let p = group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).unwrap();
     assert!(p.blocks && p.float_extent);
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float host")
     };
-    assert_eq!(e.style.width, Some(Len::Px(100.0)));
+    assert_eq!(e.style.computed().width, Some(Len::Px(100.0)));
 }
 
 #[test]
@@ -86,14 +86,14 @@ fn vertical_empty_page_floats_keep_bandflow_extent_and_physical_tree() {
             "",
         );
         let nodes = [Node::Element(authored(&tree).clone())];
-        let p = vertical_group(&nodes, &Computed::default(), 120.0, 0.0, rl, tree.values())
+        let p = vertical_group(&nodes, &BoxStyle::default(), 120.0, 0.0, rl, tree.values())
             .expect("native empty floats");
         assert!(p.blocks && p.float_extent);
         let Node::Element(e) = &p.nodes[0] else {
             panic!("host")
         };
-        assert!(e.style.wm().vertical());
-        assert_eq!(e.style.height, Some(Len::Px(100.0)));
+        assert!(e.style.computed().wm().vertical());
+        assert_eq!(e.style.computed().height, Some(Len::Px(100.0)));
         assert_eq!(e.children.len(), 2);
     }
 }
@@ -112,7 +112,7 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
             let nodes = [Node::Element(authored(&tree).clone())];
             for head in [0.0, 11.0] {
                 let p =
-                    vertical_group(&nodes, &Computed::default(), 100.0, head, rl, tree.values())
+                    vertical_group(&nodes, &BoxStyle::default(), 100.0, head, rl, tree.values())
                         .expect("independent vertical page group");
                 let (start, end) = if rl { (7.0, 13.0) } else { (13.0, 7.0) };
                 assert_eq!(
@@ -126,9 +126,9 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
                 let Node::Element(physical) = &p.nodes[0] else {
                     panic!("block")
                 };
-                assert!(physical.style.wm().vertical());
-                assert_eq!(physical.style.margin.left, Some(Len::Px(13.0)));
-                assert_eq!(physical.style.margin.right, Some(Len::Px(7.0)));
+                assert!(physical.style.computed().wm().vertical());
+                assert_eq!(physical.style.computed().margin.left, Some(Len::Px(13.0)));
+                assert_eq!(physical.style.computed().margin.right, Some(Len::Px(7.0)));
                 let cx = ShapeCx {
                     paged: true,
                     ..ShapeCx::COLUMNS
@@ -170,7 +170,7 @@ fn vertical_page_grid_table_and_flex_use_native_recorders_without_an_estimate() 
                 "",
             );
             let nodes = [Node::Element(authored(&tree).clone())];
-            let p = vertical_group(&nodes, &Computed::default(), 100.0, 0.0, rl, tree.values())
+            let p = vertical_group(&nodes, &BoxStyle::default(), 100.0, 0.0, rl, tree.values())
                 .unwrap();
             let w = super::super::breaks::recorder(
                 &p.nodes,

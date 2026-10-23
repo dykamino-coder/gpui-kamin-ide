@@ -32,8 +32,16 @@ fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
     let turn = |s: &crate::style::computed::Sides| crate::style::computed::Sides {
         top: if rl { s.right } else { s.left },
         bottom: if rl { s.left } else { s.right },
-        left: if c.style.cascaded().wm().rtl() { s.bottom } else { s.top },
-        right: if c.style.cascaded().wm().rtl() { s.top } else { s.bottom },
+        left: if c.style.cascaded().wm().rtl() {
+            s.bottom
+        } else {
+            s.top
+        },
+        right: if c.style.cascaded().wm().rtl() {
+            s.top
+        } else {
+            s.bottom
+        },
     };
     let mut t = c.clone();
     let source = c.style.computed();
@@ -49,9 +57,17 @@ fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
     let v = source.border_visible;
     used.border_visible = [
         if rl { v[1] } else { v[3] },
-        if c.style.cascaded().wm().rtl() { v[0] } else { v[2] },
+        if c.style.cascaded().wm().rtl() {
+            v[0]
+        } else {
+            v[2]
+        },
         if rl { v[3] } else { v[1] },
-        if c.style.cascaded().wm().rtl() { v[2] } else { v[0] },
+        if c.style.cascaded().wm().rtl() {
+            v[2]
+        } else {
+            v[0]
+        },
     ];
     // Обрезка ПО ОСИ ПОТОКА: в вертикальном письме это `overflow-x`.
     used.overflow_y = source.overflow_x;

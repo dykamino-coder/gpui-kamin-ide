@@ -81,7 +81,7 @@ mod tests {
         let host = find(&tree).unwrap();
         let recipe = Recipe::new(
             host,
-            &Computed::default(),
+            &BoxStyle::default(),
             &opts,
             2,
             0.0,
@@ -126,7 +126,7 @@ mod tests {
         let c = find(&tree).expect("authored grid");
         let registry = RefCell::default();
         let (_, shape) =
-            measured(c, &Computed::default(), tree.values(), 120.0, &registry).expect("copy");
+            measured(c, &BoxStyle::default(), tree.values(), 120.0, &registry).expect("copy");
         assert_eq!((shape.margin_top, shape.margin_bottom), (12.0, 6.0));
         assert_eq!(shape.height, 0.0);
         assert_eq!(*registry.borrow(), vec![(c.node_id, 120.0)]);

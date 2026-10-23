@@ -105,9 +105,15 @@ impl FlowMeasure {
     ) -> Vec<super::LinePush> {
         let mut pushes = Vec::new();
         self.records.for_each(window, |bounds, record| {
-            let Some(offset) = record.offset(origin, size, axis, bounds) else { return; };
+            let Some(offset) = record.offset(origin, size, axis, bounds) else {
+                return;
+            };
             pushes.extend(record.starts.borrow().iter().enumerate().map(|(line, at)| {
-                super::LinePush { at: offset + at, line, growth: record.growth.clone() }
+                super::LinePush {
+                    at: offset + at,
+                    line,
+                    growth: record.growth.clone(),
+                }
             }));
         });
         pushes
@@ -165,7 +171,15 @@ impl Record {
         axis: StackAxis,
         bounds: gpui::Bounds<Pixels>,
     ) -> Option<f32> {
-        if self.axis != axis { return None; }
-        Some(super::coordinates::block_offset(origin, size, bounds.origin, bounds.size, axis))
+        if self.axis != axis {
+            return None;
+        }
+        Some(super::coordinates::block_offset(
+            origin,
+            size,
+            bounds.origin,
+            bounds.size,
+            axis,
+        ))
     }
 }

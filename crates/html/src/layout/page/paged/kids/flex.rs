@@ -84,7 +84,8 @@ pub(super) fn regrow(
         } else {
             rec.copy_recorder(part)
         });
-        let scope = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
+        let scope =
+            crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
         let mut wrap = super::frame::wrap(padding, ah, first, vertical);
         if matches!(dom.tag.as_str(), "html" | "body")
             && matches!(dom.style.computed().height, Some(Len::Pct(_)))

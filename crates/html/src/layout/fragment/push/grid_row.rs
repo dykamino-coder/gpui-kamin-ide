@@ -81,13 +81,13 @@ mod tests {
             let mut item =
                 Element::synthetic("div", Default::default(), Default::default(), vec![]);
             item.node_id = 2;
-            item.style.margin.bottom = Some(Len::Px(3.0));
-            item.style.margin.right = Some(Len::Px(5.0));
-            item.style.margin.left = Some(Len::Px(7.0));
+            item.style.used_mut().margin.bottom = Some(Len::Px(3.0));
+            item.style.used_mut().margin.right = Some(Len::Px(5.0));
+            item.style.used_mut().margin.left = Some(Len::Px(7.0));
             let mut grid =
                 Element::synthetic("div", Default::default(), Default::default(), vec![]);
             grid.node_id = 1;
-            grid.style.grid_rows = Some(vec![TrackSize::Single(Track::Px(20.0))]);
+            grid.style.used_mut().grid_rows = Some(vec![TrackSize::Single(Track::Px(20.0))]);
             grid.children.push(Node::Element(item));
             let row = RowPush {
                 grid: 1,
@@ -105,9 +105,9 @@ mod tests {
             };
             assert_eq!(
                 (
-                    item.style.margin.bottom,
-                    item.style.margin.right,
-                    item.style.margin.left
+                    item.style.computed().margin.bottom,
+                    item.style.computed().margin.right,
+                    item.style.computed().margin.left
                 ),
                 (
                     Some(Len::Px(expected.0)),
@@ -116,7 +116,7 @@ mod tests {
                 )
             );
             assert_eq!(
-                grid.style.grid_rows,
+                grid.style.computed().grid_rows,
                 Some(vec![TrackSize::Single(Track::Px(31.0))])
             );
         }
