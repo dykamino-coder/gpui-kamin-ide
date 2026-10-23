@@ -69,6 +69,23 @@ fn wrap_reverse_propagates_semantic_edge_lines() {
 }
 
 #[test]
+fn reversing_document_order_changes_propagation_despite_identical_physical_lines() {
+    // Разворот DOM не эквивалентен wrap-reverse для переноса break-before (§10).
+    let physical: &[&[u64]] = &[&[6, 5], &[4, 3], &[2, 1]];
+    for (order, expected) in [
+        ([1, 2, 3, 4, 5, 6], (false, true)),
+        ([6, 5, 4, 3, 2, 1], (true, false)),
+    ] {
+        let (mut root, laid) = scenario(false, physical, &order);
+        for item in &mut root.flex.as_mut().unwrap().items {
+            item.avoid_before = item.id == 2;
+            item.force_before = item.id == 5;
+        }
+        assert_eq!(root.edge(false, &laid), expected);
+    }
+}
+
+#[test]
 fn reverse_columns_each_propagate_their_semantic_edges() {
     let (mut root, laid) = scenario(true, &[&[4, 3], &[2, 1]], &[1, 2, 3, 4]);
     let items = &mut root.flex.as_mut().unwrap().items;
