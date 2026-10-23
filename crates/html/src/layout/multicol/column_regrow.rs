@@ -72,8 +72,15 @@ impl ColumnStack {
                     h
                 };
                 // Видимое переполнение измеренной блочной копии продолжает
-                // свой параллельный поток независимо от её border box.
-                c.over = c.over.max(f32::from(content.height));
+                // свой параллельный поток независимо от её border box; коробка,
+                // обрезающая блочную ось (`overflow: clip/hidden`), потока не
+                // имеет (css-break-3 §3, css-overflow-3).
+                if c.regrow
+                    .as_ref()
+                    .is_some_and(|r| crate::layout::page::paged::visible_overflow(&r.source.style))
+                {
+                    c.over = c.over.max(f32::from(content.height));
+                }
                 c.h = h;
             }
             let sections = c.replace_breaks(sz, axis, window);

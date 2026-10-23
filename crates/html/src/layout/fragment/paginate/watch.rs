@@ -56,6 +56,8 @@ pub(crate) struct Watched {
     paint_owners: Rc<RefCell<HashMap<u64, usize>>>,
     /// Маска предка окна фрагмента на время краски копии (`owner`).
     paint_outer: Rc<RefCell<Option<gpui::ContentMask<Pixels>>>>,
+    /// Flex-контейнеры `blocks`: раскладываются в контексте фрагментации.
+    flex_ids: std::cell::OnceCell<HashSet<u64>>,
 }
 
 impl Watched {
@@ -168,6 +170,8 @@ impl Watched {
             flex_lines: self.flex_lines.clone(),
             paint_owners: self.paint_owners.clone(),
             paint_outer: self.paint_outer.clone(),
+            // Вложенные flex-контейнеры — тоже из стопки родителя.
+            flex_ids: self.flex_ids_of().clone().into(),
         })
     }
 
