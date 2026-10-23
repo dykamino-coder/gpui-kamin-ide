@@ -161,7 +161,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         &html,
         crate::BROWSER_CSS,
         (w, h),
-        opts.cx.values.doc().media().print,
+        opts.cx.doc().media().print,
         responsive,
         !e.attr("scrolling")
             .is_some_and(|v| v.eq_ignore_ascii_case("no")),
@@ -169,7 +169,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             preferred_dark: st.embedding_dark_scheme,
             owner_dark: st.dark_color_scheme,
         }),
-        &opts.cx.values.doc().metrics.font_context(),
+        &opts.cx.doc().metrics.font_context(),
     );
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.
@@ -232,7 +232,11 @@ pub(crate) fn build_embedded(
         sub.root_style().style_rc(),
         sub.cx.vcx(),
     );
-    let mut kids = sub.cx.contracts.build.blocks(&nodes, &sub.root_style(), &sub);
+    let mut kids = sub
+        .cx
+        .contracts
+        .build
+        .blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(icb_layer.finish());
     kids.into_iter()
         .map(|k| crate::document::state::Scoped::wrap(&embedded.state, k))

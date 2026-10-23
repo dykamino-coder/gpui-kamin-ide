@@ -84,17 +84,17 @@ pub(super) fn row_band_probes(
     carry: crate::layout::table::anon::RowCarry<'_>,
     cx: &LayoutCx,
 ) -> RowBands {
-    let rs = row.style.computed();
     // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
     // ячеек, снятыми пробами этого кадра (`RowRects`).
+    let rs = row.style.computed();
     let row_rects: Option<crate::layout::table::probes::RowRects> =
         (!crate::layout::table::anon::row_collapsed(row, carry.group)
-            && (row.style.computed().bg_image.is_some()
-                || row.style.computed().gradient_raw.is_some()
-                || (row.style.computed().background.is_some() && row.style.computed().bg_clip.is_some())
-                || !row.style.computed().shadows.is_empty()))
+            && (rs.bg_image.is_some()
+                || rs.gradient_raw.is_some()
+                || (rs.background.is_some() && rs.bg_clip.is_some())
+                || !rs.shadows.is_empty()))
         .then(crate::layout::table::probes::RowRects::default);
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
     // полоса идёт от левого края крайней левой колонки до правого края
@@ -106,12 +106,13 @@ pub(super) fn row_band_probes(
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
     let grp_band: Option<crate::layout::table::probes::RowRects> = carry.group.and_then(|g| {
-        (g.style.computed().collapsed != Some(true)
-            && (g.style.computed().bg_image.is_some()
-                || g.style.computed().gradient_raw.is_some()
-                || (g.style.computed().background.is_some() && g.style.computed().bg_clip.is_some())
-                || !g.style.computed().shadows.is_empty()
-                || g.style.computed().outline.is_some()))
+        let gs = g.style.computed();
+        (gs.collapsed != Some(true)
+            && (gs.bg_image.is_some()
+                || gs.gradient_raw.is_some()
+                || (gs.background.is_some() && gs.bg_clip.is_some())
+                || !gs.shadows.is_empty()
+                || gs.outline.is_some()))
         .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.group)
@@ -122,7 +123,9 @@ pub(super) fn row_band_probes(
             band_style.bg_image = band_style.gradient_raw.clone();
         }
         // Полоса только с обводкой не дублирует цвет, который несут ячейки.
-        if band_style.bg_image.is_none() && g.style.computed().shadows.is_empty() && g.style.computed().bg_clip.is_none()
+        if band_style.bg_image.is_none()
+            && g.style.computed().shadows.is_empty()
+            && g.style.computed().bg_clip.is_none()
         {
             band_style.background = None;
         }
@@ -208,24 +211,16 @@ pub(super) fn cell_cascaded_style(
     {
         cm.ortho_limit = Some(h);
     }
-    // Инлайн-мера ячейки ПАРАЛЛЕЛЬНОЙ таблицы — дорожка КОЛОНКИ, не стол. Предел, приехавший сверху
-    // наследованием, тут запасной по §7.3, а запас ставится ТОЛЬКО на
-    // место неопределённого инлайн-места — у ячейки оно определённое
-    // (css-tables-3 §computing-column-measures). Blink тем же
-    // условием: `space_utils.h:36` выходит при
-    // `IsParallelWritingMode(таблица, ячейка)`, а
-    // `table_layout_utils.cc:1363` даёт ячейке место из
-    // `column_locations`. Пометка не гасит предел (он ещё нужен
-    // потолком: колонка не шире стола), а меняет способ замера —
-    // см. `col_min` в `paragraph()`.
-    //
-    // Гейт узкий намеренно: письмо должно стоять на САМОМ столе
-    // (`e.style.vertical`, тот же гейт, что у транспонирования
-    // решётки и `spacing_phys`), и предел должен уже быть — иначе
-    // ничего не меняется. У анонимной обёртки `display: table-cell`
-    // (`anon_element("table", …)`, стиль `Computed::default()`)
-    // `e.style.vertical` пуст, поэтому семья `line-box-direction-*`
-    // гейтом не задевается.
+    // Инлайн-мера ячейки ПАРАЛЛЕЛЬНОЙ таблицы — дорожка КОЛОНКИ, не стол.
+    // Унаследованный предел — запас по §7.3 лишь для неопределённого места;
+    // у ячейки оно определённое (css-tables-3 §computing-column-measures).
+    // Blink: space_utils.h:36 выходит при IsParallelWritingMode, а
+    // table_layout_utils.cc:1363 даёт место из column_locations.
+    // ortho_col меняет замер в paragraph()/col_min, но сохраняет предел
+    // потолком: колонка не шире стола. Письмо должно быть на САМОМ столе
+    // (гейт транспонирования решётки и spacing_phys), предел уже задан.
+    // У анонимной обёртки table-cell (anon_element("table", …),
+    // Computed::default()) своё письмо пусто: line-box-direction-* не затронуты.
     if e.style.cascaded().wm().vertical() && cm.ortho_limit.is_some() {
         cm.ortho_col = true;
     }

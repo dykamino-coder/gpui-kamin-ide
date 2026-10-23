@@ -62,10 +62,7 @@ pub(super) fn atom_element_raw(
     {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(
-            opts.cx.contracts.build
-                .effects(el, Effect::transform(&e.style.computed(), inherited, vcx)),
-        );
+        return Some(build.effects(el, Effect::transform(&e.style.computed(), inherited, vcx)));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -94,10 +91,7 @@ pub(super) fn atom_element_raw(
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(
-            opts.cx.contracts.build
-                .effects(math, Effect::group(&e.style.computed(), vcx)),
-        );
+        return Some(build.effects(math, Effect::group(&e.style.computed(), vcx)));
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в

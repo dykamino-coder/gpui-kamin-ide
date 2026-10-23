@@ -131,7 +131,7 @@ pub(super) fn expand(
     out: &mut Vec<Rule>,
     order: &mut usize,
 ) {
-    let vcx = cx.values.doc.values();
+    let vcx = cx.doc.values();
     for item in items(body) {
         match item {
             Item::Decls(text) => {

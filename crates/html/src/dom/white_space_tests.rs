@@ -23,7 +23,17 @@ fn break_spaces_reaches_the_wrap_rules() {
         None
     }
     let div = find(&nodes).expect("блок в дереве");
-    assert_eq!(div.style.cascaded().break_after_spaces, Some(true), "разбор");
-    assert!(whitespace::break_spaces(div.style.cascaded()), "правила переноса");
-    assert!(whitespace::keep_spaces(div.style.cascaded()), "сохранение пробелов");
+    assert_eq!(
+        div.style.cascaded().break_after_spaces,
+        Some(true),
+        "разбор"
+    );
+    assert!(
+        whitespace::break_spaces(div.style.cascaded()),
+        "правила переноса"
+    );
+    assert!(
+        whitespace::keep_spaces(div.style.cascaded()),
+        "сохранение пробелов"
+    );
 }

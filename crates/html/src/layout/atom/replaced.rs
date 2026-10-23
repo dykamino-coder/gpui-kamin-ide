@@ -74,7 +74,10 @@ pub(super) fn container_atom(
 pub(super) fn img_atom(inherited: &BoxStyle, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
-    replaced_used_style::inline_percentage_width(copy.style.used_mut(), opts.cx.constraints.avail_w);
+    replaced_used_style::inline_percentage_width(
+        copy.style.used_mut(),
+        opts.cx.constraints.avail_w,
+    );
     // Держатель картинки строится из СЫРОГО стиля (`image_with` →
     // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
     // ставит только `style::cascade::inherit`: без переноса `apply` выбрасывал
@@ -157,7 +160,11 @@ pub(super) fn canvas_atom(
     let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
     let e = &converted;
     let merged = box_style(inherited, &e.style, vcx);
-    let d = cx.contracts.build.styled_box(e, &merged, cx).flex_shrink_0();
+    let d = cx
+        .contracts
+        .build
+        .styled_box(e, &merged, cx)
+        .flex_shrink_0();
     // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
     // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда
     // соотношение несёт ВНУТРЕННЯЯ коробка, заполняющая названную

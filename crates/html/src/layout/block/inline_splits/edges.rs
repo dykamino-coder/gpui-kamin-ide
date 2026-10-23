@@ -1,3 +1,5 @@
+//! Снятие физических боковых декораций у фрагментов разрезанного инлайна.
+
 /// Remove the margin, border and padding of one physical inline side
 /// (1 = right, 3 = left) of a fragment of a split inline box.
 pub(super) fn drop_inline_side(style: &mut crate::style::computed::Computed, side: usize) {

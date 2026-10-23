@@ -76,40 +76,40 @@ fn build(
             },
         )
     } else {
-        let children = e
-            .children
-            .iter()
-            .filter_map(|node| match node {
-                Node::Text(text) if text.trim().is_empty() => None,
-                Node::Text(_) => None, // Core ignores direct text outside token elements.
-                Node::Element(child)
-                    if child.style.computed().display
-                        == Some(crate::style::computed::Display::None) =>
-                {
-                    None
-                }
-                Node::Element(child) if child.tag == "mprescripts" => None,
-                Node::Element(child) => {
-                    let core = operators::core(child, &style, opts);
-                    factories.push(core.filter(|op| op.flags & 1 != 0).map(|op| {
-                        let child = child.clone();
-                        let style = style.clone();
-                        let opts = opts.clone();
-                        let factory: stretch::Factory = Box::new(move |target| {
-                            build(&child, &style, &opts, Some(target))
-                                .unwrap_or_else(|| opts.cx.contracts.build.element(&child, &style, &opts))
-                        });
-                        (op.flags, factory)
-                    }));
-                    margins.push(margins_px(&box_style(&style, &child.style, vcx), opts));
-                    let forwarded = if core.is_some() { target } else { None };
-                    Some(
-                        build(child, &style, opts, forwarded)
-                            .unwrap_or_else(|| opts.cx.contracts.build.element(child, &style, opts)),
-                    )
-                }
-            })
-            .collect();
+        let children =
+            e.children
+                .iter()
+                .filter_map(|node| match node {
+                    Node::Text(text) if text.trim().is_empty() => None,
+                    Node::Text(_) => None, // Core ignores direct text outside token elements.
+                    Node::Element(child)
+                        if child.style.computed().display
+                            == Some(crate::style::computed::Display::None) =>
+                    {
+                        None
+                    }
+                    Node::Element(child) if child.tag == "mprescripts" => None,
+                    Node::Element(child) => {
+                        let core = operators::core(child, &style, opts);
+                        factories.push(core.filter(|op| op.flags & 1 != 0).map(|op| {
+                            let child = child.clone();
+                            let style = style.clone();
+                            let opts = opts.clone();
+                            let factory: stretch::Factory = Box::new(move |target| {
+                                build(&child, &style, &opts, Some(target)).unwrap_or_else(|| {
+                                    opts.cx.contracts.build.element(&child, &style, &opts)
+                                })
+                            });
+                            (op.flags, factory)
+                        }));
+                        margins.push(margins_px(&box_style(&style, &child.style, vcx), opts));
+                        let forwarded = if core.is_some() { target } else { None };
+                        Some(build(child, &style, opts, forwarded).unwrap_or_else(|| {
+                            opts.cx.contracts.build.element(child, &style, opts)
+                        }))
+                    }
+                })
+                .collect();
         (children, parameters::kind(e, &style, opts))
     };
     let content = Content {

@@ -50,11 +50,11 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         &html,
         crate::BROWSER_CSS,
         (w, h),
-        opts.cx.values.doc().media().print,
+        opts.cx.doc().media().print,
         false,
         false,
         None,
-        &opts.cx.values.doc().metrics.font_context(),
+        &opts.cx.doc().metrics.font_context(),
     );
     let kids = super::iframe::build_embedded(embedded, (w, h), opts, |nodes| nodes);
     Some(

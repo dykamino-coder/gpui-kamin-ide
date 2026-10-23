@@ -87,7 +87,9 @@ pub(super) fn cell_box_div(
     if bg_layered {
         box_style.used_mut().background = None;
     }
-    let mut d = cx.contracts.build
+    let mut d = cx
+        .contracts
+        .build
         .styled_box(cell, &BoxStyle::shared(box_style.computed()), cx);
     if collapsed {
         d.style().opacity = Some(0.0);
@@ -103,7 +105,8 @@ pub(super) fn cell_box_div(
         // картинки. Ряду только с тенью цвет оставляют ячейки.
         let picture = row.style.computed().bg_image.is_some()
             || row.style.computed().gradient_raw.is_some()
-            || (row.style.computed().background.is_some() && row.style.computed().bg_clip.is_some());
+            || (row.style.computed().background.is_some()
+                && row.style.computed().bg_clip.is_some());
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);

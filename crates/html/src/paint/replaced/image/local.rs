@@ -122,7 +122,8 @@ pub(super) fn local_image_source<'a>(
     let own = crate::resources::css_images::element_source(src, &e.style.computed(), vcx)
         .map(crate::paint::background::Source::from_cpu)
         .and_then(|s| {
-            let size = crate::paint::background::default_size(s.intrinsic(), DEFAULT_REPLACED_SIZE_PX);
+            let size =
+                crate::paint::background::default_size(s.intrinsic(), DEFAULT_REPLACED_SIZE_PX);
             let raster = match &s {
                 crate::paint::background::Source::Vector { markup, .. } => {
                     crate::svg::raster::rasterize_image(

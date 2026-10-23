@@ -62,7 +62,8 @@ pub(in crate::layout::table) fn collect_rows<'a>(
                 // `background-attachment-applies-to-*`.
                 let picture = e.style.computed().bg_image.is_some()
                     || e.style.computed().gradient_raw.is_some()
-                    || (e.style.computed().background.is_some() && e.style.computed().bg_clip.is_some());
+                    || (e.style.computed().background.is_some()
+                        && e.style.computed().bg_clip.is_some());
                 let deeper = RowCarry {
                     background: if picture { None } else { shift.background },
                     group: Some(e),
@@ -152,19 +153,22 @@ mod tests {
         for clip in [BgClip::BorderBox, BgClip::PaddingBox, BgClip::ContentBox] {
             let row = anon_element("tr", vec![]);
             let mut group = anon_element("tbody", vec![Node::Element(row)]);
-            group.style.background = Some(Color {
+            group.style.used_mut().background = Some(Color {
                 r: 0.0,
                 g: 0.5,
                 b: 0.0,
                 a: 0.5,
             });
-            group.style.bg_clip = Some(clip);
+            group.style.used_mut().bg_clip = Some(clip);
             let nodes = vec![Node::Element(group)];
             let mut rows = Vec::new();
             collect_rows(&nodes, None, RowCarry::default(), &mut rows);
             assert_eq!(rows.len(), 1);
             assert!(rows[0].carry.background.is_none());
-            assert_eq!(rows[0].carry.group.unwrap().style.bg_clip, Some(clip));
+            assert_eq!(
+                rows[0].carry.group.unwrap().style.computed().bg_clip,
+                Some(clip)
+            );
         }
     }
 }
