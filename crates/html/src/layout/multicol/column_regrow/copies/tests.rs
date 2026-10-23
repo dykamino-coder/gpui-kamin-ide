@@ -107,3 +107,48 @@ fn reserve_views(axis: StackAxis, mode: &str) {
             .all(|p| p.estimate_calls == 0)
     );
 }
+
+#[cfg(feature = "wpt-harness")]
+#[test]
+fn flex_stack_children_bypass_shape_and_direct_measure_calls() {
+    for direction in ["row", "row-reverse", "column", "column-reverse"] {
+        for wrap in ["nowrap", "wrap", "wrap-reverse"] {
+            let tree = crate::dom::parse(
+                &format!(
+                    "<div><div style='display:flex;flex-direction:{direction};flex-wrap:{wrap}'><div style='width:70px;height:20px;order:2;break-after:avoid'></div><div style='width:70px;height:30px;order:-1;break-before:column'></div></div></div>"
+                ),
+                "",
+            );
+            let opts = RenderOpts {
+                text: Default::default(),
+                viewport: (800.0, 600.0),
+                normal_line_height: 1.2,
+                cx: Default::default(),
+                frag: Default::default(),
+            };
+            let recipe = Recipe::new(
+                host(&tree),
+                &BoxStyle::default(),
+                &opts,
+                2,
+                0.0,
+                Some(100.0),
+                StackAxis::Horizontal,
+                None,
+            )
+            .expect("normal-flow flex recipe");
+            let children = recipe.children(100.0);
+            assert_eq!(children.len(), 1, "{direction}/{wrap}");
+            assert_eq!(children[0].measure, Some(100.0));
+            assert!(children[0].regrow.is_some());
+            assert!(
+                opts.frag
+                    .probe
+                    .take()
+                    .values()
+                    .all(|p| p.estimate_calls == 0),
+                "shape_full or direct measure reached for {direction}/{wrap}"
+            );
+        }
+    }
+}
