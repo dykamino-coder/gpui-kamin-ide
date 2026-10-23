@@ -9,11 +9,20 @@ use crate::style::computed::*;
 use crate::style::values::value::Len;
 
 mod placement;
+mod subgrid;
 mod templates;
 pub(crate) mod values;
 
 impl Computed {
     pub(crate) fn apply_grid(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
+        if matches!(key, "grid-template-columns" | "grid-template-rows")
+            && v.trim_start().get(..7).is_some_and(|s| s.eq_ignore_ascii_case("subgrid"))
+        {
+            if subgrid::valid(v) {
+                self.apply_grid_templates(key, v, hit, vcx);
+            }
+            return;
+        }
         if matches!(key, "grid-template-columns" | "grid-template-rows")
             && (v.contains("auto-fill") || v.contains("auto-fit"))
             && !v.trim_start().starts_with("subgrid")
