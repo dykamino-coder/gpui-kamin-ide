@@ -240,7 +240,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// KaminIDE patch: consumed block space before a column flex item.
     /// Applied after flex sizing, so a break cannot redistribute flexible lengths.
     pub fn set_flex_item_fragmentation_offset(&mut self, node: NodeId, offset: f32) -> TaffyResult<()> {
-        if !offset.is_finite() || offset < 0.0 { return Err(TaffyError::InvalidInputNode(node)); }
+        if !offset.is_finite() { return Err(TaffyError::InvalidInputNode(node)); }
         let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
         if data.flex_item_offset != offset {
             data.flex_item_offset = offset;
