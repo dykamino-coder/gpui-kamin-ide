@@ -110,9 +110,14 @@ fn css_order_precedes_reverse_for_forced_and_avoid_propagation() {
         "<div><div style='order:2'></div><div style='order:-1'></div><div style='order:1'></div><div style='order:-1'></div></div>",
         "",
     );
-    let Node::Element(parent) = &tree[0] else {
-        panic!("flex")
-    };
+    fn div(node: &Node) -> Option<&crate::dom::Element> {
+        let Node::Element(e) = node else { return None };
+        if e.tag == "div" {
+            return Some(e);
+        }
+        e.children.iter().find_map(div)
+    }
+    let parent = tree.iter().find_map(div).expect("flex root");
     let ids: Vec<_> = crate::layout::block::reorder::reorder(parent.children.clone())
         .into_iter()
         .filter_map(|n| match n {
@@ -120,6 +125,7 @@ fn css_order_precedes_reverse_for_forced_and_avoid_propagation() {
             _ => None,
         })
         .collect();
+    assert_eq!(ids.len(), 4);
     let physical: Vec<_> = ids.iter().copied().rev().collect();
     for column in [false, true] {
         let (mut root, laid) = scenario(column, &[&physical], &ids);
