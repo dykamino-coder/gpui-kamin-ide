@@ -136,10 +136,29 @@ pub(crate) fn parent_font_px(parent: &Computed) -> f32 {
 }
 
 /// Собственный вычисленный кегль (после `resolve_em`); без своего — кегль
-/// родителя.
+/// родителя. Под `font-size-adjust` `font_size` несёт подогнанный используемый
+/// кегль, а `em` считается от вычисленного (css-fonts-5 §font-size-adjust) — он в
+/// `font_adjust_base`.
 pub(crate) fn own_font_px(c: &Computed, parent_px: f32) -> f32 {
-    match c.font_size {
-        Some(Len::Px(px)) => px,
+    match (c.font_adjust_base, c.font_size) {
+        (Some((px, _)), _) => px,
+        (None, Some(Len::Px(px))) => px,
         _ => parent_px,
+    }
+}
+
+#[cfg(test)]
+mod font_px_tests {
+    use super::*;
+
+    #[test]
+    fn em_lengths_use_the_computed_size_under_font_size_adjust() {
+        // Computed 16px adjusted to a used 32px: `tab-size: 1em` and decoration
+        // lengths resolve against 16px.
+        let mut c = Computed::default();
+        c.font_size = Some(Len::Px(32.0));
+        c.font_adjust_base = Some((16.0, None));
+        assert_eq!(own_font_px(&c, 10.0), 16.0);
+        assert_eq!(parent_font_px(&c), 16.0);
     }
 }
