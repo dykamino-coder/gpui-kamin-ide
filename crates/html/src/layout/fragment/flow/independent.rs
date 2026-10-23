@@ -3,11 +3,13 @@
 use crate::dom::{Element, Node};
 use crate::layout::fragment::push::measured_tree;
 use crate::style::computed::{Display, Position};
+mod continuation;
+use continuation::continuation;
 
 /// У копии нет отдельного плана фрагментов или параллельного потока.
 /// Отдельные планы clone, OOF и nested требуют продолжений F2-1/F2-2/F2-3.
 pub(crate) fn independent_copy(c: &Element) -> bool {
-    !c.inline && measured_tree(c) && !separate(c, false)
+    !c.inline && measured_tree(c) && !separate(c, false) && !continuation(c)
 }
 
 /// Блоки, сетки и таблицы одного вертикального потока.
@@ -23,6 +25,7 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
         && crate::layout::fragment::clone::clone_dec(c).is_none()
         && (super::empty_floats(&logical)
             || (!separate(c, true)
+                && !continuation::inline_continuation(c)
                 && (stacked_tree(&logical)
                     || table_tree(&logical)
                     || grid_tree(&logical)
@@ -70,6 +73,27 @@ mod tests {
 
     use super::*;
     use crate::layout::fragment::{ShapeCx, flow::blocks::BlockBox};
+
+    #[test]
+    fn independent_copy_requires_a_single_consumed_flow() {
+        for body in [
+            "<div style='display:flex'><div></div></div>",
+            "<div><div style='display:flex;flex-direction:column'></div></div>",
+            "<div style='height:50px'><div style='height:150px'></div></div>",
+            "<div style='max-height:0'><div style='height:150px'></div></div>",
+        ] {
+            let tree = crate::dom::parse(body, "");
+            assert!(!independent_copy(authored(&tree)), "{body}");
+        }
+        for body in [
+            "<div><div style='height:20px'></div><div style='height:30px'></div></div>",
+            "<div style='height:50px'></div>",
+            "<div style='height:50px;overflow:hidden'><div style='height:150px'></div></div>",
+        ] {
+            let tree = crate::dom::parse(body, "");
+            assert!(independent_copy(authored(&tree)), "{body}");
+        }
+    }
 
     fn authored(nodes: &[Node]) -> &Element {
         fn find(nodes: &[Node]) -> Option<&Element> {

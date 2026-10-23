@@ -46,6 +46,14 @@ impl Watched {
             .iter()
             .map(|(&id, flow)| (id, flow.line_pushes_axis(origin, size, axis, window)))
             .collect();
+        if let Some(blocks) = &self.blocks {
+            // Строки обычного потока тоже должны принимать распорки роста.
+            // Иначе finish видит их разрыв, но pushed_at не находит его строку.
+            lines
+                .entry(blocks.id)
+                .or_default()
+                .extend(self.flow.line_pushes_axis(origin, size, axis, window));
+        }
         for (id, delta) in shifts {
             if let Some(lines) = content.get_mut(&id) {
                 for l in lines {

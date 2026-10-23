@@ -90,7 +90,12 @@ pub(super) fn copy_whole_box(
                 .element(&mc, merged, &opts.with_outer_row((hh, nest_phase_k))),
         );
     }
-    if whole {
+    // css-lists-3 §3: маркер принадлежит коробке пункта. Сборка через
+    // blocks + styled_div теряет его и меняет высоту строки у summary.
+    // Общий рисователь сохраняет маркер; разрезы по-прежнему даёт рекордер.
+    // CSS 2.1 §9.4.1: fieldset содержит независимый BFC. Обычный blocks
+    // не создаёт его анонимную коробку и выпускает нижнее поле ребёнка наружу.
+    if whole || copy.list_item.is_some() || copy.tag == "fieldset" {
         let mut mc = copy.clone();
         mc.children = std::mem::take(kids);
         if matches!(mc.style.width, None | Some(Len::Auto))

@@ -15,7 +15,13 @@ use std::cell::RefCell;
 /// Этот путь переносит только вход цельного float, как существующий Cand::Float.
 pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
     fn separate(e: &Element) -> bool {
-        e.style.bdb_clone
+        // ADR P-19 F2-1: поля float не усекаются как поля обычного
+        // блока; перенос margin box требует отдельного consumed/resume.
+        (e.style.float.is_some_and(|f| f != 0)
+            && [e.style.margin.top, e.style.margin.bottom]
+                .iter()
+                .any(|l| !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))))
+            || e.style.bdb_clone
             || e.style.text_box_trim_start
             || e.style.text_box_trim_end
             || e.marks.host_trim_start
@@ -210,6 +216,7 @@ mod tests {
     fn parallel_float_continuations_are_not_silently_replaced() {
         for special in [
             "<div style='float:left;width:20px'>several flowing lines</div>",
+            "<div style='float:left;width:100%;height:20px;margin:40px 0;contain:size'>float</div>",
             "<div style='float:left'><div>A</div><div>B</div></div>",
             "<div style='float:left;break-inside:avoid'><div>A</div><div>B</div></div>",
             "<div style='float:left'>float</div><div style='box-decoration-break:clone'>x</div>",

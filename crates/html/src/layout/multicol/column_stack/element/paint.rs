@@ -64,13 +64,10 @@ impl ColumnStack {
             };
             let k0 = &self.children[f.kid];
             let (nested_cols, over) = (k0.nested_cols, k0.over);
-            // Таблица режется своими полосами (`repeat`, хвост `slack`).
-            // Таблица (полосы `repeat`, хвост `slack`), ребёнок с мерой по
-            // раскладке копии (`measure`: внутри него своя стопка кладёт куски
-            // в соседние колонки выше верха копии) и стопка внутри фрагмента
-            // внешней фрагментации режутся как прежде.
-            let table_like =
-                k0.repeat.is_some() || k0.slack.is_some() || k0.measure.is_some() || nested_frag;
+            // Таблица и вложенная фрагментация задают свои границы. Одна
+            // лишь мера размера не обрезает тень на краю без разрыва
+            // (css-break-3 §5.4; Blink BoxFragmentPainter::SidesToInclude).
+            let table_like = k0.repeat.is_some() || k0.slack.is_some() || nested_frag;
             let kid = &mut self.children[f.kid];
             // Полосы повтора таблицы — каждая своей маской по своей полосе.
             if let Some(r) = kid.repeat.as_mut() {

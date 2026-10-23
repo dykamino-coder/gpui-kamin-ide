@@ -87,7 +87,9 @@ fn flex_in_table_cells_and_captions_has_frames_flows_and_relative_shifts() {
             "",
         );
         let root = authored(&doc);
-        assert!(independent_copy(root));
+        // F2-4: геометрия записывается, продолжения flex пока отдельные.
+        assert!(crate::layout::fragment::push::measured_tree(root));
+        assert!(!independent_copy(root));
         let b = BlockBox::collect(root, ShapeCx::COLUMNS, doc.values());
         let mut flexes = Vec::new();
         b.flexes(&mut flexes);

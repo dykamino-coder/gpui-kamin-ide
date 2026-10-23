@@ -31,6 +31,7 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
     if table_box(e) && !e.style.wm().vertical() {
         return BlockBox {
             id: e.node_id,
+            clips_block: !crate::layout::page::paged::visible_overflow(&e.style),
             table: Some(Box::new(TableBox::collect(e, cx, vcx))),
             own_breaks: (
                 e.style.break_before_force,
@@ -73,6 +74,7 @@ pub(super) fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
             e.style.break_after_avoid,
         ),
         inside_avoid: e.style.break_inside_avoid,
+        clips_block: !crate::layout::page::paged::visible_overflow(&e.style),
         edge_kids: edges(e),
         head: px(e.style.padding.top) + px(b.top),
         tail: px(e.style.padding.bottom) + px(b.bottom),
