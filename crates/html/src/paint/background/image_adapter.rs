@@ -3,12 +3,26 @@
 use crate::cache::{BoundedCache, MIB};
 use crate::resources::images::{identity::RasterIdentity, pixels, types::CpuRaster};
 use std::sync::Arc;
-static CACHE: BoundedCache<RasterIdentity, Option<Arc<gpui::RenderImage>>> =
-    BoundedCache::new(128 * MIB, crate::paint::cache::optional_image_bytes)
+type Image = Option<Arc<gpui::RenderImage>>;
+type UploadedPixels = (u32, u32, Arc<[u8]>);
+
+// Два уровня делят прежний бюджет 128 МиБ. Быстрый путь не хэширует точки
+// повторно в каждом кадре; ключ удерживает Arc от повторного адреса.
+static IDENTITIES: BoundedCache<RasterIdentity, Image> =
+    BoundedCache::new(64 * MIB, crate::paint::cache::optional_image_bytes)
         .with_key_weight(|key: &RasterIdentity| key.0.bytes.len());
-pub(crate) fn upload(cpu: &Arc<CpuRaster>) -> Option<Arc<gpui::RenderImage>> {
-    CACHE.get_or_insert_with(RasterIdentity(cpu.clone()), || {
-        gpui::bgra_bytes_to_image(cpu.width, cpu.height, pixels::straight_bgra(cpu))
+// Только готовые точки: ни URL, ни политика, ни ресурсы документа здесь не
+// переиспользуются. Полное равенство байт исключает коллизии короткого хэша.
+static PIXELS: BoundedCache<UploadedPixels, Image> =
+    BoundedCache::new(64 * MIB, crate::paint::cache::optional_image_bytes)
+        .with_key_weight(|key: &UploadedPixels| key.2.len());
+
+pub(crate) fn upload(cpu: &Arc<CpuRaster>) -> Image {
+    IDENTITIES.get_or_insert_with(RasterIdentity(cpu.clone()), || {
+        let key: UploadedPixels = (cpu.width, cpu.height, pixels::straight_bgra(cpu).into());
+        PIXELS.get_or_insert_with(key.clone(), || {
+            gpui::bgra_bytes_to_image(key.0, key.1, key.2.to_vec())
+        })
     })
 }
 // ImageId выдаётся GPUI монотонно; переиспользования адреса Arc в ключе нет.
@@ -117,5 +131,52 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn independent_documents_share_fractional_svg_edge_upload() {
+        use crate::resources::images::{store::ImageStore, svg_raster::RasterRequest};
+        // css-skew-001: один и тот же дробный край в разных документах.
+        // При разных ImageId линейная выборка атласа давала в (88, 61)
+        // RGB (116, 186, 116) и (117, 186, 117), даже у эталона с собой.
+        let markup = "<svg xmlns='http://www.w3.org/2000/svg' width='231.642' height='268.778'><path d='M 231.64212,268.77841 73.167806,158.54816 0,0 158.58452,110.15942 z' fill='green'/></svg>";
+        let first = ImageStore::default();
+        let second = ImageStore::default();
+        let request = RasterRequest::new(231.642, 268.778, 2.0, 0.0);
+        let a = first.rasterize_svg(markup, request).unwrap();
+        let b = second.rasterize_svg(markup, request).unwrap();
+        assert!(!Arc::ptr_eq(&a, &b));
+        assert_eq!(a.bytes, b.bytes);
+        let legacy = gpui::svg_markup_to_image(markup, 231.642, 268.778, 2.0).unwrap();
+        assert_eq!(a.bytes.as_ref(), legacy.as_bytes(0).unwrap());
+        // Соседи выборки центра (88.5, 61.5) при растре 463 x 538.
+        let edge =
+            [(176, 122), (177, 122), (176, 123), (177, 123)].map(|(x, y)| a.pixel(x, y).unwrap());
+        assert_eq!(
+            edge,
+            [
+                [0, 128, 0, 64],
+                [0, 128, 0, 0],
+                [0, 128, 0, 255],
+                [0, 128, 0, 127]
+            ]
+        );
+        let image_a = upload(&a).unwrap();
+        let image_b = upload(&b).unwrap();
+        assert!(Arc::ptr_eq(&image_a, &image_b));
+    }
+
+    #[test]
+    fn upload_identity_includes_extent_and_every_pixel() {
+        use crate::resources::images::pixels::bgra;
+        let bytes = vec![0, 128, 0, 64, 0, 128, 0, 127];
+        let a = bgra(2, 1, bytes.clone()).unwrap();
+        let b = bgra(1, 2, bytes.clone()).unwrap();
+        let mut changed = bytes;
+        changed[7] = 128;
+        let c = bgra(2, 1, changed).unwrap();
+        let image = upload(&a).unwrap();
+        assert_ne!(image.id, upload(&b).unwrap().id);
+        assert_ne!(image.id, upload(&c).unwrap().id);
     }
 }
