@@ -9,6 +9,8 @@
 mod containing;
 pub(crate) use containing::restore_containing_block;
 mod flush;
+#[cfg(test)]
+mod tests;
 pub(super) use flush::flush_inline;
 
 use crate::dom::Node;
@@ -105,12 +107,16 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // не действуют (`Computed::hoisted_block`, `transformed`).
                 block.style.hoisted_block = true;
                 containing::hoist(&mut block, e);
-                // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
-                // Preserve inherited marker properties before hoisting the block.
+                // Разрыв коробок не меняет наследование стилей (CSS 2 §9.2.1.1).
+                // Сохраняем свойства маркера до выноса блока из родителя.
                 block.style.list_style_type = block
                     .style
                     .list_style_type
                     .or_else(|| e.style.list_style_type.clone());
+                block.style.list_style_image = block
+                    .style
+                    .list_style_image
+                    .or_else(|| e.style.list_style_image.clone());
                 block.style.list_style_inside =
                     block.style.list_style_inside.or(e.style.list_style_inside);
                 block.style.no_marker = block.style.no_marker.or(e.style.no_marker);
