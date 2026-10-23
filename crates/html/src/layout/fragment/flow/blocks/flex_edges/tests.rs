@@ -37,7 +37,6 @@ fn scenario(column: bool, lines: &[&[u64]], order: &[u64]) -> (BlockBox, Laid) {
                     .filter(|(_, id)| members.contains(id))
                     .map(|(i, &id)| (i as u32, Some(id)))
                     .collect(),
-                ..Default::default()
             }
         })
         .collect();
