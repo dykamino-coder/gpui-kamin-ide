@@ -50,24 +50,30 @@ impl std::fmt::Debug for ComputedSlot {
 }
 
 impl Materialized {
-    /// Годится ли стиль под коробкой-родителем `parent`: те же унаследованные данные.
-    /// Каскадное `inherit` ненаследуемого свойства берёт вычисленное значение
-    /// родителя-ЭЛЕМЕНТА (css-cascade-5 §7.3.1; разбиение на коробки
-    /// родословную стиля не меняет, CSS 2 §9.2.1.1), а не коробки.
-    fn fits(&self, parent: &Computed, generation: u64) -> bool {
+    /// Годится ли стиль под родителем `parent`: те же унаследованные данные. Стиль с
+    /// каскадным `inherit` ненаследуемого свойства (`explicit`) зависит и от
+    /// ненаследуемых значений родителя (css-cascade-5 §7.3.1): ему годен только тот же
+    /// родитель или равный во всём (Blink `MatchedPropertiesCache`: explicit inheritance
+    /// сверяет и non-inherited данные родителя).
+    fn fits(&self, parent: &Computed, generation: u64, explicit: bool) -> bool {
         self.generation == generation
             && (std::ptr::eq(&*self.parent, parent)
-                || inherited::inherited_eq(&self.parent, parent))
+                || if explicit {
+                    *self.parent == *parent
+                } else {
+                    inherited::inherited_eq(&self.parent, parent)
+                })
     }
 }
 
 impl ComputedSlot {
-    /// Материализованный стиль, годный под родителем `parent`.
-    fn get(&self, parent: &Computed, generation: u64) -> Option<Rc<Computed>> {
+    /// Материализованный стиль каскадного `own`, годный под родителем `parent`.
+    fn get(&self, own: &Computed, parent: &Computed, generation: u64) -> Option<Rc<Computed>> {
+        let explicit = !own.explicit_inherit.is_empty() || !own.inherit_longhands.is_empty();
         self.0
             .borrow()
             .as_ref()
-            .filter(|m| m.fits(parent, generation))
+            .filter(|m| m.fits(parent, generation, explicit))
             .map(|m| m.computed.clone())
     }
 
@@ -95,7 +101,7 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
     for node in nodes {
         let Node::Element(e) = node else { continue };
         let slot = e.style.slot();
-        let computed = match slot.get(parent, generation) {
+        let computed = match slot.get(e.style.cascaded(), parent, generation) {
             Some(computed) => computed,
             None => {
                 let computed = Rc::new(super::compute::compute(parent, e.style.cascaded(), vcx));
@@ -109,6 +115,25 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
         };
         materialize(&e.children, &computed, vcx);
     }
+}
+
+/// Материализовать заново элемент `e`, чей каскадный стиль правлен после материализации
+/// (кадр анимации — источник каскада), и его поддерево под тем же родителем-элементом, что и
+/// у исходного `original`: потомки с каскадным `inherit` видят новые значения.
+pub(crate) fn rematerialize(
+    original: &SharedStyle,
+    e: crate::dom::Element,
+    vcx: ValueCx<'_>,
+) -> crate::dom::Element {
+    let Some((_, parent)) = original.slot().with_parent() else {
+        return e;
+    };
+    let nodes = [Node::Element(e)];
+    materialize(&nodes, &parent, vcx);
+    let [Node::Element(e)] = nodes else {
+        unreachable!("one element in, one element out")
+    };
+    e
 }
 
 /// Стиль коробки элемента с каскадным стилем `own` под коробкой-родителем со стилем `parent`.
@@ -136,7 +161,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
     let fallback_parent = parent.try_base.is_some();
     let fitting = own
         .slot()
-        .get(parent, generation)
+        .get(cascaded, parent, generation)
         .filter(|_| !fallback_parent);
     // Годный материализованный стиль (со слоем раскладки) — общий, без копии (P-18).
     let computed = match (fitting, own.used_rc()) {

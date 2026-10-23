@@ -47,7 +47,7 @@ fn sample_live(
     vcx: ValueCx<'_>,
 ) -> Element {
     sample_at(frames, spec, elapsed, vcx)
-        .map(|frame| animation_frame::sample(source, &frame, true))
+        .map(|frame| animation_frame::sample(source, &frame, true, vcx))
         .unwrap_or_else(|| source.clone())
 }
 

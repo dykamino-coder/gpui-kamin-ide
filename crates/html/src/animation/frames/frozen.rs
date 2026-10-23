@@ -23,7 +23,7 @@ pub(crate) fn bake_frozen(e: &Element, transforms: bool, vcx: ValueCx<'_>) -> Op
         return None;
     }
     let frame = sample_at(frames, spec, 0.0, vcx)?;
-    Some(animation_frame::sample(e, &frame, transforms))
+    Some(animation_frame::sample(e, &frame, transforms, vcx))
 }
 
 /// A backwards fill holds the endpoint without applying its easing.
