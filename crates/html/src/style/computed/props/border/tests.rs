@@ -152,7 +152,9 @@ fn logical_border_sides_compete_with_physical_ones_by_cascade() {
     assert_eq!(v.style.borders().top, Some(Len::Px(7.0)));
     assert_eq!(v.style.borders().left, None);
     let i = find(doc.nodes(), "i").expect("i");
-    assert!(i.style.border_inherit_w[0] && i.style.border_inherit_w[2]);
+    use crate::style::css::LonghandId as L;
+    let marked = i.style.inherit_longhands;
+    assert!(marked.contains(L::BorderTopWidth) && marked.contains(L::BorderBottomWidth));
     // Invalid after substitution: every longhand of the shorthand is unset.
     assert_eq!(i.style.border_side_styles[3], Some(0));
 }

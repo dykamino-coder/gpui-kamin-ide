@@ -83,10 +83,8 @@ impl Computed {
             }
             "background-image" => {
                 if v == "inherit" {
-                    self.inherit_bits |= inh::BG_IMAGE;
                     return;
                 }
-                self.inherit_bits &= !inh::BG_IMAGE;
                 // `none` ГАСИТ картинку (§14.2.1): ветки под него не было
                 // вовсе, и заданный ранее адрес переживал отмену.
                 if v.trim().eq_ignore_ascii_case("none") {

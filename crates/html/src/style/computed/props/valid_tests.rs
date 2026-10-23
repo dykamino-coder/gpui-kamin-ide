@@ -1,6 +1,7 @@
 //! Валидные значения проходят проверку грамматики и доходят до вычисленного стиля.
 
-use crate::style::computed::{Computed, ParseResult, ainh};
+use crate::style::computed::{Computed, ParseResult};
+use crate::style::css::LonghandId;
 
 fn accepted(key: &str, value: &str) -> bool {
     let st = crate::document::state::DocState::new(crate::style::css::Media::default());
@@ -147,15 +148,15 @@ fn place_shorthands_forward_inherit() {
     let mut c = Computed::default();
     c.apply_one("place-items", "inherit", st.values());
     c.apply_one("place-content", "inherit", st.values());
-    for bit in [
-        ainh::ALIGN_ITEMS,
-        ainh::JUSTIFY_ITEMS,
-        ainh::ALIGN_CONTENT,
-        ainh::JUSTIFY_CONTENT,
+    for id in [
+        LonghandId::AlignItems,
+        LonghandId::JustifyItems,
+        LonghandId::AlignContent,
+        LonghandId::JustifyContent,
     ] {
         assert!(
-            c.align_inherit & bit != 0,
-            "place-*: inherit lost bit {bit}"
+            c.inherit_longhands.contains(id),
+            "place-*: inherit lost {id:?}"
         );
     }
 }

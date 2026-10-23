@@ -31,7 +31,7 @@ use crate::document::state::ValueCx;
 pub use grammar::Grammar;
 pub(crate) use layer_shorthands::split_position;
 pub(crate) use layer_words::{Words as LayerWords, layer_list, layer_tokens};
-pub use longhands::{BoxGroup, LonghandId, Slot};
+pub use longhands::{BoxGroup, LonghandId, LonghandSet, Slot};
 pub use shorthands::ShorthandId;
 
 /// Общее ключевое слово (css-cascade-5 §7.3, css-values-4 §3.1.1): годится

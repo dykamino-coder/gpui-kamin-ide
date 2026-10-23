@@ -145,13 +145,14 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // `inherit` на размере вынесенного блока брал бы значение уже
                 // не у хозяина, а у его родителя: разрыв делает блок БРАТОМ
                 // хозяина. Значение забирается здесь, пока связь ещё видна.
-                if block.style.width_inherit {
+                use crate::style::css::LonghandId as L;
+                if block.style.inherit_longhands.contains(L::Width) {
                     block.style.width = e.style.width;
-                    block.style.width_inherit = false;
+                    block.style.inherit_longhands.set(L::Width, false);
                 }
-                if block.style.height_inherit {
+                if block.style.inherit_longhands.contains(L::Height) {
                     block.style.height = e.style.height;
-                    block.style.height_inherit = false;
+                    block.style.inherit_longhands.set(L::Height, false);
                 }
                 // Прозрачность и слой хозяина действуют на ВЕСЬ разорванный
                 // элемент, включая вынесенный блок: раньше блок был куском

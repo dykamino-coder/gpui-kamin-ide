@@ -44,31 +44,19 @@ impl Computed {
         v: &str,
         vcx: ValueCx<'_>,
     ) {
-        // CSS 2.1 §6.2.1: `inherit` берёт вычисленную сторону родителя.
+        // CSS 2.1 §6.2.1: `inherit` берёт вычисленную сторону родителя
+        // (`compute::longhands`); здесь — только место объявления стороны.
         let inherit = v == "inherit";
         let len = side_len(grammar, v, vcx);
         if !inherit && len.is_none() {
             return;
         }
         let order = self.decl_order;
-        let (sides, flags, orders) = match group {
-            BoxGroup::Margin => (
-                &mut self.margin,
-                &mut self.margin_inherit,
-                &mut self.side_order.margin,
-            ),
-            BoxGroup::Padding => (
-                &mut self.padding,
-                &mut self.padding_inherit_side,
-                &mut self.side_order.padding,
-            ),
-            _ => (
-                &mut self.inset,
-                &mut self.inset_inherit,
-                &mut self.side_order.inset,
-            ),
+        let (sides, orders) = match group {
+            BoxGroup::Margin => (&mut self.margin, &mut self.side_order.margin),
+            BoxGroup::Padding => (&mut self.padding, &mut self.side_order.padding),
+            _ => (&mut self.inset, &mut self.side_order.inset),
         };
-        flags[side] = inherit;
         orders[side] = order;
         if let Some(len) = len {
             *side_slot(sides, side) = Some(len);

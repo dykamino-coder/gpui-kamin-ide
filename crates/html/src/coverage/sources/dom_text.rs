@@ -33,6 +33,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../style/cascade/compute/sizes/lh_units.rs"),
     include_str!("../../style/cascade/compute/explicit.rs"),
     include_str!("../../style/cascade/compute/background.rs"),
+    include_str!("../../style/cascade/compute/longhands.rs"),
     include_str!("../../style/cascade/compute/fonts.rs"),
     include_str!("../../style/cascade/compute/text.rs"),
     include_str!("../../style/cascade/inherit/containing.rs"),

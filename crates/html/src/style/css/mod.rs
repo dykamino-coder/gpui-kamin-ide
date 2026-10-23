@@ -29,7 +29,7 @@ pub(crate) mod visited;
 pub use crate::style::css::declaration::{DeclBlock, Declaration, VarMap};
 pub use crate::style::css::origin::Origin;
 pub use crate::style::css::property::{
-    BoxGroup, CssWide, Grammar, LonghandId, ShorthandId, Slot, Specified,
+    BoxGroup, CssWide, Grammar, LonghandId, LonghandSet, ShorthandId, Slot, Specified,
 };
 pub(crate) use crate::style::css::property::{
     LayerWords, layer_list, layer_tokens, legacy_name_alias, split_position,

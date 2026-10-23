@@ -10,7 +10,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 mod registry;
-pub(crate) use registry::Property;
+pub(crate) use registry::{Property, of_longhand};
 
 /// Record winning CSS-wide keywords in the same slots as ordinary longhands.
 pub(super) fn note(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) -> bool {
@@ -88,14 +88,16 @@ mod tests {
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("column-width", "100px", vcx);
+        let compute = super::super::compute::compute;
         let mut child = Computed::default();
         child.apply_one("column-width", "inherit", vcx);
-        apply_explicit_inheritance(&mut child, &parent, vcx);
-        assert_eq!(child.column_width, Some(Len::Px(100.0)));
+        assert_eq!(
+            compute(&parent, &child, vcx).column_width,
+            Some(Len::Px(100.0))
+        );
         child.apply_one("column-width", "inherit", vcx);
         child.apply_one("column-width", "auto", vcx);
-        apply_explicit_inheritance(&mut child, &parent, vcx);
-        assert_eq!(child.column_width, None);
+        assert_eq!(compute(&parent, &child, vcx).column_width, None);
     }
 
     #[test]
@@ -107,7 +109,7 @@ mod tests {
         let mut child = Computed::default();
         child.apply_one("gap", "inherit", vcx);
         child.apply_one("row-gap", "30px", vcx);
-        apply_explicit_inheritance(&mut child, &parent, vcx);
+        let child = super::super::compute::compute(&parent, &child, vcx);
         assert_eq!(child.gap, Some((Some(Len::Px(30.0)), Some(Len::Px(20.0)))));
     }
 

@@ -6,11 +6,6 @@ use crate::style::computed::*;
 impl Computed {
     pub(super) fn apply_physical_size(&mut self, i: usize, value: &str, vcx: ValueCx<'_>) {
         let parsed = parsed_value!(self, ParsedSize::parse(value, i >= 4, vcx));
-        match i {
-            0 => self.width_inherit = value == "inherit",
-            1 => self.height_inherit = value == "inherit",
-            _ => self.minmax_inherit[i - 2] = value == "inherit",
-        }
         self.stretch_size[[0, 1, 2, 4, 3, 5][i]] = parsed.stretch;
         if let Some(fit_index) = match i {
             0 => Some(0),
