@@ -26,8 +26,9 @@ pub(crate) fn refusal(
     _auto_fill: bool,
     vcx: ValueCx<'_>,
 ) -> Option<&'static str> {
-    // Flex gaps adjoining a break are truncated (Blink
-    // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
+    // TRANSITIONAL(F2-4): распорки выражают усечение зазора только для рядов
+    // с переносом и разрешённым пиксельным row-gap. Удалить отказ после
+    // поддержки ограничений зазора других осей flex и дорожек grid.
     fn gapped(e: &Element) -> bool {
         (matches!(
             e.style.computed().display,
@@ -72,17 +73,6 @@ pub(crate) fn refusal(
         {
             Some("no-layout-candidate")
         }
-        // Row gaps alone keep the old path: this path paints gap decorations
-        // half a gap low (css-gaps flex-gap-decorations-fragmentation-023/024/
-        // 031), and a test with rules must take the same path as its ref.
-        Some(v)
-            if !v
-                .iter()
-                .any(|x| !matches!(x.1, super::Cand::Item | super::Cand::Gap { .. }))
-                && !super::avoid_row(c) =>
-        {
-            Some("no-cand")
-        }
         Some(_) => None,
     }
 }
@@ -90,6 +80,31 @@ pub(crate) fn refusal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ordinary_flex_uses_measured_layout_with_and_without_rules() {
+        for flow in ["flex-direction:column", "flex-wrap:wrap;row-gap:10px"] {
+            for rules in ["", "row-rule:2px solid green;column-rule:2px solid green"] {
+                let html = format!(
+                    "<div style='display:flex;width:80px;{flow};{rules}'><div style='width:40px;height:50px'></div><div style='width:40px;height:50px'></div><div style='width:40px;height:50px'></div></div>"
+                );
+                let tree = crate::dom::parse(&html, "");
+                fn flex(node: &Node) -> Option<&Element> {
+                    let Node::Element(e) = node else { return None };
+                    if e.style.computed().display == Some(Display::Flex) {
+                        return Some(e);
+                    }
+                    e.children.iter().find_map(flex)
+                }
+                let parent = tree.iter().find_map(flex).expect("flex root");
+                assert_eq!(
+                    refusal(parent, Some(80.0), false, tree.values()),
+                    None,
+                    "{html}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn tables_keep_their_row_fragmentation_planner() {

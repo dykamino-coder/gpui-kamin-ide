@@ -6260,6 +6260,11 @@ impl Window {
         self.layout_engine.as_ref()?.grid_item_rows(child)
     }
 
+    /// KaminIDE patch: layout parent identity, independent of physical coordinates.
+    pub fn parent_layout_id(&self, child: LayoutId) -> Option<LayoutId> {
+        self.layout_engine.as_ref()?.parent_layout_id(child)
+    }
+
     /// KaminIDE patch: реальные линии родителя-flex и начало его border box.
     pub fn parent_flex_layout(&mut self, child: LayoutId) -> Option<(Point<Pixels>, crate::FlexLayout)> {
         let scale = self.scale_factor();

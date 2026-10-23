@@ -12,6 +12,9 @@ use crate::style::computed::Display;
 use crate::style::values::value::{Len, px_auto_zero};
 use std::collections::HashMap;
 
+#[cfg(test)]
+mod tests;
+
 /// A pagination strut: how far the box moves, and its laid-out border-box
 /// block size before the first push.
 #[derive(Clone, Copy, Debug, Default)]
@@ -113,6 +116,10 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                     return false;
                 };
                 k.style.used_mut().margin.top = Some(Len::Px(m + st.gap));
+                // TRANSITIONAL(F2-4): усечение зазора отдельного ряда выражено
+                // полями. Удалить после поддержки ограничений зазора по строкам
+                // в раскладке; декорации исключают перенесённый зазор из полосы.
+                k.marks.carried_row_gap = (st.gap + st.by.min(0.0)).max(0.0);
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {
                 if k.style.computed().float.is_some_and(|f| f != 0) {

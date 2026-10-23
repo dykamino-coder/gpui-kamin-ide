@@ -145,6 +145,8 @@ mod tests {
             }, &children).unwrap();
             engine.taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
             let child = children[0].into();
+            assert_eq!(engine.parent_layout_id(child), Some(root.into()));
+            assert_eq!(engine.parent_layout_id(root.into()), None);
             let (_, lines) = engine.parent_flex_layout(child, scale).unwrap();
             assert!(!lines.is_column);
             assert_eq!(lines.lines.len(), 2);

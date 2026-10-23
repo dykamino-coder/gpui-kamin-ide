@@ -31,6 +31,7 @@ mod span_tests {
 }
 pub(super) use multicol::multicol_runs;
 mod flex_lines;
+pub(super) use flex_lines::FlexLines;
 mod lane_visibility;
 mod lines;
 #[cfg(test)]
