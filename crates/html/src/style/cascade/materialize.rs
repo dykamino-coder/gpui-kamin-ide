@@ -31,6 +31,9 @@ struct Materialized {
     /// Поколение шрифтовых входов документа (`text::metrics`).
     generation: u64,
     computed: Rc<Computed>,
+    /// Коробку элемента подготовка документа перенесла под чужую коробку
+    /// (`Marks::style_parent`): коробка-родитель не источник его наследования.
+    moved: bool,
 }
 
 impl Clone for ComputedSlot {
@@ -77,6 +80,16 @@ impl ComputedSlot {
             .map(|m| m.computed.clone())
     }
 
+    /// Материализованный стиль перенесённой коробки (`Materialized::moved`): он годен под
+    /// любой коробкой-родителем, пока те же шрифтовые входы.
+    fn moved(&self, generation: u64) -> Option<Rc<Computed>> {
+        self.0
+            .borrow()
+            .as_ref()
+            .filter(|m| m.moved && m.generation == generation)
+            .map(|m| m.computed.clone())
+    }
+
     /// Материализованный стиль и вычисленный стиль родителя-элемента, под которым он посчитан.
     fn with_parent(&self) -> Option<(Rc<Computed>, Rc<Computed>)> {
         self.0
@@ -98,22 +111,51 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
     // Записи арен вычисленного стиля живут с документом, а не с кадром.
     let vcx = vcx.persistent();
     let generation = vcx.doc.metrics.generation();
+    walk(nodes, parent, generation, &mut Vec::new(), vcx);
+}
+
+/// Проход `materialize`. Родитель-элемент — не обязательно узел над элементом в дереве
+/// коробок: анонимная обёртка (`Marks::anonymous_wrapper`) пропускает родителя насквозь,
+/// перенесённая коробка (`Marks::style_parent`) берёт стиль исходного родителя, который
+/// проход уже встретил раньше по порядку документа (`lent`).
+fn walk(
+    nodes: &[Node],
+    parent: &Rc<Computed>,
+    generation: u64,
+    lent: &mut Vec<(u64, Rc<Computed>)>,
+    vcx: ValueCx<'_>,
+) {
     for node in nodes {
         let Node::Element(e) = node else { continue };
+        let moved = e.marks.style_parent;
+        // Вне прохода по документу (`rematerialize`) родитель дан уже исходный.
+        let source = moved.and_then(|id| lent.iter().rev().find(|(k, _)| *k == id));
+        let parent = source
+            .map(|(_, c)| c.clone())
+            .unwrap_or_else(|| parent.clone());
         let slot = e.style.slot();
-        let computed = match slot.get(e.style.cascaded(), parent, generation) {
+        let computed = match slot.get(e.style.cascaded(), &parent, generation) {
             Some(computed) => computed,
             None => {
-                let computed = Rc::new(super::compute::compute(parent, e.style.cascaded(), vcx));
+                let computed = Rc::new(super::compute::compute(&parent, e.style.cascaded(), vcx));
                 *slot.0.borrow_mut() = Some(Rc::new(Materialized {
                     parent: parent.clone(),
                     generation,
                     computed: computed.clone(),
+                    moved: moved.is_some(),
                 }));
                 computed
             }
         };
-        materialize(&e.children, &computed, vcx);
+        if e.marks.lends_style {
+            lent.push((e.node_id, computed.clone()));
+        }
+        let inside = if e.marks.anonymous_wrapper {
+            &parent
+        } else {
+            &computed
+        };
+        walk(&e.children, inside, generation, lent, vcx);
     }
 }
 
@@ -180,9 +222,12 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
     // вычисленные значения родителя-элемента, а их знает только коробка
     // родителя. `inherit` берёт их оттуда (`inherit-height-from-fallback`).
     let fallback_parent = parent.try_base.is_some();
+    // Перенесённая коробка наследует от родителя-элемента, а не от коробки, под
+    // которую её перенесли.
     let fitting = own
         .slot()
         .get(cascaded, parent, generation)
+        .or_else(|| own.slot().moved(generation))
         .filter(|_| !fallback_parent);
     // Годный материализованный стиль (со слоем раскладки) — общий, без копии (P-18).
     let computed = match (fitting, own.used_rc()) {
