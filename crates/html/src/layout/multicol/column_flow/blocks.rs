@@ -7,13 +7,12 @@ use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn non_inline_columns(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     count: Option<usize>,
     col_w: Option<f32>,

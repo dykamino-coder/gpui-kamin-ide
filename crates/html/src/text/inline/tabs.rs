@@ -85,7 +85,7 @@ mod tests {
                 };
                 with_inherited.font_size = Some(Len::Px(80.0));
                 with_inherited.tab_size = Some(4.0);
-                with_inherited
+                crate::style::computed::BoxStyle::from(with_inherited)
             },
         }];
         let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);
@@ -116,7 +116,7 @@ mod tests {
         };
         let pieces = vec![Piece::Text {
             text: "\t".into(),
-            style: block.clone(),
+            style: crate::style::computed::BoxStyle::from(block.clone()),
         }];
         assert_eq!(
             tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx).next(0, 0.0),
@@ -142,7 +142,11 @@ mod tests {
             with_inherited.tab_size = Some(5.0);
             with_inherited
         };
-        let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+        let child = crate::style::cascade::inherit::inherit(
+            &crate::style::computed::BoxStyle::from(parent.clone()),
+            &own,
+            vcx,
+        );
         assert_eq!(child.tab_size, Some(5.0));
         assert_eq!(child.tab_size_len, None);
     }
@@ -169,7 +173,7 @@ mod tests {
                 };
                 with_inherited.font_size = Some(Len::Px(80.0));
                 with_inherited.tab_size = Some(5.0);
-                with_inherited
+                crate::style::computed::BoxStyle::from(with_inherited)
             },
         }];
         let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);

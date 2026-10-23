@@ -42,7 +42,7 @@ pub(super) fn positioned_inside(nodes: &[Node]) -> bool {
 /// effects. The shell of the box carries none of them (`group_shell`).
 pub(super) fn group_wrap(
     c: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> crate::layout::float::band_flow::GroupWrap {
     let (c, inherited, values, build) = (c.clone(), inherited.clone(), cx.vcx().keep(), cx.build);

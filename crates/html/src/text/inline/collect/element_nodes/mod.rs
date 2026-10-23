@@ -15,7 +15,6 @@ mod box_paint;
 use crate::text::inline::collect::element_nodes::box_paint::element_style;
 
 use crate::dom::Element;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline::collect::boundary_spacing::boundary_gap_after_box;
 use crate::text::inline::collect::boundary_spacing::set_parent_boundary_spacing;
@@ -25,7 +24,7 @@ use crate::text::inline::*;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn collect_element(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,
@@ -94,7 +93,9 @@ pub(super) fn collect_element(
     // касаться не должна, иначе вокруг `inline-block` появляется
     // полноширинный пробел, которого в разметке нет.
     let mut marker = merged.clone();
-    marker.word_space_char = None;
+    if marker.word_space_char.is_some() {
+        marker.word_space_char = None;
+    }
     if atomic {
         out.push(Piece::Text {
             text: "\u{200b}".into(),
@@ -123,7 +124,12 @@ pub(super) fn collect_element(
     // Its advance is already carried by the edge spacers; paint those
     // advances instead of extending a descendant's text band into them.
     let painted_padding = merged.inline_bg.is_some() && merged.inline_border.is_none();
-    if painted_padding && let Some(pad) = &mut merged.inline_pad {
+    if painted_padding
+        && merged
+            .inline_pad
+            .is_some_and(|pad| pad[1] != 0.0 || pad[3] != 0.0)
+        && let Some(pad) = &mut merged.inline_pad
+    {
         pad[1] = 0.0;
         pad[3] = 0.0;
     }
@@ -134,7 +140,7 @@ pub(super) fn collect_element(
     } else {
         0
     };
-    let edge = |mut style: Computed, leading: bool| {
+    let edge = |mut style: crate::style::computed::BoxStyle, leading: bool| {
         style.spacer_edge = Some((box_id, leading != own_rtl, own_rtl));
         style
     };
@@ -175,9 +181,10 @@ pub(super) fn collect_element(
     // spacers (`box_extents`); they add no text.
     let box_marker = |start: bool| Piece::Text {
         text: String::new(),
-        style: Computed {
-            spacer_edge: Some((box_id, start, own_rtl)),
-            ..merged.clone()
+        style: {
+            let mut style = merged.clone();
+            style.spacer_edge = Some((box_id, start, own_rtl));
+            style
         },
     };
     if box_id != 0 {
@@ -186,9 +193,10 @@ pub(super) fn collect_element(
     if let Some(mark) = open {
         out.push(Piece::Text {
             text: mark.to_string(),
-            style: Computed {
-                inline_control: true,
-                ..merged.clone()
+            style: {
+                let mut style = merged.clone();
+                style.inline_control = true;
+                style
             },
         });
     }
@@ -217,9 +225,10 @@ pub(super) fn collect_element(
     if let Some(mark) = close {
         out.push(Piece::Text {
             text: mark.to_string(),
-            style: Computed {
-                inline_control: true,
-                ..merged.clone()
+            style: {
+                let mut style = merged.clone();
+                style.inline_control = true;
+                style
             },
         });
     }

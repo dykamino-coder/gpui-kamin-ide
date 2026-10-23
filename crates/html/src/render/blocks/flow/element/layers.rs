@@ -7,7 +7,6 @@ use crate::paint::box_tree::content_wrapper;
 use crate::paint::stacking::{layered, stacking_context, z_index_applies};
 use crate::render::blocks::flow::BelowRun;
 use crate::render::blocks::positioned::static_position_layer;
-use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -16,7 +15,7 @@ pub(crate) fn finish_element(
     e: &crate::dom::Element,
     y_set: bool,
     x_set: bool,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     ordered_context: bool,
     below: &mut BelowRun,
     built: AnyElement,

@@ -7,13 +7,12 @@ use crate::dom::Element;
 use crate::layout::block::struts::margin_px;
 use crate::layout::positioned::static_position::{static_line_align, static_self_align};
 use crate::paint::stacking::layered;
-use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn static_position_layer(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     built: AnyElement,
     layer_ok: bool,
     under_tf: bool,

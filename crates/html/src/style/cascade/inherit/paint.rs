@@ -10,7 +10,7 @@ pub(super) fn inherit_paint(
     parent: &Computed,
     declared: &Computed,
     own: &Computed,
-    c: &mut Computed,
+    c: &mut crate::style::computed::BoxStyle,
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) {
@@ -18,18 +18,18 @@ pub(super) fn inherit_paint(
     // применяем к собственным цветам потомка: раньше фильтр действовал только
     // на узел, где написан, и дети оставались цветными.
     if c.filter.is_none() {
-        c.filter = parent.filter;
-        c.scrollbar_filter_ops = parent.scrollbar_filter_ops.clone();
+        set!(c.filter, parent.filter);
+        set!(c.scrollbar_filter_ops, parent.scrollbar_filter_ops.clone());
     }
     // ЕДИНСТВЕННАЯ точка окраски фильтром (каскад цвета не трогает).
     // Красится только ВОЗНИКШЕЕ на этом узле: унаследованный цвет уже
     // покрашен предком — повторная окраска давала f^N по поколениям.
     if paint_filter && let Some(f) = c.filter {
         if own.background.is_some() {
-            c.background = c.background.map(|col| f.apply(col));
+            set!(c.background, c.background.map(|col| f.apply(col)));
         }
         if declared.declares_color() || own.filter.is_some() && parent.color.is_none() {
-            c.color = c.color.map(|col| f.apply(col));
+            set!(c.color, c.color.map(|col| f.apply(col)));
         }
         // `currentcolor` сторон решится уже окрашенным цветом текста.
         for side in c.border_colors.iter_mut() {
@@ -106,28 +106,34 @@ pub(super) fn inherit_paint(
     );
     if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, vcx) {
         let foreground = c.text_clip_raw.or(c.color);
-        c.text_clip_raw = foreground;
-        c.text_clip_fill = Some(fill);
-        c.color = Some(crate::style::values::composite::over(
-            foreground.unwrap_or(black),
-            fill,
-        ));
+        set!(c.text_clip_raw, foreground);
+        set!(c.text_clip_fill, Some(fill));
+        set!(
+            c.color,
+            Some(crate::style::values::composite::over(
+                foreground.unwrap_or(black),
+                fill,
+            ))
+        );
     } else if parent.text_clip_fill.is_some() && out_of_flow {
-        c.text_clip_fill = None;
-        c.text_clip_raw = None;
+        set!(c.text_clip_fill, None);
+        set!(c.text_clip_raw, None);
         if !declared.declares_color() {
-            c.color = parent.text_clip_raw;
+            set!(c.color, parent.text_clip_raw);
         }
     } else if let Some(fill) = parent.text_clip_fill {
-        c.text_clip_fill = Some(fill);
+        set!(c.text_clip_fill, Some(fill));
         if declared.declares_color() {
-            c.text_clip_raw = c.color;
-            c.color = Some(crate::style::values::composite::over(
-                c.color.unwrap_or(black),
-                fill,
-            ));
+            set!(c.text_clip_raw, c.color);
+            set!(
+                c.color,
+                Some(crate::style::values::composite::over(
+                    c.color.unwrap_or(black),
+                    fill,
+                ))
+            );
         } else {
-            c.text_clip_raw = parent.text_clip_raw;
+            set!(c.text_clip_raw, parent.text_clip_raw);
         }
     }
 }

@@ -17,7 +17,7 @@ use crate::style::values::value::{Len, px_strict};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_children(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     _cell_bfc: bool,
 ) -> (Vec<Node>, bool, bool) {

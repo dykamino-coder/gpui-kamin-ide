@@ -3,7 +3,6 @@
 //! переноса и правило нулевого пробела у перевода строки сквозь границу коробки
 //! (css-text-4 §4.1.3). На выходе один `Piece::Text` с унаследованным стилем.
 
-use crate::style::computed::Computed;
 use crate::text::inline::*;
 
 /// Начинается ли текст узла пробельным рядом с переводом строки.
@@ -34,7 +33,7 @@ pub(super) fn ends_with_zwsp(out: &[Piece]) -> bool {
 
 pub(super) fn collect_text(
     t: &str,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     case: &mut text_case::Context,
     out: &mut Vec<Piece>,
 ) {

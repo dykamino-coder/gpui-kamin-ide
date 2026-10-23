@@ -12,7 +12,6 @@ pub(super) use crate::text::inline::collect::overlays::overlay_in_row;
 use crate::text::inline::collect::text_nodes::collect_text;
 
 use crate::dom::{Element, Node};
-use crate::style::computed::Computed;
 use crate::text::inline::*;
 
 /// What the piece collection carries across the inline boxes it descends:
@@ -24,7 +23,7 @@ pub(crate) struct CollectCx {
     pub(super) layout: crate::layout::cx::LayoutCx,
     /// Computed styles of the open inline ancestors (`atom_parent`): an atom
     /// inherits from the nearest one.
-    pub(super) inline_parents: Vec<crate::style::computed::Computed>,
+    pub(super) inline_parents: Vec<crate::style::computed::BoxStyle>,
     /// How many of them establish a containing block (positioned inlines).
     pub(super) inline_cb_depth: usize,
 }
@@ -41,7 +40,7 @@ impl CollectCx {
 
 pub(super) fn collect_with_empty_metrics(
     children: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,

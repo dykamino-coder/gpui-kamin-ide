@@ -5,15 +5,15 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
 
-type BuildNodes = fn(&[Node], &Computed, &RenderOpts) -> Vec<AnyElement>;
-type BuildParagraph = fn(&[Node], &Computed, &RenderOpts) -> AnyElement;
+type BuildNodes = fn(&[Node], &BoxStyle, &RenderOpts) -> Vec<AnyElement>;
+type BuildParagraph = fn(&[Node], &BoxStyle, &RenderOpts) -> AnyElement;
 type BuildProbes =
-    fn(&Element, &Computed, &RenderOpts, &mut Vec<AnyElement>, bool, bool, Option<ClampSpan>);
-type FirstLineRoute = fn(Vec<Node>, &Computed) -> Vec<Node>;
+    fn(&Element, &BoxStyle, &RenderOpts, &mut Vec<AnyElement>, bool, bool, Option<ClampSpan>);
+type FirstLineRoute = fn(Vec<Node>, &crate::style::computed::Computed) -> Vec<Node>;
 
 /// The normal-flow operations of [`ChildBuild`](super::ChildBuild).
 #[derive(Clone, Copy)]
@@ -42,7 +42,7 @@ impl FlowBuild {
     pub(super) fn blocks(
         &self,
         nodes: &[Node],
-        inherited: &Computed,
+        inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> Vec<AnyElement> {
         (self.blocks)(nodes, inherited, opts)
@@ -51,7 +51,7 @@ impl FlowBuild {
     pub(super) fn paragraph(
         &self,
         nodes: &[Node],
-        inherited: &Computed,
+        inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> AnyElement {
         (self.paragraph)(nodes, inherited, opts)
@@ -61,7 +61,7 @@ impl FlowBuild {
     pub(super) fn probes(
         &self,
         e: &Element,
-        merged: &Computed,
+        merged: &BoxStyle,
         opts: &RenderOpts,
         kids: &mut Vec<AnyElement>,
         makes_bfc: bool,
@@ -71,7 +71,11 @@ impl FlowBuild {
         (self.probes)(e, merged, opts, kids, makes_bfc, is_clamp, span)
     }
 
-    pub(super) fn first_line_route(&self, nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+    pub(super) fn first_line_route(
+        &self,
+        nodes: Vec<Node>,
+        parent: &crate::style::computed::Computed,
+    ) -> Vec<Node> {
         (self.first_line_route)(nodes, parent)
     }
 }

@@ -20,7 +20,7 @@ pub(super) fn table_outer_box(
     min_w: Option<Len>,
     table_border_box: bool,
     fixed_floor: Option<f32>,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     needs_clone: bool,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
@@ -93,7 +93,7 @@ pub(super) fn finish_table_outer(
     caps_top: Vec<AnyElement>,
     caps_bot: Vec<AnyElement>,
     split_wrapper: bool,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     root_table: bool,
     outer: gpui::Div,
     shrink_wrap: bool,
@@ -116,12 +116,12 @@ pub(super) fn finish_table_outer(
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
-        let wrap = Computed {
+        let wrap = crate::style::computed::BoxStyle::new(Computed {
             position: e.style.computed().position,
             inset: e.style.computed().inset,
             z_index: e.style.computed().z_index,
             ..Default::default()
-        };
+        });
         let mut wrap = cx
             .build
             .styled_div(Styling::Box(&wrap), cx)

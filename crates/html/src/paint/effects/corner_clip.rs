@@ -55,7 +55,7 @@ pub(crate) fn new(c: &Computed, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<
     if !mask.starts_with("shape:rrect(") {
         return None;
     }
-    let mut own = c.clone();
+    let mut own = crate::style::computed::BoxStyle::new(c.clone());
     own.clip_margin = None;
     own.opacity = None;
     let b = c.borders();

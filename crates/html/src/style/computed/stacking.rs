@@ -37,7 +37,7 @@ pub(crate) fn stacking_context(c: &Computed) -> bool {
 /// позиционированного без `z-index` родителя (`fixed-pos-stacking-001`).
 /// Корневой элемент (`root_box`) контекст образует всегда, но корневой.
 /// `fixed`/`sticky` образуют контекст и с `z-index: auto` (css-position-3 §3).
-pub(crate) fn nested_context(parent: &Computed) -> bool {
+pub(crate) fn nested_context(parent: &crate::style::computed::BoxStyle) -> bool {
     parent.sc_ancestor
         || (!parent.root_box
             && (stacking_context(parent)

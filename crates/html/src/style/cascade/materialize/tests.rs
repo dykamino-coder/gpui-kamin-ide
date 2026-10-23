@@ -45,7 +45,7 @@ fn materialized_style_is_the_computed_value_stage() {
     assert_eq!(computed.text_indent, Some(Len::Px(40.0)));
     assert_eq!(computed.color, parent.color);
     // The box style reuses it under a parent box with the same inherited data.
-    let mut used_parent = (*parent).clone();
+    let mut used_parent = crate::style::computed::BoxStyle::new((*parent).clone());
     used_parent.cb_height_def = !used_parent.cb_height_def;
     let used = box_style(&used_parent, &p.style, vcx);
     assert_eq!(used.font_size, Some(Len::Px(40.0)));
@@ -64,7 +64,12 @@ fn an_edit_or_another_parent_recomputes() {
     bigger.font_size = Some(Len::Px(30.0));
     assert!(p.style.slot().get(&bigger, generation(vcx)).is_none());
     assert_eq!(
-        box_style(&bigger, &p.style, vcx).font_size,
+        box_style(
+            &crate::style::computed::BoxStyle::from(bigger.clone()),
+            &p.style,
+            vcx
+        )
+        .font_size,
         Some(Len::Px(60.0))
     );
     // A layout copy that edits the cascaded style drops its materialized style.
@@ -86,14 +91,22 @@ fn used_values_lie_over_the_shared_computed_style() {
     copy.style.used_mut().margin.top = Some(Len::Px(7.0));
     // The materialization stays valid and shared; the box takes the used value.
     assert!(copy.style.slot().get(&parent, generation(vcx)).is_some());
-    let used = box_style(&parent, &copy.style, vcx);
+    let used = box_style(
+        &crate::style::computed::BoxStyle::shared(std::rc::Rc::clone(&parent)),
+        &copy.style,
+        vcx,
+    );
     assert_eq!(used.margin.top, Some(Len::Px(7.0)));
     assert_eq!(used.text_indent, Some(Len::Px(40.0)));
     // Under another parent the style is computed for it and the used value
     // laid over it.
     let mut bigger = (*parent).clone();
     bigger.font_size = Some(Len::Px(30.0));
-    let other = box_style(&bigger, &copy.style, vcx);
+    let other = box_style(
+        &crate::style::computed::BoxStyle::from(bigger.clone()),
+        &copy.style,
+        vcx,
+    );
     assert_eq!(other.margin.top, Some(Len::Px(7.0)));
     assert_eq!(other.text_indent, Some(Len::Px(60.0)));
     assert_ne!(p.style.computed().margin.top, Some(Len::Px(7.0)));
@@ -128,7 +141,13 @@ fn cascaded_inherit_takes_the_parent_element_value() {
             .is_none()
     );
     assert_eq!(
-        box_style(&sibling_box, &span.style, vcx).padding.left,
+        box_style(
+            &crate::style::computed::BoxStyle::from(sibling_box.clone()),
+            &span.style,
+            vcx
+        )
+        .padding
+        .left,
         parent.padding.left
     );
 }

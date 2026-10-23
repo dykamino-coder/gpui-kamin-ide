@@ -38,7 +38,11 @@ mod tests {
         let vcx = doc.values();
         let parent = computed("font-kerning: none", vcx);
         let child = computed("font-variant-ligatures: no-common-ligatures", vcx);
-        let inherited = inherit(&parent, &child, vcx);
+        let inherited = inherit(
+            &crate::style::computed::BoxStyle::from(parent.clone()),
+            &child,
+            vcx,
+        );
         assert_eq!(kern(&inherited, vcx), Some(0));
         assert_eq!(kern(&inherited.text_only(), vcx), Some(0));
     }
@@ -50,11 +54,31 @@ mod tests {
         let parent = computed("font-kerning: none", vcx);
         for keyword in ["auto", "initial"] {
             let child = computed(&format!("font-kerning: {keyword}"), vcx);
-            assert_eq!(kern(&inherit(&parent, &child, vcx), vcx), None);
+            assert_eq!(
+                kern(
+                    &inherit(
+                        &crate::style::computed::BoxStyle::from(parent.clone()),
+                        &child,
+                        vcx
+                    ),
+                    vcx
+                ),
+                None
+            );
         }
         for keyword in ["inherit", "unset"] {
             let child = computed(&format!("font-kerning: {keyword}"), vcx);
-            assert_eq!(kern(&inherit(&parent, &child, vcx), vcx), Some(0));
+            assert_eq!(
+                kern(
+                    &inherit(
+                        &crate::style::computed::BoxStyle::from(parent.clone()),
+                        &child,
+                        vcx
+                    ),
+                    vcx
+                ),
+                Some(0)
+            );
         }
     }
 
@@ -86,9 +110,29 @@ mod tests {
         let vcx = doc.values();
         let parent = computed("font-kerning: none", vcx);
         let reset = computed("font-kerning: none; font: 16px serif", vcx);
-        assert_eq!(kern(&inherit(&parent, &reset, vcx), vcx), None);
+        assert_eq!(
+            kern(
+                &inherit(
+                    &crate::style::computed::BoxStyle::from(parent.clone()),
+                    &reset,
+                    vcx
+                ),
+                vcx
+            ),
+            None
+        );
         let inherited = computed("font: 16px serif; font: inherit", vcx);
-        assert_eq!(kern(&inherit(&parent, &inherited, vcx), vcx), Some(0));
+        assert_eq!(
+            kern(
+                &inherit(
+                    &crate::style::computed::BoxStyle::from(parent.clone()),
+                    &inherited,
+                    vcx
+                ),
+                vcx
+            ),
+            Some(0)
+        );
     }
 
     #[test]

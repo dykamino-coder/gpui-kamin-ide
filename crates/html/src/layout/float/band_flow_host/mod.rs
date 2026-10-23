@@ -66,7 +66,7 @@ pub(super) fn own_layout_mode(c: &Computed) -> bool {
 /// font in `inherited`.
 pub(super) fn fit_own_layout(
     c: &mut Computed,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     avail: f32,
     cb: f32,
     vcx: crate::document::state::ValueCx<'_>,
@@ -131,7 +131,11 @@ pub(super) fn band_flow_rest(
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
-pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn band_flow_host(
+    e: &Element,
+    inherited: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let host = e.marks.shape_flow.unwrap_or_default();
     let count = host.count;
     let em: f32 = host.em.unwrap_or(opts.base_size());

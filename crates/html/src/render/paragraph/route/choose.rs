@@ -17,7 +17,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn route_pieces(
     pieces: Vec<inline::Piece>,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
     indent: crate::text::paragraph::Indent,
@@ -134,9 +134,13 @@ pub(crate) fn route_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(div(), &style.text_only(), vcx)
-            .max_w_full()
-            .child(SharedString::from(t));
+        let d = apply(
+            div(),
+            &crate::style::computed::BoxStyle::new(style.text_only()),
+            vcx,
+        )
+        .max_w_full()
+        .child(SharedString::from(t));
         d.into_any_element()
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево
@@ -185,13 +189,13 @@ mod tests {
                 let pieces = vec![
                     inline::Piece::Text {
                         text: text.into(),
-                        style: inherited.clone(),
+                        style: crate::style::computed::BoxStyle::from(inherited.clone()),
                     },
                     inline::Piece::Overlay(div().into_any_element(), Default::default()),
                 ];
                 let mut element = route_pieces(
                     pieces,
-                    &inherited,
+                    &crate::style::computed::BoxStyle::from(inherited.clone()),
                     &opts,
                     None,
                     Default::default(),

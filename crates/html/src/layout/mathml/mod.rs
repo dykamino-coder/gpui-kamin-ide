@@ -26,12 +26,16 @@ use geometry::Metrics;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 use parameters::{Kind, length_px};
 
-pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
+pub(crate) fn element(
+    e: &Element,
+    inherited: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> Option<AnyElement> {
     build(e, inherited, opts, None)
 }
 fn build(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     target: Option<stretch::Target>,
 ) -> Option<AnyElement> {

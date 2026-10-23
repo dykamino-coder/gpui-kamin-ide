@@ -26,7 +26,7 @@ pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
         return None;
     }
     let mut c = crate::style::cascade::inherit::inherit_unpainted(
-        &Computed::default(),
+        &crate::style::computed::BoxStyle::default(),
         root.style.cascaded(),
         vcx,
     );
@@ -85,7 +85,7 @@ pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
     }
     c.overflow_x = viewport_axis(c.overflow_x);
     c.overflow_y = viewport_axis(c.overflow_y);
-    Some(c)
+    Some(c.into_computed())
 }
 
 pub(super) fn prepare_embedded(
@@ -196,7 +196,7 @@ mod tests {
             let c = policy(&nodes, vcx).unwrap();
             assert_eq!(c.viewport_unit_insets, Some(expected), "{css}");
             let mut child = crate::style::cascade::inherit::inherit_unpainted(
-                &c,
+                &crate::style::computed::BoxStyle::from(c.clone()),
                 &Computed {
                     width: Some(Len::Vw(1.0)),
                     height: Some(Len::Vh(1.0)),

@@ -11,7 +11,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 pub(crate) fn render_with_style(
     li: &Element,
     inherited: &Computed,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
@@ -178,7 +178,11 @@ pub(crate) fn render_with_style(
 
 /// String list-style-type values inherit through ordinary block wrappers;
 /// generated marker content belongs only to the originating item.
-pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut Computed) {
+pub(crate) fn inherited_style(
+    e: &Element,
+    parent: &Computed,
+    merged: &mut crate::style::computed::BoxStyle,
+) {
     if e.style.computed().marker_text.is_none()
         && e.style.cascaded().list_style_type.is_none()
         && e.style.computed().no_marker.is_none()
@@ -186,6 +190,7 @@ pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut Compu
             .marker_layer
             .as_deref()
             .is_none_or(|m| m.content.is_none())
+        && merged.marker_text != parent.marker_text
     {
         merged.marker_text = parent.marker_text.clone();
     }

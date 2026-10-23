@@ -8,7 +8,6 @@ use crate::layout::fragment::clone::clone_dec;
 use crate::layout::fragment::shape_contents::strip_through_top;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_relative;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 mod finish;
 use finish::{finish_stack_child, nest_row_of};
@@ -36,10 +35,10 @@ pub(super) fn multicol_stack_child(
     forced: Vec<f32>,
     solid: Vec<(f32, f32)>,
     e: &Element,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     clone_plan: &[Vec<(f32, f32)>],
-    kid_parent: &[Option<Computed>],
+    kid_parent: &[Option<crate::style::computed::BoxStyle>],
     kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
     col_rl: bool,
@@ -65,7 +64,7 @@ pub(super) fn multicol_stack_child(
     // Элемент строки flex (`split_flex_lines`) наследует от
     // СВОЕГО контейнера, а не от многоколоночника.
     let merged_k = kid_parent.get(ix).cloned().flatten();
-    let merged: &Computed = merged_k.as_ref().unwrap_or(&merged);
+    let merged: &crate::style::computed::BoxStyle = merged_k.as_ref().unwrap_or(&merged);
     let mut copy = c;
     // Поля кладёт укладка колонок, не коробка. В
     // вертикальном письме блочные поля — левое и

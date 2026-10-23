@@ -12,7 +12,6 @@ use crate::paint::effects::{grouped, transform, underlay::Underlay};
 use crate::paint::stacking;
 use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
-use crate::style::computed::Computed;
 use gpui::AnyElement;
 
 impl Default for ChildBuild {
@@ -48,8 +47,8 @@ fn styled_div(styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
 
 fn content_sized(
     el: AnyElement,
-    style: &Computed,
-    item_style: &Computed,
+    style: &crate::style::computed::BoxStyle,
+    item_style: &crate::style::computed::BoxStyle,
     placement: GridPlacement,
     cx: &LayoutCx,
 ) -> AnyElement {

@@ -19,7 +19,7 @@ fn empty_multicol_keeps_the_original_box_without_column_tracks() {
             let result = stack_box(
                 gpui::div().w(px(32.)),
                 &e,
-                Computed::default(),
+                crate::style::computed::BoxStyle::from(Computed::default()),
                 &Computed::default(),
                 &opts,
                 cols,

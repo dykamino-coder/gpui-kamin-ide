@@ -13,7 +13,7 @@ use clip_position::box_clip_position;
 use overflow_inset::box_overflow;
 pub(crate) use overflow_inset::static_shift;
 
-pub(super) fn apply_box(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(super) fn apply_box(mut d: Div, c: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> Div {
     contained_intrinsic::apply(&mut d, c);
     // `contain: size`: коробка меряется как пустая — рост от содержимого
     // подменяется `contain-intrinsic-size` (или нулём). Подмена касается

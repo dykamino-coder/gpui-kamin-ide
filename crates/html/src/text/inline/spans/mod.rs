@@ -28,7 +28,7 @@ fn text_ranges(
         };
         let range = at..at + text.len();
         at = range.end;
-        Some((range, text.as_str(), style))
+        Some((range, text.as_str(), &**style))
     })
 }
 

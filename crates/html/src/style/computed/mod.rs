@@ -55,10 +55,12 @@ mod resolve;
 pub use resolve::{FontCx, LenCx, ViewportCx};
 
 use crate::style::values::value::Len;
+mod box_style;
 mod fields;
 pub(crate) mod scroll;
 pub(crate) mod snap;
 mod used_color;
+pub use crate::style::computed::box_style::BoxStyle;
 pub use crate::style::computed::fields::*;
 pub(super) mod transform;
 pub use crate::style::computed::transform::*;

@@ -59,7 +59,9 @@ pub(super) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
         Piece::Text { text, style } if !text.is_empty() && text != SPACER => Some(style),
         _ => None,
     });
-    if let Some(style) = last {
+    if let Some(style) = last
+        && style.letter_spacing_after != spacing
+    {
         style.letter_spacing_after = spacing;
     }
 }
@@ -75,10 +77,13 @@ pub(super) fn set_parent_boundary_spacing(pieces: &mut [Piece], parent: Option<L
         _ => None,
     });
     if let Some(style) = last {
-        style.letter_spacing_after = match parent {
+        let after = match parent {
             Some(len) => Some(len),
             None if style.letter_spacing.is_some() => Some(Len::Px(0.0)),
             None => None,
         };
+        if style.letter_spacing_after != after {
+            style.letter_spacing_after = after;
+        }
     }
 }

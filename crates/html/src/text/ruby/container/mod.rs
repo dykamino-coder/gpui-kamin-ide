@@ -10,14 +10,13 @@ use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::ruby::{RubyUnit, ruby_hiding, ruby_segments, ruby_unit_blank};
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) fn ruby_container_atom(
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
@@ -76,7 +75,7 @@ pub(crate) fn ruby_container_atom(
     let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
     for seg in &segments {
         // Стиль уровня: аннотации внутри `<rtc>` наследуют от него.
-        let level_style: Vec<Computed> = seg
+        let level_style: Vec<crate::style::computed::BoxStyle> = seg
             .levels
             .iter()
             .map(|l| {
@@ -85,7 +84,9 @@ pub(crate) fn ruby_container_atom(
                     None => merged.clone(),
                 };
                 // Decorations propagated to a ruby container apply to bases.
-                style.text_emphasis = None;
+                if style.text_emphasis.is_some() {
+                    style.text_emphasis = None;
+                }
                 style
             })
             .collect();

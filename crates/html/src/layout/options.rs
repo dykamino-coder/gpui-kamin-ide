@@ -56,11 +56,11 @@ impl RenderOpts {
     /// навязывал постоянную долю, она наследовалась ВСЕМ, и замер шрифта не
     /// работал ни разу: коробка с `line-height: normal` выходила выше коробки
     /// с `line-height: 1em` при одном и том же шрифте.
-    pub(crate) fn root_style(&self) -> Computed {
-        Computed {
+    pub(crate) fn root_style(&self) -> crate::style::computed::BoxStyle {
+        crate::style::computed::BoxStyle::new(Computed {
             icb: true,
             ..Computed::default()
-        }
+        })
     }
 }
 

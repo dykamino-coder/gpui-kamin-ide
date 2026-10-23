@@ -10,7 +10,7 @@ use gpui::{AnyElement, IntoElement, Refineable, Styled, px, size};
 
 pub(crate) fn render(
     e: &Element,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     parent: &Computed,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<AnyElement> {

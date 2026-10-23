@@ -7,15 +7,14 @@
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
 use crate::style::values::value::{Color, Len, px_lossy_zero};
 use crate::text::inline::*;
 
 pub(super) fn element_style(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
-) -> (Computed, bool) {
+) -> (crate::style::computed::BoxStyle, bool) {
     let mut merged = box_style(inherited, &e.style, vcx);
     let viewport = vcx.viewport;
     merged.resolve_decor_inset_viewport(viewport, vcx);

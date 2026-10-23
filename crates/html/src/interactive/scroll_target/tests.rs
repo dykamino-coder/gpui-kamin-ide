@@ -1,5 +1,6 @@
 //! Тесты: нативные цели прокрутки сохраняют CSS-размеры и явную изоляцию владельцев.
 use super::*;
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{CssSizingKeyword, Overflow, div, px};
 
@@ -12,11 +13,11 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
-    let c = Computed {
-        self_node: 7,
+    let mut c = crate::style::computed::BoxStyle::from(Computed {
         width: Some(Len::FitContent),
         ..Computed::default()
-    };
+    });
+    c.self_node = 7;
     let margin = Sides {
         left: Some(Len::Px(10.0)),
         ..Default::default()
@@ -66,11 +67,11 @@ fn colored_numeric_scrollport_tracks_the_css_box() {
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
-    let mut c = Computed {
-        self_node: 7,
+    let mut c = crate::style::computed::BoxStyle::from(Computed {
         width: Some(Len::Px(100.0)),
         ..Computed::default()
-    };
+    });
+    c.self_node = 7;
     c.apply_one("scrollbar-color", "red blue", cx.vcx());
     let handle = ScrollHandle::default();
     let outer = Target::new(7, &handle, false, true, Sides::default());

@@ -92,8 +92,11 @@ mod tests {
         let mut specified = Computed::default();
         specified.apply_one("font-size", "20px", vcx);
         specified.apply_one("column-width", "5em", vcx);
-        let parent =
-            super::super::inherit::inherit_unpainted(&Computed::default(), &specified, vcx);
+        let parent = super::super::inherit::inherit_unpainted(
+            &crate::style::computed::BoxStyle::default(),
+            &specified,
+            vcx,
+        );
         let mut child = Computed::default();
         child.apply_one("font-size", "10px", vcx);
         child.apply_one("column-width", "inherit", vcx);

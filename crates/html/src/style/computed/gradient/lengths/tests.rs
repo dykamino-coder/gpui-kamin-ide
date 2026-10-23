@@ -14,13 +14,17 @@ fn mixed_font_stops_compute_once_before_inheritance() {
         "linear-gradient(currentcolor 1em 2em, blue calc(50% + 3em))",
         vcx,
     );
-    let parent = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+    let parent = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &own,
+        vcx,
+    );
     let mut own = Computed::default();
     own.apply_one("font-size", "80px", vcx);
     own.apply_one("background-image", "inherit", vcx);
     own.apply_one("color", "green", vcx);
     let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
-    let gradient = child.gradient.unwrap();
+    let gradient = child.gradient.clone().unwrap();
     assert!(gradient.stop_lengths.is_empty());
     assert_eq!(
         gradient
@@ -48,8 +52,12 @@ fn radial_radii_center_and_line_stops_are_computed_lengths() {
         "radial-gradient(ellipse 2em 3em at 1em 50%, red 1lh, blue calc(50% + 2lh))",
         vcx,
     );
-    let computed = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
-    let gradient = computed.gradient.unwrap();
+    let computed = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &own,
+        vcx,
+    );
+    let gradient = computed.gradient.clone().unwrap();
     let GradientShape::Radial { position, size, .. } = gradient.shape else {
         panic!("radial gradient")
     };
@@ -78,10 +86,14 @@ fn viewport_and_font_terms_share_the_computed_stop() {
         "linear-gradient(red calc(10vw + 2em), blue calc(50% + 3vh))",
         vcx,
     );
-    let mut computed = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+    let mut computed = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &own,
+        vcx,
+    );
     computed.resolve_viewport((200.0, 100.0), vcx);
     computed.resolve_em(16.0, vcx);
-    let gradient = computed.gradient.unwrap();
+    let gradient = computed.gradient.clone().unwrap();
     assert_eq!(
         (gradient.stops_raw[0].1, gradient.stops_raw[0].2),
         (None, Some(60.0))

@@ -5,13 +5,13 @@ mod sizing;
 pub(super) use sizing::item_sizing;
 
 use crate::dom::Node;
-use crate::style::computed::{Computed, Display, FlexDir};
+use crate::style::computed::{Display, FlexDir};
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn ordered_element(
     mut e: crate::dom::Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Node {
     e.style.used_mut().float = None;

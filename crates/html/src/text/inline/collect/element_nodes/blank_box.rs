@@ -4,7 +4,6 @@
 //! он не меняет. Возвращает признак «коробка пустая».
 
 use crate::dom::{Element, Node};
-use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use crate::text::inline::*;
 use gpui::Styled;
@@ -12,8 +11,8 @@ use gpui::Styled;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn blank_box(
     e: &Element,
-    merged: &Computed,
-    inherited: &Computed,
+    merged: &crate::style::computed::BoxStyle,
+    inherited: &crate::style::computed::BoxStyle,
     painted_bg: bool,
     lead: f32,
     trail: f32,

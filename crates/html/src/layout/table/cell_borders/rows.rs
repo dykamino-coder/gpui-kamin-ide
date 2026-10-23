@@ -19,7 +19,7 @@ pub(crate) fn collapsed_row_edges(
     span_cols: u16,
     cols: u16,
     row_style: &Computed,
-    table_style: &Computed,
+    table_style: &crate::style::computed::BoxStyle,
     last_row: Option<&Element>,
     table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,

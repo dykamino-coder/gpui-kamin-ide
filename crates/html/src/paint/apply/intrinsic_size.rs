@@ -60,7 +60,11 @@ mod tests {
         for argument in [Len::Px(394.0), Len::Pct(0.5)] {
             c.fit_arg[0] = Some(argument);
             assert!(native_content_box(&c));
-            let mut d = super::super::apply(div(), &c, vcx);
+            let mut d = super::super::apply(
+                div(),
+                &crate::style::computed::BoxStyle::from(c.clone()),
+                vcx,
+            );
             assert_eq!(d.style().content_box, Some(true));
             assert_eq!(d.style().size.height, Some(px(60.0).into()));
         }

@@ -139,7 +139,7 @@ mod tests {
     fn text(t: &str) -> Piece {
         Piece::Text {
             text: t.into(),
-            style: Computed::default(),
+            style: crate::style::computed::BoxStyle::from(Computed::default()),
         }
     }
 

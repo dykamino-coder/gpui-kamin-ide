@@ -12,13 +12,13 @@ use crate::style::computed::{Computed, Display};
 
 pub(crate) struct Marker {
     pub text: String,
-    pub style: Option<Computed>,
+    pub style: Option<crate::style::computed::BoxStyle>,
 }
 
 pub(crate) fn resolve(
     li: &Element,
     inherited: &Computed,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Marker> {
     let idx = li.list_item.unwrap_or(0);
@@ -99,7 +99,7 @@ pub(crate) fn resolve(
 pub(crate) fn inline_marker(
     li: &Element,
     inherited: &Computed,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Node> {
     Some(node(li, merged, resolve(li, inherited, merged, vcx)?))

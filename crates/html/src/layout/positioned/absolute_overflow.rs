@@ -7,7 +7,7 @@ use crate::document::state::ValueCx;
 use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::positioned::absolute_overflow_math::{Span, place};
 use crate::layout::positioned::containing_block::Positioning;
-use crate::style::computed::{Align, Computed, Display, FlexDir, Position};
+use crate::style::computed::{Align, Display, FlexDir, Position};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, point, px};
 use std::rc::Rc;
@@ -15,7 +15,7 @@ use std::rc::Rc;
 /// Probe of a flex container's content box; it records into the build
 /// pass's `Positioning`, where the child's `Plan` reads it.
 pub(crate) fn probe(
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     positioning: &Rc<Positioning>,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
@@ -67,8 +67,8 @@ pub(crate) struct Plan {
 }
 impl Plan {
     pub(crate) fn new(
-        own: &Computed,
-        parent: &Computed,
+        own: &crate::style::computed::BoxStyle,
+        parent: &crate::style::computed::BoxStyle,
         positioning: &Rc<Positioning>,
     ) -> Option<Self> {
         if own.position != Some(Position::Absolute)

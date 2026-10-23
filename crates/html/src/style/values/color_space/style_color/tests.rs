@@ -104,7 +104,11 @@ fn background_expression_inherits_with_the_child_color() {
         "rgb(from currentcolor b g r / 50%)",
         vcx,
     );
-    let parent = crate::style::cascade::inherit::inherit(&Computed::default(), &parent, vcx);
+    let parent = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &parent,
+        vcx,
+    );
     assert_eq!(
         parent.background,
         Some(Color {

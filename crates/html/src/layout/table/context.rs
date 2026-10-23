@@ -3,14 +3,13 @@
 use super::probes::{CellBgs, CellEdges, RowRects};
 use crate::dom::Element;
 use crate::layout::build_contracts::RefBox;
-use crate::style::computed::Computed;
 use crate::style::values::value::Color;
 use gpui::AnyElement;
 use std::collections::HashMap;
 
 pub(super) struct TableGeom<'a> {
     pub e: &'a Element,
-    pub inherited: &'a Computed,
+    pub inherited: &'a crate::style::computed::BoxStyle,
     pub cols: u16,
     pub zero_cols: Vec<bool>,
     pub rows_left: Vec<usize>,
@@ -74,13 +73,13 @@ pub(super) struct RowState<'a> {
     pub row_ref: RefBox,
     pub row_rects: Option<RowRects>,
     pub grp_band: Option<RowRects>,
-    pub inherited: &'a Computed,
-    pub row_style: Computed,
+    pub inherited: &'a crate::style::computed::BoxStyle,
+    pub row_style: crate::style::computed::BoxStyle,
 }
 
 pub(super) struct CellLayout {
     pub cell: Element,
-    pub cm: Computed,
+    pub cm: crate::style::computed::BoxStyle,
     pub span_cols: u16,
     pub span_rows: u16,
     pub spans_collapsed: bool,

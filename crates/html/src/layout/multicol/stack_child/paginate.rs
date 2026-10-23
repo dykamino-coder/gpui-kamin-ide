@@ -7,7 +7,6 @@ use crate::dom::Element;
 use crate::layout::fragment::line_shape::side_margin_wrap;
 use crate::layout::fragment::paginate::{Paginate, apply, avoid_row, candidates, watch};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
 
 /// The rebuild of `copy` (already prepared for the stack: margins and the
 /// relative offset taken off) when the measure pass marked it.
@@ -16,7 +15,7 @@ pub(super) fn paginate_of(
     col_vert: bool,
     col_rl: bool,
     line_col_w: Option<f32>,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     copy: &Element,
 ) -> Option<Paginate> {
     let vcx = opts.cx.vcx();

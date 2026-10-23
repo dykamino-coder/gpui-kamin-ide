@@ -35,10 +35,10 @@ impl Scope {
     pub(super) fn paragraph(
         &mut self,
         nodes: &[Node],
-        style: &Computed,
+        style: &crate::style::computed::BoxStyle,
         opts: &RenderOpts,
     ) -> AnyElement {
-        let build = |style: &Computed| paragraph_probed(nodes, style, opts);
+        let build = |style: &crate::style::computed::BoxStyle| paragraph_probed(nodes, style, opts);
         let first = self.first;
         if nodes.iter().any(|n| {
             in_flow(

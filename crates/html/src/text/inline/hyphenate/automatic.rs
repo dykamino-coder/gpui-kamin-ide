@@ -192,7 +192,7 @@ mod tests {
             style: {
                 let mut with_inherited = Computed { ..style("en") };
                 with_inherited.hyphens_auto = Some(true);
-                with_inherited
+                crate::style::computed::BoxStyle::from(with_inherited)
             },
         };
         let mut pieces = [make("exam\u{ad}ple example"), make(" exam"), make("ple")];

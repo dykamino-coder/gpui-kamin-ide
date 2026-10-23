@@ -38,7 +38,7 @@ pub fn register_inline_anchor(
 /// `render::element` — свой `node_id`, порядок сборки, ключ клетки,
 /// выбранный вариант `position-try` и `anchor-size()`.
 pub fn prepare_inline_abs(
-    merged: &mut crate::style::computed::Computed,
+    merged: &mut crate::style::computed::BoxStyle,
     e: &crate::dom::Element,
     inherited: &crate::style::computed::Computed,
     vcx: ValueCx<'_>,

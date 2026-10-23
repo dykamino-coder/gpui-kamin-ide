@@ -12,19 +12,22 @@ use crate::layout::positioned::absolute_overflow;
 use crate::layout::writing_mode::native_intrinsic;
 use crate::paint::apply::{apply, apply_hover};
 use crate::paint::decorations::decorations;
-use crate::style::computed::Computed;
 use gpui::{ParentElement, Styled, div};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
 /// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
 pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
-    styled_div_with(e, &e.style.computed(), cx)
+    styled_div_with(
+        e,
+        &crate::style::computed::BoxStyle::shared(e.style.computed()),
+        cx,
+    )
 }
 
 pub(crate) fn styled_div_with(
     e: &Element,
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     let vcx = cx.vcx();
@@ -38,7 +41,7 @@ pub(crate) fn styled_div_with(
     let c = if style.hidden == Some(true)
         && (shows_inside(&e.children) || style.filter_ref.is_some())
     {
-        bare = style.paint_off();
+        bare = style.restyled(style.paint_off());
         &bare
     } else {
         style
@@ -62,9 +65,10 @@ pub(crate) fn styled_div_with(
             .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some())
         && !e.children.iter().any(|n| !is_blank(n))
     {
-        unfilled = Computed {
-            background: None,
-            ..c.clone()
+        unfilled = {
+            let mut unfilled = c.clone();
+            unfilled.background = None;
+            unfilled
         };
         &unfilled
     } else {
@@ -114,9 +118,10 @@ pub(crate) fn styled_div_with(
     // СОСЕДОМ коробки и попал бы в копию кадра (`backdrop-filter-root-element`).
     let rootless;
     let c = if e.tag == "html" && c.backdrop_color.is_some() {
-        rootless = Computed {
-            backdrop_color: None,
-            ..c.clone()
+        rootless = {
+            let mut rootless = c.clone();
+            rootless.backdrop_color = None;
+            rootless
         };
         &rootless
     } else {

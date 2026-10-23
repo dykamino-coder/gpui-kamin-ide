@@ -6,6 +6,7 @@ use crate::dom::{Element, Node};
 use crate::layout::table::columns::col_role;
 use crate::layout::table::{is_cell, table_roles};
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::style::computed::Display;
 
 /// Починка детей таблицы (css-tables-3 §3): `display: contents` растворить,
@@ -21,13 +22,14 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                 Node::Element(el) if el.style.computed().display == Some(Display::Contents) => {
                     // Дети растворённого получают его наследуемое (цвет,
                     // шрифт) — слитый стиль передаётся вниз донором.
+                    let donor = BoxStyle::from(el.style.cascaded().clone());
                     let merged: Vec<Node> = el
                         .children
                         .iter()
                         .cloned()
                         .map(|n| match n {
                             Node::Element(mut ge) => {
-                                ge.style = box_style(el.style.cascaded(), &ge.style, vcx).into();
+                                ge.style = box_style(&donor, &ge.style, vcx).into();
                                 Node::Element(ge)
                             }
                             // Голый текст стиля не несёт: наследуемое от
@@ -213,10 +215,11 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
             out.push(n.clone());
             continue;
         }
+        let donor = BoxStyle::from(el.style.cascaded().clone());
         for g in flatten_contents(&el.children, vcx) {
             match g {
                 Node::Element(mut ge) => {
-                    ge.style = box_style(el.style.cascaded(), &ge.style, vcx).into();
+                    ge.style = box_style(&donor, &ge.style, vcx).into();
                     out.push(Node::Element(ge));
                 }
                 Node::Text(t) if !t.trim().is_empty() => {

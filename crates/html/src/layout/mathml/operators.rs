@@ -3,7 +3,6 @@ use crate::style::values::value::px_strict;
 use crate::{
     dom::{Element, Node},
     layout::options::RenderOpts,
-    style::computed::Computed,
 };
 #[path = "operator_data0.rs"]
 mod data0;
@@ -38,7 +37,11 @@ pub(super) fn text(e: &Element) -> String {
         .trim()
         .to_string()
 }
-pub(super) fn core(e: &Element, parent: &Computed, opts: &RenderOpts) -> Option<Operator> {
+pub(super) fn core(
+    e: &Element,
+    parent: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> Option<Operator> {
     let vcx = opts.cx.vcx();
     let style = crate::style::cascade::materialize::box_style(parent, &e.style, vcx);
     if e.tag == "mo" {
@@ -82,7 +85,11 @@ fn lookup(text: &str, form: u8) -> Option<Entry> {
             .map(|i| entries[i])
     })
 }
-pub(super) fn operator(e: &Element, style: &Computed, opts: &RenderOpts) -> Operator {
+pub(super) fn operator(
+    e: &Element,
+    style: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> Operator {
     let text = text(e);
     let form = match e.attr("form") {
         Some("prefix") => 1,

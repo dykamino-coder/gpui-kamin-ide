@@ -14,7 +14,7 @@ impl AnchorPlan {
     /// списком `position-try-fallbacks` либо с `position-visibility`
     /// (проверка переполнения нужна и без якоря — `no-overflow`).
     pub(in crate::layout::positioned::anchor) fn of(
-        own: &Computed,
+        own: &crate::style::computed::BoxStyle,
         inherited: &Computed,
         vcx: ValueCx<'_>,
     ) -> Option<AnchorPlan> {

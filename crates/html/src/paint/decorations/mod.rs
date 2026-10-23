@@ -10,7 +10,6 @@ use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
 use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
-use crate::style::computed::Computed;
 use gpui::AnyElement;
 
 mod backdrop;
@@ -29,7 +28,7 @@ pub(crate) mod text_shadows;
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
 pub(crate) fn decorations(
-    c: &Computed,
+    c: &crate::style::computed::BoxStyle,
     empty: bool,
     vcx: ValueCx<'_>,
     cx: Option<&crate::layout::cx::LayoutCx>,
@@ -137,7 +136,7 @@ pub(crate) fn decorations(
 }
 
 fn stationary(
-    c: &Computed,
+    c: &crate::style::computed::BoxStyle,
     out: &mut Vec<AnyElement>,
     start: usize,
     cx: Option<&crate::layout::cx::LayoutCx>,

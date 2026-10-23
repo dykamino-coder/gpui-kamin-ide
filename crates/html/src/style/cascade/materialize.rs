@@ -13,7 +13,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Node, SharedStyle};
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -112,21 +112,21 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
 }
 
 /// Стиль коробки элемента с каскадным стилем `own` под коробкой-родителем со стилем `parent`.
-pub fn box_style(parent: &Computed, own: &SharedStyle, vcx: ValueCx<'_>) -> Computed {
+pub fn box_style(parent: &BoxStyle, own: &SharedStyle, vcx: ValueCx<'_>) -> BoxStyle {
     styled(parent, own, true, vcx)
 }
 
 /// То же без окраски цветовым фильтром поддерева (подготовка документа: Filter Effects 1 §5
 /// красит цвета, только когда отрисовщик строит элемент).
 pub(crate) fn box_style_unpainted(
-    parent: &Computed,
+    parent: &BoxStyle,
     own: &SharedStyle,
     vcx: ValueCx<'_>,
-) -> Computed {
+) -> BoxStyle {
     styled(parent, own, false, vcx)
 }
 
-fn styled(parent: &Computed, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> Computed {
+fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> BoxStyle {
     let generation = vcx.doc.metrics.generation();
     let cascaded = own.cascaded();
     // Выбранный вариант `@position-try` — источник каскада родителя (Position
@@ -138,29 +138,29 @@ fn styled(parent: &Computed, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         .slot()
         .get(parent, generation)
         .filter(|_| !fallback_parent);
-    let computed = match (fitting, own.used()) {
-        // Годный материализованный стиль: слой раскладки уже лежит поверх него.
-        (Some(_), Some(used)) => used.clone(),
-        (Some(computed), None) => (*computed).clone(),
+    // Годный материализованный стиль (со слоем раскладки) — общий, без копии (P-18).
+    let computed = match (fitting, own.used_rc()) {
+        (Some(_), Some(used)) => used,
+        (Some(computed), None) => computed,
         (None, used) => match own.slot().with_parent() {
             // Другие унаследованные данные (`::first-line`, положенная плашмя
             // копия абзаца): наследуемое — от коробки-родителя, каскадное
             // `inherit` — от родителя-элемента; поверх — поля раскладки.
             Some((materialized, element_parent)) => {
                 let mut from = if fallback_parent {
-                    parent.clone()
+                    Computed::clone(parent)
                 } else {
                     (*element_parent).clone()
                 };
                 inherited::take_inherited(&mut from, parent);
                 let mut c = super::compute::compute(&from, cascaded, vcx);
                 if let Some(used) = used {
-                    used::lay_used(&mut c, used, &materialized);
+                    used::lay_used(&mut c, &used, &materialized);
                 }
-                c
+                Rc::new(c)
             }
             // Стиль одной стадии: подготовка документа, коробка раскладки.
-            None => super::compute::compute(parent, cascaded, vcx),
+            None => Rc::new(super::compute::compute(parent, cascaded, vcx)),
         },
     };
     let view = own.computed();

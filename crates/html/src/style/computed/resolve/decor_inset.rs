@@ -63,6 +63,11 @@ impl Computed {
 
     /// Inline collection has no general viewport-resolution pass. Only the
     /// decoration's outstanding viewport terms are resolved there.
+    /// Отступы линий оформления, которые решает `resolve_decor_inset_viewport`.
+    pub(crate) fn has_decor_insets(&self) -> bool {
+        matches!(self.td_inset, Some(Some(_))) || self.decors.iter().any(|d| d.inset.is_some())
+    }
+
     pub(crate) fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
         let vp = self.viewport_cx(viewport);
         let fix = |length: &mut Option<Len>| {

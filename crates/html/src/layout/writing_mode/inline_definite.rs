@@ -25,7 +25,7 @@ fn out_of_flow(style: &Computed) -> bool {
 }
 
 /// Resolve the box's own inline-axis percentages against its vertical containing block.
-pub(crate) fn resolve_percentages(style: &mut Computed, parent: &Computed) {
+pub(crate) fn resolve_percentages(style: &mut Computed, parent: &crate::style::computed::BoxStyle) {
     let Some(cb) = parent.inline_definite else {
         return;
     };
@@ -62,7 +62,12 @@ pub(crate) fn resolve_percentages(style: &mut Computed, parent: &Computed) {
 }
 
 /// The box's own content inline size when it is definite and its inline axis is vertical.
-pub(crate) fn own(style: &Computed, parent: &Computed, root: bool, icb_height: f32) -> Option<f32> {
+pub(crate) fn own(
+    style: &Computed,
+    parent: &crate::style::computed::BoxStyle,
+    root: bool,
+    icb_height: f32,
+) -> Option<f32> {
     if !style.wm().vertical() || style.contains_height() {
         return None;
     }
@@ -146,22 +151,23 @@ fn stretched_flex_item(style: &Computed, parent: &Computed) -> Option<f32> {
 mod tests {
     use super::*;
 
-    fn vertical() -> Computed {
-        {
-            let mut with_inherited = Computed {
-                ..Computed::default()
-            };
-            with_inherited.writing_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
-            );
-            with_inherited
-        }
+    fn vertical() -> crate::style::computed::BoxStyle {
+        let mut style = crate::style::computed::BoxStyle::default();
+        style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        ));
+        style
     }
 
     #[test]
     fn stretched_vertical_blocks_carry_the_icb_height_down() {
         let mut html = vertical();
-        html.inline_definite = own(&html, &Computed::default(), true, 600.0);
+        html.inline_definite = own(
+            &html,
+            &crate::style::computed::BoxStyle::default(),
+            true,
+            600.0,
+        );
         assert_eq!(html.inline_definite, Some(600.0));
         let mut body = vertical();
         body.margin.top = Some(Len::Px(8.0));
@@ -198,8 +204,24 @@ mod tests {
         };
         let mut item = vertical();
         item.margin.top = Some(Len::Px(4.0));
-        assert_eq!(own(&item, &row, false, 600.0), Some(96.0));
+        assert_eq!(
+            own(
+                &item,
+                &crate::style::computed::BoxStyle::from(row.clone()),
+                false,
+                600.0
+            ),
+            Some(96.0)
+        );
         item.overflow_y = Some(Overflow::Scroll);
-        assert_eq!(own(&item, &row, false, 600.0), None);
+        assert_eq!(
+            own(
+                &item,
+                &crate::style::computed::BoxStyle::from(row.clone()),
+                false,
+                600.0
+            ),
+            None
+        );
     }
 }

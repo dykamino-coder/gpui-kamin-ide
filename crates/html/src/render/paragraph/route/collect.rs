@@ -20,7 +20,7 @@ use gpui::{AnyElement, IntoElement, div};
 
 pub(crate) fn paragraph_pieces_routed(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     first_line_at: usize,
     first_line: &Computed,

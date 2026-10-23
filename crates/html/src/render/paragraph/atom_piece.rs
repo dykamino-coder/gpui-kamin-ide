@@ -20,7 +20,7 @@ use crate::layout::atom::atom_element;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
 use crate::layout::writing_mode::rotated_atom;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Display;
 use crate::style::values::value::Len;
 use crate::text::inline;
 use crate::text::ruby::ruby_transform;
@@ -30,7 +30,7 @@ use gpui::{IntoElement, ParentElement};
 
 pub(crate) fn atom_piece(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     flow_text: bool,
     atom_cx: &inline::atom_parent::AtomCx,
@@ -66,7 +66,7 @@ pub(crate) fn atom_piece(
 
 fn atom_piece_in(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     flow_text: bool,
     in_inline_cb: bool,

@@ -174,7 +174,7 @@ pub(super) fn column_stack_div(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_column_stack(
     e: &Element,
-    merged: Computed,
+    merged: crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     col_vert: bool,
     oof_static: Vec<(usize, Element)>,

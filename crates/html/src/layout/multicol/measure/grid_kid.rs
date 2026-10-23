@@ -8,7 +8,7 @@ use crate::dom::Element;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::Position;
 use std::cell::RefCell;
 
 /// Блочный поточный ребёнок с сеткой в стопке с известной шириной колонки;
@@ -26,7 +26,7 @@ pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
 /// прежняя мера.
 pub(super) fn measured(
     c: &Element,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
     w: f32,
     measured_kids: &RefCell<Vec<(u64, f32)>>,

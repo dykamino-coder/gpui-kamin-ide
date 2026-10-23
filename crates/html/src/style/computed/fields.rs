@@ -182,25 +182,11 @@ pub struct Computed {
     /// (начальное значение Blink; спека просит `anchor-visible`, но без
     /// явного свойства гасить коробки по обрезке якоря слишком дорого).
     pub position_visibility: u8,
-    /// Стиль ДО наложения выбранного варианта `position-try` — из него
-    /// `anchor::place` строит остальные кандидаты. Ставит `anchor::apply_chosen`.
-    pub try_base: Option<std::rc::Rc<Computed>>,
-    /// Служебные поля якорного шага, ставит `render::element`: свой `node_id`
-    /// (ключ реестра содержащих блоков `anchor::CB`), `node_id` ближайшего
-    /// содержащего блока абсолюта (`style::cascade::inherit`; 0 — начальный, окно),
-    /// порядковый номер сборки в кадре («последний якорь раньше по дереву» в
-    /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
-    pub self_node: u64,
-    pub cb_node: u64,
-    /// Used classic gutters of the nearest containing block and viewport.
-    pub(crate) cb_scroll_insets: ([f32; 4], [f32; 4]),
     pub(crate) icb_scroll_insets: Option<[f32; 4]>,
     /// Root unconditional gutters reduce viewport units, independently of body overflow.
     pub(crate) viewport_unit_insets: Option<[f32; 2]>,
     /// A matching scrollbar pseudo style excludes root viewport-unit reduction.
     pub(crate) custom_scrollbar: bool,
-    pub anchor_seq: u32,
-    pub anchor_key: u64,
     /// CSS scrollbar colors, width and forced overflow axes (HTML only).
     pub scroll: super::scroll::ScrollStyle,
     pub overflow_x: Option<Overflow>,
@@ -836,20 +822,17 @@ pub struct Computed {
     pub(crate) root_box: bool,
     /// ОПРЕДЕЛЕНА ли высота содержащего блока: от неё зависит, считается ли
     /// доля высоты вообще (§10.5 — иначе значение равно `auto`).
-    pub(crate) cb_height_def: bool,
+    pub(crate) cb_height_def_hint: bool,
     /// Режим quirks: высота, от которой ДЕТИ этой коробки решают долю
     /// высоты при неопределённом содержащем блоке (Quirks Mode §3.5 «The
     /// percentage height calculation quirk» — ближайший предок с не-`auto`
     /// высотой). `None` — квирка нет или опоры не нашлось.
-    pub(crate) quirk_pct_base: Option<f32>,
+    pub(crate) quirk_pct_base_hint: Option<f32>,
     /// `calc-size(<basis>, <expr>)` у `width`, `height`, `min-width`,
     /// `min-height` (css-values-5 §calc-size): `(mul, add, max, min)` над
     /// размером основы-ключевого слова; само свойство при этом `auto`, а
     /// выражение применяет раскладка (`taffy::Style::calc_size`).
     pub(crate) calc_size: [Option<(f32, f32, f32, f32)>; 4],
-    /// Коробка РАСТЯНУТА раскладкой: элемент гибкого контейнера или сетки без
-    /// своей высоты получает её от полосы, и для потомков она определена.
-    pub(crate) stretched: bool,
     /// Элемент КОЛОНКИ гибкого контейнера: определён ли главный размер
     /// контейнера (css-flexbox-1 §9.8 п.1). `None` — не элемент колонки.
     pub(crate) flex_main_def: Option<bool>,
@@ -918,19 +901,6 @@ pub struct Computed {
     pub abs_inline_level: bool,
     /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
     pub run_in: Option<bool>,
-    /// Есть ли выше по дереву коробка, устанавливающая содержащий блок для
-    /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
-    /// каскад предков не видит.
-    pub(crate) cb_ancestor: bool,
-    /// How many ancestors establish a containing block for absolute
-    /// descendants (`establishes_cb`). An absolute box's nearest CB is the
-    /// ancestor with index `cb_depth + establishes_cb(parent)`; strict CB
-    /// layers (`cb_open_strict`) take only boxes whose nearest CB they are.
-    pub(crate) cb_depth: u16,
-    /// Есть ли выше по дереву НЕКОРНЕВОЙ контекст наложения (CSS 2.1 прил. E):
-    /// без него отрицательный `z-index` принадлежит корневому контексту и
-    /// рисуется под всем его потоком. Ставится при наследовании.
-    pub(crate) sc_ancestor: bool,
     /// CSS ancestor clipping inside a continuous fragmentation copy.
     pub(crate) fragment_clip_ancestor: bool,
     /// An ancestor is a multi-column container: the box may be fragmented
@@ -1263,10 +1233,6 @@ pub struct Computed {
     pub align_content_unsafe: bool,
     /// Generated inline controls have no bytes in first-line source offsets.
     pub inline_control: bool,
-    /// Definite content inline size (physical height) of a box in vertical flow: the basis of
-    /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
-    /// Set by `render::element`; not inherited.
-    pub(crate) inline_definite: Option<f32>,
     /// A piece of a float-band host (`layout::float::band_flow_host`): the host resolves its
     /// percentages against the band layout and places it; not inherited.
     pub(crate) band_kid: bool,

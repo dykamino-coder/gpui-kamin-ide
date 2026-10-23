@@ -20,7 +20,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn vertical_paragraph(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     _native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {

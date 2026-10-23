@@ -12,7 +12,7 @@ use masks::masked_layer;
 use crate::dom::Node;
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Shadow};
+use crate::style::computed::Shadow;
 use crate::text::shadow_text::normalize_for_shadow;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
@@ -20,7 +20,7 @@ fn shadow_layer(
     text: &str,
     shadow: &Shadow,
     nodes: &[Node],
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     same_paragraph: bool,
 ) -> AnyElement {
@@ -58,7 +58,7 @@ fn shadow_layer(
 
 pub(crate) fn with_text_shadow(
     el: AnyElement,
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     nodes: &[Node],
     opts: &RenderOpts,
 ) -> AnyElement {
@@ -118,7 +118,7 @@ pub(crate) fn with_text_shadow(
 }
 
 #[cfg(test)]
-fn shadow_list(c: &Computed) -> Vec<Shadow> {
+fn shadow_list(c: &crate::style::computed::Computed) -> Vec<Shadow> {
     ShadowStyle::new(c).resolved()
 }
 

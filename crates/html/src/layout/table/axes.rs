@@ -37,7 +37,11 @@ impl Axes {
     }
 }
 
-pub(super) fn inherited(e: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Option<Element> {
+pub(super) fn inherited(
+    e: &Element,
+    parent: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> Option<Element> {
     let style = crate::style::cascade::materialize::box_style(parent, &e.style, vcx);
     if (
         e.style.cascaded().writing_mode,

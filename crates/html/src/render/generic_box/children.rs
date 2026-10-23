@@ -27,7 +27,7 @@ use std::borrow::Cow;
 pub(crate) fn generic_children(
     e: &Element,
     d: gpui::Div,
-    merged: Computed,
+    merged: crate::style::computed::BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
@@ -176,9 +176,10 @@ pub(crate) fn generic_children(
         // receives only Computed, whose inherited clamp value cannot identify
         // the container. Preserve this box's known BFC boundary for its float
         // containment without turning its descendants into clamp containers.
-        let formatting = is_clamp.then(|| Computed {
-            flow_root: Some(true),
-            ..merged.clone()
+        let formatting = is_clamp.then(|| {
+            let mut formatting = merged.clone();
+            formatting.flow_root = Some(true);
+            formatting
         });
         blocks(&children, formatting.as_ref().unwrap_or(&merged), opts)
     }));

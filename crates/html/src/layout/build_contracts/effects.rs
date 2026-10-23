@@ -76,7 +76,8 @@ impl<'a> Effect<'a> {
 }
 
 type ApplyEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
-type PaintGroup = fn(gpui::Div, &Element, &Computed, ValueCx<'_>) -> AnyElement;
+type PaintGroup =
+    fn(gpui::Div, &Element, &crate::style::computed::BoxStyle, ValueCx<'_>) -> AnyElement;
 type PaintResources = fn(&[Node], ValueCx<'_>);
 
 /// The paint operations of [`ChildBuild`](super::ChildBuild).
@@ -108,7 +109,7 @@ impl EffectBuild {
         &self,
         container: gpui::Div,
         e: &Element,
-        inherited: &Computed,
+        inherited: &crate::style::computed::BoxStyle,
         vcx: ValueCx<'_>,
     ) -> AnyElement {
         (self.paint_group)(container, e, inherited, vcx)

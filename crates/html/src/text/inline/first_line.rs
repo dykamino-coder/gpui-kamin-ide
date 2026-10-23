@@ -24,7 +24,7 @@ pub fn style_first_line(
         match p {
             Piece::Text { style: ref own, .. } if own.inline_control => out.push(p),
             Piece::Text { text, style: own } if seen < at => {
-                let dress = |base: &Computed| {
+                let dress = |base: &crate::style::computed::BoxStyle| {
                     let mut c = base.clone();
                     c.font_size = style.font_size.or(base.font_size);
                     // The fictional `::first-line` tag sequence wraps the
@@ -120,10 +120,10 @@ mod tests {
     fn generated_controls_do_not_shorten_the_styled_source_range() {
         let piece = |text: &str, inline_control| Piece::Text {
             text: text.into(),
-            style: Computed {
+            style: crate::style::computed::BoxStyle::from(Computed {
                 inline_control,
                 ..Computed::default()
-            },
+            }),
         };
         let first = {
             let mut with_inherited = Computed {

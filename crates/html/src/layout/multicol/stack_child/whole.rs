@@ -7,7 +7,6 @@ use crate::layout::fragment::line_shape::nested_box_w;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::table;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) -> Vec<Node> {
@@ -42,12 +41,12 @@ pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) 
 pub(super) fn copy_whole_box(
     opts: &RenderOpts,
     line_col_w: Option<f32>,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     copy: &Element,
     h: f32,
     nest_row: Option<f32>,
     nest_phase_k: f32,
-    inner: &Computed,
+    inner: &crate::style::computed::BoxStyle,
     whole: bool,
     part: usize,
     kids: &mut Vec<Node>,

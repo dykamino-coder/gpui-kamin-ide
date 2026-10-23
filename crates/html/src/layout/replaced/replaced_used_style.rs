@@ -37,7 +37,7 @@ pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
         )
     };
     let indefinite_height = matches!(element.style.computed().height, Some(Len::Pct(_)))
-        && !element.style.computed().cb_height_def
+        && !element.style.computed().cb_height_def_hint
         && !element.style.computed().root_box
         && !matches!(
             element.style.computed().position,
@@ -163,9 +163,9 @@ mod tests {
     fn definite_and_positioned_percentage_heights_keep_their_basis() {
         let mut image = crate::layout::table::anon::anon_element("img", vec![]);
         image.style.used_mut().height = Some(Len::Pct(0.5));
-        image.style.used_mut().cb_height_def = true;
+        image.style.used_mut().cb_height_def_hint = true;
         assert!(normalize(&image, None).is_none());
-        image.style.used_mut().cb_height_def = false;
+        image.style.used_mut().cb_height_def_hint = false;
         for position in [Position::Absolute, Position::Fixed] {
             image.style.used_mut().position = Some(position);
             assert!(normalize(&image, None).is_none());

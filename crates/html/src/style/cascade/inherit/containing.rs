@@ -5,48 +5,66 @@ use super::*;
 use crate::document::state::ValueCx;
 
 pub(super) fn inherit_containing(
-    parent: &Computed,
+    parent: &crate::style::computed::BoxStyle,
     own: &Computed,
-    c: &mut Computed,
+    c: &mut crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) {
-    c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
+    set!(
+        c.first_letter_excluded,
+        own.first_letter_excluded || parent.first_letter_excluded
+    );
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));
     c.sc_ancestor = crate::style::computed::stacking::nested_context(parent);
-    c.icb_scroll_insets = own.icb_scroll_insets.or(parent.icb_scroll_insets);
-    c.viewport_unit_insets = own.viewport_unit_insets.or(parent.viewport_unit_insets);
+    set!(
+        c.icb_scroll_insets,
+        own.icb_scroll_insets.or(parent.icb_scroll_insets)
+    );
+    set!(
+        c.viewport_unit_insets,
+        own.viewport_unit_insets.or(parent.viewport_unit_insets)
+    );
     c.cb_scroll_insets = if establishes_cb(parent) {
         (parent.scroll.used, parent.scroll.native)
     } else {
         parent.cb_scroll_insets
     };
     let clipped = |o| matches!(o, Some(o) if o != crate::style::computed::Overflow::Visible);
-    c.fragment_clip_ancestor = parent.fragment_clip_ancestor
-        || clipped(parent.overflow_x)
-        || clipped(parent.overflow_y)
-        || parent.contain_paint == Some(true)
-        || parent.clip_ref.is_some()
-        || parent.clip_shape.is_some()
-        || parent.clip_polygon.is_some()
-        || parent.clip_inset.is_some()
-        || parent.clip_xywh.is_some()
-        || parent.clip_rect.is_some()
-        || parent.clip_len.is_some()
-        || parent.mask_image.is_some();
-    c.in_multicol = parent.in_multicol
-        || ((parent.column_count.is_some()
-            || parent.column_width.is_some()
-            || parent.column_height.is_some())
-            && !matches!(
-                parent.display,
-                Some(crate::style::computed::Display::Grid)
-                    | Some(crate::style::computed::Display::InlineGrid)
-                    | Some(crate::style::computed::Display::GridLanes)
-                    | Some(crate::style::computed::Display::Flex)
-                    | Some(crate::style::computed::Display::InlineFlex)
-            ));
-    c.backdrop_root_above = parent.backdrop_root_above || backdrop_root(parent);
+    set!(
+        c.fragment_clip_ancestor,
+        parent.fragment_clip_ancestor
+            || clipped(parent.overflow_x)
+            || clipped(parent.overflow_y)
+            || parent.contain_paint == Some(true)
+            || parent.clip_ref.is_some()
+            || parent.clip_shape.is_some()
+            || parent.clip_polygon.is_some()
+            || parent.clip_inset.is_some()
+            || parent.clip_xywh.is_some()
+            || parent.clip_rect.is_some()
+            || parent.clip_len.is_some()
+            || parent.mask_image.is_some()
+    );
+    set!(
+        c.in_multicol,
+        parent.in_multicol
+            || ((parent.column_count.is_some()
+                || parent.column_width.is_some()
+                || parent.column_height.is_some())
+                && !matches!(
+                    parent.display,
+                    Some(crate::style::computed::Display::Grid)
+                        | Some(crate::style::computed::Display::InlineGrid)
+                        | Some(crate::style::computed::Display::GridLanes)
+                        | Some(crate::style::computed::Display::Flex)
+                        | Some(crate::style::computed::Display::InlineFlex)
+                ))
+    );
+    set!(
+        c.backdrop_root_above,
+        parent.backdrop_root_above || backdrop_root(parent)
+    );
     // filter-effects-2 §3 шаг 4: содержимое B — и его СОБСТВЕННЫЙ фон —
     // рисуется поверх уже отфильтрованной подложки. Фон коробки красит сама
     // коробка раньше детей, а канвас подложки — ребёнок; явный
@@ -61,7 +79,7 @@ pub(super) fn inherit_containing(
             None | Some(crate::style::computed::Display::Block)
         )
     {
-        c.bg_clip = Some(crate::style::computed::BgClip::BorderBox);
+        set!(c.bg_clip, Some(crate::style::computed::BgClip::BorderBox));
     }
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
@@ -79,7 +97,9 @@ pub(super) fn inherit_containing(
     // только `transform` и висел от окна вместо предка
     // (`contain-layout-containing-block-fixed-001`,
     // `contain-paint-containing-block-fixed-001`).
-    c.transform_ancestor = parent.transform_ancestor
+    set!(
+        c.transform_ancestor,
+        parent.transform_ancestor
         || parent.transform.is_some()
         || parent.preserve_3d == Some(true)
         || parent.contain_layout == Some(true)
@@ -87,7 +107,8 @@ pub(super) fn inherit_containing(
         || crate::style::computed::filter_contains_fixed(parent)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
         // (`will-change-fixpos-cb-*`, `-fixedpos-cb-*`).
-        || parent.will_change & crate::style::computed::wc::CB_FIXED != 0;
+        || parent.will_change & crate::style::computed::wc::CB_FIXED != 0
+    );
     // css-transforms-1 §6: «Fixed backgrounds on the root element are affected
     // by any transform specified for that element. For all other elements that
     // are effected by a transform (i.e. have a transform applied to them, or to
@@ -95,11 +116,14 @@ pub(super) fn inherit_containing(
     // background-attachment property is treated as if it had a value of
     // scroll.» `will-change: transform` promises the same (Blink/Gecko;
     // `transform-fixed-bg-008.tentative`).
-    c.transformed_ancestor = parent.transformed_ancestor || transformed(parent);
+    set!(
+        c.transformed_ancestor,
+        parent.transformed_ancestor || transformed(parent)
+    );
     if c.bg_fixed == Some(true)
         && (c.transformed_ancestor || (transformed(c) && !own.root_box && !c.root_box))
     {
-        c.bg_fixed = Some(false);
+        set!(c.bg_fixed, Some(false));
     }
     // `will-change: z-index` — контекст наложения ровно там, где `z-index`
     // действует: у позиционированной коробки и у элемента flex/grid
@@ -126,16 +150,16 @@ pub(super) fn inherit_containing(
     }
     // Inside a turned paragraph the parent is the horizontal clone
     // (`render/paragraph/vertical.rs`); its line mode is the vertical one.
-    c.cb_wm = parent.wm().line();
+    set!(c.cb_wm, parent.wm().line());
     // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
     // с собой всё содержимое коробки). Куски вне потока его получали
     // (`shift_overlays`), а вложенные куски самой строки — нет: сдвиг
     // родителя терялся на первом же слиянии стилей.
     if c.rel_shift.is_none() {
-        c.rel_shift = parent.rel_shift;
+        set!(c.rel_shift, parent.rel_shift);
     }
     if c.box_shift.is_none() {
-        c.box_shift = parent.box_shift;
+        set!(c.box_shift, parent.box_shift);
     }
     // §10.5: доля высоты считается только от ОПРЕДЕЛЁННОЙ высоты содержащего
     // блока. Определена она у корня (его блок — начальный), при высоте

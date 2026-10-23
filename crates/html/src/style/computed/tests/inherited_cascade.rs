@@ -206,7 +206,11 @@ fn user_select_is_not_inherited_and_auto_follows_the_parent_box() {
     use crate::style::computed::UserSelect;
     let doc = DocState::new(Media::default());
     let vcx = doc.values();
-    let none = inherit(&Computed::default(), &style("user-select: none"), vcx);
+    let none = inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &style("user-select: none"),
+        vcx,
+    );
     assert_eq!(none.user_select, Some(UserSelect::None));
     assert_eq!(none.no_select, Some(true));
     // css-ui-4 §6.1: the computed value is not inherited ...
@@ -222,7 +226,11 @@ fn user_select_is_not_inherited_and_auto_follows_the_parent_box() {
         inherit(&none, &style("user-select: text"), vcx).no_select,
         Some(false)
     );
-    let all = inherit(&Computed::default(), &style("user-select: all"), vcx);
+    let all = inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &style("user-select: all"),
+        vcx,
+    );
     assert_eq!(
         inherit(&all, &style("user-select: auto"), vcx).no_select,
         Some(false)

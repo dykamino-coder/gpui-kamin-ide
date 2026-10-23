@@ -97,7 +97,7 @@ pub fn render_paged_select(
         hoist_named_wrappers(&mut nodes, vcx);
     }
     // Вычисленные стили элементов — до сборки листов (как у `render::render`).
-    crate::style::cascade::materialize::materialize(&nodes, &std::rc::Rc::new(root.clone()), vcx);
+    crate::style::cascade::materialize::materialize(&nodes, root.style_rc(), vcx);
     let geom_for: crate::layout::page::page_stack::PageGeomFn =
         std::rc::Rc::new(move |i, name: &str| {
             let mut g = geom_for(i, name);
