@@ -79,6 +79,7 @@ fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
         }
         let mut t = anon_element("table", std::mem::take(run));
         t.style.cascaded_mut().display = Some(display);
+        t.marks.anonymous_wrapper = true;
         // Свой номер узла: по нему таблица просит буферы проб. Нулевой у
         // всех анонимных узлов общий, и две таблицы делили бы один буфер —
         // первая забрала бы его, вторая осталась пустой.
