@@ -1,8 +1,11 @@
-//! Общая заливка фона по внутреннему краю коробки (css-backgrounds-3 §3.7, §4.3).
+//! Общая заливка фона по внутреннему краю коробки (css-backgrounds-3 §3.7, §5.3).
 //! Установка слоя не зависит от display: блоки, атомы, таблицы и replaced
 //! используют общий слой; табличные полосы вызывают тот же painter.
 
+mod bounded;
+mod fill;
 mod geometry;
+mod gradient;
 
 use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
@@ -57,11 +60,7 @@ pub(crate) fn paint_color(c: &Computed, area: ColorBox, window: &mut Window, vcx
     if matches!(clip, BgClip::Text | BgClip::BorderArea) {
         return;
     }
-    let Some(fill) = (matches!(area, ColorBox::Padding { .. }) && !c.gradient_as_tile())
-        .then(|| c.gradient.as_ref().map(crate::paint::apply::fill))
-        .flatten()
-        .or_else(|| c.background.map(|v| gpui::Background::from(v.to_hsla())))
-    else {
+    let Some(fill) = fill::Fill::new(c, area, vcx) else {
         return;
     };
     let (bounds, radii) = geometry::area(c, area, clip, vcx);
@@ -75,14 +74,16 @@ pub(crate) fn paint_color(c: &Computed, area: ColorBox, window: &mut Window, vcx
     let limit = f32::from(bounds.size.width.min(bounds.size.height)) * 0.5;
     if circular && radii.iter().all(|(x, _)| *x <= limit) {
         let [tl, tr, br, bl] = radii.map(|(x, _)| px(x));
-        window.paint_quad(gpui::fill(bounds, fill).corner_radii(Corners {
-            top_left: tl,
-            top_right: tr,
-            bottom_right: br,
-            bottom_left: bl,
-        }));
+        window.paint_quad(
+            gpui::fill(bounds, fill.at(bounds, gradient::IDENTITY)).corner_radii(Corners {
+                top_left: tl,
+                top_right: tr,
+                bottom_right: br,
+                bottom_left: bl,
+            }),
+        );
     } else {
-        geometry::paint_contour(window, bounds, radii, fill);
+        geometry::paint_contour(window, bounds, radii, &fill);
     }
 }
 
