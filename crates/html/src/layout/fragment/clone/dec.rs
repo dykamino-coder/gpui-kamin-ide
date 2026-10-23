@@ -23,25 +23,25 @@ use crate::style::values::value::Len;
 /// поднятое тело без отбивки).
 pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
     use crate::style::computed::Position;
-    if !c.style.cascaded().bdb_clone {
+    if !c.style.computed().bdb_clone {
         return None;
     }
     fn oof_inside(e: &Element) -> bool {
         e.children.iter().any(
-            |n| matches!(n, Node::Element(k) if out_of_flow(k.style.cascaded()) || oof_inside(k)),
+            |n| matches!(n, Node::Element(k) if out_of_flow(&k.style.computed()) || oof_inside(k)),
         )
     }
     if c.inline
         || solid_box(c)
         || table_box(c)
-        || c.style.cascaded().border_box == Some(true)
-        || (multicol_container(c.style.cascaded()) && c.children.iter().any(|n| !is_blank(n)))
-        || c.style.cascaded().transform.is_some()
-        || c.style.cascaded().filter.is_some()
-        || c.style.cascaded().mask_image.is_some()
-        || c.style.cascaded().opacity.is_some_and(|o| o < 1.0)
+        || c.style.computed().border_box == Some(true)
+        || (multicol_container(&c.style.computed()) && c.children.iter().any(|n| !is_blank(n)))
+        || c.style.computed().transform.is_some()
+        || c.style.computed().filter.is_some()
+        || c.style.computed().mask_image.is_some()
+        || c.style.computed().opacity.is_some_and(|o| o < 1.0)
         || matches!(
-            c.style.cascaded().position,
+            c.style.computed().position,
             Some(Position::Sticky) | Some(Position::Absolute) | Some(Position::Fixed)
         )
         || oof_inside(c)
@@ -49,18 +49,18 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
         return None;
     }
     let px_of = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-    let b = c.style.cascaded().borders();
-    let dt = px_of(&c.style.cascaded().padding.top) + px_of(&b.top);
-    let db = px_of(&c.style.cascaded().padding.bottom) + px_of(&b.bottom);
+    let b = c.style.computed().borders();
+    let dt = px_of(&c.style.computed().padding.top) + px_of(&b.top);
+    let db = px_of(&c.style.computed().padding.bottom) + px_of(&b.bottom);
     // Нулевое украшение тоже клонируется, если фрагменту есть что рисовать
     // своё: «'box-shadow' … applied to each fragment independently», «A
     // no-repeat background image will thus be rendered once in each
     // fragment» (§break-decoration). `clone-009`: у каждого квадрата свои тень
     // и контур; маска `slice` срезала бы их у обоих.
-    let paints = !c.style.cascaded().shadows.is_empty()
-        || c.style.cascaded().outline.is_some()
-        || c.style.cascaded().bg_image.is_some()
-        || c.style.cascaded().gradient.is_some();
+    let paints = !c.style.computed().shadows.is_empty()
+        || c.style.computed().outline.is_some()
+        || c.style.computed().bg_image.is_some()
+        || c.style.computed().gradient.is_some();
     (dt + db > 0.01 || paints).then_some((dt, db))
 }
 
@@ -93,18 +93,18 @@ pub(crate) fn clone_fragment(
 ) -> Element {
     use crate::style::computed::{Overflow, Position, Sides};
     let mut body = c.clone();
-    body.style = c.style.cascaded().paint_off().into();
-    body.style.cascaded_mut().padding = Sides::default();
-    body.style.cascaded_mut().border_width = Sides::default();
-    body.style.cascaded_mut().border_visible = [Some(false); 4];
-    body.style.cascaded_mut().margin = Sides::default();
-    body.style.cascaded_mut().width = None;
-    body.style.cascaded_mut().min_width = None;
-    body.style.cascaded_mut().max_width = None;
-    body.style.cascaded_mut().position = Some(Position::Relative);
-    body.style.cascaded_mut().inset = Sides::default();
-    body.style.cascaded_mut().inset.top = Some(Len::Px(-from));
-    body.style.cascaded_mut().bdb_clone = false;
+    body.style = c.style.computed().paint_off().into();
+    body.style.used_mut().padding = Sides::default();
+    body.style.used_mut().border_width = Sides::default();
+    body.style.used_mut().border_visible = [Some(false); 4];
+    body.style.used_mut().margin = Sides::default();
+    body.style.used_mut().width = None;
+    body.style.used_mut().min_width = None;
+    body.style.used_mut().max_width = None;
+    body.style.used_mut().position = Some(Position::Relative);
+    body.style.used_mut().inset = Sides::default();
+    body.style.used_mut().inset.top = Some(Len::Px(-from));
+    body.style.used_mut().bdb_clone = false;
     body.hover = None;
     body.anim = None;
     body.list_item = None;
@@ -129,13 +129,13 @@ pub(crate) fn clone_fragment(
         inline: false,
     };
     let mut deco = c.clone();
-    deco.style.cascaded_mut().display = Some(Display::Block);
-    deco.style.cascaded_mut().height = Some(Len::Px((fh - dt - db).max(0.0)));
-    deco.style.cascaded_mut().min_height = None;
-    deco.style.cascaded_mut().max_height = None;
-    deco.style.cascaded_mut().column_count = None;
-    deco.style.cascaded_mut().column_width = None;
-    deco.style.cascaded_mut().column_height = None;
+    deco.style.used_mut().display = Some(Display::Block);
+    deco.style.used_mut().height = Some(Len::Px((fh - dt - db).max(0.0)));
+    deco.style.used_mut().min_height = None;
+    deco.style.used_mut().max_height = None;
+    deco.style.used_mut().column_count = None;
+    deco.style.used_mut().column_width = None;
+    deco.style.used_mut().column_height = None;
     deco.first_letter = None;
     deco.first_line = None;
     deco.children = vec![Node::Element(clip_box)];

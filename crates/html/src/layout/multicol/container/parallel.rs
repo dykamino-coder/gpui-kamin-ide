@@ -36,11 +36,11 @@ fn positioned(
     copies: usize,
     vcx: ValueCx<'_>,
 ) -> bool {
-    if c.style.cascaded().position != Some(Position::Absolute)
+    if c.style.computed().position != Some(Position::Absolute)
         || !block(c)
-        || !matches!(c.style.cascaded().height, None | Some(Len::Auto))
-        || !zero(c.style.cascaded().margin.top)
-        || !zero(c.style.cascaded().margin.bottom)
+        || !matches!(c.style.computed().height, None | Some(Len::Auto))
+        || !zero(c.style.computed().margin.top)
+        || !zero(c.style.computed().margin.bottom)
     {
         return false;
     }
@@ -51,8 +51,8 @@ fn positioned(
         return false;
     }
     let used = match (
-        c.style.cascaded().inset.top,
-        c.style.cascaded().inset.bottom,
+        c.style.computed().inset.top,
+        c.style.computed().inset.bottom,
     ) {
         (Some(Len::Px(top)), None | Some(Len::Auto)) => top,
         (None | Some(Len::Auto), Some(Len::Px(bottom))) => cb_height - bottom - s.height,
@@ -62,10 +62,10 @@ fn positioned(
     let phase = (origin + used).rem_euclid(h);
     let original = c.style.clone();
     let mut probe = c.clone();
-    probe.style.cascaded_mut().position = Some(Position::Relative);
-    probe.style.cascaded_mut().inset.top = None;
-    probe.style.cascaded_mut().inset.bottom = None;
-    probe.style.cascaded_mut().margin.top = Some(Len::Px(phase));
+    probe.style.used_mut().position = Some(Position::Relative);
+    probe.style.used_mut().inset.top = None;
+    probe.style.used_mut().inset.bottom = None;
+    probe.style.used_mut().margin.top = Some(Len::Px(phase));
     let mut shape = s.clone();
     shape.margin_top = phase;
     let planned = copies.max(((phase + s.height) / h).ceil() as usize + count);
@@ -84,8 +84,8 @@ fn positioned(
         return false;
     }
     probe.style = original;
-    probe.style.cascaded_mut().inset.top = Some(Len::Px(used));
-    probe.style.cascaded_mut().inset.bottom = Some(Len::Auto);
+    probe.style.used_mut().inset.top = Some(Len::Px(used));
+    probe.style.used_mut().inset.bottom = Some(Len::Auto);
     *c = probe;
     true
 }
@@ -104,12 +104,12 @@ fn grow_positioned_descendants(
     let Some((_, own)) = measure_fragment_and_own_height(c, vcx) else {
         return false;
     };
-    let cb = establishes_cb(c.style.cascaded());
+    let cb = establishes_cb(&c.style.computed());
     let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     let mut changed = false;
     for n in &mut c.children {
         let Node::Element(k) = n else { continue };
-        if out_of_flow(k.style.cascaded()) {
+        if out_of_flow(&k.style.computed()) {
             if cb {
                 changed |= positioned(k, own, cursor, origin, h, count, copies, vcx);
             }
@@ -147,7 +147,7 @@ pub(super) fn grow(
                 ..next
             };
         }
-        if !out_of_flow(c.style.cascaded()) {
+        if !out_of_flow(&c.style.computed()) {
             cursor = start + own;
             previous = s.margin_bottom;
         }
@@ -200,7 +200,7 @@ mod tests {
             },
             children,
         );
-        abs.style.cascaded_mut().inset.bottom = Some(Len::Px(0.0));
+        abs.style.used_mut().inset.bottom = Some(Len::Px(0.0));
         element(
             Computed {
                 height: Some(Len::Px(190.0)),
@@ -220,7 +220,7 @@ mod tests {
         let Node::Element(abs) = &cb.children[0] else {
             panic!()
         };
-        assert_eq!(abs.style.cascaded().inset.top, Some(Len::Px(0.0)));
+        assert_eq!(abs.style.computed().inset.top, Some(Len::Px(0.0)));
         assert_eq!(
             measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
             200.0
@@ -239,7 +239,7 @@ mod tests {
         let Node::Element(abs) = &cb.children[0] else {
             panic!()
         };
-        assert_eq!(abs.style.cascaded().inset.top, Some(Len::Px(0.0)));
+        assert_eq!(abs.style.computed().inset.top, Some(Len::Px(0.0)));
         assert_eq!(
             measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
             220.0

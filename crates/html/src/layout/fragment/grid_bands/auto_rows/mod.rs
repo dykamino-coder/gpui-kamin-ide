@@ -52,7 +52,7 @@ pub(crate) fn grid_auto_row_bands(
     vcx: ValueCx<'_>,
 ) -> Option<(Vec<(f32, f32)>, Vec<GridSpot>)> {
     use crate::style::computed::{AutoFlow, Track, TrackSize};
-    let s = c.style.cascaded();
+    let s = &*c.style.computed();
     if depth == 0 || !matches!(s.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return None;
     }
@@ -139,9 +139,9 @@ pub(crate) fn grid_auto_row_bands(
 /// `shape_full`: не стопка, высота `auto`, ряды не все в точках.
 pub(crate) fn grid_items_spotted(c: &Element) -> bool {
     matches!(
-        c.style.cascaded().display,
+        c.style.computed().display,
         Some(Display::Grid) | Some(Display::InlineGrid)
     ) && !grid_stack(c)
-        && c.style.cascaded().height.is_none()
-        && grid_rows_px(c.style.cascaded()).is_none()
+        && c.style.computed().height.is_none()
+        && grid_rows_px(&c.style.computed()).is_none()
 }

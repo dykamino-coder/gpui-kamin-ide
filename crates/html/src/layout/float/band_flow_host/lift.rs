@@ -20,7 +20,7 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
-            if k.style.cascaded().float.is_some_and(|f| f != 0) {
+            if k.style.computed().float.is_some_and(|f| f != 0) {
                 return false;
             }
             // `<br style="clear">` под срезом конца строки по НЕ-текстовому
@@ -41,7 +41,7 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
                 // clear:both>`).
                 !own_context(k)
                     && k.tag != "table"
-                    && k.style.cascaded().clear.is_none()
+                    && k.style.computed().clear.is_none()
                     && flow_interior_plain(k)
             } else {
                 // Строчный: атом в строке (инлайн-блок) режется вырезом как
@@ -56,8 +56,8 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
 /// trimmed to a non-text edge (css-inline-3 §text-box-trim): the trim must
 /// not move the clearance, which the measured host's runs do not express.
 pub(in crate::layout::float) fn trimmed_clear(c: &Element, k: &Element) -> bool {
-    k.style.cascaded().clear.is_some()
-        && c.style.cascaded().text_box_trim_end
+    k.style.computed().clear.is_some()
+        && c.style.computed().text_box_trim_end
         && c.style.cascaded().text_box_under != crate::style::computed::TextEdge::Text
 }
 
@@ -153,15 +153,15 @@ pub(crate) fn band_flow_rest_lift(
         match &n {
             Node::Text(_) => run.push(n),
             Node::Element(c) => {
-                if out_of_flow(c.style.cascaded()) {
+                if out_of_flow(&c.style.computed()) {
                     if let Some(l) = lift.as_deref_mut()
-                        && abs_pinned(c.style.cascaded())
+                        && abs_pinned(&c.style.computed())
                     {
                         l.push(n);
                         continue;
                     }
                     // Without an external lift, pinned boxes must keep their CB.
-                    if !wm.vertical() && !abs_pinned(c.style.cascaded()) {
+                    if !wm.vertical() && !abs_pinned(&c.style.computed()) {
                         run.push(n);
                         continue;
                     }
@@ -170,12 +170,12 @@ pub(crate) fn band_flow_rest_lift(
                 if !block_level_in_flow(c) {
                     // `<br clear>`: the break ends the run, the next run
                     // clears (`pending_clear`).
-                    if c.style.cascaded().clear.is_some() {
+                    if c.style.computed().clear.is_some() {
                         let mut br = c.clone();
-                        br.style.cascaded_mut().clear = None;
+                        br.style.used_mut().clear = None;
                         run.push(Node::Element(br));
                         flush(&mut run, &mut out, cont, pending_clear.take());
-                        pending_clear = c.style.cascaded().clear;
+                        pending_clear = c.style.computed().clear;
                         cont = true;
                         continue;
                     }

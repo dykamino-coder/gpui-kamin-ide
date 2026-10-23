@@ -18,7 +18,7 @@ pub(super) fn contained_image(
     if let Some(ContainedSize {
         content: (cw, ch),
         holder: (holder_w, holder_h),
-    }) = contained_size(e.style.cascaded())
+    }) = contained_size(&e.style.computed())
     {
         let mut d = d;
         if let Some(w) = holder_w {
@@ -37,7 +37,7 @@ pub(super) fn contained_image(
             .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
         let mut image = match crate::paint::background::element_source(
             local.unwrap_or(src),
-            e.style.cascaded(),
+            &e.style.computed(),
         ) {
             Some(crate::paint::background::Source::Vector { markup, .. })
                 if cw > 0.0 && ch > 0.0 =>
@@ -68,15 +68,15 @@ pub(super) fn contained_image(
         // посчитанными сторонами содержимого и снятым обособлением — это и
         // есть второй такт, «laying out in-place» (css-contain-2
         // Overview.bs:702-707).
-        if e.style.cascaded().object_fit.is_some() || e.style.cascaded().object_position.is_some() {
+        if e.style.computed().object_fit.is_some() || e.style.computed().object_position.is_some() {
             let mut fitted = e.clone();
-            fitted.style.cascaded_mut().width = Some(Len::Px(cw));
-            fitted.style.cascaded_mut().height = Some(Len::Px(ch));
+            fitted.style.used_mut().width = Some(Len::Px(cw));
+            fitted.style.used_mut().height = Some(Len::Px(ch));
             // `cw`/`ch` — размер СОДЕРЖИМОГО по построению, поэтому клон
             // меряется по содержимому независимо от `box-sizing` документа.
-            fitted.style.cascaded_mut().border_box = Some(false);
-            fitted.style.cascaded_mut().contain_size = Some(false);
-            fitted.style.cascaded_mut().contain_inline_size = Some(false);
+            fitted.style.used_mut().border_box = Some(false);
+            fitted.style.used_mut().contain_size = Some(false);
+            fitted.style.used_mut().contain_inline_size = Some(false);
             return Ok(image_with(&fitted, base_font, cx));
         }
         image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);

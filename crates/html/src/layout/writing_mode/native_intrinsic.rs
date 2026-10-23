@@ -14,7 +14,7 @@ fn keyword(value: Option<Len>) -> bool {
 }
 
 pub(crate) fn eligible(element: &Element) -> bool {
-    let style = element.style.cascaded();
+    let style = &element.style.computed();
     let grid = matches!(
         style.display,
         Some(Display::Grid | Display::InlineGrid | Display::GridLanes)
@@ -44,13 +44,13 @@ mod tests {
     #[test]
     fn ordinary_keyword_items_keep_margins_placement_and_numeric_limits() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.cascaded_mut().width = Some(Len::MinContent);
-        element.style.cascaded_mut().height = Some(Len::MaxContent);
-        element.style.cascaded_mut().margin.left = Some(Len::Px(-10.0));
-        element.style.cascaded_mut().margin.right = Some(Len::Auto);
-        element.style.cascaded_mut().min_width = Some(Len::Px(20.0));
-        element.style.cascaded_mut().max_width = Some(Len::Px(100.0));
-        element.style.cascaded_mut().writing_mode =
+        element.style.used_mut().width = Some(Len::MinContent);
+        element.style.used_mut().height = Some(Len::MaxContent);
+        element.style.used_mut().margin.left = Some(Len::Px(-10.0));
+        element.style.used_mut().margin.right = Some(Len::Auto);
+        element.style.used_mut().min_width = Some(Len::Px(20.0));
+        element.style.used_mut().max_width = Some(Len::Px(100.0));
+        element.style.used_mut().writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 element.style.cascaded().wm().block_rl(),
@@ -60,7 +60,7 @@ mod tests {
         assert!(!crate::layout::intrinsic_wrap::content_sized_wraps(
             &element
         ));
-        element.style.cascaded_mut().intrinsic_wrapper_required = true;
+        element.style.used_mut().intrinsic_wrapper_required = true;
         assert!(!eligible(&element));
         assert!(crate::layout::intrinsic_wrap::content_sized_wraps(&element));
     }
@@ -68,41 +68,41 @@ mod tests {
     #[test]
     fn intrinsic_grid_containers_keep_keywords_on_their_actual_node() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.cascaded_mut().height = Some(Len::MaxContent);
-        element.style.cascaded_mut().inline_display = Some(true);
-        element.style.cascaded_mut().grid_row = Some((
+        element.style.used_mut().height = Some(Len::MaxContent);
+        element.style.used_mut().inline_display = Some(true);
+        element.style.used_mut().grid_row = Some((
             crate::style::computed::Placement::Line(2),
             crate::style::computed::Placement::Span(3),
         ));
-        element.style.cascaded_mut().margin.top = Some(Len::Px(10.0));
+        element.style.used_mut().margin.top = Some(Len::Px(10.0));
         for display in [Display::Grid, Display::InlineGrid, Display::GridLanes] {
-            element.style.cascaded_mut().display = Some(display);
+            element.style.used_mut().display = Some(display);
             assert!(eligible(&element));
             assert!(!crate::layout::intrinsic_wrap::content_sized_wraps(
                 &element
             ));
         }
-        element.style.cascaded_mut().max_height = Some(Len::MinContent);
+        element.style.used_mut().max_height = Some(Len::MinContent);
         assert!(!eligible(&element));
     }
 
     #[test]
     fn specialized_roles_and_intrinsic_constraints_keep_their_existing_contracts() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.cascaded_mut().width = Some(Len::FitContent);
-        element.style.cascaded_mut().display = Some(Display::Block);
+        element.style.used_mut().width = Some(Len::FitContent);
+        element.style.used_mut().display = Some(Display::Block);
         for tag in ["table", "td", "img", "input", "canvas", "li"] {
             element.tag = tag.into();
             assert!(!eligible(&element), "{tag}");
         }
         element.tag = "div".into();
-        element.style.cascaded_mut().max_width = Some(Len::MaxContent);
+        element.style.used_mut().max_width = Some(Len::MaxContent);
         assert!(!eligible(&element));
-        element.style.cascaded_mut().max_width = None;
-        element.style.cascaded_mut().contain_inline_size = Some(true);
+        element.style.used_mut().max_width = None;
+        element.style.used_mut().contain_inline_size = Some(true);
         assert!(!eligible(&element));
-        element.style.cascaded_mut().contain_inline_size = None;
-        element.style.cascaded_mut().float = Some(1);
+        element.style.used_mut().contain_inline_size = None;
+        element.style.used_mut().float = Some(1);
         assert!(!eligible(&element));
     }
 }

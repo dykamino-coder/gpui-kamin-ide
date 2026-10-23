@@ -27,7 +27,7 @@ impl AtomRuby {
             extents: Rc::new(RefCell::new(Some(RubyExtents::default()))),
             independent: replaced_tag(e)
                 || matches!(
-                    e.style.cascaded().display,
+                    e.style.computed().display,
                     Some(
                         Display::InlineBlock
                             | Display::InlineFlex

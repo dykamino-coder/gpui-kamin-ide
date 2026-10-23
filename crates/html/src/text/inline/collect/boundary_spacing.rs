@@ -19,7 +19,7 @@ pub(super) fn boundary_gap_after_box(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<f32> {
     let inline_level =
-        e.style.cascaded().display.is_none() || e.style.cascaded().inline_display == Some(true);
+        e.style.computed().display.is_none() || e.style.computed().inline_display == Some(true);
     let replaced = matches!(
         e.tag.as_str(),
         "img"
@@ -34,7 +34,7 @@ pub(super) fn boundary_gap_after_box(
             | "select"
             | "textarea"
     );
-    if !inline_level || replaced || e.style.cascaded().ruby_role.is_some() {
+    if !inline_level || replaced || e.style.computed().ruby_role.is_some() {
         return None;
     }
     let size = match inherited.font_size {

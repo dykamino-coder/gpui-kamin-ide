@@ -39,19 +39,19 @@ pub(crate) fn orthogonal_limit(
         // `sizing-orthog-vlr-in-htb-007`, `vrl-in-htb-007/010`
         // (`box-sizing: border-box; height: 400px`, рамка 3) переносили на
         // 400, а тест после вычета рамок — на 394.
-        let own_edges = if e.style.cascaded().border_box == Some(true) {
-            let b = e.style.cascaded().borders();
+        let own_edges = if e.style.computed().border_box == Some(true) {
+            let b = e.style.computed().borders();
             px_of(b.top).unwrap_or(0.0)
                 + px_of(b.bottom).unwrap_or(0.0)
-                + px_of(e.style.cascaded().padding.top).unwrap_or(0.0)
-                + px_of(e.style.cascaded().padding.bottom).unwrap_or(0.0)
+                + px_of(e.style.computed().padding.top).unwrap_or(0.0)
+                + px_of(e.style.computed().padding.bottom).unwrap_or(0.0)
         } else {
             0.0
         };
         let content = |v: f32| (v - own_edges).max(0.0);
-        let h = px_of(e.style.cascaded().height).map(content);
-        let min_h = px_of(e.style.cascaded().min_height).map(content);
-        let max_h = px_of(e.style.cascaded().max_height).map(content);
+        let h = px_of(e.style.computed().height).map(content);
+        let min_h = px_of(e.style.computed().min_height).map(content);
+        let max_h = px_of(e.style.computed().max_height).map(content);
         // Предел, поставленный СВОЕЙ высотой, уже содержимый (content-box
         // по умолчанию, border-box переведён выше) — вычитать из него нечего. Вычет нужен
         // только УНАСЛЕДОВАННОМУ пределу, см. ниже.
@@ -64,9 +64,9 @@ pub(crate) fn orthogonal_limit(
         // Только для потокового ребёнка БЛОЧНОГО родителя: у абсолюта база —
         // его содержащий блок, у элемента сетки — область, у гибкого — своя
         // развязка.
-        let h = h.or(match (e.style.cascaded().height, inherited.height) {
+        let h = h.or(match (e.style.computed().height, inherited.height) {
             (Some(Len::Pct(k)), Some(Len::Px(ph)))
-                if in_flow(e.style.cascaded())
+                if in_flow(&e.style.computed())
                     && matches!(inherited.display, None | Some(Display::Block)) =>
             {
                 Some(k * ph)
@@ -119,11 +119,11 @@ pub(crate) fn orthogonal_limit(
             && merged.wm().vertical()
             && let Some(l) = merged.ortho_limit
         {
-            let b = e.style.cascaded().borders();
+            let b = e.style.computed().borders();
             let edges = px_of(b.top).unwrap_or(0.0)
                 + px_of(b.bottom).unwrap_or(0.0)
-                + px_of(e.style.cascaded().padding.top).unwrap_or(0.0)
-                + px_of(e.style.cascaded().padding.bottom).unwrap_or(0.0);
+                + px_of(e.style.computed().padding.top).unwrap_or(0.0)
+                + px_of(e.style.computed().padding.bottom).unwrap_or(0.0);
             if edges > 0.0 {
                 merged.ortho_limit = Some((l - edges).max(0.0));
             }

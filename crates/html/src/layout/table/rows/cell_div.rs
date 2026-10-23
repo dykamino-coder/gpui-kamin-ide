@@ -33,19 +33,19 @@ pub(super) fn cell_box_div(
             Some(Len::Px(_)) | None => own,
             _ => merged,
         };
-        c.cascaded_mut().padding = crate::style::computed::Sides {
+        c.used_mut().padding = crate::style::computed::Sides {
             top: fixup(c.cascaded().padding.top, cm.padding.top),
             right: fixup(c.cascaded().padding.right, cm.padding.right),
             bottom: fixup(c.cascaded().padding.bottom, cm.padding.bottom),
             left: fixup(c.cascaded().padding.left, cm.padding.left),
         };
-        c.cascaded_mut().height = fixup(c.cascaded().height, cm.height);
+        c.used_mut().height = fixup(c.cascaded().height, cm.height);
         // Толщина рамки — тем же правилом: `border: 1em solid` у
         // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
-        c.cascaded_mut().border_width = crate::style::computed::Sides {
+        c.used_mut().border_width = crate::style::computed::Sides {
             top: fixup(c.cascaded().border_width.top, cm.border_width.top),
             right: fixup(c.cascaded().border_width.right, cm.border_width.right),
             bottom: fixup(c.cascaded().border_width.bottom, cm.border_width.bottom),
@@ -54,14 +54,14 @@ pub(super) fn cell_box_div(
         // Background size and position in font units — the same rule: the
         // painter sees no font size on the raw style and used 16px
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
-        c.cascaded_mut().bg_pos.x = fixup(c.cascaded().bg_pos.x, cm.bg_pos.x);
-        c.cascaded_mut().bg_pos.y = fixup(c.cascaded().bg_pos.y, cm.bg_pos.y);
+        c.used_mut().bg_pos.x = fixup(c.cascaded().bg_pos.x, cm.bg_pos.x);
+        c.used_mut().bg_pos.y = fixup(c.cascaded().bg_pos.y, cm.bg_pos.y);
         if let (
             crate::style::computed::BgSize::Fixed(w, h),
             crate::style::computed::BgSize::Fixed(mw, mh),
         ) = (c.cascaded().bg_size, cm.bg_size)
         {
-            c.cascaded_mut().bg_size =
+            c.used_mut().bg_size =
                 crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
         }
         c
@@ -85,7 +85,7 @@ pub(super) fn cell_box_div(
     let mut box_style = box_style;
     let own_bg = box_style.cascaded().background;
     if bg_layered {
-        box_style.cascaded_mut().background = None;
+        box_style.used_mut().background = None;
     }
     let mut d = cx.build.styled_box(cell, box_style.cascaded(), cx);
     if collapsed {
@@ -101,7 +101,7 @@ pub(super) fn cell_box_div(
         // ячейка его не дублирует, иначе цвет ложится поверх
         // картинки. Ряду только с тенью цвет оставляют ячейки.
         let picture =
-            row.style.cascaded().bg_image.is_some() || row.style.cascaded().gradient_raw.is_some();
+            row.style.computed().bg_image.is_some() || row.style.computed().gradient_raw.is_some();
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);
@@ -125,13 +125,13 @@ pub(super) fn cell_box_div(
     // A relatively positioned cell's own percentage insets resolve
     // against the row's specified height (`position-relative-013`),
     // not the table grid the cell is laid out in; the row offset adds.
-    let own_pct = cell.style.cascaded().position
+    let own_pct = cell.style.computed().position
         == Some(crate::style::computed::Position::Relative)
         && [
-            cell.style.cascaded().inset.left,
-            cell.style.cascaded().inset.right,
-            cell.style.cascaded().inset.top,
-            cell.style.cascaded().inset.bottom,
+            cell.style.computed().inset.left,
+            cell.style.computed().inset.right,
+            cell.style.computed().inset.top,
+            cell.style.computed().inset.bottom,
         ]
         .iter()
         .any(|l| matches!(l, Some(Len::Pct(_))));

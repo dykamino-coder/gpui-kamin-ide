@@ -47,8 +47,8 @@ pub(crate) fn paint_element(
     let geometry_layer_ok = !opts.cx.paint_depth.deferred();
     let opts = &*opts.inner(|cx| {
         cx.paint_depth = cx.paint_depth.enter(
-            defers(e.style.cascaded(), inherited, under_tf),
-            stacking_context(e.style.cascaded()),
+            defers(&e.style.computed(), inherited, under_tf),
+            stacking_context(&e.style.computed()),
         );
     });
     if let Some(el) = scrollable(e, inherited, opts) {
@@ -56,13 +56,13 @@ pub(crate) fn paint_element(
         // preserve the parent 3D context, backface and plane as for other boxes.
         let el = crate::paint::effects::transform::transformed(
             el,
-            e.style.cascaded(),
+            &e.style.computed(),
             inherited,
             opts.cx.vcx(),
         );
         out.push(layered(
             el,
-            e.style.cascaded(),
+            &e.style.computed(),
             inherited,
             layer_ok,
             under_tf,
@@ -78,7 +78,7 @@ pub(crate) fn paint_element(
         // уходила мимо, и `z-index` у него пропадал.
         out.push(layered(
             el,
-            e.style.cascaded(),
+            &e.style.computed(),
             inherited,
             layer_ok,
             under_tf,
@@ -87,7 +87,7 @@ pub(crate) fn paint_element(
     }
     // `display: contents` — своей коробки у элемента нет: дети
     // становятся детьми родителя, и стиль самого элемента исчезает.
-    if e.style.cascaded().display == Some(Display::Contents) {
+    if e.style.computed().display == Some(Display::Contents) {
         let mut merged = box_style(inherited, &e.style, vcx);
         // Своей коробки нет — значит и объёмный контекст она не
         // обрывает: дети берут ячейки ДЕДА (css-display-3
@@ -132,14 +132,14 @@ pub(crate) fn paint_element(
     };
     let hoist_margins = content_sized_wraps(e)
         && !replaced_tag(e)
-        && (negative(e.style.cascaded().margin.left) || negative(e.style.cascaded().margin.right));
+        && (negative(e.style.computed().margin.left) || negative(e.style.computed().margin.right));
     // Размещение в сетке тоже уезжает на обёртку (см.
     // `content_sized`): в дорожках родителя стоит она. Внутри обёртки
     // (своя сетка в одну дорожку) элемент с прежним `grid-row: 2`
     // уходил бы в её неявный ряд. Прежде обёртка без размещения
     // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
     // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
-    let placement = crate::paint::apply::grid_item_placement(e.style.cascaded());
+    let placement = crate::paint::apply::grid_item_placement(&e.style.computed());
     let hoist_place = content_sized_wraps(e)
         && !replaced_tag(e)
         && (placement.0.is_some() || placement.1.is_some());
@@ -147,14 +147,14 @@ pub(crate) fn paint_element(
     let e = if hoist_margins || hoist_place {
         let mut copy = e.clone();
         if hoist_margins {
-            copy.style.cascaded_mut().margin.left = None;
-            copy.style.cascaded_mut().margin.right = None;
+            copy.style.used_mut().margin.left = None;
+            copy.style.used_mut().margin.right = None;
         }
         if hoist_place {
-            copy.style.cascaded_mut().grid_row = None;
-            copy.style.cascaded_mut().grid_col = None;
-            copy.style.cascaded_mut().grid_row_named = [None, None];
-            copy.style.cascaded_mut().grid_col_named = [None, None];
+            copy.style.used_mut().grid_row = None;
+            copy.style.used_mut().grid_col = None;
+            copy.style.used_mut().grid_row_named = [None, None];
+            copy.style.used_mut().grid_col_named = [None, None];
         }
         stripped = copy;
         &stripped
@@ -185,7 +185,7 @@ pub(crate) fn paint_element(
     // фон body — красит всю область просмотра, включая место за
     // полями. Слой absolute от родителя-корня растягивается на всё
     // окно, с самой коробки краска снимается (иначе двойная альфа).
-    let canvas_paint = e.style.cascaded().canvas_bg;
+    let canvas_paint = e.style.computed().canvas_bg;
     // Тело под корнем-донором фона холста при `vertical-rl`: его
     // margin-box (плюс рамка/отбивка корня) — коробка корня по
     // содержимому; её левый край пишется на подготовке тела.
@@ -198,9 +198,9 @@ pub(crate) fn paint_element(
     let e = if canvas_paint {
         root_box = canvas_layer(e, opts, out);
         let mut copy = e.clone();
-        copy.style.cascaded_mut().background = None;
-        copy.style.cascaded_mut().gradient = None;
-        copy.style.cascaded_mut().bg_image = None;
+        copy.style.used_mut().background = None;
+        copy.style.used_mut().gradient = None;
+        copy.style.used_mut().bg_image = None;
         canvas_stripped = copy;
         &canvas_stripped
     } else {

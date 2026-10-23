@@ -37,7 +37,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         Some(Len::Px(p)) => (p - v).abs() < 0.01,
         _ => false,
     };
-    if !fits(e.style.cascaded().width, w) || !fits(e.style.cascaded().height, h) {
+    if !fits(e.style.computed().width, w) || !fits(e.style.computed().height, h) {
         return None;
     }
     let html = format!(
@@ -57,7 +57,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     Some(
         opts.cx
             .build
-            .styled_box(e, e.style.cascaded(), &opts.cx)
+            .styled_box(e, &e.style.computed(), &opts.cx)
             .w(px(w))
             .h(px(h))
             .overflow_hidden()

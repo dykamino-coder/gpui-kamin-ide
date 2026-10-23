@@ -11,15 +11,15 @@ pub(crate) fn own_context(e: &Element) -> bool {
     // establishes a new block formatting context (CSS 2.2 section 9.4.1), so
     // its children's margins stay inside it
     // (`margin-collapsing-in-table-caption-002`).
-    own_context_style(e.style.cascaded())
-        || (e.tag == "caption" && e.style.cascaded().display.is_none())
-        || e.style.cascaded().is_caption == Some(true)
+    own_context_style(&e.style.computed())
+        || (e.tag == "caption" && e.style.computed().display.is_none())
+        || e.style.computed().is_caption == Some(true)
         // A table (UA `display: table`, not written into `display`) never
         // collapses through (CSS 2.2 section 17.4: the table wrapper box
         // establishes a block formatting context); as a body's last child it
         // let the preceding paragraph's end margin escape
         // (`visibility-collapse-border-spacing-002`).
-        || (e.tag == "table" && e.style.cascaded().display.is_none())
+        || (e.tag == "table" && e.style.computed().display.is_none())
         // `continue: collapse` (`line-clamp: <N>`/`auto`, у легаси — пара
         // `-webkit-box` по вертикали) делает блочный контейнер line-clamp
         // контейнером — НЕЗАВИСИМЫМ блочным контекстом (css-overflow-4
@@ -27,8 +27,8 @@ pub(crate) fn own_context(e: &Element) -> bool {
         // §line-clamp-containers): поле первого ребёнка через его верх не
         // схлопывается (`line-clamp-auto-027`). Только собственный стиль:
         // слитый несёт `line_clamp` потомкам для текста.
-        || ((e.style.cascaded().clamp_lines().is_some() || e.style.cascaded().clamp_by_height())
-            && !multicol_container(e.style.cascaded()))
+        || ((e.style.computed().clamp_lines().is_some() || e.style.computed().clamp_by_height())
+            && !multicol_container(&e.style.computed()))
 }
 
 /// Блочный контейнер — корень своего блочного контекста: поля детей через
@@ -37,7 +37,7 @@ pub(crate) fn own_context(e: &Element) -> bool {
 pub(crate) fn bfc_root(c: &Element) -> bool {
     use crate::style::computed::Display;
     matches!(
-        c.style.cascaded().display,
+        c.style.computed().display,
         None | Some(Display::Block) | Some(Display::ListItem)
     ) && !c.inline
         && (crate::layout::box_kind::own_context(c) || c.tag == "fieldset")

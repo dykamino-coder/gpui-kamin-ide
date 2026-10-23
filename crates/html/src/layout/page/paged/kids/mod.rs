@@ -43,12 +43,12 @@ pub(super) fn page_kids_from_groups(
     for group in &groups {
         let n = &group[0];
         if let Node::Element(e) = n
-            && matches!(e.style.cascaded().display, Some(Display::None))
+            && matches!(e.style.computed().display, Some(Display::None))
         {
             continue;
         }
         if let Node::Element(e) = n
-            && out_of_flow(e.style.cascaded())
+            && out_of_flow(&e.style.computed())
         {
             *icb_reach = icb_reach.max(oof_reach(e, shape_cx, vcx));
         }
@@ -115,7 +115,7 @@ pub(super) fn page_kids_from_groups(
             };
             if let [Node::Element(r)] = group.as_slice()
                 && matches!(r.tag.as_str(), "html" | "body")
-                && matches!(r.style.cascaded().height, Some(Len::Pct(_)))
+                && matches!(r.style.computed().height, Some(Len::Pct(_)))
             {
                 wrap = wrap.h(px(ah));
             }
@@ -153,7 +153,7 @@ pub(super) fn page_kids_from_groups(
         // `ReserveSpaceForMonolithicOverflow`, `monolithic-overflow-026`).
         let reach = match (n, &shape) {
             (Node::Element(e), Some(s))
-                if vertical.is_none() && visible_overflow(e.style.cascaded()) =>
+                if vertical.is_none() && visible_overflow(&e.style.computed()) =>
             {
                 let cx = ShapeCx {
                     unclamped: true,

@@ -30,8 +30,8 @@ pub(super) fn non_inline_columns(
         let (Some(Node::Element(only)), None) = (blocks.next(), blocks.next()) else {
             return Some(None);
         };
-        if only.style.cascaded().position.is_some()
-            || only.style.cascaded().float.is_some_and(|f| f != 0)
+        if only.style.computed().position.is_some()
+            || only.style.computed().float.is_some_and(|f| f != 0)
         {
             return Some(None);
         }

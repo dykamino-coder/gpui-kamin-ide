@@ -103,14 +103,14 @@ pub(crate) fn candidates(c: &Element, vcx: ValueCx<'_>) -> Option<Vec<(u64, Cand
 /// `kBreakAppealViolatingBreakAvoid` vs the row's `EarlyBreak`), so the row
 /// is avoided as a whole.
 pub(crate) fn avoid_row(p: &Element) -> bool {
-    row_flex(p.style.cascaded())
-        && p.style.cascaded().flex_wrap != Some(true)
+    row_flex(&p.style.computed())
+        && p.style.computed().flex_wrap != Some(true)
         && p.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-                if !out_of_flow(k.style.cascaded())
-                    && k.style.cascaded().break_inside_avoid
+                if !out_of_flow(&k.style.computed())
+                    && k.style.computed().break_inside_avoid
                     && !crate::layout::fragment::probe::size_monolith(k)
-                    && crate::layout::page::paged::visible_overflow(k.style.cascaded()))
+                    && crate::layout::page::paged::visible_overflow(&k.style.computed()))
         })
 }
 

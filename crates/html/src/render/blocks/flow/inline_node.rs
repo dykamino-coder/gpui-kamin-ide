@@ -38,14 +38,14 @@ pub(crate) fn inline_node(
         // `atom_element` (`x_set != y_set`).
         Node::Element(e)
             if matches!(
-                e.style.cascaded().position,
+                e.style.computed().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) && !at_static_position(e.style.cascaded())
+            ) && !at_static_position(&e.style.computed())
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.cascaded().inset.left) || edge(e.style.cascaded().inset.right))
-                        && (edge(e.style.cascaded().inset.top) || edge(e.style.cascaded().inset.bottom))
+                    (edge(e.style.computed().inset.left) || edge(e.style.computed().inset.right))
+                        && (edge(e.style.computed().inset.top) || edge(e.style.computed().inset.bottom))
                 }
                 // Поле формы и заменяемый элемент строит СВОЙ путь
                 // (`forms::element`, картинка), и краями он распоряжается
@@ -70,7 +70,7 @@ pub(crate) fn inline_node(
             if inherited.band_kid
                 && !ordered_context
                 && matches!(
-                    e.style.cascaded().position,
+                    e.style.computed().position,
                     Some(
                         crate::style::computed::Position::Absolute
                             | crate::style::computed::Position::Fixed
@@ -92,27 +92,27 @@ pub(crate) fn inline_node(
         // такой абсолют остаётся прежним блочным путём
         // (`left-applies-to-012/014`: абсолют — единственный ребёнок).
         Node::Element(e)
-            if e.style.cascaded().abs_inline_level
+            if e.style.computed().abs_inline_level
                 && !ordered_context
                 && pending.iter().any(|p| match p {
                     Node::Text(t) => !t.trim().is_empty(),
                     Node::Element(x) => !matches!(
-                        x.style.cascaded().position,
+                        x.style.computed().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ),
                 })
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.cascaded().inset.left) || edge(e.style.cascaded().inset.right))
-                        != (edge(e.style.cascaded().inset.top)
-                            || edge(e.style.cascaded().inset.bottom))
+                    (edge(e.style.computed().inset.left) || edge(e.style.computed().inset.right))
+                        != (edge(e.style.computed().inset.top)
+                            || edge(e.style.computed().inset.bottom))
                 } =>
         {
             true
         }
-        Node::Element(e) => match e.style.cascaded().display {
-            Some(Display::ListItem) if e.style.cascaded().inline_display == Some(true) => {
+        Node::Element(e) => match e.style.computed().display {
+            Some(Display::ListItem) if e.style.computed().inline_display == Some(true) => {
                 !ordered_context
             }
             // Явно заявленная инлайновая коробка остаётся в строке даже у
@@ -130,7 +130,7 @@ pub(crate) fn inline_node(
             // семьи `grid-lanes-intrinsic-sizing-*` написаны на
             // `display: inline-grid`, и без этой строки девять сеток
             // вставали столбиком вместо ряда.
-            Some(Display::GridLanes) if e.style.cascaded().lanes_inline => !ordered_context,
+            Some(Display::GridLanes) if e.style.computed().lanes_inline => !ordered_context,
             // `display: contents` without block-level descendants: its
             // children are inline-level boxes and text runs of THIS
             // container (css-display-3 §2.5 «as if they replaced the
@@ -172,7 +172,7 @@ pub(crate) fn inline_node(
             None => {
                 e.inline
                     && (!ordered_context || e.tag == "br")
-                    && e.style.cascaded().float.is_none_or(|f| f == 0)
+                    && e.style.computed().float.is_none_or(|f| f == 0)
             }
         },
     }
@@ -191,28 +191,28 @@ mod tests {
             ..Default::default()
         };
         let mut e = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
-        e.style.cascaded_mut().position = Some(Position::Absolute);
+        e.style.used_mut().position = Some(Position::Absolute);
         assert!(inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        e.style.cascaded_mut().inset.top = Some(Len::Px(0.));
+        e.style.used_mut().inset.top = Some(Len::Px(0.));
         assert!(inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        e.style.cascaded_mut().inset.left = Some(Len::Px(0.));
+        e.style.used_mut().inset.left = Some(Len::Px(0.));
         assert!(!inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        *e.style.cascaded_mut() = Computed {
+        *e.style.used_mut() = Computed {
             float: Some(-1),
             ..Default::default()
         };

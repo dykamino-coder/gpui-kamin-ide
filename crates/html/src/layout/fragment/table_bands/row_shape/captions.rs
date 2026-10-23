@@ -79,8 +79,8 @@ pub(crate) fn caption_slots_shape(
                     ccuts,
                     cforced,
                     csolid,
-                    cap.style.cascaded().break_before_force,
-                    cap.style.cascaded().break_after_force,
+                    cap.style.computed().break_before_force,
+                    cap.style.computed().break_after_force,
                 )
             }
         };

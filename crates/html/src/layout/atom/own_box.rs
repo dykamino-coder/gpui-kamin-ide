@@ -24,8 +24,8 @@ pub(super) fn own_box_atom(
     merged.resolve_viewport(opts.viewport, vcx);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
-    if e.style.cascaded().display == Some(Display::InlineBlock)
-        && e.style.cascaded().inline_display != Some(true)
+    if e.style.computed().display == Some(Display::InlineBlock)
+        && e.style.computed().inline_display != Some(true)
     {
         pseudo_line_layers::install(e, &mut merged, vcx);
     }
@@ -33,8 +33,8 @@ pub(super) fn own_box_atom(
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line
     // synthesize an alphabetic baseline at the atomic margin box's under edge.
-    if e.style.cascaded().display == Some(Display::InlineBlock)
-        && e.style.cascaded().inline_display != Some(true)
+    if e.style.computed().display == Some(Display::InlineBlock)
+        && e.style.computed().inline_display != Some(true)
         && merged.wm().vertical()
         && !inherited.wm().vertical()
         && !inherited.wm().turned()
@@ -52,7 +52,7 @@ pub(super) fn own_box_atom(
     // содержимого, и подставленный кегль строки накрывал детей-блоков
     // (`border-left-width-applies-to-012`: квадрат 96 выходил 19).
     let genuine_inline =
-        e.style.cascaded().display.is_none() || e.style.cascaded().inline_display == Some(true);
+        e.style.computed().display.is_none() || e.style.computed().inline_display == Some(true);
     if genuine_inline
         && merged.height.is_none()
         && !has_text(&e.children)
@@ -84,11 +84,11 @@ pub(super) fn own_box_atom(
     // колонками справа налево (`vertical-rl`) или слева направо
     // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
     // `element()`, поэтому ось ставится здесь.
-    if e.style.cascaded().display == Some(Display::InlineBlock)
+    if e.style.computed().display == Some(Display::InlineBlock)
         && merged.wm().vertical()
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-                if !k.inline || matches!(k.style.cascaded().display, Some(Display::Block)))
+                if !k.inline || matches!(k.style.computed().display, Some(Display::Block)))
         })
     {
         // Предел строчной оси детей — собственная высота коробки (как
@@ -103,13 +103,13 @@ pub(super) fn own_box_atom(
             Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
-        if let Some(h) = px_of(e.style.cascaded().height) {
-            let b = e.style.cascaded().borders();
-            let edges = if e.style.cascaded().border_box == Some(true) {
+        if let Some(h) = px_of(e.style.computed().height) {
+            let b = e.style.computed().borders();
+            let edges = if e.style.computed().border_box == Some(true) {
                 px_of(b.top).unwrap_or(0.0)
                     + px_of(b.bottom).unwrap_or(0.0)
-                    + px_of(e.style.cascaded().padding.top).unwrap_or(0.0)
-                    + px_of(e.style.cascaded().padding.bottom).unwrap_or(0.0)
+                    + px_of(e.style.computed().padding.top).unwrap_or(0.0)
+                    + px_of(e.style.computed().padding.bottom).unwrap_or(0.0)
             } else {
                 0.0
             };
@@ -140,7 +140,7 @@ pub(super) fn own_box_atom(
     // Only `inline-block`: table parts reach this path too, and their
     // absolute children keep the table's own handling
     // (`position-relative-table-*-absolute-child`).
-    let cb_layer = e.style.cascaded().display == Some(Display::InlineBlock)
+    let cb_layer = e.style.computed().display == Some(Display::InlineBlock)
         && !genuine_inline
         && crate::text::inline::establishes_cb(&merged);
     let cb_layer = cb_layer.then(|| {
@@ -159,6 +159,6 @@ pub(super) fn own_box_atom(
     }
     Some(opts.cx.build.effects(
         box_.children(kids).into_any_element(),
-        Effect::group(e.style.cascaded(), vcx),
+        Effect::group(&e.style.computed(), vcx),
     ))
 }

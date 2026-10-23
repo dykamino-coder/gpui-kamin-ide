@@ -18,7 +18,7 @@ pub(super) fn measured(
     holder: &mut gpui::Div,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
-    let style = element.style.cascaded();
+    let style = &element.style.computed();
     // Keep the existing growing-image path: exposing its natural ratio on a
     // measured leaf also changes Taffy's cross-size calculation after flexing.
     // This adapter handles intrinsic contributions and shrinking items only.

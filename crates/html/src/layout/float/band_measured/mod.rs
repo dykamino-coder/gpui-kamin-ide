@@ -42,12 +42,12 @@ pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
         return None;
     };
     if matches!(
-        c.style.cascaded().position,
+        c.style.computed().position,
         Some(crate::style::computed::Position::Absolute) | Some(crate::style::computed::Position::Fixed)
-    ) || c.style.cascaded().float.is_some_and(|f| f != 0)
-        || (c.style.cascaded().clear.is_some() && !band_clear_supported(c))
+    ) || c.style.computed().float.is_some_and(|f| f != 0)
+        || (c.style.computed().clear.is_some() && !band_clear_supported(c))
         || matches!(
-            c.style.cascaded().display,
+            c.style.computed().display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
@@ -57,7 +57,7 @@ pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
         )
         // Строчный по природе тег строчен, только пока `display` не задан:
         // `<img style="display:block">` — блочного уровня.
-        || (c.inline && c.style.cascaded().display.is_none())
+        || (c.inline && c.style.computed().display.is_none())
         // Таблица и замещаемый блочного уровня §9.5 названы прямо; тег
         // `<table>` вида в стиле не несёт — его строит сборщик таблиц по тегу
         // (`"table" =>` в `element`); `<img style="display:block">` своего
@@ -66,13 +66,13 @@ pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
         // independent formatting context. Its measured border box uses the
         // same opportunity search as other non-overlapping pieces.
         || !(own_context(c)
-            || band_orthogonal(c.style.cascaded(), wm)
+            || band_orthogonal(&c.style.computed(), wm)
             || c.tag == "table"
             || (block_level_in_flow(c) && replaced_tag(c)))
     {
         return None;
     }
-    band_margins(c.style.cascaded(), em)?;
+    band_margins(&c.style.computed(), em)?;
     Some(true)
 }
 
@@ -106,7 +106,7 @@ pub(super) fn band_host_m(
         let Node::Element(next) = &nodes[j] else {
             break;
         };
-        if next.style.cascaded().float.is_none_or(|f| f == 0) {
+        if next.style.computed().float.is_none_or(|f| f == 0) {
             break;
         }
         band_float_m(next, em)?;
@@ -128,8 +128,8 @@ pub(super) fn band_host_m(
         // С шагом F6 очищающая коробка остаётся в хосте: clearance считают
         // полосы (`band_flow::plan`), а не распорка флекс-ряда.
         if let Node::Element(next) = &nodes[j]
-            && (next.style.cascaded().float.is_some_and(|f| f != 0)
-                || (next.style.cascaded().clear.is_some() && !band_clear_supported(next)))
+            && (next.style.computed().float.is_some_and(|f| f != 0)
+                || (next.style.computed().clear.is_some() && !band_clear_supported(next)))
         {
             // Флоат дальше по той же строке прогона («BEF<float>Inner
             // <float>AFTER», `::after { float: right }` за текстом): пока
@@ -145,14 +145,14 @@ pub(super) fn band_host_m(
                 Node::Text(_) => true,
                 // A `<br clear>` moves what follows below the floats: a
                 // float after it starts a run of its own.
-                Node::Element(c) if c.tag == "br" => c.style.cascaded().clear.is_none(),
+                Node::Element(c) if c.tag == "br" => c.style.computed().clear.is_none(),
                 Node::Element(c) => {
                     !block_level_in_flow(c)
-                        && !out_of_flow(c.style.cascaded())
+                        && !out_of_flow(&c.style.computed())
                         && band_piece(n) != Some(BandPiece::Atom)
                 }
             });
-            if next.style.cascaded().float.is_some_and(|f| f != 0)
+            if next.style.computed().float.is_some_and(|f| f != 0)
                 && inline_only
                 && rest.iter().any(|n| !is_blank(n))
                 && band_float_m(next, em).is_some()
@@ -184,7 +184,7 @@ fn measured_host(flow: crate::dom::ShapeFlow, children: Vec<Node>) -> Element {
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
 pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
-    band_margins(next.style.cascaded(), em)?;
+    band_margins(&next.style.computed(), em)?;
     Some(())
 }
 
@@ -194,7 +194,7 @@ fn has_flow_float(c: &Element) -> bool {
     c.children.iter().any(|n| match n {
         Node::Text(_) => false,
         Node::Element(k) => {
-            k.style.cascaded().float.is_some_and(|f| f != 0)
+            k.style.computed().float.is_some_and(|f| f != 0)
                 || (block_level_in_flow(k) && !own_context(k) && has_flow_float(k))
         }
     })

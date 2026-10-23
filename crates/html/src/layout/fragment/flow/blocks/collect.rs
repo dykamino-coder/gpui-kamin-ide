@@ -44,7 +44,7 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         return out;
     }
     let stacks = stacks_blocks(e)
-        || (blockified && e.style.cascaded().display == Some(Display::InlineBlock));
+        || (blockified && e.style.computed().display == Some(Display::InlineBlock));
     if !stacks {
         return out;
     }
@@ -55,17 +55,17 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
 
 /// Коробка `e` без детей: рамка с отбивкой у краёв и корень контекста.
 pub(super) fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
-    let lens = LenCx::box_viewport(cx.viewport, e.style.cascaded());
+    let lens = LenCx::box_viewport(cx.viewport, &e.style.computed());
     let px = |l| lens.px_lossy_zero(l, vcx);
-    let b = e.style.cascaded().borders();
+    let b = e.style.computed().borders();
     BlockBox {
         id: e.node_id,
-        head: px(e.style.cascaded().padding.top) + px(b.top),
-        tail: px(e.style.cascaded().padding.bottom) + px(b.bottom),
+        head: px(e.style.computed().padding.top) + px(b.top),
+        tail: px(e.style.computed().padding.bottom) + px(b.bottom),
         end_margin: crate::layout::box_kind::bfc_root(e)
             && !grid_container(e)
             && matches!(
-                e.style.cascaded().height,
+                e.style.computed().height,
                 None | Some(crate::style::values::value::Len::Auto)
             ),
         kids: Vec::new(),
@@ -90,17 +90,17 @@ pub(super) fn push_kids(
         let k = match n {
             // Внепоточные соседей не двигают (CSS 2.1 §9.3.1) и границу
             // соседей не прерывают.
-            Node::Element(k) if out_of_flow(k.style.cascaded()) => continue,
-            Node::Element(k) if matches!(k.style.cascaded().display, Some(Display::None)) => {
+            Node::Element(k) if out_of_flow(&k.style.computed()) => continue,
+            Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => {
                 continue;
             }
             Node::Element(k)
-                if !k.inline && k.style.cascaded().display != Some(Display::Contents) =>
+                if !k.inline && k.style.computed().display != Some(Display::Contents) =>
             {
                 k
             }
             Node::Element(k)
-                if k.inline && k.style.cascaded().display.is_none() && holds_blocks(k) =>
+                if k.inline && k.style.computed().display.is_none() && holds_blocks(k) =>
             {
                 push_kids(&k.children, out, adjoins, depth, cx, vcx);
                 continue;

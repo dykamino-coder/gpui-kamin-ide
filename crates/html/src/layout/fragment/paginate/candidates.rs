@@ -24,15 +24,17 @@ pub(super) fn walk(
     let mut prev: Option<(u64, bool)> = None;
     for n in p.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { continue };
-        if out_of_flow(k.style.cascaded()) {
-            if k.style.cascaded().float.is_some_and(|f| f != 0) {
+        if out_of_flow(&k.style.computed()) {
+            if k.style.computed().float.is_some_and(|f| f != 0) {
                 if solid_box(k) {
                     out.push((
                         k.node_id,
                         Cand::Float {
-                            soft: k.style.cascaded().break_inside_avoid
+                            soft: k.style.computed().break_inside_avoid
                                 && !crate::layout::fragment::probe::size_monolith(k)
-                                && crate::layout::page::paged::visible_overflow(k.style.cascaded()),
+                                && crate::layout::page::paged::visible_overflow(
+                                    &k.style.computed(),
+                                ),
                         },
                     ));
                 } else {
@@ -46,18 +48,18 @@ pub(super) fn walk(
             continue;
         }
         if k.list_item.is_some()
-            || crate::layout::multicol::spanner::multicol_container(k.style.cascaded())
+            || crate::layout::multicol::spanner::multicol_container(&k.style.computed())
             || !matches!(
-                k.style.cascaded().display,
+                k.style.computed().display,
                 None | Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid)
             )
         {
             return None;
         }
-        if column_flex(p.style.cascaded()) {
+        if column_flex(&p.style.computed()) {
             out.push((k.node_id, Cand::Item));
         }
-        if let Some(gap) = row_gap(p.style.cascaded()) {
+        if let Some(gap) = row_gap(&p.style.computed()) {
             out.push((
                 k.node_id,
                 Cand::Gap {
@@ -69,20 +71,20 @@ pub(super) fn walk(
         // Breaks propagate from the first/last child to the box edge
         // (css-break-3 §3.1 «break propagation»).
         if let Some((pid, avoid_after)) = prev
-            && (avoid_after || k.style.cascaded().break_before_avoid)
+            && (avoid_after || k.style.computed().break_before_avoid)
         {
             out.push((pid, Cand::Item));
             out.push((k.node_id, Cand::Avoid { prev: pid }));
         }
-        prev = Some((k.node_id, k.style.cascaded().break_after_avoid));
+        prev = Some((k.node_id, k.style.computed().break_after_avoid));
         let edge = crate::layout::fragment::breaks::edge_break;
         let forced = force_next || edge(k, false, vcx);
         force_next = edge(k, true, vcx);
         // A forced break before an item of a flex row breaks the whole row
         // (Blink `row_break_between`), not just the item; clipped overflow is
         // not part of the flow thread.
-        if (forced && row_flex(p.style.cascaded()))
-            || (!crate::layout::page::paged::visible_overflow(k.style.cascaded())
+        if (forced && row_flex(&p.style.computed()))
+            || (!crate::layout::page::paged::visible_overflow(&k.style.computed())
                 && !monolith_box(k))
         {
             return None;
@@ -95,9 +97,9 @@ pub(super) fn walk(
             out.push((
                 k.node_id,
                 Cand::Mono {
-                    soft: k.style.cascaded().break_inside_avoid
+                    soft: k.style.computed().break_inside_avoid
                         && !crate::layout::fragment::probe::size_monolith(k)
-                        && crate::layout::page::paged::visible_overflow(k.style.cascaded()),
+                        && crate::layout::page::paged::visible_overflow(&k.style.computed()),
                 },
             ));
             continue;
@@ -106,7 +108,7 @@ pub(super) fn walk(
             out.push((
                 k.node_id,
                 Cand::Forced {
-                    mt: px_auto_zero(k.style.cascaded().margin.top)?,
+                    mt: px_auto_zero(k.style.computed().margin.top)?,
                 },
             ));
         }

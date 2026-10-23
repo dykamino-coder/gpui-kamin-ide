@@ -16,9 +16,9 @@ use std::cell::RefCell;
 pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
     fits && line_col_w.is_some()
         && !c.inline
-        && c.style.cascaded().column_span != Some(true)
-        && matches!(c.style.cascaded().position, None | Some(Position::Relative))
-        && c.style.cascaded().float.unwrap_or(0) == 0
+        && c.style.computed().column_span != Some(true)
+        && matches!(c.style.computed().position, None | Some(Position::Relative))
+        && c.style.computed().float.unwrap_or(0) == 0
         && crate::layout::fragment::flow::blocks::grid_tree(c, 4)
 }
 

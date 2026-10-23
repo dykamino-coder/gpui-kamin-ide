@@ -66,13 +66,13 @@ pub(super) fn drop_viewport_fixed(n: &Node, fixed_cb: bool) -> Option<Node> {
     match n {
         Node::Element(k)
             if !fixed_cb
-                && k.style.cascaded().position == Some(crate::style::computed::Position::Fixed) =>
+                && k.style.computed().position == Some(crate::style::computed::Position::Fixed) =>
         {
             None
         }
         Node::Element(k) => {
             let mut c = k.clone();
-            let deeper = fixed_cb || fixed_cb_box(k.style.cascaded());
+            let deeper = fixed_cb || fixed_cb_box(&k.style.computed());
             c.children = k
                 .children
                 .iter()

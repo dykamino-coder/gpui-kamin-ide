@@ -159,8 +159,8 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         let mut copy = e.clone();
         let url = e.attr("data").unwrap_or_default().to_string();
         copy.attrs.push(("src".to_string(), url));
-        copy.style.cascaded_mut().width = merged.width;
-        copy.style.cascaded_mut().height = merged.height;
+        copy.style.used_mut().width = merged.width;
+        copy.style.used_mut().height = merged.height;
         iframe(&copy, inherited, opts)
     } else {
         None

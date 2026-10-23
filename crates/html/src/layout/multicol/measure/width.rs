@@ -55,16 +55,16 @@ pub(crate) fn kid_layout_w(
 /// ширина — ширина содержимого родителя (CSS 2.1 §10.3.3).
 fn auto_fills_parent(e: &Element) -> bool {
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
-    let b = e.style.cascaded().borders();
-    matches!(e.style.cascaded().width, None | Some(Len::Auto))
-        && matches!(e.style.cascaded().display, None | Some(Display::Block))
-        && e.style.cascaded().float.unwrap_or(0) == 0
-        && !out_of_flow(e.style.cascaded())
+    let b = e.style.computed().borders();
+    matches!(e.style.computed().width, None | Some(Len::Auto))
+        && matches!(e.style.computed().display, None | Some(Display::Block))
+        && e.style.computed().float.unwrap_or(0) == 0
+        && !out_of_flow(&e.style.computed())
         && [
-            &e.style.cascaded().margin.left,
-            &e.style.cascaded().margin.right,
-            &e.style.cascaded().padding.left,
-            &e.style.cascaded().padding.right,
+            &e.style.computed().margin.left,
+            &e.style.computed().margin.right,
+            &e.style.computed().padding.left,
+            &e.style.computed().padding.right,
             &b.left,
             &b.right,
         ]
@@ -112,12 +112,12 @@ pub(crate) fn column_measure_width(
                     k.inline
                         || inline_content(k)
                         || (k.children.iter().all(is_blank)
-                            && matches!(k.style.cascaded().height, Some(Len::Px(_))))
+                            && matches!(k.style.computed().height, Some(Len::Px(_))))
                         // Вложенный многоколоночник: его ширина — колонка
                         // внешнего, и мерить его раскладкой копии можно
                         // только при известной ширине (`measured_nested`).
                         || (nested_rows_box(k)
-                            && matches!(k.style.cascaded().height, None | Some(Len::Auto)))
+                            && matches!(k.style.computed().height, None | Some(Len::Auto)))
                 }
             }))
         .then_some(inherited.width)

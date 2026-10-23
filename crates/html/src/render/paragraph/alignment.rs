@@ -22,7 +22,7 @@ pub(crate) fn atom_line_align(
 ) -> Option<crate::text::paragraph::AtomAlign> {
     let vcx = opts.cx.vcx();
     use crate::text::paragraph::AtomAlign;
-    let st = e.style.cascaded();
+    let st = &*e.style.computed();
     let atomic = matches!(
         st.display,
         Some(Display::InlineBlock)
@@ -59,15 +59,15 @@ pub(crate) fn atom_line_align(
     fn has_vertical(nodes: &[Node], in_box_layout: bool) -> bool {
         nodes.iter().any(|n| match n {
             Node::Element(k) => {
-                let sized_by_parent = in_box_layout || k.style.cascaded().height.is_some();
+                let sized_by_parent = in_box_layout || k.style.computed().height.is_some();
                 // Ломает замер только ортогональный ФЛОАТ (его ширина «по
                 // содержимому» берётся от доступного места); ортогональный
                 // блок в потоке раскладывается одинаково, и исключать атом
                 // ради него значило вести тест рядом, а эталон строкой
                 // (`baseline-with-orthogonal-flow-001`).
-                let floated = k.style.cascaded().float.is_some_and(|f| f != 0);
+                let floated = k.style.computed().float.is_some_and(|f| f != 0);
                 (k.style.cascaded().writing_mode.is_some() && !sized_by_parent && floated)
-                    || has_vertical(&k.children, box_layout(k.style.cascaded()))
+                    || has_vertical(&k.children, box_layout(&k.style.computed()))
             }
             _ => false,
         })

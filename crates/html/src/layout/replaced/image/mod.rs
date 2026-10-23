@@ -30,13 +30,13 @@ mod sized;
 pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     let mut resolved = pct_limits_to_px(e, inherited);
     // Replaced boxes resolve viewport units from their raw style, too.
-    resolved.style.cascaded_mut().viewport_unit_insets = resolved
+    resolved.style.used_mut().viewport_unit_insets = resolved
         .style
-        .cascaded()
+        .computed()
         .viewport_unit_insets
         .or(inherited.viewport_unit_insets);
     let e = &resolved;
-    let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.cascaded().height, inherited.height)
+    let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.computed().height, inherited.height)
     else {
         return e.clone();
     };
@@ -73,7 +73,7 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
         h
     };
     let mut copy = e.clone();
-    copy.style.cascaded_mut().height = Some(Len::Px(k * h));
+    copy.style.used_mut().height = Some(Len::Px(k * h));
     copy
 }
 
@@ -94,10 +94,10 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
     let block_cb = matches!(inherited.display, None | Some(Display::Block));
     let h_base = block_cb.then_some(inherited.height).flatten();
     let mut copy = e.clone();
-    copy.style.cascaded_mut().max_width = of(e.style.cascaded().max_width, inherited.width);
-    copy.style.cascaded_mut().min_width = of(e.style.cascaded().min_width, inherited.width);
-    copy.style.cascaded_mut().max_height = of(e.style.cascaded().max_height, h_base);
-    copy.style.cascaded_mut().min_height = of(e.style.cascaded().min_height, h_base);
+    copy.style.used_mut().max_width = of(e.style.computed().max_width, inherited.width);
+    copy.style.used_mut().min_width = of(e.style.computed().min_width, inherited.width);
+    copy.style.used_mut().max_height = of(e.style.computed().max_height, h_base);
+    copy.style.used_mut().min_height = of(e.style.computed().min_height, h_base);
     copy
 }
 

@@ -72,11 +72,11 @@ pub(super) fn multicol_stack_child(
     // правое; схлопывание сквозь верх (`strip_through_top`)
     // там не считается вовсе (мера повёрнутая).
     if col_vert {
-        copy.style.cascaded_mut().margin.left = None;
-        copy.style.cascaded_mut().margin.right = None;
+        copy.style.used_mut().margin.left = None;
+        copy.style.used_mut().margin.right = None;
     } else {
-        copy.style.cascaded_mut().margin.top = None;
-        copy.style.cascaded_mut().margin.bottom = None;
+        copy.style.used_mut().margin.top = None;
+        copy.style.used_mut().margin.bottom = None;
         // И поле, схлопнутое СКВОЗЬ верх (`through` в
         // `mt`): стопка уже положила его `lead`-ом,
         // второй раз его вставил бы корень копии.
@@ -95,7 +95,7 @@ pub(super) fn multicol_stack_child(
         && float_only_box(&copy).is_some()
         && through_strut(&copy, opts.cx.vcx()).is_some();
     if float_zero {
-        copy.style.cascaded_mut().height = Some(Len::Px(0.0));
+        copy.style.used_mut().height = Some(Len::Px(0.0));
     }
     // Параллельный поток (css-break-3 §3):
     // содержимое, переполняющее коробку с заданной
@@ -133,10 +133,10 @@ pub(super) fn multicol_stack_child(
     // Срез строки хоста (`Marks::host_trim_*`) — рисует
     // `blocks()` копии по её флагам.
     if copy.marks.host_trim_start {
-        copy.style.cascaded_mut().text_box_trim_start = true;
+        copy.style.used_mut().text_box_trim_start = true;
     }
     if copy.marks.host_trim_end {
-        copy.style.cascaded_mut().text_box_trim_end = true;
+        copy.style.used_mut().text_box_trim_end = true;
     }
     // Вложенный многоколоночник с ВЕРХА внешней колонки
     // (первый ребёнок без поля) и заданной высотой —

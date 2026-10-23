@@ -103,15 +103,15 @@ pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
         && !c.children.iter().any(has_ruby)
         // Заголовок таблицы вне таблицы — анонимная таблица (§17.2.1), то
         // есть коробка, флоаты не перекрывающая (`clear-applies-to-015`).
-        && c.style.cascaded().is_caption != Some(true)
+        && c.style.computed().is_caption != Some(true)
         && c.tag != "caption"
         && flow_interior_plain(c)
-        && (c.style.cascaded().clear.is_none() || band_clear_supported(c))
+        && (c.style.computed().clear.is_none() || band_clear_supported(c))
         && matches!(
-            c.style.cascaded().display,
+            c.style.computed().display,
             None | Some(Display::Block) | Some(Display::ListItem)
         )
-        && band_margins(c.style.cascaded(), em).is_some()
+        && band_margins(&c.style.computed(), em).is_some()
 }
 
 /// Хвост измеряемого хоста с шагом F4: куски `band_piece_m`, блоки обычного

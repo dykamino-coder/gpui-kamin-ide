@@ -25,26 +25,26 @@ pub(crate) fn band_kid_kind(
 ) -> Option<super::super::super::band_flow::Kind> {
     let kind = if float {
         Kind::Float {
-            side: c.style.cascaded().float.unwrap_or(-1),
-            clear: c.style.cascaded().clear,
+            side: c.style.computed().float.unwrap_or(-1),
+            clear: c.style.computed().clear,
             // Строчный размер `auto` — shrink-to-fit; в вертикальном
             // письме строчный размер — высота.
             shrink: if vert.is_some() {
-                matches!(c.style.cascaded().height, None | Some(Len::Auto))
+                matches!(c.style.computed().height, None | Some(Len::Auto))
             } else {
-                matches!(c.style.cascaded().width, None | Some(Len::Auto))
+                matches!(c.style.computed().width, None | Some(Len::Auto))
             },
             letter: c.marks.initial_letter,
-            own_layout: super::super::own_layout_mode(c.style.cascaded()),
+            own_layout: super::super::own_layout_mode(&c.style.computed()),
         }
     } else {
         match band_piece_m(n, em, wm) {
             Some(true) => Kind::Piece {
                 rtl: inherited.wm().rtl(),
                 table: c.tag == "table"
-                    || matches!(c.style.cascaded().display, Some(Display::Table)),
+                    || matches!(c.style.computed().display, Some(Display::Table)),
             },
-            Some(false) => Kind::Strut(px_margin_box(c.style.cascaded()).map_or(0.0, |(_, h)| h)),
+            Some(false) => Kind::Strut(px_margin_box(&c.style.computed()).map_or(0.0, |(_, h)| h)),
             None if c.marks.anon || band_flow_block(c, em) => Kind::Flow,
             None => match band_nest(c, inherited, opts, em, wm) {
                 Some(nn) => {

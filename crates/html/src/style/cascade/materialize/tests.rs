@@ -100,6 +100,35 @@ fn an_edit_or_another_parent_recomputes() {
 }
 
 #[test]
+fn used_values_lie_over_the_shared_computed_style() {
+    let parsed = crate::dom::parse(PAGE, "");
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let p = element(&parsed.nodes, "p");
+    let parent = slot_parent(&p.style).unwrap();
+    let mut copy = p.clone();
+    copy.style.used_mut().margin.top = Some(Len::Px(7.0));
+    // The materialization stays valid and shared; the box takes the used value.
+    assert!(
+        copy.style
+            .slot()
+            .get(copy.style.cascaded(), &parent, generation(vcx))
+            .is_some()
+    );
+    let used = box_style(&parent, &copy.style, vcx);
+    assert_eq!(used.margin.top, Some(Len::Px(7.0)));
+    assert_eq!(used.text_indent, Some(Len::Px(40.0)));
+    // Under another parent the style is computed for it and the used value
+    // laid over it.
+    let mut bigger = (*parent).clone();
+    bigger.font_size = Some(Len::Px(30.0));
+    let other = box_style(&bigger, &copy.style, vcx);
+    assert_eq!(other.margin.top, Some(Len::Px(7.0)));
+    assert_eq!(other.text_indent, Some(Len::Px(60.0)));
+    assert_ne!(p.style.computed().margin.top, Some(Len::Px(7.0)));
+}
+
+#[test]
 fn cascaded_inherit_is_reused_only_under_the_same_parent() {
     let parsed = crate::dom::parse(PAGE, "");
     let vcx = parsed.values();

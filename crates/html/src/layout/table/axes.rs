@@ -53,10 +53,10 @@ pub(super) fn inherited(e: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Opt
         return None;
     }
     let mut copy = e.clone();
-    copy.style.cascaded_mut().writing_mode = style.writing_mode;
-    copy.style.cascaded_mut().flat_mode = style.flat_mode;
-    copy.style.cascaded_mut().rtl = style.rtl;
-    copy.style.cascaded_mut().text_orientation = style.text_orientation;
+    copy.style.used_mut().writing_mode = style.writing_mode;
+    copy.style.used_mut().flat_mode = style.flat_mode;
+    copy.style.used_mut().rtl = style.rtl;
+    copy.style.used_mut().text_orientation = style.text_orientation;
     Some(copy)
 }
 

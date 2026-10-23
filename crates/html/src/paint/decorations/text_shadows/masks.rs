@@ -71,7 +71,7 @@ pub(super) fn mask_nodes(
             Node::Element(e) => {
                 let mut e = e.clone();
                 if atomic(&e, vcx) {
-                    e.style.cascaded_mut().hidden = Some(true);
+                    e.style.used_mut().hidden = Some(true);
                     return Node::Element(e);
                 }
                 let list = parent.child(&e);
@@ -80,7 +80,7 @@ pub(super) fn mask_nodes(
                 } else {
                     transparent()
                 };
-                let s = e.style.cascaded_mut();
+                let s = e.style.used_mut();
                 s.text_shadow_ink = Some(ink);
                 s.background = None;
                 s.bg_image = None;

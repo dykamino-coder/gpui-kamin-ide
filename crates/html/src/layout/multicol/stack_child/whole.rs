@@ -21,15 +21,15 @@ pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) 
         // содержащий блок вне контекста. `hoist_relative` снимает лишь
         // ВСТАВКИ, `transform`/`contain` остаются — проверка по
         // `copy.style` законна.
-        let fixed_cb_root = fixed_cb_box(copy.style.cascaded());
+        let fixed_cb_root = fixed_cb_box(&copy.style.computed());
         src.children
             .iter()
             .filter_map(|n| drop_viewport_fixed(n, fixed_cb_root))
             .collect()
     };
     if band {
-        let fixed = fixed_cb_box(copy.style.cascaded());
-        let abs = fixed || crate::text::inline::establishes_cb(copy.style.cascaded());
+        let fixed = fixed_cb_box(&copy.style.computed());
+        let abs = fixed || crate::text::inline::establishes_cb(&copy.style.computed());
         return kids
             .iter()
             .filter_map(|n| drop_uncontained_oof(n, abs, fixed))
@@ -62,14 +62,14 @@ pub(super) fn copy_whole_box(
         // Ширина `auto` — по колонке (CSS 2.1 §10.3.3):
         // копия кладётся корнем, и её многоколоночнику
         // нужна ширина в точках для меры строк.
-        if matches!(mc.style.cascaded().width, None | Some(Len::Auto))
+        if matches!(mc.style.computed().width, None | Some(Len::Auto))
             && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
-            mc.style.cascaded_mut().width = Some(Len::Px(w));
-        } else if let (Some(Len::Pct(k)), Some(cw)) = (mc.style.cascaded().width, line_col_w) {
+            mc.style.used_mut().width = Some(Len::Px(w));
+        } else if let (Some(Len::Pct(k)), Some(cw)) = (mc.style.computed().width, line_col_w) {
             // Доля — от внешней колонки (CSS 2.1 §10.2): в точках её ждёт
             // доля `column-gap` коробки (`column_plan`).
-            mc.style.cascaded_mut().width = Some(Len::Px(
+            mc.style.used_mut().width = Some(Len::Px(
                 crate::layout::fragment::line_shape::layout_unit(k * cw),
             ));
         }
@@ -77,12 +77,12 @@ pub(super) fn copy_whole_box(
         // (`nested_rows_shape`): стопка с рядами
         // отдаёт полный последний ряд, а коробка
         // кончается на сбалансированном хвосте.
-        if matches!(mc.style.cascaded().height, None | Some(Len::Auto)) {
-            let b = mc.style.cascaded().borders();
+        if matches!(mc.style.computed().height, None | Some(Len::Auto)) {
+            let b = mc.style.computed().borders();
             let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-            let bot = px(&mc.style.cascaded().padding.bottom) + px(&b.bottom);
-            mc.style.cascaded_mut().height = Some(Len::Px((h - bot).max(0.0)));
-            mc.style.cascaded_mut().border_box = None;
+            let bot = px(&mc.style.computed().padding.bottom) + px(&b.bottom);
+            mc.style.used_mut().height = Some(Len::Px((h - bot).max(0.0)));
+            mc.style.used_mut().border_box = None;
         }
         return Some(
             opts.cx
@@ -93,10 +93,10 @@ pub(super) fn copy_whole_box(
     if whole {
         let mut mc = copy.clone();
         mc.children = std::mem::take(kids);
-        if matches!(mc.style.cascaded().width, None | Some(Len::Auto))
+        if matches!(mc.style.computed().width, None | Some(Len::Auto))
             && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
-            mc.style.cascaded_mut().width = Some(Len::Px(w));
+            mc.style.used_mut().width = Some(Len::Px(w));
         }
         return Some(opts.cx.build.element(&mc, merged, opts));
     }

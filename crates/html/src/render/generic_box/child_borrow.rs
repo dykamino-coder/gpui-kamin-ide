@@ -4,7 +4,7 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 
 pub(super) fn borrowed<'a>(element: &'a Element, merged: &Computed) -> Option<&'a [Node]> {
-    if element.style.cascaded().grid_areas.is_some() || merged.wm().vertical() {
+    if element.style.computed().grid_areas.is_some() || merged.wm().vertical() {
         return None;
     }
     // Horizontal preparation only adjusts non-inline vertical children.
@@ -33,7 +33,7 @@ mod tests {
             unreachable!()
         };
         child.inline = false;
-        child.style.cascaded_mut().writing_mode = Some(
+        child.style.used_mut().writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         assert!(borrowed(&parent, &merged).is_none());
@@ -50,7 +50,7 @@ mod tests {
         };
         assert!(borrowed(&parent, &merged).is_none());
         merged.writing_mode = None;
-        parent.style.cascaded_mut().grid_areas = Some(vec![vec!["area".into()]]);
+        parent.style.used_mut().grid_areas = Some(vec![vec!["area".into()]]);
         assert!(borrowed(&parent, &merged).is_none());
     }
 }

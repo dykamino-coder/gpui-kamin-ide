@@ -20,14 +20,14 @@ pub(super) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last
     if kids.iter().any(|n| !is_blank(n)) {
         return true;
     }
-    let b = &c.style.cascaded().border_width;
+    let b = &c.style.computed().border_width;
     (first
-        && (spanner_edge(&c.style.cascaded().margin.top)
-            || spanner_edge(&c.style.cascaded().padding.top)
+        && (spanner_edge(&c.style.computed().margin.top)
+            || spanner_edge(&c.style.computed().padding.top)
             || spanner_edge(&b.top)))
         || (last
-            && (spanner_edge(&c.style.cascaded().margin.bottom)
-                || spanner_edge(&c.style.cascaded().padding.bottom)
+            && (spanner_edge(&c.style.computed().margin.bottom)
+                || spanner_edge(&c.style.computed().padding.bottom)
                 || spanner_edge(&b.bottom)))
 }
 
@@ -55,22 +55,22 @@ pub(super) fn spanner_fragment(
     let mut f = c.clone();
     f.children = kids;
     if !first {
-        f.style.cascaded_mut().margin.top = None;
-        f.style.cascaded_mut().padding.top = None;
-        f.style.cascaded_mut().border_width.top = None;
+        f.style.used_mut().margin.top = None;
+        f.style.used_mut().padding.top = None;
+        f.style.used_mut().border_width.top = None;
         // Устойчивый номер узла у продолжения свой: по нему GPUI хранит
         // состояние (анимация, буферы линеек промежутков), и два фрагмента
         // с одним номером слились бы в один.
         f.node_id = c.node_id ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     }
     if !last {
-        f.style.cascaded_mut().margin.bottom = None;
-        f.style.cascaded_mut().padding.bottom = None;
-        f.style.cascaded_mut().border_width.bottom = None;
+        f.style.used_mut().margin.bottom = None;
+        f.style.used_mut().padding.bottom = None;
+        f.style.used_mut().border_width.bottom = None;
     }
     if !keep_size {
-        f.style.cascaded_mut().height = None;
-        f.style.cascaded_mut().min_height = None;
+        f.style.used_mut().height = None;
+        f.style.used_mut().min_height = None;
     }
     f
 }
@@ -90,7 +90,7 @@ pub(super) fn spanner_height_share(
     bodies: &[Vec<Node>],
     vcx: ValueCx<'_>,
 ) -> Option<Vec<Option<f32>>> {
-    let Some(Len::Px(total)) = c.style.cascaded().height else {
+    let Some(Len::Px(total)) = c.style.computed().height else {
         return None;
     };
     let n = bodies.len();
@@ -112,7 +112,7 @@ pub(super) fn spanner_height_share(
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let edge = px(&c.style.cascaded().padding.top)? + px(&c.style.cascaded().borders().top)?;
+    let edge = px(&c.style.computed().padding.top)? + px(&c.style.computed().borders().top)?;
     let mut left = total;
     let mut out = Vec::with_capacity(n);
     for (i, b) in bodies.iter().enumerate() {

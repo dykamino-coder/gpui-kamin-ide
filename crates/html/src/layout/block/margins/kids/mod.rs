@@ -48,9 +48,9 @@ pub(super) fn collapse_kid_margins(
         // рвём заранее тем же путём, что и `blocks()` (`wrap_anon_tables` →
         // `split_block_in_inline`); повторный разрыв там ничего не меняет.
         // У гибкого контейнера и сетки разрыва нет (`ordered_context`).
-        if e.style.cascaded().margin_trim & 3 != 0
+        if e.style.computed().margin_trim & 3 != 0
             && !matches!(
-                e.style.cascaded().display,
+                e.style.computed().display,
                 Some(Display::Flex)
                     | Some(Display::InlineFlex)
                     | Some(Display::Grid)
@@ -60,7 +60,7 @@ pub(super) fn collapse_kid_margins(
         {
             e.children = split_block_in_inline(&wrap_anon_tables(&e.children));
         }
-        if e.style.cascaded().margin_trim & 1 != 0 {
+        if e.style.computed().margin_trim & 1 != 0 {
             let mut path: Vec<usize> = vec![];
             let mut eat: Vec<(Vec<usize>, bool)> = vec![];
             if leading_chain(&e.children, &mut path, &mut eat, cb, vcx).is_some() {
@@ -69,7 +69,7 @@ pub(super) fn collapse_kid_margins(
                 }
             }
         }
-        if e.style.cascaded().margin_trim & 2 != 0 {
+        if e.style.computed().margin_trim & 2 != 0 {
             let mut path: Vec<usize> = vec![];
             let mut eat: Vec<(Vec<usize>, bool)> = vec![];
             if trailing_chain(&e.children, &mut path, &mut eat, vcx).is_some() {
@@ -116,14 +116,14 @@ pub(super) fn collapse_kid_margins(
         // та же доля. Прежде поле ребёнка оставалось внутри, и красная
         // подложка росла на 100 (`margin-collapse-with-indefinite-block-
         // size-001…005`). Blink — `BlockLengthUnresolvable`.
-        let behaves_auto = match e.style.cascaded().height {
+        let behaves_auto = match e.style.computed().height {
             None | Some(Len::Auto) => true,
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent) => true,
             Some(Len::Pct(_)) => !vcx.collapse.height_def,
             _ => false,
         };
-        if !zero(e.style.cascaded().padding.bottom)
-            || !zero(e.style.cascaded().borders().bottom)
+        if !zero(e.style.computed().padding.bottom)
+            || !zero(e.style.computed().borders().bottom)
             || !behaves_auto
             || margin_height::separate(e, vcx)
             || own_context
@@ -138,16 +138,16 @@ pub(super) fn collapse_kid_margins(
         let child_bottom =
             first_in_flow(e.children.iter().enumerate().rev().take_while(|(_, c)| {
                 !matches!(c, Node::Element(ch)
-                if ch.style.cascaded().float.is_some()
+                if ch.style.computed().float.is_some()
                     || matches!(
-                        ch.style.cascaded().position,
+                        ch.style.computed().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ))
             }))
             .and_then(|(i, ch)| {
-                with_inner_cb(e.style.cascaded(), vcx, |vcx| {
-                    margin_px(ch.style.cascaded().margin.bottom, ch.style.cascaded(), vcx)
+                with_inner_cb(&e.style.computed(), vcx, |vcx| {
+                    margin_px(ch.style.computed().margin.bottom, &ch.style.computed(), vcx)
                 })
                 .map(|_| i)
             });
@@ -166,7 +166,7 @@ pub(super) fn collapse_kid_margins(
             if raises {
                 if let Node::Element(ch) = &mut e.children[i] {
                     pin_inherited_margins(ch, false, true, vcx);
-                    ch.style.cascaded_mut().margin.bottom = Some(Len::Px(0.0));
+                    ch.style.used_mut().margin.bottom = Some(Len::Px(0.0));
                 }
                 continue;
             }

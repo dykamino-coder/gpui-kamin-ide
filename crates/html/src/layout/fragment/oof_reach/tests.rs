@@ -80,7 +80,7 @@ fn explicit_top_uses_continuous_containing_block_origin_in_columns() {
         },
         vec![],
     );
-    abs.style.cascaded_mut().inset.top = Some(Len::Px(0.0));
+    abs.style.used_mut().inset.top = Some(Len::Px(0.0));
     let parent = element(
         Computed {
             position: Some(Position::Relative),
@@ -109,7 +109,7 @@ fn contained_fixed_reach_passes_relative_boxes_to_its_own_cb() {
         },
         vec![],
     );
-    fixed.style.cascaded_mut().inset.top = Some(Len::Px(0.0));
+    fixed.style.used_mut().inset.top = Some(Len::Px(0.0));
     let relative = element(
         Computed {
             position: Some(Position::Relative),

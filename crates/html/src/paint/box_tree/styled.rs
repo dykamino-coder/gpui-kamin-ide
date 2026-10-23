@@ -19,7 +19,7 @@ use gpui::{ParentElement, Styled, div};
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
 /// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
 pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
-    styled_div_with(e, e.style.cascaded(), cx)
+    styled_div_with(e, &e.style.computed(), cx)
 }
 
 pub(crate) fn styled_div_with(

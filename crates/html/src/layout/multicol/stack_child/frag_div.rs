@@ -26,7 +26,7 @@ pub(super) fn frag_box_div(
     // (css-writing-modes-4 §3.1), как у вертикального
     // блока в `element()`: гибкий ряд, у `vertical-rl`
     // обратный. Гибкому и сеточному ось ставит `apply`.
-    if col_vert && matches!(src.style.cascaded().display, None | Some(Display::Block)) {
+    if col_vert && matches!(src.style.computed().display, None | Some(Display::Block)) {
         d = d.flex();
         d = if col_rl {
             d.flex_row_reverse()
@@ -56,12 +56,12 @@ pub(super) fn frag_box_div(
         matches!(n, Node::Element(k)
             if !k.inline
                 && k.style
-                    .cascaded().aspect_ratio
+                    .computed().aspect_ratio
                     .is_some_and(|r| r.is_finite() && r > 0.0)
-                && matches!(k.style.cascaded().width, None | Some(Len::Auto))
-                && matches!(k.style.cascaded().height, Some(Len::Px(_))))
+                && matches!(k.style.computed().width, None | Some(Len::Auto))
+                && matches!(k.style.computed().height, Some(Len::Px(_))))
     };
-    if src.style.cascaded().display.is_none()
+    if src.style.computed().display.is_none()
         && !src_inner.wm().vertical()
         && kids.iter().any(ratio_kid)
     {
@@ -83,9 +83,9 @@ pub(super) fn frag_box_div(
     // `multi-line-*-flex-fragmentation-*`; её
     // закрывает мера гибкой стопки (`flex_items`
     // в `shape_full`) — держать их вместе.
-    if matches!(copy.style.cascaded().width, None | Some(Len::Auto))
+    if matches!(copy.style.computed().width, None | Some(Len::Auto))
         && matches!(
-            copy.style.cascaded().display,
+            copy.style.computed().display,
             Some(Display::Grid) | Some(Display::InlineGrid) | Some(Display::Flex)
         )
     {
@@ -102,10 +102,10 @@ pub(super) fn frag_box_div(
     // §7.1) — высота копии та же, что в мере.
     if kids.is_empty()
         && matches!(
-            copy.style.cascaded().display,
+            copy.style.computed().display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
-        && grid_rows_px(copy.style.cascaded()).is_some()
+        && grid_rows_px(&copy.style.computed()).is_some()
     {
         d = d.min_h(px(h));
     }

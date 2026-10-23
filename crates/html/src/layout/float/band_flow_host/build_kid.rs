@@ -51,40 +51,36 @@ pub(super) fn build_band_kid(
     // Сторону, очистку и поля несёт хост (позиция от полос), на
     // самой коробке они сдвинули бы её ещё раз — как у
     // статического хоста.
-    copy.style.cascaded_mut().float = None;
-    copy.style.cascaded_mut().floated_box |= float;
+    copy.style.used_mut().float = None;
+    copy.style.used_mut().floated_box |= float;
     // CSS2 section 9.5: a completed float is not a flex item of the host.
     // Blink floats_utils.cc:173-244 keeps its laid-out physical fragment
     // while searching opportunities; the probe/final flex frame cannot shrink it.
     if float {
-        copy.style.cascaded_mut().flex_shrink = Some(0.0);
+        copy.style.used_mut().flex_shrink = Some(0.0);
     }
-    copy.style.cascaded_mut().band_kid = true;
-    copy.style.cascaded_mut().clear = None;
-    copy.style.cascaded_mut().margin = crate::style::computed::Sides::default();
+    copy.style.used_mut().band_kid = true;
+    copy.style.used_mut().clear = None;
+    copy.style.used_mut().margin = crate::style::computed::Sides::default();
     // Флоат заводит свой контекст форматирования (§9.4.1), а
     // `float` с копии снят — метка остаётся: по ней дети флоата
     // узнают корень БФК (`parent_bfc` у `wrap_floats` — §10.6.7:
     // высота флоата охватывает флоаты внутри него;
     // `letter-spacing-206`).
     if float {
-        copy.style.cascaded_mut().flow_root = Some(true);
-        native_vertical::claim_float_inline_size(
-            copy.style.cascaded_mut(),
-            inherited,
-            &copy.children,
-        );
+        copy.style.used_mut().flow_root = Some(true);
+        native_vertical::claim_float_inline_size(copy.style.used_mut(), inherited, &copy.children);
     }
     if is_nest {
         // Коробка `Kind::Nest` — без детей (их кладут полосы) и
         // высотой содержимого из плана.
         copy.children.clear();
-        copy.style.cascaded_mut().height = height.map(Len::Px);
-        copy.style.cascaded_mut().border_box = None;
+        copy.style.used_mut().height = height.map(Len::Px);
+        copy.style.used_mut().border_box = None;
         // A paint group's opacity and transform belong to the group around
         // the box and its descendants (`Nest::group`), not to the box alone.
-        if crate::layout::float::band_nest::paint_group(copy.style.cascaded()) {
-            crate::layout::float::band_nest::group_shell(copy.style.cascaded_mut());
+        if crate::layout::float::band_nest::paint_group(&copy.style.computed()) {
+            crate::layout::float::band_nest::group_shell(copy.style.used_mut());
         }
         return opts.cx.build.element(&copy, inherited, opts);
     }
@@ -97,22 +93,22 @@ pub(super) fn build_band_kid(
     // `child_available_inline_size`), и его оставляем каркасу
     // (`bfc-next-to-float-1`); `100%` рядом с флоатом не влез бы
     // ни в какое окно, а ниже флоатов окно и есть содержащий блок.
-    if let Some(Len::Pct(k)) = copy.style.cascaded().width
+    if let Some(Len::Pct(k)) = copy.style.computed().width
         && cb > 0.0
         && (float || k != 1.0)
         && !vertical
     {
-        copy.style.cascaded_mut().width = Some(Len::Px(k * cb));
+        copy.style.used_mut().width = Some(Len::Px(k * cb));
     }
     // Доля ВЫСОТЫ — от высоты содержащего блока, когда она задана
     // точками (§10.5). Ребёнок хоста раскладывается своим корнем
     // с неопределённой высотой, и доля там вырождалась в `auto`:
     // плавающий `height: 100%` в блоке `height: 200px` выходил
     // высотой в свой текст (`flexbox-align-self-horiz-001-ref`).
-    if let Some(Len::Pct(k)) = copy.style.cascaded().height
+    if let Some(Len::Pct(k)) = copy.style.computed().height
         && let Some(Len::Px(h)) = cb_height
     {
-        copy.style.cascaded_mut().height = Some(Len::Px(k * h));
+        copy.style.used_mut().height = Some(Len::Px(k * h));
     }
     // В вертикальном письме блочный размер — физическая ширина:
     // её доля — от ширины содержащего блока (§10.5 по блочной
@@ -121,10 +117,10 @@ pub(super) fn build_band_kid(
     // (эталон `css-break/background-image-001`: колонки-флоаты
     // `block-size: 100%` во `flow-root` `vertical-rl`).
     if vertical
-        && let Some(Len::Pct(k)) = copy.style.cascaded().width
+        && let Some(Len::Pct(k)) = copy.style.computed().width
         && let Some(Len::Px(w)) = cb_block_w
     {
-        copy.style.cascaded_mut().width = Some(Len::Px(k * w));
+        copy.style.used_mut().width = Some(Len::Px(k * w));
     }
     // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
     // `style::cascade::inherit` начинает слитый стиль с собственного, и
@@ -144,16 +140,16 @@ pub(super) fn build_band_kid(
         && (!vertical
             || copy
                 .style
-                .cascaded()
+                .computed()
                 .sideways_decl()
                 .unwrap_or(inherited.wm().sideways())
                 == (inherited.wm().sideways()));
     if shapes.is_some() && same_writing_mode {
-        copy.style.cascaded_mut().flow_shapes = shapes;
+        copy.style.used_mut().flow_shapes = shapes;
     }
     let table = copy.tag == "table"
         || matches!(
-            copy.style.cascaded().display,
+            copy.style.computed().display,
             Some(Display::Table) | Some(Display::InlineTable)
         );
     if copy.marks.atoms {
@@ -168,7 +164,7 @@ pub(super) fn build_band_kid(
             .collect();
         let shapes = copy
             .style
-            .cascaded()
+            .computed()
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
@@ -207,7 +203,7 @@ pub(super) fn build_band_kid(
     // CSS Lists 3 §2: a floated list item (a `::before`/`::after`
     // with `display: list-item` too) keeps its marker, which only
     // `element`'s list-item painter draws.
-    let list_item = copy.style.cascaded().display == Some(Display::ListItem);
+    let list_item = copy.style.computed().display == Some(Display::ListItem);
     // Writing Modes 4 §7.3: the float's own formatting context determines its
     // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
     // element() installs the vertical block axis and containing-block scopes.
@@ -218,11 +214,11 @@ pub(super) fn build_band_kid(
         .or(inherited.vertical_decl())
         == Some(true);
     if float && !vertical {
-        super::fit_own_layout(copy.style.cascaded_mut(), inherited, avail, cb, vcx);
+        super::fit_own_layout(copy.style.used_mut(), inherited, avail, cb, vcx);
     }
     // CSS Multicol 1: a floated multicol still balances and hoists spanners
     // through element(), then contributes its measured outer box to bands.
-    let multicol = crate::layout::multicol::spanner::multicol_container(copy.style.cascaded());
+    let multicol = crate::layout::multicol::spanner::multicol_container(&copy.style.computed());
     if float && !table && !replaced && !vertical && !own_vertical && !list_item && !multicol {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег.
         // Таблица — своей веткой `element` ниже: каркас блока её
@@ -240,7 +236,7 @@ pub(super) fn build_band_kid(
         // ничего (`shape-outside-circle-048-ref`: флоат целым
         // прямоугольником при абсолютах с вставками по обеим осям).
         if float {
-            grouped(el, copy.style.cascaded(), vcx)
+            grouped(el, &copy.style.computed(), vcx)
         } else {
             content_wrapper::for_element(el, &copy, inherited, (None, None), vcx)
         }

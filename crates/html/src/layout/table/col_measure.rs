@@ -58,9 +58,9 @@ pub(super) fn measure_col_widths(
                     // inline-size — физически это ВЫСОТА, не колонка
                     // (table-cell-align-005/006); колонку задаёт block-size,
                     // осевший в height.
-                    cell.style.cascaded().height
+                    cell.style.computed().height
                 } else {
-                    cell.style.cascaded().width
+                    cell.style.computed().width
                 };
                 // Известная потеря — `css-writing-modes/table-progression-*`:
                 // эталон горизонтальный, тест вертикальный, и слагаемые ложатся
@@ -77,31 +77,31 @@ pub(super) fn measure_col_widths(
                     Some(Len::Px(p)) => p,
                     _ => 0.0,
                 };
-                let extra = if cell.style.cascaded().border_box == Some(true) {
+                let extra = if cell.style.computed().border_box == Some(true) {
                     0.0
                 } else {
-                    let b = cell.style.cascaded().borders();
+                    let b = cell.style.computed().borders();
                     let border = if table_vertical || orthogonal {
                         side(b.top) + side(b.bottom)
                     } else {
                         side(b.left) + side(b.right)
                     };
                     let pad = if table_vertical || orthogonal {
-                        side(cell.style.cascaded().padding.top)
-                            + side(cell.style.cascaded().padding.bottom)
+                        side(cell.style.computed().padding.top)
+                            + side(cell.style.computed().padding.bottom)
                     } else {
-                        side(cell.style.cascaded().padding.left)
-                            + side(cell.style.cascaded().padding.right)
+                        side(cell.style.computed().padding.left)
+                            + side(cell.style.computed().padding.right)
                     };
                     // В сросшейся модели дорожка считает ПОЛОВИНУ победившей
                     // линии — ту же, что легла в паддинг ячейки; своя кромка
                     // могла быть у́же соседней.
                     pad + if e.style.cascaded().border_collapse == Some(true) {
                         let w = win_edges.get(&cell.node_id).copied().unwrap_or([
-                            side(cell.style.cascaded().borders().top),
-                            side(cell.style.cascaded().borders().right),
-                            side(cell.style.cascaded().borders().bottom),
-                            side(cell.style.cascaded().borders().left),
+                            side(cell.style.computed().borders().top),
+                            side(cell.style.computed().borders().right),
+                            side(cell.style.computed().borders().bottom),
+                            side(cell.style.computed().borders().left),
                         ]);
                         if table_vertical || orthogonal {
                             (w[0] + w[2]) / 2.0

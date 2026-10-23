@@ -49,8 +49,8 @@ pub(super) fn collect_element(
         let join = inherited.ruby_suppress_breaks
             && e.children.is_empty()
             && !crate::layout::box_kind::replaced_tag(e)
-            && matches!(e.style.cascaded().width, None | Some(Len::Px(0.0)))
-            && matches!(e.style.cascaded().height, None | Some(Len::Px(0.0)));
+            && matches!(e.style.computed().width, None | Some(Len::Px(0.0)))
+            && matches!(e.style.computed().height, None | Some(Len::Px(0.0)));
         let joiner = || Piece::Text {
             text: "\u{2060}".into(),
             style: inherited.clone(),
@@ -83,12 +83,12 @@ pub(super) fn collect_element(
     }
     let (mut merged, painted_bg) = element_style(e, inherited, vcx);
     let atomic = matches!(
-        e.style.cascaded().display,
+        e.style.computed().display,
         Some(crate::style::computed::Display::InlineBlock)
             | Some(crate::style::computed::Display::InlineFlex)
             | Some(crate::style::computed::Display::InlineGrid)
             | Some(crate::style::computed::Display::InlineTable)
-    ) && e.style.cascaded().inline_display != Some(true);
+    ) && e.style.computed().inline_display != Some(true);
     // Ограничитель атомарной коробки — служебный знак, а не текст
     // документа: замена нулевого пробела идеографическим его
     // касаться не должна, иначе вокруг `inline-block` появляется
@@ -195,7 +195,7 @@ pub(super) fn collect_element(
     // Относительный сдвиг строчного куска несёт и его потомков вне
     // потока: абсолютный элемент внутри `position: relative`
     // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
-    let cb_here = establishes_cb(e.style.cascaded());
+    let cb_here = establishes_cb(&e.style.computed());
     if cb_here {
         cx.inline_cb_depth += 1;
     }
@@ -211,7 +211,7 @@ pub(super) fn collect_element(
     let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, vcx);
     out.extend(shift_overlays(
         kids,
-        e.style.cascaded(),
+        &e.style.computed(),
         merged.wm().turned(),
     ));
     if let Some(mark) = close {

@@ -36,8 +36,8 @@ pub(super) fn split(mut nodes: Vec<Node>, preserve: bool) -> (Option<Vec<Node>>,
             }
             Node::Element(c)
                 if inline_level(c)
-                    && !atomic_inline(c.style.cascaded())
-                    && !out_of_flow(c.style.cascaded())
+                    && !atomic_inline(&c.style.computed())
+                    && !out_of_flow(&c.style.computed())
                     && !replaced_tag(c) =>
             {
                 // CSS 2.1 section 9.5.1 rule 6: a break inside an inline
@@ -115,7 +115,7 @@ mod tests {
         assert!(matches!(&line[0], Node::Element(e)
             if e.style.cascaded().line_height == Some(Len::Px(200.))
             && matches!(&e.children[0], Node::Text(t) if t == "tail")));
-        span.style.cascaded_mut().display = Some(Display::InlineBlock);
+        span.style.used_mut().display = Some(Display::InlineBlock);
         let (base, _) = split(vec![Node::Element(span)], false);
         assert!(base.is_none());
     }

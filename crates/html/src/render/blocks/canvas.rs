@@ -23,21 +23,21 @@ pub(crate) fn canvas_layer(
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
     // фильтром (`style::cascade::inherit`) до него не доходит — красим
     // здесь, от СОБСТВЕННОГО фильтра корня.
-    let root_filter = e.style.cascaded().filter;
+    let root_filter = e.style.computed().filter;
     let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
-    let canvas_layers = e.style.cascaded().bg_layers(vcx);
+    let canvas_layers = e.style.computed().bg_layers(vcx);
     // Градиент корня — картинка (css-images-3 §3): его плитка
     // размещается и мостится от коробки корня (CSS 2.2 §14.2, «sized and
     // positioned relative to the root element»), а не растягивается на
     // весь холст.
     let root_tile = (e.tag == "html"
         && root_filter.is_none()
-        && e.style.cascaded().bg_image.is_none()
+        && e.style.computed().bg_image.is_none()
         && canvas_layers.is_none())
-    .then(|| e.style.cascaded().gradient_raw.clone())
+    .then(|| e.style.computed().gradient_raw.clone())
     .flatten()
     .map(|image| Computed {
         bg_image: Some(image),
@@ -45,7 +45,7 @@ pub(crate) fn canvas_layer(
     });
     if let Some(g) = e
         .style
-        .cascaded()
+        .computed()
         .gradient
         .as_ref()
         .filter(|_| canvas_layers.is_none() && root_tile.is_none())
@@ -65,7 +65,7 @@ pub(crate) fn canvas_layer(
             }
         }
         layer = layer.bg(crate::paint::apply::fill(&g));
-    } else if let Some(bg) = e.style.cascaded().background {
+    } else if let Some(bg) = e.style.computed().background {
         let bg = root_filter.map_or(bg, |f| f.apply(bg));
         layer = layer.bg(bg.to_hsla());
     }
@@ -81,7 +81,7 @@ pub(crate) fn canvas_layer(
     // его слой лежит в детях корня, и отсчёт от padding-box корня
     // получается сам (см. ниже).
     if e.tag == "html"
-        && (e.style.cascaded().bg_image.is_some() || canvas_layers.is_some() || root_tile.is_some())
+        && (e.style.computed().bg_image.is_some() || canvas_layers.is_some() || root_tile.is_some())
         && let Some(tiles) = {
             // Единицы шрифта тоже длина: `html { margin-top: 1em }`
             // роняло отсчёт в ноль, и плитка начиналась с края
@@ -98,24 +98,24 @@ pub(crate) fn canvas_layer(
                 }
                 _ => 0.0,
             };
-            let b = e.style.cascaded().borders();
+            let b = e.style.computed().borders();
             let area = crate::paint::background::RootArea {
                 measured,
-                left: side(e.style.cascaded().margin.left) + side(b.left),
-                top: side(e.style.cascaded().margin.top) + side(b.top),
-                right: side(e.style.cascaded().margin.right) + side(b.right),
-                bottom: side(e.style.cascaded().margin.bottom) + side(b.bottom),
-                width: match e.style.cascaded().width {
+                left: side(e.style.computed().margin.left) + side(b.left),
+                top: side(e.style.computed().margin.top) + side(b.top),
+                right: side(e.style.computed().margin.right) + side(b.right),
+                bottom: side(e.style.computed().margin.bottom) + side(b.bottom),
+                width: match e.style.computed().width {
                     Some(Len::Px(w)) => Some(
-                        w + side(e.style.cascaded().padding.left)
-                            + side(e.style.cascaded().padding.right),
+                        w + side(e.style.computed().padding.left)
+                            + side(e.style.computed().padding.right),
                     ),
                     _ => None,
                 },
-                height: match e.style.cascaded().height {
+                height: match e.style.computed().height {
                     Some(Len::Px(h)) => Some(
-                        h + side(e.style.cascaded().padding.top)
-                            + side(e.style.cascaded().padding.bottom),
+                        h + side(e.style.computed().padding.top)
+                            + side(e.style.computed().padding.bottom),
                     ),
                     _ => None,
                 },
@@ -141,7 +141,7 @@ pub(crate) fn canvas_layer(
                     Some(stack.into_any_element())
                 }
                 None => crate::paint::background::canvas_layer(
-                    root_tile.as_ref().unwrap_or(e.style.cascaded()),
+                    root_tile.as_ref().unwrap_or(&e.style.computed()),
                     area,
                     vcx,
                 ),
@@ -157,8 +157,8 @@ pub(crate) fn canvas_layer(
             .child(layer)
             .child(tiles)
             .into_any_element();
-    } else if e.style.cascaded().bg_image.is_some()
-        && let Some(tiles) = crate::paint::background::layer(e.style.cascaded(), vcx)
+    } else if e.style.computed().bg_image.is_some()
+        && let Some(tiles) = crate::paint::background::layer(&e.style.computed(), vcx)
     {
         // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
         // ширина + горизонтальные отступы; полоса прижата по
@@ -174,18 +174,18 @@ pub(crate) fn canvas_layer(
         // чинить первой; возвращаться можно, когда кегль тела будет
         // разрешаться до переноса.
         let side = px_lossy_zero;
-        let b = e.style.cascaded().borders();
+        let b = e.style.computed().borders();
         let mut band = div().absolute().top_0().bottom_0();
-        band = match e.style.cascaded().width {
+        band = match e.style.computed().width {
             Some(Len::Px(w)) => {
                 let pad_w = w
-                    + side(e.style.cascaded().padding.left)
-                    + side(e.style.cascaded().padding.right);
+                    + side(e.style.computed().padding.left)
+                    + side(e.style.computed().padding.right);
                 let band = band.w(px(pad_w));
                 if e.style.cascaded().wm().block_rl() {
-                    band.right(px(side(e.style.cascaded().margin.right) + side(b.right)))
+                    band.right(px(side(e.style.computed().margin.right) + side(b.right)))
                 } else {
-                    band.left(px(side(e.style.cascaded().margin.left) + side(b.left)))
+                    band.left(px(side(e.style.computed().margin.left) + side(b.left)))
                 }
             }
             _ => band.left_0().right_0(),
@@ -205,7 +205,7 @@ pub(crate) fn canvas_layer(
     // сложились бы с двойной альфой. Коробка корня свою
     // прозрачность получает отдельно (`apply::style`), но краска с
     // неё уже снята, так что перекрытия групп нет.
-    if let Some(o) = e.style.cascaded().opacity.filter(|o| *o < 1.0) {
+    if let Some(o) = e.style.computed().opacity.filter(|o| *o < 1.0) {
         layer = div()
             .absolute()
             .top_0()
@@ -220,16 +220,16 @@ pub(crate) fn canvas_layer(
     // compositing-1 §rootgroup: фон корня — часть корневой группы):
     // слой холста получает ту же обрезку, что и коробка корня.
     // Начало координат у них общее — левый верхний угол окна.
-    if e.style.cascaded().clip_polygon.is_some()
-        || e.style.cascaded().clip_shape.is_some()
-        || e.style.cascaded().clip_inset.is_some()
-        || e.style.cascaded().clip_xywh.is_some()
+    if e.style.computed().clip_polygon.is_some()
+        || e.style.computed().clip_shape.is_some()
+        || e.style.computed().clip_inset.is_some()
+        || e.style.computed().clip_xywh.is_some()
     {
         let clip = Computed {
-            clip_polygon: e.style.cascaded().clip_polygon.clone(),
-            clip_shape: e.style.cascaded().clip_shape.clone(),
-            clip_inset: e.style.cascaded().clip_inset,
-            clip_xywh: e.style.cascaded().clip_xywh,
+            clip_polygon: e.style.computed().clip_polygon.clone(),
+            clip_shape: e.style.computed().clip_shape.clone(),
+            clip_inset: e.style.computed().clip_inset,
+            clip_xywh: e.style.computed().clip_xywh,
             ..Default::default()
         };
         layer = grouped(

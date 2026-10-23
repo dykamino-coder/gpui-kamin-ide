@@ -4,7 +4,7 @@ use crate::style::values::value::{px_lossy_zero, px_strict};
 use crate::{dom::Element, layout::cx::LayoutCx, style::computed::Computed};
 use gpui::{Styled, px};
 pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) -> gpui::Div {
-    let sized = e.style.cascaded().height.is_some() || e.style.cascaded().min_height.is_some();
+    let sized = e.style.computed().height.is_some() || e.style.computed().min_height.is_some();
     // A box fragmented at a line-clamp point ends there (css-overflow-4
     // §5.3): content after the point no longer sizes it (`line-clamp-024/
     // 025`: margins of boxes after the point).
@@ -14,7 +14,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
     // В многоколоночнике `continue: collapse` ведёт себя как `auto`
     // (css-overflow-4 §5.2): срез не действует (`line-clamp-039`).
     let measuring = cx.clamp_plan(e.node_id).is_none();
-    let multicol = multicol_container(e.style.cascaded());
+    let multicol = multicol_container(&e.style.computed());
     // Срез меряется от верха поля содержимого, а `max_h` раскладки —
     // высота рамочной коробки
     // (`paint/apply/`: движок всегда трактует размер как border-box). Без
@@ -26,7 +26,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
     if !multicol
         && !measuring
-        && e.style.cascaded().clamp_by_height()
+        && e.style.computed().clamp_by_height()
         && auto_clamp_limit(c).is_some()
     {
         if let Some(cut) = cx
@@ -45,7 +45,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
     }
     if let Some((n, cut)) = e
         .style
-        .cascaded()
+        .computed()
         .clamp_lines()
         .filter(|_| !multicol)
         .and_then(|n| cx.clamp_plan(e.node_id).map(|p| (n, p.cut)))

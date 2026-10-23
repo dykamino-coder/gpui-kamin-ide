@@ -29,9 +29,9 @@ pub(crate) fn decorate_atom(
     // красный квадрат вместо зелёного). Носитель несёт ТОЛЬКО режим:
     // маска и обрезка у атомов живут своими путями, полный стиль
     // применил бы их второй раз.
-    let el = if replaced_tag(e) && e.style.cascaded().blend.is_some_and(|b| b != 0) {
+    let el = if replaced_tag(e) && e.style.computed().blend.is_some_and(|b| b != 0) {
         let only = Computed {
-            blend: e.style.cascaded().blend,
+            blend: e.style.computed().blend,
             ..Default::default()
         };
         grouped(el, &only, vcx)
@@ -49,13 +49,13 @@ pub(crate) fn decorate_atom(
         e.tag.as_str(),
         "input" | "textarea" | "select" | "progress" | "meter"
     ) || matches!(
-        e.style.cascaded().position,
+        e.style.computed().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
         el
     } else {
-        transformed(el, e.style.cascaded(), inherited, vcx)
+        transformed(el, &e.style.computed(), inherited, vcx)
     };
     // `vertical-align` НА САМОМ куске (`img { vertical-align: top }`):
     // ряд строит базовую линию, а кускам с top/middle/bottom нужен
@@ -81,10 +81,10 @@ pub(crate) fn decorate_atom(
             // картинка пропадала целиком (`background-repeat-002-ref`:
             // `img{vertical-align:top}` + `width="100%"`). Долю
             // повторяем на обёртке, чтобы отсчёт остался прежним.
-            if let Some(Len::Pct(k)) = e.style.cascaded().width {
+            if let Some(Len::Pct(k)) = e.style.computed().width {
                 w = w.w(gpui::relative(k));
             }
-            if let Some(Len::Pct(k)) = e.style.cascaded().height {
+            if let Some(Len::Pct(k)) = e.style.computed().height {
                 w = w.h(gpui::relative(k));
             }
             w.child(el).into_any_element()
@@ -95,8 +95,8 @@ pub(crate) fn decorate_atom(
     // ПОД содержимое до него (CSS 2.1 §9.9 шаг 3) — как у блочного
     // (background-size-document-root-vrl-*: красный маркер обязан
     // лечь под зелёный фон iframe).
-    let el = if e.style.cascaded().z_index.is_some_and(|z| z < 0)
-        && e.style.cascaded().position == Some(crate::style::computed::Position::Relative)
+    let el = if e.style.computed().z_index.is_some_and(|z| z < 0)
+        && e.style.computed().position == Some(crate::style::computed::Position::Relative)
     {
         crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(el))
     } else {
@@ -109,10 +109,10 @@ pub(crate) fn decorate_atom(
     // абзаца, а §10.1 п.4 требует прямоугольник фрагментов строчного
     // предка. `Overlay` абзац с текстового пути не уводит.
     if matches!(
-        e.style.cascaded().position,
+        e.style.computed().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) && !at_static_position(e.style.cascaded())
+    ) && !at_static_position(&e.style.computed())
         && !matches!(
             e.tag.as_str(),
             "svg" | "img" | "canvas" | "video" | "embed" | "object" | "iframe"
@@ -127,13 +127,13 @@ pub(crate) fn decorate_atom(
                 line_probe: line_box.filter(|_| {
                     !abs_cb
                         && (crate::layout::positioned::predicates::edge_set(
-                            e.style.cascaded().inset.left,
+                            e.style.computed().inset.left,
                         ) || crate::layout::positioned::predicates::edge_set(
-                            e.style.cascaded().inset.right,
+                            e.style.computed().inset.right,
                         )) != (crate::layout::positioned::predicates::edge_set(
-                            e.style.cascaded().inset.top,
+                            e.style.computed().inset.top,
                         ) || crate::layout::positioned::predicates::edge_set(
-                            e.style.cascaded().inset.bottom,
+                            e.style.computed().inset.bottom,
                         ))
                 }),
                 ..Default::default()

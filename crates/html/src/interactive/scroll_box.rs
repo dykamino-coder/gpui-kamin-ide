@@ -23,14 +23,14 @@ pub(crate) fn scrollable(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    if e.style.cascaded().scroller || e.tag == "frameset" || crate::layout::box_kind::real_inline(e)
+    if e.style.computed().scroller || e.tag == "frameset" || crate::layout::box_kind::real_inline(e)
     {
         return None;
     }
     use crate::style::computed::Overflow;
     // Eligibility follows computed overflow; the initially visible opposite
     // axis becomes auto even when it has no declaration (Overflow 3 §3).
-    if ![e.style.cascaded().overflow_x, e.style.cascaded().overflow_y]
+    if ![e.style.computed().overflow_x, e.style.computed().overflow_y]
         .into_iter()
         .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
     {
@@ -60,8 +60,8 @@ pub(crate) fn scrollable(
     let parent_frame = opts.cx.scroll_frame.clone();
     let freeze_scrollbars = opts.cx.freeze_scrollbars;
     let mut node = e.clone();
-    node.style.cascaded_mut().overflow_x = scroll_style.overflow_x;
-    node.style.cascaded_mut().overflow_y = scroll_style.overflow_y;
+    node.style.used_mut().overflow_x = scroll_style.overflow_x;
+    node.style.used_mut().overflow_y = scroll_style.overflow_y;
     // Слой ICB закрывается раньше, чем `ScrollArea` позовёт `build`, — поэтому
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
     hoist_from_scroll(&mut node, inherited, opts);
@@ -72,7 +72,7 @@ pub(crate) fn scrollable(
             // Keep CSS overflow on the native box; `scroller` only prevents
             // recursive adapters while its ScrollHandle is attached.
             let mut inner = node.clone();
-            inner.style.cascaded_mut().scroller = true;
+            inner.style.used_mut().scroller = true;
             // Доли высоты коробки — от её СОДЕРЖАЩЕГО блока (CSS 2.1 §10.5,
             // §10.7: «calculated with respect to the height of the generated
             // box's containing block»), а не от ленты: лента `d` своей высоты
@@ -90,7 +90,7 @@ pub(crate) fn scrollable(
             // высотой в точках (у гибкого и сеточного долю решает раскладка, у
             // абсолюта содержащий блок другой); `border-box` родителя — мимо,
             // его `height` не высота содержимого.
-            if in_flow(node.style.cascaded())
+            if in_flow(&node.style.computed())
                 && matches!(inherited.display, None | Some(Display::Block))
                 && inherited.border_box != Some(true)
                 && let Some(Len::Px(ph)) = inherited.height
@@ -100,15 +100,15 @@ pub(crate) fn scrollable(
                     Some(Len::Pct(k)) => Some(Len::Px(k * ph)),
                     other => other,
                 };
-                inner.style.cascaded_mut().height = of(inner.style.cascaded().height);
-                inner.style.cascaded_mut().min_height = of(inner.style.cascaded().min_height);
-                inner.style.cascaded_mut().max_height = of(inner.style.cascaded().max_height);
+                inner.style.used_mut().height = of(inner.style.computed().height);
+                inner.style.used_mut().min_height = of(inner.style.computed().min_height);
+                inner.style.used_mut().max_height = of(inner.style.computed().max_height);
             }
             // Наружный отступ принадлежит коробке, а не видимой области:
             // оставленный внутри, он увеличивал ленту на свою величину, и
             // содержимое было видно ниже края панели.
-            let outer_margin = inner.style.cascaded().margin;
-            inner.style.cascaded_mut().margin = Default::default();
+            let outer_margin = inner.style.computed().margin;
+            inner.style.used_mut().margin = Default::default();
             let target = crate::interactive::scroll_target::Target::new(
                 node.node_id,
                 handle,
@@ -135,7 +135,7 @@ pub(crate) fn scrollable(
             // прокрутки (0) давал ленте ужаться под первым же потолком
             // родителя до нуля (`line-clamp-007`: `overflow:auto`-ребёнок
             // клэмп-контейнера пропадал целиком).
-            if let Some(shrink) = node.style.cascaded().flex_shrink {
+            if let Some(shrink) = node.style.computed().flex_shrink {
                 d.style().flex_shrink = Some(shrink);
             }
             if h {
@@ -169,7 +169,7 @@ pub(crate) fn scrollable(
                     .zip(side(sized.padding.right))
                     .zip(side(b.left).zip(side(b.right)))
                     .map(|((pl, pr), (bl, br))| pl + pr + bl + br);
-                let lane = if inner.style.cascaded().border_box == Some(true) {
+                let lane = if inner.style.computed().border_box == Some(true) {
                     Some(w)
                 } else {
                     edges.map(|e| w + e)
@@ -187,7 +187,7 @@ pub(crate) fn scrollable(
                         inherited.display,
                         Some(Display::Flex) | Some(Display::InlineFlex)
                     );
-                    if node.style.cascaded().flex_shrink.is_none() && !flex_item {
+                    if node.style.computed().flex_shrink.is_none() && !flex_item {
                         d = d.flex_shrink_0();
                     }
                 }
@@ -220,7 +220,7 @@ pub(crate) fn resizable(
     if e.style.cascaded().pointer_events_none == Some(true) {
         return None;
     }
-    let (horizontal, vertical) = e.style.cascaded().resize?;
+    let (horizontal, vertical) = e.style.computed().resize?;
     let axis = match (horizontal, vertical) {
         (true, true) => crate::interactive::resizable::ResizeAxis::Both,
         (true, false) => crate::interactive::resizable::ResizeAxis::Horizontal,
@@ -233,12 +233,12 @@ pub(crate) fn resizable(
         // Заданный мышью размер побеждает разметку — как и в браузере, где
         // он пишется в инлайн-стиль элемента.
         let mut mixed = node.clone();
-        mixed.style.cascaded_mut().resize = None;
+        mixed.style.used_mut().resize = None;
         if let Some(w) = w {
-            mixed.style.cascaded_mut().width = Some(Len::Px(w));
+            mixed.style.used_mut().width = Some(Len::Px(w));
         }
         if let Some(h) = h {
-            mixed.style.cascaded_mut().height = Some(Len::Px(h));
+            mixed.style.used_mut().height = Some(Len::Px(h));
         }
         opts.cx.build.element(&mixed, &inherited, &opts)
     });

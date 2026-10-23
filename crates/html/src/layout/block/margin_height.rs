@@ -25,10 +25,10 @@ pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>
     // auto height again, undoing the constraint that separated the margins.
     for node in &mut e.children {
         if let Node::Element(child) = node
-            && in_flow(child.style.cascaded())
+            && in_flow(&child.style.computed())
         {
             pin_inherited_margins(child, false, true, vcx);
-            child.style.cascaded_mut().margin.bottom = Some(Len::Px(0.0));
+            child.style.used_mut().margin.bottom = Some(Len::Px(0.0));
         }
     }
     true
@@ -40,7 +40,7 @@ pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>
 /// Unknown content remains on the existing path; this proof uses only
 /// one definite block child whose border edge can be calculated here.
 pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
-    let Some(mut cap) = margin_px(e.style.cascaded().max_height, e.style.cascaded(), vcx) else {
+    let Some(mut cap) = margin_px(e.style.computed().max_height, &e.style.computed(), vcx) else {
         return false;
     };
     let edges = |style: &Computed| -> Option<f32> {
@@ -53,15 +53,15 @@ pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
                 _ => None,
             })
     };
-    if e.style.cascaded().border_box == Some(true) {
-        let Some(inset) = edges(e.style.cascaded()) else {
+    if e.style.computed().border_box == Some(true) {
+        let Some(inset) = edges(&e.style.computed()) else {
             return false;
         };
         cap = (cap - inset).max(0.0);
     }
-    if let Some(min) = margin_px(e.style.cascaded().min_height, e.style.cascaded(), vcx) {
+    if let Some(min) = margin_px(e.style.computed().min_height, &e.style.computed(), vcx) {
         cap = cap.max(min);
-    } else if !zero_len(e.style.cascaded().min_height) {
+    } else if !zero_len(e.style.computed().min_height) {
         return false;
     }
     let mut bottom = None;
@@ -69,32 +69,32 @@ pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
         let child = match node {
             Node::Text(text) if blank_text(text) => continue,
             Node::Text(_) => return false,
-            Node::Element(child) if !in_flow(child.style.cascaded()) => continue,
+            Node::Element(child) if !in_flow(&child.style.computed()) => continue,
             Node::Element(child) => child,
         };
         if bottom.is_some()
             || inline_level_box(child)
-            || child.style.cascaded().clear.is_some()
-            || child.style.cascaded().min_height.is_some()
-            || child.style.cascaded().max_height.is_some()
+            || child.style.computed().clear.is_some()
+            || child.style.computed().min_height.is_some()
+            || child.style.computed().max_height.is_some()
         {
             return false;
         }
-        let Some(height) = margin_px(child.style.cascaded().height, child.style.cascaded(), vcx)
+        let Some(height) = margin_px(child.style.computed().height, &child.style.computed(), vcx)
         else {
             return false;
         };
-        let Some(inset) = edges(child.style.cascaded()) else {
+        let Some(inset) = edges(&child.style.computed()) else {
             return false;
         };
         let Some(top) = margin_or_bail(
-            child.style.cascaded().margin.top,
-            child.style.cascaded(),
+            child.style.computed().margin.top,
+            &child.style.computed(),
             vcx,
         ) else {
             return false;
         };
-        let height = if child.style.cascaded().border_box == Some(true) {
+        let height = if child.style.computed().border_box == Some(true) {
             height.max(inset)
         } else {
             height + inset
@@ -106,8 +106,8 @@ pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
 
 pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-    match margin_px(e.style.cascaded().min_height, e.style.cascaded(), vcx) {
-        None => !zero(e.style.cascaded().min_height),
+    match margin_px(e.style.computed().min_height, &e.style.computed(), vcx) {
+        None => !zero(e.style.computed().min_height),
         Some(mh) if mh <= 0.0 => false,
         Some(mh) => {
             let mut sum = 0.0f32;
@@ -116,19 +116,19 @@ pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
                 match c {
                     Node::Text(t) if blank_text(t) => {}
                     Node::Text(_) => known = false,
-                    Node::Element(ch) if !in_flow(ch.style.cascaded()) => {}
+                    Node::Element(ch) if !in_flow(&ch.style.computed()) => {}
                     Node::Element(ch) if ch.inline && inline_level_box(ch) => known = false,
                     Node::Element(ch) => {
-                        let b = ch.style.cascaded().borders();
+                        let b = ch.style.computed().borders();
                         let side = |l: Option<Len>| match l {
                             None => Some(0.0),
                             Some(Len::Px(v)) => Some(v),
                             _ => None,
                         };
                         let own = match (
-                            margin_px(ch.style.cascaded().height, ch.style.cascaded(), vcx),
-                            side(ch.style.cascaded().padding.top),
-                            side(ch.style.cascaded().padding.bottom),
+                            margin_px(ch.style.computed().height, &ch.style.computed(), vcx),
+                            side(ch.style.computed().padding.top),
+                            side(ch.style.computed().padding.bottom),
                             side(b.top),
                             side(b.bottom),
                         ) {
@@ -156,15 +156,15 @@ pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
 /// Borders and padding stop margin collapse but do not make floats in-flow.
 /// Prove only zero-height block content; unknown line boxes stay on layout.
 fn zero_inflow(e: &Element, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
-    if !in_flow(e.style.cascaded())
+    if !in_flow(&e.style.computed())
         || own_context(e)
         || inline_level_box(e)
         || replaced_inline(&e.tag)
-        || !matches!(e.style.cascaded().display, None | Some(Display::Block))
+        || !matches!(e.style.computed().display, None | Some(Display::Block))
         || e.list_item.is_some()
         || matches!(e.tag.as_str(), "html" | "body")
-        || !matches!(e.style.cascaded().height, None | Some(Len::Auto))
-        || !zero_len(e.style.cascaded().min_height)
+        || !matches!(e.style.computed().height, None | Some(Len::Auto))
+        || !zero_len(e.style.computed().min_height)
         || e.style.cascaded().keep_spaces == Some(true)
         || e.style.cascaded().preserve_newlines == Some(true)
     {
@@ -185,31 +185,31 @@ fn zero_child(node: &Node, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
         // inline-block/-flex/-grid is inline-level content in flow: it sits in
         // a line box, which the auto height counts (§10.6.3). `in_flow` is the
         // block-stack predicate and rejects those too.
-        Node::Element(e) if out_of_flow(e.style.cascaded()) => return true,
+        Node::Element(e) if out_of_flow(&e.style.computed()) => return true,
         Node::Element(e) => e,
     };
-    if e.style.cascaded().display == Some(Display::None) {
+    if e.style.computed().display == Some(Display::None) {
         return true;
     }
-    let b = e.style.cascaded().borders();
+    let b = e.style.computed().borders();
     let merged = box_style(inherited, &e.style, vcx);
     !merged.wm().vertical()
         && !inline_level_box(e)
-        && matches!(e.style.cascaded().display, None | Some(Display::Block))
+        && matches!(e.style.computed().display, None | Some(Display::Block))
         && e.list_item.is_none()
         && !own_context(e)
         && !replaced_inline(&e.tag)
-        && e.style.cascaded().clear.is_none()
+        && e.style.computed().clear.is_none()
         && matches!(
-            e.style.cascaded().height,
+            e.style.computed().height,
             None | Some(Len::Auto) | Some(Len::Px(0.0))
         )
-        && zero_len(e.style.cascaded().min_height)
+        && zero_len(e.style.computed().min_height)
         && [
-            e.style.cascaded().margin.top,
-            e.style.cascaded().margin.bottom,
-            e.style.cascaded().padding.top,
-            e.style.cascaded().padding.bottom,
+            e.style.computed().margin.top,
+            e.style.computed().margin.bottom,
+            e.style.computed().padding.top,
+            e.style.computed().padding.bottom,
             b.top,
             b.bottom,
         ]
@@ -233,11 +233,11 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed, vcx: V
         let Node::Element(e) = node else { continue };
         let has_float = e.children.iter().any(|node| {
             matches!(node,
-            Node::Element(child) if child.style.cascaded().float.is_some_and(|side| side != 0))
+            Node::Element(child) if child.style.computed().float.is_some_and(|side| side != 0))
         });
         // Our float host carries floats to later boxes and to the formatting
         // root only through this block's height (see `dom::float_tail`).
-        if has_float && e.style.cascaded().float_tail && zero_inflow(e, inherited, vcx) {
+        if has_float && e.style.computed().float_tail && zero_inflow(e, inherited, vcx) {
             e.marks.auto_zero_height = true;
         }
     }

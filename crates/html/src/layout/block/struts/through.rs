@@ -50,7 +50,7 @@ pub(super) fn through_strut_inner(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Strut> {
     // Строчная пометка у блочной коробки (псевдоэлемент) — не строчный.
-    if (e.inline && !inline_marked_block(e)) || !in_flow(e.style.cascaded()) || own_context(e) {
+    if (e.inline && !inline_marked_block(e)) || !in_flow(&e.style.computed()) || own_context(e) {
         return None;
     }
     // Поля КОРНЯ ни с чем не схлопываются (§8.3.1).
@@ -67,24 +67,24 @@ pub(super) fn through_strut_inner(
     // `margin-collapse-135` и `margin-collapse-clear-016` держит не вето, а
     // что-то ниже по цепи. Признак документа пришлось бы нести отдельным
     // thread-local, а рамка рисует вложенный документ тем же `render()`.
-    if e.style.cascaded().clear.is_some() && !ignore_clear {
+    if e.style.computed().clear.is_some() && !ignore_clear {
         return None;
     }
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-    let b = e.style.cascaded().borders();
+    let b = e.style.computed().borders();
     // §10.5: доля высоты при НЕОПРЕДЕЛЁННОМ содержащем блоке «computes to
     // auto», а `auto` схлопыванию насквозь не мешает (§8.3.1). Прежде любая
     // ненулевая доля закрывала ветку, и три пустых блока с полями 100 давали
     // 200 вместо 100 (`margin-collapse-through-percentage-height-block`).
     // Признак блока несёт сам стиль — `cb_height_def` ставит `style::cascade::inherit`.
     let height_is_auto = matches!(
-        e.style.cascaded().height,
+        e.style.computed().height,
         None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
-    ) || matches!(e.style.cascaded().height, Some(Len::Pct(_)) if !e.style.cascaded().cb_height_def);
-    let min_height_is_zero = zero(e.style.cascaded().min_height)
-        || matches!(e.style.cascaded().min_height, Some(Len::Pct(_)) if !e.style.cascaded().cb_height_def);
-    if !zero(e.style.cascaded().padding.top)
-        || !zero(e.style.cascaded().padding.bottom)
+    ) || matches!(e.style.computed().height, Some(Len::Pct(_)) if !e.style.computed().cb_height_def);
+    let min_height_is_zero = zero(e.style.computed().min_height)
+        || matches!(e.style.computed().min_height, Some(Len::Pct(_)) if !e.style.computed().cb_height_def);
+    if !zero(e.style.computed().padding.top)
+        || !zero(e.style.computed().padding.bottom)
         || !zero(b.top)
         || !zero(b.bottom)
         || !min_height_is_zero
@@ -99,13 +99,13 @@ pub(super) fn through_strut_inner(
     }
     let mut s = adjoin(
         strut_of(margin_or_bail(
-            e.style.cascaded().margin.top,
-            e.style.cascaded(),
+            e.style.computed().margin.top,
+            &e.style.computed(),
             vcx,
         )?),
         strut_of(margin_or_bail(
-            e.style.cascaded().margin.bottom,
-            e.style.cascaded(),
+            e.style.computed().margin.bottom,
+            &e.style.computed(),
             vcx,
         )?),
     );
@@ -118,13 +118,13 @@ pub(super) fn through_strut_inner(
         // исключение 2) — проверять ДО отсечки строчных: псевдоэлемент
         // помечается строчным независимо от своего `display`, и клирфикс
         // `div::after { clear: both; display: block }` был отсюда не виден.
-        if in_flow(ch.style.cascaded()) && ch.style.cascaded().clear.is_some() {
+        if in_flow(&ch.style.computed()) && ch.style.computed().clear.is_some() {
             return None;
         }
         if (ch.inline && !inline_marked_block(ch))
-            || ch.style.cascaded().display == Some(Display::None)
-            || ch.style.cascaded().display == Some(Display::Contents)
-            || !in_flow(ch.style.cascaded())
+            || ch.style.computed().display == Some(Display::None)
+            || ch.style.computed().display == Some(Display::Contents)
+            || !in_flow(&ch.style.computed())
         {
             continue;
         }
@@ -136,7 +136,7 @@ pub(super) fn through_strut_inner(
         // контейнера. Обрезку на своём уровне сделает `collapse_margins`, но
         // уровень выше считается РАНЬШЕ и успевал забрать поле 222
         // (`block-container-block-end-self-collapsing-block-start-margin-nested`).
-        if e.style.cascaded().margin_trim & 3 == 0 {
+        if e.style.computed().margin_trim & 3 == 0 {
             s = adjoin(s, t);
         }
     }
@@ -154,23 +154,23 @@ pub(super) fn through_strut_inner(
 /// (`new-fc-separates-from-float`, `adjoining-float-before-clearance`).
 pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
-    let b = w.style.cascaded().borders();
+    let b = w.style.computed().borders();
     if (w.inline && !inline_marked_block(w))
-        || !in_flow(w.style.cascaded())
-        || !matches!(w.style.cascaded().display, None | Some(Display::Block))
+        || !in_flow(&w.style.computed())
+        || !matches!(w.style.computed().display, None | Some(Display::Block))
         || own_context(w)
-        || w.style.cascaded().clear.is_some()
-        || w.style.cascaded().position.is_some()
+        || w.style.computed().clear.is_some()
+        || w.style.computed().position.is_some()
         || !matches!(
-            w.style.cascaded().height,
+            w.style.computed().height,
             None | Some(Len::Auto) | Some(Len::Px(0.0))
         )
-        || !zero(w.style.cascaded().min_height)
+        || !zero(w.style.computed().min_height)
         || ![
-            w.style.cascaded().margin.top,
-            w.style.cascaded().margin.bottom,
-            w.style.cascaded().padding.top,
-            w.style.cascaded().padding.bottom,
+            w.style.computed().margin.top,
+            w.style.computed().margin.bottom,
+            w.style.computed().padding.top,
+            w.style.computed().padding.bottom,
             b.top,
             b.bottom,
         ]
@@ -183,14 +183,14 @@ pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
     for n in &w.children {
         match n {
             Node::Text(t) if blank_text(t) => {}
-            Node::Element(f) if f.style.cascaded().float.is_some_and(|s| s != 0) => {
+            Node::Element(f) if f.style.computed().float.is_some_and(|s| s != 0) => {
                 any = true;
-                if f.style.cascaded().float.is_some_and(|s| s < 0) {
+                if f.style.computed().float.is_some_and(|s| s < 0) {
                     left = true;
                 } else {
                     right = true;
                 }
-                min_w = min_w.min(px_margin_w(f.style.cascaded()).unwrap_or(0.0));
+                min_w = min_w.min(px_margin_w(&f.style.computed()).unwrap_or(0.0));
             }
             _ => return None,
         }

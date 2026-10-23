@@ -60,9 +60,9 @@ pub(super) fn cell_spans(
     let spans_collapsed = span_cols > 1
         && (col_ix..col_ix + span_cols as usize)
             .any(|i| cols_collapsed.get(i).copied().unwrap_or(false));
-    let clipped = cell.style.cascaded().overflow_x
+    let clipped = cell.style.computed().overflow_x
         == Some(crate::style::computed::Overflow::Hidden)
-        || cell.style.cascaded().overflow_y == Some(crate::style::computed::Overflow::Hidden)
+        || cell.style.computed().overflow_y == Some(crate::style::computed::Overflow::Hidden)
         || spans_collapsed;
     CellSpans {
         span_cols,
@@ -91,9 +91,9 @@ pub(super) fn row_band_probes(
     // ячеек, снятыми пробами этого кадра (`RowRects`).
     let row_rects: Option<crate::layout::table::probes::RowRects> =
         (!crate::layout::table::anon::row_collapsed(row, carry.group)
-            && (row.style.cascaded().bg_image.is_some()
-                || row.style.cascaded().gradient_raw.is_some()
-                || !row.style.cascaded().shadows.is_empty()))
+            && (row.style.computed().bg_image.is_some()
+                || row.style.computed().gradient_raw.is_some()
+                || !row.style.computed().shadows.is_empty()))
         .then(crate::layout::table::probes::RowRects::default);
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
@@ -115,11 +115,11 @@ pub(super) fn row_band_probes(
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
     let grp_band: Option<crate::layout::table::probes::RowRects> = carry.group.and_then(|g| {
-        (g.style.cascaded().collapsed != Some(true)
-            && (g.style.cascaded().bg_image.is_some()
-                || g.style.cascaded().gradient_raw.is_some()
-                || !g.style.cascaded().shadows.is_empty()
-                || g.style.cascaded().outline.is_some()))
+        (g.style.computed().collapsed != Some(true)
+            && (g.style.computed().bg_image.is_some()
+                || g.style.computed().gradient_raw.is_some()
+                || !g.style.computed().shadows.is_empty()
+                || g.style.computed().outline.is_some()))
         .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.group)
@@ -132,7 +132,7 @@ pub(super) fn row_band_probes(
         // Полоса ради одной обводки цвет не красит: сплошной цвет группы
         // без картинки несут ячейки (`collect_rows`), второй слой удвоил
         // бы полупрозрачный.
-        if band_style.bg_image.is_none() && g.style.cascaded().shadows.is_empty() {
+        if band_style.bg_image.is_none() && g.style.computed().shadows.is_empty() {
             band_style.background = None;
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
@@ -165,7 +165,7 @@ pub(super) fn push_empty_row_track(
             .iter()
             .any(|n| matches!(n, Node::Element(c) if is_cell(c)))
         && occupied.iter().all(|o| *o == 0)
-        && let Some(Len::Px(h)) = row.style.cascaded().height
+        && let Some(Len::Px(h)) = row.style.computed().height
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
@@ -202,9 +202,9 @@ pub(super) fn cell_cascaded_style(
         && cm.ortho_limit.is_none()
         && let Some(Len::Px(h)) = cell
             .style
-            .cascaded()
+            .computed()
             .height
-            .or(cell.style.cascaded().max_height)
+            .or(cell.style.computed().max_height)
     {
         cm.ortho_limit = Some(h);
     }

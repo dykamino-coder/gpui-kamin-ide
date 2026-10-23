@@ -22,7 +22,7 @@ pub(crate) use dec::clone_fragment;
 /// (`box-decoration-break-clone-018/019/028/029`). Иначе `None`.
 pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
     use crate::style::computed::FlexDir;
-    let s = w.style.cascaded();
+    let s = &*w.style.computed();
     let zero = |l: &Option<Len>| match l {
         None => true,
         Some(Len::Px(v)) => v.abs() < 0.01,
@@ -75,24 +75,24 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
     };
     if kids.next().is_some()
         || item.inline
-        || out_of_flow(item.style.cascaded())
+        || out_of_flow(&item.style.computed())
         || clone_dec(item).is_none()
-        || item.style.cascaded().align_self.is_some()
-        || item.style.cascaded().order.is_some()
-        || !zero(&item.style.cascaded().margin.top)
-        || !zero(&item.style.cascaded().margin.bottom)
+        || item.style.computed().align_self.is_some()
+        || item.style.computed().order.is_some()
+        || !zero(&item.style.computed().margin.top)
+        || !zero(&item.style.computed().margin.bottom)
         || (row
             && !matches!(
-                item.style.cascaded().width,
+                item.style.computed().width,
                 Some(Len::Px(_)) | Some(Len::Pct(_))
             ))
     {
         return None;
     }
     let mut item = item.clone();
-    item.style.cascaded_mut().display = Some(Display::Block);
-    item.style.cascaded_mut().margin.top = s.margin.top;
-    item.style.cascaded_mut().margin.bottom = s.margin.bottom;
+    item.style.used_mut().display = Some(Display::Block);
+    item.style.used_mut().margin.top = s.margin.top;
+    item.style.used_mut().margin.bottom = s.margin.bottom;
     Some(item)
 }
 
@@ -103,7 +103,7 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
 pub(crate) fn solid_box(k: &Element) -> bool {
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)
-            if !x.inline || x.style.cascaded().display == Some(Display::Block))
+            if !x.inline || x.style.computed().display == Some(Display::Block))
     };
     monolith_box(k)
         || (k.children.iter().any(|n| !is_blank(n)) && !k.children.iter().any(block_kid))
@@ -121,7 +121,7 @@ pub(crate) fn monolith_box(k: &Element) -> bool {
         // прокручиваемый и `break-inside: avoid`);
         // строка таблицы — да, но её не режет и укладка.
         || matches!(
-            k.style.cascaded().display,
+            k.style.computed().display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
@@ -144,9 +144,9 @@ pub(crate) fn monolith_blockified(k: &Element) -> bool {
     // обрезающей коробки рожает колонку (`single-line-{column,row}-flex-
     // fragmentation-010/011/051/063`, `overflow-clip-012`).
     size_monolith(k)
-        || k.style.cascaded().break_inside_avoid
-        || scrolls(k.style.cascaded().overflow_x)
-        || scrolls(k.style.cascaded().overflow_y)
+        || k.style.computed().break_inside_avoid
+        || scrolls(k.style.computed().overflow_x)
+        || scrolls(k.style.computed().overflow_y)
         || matches!(
             k.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"

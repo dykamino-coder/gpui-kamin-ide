@@ -36,7 +36,7 @@ fn build(
     target: Option<stretch::Target>,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    if !e.style.cascaded().mathml || e.style.cascaded().math_layout.is_none() {
+    if !e.style.computed().mathml || e.style.computed().math_layout.is_none() {
         return None;
     }
     let mut style = box_style(inherited, &e.style, vcx);
@@ -83,7 +83,7 @@ fn build(
                 Node::Text(text) if text.trim().is_empty() => None,
                 Node::Text(_) => None, // Core ignores direct text outside token elements.
                 Node::Element(child)
-                    if child.style.cascaded().display
+                    if child.style.computed().display
                         == Some(crate::style::computed::Display::None) =>
                 {
                     None

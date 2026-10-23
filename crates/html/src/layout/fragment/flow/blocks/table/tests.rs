@@ -11,7 +11,7 @@ fn table(html: &str) -> (BlockBox, Vec<u64>) {
     let doc = crate::dom::parse(html, "");
     fn find(n: &Node) -> Option<&Element> {
         let Node::Element(e) = n else { return None };
-        if e.style.cascaded().display == Some(Display::Table) {
+        if e.style.computed().display == Some(Display::Table) {
             return Some(e);
         }
         e.children.iter().find_map(find)

@@ -23,7 +23,7 @@ use crate::style::values::value::Len;
 /// проходит никогда — у полос своя укладка.
 pub(crate) fn grid_stack(c: &Element) -> bool {
     use crate::style::computed::{AutoFlow, Track, TrackSize};
-    let s = c.style.cascaded();
+    let s = &*c.style.computed();
     if !matches!(s.display, Some(Display::Grid) | Some(Display::InlineGrid)) {
         return false;
     }
@@ -95,9 +95,9 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
     }
     !c.children.iter().any(|n| match n {
         Node::Element(k) => {
-            k.style.cascaded().grid_row.is_some()
-                || k.style.cascaded().grid_col.is_some()
-                || k.style.cascaded().grid_area_name.is_some()
+            k.style.computed().grid_row.is_some()
+                || k.style.computed().grid_col.is_some()
+                || k.style.computed().grid_area_name.is_some()
         }
         _ => false,
     })
@@ -117,13 +117,13 @@ pub(crate) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
     use crate::style::computed::{Track, TrackSize};
     if grid_stack(c)
         || !matches!(
-            c.style.cascaded().display,
+            c.style.computed().display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
     {
         return false;
     }
-    let gap0 = match c.style.cascaded().gap {
+    let gap0 = match c.style.computed().gap {
         None | Some((None, _)) => true,
         Some((Some(Len::Px(v)), _)) => v.abs() < 0.01,
         _ => false,
@@ -131,11 +131,11 @@ pub(crate) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
     if !gap0 {
         return false;
     }
-    let Some(bands) = grid_px_row_bands(c.style.cascaded()) else {
+    let Some(bands) = grid_px_row_bands(&c.style.computed()) else {
         return false;
     };
     let px_of = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-    let top = px_of(&c.style.cascaded().padding.top) + px_of(&c.style.cascaded().borders().top);
+    let top = px_of(&c.style.computed().padding.top) + px_of(&c.style.computed().borders().top);
     let Some(i) = bands.iter().position(|b| (top + b.0 - at).abs() < 0.01) else {
         return false;
     };
@@ -144,7 +144,7 @@ pub(crate) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
     }
     let Some(TrackSize::Single(Track::Px(v))) = c
         .style
-        .cascaded_mut()
+        .used_mut()
         .grid_rows
         .as_mut()
         .and_then(|r| r.get_mut(i - 1))

@@ -63,7 +63,7 @@ impl MaskResources {
                         MaskDefinition {
                             markup,
                             alpha: tag == "mask"
-                                && e.style.cascaded().mask_type_alpha == Some(true),
+                                && e.style.computed().mask_type_alpha == Some(true),
                         },
                     );
                 }

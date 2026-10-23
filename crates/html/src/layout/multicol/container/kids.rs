@@ -56,9 +56,9 @@ pub(super) fn column_kids(
     let mut kid_par = kid_par;
     for (p, (c, _)) in kid_par.iter_mut().zip(kids.iter()) {
         if p.group == 0 {
-            p.avoid_only = c.style.cascaded().break_inside_avoid && avoid_only_monolith(c);
+            p.avoid_only = c.style.computed().break_inside_avoid && avoid_only_monolith(c);
             p.float = c.marks.float_block;
-            p.clears = c.style.cascaded().clear.is_some();
+            p.clears = c.style.computed().clear.is_some();
         }
     }
     let mut kids = if col_vert {
@@ -114,7 +114,7 @@ pub(super) fn stack_children(
             .then(|| {
                 let (c, s) = &kids[0];
                 (nested_rows_box(c)
-                    && matches!(c.style.cascaded().height, Some(Len::Px(_)))
+                    && matches!(c.style.computed().height, Some(Len::Px(_)))
                     && s.cuts.is_empty()
                     && s.margin_top.abs() < 0.01)
                     .then(|| {

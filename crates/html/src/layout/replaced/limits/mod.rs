@@ -36,7 +36,7 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
         )
     };
     let unset = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
-    let c = e.style.cascaded();
+    let c = &*e.style.computed();
     let Some(w @ Len::Px(_)) = c.width else {
         return None;
     };
@@ -51,10 +51,10 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
     }
     let mut copy = e.clone();
     if kw(c.min_width) && unset(c.max_width) {
-        copy.style.cascaded_mut().width = c.min_width;
-        copy.style.cascaded_mut().min_width = Some(w);
+        copy.style.used_mut().width = c.min_width;
+        copy.style.used_mut().min_width = Some(w);
         // Довод `fit-content(N)` едет вместе с ключевым словом.
-        copy.style.cascaded_mut().fit_arg[0] = c.fit_arg[1];
+        copy.style.used_mut().fit_arg[0] = c.fit_arg[1];
     } else if kw(c.max_width) && unset(c.min_width) {
         // `max-width: fit-content(<доля>)`: во вкладе доля циклична, и предел
         // ведёт себя как `fit-content(none)` = `max-content` (комментарий
@@ -62,16 +62,16 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
         // equal to max-content size»). При определённом блоке это ближе к
         // `max-content`, чем к истине (`-010`: 124 вместо 100, как и без
         // довода), но обёртка-сетка определённость базы не различает.
-        copy.style.cascaded_mut().width = match (c.max_width, c.fit_arg[2]) {
+        copy.style.used_mut().width = match (c.max_width, c.fit_arg[2]) {
             (Some(Len::FitContent), Some(Len::Pct(_))) => Some(Len::MaxContent),
             _ => c.max_width,
         };
-        copy.style.cascaded_mut().max_width = Some(w);
-        copy.style.cascaded_mut().fit_arg[0] = c.fit_arg[2].filter(|a| !matches!(a, Len::Pct(_)));
+        copy.style.used_mut().max_width = Some(w);
+        copy.style.used_mut().fit_arg[0] = c.fit_arg[2].filter(|a| !matches!(a, Len::Pct(_)));
     } else {
         return None;
     }
-    copy.style.cascaded_mut().intrinsic_wrapper_required = true;
+    copy.style.used_mut().intrinsic_wrapper_required = true;
     Some(copy)
 }
 
