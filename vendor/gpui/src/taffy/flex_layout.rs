@@ -28,6 +28,8 @@ pub struct FlexLineLayout {
 pub struct FlexItemLayout {
     /// Layout node of the item.
     pub id: LayoutId,
+    /// Order-modified document index, before direction and wrap reversal.
+    pub order: u32,
     /// Physical main-axis border-box position relative to the container.
     pub main_offset: f32,
     /// Physical cross-axis border-box position relative to the container.
@@ -92,6 +94,7 @@ impl TaffyLayoutEngine {
                     let margin = self.taffy.unrounded_layout(item.node).margin;
                     FlexItemLayout {
                         id: item.node.into(),
+                        order: item.order,
                         main_offset: item.main_offset / scale,
                         cross_offset: item.cross_offset / scale,
                         main_size: item.main_size / scale,
@@ -140,4 +143,30 @@ mod tests {
             assert_eq!(lines.lines[0].items[0].cross_size, 20.0);
         }
     }
+    #[test]
+    fn semantic_item_indices_survive_direction_and_wrap_reversal() {
+        for direction in [FlexDirection::Row, FlexDirection::RowReverse, FlexDirection::Column, FlexDirection::ColumnReverse] {
+            for wrap in [FlexWrap::Wrap, FlexWrap::WrapReverse] {
+                let mut engine = TaffyLayoutEngine::new();
+                let children: Vec<_> = (0..4).map(|_| engine.taffy.new_leaf(Style {
+                    size: Size::from_lengths(40.0, 20.0), flex_shrink: 0.0, ..Style::DEFAULT
+                }).unwrap()).collect();
+                let root = engine.taffy.new_with_children(Style {
+                    size: Size::from_lengths(80.0, 40.0),
+                    flex_direction: direction, flex_wrap: wrap, ..Style::DEFAULT
+                }, &children).unwrap();
+                engine.taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
+                let (_, layout) = engine.parent_flex_layout(children[0].into(), 1.0).unwrap();
+                assert_eq!(layout.lines.len(), 2);
+                let mut indices: Vec<_> = layout.lines.iter().flat_map(|l| &l.items)
+                    .map(|item| {
+                        assert_eq!(item.id, LayoutId::from(children[item.order as usize]));
+                        item.order
+                    }).collect();
+                indices.sort_unstable();
+                assert_eq!(indices, [0, 1, 2, 3]);
+            }
+        }
+    }
+
 }

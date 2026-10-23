@@ -162,31 +162,36 @@ impl Watched {
             let mut lines = Vec::new();
             for (index, line) in flex.lines.into_iter().enumerate() {
                 let mut members = Vec::new();
+                let mut order = Vec::new();
                 let mut top = f32::MAX;
                 let mut bottom = f32::MIN;
                 for item in line.items {
-                    let Some(&id) = items.iter().find(|id| seen.get(id) == Some(&item.id)) else {
-                        continue;
-                    };
+                    let id = items
+                        .iter()
+                        .find(|id| seen.get(id) == Some(&item.id))
+                        .copied();
+                    order.push((item.order, id));
                     let (start, size) = if flex.is_column {
                         (item.main_offset, item.main_size)
                     } else {
                         (item.cross_offset, item.cross_size)
                     };
                     let normal = off + start;
+                    top = top.min(normal);
+                    bottom = bottom.max(normal + size);
+                    let Some(id) = id else { continue };
                     let delta = boxes.get(&id).map_or(0.0, |p| normal - p.0);
                     if let Some(blocks) = &self.blocks {
                         blocks.shift_flex_item(id, delta, boxes, &mut shifts, &mut tables);
                     }
                     boxes.insert(id, (normal, normal + size));
                     margins.insert(id, (item.margin_top, item.margin_bottom));
-                    top = top.min(off + start);
-                    bottom = bottom.max(off + start + size);
                     members.push(id);
                 }
-                if members.is_empty() {
+                if order.is_empty() {
                     continue;
                 }
+                order.sort_unstable_by_key(|item| item.0);
                 if !flex.is_column {
                     top = off + line.cross_offset;
                     bottom = top + line.cross_size;
@@ -196,6 +201,7 @@ impl Watched {
                     start: top,
                     end: bottom,
                     items: members,
+                    order,
                 });
             }
             if !flex.is_column {

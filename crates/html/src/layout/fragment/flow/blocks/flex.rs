@@ -29,6 +29,8 @@ pub(crate) struct FlexLine {
     pub(crate) start: f32,
     pub(crate) end: f32,
     pub(crate) items: Vec<u64>,
+    /// Порядок после CSS order, до reverse; None — анонимный элемент.
+    pub(crate) order: Vec<(u32, Option<u64>)>,
 }
 
 /// Рост перед линией: её предшественник сохраняет занятый фрагмент.
