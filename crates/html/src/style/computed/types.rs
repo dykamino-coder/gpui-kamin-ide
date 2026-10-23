@@ -32,7 +32,7 @@ pub use image::{BorderImage, BorderImageSlice, BorderImageWidth, GradSpace, Grad
 pub use layout::{Align, AutoFlow, Display, FlexDir, GapInset, GapList, Justify, Placement};
 pub use text::{
     Hanging, RubyAlign, RubyOverhang, RubyRole, TT_FULL_WIDTH, TT_KANA, TT_MATH, TextAlign,
-    TextFit, TextTransform,
+    TextFit, TextTransform, UserSelect,
 };
 
 /// `animation`: имя набора кадров и как его проигрывать.

@@ -195,4 +195,5 @@ properties! {
     MaxLines: "max-lines" => [line_clamp, clamp_auto];
     Continue: "continue" => [clamp_continue, clamp_legacy];
     TextBoxTrim: "text-box-trim" => [text_box_trim_start, text_box_trim_end];
+    UserSelect: "user-select" => [user_select];
 }

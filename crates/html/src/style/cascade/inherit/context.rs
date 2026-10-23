@@ -62,4 +62,13 @@ pub(super) fn inherit_context(parent: &Computed, own: &Computed, c: &mut Compute
     c.inline_pad = own.inline_pad.or(parent.inline_pad);
     c.inline_radius = own.inline_radius.or(parent.inline_radius);
     c.no_marker = own.no_marker.or(parent.no_marker);
+    // css-ui-4 §6.1: `user-select` не наследуется; используемое значение
+    // `auto` — `none` под коробкой с используемым `none`, иначе выделяемое
+    // (`all` родителя тоже выделяемо).
+    use crate::style::computed::UserSelect as U;
+    c.no_select = match c.user_select {
+        Some(U::None) => Some(true),
+        Some(U::Text | U::Contain | U::All) => Some(false),
+        Some(U::Auto) | None => own.no_select.or(parent.no_select),
+    };
 }

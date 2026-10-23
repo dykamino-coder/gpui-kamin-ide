@@ -69,7 +69,6 @@ pub(super) fn inherit_text(parent: &Computed, own: &Computed, c: &mut Computed) 
     // `font-size-adjust` наследуется значением; подгонку каждый элемент
     // считает сам, по СВОЕМУ шрифту (`Computed::resolve_em`).
     c.font_size_adjust = own.font_size_adjust.or(parent.font_size_adjust);
-    c.no_select = own.no_select.or(parent.no_select);
     c.pointer_events_none = own.pointer_events_none.or(parent.pointer_events_none);
     // `block-ellipsis` наследуется (css-overflow-4 §block-ellipsis).
     c.clamp_mark = own.clamp_mark.clone().or_else(|| parent.clamp_mark.clone());

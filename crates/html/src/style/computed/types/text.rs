@@ -105,6 +105,31 @@ pub enum TextAlign {
     End,
 }
 
+/// `user-select` (css-ui-4 §6.1): вычисленное значение — ключевое слово как
+/// задано; свойство не наследуется, а `auto` решается в используемое
+/// значение по родителю (`Computed::no_select`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserSelect {
+    Auto,
+    Text,
+    None,
+    Contain,
+    All,
+}
+
+impl UserSelect {
+    pub fn parse(v: &str) -> Option<Self> {
+        Some(match v {
+            "auto" => Self::Auto,
+            "text" => Self::Text,
+            "none" => Self::None,
+            "contain" => Self::Contain,
+            "all" => Self::All,
+            _ => return None,
+        })
+    }
+}
+
 impl TextAlign {
     /// Развернуть логические края в физические по направлению письма.
     pub fn physical(self, rtl: bool) -> Self {
