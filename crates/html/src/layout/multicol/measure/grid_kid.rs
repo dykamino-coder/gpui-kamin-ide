@@ -23,6 +23,11 @@ pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
             || crate::layout::fragment::flow::blocks::flex_tree(c, 4))
 }
 
+/// Flex с реальными линиями не передаётся DOM-пагинации: та не сохраняет членство.
+pub(super) fn flex_gate(c: &Element, fits: bool, w: Option<f32>) -> bool {
+    gate(c, fits, w) && crate::layout::fragment::flow::blocks::flex_tree(c, 4)
+}
+
 /// Запись ребёнка, чью высоту меряет раскладка копии; поля не в точках —
 /// прежняя мера.
 pub(super) fn measured(

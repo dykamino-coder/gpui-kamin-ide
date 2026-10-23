@@ -228,7 +228,15 @@ pub(super) fn build_copy(
         &mut body,
         &opts.cx,
     );
-    let el = transformed(d.children(body).into_any_element(), inner, merged, vcx);
+    // Корень копии тоже наблюдается рекордером: ограничения роста строк
+    // flex-контейнера (`Watched::grow_flex_line`) ставятся на ЕГО узел, а
+    // узкая ветка копии идёт мимо общего `element()` с его `watch::wrap`.
+    let root = crate::layout::fragment::paginate::watch::wrap(
+        copy.node_id,
+        d.children(body).into_any_element(),
+        opts,
+    );
+    let el = transformed(root, inner, merged, vcx);
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
     if inner.clip_inset.is_some()

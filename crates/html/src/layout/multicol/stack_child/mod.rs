@@ -171,7 +171,15 @@ pub(super) fn multicol_stack_child(
     let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
-        opts.frag.watch = (first && !band).then(|| watched.clone());
+        // Копии фрагментов flex тоже наблюдаются: элемент рисует только
+        // копия его фрагментов (`Watched::set_flex_owners`).
+        opts.frag.watch = if first && !band {
+            Some(watched.clone())
+        } else if !band && watched.blocks().is_some_and(|b| b.has_flex()) {
+            Some(watched.for_part(part))
+        } else {
+            None
+        };
         build::build_copy(
             &opts,
             col_vert,

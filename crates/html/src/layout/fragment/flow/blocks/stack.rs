@@ -27,6 +27,11 @@ pub(super) fn walk_kids(
             page_prev = Some(end);
         }
         if let Some((p, pt, pb)) = prev.filter(|_| k.adjoins) {
+            // Поля flex-элементов не схлопываются и не усекаются разрывом:
+            // граница соседних элементов колонки — промежуток между их margin
+            // box (css-flexbox-1 §10; у блоков полей в записи нет — border box).
+            let pb = laid.margin_box(p.id).map_or(pb, |m| m.1);
+            let kt = laid.margin_box(k.id).map_or(kt, |m| m.0);
             // Распорка роста перед коробкой (`STRUT_ID`) — содержимое
             // предыдущего фрагмента: граница встаёт под ней.
             let pb = laid.at(k.id ^ super::STRUT_ID).map_or(pb, |s| s.1.max(pb));

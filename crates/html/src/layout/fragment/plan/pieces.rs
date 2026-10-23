@@ -79,13 +79,14 @@ pub(super) fn fill_pieces(
                 0.0
             }
         };
-        // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
-        // края колонки — режем ровно там.
+        // Принудительный разрыв ВНУТРИ коробки раньше края колонки — режем
+        // ровно там. Разрыв в самом её конце — перед коробкой нулевой высоты
+        // (`BlockBreaks::finish`): её содержимое начинает следующий фрагмент.
         let forced = k
             .forced
             .iter()
             .copied()
-            .find(|&f| f > from + 0.01 && f < flow - 0.01 && f - from <= room + 0.01);
+            .find(|&f| f > from + 0.01 && f < flow + 0.01 && f - from <= room + 0.01);
         match forced_or_fits(
             limit, col, y, not_top, placed, out, float_hold, kid, k, &mut cur, &mut from,
             &mut copy, rg, target, rest, hd, room_all, ft, forced,

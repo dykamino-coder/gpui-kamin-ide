@@ -76,7 +76,10 @@ impl BlockBreaks {
         g.cuts.retain(|&(need, _)| need < end - 0.01);
         g.normalize();
         let mut forced = self.forced;
-        forced.retain(|&f| f > 0.01 && f < end - 0.01);
+        // Принудительный разрыв перед коробкой нулевой высоты в самом конце
+        // потока тоже разрыв: после него есть содержимое (css-break-3 §3.1),
+        // и оно начинает следующий фрагментаинер.
+        forced.retain(|&f| f > 0.01 && f < end + 0.01);
         forced.sort_by(f32::total_cmp);
         forced.dedup_by(|a, b| (*a - *b).abs() < COORD_EPS);
         g.solid.retain(|&(a, _)| a < end - 0.01);

@@ -134,6 +134,90 @@ fn forced_break_inside_one_row_item_stays_in_its_parallel_flow() {
     assert!(m.forced.is_empty());
     let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 40.0, 40.0);
     assert_eq!(grows.len(), 1);
-    assert_eq!((grows[0].1, grows[0].2, grows[0].3), (20.0, 20.0, true));
-    assert_eq!(grows[0].0.pushed_at(20.0, &laid), Some(Pushed::Box(5)));
+    assert_eq!(
+        (grows[0].at, grows[0].amount, grows[0].forced),
+        (20.0, 20.0, true)
+    );
+    assert_eq!(grows[0].target, Pushed::Box(5));
+}
+
+#[test]
+fn avoid_between_later_rows_closes_exact_boundary() {
+    let (mut b, mut laid) = setup(false);
+    let frame = laid.flexes.get_mut(&10).unwrap();
+    frame.lines.insert(
+        0,
+        FlexLine {
+            index: 2,
+            start: 0.0,
+            end: 20.0,
+            items: vec![],
+        },
+    );
+    frame.lines[1].start = 20.0;
+    b.flex.as_mut().unwrap().items[2].avoid_before = true;
+    let m = b
+        .breaks(100.0, &laid)
+        .finish(FlowGeometry::default(), 100.0);
+    assert!(m.solid.iter().any(|&(a, e)| a == 20.0 && e > 60.01));
+}
+
+#[test]
+fn forced_zero_height_rows_keep_distinct_growth_targets() {
+    let (mut b, mut laid) = setup(false);
+    for item in &mut b.flex.as_mut().unwrap().items {
+        item.force_before = true;
+    }
+    laid.flexes.get_mut(&10).unwrap().lines = (0..3)
+        .map(|index| FlexLine {
+            index,
+            start: 0.0,
+            end: 0.0,
+            items: vec![index as u64 + 1],
+        })
+        .collect();
+    let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 0.0, 100.0);
+    assert_eq!(grows.len(), 2);
+    assert_eq!(
+        grows[0].target,
+        Pushed::Flex(FlexPush {
+            container: 10,
+            line: 0
+        })
+    );
+    assert_eq!(
+        grows[1].target,
+        Pushed::Flex(FlexPush {
+            container: 10,
+            line: 1
+        })
+    );
+    assert!(grows.iter().all(|g| g.amount == 100.0 && g.forced));
+}
+
+#[test]
+fn column_avoid_pushes_only_its_own_parallel_flow() {
+    let (mut b, mut laid) = setup(true);
+    laid.boxes.insert(1, (0.0, 80.0));
+    laid.boxes.insert(2, (80.0, 150.0));
+    laid.boxes.insert(3, (0.0, 100.0));
+    let frame = laid.flexes.get_mut(&10).unwrap();
+    frame.lines[0].items = vec![1, 2];
+    frame.lines[1].items = vec![3];
+    let item = &mut b.flex.as_mut().unwrap().items[1];
+    item.monolith = false;
+    item.inner = Some(BlockBox {
+        id: 2,
+        inside_avoid: true,
+        ..Default::default()
+    });
+    let m = b
+        .breaks(150.0, &laid)
+        .finish(FlowGeometry::default(), 150.0);
+    assert!(m.keep.is_empty());
+    let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 100.0, 100.0);
+    assert_eq!(grows.len(), 1);
+    assert_eq!(grows[0].target, Pushed::Box(2));
+    assert_eq!(grows[0].amount, 20.0);
+    assert!(!grows[0].forced);
 }

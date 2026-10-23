@@ -101,6 +101,7 @@ pub(crate) fn measure_children(
             // break decisions on the laid-out copy, not on this estimate.
             Node::Element(c)
                 if pag_ok
+                    && !grid_kid::flex_gate(c, measure_ok || whole_ok, line_col_w)
                     && line_col_w.is_some()
                     && crate::layout::fragment::paginate::gate(
                         c,

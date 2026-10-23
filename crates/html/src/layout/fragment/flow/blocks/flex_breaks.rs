@@ -1,5 +1,5 @@
 //! Разрывы по реальным flex-линиям (css-flexbox-1 §10): элементы ряда — отдельные потоки.
-use super::geometry::walk;
+use super::geometry::{Pending, walk};
 use super::{BlockBox, BlockBreaks, FlexBox, Laid};
 use crate::tolerance::COORD_EPS;
 
@@ -16,6 +16,12 @@ impl FlexBox {
             let flows = self.column_flows(frame, laid, floor);
             // Колонки flex независимы: наружу выходит только первая неделимая
             // часть. Внутренние forced/avoid обслуживает Regrow каждого потока.
+            // Строки многострочной колонки — параллельные потоки: граница
+            // между элементами одной строки не разрывает соседние, общих точек
+            // класса A у контейнера нет (css-break-3 §4.3; Blink копит ранние
+            // разрывы отдельно на каждую колонку, `FlexColumnBreakInfo`), и
+            // контейнер режется краем фрагментаинера.
+            let single = flows.len() <= 1;
             for b in flows {
                 let mut flow = BlockBreaks::default();
                 walk(&b, floor, f32::MAX, laid, &mut flow);
@@ -26,8 +32,11 @@ impl FlexBox {
                     .map_or(floor, |p| p.0);
                 out.solid
                     .extend(flow.solid.into_iter().filter(|s| s.0 <= first + COORD_EPS));
-                out.cuts.extend(flow.cuts);
-                out.keep.extend(flow.keep);
+                if single {
+                    out.cuts.extend(flow.cuts);
+                }
+                // Avoid внутри независимой колонки обслуживает её Regrow:
+                // перенос не должен сдвигать содержимое соседних колонок.
             }
             return self
                 .items
@@ -54,8 +63,13 @@ impl FlexBox {
                 {
                     boundary_avoid[index] = true;
                     let j = (0..index).rev().find(|&j| !boundary_avoid[j]).unwrap_or(0);
-                    out.avoid
-                        .push((frame.lines[j].start, line.start + COORD_EPS));
+                    out.avoid.push((frame.lines[j].start, line.start + 0.05));
+                    out.pending.push(Pending::Avoid {
+                        top: prev.start,
+                        bottom: prev.end,
+                        floor,
+                        next: line.start,
+                    });
                 }
             }
             for item in self.items.iter().filter(|i| line.items.contains(&i.id)) {
