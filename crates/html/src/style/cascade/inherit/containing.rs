@@ -1,5 +1,5 @@
-//! inherit_stage, этап содержащего блока: bidi-управление, признаки cb_* (многоколонность,
-//! подложка, трансформ, письмо), растяжение и определённость высоты.
+//! Стадия коробки, содержащий блок: признаки cb_* (многоколонность, подложка, трансформ, письмо),
+//! растяжение и определённость высоты.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -11,7 +11,6 @@ pub(super) fn inherit_containing(
     vcx: ValueCx<'_>,
 ) {
     c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
-    resolve_bidi_inheritance(parent, c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));
     c.sc_ancestor = crate::style::computed::stacking::nested_context(parent);
@@ -98,7 +97,7 @@ pub(super) fn inherit_containing(
     // `transform-fixed-bg-008.tentative`).
     c.transformed_ancestor = parent.transformed_ancestor || transformed(parent);
     if c.bg_fixed == Some(true)
-        && (c.transformed_ancestor || (transformed(own) && !own.root_box && !c.root_box))
+        && (c.transformed_ancestor || (transformed(c) && !own.root_box && !c.root_box))
     {
         c.bg_fixed = Some(false);
     }

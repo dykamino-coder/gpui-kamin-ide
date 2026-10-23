@@ -1,5 +1,6 @@
-//! inherit_stage, этап шрифта и строки: кегль и высота строки при font-size-adjust, начертание,
-//! выравнивание текста, письмо, сетка родителя, интервалы, text-transform/indent/box, разрывы.
+//! Стадия вычисленных значений, шрифт и строка: кегль и высота строки при font-size-adjust,
+//! начертание, выравнивание текста (`match-parent`), письмо, интервалы, text-transform/indent/box,
+//! разрывы.
 
 use super::*;
 
@@ -30,8 +31,6 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     } else {
         parent.font_oblique_angle
     };
-    c.underline = own.underline.or(parent.underline);
-    c.line_through = own.line_through.or(parent.line_through);
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
     // строки родителя; сырое `Lh` уходило в `paint/apply/` как `relative(2)` от
     // СВОЕГО кегля (`lh-unit-001`: 84 вместо 100).
@@ -45,8 +44,6 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.no_justify = own.no_justify.or(parent.no_justify);
     c.ruby_justify = own.ruby_justify.or(parent.ruby_justify);
     c.justify_chars = own.justify_chars.or(parent.justify_chars);
-    c.ruby_unit = own.ruby_unit || parent.ruby_unit;
-    c.ruby_suppress_breaks = own.ruby_suppress_breaks || parent.ruby_suppress_breaks;
     c.text_align_last = own.text_align_last.or(parent.text_align_last);
     c.image_pixelated = own.image_pixelated.or(parent.image_pixelated);
     match_parent_align(parent, own, c);
@@ -65,62 +62,16 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     (c.writing_mode, c.flat_mode, c.text_orientation) =
         (wm.writing_mode, wm.flat_mode, wm.text_orientation);
     c.combine_upright = own.combine_upright.or(parent.combine_upright);
-    c.turned_line = own.turned_line || parent.turned_line;
-    c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
-    c.cq_box = parent.container_box_for_children();
-    c.orthogonal_scrollport = parent.orthogonal_scrollport;
-    // An absolutely positioned box sizes its inline axis against its own
-    // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
-    // the in-flow inline measure of the paragraph it was written in.
-    c.orthogonal_inline = if matches!(
-        own.position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
-    ) {
-        None
-    } else {
-        parent.orthogonal_inline
-    };
     c.wrap_anywhere = own.wrap_anywhere.or(parent.wrap_anywhere);
     c.word_space_char = own.word_space_char.or(parent.word_space_char);
     c.autospace_alpha = own.autospace_alpha.or(parent.autospace_alpha);
     c.autospace_numeric = own.autospace_numeric.or(parent.autospace_numeric);
-    // Сдвиг НЕ наследуется: он принадлежит своему куску, иначе надстрочный
-    // знак поднимал бы весь текст после себя.
-    c.vertical_shift = own.vertical_shift;
-    c.vertical_shift_px = own.vertical_shift_px;
-    c.vertical_shift_len = own.vertical_shift_len;
-    c.vertical_align_text = own.vertical_align_text;
     // Кегль родителя нужен `text-top`/`text-bottom`: край куска равняется по
     // ЕГО текстовой области.
     c.vertical_align_base = match parent.font_size {
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => own.vertical_align_base,
     };
-    // Сетка-родитель и её письмо: у вертикальной сетки оси выравнивания
-    // элемента переставляются (`paint/apply/`), а по оси x идут группы базовых.
-    c.parent_grid = match parent.display {
-        Some(crate::style::computed::Display::Grid)
-        | Some(crate::style::computed::Display::InlineGrid) => {
-            match (parent.wm().vertical(), parent.wm().block_rl()) {
-                (false, _) => 1,
-                (true, false) => 2,
-                (true, true) => 3,
-            }
-        }
-        _ => 0,
-    };
-    c.parent_lanes = parent.display == Some(crate::style::computed::Display::GridLanes);
-    c.parent_grid_align_items = parent.align_items;
-    c.parent_subgrid = c.parent_grid != 0 && (parent.subgrid_cols || parent.subgrid_rows);
-    c.parent_flex_grid = matches!(
-        parent.display,
-        Some(crate::style::computed::Display::Flex)
-            | Some(crate::style::computed::Display::InlineFlex)
-            | Some(crate::style::computed::Display::Grid)
-            | Some(crate::style::computed::Display::InlineGrid)
-            | Some(crate::style::computed::Display::GridLanes)
-    );
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
     // а в разметке его ставят именно на контейнер.

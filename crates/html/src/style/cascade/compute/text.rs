@@ -1,73 +1,10 @@
-//! inherit_stage, этап текста и выравнивания: align-self normal у элементов flex/grid, emphasis,
-//! ruby, переносы, списки, line-clamp, -webkit-box, инлайн-оформление, font-feature-*, тени текста,
-//! rtl, text-align.
+//! Стадия вычисленных значений, текст: emphasis, ruby, переносы, списки, block-ellipsis,
+//! font-feature-*, тени текста, rtl, text-align; пробелы, курсор, таблицы и цвета интерфейса
+//! (`inherit_ui`); вычисленные значения оформления текста (`inherit_decoration_values`).
 
 use super::*;
 
-pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Computed) {
-    // Не снимать `align-self` у коробки, чей родитель не гибкий контейнер и
-    // не сетка (css-align-3 §6.2 «does not apply to block-level boxes»): наш
-    // блок собран колонкой flex, и на `align_self` держатся приёмы сборки —
-    // соотношение сторон блока (`blocks()` ставит `Align::Start`), обтекание,
-    // сжатие стола (`float-applies-to-*`, `floats-002/025/147`,
-    // `clear-float-001/003`, `block-aspect-ratio-*`,
-    // `shape-outside-*-border-radius-*`, `absolute-replaced-width-020/034`).
-    // Годится только с признаком «значение авторское», чтобы приёмы сборки
-    // гейт не задевал (`self-align-start-end-flex-001` — цель правки).
-    // `normal` у элемента ГИБКОГО контейнера = `stretch` (§6.2), а не
-    // «пусто»: пустое значение брало `align-items` родителя
-    // (`self-align-normal-flex`).
-    if own.align_self_normal
-        && matches!(
-            parent.display,
-            Some(crate::style::computed::Display::Flex)
-                | Some(crate::style::computed::Display::InlineFlex)
-        )
-    {
-        c.align_self = Some(crate::style::computed::Align::Stretch);
-    }
-    // `self-start`/`self-end` меряются по письму САМОГО элемента (css-align-3
-    // §6.2). Значение уже физическое (начало = левый край при ltr), поэтому
-    // зеркалим ровно тогда, когда строчная ось элемента смотрит в другую
-    // сторону, чем у родителя: `flexbox-align-self-vert-002` даёт элементам
-    // `direction: rtl` внутри ltr-колонки и ждёт `self-start` СПРАВА.
-    // Вертикальное письмо здесь НЕ зеркалим намеренно: там ось строки уже
-    // переставлена поворотом — это территория wm-скаута.
-    // Письмо элемента — ДЕЙСТВУЮЩЕЕ (своё или унаследованное): незаданное
-    // `direction` у элемента в rtl-колонке — тоже rtl, и зеркалить нечего
-    // (поперечную ось rtl-колонки разворачивает сама раскладка,
-    // `paint/apply/`: `flex_cross_reverse` / `flip`).
-    if c.parent_grid == 0
-        && own.align_self_own_axis
-        && own.rtl.or(parent.rtl).unwrap_or(false) != parent.wm().rtl()
-    {
-        c.align_self = match c.align_self {
-            Some(crate::style::computed::Align::Start) => Some(crate::style::computed::Align::End),
-            Some(crate::style::computed::Align::End) => Some(crate::style::computed::Align::Start),
-            other => other,
-        };
-    }
-    // `start`/`end` (и `self-*`) меряются по ПИСЬМУ, а раскладка знает только
-    // гибкие концы (`apply::to_items` → `FlexStart`/`FlexEnd`), которые
-    // АВТОРСКИЙ `wrap-reverse` родителя переворачивает (css-align-3 §6.1,
-    // css-flexbox-1 §5.2). Концы письма меняются местами ровно тогда: taffy
-    // развернёт их обратно. Переворот поперёк письма (`paint/apply/`: `flip`
-    // через тот же `WrapReverse`) здесь не участвует — он виден раскладке и
-    // для `flex-*`, и для `start` одинаково (`self-align-start-end-flex-001`).
-    if !own.align_self_flex_kw
-        && parent.flex_wrap_reverse == Some(true)
-        && matches!(
-            parent.display,
-            Some(crate::style::computed::Display::Flex)
-                | Some(crate::style::computed::Display::InlineFlex)
-        )
-    {
-        c.align_self = match c.align_self {
-            Some(crate::style::computed::Align::Start) => Some(crate::style::computed::Align::End),
-            Some(crate::style::computed::Align::End) => Some(crate::style::computed::Align::Start),
-            other => other,
-        };
-    }
+pub(super) fn inherit_text(parent: &Computed, own: &Computed, c: &mut Computed) {
     c.text_emphasis = own.text_emphasis.clone().or(parent.text_emphasis.clone());
     c.emphasis_auto_shape = if own.text_emphasis.is_some() {
         own.emphasis_auto_shape
@@ -134,26 +71,12 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     c.font_size_adjust = own.font_size_adjust.or(parent.font_size_adjust);
     c.no_select = own.no_select.or(parent.no_select);
     c.pointer_events_none = own.pointer_events_none.or(parent.pointer_events_none);
-    // A `-webkit-box` that is not a block container (no vertical orient)
-    // is no line-clamp container and hands no clamp to its contents
-    // (`line-clamp-029`).
-    c.line_clamp = own
-        .line_clamp
-        .or(parent.line_clamp.filter(|_| parent.clamp_block_container()));
     // `block-ellipsis` наследуется (css-overflow-4 §block-ellipsis).
     c.clamp_mark = own.clamp_mark.clone().or_else(|| parent.clamp_mark.clone());
     c.clamp_legacy = own.clamp_legacy.or(parent.clamp_legacy);
-    // Гейтовые флаги -webkit-box НЕ наследуются: пара display+orient
+    // Гейтовый флаг `webkit_box` НЕ наследуется: пара display+orient
     // обязана стоять на самом элементе.
-    c.webkit_box = own.webkit_box;
     c.webkit_box_vertical = own.webkit_box_vertical.or(parent.webkit_box_vertical);
-    // Фон строчного бокса идёт вниз как текстовое свойство: он принадлежит
-    // строке, а не коробке, и вложенный `<b>` внутри подсветки обязан его
-    // сохранить.
-    c.inline_bg = own.inline_bg.or(parent.inline_bg);
-    c.inline_border = own.inline_border.or(parent.inline_border);
-    c.inline_pad = own.inline_pad.or(parent.inline_pad);
-    c.inline_radius = own.inline_radius.or(parent.inline_radius);
     // Каждое `font-variant-*` наследуется само по себе (css-fonts-4 §6):
     // незаданная своя группа тегов берётся у родителя, заданная (в том числе
     // `normal` и сброс сокращением `font`) — своя.
@@ -206,4 +129,87 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     // достаётся по наследству и вложенному блоку справа налево (`physical`
     // зовёт `lines::align_for`). Умолчание CSS — `start`.
     c.text_align = Some(c.text_align.unwrap_or(TextAlign::Start));
+}
+
+/// Наследуемые по CSS свойства пробелов, видимости, курсора, таблиц и цвета
+/// интерфейса и каскадное `inherit` у `background-blend-mode`.
+pub(super) fn inherit_ui(parent: &Computed, own: &Computed, c: &mut Computed) {
+    use crate::style::computed::{BgListProp, BlendMode};
+    if c.background_blend == Some(BlendMode::Inherit) {
+        c.background_blend = parent.background_blend;
+        c.bg_lists.remove(BgListProp::BlendMode);
+        if let Some(list) = parent.bg_lists.get(BgListProp::BlendMode) {
+            c.bg_lists.set_layers(BgListProp::BlendMode, list.to_vec());
+        }
+    }
+    // Без них `white-space: pre` на контейнере не доходил до вложенного
+    // текста, а курсор и зазор ячеек не доставались детям.
+    c.preserve_newlines = own.preserve_newlines.or(parent.preserve_newlines);
+    c.keep_spaces = own.keep_spaces.or(parent.keep_spaces);
+    c.hidden = own.hidden.or(parent.hidden);
+    c.cursor = own.cursor.clone().or(parent.cursor.clone());
+    c.border_collapse = own.border_collapse.or(parent.border_collapse);
+    c.empty_cells_hide = own.empty_cells_hide.or(parent.empty_cells_hide);
+    c.border_spacing = own.border_spacing.or(parent.border_spacing);
+    c.caret_color = own
+        .caret_color
+        .clone()
+        .or_else(|| parent.caret_color.clone());
+    c.accent_color = own
+        .accent_color
+        .clone()
+        .or_else(|| parent.accent_color.clone());
+}
+
+/// Наследуемые свойства оформления текста (css-text-decor-4): смещение
+/// подчёркивания — вычисленной длиной от своего кегля (доля остаётся
+/// долей), его положение и пропуски. Сами линии не наследуются, а
+/// распространяются по дереву коробок (`inherit::decorate`).
+pub(super) fn inherit_decoration_values(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut Computed,
+    own_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
+    let family = decor_family(c, vcx);
+    c.underline_offset = own
+        .underline_offset
+        .map(|l| resolve_decor_len(l, &family, own_px, vcx))
+        .or(parent.underline_offset);
+    c.underline_pos = own.underline_pos.or(parent.underline_pos);
+    c.skip_ink = own.skip_ink.or(parent.skip_ink);
+    c.skip_spaces = own.skip_spaces.or(parent.skip_spaces);
+}
+
+/// Семейство для `ch`/`ex` в длинах оформления — как у `resolve_em`:
+/// родовое `monospace` имени не даёт, а меряться должно тем шрифтом,
+/// которым набран текст.
+pub(in crate::style::cascade) fn decor_family(
+    c: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> String {
+    c.font_family.clone().unwrap_or_else(|| {
+        if c.monospace == Some(true) {
+            crate::text::metrics::mono_family_for(c.lang.as_deref(), vcx).to_string()
+        } else {
+            String::new()
+        }
+    })
+}
+
+/// Длина оформления в единицах шрифта — в точки собственным кеглем.
+pub(in crate::style::cascade) fn resolve_decor_len(
+    l: crate::style::computed::DecorLen,
+    family: &str,
+    own_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> crate::style::computed::DecorLen {
+    use crate::style::computed::{DecorLen, FontCx};
+    match l {
+        DecorLen::Raw(raw) => raw
+            .to_px(None, FontCx::new(family, own_px), vcx)
+            .map_or(DecorLen::Auto, DecorLen::Px),
+        other => other,
+    }
 }
