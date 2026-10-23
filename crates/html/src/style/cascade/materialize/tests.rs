@@ -41,7 +41,11 @@ fn materialized_style_is_the_computed_value_stage() {
     let p = element(&parsed.nodes, "p");
     let parent = slot_parent(&p.style).expect("p is materialized");
     assert_eq!(parent.font_size, Some(Len::Px(20.0)));
-    let computed = p.style.slot().get(&parent, generation(vcx)).unwrap();
+    let computed = p
+        .style
+        .slot()
+        .get(p.style.cascaded(), &parent, generation(vcx))
+        .unwrap();
     assert_eq!(computed.font_size, Some(Len::Px(40.0)));
     assert_eq!(computed.text_indent, Some(Len::Px(40.0)));
     assert_eq!(computed.color, parent.color);
@@ -63,17 +67,37 @@ fn an_edit_or_another_parent_recomputes() {
     // A first-line layer or an animation frame changes the inherited font size.
     let mut bigger = (*parent).clone();
     bigger.font_size = Some(Len::Px(30.0));
-    assert!(p.style.slot().get(&bigger, generation(vcx)).is_none());
+    assert!(
+        p.style
+            .slot()
+            .get(p.style.cascaded(), &bigger, generation(vcx))
+            .is_none()
+    );
     assert_eq!(
         box_style(&BoxStyle::from(bigger.clone()), &p.style, vcx).font_size,
         Some(Len::Px(60.0))
     );
     // A layout copy that edits the cascaded style drops its materialized style.
     let mut copy = p.clone();
-    assert!(copy.style.slot().get(&parent, generation(vcx)).is_some());
+    assert!(
+        copy.style
+            .slot()
+            .get(copy.style.cascaded(), &parent, generation(vcx))
+            .is_some()
+    );
     copy.style.cascaded_mut().text_indent = Some(Len::Px(5.0));
-    assert!(copy.style.slot().get(&parent, generation(vcx)).is_none());
-    assert!(p.style.slot().get(&parent, generation(vcx)).is_some());
+    assert!(
+        copy.style
+            .slot()
+            .get(copy.style.cascaded(), &parent, generation(vcx))
+            .is_none()
+    );
+    assert!(
+        p.style
+            .slot()
+            .get(p.style.cascaded(), &parent, generation(vcx))
+            .is_some()
+    );
 }
 
 #[test]
@@ -86,7 +110,12 @@ fn used_values_lie_over_the_shared_computed_style() {
     let mut copy = p.clone();
     copy.style.used_mut().margin.top = Some(Len::Px(7.0));
     // The materialization stays valid and shared; the box takes the used value.
-    assert!(copy.style.slot().get(&parent, generation(vcx)).is_some());
+    assert!(
+        copy.style
+            .slot()
+            .get(copy.style.cascaded(), &parent, generation(vcx))
+            .is_some()
+    );
     let used = box_style(
         &BoxStyle::shared(std::rc::Rc::clone(&parent)),
         &copy.style,
@@ -111,25 +140,35 @@ fn cascaded_inherit_takes_the_parent_element_value() {
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     let span = element(&parsed.nodes, "span");
     let parent = slot_parent(&span.style).unwrap();
-    assert!(span.style.slot().get(&parent, generation(vcx)).is_some());
-    // A box parent with the same inherited data and other box values (a split
-    // inline, a hoisted block's new parent) reuses the element's value.
+    assert!(
+        span.style
+            .slot()
+            .get(span.style.cascaded(), &parent, generation(vcx))
+            .is_some()
+    );
+    // `inherit` depends on the parent's non-inherited values too: a parent with
+    // other box values (a split inline, a hoisted block's new parent) is no hit,
+    // and the box still takes the element parent's value.
     let mut sibling_box = (*parent).clone();
     sibling_box.padding.left = Some(Len::Px(99.0));
     assert!(
         span.style
             .slot()
-            .get(&sibling_box, generation(vcx))
-            .is_some()
+            .get(span.style.cascaded(), &sibling_box, generation(vcx))
+            .is_none()
     );
-    let own = span.style.slot().any().unwrap();
-    assert_eq!(own.padding.left, parent.padding.left);
+    assert_eq!(
+        box_style(&BoxStyle::from(sibling_box.clone()), &span.style, vcx)
+            .padding
+            .left,
+        parent.padding.left
+    );
     // Other inherited data: inherited from the box, `inherit` from the element.
     sibling_box.font_size = Some(Len::Px(30.0));
     assert!(
         span.style
             .slot()
-            .get(&sibling_box, generation(vcx))
+            .get(span.style.cascaded(), &sibling_box, generation(vcx))
             .is_none()
     );
     assert_eq!(
@@ -162,4 +201,22 @@ fn inherited_values_are_one_shared_group() {
     copy.font_size = Some(Len::Px(9.0));
     assert!(!Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
     assert_eq!(span_style.font_size, Some(Len::Px(20.0)));
+}
+
+#[test]
+fn an_animated_reset_value_reaches_explicit_inherit() {
+    let parsed = crate::dom::parse(
+        r#"<body><div style="width: 100px"><p style="width: inherit">a</p></div></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let div = element(&parsed.nodes, "div");
+    // A sampled animation frame is a cascade edit of a copy of the element
+    // (`animation_frame::sample`); its inherited group stays the same.
+    let mut copy = div.clone();
+    copy.style.cascaded_mut().width = Some(Len::Px(200.0));
+    let copy = rematerialize(&div.style, copy, vcx);
+    let p = element(&copy.children, "p");
+    assert_eq!(p.style.computed().width, Some(Len::Px(200.0)));
 }

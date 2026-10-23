@@ -8,7 +8,12 @@
 use crate::dom::Element;
 use crate::style::computed::Computed;
 
-pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
+pub(super) fn sample(
+    e: &Element,
+    frame: &Computed,
+    transforms: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Element {
     let mut inner = e.clone();
     // Animations are an origin of the cascade (css-cascade-5 §6.2): the sampled
     // values enter the cascaded style and are computed with it.
@@ -61,13 +66,20 @@ pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element
             style.transform = frame.transform;
         }
     }
-    inner
+    crate::style::cascade::materialize::rematerialize(&e.style, inner, vcx)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::style::values::value::{Color, Len};
+
+    fn test_vcx() -> crate::document::state::ValueCx<'static> {
+        let doc = Box::leak(Box::new(crate::document::state::DocState::new(
+            crate::style::css::Media::default(),
+        )));
+        doc.values()
+    }
 
     #[test]
     fn sampled_height_keeps_identity_placement_edges_and_unanimated_width() {
@@ -82,7 +94,7 @@ mod tests {
                 height: Some(Len::Px(height)),
                 ..Computed::default()
             };
-            let sampled = sample(&element, &frame, false);
+            let sampled = sample(&element, &frame, false, test_vcx());
             assert_eq!(sampled.node_id, 17);
             assert_eq!(sampled.style.computed().height, Some(Len::Px(height)));
             assert_eq!(
@@ -127,7 +139,7 @@ mod tests {
             });
             with_inherited
         };
-        let sampled = sample(&element, &frame, false);
+        let sampled = sample(&element, &frame, false, test_vcx());
         assert_eq!(sampled.style.computed().width, frame.width);
         assert_eq!(
             sampled.style.computed().height,
@@ -139,7 +151,10 @@ mod tests {
             element.style.computed().rotate_prop
         );
         assert_eq!(
-            sample(&element, &frame, true).style.computed().rotate_prop,
+            sample(&element, &frame, true, test_vcx())
+                .style
+                .computed()
+                .rotate_prop,
             frame.rotate_prop
         );
     }
