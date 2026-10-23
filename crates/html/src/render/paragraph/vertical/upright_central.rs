@@ -39,7 +39,7 @@ fn line_height(style: &Computed, size: f32) -> f32 {
 
 /// A plain span: no box decoration in either axis and a vertical-align that
 /// is `baseline` or `middle`.
-fn plain_span(own: &Computed) -> bool {
+fn plain_span(own: &Computed, declared: &Computed) -> bool {
     let none = crate::style::computed::Sides::default();
     own.background.is_none()
         && own.bg_image.is_none()
@@ -48,7 +48,7 @@ fn plain_span(own: &Computed) -> bool {
         && own.borders() == none
         && own.underline.is_none()
         && own.decors.is_empty()
-        && own.text_shadow.is_none()
+        && declared.text_shadow.is_none()
         && own.position.is_none()
         && own.vertical_shift.is_none()
         && own.vertical_shift_pct.is_none()
@@ -87,7 +87,9 @@ fn collect(
                 }
             }
             Node::Element(e) => {
-                if !crate::layout::box_kind::real_inline(e) || !plain_span(&e.style.computed()) {
+                if !crate::layout::box_kind::real_inline(e)
+                    || !plain_span(&e.style.computed(), e.style.cascaded())
+                {
                     return None;
                 }
                 let child = crate::style::cascade::materialize::box_style(style, &e.style, vcx);
@@ -95,7 +97,7 @@ fn collect(
                 // `middle`: the box midpoint — its central baseline here —
                 // sits on the parent's central baseline raised by half the
                 // parent's x-height (CSS 2.1 §10.8.1; Blink kMiddle).
-                let shift = if e.style.cascaded().vertical_align == Some(Align::Center) {
+                let shift = if e.style.own_vertical_align() == Some(Align::Center) {
                     let family = style.font_family.clone().unwrap_or_default();
                     let parent = own_size(style, opts);
                     shift + crate::text::metrics::ch_ex_px(&family, parent, vcx).1 / 2.0

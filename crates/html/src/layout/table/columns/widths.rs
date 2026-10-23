@@ -110,8 +110,7 @@ pub(crate) fn col_element_widths(
             Some(false) => {
                 let w = used_w(
                     el,
-                    match el.style.computed().width {
-                        Some(Len::Px(v)) => Some(v),
+                    match (el.style.cascaded().width, el.style.computed().width) {
                         // `ch` на колонке считается с ЕЁ письмом: стоячий ноль
                         // продвигается на кегль (ch-units-vrl-003/004). Кегль
                         // колонки — свой или умолчание: шрифт таблицы сюда не
@@ -120,7 +119,7 @@ pub(crate) fn col_element_widths(
                         // сходится с эталоном. Лежачий `ch` (sideways) оставлен
                         // авто-колонке: явный глиф-замер уводил ширину
                         // (ch-units-vrl-007/008 были зелёными на авто).
-                        Some(Len::Ch(k))
+                        (Some(Len::Ch(k)), _)
                             if el.style.cascaded().wm().upright()
                                 && el.style.cascaded().wm().vertical() =>
                         {
@@ -131,6 +130,8 @@ pub(crate) fn col_element_widths(
                             let _ = family;
                             Some(k * base)
                         }
+                        (Some(Len::Ch(_)), _) => None,
+                        (_, Some(Len::Px(v))) => Some(v),
                         _ => None,
                     },
                 );

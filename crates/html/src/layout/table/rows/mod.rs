@@ -4,7 +4,6 @@ use crate::dom::Node;
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::{is_cell, table_finish};
-use crate::style::cascade::inherit::inherit;
 use gpui::AnyElement;
 mod row_setup;
 use row_setup::{RowBands, push_empty_row_track, row_band_probes};
@@ -81,7 +80,7 @@ pub(super) fn table_rows(
         // `font-size: 2em` на теге давал ячейке 64 точки вместо 32, строки
         // не влезали в колонку и таблица разъезжалась на лишние полосы
         // (вся семья `table-anonymous-objects-059…098`).
-        let row_style = inherit(inherited, own.cascaded(), vcx);
+        let row_style = crate::style::cascade::materialize::box_style(inherited, &own, vcx);
         push_empty_row_track(
             cursor.row_ix,
             &cursor.occupied,

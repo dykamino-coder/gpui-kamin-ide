@@ -34,32 +34,32 @@ pub(super) fn cell_box_div(
             _ => merged,
         };
         c.used_mut().padding = crate::style::computed::Sides {
-            top: fixup(c.cascaded().padding.top, cm.padding.top),
-            right: fixup(c.cascaded().padding.right, cm.padding.right),
-            bottom: fixup(c.cascaded().padding.bottom, cm.padding.bottom),
-            left: fixup(c.cascaded().padding.left, cm.padding.left),
+            top: fixup(c.computed().padding.top, cm.padding.top),
+            right: fixup(c.computed().padding.right, cm.padding.right),
+            bottom: fixup(c.computed().padding.bottom, cm.padding.bottom),
+            left: fixup(c.computed().padding.left, cm.padding.left),
         };
-        c.used_mut().height = fixup(c.cascaded().height, cm.height);
+        c.used_mut().height = fixup(c.computed().height, cm.height);
         // Толщина рамки — тем же правилом: `border: 1em solid` у
         // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
         c.used_mut().border_width = crate::style::computed::Sides {
-            top: fixup(c.cascaded().border_width.top, cm.border_width.top),
-            right: fixup(c.cascaded().border_width.right, cm.border_width.right),
-            bottom: fixup(c.cascaded().border_width.bottom, cm.border_width.bottom),
-            left: fixup(c.cascaded().border_width.left, cm.border_width.left),
+            top: fixup(c.computed().border_width.top, cm.border_width.top),
+            right: fixup(c.computed().border_width.right, cm.border_width.right),
+            bottom: fixup(c.computed().border_width.bottom, cm.border_width.bottom),
+            left: fixup(c.computed().border_width.left, cm.border_width.left),
         };
         // Background size and position in font units — the same rule: the
         // painter sees no font size on the raw style and used 16px
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
-        c.used_mut().bg_pos.x = fixup(c.cascaded().bg_pos.x, cm.bg_pos.x);
-        c.used_mut().bg_pos.y = fixup(c.cascaded().bg_pos.y, cm.bg_pos.y);
+        c.used_mut().bg_pos.x = fixup(c.computed().bg_pos.x, cm.bg_pos.x);
+        c.used_mut().bg_pos.y = fixup(c.computed().bg_pos.y, cm.bg_pos.y);
         if let (
             crate::style::computed::BgSize::Fixed(w, h),
             crate::style::computed::BgSize::Fixed(mw, mh),
-        ) = (c.cascaded().bg_size, cm.bg_size)
+        ) = (c.computed().bg_size, cm.bg_size)
         {
             c.used_mut().bg_size =
                 crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
@@ -74,20 +74,20 @@ pub(super) fn cell_box_div(
     let collapsed = crate::layout::table::anon::row_collapsed(row, carry.group);
     let bg_layered = paint_layers
         && !collapsed
-        && box_style.cascaded().bg_clip.is_none()
-        && box_style.cascaded().gradient.is_none()
-        && box_style.cascaded().bg_image.is_none()
+        && box_style.computed().bg_clip.is_none()
+        && box_style.computed().gradient.is_none()
+        && box_style.computed().bg_image.is_none()
         && box_style.cascaded().hidden != Some(true)
-        && box_style.cascaded().opacity.is_none_or(|o| o >= 1.0)
-        && box_style.cascaded().transform.is_none()
-        && box_style.cascaded().translate.is_none()
-        && box_style.cascaded().filter.is_none();
+        && box_style.computed().opacity.is_none_or(|o| o >= 1.0)
+        && box_style.computed().transform.is_none()
+        && box_style.computed().translate.is_none()
+        && box_style.computed().filter.is_none();
     let mut box_style = box_style;
-    let own_bg = box_style.cascaded().background;
+    let own_bg = box_style.computed().background;
     if bg_layered {
         box_style.used_mut().background = None;
     }
-    let mut d = cx.build.styled_box(cell, box_style.cascaded(), cx);
+    let mut d = cx.build.styled_box(cell, &box_style.computed(), cx);
     if collapsed {
         d.style().opacity = Some(0.0);
     }
@@ -224,8 +224,8 @@ pub(super) fn ortho_cell_box(
         // наследуется, а слитый `cm` тянет его от любого предка.
         // Только `td`/`th` берут значение ряда (UA-правило
         // `td, th { vertical-align: inherit }`).
-        let own_va = cell.style.cascaded().vertical_align.or(if html_cell(cell) {
-            row.style.cascaded().vertical_align
+        let own_va = cell.style.own_vertical_align().or(if html_cell(cell) {
+            row.style.own_vertical_align()
         } else {
             None
         });

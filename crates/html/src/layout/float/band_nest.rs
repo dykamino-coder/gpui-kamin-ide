@@ -41,7 +41,7 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         // A box whose writing mode differs from its parent's establishes an
         // independent formatting context (css-writing-modes-4 §3.2): the
         // host's floats do not reach into it.
-        && !band_orthogonal(&c.style.computed(), wm)
+        && !band_orthogonal(c.style.cascaded(), wm)
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)

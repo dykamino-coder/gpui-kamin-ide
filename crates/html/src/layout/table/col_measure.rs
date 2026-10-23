@@ -53,14 +53,20 @@ pub(super) fn measure_col_widths(
                 let table_vertical =
                     e.style.cascaded().wm().vertical() || inherited.wm().vertical();
                 let orthogonal = cell.style.cascaded().wm().vertical() && !table_vertical;
-                let source = if table_vertical || orthogonal {
+                let (declared, source) = if table_vertical || orthogonal {
                     // У ортогональной ячейки width несёт ЛОГИЧЕСКИЙ
                     // inline-size — физически это ВЫСОТА, не колонка
                     // (table-cell-align-005/006); колонку задаёт block-size,
                     // осевший в height.
-                    cell.style.computed().height
+                    (cell.style.cascaded().height, cell.style.computed().height)
                 } else {
-                    cell.style.computed().width
+                    (cell.style.cascaded().width, cell.style.computed().width)
+                };
+                // `ch` ячейки таблица решает сама — кеглем и шрифтом ячейки
+                // по горизонтальному нулю (ветка ниже, как `cell_heights`).
+                let source = match declared {
+                    Some(Len::Ch(_)) => declared,
+                    _ => source,
                 };
                 // Известная потеря — `css-writing-modes/table-progression-*`:
                 // эталон горизонтальный, тест вертикальный, и слагаемые ложатся

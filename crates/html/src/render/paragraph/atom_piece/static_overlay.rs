@@ -29,7 +29,7 @@ pub(crate) fn static_overlay(
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
-    let mut group_style = e.style.cascaded().clone();
+    let mut group_style = (*e.style.computed()).clone();
     group_style.mask_image = merged.mask_image.clone();
     merged.position = None;
     merged.abs_static = true;

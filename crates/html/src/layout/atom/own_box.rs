@@ -68,7 +68,7 @@ pub(super) fn own_box_atom(
     // (CSS 2.1 §10.8.1) — как у строчной таблицы выше. Без этого
     // `inline-block` с `vertical-align: top` сидел на базовой линии
     // и в высокой строке уезжал вниз.
-    let self_align = match e.style.cascaded().vertical_align {
+    let self_align = match e.style.own_vertical_align() {
         Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
         Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
         Some(Align::Center) => Some(gpui::AlignItems::Center),

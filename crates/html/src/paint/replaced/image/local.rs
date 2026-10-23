@@ -49,7 +49,7 @@ pub(super) fn fit_local_image(
         crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.computed(), vcx)
             .map(crate::paint::background::Source::from_cpu)
     {
-        let mut style = e.style.cascaded().clone();
+        let mut style = (*e.style.computed()).clone();
         if fills_holder {
             style.object_fit = Some("fill".into());
         }
