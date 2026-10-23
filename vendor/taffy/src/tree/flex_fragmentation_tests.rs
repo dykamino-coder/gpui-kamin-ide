@@ -179,3 +179,31 @@ fn pushed_row_item_moves_in_the_block_axis() {
     assert_eq!(tree.layout(a).unwrap().location.y, 0.0);
     assert_eq!(tree.layout(root).unwrap().size.height, 200.0);
 }
+
+#[test]
+fn line_growth_is_not_free_space_of_a_definite_container() {
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    tree.disable_rounding();
+    let leaf = || Style { size: Size::from_lengths(20.0, 40.0), flex_shrink: 0.0, ..Style::DEFAULT };
+    let a = tree.new_leaf(leaf()).unwrap();
+    let b = tree.new_leaf(leaf()).unwrap();
+    let root = tree
+        .new_with_children(
+            Style {
+                flex_wrap: FlexWrap::Wrap,
+                align_content: crate::AlignContent::END,
+                size: Size { width: Dimension::length(20.0), height: Dimension::length(200.0) },
+                ..Style::DEFAULT
+            },
+            &[a, b],
+        )
+        .unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(a).unwrap().location.y, 120.0);
+    tree.set_flex_line_fragmentation_growth(root, vec![20.0]).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    // Lines keep their aligned start; the growth moves only the following line.
+    assert_eq!(tree.layout(a).unwrap().location.y, 120.0);
+    assert_eq!(tree.layout(b).unwrap().location.y, 180.0);
+    assert_eq!(tree.layout(root).unwrap().size.height, 200.0);
+}

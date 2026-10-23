@@ -798,6 +798,7 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
 
     // KaminIDE patch: fragmentation consumes cross space without stretching or
     // realigning completed items. Keep the flex solver independent of the paginator.
+    let mut fragmentation_growth = 0.0;
     if constants.dir.is_row() {
         let count = flex_lines.len();
         for (index, line) in flex_lines.iter_mut().enumerate() {
@@ -812,7 +813,9 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
                           else { item.margin.cross_axis_sum(constants.dir) }
                 }).fold(0.0, f32::max);
             }
-            line.cross_size += tree.flex_line_fragmentation_growth(node, physical);
+            let growth = tree.flex_line_fragmentation_growth(node, physical);
+            line.cross_size += growth;
+            fragmentation_growth += growth;
         }
     }
 
@@ -840,7 +843,16 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
 
     // 16. Align all flex lines per align-content.
     debug_log!("align_flex_lines_per_align_content");
-    align_flex_lines_per_align_content(&mut flex_lines, &constants, total_line_cross_size);
+    // KaminIDE patch: space consumed by fragmentation is not free space of a
+    // definite container: `align-content` places the lines as without breaks and
+    // the growth moves the following lines (Blink `item_offset_adjustment` is
+    // applied after alignment). An auto-sized container grows instead.
+    let aligned_total = if known_dimensions.cross(constants.dir).is_some() {
+        total_line_cross_size - fragmentation_growth
+    } else {
+        total_line_cross_size
+    };
+    align_flex_lines_per_align_content(&mut flex_lines, &constants, aligned_total);
 
     // KaminIDE patch: a row item pushed past a fragmentainer break moves in the
     // block axis after line alignment; completed lines and the container keep
