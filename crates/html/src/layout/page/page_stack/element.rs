@@ -42,7 +42,16 @@ impl Hooks for PageStack {
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
         //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
         let area = self.area_logical(&g);
-        let (kids, mut geoms, names, pages, mut plan) = self.fragment_plan(window, cx, g, area);
+        self.complete.set(false);
+        let Ok((kids, mut geoms, names, pages, mut plan)) = self.fragment_plan(window, cx, g, area)
+        else {
+            self.plan.borrow_mut().clear();
+            self.geoms.borrow_mut().clear();
+            self.pages.set(0);
+            self.margin_els.clear();
+            self.canvas_els.clear();
+            return;
+        };
         // Абсолюты корня добавляют листы, пока не кончится их досягаемость
         // (Blink: «If overflowed by monolithic overflow, we need more pages»,
         // box_fragment_builder.h). Потолок — число копий слоя.
@@ -113,6 +122,7 @@ impl Hooks for PageStack {
         self.prepaint_margins(bounds, window, cx, &geoms, names, pages, tail);
         *self.plan.borrow_mut() = plan;
         *self.geoms.borrow_mut() = geoms;
+        self.complete.set(true);
     }
 
     fn paint(
@@ -123,6 +133,9 @@ impl Hooks for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if !self.has_complete_plan() {
+            return;
+        }
         let s = self.grid.get().1;
         let pages = self.pages.get();
         // Масштаб вокруг левого верха стопки; матрица — в точках устройства,
