@@ -12,7 +12,10 @@ fn setup(column: bool) -> (BlockBox, Laid) {
         .collect();
     let root = BlockBox {
         id: 10,
-        flex: Some(FlexBox { items }),
+        flex: Some(FlexBox {
+            items,
+            main_gap: 0.0,
+        }),
         ..Default::default()
     };
     let mut laid = Laid::of_boxes(&[(1, 0.0, 30.0), (2, 0.0, 50.0), (3, 60.0, 100.0)]);

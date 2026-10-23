@@ -84,6 +84,7 @@ pub(super) fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
         table: None,
         grid: None,
         flex: None,
+        flex_gap: None,
     }
 }
 

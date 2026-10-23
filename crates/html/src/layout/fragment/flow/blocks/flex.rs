@@ -12,6 +12,8 @@ use crate::tolerance::COORD_EPS;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct FlexBox {
     pub(crate) items: Vec<BlockKid>,
+    /// Промежуток главной оси колонки (`row-gap`), px.
+    pub(crate) main_gap: f32,
 }
 
 /// Линии финальной раскладки; координаты физические, до relative-сдвигов.
@@ -41,7 +43,16 @@ pub(crate) fn flex_container(e: &Element) -> bool {
 }
 
 pub(super) fn collect_flex(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> FlexBox {
+    let column = matches!(
+        e.style.flex_dir,
+        Some(crate::style::computed::FlexDir::Col | crate::style::computed::FlexDir::ColReverse)
+    );
+    let main_gap = match e.style.gap {
+        Some((Some(crate::style::values::value::Len::Px(v)), _)) if column => v.max(0.0),
+        _ => 0.0,
+    };
     FlexBox {
+        main_gap,
         items: e
             .children
             .iter()
@@ -71,7 +82,10 @@ impl FlexBox {
         let frame = laid.flexes.get(&id)?;
         if !frame.column {
             for pair in frame.lines.windows(2) {
-                if (pair[1].start - a).abs() < COORD_EPS {
+                // Разрыв перед линией режет и усечённые поля её элементов
+                // (`FlexBox::breaks`): точка — начало линии или её содержимого.
+                let top = super::flex_breaks::line_top(&pair[1], laid);
+                if (pair[1].start - a).abs() < COORD_EPS || (top - a).abs() < COORD_EPS {
                     return Some(Pushed::Flex(FlexPush {
                         container: id,
                         line: pair[0].index,

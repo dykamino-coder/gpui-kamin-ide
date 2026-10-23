@@ -29,6 +29,10 @@ pub(crate) fn growths(
         }
     }
     for flow in flows {
+        if let Some(growth) = pushed_past_edge(&flow, laid, from, edge) {
+            out.push(growth);
+            continue;
+        }
         let breaks = flow
             .breaks(f32::MAX, laid)
             .finish(FlowGeometry::default(), f32::MAX);
@@ -103,6 +107,35 @@ pub(crate) fn growths(
         }
     }
     out
+}
+
+/// Элемент колонки, начинающийся за краем фрагментаинера после содержимого
+/// этого фрагмента: разрыв перед ним, а промежуток между ними (row-gap и место
+/// `justify-content`), не поместившийся до края, гасится — элемент встаёт на
+/// начало следующего фрагментаинера (Blink
+/// `UpdateOffsetAdjustmentForSuppressedRowGap`, эффективный промежуток
+/// `effective_gap_between_items`). Сдвиг отрицательный; заданный размер
+/// контейнера он не меняет.
+fn pushed_past_edge(flow: &BlockBox, laid: &Laid, from: f32, edge: f32) -> Option<Growth> {
+    flow.flex_gap?;
+    let mut prev_end: Option<f32> = None;
+    for kid in &flow.kids {
+        let (top, bottom) = laid.margin_box(kid.id).or_else(|| laid.at(kid.id))?;
+        if top >= edge - COORD_EPS {
+            let ended = prev_end.is_some_and(|e| e > from + COORD_EPS && e <= edge + COORD_EPS);
+            if ended && top > edge + COORD_EPS {
+                return Some(Growth {
+                    target: Pushed::Box(kid.id),
+                    at: top,
+                    amount: edge - top,
+                    forced: false,
+                });
+            }
+            return None;
+        }
+        prev_end = Some(bottom);
+    }
+    None
 }
 
 /// Верх элемента ряда flex, чей поток — `id`.

@@ -17,6 +17,17 @@ pub(crate) use grow::grow_pushed;
 /// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
 /// новый поточный сосед.
 pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>) -> bool {
+    insert_spacer(c, id, grow, vcx, true)
+}
+
+/// Распорка по РАЗЛОЖЕННОЙ копии (`push::Regrow`): заданная высота хозяина не
+/// растёт — прирост от фрагментации засчитывается в неё (css-break-3
+/// §box-splitting, примечание), содержимое за ней — его переполнение.
+pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>) -> bool {
+    insert_spacer(c, id, grow, vcx, false)
+}
+
+fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_grows: bool) -> bool {
     // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
     // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
     // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
@@ -116,14 +127,14 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_
         // на первом заходе. Проба `p2-single-line-column-flex-fragmentation-
         // 037` осталась красной именно поэтому, а `p3-…` с высотой 100 → 150
         // сняла 4/5 площади (3906 → 756 точек).
-        if let Some(Len::Px(h)) = c.style.height {
+        if fixed_grows && let Some(Len::Px(h)) = c.style.height {
             c.style.height = Some(Len::Px(h + grow));
         }
         return true;
     }
     for n in c.children.iter_mut() {
         if let Node::Element(k) = n
-            && spacer_before(k, id, grow, vcx)
+            && insert_spacer(k, id, grow, vcx, fixed_grows)
         {
             return true;
         }

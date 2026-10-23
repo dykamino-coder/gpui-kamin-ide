@@ -35,7 +35,12 @@ pub(super) fn walk_kids(
             // Распорка роста перед коробкой (`STRUT_ID`) — содержимое
             // предыдущего фрагмента: граница встаёт под ней.
             let pb = laid.at(k.id ^ super::STRUT_ID).map_or(pb, |s| s.1.max(pb));
-            out.cuts.push((pb, kt));
+            // Элементы колонки: промежуток у разрыва (row-gap вместе с местом
+            // `justify-content`) гасит сдвиг перенесённого элемента к краю
+            // фрагментаинера (`push::flex_flow`), а не разрез контейнера —
+            // заданный размер контейнера при этом сохраняется.
+            let resume = if b.flex_gap.is_some() { pb } else { kt };
+            out.cuts.push((pb, resume));
             let (after, before) = (p.edge(true, laid), k.edge(false, laid));
             if after.0 || before.0 || renamed {
                 out.forced.push(pb);
