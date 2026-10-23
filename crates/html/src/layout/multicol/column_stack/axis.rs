@@ -48,6 +48,8 @@ impl ColumnStack {
                 full_h,
             );
             let kid = &mut self.children[f.kid];
+            let measured = kid.measure.is_some()
+                || matches!(kid.breaks_w, Some(crate::layout::fragment::types::BreaksAt::Width(_)));
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
             else {
@@ -60,7 +62,9 @@ impl ColumnStack {
             // по доступному месту не тянет — тянет поперечная ось обёртки
             // (`align-items: stretch`). У `vertical-rl` начало блочной оси —
             // ПРАВЫЙ край обёртки (`flex_row_reverse`).
-            {
+            // Измеренная копия уже имеет эту обёртку при построении: нельзя
+            // переподчинять разложенный корень новому элементу GPUI.
+            if !measured {
                 use gpui::{ParentElement as _, Styled as _};
                 let inner = std::mem::replace(el, gpui::Empty.into_any_element());
                 let w = gpui::div().flex().w(b.size.width).h(b.size.height);
