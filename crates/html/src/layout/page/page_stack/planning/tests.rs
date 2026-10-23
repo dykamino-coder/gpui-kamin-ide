@@ -12,11 +12,12 @@ fn pending_fragment_corrections_require_a_fixed_point() {
     let remaining = settle(|| {
         if pending > 0 {
             pending -= 1;
-            (false, pending)
+            (false, pending, pending)
         } else {
-            (true, pending)
+            (true, pending, pending)
         }
-    });
+    })
+    .unwrap();
     assert_eq!(remaining, 0, "a plan with pending corrections was accepted");
 }
 
@@ -60,6 +61,7 @@ fn all_forced_breaks_are_regrown_before_accepting_pages() {
                 start: 0.0,
                 end: 100.0,
                 items: vec![2],
+                ..Default::default()
             }],
         },
     );
@@ -92,10 +94,11 @@ fn all_forced_breaks_are_regrown_before_accepting_pages() {
             }
             laid.flexes.get_mut(&1).unwrap().lines[0].end += growth.amount;
             passes += 1;
-            return (false, ());
+            return (false, height.to_bits(), ());
         }
-        (true, ())
-    });
+        (true, height.to_bits(), ())
+    })
+    .unwrap();
     assert_eq!(passes, 9);
     for id in 4..=12 {
         assert_eq!(laid.boxes[&id].0, (id - 3) as f32 * 100.0);
@@ -144,8 +147,9 @@ fn named_page_height_is_used_before_accepting_the_plan() {
             .collect();
         let stable = names == next;
         names = next;
-        (stable, (pages, plan))
-    });
+        (stable, names.clone(), (pages, plan))
+    })
+    .unwrap();
     assert_eq!(passes, 3);
     assert_eq!(pages, 3);
     assert_eq!(names, [0, 1, 1]);
@@ -153,4 +157,34 @@ fn named_page_height_is_used_before_accepting_the_plan() {
         plan.iter().map(|f| f.h).collect::<Vec<_>>(),
         [100.0, 200.0, 100.0]
     );
+}
+
+#[test]
+fn oscillating_geometry_is_incomplete_instead_of_accepting_a_stale_plan() {
+    let kid = Kid {
+        h: 300.0,
+        over: 300.0,
+        ..Default::default()
+    };
+    let mut height = 100.0f32;
+    let mut passes = 0;
+    let result = settle(|| {
+        passes += 1;
+        let (_, _, plan) = plan::fill(std::slice::from_ref(&kid), height, Space::pages(8));
+        let state = height.to_bits();
+        height = if height == 100.0 { 200.0 } else { 100.0 };
+        (false, state, plan)
+    });
+    assert!(matches!(result, Err(super::Incomplete)));
+    assert_eq!(passes, 3);
+}
+
+#[test]
+fn a_fixed_point_is_complete_even_when_seen_before() {
+    let mut calls = 0;
+    let result = settle(|| {
+        calls += 1;
+        (calls == 2, 100, 42)
+    });
+    assert_eq!(result, Ok(42));
 }
