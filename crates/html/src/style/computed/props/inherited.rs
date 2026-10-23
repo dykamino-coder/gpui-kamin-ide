@@ -15,6 +15,7 @@ mod clamp;
 mod decor;
 mod hyphen_limits;
 mod list;
+pub use list::MarkerType;
 mod spacing;
 mod svg_paint;
 mod table;

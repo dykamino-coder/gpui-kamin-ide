@@ -107,13 +107,17 @@ fn hoisted_list_item_uses_its_element_parent_not_the_inline_layout_copy() {
     let Node::Element(copy) = &mut nodes[0] else {
         unreachable!()
     };
-    copy.style.used_mut().list_style_type = Some("circle".into());
+    copy.style.used_mut().list_style_type =
+        Some(crate::style::computed::MarkerType::Counter("circle".into()));
     let split = split_block_in_inline(&nodes);
     let [Node::Element(item)] = split.as_slice() else {
         panic!("list item")
     };
     let boxed = box_style(&BoxStyle::default(), &item.style, vcx);
-    assert_eq!(boxed.list_style_type.as_deref(), Some("square"));
+    assert_eq!(
+        boxed.list_style_type,
+        Some(crate::style::computed::MarkerType::Counter("square".into()))
+    );
     let marker = marker::resolve(item, &Computed::default(), &boxed, vcx).unwrap();
     assert_eq!(marker.text.trim(), "▪");
 }

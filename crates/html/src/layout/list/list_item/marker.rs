@@ -8,9 +8,11 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::anon_element;
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{BoxStyle, Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display, MarkerType};
 
 mod image;
+#[cfg(test)]
+mod tests;
 
 pub(crate) struct Marker {
     pub text: String,
@@ -27,8 +29,17 @@ pub(crate) fn resolve(
     let idx = li.list_item.unwrap_or(0);
     // Вид маркера задаёт документ; без указания — умолчание тега.
     // Строковый маркер берётся дословно и без суффикса-точки.
-    let text_marker = merged.marker_text.clone();
-    let kind = merged.list_style_type.clone();
+    let text_marker = merged
+        .marker_text
+        .clone()
+        .or_else(|| match &merged.list_style_type {
+            Some(MarkerType::Text(text)) => Some(text.clone()),
+            _ => None,
+        });
+    let kind = match &merged.list_style_type {
+        Some(MarkerType::Counter(name)) => Some(name.as_str()),
+        _ => None,
+    };
     let symbol = text_marker_symbol(
         text_marker.is_none()
             && li
@@ -37,17 +48,17 @@ pub(crate) fn resolve(
                 .marker_layer
                 .as_deref()
                 .is_none_or(|m| m.content.is_none()),
-        kind.as_deref(),
+        kind,
     );
     let marker = if let Some(t) = text_marker {
         t
     } else {
         // Умолчание тега: у нумерованного перечня десятичный счёт, у
         // списка возможностей — точка.
-        let name = kind.unwrap_or_else(|| "disc".to_string());
+        let name = kind.unwrap_or("disc");
         crate::style::generated::counter_style::marker_repr(
             idx,
-            &name,
+            name,
             crate::style::generated::counter_style::Context::new(merged, Default::default()),
             vcx,
         )
@@ -77,7 +88,8 @@ pub(crate) fn resolve(
         .then(|| image::resolve(merged, style.as_deref(), vcx))
         .flatten();
     let no_marker = (!matches!(li_style.display, None | Some(Display::ListItem)))
-        || (image.is_none() && merged.no_marker == Some(true));
+        || merged.no_marker == Some(true)
+        || (normal && image.is_none() && merged.list_style_type == Some(MarkerType::None));
     // CSS Lists 3 marker-properties: an outside generated symbol has no
     // tracking advance (Blink list_marker.cc:391,407, InlineMarginsForOutside).
     // Preserve text markers and the inside-marker text flow from #355.

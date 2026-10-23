@@ -203,19 +203,3 @@ pub(crate) fn render_with_style(
     )
     .into_any_element()
 }
-
-/// String list-style-type values inherit through ordinary block wrappers;
-/// generated marker content belongs only to the originating item.
-pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut BoxStyle) {
-    if e.style.used().marker_text.is_none()
-        && e.style.cascaded().list_style_type.is_none()
-        && e.style.used().no_marker.is_none()
-        && parent
-            .marker_layer
-            .as_deref()
-            .is_none_or(|m| m.content.is_none())
-        && merged.marker_text != parent.marker_text
-    {
-        merged.marker_text = parent.marker_text.clone();
-    }
-}

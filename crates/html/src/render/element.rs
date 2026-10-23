@@ -18,7 +18,6 @@ mod dispatch;
 pub(super) use dispatch::dispatch_element;
 
 use crate::dom::Element;
-use crate::layout::list::list_item;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
@@ -64,7 +63,6 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
     let opts = inner_opts.as_ref().unwrap_or(opts);
     let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
-    list_item::inherited_style(e, inherited, &mut merged);
     // Ключи реестров и размеры из опубликованной геометрии текущего кадра.
     merged.self_node = e.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(e);

@@ -84,7 +84,6 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
     set!(c.inline_border, own.inline_border.or(parent.inline_border));
     set!(c.inline_pad, own.inline_pad.or(parent.inline_pad));
     set!(c.inline_radius, own.inline_radius.or(parent.inline_radius));
-    set!(c.no_marker, own.no_marker.or(parent.no_marker));
     // css-ui-4 §6.1: `user-select` не наследуется; используемое значение
     // `auto` — `none` под коробкой с используемым `none`, иначе выделяемое
     // (`all` родителя тоже выделяемо).

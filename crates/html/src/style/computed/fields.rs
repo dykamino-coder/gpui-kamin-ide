@@ -279,10 +279,10 @@ pub struct Computed {
     /// наследуемое, значение родителя переносит `compute::explicit`
     /// (`text-overflow-004`).
     pub text_overflow_inherit: bool,
-    /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
-    /// точками.
+    /// Локальное подавление маркера: `::marker { content: none }` или
+    /// продолжение разрезанной коробки. Не наследуется.
     pub no_marker: Option<bool>,
-    /// Строковый маркер: `list-style-type: "→ "` (css-lists-3 §3).
+    /// Локальное вычисленное содержимое `::marker`; не наследуется.
     pub marker_text: Option<String>,
     /// Слой `::marker` (css-lists-3 §marker-properties): ТОЛЬКО объявления
     /// самих правил `::marker` поверх таблицы агента, без копии стиля
@@ -1368,8 +1368,8 @@ pub struct InheritedStyle {
     /// от `overflow_marker`: `text-overflow` относится к строчной оси и
     /// знака на строке обрыва `line-clamp` не задаёт.
     pub clamp_mark: Option<Option<String>>,
-    /// Вид маркера, если документ его задал.
-    pub list_style_type: Option<String>,
+    /// Наследуемый вид маркера целиком: счётчик, строка или `none`.
+    pub list_style_type: Option<MarkerType>,
     /// `list-style-position: inside` — маркер идёт первым куском содержимого
     /// пункта, а не отдельной колонкой снаружи (css-lists-3 §4).
     pub list_style_inside: Option<bool>,

@@ -50,6 +50,7 @@ pub(super) mod props;
 pub(crate) use props::display_flex::values::alignment as alignment_value;
 pub(crate) use props::font::values::GROUP_TAGS as FONT_VARIANT_GROUPS;
 pub(crate) use props::grid::values::area_name as grid_area_name;
+pub use props::inherited::MarkerType;
 mod queries;
 mod resolve;
 pub use resolve::{FontCx, LenCx, ViewportCx};
