@@ -94,7 +94,7 @@ mod white_space_tests {
         }
         let nodes = crate::dom::parse(r#"<div style="white-space: break-spaces">X XX X</div>"#, "");
         let style = &find(&nodes).unwrap().style;
-        let wrap = super::rules(style).unwrap();
+        let wrap = super::rules(&style.computed()).unwrap();
         assert!(wrap.break_spaces);
         assert!(wrap.keep_spaces);
         assert!(!wrap.nowrap);
