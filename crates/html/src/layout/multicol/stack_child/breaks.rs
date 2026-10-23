@@ -19,6 +19,7 @@ use std::rc::Rc;
 /// Рекордер копии и ширина её раскладки до укладки (`StackChild::breaks_w`).
 /// `own_plan` — у ребёнка свой план фрагментов (клон украшений, целый или
 /// рядами вложенный многоколоночник): его точки остаются у оценки.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn recorder(
     copy: &Element,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
@@ -27,6 +28,7 @@ pub(super) fn recorder(
     col_rl: bool,
     line_col_w: Option<f32>,
     own_plan: bool,
+    empty_floats: bool,
 ) -> (Rc<Watched>, Option<BreaksAt>) {
     let logical = if col_vert {
         if own_plan || !crate::layout::fragment::flow::vertical_copy(copy, col_rl) {
@@ -59,7 +61,9 @@ pub(super) fn recorder(
     let independent = measured
         && (col_vert
             || crate::layout::fragment::flow::independent_copy(copy)
-            || crate::layout::fragment::flow::empty_floats(copy));
+            // Допуск получен до normalize: синтетическая нулевая высота
+            // не является авторским ограничением с отдельным overflow.
+            || empty_floats);
     // A measured box without block children keeps its measured lines alone
     // (css-break-3 §4.3 class B, orphans/widows by `Paragraph`); a box whose
     // estimate is replaced keeps its own border and padding edges too.

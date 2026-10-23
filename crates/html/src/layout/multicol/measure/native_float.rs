@@ -21,6 +21,7 @@ pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
             && [e.style.margin.top, e.style.margin.bottom]
                 .iter()
                 .any(|l| !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))))
+            || crate::layout::fragment::flow::parallel_overflow(e)
             || e.style.bdb_clone
             || e.style.text_box_trim_start
             || e.style.text_box_trim_end
@@ -70,7 +71,9 @@ fn prepare(
     width: Option<f32>,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    if crate::layout::fragment::flow::copy_clearance(&host.children)
+        || merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
     let kids: Option<Vec<_>> = host
@@ -215,6 +218,7 @@ mod tests {
     #[test]
     fn parallel_float_continuations_are_not_silently_replaced() {
         for special in [
+            "<div style='height:100px'><div style='float:left;width:100%;height:100px;break-inside:avoid'></div></div>",
             "<div style='float:left;width:20px'>several flowing lines</div>",
             "<div style='float:left;width:100%;height:20px;margin:40px 0;contain:size'>float</div>",
             "<div style='float:left'><div>A</div><div>B</div></div>",

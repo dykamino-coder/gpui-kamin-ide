@@ -14,6 +14,10 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
         {
             return None;
         }
+        // ADR P-19 F2-1: переполнение ограниченного блока имеет свой resume.
+        if super::parallel_overflow(e) {
+            return None;
+        }
         let mut root = e.clone();
         root.children.clear();
         if !super::independent_copy(&root) {
@@ -72,6 +76,7 @@ mod tests {
     #[test]
     fn text_and_separate_contexts_are_not_hidden_by_empty_float_dispatch() {
         for body in [
+            "<div style='height:100px'><div style='float:left;width:100%;height:100px;break-inside:avoid'></div></div>",
             "<div style='float:left'>flowing text</div>",
             "<div style='float:left;height:30px'></div>wrapping text",
             "<div style='overflow:hidden'><div style='float:left'></div></div>",
