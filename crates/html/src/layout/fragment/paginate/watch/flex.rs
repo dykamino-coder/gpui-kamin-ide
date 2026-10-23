@@ -13,6 +13,22 @@ pub(super) struct FlexFrames {
 }
 
 impl Watched {
+    /// Flex-контейнер наблюдаемой стопки: его раскладка — в контексте
+    /// фрагментации (элементы колонки охватывают своё содержимое).
+    pub(crate) fn flex_container(&self, id: u64) -> bool {
+        self.flex_ids_of().contains(&id)
+    }
+
+    pub(super) fn flex_ids_of(&self) -> &std::collections::HashSet<u64> {
+        self.flex_ids.get_or_init(|| {
+            let mut flexes = Vec::new();
+            if let Some(b) = &self.blocks {
+                b.flexes(&mut flexes);
+            }
+            flexes.into_iter().map(|(id, _)| id).collect()
+        })
+    }
+
     /// Сдвиг элемента колонки: положительный — перенос за разрыв,
     /// отрицательный — погашенный у разрыва промежуток.
     pub(crate) fn grow_flex_item(&self, id: u64, growth: f32) -> bool {

@@ -43,6 +43,9 @@ impl Hooks for Watch {
         let lid = self.inner.request_layout(window, cx);
         match self.slot {
             Slot::Box(id) => {
+                if self.rec.flex_container(id) {
+                    window.set_flex_fragmentation(lid, true);
+                }
                 if let Some(growth) = self.rec.flex_growth.borrow().get(&id) {
                     window.set_flex_line_fragmentation_growth(lid, growth);
                 }
