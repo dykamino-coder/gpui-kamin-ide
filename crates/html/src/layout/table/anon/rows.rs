@@ -60,7 +60,9 @@ pub(in crate::layout::table) fn collect_rows<'a>(
                 // Отсечка держится на том, что полоса знает
                 // `attachment: fixed`: без этого ломается тройка
                 // `background-attachment-applies-to-*`.
-                let picture = e.style.bg_image.is_some() || e.style.gradient_raw.is_some();
+                let picture = e.style.bg_image.is_some()
+                    || e.style.gradient_raw.is_some()
+                    || (e.style.background.is_some() && e.style.bg_clip.is_some());
                 let deeper = RowCarry {
                     background: if picture { None } else { shift.background },
                     group: Some(e),
@@ -140,5 +142,23 @@ mod tests {
             unreachable!()
         };
         assert!(std::ptr::eq(record.carry.group.unwrap(), group));
+    }
+
+    #[test]
+    fn clipped_group_color_belongs_to_band_instead_of_cell_carry() {
+        use crate::style::computed::BgClip;
+        use crate::style::values::value::Color;
+        for clip in [BgClip::BorderBox, BgClip::PaddingBox, BgClip::ContentBox] {
+            let row = anon_element("tr", vec![]);
+            let mut group = anon_element("tbody", vec![Node::Element(row)]);
+            group.style.background = Some(Color { r: 0.0, g: 0.5, b: 0.0, a: 0.5 });
+            group.style.bg_clip = Some(clip);
+            let nodes = vec![Node::Element(group)];
+            let mut rows = Vec::new();
+            collect_rows(&nodes, None, RowCarry::default(), &mut rows);
+            assert_eq!(rows.len(), 1);
+            assert!(rows[0].carry.background.is_none());
+            assert_eq!(rows[0].carry.group.unwrap().style.bg_clip, Some(clip));
+        }
     }
 }

@@ -92,18 +92,9 @@ pub(super) fn row_band_probes(
         (!crate::layout::table::anon::row_collapsed(row, carry.group)
             && (row.style.bg_image.is_some()
                 || row.style.gradient_raw.is_some()
+                || (row.style.background.is_some() && row.style.bg_clip.is_some())
                 || !row.style.shadows.is_empty()))
         .then(crate::layout::table::probes::RowRects::default);
-    if let Some(rects) = &row_rects {
-        // Градиент ряда идёт слоем-картинкой: источник понимает записи
-        // `linear-gradient(...)` и растрирует их сам.
-        let mut band_style = (*row.style).clone();
-        if band_style.bg_image.is_none() {
-            band_style.bg_image = band_style.gradient_raw.clone();
-        }
-        let band = Layer::cell_band(rects.clone(), band_style, cx);
-        under.push(cx.contracts.build.layer(band));
-    }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
     // полоса идёт от левого края крайней левой колонки до правого края
     // крайней правой и обрезается прямоугольниками ячеек. Своей коробки у
@@ -117,6 +108,7 @@ pub(super) fn row_band_probes(
         (g.style.collapsed != Some(true)
             && (g.style.bg_image.is_some()
                 || g.style.gradient_raw.is_some()
+                || (g.style.background.is_some() && g.style.bg_clip.is_some())
                 || !g.style.shadows.is_empty()
                 || g.style.outline.is_some()))
         .then(|| group_bands.entry(g.node_id).or_default().clone())
@@ -131,8 +123,18 @@ pub(super) fn row_band_probes(
         // Полоса ради одной обводки цвет не красит: сплошной цвет группы
         // без картинки несут ячейки (`collect_rows`), второй слой удвоил
         // бы полупрозрачный.
-        if band_style.bg_image.is_none() && g.style.shadows.is_empty() {
+        if band_style.bg_image.is_none() && g.style.shadows.is_empty() && g.style.bg_clip.is_none() {
             band_style.background = None;
+        }
+        let band = Layer::cell_band(rects.clone(), band_style, cx);
+        under.push(cx.contracts.build.layer(band));
+    }
+    if let Some(rects) = &row_rects {
+        // Градиент ряда идёт слоем-картинкой: источник понимает записи
+        // `linear-gradient(...)` и растрирует их сам.
+        let mut band_style = (*row.style).clone();
+        if band_style.bg_image.is_none() {
+            band_style.bg_image = band_style.gradient_raw.clone();
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
         under.push(cx.contracts.build.layer(band));

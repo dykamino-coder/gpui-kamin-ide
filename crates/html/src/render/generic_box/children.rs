@@ -1,7 +1,6 @@
 //! Сборка детей общей коробки: ортогональные оси, clamp и контексты окраски.
 
 use crate::layout::options::RenderOpts;
-use crate::paint::box_tree::styled::clip_layer;
 use crate::render::blocks::blocks;
 mod formatting_context;
 mod probes;
@@ -94,7 +93,6 @@ pub(crate) fn generic_children(
         Cow::Owned(children)
     };
     let mut kids: Vec<AnyElement> = Vec::new();
-    kids.extend(clip_layer(&merged, opts));
     // Бюджет строк обрезки: сторожа контекста живут, пока строится
     // поддерево — пробы детей пишут строки в буфер контейнера.
     // Многоколонник клэмпом не режется (`continue: collapse` там как
