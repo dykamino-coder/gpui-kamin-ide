@@ -301,6 +301,26 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: git diff --exit-code -- builtin-extensions/claude-bridge/chat.html builtin-extensions/claude-bridge/tools.html builtin-extensions/claude-bridge/customize.html
 
+  html-layer-imports:
+    name: HTML layer imports
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Test dependency extraction and intentional reverse imports
+        run: python3 -m unittest discover -s scripts -p test_check_layer_imports.py -v
+
+      - name: Enforce phase dependencies and shrinking exceptions
+        env:
+          BASE_SHA: ${{ needs.scope.outputs.base_sha }}
+        run: python3 scripts/check_layer_imports.py --base "$BASE_SHA"
+
   rust-windows:
     name: Windows Rust tests (no GUI acceptance)
     needs: scope
@@ -660,6 +680,7 @@ jobs:
       - bridge-extension
       - bridge-webview
       - rust-windows
+      - html-layer-imports
       - vendor-patches
       - vendor-taffy
       - windows-installer
@@ -677,6 +698,7 @@ jobs:
           EXTENSION_RESULT: ${{ needs.bridge-extension.result }}
           WEBVIEW_RESULT: ${{ needs.bridge-webview.result }}
           RUST_RESULT: ${{ needs.rust-windows.result }}
+          HTML_LAYERS_RESULT: ${{ needs.html-layer-imports.result }}
           VENDOR_RESULT: ${{ needs.vendor-patches.result }}
           TAFFY_RESULT: ${{ needs.vendor-taffy.result }}
           INSTALLER_RESULT: ${{ needs.windows-installer.result }}
@@ -692,6 +714,7 @@ jobs:
             "$EXTENSION_RESULT" \
             "$WEBVIEW_RESULT" \
             "$RUST_RESULT" \
+            "$HTML_LAYERS_RESULT" \
             "$VENDOR_RESULT" \
             "$TAFFY_RESULT" \
             "$INSTALLER_RESULT" \
