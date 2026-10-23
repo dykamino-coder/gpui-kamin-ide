@@ -64,6 +64,7 @@ pub(crate) fn multicol_column_stack(
                 .unwrap_or(0);
             // A spanner can leave a short fragment in every column of the first row.
             // Reserve those copies in addition to the full-height rows.
+            // TRANSITIONAL(F2-3): Начальный запас копий ограничен 48; удалить предел в P11 после выдачи требуемых фрагментов по actual row token progress.
             (span + cols as usize + 1).min(48)
         }
         None => cols.max(1) as usize,

@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1/F2-3/F2-4): оценочный рост остаётся у preplan; measured использует геометрию копии.
 //! Перенос коробок на следующий фрагмент распорками роста (`grow_pushed`): по точке разреза
 //! `a` от верха ребёнка стопки ищется самая внешняя коробка, начинающаяся ровно там
 //! (`pushed_box_at`), и перед ней встаёт распорка. Смещения детей считаются той же
@@ -173,6 +172,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
         {
             // Та же база элемента колонки flex, что у `shape_full`.
             let based = basis_sized(c, k);
+            // TRANSITIONAL(F2-4): Рост перенесённой коробки пересчитывается через shape_full; удалить в P21 после FragmentPlacement/GrowthDelta по actual resume поверх P05/P10.
             let crate::layout::fragment::Shape {
                 height: h,
                 margin_top: mt,

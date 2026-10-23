@@ -116,9 +116,7 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                     return false;
                 };
                 k.style.used_mut().margin.top = Some(Len::Px(m + st.gap));
-                // TRANSITIONAL(F2-4): усечение зазора отдельного ряда выражено
-                // полями. Удалить после поддержки ограничений зазора по строкам
-                // в раскладке; декорации исключают перенесённый зазор из полосы.
+                // TRANSITIONAL(F2-4): Остаток row-gap перенесённого ряда записывается в поля и carried_row_gap; удалить в P13 после усечения зазора строки ограничением раскладки.
                 k.marks.carried_row_gap = (st.gap + st.by.min(0.0)).max(0.0);
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {

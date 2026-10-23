@@ -18,10 +18,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
     // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
     // микроскопическому: визуально то же «ничего», формулы живы.
-    // TRANSITIONAL(text-backend zero font size): the clamp changes the computed
-    // value (`font-size: 0` is valid CSS; `1em` then resolves to 0.01px, not 0).
-    // It belongs at the text backend boundary; remove when shaping skips or
-    // clamps a zero size itself and em/inheritance see the computed 0.
+    // TRANSITIONAL(cascade-7b-R11): Клэмп font-size:0 до 0.01 меняет computed значение, em и наследование ради text backend; удалить после безопасного shaping нулевого размера на границе backend.
     if let Some(Len::Px(v)) = c.font_size
         && v <= 0.0
     {

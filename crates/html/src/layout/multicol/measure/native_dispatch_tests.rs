@@ -141,8 +141,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 #[cfg(feature = "wpt-harness")]
 #[test]
 fn continuation_groups_keep_their_explicit_f2_routes() {
-    // TRANSITIONAL(F2-1): clone требует продолжений краёв; заданная высота с
-    // видимым переполнением — отдельных продолжений коробки и её содержимого.
+    // TRANSITIONAL(F2-1): Clone и заданная высота с overflow ещё идут через preplan; удалить ожидание этого маршрута после краёв фрагментов P04 и раздельных normal-flow/overflow resume P05.
     for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",
         "<div><div style='display:flex;height:50px'><div style='height:150px'></div></div></div>",

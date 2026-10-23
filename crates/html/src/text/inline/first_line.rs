@@ -67,10 +67,7 @@ pub fn style_first_line(
                     c.inline_bg =
                         first_line_background::paint_color(base.inline_bg, style.background);
                     c.line_height = style.line_height.or(base.line_height);
-                    // TRANSITIONAL(first-line vertical-align): the layer leaves out
-                    // `vertical-align`, a ::first-line property (CSS 2 §5.12.1), because
-                    // `float::FirstLine` measures the paragraph without the shift; remove
-                    // when that measurement applies the first line's vertical shift.
+                    // TRANSITIONAL(cascade-7b-R12): Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере.
                     // Не переносить сюда сдвиг по вертикали (§5.12.1 относит
                     // `vertical-align` к свойствам `::first-line`): краска
                     // поднимается, а коробка нет — высоту абзаца заявляет

@@ -5,8 +5,7 @@
 use super::*;
 use crate::style::computed::{BoxStyle, Display as D};
 
-/// TRANSITIONAL(P-18 box context): a differing write copies the shared computed
-/// style; see `impl DerefMut for BoxStyle`.
+/// TRANSITIONAL(cascade-7b-R10): Запись box context ребёнка копирует общий Computed через BoxStyle::DerefMut; удалить после переноса этих полей в BoxStyle и перевода paint/layout-made readers.
 pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyle) {
     c.inline_contents(parent, own.ruby_unit);
     set!(

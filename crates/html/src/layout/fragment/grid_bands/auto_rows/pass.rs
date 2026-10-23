@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-4): preplan grid требует краёв clone, позиции OOF и consumed items.
 //! Проход размещения элементов сетки по рядам авто-полос.
 
 use crate::document::state::ValueCx;
@@ -88,6 +87,7 @@ pub(crate) fn grid_pass(
         if (pass == 0) != line.is_some() {
             continue;
         }
+        // TRANSITIONAL(F2-4): Grid preplan оценивает items без consumed, clone edges и OOF anchors; удалить в P16 после recorded tracks и item tokens поверх P04/P08.
         let ks = shape_full(k, depth - 1, cx, vcx)?;
         let h = ks.height + ks.margin_top + ks.margin_bottom;
         let busy = |used: &Vec<Vec<bool>>, r: usize, c0: usize| {

@@ -24,6 +24,7 @@ pub(super) fn collect_captions(
             let cm = box_style(inherited, &cap.style, vcx);
             // Сторона — с самого заголовка, при пустоте — от таблицы
             // (наследование caption-side).
+            // TRANSITIONAL(F2-5): Сторона подписи читается из cascaded подписи/таблицы вместо собственного computed контекста; удалить обход в P18 после caption token с исходным стилем и владельцем таблицы.
             let cap_side_bottom = cap
                 .style
                 .cascaded()
