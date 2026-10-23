@@ -103,6 +103,16 @@ impl FlexBox {
             if frame.column && ((top - a).abs() < COORD_EPS || (start - a).abs() < COORD_EPS) {
                 return Some(Pushed::Box(item.id));
             }
+            // Элемент ряда, выровненный ниже начала своей линии, переносится сам.
+            if !frame.column
+                && (top - a).abs() < COORD_EPS
+                && frame
+                    .lines
+                    .iter()
+                    .any(|l| l.items.contains(&item.id) && start > l.start + COORD_EPS)
+            {
+                return Some(Pushed::Box(item.id));
+            }
             if top <= a
                 && a < bottom - COORD_EPS
                 && let Some(found) = item.inner.as_ref().and_then(|b| b.pushed_at(a, laid))

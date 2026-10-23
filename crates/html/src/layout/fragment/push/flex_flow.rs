@@ -83,6 +83,18 @@ pub(crate) fn growths(
         if let Some(top) = row_item_top(laid, flow.id)
             && point <= top + COORD_EPS
         {
+            // Элемент, выровненный ниже начала линии, переносится сам.
+            if let Some(start) = row_item_line_start(laid, flow.id)
+                && laid.margin_box(flow.id).map_or(top, |m| m.0) > start + COORD_EPS
+                && edge > point + COORD_EPS
+            {
+                out.push(Growth {
+                    target: Pushed::Box(flow.id),
+                    at: point,
+                    amount: edge - point,
+                    forced,
+                });
+            }
             continue;
         }
         let at = breaks
@@ -145,6 +157,16 @@ fn row_item_top(laid: &Laid, id: u64) -> Option<f32> {
         .any(|f| !f.column && f.lines.iter().any(|l| l.items.contains(&id)))
         .then(|| laid.at(id).map(|p| p.0))
         .flatten()
+}
+
+/// Начало линии ряда, в которой стоит элемент `id`.
+fn row_item_line_start(laid: &Laid, id: u64) -> Option<f32> {
+    laid.flexes
+        .values()
+        .filter(|f| !f.column)
+        .flat_map(|f| &f.lines)
+        .find(|l| l.items.contains(&id))
+        .map(|l| l.start)
 }
 
 /// Элемент колонки flex: сдвигается своим смещением, а не распоркой.
