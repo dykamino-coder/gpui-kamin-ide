@@ -111,7 +111,14 @@ impl BlockBox {
             let Some((top, bottom)) = laid.at(k.id) else {
                 continue;
             };
-            if (top - a).abs() < COORD_EPS {
+            // Элемент потока flex-колонки сдвигается вместе со своим полем:
+            // граница перед ним — начало его margin box (`walk_kids`).
+            let start = if self.flex_gap.is_some() {
+                laid.margin_box(k.id).map_or(top, |m| m.0)
+            } else {
+                top
+            };
+            if (top - a).abs() < COORD_EPS || (start - a).abs() < COORD_EPS {
                 return Some(Pushed::Box(k.id));
             }
             if top < a
