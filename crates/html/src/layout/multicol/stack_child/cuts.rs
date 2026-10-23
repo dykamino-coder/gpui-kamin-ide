@@ -1,4 +1,4 @@
-//! Разрезы ребёнка по строкам и высота копии; заполнение полей StackChild.
+//! Разрезы и высота StackChild: ADR P-19 F2-1/F2-3/F2-4 сохраняют preplan до consumed токенов.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};

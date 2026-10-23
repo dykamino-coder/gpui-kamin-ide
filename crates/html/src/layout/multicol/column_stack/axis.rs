@@ -49,7 +49,10 @@ impl ColumnStack {
             );
             let kid = &mut self.children[f.kid];
             let measured = kid.measure.is_some()
-                || matches!(kid.breaks_w, Some(crate::layout::fragment::types::BreaksAt::Width(_)));
+                || matches!(
+                    kid.breaks_w,
+                    Some(crate::layout::fragment::types::BreaksAt::Width(_))
+                );
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
             else {

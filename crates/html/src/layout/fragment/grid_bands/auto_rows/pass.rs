@@ -1,4 +1,4 @@
-//! ADR P-19 F2-4: остаточный preplan продолжений grid пока использует оценку.
+//! ADR P-19 F2-1/F2-2/F2-4: preplan grid требует краёв clone, позиции OOF и consumed items.
 //! Проход размещения элементов сетки по рядам авто-полос.
 
 use crate::document::state::ValueCx;
