@@ -31,6 +31,40 @@ fn consumed_fragmentainer_space_grows_line_and_preserves_items() {
 }
 
 #[test]
+fn fixed_item_lines_survive_fragmentation_growth() {
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    tree.disable_rounding();
+    let leaf = |h: f32| Style { size: Size::from_lengths(10.0, h), flex_shrink: 0.0, ..Style::DEFAULT };
+    let a = tree.new_leaf(leaf(40.0)).unwrap();
+    let b = tree.new_leaf(leaf(40.0)).unwrap();
+    let c = tree.new_leaf(leaf(40.0)).unwrap();
+    let root = tree
+        .new_with_children(
+            Style {
+                flex_direction: crate::FlexDirection::Column,
+                flex_wrap: FlexWrap::Wrap,
+                size: Size { width: Dimension::length(20.0), height: Dimension::length(100.0) },
+                ..Style::DEFAULT
+            },
+            &[a, b, c],
+        )
+        .unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(c).unwrap().location.x, 10.0);
+    for (node, line) in [(a, 0), (b, 0), (c, 1)] {
+        tree.set_flex_item_fragmentation_line(node, Some(line)).unwrap();
+    }
+    // Content grown by fragmentation would no longer fit two items in the line.
+    tree.set_style(a, leaf(70.0)).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(b).unwrap().location, crate::geometry::Point { x: 0.0, y: 70.0 });
+    assert_eq!(tree.layout(c).unwrap().location.x, 10.0);
+    tree.set_flex_item_fragmentation_line(a, None).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(b).unwrap().location.x, 10.0);
+}
+
+#[test]
 fn column_break_offset_does_not_change_flexible_lengths() {
     let mut tree: TaffyTree<()> = TaffyTree::new();
     tree.disable_rounding();

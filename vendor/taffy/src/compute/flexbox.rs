@@ -664,14 +664,27 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
 
     // 5. Collect flex items into flex lines.
     debug_log!("collect_flex_lines");
+    // KaminIDE patch: line breaking precedes fragmentation (css-flexbox-1 §10).
+    // Lines fixed by the fragmenter are kept while fragmentation grows items.
+    let pinned: Option<Vec<usize>> = constants
+        .is_wrap
+        .then(|| flex_items.iter().map(|item| tree.flex_item_fragmentation_line(item.node)).collect::<Option<Vec<_>>>())
+        .flatten()
+        .filter(|lines| !lines.is_empty() && lines.windows(2).all(|w| w[0] <= w[1]));
     #[cfg(feature = "flexbox_balance")]
-    let mut flex_lines = if constants.is_balance {
+    let mut flex_lines = if let Some(lines) = pinned {
+        pinned_flex_lines(&lines, &mut flex_items)
+    } else if constants.is_balance {
         collect_balanced_flex_lines(&constants, available_space, &mut flex_items)
     } else {
         collect_flex_lines(&constants, available_space, &mut flex_items)
     };
     #[cfg(not(feature = "flexbox_balance"))]
-    let mut flex_lines = collect_flex_lines(&constants, available_space, &mut flex_items);
+    let mut flex_lines = if let Some(lines) = pinned {
+        pinned_flex_lines(&lines, &mut flex_items)
+    } else {
+        collect_flex_lines(&constants, available_space, &mut flex_items)
+    };
 
     // Trimming happens after line collection, before both intrinsic container
     // sizing and flex length resolution. Line collection itself still needs
@@ -1840,6 +1853,21 @@ fn determine_flex_base_size(
         child.hypothetical_inner_size.set_main(constants.dir, hypothetical_inner_size);
         child.hypothetical_outer_size.set_main(constants.dir, hypothetical_outer_size);
     }
+}
+
+/// KaminIDE patch: lines given by each item's fixed line index.
+fn pinned_flex_lines<'a>(lines: &[usize], flex_items: &'a mut [FlexItem]) -> Vec<FlexLine<'a>> {
+    let mut out = new_vec_with_capacity(1);
+    let mut items = flex_items;
+    let mut start = 0;
+    while !items.is_empty() {
+        let count = lines[start..].iter().take_while(|&&line| line == lines[start]).count();
+        let (line_items, rest) = items.split_at_mut(count);
+        out.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
+        items = rest;
+        start += count;
+    }
+    out
 }
 
 /// Collect flex items into flex lines.

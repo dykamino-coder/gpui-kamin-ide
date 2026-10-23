@@ -36,6 +36,10 @@ pub struct FlexItemLayout {
     pub main_size: f32,
     /// Used cross-axis size.
     pub cross_size: f32,
+    /// Resolved physical block-start (top) margin.
+    pub margin_top: f32,
+    /// Resolved physical block-end (bottom) margin.
+    pub margin_bottom: f32,
 }
 
 impl TaffyLayoutEngine {
@@ -47,6 +51,10 @@ impl TaffyLayoutEngine {
     /// KaminIDE patch: consumed block space before a column flex item.
     pub fn set_flex_item_fragmentation_offset(&mut self, id: LayoutId, offset: f32, scale: f32) -> bool {
         self.taffy.set_flex_item_fragmentation_offset(id.into(), offset * scale).is_ok()
+    }
+    /// KaminIDE patch: the item's flex line fixed before fragmentation.
+    pub fn set_flex_item_fragmentation_line(&mut self, id: LayoutId, line: Option<usize>) -> bool {
+        self.taffy.set_flex_item_fragmentation_line(id.into(), line).is_ok()
     }
     /// KaminIDE patch: consumed fragmentation space after physical row lines.
     pub fn set_flex_line_fragmentation_growth(&mut self, id: LayoutId, growth: &[f32], scale: f32) -> bool {
@@ -72,12 +80,17 @@ impl TaffyLayoutEngine {
             lines: info.lines.iter().map(|line| FlexLineLayout {
                 cross_offset: line.cross_offset / scale,
                 cross_size: line.cross_size / scale,
-                items: line.items.iter().map(|item| FlexItemLayout {
-                    id: item.node.into(),
-                    main_offset: item.main_offset / scale,
-                    cross_offset: item.cross_offset / scale,
-                    main_size: item.main_size / scale,
-                    cross_size: item.cross_size / scale,
+                items: line.items.iter().map(|item| {
+                    let margin = self.taffy.unrounded_layout(item.node).margin;
+                    FlexItemLayout {
+                        id: item.node.into(),
+                        main_offset: item.main_offset / scale,
+                        cross_offset: item.cross_offset / scale,
+                        main_size: item.main_size / scale,
+                        cross_size: item.cross_size / scale,
+                        margin_top: margin.top / scale,
+                        margin_bottom: margin.bottom / scale,
+                    }
                 }).collect(),
             }).collect(),
         };
