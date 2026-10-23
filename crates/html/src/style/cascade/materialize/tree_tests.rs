@@ -52,3 +52,31 @@ fn an_anonymous_table_passes_its_parent_element_through() {
     // `inherit` takes the value of the parent element, not of the anonymous table.
     assert_eq!(b.style.computed().padding.left, Some(Len::Px(5.0)));
 }
+
+#[test]
+fn a_box_under_another_parent_keeps_the_elements_perspective_cell() {
+    let parsed = crate::dom::parse(
+        r#"<body><div style="perspective: 50px"><section style="perspective: inherit; zoom: 2"><i>x</i></section></div></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let div = element(&parsed.nodes, "div");
+    let section = element(&parsed.nodes, "section");
+    // A box parent with other values (a layout copy) recomputes the box.
+    let mut parent = box_style(
+        &BoxStyle::shared(Rc::new(Computed::default())),
+        &div.style,
+        vcx,
+    );
+    parent.width = Some(Len::Px(7.0));
+    let boxed = box_style(&parent, &section.style, vcx);
+    assert_eq!(boxed.perspective, Some(100.0));
+    let (Some(cell), Some(own)) = (
+        boxed.perspective_frame.as_ref(),
+        section.style.computed().perspective_frame.clone(),
+    ) else {
+        panic!("perspective cells")
+    };
+    assert!(Rc::ptr_eq(cell, &own));
+}

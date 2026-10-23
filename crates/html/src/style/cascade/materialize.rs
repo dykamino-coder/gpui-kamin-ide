@@ -207,6 +207,13 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
                 };
                 inherited::take_inherited(&mut from, parent);
                 let mut c = super::compute::compute(&from, cascaded, vcx);
+                // The perspective cell (`PerspectiveFrame`) is the element's
+                // identity, not a value: paint finds the element's perspective
+                // through it. `perspective: inherit` makes a new cell on each
+                // computation; the box keeps the element's own.
+                if c.perspective_frame.is_some() && materialized.perspective_frame.is_some() {
+                    c.perspective_frame = materialized.perspective_frame.clone();
+                }
                 if let Some(used) = used {
                     used::lay_used(&mut c, &used, &materialized);
                 }
