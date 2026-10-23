@@ -176,7 +176,9 @@ fn block_start_edge_without_a_gap_holds_the_first_row_monolith() {
 
 #[test]
 fn caption_line_geometry_stays_inside_the_table_wrapper_flow() {
-    let (b, ps) = table("<table><caption><p style=\"margin:0\">caption</p></caption></table>");
+    let (b, ps) = table(
+        "<table style=\"display:table\"><caption style=\"display:table-caption\"><p style=\"margin:0\">caption</p></caption></table>",
+    );
     let t = b.table.as_ref().unwrap();
     let cap = t.caps_top[0].id;
     let laid = Laid::of_boxes(&[(b.id, 0.0, 32.0), (cap, 0.0, 32.0), (ps[0], 0.0, 32.0)]);
