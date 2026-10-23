@@ -80,8 +80,12 @@ pub(crate) fn decorations(
     // content on top of it; borders after it stay unfiltered
     // (`backdrop-filter-with-background-clip-padding-box`).
     backdrop_matrix(c, &mut out, vcx);
-    if !(empty && !c.transform_ancestor && c.transform.is_none()
-        && c.filter_ref.as_deref().is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some()))
+    if !(empty
+        && !c.transform_ancestor
+        && c.transform.is_none()
+        && c.filter_ref
+            .as_deref()
+            .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some()))
         && let Some(layer) = crate::paint::background::inset_color_layer(c, vcx)
     {
         out.push(layer);

@@ -120,10 +120,9 @@ pub(super) fn row_band_probes(
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
-        // Полоса ради одной обводки цвет не красит: сплошной цвет группы
-        // без картинки несут ячейки (`collect_rows`), второй слой удвоил
-        // бы полупрозрачный.
-        if band_style.bg_image.is_none() && g.style.shadows.is_empty() && g.style.bg_clip.is_none() {
+        // Полоса только с обводкой не дублирует цвет, который несут ячейки.
+        if band_style.bg_image.is_none() && g.style.shadows.is_empty() && g.style.bg_clip.is_none()
+        {
             band_style.background = None;
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
@@ -205,9 +204,7 @@ pub(super) fn cell_cascaded_style(
     {
         cm.ortho_limit = Some(h);
     }
-    // Ячейка ПАРАЛЛЕЛЬНОЙ таблицы (письмо вертикально у самого стола,
-    // ячейка его наследует): её инлайн-мера — дорожка КОЛОНКИ, а не
-    // инлайн-размер всего стола. Предел, приехавший сверху
+    // Инлайн-мера ячейки ПАРАЛЛЕЛЬНОЙ таблицы — дорожка КОЛОНКИ, не стол. Предел, приехавший сверху
     // наследованием, тут запасной по §7.3, а запас ставится ТОЛЬКО на
     // место неопределённого инлайн-места — у ячейки оно определённое
     // (css-tables-3 §computing-column-measures). Blink тем же

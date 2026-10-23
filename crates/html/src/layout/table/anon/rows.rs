@@ -151,7 +151,12 @@ mod tests {
         for clip in [BgClip::BorderBox, BgClip::PaddingBox, BgClip::ContentBox] {
             let row = anon_element("tr", vec![]);
             let mut group = anon_element("tbody", vec![Node::Element(row)]);
-            group.style.background = Some(Color { r: 0.0, g: 0.5, b: 0.0, a: 0.5 });
+            group.style.background = Some(Color {
+                r: 0.0,
+                g: 0.5,
+                b: 0.0,
+                a: 0.5,
+            });
             group.style.bg_clip = Some(clip);
             let nodes = vec![Node::Element(group)];
             let mut rows = Vec::new();

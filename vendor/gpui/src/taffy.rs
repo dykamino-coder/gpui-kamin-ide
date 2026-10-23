@@ -4,6 +4,7 @@ mod measurement;
 mod line_baselines;
 mod measured_content;
 mod measured_box;
+mod box_edges;
 pub use measured_box::MeasuredBox;
 pub use measured_content::MeasuredContent;
 pub use measurement::LayoutMeasurement;

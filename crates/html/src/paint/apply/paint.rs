@@ -55,8 +55,10 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).
-    if matches!(c.color_clip(vcx), None | Some(crate::style::computed::BgClip::BorderBox))
-        && !crate::style::computed::single_corner::eligible(c)
+    if matches!(
+        c.color_clip(vcx),
+        None | Some(crate::style::computed::BgClip::BorderBox)
+    ) && !crate::style::computed::single_corner::eligible(c)
         && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {
         if let Some(g) = &c.gradient {

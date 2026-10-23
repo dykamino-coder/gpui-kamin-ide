@@ -31,6 +31,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "gpui": [
+        "Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.",
         "Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.",
         "CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.",
         "CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.",
