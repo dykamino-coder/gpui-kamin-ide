@@ -105,8 +105,7 @@ pub(super) fn cell_box_div(
         // картинки. Ряду только с тенью цвет оставляют ячейки.
         let picture = row.style.used().bg_image.is_some()
             || row.style.used().gradient_raw.is_some()
-            || (row.style.used().background.is_some()
-                && row.style.used().bg_clip.is_some());
+            || (row.style.used().background.is_some() && row.style.used().bg_clip.is_some());
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);
@@ -130,8 +129,7 @@ pub(super) fn cell_box_div(
     // A relatively positioned cell's own percentage insets resolve
     // against the row's specified height (`position-relative-013`),
     // not the table grid the cell is laid out in; the row offset adds.
-    let own_pct = cell.style.used().position
-        == Some(crate::style::computed::Position::Relative)
+    let own_pct = cell.style.used().position == Some(crate::style::computed::Position::Relative)
         && [
             cell.style.used().inset.left,
             cell.style.used().inset.right,

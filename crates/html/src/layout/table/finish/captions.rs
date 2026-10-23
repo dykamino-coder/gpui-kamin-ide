@@ -50,10 +50,11 @@ pub(super) fn collect_captions(
             // A caption is a transformable block box (css-transforms-1
             // §transformable-element); its `transform` was dropped
             // (`transform-transformed-caption-contains-fixed-position`).
-            let built = opts.cx.contracts.build.effects(
-                built,
-                Effect::transform(&cap.style.used(), inherited, vcx),
-            );
+            let built = opts
+                .cx
+                .contracts
+                .build
+                .effects(built, Effect::transform(&cap.style.used(), inherited, vcx));
             // Подпись — сосед коробки таблицы в стопке обёртки: её border box
             // читает фрагментация (`watch::wrap`).
             let built = crate::layout::fragment::paginate::watch::wrap(cap.node_id, built, opts);
@@ -186,9 +187,7 @@ pub(super) fn wrap_with_captions(
         // колонки (`anonymous-table-box-width-001`: пустая подпись в 100
         // точек, рамка `border-bottom: 100px` у стола нулевой ширины).
         let caps_px = e.children.iter().all(|n| match n {
-            Node::Element(c)
-                if c.tag == "caption" || c.style.used().is_caption == Some(true) =>
-            {
+            Node::Element(c) if c.tag == "caption" || c.style.used().is_caption == Some(true) => {
                 matches!(c.style.used().width, Some(Len::Px(_)))
             }
             _ => true,

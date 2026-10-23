@@ -66,7 +66,7 @@ pub(in crate::layout::atom) fn static_position_atom(
     // уходит в верхний слой блока-контейнера, а в строке остаётся щуп: он
     // и держит место, и сообщает, куда потом вернуть содержимое.
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
-    let below = e.style.computed().z_index.is_some_and(|z| z < 0);
+    let below = e.style.used().z_index.is_some_and(|z| z < 0);
     // Блочный элемент встал бы на НОВУЮ строку — там его статическая
     // позиция и находится: левый край содержимого родителя, верх — низ
     // текущей строки. Строчный остаётся точкой в самой строке.

@@ -107,9 +107,8 @@ fn atom_piece_in(
     // строчный путь. БЛОЧНЫЙ абсолют в повёрнутом абзаце — кусок вне потока в
     // начале следующей строки (`next_line_point`): поворачивается вместе со
     // строками, и его до-поворотное место — гипотетическая коробка §10.6.4.
-    let rot_block = inherited.wm().turned()
-        && !inline_level(e)
-        && e.style.used().inline_display != Some(true);
+    let rot_block =
+        inherited.wm().turned() && !inline_level(e) && e.style.used().inline_display != Some(true);
     if plain_flow
         && (!in_inline_cb || inherited.wm().turned())
         && at_static_position(&e.style.used())

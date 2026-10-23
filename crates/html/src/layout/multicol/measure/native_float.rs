@@ -17,28 +17,22 @@ pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
     fn separate(e: &Element) -> bool {
         // ADR P-19 TRANSITIONAL(F2-1): поля float не усекаются как поля обычного
         // блока; перенос margin box требует отдельного consumed/resume.
-        (e.style.computed().float.is_some_and(|f| f != 0)
-            && [
-                e.style.computed().margin.top,
-                e.style.computed().margin.bottom,
-            ]
-            .iter()
-            .any(|l| !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))))
+        (e.style.used().float.is_some_and(|f| f != 0)
+            && [e.style.used().margin.top, e.style.used().margin.bottom]
+                .iter()
+                .any(|l| !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))))
             || crate::layout::fragment::flow::parallel_overflow(e)
-            || e.style.computed().bdb_clone
-            || e.style.computed().text_box_trim_start
-            || e.style.computed().text_box_trim_end
+            || e.style.used().bdb_clone
+            || e.style.used().text_box_trim_start
+            || e.style.used().text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
-            || e.style.computed().wm().vertical()
-            || e.style.computed().column_span == Some(true)
-            || crate::layout::multicol::spanner::multicol_container(&e.style.computed())
-            || matches!(
-                e.style.computed().display,
-                Some(Display::Flex | Display::Grid)
-            )
-            || (out_of_flow(&e.style.computed())
-                && (e.style.computed().float.unwrap_or(0) == 0
+            || e.style.used().wm().vertical()
+            || e.style.used().column_span == Some(true)
+            || crate::layout::multicol::spanner::multicol_container(&e.style.used())
+            || matches!(e.style.used().display, Some(Display::Flex | Display::Grid))
+            || (out_of_flow(&e.style.used())
+                && (e.style.used().float.unwrap_or(0) == 0
                     || !crate::layout::fragment::clone::content_monolith_blockified(e)))
             || e.children
                 .iter()

@@ -15,9 +15,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// ненулевых полях в точках — иначе копия прежняя.
 pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
     let nz = |l: &Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
-    if vertical
-        || !(nz(&copy.style.used().margin.left) || nz(&copy.style.used().margin.right))
-    {
+    if vertical || !(nz(&copy.style.used().margin.left) || nz(&copy.style.used().margin.right)) {
         return el;
     }
     div()

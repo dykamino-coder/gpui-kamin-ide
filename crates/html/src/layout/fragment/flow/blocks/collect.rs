@@ -51,8 +51,8 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         out.flex = Some(flex::collect_flex(e, cx, vcx));
         return out;
     }
-    let stacks = stacks_blocks(e)
-        || (blockified && e.style.used().display == Some(Display::InlineBlock));
+    let stacks =
+        stacks_blocks(e) || (blockified && e.style.used().display == Some(Display::InlineBlock));
     if !stacks {
         return out;
     }
@@ -113,14 +113,8 @@ pub(super) fn push_kids(
             Node::Element(k) if matches!(k.style.used().display, Some(Display::None)) => {
                 continue;
             }
-            Node::Element(k)
-                if !k.inline && k.style.used().display != Some(Display::Contents) =>
-            {
-                k
-            }
-            Node::Element(k)
-                if k.inline && k.style.used().display.is_none() && holds_blocks(k) =>
-            {
+            Node::Element(k) if !k.inline && k.style.used().display != Some(Display::Contents) => k,
+            Node::Element(k) if k.inline && k.style.used().display.is_none() && holds_blocks(k) => {
                 push_kids(&k.children, out, adjoins, cx, vcx);
                 continue;
             }

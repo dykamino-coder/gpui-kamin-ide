@@ -23,9 +23,7 @@ pub(super) fn float_box(
     merged.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
     merged.resolve_viewport(opts.viewport, vcx);
-    let el = if copy.style.used().clamp_lines().is_some()
-        || copy.style.used().clamp_by_height()
-    {
+    let el = if copy.style.used().clamp_lines().is_some() || copy.style.used().clamp_by_height() {
         // A float can own a clamp context as well as isolate its parent's
         // counter. The native box installs that context, its cut and probes;
         // inheriting the paragraph's line limit alone loses the root strut.

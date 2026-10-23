@@ -62,8 +62,7 @@ pub(in crate::layout::table) fn collect_rows<'a>(
                 // `background-attachment-applies-to-*`.
                 let picture = e.style.used().bg_image.is_some()
                     || e.style.used().gradient_raw.is_some()
-                    || (e.style.used().background.is_some()
-                        && e.style.used().bg_clip.is_some());
+                    || (e.style.used().background.is_some() && e.style.used().bg_clip.is_some());
                 let deeper = RowCarry {
                     background: if picture { None } else { shift.background },
                     group: Some(e),

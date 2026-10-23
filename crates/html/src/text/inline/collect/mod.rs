@@ -19,7 +19,7 @@ mod tests {
         fn positioned(nodes: &[Node]) -> Option<&crate::dom::Element> {
             nodes.iter().find_map(|node| match node {
                 Node::Element(e)
-                    if e.style.computed().position
+                    if e.style.used().position
                         == Some(crate::style::computed::Position::Relative) =>
                 {
                     Some(e)
@@ -42,7 +42,7 @@ mod tests {
             &parsed.nodes,
             &BoxStyle::default(),
             &mut |e, atom| {
-                if crate::layout::box_kind::out_of_flow(&e.style.computed()) {
+                if crate::layout::box_kind::out_of_flow(&e.style.used()) {
                     assert!(atom.in_inline_cb);
                     assert_eq!(atom.parent.as_ref().unwrap().self_node, parent.node_id);
                     seen_atom = true;

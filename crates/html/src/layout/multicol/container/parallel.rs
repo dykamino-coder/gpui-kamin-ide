@@ -52,10 +52,7 @@ fn positioned(
     if s.cuts.is_empty() || (s.forced.is_empty() && s.solid.is_empty()) {
         return false;
     }
-    let used = match (
-        c.style.used().inset.top,
-        c.style.used().inset.bottom,
-    ) {
+    let used = match (c.style.used().inset.top, c.style.used().inset.bottom) {
         (Some(Len::Px(top)), None | Some(Len::Auto)) => top,
         (None | Some(Len::Auto), Some(Len::Px(bottom))) => cb_height - bottom - s.height,
         (None | Some(Len::Auto), None | Some(Len::Auto)) => static_y,

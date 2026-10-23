@@ -62,7 +62,7 @@ pub(super) fn group(
     let [Node::Element(e)] = nodes else {
         return None;
     };
-    let floated = e.style.computed().float.is_some_and(|f| f != 0);
+    let floated = e.style.used().float.is_some_and(|f| f != 0);
     let float_extent = empty_floats(e);
     let eligible = if floated {
         // ADR P-19 TRANSITIONAL(F2-1): только монолит не несёт собственного продолжения
@@ -106,12 +106,12 @@ fn decorated_lines(e: &Element) -> bool {
             Node::Element(k) => text(k),
         })
     }
-    let b = e.style.computed().borders();
+    let b = e.style.used().borders();
     let decorated = [
         b.top,
         b.bottom,
-        e.style.computed().padding.top,
-        e.style.computed().padding.bottom,
+        e.style.used().padding.top,
+        e.style.used().padding.bottom,
     ]
     .iter()
     .any(|l| !matches!(l, None | Some(Len::Px(0.0))));

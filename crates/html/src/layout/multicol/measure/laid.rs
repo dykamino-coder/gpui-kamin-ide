@@ -32,7 +32,7 @@ pub(crate) fn children(
         // ADR P-19 TRANSITIONAL(F2-2): static position зависит от разложенных соседей;
         // удаление OOF до замера теряет его исходное место в потоке.
         Node::Element(c) => {
-            !out_of_flow(&c.style.computed()) && (independent_copy(c) || empty_floats(c))
+            !out_of_flow(&c.style.used()) && (independent_copy(c) || empty_floats(c))
         }
         _ => false,
     }) {
@@ -41,7 +41,7 @@ pub(crate) fn children(
     let kids: Option<Vec<_>> = flow
         .into_iter()
         .filter_map(|n| match n {
-            Node::Element(c) if !out_of_flow(&c.style.computed()) => Some(c),
+            Node::Element(c) if !out_of_flow(&c.style.used()) => Some(c),
             _ => None,
         })
         .map(|c| {
@@ -127,15 +127,9 @@ pub(crate) fn vertical_children(
                 _ => None,
             };
             let (start, end) = if reverse {
-                (
-                    c.style.computed().margin.right,
-                    c.style.computed().margin.left,
-                )
+                (c.style.used().margin.right, c.style.used().margin.left)
             } else {
-                (
-                    c.style.computed().margin.left,
-                    c.style.computed().margin.right,
-                )
+                (c.style.used().margin.left, c.style.used().margin.right)
             };
             Some((
                 c,

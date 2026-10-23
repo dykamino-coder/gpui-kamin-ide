@@ -69,3 +69,38 @@ fn absent_default_anchor_keeps_explicit_anchor_inset_stretch_sizing() {
         assert_eq!(c.height, Some(Len::Px(67.)));
     }
 }
+
+#[test]
+fn trial_computed_parent_is_local_to_the_matching_frame_root() {
+    use crate::layout::cx::LayoutCx;
+    use crate::style::computed::ElementStyle;
+    use std::rc::Rc;
+
+    let original = Rc::new(Computed::default());
+    let mut trial = (*original).clone();
+    trial.width = Some(Len::Px(20.));
+    let variant = Rc::new(trial);
+    let mut cx = LayoutCx::default();
+    cx.position.oof_computed = Some((
+        7,
+        ElementStyle {
+            original: original.clone(),
+            computed: variant.clone(),
+            parent: None,
+        },
+    ));
+    let mut root = BoxStyle::shared(original.clone());
+    root.anchor_key = 7;
+    root.width = Some(Len::Px(999.));
+    super::prepare(&mut root, &BoxStyle::default(), &cx);
+    assert!(Rc::ptr_eq(
+        &root.element_style.as_ref().unwrap().computed,
+        &variant
+    ));
+    assert_eq!(root.width, Some(Len::Px(999.)));
+    let mut other = BoxStyle::shared(original);
+    other.anchor_key = 8;
+    super::prepare(&mut other, &root, &cx);
+    assert!(other.element_style.is_none());
+    assert!(LayoutCx::default().position.oof_computed.is_none());
+}

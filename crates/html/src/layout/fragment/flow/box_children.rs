@@ -9,8 +9,8 @@ pub(crate) fn children(nodes: &[Node]) -> impl Iterator<Item = &Node> {
     std::iter::from_fn(move || {
         loop {
             match stack.last_mut()?.next() {
-                Some(Node::Element(e)) if e.style.computed().display == Some(Display::None) => {}
-                Some(Node::Element(e)) if e.style.computed().display == Some(Display::Contents) => {
+                Some(Node::Element(e)) if e.style.used().display == Some(Display::None) => {}
+                Some(Node::Element(e)) if e.style.used().display == Some(Display::Contents) => {
                     stack.push(e.children.iter());
                 }
                 Some(n) => return Some(n),
@@ -35,8 +35,8 @@ pub(crate) fn projected(
     let mut out = Vec::new();
     for n in nodes {
         match n {
-            Node::Element(e) if e.style.computed().display == Some(Display::None) => {}
-            Node::Element(e) if e.style.computed().display == Some(Display::Contents) => {
+            Node::Element(e) if e.style.used().display == Some(Display::None) => {}
+            Node::Element(e) if e.style.used().display == Some(Display::Contents) => {
                 let merged = box_style_unpainted(parent, &e.style, vcx);
                 let promoted: Vec<_> = e
                     .children

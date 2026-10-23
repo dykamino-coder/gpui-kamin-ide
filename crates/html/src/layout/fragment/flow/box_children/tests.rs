@@ -84,18 +84,18 @@ fn promoted_copies_keep_inheritance_without_contents_box_properties() {
         panic!("copies")
     };
     assert!(text.inline);
-    assert_eq!(text.style.computed().font_size, Some(Len::Px(30.0)));
-    assert_eq!(block.style.computed().font_size, Some(Len::Px(60.0)));
-    assert_eq!(text.style.computed().color, block.style.computed().color);
-    assert_eq!(text.style.computed().padding.top, None);
-    assert_eq!(block.style.computed().padding.top, None);
+    assert_eq!(text.style.used().font_size, Some(Len::Px(30.0)));
+    assert_eq!(block.style.used().font_size, Some(Len::Px(60.0)));
+    assert_eq!(text.style.used().color, block.style.used().color);
+    assert_eq!(text.style.used().padding.top, None);
+    assert_eq!(block.style.used().padding.top, None);
     let resolved = crate::style::cascade::inherit::inherit_unpainted(
         &BoxStyle::default(),
-        &block.style.computed(),
+        &block.style.used(),
         tree.values(),
     );
-    assert_eq!(resolved.font_size, block.style.computed().font_size);
-    assert_eq!(resolved.color, block.style.computed().color);
+    assert_eq!(resolved.font_size, block.style.used().font_size);
+    assert_eq!(resolved.color, block.style.used().color);
 }
 
 #[test]
@@ -106,12 +106,12 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
         "",
     );
     let root = root(&tree);
-    let parent = inherit_unpainted(&BoxStyle::default(), &root.style.computed(), tree.values());
+    let parent = inherit_unpainted(&BoxStyle::default(), &root.style.used(), tree.values());
     let projected = projected(&root.children, &parent, tree.values());
     let [Node::Element(copy)] = projected.as_slice() else {
         panic!("one copy")
     };
-    let rebound = inherit_unpainted(&parent, &copy.style.computed(), tree.values());
+    let rebound = inherit_unpainted(&parent, &copy.style.used(), tree.values());
     // Вложенный contents наследует только явно запрошенные box-свойства:
     // без собственных padding/margin/width он передаёт начальные значения.
     assert_eq!(rebound.padding.top, None);
@@ -137,7 +137,7 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
     let [Node::Element(copy)] = projected.as_slice() else {
         panic!("one copy")
     };
-    let rebound = inherit_unpainted(&parent, &copy.style.computed(), tree.values());
+    let rebound = inherit_unpainted(&parent, &copy.style.used(), tree.values());
     assert_eq!(rebound.padding.top, Some(Len::Px(11.0)));
     assert_eq!(rebound.margin.top, Some(Len::Px(12.0)));
     assert_eq!(rebound.width, Some(Len::Px(13.0)));

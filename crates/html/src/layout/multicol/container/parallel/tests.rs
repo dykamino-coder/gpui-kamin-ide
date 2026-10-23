@@ -62,7 +62,7 @@ fn bottom_position_is_resolved_before_auto_height_grows() {
     let Node::Element(abs) = &cb.children[0] else {
         panic!()
     };
-    assert_eq!(abs.style.computed().inset.top, Some(Len::Px(0.0)));
+    assert_eq!(abs.style.used().inset.top, Some(Len::Px(0.0)));
     assert_eq!(
         measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
         200.0
@@ -81,7 +81,7 @@ fn independent_breaks_use_the_containing_blocks_fragmentainer_phase() {
     let Node::Element(abs) = &cb.children[0] else {
         panic!()
     };
-    assert_eq!(abs.style.computed().inset.top, Some(Len::Px(0.0)));
+    assert_eq!(abs.style.used().inset.top, Some(Len::Px(0.0)));
     assert_eq!(
         measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
         220.0

@@ -19,13 +19,13 @@ pub(crate) fn is_root(e: &Element, opts: &RenderOpts) -> bool {
 }
 
 pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Option<AnyElement> {
-    if !super::super::resolve::needs_host(&e.style.computed(), &opts.cx)
+    if !super::super::resolve::needs_host(&e.style.used(), &opts.cx)
         || is_root(e, opts)
         || opts.paged_build().is_some()
     {
         return None;
     }
-    let fixed = e.style.computed().position == Some(Position::Fixed);
+    let fixed = e.style.used().position == Some(Position::Fixed);
     let under_tf = inherited.transform_ancestor || inherited.transform.is_some();
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
@@ -40,9 +40,9 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
             .as_ref()
             .is_some_and(|o| o.take())
         && !fixed
-        && (edge_set(e.style.computed().inset.left) || edge_set(e.style.computed().inset.right))
-        && (edge_set(e.style.computed().inset.top) || edge_set(e.style.computed().inset.bottom))
-        && e.style.computed().z_index.unwrap_or(0) >= 0;
+        && (edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right))
+        && (edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom))
+        && e.style.used().z_index.unwrap_or(0) >= 0;
     if inline_cb && let Some(offer) = &opts.cx.position.inline_cb {
         offer.note_taken();
     }
@@ -57,14 +57,14 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
         rtl: inherited.wm().rtl(),
         vertical: inherited.wm().vertical(),
         vertical_rl: inherited.wm().block_rl(),
-        own_vertical: e.style.computed().wm().vertical(),
+        own_vertical: e.style.used().wm().vertical(),
         replaced: matches!(
             e.tag.as_str(),
             "img" | "svg" | "iframe" | "canvas" | "video" | "object" | "embed"
         ),
         fixed_axes: (
-            edge_set(e.style.computed().inset.left) || edge_set(e.style.computed().inset.right),
-            edge_set(e.style.computed().inset.top) || edge_set(e.style.computed().inset.bottom),
+            edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right),
+            edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom),
         ),
         ..Default::default()
     });
@@ -107,6 +107,8 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
                     let mut opts = build_opts.clone();
                     opts.cx.position.state = positioning;
                     opts.cx.position.oof_trial = Some((base.anchor_key, trial));
+                    opts.cx.position.oof_computed =
+                        style.element_style.clone().map(|e| (base.anchor_key, e));
                     opts.cx.position.oof_sizes = Some((
                         base.anchor_key,
                         super::super::resolve::current_inputs(

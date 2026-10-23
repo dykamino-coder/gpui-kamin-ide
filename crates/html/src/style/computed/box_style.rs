@@ -43,9 +43,6 @@ pub struct BoxStyle {
     style: Rc<Computed>,
     /// Computed-стадия элемента отдельно от стиля его коробки; у анонимных коробок её нет.
     pub(crate) element_style: Option<ElementStyle>,
-    /// Стиль ДО наложения выбранного варианта `position-try` — из него
-    /// `anchor::place` строит остальные кандидаты. Ставит `anchor::apply_chosen`.
-    pub(crate) try_base: Option<Rc<BoxStyle>>,
     /// Стиль элемента с вариантами `position-try-fallbacks`: вариант вычисляется
     /// заново из его каскада (`resolve::try_rule_onto`).
     pub(crate) try_style: Option<crate::dom::SharedStyle>,

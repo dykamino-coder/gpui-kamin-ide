@@ -68,17 +68,17 @@ mod tests {
                 if zero {
                     assert_eq!(
                         if vertical {
-                            copy.style.computed().width
+                            copy.style.used().width
                         } else {
-                            copy.style.computed().height
+                            copy.style.used().height
                         },
                         Some(Len::Px(0.0))
                     );
                     assert_eq!(
                         if vertical {
-                            copy.style.computed().height
+                            copy.style.used().height
                         } else {
-                            copy.style.computed().width
+                            copy.style.used().width
                         },
                         None
                     );

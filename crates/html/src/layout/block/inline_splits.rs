@@ -114,11 +114,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 containing::hoist(&mut block, e);
                 // Разрыв коробок не меняет наследование стилей (CSS 2 §9.2.1.1).
                 // Сохраняем свойства маркера до выноса блока из родителя.
-                let (own, host, decl) = (
-                    block.style.used(),
-                    e.style.used(),
-                    e.style.cascaded(),
-                );
+                let (own, host, decl) = (block.style.used(), e.style.used(), e.style.cascaded());
                 let list_type = block.style.cascaded().list_style_type.clone();
                 let inside = block
                     .style
@@ -142,8 +138,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // своей статической позицией (`-003`).
                 let host_shift = e.style.used().position
                     == Some(crate::style::computed::Position::Relative)
-                    && (e.style.used().inset.left.is_some()
-                        || e.style.used().inset.top.is_some());
+                    && (e.style.used().inset.left.is_some() || e.style.used().inset.top.is_some());
                 let wrap_shift = host_shift
                     && matches!(
                         block.style.used().position,
@@ -184,12 +179,10 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // Прозрачность и слой хозяина действуют на ВЕСЬ разорванный
                 // элемент, включая вынесенный блок: раньше блок был куском
                 // строки и получал их заодно с ней.
-                if e.style.used().opacity.is_some() && block.style.used().opacity.is_none()
-                {
+                if e.style.used().opacity.is_some() && block.style.used().opacity.is_none() {
                     block.style.used_mut().opacity = e.style.used().opacity;
                 }
-                if e.style.used().z_index.is_some() && block.style.used().z_index.is_none()
-                {
+                if e.style.used().z_index.is_some() && block.style.used().z_index.is_none() {
                     block.style.used_mut().z_index = e.style.used().z_index;
                 }
                 if wrap_shift {

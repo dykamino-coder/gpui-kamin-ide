@@ -11,7 +11,7 @@ pub(crate) struct Identities(HashMap<u64, (u64, u32)>);
 fn source_key(e: &Element) -> Option<u64> {
     // Анонимные коробки не имеют исходной идентичности. Их общий anchor key
     // нельзя использовать как ключ краски нескольких разных коробок.
-    (e.node_id != 0 || e.style.computed().implicit_anchor.is_some()).then(|| super::key_of(e))
+    (e.node_id != 0 || e.style.used().implicit_anchor.is_some()).then(|| super::key_of(e))
 }
 
 impl LayoutCx {

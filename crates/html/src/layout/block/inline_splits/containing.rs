@@ -4,7 +4,7 @@ use crate::dom::{Element, InlineCb};
 use crate::style::computed::BoxStyle;
 
 pub(super) fn hoist(block: &mut Element, inline: &Element) {
-    if crate::text::inline::establishes_cb(&inline.style.computed()) {
+    if crate::text::inline::establishes_cb(&inline.style.used()) {
         let old = block.marks.inline_cb;
         block.marks.inline_cb = Some(InlineCb {
             node: old.map_or(inline.node_id, |cb| cb.node),

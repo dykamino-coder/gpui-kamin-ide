@@ -197,7 +197,12 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         Some(_) => cascaded,
         None => &*view,
     };
-    super::inherit::box_stage(parent, declared, &view, computed, element, paint, vcx)
+    let mut boxed =
+        super::inherit::box_stage(parent, declared, &view, computed, element, paint, vcx);
+    if !boxed.position_try_fallbacks.is_empty() {
+        boxed.try_style = Some(own.clone());
+    }
+    boxed
 }
 
 #[cfg(test)]

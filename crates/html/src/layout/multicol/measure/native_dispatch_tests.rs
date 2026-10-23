@@ -102,7 +102,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                             opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
                             let plan = stack_plan(
                                 &root,
-                                &BoxStyle::shared(root.style.computed()),
+                                &BoxStyle::shared(root.style.used()),
                                 &BoxStyle::default(),
                                 &opts,
                                 2,
@@ -157,7 +157,7 @@ fn continuation_groups_keep_their_explicit_f2_routes() {
         let opts = opts();
         let plan = stack_plan(
             root,
-            &BoxStyle::shared(root.style.computed()),
+            &BoxStyle::shared(root.style.used()),
             &BoxStyle::default(),
             &opts,
             2,
@@ -178,7 +178,7 @@ fn continuation_groups_keep_their_explicit_f2_routes() {
             assert!(
                 super::laid::children(
                     root,
-                    &BoxStyle::shared(root.style.computed()),
+                    &BoxStyle::shared(root.style.used()),
                     tree.values(),
                     120.0,
                     &Default::default()

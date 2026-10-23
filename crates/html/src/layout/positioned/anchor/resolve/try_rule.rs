@@ -108,22 +108,27 @@ mod tests {
 /// вычисленных значений.
 pub(crate) fn try_rule_onto(
     c: &mut crate::style::computed::BoxStyle,
+    inherited: &crate::style::computed::BoxStyle,
     decls: &crate::style::css::DeclBlock,
     vcx: ValueCx<'_>,
 ) {
     let own = c.try_style.clone();
-    let computed = own.is_some_and(|own| {
+    let computed = own.as_ref().is_some_and(|own| {
         crate::style::cascade::materialize::recompute_onto(
             c,
-            &own,
+            own,
             |declared| apply_try_rule(declared, decls, vcx),
             vcx,
         )
     });
     if !computed {
-        // TRANSITIONAL(cascade-7b layout-made styles): a style without a cascade
-        // stage (a box layout made) takes the declarations as they are; remove
-        // when layout-made boxes keep their element's cascade.
-        apply_try_rule(c, decls, vcx);
+        // Анонимный стиль одной стадии: объявления тоже проходят compute,
+        // но его родитель по CSS Display §2.5 — родитель коробки.
+        let mut declared = own
+            .as_ref()
+            .map(|own| own.cascaded().clone())
+            .unwrap_or_else(|| (**c).clone());
+        apply_try_rule(&mut declared, decls, vcx);
+        *c = crate::style::cascade::inherit::inherit(inherited, &declared, vcx);
     }
 }
