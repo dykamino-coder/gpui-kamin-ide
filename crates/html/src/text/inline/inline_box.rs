@@ -35,6 +35,8 @@ pub struct InlineBoxInfo {
     pub border: [f32; 4],
     /// `visibility: hidden` (§position-visibility: anchors-visible).
     pub hidden: bool,
+    /// Собственный шрифт коробки, независимо от шрифтов её потомков.
+    pub font_style: crate::style::computed::Computed,
 }
 
 fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 4] {
@@ -74,6 +76,7 @@ pub(super) fn mark_inline_box(
         pad: px4(p.top, p.right, p.bottom, p.left),
         border: px4(b.top, b.right, b.bottom, b.left),
         hidden: merged.hidden == Some(true),
+        font_style: (**merged).clone(),
     });
     let marker = |start: bool| {
         Piece::Overlay(

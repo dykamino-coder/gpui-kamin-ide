@@ -24,7 +24,7 @@ pub(super) fn table_tracks(
     let cb_px = opts.cx.constraints.cb_width;
     let vcx = opts.cx.vcx();
     let mut col_widths = col_widths.to_vec();
-    let vertical = e.style.cascaded().wm().vertical();
+    let vertical = e.style.used().wm().vertical();
     let inline_size = if vertical {
         e.style.used().height
     } else {
@@ -127,7 +127,7 @@ pub(super) fn first_row_widths_of(
     cols: u16,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Option<f32>> {
-    let vertical = e.style.cascaded().wm().vertical();
+    let vertical = e.style.used().wm().vertical();
     let axes = super::super::axes::Axes::new(&e.style.used());
     let first_row_widths: Vec<Option<f32>> = row_elements
         .first()

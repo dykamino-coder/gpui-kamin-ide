@@ -20,29 +20,15 @@ pub(crate) struct Marker {
 
 pub(crate) fn resolve(
     li: &Element,
-    inherited: &Computed,
+    _inherited: &Computed,
     merged: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Marker> {
     let idx = li.list_item.unwrap_or(0);
     // Вид маркера задаёт документ; без указания — умолчание тега.
     // Строковый маркер берётся дословно и без суффикса-точки.
-    let text_marker = li.style.used().marker_text.clone().or_else(|| {
-        (li.style.cascaded().list_style_type.is_none()
-            && li.style.used().no_marker.is_none()
-            && inherited
-                .marker_layer
-                .as_deref()
-                .is_none_or(|m| m.content.is_none()))
-        .then(|| inherited.marker_text.clone())
-        .flatten()
-    });
-    let kind = li
-        .style
-        .cascaded()
-        .list_style_type
-        .clone()
-        .or_else(|| inherited.list_style_type.clone());
+    let text_marker = merged.marker_text.clone();
+    let kind = merged.list_style_type.clone();
     let symbol = text_marker_symbol(
         text_marker.is_none()
             && li
@@ -91,7 +77,7 @@ pub(crate) fn resolve(
         .then(|| image::resolve(merged, style.as_deref(), vcx))
         .flatten();
     let no_marker = (!matches!(li_style.display, None | Some(Display::ListItem)))
-        || (image.is_none() && li_style.no_marker.or(inherited.no_marker) == Some(true));
+        || (image.is_none() && merged.no_marker == Some(true));
     // CSS Lists 3 marker-properties: an outside generated symbol has no
     // tracking advance (Blink list_marker.cc:391,407, InlineMarginsForOutside).
     // Preserve text markers and the inside-marker text flow from #355.

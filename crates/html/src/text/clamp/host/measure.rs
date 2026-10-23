@@ -38,7 +38,7 @@ pub(super) fn measure(
                 .height
                 .map_or(available.height, AvailableSpace::Definite),
         );
-        trial.layout_as_root(space, window, cx);
+        trial.layout_as_root_unrounded(space, window, cx);
         let batch = records.collect(key, point(px(0.), px(0.)), window);
         let mut plan = Rc::new(geometry.compute(batch.entries, &batch.rows, content_top));
         // Балансировка после выбора точки может увеличить высоту строк
@@ -54,7 +54,9 @@ pub(super) fn measure(
                 used_box,
                 false,
             );
-            let measured = applied.layout_as_root(space, window, cx);
+            // Размер переносится в родительскую раскладку без округления:
+            // округляются только конечные абсолютные края при отрисовке.
+            let measured = applied.layout_as_root_unrounded(space, window, cx);
             let batch = applied_records.collect(key, point(px(0.), px(0.)), window);
             let next = geometry.compute(batch.entries, &batch.rows, content_top);
             if refines(&plan, &next) {

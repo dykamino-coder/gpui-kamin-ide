@@ -45,6 +45,7 @@ pub(crate) fn vertical_paragraph(
         return upright_paragraph(nodes, inherited, opts);
     }
     let mut horizontal = inherited.clone();
+    horizontal.inline_format = Some(crate::style::computed::InlineFormat::Turned);
     horizontal.flat_mode = horizontal.flow_mode();
     horizontal.writing_mode = None;
     // Пометка для `text-combine-upright`: кускам внутри повёрнутого

@@ -102,3 +102,27 @@ fn fragmented_block_reports_its_used_size_without_mutating_the_probe() {
     assert_eq!(plan.cut, 24.0);
     assert_eq!(f32::from(probes[0].bounds.size.height), 50.0);
 }
+
+#[test]
+fn fractional_line_edges_survive_the_clamp_plan() {
+    let geometry = ClampGeometry {
+        limit: Some(2),
+        max_h: None,
+        trim_end: 0.0,
+    };
+    let first = 32.0546875;
+    let mut entry = paragraph(0, 0.0, first * 3.0);
+    entry.clamped = Some(2);
+    let rows = HashMap::from([(
+        0,
+        vec![
+            (0.0, first),
+            (first, 2.0 * first),
+            (2.0 * first, 3.0 * first),
+        ],
+    )]);
+    let plan = geometry.compute(vec![entry], &rows, 0.0);
+    assert_eq!(plan.para, Some((0, 2)));
+    assert_eq!(plan.cut, 2.0 * first);
+    assert_ne!(plan.cut, plan.cut.round());
+}

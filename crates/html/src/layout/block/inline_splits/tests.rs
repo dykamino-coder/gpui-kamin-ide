@@ -47,7 +47,13 @@ fn inline_splits_preserve_inherited_marker_images_and_explicit_overrides() {
                 parent.children = vec![node];
                 node = Node::Element(parent);
             }
-            let split = split_block_in_inline(&[node]);
+            let nodes = [node];
+            crate::style::cascade::materialize::materialize(
+                &nodes,
+                &std::rc::Rc::new(Computed::default()),
+                vcx,
+            );
+            let split = split_block_in_inline(&nodes);
             let [Node::Element(item)] = split.as_slice() else {
                 panic!("вынесенный пункт списка")
             };
@@ -81,4 +87,33 @@ fn inherited_marker_image_only_generates_a_marker_for_a_list_item() {
             display == "list-item"
         );
     }
+}
+
+#[test]
+fn hoisted_list_item_uses_its_element_parent_not_the_inline_layout_copy() {
+    use crate::style::cascade::materialize::{box_style, materialize};
+    use std::rc::Rc;
+    let doc = DocState::new(Default::default());
+    let vcx = doc.values();
+    let item = element("display:list-item", vec![], vcx);
+    let mut parent = element(
+        "display:inline;list-style-type:square",
+        vec![Node::Element(item)],
+        vcx,
+    );
+    parent.inline = true;
+    let mut nodes = [Node::Element(parent)];
+    materialize(&nodes, &Rc::new(Computed::default()), vcx);
+    let Node::Element(copy) = &mut nodes[0] else {
+        unreachable!()
+    };
+    copy.style.used_mut().list_style_type = Some("circle".into());
+    let split = split_block_in_inline(&nodes);
+    let [Node::Element(item)] = split.as_slice() else {
+        panic!("list item")
+    };
+    let boxed = box_style(&BoxStyle::default(), &item.style, vcx);
+    assert_eq!(boxed.list_style_type.as_deref(), Some("square"));
+    let marker = marker::resolve(item, &Computed::default(), &boxed, vcx).unwrap();
+    assert_eq!(marker.text.trim(), "▪");
 }

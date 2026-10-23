@@ -16,7 +16,7 @@ pub(super) fn table_grid_box(
     vcx: ValueCx<'_>,
 ) -> gpui::Div {
     let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
-        true if !e.style.cascaded().wm().vertical() => Some(
+        true if !e.style.used().wm().vertical() => Some(
             row_elements
                 .iter()
                 .map(|row| {
@@ -49,7 +49,7 @@ pub(super) fn table_grid_box(
     // `1fr` с `flex_grow`, и ряды растягивались на высоту растянутого стола;
     // здесь авто-ряд остаётся `auto`, а пол — только у ряда с высотой.
     let row_floors: Option<Vec<gpui::GridTrack>> = (row_tracks.is_none()
-        && !e.style.cascaded().wm().vertical()
+        && !e.style.used().wm().vertical()
         && row_elements
             .iter()
             .any(|r| matches!(r.style.used().height, Some(Len::Px(h)) if h > 0.0)))
@@ -66,7 +66,7 @@ pub(super) fn table_grid_box(
             .collect()
     });
 
-    let mut grid = if e.style.cascaded().wm().vertical() {
+    let mut grid = if e.style.used().wm().vertical() {
         // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
         // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
         let mut g = div().grid().grid_template_rows(tracks);
@@ -184,7 +184,7 @@ fn collapsed_tracks(e: &Element, vcx: ValueCx<'_>) -> Option<(bool, Vec<u16>)> {
         .filter_map(|(i, row)| {
             let collapse = crate::layout::table::anon::row_collapsed(row.element, row.carry.group);
             collapse.then_some(
-                if e.style.cascaded().wm().vertical() && e.style.cascaded().wm().block_rl() {
+                if e.style.used().wm().vertical() && e.style.used().wm().block_rl() {
                     (logical_rows.len() - i - 1) as u16
                 } else {
                     i as u16
@@ -192,7 +192,7 @@ fn collapsed_tracks(e: &Element, vcx: ValueCx<'_>) -> Option<(bool, Vec<u16>)> {
             )
         })
         .collect();
-    (!collapsed.is_empty()).then_some((e.style.cascaded().wm().vertical(), collapsed))
+    (!collapsed.is_empty()).then_some((e.style.used().wm().vertical(), collapsed))
 }
 
 #[cfg(test)]
@@ -218,7 +218,7 @@ mod tests {
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 true,
-                table.style.cascaded().wm().sideways(),
+                table.style.used().wm().sideways(),
             ));
         assert_eq!(collapsed_tracks(&table, vcx), Some((true, vec![0])));
     }

@@ -65,7 +65,7 @@ pub(super) fn table_size_floors(
         Some(Len::Px(w))
             if e.style.used().table_fixed == Some(true)
                 && !collapse
-                && !e.style.cascaded().wm().vertical()
+                && !e.style.used().wm().vertical()
                 && !first_row_widths.is_empty()
                 && first_row_widths.iter().all(|c| c.is_some()) =>
         {
@@ -106,7 +106,7 @@ pub(super) fn table_grid_child(
         },
         if have_rows { spacing.1 } else { 0.0 },
     );
-    let spacing_phys = if e.style.cascaded().wm().vertical() {
+    let spacing_phys = if e.style.used().wm().vertical() {
         (spacing.1, spacing.0)
     } else {
         spacing

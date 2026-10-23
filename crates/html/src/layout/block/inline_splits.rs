@@ -112,24 +112,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // не действуют (`Computed::hoisted_block`, `transformed`).
                 block.style.used_mut().hoisted_block = true;
                 containing::hoist(&mut block, e);
-                // Разрыв коробок не меняет наследование стилей (CSS 2 §9.2.1.1).
-                // Сохраняем свойства маркера до выноса блока из родителя.
-                let (own, host, decl) = (block.style.used(), e.style.used(), e.style.cascaded());
-                let list_type = block.style.cascaded().list_style_type.clone();
-                let inside = block
-                    .style
-                    .cascaded()
-                    .list_style_inside
-                    .or(decl.list_style_inside);
-                let used = block.style.used_mut();
-                used.list_style_type = list_type.or_else(|| decl.list_style_type.clone());
-                used.list_style_image = own
-                    .list_style_image
-                    .clone()
-                    .or_else(|| host.list_style_image.clone());
-                used.list_style_inside = inside;
-                used.no_marker = own.no_marker.or(host.no_marker);
-                used.marker_text = own.marker_text.clone().or_else(|| host.marker_text.clone());
+                // Наследование уже вычислено по дереву элементов (CSS 2 §6.2).
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,
                 // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:

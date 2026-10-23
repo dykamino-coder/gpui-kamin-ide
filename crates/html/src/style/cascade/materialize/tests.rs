@@ -19,8 +19,8 @@ pub(super) fn find<'a>(nodes: &'a [Node], tag: &str) -> Option<&'a Element> {
     })
 }
 
-fn generation(vcx: ValueCx<'_>) -> u64 {
-    vcx.doc.metrics.generation()
+fn generation(vcx: ValueCx<'_>) -> Inputs {
+    inputs(vcx)
 }
 
 fn slot_parent(own: &SharedStyle) -> Option<Rc<Computed>> {

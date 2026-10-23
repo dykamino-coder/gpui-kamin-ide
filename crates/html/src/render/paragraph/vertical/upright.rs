@@ -47,6 +47,7 @@ pub(crate) fn upright_paragraph(
         return stack;
     }
     let mut stack = inherited.clone();
+    stack.inline_format = Some(crate::style::computed::InlineFormat::Upright);
     stack.flat_mode = stack.flow_mode();
     stack.writing_mode = None;
     stack.upright_stack = true;

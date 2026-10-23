@@ -198,7 +198,7 @@ pub(crate) fn table(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Any
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
-    let table_is_vertical = e.style.cascaded().wm().vertical() || inherited.wm().vertical();
+    let table_is_vertical = e.style.used().wm().vertical() || inherited.wm().vertical();
     measure_col_widths(
         e,
         inherited,

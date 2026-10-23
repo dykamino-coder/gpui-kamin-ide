@@ -40,7 +40,27 @@ impl Paragraph {
         }
         if !info.names.is_empty() {
             let edges: [f32; 4] = std::array::from_fn(|k| info.pad[k] + info.border[k]);
-            if let Some(r) = self.inline_box_rect(segs, s, e, edges, bounds) {
+            let mut base = gpui::TextStyle::default();
+            if let Some((font, _)) = &self.strut_run {
+                base.font_family = font.family.clone();
+                base.font_fallbacks = font.fallbacks.clone();
+            }
+            let font = crate::text::inline::strut_font(&info.font_style, &base, vcx);
+            let size = match info.font_style.font_size {
+                Some(crate::style::values::value::Len::Px(v)) => px(v),
+                _ => self.font_size,
+            };
+            let ts = window.text_system();
+            let id = ts.resolve_font(&font);
+            let metrics = crate::text::fonts::metric_overrides::extents(
+                &font,
+                f32::from(size),
+                (
+                    f32::from(ts.ascent(id, size)),
+                    f32::from(ts.descent(id, size)).abs(),
+                ),
+            );
+            if let Some(r) = self.inline_box_rect(segs, s..e, edges, metrics, bounds) {
                 crate::layout::positioned::anchor::register_inline_anchor(
                     &info.names,
                     crate::layout::positioned::anchor::Entry {

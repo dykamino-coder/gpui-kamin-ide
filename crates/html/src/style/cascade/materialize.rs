@@ -24,11 +24,20 @@ pub(crate) use recompute::{recompute_onto, rematerialize};
 #[derive(Default)]
 pub struct ComputedSlot(RefCell<Option<Rc<Materialized>>>);
 
+type Inputs = (u64, [u32; 2]);
+
+fn inputs(vcx: ValueCx<'_>) -> Inputs {
+    (
+        vcx.doc.metrics.generation(),
+        [vcx.viewport.0.to_bits(), vcx.viewport.1.to_bits()],
+    )
+}
+
 struct Materialized {
     /// Вычисленный стиль родителя, под которым он посчитан.
     parent: Rc<Computed>,
-    /// Поколение шрифтовых входов документа (`text::metrics`).
-    generation: u64,
+    /// Поколение шрифтовых входов и размеры viewport для относительных единиц.
+    generation: Inputs,
     computed: Rc<Computed>,
 }
 
@@ -54,7 +63,7 @@ impl Materialized {
     /// ненаследуемых значений родителя (css-cascade-5 §7.3.1): ему годен только тот же
     /// родитель или равный во всём (Blink `MatchedPropertiesCache`: explicit inheritance
     /// сверяет и non-inherited данные родителя).
-    fn fits(&self, parent: &Computed, generation: u64, explicit: bool) -> bool {
+    fn fits(&self, parent: &Computed, generation: Inputs, explicit: bool) -> bool {
         self.generation == generation
             && (std::ptr::eq(&*self.parent, parent)
                 || if explicit {
@@ -67,7 +76,7 @@ impl Materialized {
 
 impl ComputedSlot {
     /// Материализованный стиль каскадного `own`, годный под родителем `parent`.
-    fn get(&self, own: &Computed, parent: &Computed, generation: u64) -> Option<Rc<Computed>> {
+    fn get(&self, own: &Computed, parent: &Computed, generation: Inputs) -> Option<Rc<Computed>> {
         let explicit = !own.explicit_inherit.is_empty() || !own.inherit_longhands.is_empty();
         self.0
             .borrow()
@@ -96,7 +105,7 @@ impl ComputedSlot {
 pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_>) {
     // Записи арен вычисленного стиля живут с документом, а не с кадром.
     let vcx = vcx.persistent();
-    let generation = vcx.doc.metrics.generation();
+    let generation = inputs(vcx);
     walk(nodes, parent, generation, &mut Vec::new(), vcx);
 }
 
@@ -107,7 +116,7 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
 fn walk(
     nodes: &[Node],
     parent: &Rc<Computed>,
-    generation: u64,
+    generation: Inputs,
     lent: &mut Vec<(u64, Rc<Computed>)>,
     vcx: ValueCx<'_>,
 ) {
@@ -205,6 +214,8 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
     boxed
 }
 
+#[cfg(test)]
+mod format_tests;
 #[cfg(test)]
 mod paint_tests;
 #[cfg(test)]

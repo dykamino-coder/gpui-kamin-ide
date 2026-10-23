@@ -14,7 +14,7 @@ pub(super) mod orthogonal_fixed_child;
 mod orthogonal_horizontal;
 pub(crate) mod orthogonal_inline;
 pub(crate) mod orthogonal_measure;
-mod physical_atomic;
+pub(crate) mod physical_atomic;
 mod physical_atomic_frame;
 pub(crate) mod rotated_atom;
 pub(crate) mod vertical_hug;

@@ -91,7 +91,7 @@ pub(super) fn wrap_with_captions(
         // (css-writing-modes-4 §6, особое исключение для caption-side): в
         // вертикальном письме заголовок стоит СБОКУ — справа при `vertical-rl`,
         // слева при `vertical-lr` (`caption-side-vrl-002`).
-        let vertical = e.style.cascaded().wm().vertical();
+        let vertical = e.style.used().wm().vertical();
         let mut wrap = if vertical {
             div().flex().flex_row()
         } else {
@@ -209,7 +209,7 @@ pub(super) fn wrap_with_captions(
         // переворачивается ВЕСЬ порядок обёртки. Прежнее
         // `cap_first = caption_bottom == (vertical && vertical_rl)` — тот же
         // разворот, записанный для ОДНОЙ подписи.
-        if vertical && e.style.cascaded().wm().block_rl() {
+        if vertical && e.style.used().wm().block_rl() {
             cap_wrap.reverse();
         }
         wrap.style().no_inline_block_baseline = Some(true);

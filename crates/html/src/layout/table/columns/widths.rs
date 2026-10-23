@@ -118,8 +118,8 @@ pub(crate) fn col_element_widths(
                         // авто-колонке: явный глиф-замер уводил ширину
                         // (ch-units-vrl-007/008 были зелёными на авто).
                         (Some(Len::Ch(k)), _)
-                            if el.style.cascaded().wm().upright()
-                                && el.style.cascaded().wm().vertical() =>
+                            if el.style.used().wm().upright()
+                                && el.style.used().wm().vertical() =>
                         {
                             let base = match el.style.used().font_size {
                                 Some(Len::Px(v)) => v,

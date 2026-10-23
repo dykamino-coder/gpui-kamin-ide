@@ -21,7 +21,7 @@ pub(super) fn place_cell_in_grid(
 ) -> gpui::Div {
     // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
     // меняются осями вместе с сеткой (css-writing-modes-3 §8).
-    let (grid_cols, grid_rows) = if e.style.cascaded().wm().vertical() {
+    let (grid_cols, grid_rows) = if e.style.used().wm().vertical() {
         (span_rows, span_cols)
     } else {
         (span_cols, span_rows)
@@ -35,9 +35,9 @@ pub(super) fn place_cell_in_grid(
     // Явные координаты вместо авто-потока: у `vertical-rl` ряды идут
     // от ПРАВОГО края, а авто-поток умеет только вперёд — реверс
     // рядов ломал охваты объединённых ячеек.
-    if e.style.cascaded().wm().vertical() {
+    if e.style.used().wm().vertical() {
         let n_rows = row_elements.len() as i16;
-        let gc = if e.style.cascaded().wm().block_rl() {
+        let gc = if e.style.used().wm().block_rl() {
             n_rows - row_ix - (span_rows as i16) + 2
         } else {
             row_ix
@@ -47,15 +47,15 @@ pub(super) fn place_cell_in_grid(
         // ФОРСИРУЕТ ltr (§5.1 — upright задаёт направление ltr), а у
         // `sideways-lr` базовое направление само снизу вверх —
         // разворот инвертируется.
-        let rtl_line = e.style.cascaded().wm().rtl() && !e.style.cascaded().wm().upright();
-        let base_up = e.style.cascaded().wm().sideways_lr();
+        let rtl_line = e.style.used().wm().rtl() && !e.style.used().wm().upright();
+        let base_up = e.style.used().wm().sideways_lr();
         let gr = if rtl_line != base_up {
             cols as i16 - col_ix as i16 - span_cols as i16 + 1
         } else {
             col_ix as i16 + 1
         };
         d = d.col_start(gc.max(1)).row_start(gr.max(1));
-    } else if e.style.cascaded().wm().rtl() {
+    } else if e.style.used().wm().rtl() {
         // `dir=rtl` на таблице: колонки идут от ПРАВОГО края
         // (CSS 2.2 §17.2) — та же явная расстановка, зеркалом.
         let gc = cols as i16 - col_ix as i16 - span_cols as i16 + 1;
@@ -124,7 +124,7 @@ pub(super) fn cell_contents(
     } else if clipped {
         vec![table_clipped_content::wrap(&mut d, inside)]
     } else if matches!(cm.vertical_align, Some(Align::Center) | Some(Align::End))
-        && !e.style.cascaded().wm().vertical()
+        && !e.style.used().wm().vertical()
         && cell.children.iter().any(|n| {
             matches!(n, Node::Element(c) if matches!(
                 c.style.used().position,

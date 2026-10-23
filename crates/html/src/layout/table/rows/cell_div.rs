@@ -174,7 +174,7 @@ pub(super) fn ortho_cell_box(
     // `table_layout_utils.cc:218`:
     // `ConstraintSpaceBuilder(table_writing_direction.GetWritingMode(),
     //                         cell_writing_direction, /* is_new_fc */ true)`.
-    let ortho_cell = cm.wm().vertical() && !e.style.cascaded().wm().vertical();
+    let ortho_cell = cm.wm().vertical() && !e.style.used().wm().vertical();
     let mut d = if ortho_cell {
         let d = d.flex();
         if cm.wm().block_rl() {
@@ -232,7 +232,7 @@ pub(super) fn ortho_cell_box(
         } else {
             None
         });
-        if own_va == Some(Align::Baseline) && !e.style.cascaded().wm().vertical() {
+        if own_va == Some(Align::Baseline) && !e.style.used().wm().vertical() {
             d.style().table_cell_baseline = Some(true);
         }
     }

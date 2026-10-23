@@ -7,7 +7,8 @@ use crate::style::computed::{BoxStyle, Display as D};
 
 /// TRANSITIONAL(P-18 box context): a differing write copies the shared computed
 /// style; see `impl DerefMut for BoxStyle`.
-pub(super) fn inherit_context(parent: &Computed, own: &Computed, c: &mut BoxStyle) {
+pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyle) {
+    c.inline_contents(parent, own.ruby_unit);
     set!(
         c.text_shadow_ink,
         own.text_shadow_ink.or(parent.text_shadow_ink)

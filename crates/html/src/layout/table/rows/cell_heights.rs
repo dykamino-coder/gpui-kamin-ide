@@ -52,8 +52,8 @@ pub(super) fn resolve_cell_heights(
     // подгонка под поворотную модель), но коробку ячейки никто не
     // вращает — её строчная ось физически ВЕРТИКАЛЬНА, и размер
     // обязан лечь высотой (table-cell-align-005/006).
-    if cell.style.cascaded().wm().vertical()
-        && !e.style.cascaded().wm().vertical()
+    if cell.style.used().wm().vertical()
+        && !e.style.used().wm().vertical()
         && cell.style.used().height.is_none()
         && cell.style.used().width_from_inline
         && cell.style.used().width.is_some()
@@ -73,7 +73,7 @@ pub(super) fn resolve_cell_heights(
     // Предел ортогонального потока пересчитывается ПОСЛЕ переклада
     // inline-size в высоту: блок выше (у `let mut cm`) высоты ещё
     // не видел (table-cell-align-005/006).
-    if cell.style.cascaded().wm().vertical()
+    if cell.style.used().wm().vertical()
         && cm.ortho_limit.is_none()
         && let Some(Len::Px(h)) = cell.style.used().height
     {

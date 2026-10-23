@@ -74,8 +74,8 @@ pub(super) fn prepare_cell_box(
         geom.table_is_vertical,
         spans.spans_collapsed,
     );
-    let orthogonal_inline = cell.style.cascaded().wm().vertical()
-        && !geom.e.style.cascaded().wm().vertical()
+    let orthogonal_inline = cell.style.used().wm().vertical()
+        && !geom.e.style.used().wm().vertical()
         && cell.style.used().width_from_inline;
     if !geom.table_is_vertical
         && !orthogonal_inline
@@ -97,8 +97,8 @@ pub(super) fn prepare_cell_box(
     // (table-cell-valign-003-ref). Ортогональную ячейку не трогаем:
     // её width — логический inline-size, он ниже перекладывается в
     // высоту.
-    if !(cell.style.cascaded().wm().vertical()
-        && !geom.e.style.cascaded().wm().vertical()
+    if !(cell.style.used().wm().vertical()
+        && !geom.e.style.used().wm().vertical()
         && cell.style.used().width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).
