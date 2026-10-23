@@ -19,9 +19,11 @@
 //! * значение, которое берёт каскадное `inherit`, — вычисленное значение
 //!   родителя (с `eff_родителя`) × `own` (`compute::zoom::parent_in_own_zoom`).
 //!
+//! Единицы окна домножаются при разрешении (`ViewportCx::for_box` — окно в
+//! зуме коробки), точечная часть `calc()` — здесь.
+//!
 //! Что не домножается: природный размер картинок (`layout::replaced`,
-//! `natural_ratio`), `vw`/`vh` (`Computed::resolve_viewport`), px внутри
-//! `shape-outside`/`clip-path`, `Calc(i)` и SVG.
+//! `natural_ratio`), px внутри `shape-outside`/`clip-path` и SVG.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -34,7 +36,13 @@ pub(crate) use scale::{scale_own, scale_transform};
 
 /// Длины каскадного стиля `c` в зуме `eff` (собственный множитель `own`) под
 /// вычисленным стилем родителя `parent`.
-pub(crate) fn apply(c: &mut Computed, parent: Option<&Computed>, eff: f32, own: f32) {
+pub(crate) fn apply(
+    c: &mut Computed,
+    parent: Option<&Computed>,
+    eff: f32,
+    own: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     // Кегль — первым и отдельно: от него стадия считает все `em` элемента,
     // и в `scale_own` он НЕ входит (иначе множитель лёг бы дважды).
     c.font_size = match c.font_size {
@@ -52,7 +60,7 @@ pub(crate) fn apply(c: &mut Computed, parent: Option<&Computed>, eff: f32, own: 
         None if (own - 1.0).abs() > f32::EPSILON => Some(Len::Em(own)),
         other => other,
     };
-    scale_own(c, eff);
+    scale_own(c, eff, vcx);
     // То же у высоты строки: `line-height: 2lh` решается от строки родителя
     // и должен «still multiply by our own zoom» (relative-units-from-parent:
     // `zoom: 2; line-height: 2lh` ≡ `line-height: 4lh`). Точечная часть

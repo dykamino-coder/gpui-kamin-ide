@@ -32,19 +32,29 @@ pub(super) fn factors(parent: &Computed, own: &Computed) -> Option<(f32, f32)> {
 }
 
 /// Длины каскадного стиля `own` в зуме элемента (`eff`, свой множитель `k`).
-pub(super) fn zoom_own(parent: &Computed, own: &mut Computed, k: f32, eff: f32) {
+pub(super) fn zoom_own(
+    parent: &Computed,
+    own: &mut Computed,
+    k: f32,
+    eff: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     own.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
-    crate::style::zoom::apply(own, Some(parent), eff, k);
+    crate::style::zoom::apply(own, Some(parent), eff, k, vcx);
 }
 
 /// Родитель в зуме элемента с собственным множителем `k`: значения, которые
 /// берёт каскадное `inherit` (css-cascade-5 §7.3.1: вычисленное значение
 /// родителя, а длины элемента — в его зуме).
-pub(super) fn parent_in_own_zoom(parent: &Computed, k: f32) -> Option<Computed> {
+pub(super) fn parent_in_own_zoom(
+    parent: &Computed,
+    k: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Computed> {
     if (k - 1.0).abs() <= f32::EPSILON {
         return None;
     }
     let mut p = parent.clone();
-    crate::style::zoom::scale_own(&mut p, k);
+    crate::style::zoom::scale_own(&mut p, k, vcx);
     Some(p)
 }
