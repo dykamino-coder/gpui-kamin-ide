@@ -148,6 +148,15 @@ impl std::ops::Deref for BoxStyle {
     }
 }
 
+/// TRANSITIONAL(P-18 box context): the box-context fields that `inherit::context`
+/// writes for children of grid, flex and lanes containers (`parent_grid`,
+/// `parent_flex_grid`, `parent_grid_align_items`, `parent_lanes`,
+/// `parent_subgrid`, `cq_box`, ...) and layout's used values still live in
+/// `Computed`, so the first differing write copies the whole shared computed
+/// style (measured: `Computed::clone` 3-5% of a frame after P-18). They stay
+/// there because paint (`paint::apply`) and layout-made element styles
+/// (`SharedStyle::layout_made`, the used layer) read them from a `Computed`.
+/// Remove when paint takes the `BoxStyle` and these fields move into it.
 impl std::ops::DerefMut for BoxStyle {
     fn deref_mut(&mut self) -> &mut Computed {
         Rc::make_mut(&mut self.style)
