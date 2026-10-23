@@ -38,7 +38,7 @@ impl PageStack {
     }
 }
 
-fn growths(
+pub(super) fn growths(
     blocks: &BlockBox,
     k: &Kid,
     laid: &Laid,
