@@ -15,6 +15,7 @@ mod builder;
 pub use builder::DocumentBuilder;
 mod canvas_background;
 mod embedded;
+pub(crate) mod image_values;
 mod logical_properties;
 #[cfg(test)]
 mod resource_tests;

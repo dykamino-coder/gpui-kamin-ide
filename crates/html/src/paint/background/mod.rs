@@ -7,8 +7,8 @@
 //! канвасом, который знает свои границы во время отрисовки, и кладёт нужное
 //! число копий сам.
 //!
-//! Образ декодируется один раз и лежит в кэше: разбор PNG на каждом кадре
-//! стоил бы дороже всей остальной отрисовки документа.
+//! Готовые CPU-источники приходят из resources; здесь только геометрия заливки
+//! и загрузка точек в GPUI, без URL-кэша и декодера.
 
 use crate::document::state::ValueCx;
 mod root_area;
@@ -42,9 +42,6 @@ pub use mask_composite::{MaskLayer, compose_mask_layers};
 pub(crate) use mask_luminance::luminance_mask_image;
 mod clip;
 mod conic;
-mod sources;
-pub use sources::source;
-pub(crate) use sources::{computed_source, element_source};
 mod gradient_raster;
 
 pub(super) mod exact_layer;
@@ -58,8 +55,8 @@ mod shape_raster;
 pub use crate::paint::background::shape_raster::*;
 pub(super) mod raster;
 pub(crate) use crate::paint::background::raster::*;
-pub(super) mod image_decode;
-pub(crate) use crate::paint::background::image_decode::*;
+mod svg_background;
+pub(crate) use svg_background::svg_root_background;
 pub(super) mod tiles;
 pub use crate::paint::background::tiles::*;
 

@@ -25,7 +25,7 @@ pub(crate) fn with_inherited_font(e: &Element, inherited: &Computed) -> Element 
     }
     // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4, «Inherited: yes»),
     // а копия несёт только собственный стиль элемента. Замещаемая коробка
-    // строится ИМЕННО ИЗ НЕЁ: и растр (`background::element_source(src, &e.style)`), и
+    // строится ИМЕННО ИЗ НЕЁ: и растр (`css_images::element_source(src, &e.style)`), и
     // собственный фон (`styled_div` -> `background::layer(&e.style)`) читают
     // стиль копии, поэтому без переноса `image-orientation: none`, заданный
     // на предке, до картинки не доезжает и EXIF-разворот применяется всё

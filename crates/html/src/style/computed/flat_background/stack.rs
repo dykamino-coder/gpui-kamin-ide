@@ -7,15 +7,15 @@
 //! прямоугольной картинки поверх глифов; картинка, которую нельзя показать, считается `none`
 //! (CSS Backgrounds 3 §2.3) и даёт прозрачный чёрный. Частичная альфа свёртке не подлежит.
 
-use super::{BackgroundImageValues, flat_fill, over};
+use super::{BackgroundImageValues, ImageAvailability, flat_fill, over};
 use crate::document::state::ValueCx;
 use crate::style::computed::{BgClip, BlendMode, Computed};
 use crate::style::values::value::Color;
 
 mod blend;
 
-pub(crate) fn collapse(c: &mut Computed, vcx: ValueCx<'_>) {
-    let Some(stack) = evaluate(c, vcx) else {
+pub(crate) fn collapse(c: &mut Computed, vcx: ValueCx<'_>, images: &dyn BackgroundImageValues) {
+    let Some(stack) = evaluate(c, vcx, images) else {
         return;
     };
     c.background = (stack[0].a > 0.0).then_some(stack[0]);
@@ -29,7 +29,11 @@ pub(crate) fn collapse(c: &mut Computed, vcx: ValueCx<'_>) {
     c.background_blend = None;
 }
 
-fn evaluate(c: &Computed, vcx: ValueCx<'_>) -> Option<[Color; 3]> {
+fn evaluate(
+    c: &Computed,
+    vcx: ValueCx<'_>,
+    images: &dyn BackgroundImageValues,
+) -> Option<[Color; 3]> {
     let layers = c.bg_layers(vcx).unwrap_or_else(|| {
         let mut image = c.clone();
         image.background = None;
@@ -52,17 +56,21 @@ fn evaluate(c: &Computed, vcx: ValueCx<'_>) -> Option<[Color; 3]> {
         }
     }
     for layer in layers.iter().rev() {
-        let unavailable = layer
+        let availability = layer
             .bg_image
             .as_ref()
-            .is_some_and(|image| !layer.image_available(image, vcx));
+            .map(|image| images.image_available(image, layer.image_orient_none != Some(true)));
+        if availability == Some(ImageAvailability::Pending) {
+            return None;
+        }
+        let unavailable = availability == Some(ImageAvailability::Failed);
         // CSS Backgrounds 3 §2.3: an image that cannot be displayed is
         // treated as none. It contributes transparent black to the stack,
         // without suppressing the lower background color or blend modes.
         let color = if unavailable || (layer.bg_image.is_none() && layer.gradient.is_none()) {
             Color::default()
         } else {
-            flat_fill(layer, vcx)?
+            flat_fill(layer, images)?
         };
         for (region, pixel) in result.iter_mut().enumerate() {
             if contains(layer.bg_clip, region)? {
@@ -109,7 +117,7 @@ mod tests {
         c.apply_one("background-clip", "text", vcx);
         c.apply_one("background-color", "red", vcx);
         c.apply_one("background-blend-mode", "difference, normal", vcx);
-        collapse(&mut c, vcx);
+        collapse(&mut c, vcx, &vcx.background_images());
         assert!(c.background.is_none());
         assert_eq!(c.flat_text_background, Color::parse("lime", vcx));
         assert!(c.bg_layers(vcx).is_none());
@@ -123,7 +131,7 @@ mod tests {
         c.apply_one("background-image", "linear-gradient(green, green)", vcx);
         c.apply_one("background-color", "red", vcx);
         c.apply_one("background-clip", "text", vcx);
-        collapse(&mut c, vcx);
+        collapse(&mut c, vcx, &vcx.background_images());
         assert!(c.background.is_none());
         assert_eq!(c.flat_text_background, Color::parse("green", vcx));
     }
@@ -141,7 +149,9 @@ mod tests {
         c.apply_one("background-color", "cyan", vcx);
         c.apply_one("background-clip", "text, border-box", vcx);
         c.apply_one("background-blend-mode", "difference, lighten", vcx);
-        collapse(&mut c, vcx);
+        let node = crate::dom::Element::synthetic("div", c.clone(), Default::default(), vec![]);
+        crate::document::image_values::prepare(&[crate::dom::Node::Element(node)], vcx);
+        collapse(&mut c, vcx, &vcx.background_images());
         assert_eq!(c.background, Color::parse("cyan", vcx));
         assert_eq!(c.flat_text_background, Color::parse("blue", vcx));
     }

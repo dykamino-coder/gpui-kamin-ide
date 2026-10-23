@@ -40,7 +40,8 @@ pub(super) fn fit_local_image(
     }
     let image = position(image, &e.style, vcx);
     if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
-        crate::paint::background::element_source(local.unwrap_or(src), &e.style, vcx)
+        crate::resources::css_images::element_source(local.unwrap_or(src), &e.style, vcx)
+            .map(crate::paint::background::Source::from_cpu)
     {
         let mut style = (*e.style).clone();
         if fills_holder {
@@ -110,21 +111,23 @@ pub(super) fn local_image_source<'a>(
     vcx: ValueCx<'_>,
 ) -> Result<(Option<&'a str>, gpui::Div, gpui::Img), AnyElement> {
     let local = (src.starts_with("file:") || src.starts_with('/')).then_some(src);
-    let own = crate::paint::background::element_source(src, &e.style, vcx).and_then(|s| {
-        let size = crate::paint::background::default_size(s.intrinsic(), (300.0, 150.0));
-        let raster = match &s {
-            crate::paint::background::Source::Vector { markup, .. } => {
-                crate::svg::raster::rasterize_image(
-                    &crate::resources::images::viewport::with_viewport(markup, size),
-                    size.0,
-                    size.1,
-                    vcx,
-                )
-            }
-            _ => s.raster(size, vcx),
-        }?;
-        Some((raster, size))
-    });
+    let own = crate::resources::css_images::element_source(src, &e.style, vcx)
+        .map(crate::paint::background::Source::from_cpu)
+        .and_then(|s| {
+            let size = crate::paint::background::default_size(s.intrinsic(), (300.0, 150.0));
+            let raster = match &s {
+                crate::paint::background::Source::Vector { markup, .. } => {
+                    crate::svg::raster::rasterize_image(
+                        &crate::resources::images::viewport::with_viewport(markup, size),
+                        size.0,
+                        size.1,
+                        vcx,
+                    )
+                }
+                _ => s.raster(size, vcx),
+            }?;
+            Some((raster, size))
+        });
     let wants_pipe = e.style.object_position.is_some()
         || e.style
             .object_fit

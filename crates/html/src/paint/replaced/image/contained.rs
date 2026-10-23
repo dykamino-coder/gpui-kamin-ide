@@ -28,8 +28,9 @@ pub(super) fn contained_image(
             d = d.h(px(h));
         }
         let vcx = cx.vcx();
-        let ready =
-            crate::paint::background::element_source(src, &e.style, vcx).and_then(|s| match s {
+        let ready = crate::resources::css_images::element_source(src, &e.style, vcx)
+            .map(crate::paint::background::Source::from_cpu)
+            .and_then(|s| match s {
                 crate::paint::background::Source::Vector { markup, .. } => {
                     let viewport =
                         crate::resources::images::viewport::with_viewport(&markup, (cw, ch));

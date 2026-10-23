@@ -1,9 +1,10 @@
 //! Заливки областей фона и текстовых клипов, отдельно от загрузки изображений.
 
 use super::over;
-use super::{Source, computed_source, paint_tiles};
+use super::paint_tiles;
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
+use crate::style::computed::flat_background::flat_fill;
 use gpui::{Bounds, Pixels, px};
 
 /// Заливка `background-clip: border-area` (css-backgrounds-4): фон «within
@@ -20,7 +21,7 @@ pub(super) fn border_area_fill(
     if c.bg_clip != Some(crate::style::computed::BgClip::BorderArea) {
         return None;
     }
-    flat_fill(c, vcx)
+    flat_fill(c, &vcx.background_images())
 }
 
 /// Цвет, которым красится рамка: свой `border-color` поверх заливки
@@ -33,63 +34,6 @@ pub(crate) fn border_paint(
     match border_area_fill(c, vcx) {
         Some(fill) => over(colour, fill),
         None => colour,
-    }
-}
-
-/// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
-pub(super) fn flat_colour(
-    src: &crate::style::computed::ImageSource,
-    vcx: ValueCx<'_>,
-) -> Option<crate::style::values::value::Color> {
-    let image = match computed_source(src, true, vcx)? {
-        Source::Raster(image) => image,
-        Source::Gradient { image } => {
-            let (gradient, _) = image.gradient()?;
-            let color = gradient.from;
-            // An identical polar color can still travel around a longer hue arc.
-            let constant = gradient.hue != 1
-                || matches!(
-                    gradient.space,
-                    crate::style::computed::GradSpace::Srgb
-                        | crate::style::computed::GradSpace::Linear
-                        | crate::style::computed::GradSpace::Oklab
-                        | crate::style::computed::GradSpace::Lab
-                );
-            return (constant
-                && color.a == 1.0
-                && gradient.stops.iter().all(|s| s.0 == color)
-                && !crate::style::values::color_space::out_of_gamut(color))
-            .then_some(color);
-        }
-        _ => return None,
-    };
-    let bytes = &image.bytes;
-    let first = bytes.get(0..4)?;
-    if first[3] != 255 || !bytes.chunks_exact(4).all(|p| p == first) {
-        return None;
-    }
-    // Порядок байтов растра — BGRA (см. `border_image::tests`).
-    Some(crate::style::values::value::Color {
-        r: first[2] as f32 / 255.0,
-        g: first[1] as f32 / 255.0,
-        b: first[0] as f32 / 255.0,
-        a: 1.0,
-    })
-}
-
-pub(super) use crate::style::computed::flat_background::flat_fill;
-
-impl crate::style::computed::flat_background::BackgroundImageValues for Computed {
-    fn image_available(&self, raw: &crate::style::computed::ImageSource, vcx: ValueCx<'_>) -> bool {
-        computed_source(raw, self.image_orient_none != Some(true), vcx).is_some()
-    }
-
-    fn uniform_image_color(
-        &self,
-        raw: &crate::style::computed::ImageSource,
-        vcx: ValueCx<'_>,
-    ) -> Option<crate::style::values::value::Color> {
-        flat_colour(raw, vcx)
     }
 }
 
