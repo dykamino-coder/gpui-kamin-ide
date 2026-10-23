@@ -69,6 +69,10 @@ impl TaffyLayoutEngine {
     pub fn set_flex_item_fragmentation_line(&mut self, id: LayoutId, line: Option<usize>) -> bool {
         self.taffy.set_flex_item_fragmentation_line(id.into(), line).is_ok()
     }
+    /// KaminIDE patch: atomic boxes cannot expand due to internal fragmentation.
+    pub fn set_fragmentation_monolithic(&mut self, id: LayoutId, on: bool) -> bool {
+        self.taffy.set_fragmentation_monolithic(id.into(), on).is_ok()
+    }
     /// KaminIDE patch: the flex container is laid out in a fragmentation context.
     pub fn set_flex_fragmentation(&mut self, id: LayoutId, on: bool) -> bool {
         self.taffy.set_flex_fragmentation(id.into(), on).is_ok()
