@@ -41,6 +41,12 @@ impl ViewportCx {
     /// её контейнер запросов размера (недостающая ось — окно). Полосы
     /// прокрутки не вычитаются: размер уже окончательный.
     pub fn for_box(size: (f32, f32), style: &Computed) -> Self {
+        // `zoom` multiplies every length of the box, viewport units included
+        // (css-viewport-1 §zoom-property): `1vw` under `zoom: 2` is twice `1vw`
+        // of the page, like `10px` becomes 20px. Container sizes are layout
+        // sizes already in the box's coordinates.
+        let zoom = style.zoom_eff.unwrap_or(1.0);
+        let size = (size.0 * zoom, size.1 * zoom);
         ViewportCx {
             size,
             vertical: style.wm().vertical(),

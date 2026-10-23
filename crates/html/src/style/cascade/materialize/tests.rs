@@ -260,3 +260,18 @@ fn position_try_declarations_pass_the_computed_value_stage() {
     ));
     assert_eq!(c.width, Some(Len::Px(20.0)));
 }
+
+#[test]
+fn zoom_scales_viewport_units_and_the_absolute_part_of_calc() {
+    let parsed = crate::dom::parse(
+        r#"<body><div style="zoom: 2; width: 1vw; height: calc(10px + 1vw)">a</div></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let mut div = (*element(&parsed.nodes, "div").style.computed()).clone();
+    div.resolve_viewport((1000.0, 800.0), vcx);
+    // 1vw of a 1000px window is 10px, 20px under `zoom: 2`, like `10px` is.
+    assert_eq!(div.width, Some(Len::Px(20.0)));
+    assert_eq!(div.height, Some(Len::Px(40.0)));
+}

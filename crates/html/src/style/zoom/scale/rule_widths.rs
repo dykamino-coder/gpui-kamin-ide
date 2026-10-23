@@ -38,10 +38,17 @@ mod tests {
     use super::*;
     use crate::style::computed::GapList;
 
+    fn test_vcx() -> crate::document::state::ValueCx<'static> {
+        Box::leak(Box::new(crate::document::state::DocState::new(
+            crate::style::css::Media::default(),
+        )))
+        .values()
+    }
+
     #[test]
     fn initial_medium_is_zoomed_without_requiring_a_visible_rule() {
         let mut style = Computed::default();
-        super::super::scale_own(&mut style, 2.0);
+        super::super::scale_own(&mut style, 2.0, test_vcx());
         assert_eq!(style.column_rule_width, Some(Len::Px(6.0)));
         assert_eq!(style.row_rule_width, Some(Len::Px(6.0)));
     }
@@ -58,7 +65,7 @@ mod tests {
             row_rule_width: Some(Len::Px(0.0)),
             ..Computed::default()
         };
-        super::super::scale_own(&mut style, 2.0);
+        super::super::scale_own(&mut style, 2.0, test_vcx());
         assert_eq!(style.column_rule_width, Some(Len::Px(4.0)));
         assert_eq!(style.row_rule_width, Some(Len::Px(0.0)));
         let widths = style.column_rule_widths.expect("rule list");
