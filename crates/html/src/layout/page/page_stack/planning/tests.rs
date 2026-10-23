@@ -1,7 +1,7 @@
 //! Согласование длинной цепочки forced breaks в независимом потоке flex.
 use super::settle;
 use crate::layout::fragment::flow::blocks::{
-    BlockBox, BlockKid, FlexBox, FlexFrame, FlexLine, Laid, Pushed,
+    BlockBox, BlockKid, FlexBox, FlexFrame, FlexLine, Laid, Pushed, STRUT_ID,
 };
 use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::Kid;
@@ -92,8 +92,15 @@ fn all_forced_breaks_are_regrown_before_accepting_pages() {
                     bounds.1 += growth.amount;
                 }
             }
+            // Regrow вставляет поточную распорку перед перенесённым блоком.
+            // Её низ переносит forced boundary вместе с самим блоком.
+            laid.boxes.insert(id ^ STRUT_ID, (top, top + growth.amount));
             laid.flexes.get_mut(&1).unwrap().lines[0].end += growth.amount;
             passes += 1;
+            assert!(
+                passes <= 9,
+                "a settled boundary was grown again: {growth:?}"
+            );
             return (false, height.to_bits(), ());
         }
         (true, height.to_bits(), ())
