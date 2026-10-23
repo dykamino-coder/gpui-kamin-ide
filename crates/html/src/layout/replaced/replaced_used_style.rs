@@ -63,10 +63,8 @@ pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
     // The outer box and its content must constrain the same intrinsic ratio.
     // Leave unresolved bases to layout, rather than substituting an ancestor size.
     if let Some(width) = containing_width {
-        for limit in [
-            &mut normalized.style.min_width,
-            &mut normalized.style.max_width,
-        ] {
+        let style = &mut *normalized.style;
+        for limit in [&mut style.min_width, &mut style.max_width] {
             if let Some(Len::Pct(fraction)) = *limit {
                 *limit = Some(Len::Px(width * fraction));
             }

@@ -166,7 +166,7 @@ pub(crate) fn resolve_inline_pct(
         if !vertical && !ch.style.wm().vertical() {
             continue;
         }
-        let s = &mut ch.style;
+        let s = &mut *ch.style;
         for side in [
             &mut s.margin.top,
             &mut s.margin.right,

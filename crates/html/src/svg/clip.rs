@@ -141,7 +141,7 @@ pub(super) fn synth_clip(
     // `apply_one`, что и CSS-объявление.
     let parsed: crate::style::computed::Computed;
     let (c, view_box) = if has(&e.style) {
-        (e.style.as_ref(), false)
+        (&*e.style, false)
     } else {
         let raw = e
             .attr("clip-path")

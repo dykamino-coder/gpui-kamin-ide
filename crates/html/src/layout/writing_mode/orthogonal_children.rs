@@ -46,11 +46,12 @@ pub(crate) fn orthogonal_children(
             });
         }
         if let Some(il) = inline_size {
+            let margin = &mut ch.style.margin;
             for side in [
-                &mut ch.style.margin.top,
-                &mut ch.style.margin.right,
-                &mut ch.style.margin.bottom,
-                &mut ch.style.margin.left,
+                &mut margin.top,
+                &mut margin.right,
+                &mut margin.bottom,
+                &mut margin.left,
             ] {
                 if let Some(Len::Pct(k)) = side {
                     *side = Some(Len::Px(*k * il));

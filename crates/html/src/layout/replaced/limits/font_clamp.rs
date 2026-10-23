@@ -124,7 +124,7 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
         _ => px(c.attr_height),
     };
     let mut copy = e.clone();
-    let s = &mut copy.style;
+    let s = &mut *copy.style;
     for (lim, nat) in [
         (&mut s.min_width, nat_w),
         (&mut s.max_width, nat_w),

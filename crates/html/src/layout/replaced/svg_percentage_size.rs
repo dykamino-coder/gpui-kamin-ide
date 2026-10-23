@@ -70,9 +70,10 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     });
     let mut copy = element.clone();
     let mut changed = false;
+    let style = &mut *copy.style;
     for (axis, (base, dimension)) in [
-        (parent.width, &mut copy.style.width),
-        (parent.height, &mut copy.style.height),
+        (parent.width, &mut style.width),
+        (parent.height, &mut style.height),
     ]
     .into_iter()
     .enumerate()

@@ -126,9 +126,10 @@ pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
         right: s.bottom,
     };
     let mut t = c.clone();
-    std::mem::swap(&mut t.style.width, &mut t.style.height);
-    std::mem::swap(&mut t.style.min_width, &mut t.style.min_height);
-    std::mem::swap(&mut t.style.max_width, &mut t.style.max_height);
+    let style = &mut *t.style;
+    std::mem::swap(&mut style.width, &mut style.height);
+    std::mem::swap(&mut style.min_width, &mut style.min_height);
+    std::mem::swap(&mut style.max_width, &mut style.max_height);
     t.style.padding = turn(&c.style.padding);
     t.style.margin = turn(&c.style.margin);
     t.style.border_width = turn(&c.style.border_width);
