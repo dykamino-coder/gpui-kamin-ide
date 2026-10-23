@@ -39,14 +39,36 @@ pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed, vc
     }
 }
 
+/// Registry longhands with a cascaded `inherit` whose fields the registry
+/// copies (multicol, gaps, grid, decoration, border-image ...).
+fn registry_inherits(c: &Computed) -> impl Iterator<Item = crate::style::css::LonghandId> {
+    c.inherit_longhands
+        .iter()
+        .filter(|id| !of_longhand(*id).is_empty())
+}
+
+/// Copy the registry fields of the parent for every registry property with a
+/// cascaded `inherit`, and drop those marks: the values are the element's own.
+fn settle_registry_inheritance(c: &mut Computed, parent: &Computed, vcx: ValueCx<'_>) {
+    apply_explicit_inheritance(c, parent, vcx);
+    for id in registry_inherits(c).collect::<Vec<_>>() {
+        for property in of_longhand(id) {
+            property.copy(parent, c, vcx);
+        }
+        c.inherit_longhands.set(id, false);
+    }
+}
+
 /// CSS Cascade 4 section 7.3.1: inherit the computed value, never the parent's
 /// specified relative units. The zoom pass subsequently scales absolute lengths
-/// using this element's effective zoom, including nested inheritance chains.
+/// using this element's effective zoom, including nested inheritance chains;
+/// layout still reads these non-inherited values from the cascaded style.
 pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn pending(nodes: &[Node]) -> bool {
         nodes.iter().any(|n| match n {
             Node::Element(e) => {
                 !e.style.explicit_inherit.is_empty()
+                    || registry_inherits(&e.style).next().is_some()
                     || !matches!(e.style.svg_path_length, None | Some(Len::Px(_) | Len::Auto))
                     || pending(&e.children)
             }
@@ -56,7 +78,10 @@ pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn apply_inheritance_to_descendants(nodes: &mut [Node], parent: &Computed, vcx: ValueCx<'_>) {
         for node in nodes {
             let Node::Element(e) = node else { continue };
-            apply_explicit_inheritance(&mut e.style, parent, vcx);
+            if !e.style.explicit_inherit.is_empty() || registry_inherits(&e.style).next().is_some()
+            {
+                settle_registry_inheritance(&mut e.style, parent, vcx);
+            }
             let mut own = (*e.style).clone();
             let media = vcx.doc.media.get();
             own.resolve_viewport((media.width, media.height), vcx);
