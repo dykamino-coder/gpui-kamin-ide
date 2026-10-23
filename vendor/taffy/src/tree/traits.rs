@@ -341,6 +341,11 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     /// When every item of a wrapping container has one, in non-decreasing order,
     /// lines are taken from it instead of being re-collected.
     fn flex_item_fragmentation_line(&self, _node_id: NodeId) -> Option<usize> { None }
+
+    /// KaminIDE patch: the container is laid out inside a fragmentation context.
+    /// Column items whose block size may not shrink then encompass their
+    /// intrinsic block size (Blink `MinBlockSizeShouldEncompassIntrinsicSize`).
+    fn flex_fragmentation(&self, _node_id: NodeId) -> bool { false }
 }
 
 #[cfg(feature = "grid")]

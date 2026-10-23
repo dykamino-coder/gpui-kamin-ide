@@ -147,6 +147,9 @@ struct NodeData {
     /// KaminIDE patch: flex line of this item fixed before fragmentation.
     #[cfg(feature = "flexbox")]
     pub(crate) flex_item_line: Option<usize>,
+    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_fragmentation: bool,
 }
 
 impl NodeData {
@@ -173,6 +176,8 @@ impl NodeData {
             flex_item_consumed: 0.0,
             #[cfg(feature = "flexbox")]
             flex_item_line: None,
+            #[cfg(feature = "flexbox")]
+            flex_fragmentation: false,
         }
     }
 
@@ -256,6 +261,16 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
         if data.flex_item_line != line {
             data.flex_item_line = line;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
+    pub fn set_flex_fragmentation(&mut self, node: NodeId, on: bool) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_fragmentation != on {
+            data.flex_fragmentation = on;
             self.mark_dirty(node)?;
         }
         Ok(())
@@ -681,6 +696,10 @@ where
 
     fn flex_item_fragmentation_line(&self, node: NodeId) -> Option<usize> {
         self.taffy.nodes[node.into()].flex_item_line
+    }
+
+    fn flex_fragmentation(&self, node: NodeId) -> bool {
+        self.taffy.nodes[node.into()].flex_fragmentation
     }
 }
 

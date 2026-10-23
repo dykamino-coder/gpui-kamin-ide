@@ -130,3 +130,30 @@ fn continuation_rewraps_at_next_width_and_keeps_completed_items_in_main_sizing()
     assert_eq!(tree.layout(root).unwrap().size.height, 60.0);
     assert!(tree.set_flex_item_fragmentation_consumed(a, f32::INFINITY).is_err());
 }
+
+#[test]
+fn fragmented_column_item_encompasses_intrinsic_block_size() {
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    tree.disable_rounding();
+    let child = tree.new_leaf(Style { size: Size::from_lengths(50.0, 150.0), ..Style::DEFAULT }).unwrap();
+    let item = tree
+        .new_with_children(
+            Style {
+                display: crate::Display::Block,
+                flex_basis: Dimension::length(10.0),
+                min_size: Size { width: crate::style::LengthPercentageAuto::auto(), height: crate::style::LengthPercentageAuto::length(10.0) },
+                ..Style::DEFAULT
+            },
+            &[child],
+        )
+        .unwrap();
+    let root = tree
+        .new_with_children(Style { flex_direction: crate::FlexDirection::Column, ..Style::DEFAULT }, &[item])
+        .unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(item).unwrap().size.height, 10.0);
+    tree.set_flex_fragmentation(root, true).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(item).unwrap().size.height, 150.0);
+    assert_eq!(tree.layout(root).unwrap().size.height, 150.0);
+}

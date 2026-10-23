@@ -647,6 +647,12 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     // 3. Determine the flex base size and hypothetical main size of each item.
     debug_log!("determine_flex_base_size");
     determine_flex_base_size(tree, &constants, available_space, &mut flex_items);
+    // KaminIDE patch: in a fragmentation context a column item that may not
+    // shrink encompasses its intrinsic block size (Blink
+    // `MinBlockSizeShouldEncompassIntrinsicSize`, flex_layout_algorithm.cc).
+    if constants.dir.is_column() && tree.flex_fragmentation(node) {
+        encompass_intrinsic_block_size(tree, &constants, available_space, &mut flex_items);
+    }
 
     #[cfg(feature = "debug")]
     for item in flex_items.iter() {
@@ -1418,6 +1424,48 @@ fn transfer_min_max(
             height: max_h,
         },
     )
+}
+
+/// KaminIDE patch: raise the minimum main size of qualifying column items to
+/// their content block size: block-size `auto`, and either the container's
+/// block size is indefinite (the item cannot shrink) or `min-height` is `auto`.
+fn encompass_intrinsic_block_size(
+    tree: &mut impl LayoutFlexboxContainer,
+    constants: &AlgoConstants,
+    available_space: Size<AvailableSpace>,
+    flex_items: &mut [FlexItem],
+) {
+    let dir = constants.dir;
+    for child in flex_items.iter_mut() {
+        if child.size.main(dir).is_some() {
+            continue;
+        }
+        let can_shrink = child.flex_shrink != 0.0 && constants.node_inner_size.main(dir).is_some();
+        let min_auto = tree.get_flexbox_child_style(child.node).min_size().main(dir).is_auto();
+        if can_shrink && !min_auto {
+            continue;
+        }
+        let cross = constants.node_inner_size.cross(dir).maybe_sub(child.margin.cross_axis_sum(dir));
+        let known = Size::NONE.with_cross(dir, child.size.cross(dir).or(cross));
+        let space = Size::MAX_CONTENT.with_cross(dir, available_space.cross(dir));
+        let content = tree.measure_child_size(
+            child.node,
+            known,
+            constants.node_inner_size,
+            space,
+            SizingMode::InherentSize,
+            dir.main_axis(),
+            Line::FALSE,
+        );
+        let content = content.maybe_min(child.max_size.main(dir));
+        if content > child.resolved_minimum_main_size {
+            child.resolved_minimum_main_size = content;
+            let clamped = child.hypothetical_inner_size.main(dir).max(content);
+            let outer = clamped + child.margin.main_axis_sum(dir);
+            child.hypothetical_inner_size.set_main(dir, clamped);
+            child.hypothetical_outer_size.set_main(dir, outer);
+        }
+    }
 }
 
 /// Determine the flex base size and hypothetical main size of each item.
