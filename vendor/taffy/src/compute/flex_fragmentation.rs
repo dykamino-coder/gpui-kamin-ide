@@ -12,7 +12,10 @@ pub(super) fn main_growth(tree: &impl LayoutFlexboxContainer, lines: &[FlexLine]
                 .map(|item| tree.flex_item_fragmentation_offset(item.node))
                 .sum::<f32>()
         })
-        .fold(0.0, f32::max)
+        // Подавленный промежуток уменьшает auto-размер; параллельные линии
+        // выбирают наибольший подписанный расход, а не минимум в нуле.
+        .reduce(f32::max)
+        .unwrap_or(0.0)
 }
 
 /// Apply fragmentainer space after flexible sizing and before native line placement.

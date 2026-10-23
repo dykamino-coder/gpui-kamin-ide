@@ -836,7 +836,7 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     // KaminIDE patch: a row item pushed past a fragmentainer break moves in the
     // block axis after line alignment; completed lines and the container keep
     // their used sizes (the item's own overflow is a parallel flow).
-    if constants.dir.is_row() {
+    if constants.dir.is_row() && constants.fragmentation_axis.0 == constants.dir.cross_axis() {
         for line in flex_lines.iter_mut() {
             for item in line.items.iter_mut() {
                 item.offset_cross += tree.flex_item_fragmentation_offset(item.node);
