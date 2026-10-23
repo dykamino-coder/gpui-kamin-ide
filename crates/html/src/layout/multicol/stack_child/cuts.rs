@@ -1,4 +1,4 @@
-//! Разрезы и высота StackChild: ADR P-19 F2-1/F2-3/F2-4 сохраняют preplan до consumed токенов.
+//! Разрезы и высота StackChild для копий ребёнка многоколоночника.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
@@ -81,6 +81,7 @@ pub(super) fn line_cuts(
 ) {
     let measured = with_lines(merged, line_col_w, opts, |opts| {
         let vcx = opts.cx.vcx();
+        // TRANSITIONAL(F2-4): Разрезы копии читаются через estimator; удалить в P21 после recorded cuts и child resume поверх P05/P08/P10.
         measure(
             copy_m.as_ref().unwrap_or(copy),
             4,

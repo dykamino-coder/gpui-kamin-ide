@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4): рекурсивный preplan до consumed/OOF состояния детей.
 //! Формы детей (KidShape): рекурсивный замер вырезов каждого ребёнка.
 
 use crate::document::state::ValueCx;
@@ -55,6 +54,7 @@ pub(super) fn kid_shapes(
                         .as_ref()
                         .filter(|l| !matches!(l, Len::Auto))
                         .and_then(|_| px_or(&k.style.computed().inset.top, false));
+                    // TRANSITIONAL(F2-4): OOF ребёнок рекурсивно измеряется вместо child resume; удалить в P21 после записанной геометрии и static position поверх P05/P08/P10.
                     let (full, up) = measure(k, depth - 1, cx, vcx)
                         .map_or((0.0, Reach::default()), |m| (m.shape.height, m.up));
                     let reach = Reach::positioned(k, full, top, cx, up);
@@ -85,6 +85,7 @@ pub(super) fn kid_shapes(
                     // гибкость базу не меняет (§9.7).
                     let based = if flex_col { basis_sized(c, k) } else { None };
                     let k = based.as_ref().unwrap_or(k);
+                    // TRANSITIONAL(F2-4): Inflow cuts строятся рекурсивной оценкой ребёнка; удалить в P21 после recorded geometry и child resume поверх P05/P08/P10.
                     measure(k, depth - 1, cx, vcx).map(|m| {
                         let crate::layout::fragment::Shape {
                             height: h,

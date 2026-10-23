@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4): рост preplan требует consumed и статической позиции OOF.
 //! Рост перенесённой коробки, монолиты под avoid и поля абзаца.
 
 use super::super::cell::grow_before;
@@ -111,6 +110,7 @@ pub(crate) fn grow_pushed(
             if grow_grid_track(c, at, grow)
                 || (!forced && super::super::row::grow_row_at(c, at, grow, vcx))
             {
+                // TRANSITIONAL(F2-4): После мутации grid track геометрия оценивается заново; удалить в P16 после track growth result и StaticPosition из P08 без переписывания authored tracks.
                 if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS, vcx) {
                     kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));
                     changed = true;
@@ -130,6 +130,7 @@ pub(crate) fn grow_pushed(
             if !moved {
                 continue;
             }
+            // TRANSITIONAL(F2-4): После распорки форма ребёнка оценивается заново; удалить в P21 после continuation placement без мутации spacer поверх P05/P08/P10.
             if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS, vcx) {
                 kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));
                 changed = true;

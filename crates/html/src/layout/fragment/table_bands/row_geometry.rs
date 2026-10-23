@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-5): оценочные полосы нужны оставшемуся preplan повторов и продолжений таблицы.
 //! Общая геометрия рядов и ячеек для меры таблицы и щупов продолжения (`row_geometry`):
 //! высота ряда — наибольшая мера его ячеек без охвата, `rowspan` разрешается в пределах
 //! группы рядов (HTML table model: `0` — до конца группы). По css-tables-3 §fragmentation
@@ -61,6 +60,7 @@ pub(crate) fn row_geometry<'a>(
                 Some(n) => n.clamp(1, left),
                 None => 1,
             };
+            // TRANSITIONAL(F2-5): Мера ячейки оценивается до раскладки секции; удалить в P17 после recorded row/span metrics и per-cell tokens.
             let shape = shape_full(cell, depth.checked_sub(1)?, cx, vcx)?;
             if span == 1 {
                 height = height.max(shape.height);

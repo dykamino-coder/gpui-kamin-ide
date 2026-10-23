@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1/F2-5): подписи clone-preplan требуют состояния продолжения таблицы.
 //! Мера обёртки таблицы с подписями (`caption_slots_shape`): верхние подписи, коробка рядов и
 //! нижние подписи складываются стопкой со схлопыванием полей (CSS 2.1 §8.3.1; поле первого
 //! уходит сквозь верх обёртки), точки разреза и принудительные разрывы между ними,
@@ -56,6 +55,7 @@ pub(crate) fn caption_slots_shape(
                 false,
             ),
             Some(cap) => {
+                // TRANSITIONAL(F2-5): Подпись таблицы оценивается целиком в clone preplan; удалить в P18 после caption token с consumed и decoration edges поверх P04.
                 let crate::layout::fragment::Shape {
                     height: ch,
                     margin_top: cmt,

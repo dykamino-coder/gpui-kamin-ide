@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-4): остаточный preplan продолжений flex пока использует оценку.
 //! Общая гипотетическая геометрия строк flex-ряда для фрагментации (css-flexbox-1 §9.3/§9.4):
 //! гейт контейнера (`row_container`), строки с мерами элементов (`collect_rows`), высота
 //! строки — наибольшая внешняя высота, растяжение элемента `height: auto` на строку полом
@@ -113,6 +112,7 @@ pub(crate) fn collect_rows(
 /// fragments a block's remaining block-size after its last line; unmeasured
 /// lines (no ranges) remain one solid range.
 fn item_shape(element: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Option<Shape> {
+    // TRANSITIONAL(F2-4): Форма flex item оценивается до раскладки строк; удалить в P13 после записи line membership, item rect и consumed/resume каждого item.
     let mut shape = shape_full(element, depth - 1, cx, vcx)?;
     if solid_box(element)
         && shape.cuts.is_empty()

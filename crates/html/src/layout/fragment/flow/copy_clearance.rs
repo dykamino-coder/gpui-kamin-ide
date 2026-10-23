@@ -3,8 +3,7 @@ use crate::dom::{Element, Node};
 use crate::layout::box_kind::{out_of_flow, own_context};
 use crate::style::computed::Display;
 
-/// ADR P-19 TRANSITIONAL(F2-1): отдельная копия не видит флоаты предыдущего соседа.
-/// Внутри одной копии BandFlow сохраняет весь BFC, включая её clearance.
+/// TRANSITIONAL(F2-1): Отдельная копия не видит float bands предыдущего соседа; удалить отказ в P06 после переноса состояния BFC между фрагментами.
 pub(crate) fn copy_clearance(nodes: &[Node]) -> bool {
     fn reaches(e: &Element, float: bool) -> bool {
         if e.style.computed().display == Some(Display::None) {

@@ -50,8 +50,7 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
             };
             let logical = if mode == "horizontal-tb" {
                 assert!(crate::layout::fragment::push::measured_tree(&e), "{body}");
-                // ADR P-19 TRANSITIONAL(F2-4): рекордер видит flex, но независимой копии
-                // ещё нужны отдельные продолжения его параллельных потоков.
+                // TRANSITIONAL(F2-4): Flex внутри display:contents измеряется, но его параллельные items не имеют resume; удалить ограничение теста в P14 с item tokens.
                 assert_eq!(independent_copy(&e), !body.contains("display:flex"));
                 e.clone()
             } else {

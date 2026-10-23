@@ -72,9 +72,7 @@ pub(crate) fn refusal(
         {
             Some("no-layout-candidate")
         }
-        // Row gaps alone keep the old path: this path paints gap decorations
-        // half a gap low (css-gaps flex-gap-decorations-fragmentation-023/024/
-        // 031), and a test with rules must take the same path as its ref.
+        // TRANSITIONAL(F2-4): Путь с одними row gaps смещает gap decorations на ползазора и не моделирует их усечение; удалить отказ в P13 после final flex-line geometry и item resume.
         Some(v)
             if !v
                 .iter()

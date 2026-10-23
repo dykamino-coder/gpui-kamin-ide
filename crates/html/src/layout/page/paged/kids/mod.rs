@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-2): оценочный reach остаётся у параллельного потока; независимые группы меряет копия.
 //! Дети листов из групп корневых узлов: копии ICB/fixed, имена страниц, формы.
 
 use super::PAGE_COPIES;
@@ -175,6 +174,7 @@ pub(super) fn page_kids_from_groups(
                     unclamped: true,
                     ..shape_cx
                 };
+                // TRANSITIONAL(F2-2): Reach ребёнка страницы оценивается как полная unclamped форма; удалить в P08 после child token и разделения normal size и OOF reach.
                 shape_full(e, 4, cx, vcx)
                     .map(|u| u.height + pad_top)
                     .filter(|&u| u > s.0 + COORD_EPS)

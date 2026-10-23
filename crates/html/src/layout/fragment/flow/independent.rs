@@ -8,13 +8,13 @@ use continuation::continuation;
 pub(crate) use continuation::parallel_overflow;
 
 /// У копии нет отдельного плана фрагментов или параллельного потока.
-/// Отдельные планы clone, OOF и nested требуют продолжений F2-1/F2-2/F2-3.
+/// TRANSITIONAL(F2-7): Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21.
 pub(crate) fn independent_copy(c: &Element) -> bool {
     !c.inline && measured_tree(c) && !separate(c, false) && !continuation(c)
 }
 
 /// Блоки, сетки и таблицы одного вертикального потока.
-/// Ортогональные продолжения требуют ADR P-19 F2-3.
+/// TRANSITIONAL(F2-3): Vertical copy допускает только один поток без ортогонального resume; удалить ограничение в P10 после отдельных logical Space и child tokens.
 pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
     let Some(logical) = logical_copy(c, rl) else {
         return false;

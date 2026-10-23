@@ -65,17 +65,14 @@ pub(super) fn group(
     let floated = e.style.computed().float.is_some_and(|f| f != 0);
     let float_extent = empty_floats(e);
     let eligible = if floated {
-        // ADR P-19 TRANSITIONAL(F2-1): только монолит не несёт собственного продолжения
-        // строк. Поля float остаются внутри BandFlow и не схлопываются.
+        // TRANSITIONAL(F2-1): Float допускается только монолитом без строчного resume; удалить ограничение в P05 после отдельного продолжения его строк и полей.
         let mut flow = e.clone();
         flow.style.used_mut().float = None;
         crate::layout::fragment::clone::content_monolith_blockified(e) && independent_copy(&flow)
     } else {
         independent_copy(e) || float_extent
     };
-    // ADR P-19 TRANSITIONAL(F2-1): декорированный блок со строками требует состояния
-    // краёв каждого печатного фрагмента. Рост сплошной копии меняет его
-    // полную рамку и координаты следующих групп вместо продолжения листа.
+    // TRANSITIONAL(F2-1): Рост целой копии декорированного блока меняет рамку и координаты соседей; удалить отказ в P04 после краёв каждого печатного фрагмента.
     if !eligible || decorated_lines(e) {
         return None;
     }

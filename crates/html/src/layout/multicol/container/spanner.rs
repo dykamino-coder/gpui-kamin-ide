@@ -1,4 +1,4 @@
-//! ADR P-19 TRANSITIONAL(F2-3): оценка остаётся у внешнего плана рядов и спаннеров до вложенных Space.
+//! TRANSITIONAL(F2-3): Внешний план рядов и спаннеров строится до вложенного Space; удалить в P10 после row cursor и отдельного продолжения спаннера.
 //! Сегменты многоколоночника между охватывающими элементами (column-span: all).
 
 use crate::dom::whitespace::is_blank;
@@ -135,8 +135,7 @@ pub(crate) fn multicol_spanner_segments(
                                 if !k.inline
                                     && (crate::layout::fragment::flow::independent_copy(k)
                                         || crate::layout::fragment::flow::empty_floats(k)
-                                        // ADR P-19 TRANSITIONAL(F2-3): хвост со своим вложенным
-                                        // планом ещё зависит от consumed внешнего ряда.
+                                        // TRANSITIONAL(F2-3): Допуск хвоста проверяется через shape_full без consumed внешнего ряда; удалить в P10 после типизированного результата NestedRow resume.
                                         || shape_full(k, 4, ShapeCx::COLUMNS.observed(opts), vcx).is_some()))
                     })
                     && let Some(rest) = rest_h

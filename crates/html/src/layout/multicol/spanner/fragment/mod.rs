@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-3): оценка долей спаннера остаётся до токенов вложенных рядов.
 //! Фрагменты охватчика: видимость, доля высоты, части многоколоночника.
 
 use super::spanner_edge;
@@ -128,6 +127,7 @@ pub(super) fn spanner_height_share(
             continue;
         }
         let f = spanner_fragment(c, b.clone(), i == 0, false, false, i);
+        // TRANSITIONAL(F2-3): Доля спаннера измеряется по предыдущим клонам; удалить в P10 после consumed спаннера и продолжения внешнего ряда.
         let h = shape_full(&f, 4, shape_cx, vcx)?.height;
         let own = (h - if i == 0 { edge } else { 0.0 }).max(0.0);
         let take = own.min(left);

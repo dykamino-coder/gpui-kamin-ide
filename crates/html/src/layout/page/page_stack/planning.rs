@@ -23,6 +23,7 @@ impl PageStack {
         let mut geoms = vec![g];
         let mut names = vec![first.clone()];
         let mut result = (0, Plan::default());
+        // TRANSITIONAL(F2-4): Page sequence и flex growth согласуются максимум за семь проходов; удалить предел в P14 после solver progress и реальных page constraints.
         for pass in 0..=6 {
             let tail = names.last().cloned().unwrap_or_default();
             self.measured.clear();

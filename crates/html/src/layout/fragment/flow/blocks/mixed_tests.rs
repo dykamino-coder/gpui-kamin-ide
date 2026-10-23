@@ -87,7 +87,7 @@ fn flex_in_table_cells_and_captions_has_frames_flows_and_relative_shifts() {
             "",
         );
         let root = authored(&doc);
-        // TRANSITIONAL(F2-4): геометрия записывается, продолжения flex пока отдельные.
+        // TRANSITIONAL(F2-4): Измеренное смешанное дерево ещё не даёт independent_copy продолжения flex items; удалить проверку отказа в P14 с item tokens.
         assert!(crate::layout::fragment::push::measured_tree(root));
         assert!(!independent_copy(root));
         let b = BlockBox::collect(root, ShapeCx::COLUMNS, doc.values());

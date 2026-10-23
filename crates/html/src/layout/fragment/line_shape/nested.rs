@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-3): вложенные ряды ещё используют оценочный preplan до токена продолжения.
 //! Вложенные ряды: коробка, форма и ширина вложенной стопки рядов.
 
 use super::nested_kid::{oof_in_plain_kids, plain_block_kid};
@@ -123,6 +122,7 @@ pub(crate) fn nested_rows_shape(
                             && k.style.computed().float.unwrap_or(0) == 0 =>
                     {
                         let k = resolved_lengths(k, &m, vcx);
+                        // TRANSITIONAL(F2-3): Высота вложенного ряда оценивается без остатка внешнего Space; удалить в P10 после NestedRow cursor и child resume.
                         let sh = shape_full(&k, 4, ShapeCx::COLUMNS, vcx)?;
                         if !inline_content(&k) && sh.solid.iter().any(|&(a, b)| b - a > hh + 0.01) {
                             return None;
