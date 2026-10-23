@@ -1,9 +1,8 @@
-//! inherit_stage, этап краски: filter и drop-shadow с цветом, заливка текста под background-clip:
-//! text, белые пробелы, курсор, таблицы, caret-color.
+//! Стадия коробки, краска: цветовой `filter` поддерева и drop-shadow, заливка текста под
+//! background-clip: text.
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::computed::{BgListProp, BlendMode};
 
 mod gradient_filter;
 
@@ -14,13 +13,6 @@ pub(super) fn inherit_paint(
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) {
-    if c.background_blend == Some(BlendMode::Inherit) {
-        c.background_blend = parent.background_blend;
-        c.bg_lists.remove(BgListProp::BlendMode);
-        if let Some(list) = parent.bg_lists.get(BgListProp::BlendMode) {
-            c.bg_lists.set_layers(BgListProp::BlendMode, list.to_vec());
-        }
-    }
     // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и
     // применяем к собственным цветам потомка: раньше фильтр действовал только
     // на узел, где написан, и дети оставались цветными.
@@ -138,23 +130,4 @@ pub(super) fn inherit_paint(
             c.text_clip_raw = parent.text_clip_raw;
         }
     }
-    // Наследуемые по CSS, но забытые прежде: без них `white-space: pre` на
-    // контейнере не доходил до вложенного текста, а маркер, курсор и зазор
-    // ячеек не доставались детям.
-    c.preserve_newlines = own.preserve_newlines.or(parent.preserve_newlines);
-    c.keep_spaces = own.keep_spaces.or(parent.keep_spaces);
-    c.hidden = own.hidden.or(parent.hidden);
-    c.cursor = own.cursor.clone().or(parent.cursor.clone());
-    c.no_marker = own.no_marker.or(parent.no_marker);
-    c.border_collapse = own.border_collapse.or(parent.border_collapse);
-    c.empty_cells_hide = own.empty_cells_hide.or(parent.empty_cells_hide);
-    c.border_spacing = own.border_spacing.or(parent.border_spacing);
-    c.caret_color = own
-        .caret_color
-        .clone()
-        .or_else(|| parent.caret_color.clone());
-    c.accent_color = own
-        .accent_color
-        .clone()
-        .or_else(|| parent.accent_color.clone());
 }

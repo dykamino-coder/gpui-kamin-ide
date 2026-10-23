@@ -7,6 +7,7 @@ use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, res
 use crate::style::computed::{Computed, ParseResult, css_wide_keyword};
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 
+pub(crate) mod compute;
 mod compute_cx;
 pub mod defaults;
 pub mod inherit;
