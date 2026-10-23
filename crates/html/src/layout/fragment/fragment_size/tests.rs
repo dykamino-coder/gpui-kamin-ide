@@ -39,6 +39,55 @@ fn element(style: Computed, children: Vec<Node>) -> Element {
 }
 
 #[test]
+#[cfg(feature = "wpt-harness")]
+fn cloned_table_captions_keep_their_height_until_f2_continuations() {
+    use crate::layout::fragment::flow::independent_copy;
+    use crate::layout::fragment::probe::diagnostics::FragmentProbes;
+
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let mut caption = element(
+        Computed {
+            height: Some(Len::Px(10.0)),
+            ..Default::default()
+        },
+        Vec::new(),
+    );
+    caption.tag = "caption".into();
+    let mut row = element(
+        Computed {
+            height: Some(Len::Px(20.0)),
+            ..Default::default()
+        },
+        Vec::new(),
+    );
+    row.tag = "tr".into();
+    let mut table = element(
+        Computed {
+            bdb_clone: true,
+            ..Default::default()
+        },
+        vec![Node::Element(caption), Node::Element(row)],
+    );
+    table.tag = "table".into();
+    assert!(!independent_copy(&table));
+    let probes = FragmentProbes::default();
+    let cx = ShapeCx {
+        probe: Some(&probes),
+        ..ShapeCx::COLUMNS
+    };
+    let shape = shape_full(&table, 4, cx, doc.values()).unwrap();
+    assert_eq!(shape.height, 30.0);
+    assert!(
+        probes
+            .take()
+            .values()
+            .any(|p| p.estimate_sites.keys().any(|site| site
+                .replace('\\', "/")
+                .contains("table_bands/row_shape/captions.rs:")))
+    );
+}
+
+#[test]
 fn positioned_descendants_keep_their_balancing_extent() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
