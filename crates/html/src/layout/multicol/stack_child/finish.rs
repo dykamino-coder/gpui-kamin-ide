@@ -149,6 +149,12 @@ pub(super) fn measured_monolith(
         nest_row.is_none()
             && (size_monolith(copy)
                 || copy.style.computed().break_inside_avoid
+                // css-break-3 §4.1 допускает монолитный overflow:hidden
+                // с auto block size; сохраняем выбор старого пути для строк.
+                || (monolith
+                    && matches!(copy.style.computed().height, None | Some(Len::Auto))
+                    && [copy.style.computed().overflow_x, copy.style.computed().overflow_y].contains(
+                        &Some(crate::style::computed::Overflow::Hidden)))
                 || scrolls(copy.style.computed().overflow_x)
                 || scrolls(copy.style.computed().overflow_y))
     } else {

@@ -58,6 +58,8 @@ pub(crate) struct BlockBox {
     /// Собственные before/after force, before/after avoid до переноса с детей.
     pub(crate) own_breaks: (bool, bool, bool, bool),
     pub(crate) inside_avoid: bool,
+    /// Обрезка блочного переполнения ограничивает продолжение размером коробки.
+    pub(crate) clips_block: bool,
     /// Поточные крайние дети: строчный текст на краю останавливает перенос break.
     pub(crate) edge_kids: (Option<u64>, Option<u64>),
     /// Рамка и отбивка у начального края блочной оси: разрыв внутри них

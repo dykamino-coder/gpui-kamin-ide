@@ -12,6 +12,11 @@ pub(crate) fn own_context(e: &Element) -> bool {
     // its children's margins stay inside it
     // (`margin-collapsing-in-table-caption-002`).
     own_context_style(&e.style.computed())
+        // HTML §15.3.13: анонимная коробка fieldset — независимый BFC;
+        // её дочерние поля не переходят в поля fieldset до измерения копии.
+        || (e.tag == "fieldset"
+            && matches!(e.style.computed().display, None | Some(crate::style::computed::Display::Block)
+                | Some(crate::style::computed::Display::ListItem)))
         || (e.tag == "caption" && e.style.computed().display.is_none())
         || e.style.computed().is_caption == Some(true)
         // A table (UA `display: table`, not written into `display`) never

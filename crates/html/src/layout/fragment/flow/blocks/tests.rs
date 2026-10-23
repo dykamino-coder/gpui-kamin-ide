@@ -183,3 +183,37 @@ fn pushed_box_descends_into_the_box_covering_the_point() {
     // No box starts inside the second child: no strut.
     assert_eq!(found(70.0), None);
 }
+
+#[test]
+fn root_avoid_after_page_padding_does_not_create_a_blank_fragment() {
+    // css-break-4 §4.4: на пустом листе корневой avoid ослабляется;
+    // вложенная коробка avoid всё ещё переносится целиком.
+    let (b, ids) = tree(
+        "<div style='break-inside:avoid'><div style='height:96px'></div><div style='break-inside:avoid;height:192px'></div></div>",
+    );
+    let laid = at(&[
+        (b.id, 8.0, 296.0),
+        (ids[0], 8.0, 104.0),
+        (ids[1], 104.0, 296.0),
+    ]);
+    let m = b
+        .breaks(296.0, &laid)
+        .finish(FlowGeometry::default(), 296.0);
+    let k = crate::layout::fragment::types::Kid {
+        h: 296.0,
+        over: 296.0,
+        monolith: true,
+        cuts: m.cuts,
+        solid: m.solid,
+        keep: m.keep,
+        ..Default::default()
+    };
+    let (_, _, plan) = crate::layout::fragment::plan::fill(
+        &[k],
+        192.0,
+        crate::layout::fragment::plan::Space::pages(4),
+    );
+    assert_eq!(plan.len(), 2);
+    assert_eq!((plan[0].col, plan[0].from, plan[0].h), (0, 0.0, 104.0));
+    assert_eq!((plan[1].col, plan[1].from, plan[1].h), (1, 104.0, 192.0));
+}

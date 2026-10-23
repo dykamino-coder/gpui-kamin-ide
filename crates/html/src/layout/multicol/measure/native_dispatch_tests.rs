@@ -61,6 +61,11 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                 "<table><tr><td><div><div style='display:flex'><div>first</div><div>second</div></div></div></td></tr></table>",
                 "<div>text</div><div style='display:grid;grid-template-rows:20px 30px'></div>",
             ] {
+                // ADR P-19 F2-4: горизонтальный flex требует продолжений item;
+                // ниже проверяются только независимые native группы.
+                if !vertical && body.contains("display:flex") {
+                    continue;
+                }
                 // Явное письмо у детей: StackPlan получает уже унаследованный DOM.
                 let tree = crate::dom::parse(&format!("<div>{body}</div>"), "");
                 let mut root = host(&tree).clone();
@@ -110,7 +115,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                                 rows,
                                 None,
                             );
-                            let kids = plan.stackable.expect("native group");
+                            let kids = plan.stackable.unwrap_or_else(|| panic!("{mode}: {body}"));
                             assert!(!kids.is_empty(), "{mode}: {body}");
                             assert!(
                                 kids.iter().all(|(_, shape)| shape.height == 0.0),
@@ -140,34 +145,36 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 
 #[cfg(feature = "wpt-harness")]
 #[test]
-fn cloned_decoration_is_visible_as_an_explicit_f2_1_estimate() {
+fn continuation_groups_keep_an_explicit_f2_estimate() {
     // ADR P-19 F2-1: clone зависит от края и consumed, native группы выше — нет.
-    let tree = crate::dom::parse(
+    for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",
-        "",
-    );
-    let root = host(&tree);
-    let opts = opts();
-    let _ = stack_plan(
-        root,
-        &root.style,
-        &Computed::default(),
-        &opts,
-        2,
-        0.0,
-        false,
-        false,
-        Some(100.0),
-        Some(100.0),
-        Some(Len::Px(240.0)),
-        None,
-        None,
-    );
-    assert!(
-        opts.frag
-            .probe
-            .take()
-            .values()
-            .any(|p| p.estimate_calls > 0)
-    );
+        "<div><div style='display:flex'><div>first</div><div>second</div></div></div>",
+    ] {
+        let tree = crate::dom::parse(body, "");
+        let root = host(&tree);
+        let opts = opts();
+        let _ = stack_plan(
+            root,
+            &root.style,
+            &Computed::default(),
+            &opts,
+            2,
+            0.0,
+            false,
+            false,
+            Some(100.0),
+            Some(100.0),
+            Some(Len::Px(240.0)),
+            None,
+            None,
+        );
+        assert!(
+            opts.frag
+                .probe
+                .take()
+                .values()
+                .any(|p| p.estimate_calls > 0)
+        );
+    }
 }

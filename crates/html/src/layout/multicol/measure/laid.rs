@@ -25,7 +25,9 @@ pub(crate) fn children(
     }
     let flow: Vec<_> = host.children.iter().filter(|n| !is_blank(n)).collect();
     if !flow.iter().all(|n| match n {
-        Node::Element(c) => out_of_flow(&c.style) || independent_copy(c) || empty_floats(c),
+        // ADR P-19 F2-2: static position зависит от разложенных соседей;
+        // удаление OOF до замера теряет его исходное место в потоке.
+        Node::Element(c) => !out_of_flow(&c.style) && (independent_copy(c) || empty_floats(c)),
         _ => false,
     }) {
         return None;

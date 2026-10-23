@@ -14,6 +14,7 @@ use gpui::{App, AvailableSpace, Window, point, px, size};
 const PASSES: usize = 6;
 
 mod copies;
+mod extent;
 
 impl ColumnStack {
     /// Раскладка главной копии ребёнка `i` в колонку до укладки.
@@ -38,23 +39,7 @@ impl ColumnStack {
                 sz.height
             });
             c.h = h;
-            // Видимое переполнение потомков — параллельный поток
-            // (css-break-3 §3): продолжается в следующих колонках само.
-            c.over = h.max(f32::from(if axis.is_vertical() {
-                content.width
-            } else {
-                content.height
-            }));
-            if let Some(w) = &c.watched {
-                // Floats переполняют нулевую коробку; их реальная протяжённость
-                // резервирует продолжение, не растягивая фон normal flow.
-                let flow = w.flow.at(point(px(0.0), px(0.0)), sz, axis, window);
-                c.over = flow
-                    .floats
-                    .iter()
-                    .map(|g| g.bottom + g.margins[1])
-                    .fold(c.over, f32::max);
-            }
+            extent::measure(c, h, content, sz, axis, window);
             if c.regrow.is_some() {
                 c.cuts.clear();
                 c.forced.clear();

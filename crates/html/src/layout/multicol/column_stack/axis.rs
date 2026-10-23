@@ -181,7 +181,9 @@ impl ColumnStack {
                 .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
             let line_h = self.lines_plan.borrow().first().map_or(0.0, |l| l.1);
             let k0 = &self.children[f.kid];
-            let keep = spill == 0.0 || k0.measure.is_some() || nested_frag;
+            // Измерение размера не обрезает чернильное переполнение краёв
+            // без разрыва (css-break-3 §5.4). Свой clip задаёт вложенная стопка.
+            let keep = spill == 0.0 || nested_frag;
             let up = if !keep && f.copy == 0 && f.from <= COORD_EPS {
                 spill
             } else {

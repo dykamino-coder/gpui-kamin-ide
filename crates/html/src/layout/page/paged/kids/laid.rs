@@ -73,7 +73,10 @@ pub(super) fn group(
     } else {
         independent_copy(e) || float_extent
     };
-    if !eligible {
+    // ADR P-19 F2-1: декорированный блок со строками требует состояния
+    // краёв каждого печатного фрагмента. Рост сплошной копии меняет его
+    // полную рамку и координаты следующих групп вместо продолжения листа.
+    if !eligible || decorated_lines(e) {
         return None;
     }
     let e: Element = fragment_box(resolved_lengths(e, root, vcx), width, vcx);
@@ -94,3 +97,21 @@ pub(super) fn group(
 
 #[cfg(test)]
 mod tests;
+
+fn decorated_lines(e: &Element) -> bool {
+    use crate::style::values::value::Len;
+    fn text(e: &Element) -> bool {
+        e.children.iter().any(|n| match n {
+            Node::Text(t) => !t.trim().is_empty(),
+            Node::Element(k) => text(k),
+        })
+    }
+    let b = e.style.borders();
+    let decorated = [b.top, b.bottom, e.style.padding.top, e.style.padding.bottom]
+        .iter()
+        .any(|l| !matches!(l, None | Some(Len::Px(0.0))));
+    (decorated && text(e))
+        || e.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(k) if decorated_lines(k)))
+}

@@ -49,7 +49,10 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
                 panic!("contents")
             };
             let logical = if mode == "horizontal-tb" {
-                assert!(independent_copy(&e), "{body}");
+                assert!(crate::layout::fragment::push::measured_tree(&e), "{body}");
+                // ADR P-19 F2-4: рекордер видит flex, но независимой копии
+                // ещё нужны отдельные продолжения его параллельных потоков.
+                assert_eq!(independent_copy(&e), !body.contains("display:flex"));
                 e.clone()
             } else {
                 assert!(vertical_copy(&e, mode == "vertical-rl"), "{mode}: {body}");

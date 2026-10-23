@@ -87,7 +87,10 @@ impl BlockBox {
     pub(crate) fn breaks(&self, bottom: f32, laid: &Laid) -> BlockBreaks {
         let mut out = BlockBreaks::default();
         let top = laid.at(self.id).map_or(0.0, |b| b.0);
-        walk(self, top, bottom, laid, &mut out);
+        // Собственный avoid учитывает Kid::monolith: с пустого листа
+        // он ослабляется (css-break-4 §4.4). Повторный keep от border box
+        // после отбивки ошибочно создавал бы разрыв перед содержимым.
+        walk_contents(self, top, bottom, laid, &mut out);
         out.sections = self.table.as_ref().and_then(|t| t.sections(laid));
         out
     }
@@ -142,6 +145,10 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
     if b.inside_avoid {
         out.keep.push((top, bottom));
     }
+    walk_contents(b, top, bottom, laid, out);
+}
+
+fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut BlockBreaks) {
     if let Some(flow) = laid.flows.get(&b.id) {
         out.cuts.extend_from_slice(&flow.cuts);
         let lines = laid.content.get(&b.id).map_or(&[][..], |l| l.as_slice());
