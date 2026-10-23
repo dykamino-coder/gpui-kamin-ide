@@ -19,6 +19,7 @@ use crate::style::values::value::Len;
 mod background;
 mod explicit;
 mod fonts;
+mod longhands;
 mod sizes;
 mod text;
 pub(in crate::style::cascade) use text::{decor_family, resolve_decor_len};
@@ -26,12 +27,16 @@ pub(in crate::style::cascade) use text::{decor_family, resolve_decor_len};
 /// Вычисленный стиль элемента с каскадным стилем `own` под вычисленным
 /// стилем родителя `parent`.
 pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
+    // Каскадное `inherit` ненаследуемых свойств — вычисленное значение
+    // родителя вместо своего (css-cascade-5 §7.3.1), до всех шагов ниже:
+    // они видят его как значение элемента.
     let resolved;
-    let own = if own.explicit_inherit.is_empty() {
+    let own = if own.explicit_inherit.is_empty() && own.inherit_longhands.is_empty() {
         own
     } else {
         let mut copy = own.clone();
         super::inherited_value::apply_explicit_inheritance(&mut copy, parent, vcx);
+        longhands::inherit_longhands(&mut copy, parent, vcx);
         resolved = copy;
         &resolved
     };
@@ -39,8 +44,8 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Co
     crate::style::computed::scroll::inherit(parent, &mut c);
     resolve_bidi_inheritance(parent, &mut c);
     sizes::compute_sizes(parent, own, &mut c, vcx);
-    explicit::inherit_explicit(parent, own, &mut c, vcx);
-    background::inherit_background(parent, own, &mut c);
+    explicit::inherit_explicit(parent, own, &mut c);
+    background::inherit_background(own, &mut c);
     fonts::inherit_fonts(parent, own, &mut c);
     crate::style::computed::math_style::inherit(parent, &mut c, vcx);
     text::inherit_text(parent, own, &mut c);
@@ -69,6 +74,8 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Co
         None => parent.tab_size_len,
     };
     text::inherit_decoration_values(parent, own, &mut c, own_px, vcx);
+    // Вычисленный стиль несёт значения, а не каскадные слова.
+    c.inherit_longhands = Default::default();
     c
 }
 

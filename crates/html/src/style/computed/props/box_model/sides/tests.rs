@@ -55,14 +55,20 @@ fn invalid_longhands_keep_the_previous_side_and_order() {
             assert_eq!(style.side_order.padding, [order(1); 4]);
         }
         style.apply_one(key, "inherit", vcx);
+        let marked = |s: &Computed| {
+            [0, 1, 2, 3].map(|i| {
+                s.inherit_longhands
+                    .contains(LonghandId::physical(BoxGroup::Padding, i))
+            })
+        };
         let mut expected = [false; 4];
         expected[index] = true;
-        assert_eq!(style.padding_inherit_side, expected);
+        assert_eq!(marked(&style), expected);
         assert_eq!(padding(&style), [Some(Len::Px(7.0)); 4]);
         assert_eq!(style.side_order.padding[index], order(2));
         // A later value clears the side's inheritance.
         style.apply_one(key, "3px", vcx);
-        assert_eq!(style.padding_inherit_side, [false; 4]);
+        assert_eq!(marked(&style), [false; 4]);
     }
 }
 

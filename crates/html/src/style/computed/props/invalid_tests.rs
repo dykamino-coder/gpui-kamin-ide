@@ -2,7 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
-use crate::style::css::parse_decls;
+use crate::style::css::{BoxGroup as G, LonghandId as L, parse_decls};
 use crate::style::values::value::Len;
 
 fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
@@ -216,7 +216,7 @@ fn valid_inherit_clears_local_inherited_lengths() {
     let c = one(
         "top:3px;top:inherit;right:3px;right:inherit;bottom:3px;bottom:inherit;left:3px;left:inherit;left:invalid()",
     );
-    assert_eq!(c.inset_inherit, [true; 4]);
+    assert!((0..4).all(|i| c.inherit_longhands.contains(L::physical(G::Inset, i))));
     assert_eq!(
         [c.inset.top, c.inset.right, c.inset.bottom, c.inset.left],
         [None; 4]

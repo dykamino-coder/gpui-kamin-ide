@@ -57,7 +57,9 @@ pub(crate) fn pin_inherited_margins(
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
         for (i, want, src) in [(0usize, top, own.top), (2, bottom, own.bottom)] {
-            if !want || !ch.style.margin_inherit[i] {
+            let side =
+                crate::style::css::LonghandId::physical(crate::style::css::BoxGroup::Margin, i);
+            if !want || !ch.style.inherit_longhands.contains(side) {
                 continue;
             }
             let pinned = match src {
@@ -71,7 +73,7 @@ pub(crate) fn pin_inherited_margins(
             } else {
                 ch.style.margin.bottom = pinned;
             }
-            ch.style.margin_inherit[i] = false;
+            ch.style.inherit_longhands.set(side, false);
         }
     }
 }

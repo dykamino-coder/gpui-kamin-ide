@@ -83,7 +83,11 @@ fn wide_keywords_and_substitution_in_box_longhands() {
     )
     .build();
     let a = find(doc.nodes(), "a").expect("a");
-    assert!(a.style.margin_inherit[3]);
+    assert!(
+        a.style
+            .inherit_longhands
+            .contains(crate::style::css::LonghandId::MarginLeft)
+    );
     assert_eq!(a.style.padding.left, Some(Len::Px(0.0)));
     assert_eq!(a.style.inset.top, Some(Len::Auto));
     let b = find(doc.nodes(), "b").expect("b");

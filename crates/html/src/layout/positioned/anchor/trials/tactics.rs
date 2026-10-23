@@ -4,6 +4,7 @@ use super::super::area::{Tracks, physical_area};
 use super::super::parse::{FLIP_BLOCK, FLIP_INLINE, FLIP_START};
 use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Sides};
+use crate::style::css::LonghandId as L;
 use crate::style::values::position_area::{AreaAxis, AreaKw, AreaSide, PositionArea};
 use crate::style::values::value::{AnchorFn, AnchorSide, Len, anchor_get, anchor_store};
 
@@ -65,8 +66,15 @@ pub(in crate::layout::positioned::anchor) fn apply(
             }
             out
         };
-        c.margin_inherit = permute(c.margin_inherit);
-        c.inset_inherit = permute(c.inset_inherit);
+        for ids in [
+            [L::MarginTop, L::MarginRight, L::MarginBottom, L::MarginLeft],
+            [L::Top, L::Right, L::Bottom, L::Left],
+        ] {
+            let flags = permute(ids.map(|id| c.inherit_longhands.contains(id)));
+            for (id, on) in ids.into_iter().zip(flags) {
+                c.inherit_longhands.set(id, on);
+            }
+        }
         if transpose {
             super::sizing::transpose(c, vcx);
             std::mem::swap(&mut c.align_self, &mut c.justify_self);

@@ -229,24 +229,18 @@ pub struct Computed {
     /// раскрывается разбором в длинные свойства, и признак не ставится
     /// (его ещё читает табличный код).
     pub(crate) border_inherit: bool,
-    /// `inherit` длинных свойств рамки по СТОРОНАМ и частям:
-    /// `border-left-width`, `-style`, `-color`. Свойства не наследуемые, слово
-    /// копирует вычисленное значение родителя — оно известно только при
-    /// слиянии стилей. Порядок сторон всюду один: верх, право, низ, лево.
-    pub(crate) border_inherit_w: [bool; 4],
-    pub(crate) border_inherit_s: [bool; 4],
-    pub(crate) border_inherit_c: [bool; 4],
-    pub(crate) padding_inherit: bool,
-    /// `inherit` по СТОРОНАМ у полей и отступов, порядок [верх, право, низ,
-    /// лево]. Сокращение ставит все четыре.
-    pub(crate) margin_inherit: [bool; 4],
-    /// `inherit` у ненаследуемых свойств, которым своей ветки не было:
+    /// Ненаследуемые длинные свойства реестра с каскадным значением
+    /// `inherit` (css-cascade-5 §7.3.1): вычисленное значение родителя
+    /// копирует стадия вычисленных значений (`style::cascade::compute`) —
+    /// одним реестром для сторон, размеров, рамки, контура, фона,
+    /// выравнивания и прочих свойств реестра.
+    pub(crate) inherit_longhands: crate::style::css::LonghandSet,
+    /// `inherit` у ненаследуемых свойств вне реестра длинных свойств:
     /// повтор мостовой (`background-repeat`), слой (`z-index`), обводка,
     /// вид (`display`), плитка и её место (`background-image`,
     /// `background-position`), обрезка (`clip`), сокращение шрифта,
     /// преобразование регистра.
     pub(crate) inherit_bits: u32,
-    pub(crate) padding_inherit_side: [bool; 4],
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
     /// COMPUTED `background-color` (css-backgrounds-3 §3.2, css-color-4
@@ -254,17 +248,6 @@ pub struct Computed {
     /// it stay unresolved; `inherit` copies this value, never the parent's
     /// used `background`.
     pub background_color: Option<StyleColor>,
-    /// `background-color: inherit`: фон не наследуемый, слово переносит
-    /// вычисленное значение родителя (включая нерешённую функцию).
-    pub(crate) background_inherit: bool,
-    /// Явное `inherit` на ненаследуемых размерах и краях: значение берётся
-    /// от родителя при слиянии (`style::cascade::inherit`), как у padding/border.
-    pub(crate) width_inherit: bool,
-    pub(crate) height_inherit: bool,
-    /// То же у пределов: `min-width`, `min-height`, `max-width`, `max-height`.
-    pub(crate) minmax_inherit: [bool; 4],
-    /// top/right/bottom/left.
-    pub(crate) inset_inherit: [bool; 4],
     pub gradient: Option<Gradient>,
     pub shadows: Vec<Shadow>,
     /// Внутренние тени (`box-shadow: inset`) — отдельным списком: рисуются
@@ -506,11 +489,6 @@ pub struct Computed {
     /// `align-self: inherit` — значение берёт `style::cascade::inherit` у родителя
     /// (свойство ненаследуемое, слово копирует вычисленное значение).
     pub(crate) align_self_inherit: bool,
-    /// `inherit` у `align-items`/`justify-items`/`align-content`/
-    /// `justify-content`/`justify-self` (разряды `ainh::*`): свойства
-    /// ненаследуемые, слово копирует вычисленное значение родителя
-    /// (css-cascade-4 §7.3.1) — его берёт `style::cascade::inherit`.
-    pub(crate) align_inherit: u8,
     pub justify_self_last: bool,
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
     /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.

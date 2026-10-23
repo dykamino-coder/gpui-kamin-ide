@@ -34,7 +34,10 @@ impl Computed {
         for image in self.image_operands() {
             image.resolve_colors(current);
         }
-        if (self.gradient.is_some() || self.inherit_bits & super::inh::BG_IMAGE != 0)
+        if (self.gradient.is_some()
+            || self
+                .inherit_longhands
+                .contains(crate::style::css::LonghandId::BackgroundImage))
             && let Some(template) = self.gradient_current.as_ref()
         {
             let mut gradient = self.gradient.clone().unwrap_or_else(|| template.clone());

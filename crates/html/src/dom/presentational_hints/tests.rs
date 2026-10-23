@@ -158,6 +158,9 @@ fn css_wide_keywords_override_table_hints() {
     let spacing = find(nodes, "table").unwrap().style.border_spacing;
     assert_eq!(spacing, None);
     let td = &find(nodes, "td").unwrap().style;
-    assert!(td.padding_inherit_side[0]);
+    assert!(
+        td.inherit_longhands
+            .contains(crate::style::css::LonghandId::PaddingTop)
+    );
     assert_eq!(td.padding.bottom, Some(Len::Px(10.0)));
 }

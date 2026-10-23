@@ -41,29 +41,13 @@ inherited_eq! {
 /// Несёт ли каскадный стиль `own` слово `inherit` у ненаследуемого свойства: такая стадия
 /// читает у родителя его ненаследуемые поля, и стиль считается под каждой коробкой-родителем.
 pub(super) fn inherits_explicitly(own: &Computed) -> bool {
-    !own.explicit_inherit.is_empty()
+    !own.inherit_longhands.is_empty()
+        || !own.explicit_inherit.is_empty()
         || own.inherit_bits != 0
-        || own.align_inherit != 0
-        || own.background_inherit
         || own.shadow_inherit
         || own.bidi_inherit
-        || own.padding_inherit
-        || own.width_inherit
-        || own.height_inherit
         || own.background_blend == Some(BlendMode::Inherit)
         || own.snap.inherit != 0
         || own.scroll.inherit_gutter
         || own.scroll.inherit_width
-        || [
-            own.border_inherit_w,
-            own.border_inherit_s,
-            own.border_inherit_c,
-            own.padding_inherit_side,
-            own.margin_inherit,
-            own.minmax_inherit,
-            own.inset_inherit,
-        ]
-        .iter()
-        .flatten()
-        .any(|on| *on)
 }

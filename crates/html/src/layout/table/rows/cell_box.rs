@@ -19,13 +19,16 @@ pub(super) fn prepare_cell_box(
     let vcx = opts.cx.vcx();
     // Наследуемые отступы и рамки берутся из слитого стиля `cm`,
     // где `style::cascade::inherit` уже разрешил значения родителя.
-    if cell.style.padding_inherit || cell.style.padding_inherit_side.contains(&true) {
+    use crate::style::css::{BoxGroup as G, LonghandId as L};
+    let marked = cell.style.inherit_longhands;
+    let inherits = |group: G| (0..4).any(|i| marked.contains(L::physical(group, i)));
+    if inherits(G::Padding) {
         cell.style.padding = cm.padding;
     }
     if cell.style.border_inherit
-        || cell.style.border_inherit_w.contains(&true)
-        || cell.style.border_inherit_s.contains(&true)
-        || cell.style.border_inherit_c.contains(&true)
+        || inherits(G::BorderWidth)
+        || inherits(G::BorderStyle)
+        || inherits(G::BorderColor)
     {
         cell.style.border_width = cm.border_width;
         cell.style.border_visible = cm.border_visible;

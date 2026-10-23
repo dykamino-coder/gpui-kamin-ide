@@ -6,104 +6,97 @@ use crate::style::values::value::px_strict;
 
 /// Явное `inherit` на ненаследуемых размерах и краях (`explicit-inherit/*`).
 /// Родитель здесь — его СОБСТВЕННЫЙ стиль; для ненаследуемых свойств он и
-/// есть вычисленный, и уже домножен на зум родителя.
+/// есть вычисленный, и уже домножен на зум родителя. Значение родителя в
+/// точках × `own` становится своим, и свойство уходит из каскадного
+/// `inherit` (`inherit_longhands`); не в точках — остаётся, его скопирует
+/// стадия вычисленных значений (доля и `auto` зуму безразличны).
 pub(super) fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
+    use crate::style::css::{BoxGroup as G, LonghandId as L};
     let Some(p) = parent else { return };
+    if c.inherit_longhands.is_empty() {
+        return;
+    }
     let px = |l: Option<Len>| match l {
         Some(Len::Px(v)) => Some(Len::Px(v * own)),
         _ => None,
     };
-    if c.width_inherit
-        && let Some(v) = px(p.width)
-    {
-        c.width = Some(v);
-        c.width_inherit = false;
-    }
-    if c.height_inherit
-        && let Some(v) = px(p.height)
-    {
-        c.height = Some(v);
-        c.height_inherit = false;
-    }
-    // Порядок разрядов — как в `style::cascade::inherit`: min-w, min-h, max-w, max-h.
-    let minmax = [p.min_width, p.min_height, p.max_width, p.max_height];
-    for (i, from) in minmax.into_iter().enumerate() {
-        if c.minmax_inherit[i]
+    let sizes = [
+        p.width,
+        p.height,
+        p.min_width,
+        p.min_height,
+        p.max_width,
+        p.max_height,
+    ];
+    for (i, from) in sizes.into_iter().enumerate() {
+        let id = L::physical(G::Size, i);
+        if c.inherit_longhands.contains(id)
             && let Some(v) = px(from)
         {
-            match i {
-                0 => c.min_width = Some(v),
-                1 => c.min_height = Some(v),
-                2 => c.max_width = Some(v),
-                _ => c.max_height = Some(v),
-            }
-            c.minmax_inherit[i] = false;
+            *match i {
+                0 => &mut c.width,
+                1 => &mut c.height,
+                2 => &mut c.min_width,
+                3 => &mut c.min_height,
+                4 => &mut c.max_width,
+                _ => &mut c.max_height,
+            } = Some(v);
+            c.inherit_longhands.set(id, false);
         }
     }
-    // `padding: inherit` целиком: снимается, только если все стороны родителя
-    // в точках или пусты — иначе слияние копирует весь набор, как прежде.
-    if c.padding_inherit
-        && [
-            p.padding.top,
-            p.padding.right,
-            p.padding.bottom,
-            p.padding.left,
-        ]
-        .iter()
-        .all(|l| matches!(l, None | Some(Len::Px(_))))
-    {
-        c.padding = Sides {
-            top: px(p.padding.top),
-            right: px(p.padding.right),
-            bottom: px(p.padding.bottom),
-            left: px(p.padding.left),
+    for group in [G::Padding, G::Margin, G::Inset, G::BorderWidth] {
+        let from = match group {
+            G::Padding => p.padding,
+            G::Margin => p.margin,
+            G::Inset => p.inset,
+            _ => p.border_width,
         };
-        c.padding_inherit = false;
-    }
-    per_side(&mut c.padding_inherit_side, &mut c.padding, &p.padding, own);
-    per_side(&mut c.margin_inherit, &mut c.margin, &p.margin, own);
-    per_side(&mut c.inset_inherit, &mut c.inset, &p.inset, own);
-    per_side(
-        &mut c.border_inherit_w,
-        &mut c.border_width,
-        &p.border_width,
-        own,
-    );
-    // `outline-width`/`outline-offset: inherit` и `background-size: inherit`
-    // живут разрядами `inherit_bits`, и слияние (`style::cascade::inherit`) копирует
-    // точки родителя БЕЗ своего множителя (`zoom/outline-width`,
-    // `outline-offset`, `background-size`: вторая коробка группы с зумом 2).
-    // Значение родителя — его собственный стиль, уже с его зумом, × `own`;
-    // разряд снимается. Не в точках — разряд остаётся, как прежде.
-    use crate::style::computed::inh;
-    if c.inherit_bits & (inh::OUTLINE_W | inh::OUTLINE_O) != 0 {
-        let from = p.outline.clone().unwrap_or_default();
-        let mut o = c.outline.clone().unwrap_or_default();
-        let mut hit = false;
-        if c.inherit_bits & inh::OUTLINE_W != 0
-            && let Some(v) = px(from.width)
-        {
-            o.width = Some(v);
-            c.inherit_bits &= !inh::OUTLINE_W;
-            hit = true;
-        }
-        if c.inherit_bits & inh::OUTLINE_O != 0
-            && let Some(v) = px(from.offset)
-        {
-            o.offset = Some(v);
-            c.inherit_bits &= !inh::OUTLINE_O;
-            hit = true;
-        }
-        if hit {
-            c.outline = Some(o);
+        for i in 0..4 {
+            let id = L::physical(group, i);
+            if c.inherit_longhands.contains(id)
+                && let Some(Len::Px(v)) = side(&from, i)
+            {
+                let into = match group {
+                    G::Padding => &mut c.padding,
+                    G::Margin => &mut c.margin,
+                    G::Inset => &mut c.inset,
+                    _ => &mut c.border_width,
+                };
+                set_side(into, i, Len::Px(v * own));
+                c.inherit_longhands.set(id, false);
+            }
         }
     }
-    if c.inherit_bits & inh::BG_SIZE != 0
+    // `outline-width`/`outline-offset: inherit` и `background-size: inherit`:
+    // стадия вычисленных значений копирует точки родителя БЕЗ своего
+    // множителя (`zoom/outline-width`, `outline-offset`, `background-size`:
+    // вторая коробка группы с зумом 2).
+    let from = p.outline.clone().unwrap_or_default();
+    let mut o = c.outline.clone().unwrap_or_default();
+    let mut hit = false;
+    if c.inherit_longhands.contains(L::OutlineWidth)
+        && let Some(v) = px(from.width)
+    {
+        o.width = Some(v);
+        c.inherit_longhands.set(L::OutlineWidth, false);
+        hit = true;
+    }
+    if c.inherit_longhands.contains(L::OutlineOffset)
+        && let Some(v) = px(from.offset)
+    {
+        o.offset = Some(v);
+        c.inherit_longhands.set(L::OutlineOffset, false);
+        hit = true;
+    }
+    if hit {
+        c.outline = Some(o);
+    }
+    if c.inherit_longhands.contains(L::BackgroundSize)
         && let crate::style::computed::BgSize::Fixed(w, h) = p.bg_size
     {
         let k = |l: Option<Len>| px(l).or(l);
         c.bg_size = crate::style::computed::BgSize::Fixed(k(w), k(h));
-        c.inherit_bits &= !inh::BG_SIZE;
+        c.inherit_longhands.set(L::BackgroundSize, false);
     }
 }
 

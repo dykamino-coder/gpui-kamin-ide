@@ -24,7 +24,6 @@ impl Computed {
                         || parse_align(v) == Some(Align::Baseline))
                     .then_some(None))
                 );
-                self.align_inherit &= !ainh::ALIGN_CONTENT;
                 self.align_content = parsed;
                 self.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
                     .then(|| v.split_whitespace().any(|word| word == "last"));
@@ -55,7 +54,6 @@ impl Computed {
                         .map(Some)
                         .or_else(|| (v == "normal" || legacy).then_some(None))
                 );
-                self.align_inherit &= !ainh::JUSTIFY_ITEMS;
                 self.justify_items = parsed;
                 if v == "normal" || legacy {
                     self.accept_declaration();
@@ -70,7 +68,6 @@ impl Computed {
                         .map(Some)
                         .or_else(|| (matches!(v, "auto" | "normal")).then_some(None))
                 );
-                self.align_inherit &= !ainh::JUSTIFY_SELF;
                 self.justify_self = parsed;
                 if matches!(v, "auto" | "normal") {
                     self.accept_declaration();
