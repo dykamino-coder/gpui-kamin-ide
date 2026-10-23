@@ -29,12 +29,14 @@ fn setup(column: bool) -> (BlockBox, Laid) {
                     start: 0.0,
                     end: 50.0,
                     items: vec![1, 2],
+                    order: vec![(0, Some(1)), (1, Some(2))],
                 },
                 FlexLine {
                     index: 1,
                     start: 60.0,
                     end: 100.0,
                     items: vec![3],
+                    order: vec![(2, Some(3))],
                 },
             ],
         },
@@ -155,6 +157,7 @@ fn avoid_between_later_rows_closes_exact_boundary() {
             start: 0.0,
             end: 20.0,
             items: vec![],
+            order: vec![],
         },
     );
     frame.lines[1].start = 20.0;
@@ -177,6 +180,7 @@ fn forced_zero_height_rows_keep_distinct_growth_targets() {
             start: 0.0,
             end: 0.0,
             items: vec![index as u64 + 1],
+            order: vec![(index as u32, Some(index as u64 + 1))],
         })
         .collect();
     let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 0.0, 100.0);

@@ -1,7 +1,7 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
 # 1. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
-# 2. Expose final Taffy flex line/item geometry and typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
+# 2. Expose final Taffy flex line/item geometry and semantic item order, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
 # 3. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
 # 4. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
 # 5. CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.
@@ -10831,10 +10831,10 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +}
 diff --git a/vendor/gpui/src/taffy/flex_layout.rs b/vendor/gpui/src/taffy/flex_layout.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2a8cbb0b9ec8ee7ec9c4d86fec4034ac1acaa4e8
+index 0000000000000000000000000000000000000000..13d60b453c8797170f36dc76bdd25a6a17e8714b
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/flex_layout.rs
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,187 @@
 +//! Финальные линии flex и координаты их элементов без округления устройства.
 +use super::{LayoutId, TaffyLayoutEngine};
 +use crate::{Pixels, Point};
@@ -10865,6 +10865,8 @@ index 0000000000000000000000000000000000000000..2a8cbb0b9ec8ee7ec9c4d86fec4034ac
 +pub struct FlexItemLayout {
 +    /// Layout node of the item.
 +    pub id: LayoutId,
++    /// Order-modified document index, before direction and wrap reversal.
++    pub order: u32,
 +    /// Physical main-axis border-box position relative to the container.
 +    pub main_offset: f32,
 +    /// Physical cross-axis border-box position relative to the container.
@@ -10942,6 +10944,7 @@ index 0000000000000000000000000000000000000000..2a8cbb0b9ec8ee7ec9c4d86fec4034ac
 +                    let margin = self.taffy.unrounded_layout(item.node).margin;
 +                    FlexItemLayout {
 +                        id: item.node.into(),
++                        order: item.order,
 +                        main_offset: item.main_offset / scale,
 +                        cross_offset: item.cross_offset / scale,
 +                        main_size: item.main_size / scale,
@@ -10992,6 +10995,32 @@ index 0000000000000000000000000000000000000000..2a8cbb0b9ec8ee7ec9c4d86fec4034ac
 +            assert_eq!(lines.lines[0].items[0].cross_size, 20.0);
 +        }
 +    }
++    #[test]
++    fn semantic_item_indices_survive_direction_and_wrap_reversal() {
++        for direction in [FlexDirection::Row, FlexDirection::RowReverse, FlexDirection::Column, FlexDirection::ColumnReverse] {
++            for wrap in [FlexWrap::Wrap, FlexWrap::WrapReverse] {
++                let mut engine = TaffyLayoutEngine::new();
++                let children: Vec<_> = (0..4).map(|_| engine.taffy.new_leaf(Style {
++                    size: Size::from_lengths(40.0, 20.0), flex_shrink: 0.0, ..Style::DEFAULT
++                }).unwrap()).collect();
++                let root = engine.taffy.new_with_children(Style {
++                    size: Size::from_lengths(80.0, 40.0),
++                    flex_direction: direction, flex_wrap: wrap, ..Style::DEFAULT
++                }, &children).unwrap();
++                engine.taffy.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                let (_, layout) = engine.parent_flex_layout(children[0].into(), 1.0).unwrap();
++                assert_eq!(layout.lines.len(), 2);
++                let mut indices: Vec<_> = layout.lines.iter().flat_map(|l| &l.items)
++                    .map(|item| {
++                        assert_eq!(item.id, LayoutId::from(children[item.order as usize]));
++                        item.order
++                    }).collect();
++                indices.sort_unstable();
++                assert_eq!(indices, [0, 1, 2, 3]);
++            }
++        }
++    }
++
 +}
 diff --git a/vendor/gpui/src/taffy/grid_item_rows.rs b/vendor/gpui/src/taffy/grid_item_rows.rs
 new file mode 100644
