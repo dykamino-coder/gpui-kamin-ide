@@ -20,8 +20,8 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
             match child {
                 Node::Element(el) if el.style.computed().display == Some(Display::Contents) => {
                     // Дети растворённого получают его наследуемое (цвет,
-                    // шрифт) — слитый стиль передаётся вниз донором.
-                    let donor = BoxStyle::from(el.style.cascaded().clone());
+                    // шрифт) — вычисленный стиль растворённого передаётся вниз донором.
+                    let donor = BoxStyle::shared(el.style.computed());
                     let merged: Vec<Node> = el
                         .children
                         .iter()
@@ -214,7 +214,9 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
             out.push(n.clone());
             continue;
         }
-        let donor = BoxStyle::from(el.style.cascaded().clone());
+        // The donor is the dissolved element's COMPUTED style: a cascaded one has
+        // unresolved relative values (`font-size: 150%` fell back to 16px).
+        let donor = BoxStyle::shared(el.style.computed());
         for g in flatten_contents(&el.children, vcx) {
             match g {
                 Node::Element(mut ge) => {
@@ -233,4 +235,41 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::values::value::Len;
+
+    #[test]
+    fn dissolved_contents_hand_down_their_computed_font_size() {
+        let parsed = crate::dom::parse(
+            r#"<div style="display: table; font-size: 20px"><div style="display: contents; font-size: 150%"><div style="display: table-row"><div style="display: table-cell">a</div></div></div></div>"#,
+            "",
+        );
+        let vcx = parsed.values();
+        crate::style::cascade::materialize::materialize(
+            &parsed.nodes,
+            &std::rc::Rc::new(crate::style::computed::Computed::default()),
+            vcx,
+        );
+        fn table(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.style.computed().display == Some(Display::Table) => Some(e),
+                Node::Element(e) => table(&e.children),
+                _ => None,
+            })
+        }
+        let table = table(&parsed.nodes).expect("table");
+        let flat = flatten_contents(&table.children, vcx);
+        let row = flat
+            .iter()
+            .find_map(|n| match n {
+                Node::Element(e) => Some(e),
+                _ => None,
+            })
+            .expect("row");
+        assert_eq!(row.style.computed().font_size, Some(Len::Px(30.0)));
+    }
 }
