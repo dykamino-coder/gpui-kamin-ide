@@ -13,6 +13,8 @@ pub(crate) struct PositioningContext {
         Option<Rc<crate::layout::positioned::anchor::identities::Identities>>,
     /// Входы размера корня OOF из геометрии текущего кадра.
     pub(crate) oof_sizes: Option<(u64, crate::layout::positioned::anchor::resolve::SizeInputs)>,
+    /// Computed-вариант только корня текущей пробы; не межкадровое состояние.
+    pub(crate) oof_computed: Option<(u64, crate::style::computed::ElementStyle)>,
     /// Проба position-try: только корень публикует свой layout id, без prepaint.
     pub(crate) oof_trial: Option<(u64, Rc<crate::layout::positioned::anchor::trials::Probe>)>,
     /// Line-box hand-off for the static-position probe of the inline atom

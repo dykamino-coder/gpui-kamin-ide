@@ -31,10 +31,7 @@ pub(super) fn container_atom(
                 _ => opts.base_size(),
             },
         };
-        let shrink_to_fit = match (
-            e.style.used().column_count,
-            e.style.used().column_width,
-        ) {
+        let shrink_to_fit = match (e.style.used().column_count, e.style.used().column_width) {
             (Some(c), Some(Len::Px(w))) if w > 0.0 => Some(c as f32 * w + (c as f32 - 1.0) * gap),
             _ => None,
         };

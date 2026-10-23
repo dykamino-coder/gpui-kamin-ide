@@ -15,11 +15,9 @@ pub(super) fn piped_image(
     vcx: ValueCx<'_>,
 ) -> Result<AnyElement, gpui::Div> {
     let values = vcx.keep();
-    if let (true, Some(Len::Px(w)), Some(Len::Px(h))) = (
-        wants_pipe,
-        e.style.used().width,
-        e.style.used().height,
-    ) {
+    if let (true, Some(Len::Px(w)), Some(Len::Px(h))) =
+        (wants_pipe, e.style.used().width, e.style.used().height)
+    {
         let pos = e
             .style
             .used()
@@ -30,40 +28,35 @@ pub(super) fn piped_image(
             });
         use crate::style::computed::BgSize;
         let bgc = {
-            let mut with_inherited =
-                crate::style::computed::Computed {
-                    bg_image: Some(e.style.used().content_image().cloned().unwrap_or_else(
-                        || {
-                            crate::style::computed::ImageSource::Url(
-                                local.unwrap_or(src).to_string(),
-                            )
-                        },
-                    )),
-                    bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
-                    bg_pos: pos,
-                    bg_size: match e.style.used().object_fit.as_deref() {
-                        Some("contain") => BgSize::Contain,
-                        Some("cover") => BgSize::Cover,
-                        Some("none") => BgSize::Auto,
-                        Some("scale-down") => {
-                            // Меньшее из `none` и `contain`: влезает — своим
-                            // размером, нет — вписать.
-                            let fits = crate::resources::css_images::element_source(
-                                local.unwrap_or(src),
-                                &e.style.used(),
-                                vcx,
-                            )
-                            .map(crate::paint::background::Source::from_cpu)
-                            .map(|s| s.intrinsic())
-                            .is_some_and(|i| {
-                                i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
-                            });
-                            if fits { BgSize::Auto } else { BgSize::Contain }
-                        }
-                        _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
-                    },
-                    ..Default::default()
-                };
+            let mut with_inherited = crate::style::computed::Computed {
+                bg_image: Some(e.style.used().content_image().cloned().unwrap_or_else(|| {
+                    crate::style::computed::ImageSource::Url(local.unwrap_or(src).to_string())
+                })),
+                bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
+                bg_pos: pos,
+                bg_size: match e.style.used().object_fit.as_deref() {
+                    Some("contain") => BgSize::Contain,
+                    Some("cover") => BgSize::Cover,
+                    Some("none") => BgSize::Auto,
+                    Some("scale-down") => {
+                        // Меньшее из `none` и `contain`: влезает — своим
+                        // размером, нет — вписать.
+                        let fits = crate::resources::css_images::element_source(
+                            local.unwrap_or(src),
+                            &e.style.used(),
+                            vcx,
+                        )
+                        .map(crate::paint::background::Source::from_cpu)
+                        .map(|s| s.intrinsic())
+                        .is_some_and(|i| {
+                            i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
+                        });
+                        if fits { BgSize::Auto } else { BgSize::Contain }
+                    }
+                    _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
+                },
+                ..Default::default()
+            };
             // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
             // положить руками: иначе `image-orientation: none` вместе с
             // `object-fit`/`object-position` уходил бы мимо ключа источника.
@@ -78,8 +71,7 @@ pub(super) fn piped_image(
         // скругление её тоже не режет (`overflow-img`, `-svg`,
         // `-border-radius`: эталон — та же картинка без обрезки).
         // Умолчание (`None`) — UA-шный `clip`, прежний путь ниже.
-        let spills = e.style.used().overflow_x
-            == Some(crate::style::computed::Overflow::Visible)
+        let spills = e.style.used().overflow_x == Some(crate::style::computed::Overflow::Visible)
             && e.style.used().overflow_y == Some(crate::style::computed::Overflow::Visible);
         if spills {
             let style = bgc;

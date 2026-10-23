@@ -76,5 +76,5 @@ fn fieldset_fragment_keeps_child_end_margin_inside_its_bfc() {
     let Node::Element(child) = &fieldset.children[0] else {
         panic!("child")
     };
-    assert_eq!(child.style.computed().margin.bottom, Some(Len::Px(50.0)));
+    assert_eq!(child.style.used().margin.bottom, Some(Len::Px(50.0)));
 }

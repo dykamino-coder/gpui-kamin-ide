@@ -166,8 +166,7 @@ pub(super) fn band_seq(
     let mut chunk: Vec<Node> = vec![];
     let mut probes = vec![];
     for n in nodes {
-        let float =
-            matches!(&n, Node::Element(c) if c.style.used().float.is_some_and(|f| f != 0));
+        let float = matches!(&n, Node::Element(c) if c.style.used().float.is_some_and(|f| f != 0));
         if !float {
             chunk.push(n);
             continue;

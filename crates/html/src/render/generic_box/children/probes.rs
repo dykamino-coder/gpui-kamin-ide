@@ -81,8 +81,7 @@ pub(crate) fn child_probes(
         // collapses along the ancestor chain of the clamp point (Blink
         // `LineClampAncestorChain`), so an in-flow block with any of them
         // is probed even without paint (`line-clamp-024`, `-auto-027`).
-        let bp_after =
-            side(e.style.used().borders().bottom) + side(e.style.used().padding.bottom);
+        let bp_after = side(e.style.used().borders().bottom) + side(e.style.used().padding.bottom);
         let in_flow_block = !skip
             && merged.float.is_none_or(|f| f == 0)
             && !matches!(

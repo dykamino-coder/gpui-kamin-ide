@@ -122,7 +122,7 @@ pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     };
     let mut span = anon_element("::marker", children);
     span.inline = true;
-    span.style = marker.style.unwrap_or_default().into();
+    span.style = crate::dom::SharedStyle::layout_made(marker.style.unwrap_or_default());
     tabular_marker(
         span.style.used_mut(),
         merged,

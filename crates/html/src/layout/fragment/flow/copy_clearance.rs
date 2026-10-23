@@ -7,17 +7,17 @@ use crate::style::computed::Display;
 /// Внутри одной копии BandFlow сохраняет весь BFC, включая её clearance.
 pub(crate) fn copy_clearance(nodes: &[Node]) -> bool {
     fn reaches(e: &Element, float: bool) -> bool {
-        if e.style.computed().display == Some(Display::None) {
+        if e.style.used().display == Some(Display::None) {
             return false;
         }
-        let floated = e.style.computed().float.is_some_and(|f| f != 0);
+        let floated = e.style.used().float.is_some_and(|f| f != 0);
         if float && floated {
             return true;
         }
-        if out_of_flow(&e.style.computed()) {
+        if out_of_flow(&e.style.used()) {
             return false;
         }
-        if !float && e.style.computed().clear.is_some() {
+        if !float && e.style.used().clear.is_some() {
             return true;
         }
         // CSS 2.1 §9.4.1: чужой BFC не экспортирует свои float bands.

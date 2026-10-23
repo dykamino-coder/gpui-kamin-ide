@@ -30,11 +30,11 @@ pub(super) fn defer(
 ) -> bool {
     if !geometry_ok
         || opts.paged_build().is_some()
-        || !resolve::needs_host(&e.style.computed(), &opts.cx)
+        || !resolve::needs_host(&e.style.used(), &opts.cx)
     {
         return false;
     }
-    let fixed = e.style.computed().position == Some(Position::Fixed);
+    let fixed = e.style.used().position == Some(Position::Fixed);
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
     let nearest = nearest_cb_index(inherited);
@@ -42,8 +42,8 @@ pub(super) fn defer(
         return false;
     }
     let axes = (
-        edge_set(e.style.computed().inset.left) || edge_set(e.style.computed().inset.right),
-        edge_set(e.style.computed().inset.top) || edge_set(e.style.computed().inset.bottom),
+        edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right),
+        edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom),
     );
     let spot: SpotCell = Default::default();
     spot.set(Spot {
@@ -55,8 +55,8 @@ pub(super) fn defer(
                 0.
             } else {
                 crate::layout::block::struts::margin_px(
-                    e.style.computed().margin.left,
-                    &e.style.computed(),
+                    e.style.used().margin.left,
+                    &e.style.used(),
                     opts.cx.vcx(),
                 )
                 .unwrap_or(0.)
@@ -65,8 +65,8 @@ pub(super) fn defer(
                 0.
             } else {
                 crate::layout::block::struts::margin_px(
-                    e.style.computed().margin.top,
-                    &e.style.computed(),
+                    e.style.used().margin.top,
+                    &e.style.used(),
                     opts.cx.vcx(),
                 )
                 .unwrap_or(0.)
@@ -79,7 +79,7 @@ pub(super) fn defer(
         rtl: inherited.wm().rtl(),
         vertical: inherited.wm().vertical(),
         vertical_rl: inherited.wm().block_rl(),
-        own_vertical: e.style.computed().wm().vertical(),
+        own_vertical: e.style.used().wm().vertical(),
         self_align: crate::layout::positioned::static_position::static_self_align(e, inherited),
         ..Default::default()
     });
@@ -122,6 +122,9 @@ pub(super) fn defer(
         let inputs = resolve::current_inputs(&own, &inherited, bounds, window, vcx);
         build_opts.cx.position.oof_sizes = Some((own.anchor_key, inputs));
         build_opts.cx.position.oof_trial = probe.map(|p| (own.anchor_key, p));
+        build_opts.cx.position.oof_computed = style
+            .and_then(|s| s.element_style.clone())
+            .map(|e| (own.anchor_key, e));
         let child = super::build::build(
             source,
             &inherited,
@@ -130,10 +133,10 @@ pub(super) fn defer(
             layer_ok,
             root_box.clone(),
         );
-        let child = if !fixed && source.style.computed().z_index.is_some_and(|z| z > 0) {
+        let child = if !fixed && source.style.used().z_index.is_some_and(|z| z > 0) {
             crate::paint::stacking::layered(
                 child,
-                &source.style.computed(),
+                &source.style.used(),
                 &inherited,
                 layer_ok,
                 under_tf,
@@ -148,7 +151,7 @@ pub(super) fn defer(
         } else {
             child
         };
-        if source.style.computed().z_index.is_some_and(|z| z < 0)
+        if source.style.used().z_index.is_some_and(|z| z < 0)
             && !crate::paint::stacking::nested_context(&inherited)
         {
             crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(child))
@@ -166,7 +169,7 @@ pub(super) fn defer(
         &base_inherited,
         vcx,
     );
-    let kid = if e.style.computed().position_try_fallbacks.is_empty() {
+    let kid = if e.style.used().position_try_fallbacks.is_empty() {
         OofKid::Deferred(
             Box::new(move |bounds, window, _cx| {
                 build(None, retained.resume(), None, bounds, window)

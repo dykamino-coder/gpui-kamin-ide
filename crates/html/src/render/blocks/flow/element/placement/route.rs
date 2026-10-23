@@ -26,8 +26,7 @@ pub(crate) fn layer_route(
         e.style.used().position == Some(crate::style::computed::Position::Fixed) && !under_tf;
     // `fixed` под трансформом — абсолют относительно этого предка.
     let abs_like = e.style.used().position == Some(crate::style::computed::Position::Absolute)
-        || (e.style.used().position == Some(crate::style::computed::Position::Fixed)
-            && under_tf);
+        || (e.style.used().position == Some(crate::style::computed::Position::Fixed) && under_tf);
     // В стопке страниц абсолют корня уходит в слой и без заданных
     // сторон: на месте его резала бы маска фрагмента кида
     // (`monolithic-overflow-013`); статическую позицию копии 0 даёт

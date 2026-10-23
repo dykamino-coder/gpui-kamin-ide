@@ -58,7 +58,7 @@ pub(super) fn push(
             spacer.style.used_mut().margin.right = tail;
         }
         parent.children.insert(at, Node::Element(spacer));
-        if let Some(Len::Px(width)) = parent.style.computed().width {
+        if let Some(Len::Px(width)) = parent.style.used().width {
             parent.style.used_mut().width = Some(Len::Px(width + grow));
         }
         return true;
@@ -103,13 +103,13 @@ mod tests {
             let Node::Element(child) = &host.children[0] else {
                 panic!("child")
             };
-            assert_eq!(child.style.computed().width, Some(Len::Px(20.0)));
+            assert_eq!(child.style.used().width, Some(Len::Px(20.0)));
             assert_eq!(
-                child.style.computed().margin.left,
+                child.style.used().margin.left,
                 Some(Len::Px(if reverse { 3.0 } else { 14.0 }))
             );
             assert_eq!(
-                child.style.computed().margin.right,
+                child.style.used().margin.right,
                 Some(Len::Px(if reverse { 18.0 } else { 7.0 }))
             );
         }
@@ -141,17 +141,17 @@ mod tests {
                 panic!("next")
             };
             assert_eq!(next.node_id, id);
-            assert_eq!(spacer.style.computed().width, Some(Len::Px(13.0)));
-            assert_eq!(host.style.computed().width, Some(Len::Px(93.0)));
+            assert_eq!(spacer.style.used().width, Some(Len::Px(13.0)));
+            assert_eq!(host.style.used().width, Some(Len::Px(93.0)));
             let (before, after) = if reverse {
                 (
-                    previous.style.computed().margin.left,
-                    spacer.style.computed().margin.left,
+                    previous.style.used().margin.left,
+                    spacer.style.used().margin.left,
                 )
             } else {
                 (
-                    previous.style.computed().margin.right,
-                    spacer.style.computed().margin.right,
+                    previous.style.used().margin.right,
+                    spacer.style.used().margin.right,
                 )
             };
             assert_eq!(before, None);

@@ -88,7 +88,7 @@ pub(super) fn regrow(
             crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
         let mut wrap = super::frame::wrap(padding, ah, first, vertical);
         if matches!(dom.tag.as_str(), "html" | "body")
-            && matches!(dom.style.computed().height, Some(Len::Pct(_)))
+            && matches!(dom.style.used().height, Some(Len::Pct(_)))
         {
             wrap = wrap.h(px(ah));
         }

@@ -34,7 +34,7 @@ fn copies_export_collapsed_margins_before_root_layout() {
         panic!("inner")
     };
     assert_eq!(
-        inner.style.computed().margin.top,
+        inner.style.used().margin.top,
         Some(crate::style::values::value::Len::Px(0.0))
     );
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
@@ -75,7 +75,7 @@ fn pending_tree_waits_for_width_without_resolving_percentages() {
     let host = root(&tree);
     let pending = pending(host, &BoxStyle::default(), tree.values()).expect("deferred tree");
     assert_eq!(
-        pending[0].0.style.computed().margin.top,
+        pending[0].0.style.used().margin.top,
         Some(crate::style::values::value::Len::Pct(0.1))
     );
     let measured = RefCell::default();
@@ -129,7 +129,7 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
     let kids = children(&host, &BoxStyle::default(), tree.values(), 100.0, &measured)
         .expect("converted float has one ordinary block flow");
     assert!(kids[0].0.marks.float_block);
-    assert!(kids[0].0.style.computed().float.is_none());
+    assert!(kids[0].0.style.used().float.is_none());
     assert_eq!(kids[0].1.height, 0.0);
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
 }
@@ -143,7 +143,7 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
     let host = root(&tree);
     let pending = pending(host, &BoxStyle::default(), tree.values()).expect("deferred calc");
     assert!(matches!(
-        pending[0].0.style.computed().margin.top,
+        pending[0].0.style.used().margin.top,
         Some(crate::style::values::value::Len::Calc(_))
     ));
     for width in [100.0, 200.0] {
@@ -156,7 +156,7 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
             panic!("inner")
         };
         assert_eq!(
-            inner.style.computed().margin.top,
+            inner.style.used().margin.top,
             Some(crate::style::values::value::Len::Px(0.0))
         );
     }
@@ -175,7 +175,7 @@ fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
         let pending = pending_vertical(host, &BoxStyle::default(), tree.values(), reverse)
             .expect("deferred vertical calc");
         assert!(matches!(
-            pending[0].0.style.computed().margin.left,
+            pending[0].0.style.used().margin.left,
             Some(crate::style::values::value::Len::Calc(_))
         ));
         let measured = RefCell::default();

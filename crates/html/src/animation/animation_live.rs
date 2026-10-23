@@ -147,10 +147,7 @@ mod tests {
         }
         // GPUI clamps a completed one-shot to delta=1, including at 1500 ms.
         let expired = sample_live(&source, &frames, spec, period, vcx);
-        assert_eq!(
-            expired.style.used().margin,
-            source.style.used().margin
-        );
+        assert_eq!(expired.style.used().margin, source.style.used().margin);
         assert_eq!(
             expired.style.used().transform,
             source.style.used().transform

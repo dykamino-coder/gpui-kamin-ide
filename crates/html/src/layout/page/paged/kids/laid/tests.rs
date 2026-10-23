@@ -49,9 +49,9 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float")
     };
-    assert_eq!(e.style.computed().float, Some(-1));
-    assert_eq!(e.style.computed().margin.top, Some(Len::Px(24.0)));
-    assert_eq!(e.style.computed().margin.bottom, Some(Len::Px(12.0)));
+    assert_eq!(e.style.used().float, Some(-1));
+    assert_eq!(e.style.used().margin.top, Some(Len::Px(24.0)));
+    assert_eq!(e.style.used().margin.bottom, Some(Len::Px(12.0)));
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float host")
     };
-    assert_eq!(e.style.computed().width, Some(Len::Px(100.0)));
+    assert_eq!(e.style.used().width, Some(Len::Px(100.0)));
 }
 
 #[test]
@@ -92,8 +92,8 @@ fn vertical_empty_page_floats_keep_bandflow_extent_and_physical_tree() {
         let Node::Element(e) = &p.nodes[0] else {
             panic!("host")
         };
-        assert!(e.style.computed().wm().vertical());
-        assert_eq!(e.style.computed().height, Some(Len::Px(100.0)));
+        assert!(e.style.used().wm().vertical());
+        assert_eq!(e.style.used().height, Some(Len::Px(100.0)));
         assert_eq!(e.children.len(), 2);
     }
 }
@@ -126,9 +126,9 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
                 let Node::Element(physical) = &p.nodes[0] else {
                     panic!("block")
                 };
-                assert!(physical.style.computed().wm().vertical());
-                assert_eq!(physical.style.computed().margin.left, Some(Len::Px(13.0)));
-                assert_eq!(physical.style.computed().margin.right, Some(Len::Px(7.0)));
+                assert!(physical.style.used().wm().vertical());
+                assert_eq!(physical.style.used().margin.left, Some(Len::Px(13.0)));
+                assert_eq!(physical.style.used().margin.right, Some(Len::Px(7.0)));
                 let cx = ShapeCx {
                     paged: true,
                     ..ShapeCx::COLUMNS

@@ -60,13 +60,7 @@ pub(crate) fn paint_element(
             inherited,
             opts.cx.vcx(),
         );
-        out.push(layered(
-            el,
-            &e.style.used(),
-            inherited,
-            layer_ok,
-            under_tf,
-        ));
+        out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
         return;
     }
     if let Some(el) = resizable(e, inherited, opts) {
@@ -76,13 +70,7 @@ pub(crate) fn paint_element(
     if let Some(el) = transitioned(e, inherited, opts) {
         // Наложение считается и для узла с переходом: раньше ветка
         // уходила мимо, и `z-index` у него пропадал.
-        out.push(layered(
-            el,
-            &e.style.used(),
-            inherited,
-            layer_ok,
-            under_tf,
-        ));
+        out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
         return;
     }
     // `display: contents` — своей коробки у элемента нет: дети

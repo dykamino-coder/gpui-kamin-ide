@@ -32,8 +32,8 @@ fn inline_splits_preserve_inherited_marker_images_and_explicit_overrides() {
             );
             ancestor.inline = true;
             let expected = inherit(
-                &BoxStyle::shared(ancestor.style.computed()),
-                &item.style.computed(),
+                &BoxStyle::shared(ancestor.style.used()),
+                &item.style.used(),
                 vcx,
             )
             .list_style_image
@@ -51,7 +51,7 @@ fn inline_splits_preserve_inherited_marker_images_and_explicit_overrides() {
             let [Node::Element(item)] = split.as_slice() else {
                 panic!("вынесенный пункт списка")
             };
-            let merged = inherit(&BoxStyle::default(), &item.style.computed(), vcx);
+            let merged = inherit(&BoxStyle::default(), &item.style.used(), vcx);
             assert_eq!(merged.list_style_image, expected, "{own}, depth={depth}");
             let resolved = marker::resolve(item, &Computed::default(), &merged, vcx).unwrap();
             assert_eq!(resolved.image.is_some(), own != "list-style-image:none");
@@ -71,13 +71,13 @@ fn inherited_marker_image_only_generates_a_marker_for_a_list_item() {
         );
         let child = element(&format!("display:{display}"), vec![], vcx);
         let merged = inherit(
-            &BoxStyle::shared(parent.style.computed()),
-            &child.style.computed(),
+            &BoxStyle::shared(parent.style.used()),
+            &child.style.used(),
             vcx,
         );
         assert!(merged.list_style_image.as_ref().unwrap().is_some());
         assert_eq!(
-            marker::resolve(&child, &parent.style.computed(), &merged, vcx).is_some(),
+            marker::resolve(&child, &parent.style.used(), &merged, vcx).is_some(),
             display == "list-item"
         );
     }

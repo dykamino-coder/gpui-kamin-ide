@@ -92,16 +92,10 @@ pub(super) fn inherit_paint(
     // цветом. Для одноцветного непрозрачного фона это ровно «цвет текста
     // поверх заливки» — маска глифов не нужна, а подчёркивания, многоточие и
     // знаки выделения цветом `currentColor` получают тот же цвет сами.
-<<<<<<< HEAD
-    // Смешивается только ВОЗНИКШЕЕ на узле (как у фильтра выше): унаследованный
-    // цвет уже смешан предком. Внепоточные потомки в геометрию текста не входят
-    // (`clip-text-out-of-flow-child`) и получают несмешанный цвет обратно.
-    let images = vcx.background_images();
-=======
     // Computed-цвет элемента смешивается на его коробке; анонимная коробка
     // получает уже смешанный цвет. Внепоточные потомки в геометрию текста
     // не входят (`clip-text-out-of-flow-child`) и сохраняют исходный цвет.
->>>>>>> f8b2b4b1 (fix(html): preserve computed element inheritance across layout copies)
+    let images = vcx.background_images();
     if paint_filter {
         crate::style::computed::flat_background::collapse_flat_stack(c, vcx, &images);
     }

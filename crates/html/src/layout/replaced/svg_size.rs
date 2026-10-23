@@ -60,16 +60,8 @@ pub fn size_of(e: &Element) -> (f32, f32) {
                 .max(css(lo).unwrap_or(0.0))
         };
         return (
-            clamp(
-                w,
-                e.style.used().min_width,
-                e.style.used().max_width,
-            ),
-            clamp(
-                h,
-                e.style.used().min_height,
-                e.style.used().max_height,
-            ),
+            clamp(w, e.style.used().min_width, e.style.used().max_width),
+            clamp(h, e.style.used().min_height, e.style.used().max_height),
         );
     }
     // Заявленное `aspect-ratio` СИЛЬНЕЕ соотношения из `viewBox`
@@ -175,8 +167,7 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
         + side(b.bottom);
     // Внешний размер = содержимое + паддинг + рамка + поля (css-sizing-3
     // §5.1 «outer size»); `size_of` отдаёт размер СОДЕРЖИМОГО.
-    let outer_x =
-        side(e.style.used().margin.left) + side(e.style.used().margin.right) + pb_x;
+    let outer_x = side(e.style.used().margin.left) + side(e.style.used().margin.right) + pb_x;
     let (mut w, mut h) = match cb_width {
         Some(cb) if cb > 0.0 => {
             let w = (cb - outer_x).max(0.0);

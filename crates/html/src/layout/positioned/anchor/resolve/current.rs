@@ -83,6 +83,11 @@ mod tests;
 /// Общая подготовка размеров блочного и строчного OOF в контексте хоста.
 pub(crate) fn prepare(c: &mut BoxStyle, inherited: &BoxStyle, cx: &crate::layout::cx::LayoutCx) {
     let vcx = cx.vcx();
+    if let Some((key, computed)) = &cx.position.oof_computed
+        && *key == c.anchor_key
+    {
+        c.element_style = Some(computed.clone());
+    }
     if let Some((key, inputs)) = cx.position.oof_sizes
         && key == c.anchor_key
     {

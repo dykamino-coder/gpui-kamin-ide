@@ -35,7 +35,7 @@ pub(crate) fn fragment_box(
     crate::layout::block::struts::pin_inherited_margins(&mut element, true, true, vcx);
     let lengths = crate::style::computed::LenCx {
         basis: Some(width),
-        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.computed())
+        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.used())
     };
     let used = element.style.used_mut();
     for margin in [&mut used.margin.top, &mut used.margin.bottom] {
@@ -61,7 +61,7 @@ pub(crate) fn vertical_fragment_box(
     flow::absorb_margin(&mut element, true, reverse, vcx);
     let lengths = crate::style::computed::LenCx {
         basis: Some(width),
-        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.computed())
+        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.used())
     };
     let used = element.style.used_mut();
     for margin in [&mut used.margin.left, &mut used.margin.right] {
@@ -80,8 +80,8 @@ pub(crate) fn fragment_margins(c: &crate::dom::Element) -> Option<(f32, f32)> {
         _ => None,
     };
     Some((
-        m(&c.style.computed().margin.top)?,
-        m(&c.style.computed().margin.bottom)?,
+        m(&c.style.used().margin.top)?,
+        m(&c.style.used().margin.bottom)?,
     ))
 }
 

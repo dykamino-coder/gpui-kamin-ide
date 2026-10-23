@@ -10,7 +10,7 @@ mod insets;
 pub(crate) use current::{SizeInputs, current_inputs, needs_host, prepare};
 mod try_rule;
 use insets::fill_anchor_pairs;
-pub(crate) use try_rule::apply_try_rule;
+pub(crate) use try_rule::try_rule_onto;
 
 /// Размеры разрешаются только из реестра текущего кадра.
 pub fn resolve_sizes(c: &mut BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) {

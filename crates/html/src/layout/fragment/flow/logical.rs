@@ -20,7 +20,7 @@ pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
 }
 
 fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
-    if recorded && c.style.computed().display == Some(crate::style::computed::Display::None) {
+    if recorded && c.style.used().display == Some(crate::style::computed::Display::None) {
         return Some(c.clone());
     }
     if c.style.cascaded().vertical_decl() == Some(false)
@@ -44,7 +44,7 @@ fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
         },
     };
     let mut t = c.clone();
-    let source = c.style.computed();
+    let source = c.style.used();
     let used = &mut *t.style.used_mut();
     std::mem::swap(&mut used.width, &mut used.height);
     std::mem::swap(&mut used.min_width, &mut used.min_height);
