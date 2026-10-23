@@ -70,7 +70,7 @@ fn input(e: &Element, style: &BoxStyle, opts: &crate::layout::options::RenderOpt
     if style.appearance_none() && matches!(kind.as_str(), "checkbox" | "radio" | "range" | "color")
     {
         return apply(div(), style, vcx)
-            .children(opts.cx.build.blocks(&e.children, style, opts))
+            .children(opts.cx.contracts.build.blocks(&e.children, style, opts))
             .into_any_element();
     }
     match kind.as_str() {

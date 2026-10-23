@@ -95,8 +95,8 @@ pub(crate) fn place_element(
             // на лист без сдвига (`PagedBuild::fixed`). Обёртка `LatePlace`
             // та же, что у слоя ICB, — через вложенный слой.
             let icb_layer =
-                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
-            let _ = opts.cx.positioning.icb_push(spot.clone(), built);
+                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
+            let _ = opts.cx.position.state.icb_push(spot.clone(), built);
             paged.push_fixed(icb_layer.finish());
             None
         } else {
@@ -143,11 +143,11 @@ pub(crate) fn place_element(
                     built
                 };
             if to_icb {
-                opts.cx.positioning.icb_push(spot.clone(), built)
+                opts.cx.position.state.icb_push(spot.clone(), built)
             } else if far_fixed {
-                opts.cx.positioning.cb_push_fixed(spot.clone(), built)
+                opts.cx.position.state.cb_push_fixed(spot.clone(), built)
             } else {
-                opts.cx.positioning.cb_push(
+                opts.cx.position.state.cb_push(
                     spot.clone(),
                     built,
                     crate::layout::positioned::containing_block::nearest_cb_index(inherited),

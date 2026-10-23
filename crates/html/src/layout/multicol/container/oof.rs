@@ -136,7 +136,7 @@ pub(super) fn column_stack_div(
                     _ => None,
                 })
             }),
-            opts.cx.paint.clone(),
+            opts.cx.deferred.paint.clone(),
         )
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
@@ -220,7 +220,7 @@ pub(super) fn finish_column_stack(
         }
         d = d.child(crate::layout::positioned::containing_block::spot_place(
             oof_spots[i].clone(),
-            opts.cx.build.element(&oof, &merged, opts),
+            opts.cx.contracts.build.element(&oof, &merged, opts),
         ));
     }
     d.into_any_element()

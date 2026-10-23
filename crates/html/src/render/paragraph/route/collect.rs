@@ -30,7 +30,7 @@ pub(crate) fn paragraph_pieces_routed(
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
-    let clamp_tag = opts.cx.clamp_paragraph;
+    let clamp_tag = opts.cx.clamp.paragraph;
     let clamp_budget = clamp_tag.and_then(|(key, seq)| {
         opts.cx
             .clamp_plan(key)?
@@ -39,7 +39,7 @@ pub(crate) fn paragraph_pieces_routed(
             .map(|(_, k)| k)
     });
     let child_opts = opts.inner(|cx| {
-        cx.clamp_paragraph = None;
+        cx.clamp.paragraph = None;
     });
     let opts = &child_opts;
     // Проверено: брать поперечное выравнивание ряда с самих кусков, когда

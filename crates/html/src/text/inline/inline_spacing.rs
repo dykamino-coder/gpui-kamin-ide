@@ -2,6 +2,7 @@
 //! §8.4): физические стороны проецируются в плоскость набора абзаца, единицы шрифта
 //! разрешаются по слитому стилю, доля — от ширины содержащего блока. Поле возвращается
 //! отдельно от рамки с отступом: под полем виден фон предка, под отступом — свой (§14.2).
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -20,14 +21,14 @@ pub(super) fn inline_sides(
 ) -> ((f32, f32), (f32, f32)) {
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let family = merged.font_family.clone().unwrap_or_default();
     // Доля поля и отступа строчной коробки — от ширины содержащего блока
     // (CSS 2.1 §8.3, §8.4: «percentage … refer to the width of the
     // containing block»), то есть блока абзаца. Прежде доля молча давала
     // ноль (`text-indent-percentage-001`: эталон `margin-left: 50%` на
-    // `<span>` стоял у края). Блок абзаца — `cb` (`LayoutCx::avail_w`).
+    // `<span>` стоял у края). Блок абзаца — `cb` (`BoxConstraints::avail_w`).
     let px_of = |l: Option<Len>| match l {
         Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_)) => {
             crate::text::metrics::spacing_px(l, &family, size, vcx)

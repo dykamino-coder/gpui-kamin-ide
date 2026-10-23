@@ -10,6 +10,7 @@
 use crate::layout::fragment::paginate::solve::{first_violation, gap_violation};
 use crate::layout::fragment::paginate::{Cand, Strut, Struts};
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Window};
 
 mod frame;
@@ -143,7 +144,7 @@ impl ColumnStack {
                     // A monolith pushed past a boundary would have fitted a
                     // column taller by what it overhangs it.
                     let need = if tall > h { tall - h } else { tall - delta };
-                    if need > 0.01 {
+                    if need > COORD_EPS {
                         shortage = shortage.min(need);
                     }
                     let size = geoms
@@ -176,7 +177,7 @@ impl ColumnStack {
                     .and_then(|r| r.h)
                     .or(self.rule_to)
                     .unwrap_or(f32::MAX);
-                if h >= cap - 0.01 {
+                if h >= cap - COORD_EPS {
                     break;
                 }
                 let step = if shortage < f32::MAX {

@@ -142,7 +142,7 @@ pub(crate) fn multicol_column_stack(
     // Blink `fixedpos_containing_block`, out_of_flow_layout_part.cc).
     // Слой берёт только `fixed`: абсолюты копий режутся колонками на месте.
     let fixed_layer = fixed_cb_layer_box(&merged).then(|| {
-        crate::layout::positioned::layer_scope::LayerScope::fixed_only(&opts.cx.positioning)
+        crate::layout::positioned::layer_scope::LayerScope::fixed_only(&opts.cx.position.state)
     });
     let children = stack_children(
         e,
@@ -190,7 +190,7 @@ pub(crate) fn multicol_column_stack(
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
     let painter = gap_items.clone().zip(gap_spec);
     let d = d.children(painter.map(|(b, s)| {
-        crate::hooks::PaintOnly(GapRulePainter::new(b, s, opts.cx.paint.clone())).hooked()
+        crate::hooks::PaintOnly(GapRulePainter::new(b, s, opts.cx.deferred.paint.clone())).hooked()
     }));
     let mut d = column_stack_div(
         d,
@@ -217,7 +217,7 @@ pub(crate) fn multicol_column_stack(
     }
     // Флоаты — прежним ходом, соседями стопки.
     for oof in &direct_oof {
-        d = d.child(opts.cx.build.element(oof, &merged, opts));
+        d = d.child(opts.cx.contracts.build.element(oof, &merged, opts));
     }
     // Заместитель на месте щупа: рисуется ПОСЛЕ стопки и
     // после флоатов (позиционированная коробка выше и

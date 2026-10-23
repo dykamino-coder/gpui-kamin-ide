@@ -10,7 +10,7 @@ use gpui::IntoElement;
 
 /// A positioned inline ancestor offered as the containing block of the atom
 /// being built (CSS 2.1 §10.1 item 4): the paragraph's atom builder makes the
-/// offer (`LayoutCx::inline_cb`), the first absolute atom that can use it
+/// offer (`PositioningContext::inline_cb`), the first absolute atom that can use it
 /// takes it, and the builder learns whether it was taken.
 #[derive(Debug)]
 pub(crate) struct InlineCbOffer {

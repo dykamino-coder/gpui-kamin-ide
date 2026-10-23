@@ -15,11 +15,11 @@ pub(crate) fn render(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> An
     for child in &e.children {
         match child {
             Node::Element(li) if li.tag == "li" && !crate::layout::box_kind::real_inline(li) => {
-                rows.extend(
-                    opts.cx
-                        .build
-                        .blocks(&std::mem::take(&mut pending), inherited, opts),
-                );
+                rows.extend(opts.cx.contracts.build.blocks(
+                    &std::mem::take(&mut pending),
+                    inherited,
+                    opts,
+                ));
                 rows.push(list_item::render(li, inherited, opts));
             }
             Node::Element(pseudo)
@@ -28,8 +28,9 @@ pub(crate) fn render(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> An
             _ => pending.push(child.clone()),
         }
     }
-    rows.extend(opts.cx.build.blocks(&pending, inherited, opts));
+    rows.extend(opts.cx.contracts.build.blocks(&pending, inherited, opts));
     opts.cx
+        .contracts
         .build
         .styled_box(e, inherited, &opts.cx)
         .flex()

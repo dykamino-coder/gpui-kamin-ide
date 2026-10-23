@@ -7,6 +7,7 @@
 //! атрибуты не принадлежат (намёк каскада). `promote_auto_ratio`: у незамещаемой
 //! коробки с `border-box` соотношение контента переводится по оси в точках (§5.1).
 
+use crate::defaults::DEFAULT_CANVAS_SIZE_PX;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 
@@ -136,8 +137,10 @@ pub(crate) fn apply_presentational_size(
     // style="height: 8px">`).
     let natural_pair = tag == "canvas" && style.attr_width.is_some() && style.attr_height.is_some();
     if tag == "canvas" {
-        style.attr_width = style.attr_width.or(Some(Len::Px(300.0)));
-        style.attr_height = style.attr_height.or(Some(Len::Px(150.0)));
+        style.attr_width = style.attr_width.or(Some(Len::Px(DEFAULT_CANVAS_SIZE_PX.0)));
+        style.attr_height = style
+            .attr_height
+            .or(Some(Len::Px(DEFAULT_CANVAS_SIZE_PX.1)));
     }
     if style.width.is_none() {
         style.width = style.attr_width;

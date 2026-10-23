@@ -81,9 +81,17 @@ pub(super) fn table_outer_box(
             }
         }
         host_style = c;
-        cx.build.styled_box(e, &host_style, cx).flex().flex_col()
+        cx.contracts
+            .build
+            .styled_box(e, &host_style, cx)
+            .flex()
+            .flex_col()
     } else {
-        cx.build.styled_box(e, inherited, cx).flex().flex_col()
+        cx.contracts
+            .build
+            .styled_box(e, inherited, cx)
+            .flex()
+            .flex_col()
     }
 }
 
@@ -123,6 +131,7 @@ pub(super) fn finish_table_outer(
             ..Default::default()
         });
         let mut wrap = cx
+            .contracts
             .build
             .styled_div(Styling::Box(&wrap), cx)
             .flex()

@@ -1,7 +1,9 @@
 //! Размеры картинки по заданным ширине/высоте и соотношению сторон.
 
 use super::used_size::{Picture, PictureSizing};
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
 impl PictureSizing<'_> {
     /// Рисунок по заданным сторонам и суженная коробка содержимого: когда предел
@@ -35,7 +37,10 @@ impl PictureSizing<'_> {
             );
             let ch = match self.ratio() {
                 Some(r) if r > 0.0 => self.transfer(cw, r, true),
-                _ => self.natural.and_then(|i| i.h).unwrap_or(150.0),
+                _ => self
+                    .natural
+                    .and_then(|i| i.h)
+                    .unwrap_or(DEFAULT_REPLACED_HEIGHT_PX),
             };
             // §10.4: пределы держат ВЫВЕДЕННУЮ сторону тоже — заданная
             // остаётся как написана, а высота из соотношения обязана влезть
@@ -49,7 +54,7 @@ impl PictureSizing<'_> {
             // `max-height: 50px` у картинки 100×50 — это 100×50, а не
             // 200×50.
             let cw = match self.ratio() {
-                Some(r) if r > 0.0 && (ch - ch_free).abs() > 0.01 => {
+                Some(r) if r > 0.0 && (ch - ch_free).abs() > COORD_EPS => {
                     let w = self.limit(
                         self.transfer(ch, r, false),
                         self.clamp(style.min_width, sub_w),
@@ -77,13 +82,16 @@ impl PictureSizing<'_> {
             );
             let cw = match self.ratio() {
                 Some(r) if r > 0.0 => self.transfer(ch, r, false),
-                _ => self.natural.and_then(|i| i.w).unwrap_or(300.0),
+                _ => self
+                    .natural
+                    .and_then(|i| i.w)
+                    .unwrap_or(DEFAULT_REPLACED_WIDTH_PX),
             };
             let cw_free = cw;
             let cw = self.limit(cw, self.clamp(style.min_width, sub_w), max_w);
             // Зеркально §10.4: изменённая ширина тянет за собой высоту.
             let ch = match self.ratio() {
-                Some(r) if r > 0.0 && (cw - cw_free).abs() > 0.01 => {
+                Some(r) if r > 0.0 && (cw - cw_free).abs() > COORD_EPS => {
                     let h = self.limit(
                         self.transfer(cw, r, true),
                         self.clamp(style.min_height, sub_h),

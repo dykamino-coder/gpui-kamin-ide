@@ -40,7 +40,7 @@ pub(super) fn masked_layer(
     mask.text_shadow_rest.clear();
     mask.text_shadow_raw = None;
     let masked = mask_nodes(nodes, block, group, shadow, opts.cx.vcx());
-    let copy = opts.cx.build.paragraph(&masked, &mask, opts);
+    let copy = opts.cx.contracts.build.paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
         let mut g = crate::paint::effects::grouped_element::Grouped::new(copy, vcx);
         g.blur = shadow.blur * 0.5;

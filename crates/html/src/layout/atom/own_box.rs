@@ -33,7 +33,7 @@ pub(super) fn own_box_atom(
     {
         pseudo_line_layers::install(e, &mut merged, vcx);
     }
-    let mut box_ = opts.cx.build.styled_box(e, &merged, &opts.cx);
+    let mut box_ = opts.cx.contracts.build.styled_box(e, &merged, &opts.cx);
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line
     // synthesize an alphabetic baseline at the atomic margin box's under edge.
@@ -150,19 +150,19 @@ pub(super) fn own_box_atom(
         && crate::text::inline::establishes_cb(&merged);
     let cb_layer = cb_layer.then(|| {
         crate::layout::positioned::layer_scope::LayerScope::strict(
-            &opts.cx.positioning,
+            &opts.cx.position.state,
             &merged,
             crate::style::computed::stacking::fixed_cb_layer_box(&merged),
         )
     });
     let mut kids =
         crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, |opts| {
-            opts.cx.build.blocks(&e.children, &merged, opts)
+            opts.cx.contracts.build.blocks(&e.children, &merged, opts)
         });
     if let Some(layer) = cb_layer {
         kids.extend(layer.finish());
     }
-    Some(opts.cx.build.effects(
+    Some(opts.cx.contracts.build.effects(
         box_.children(kids).into_any_element(),
         Effect::group(&e.style.computed(), vcx),
     ))

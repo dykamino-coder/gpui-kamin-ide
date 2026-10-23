@@ -96,7 +96,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
         if super::nesting::rule(&parts, body, &media, cx, &mut out, &mut order) {
             continue;
         }
-        let decls = parse_decls_in(body, cx.doc.values());
+        let decls = parse_decls_in(body, cx.values.doc.values());
         if decls.is_empty() {
             continue;
         }
@@ -120,7 +120,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
 /// (`true`) у подошедших `@media`/`@supports` и у `@layer`/`@scope`; `@font-feature-values`,
 /// `@page`, `@property`, `@counter-style`, `@position-try` обрабатываются здесь же и дают `false`.
 fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx) -> bool {
-    let vcx = cx.doc.values();
+    let vcx = cx.values.doc.values();
     let layer_of_rules = || cx.layer_of_rules();
     if name.starts_with("@media") {
         media.matches_in(name, cx.custom(), vcx)
@@ -150,7 +150,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
             // `margin: 13px; margin: inherit` (`page-margin-006`).
             if let Some(sels) = parse_page_selectors(&head[5..]) {
                 push_page_rule(
-                    cx.doc,
+                    cx.values.doc,
                     PageRule {
                         sels,
                         decls,
@@ -166,7 +166,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         // если заданы `syntax` и `inherits`, а при синтаксисе не `*` —
         // ещё и `initial-value`. Имя — с исходным регистром.
         let ident = head["@property".len()..].trim();
-        let decls = parse_decls_in(body, cx.doc.values());
+        let decls = parse_decls_in(body, cx.values.doc.values());
         let syntax = decls.descriptor("syntax").map(|s| {
             s.trim()
                 .trim_matches(|c| c == '"' || c == '\'')
@@ -185,7 +185,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
             && (syntax == "*" || initial.is_some())
         {
             register_property(
-                cx.doc,
+                cx.values.doc,
                 ident,
                 Registered {
                     syntax,
@@ -202,9 +202,9 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         // css-counter-styles-3 §3: дескрипторы правила — в реестр
         // документа, повторы — по порядку записи (последнее
         // действительное побеждает). Имя — с исходным регистром.
-        let decls = parse_decls_in(body, cx.doc.values());
+        let decls = parse_decls_in(body, cx.values.doc.values());
         crate::style::generated::counter_style_rules::register(
-            cx.doc,
+            cx.values.doc,
             &head["@counter-style".len()..],
             &decls,
         );
@@ -216,9 +216,9 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         // копию стиля кандидата). Имя — с оригинальным регистром.
         let ident = head["@position-try".len()..].trim();
         if ident.starts_with("--") {
-            let decls = parse_decls_in(body, cx.doc.values());
+            let decls = parse_decls_in(body, cx.values.doc.values());
             if !decls.is_empty() {
-                insert_try_rule(cx.doc, ident, decls);
+                insert_try_rule(cx.values.doc, ident, decls);
             }
         }
         false

@@ -3,6 +3,7 @@
 //! CSS Images 3 §default-sizing отдельно от пропорции `aspect-ratio` или атрибутов,
 //! с пределами CSS 2.1 §10.4 и исчезновением под `contain: size`.
 
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
@@ -23,7 +24,7 @@ pub(crate) fn empty(e: &Element) -> bool {
 
 /// HTML 15.4.1 and CSS Images 3 default sizing: fallback dimensions are
 /// separate from a natural aspect ratio and disappear under size containment.
-/// `avail_w` — доступная ширина блока (`LayoutCx::avail_w`) для долей.
+/// `avail_w` — доступная ширина блока (`BoxConstraints::avail_w`) для долей.
 pub(crate) fn resolve(
     e: &Element,
     inherited: &Computed,
@@ -70,12 +71,12 @@ pub(crate) fn resolve(
     let dw = if s.contains_width() {
         s.contain_intrinsic.0.unwrap_or(0.0)
     } else {
-        300.0
+        DEFAULT_REPLACED_WIDTH_PX
     };
     let dh = if s.contains_height() {
         s.contain_intrinsic.1.unwrap_or(0.0)
     } else {
-        150.0
+        DEFAULT_REPLACED_HEIGHT_PX
     };
     match (aw, ah, ratio) {
         (true, true, Some(r)) => {
@@ -114,7 +115,7 @@ pub(crate) fn resolve(
 }
 
 pub(crate) fn render(e: &Element, opts: &RenderOpts) -> AnyElement {
-    opts.cx.build.replaced(e, None, &opts.cx)
+    opts.cx.contracts.build.replaced(e, None, &opts.cx)
 }
 
 #[cfg(test)]

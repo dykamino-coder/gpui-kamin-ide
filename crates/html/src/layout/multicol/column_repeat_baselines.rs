@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::layout::fragment::types::{Frag, StackChild};
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Window, px};
 
 #[derive(Default)]
@@ -46,7 +47,7 @@ impl RepeatedMeasurements {
         let mut head = Baselines::default();
         let mut foot = Baselines::default();
         // Match the copy indices, mask and origin in ColumnStack::prepaint/paint.
-        if fragment.head > 0.01
+        if fragment.head > COORD_EPS
             && fragment.copy > 0
             && let (Some(source), Some(measure)) =
                 (self.head, self.heads.get_mut(fragment.copy - 1))
@@ -61,7 +62,7 @@ impl RepeatedMeasurements {
                 y - fragment.head,
             );
         }
-        if fragment.foot > 0.01
+        if fragment.foot > COORD_EPS
             && let (Some((source, height)), Some(measure)) =
                 (self.foot, self.feet.get_mut(fragment.copy))
         {

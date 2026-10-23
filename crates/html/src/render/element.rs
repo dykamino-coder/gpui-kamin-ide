@@ -48,13 +48,18 @@ pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> A
 }
 
 fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
-    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized =
-        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w, vcx);
+    let media_sized = crate::layout::replaced::media::resolve(
+        e,
+        inherited,
+        opts.viewport,
+        opts.cx.constraints.avail_w,
+        vcx,
+    );
     let e = media_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_row`).
     let (outer_row, inner_opts) = opts.take_outer_row();
@@ -106,7 +111,7 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
     quirks::fill(e, &mut merged, inherited, opts);
     crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
     let gutters = crate::interactive::scroll_extent::classic::model(
-        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll.frame.as_ref(),
         e.node_id,
         &merged,
     );
@@ -124,15 +129,15 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     let scroll_projection = crate::interactive::scroll_extent::projection(
-        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll.frame.as_ref(),
         inherited.self_node,
         Some(&merged),
-        opts.cx.sticky.as_ref(),
+        opts.cx.scroll.sticky.as_ref(),
     );
     // Проецируемое поддерево строится в цепочке сдвига проекции (`ShiftLink`).
     let projected_opts = scroll_projection
         .as_ref()
-        .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
+        .map(|p| opts.inner(|cx| cx.scroll.sticky = Some(p.link().clone())));
     let opts = projected_opts.as_deref().unwrap_or(opts);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.

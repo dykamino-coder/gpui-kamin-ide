@@ -5,6 +5,7 @@
 //! которые бокс передаёт боксам внутри себя. Точки входа render потребляют его;
 //! домены layout, text и paint читают его, не завися от render.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{TextStyle, px};
@@ -46,7 +47,7 @@ impl RenderOpts {
     }
 
     pub(crate) fn base_size(&self) -> f32 {
-        f32::from(self.text.font_size.to_pixels(px(16.)))
+        f32::from(self.text.font_size.to_pixels(px(MEDIUM_FONT_SIZE_PX)))
     }
 
     /// Корневой стиль документа.

@@ -144,7 +144,7 @@ pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
                     break;
                 }
             }
-            !known || mh > sum + 0.01
+            !known || mh > sum + crate::tolerance::COORD_EPS
         }
     }
 }

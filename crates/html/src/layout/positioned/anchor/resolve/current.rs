@@ -42,7 +42,7 @@ pub(crate) fn needs_deferred(c: &Computed) -> bool {
 /// нулевая строчная обёртка не может разрешать их процентные размеры.
 pub(crate) fn needs_host(c: &Computed, cx: &crate::layout::cx::LayoutCx) -> bool {
     needs_deferred(c)
-        || (cx.oof_sizes.is_some()
+        || (cx.position.oof_sizes.is_some()
             && matches!(c.position, Some(Position::Absolute | Position::Fixed)))
 }
 
@@ -83,7 +83,7 @@ mod tests;
 /// Общая подготовка размеров блочного и строчного OOF в контексте хоста.
 pub(crate) fn prepare(c: &mut BoxStyle, inherited: &BoxStyle, cx: &crate::layout::cx::LayoutCx) {
     let vcx = cx.vcx();
-    if let Some((key, inputs)) = cx.oof_sizes
+    if let Some((key, inputs)) = cx.position.oof_sizes
         && key == c.anchor_key
     {
         resolve_current(c, inherited, inputs, vcx);

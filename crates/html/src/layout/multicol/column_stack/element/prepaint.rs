@@ -3,6 +3,7 @@
 use crate::layout::fragment::fragment_mask;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
@@ -24,7 +25,7 @@ impl ColumnStack {
                     .map(|l| {
                         plan.iter()
                             .filter(|f| {
-                                f.h > 0.01 && (if wrap { f.col / self.count } else { 0 }) == l
+                                f.h > COORD_EPS && (if wrap { f.col / self.count } else { 0 }) == l
                             })
                             .map(|f| if wrap { f.col % self.count } else { f.col } + 1)
                             .max()

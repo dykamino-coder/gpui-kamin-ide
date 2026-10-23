@@ -46,19 +46,19 @@ pub(crate) fn scrollable(
         return None;
     }
     let scroll_projection = crate::interactive::scroll_extent::projection(
-        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll.frame.as_ref(),
         inherited.self_node,
         Some(&scroll_style),
-        opts.cx.sticky.as_ref(),
+        opts.cx.scroll.sticky.as_ref(),
     );
     // Лента и её содержимое — внутри проекции (`ShiftLink`).
     let projected_opts = scroll_projection
         .as_ref()
-        .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
+        .map(|p| opts.inner(|cx| cx.scroll.sticky = Some(p.link().clone())));
     let opts = projected_opts.as_deref().unwrap_or(opts);
-    let area_sticky = opts.cx.sticky.clone();
-    let parent_frame = opts.cx.scroll_frame.clone();
-    let freeze_scrollbars = opts.cx.freeze_scrollbars;
+    let area_sticky = opts.cx.scroll.sticky.clone();
+    let parent_frame = opts.cx.scroll.frame.clone();
+    let freeze_scrollbars = opts.cx.deferred.freeze_scrollbars;
     let mut node = e.clone();
     node.style.used_mut().overflow_x = scroll_style.overflow_x;
     node.style.used_mut().overflow_y = scroll_style.overflow_y;
@@ -117,10 +117,14 @@ pub(crate) fn scrollable(
                 outer_margin,
             );
             let inner_opts = opts.inner(|cx| {
-                cx.scroll_target = Some(target.clone());
-                cx.scroll_frame = frame;
+                cx.scroll.target = Some(target.clone());
+                cx.scroll.frame = frame;
             });
-            let built = inner_opts.cx.build.element(&inner, &inherited, &inner_opts);
+            let built = inner_opts
+                .cx
+                .contracts
+                .build
+                .element(&inner, &inherited, &inner_opts);
             if target.applied() {
                 return built;
             }
@@ -240,7 +244,7 @@ pub(crate) fn resizable(
         if let Some(h) = h {
             mixed.style.used_mut().height = Some(Len::Px(h));
         }
-        opts.cx.build.element(&mixed, &inherited, &opts)
+        opts.cx.contracts.build.element(&mixed, &inherited, &opts)
     });
     Some(crate::interactive::resizable::Resizable::new(id, axis, build).into_any_element())
 }

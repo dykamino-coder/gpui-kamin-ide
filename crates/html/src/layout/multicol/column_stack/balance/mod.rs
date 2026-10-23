@@ -6,6 +6,7 @@
 use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 mod growth;
 mod line;
 
@@ -114,7 +115,7 @@ impl ColumnStack {
         // зазор (так у Blink; на практике сюда не попадаем).
         let next_row = |y: f32| {
             let p = phase(y);
-            if p > 0.01 {
+            if p > COORD_EPS {
                 y - p + stride
             } else {
                 y + rows.gap
@@ -124,13 +125,13 @@ impl ColumnStack {
         // первого ряда, и его остаток — первая линия (`balance_run(first)`);
         // в конце координаты возвращаются к верху коробки.
         let phase0 = if h > 0.0 {
-            self.row_phase.min(h - 0.01).max(0.0)
+            self.row_phase.min(h - COORD_EPS).max(0.0)
         } else {
             0.0
         };
         // Первый ряд начат ниже верха внешней колонки: его колонки — не с
         // верха фрагментаинера (`Space::not_at_start`).
-        let not_at_start = if phase0 > 0.01 { count } else { 0 };
+        let not_at_start = if phase0 > COORD_EPS { count } else { 0 };
         let mut y = phase0;
         let mut lines: Vec<(f32, f32)> = Vec::new();
         let mut plan: Vec<Frag> = Vec::new();
@@ -148,7 +149,7 @@ impl ColumnStack {
                 let k = &kids[i];
                 let mut at = y + k.mt;
                 let p = phase(at);
-                if p > 0.01 && h - p < k.h - 0.01 {
+                if p > COORD_EPS && h - p < k.h - COORD_EPS {
                     at = next_row(at);
                 }
                 spans.push((i, at));
@@ -166,7 +167,7 @@ impl ColumnStack {
             // current row (because of a preceding spanner, typically)»;
             // нулевой ряд — исключение, `RowHeight() > LayoutUnit()`).
             let mut p = phase(y);
-            if h > 0.0 && h - p <= 0.01 {
+            if h > 0.0 && h - p <= COORD_EPS {
                 y = next_row(y);
                 p = 0.0;
             }
@@ -213,7 +214,7 @@ impl ColumnStack {
         // отрицательный остаток: `columns: 2 / 0` даёт `(n − 1) · gap`, как в
         // шаге 1).
         let p = phase(y);
-        if p > 0.01 {
+        if p > COORD_EPS {
             y += h - p;
         }
         for l in lines.iter_mut() {

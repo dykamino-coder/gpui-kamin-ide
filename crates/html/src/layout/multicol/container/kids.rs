@@ -11,6 +11,7 @@ use crate::layout::multicol::stack_child::multicol_stack_child;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
 #[allow(clippy::too_many_arguments)]
 // Child records keep their layout and paint callbacks with measured geometry.
@@ -79,7 +80,7 @@ pub(super) fn column_kids(
     };
     if !col_vert
         && rows.is_none()
-        && let Some(height) = fixed.filter(|h| *h > 0.01)
+        && let Some(height) = fixed.filter(|h| *h > COORD_EPS)
     {
         super::parallel::grow(&mut kids, height, cols as usize, copies, vcx);
     }
@@ -116,7 +117,7 @@ pub(super) fn stack_children(
                 (nested_rows_box(c)
                     && matches!(c.style.computed().height, Some(Len::Px(_)))
                     && s.cuts.is_empty()
-                    && s.margin_top.abs() < 0.01)
+                    && s.margin_top.abs() < COORD_EPS)
                     .then(|| {
                         let per = s.height / cols as f32;
                         rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
@@ -135,11 +136,11 @@ pub(super) fn stack_children(
                 prev_mb.max(s.margin_top)
             };
             let hh = fixed_nest.unwrap_or(0.0);
-            v.push((ok && fixed_nest.is_some() && y + lead < hh - 0.01).then_some(y + lead));
+            v.push((ok && fixed_nest.is_some() && y + lead < hh - COORD_EPS).then_some(y + lead));
             if edge_break(c, false, vcx)
                 || edge_break(c, true, vcx)
                 || kid_par.get(i).is_some_and(|p| p.group != 0)
-                || y + lead + s.height > hh + 0.01
+                || y + lead + s.height > hh + COORD_EPS
             {
                 ok = false;
             }

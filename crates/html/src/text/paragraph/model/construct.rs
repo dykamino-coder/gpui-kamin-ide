@@ -111,9 +111,9 @@ impl Paragraph {
     /// Measurement owner shared with other paragraphs in this document.
     pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
         self.anchor_values = Some(cx.vcx().keep());
-        self.measures = cx.doc().paragraph_measures.clone();
-        self.paint_context = cx.vertical_paint.clone();
-        self.inline_measure = cx.inline_measure.clone();
+        self.measures = cx.values.doc().paragraph_measures.clone();
+        self.paint_context = cx.deferred.vertical_paint.clone();
+        self.inline_measure = cx.inline.inline_measure.clone();
         self.clamp_rows = cx.clamp_measure().map(|(_, m)| m);
         self
     }
@@ -122,8 +122,8 @@ impl Paragraph {
     /// sink of the ruby column (the first paragraph built under it takes it)
     /// and the base's annotation layers.
     pub(crate) fn ruby_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
-        self.ruby_base_sink = cx.ruby_base.as_ref().and_then(|offer| offer.take());
-        self.ruby_layers = cx.ruby_layers.clone();
+        self.ruby_base_sink = cx.ruby.base.as_ref().and_then(|offer| offer.take());
+        self.ruby_layers = cx.ruby.layers.clone();
         self
     }
 

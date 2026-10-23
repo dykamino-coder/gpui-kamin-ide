@@ -59,10 +59,10 @@ pub fn render_paged_select(
     select: Option<Vec<usize>>,
 ) -> AnyElement {
     let opts = &*opts.inner(|cx| {
-        cx.paint_viewport = opts.viewport;
-        if !cx.in_render {
-            cx.vertical_paint = Default::default();
-            cx.paint = Default::default();
+        cx.values.viewport = opts.viewport;
+        if !cx.contracts.in_render {
+            cx.deferred.vertical_paint = Default::default();
+            cx.deferred.paint = Default::default();
         }
     });
     let vcx = opts.cx.vcx();
@@ -74,7 +74,7 @@ pub fn render_paged_select(
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize(vcx);
-    opts.cx.build.paint_resources(nodes, vcx);
+    opts.cx.contracts.build.paint_resources(nodes, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();

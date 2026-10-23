@@ -17,7 +17,9 @@ use gpui::AnyElement;
 /// на прежнем пути.
 pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
     if crate::layout::order::hoists_inline_abs(e, cx) {
-        cx.build.effects(el, Effect::PaintLast(cx.paint_key_for(e)))
+        cx.contracts
+            .build
+            .effects(el, Effect::PaintLast(cx.paint_key_for(e)))
     } else {
         el
     }

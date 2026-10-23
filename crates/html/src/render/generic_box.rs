@@ -42,18 +42,18 @@ pub(super) fn generic_box(
     }
     let host_opts;
     let opts = if clamp_host::active(e, &merged)
-        && opts.cx.clamp_frame.is_none_or(|(key, _)| key != e.node_id)
+        && opts.cx.clamp.frame.is_none_or(|(key, _)| key != e.node_id)
     {
         host_opts = opts.inner(|cx| {
-            cx.clamp_build = cx.clamp_build.container(e.node_id);
-            cx.clamp_input = Some(crate::text::clamp::ClampInput::Measure(Default::default()));
+            cx.clamp.build = cx.clamp.build.container(e.node_id);
+            cx.clamp.input = Some(crate::text::clamp::ClampInput::Measure(Default::default()));
         });
         &host_opts
     } else {
         opts
     };
     let mut d = styled_div_with(e, &merged, &opts.cx);
-    let overflow_plan = absolute_overflow::Plan::new(&merged, inherited, &opts.cx.positioning);
+    let overflow_plan = absolute_overflow::Plan::new(&merged, inherited, &opts.cx.position.state);
     if let Some(plan) = &overflow_plan {
         plan.prepare(d.style());
     }
@@ -229,7 +229,7 @@ pub(super) fn generic_box(
     // Имена областей разворачиваются здесь: контейнер и его дети
     // видны одновременно только на этом уровне.
     if clamp_host::active(e, &merged) {
-        if let Some((key, width)) = opts.cx.clamp_frame.filter(|(key, _)| *key == e.node_id) {
+        if let Some((key, width)) = opts.cx.clamp.frame.filter(|(key, _)| *key == e.node_id) {
             let _ = key;
             clamp_host::frame(&mut d, width);
         } else {

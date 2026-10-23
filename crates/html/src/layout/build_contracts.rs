@@ -5,11 +5,11 @@
 //! layout-объектов; алгоритмы получают уже построенных потомков. Здесь обход — это
 //! оркестратор render, поэтому алгоритм, которому нужно построить собственных
 //! потомков (содержимое list item, ячейка таблицы, копия колонки), вызывает
-//! операции этого контракта из [`LayoutCx::build`], не импортируя render. Тип
+//! операции этого контракта из [`BuildContext::build`], не импортируя render. Тип
 //! контракта принадлежит потребителям; реализацию даёт render (`impl Default for
 //! ChildBuild` в `render/child_builder.rs`), так что её несёт каждый `LayoutCx`.
 //!
-//! [`LayoutCx::build`]: crate::layout::cx::LayoutCx::build
+//! [`BuildContext::build`]: crate::layout::cx::BuildContext::build
 
 mod flow;
 pub(crate) use flow::FlowBuild;

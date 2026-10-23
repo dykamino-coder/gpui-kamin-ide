@@ -75,7 +75,7 @@ pub(crate) fn piece(
     } else {
         element.children.as_slice()
     };
-    let inner = opts.cx.build.paragraph(nodes, &merged, opts);
+    let inner = opts.cx.contracts.build.paragraph(nodes, &merged, opts);
     Some(inline::Piece::Atom(
         crate::text::vertical::CombinedUpright::new(inner, em).hooked(),
     ))

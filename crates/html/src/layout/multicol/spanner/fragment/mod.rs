@@ -7,6 +7,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 mod parts;
 pub(super) use parts::spanner_parts;
 
@@ -128,7 +129,7 @@ pub(super) fn spanner_height_share(
         let h = shape_full(&f, 4, ShapeCx::COLUMNS, vcx)?.height;
         let own = (h - if i == 0 { edge } else { 0.0 }).max(0.0);
         let take = own.min(left);
-        out.push((own > left + 0.01).then_some(take));
+        out.push((own > left + COORD_EPS).then_some(take));
         left -= take;
     }
     Some(out)

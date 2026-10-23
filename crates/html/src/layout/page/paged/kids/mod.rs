@@ -11,6 +11,7 @@ use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod breaks;
 mod repeat;
@@ -92,7 +93,7 @@ pub(super) fn page_kids_from_groups(
             let mut opts = opts.clone();
             opts.frag.watch = main.then(|| watched.clone());
             let icb_layer =
-                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
+                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
             opts.clear_paged_fixed();
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
@@ -131,7 +132,7 @@ pub(super) fn page_kids_from_groups(
             };
             let source = if band { band_group.as_slice() } else { group };
             let el = wrap
-                .children(opts.cx.build.blocks(source, root, &opts))
+                .children(opts.cx.contracts.build.blocks(source, root, &opts))
                 .into_any_element();
             slot.extend(layer(icb_layer.finish()));
             fixed_slot.extend(layer(opts.take_paged_fixed()));
@@ -161,7 +162,7 @@ pub(super) fn page_kids_from_groups(
                 };
                 shape_full(e, 4, cx, vcx)
                     .map(|u| u.height + pad_top)
-                    .filter(|&u| u > s.0 + 0.01)
+                    .filter(|&u| u > s.0 + COORD_EPS)
             }
             _ => None,
         };

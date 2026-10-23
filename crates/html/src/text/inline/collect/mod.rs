@@ -31,7 +31,10 @@ mod tests {
         let parent = positioned(&parsed.nodes).expect("positioned inline parent");
         assert_ne!(parent.node_id, 0);
         let cx = LayoutCx {
-            doc: BuildDoc(parsed.doc.clone()),
+            values: crate::layout::cx::ValueContext {
+                doc: BuildDoc(parsed.doc.clone()),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let mut seen_atom = false;

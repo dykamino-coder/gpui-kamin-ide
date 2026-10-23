@@ -3,6 +3,7 @@
 use super::content_radii::content_radii;
 use super::holder_ratio;
 use super::piped::piped_image;
+use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::replaced::image::{Picture, PictureSizing};
@@ -121,7 +122,7 @@ pub(super) fn local_image_source<'a>(
     let own = crate::resources::css_images::element_source(src, &e.style.computed(), vcx)
         .map(crate::paint::background::Source::from_cpu)
         .and_then(|s| {
-            let size = crate::paint::background::default_size(s.intrinsic(), (300.0, 150.0));
+            let size = crate::paint::background::default_size(s.intrinsic(), DEFAULT_REPLACED_SIZE_PX);
             let raster = match &s {
                 crate::paint::background::Source::Vector { markup, .. } => {
                     crate::svg::raster::rasterize_image(

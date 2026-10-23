@@ -36,22 +36,22 @@ mod tests {
     fn stacking_and_deferred_boundaries_are_independent() {
         let outer = LayoutCx::default();
         let mut stacking = outer.clone();
-        stacking.paint_depth = stacking.paint_depth.enter(false, true);
-        assert!(stacking.paint_depth.inside());
-        assert!(!stacking.paint_depth.deferred());
+        stacking.deferred.depth = stacking.deferred.depth.enter(false, true);
+        assert!(stacking.deferred.depth.inside());
+        assert!(!stacking.deferred.depth.deferred());
         let mut deferred = stacking.clone();
-        deferred.paint_depth = deferred.paint_depth.enter(true, false);
-        assert!(deferred.paint_depth.inside());
-        assert!(deferred.paint_depth.deferred());
-        assert!(!outer.paint_depth.inside());
-        assert!(!stacking.paint_depth.deferred());
+        deferred.deferred.depth = deferred.deferred.depth.enter(true, false);
+        assert!(deferred.deferred.depth.inside());
+        assert!(deferred.deferred.depth.deferred());
+        assert!(!outer.deferred.depth.inside());
+        assert!(!stacking.deferred.depth.deferred());
 
         let captured = deferred;
-        let lazy = move || captured.paint_depth;
+        let lazy = move || captured.deferred.depth;
         let mut sibling = outer;
-        sibling.paint_depth = sibling.paint_depth.enter(false, false);
-        assert!(!sibling.paint_depth.inside());
+        sibling.deferred.depth = sibling.deferred.depth.enter(false, false);
+        assert!(!sibling.deferred.depth.inside());
         assert!(lazy().deferred());
-        assert!(!LayoutCx::default().paint_depth.inside());
+        assert!(!LayoutCx::default().deferred.depth.inside());
     }
 }

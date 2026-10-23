@@ -3,6 +3,7 @@
 //! содержимого шрифта (CSS 2.1 §8.4, §10.8) — место в строке держат распорки, высоту строки
 //! он не меняет. Возвращает признак «коробка пустая».
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::{Element, Node};
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
@@ -48,7 +49,7 @@ pub(super) fn blank_box(
         let px_of = px_lossy_zero;
         let size = match merged.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let bs = e.style.computed().borders();
         let padding = e.style.computed().padding;
@@ -105,6 +106,7 @@ pub(super) fn blank_box(
         physical_sides::project_box(inherited, copy.style.used_mut());
         physical_sides::project_box(inherited, &mut sized);
         let boxel = cx
+            .contracts
             .build
             .styled_box(&copy, &sized, cx)
             .absolute()

@@ -68,10 +68,10 @@ pub(super) fn build(
     // вычитают сдвиг (`ShiftLink`), поэтому звено заводится ДО сборки.
     let sticky_link = (e.style.computed().position
         == Some(crate::style::computed::Position::Sticky))
-    .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.sticky.as_ref()));
+    .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.scroll.sticky.as_ref()));
     let sticky_opts = sticky_link
         .as_ref()
-        .map(|link| opts.inner(|cx| cx.sticky = Some(link.clone())));
+        .map(|link| opts.inner(|cx| cx.scroll.sticky = Some(link.clone())));
     let opts = sticky_opts.as_deref().unwrap_or(opts);
     let built = if let Some(block_axis) = holder_axis {
         inset_holder_box(e, block_axis, inherited, opts, &kw_len)

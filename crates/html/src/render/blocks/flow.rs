@@ -37,20 +37,26 @@ pub(super) fn blocks_flow(
     let own_requests = trim::register(nodes, inherited, opts, ordered_context);
     let trim_own;
     let child_opts;
-    let opts = if own_requests.is_empty() && !opts.cx.trim_requests.iter().any(|q| q.owner == owner)
+    let opts = if own_requests.is_empty()
+        && !opts
+            .cx
+            .inline
+            .trim_requests
+            .iter()
+            .any(|q| q.owner == owner)
     {
         trim_own = crate::text::line_trim::Trim::default();
         opts
     } else {
-        let mut requests: Vec<_> = opts.cx.trim_requests.iter().copied().collect();
+        let mut requests: Vec<_> = opts.cx.inline.trim_requests.iter().copied().collect();
         requests.extend(own_requests);
         trim_own = crate::text::line_trim::take(&requests, owner);
         requests.retain(|q| q.owner != owner);
-        child_opts = opts.inner(|cx| cx.trim_requests = std::rc::Rc::new(requests));
+        child_opts = opts.inner(|cx| cx.inline.trim_requests = std::rc::Rc::new(requests));
         &*child_opts
     };
     let mut late_layer =
-        crate::layout::positioned::layer_scope::LayerScope::late(&opts.cx.positioning);
+        crate::layout::positioned::layer_scope::LayerScope::late(&opts.cx.position.state);
     let mut first_para = true;
     let mut below = BelowRun {
         start: below_run_start,
@@ -64,7 +70,7 @@ pub(super) fn blocks_flow(
             out.push(paint_inline_step7(letter_scope.paragraph(
                 &taken,
                 inherited,
-                &opts.inner(|cx| cx.trim_para = Some((owner, t))),
+                &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
             )));
         }
         let is_inline = inline_node(n, inherited, ordered_context, &pending);
@@ -82,7 +88,7 @@ pub(super) fn blocks_flow(
             out.push(paint_inline_step7(letter_scope.paragraph(
                 &taken,
                 inherited,
-                &opts.inner(|cx| cx.trim_para = Some((owner, t))),
+                &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
             )));
         }
         // Позиционированные с `z-index: auto` красятся В ПОРЯДКЕ ДЕРЕВА
@@ -97,7 +103,7 @@ pub(super) fn blocks_flow(
         // их заместителей уже известны. Отрицательный `z-index` не трогаем:
         // у него своя сортировка прогона (`below_run_*`).
         if let Node::Element(e) = n
-            && opts.cx.positioning.late_pending()
+            && opts.cx.position.state.late_pending()
             && e.style.computed().z_index.is_none_or(|z| z >= 0)
             && matches!(
                 e.style.computed().position,
@@ -107,7 +113,7 @@ pub(super) fn blocks_flow(
         {
             out.extend(late_layer.finish());
             late_layer =
-                crate::layout::positioned::layer_scope::LayerScope::late(&opts.cx.positioning);
+                crate::layout::positioned::layer_scope::LayerScope::late(&opts.cx.position.state);
         }
         if let Node::Element(e) = n {
             // Отложенный offset-трансформ абсолюта в начальном содержащем
@@ -144,7 +150,7 @@ pub(super) fn blocks_flow(
         out.push(paint_inline_step7(letter_scope.paragraph(
             &pending,
             inherited,
-            &opts.inner(|cx| cx.trim_para = Some((owner, t))),
+            &opts.inner(|cx| cx.inline.trim_para = Some((owner, t))),
         )));
     }
     if (inherited.text_box_trim_start || inherited.text_box_trim_end)

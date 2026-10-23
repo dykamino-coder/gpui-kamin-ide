@@ -27,11 +27,11 @@ mod host_capture {
     #[test]
     fn deferred_context_keeps_its_host_capture_mode() {
         let mut host = crate::layout::cx::LayoutCx::default();
-        assert!(!host.freeze_scrollbars);
-        host.freeze_scrollbars = true;
+        assert!(!host.deferred.freeze_scrollbars);
+        host.deferred.freeze_scrollbars = true;
         let deferred = host.clone();
-        host.freeze_scrollbars = false;
-        assert!(deferred.freeze_scrollbars);
-        assert!(!host.freeze_scrollbars);
+        host.deferred.freeze_scrollbars = false;
+        assert!(deferred.deferred.freeze_scrollbars);
+        assert!(!host.deferred.freeze_scrollbars);
     }
 }

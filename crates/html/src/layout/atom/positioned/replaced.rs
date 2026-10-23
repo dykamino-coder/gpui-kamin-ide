@@ -32,15 +32,16 @@ pub(super) fn replaced_abs_atom(
     }
     let built = if e.tag == "svg" {
         crate::svg::element_with_html(&copy, opts)
-            .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
+            .unwrap_or_else(|| opts.cx.contracts.build.replaced(&copy, None, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.
         div().w_0().h_0().flex_shrink_0().into_any_element()
     } else {
-        opts.cx.build.replaced(&copy, None, &opts.cx)
+        opts.cx.contracts.build.replaced(&copy, None, &opts.cx)
     };
     let holder = opts
         .cx
+        .contracts
         .build
         .styled_box(e, merged, &opts.cx)
         .child(built)
@@ -48,6 +49,7 @@ pub(super) fn replaced_abs_atom(
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
         opts.cx
+            .contracts
             .build
             .effects(holder, Effect::GroupReplaced { style: merged, vcx })
     } else {
@@ -81,7 +83,7 @@ pub(super) fn replaced_abs_atom(
         let probe = crate::layout::positioned::containing_block::spot_probe(
             spot.clone(),
             false,
-            opts.cx.line_box.clone(),
+            opts.cx.position.line_box.clone(),
             &opts.cx,
         );
         return match inline_replaced_position::push(
@@ -89,7 +91,7 @@ pub(super) fn replaced_abs_atom(
             inline_abs_paint_last(e, holder, &opts.cx),
             &e.style.computed(),
             inherited,
-            &opts.cx.positioning,
+            &opts.cx.position.state,
         ) {
             None => Some(probe),
             Some(kept) => {
@@ -114,7 +116,7 @@ pub(super) fn replaced_abs_atom(
         && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {
-            opts.cx.build.effects(holder, Effect::Underlay)
+            opts.cx.contracts.build.effects(holder, Effect::Underlay)
         } else {
             holder
         };
@@ -134,14 +136,15 @@ pub(super) fn replaced_abs_atom(
         // Слоя нет — элемент возвращается назад, и рисуем его на
         // месте прежним путём.
         let pushed = if positioned_cb {
-            opts.cx.positioning.cb_push(
+            opts.cx.position.state.cb_push(
                 spot,
                 holder.into_any_element(),
                 crate::layout::positioned::containing_block::nearest_cb_index(inherited),
             )
         } else {
             opts.cx
-                .positioning
+                .position
+                .state
                 .icb_push(spot, holder.into_any_element())
         };
         match pushed {

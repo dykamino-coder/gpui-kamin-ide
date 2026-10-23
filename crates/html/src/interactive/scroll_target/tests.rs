@@ -8,7 +8,10 @@ use gpui::{CssSizingKeyword, Overflow, div, px};
 fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let cx = crate::layout::cx::LayoutCx {
-        doc: crate::layout::cx::BuildDoc(doc),
+        values: crate::layout::cx::ValueContext {
+            doc: crate::layout::cx::BuildDoc(doc),
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
@@ -26,13 +29,19 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     let outer = Target::new(7, &handle, true, false, margin);
     {
         let cx = crate::layout::cx::LayoutCx {
-            scroll_target: Some(outer.clone()),
+            scroll: crate::layout::cx::ScrollContext {
+                target: Some(outer.clone()),
+                ..cx.scroll.clone()
+            },
             ..cx.clone()
         };
         let child = Target::new(8, &handle, false, true, Sides::default());
         {
             let cx = crate::layout::cx::LayoutCx {
-                scroll_target: Some(child.clone()),
+                scroll: crate::layout::cx::ScrollContext {
+                    target: Some(child.clone()),
+                    ..cx.scroll.clone()
+                },
                 ..cx.clone()
             };
             let mut d = attach(div(), &e, &c, &cx);
@@ -62,7 +71,10 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
 fn colored_numeric_scrollport_tracks_the_css_box() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let cx = crate::layout::cx::LayoutCx {
-        doc: crate::layout::cx::BuildDoc(doc),
+        values: crate::layout::cx::ValueContext {
+            doc: crate::layout::cx::BuildDoc(doc),
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
@@ -77,7 +89,10 @@ fn colored_numeric_scrollport_tracks_the_css_box() {
     let outer = Target::new(7, &handle, false, true, Sides::default());
     {
         let cx = crate::layout::cx::LayoutCx {
-            scroll_target: Some(outer.clone()),
+            scroll: crate::layout::cx::ScrollContext {
+                target: Some(outer.clone()),
+                ..cx.scroll.clone()
+            },
             ..cx.clone()
         };
         let mut d = attach(div(), &e, &c, &cx);

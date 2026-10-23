@@ -1,6 +1,7 @@
 //! Диспетчер специальных тегов; сохраняет порядок ветвей element.
 
 use super::element;
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level;
 use crate::layout::float::band_flow_host::band_flow_host;
@@ -70,7 +71,7 @@ pub(crate) fn dispatch_element(
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
             let used = copy.style.used_mut();
             if inline_level(e) {
-                replaced_used_style::inline_percentage_width(used, opts.cx.avail_w);
+                replaced_used_style::inline_percentage_width(used, opts.cx.constraints.avail_w);
             }
             used.image_orient_none = merged.image_orient_none;
             crate::layout::replaced::image::inherit_item_metadata(used, &merged, inherited);
@@ -123,12 +124,12 @@ pub(crate) fn dispatch_element(
                 copy.style.computed().width,
                 Some(Len::Px(_)) | Some(Len::Pct(_))
             ) {
-                copy.style.used_mut().width = Some(Len::Px(300.0));
+                copy.style.used_mut().width = Some(Len::Px(DEFAULT_REPLACED_WIDTH_PX));
             }
             let pct_ok =
                 matches!(copy.style.computed().height, Some(Len::Pct(_))) && merged.cb_height_def;
             if !matches!(copy.style.computed().height, Some(Len::Px(_))) && !pct_ok {
-                copy.style.used_mut().height = Some(Len::Px(150.0));
+                copy.style.used_mut().height = Some(Len::Px(DEFAULT_REPLACED_HEIGHT_PX));
             }
             copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;
             styled_div(&copy, &opts.cx)
@@ -157,7 +158,7 @@ pub(crate) fn dispatch_element(
             // уже собственный стиль рисунка.
             let cb_w = match inherited.width {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
-                _ => opts.cx.cb_width.filter(|v| *v > 0.0),
+                _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
             svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(
@@ -204,7 +205,7 @@ pub(crate) fn dispatch_element(
             Some(Display::Table) | Some(Display::InlineTable)
         ) =>
         {
-            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
+            let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             table(e, &merged, opts)
         }
         // Ряд, группа рядов или ячейка ВНЕ таблицы получают анонимную
@@ -215,12 +216,12 @@ pub(crate) fn dispatch_element(
             Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
         ) =>
         {
-            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
+            let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             let wrapper = anon_element("table", vec![Node::Element(e.clone())]);
             table(&wrapper, &merged, opts)
         }
         "table" => {
-            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
+            let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             table(e, &merged, opts)
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:

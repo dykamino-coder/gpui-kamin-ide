@@ -27,7 +27,7 @@ pub(crate) fn paragraph_probed(
     opts: &RenderOpts,
 ) -> AnyElement {
     // Номер абзаца сопоставляет план с пробами независимо от порядка краски.
-    let ctx = crate::text::clamp::clamp_context(&opts.cx).filter(|_| opts.cx.clamp_atom_depth == 0);
+    let ctx = crate::text::clamp::clamp_context(&opts.cx).filter(|_| opts.cx.clamp.atom_depth == 0);
     let seq = ctx.map(|(key, _)| crate::text::clamp::clamp_next_seq(key, &opts.cx));
     let budget = match (ctx, seq) {
         (Some((key, _)), Some(s)) => match opts.cx.clamp_plan(key).and_then(|p| p.para) {
@@ -37,7 +37,7 @@ pub(crate) fn paragraph_probed(
         _ => None,
     };
     let paragraph_opts = opts.inner(|cx| {
-        cx.clamp_paragraph = ctx.zip(seq).map(|((key, _), s)| (key, s));
+        cx.clamp.paragraph = ctx.zip(seq).map(|((key, _), s)| (key, s));
     });
     let para = paragraph(taken, inherited, &paragraph_opts);
     let para = with_text_shadow(para, inherited, taken, opts);

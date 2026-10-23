@@ -3,6 +3,7 @@
 //! от коробки, абсолютные единицы в px; длины отсчитываются от рамки фигуры только при
 //! `transform-box: fill-box`, по умолчанию — от вьюпорта.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 pub(super) fn parse(
     raw: &str,
     bounds: (f32, f32, f32, f32),
@@ -31,7 +32,7 @@ pub(super) fn parse(
                 } else if let Some(n) = t.strip_suffix("pt") {
                     (n, 96.0 / 72.0)
                 } else if let Some(n) = t.strip_suffix("pc") {
-                    (n, 16.0)
+                    (n, MEDIUM_FONT_SIZE_PX)
                 } else if let Some(n) = t.strip_suffix('q').or_else(|| t.strip_suffix('Q')) {
                     (n, 96.0 / 101.6)
                 } else {

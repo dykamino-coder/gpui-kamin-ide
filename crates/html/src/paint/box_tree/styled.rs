@@ -78,10 +78,10 @@ pub(crate) fn styled_div_with(
     }
     d = crate::interactive::scroll_target::attach(d, e, c, cx);
     if let Some(probe) = crate::interactive::scroll_extent::probe(
-        cx.scroll_frame.as_ref(),
+        cx.scroll.frame.as_ref(),
         e.node_id,
         c,
-        cx.sticky.as_ref(),
+        cx.scroll.sticky.as_ref(),
     ) {
         d = d.child(probe);
     }
@@ -98,7 +98,7 @@ pub(crate) fn styled_div_with(
     {
         d = d.child(probe);
     }
-    if let Some(probe) = absolute_overflow::probe(c, &cx.positioning, vcx) {
+    if let Some(probe) = absolute_overflow::probe(c, &cx.position.state, vcx) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой

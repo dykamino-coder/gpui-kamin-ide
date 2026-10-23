@@ -30,20 +30,24 @@ pub(super) fn float_box(
         // A float can own a clamp context as well as isolate its parent's
         // counter. The native box installs that context, its cut and probes;
         // inheriting the paragraph's line limit alone loses the root strut.
-        opts.cx.build.element(copy, inherited, opts)
+        opts.cx.contracts.build.element(copy, inherited, opts)
     } else if copy.tag == "img" {
-        opts.cx.build.replaced(copy, None, &opts.cx)
+        opts.cx.contracts.build.replaced(copy, None, &opts.cx)
     } else {
         // The independent float contents retain the same positioned containing
         // block as an ordinary box; its OOF host follows the in-flow anchors.
         let cb_scope = crate::text::inline::establishes_cb(&merged).then(|| {
             crate::layout::positioned::layer_scope::LayerScope::cb(
-                &opts.cx.positioning,
+                &opts.cx.position.state,
                 crate::paint::stacking::fixed_cb_layer_box(&merged),
             )
         });
         let span = open_clamp_span(&opts.cx);
-        let mut kids = opts.cx.build.blocks(&copy.children, &merged, opts);
+        let mut kids = opts
+            .cx
+            .contracts
+            .build
+            .blocks(&copy.children, &merged, opts);
         close_clamp_span(span.clone(), &opts.cx);
         if let Some(scope) = cb_scope {
             kids.extend(scope.finish());
@@ -61,9 +65,11 @@ pub(super) fn float_box(
             margin => margin,
         };
         opts.cx
+            .contracts
             .build
             .probes(copy, &probed, opts, &mut kids, true, false, span);
         opts.cx
+            .contracts
             .build
             .styled_box(copy, &merged, &opts.cx)
             .children(kids)

@@ -12,6 +12,7 @@
 //!   табуляциями и пустыми краями полноширинной пунктуации, до отступа базы.
 //! - `none`: никогда.
 
+use crate::tolerance::COORD_EPS;
 mod space_edge;
 
 use super::*;
@@ -67,7 +68,7 @@ impl Paragraph {
     ) -> (f32, f32) {
         // Blink ComputeRubyBaseInset returns no inset for an empty base:
         // its annotation cannot overhang adjacent content.
-        if info.mode == RubyOverhang::None || base_w <= 0.01 || ann_w <= base_w + 0.01 {
+        if info.mode == RubyOverhang::None || base_w <= COORD_EPS || ann_w <= base_w + COORD_EPS {
             return (0.0, 0.0);
         }
         let space = w - base_w;
@@ -101,7 +102,8 @@ impl Paragraph {
                     .find(|&(_, c)| !is_text_char(c))
                     .map_or(text.len(), |(i, _)| after + i);
                 let next_w = f32::from(self.span(&segs, after, next_end));
-                let end_cap = if next_text && self.run_font_at(after) <= info.base_font + 0.01 {
+                let end_cap = if next_text && self.run_font_at(after) <= info.base_font + COORD_EPS
+                {
                     next_w / 2.0
                 } else {
                     0.0

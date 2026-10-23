@@ -20,7 +20,7 @@ pub(super) fn container_atom(
 ) -> Option<Option<AnyElement>> {
     let vcx = opts.cx.vcx();
     if e.style.computed().display == Some(Display::GridLanes) {
-        return Some(Some(opts.cx.build.element(e, inherited, opts)));
+        return Some(Some(opts.cx.contracts.build.element(e, inherited, opts)));
     }
     if multicol_container(&e.style.computed()) {
         let merged = box_style(inherited, &e.style, vcx);
@@ -43,7 +43,9 @@ pub(super) fn container_atom(
             if copy.style.computed().width.is_none() {
                 copy.style.used_mut().width = shrink_to_fit.map(Len::Px);
             }
-            return Some(Some(opts.cx.build.element(&copy, inherited, opts)));
+            return Some(Some(
+                opts.cx.contracts.build.element(&copy, inherited, opts),
+            ));
         }
     }
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:
@@ -72,7 +74,7 @@ pub(super) fn container_atom(
 pub(super) fn img_atom(inherited: &BoxStyle, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
-    replaced_used_style::inline_percentage_width(copy.style.used_mut(), opts.cx.avail_w);
+    replaced_used_style::inline_percentage_width(copy.style.used_mut(), opts.cx.constraints.avail_w);
     // Держатель картинки строится из СЫРОГО стиля (`image_with` →
     // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
     // ставит только `style::cascade::inherit`: без переноса `apply` выбрасывал
@@ -101,6 +103,7 @@ pub(super) fn img_atom(inherited: &BoxStyle, opts: &RenderOpts, e: &Element) -> 
     }
     Some(
         opts.cx
+            .contracts
             .build
             .replaced(&copy, Some(atom_base_font(inherited, opts)), &opts.cx),
     )
@@ -110,11 +113,11 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     let vcx = opts.cx.vcx();
     // Рисунок без собственного размера — stretch-fit от содержащего
     // блока (`svg::stretch_fit`): ширина родителя, когда она в
-    // точках, иначе ближайшая известная (`LayoutCx::cb_width` — та же, что у
+    // точках, иначе ближайшая известная (`BoxConstraints::cb_width` — та же, что у
     // картинки с одним соотношением в `image_with`).
     let cb_w = match inherited.width {
         Some(Len::Px(v)) if v > 0.0 => Some(v),
-        _ => opts.cx.cb_width.filter(|v| *v > 0.0),
+        _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
     };
     // Размер в единицах шрифта (`svg { width: 10ch }`) решается тем же
     // шагом, что у картинки (`image_with` → `resolve_em`): сырой стиль
@@ -131,7 +134,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
     svg_replaced(&sized, &fitted, &BoxStyle::shared(shell.computed()), opts).or_else(|| {
-        Some(opts.cx.build.replaced(
+        Some(opts.cx.contracts.build.replaced(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
             &opts.cx,
@@ -154,7 +157,7 @@ pub(super) fn canvas_atom(
     let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
     let e = &converted;
     let merged = box_style(inherited, &e.style, vcx);
-    let d = cx.build.styled_box(e, &merged, cx).flex_shrink_0();
+    let d = cx.contracts.build.styled_box(e, &merged, cx).flex_shrink_0();
     // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
     // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда
     // соотношение несёт ВНУТРЕННЯЯ коробка, заполняющая названную

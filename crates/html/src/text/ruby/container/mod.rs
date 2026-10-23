@@ -69,7 +69,7 @@ pub(crate) fn ruby_container_atom(
                 under,
                 base_half,
                 layers,
-                opts.cx.ruby_extents.as_ref(),
+                opts.cx.ruby.extents.as_ref(),
             );
             layer_offset::offset(el, layers, under)
         };

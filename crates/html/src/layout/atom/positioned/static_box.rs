@@ -49,14 +49,14 @@ pub(in crate::layout::atom) fn static_position_atom(
                     let mut unpositioned = merged.clone();
                     unpositioned.position = None;
                     svg_replaced(&copy, &copy, &unpositioned, opts)
-                        .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
+                        .unwrap_or_else(|| opts.cx.contracts.build.replaced(&copy, None, &opts.cx))
                 }
-                _ => opts.cx.build.replaced(&copy, None, &opts.cx),
+                _ => opts.cx.contracts.build.replaced(&copy, None, &opts.cx),
             })
         }
         _ => None,
     };
-    let inner = opts.cx.build.styled_box(e, &merged, &opts.cx);
+    let inner = opts.cx.contracts.build.styled_box(e, &merged, &opts.cx);
     let inner = inner.children(super::children::children(e, &positioned, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
@@ -91,13 +91,15 @@ pub(in crate::layout::atom) fn static_position_atom(
     let probe = crate::layout::positioned::containing_block::spot_probe(
         spot.clone(),
         false,
-        opts.cx.line_box.clone(),
+        opts.cx.position.line_box.clone(),
         &opts.cx,
     );
     let inner = match replaced {
-        Some(el) if merged.corner_shaped() => {
-            opts.cx.build.effects(el, Effect::group(&merged, vcx))
-        }
+        Some(el) if merged.corner_shaped() => opts
+            .cx
+            .contracts
+            .build
+            .effects(el, Effect::group(&merged, vcx)),
         Some(el) => el,
         None => inner.into_any_element(),
     };
@@ -108,7 +110,7 @@ pub(in crate::layout::atom) fn static_position_atom(
     let taken = if below {
         Some(inner)
     } else {
-        opts.cx.positioning.late_push(spot, inner)
+        opts.cx.position.state.late_push(spot, inner)
     };
     return match taken {
         None => Some(probe),

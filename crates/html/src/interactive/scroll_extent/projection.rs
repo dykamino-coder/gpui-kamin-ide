@@ -17,7 +17,7 @@ pub(crate) struct Projection {
     link: StickyShift,
 }
 impl Projection {
-    /// The chain the projected subtree is built with (`LayoutCx::sticky`).
+    /// The chain the projected subtree is built with (`ScrollContext::sticky`).
     pub(crate) fn link(&self) -> &StickyShift {
         &self.link
     }

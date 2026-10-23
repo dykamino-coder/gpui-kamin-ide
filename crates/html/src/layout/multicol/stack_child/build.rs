@@ -52,6 +52,7 @@ pub(super) fn build_copy(
     band: bool,
 ) -> gpui::AnyElement {
     let vcx = opts.cx.vcx();
+    let build = &opts.cx.contracts.build;
     // `box-decoration-break: clone`: копия — САМ
     // фрагмент (`clone_fragment`), и корень, и
     // наследуемый стиль берутся у НЕГО. Со стилем
@@ -82,7 +83,7 @@ pub(super) fn build_copy(
         .map(|_| crate::paint::gap_rules::GapItems::default());
     let child_opts = opts.inner(|cx| {
         if let Some(items) = &frag_gap_items {
-            cx.gap_items = Some(items.clone());
+            cx.deferred.gap_items = Some(items.clone());
         }
     });
     // css-break-3 §5.5: «Fragmentation … occurs
@@ -207,11 +208,12 @@ pub(super) fn build_copy(
     };
     let frag_cb_layer = crate::text::inline::establishes_cb(inner).then(|| {
         crate::layout::positioned::layer_scope::LayerScope::cb(
-            &opts.cx.positioning,
+            &opts.cx.position.state,
             fixed_cb_layer_box(inner),
         )
     });
-    let mut body = child_opts.cx.build.blocks(&kids, src_inner, &child_opts);
+    let child_build = &child_opts.cx.contracts.build;
+    let mut body = child_build.blocks(&kids, src_inner, &child_opts);
     if let Some(layer) = frag_cb_layer {
         body.extend(layer.finish());
     }
@@ -228,7 +230,7 @@ pub(super) fn build_copy(
         &mut body,
         &opts.cx,
     );
-    let el = opts.cx.build.effects(
+    let el = build.effects(
         d.children(body).into_any_element(),
         Effect::transform(inner, merged, vcx),
     );
@@ -239,7 +241,7 @@ pub(super) fn build_copy(
         || inner.clip_polygon.is_some()
         || inner.mask_image.is_some()
     {
-        opts.cx.build.effects(el, Effect::group(inner, vcx))
+        build.effects(el, Effect::group(inner, vcx))
     } else {
         el
     }

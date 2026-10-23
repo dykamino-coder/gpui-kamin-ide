@@ -35,16 +35,16 @@ pub(super) fn build_band_kid(
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     // Ширина содержащего блока — та, что намерил хост: замещаемым
-    // без размеров (§10.3.2) и долям внутри (`LayoutCx::cb_width`), блочным
-    // детям куска — ширина окна (`LayoutCx::avail_w`).
+    // без размеров (§10.3.2) и долям внутри (`BoxConstraints::cb_width`), блочным
+    // детям куска — ширина окна (`BoxConstraints::avail_w`).
     let opts = &*opts.inner(|cx| {
         if float {
-            cx.clamp_build = cx.clamp_build.bfc();
+            cx.clamp.build = cx.clamp.build.bfc();
         }
         if cb > 0.0 {
-            cx.cb_width = Some(cb);
+            cx.constraints.cb_width = Some(cb);
         }
-        cx.avail_w = (avail > 0.0).then_some(avail);
+        cx.constraints.avail_w = (avail > 0.0).then_some(avail);
     });
     let mut copy = node.clone();
     cont_indent(&mut copy, inherited);
@@ -82,7 +82,7 @@ pub(super) fn build_band_kid(
         if crate::layout::float::band_nest::paint_group(&copy.style.computed()) {
             crate::layout::float::band_nest::group_shell(copy.style.used_mut());
         }
-        return opts.cx.build.element(&copy, inherited, opts);
+        return opts.cx.contracts.build.element(&copy, inherited, opts);
     }
     // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы
     // шириной в окно: решаем её здесь.
@@ -228,7 +228,7 @@ pub(super) fn build_band_kid(
         // Общий путь отрисовки узла — тот же, что в потоке:
         // таблица, замещаемый, список строятся своими ветками
         // `element`.
-        let el = opts.cx.build.element(&copy, inherited, opts);
+        let el = opts.cx.contracts.build.element(&copy, inherited, opts);
         // Эффекты группы (`clip-path`, маска, фильтр, смешивание)
         // `element` не накладывает — их кладёт поток (`blocks`:
         // `grouped(transformed(animated(..)))`). Вертикальный флоат

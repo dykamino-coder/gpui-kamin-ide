@@ -45,7 +45,7 @@ pub fn as_wrapped_row(
     // Block flow of a turned vertical line (`Some(vertical-rl)`): an
     // out-of-flow box's static position hangs from the block-start side.
     turned: Option<bool>,
-    // Слои содержащих блоков сборки (`LayoutCx::positioning`): куда уходят
+    // Слои содержащих блоков сборки (`PositioningContext::state`): куда уходят
     // внепоточные куски строки.
     cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {

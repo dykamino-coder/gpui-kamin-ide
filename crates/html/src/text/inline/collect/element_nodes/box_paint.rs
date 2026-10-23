@@ -4,6 +4,7 @@
 //! полоса для рамки без фона (CSS 2.1 §8.6, css-break-3 §5.4) и контур `outline`. На выходе
 //! `Computed` с `inline_*` полями и признак «фон рисуется».
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::cascade::materialize::box_style;
@@ -59,7 +60,7 @@ pub(super) fn element_style(
         // порядок с глифами соседней, ничего не меняет.
         let size = match merged.font_size {
             Some(crate::style::values::value::Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let family = merged.font_family.clone().unwrap_or_default();
         let px_of = |l: Option<crate::style::values::value::Len>| match l {
@@ -88,7 +89,7 @@ pub(super) fn element_style(
     // коробка рвала перенос, и span с рамкой уезжал столбиком.
     let font_px = match merged.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let own_bg = merged
         .background

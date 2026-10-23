@@ -186,8 +186,11 @@ mod tests {
     fn three_equal_boxes_share_width() {
         // `alignment-001`: по букве в каждой коробке — три равные трети.
         let s = edge_sizes([auto(8.0), auto(8.0), auto(8.0)], 450.0);
-        assert!((s[0] - 150.0).abs() < 0.01 && (s[1] - 150.0).abs() < 0.01);
-        assert!((s[2] - 150.0).abs() < 0.01);
+        assert!(
+            (s[0] - 150.0).abs() < crate::tolerance::COORD_EPS
+                && (s[1] - 150.0).abs() < crate::tolerance::COORD_EPS
+        );
+        assert!((s[2] - 150.0).abs() < crate::tolerance::COORD_EPS);
     }
 
     #[test]

@@ -105,24 +105,25 @@ pub(super) fn band_nest(
     let vcx = opts.cx.vcx();
     // The step-8 key of a paint group comes before its descendants' keys.
     let group_key = paint_group(&c.style.computed()).then(|| opts.cx.next_paint_key());
-    let cb = opts.cx.cb_width;
+    let cb = opts.cx.constraints.cb_width;
     let inner_em = band_em(&c.style.computed(), em)?;
     let mut merged = box_style(inherited, &c.style, vcx);
     let height = crate::layout::block::available_height::inner(
         &merged,
-        opts.cx.avail_h,
-        opts.cx.avail_w,
+        opts.cx.constraints.avail_h,
+        opts.cx.constraints.avail_w,
         opts.viewport.1,
     );
     if let Some(height) = height {
         merged.height = Some(Len::Px(height));
     }
-    let opts = &*opts.inner(|cx| cx.avail_h = height);
+    let opts = &*opts.inner(|cx| cx.constraints.avail_h = height);
     crate::dom::pseudo_line_layers::install(c, &mut merged, vcx);
     // The first formatted line may belong to a nested in-flow block;
     // floats and positioned children cannot consume its pseudo layer.
     let children = opts
         .cx
+        .contracts
         .build
         .first_line_route(collapse_margins(&c.children, false, cb, vcx), &merged);
     let mut seq = band_seq(

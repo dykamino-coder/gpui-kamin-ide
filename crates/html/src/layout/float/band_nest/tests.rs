@@ -76,7 +76,10 @@ fn percentage_nest_uses_its_definite_containing_block_height() {
             viewport: (800., 600.),
             normal_line_height: 1.2,
             cx: crate::layout::cx::LayoutCx {
-                avail_h: basis,
+                constraints: crate::layout::cx::BoxConstraints {
+                    avail_h: basis,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             frag: Default::default(),
@@ -87,7 +90,7 @@ fn percentage_nest_uses_its_definite_containing_block_height() {
             (Some(actual), Some(expected)) => assert!((actual - expected).abs() < 0.001),
             (actual, expected) => assert_eq!(actual, expected),
         }
-        assert_eq!(opts.cx.avail_h, basis);
+        assert_eq!(opts.cx.constraints.avail_h, basis);
     }
 }
 

@@ -13,8 +13,8 @@ impl Document {
         self.state.begin_frame();
         super::image_values::refresh(self.state.frame_values());
         let mut opts = opts.clone();
-        opts.cx.clamp_input = None;
-        opts.cx.doc = crate::layout::cx::BuildDoc(self.state.clone());
+        opts.cx.clamp.input = None;
+        opts.cx.values.doc = crate::layout::cx::BuildDoc(self.state.clone());
         opts
     }
 

@@ -101,7 +101,7 @@ pub(super) fn row_band_probes(
             band_style.bg_image = band_style.gradient_raw.clone();
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
-        under.push(cx.build.layer(band));
+        under.push(cx.contracts.build.layer(band));
     }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
     // полоса идёт от левого края крайней левой колонки до правого края
@@ -134,7 +134,7 @@ pub(super) fn row_band_probes(
             band_style.background = None;
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
-        under.push(cx.build.layer(band));
+        under.push(cx.contracts.build.layer(band));
     }
     RowBands {
         row_rects,

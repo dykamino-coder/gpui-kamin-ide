@@ -67,7 +67,7 @@ fn build(
             operator = operators::text(e).chars().next().zip(target);
         }
         (
-            vec![opts.cx.build.paragraph(&e.children, &style, opts)],
+            vec![opts.cx.contracts.build.paragraph(&e.children, &style, opts)],
             if e.tag == "mo" {
                 let op = operators::operator(e, &style, opts);
                 Kind::Operator(op.left, op.right)
@@ -97,7 +97,7 @@ fn build(
                         let opts = opts.clone();
                         let factory: stretch::Factory = Box::new(move |target| {
                             build(&child, &style, &opts, Some(target))
-                                .unwrap_or_else(|| opts.cx.build.element(&child, &style, &opts))
+                                .unwrap_or_else(|| opts.cx.contracts.build.element(&child, &style, &opts))
                         });
                         (op.flags, factory)
                     }));
@@ -105,7 +105,7 @@ fn build(
                     let forwarded = if core.is_some() { target } else { None };
                     Some(
                         build(child, &style, opts, forwarded)
-                            .unwrap_or_else(|| opts.cx.build.element(child, &style, opts)),
+                            .unwrap_or_else(|| opts.cx.contracts.build.element(child, &style, opts)),
                     )
                 }
             })
@@ -131,7 +131,7 @@ fn build(
         glyph: None,
         glyph_offset: (0.0, 0.0),
     };
-    let mut outer = opts.cx.build.styled_box(e, &style, &opts.cx);
+    let mut outer = opts.cx.contracts.build.styled_box(e, &style, &opts.cx);
     // The measured content owns its baseline, including an explicit zero.
     outer.style().align_items = Some(gpui::AlignItems::FlexStart);
     if e.tag == "math" && style.display == Some(crate::style::computed::Display::Block) {

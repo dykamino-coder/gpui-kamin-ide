@@ -4,6 +4,7 @@
 //! (`letter_spacing_after`), распорки пропускаются; за строчной коробкой, ушедшей в раскладку,
 //! зазор предка держит отдельная распорка.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -39,7 +40,7 @@ pub(super) fn boundary_gap_after_box(
     }
     let size = match inherited.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let gap = crate::text::metrics::spacing_px(
         inherited.letter_spacing,

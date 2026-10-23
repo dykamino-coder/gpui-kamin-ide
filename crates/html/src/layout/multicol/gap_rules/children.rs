@@ -1,6 +1,6 @@
 //! Слой линеек промежутков (css-gaps-1) перед детьми контейнера: при заданном стиле линеек
 //! создаётся свежий буфер проб (`GapItems`) и художник `GapRulePainter`, а дети строятся с
-//! настройками, где `LayoutCx::gap_items` указывает на этот буфер, чтобы их пробы, включая
+//! настройками, где `DeferredPaintContext::gap_items` указывает на этот буфер, чтобы их пробы, включая
 //! атомарные коробки, попадали в него. Художник идёт первым слоем, под детьми.
 
 use crate::dom::Element;
@@ -20,14 +20,18 @@ pub(crate) fn decorated_children(
     let context = spec.as_ref().map(|_| GapItems::default());
     let child_opts = opts.inner(|cx| {
         if let Some(items) = &context {
-            cx.gap_items = Some(items.clone());
+            cx.deferred.gap_items = Some(items.clone());
         }
     });
     let mut layers = Vec::new();
     if let (Some(buffer), Some(spec)) = (context, spec) {
         layers.push(
-            crate::hooks::PaintOnly(GapRulePainter::new(buffer, spec, opts.cx.paint.clone()))
-                .hooked(),
+            crate::hooks::PaintOnly(GapRulePainter::new(
+                buffer,
+                spec,
+                opts.cx.deferred.paint.clone(),
+            ))
+            .hooked(),
         );
     }
     layers.extend(children(&child_opts));

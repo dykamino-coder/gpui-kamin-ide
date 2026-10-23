@@ -34,7 +34,7 @@ fn shadow_layer(
         // CSS Text Decoration 3 §4: a shadow masks both glyphs and their
         // decorations. Reusing the paragraph keeps baseline, spacing and
         // decoration geometry identical; its color is the shadow's color.
-        opts.cx.build.paragraph(nodes, &mask, opts)
+        opts.cx.contracts.build.paragraph(nodes, &mask, opts)
     } else {
         div()
             .text_color(shadow.used_color(style.current_color()).to_hsla())
@@ -129,7 +129,7 @@ fn atomic(e: &crate::dom::Element, vcx: crate::document::state::ValueCx<'_>) -> 
     // и тень тот рисует сам (`render::has_own_box`).
     let font = match e.style.computed().font_size {
         Some(crate::style::values::value::Len::Px(v)) => v,
-        _ => 16.0,
+        _ => crate::defaults::MEDIUM_FONT_SIZE_PX,
     };
     !e.inline
         || crate::layout::positioned::predicates::has_own_box(&e.style.computed(), font, vcx)

@@ -37,13 +37,13 @@ pub(crate) fn render_with_style(
         }
         kids.extend(li.children.iter().cloned());
         return shrink0(
-            opts.cx.build.styled_box(li, merged, &opts.cx),
+            opts.cx.contracts.build.styled_box(li, merged, &opts.cx),
             li,
             inherited,
         )
         .flex()
         .flex_col()
-        .children(opts.cx.build.blocks(&kids, merged, opts))
+        .children(opts.cx.contracts.build.blocks(&kids, merged, opts))
         .into_any_element();
     }
     // Знаки маркера без своего семейства — шрифтом ДОКУМЕНТА: голый
@@ -70,6 +70,7 @@ pub(crate) fn render_with_style(
     let strut = (!no_marker && empty).then(|| {
         let mut d = opts
             .cx
+            .contracts
             .build
             .styled_div(Styling::Text(&mark_style), &opts.cx)
             .w_0()
@@ -82,7 +83,7 @@ pub(crate) fn render_with_style(
     // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
     // не двигает. Text transforms apply to its own text (§3.1.1).
     shrink0(
-        opts.cx.build.styled_box(li, merged, &opts.cx),
+        opts.cx.contracts.build.styled_box(li, merged, &opts.cx),
         li,
         inherited,
     )
@@ -106,6 +107,7 @@ pub(crate) fn render_with_style(
         {
             let m = opts
                 .cx
+                .contracts
                 .build
                 .styled_div(Styling::Text(&mark_style), &opts.cx)
                 .absolute()
@@ -170,7 +172,7 @@ pub(crate) fn render_with_style(
             .w_full()
             .flex()
             .flex_col()
-            .children(opts.cx.build.blocks(&li.children, merged, opts))
+            .children(opts.cx.contracts.build.blocks(&li.children, merged, opts))
             .children(strut),
     )
     .into_any_element()

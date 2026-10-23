@@ -42,7 +42,7 @@ pub(crate) fn multicol_spanner_segments(
         )
     {
         let legend = kids.remove(i);
-        d = d.children(opts.cx.build.blocks(&[legend], &merged, opts));
+        d = d.children(opts.cx.contracts.build.blocks(&[legend], &merged, opts));
     }
     for chunk in kids.split_inclusive(&is_span) {
         let (body, span) = match chunk.split_last() {
@@ -138,7 +138,7 @@ pub(crate) fn multicol_spanner_segments(
                 {
                     sub.style.used_mut().height = Some(Len::Px(rest));
                 }
-                d = d.child(div().children(opts.cx.build.blocks(
+                d = d.child(div().children(opts.cx.contracts.build.blocks(
                     &[Node::Element(sub)],
                     &merged,
                     opts,
@@ -178,14 +178,14 @@ pub(crate) fn multicol_spanner_segments(
             // пути (`d.flex().flex_col()` при пустом `display`), где
             // поля детей сводит сам `blocks()` — а он с предикатом
             // `own_context_style` поле наружу больше не отдаёт.
-            let shell = opts.cx.build.styled_box(sp, &inner, &opts.cx);
+            let shell = opts.cx.contracts.build.styled_box(sp, &inner, &opts.cx);
             let shell =
                 if matches!(inner.display, None | Some(Display::Block)) && !inner.wm().vertical() {
                     shell.flex().flex_col()
                 } else {
                     shell
                 };
-            d = d.child(shell.children(opts.cx.build.blocks(&sp.children, &inner, opts)));
+            d = d.child(shell.children(opts.cx.contracts.build.blocks(&sp.children, &inner, opts)));
         }
     }
     // Нижняя сторожка: нижнее поле последнего спаннера остаётся

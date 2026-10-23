@@ -119,7 +119,7 @@ impl Render for Page {
             cx: Default::default(),
             frag: Default::default(),
         };
-        opts.cx.freeze_scrollbars = true;
+        opts.cx.deferred.freeze_scrollbars = true;
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся
         // неопределённой, и абсолютный элемент, растянутый краями

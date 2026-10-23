@@ -13,6 +13,7 @@ use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
 // The clone plan preserves each child's measured shape and painting callback.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -49,7 +50,7 @@ pub(super) fn clone_plan_of(
                             && plain_block_tree(&m, 4)
                             && visible_overflow(&m.style.computed())
                     })
-                    .filter(|u| u.height > s.height + 0.01)
+                    .filter(|u| u.height > s.height + COORD_EPS)
                     {
                         Some(u) => (u.height, u.cuts, u.forced, u.solid),
                         None => (s.height, s.cuts.clone(), s.forced.clone(), s.solid.clone()),

@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Ruby collection of the atom being built: its annotation stacks
-/// (`LayoutCx::ruby_extents`, closed when the atom is built) and whether it is
+/// (`RubyContext::extents`, closed when the atom is built) and whether it is
 /// an independent inline context (atomic inline: no ruby base layers or sink).
 pub(crate) struct AtomRuby {
     extents: Rc<RefCell<Option<RubyExtents>>>,
@@ -52,14 +52,14 @@ pub(super) fn atom_opts(
     offer: &Option<Rc<InlineCbOffer>>,
 ) -> Box<RenderOpts> {
     opts.inner(|cx| {
-        cx.ruby_extents = Some(ruby.extents.clone());
+        cx.ruby.extents = Some(ruby.extents.clone());
         if ruby.independent {
-            cx.ruby_layers = None;
-            cx.ruby_base = None;
+            cx.ruby.layers = None;
+            cx.ruby.base = None;
         }
         if let Some(slot) = line_box {
-            cx.line_box = Some(slot.clone());
+            cx.position.line_box = Some(slot.clone());
         }
-        cx.inline_cb = offer.clone();
+        cx.position.inline_cb = offer.clone();
     })
 }

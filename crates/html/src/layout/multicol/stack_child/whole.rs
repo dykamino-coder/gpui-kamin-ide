@@ -84,11 +84,11 @@ pub(super) fn copy_whole_box(
             mc.style.used_mut().height = Some(Len::Px((h - bot).max(0.0)));
             mc.style.used_mut().border_box = None;
         }
-        return Some(
-            opts.cx
-                .build
-                .element(&mc, merged, &opts.with_outer_row((hh, nest_phase_k))),
-        );
+        return Some(opts.cx.contracts.build.element(
+            &mc,
+            merged,
+            &opts.with_outer_row((hh, nest_phase_k)),
+        ));
     }
     if whole {
         let mut mc = copy.clone();
@@ -98,16 +98,16 @@ pub(super) fn copy_whole_box(
         {
             mc.style.used_mut().width = Some(Len::Px(w));
         }
-        return Some(opts.cx.build.element(&mc, merged, opts));
+        return Some(opts.cx.contracts.build.element(&mc, merged, opts));
     }
     if table_box(copy) {
         let mut tc = copy.clone();
         tc.children = std::mem::take(kids);
         // Содержащий блок таблицы в колонке — колонка (css-multicol-1 §2):
         // от её ширины и доли размеров содержимого, а не от многоколоночника.
-        let col = line_col_w.map(|w| opts.inner(|cx| cx.avail_w = Some(w)));
+        let col = line_col_w.map(|w| opts.inner(|cx| cx.constraints.avail_w = Some(w)));
         let opts = col.as_deref().unwrap_or(opts);
-        return Some(opts.cx.build.effects(
+        return Some(opts.cx.contracts.build.effects(
             table(&tc, inner, opts),
             Effect::transform(inner, merged, opts.cx.vcx()),
         ));

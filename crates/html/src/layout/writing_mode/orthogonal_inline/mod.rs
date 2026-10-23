@@ -3,6 +3,7 @@
 //! ограничений блока, доступное место вертикального ребёнка в горизонтальном родителе
 //! (css-writing-modes-4 §7.3.1: содержащий блок, иначе меньшее из max-size, scrollport
 //! и ICB за вычетом полей) и предел переноса `ortho_limit`.
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::layout::block::ratio_basis;
 use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint, available};
 use crate::style::computed::{Computed, Display, Overflow, Position};
@@ -112,7 +113,7 @@ pub(crate) fn resolve(
     // Margins keep font-relative units until layout (`resolve_em` covers sizes
     // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the
     // available space for the box's MARGIN box).
-    let em = px_strict(style.font_size).unwrap_or(16.0);
+    let em = px_strict(style.font_size).unwrap_or(MEDIUM_FONT_SIZE_PX);
     let margin = |value| match value {
         Some(Len::Pct(k)) => axis(parent, false).size.unwrap_or(0.0) * k,
         Some(Len::Em(k)) => k * em,

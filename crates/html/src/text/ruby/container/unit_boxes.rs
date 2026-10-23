@@ -83,7 +83,7 @@ pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> A
     // CSS Ruby interlinear-block: an empty base container behaves as a
     // single empty base, whose strut still supplies the shared baseline.
     let strut;
-    let nodes = if opts.cx.ruby_layers.is_some() && !has_inflow(nodes) {
+    let nodes = if opts.cx.ruby.layers.is_some() && !has_inflow(nodes) {
         strut = empty_base(nodes);
         &strut[..]
     } else {
@@ -131,11 +131,16 @@ pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> A
             super::stacks::align_units(block.style.used_mut());
         }
         return div()
-            .children(opts.cx.build.blocks(&[Node::Element(block)], &style, opts))
+            .children(
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&[Node::Element(block)], &style, opts),
+            )
             .into_any_element();
     }
     div()
-        .children(opts.cx.build.blocks(nodes, &style, opts))
+        .children(opts.cx.contracts.build.blocks(nodes, &style, opts))
         .into_any_element()
 }
 

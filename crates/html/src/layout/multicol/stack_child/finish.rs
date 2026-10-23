@@ -9,6 +9,7 @@ use crate::layout::page::paged::visible_overflow;
 use crate::layout::positioned::predicates::carries_abspos;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
 mod monolith;
 use monolith::{copy_monolith, has_monolith};
@@ -115,7 +116,7 @@ pub(super) fn nest_row_of(
             && match nest_at.get(ix).copied().flatten() {
                 // С верха колонки — и заданная высота, и
                 // `auto` с мерой рядами.
-                Some(y0) if y0 < 0.01 => {
+                Some(y0) if y0 < COORD_EPS => {
                     matches!(copy.style.computed().height, Some(Len::Px(_)))
                         || nested_auto.borrow().contains(&copy.node_id)
                 }

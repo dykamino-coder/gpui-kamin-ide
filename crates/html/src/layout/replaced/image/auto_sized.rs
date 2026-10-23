@@ -1,6 +1,7 @@
 //! Картинка с авто-размерами: естественный размер, пределы и соотношение.
 
 use super::used_size::{Picture, PictureSizing};
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::layout::replaced::limits::css2_replaced_limits;
 use crate::style::values::value::Len;
 
@@ -22,8 +23,8 @@ impl PictureSizing<'_> {
                 (Some(w), Some(h), _) => (w, h),
                 (Some(w), None, Some(r)) => (w, w / r),
                 (None, Some(h), Some(r)) => (h * r, h),
-                (Some(w), None, None) => (w, 150.0),
-                (None, Some(h), None) => (300.0, h),
+                (Some(w), None, None) => (w, DEFAULT_REPLACED_HEIGHT_PX),
+                (None, Some(h), None) => (DEFAULT_REPLACED_WIDTH_PX, h),
                 (None, None, Some(r)) => {
                     // §10.3.2, последний пункт: при обеих `auto` и одном
                     // лишь соотношении ширина берётся из содержащего
@@ -31,10 +32,9 @@ impl PictureSizing<'_> {
                     // ширину взять неоткуда (`ratio-2.svg` в
                     // `visudet/replaced-elements-*`: мы рисовали 300×150,
                     // эталон — 200×100 по `div { width: 200px }`).
-                    let w = self
-                        .cb_width
-                        .filter(|v| *v > 0.0)
-                        .unwrap_or_else(|| (150.0 * r).min(300.0));
+                    let w = self.cb_width.filter(|v| *v > 0.0).unwrap_or_else(|| {
+                        (DEFAULT_REPLACED_HEIGHT_PX * r).min(DEFAULT_REPLACED_WIDTH_PX)
+                    });
                     (w, w / r)
                 }
                 // Не разрешать ДОЛЮ собственного размера рисунка
@@ -46,7 +46,7 @@ impl PictureSizing<'_> {
                 // вложенный ДОКУМЕНТ, и его `100%` считается от коробки
                 // объекта. Без различения вся семья `replaced-elements-*`
                 // рушится ради `replaced-intrinsic-002`.
-                (None, None, None) => (300.0, 150.0),
+                (None, None, None) => (DEFAULT_REPLACED_WIDTH_PX, DEFAULT_REPLACED_HEIGHT_PX),
             };
             if w0 > 0.0 && h0 > 0.0 {
                 // §10.4: пределы — по таблице (`css2_replaced_limits`).

@@ -4,6 +4,7 @@
 //! сохраняет предпочтительный размер, который видит родитель, несёт отрицательные
 //! боковые поля, прижим авто-полями, `align-self` и размещение в сетке родителя.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::layout::writing_mode::native_intrinsic;
 #[path = "content_wrapper/axis_alignment.rs"]
@@ -113,7 +114,7 @@ pub(crate) fn content_sized(
     let side = |l: Option<Len>| -> Option<f32> {
         let size = match c.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let family = c.font_family.clone().unwrap_or_default();
         match l {

@@ -22,7 +22,7 @@ use crate::style::computed::{BoxStyle, Display};
 pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &BoxStyle, opts: &RenderOpts) {
     let vcx = opts.cx.vcx();
     use crate::style::computed::Position;
-    if !opts.cx.positioning.icb_active() || opts.cx.paint_depth.inside() {
+    if !opts.cx.position.state.icb_active() || opts.cx.deferred.depth.inside() {
         return;
     }
     let merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
@@ -71,6 +71,7 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &BoxStyle, opts: &Re
         // поэтому список возвращается пустым.
         let left = opts
             .cx
+            .contracts
             .build
             .blocks(std::slice::from_ref(&child), &merged, opts);
         if left.is_empty() {

@@ -45,7 +45,12 @@ pub(super) fn group_wrap(
     inherited: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> crate::layout::float::band_flow::GroupWrap {
-    let (c, inherited, values, build) = (c.clone(), inherited.clone(), cx.vcx().keep(), cx.build);
+    let (c, inherited, values, build) = (
+        c.clone(),
+        inherited.clone(),
+        cx.vcx().keep(),
+        cx.contracts.build,
+    );
     std::rc::Rc::new(move |container: gpui::Div| {
         build.paint_group(container, &c, &inherited, values.vcx())
     })

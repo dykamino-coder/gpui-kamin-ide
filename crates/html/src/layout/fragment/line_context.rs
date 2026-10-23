@@ -29,7 +29,7 @@ pub(crate) fn with_lines<T>(
     f: impl FnOnce(&RenderOpts) -> T,
 ) -> T {
     let child = opts.inner(|cx| {
-        cx.lines = Some(Rc::new(LineCx {
+        cx.fragmentation.lines = Some(Rc::new(LineCx {
             // Retain the parent options, avoiding a cycle through this new owner.
             opts: opts.clone(),
             frames: vec![LineFrame {
