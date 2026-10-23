@@ -1432,8 +1432,9 @@ fn transfer_min_max(
 }
 
 /// KaminIDE patch: raise the minimum main size of qualifying column items to
-/// their content block size: block-size `auto`, and either the container's
-/// block size is indefinite (the item cannot shrink) or `min-height` is `auto`.
+/// their content block size: a fragmentable item with block-size `auto`, and
+/// either no shrink opportunity or a content-based automatic minimum (§4.5).
+/// Scroll containers and caller-classified monolithic boxes retain their flex size.
 fn encompass_intrinsic_block_size(
     tree: &mut impl LayoutFlexboxContainer,
     constants: &AlgoConstants,
@@ -1442,7 +1443,10 @@ fn encompass_intrinsic_block_size(
 ) {
     let dir = constants.dir;
     for child in flex_items.iter_mut() {
-        if child.size.main(dir).is_some() {
+        if child.size.main(dir).is_some()
+            || child.overflow.main(dir).is_scroll_container()
+            || tree.fragmentation_monolithic(child.node)
+        {
             continue;
         }
         let can_shrink = child.flex_shrink != 0.0 && constants.node_inner_size.main(dir).is_some();

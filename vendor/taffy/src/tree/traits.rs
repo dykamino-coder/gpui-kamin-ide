@@ -348,6 +348,9 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     /// lines are taken from it instead of being re-collected.
     fn flex_item_fragmentation_line(&self, _node_id: NodeId) -> Option<usize> { None }
 
+    /// KaminIDE patch: caller-owned atomic box classification (replaced, scroll, etc.).
+    fn fragmentation_monolithic(&self, _node_id: NodeId) -> bool { false }
+
     /// KaminIDE patch: the container is laid out inside a fragmentation context.
     /// Column items whose block size may not shrink then encompass their
     /// intrinsic block size (Blink `MinBlockSizeShouldEncompassIntrinsicSize`).
