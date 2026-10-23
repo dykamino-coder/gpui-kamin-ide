@@ -93,6 +93,7 @@ pub type MarginFn = std::rc::Rc<dyn Fn(usize, &str, usize, &PageGeom) -> Vec<Mar
 /// сравнивает кадр целиком, а печатный эталон WPT тоже многостраничен, и
 /// сравнивать надо все страницы обеих сторон.
 pub struct PageStack {
+    complete: std::cell::Cell<bool>,
     pub(crate) kids: Vec<PageKid>,
     measured: std::collections::HashMap<(usize, usize), continuation::CopyGeometry>,
     continuations: std::collections::HashMap<(usize, usize), crate::layout::fragment::push::Regrow>,
@@ -143,6 +144,7 @@ impl PageStack {
         margin_for: Option<MarginFn>,
     ) -> Self {
         PageStack {
+            complete: std::cell::Cell::new(false),
             kids,
             measured: Default::default(),
             continuations: Default::default(),
@@ -162,6 +164,11 @@ impl PageStack {
             canvas_els: Vec::new(),
             axis: crate::layout::fragment::types::StackAxis::Horizontal,
         }
+    }
+
+    /// Последняя предраскладка получила согласованный план; incomplete не рисуется.
+    pub fn has_complete_plan(&self) -> bool {
+        self.complete.get()
     }
 
     pub fn with_select(mut self, select: Option<Vec<usize>>) -> Self {

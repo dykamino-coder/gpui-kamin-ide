@@ -3,6 +3,8 @@ use super::{PageGeom, PageStack};
 use crate::layout::fragment::plan::{self, Plan, Space};
 use crate::layout::fragment::types::Kid;
 use gpui::{App, Window};
+mod settlement;
+use settlement::{Incomplete, State, settle};
 
 pub(super) type PlannedPages = (Vec<Kid>, Vec<PageGeom>, Vec<String>, usize, Plan);
 impl PageStack {
@@ -12,7 +14,7 @@ impl PageStack {
         cx: &mut App,
         g: PageGeom,
         area: (f32, f32),
-    ) -> PlannedPages {
+    ) -> Result<PlannedPages, Incomplete> {
         let first = self
             .kids
             .first()
@@ -69,9 +71,10 @@ impl PageStack {
                 },
             );
             let extents: Vec<_> = (0..pages).map(heights).collect();
+            let state = State::new(&names, &geoms, &plan, &self.measured);
             if self.regrow_flex(&kids, &plan, &extents) {
                 (kids, _) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
-                return (false, (pages, plan));
+                return (false, state, (pages, plan));
             }
             let mut new_names: Vec<Option<String>> = vec![None; pages];
             for f in &plan {
@@ -98,23 +101,12 @@ impl PageStack {
                 .enumerate()
                 .map(|(i, n)| (self.geom_for)(i, n))
                 .collect();
-            (stable, (pages, plan))
-        });
+            (stable, state, (pages, plan))
+        })?;
         for (pk, k) in self.kids.iter().zip(&kids) {
             pk.end.set(k.h);
         }
-        (kids, geoms, names, result.0, result.1)
-    }
-}
-
-// После роста прежний план устарел. Число коррекций задаёт содержимое,
-// а не предел проходов; принять можно только согласованный результат.
-fn settle<T>(mut step: impl FnMut() -> (bool, T)) -> T {
-    loop {
-        let (stable, value) = step();
-        if stable {
-            return value;
-        }
+        Ok((kids, geoms, names, result.0, result.1))
     }
 }
 
