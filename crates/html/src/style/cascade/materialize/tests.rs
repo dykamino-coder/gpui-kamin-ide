@@ -7,14 +7,7 @@ use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 pub(super) fn element<'a>(nodes: &'a [Node], tag: &str) -> &'a Element {
-    nodes
-        .iter()
-        .find_map(|n| match n {
-            Node::Element(e) if e.tag == tag => Some(e),
-            Node::Element(e) => Some(element(&e.children, tag)),
-            _ => None,
-        })
-        .unwrap()
+    find(nodes, tag).expect("element in document")
 }
 
 /// The first element `tag` in document order, at any depth.
@@ -67,13 +60,13 @@ fn materialized_style_is_the_computed_value_stage() {
 }
 
 #[test]
-fn an_edit_or_another_parent_recomputes() {
+fn only_a_cascade_edit_invalidates_the_element_style() {
     let parsed = crate::dom::parse(PAGE, "");
     let vcx = parsed.values();
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     let p = element(&parsed.nodes, "p");
     let parent = slot_parent(&p.style).unwrap();
-    // A first-line layer or an animation frame changes the inherited font size.
+    // Размер шрифта коробки не является входом наследования элемента.
     let mut bigger = (*parent).clone();
     bigger.font_size = Some(Len::Px(30.0));
     assert!(
@@ -84,7 +77,7 @@ fn an_edit_or_another_parent_recomputes() {
     );
     assert_eq!(
         box_style(&BoxStyle::from(bigger.clone()), &p.style, vcx).font_size,
-        Some(Len::Px(60.0))
+        Some(Len::Px(40.0))
     );
     // A layout copy that edits the cascaded style drops its materialized style.
     let mut copy = p.clone();
@@ -132,13 +125,12 @@ fn used_values_lie_over_the_shared_computed_style() {
     );
     assert_eq!(used.margin.top, Some(Len::Px(7.0)));
     assert_eq!(used.text_indent, Some(Len::Px(40.0)));
-    // Under another parent the style is computed for it and the used value
-    // laid over it.
+    // Used-правка сохраняется и под другой коробкой без смены computed-стадии.
     let mut bigger = (*parent).clone();
     bigger.font_size = Some(Len::Px(30.0));
     let other = box_style(&BoxStyle::from(bigger.clone()), &copy.style, vcx);
     assert_eq!(other.margin.top, Some(Len::Px(7.0)));
-    assert_eq!(other.text_indent, Some(Len::Px(60.0)));
+    assert_eq!(other.text_indent, Some(Len::Px(40.0)));
     assert_ne!(p.style.used().margin.top, Some(Len::Px(7.0)));
 }
 
@@ -172,8 +164,12 @@ fn cascaded_inherit_takes_the_parent_element_value() {
             .left,
         parent.padding.left
     );
-    // Other inherited data: inherited from the box, `inherit` from the element.
+    // Все наследуемые значения берутся от элемента, включая неявное наследование.
     sibling_box.font_size = Some(Len::Px(30.0));
+    assert_eq!(
+        box_style(&BoxStyle::from(sibling_box.clone()), &span.style, vcx).font_size,
+        parent.font_size
+    );
     assert!(
         span.style
             .slot()

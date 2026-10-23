@@ -10,10 +10,3 @@ use crate::style::computed::Computed;
 pub(super) fn inherited_eq(a: &Computed, b: &Computed) -> bool {
     a.inh == b.inh && a.scroll.colors == b.scroll.colors
 }
-
-/// Унаследованные данные `from` — в `onto`: родитель с наследуемыми значениями коробки и
-/// ненаследуемыми значениями элемента.
-pub(super) fn take_inherited(onto: &mut Computed, from: &Computed) {
-    onto.inh = from.inh.clone();
-    onto.scroll.colors = from.scroll.colors.clone();
-}

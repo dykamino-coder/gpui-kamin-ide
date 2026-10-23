@@ -7,11 +7,42 @@
 use crate::style::computed::*;
 use std::rc::Rc;
 
+/// Вычисленный стиль элемента и его вариант от дополнительного источника каскада.
+/// Идентичность исходного стиля связывает потомка с родителем-элементом даже при
+/// перестройке дерева коробок. Обе ссылки остаются свободны от used-правок.
+#[derive(Clone, Debug)]
+pub(crate) struct ElementStyle {
+    pub original: Rc<Computed>,
+    pub computed: Rc<Computed>,
+    /// Активный вариант предка: сохраняет источник через анонимные обёртки
+    /// и перенесённые коробки, не сохраняя всё обычное дерево элементов.
+    pub parent: Option<Rc<ElementStyle>>,
+}
+
+impl ElementStyle {
+    pub(crate) fn variant_for(&self, original: &Rc<Computed>) -> Option<&Rc<Computed>> {
+        std::iter::successors(Some(self), |p| p.parent.as_deref())
+            .find(|p| Rc::ptr_eq(&p.original, original))
+            .filter(|p| !Rc::ptr_eq(&p.original, &p.computed))
+            .map(|p| &p.computed)
+    }
+
+    pub(crate) fn active(&self) -> Option<Rc<Self>> {
+        if Rc::ptr_eq(&self.original, &self.computed) {
+            self.parent.clone()
+        } else {
+            Some(Rc::new(self.clone()))
+        }
+    }
+}
+
 /// Стиль одной коробки.
 #[derive(Clone, Debug, Default)]
 pub struct BoxStyle {
     /// Вычисленный стиль (с used-значениями раскладки); общий для коробок элемента.
     style: Rc<Computed>,
+    /// Computed-стадия элемента отдельно от стиля его коробки; у анонимных коробок её нет.
+    pub(crate) element_style: Option<ElementStyle>,
     /// Стиль ДО наложения выбранного варианта `position-try` — из него
     /// `anchor::place` строит остальные кандидаты. Ставит `anchor::apply_chosen`.
     pub(crate) try_base: Option<Rc<BoxStyle>>,
