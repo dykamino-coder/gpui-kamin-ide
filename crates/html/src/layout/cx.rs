@@ -12,7 +12,7 @@
 mod clamp;
 mod constraints;
 mod contracts;
-mod deferred;
+pub(crate) mod deferred;
 mod fragmentation;
 mod inline;
 mod position;

@@ -13,7 +13,7 @@ mod gap_geometry;
 mod paginate;
 
 pub struct ColumnStack {
-    pub(crate) paint: std::rc::Rc<crate::paint::context::PaintCx>,
+    pub(crate) paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     pub(crate) children: Vec<StackChild>,
     pub(crate) count: usize,
     pub(crate) gap: f32,
@@ -75,7 +75,7 @@ impl ColumnStack {
         rows: Option<Rows>,
         gap_items: Option<crate::paint::gap_rules::GapItems>,
         intrinsic: Option<Intrinsic>,
-        paint: std::rc::Rc<crate::paint::context::PaintCx>,
+        paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     ) -> Self {
         // Без рядов копий ровно столько, сколько колонок (как прежде); с
         // рядами — сколько построил `render::generic_box::multicol`: ребёнок может занять

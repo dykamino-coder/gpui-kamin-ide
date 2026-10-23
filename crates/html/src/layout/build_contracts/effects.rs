@@ -6,7 +6,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::paint::context::PaintCx;
+use crate::layout::cx::deferred::Deferred;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, Pixels};
 use std::cell::Cell;
@@ -21,10 +21,10 @@ pub(crate) enum Effect<'a> {
     /// The outline phase (CSS 2.1 Appendix E, step 10) isolated inside the
     /// box: a float is painted atomically (E.2 step 5), so its outlines are
     /// painted with it rather than with the enclosing phase.
-    OutlineScope(&'a Rc<PaintCx>),
+    OutlineScope(&'a Rc<Deferred>),
     /// The outline phase of a formatting context, which is no stacking
     /// context: the enclosing phase is reused when one is collecting.
-    OutlineFlow(&'a Rc<PaintCx>),
+    OutlineFlow(&'a Rc<Deferred>),
     /// The grouped effects of `style` (opacity, filter, blending, isolation,
     /// clipping and masking): the box painted as one image when an effect
     /// needs the finished picture.

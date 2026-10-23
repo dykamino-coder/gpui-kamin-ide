@@ -18,7 +18,7 @@ pub struct ValueCx<'a> {
     pub(crate) frame: bool,
     pub(crate) viewport: (f32, f32),
     pub(crate) lines: Option<&'a Rc<crate::layout::fragment::LineCx>>,
-    pub(crate) paint: Option<&'a Rc<crate::paint::context::PaintCx>>,
+    pub(crate) paint: Option<&'a Rc<crate::layout::cx::deferred::Deferred>>,
     pub(crate) collapse: crate::layout::block::margins::CollapseInputs,
     pub(crate) scheme: crate::style::values::value::Scheme,
 }
@@ -67,7 +67,7 @@ pub struct ValueDoc {
     frame: bool,
     viewport: (f32, f32),
     lines: Option<Rc<crate::layout::fragment::LineCx>>,
-    paint: Option<Rc<crate::paint::context::PaintCx>>,
+    paint: Option<Rc<crate::layout::cx::deferred::Deferred>>,
     collapse: crate::layout::block::margins::CollapseInputs,
     scheme: crate::style::values::value::Scheme,
 }
@@ -94,7 +94,7 @@ impl<'a> ValueCx<'a> {
 
     pub(crate) fn with_paint(
         mut self,
-        paint: Option<&'a Rc<crate::paint::context::PaintCx>>,
+        paint: Option<&'a Rc<crate::layout::cx::deferred::Deferred>>,
     ) -> Self {
         self.paint = paint;
         self

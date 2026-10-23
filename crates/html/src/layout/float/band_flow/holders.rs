@@ -4,14 +4,14 @@
 use super::kid::{Kid, Kind};
 use super::{Layer, Slot, flatten, frame};
 use crate::layout::build_contracts::ChildBuild;
-use crate::paint::context::PaintCx;
+use crate::layout::cx::deferred::Deferred;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 use std::cell::Cell;
 use std::rc::Rc;
 
 /// What every holder of one host shares.
 pub(super) struct Placing<'a> {
-    pub(super) paint: &'a Rc<PaintCx>,
+    pub(super) paint: &'a Rc<Deferred>,
     pub(super) build: &'a ChildBuild,
     /// Inline size of the host's containing block.
     pub(super) cb: f32,

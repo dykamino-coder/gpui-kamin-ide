@@ -3,7 +3,7 @@
 //! который стопка колонок ставит на время краски ребёнка — украшения зазоров режутся по
 //! фрагменту до разрешения своих отступов.
 
-use crate::paint::context::PaintCx;
+use crate::layout::cx::deferred::Deferred;
 use gpui::{ContentMask, Pixels};
 
 #[derive(Clone)]
@@ -15,11 +15,11 @@ pub(crate) struct Scope {
     pub end: f32,
 }
 
-pub(crate) fn current(owner: &PaintCx) -> Option<Scope> {
+pub(crate) fn current(owner: &Deferred) -> Option<Scope> {
     owner.gap.borrow().clone()
 }
 
-pub(crate) fn with<R>(owner: &PaintCx, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
+pub(crate) fn with<R>(owner: &Deferred, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
     let previous = owner.gap.replace(scope);
     let result = f();
     owner.gap.replace(previous);
