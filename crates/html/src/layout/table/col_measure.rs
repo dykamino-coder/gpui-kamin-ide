@@ -127,8 +127,8 @@ pub(super) fn measure_col_widths(
                     // `table { font: 50px }` — колонка 100px, не пропуск.
                     Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
                         let size = cell_font_px(
-                            cell.style.cascaded().font_size,
-                            row.style.cascaded().font_size.or(inherited.font_size),
+                            cell.style.computed().font_size,
+                            row.style.computed().font_size.or(inherited.font_size),
                             table_font,
                         );
                         let family = cell

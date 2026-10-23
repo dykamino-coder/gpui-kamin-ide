@@ -103,7 +103,7 @@ pub(super) fn column_rule_of(
             match e.style.computed().column_rule_width {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => {
-                    k * match e.style.cascaded().font_size {
+                    k * match e.style.computed().font_size {
                         Some(Len::Px(fs)) => fs,
                         _ => opts.base_size(),
                     }

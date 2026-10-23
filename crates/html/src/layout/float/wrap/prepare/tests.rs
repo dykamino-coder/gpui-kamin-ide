@@ -36,7 +36,7 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
     assert_eq!(float.style.computed().margin.left, resolved.margin.left);
     assert!(matches!(float.style.computed().margin.left, Some(Len::Px(v)) if v > 0.));
     assert_eq!(float.style.computed().margin.right, Some(Len::Pct(0.1)));
-    assert_eq!(float.style.cascaded().font_size, Some(Len::Pct(2.)));
+    assert_eq!(float.style.computed().font_size, Some(Len::Pct(2.)));
 }
 
 #[test]

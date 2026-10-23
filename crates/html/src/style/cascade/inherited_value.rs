@@ -2,12 +2,10 @@
 //! значением родителя (CSS Cascade 4 §7.3.1), а не его заданными относительными
 //! единицами. Выигравшее CSS-слово записывается в тот же слот, что и обычный
 //! longhand (`explicit_inherit`); `apply_explicit_inheritance` копирует поля родителя по
-//! реестру, `settle` делает это по всему дереву до прохода масштаба `zoom`.
+//! реестру в стадии вычисленных значений (`compute::compute`).
 
 use crate::document::state::ValueCx;
-use crate::dom::Node;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 
 mod registry;
 pub(crate) use registry::{Property, of_longhand};
@@ -36,73 +34,6 @@ pub(super) fn note(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) -
 pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed, vcx: ValueCx<'_>) {
     for property in std::mem::take(&mut c.explicit_inherit) {
         property.copy(parent, c, vcx);
-    }
-}
-
-/// Registry longhands with a cascaded `inherit` whose fields the registry
-/// copies (multicol, gaps, grid, decoration, border-image ...).
-fn registry_inherits(c: &Computed) -> impl Iterator<Item = crate::style::css::LonghandId> {
-    c.inherit_longhands
-        .iter()
-        .filter(|id| !of_longhand(*id).is_empty())
-}
-
-/// Copy the registry fields of the parent for every registry property with a
-/// cascaded `inherit`, and drop those marks: the values are the element's own.
-fn settle_registry_inheritance(c: &mut Computed, parent: &Computed, vcx: ValueCx<'_>) {
-    apply_explicit_inheritance(c, parent, vcx);
-    for id in registry_inherits(c).collect::<Vec<_>>() {
-        for property in of_longhand(id) {
-            property.copy(parent, c, vcx);
-        }
-        c.inherit_longhands.set(id, false);
-    }
-}
-
-/// CSS Cascade 4 section 7.3.1: inherit the computed value, never the parent's
-/// specified relative units. The zoom pass subsequently scales absolute lengths
-/// using this element's effective zoom, including nested inheritance chains;
-/// layout still reads these non-inherited values from the cascaded style.
-pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
-    fn pending(nodes: &[Node]) -> bool {
-        nodes.iter().any(|n| match n {
-            Node::Element(e) => {
-                !e.style.cascaded().explicit_inherit.is_empty()
-                    || registry_inherits(e.style.cascaded()).next().is_some()
-                    || !matches!(
-                        e.style.cascaded().svg_path_length,
-                        None | Some(Len::Px(_) | Len::Auto)
-                    )
-                    || pending(&e.children)
-            }
-            _ => false,
-        })
-    }
-    fn apply_inheritance_to_descendants(nodes: &mut [Node], parent: &Computed, vcx: ValueCx<'_>) {
-        for node in nodes {
-            let Node::Element(e) = node else { continue };
-            if !e.style.cascaded().explicit_inherit.is_empty()
-                || registry_inherits(e.style.cascaded()).next().is_some()
-            {
-                settle_registry_inheritance(e.style.cascaded_mut(), parent, vcx);
-            }
-            let mut own = e.style.cascaded().clone();
-            let media = vcx.doc.media.get();
-            own.resolve_viewport((media.width, media.height), vcx);
-            let mut computed = super::inherit::inherit_unpainted(parent, &own, vcx);
-            if let Some(mut length) = computed.svg_path_length {
-                let font = computed.font_cx(vcx);
-                length.resolve_line_height(font.line_px.unwrap_or(1.2 * font.font_px), vcx);
-                if let Some(value) = length.to_px(None, font, vcx) {
-                    computed.svg_path_length = Some(Len::Px(value.max(0.0)));
-                }
-                e.style.cascaded_mut().svg_path_length = computed.svg_path_length;
-            }
-            apply_inheritance_to_descendants(&mut e.children, &computed, vcx);
-        }
-    }
-    if pending(nodes) {
-        apply_inheritance_to_descendants(nodes, &Computed::default(), vcx);
     }
 }
 

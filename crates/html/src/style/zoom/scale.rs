@@ -1,6 +1,7 @@
 //! Масштаб zoom собственных длин элемента: тени, размеры, поля, рамки, шрифт.
 
-use super::*;
+use crate::style::computed::{Computed, Shadow, Sides};
+use crate::style::values::value::Len;
 
 mod rule_widths;
 mod shape_lengths;
@@ -16,7 +17,7 @@ pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
 /// Собственные длины в точках × `k`. Доли, `auto`, единицы окна, calc-арена
 /// и единицы шрифта не трогаются (§493; шрифтовые считаются от уже
 /// домноженного кегля).
-pub(super) fn scale_own(c: &mut Computed, k: f32) {
+pub(crate) fn scale_own(c: &mut Computed, k: f32) {
     rule_widths::scale(c, k);
     let mul = |l: &mut Option<Len>| match *l {
         Some(Len::Px(v)) => *l = Some(Len::Px(v * k)),

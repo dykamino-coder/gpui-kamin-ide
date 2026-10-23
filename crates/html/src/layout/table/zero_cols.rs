@@ -33,7 +33,7 @@ pub(super) fn zero_width_cols(
                 let gap = if e.style.cascaded().border_collapse == Some(true) {
                     0.0
                 } else {
-                    match e.style.cascaded().border_spacing {
+                    match e.style.computed().border_spacing {
                         Some((Some(Len::Px(g)), _)) => g,
                         _ => 0.0,
                     }

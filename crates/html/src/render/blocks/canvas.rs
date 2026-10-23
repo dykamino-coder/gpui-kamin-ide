@@ -86,7 +86,7 @@ pub(crate) fn canvas_layer(
             // Единицы шрифта тоже длина: `html { margin-top: 1em }`
             // роняло отсчёт в ноль, и плитка начиналась с края
             // холста (`margin-collapse-020`).
-            let em = match e.style.cascaded().font_size {
+            let em = match e.style.computed().font_size {
                 Some(Len::Px(v)) => v,
                 _ => opts.base_size(),
             };

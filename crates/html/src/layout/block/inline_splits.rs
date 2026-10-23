@@ -160,7 +160,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // не у хозяина, а у его родителя: разрыв делает блок БРАТОМ
                 // хозяина. Значение забирается здесь, пока связь ещё видна.
                 use crate::style::css::LonghandId as L;
-                if block.style.computed().inherit_longhands.contains(L::Width) {
+                if block.style.cascaded().inherit_longhands.contains(L::Width) {
                     block.style.used_mut().width = e.style.computed().width;
                     block
                         .style
@@ -168,7 +168,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                         .inherit_longhands
                         .set(L::Width, false);
                 }
-                if block.style.computed().inherit_longhands.contains(L::Height) {
+                if block.style.cascaded().inherit_longhands.contains(L::Height) {
                     block.style.used_mut().height = e.style.computed().height;
                     block
                         .style

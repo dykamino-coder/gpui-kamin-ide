@@ -50,24 +50,33 @@ impl std::fmt::Debug for ComputedSlot {
 }
 
 impl Materialized {
-    /// Годится ли стиль под родителем `parent`: каскадное `inherit` ненаследуемого свойства
-    /// читает у родителя и его ненаследуемые поля — тогда годен только тот же самый родитель.
-    fn fits(&self, own: &Computed, parent: &Computed, generation: u64) -> bool {
+    /// Годится ли стиль под коробкой-родителем `parent`: те же унаследованные данные.
+    /// Каскадное `inherit` ненаследуемого свойства берёт вычисленное значение
+    /// родителя-ЭЛЕМЕНТА (css-cascade-5 §7.3.1; разбиение на коробки
+    /// родословную стиля не меняет, CSS 2 §9.2.1.1), а не коробки.
+    fn fits(&self, parent: &Computed, generation: u64) -> bool {
         self.generation == generation
             && (std::ptr::eq(&*self.parent, parent)
-                || !inherited::inherits_explicitly(own)
-                    && inherited::inherited_eq(&self.parent, parent))
+                || inherited::inherited_eq(&self.parent, parent))
     }
 }
 
 impl ComputedSlot {
     /// Материализованный стиль, годный под родителем `parent`.
-    fn get(&self, own: &Computed, parent: &Computed, generation: u64) -> Option<Rc<Computed>> {
+    fn get(&self, parent: &Computed, generation: u64) -> Option<Rc<Computed>> {
         self.0
             .borrow()
             .as_ref()
-            .filter(|m| m.fits(own, parent, generation))
+            .filter(|m| m.fits(parent, generation))
             .map(|m| m.computed.clone())
+    }
+
+    /// Материализованный стиль и вычисленный стиль родителя-элемента, под которым он посчитан.
+    fn with_parent(&self) -> Option<(Rc<Computed>, Rc<Computed>)> {
+        self.0
+            .borrow()
+            .as_ref()
+            .map(|m| (m.computed.clone(), m.parent.clone()))
     }
 
     /// Материализованный стиль под родителем-элементом, годен ли он под другим родителем или нет.
@@ -86,7 +95,7 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
     for node in nodes {
         let Node::Element(e) = node else { continue };
         let slot = e.style.slot();
-        let computed = match slot.get(e.style.cascaded(), parent, generation) {
+        let computed = match slot.get(parent, generation) {
             Some(computed) => computed,
             None => {
                 let computed = Rc::new(super::compute::compute(parent, e.style.cascaded(), vcx));
@@ -120,20 +129,25 @@ pub(crate) fn box_style_unpainted(
 fn styled(parent: &Computed, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> Computed {
     let generation = vcx.doc.metrics.generation();
     let cascaded = own.cascaded();
-    let computed = match (own.slot().get(cascaded, parent, generation), own.used()) {
+    let computed = match (own.slot().get(parent, generation), own.used()) {
         // Годный материализованный стиль: слой раскладки уже лежит поверх него.
         (Some(_), Some(used)) => used.clone(),
         (Some(computed), None) => (*computed).clone(),
-        (None, used) => match (own.slot().any(), used) {
-            // Другой родитель: стиль под ним и поля, которые поставила раскладка.
-            (Some(materialized), Some(used)) => {
-                let mut c = super::compute::compute(parent, cascaded, vcx);
-                used::lay_used(&mut c, used, &materialized);
+        (None, used) => match own.slot().with_parent() {
+            // Другие унаследованные данные (`::first-line`, положенная плашмя
+            // копия абзаца): наследуемое — от коробки-родителя, каскадное
+            // `inherit` — от родителя-элемента; поверх — поля раскладки.
+            Some((materialized, element_parent)) => {
+                let mut from = (*element_parent).clone();
+                inherited::take_inherited(&mut from, parent);
+                let mut c = super::compute::compute(&from, cascaded, vcx);
+                if let Some(used) = used {
+                    used::lay_used(&mut c, used, &materialized);
+                }
                 c
             }
-            // Стиль коробки, которую сделала раскладка: его значения — её.
-            (None, Some(used)) => super::compute::compute(parent, used, vcx),
-            (_, None) => super::compute::compute(parent, cascaded, vcx),
+            // Стиль одной стадии: подготовка документа, коробка раскладки.
+            None => super::compute::compute(parent, cascaded, vcx),
         },
     };
     let view = own.computed();

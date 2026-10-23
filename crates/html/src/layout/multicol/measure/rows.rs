@@ -40,7 +40,7 @@ pub(crate) fn row_plan(
         _ => None,
     };
     let wrap = e.style.computed().column_wrap.unwrap_or(col_h.is_some());
-    let em = match e.style.cascaded().font_size {
+    let em = match e.style.computed().font_size {
         Some(Len::Px(size)) => size,
         _ => opts.base_size(),
     };

@@ -124,7 +124,7 @@ pub(crate) fn col_element_widths(
                             if el.style.cascaded().wm().upright()
                                 && el.style.cascaded().wm().vertical() =>
                         {
-                            let base = match el.style.cascaded().font_size {
+                            let base = match el.style.computed().font_size {
                                 Some(Len::Px(v)) => v,
                                 _ => base_font,
                             };
