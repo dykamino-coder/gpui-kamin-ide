@@ -115,7 +115,7 @@ pub(crate) fn float_shape_of(
             // both radii (`shape-outside-border-box-border-radius-007`).
             // Each axis resolves a percentage against its own box side.
             radius: {
-                let ell = f.style.radius_ell.unwrap_or([None; 4]);
+                let ell = f.style.cascaded().radius_ell.unwrap_or([None; 4]);
                 let axis = |l: crate::style::values::value::Len, base: f32| match l {
                     crate::style::values::value::Len::Px(v) => v,
                     crate::style::values::value::Len::Pct(k) => k * base,
@@ -126,13 +126,13 @@ pub(crate) fn float_shape_of(
                     None => radius_of(c),
                 };
                 [
-                    pair(0, &f.style.radius.tl),
-                    pair(1, &f.style.radius.tr),
-                    pair(2, &f.style.radius.br),
-                    pair(3, &f.style.radius.bl),
+                    pair(0, &f.style.cascaded().radius.tl),
+                    pair(1, &f.style.cascaded().radius.tr),
+                    pair(2, &f.style.cascaded().radius.br),
+                    pair(3, &f.style.cascaded().radius.bl),
                 ]
             },
-            threshold: f.style.shape_threshold.unwrap_or(0.0),
+            threshold: f.style.cascaded().shape_threshold.unwrap_or(0.0),
         };
         if let Some(shape) = (!vert_rl && sm <= 0.0)
             .then(|| super::rounded_float::rounded_float(&raw, &sb, side, vcx))
@@ -150,7 +150,7 @@ pub(crate) fn float_shape_of(
                 // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
                 let pside = if line_left_bottom { -side } else { side };
                 super::profile::shape_profile_block(
-                    (&raw, f.style.shape_image.as_ref()),
+                    (&raw, f.style.cascaded().shape_image.as_ref()),
                     &sb,
                     sm.max(0.0),
                     pside,
@@ -164,7 +164,7 @@ pub(crate) fn float_shape_of(
                 })
             } else {
                 super::profile::shape_profile(
-                    (&raw, f.style.shape_image.as_ref()),
+                    (&raw, f.style.cascaded().shape_image.as_ref()),
                     &sb,
                     sm.max(0.0),
                     side,

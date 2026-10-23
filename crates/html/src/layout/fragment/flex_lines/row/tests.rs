@@ -69,7 +69,7 @@ fn nested_auto_width_rows_keep_their_break_boundary() {
     let vcx = doc.values();
     let first = rows(None, vec![item(25.0, 100.0), item(25.0, 100.0)]);
     let mut second = first.clone();
-    second.style.break_before_force = true;
+    second.style.cascaded_mut().break_before_force = true;
     let c = rows(Some(50.0), vec![first, second]);
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert_eq!(shape.height, 200.0);
@@ -81,8 +81,8 @@ fn stretched_avoid_item_is_solid_for_the_whole_row() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut empty = item(25.0, 0.0);
-    empty.style.height = None;
-    empty.style.break_inside_avoid = true;
+    empty.style.cascaded_mut().height = None;
+    empty.style.cascaded_mut().break_inside_avoid = true;
     let c = rows(Some(50.0), vec![item(25.0, 80.0), empty]);
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert_eq!(shape.height, 80.0);
@@ -105,7 +105,7 @@ fn break_before_on_the_second_item_of_the_first_row_reaches_the_container() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut second = item(25.0, 25.0);
-    second.style.break_before_force = true;
+    second.style.cascaded_mut().break_before_force = true;
     let c = rows(Some(50.0), vec![item(25.0, 25.0), second, item(50.0, 25.0)]);
     assert!(crate::layout::fragment::breaks::edge_break(&c, false, vcx));
     assert!(!crate::layout::fragment::breaks::edge_break(&c, true, vcx));
@@ -116,7 +116,7 @@ fn a_fragmented_row_gap_does_not_expand_the_next_row() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut c = rows(Some(50.0), vec![item(50.0, 50.0), item(50.0, 50.0)]);
-    c.style.gap = Some((Some(Len::Px(100.0)), None));
+    c.style.cascaded_mut().gap = Some((Some(Len::Px(100.0)), None));
     let shape = shape_full(&c, 4, ShapeCx::COLUMNS, vcx).unwrap();
     assert!(shape.cuts.contains(&(50.0, 150.0)));
     let lead = item(50.0, 25.0);
@@ -137,6 +137,6 @@ fn a_fragmented_row_gap_does_not_expand_the_next_row() {
             .0
             .children
             .iter()
-            .all(|n| { matches!(n, Node::Element(k) if k.style.margin.top.is_none()) })
+            .all(|n| { matches!(n, Node::Element(k) if k.style.cascaded().margin.top.is_none()) })
     );
 }

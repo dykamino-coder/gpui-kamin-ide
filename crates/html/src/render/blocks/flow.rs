@@ -98,9 +98,9 @@ pub(super) fn blocks_flow(
         // у него своя сортировка прогона (`below_run_*`).
         if let Node::Element(e) = n
             && opts.cx.positioning.late_pending()
-            && e.style.z_index.is_none_or(|z| z >= 0)
+            && e.style.cascaded().z_index.is_none_or(|z| z >= 0)
             && matches!(
-                e.style.position,
+                e.style.cascaded().position,
                 Some(crate::style::computed::Position::Relative)
                     | Some(crate::style::computed::Position::Sticky)
             )
@@ -114,10 +114,12 @@ pub(super) fn blocks_flow(
             // блоке: размер окна известен только здесь (`motion::apply_icb`);
             // обёртку `transformed()` ниже строят от `e.style`.
             let patched;
-            let e = if e.style.offset_icb {
+            let e = if e.style.cascaded().offset_icb {
                 let mut copy = e.clone();
-                copy.style.resolve_viewport(opts.viewport, vcx);
-                crate::animation::motion::apply_icb(&mut copy.style, opts.viewport, vcx);
+                copy.style
+                    .cascaded_mut()
+                    .resolve_viewport(opts.viewport, vcx);
+                crate::animation::motion::apply_icb(copy.style.cascaded_mut(), opts.viewport, vcx);
                 patched = copy;
                 &patched
             } else {

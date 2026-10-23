@@ -24,7 +24,7 @@ pub(super) fn special_node(
     // line break, no break opportunity
     // (`display-contents-sharing-001`).
     if matches!(e.tag.as_str(), "br" | "wbr")
-        && e.style.display == Some(crate::style::computed::Display::Contents)
+        && e.style.cascaded().display == Some(crate::style::computed::Display::Contents)
     {
         return true;
     }
@@ -49,7 +49,7 @@ pub(super) fn special_node(
         // (css-text-4 §word-space-transform: свойство наследуемое,
         // и у элемента своё значение).
         let mut style = inherited.clone();
-        style.word_space_char = e.style.word_space_char.or(style.word_space_char);
+        style.word_space_char = e.style.cascaded().word_space_char.or(style.word_space_char);
         out.push(Piece::Text {
             text: "\u{200b}".into(),
             style,
@@ -64,7 +64,7 @@ pub(super) fn special_node(
     // а строчный сбор вёл такой элемент обычным
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
-    if e.style.display == Some(crate::style::computed::Display::Contents) {
+    if e.style.cascaded().display == Some(crate::style::computed::Display::Contents) {
         let merged = box_style(inherited, &e.style, vcx);
         out.extend(collect_with_empty_metrics(
             &e.children,

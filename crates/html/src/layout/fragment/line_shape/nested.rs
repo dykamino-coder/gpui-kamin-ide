@@ -21,7 +21,7 @@ use crate::style::values::value::Len;
 /// обычный блок с колонками, высотой в точках, без своих рядов, спаннеров,
 /// внепоточных и вертикального письма.
 pub(crate) fn nested_rows_box(c: &Element) -> bool {
-    let s = &c.style;
+    let s = c.style.cascaded();
     multicol_container(s)
         && (s.column_count.is_some_and(|n| n > 1) || s.column_width.is_some())
         && s.column_height.is_none()
@@ -57,9 +57,9 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
 }
 
 pub(super) fn oof_descendant(e: &Element) -> bool {
-    e.children
-        .iter()
-        .any(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style) || oof_descendant(k)))
+    e.children.iter().any(
+        |n| matches!(n, Node::Element(k) if out_of_flow(k.style.cascaded()) || oof_descendant(k)),
+    )
 }
 
 /// Мера вложенного многоколоночника с `height: auto`, который внешняя стопка
@@ -97,7 +97,7 @@ pub(crate) fn nested_rows_shape(
     };
     let col_w = ((w + gap) / n as f32 - gap).max(0.0);
     let mut mc = c.clone();
-    mc.style.width = Some(Len::Px(w));
+    mc.style.cascaded_mut().width = Some(Len::Px(w));
     let g = group_inline_runs(&mc).unwrap_or(mc);
     let kids: Vec<crate::layout::fragment::types::Kid> =
         with_lines(&m, Some(col_w), opts, |opts| {
@@ -114,12 +114,12 @@ pub(crate) fn nested_rows_shape(
                     Node::Element(k)
                         if !k.inline
                             && (inline_content(k) || plain_block_kid(k))
-                            && !out_of_flow(&k.style)
+                            && !out_of_flow(k.style.cascaded())
                             && matches!(
-                                k.style.position,
+                                k.style.cascaded().position,
                                 None | Some(crate::style::computed::Position::Relative)
                             )
-                            && k.style.float.unwrap_or(0) == 0 =>
+                            && k.style.cascaded().float.unwrap_or(0) == 0 =>
                     {
                         let k = resolved_lengths(k, &m, vcx);
                         let sh = shape_full(&k, 4, ShapeCx::COLUMNS, vcx)?;
@@ -169,8 +169,8 @@ pub(crate) fn nested_rows_shape(
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let b = c.style.borders();
-    let bot = px(&c.style.padding.bottom)? + px(&b.bottom)?;
+    let b = c.style.cascaded().borders();
+    let bot = px(&c.style.cascaded().padding.bottom)? + px(&b.bottom)?;
     let h = content + bot;
     let solid = if bot > 0.0 {
         vec![(content, h)]
@@ -180,7 +180,7 @@ pub(crate) fn nested_rows_shape(
     Some(crate::layout::fragment::Shape {
         height: h,
         margin_top: 0.0,
-        margin_bottom: px(&c.style.margin.bottom)?,
+        margin_bottom: px(&c.style.cascaded().margin.bottom)?,
         cuts: Vec::new(),
         forced: Vec::new(),
         solid,
@@ -189,7 +189,7 @@ pub(crate) fn nested_rows_shape(
 
 /// Ширина коробки (`width` по её `box-sizing`) ребёнка в колонке `cw`.
 pub(crate) fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
-    let s = &c.style;
+    let s = c.style.cascaded();
     let px = |l: &Option<Len>| match l {
         None | Some(Len::Auto) => Some(0.0),
         Some(Len::Px(v)) => Some(*v),

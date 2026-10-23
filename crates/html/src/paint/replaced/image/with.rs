@@ -27,13 +27,13 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     let resolved;
     let e = if let Some(base) = base_font {
         let mut copy = e.clone();
-        copy.style.resolve_em(base, vcx);
+        copy.style.cascaded_mut().resolve_em(base, vcx);
         resolved = copy;
         &resolved
     } else {
         e
     };
-    if let Some(vb) = e.style.object_view_box
+    if let Some(vb) = e.style.cascaded().object_view_box
         && let Some(el) = view_boxed(e, vb, cx)
     {
         return el;
@@ -47,7 +47,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     // и глушить его здесь значило запрещать картинке ужиматься даже при
     // явных `min-width: 0` и `flex-shrink: 1` (css-flexbox-1 §7.2).
     let mut d = d;
-    match e.style.flex_shrink {
+    match e.style.cascaded().flex_shrink {
         Some(k) => d.style().flex_shrink = Some(k),
         None => d = d.flex_shrink_0(),
     }
@@ -65,7 +65,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         || src.starts_with("file:")
         || src.starts_with('/')
         || matches!(
-            e.style.content_image(),
+            e.style.cascaded().content_image(),
             Some(crate::style::computed::ImageSource::Filter { .. })
         )
     {
@@ -90,12 +90,11 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // сами в конечный размер; фон канвы (`style="background:…"` корня) —
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
         let vector: Option<String> =
-            crate::paint::background::element_source(local.unwrap_or(src), &e.style).and_then(
-                |s| match s {
+            crate::paint::background::element_source(local.unwrap_or(src), e.style.cascaded())
+                .and_then(|s| match s {
                     crate::paint::background::Source::Vector { markup, .. } => Some(markup),
                     _ => None,
-                },
-            );
+                });
         let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {
             let Some(m) = &vector else { return old };
             let mut out = match crate::svg::raster::rasterize(m, w, h) {
@@ -122,9 +121,10 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // (`image.style().aspect_ratio` в `local::draw`), ни с отношением и на
         // ВНЕШНЕЙ коробке замещённого (`image_with`, после `flex_shrink_0`).
         // Автоматический минимум этим парам не корень; корень искать заново.
-        let natural = crate::paint::background::element_source(local.unwrap_or(src), &e.style)
-            .map(|s| s.intrinsic());
-        let sizing = PictureSizing::new(&e.style, natural, cx.cb_width);
+        let natural =
+            crate::paint::background::element_source(local.unwrap_or(src), e.style.cascaded())
+                .map(|s| s.intrinsic());
+        let sizing = PictureSizing::new(e.style.cascaded(), natural, cx.cb_width);
         return fit_local_image(src, e, local, d, image, vectorize, &sizing, vcx);
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки

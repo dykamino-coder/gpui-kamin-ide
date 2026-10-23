@@ -29,18 +29,20 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     // стоящая там, где элемент написан, — перестановка увозила бы её к началу
     // родителя.
     let movable = |e: &Element| {
-        let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
-        let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+        let x_set =
+            edge_set(e.style.cascaded().inset.left) || edge_set(e.style.cascaded().inset.right);
+        let y_set =
+            edge_set(e.style.cascaded().inset.top) || edge_set(e.style.cascaded().inset.bottom);
         // Элемент сетки с ЯВНЫМИ дорожками по обеим осям место в списке детей
         // тоже не держит: его позицию задаёт размещение, а не порядок
         // (css-grid-2 §8). Значит, его можно переставить ради порядка краски
         // (§9.9 шаг 3), как и внепоточную коробку с заданными краями.
-        let placed = e.style.grid_col.is_some() && e.style.grid_row.is_some();
-        e.style.z_index.is_some_and(|z| z < 0)
+        let placed = e.style.cascaded().grid_col.is_some() && e.style.cascaded().grid_row.is_some();
+        e.style.cascaded().z_index.is_some_and(|z| z < 0)
             && (placed
                 || flex_ctx
                 || (matches!(
-                    e.style.position,
+                    e.style.cascaded().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 ) && x_set
@@ -68,19 +70,21 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
         Node::Text(_) => is_blank(n),
     });
     let over = |e: &Element| {
-        let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
-        let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+        let x_set =
+            edge_set(e.style.cascaded().inset.left) || edge_set(e.style.cascaded().inset.right);
+        let y_set =
+            edge_set(e.style.cascaded().inset.top) || edge_set(e.style.cascaded().inset.bottom);
         let free_inline = !x_set
             && block_only
-            && e.style.position == Some(crate::style::computed::Position::Absolute)
-            && !e.style.wm().vertical();
+            && e.style.cascaded().position == Some(crate::style::computed::Position::Absolute)
+            && !e.style.cascaded().wm().vertical();
         (matches!(
-            e.style.position,
+            e.style.cascaded().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         ) && (x_set || free_inline)
             && y_set
-            && e.style.z_index.is_none_or(|z| z >= 0))
+            && e.style.cascaded().z_index.is_none_or(|z| z >= 0))
         // Элемент ряда с z-index > 0 той же перестановкой поверх соседей не
         // поднимать: положительный `z-index` выражается отложенной отрисовкой
         // (`layered`), а перестановка в списке детей ломает порядок
@@ -98,7 +102,7 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     fn positioned_inside(n: &Node, depth: usize) -> bool {
         match n {
             Node::Element(e) => {
-                e.style.position.is_some()
+                e.style.cascaded().position.is_some()
                     || (depth < 8 && e.children.iter().any(|c| positioned_inside(c, depth + 1)))
             }
             Node::Text(_) => false,
@@ -116,11 +120,11 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     // перестановка ломает саму решётку, а не краску.
     let table_here = nodes.iter().any(|n| match n {
         Node::Element(e) => {
-            e.style.row_group_kind.is_some()
-                || e.style.col_role.is_some()
-                || e.style.is_caption == Some(true)
+            e.style.cascaded().row_group_kind.is_some()
+                || e.style.cascaded().col_role.is_some()
+                || e.style.cascaded().is_caption == Some(true)
                 || matches!(
-                    e.style.display,
+                    e.style.cascaded().display,
                     Some(Display::TableRow)
                         | Some(Display::TableCell)
                         | Some(Display::TableRowGroup)
@@ -151,7 +155,7 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
         .iter()
         .enumerate()
         .map(|(i, n)| match n {
-            Node::Element(e) if movable(e) => e.style.z_index.unwrap_or(0).min(0),
+            Node::Element(e) if movable(e) => e.style.cascaded().z_index.unwrap_or(0).min(0),
             _ if over_at(i, n) => 1,
             _ => 0,
         })

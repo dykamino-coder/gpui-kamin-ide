@@ -33,8 +33,8 @@ pub(super) fn clone_plan_of(
                 .enumerate()
                 .map(|(pi, (c, s))| {
                     let mut m = c.clone();
-                    m.style.margin.top = None;
-                    m.style.margin.bottom = None;
+                    m.style.cascaded_mut().margin.top = None;
+                    m.style.cascaded_mut().margin.bottom = None;
                     let (over, cuts, forced, solid) = match shape_full(
                         &m,
                         4,
@@ -45,7 +45,9 @@ pub(super) fn clone_plan_of(
                         vcx,
                     )
                     .filter(|_| {
-                        fixed.is_some() && plain_block_tree(&m, 4) && visible_overflow(&m.style)
+                        fixed.is_some()
+                            && plain_block_tree(&m, 4)
+                            && visible_overflow(m.style.cascaded())
                     })
                     .filter(|u| u.height > s.height + 0.01)
                     {
@@ -65,7 +67,7 @@ pub(super) fn clone_plan_of(
                         forced,
                         solid,
                         avoid: Vec::new(),
-                        span: c.style.column_span == Some(true) && !c.inline,
+                        span: c.style.cascaded().column_span == Some(true) && !c.inline,
                         over,
                         clone_dec: clone_dec(c),
                         // Тот же предикат, что у `StackChild` ниже:
@@ -96,12 +98,12 @@ pub(super) fn column_rule_of(
     merged: &Computed,
     opts: &RenderOpts,
 ) -> Option<(f32, gpui::Hsla)> {
-    if e.style.column_rule_visible == Some(true) {
+    if e.style.cascaded().column_rule_visible == Some(true) {
         Some((
-            match e.style.column_rule_width {
+            match e.style.cascaded().column_rule_width {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => {
-                    k * match e.style.font_size {
+                    k * match e.style.cascaded().font_size {
                         Some(Len::Px(fs)) => fs,
                         _ => opts.base_size(),
                     }
@@ -109,6 +111,7 @@ pub(super) fn column_rule_of(
                 _ => 3.0,
             },
             e.style
+                .cascaded()
                 .column_rule_color
                 .resolve(merged.current_color())
                 .to_hsla(),

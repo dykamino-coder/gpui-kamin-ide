@@ -26,12 +26,12 @@ pub(crate) fn zero_at(
     }
     pin_inherited_margins(ch, top || deep, !top || deep, vcx);
     if deep {
-        ch.style.margin.top = Some(Len::Px(0.0));
-        ch.style.margin.bottom = Some(Len::Px(0.0));
+        ch.style.cascaded_mut().margin.top = Some(Len::Px(0.0));
+        ch.style.cascaded_mut().margin.bottom = Some(Len::Px(0.0));
     } else if top {
-        ch.style.margin.top = Some(Len::Px(0.0));
+        ch.style.cascaded_mut().margin.top = Some(Len::Px(0.0));
     } else {
-        ch.style.margin.bottom = Some(Len::Px(0.0));
+        ch.style.cascaded_mut().margin.bottom = Some(Len::Px(0.0));
     }
 }
 
@@ -53,27 +53,29 @@ pub(crate) fn pin_inherited_margins(
     bottom: bool,
     vcx: crate::document::state::ValueCx<'_>,
 ) {
-    let own = e.style.margin;
+    let own = e.style.cascaded().margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
         for (i, want, src) in [(0usize, top, own.top), (2, bottom, own.bottom)] {
             let side =
                 crate::style::css::LonghandId::physical(crate::style::css::BoxGroup::Margin, i);
-            if !want || !ch.style.inherit_longhands.contains(side) {
+            if !want || !ch.style.cascaded().inherit_longhands.contains(side) {
                 continue;
             }
             let pinned = match src {
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    margin_px(Some(l), &e.style, vcx).map(Len::Px).or(Some(l))
+                    margin_px(Some(l), e.style.cascaded(), vcx)
+                        .map(Len::Px)
+                        .or(Some(l))
                 }
                 other => other,
             };
             if i == 0 {
-                ch.style.margin.top = pinned;
+                ch.style.cascaded_mut().margin.top = pinned;
             } else {
-                ch.style.margin.bottom = pinned;
+                ch.style.cascaded_mut().margin.bottom = pinned;
             }
-            ch.style.inherit_longhands.set(side, false);
+            ch.style.cascaded_mut().inherit_longhands.set(side, false);
         }
     }
 }

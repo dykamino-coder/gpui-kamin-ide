@@ -35,21 +35,21 @@ use crate::text::text_box::blank_text;
 /// текст и РОВНО ОДИН элемент: флоат либо такая же обёртка
 /// (`float-in-inline-002`: `<span><span><span style="float:left">`).
 pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
-    let genuine_inline =
-        (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
+    let genuine_inline = (e.inline && e.style.cascaded().display.is_none())
+        || e.style.cascaded().inline_display == Some(true);
     // Ruby boxes are not plain inline wrappers: their content is paired into
     // bases and annotations (css-ruby-1 §2.2) and laid out by the ruby path.
     if !genuine_inline
         || matches!(e.tag.as_str(), "br" | "ruby" | "rb" | "rt" | "rtc" | "rp")
-        || e.style.float.is_some_and(|f| f != 0)
-        || e.style.position.is_some()
+        || e.style.cascaded().float.is_some_and(|f| f != 0)
+        || e.style.cascaded().position.is_some()
         || e.hover.is_some()
-        || e.style.opacity.is_some()
-        || e.style.filter.is_some()
-        || e.style.transform.is_some()
-        || e.style.blend.is_some()
-        || e.style.clip_polygon.is_some()
-        || e.style.mask_image.is_some()
+        || e.style.cascaded().opacity.is_some()
+        || e.style.cascaded().filter.is_some()
+        || e.style.cascaded().transform.is_some()
+        || e.style.cascaded().blend.is_some()
+        || e.style.cascaded().clip_polygon.is_some()
+        || e.style.cascaded().mask_image.is_some()
     {
         return None;
     }
@@ -58,9 +58,9 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
             Node::Text(t) if blank_text(t) => continue,
             Node::Text(_) => return None,
             Node::Element(c) => {
-                if c.style.float.is_some_and(|f| f != 0)
-                    && c.style.position.is_none()
-                    && c.style.display != Some(Display::None)
+                if c.style.cascaded().float.is_some_and(|f| f != 0)
+                    && c.style.cascaded().position.is_none()
+                    && c.style.cascaded().display != Some(Display::None)
                 {
                     let mut rest = e.clone();
                     rest.children.remove(i);
@@ -68,11 +68,11 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
                     // inherited through it (`run-in-contains-inline-007`:
                     // bold of the run-in).
                     let mut float = c.clone();
-                    carry_inherited(&e.style, &mut float.style);
+                    carry_inherited(e.style.cascaded(), float.style.cascaded_mut());
                     return Some((float, rest));
                 }
                 let (mut float, inner) = split_leading_float(c)?;
-                carry_inherited(&e.style, &mut float.style);
+                carry_inherited(e.style.cascaded(), float.style.cascaded_mut());
                 let mut rest = e.clone();
                 rest.children[i] = Node::Element(inner);
                 return Some((float, rest));
@@ -98,30 +98,30 @@ pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
     // `display: inline` после каскада — это `InlineBlock` с пометкой
     // `inline_display` (`dom::display_inheritance`), поэтому одного взгляда на `display`
     // мало; тег без своего `display` даёт строчность через `e.inline`.
-    let genuine_inline =
-        (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
+    let genuine_inline = (e.inline && e.style.cascaded().display.is_none())
+        || e.style.cascaded().inline_display == Some(true);
     if !genuine_inline
-        || e.style.float.is_some_and(|f| f != 0)
-        || e.style.clear.is_some()
-        || e.style.position.is_some()
+        || e.style.cascaded().float.is_some_and(|f| f != 0)
+        || e.style.cascaded().clear.is_some()
+        || e.style.cascaded().position.is_some()
         || e.hover.is_some()
         || e.first_letter.is_some()
         || e.first_line.is_some()
         // Обёртка КРАСИТ: фон, картинка и градиент ушли бы вместе с ней.
-        || e.style.background.is_some()
-        || e.style.bg_image.is_some()
-        || e.style.gradient.is_some()
+        || e.style.cascaded().background.is_some()
+        || e.style.cascaded().bg_image.is_some()
+        || e.style.cascaded().gradient.is_some()
         // Обёртка образует ГРУППУ: прозрачность, фильтр, трансформ,
         // смешивание, обрезка и маска действуют на плавающего ребёнка ЧЕРЕЗ
         // неё. `css-color/inline-opacity-float-child` (зелёная, 0.00) держится
         // ровно на этом: `opacity: 0` на `<span>` гасит красный флоат внутри,
         // и снятая обёртка проявила бы красное.
-        || e.style.opacity.is_some()
-        || e.style.filter.is_some()
-        || e.style.transform.is_some()
-        || e.style.blend.is_some()
-        || e.style.clip_polygon.is_some()
-        || e.style.mask_image.is_some()
+        || e.style.cascaded().opacity.is_some()
+        || e.style.cascaded().filter.is_some()
+        || e.style.cascaded().transform.is_some()
+        || e.style.cascaded().blend.is_some()
+        || e.style.cascaded().clip_polygon.is_some()
+        || e.style.cascaded().mask_image.is_some()
     {
         return None;
     }
@@ -138,7 +138,7 @@ pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
         }
     }
     let inner = only?;
-    if inner.style.float.is_some_and(|f| f != 0) {
+    if inner.style.cascaded().float.is_some_and(|f| f != 0) {
         return Some(inner.clone());
     }
     inline_float_host(inner)

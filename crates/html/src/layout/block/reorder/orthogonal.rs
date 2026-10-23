@@ -13,7 +13,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// раскладка сама.
 pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
     let has_vertical = children.iter().any(|n| match n {
-        Node::Element(ch) => !ch.inline && ch.style.wm().vertical(),
+        Node::Element(ch) => !ch.inline && ch.style.cascaded().wm().vertical(),
         _ => false,
     });
     if !has_vertical {
@@ -22,10 +22,10 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
     let mut out = children;
     for node in out.iter_mut() {
         let Node::Element(ch) = node else { continue };
-        if ch.inline || !ch.style.wm().vertical() {
+        if ch.inline || !ch.style.cascaded().wm().vertical() {
             continue;
         }
-        if !in_flow(&ch.style) {
+        if !in_flow(ch.style.cascaded()) {
             continue;
         }
         // Элемент СЕТКИ с невытягивающим выравниванием: по строчной оси
@@ -38,28 +38,28 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             container.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) && matches!(
-            ch.style.align_self.or(container.align_items),
+            ch.style.cascaded().align_self.or(container.align_items),
             Some(Align::Start) | Some(Align::Center) | Some(Align::End) | Some(Align::Baseline)
         ) {
-            ch.style.hug_inline = true;
+            ch.style.cascaded_mut().hug_inline = true;
         }
         // Корень с vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
         // flow). Прижим самим стилем корня (align-self) — контейнеры-колонки
         // его уважают; для корня с ФОНОМ-КАРТИНКОЙ якорь ранее гасил
         // canvas-слой — тем страницам якорь не ставится.
         if matches!(ch.tag.as_str(), "html" | "body")
-            && ch.style.wm().block_rl()
-            && ch.style.align_self.is_none()
-            && ch.style.bg_image.is_none()
+            && ch.style.cascaded().wm().block_rl()
+            && ch.style.cascaded().align_self.is_none()
+            && ch.style.cascaded().bg_image.is_none()
         {
-            ch.style.align_self = Some(crate::style::computed::Align::End);
+            ch.style.cascaded_mut().align_self = Some(crate::style::computed::Align::End);
         }
         // Ordinary orthogonal blocks now compute their own used inline size.
-        if orthogonal_fixed_child::normal_block_flow(&ch.style, container) {
-            ch.style.flex_shrink = Some(0.0);
+        if orthogonal_fixed_child::normal_block_flow(ch.style.cascaded(), container) {
+            ch.style.cascaded_mut().flex_shrink = Some(0.0);
             continue;
         }
-        if ch.style.height.is_some() || ch.style.max_height.is_some() {
+        if ch.style.cascaded().height.is_some() || ch.style.cascaded().max_height.is_some() {
             continue;
         }
         let margin = |l: Option<Len>| match l {
@@ -70,8 +70,9 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             },
             _ => 0.0,
         };
-        let margins = margin(ch.style.margin.top) + margin(ch.style.margin.bottom);
-        ch.style.max_height = Some(match container.height {
+        let margins =
+            margin(ch.style.cascaded().margin.top) + margin(ch.style.cascaded().margin.bottom);
+        ch.style.cascaded_mut().max_height = Some(match container.height {
             Some(Len::Px(h)) => Len::Px((h - margins).max(0.0)),
             _ => Len::Pct(1.0),
         });
@@ -108,7 +109,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             } else {
                 h
             };
-            ch.style.ortho_limit = Some((inner - margins).max(0.0));
+            ch.style.cascaded_mut().ortho_limit = Some((inner - margins).max(0.0));
         }
     }
     out

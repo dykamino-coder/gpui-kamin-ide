@@ -9,15 +9,15 @@ use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f32) -> bool {
     // This fallback sizes ordinary blocks; grid and flex own their item sizing.
-    if !matches!(child.style.display, None | Some(Display::Block))
-        || !matches!(child.style.width, None | Some(Len::Auto))
+    if !matches!(child.style.cascaded().display, None | Some(Display::Block))
+        || !matches!(child.style.cascaded().width, None | Some(Len::Auto))
     {
         return false;
     }
-    let original = child.style.width;
-    child.style.width = Some(Len::FitContent);
+    let original = child.style.cascaded().width;
+    child.style.cascaded_mut().width = Some(Len::FitContent);
     if !native_intrinsic::eligible(child) {
-        child.style.width = original;
+        child.style.cascaded_mut().width = original;
         return false;
     }
     let fallback = available(
@@ -26,15 +26,16 @@ pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f3
         icb_width,
     );
     let px = |value| px_lossy_zero(value);
-    let outer = fallback - px(child.style.margin.left) - px(child.style.margin.right);
-    let adjustment = if child.style.border_box == Some(true) {
+    let outer =
+        fallback - px(child.style.cascaded().margin.left) - px(child.style.cascaded().margin.right);
+    let adjustment = if child.style.cascaded().border_box == Some(true) {
         0.0
     } else {
-        orthogonal_inline::edges(&child.style, false)
+        orthogonal_inline::edges(child.style.cascaded(), false)
     };
     // The native functional fit-content clamp preserves min-content when a
     // word is wider than the available space. CSS author limits stay intact.
-    child.style.fit_arg[0] = Some(Len::Px((outer - adjustment).max(0.0)));
+    child.style.cascaded_mut().fit_arg[0] = Some(Len::Px((outer - adjustment).max(0.0)));
     true
 }
 
@@ -51,17 +52,17 @@ mod tests {
         };
         for authored in [None, Some(Len::Auto)] {
             let mut child = crate::layout::table::anon::anon_element("div", vec![]);
-            child.style.width = authored;
-            child.style.border_width.left = Some(Len::Px(3.0));
-            child.style.border_width.right = Some(Len::Px(3.0));
-            child.style.border_visible = [Some(true); 4];
-            child.style.max_width = Some(Len::Px(500.0));
-            child.style.min_width = Some(Len::Px(10.0));
+            child.style.cascaded_mut().width = authored;
+            child.style.cascaded_mut().border_width.left = Some(Len::Px(3.0));
+            child.style.cascaded_mut().border_width.right = Some(Len::Px(3.0));
+            child.style.cascaded_mut().border_visible = [Some(true); 4];
+            child.style.cascaded_mut().max_width = Some(Len::Px(500.0));
+            child.style.cascaded_mut().min_width = Some(Len::Px(10.0));
             assert!(size_auto(&mut child, &container, 800.0));
-            assert_eq!(child.style.width, Some(Len::FitContent));
-            assert_eq!(child.style.fit_arg[0], Some(Len::Px(394.0)));
-            assert_eq!(child.style.max_width, Some(Len::Px(500.0)));
-            assert_eq!(child.style.min_width, Some(Len::Px(10.0)));
+            assert_eq!(child.style.cascaded().width, Some(Len::FitContent));
+            assert_eq!(child.style.cascaded().fit_arg[0], Some(Len::Px(394.0)));
+            assert_eq!(child.style.cascaded().max_width, Some(Len::Px(500.0)));
+            assert_eq!(child.style.cascaded().min_width, Some(Len::Px(10.0)));
         }
     }
 
@@ -76,11 +77,11 @@ mod tests {
             Default::default(),
         ]);
         let mut child = crate::layout::table::anon::anon_element("div", vec![]);
-        child.style.margin.left = Some(Len::Px(10.0));
-        child.style.padding.left = Some(Len::Px(20.0));
-        child.style.border_box = Some(true);
+        child.style.cascaded_mut().margin.left = Some(Len::Px(10.0));
+        child.style.cascaded_mut().padding.left = Some(Len::Px(20.0));
+        child.style.cascaded_mut().border_box = Some(true);
         assert!(size_auto(&mut child, &container, 800.0));
-        assert_eq!(child.style.fit_arg[0], Some(Len::Px(290.0)));
+        assert_eq!(child.style.cascaded().fit_arg[0], Some(Len::Px(290.0)));
     }
 
     #[test]
@@ -93,17 +94,17 @@ mod tests {
             Display::InlineGrid,
             Display::GridLanes,
         ] {
-            child.style.display = Some(display);
+            child.style.cascaded_mut().display = Some(display);
             assert!(!size_auto(&mut child, &container, 800.0));
-            assert_eq!(child.style.width, None);
+            assert_eq!(child.style.cascaded().width, None);
         }
-        child.style.display = Some(Display::Block);
-        child.style.width = Some(Len::Px(100.0));
+        child.style.cascaded_mut().display = Some(Display::Block);
+        child.style.cascaded_mut().width = Some(Len::Px(100.0));
         assert!(!size_auto(&mut child, &container, 800.0));
-        child.style.width = None;
-        child.style.position = Some(Position::Absolute);
+        child.style.cascaded_mut().width = None;
+        child.style.cascaded_mut().position = Some(Position::Absolute);
         assert!(!size_auto(&mut child, &container, 800.0));
-        child.style.position = None;
+        child.style.cascaded_mut().position = None;
         child.tag = "img".into();
         assert!(!size_auto(&mut child, &container, 800.0));
     }

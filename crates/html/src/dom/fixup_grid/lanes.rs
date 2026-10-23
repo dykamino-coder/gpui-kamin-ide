@@ -50,10 +50,10 @@ pub(crate) fn lanes_as_grid(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         lanes_as_grid(&mut el.children);
-        if el.style.display != Some(Display::GridLanes) {
+        if el.style.cascaded().display != Some(Display::GridLanes) {
             continue;
         }
-        lanes_to_grid(&mut el.style);
+        lanes_to_grid(el.style.cascaded_mut());
     }
 }
 

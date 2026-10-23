@@ -39,14 +39,16 @@ pub(crate) fn flush_inline(
         });
         if let Some(drop) = drop {
             let mut host = e.clone();
-            if !first && host.style.display == Some(crate::style::computed::Display::ListItem) {
+            if !first
+                && host.style.cascaded().display == Some(crate::style::computed::Display::ListItem)
+            {
                 // The marker is the first child, never a continuation's child.
-                host.style.no_marker = Some(true);
-                host.style.marker_text = None;
-                host.style.marker_layer = None;
+                host.style.cascaded_mut().no_marker = Some(true);
+                host.style.cascaded_mut().marker_text = None;
+                host.style.cascaded_mut().marker_layer = None;
             }
             host.children = Vec::new();
-            super::drop_inline_side(&mut host.style, drop);
+            super::drop_inline_side(host.style.cascaded_mut(), drop);
             hosts.push(out.len());
             out.push(Node::Element(anon_element(
                 "anon-block",
@@ -56,11 +58,11 @@ pub(crate) fn flush_inline(
         return;
     }
     let mut host = e.clone();
-    if !first && host.style.display == Some(crate::style::computed::Display::ListItem) {
+    if !first && host.style.cascaded().display == Some(crate::style::computed::Display::ListItem) {
         // The marker is the first child, never a continuation's child.
-        host.style.no_marker = Some(true);
-        host.style.marker_text = None;
-        host.style.marker_layer = None;
+        host.style.cascaded_mut().no_marker = Some(true);
+        host.style.cascaded_mut().marker_text = None;
+        host.style.cascaded_mut().marker_layer = None;
     }
     host.children = std::mem::take(piece);
     hosts.push(out.len());

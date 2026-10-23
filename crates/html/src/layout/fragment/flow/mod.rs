@@ -19,17 +19,17 @@ pub(crate) use measurements::{FlowMeasurements, FlowNode};
 pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
     use crate::style::computed::Display;
     matches!(
-        e.style.display,
+        e.style.cascaded().display,
         None | Some(Display::Block) | Some(Display::ListItem) | Some(Display::Contents)
-    ) && e.style.webkit_box != Some(true)
+    ) && e.style.cascaded().webkit_box != Some(true)
         && !matches!(
             e.tag.as_str(),
             "table" | "caption" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th"
         )
-        && !crate::layout::multicol::spanner::multicol_container(&e.style)
+        && !crate::layout::multicol::spanner::multicol_container(e.style.cascaded())
         && !crate::layout::fragment::table_bands::table_box(e)
         && !crate::layout::fragment::clone::monolith_box(e)
-        && !crate::layout::box_kind::out_of_flow(&e.style)
+        && !crate::layout::box_kind::out_of_flow(e.style.cascaded())
 }
 
 #[derive(Clone, Debug, Default)]

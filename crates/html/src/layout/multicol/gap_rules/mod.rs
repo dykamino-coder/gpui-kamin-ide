@@ -45,7 +45,7 @@ pub(crate) fn gap_rule_spec(
         b: 0.0,
         a: 1.0,
     });
-    let s = &e.style;
+    let s = e.style.cascaded();
     let axis = |column: bool| -> GapAxisRule {
         let (vis, w, c, ws, ss, cs, brk, inset, visibility) = if column {
             (

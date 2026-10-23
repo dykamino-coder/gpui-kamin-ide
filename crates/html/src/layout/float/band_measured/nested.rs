@@ -34,8 +34,8 @@ pub(crate) fn band_host_nested(
     let mut rest: Vec<Node> = vec![];
     while j < nodes.len() {
         if let Node::Element(next) = &nodes[j]
-            && (next.style.float.is_some_and(|f| f != 0)
-                || (next.style.clear.is_some() && !band_clear_supported(next)))
+            && (next.style.cascaded().float.is_some_and(|f| f != 0)
+                || (next.style.cascaded().clear.is_some() && !band_clear_supported(next)))
         {
             break;
         }
@@ -53,9 +53,9 @@ pub(crate) fn band_host_nested(
     }
     let rest = band_flow_rest(rest, em, wm, cb.margin_basis, vcx)?;
     if let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
-        && next.style.clear.is_some()
+        && next.style.cascaded().clear.is_some()
         && !band_clear_supported(next)
-        && !zero_len(next.style.margin.top)
+        && !zero_len(next.style.cascaded().margin.top)
     {
         return None;
     }
@@ -87,7 +87,7 @@ pub(crate) fn band_nest_ok(
     if !band_nest_block(c, em, wm) {
         return false;
     }
-    let Some(inner_em) = band_em(&c.style, em) else {
+    let Some(inner_em) = band_em(c.style.cascaded(), em) else {
         return false;
     };
     let Some(seq) = band_seq(
@@ -95,7 +95,7 @@ pub(crate) fn band_nest_ok(
         inner_em,
         wm,
         cb,
-        c.style.preserve_newlines == Some(true),
+        c.style.cascaded().preserve_newlines == Some(true),
         vcx,
     ) else {
         return false;
@@ -103,7 +103,7 @@ pub(crate) fn band_nest_ok(
     seq.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
-            k.style.float.is_some_and(|f| f != 0)
+            k.style.cascaded().float.is_some_and(|f| f != 0)
                 || band_piece_m(n, inner_em, wm).is_some()
                 || k.marks.anon
                 || band_flow_block(k, inner_em)

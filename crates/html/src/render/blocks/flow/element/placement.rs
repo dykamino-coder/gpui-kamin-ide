@@ -53,18 +53,28 @@ pub(crate) fn place_element(
                 if x_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.left, &e.style, opts.cx.vcx()).unwrap_or(0.0)
+                    margin_px(
+                        e.style.cascaded().margin.left,
+                        e.style.cascaded(),
+                        opts.cx.vcx(),
+                    )
+                    .unwrap_or(0.0)
                 },
                 if y_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.top, &e.style, opts.cx.vcx()).unwrap_or(0.0)
+                    margin_px(
+                        e.style.cascaded().margin.top,
+                        e.style.cascaded(),
+                        opts.cx.vcx(),
+                    )
+                    .unwrap_or(0.0)
                 },
             ),
             rtl: inherited.wm().rtl(),
             vertical: inherited.wm().vertical(),
             vertical_rl: inherited.wm().block_rl(),
-            own_vertical: e.style.wm().vertical(),
+            own_vertical: e.style.cascaded().wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -101,8 +111,8 @@ pub(crate) fn place_element(
             // in-place path gets from `layered` below
             // (`shape-image-009`: `#test` z-index 2 under a z-index 1
             // failure box, both hoisted).
-            let built = if !fixed && e.style.z_index.is_some_and(|z| z > 0) {
-                layered(built, &e.style, inherited, layer_ok, under_tf)
+            let built = if !fixed && e.style.cascaded().z_index.is_some_and(|z| z > 0) {
+                layered(built, e.style.cascaded(), inherited, layer_ok, under_tf)
             } else {
                 built
             };

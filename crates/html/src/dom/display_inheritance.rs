@@ -31,13 +31,13 @@ type DisplayOf = (
 pub(super) fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
-        if el.style.inherit_bits & crate::style::computed::inh::DISPLAY != 0 {
-            el.style.display = parent.0;
-            el.style.inline_display = parent.1;
-            el.style.row_group_kind = parent.2;
-            el.style.col_role = parent.3;
-            el.style.is_caption = parent.4;
-            el.style.inherit_bits &= !crate::style::computed::inh::DISPLAY;
+        if el.style.cascaded().inherit_bits & crate::style::computed::inh::DISPLAY != 0 {
+            el.style.cascaded_mut().display = parent.0;
+            el.style.cascaded_mut().inline_display = parent.1;
+            el.style.cascaded_mut().row_group_kind = parent.2;
+            el.style.cascaded_mut().col_role = parent.3;
+            el.style.cascaded_mut().is_caption = parent.4;
+            el.style.cascaded_mut().inherit_bits &= !crate::style::computed::inh::DISPLAY;
         }
         let own = display_of(el);
         resolve_display_inherit(&mut el.children, own);
@@ -45,7 +45,7 @@ pub(super) fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
 }
 
 fn display_of(el: &Element) -> DisplayOf {
-    let style = &el.style;
+    let style = el.style.cascaded();
     let own = (
         style.display,
         style.inline_display,

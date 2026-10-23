@@ -12,7 +12,7 @@ use crate::style::values::value::StyleColor;
 mod inherit;
 pub(crate) use inherit::inherit;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScrollStyle {
     pub forced: [bool; 2],
     pub width: Option<u8>,

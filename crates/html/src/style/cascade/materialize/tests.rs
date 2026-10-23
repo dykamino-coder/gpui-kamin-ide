@@ -21,7 +21,7 @@ fn generation(vcx: ValueCx<'_>) -> u64 {
 }
 
 fn slot_parent(own: &SharedStyle) -> Option<Rc<Computed>> {
-    own.computed().0.borrow().as_ref().map(|m| m.parent.clone())
+    own.slot().0.borrow().as_ref().map(|m| m.parent.clone())
 }
 
 const PAGE: &str = r#"<style>
@@ -42,8 +42,8 @@ fn materialized_style_is_the_computed_value_stage() {
     assert_eq!(parent.font_size, Some(Len::Px(20.0)));
     let computed = p
         .style
-        .computed()
-        .get(&p.style, &parent, generation(vcx))
+        .slot()
+        .get(p.style.cascaded(), &parent, generation(vcx))
         .unwrap();
     assert_eq!(computed.font_size, Some(Len::Px(40.0)));
     assert_eq!(computed.text_indent, Some(Len::Px(40.0)));
@@ -53,7 +53,7 @@ fn materialized_style_is_the_computed_value_stage() {
     used_parent.cb_height_def = !used_parent.cb_height_def;
     let used = box_style(&used_parent, &p.style, vcx);
     assert_eq!(used.font_size, Some(Len::Px(40.0)));
-    assert!(body.style.computed().0.borrow().is_some());
+    assert!(body.style.slot().0.borrow().is_some());
 }
 
 #[test]
@@ -68,8 +68,8 @@ fn an_edit_or_another_parent_recomputes() {
     bigger.font_size = Some(Len::Px(30.0));
     assert!(
         p.style
-            .computed()
-            .get(&p.style, &bigger, generation(vcx))
+            .slot()
+            .get(p.style.cascaded(), &bigger, generation(vcx))
             .is_none()
     );
     assert_eq!(
@@ -80,21 +80,21 @@ fn an_edit_or_another_parent_recomputes() {
     let mut copy = p.clone();
     assert!(
         copy.style
-            .computed()
-            .get(&copy.style, &parent, generation(vcx))
+            .slot()
+            .get(copy.style.cascaded(), &parent, generation(vcx))
             .is_some()
     );
-    copy.style.text_indent = Some(Len::Px(5.0));
+    copy.style.cascaded_mut().text_indent = Some(Len::Px(5.0));
     assert!(
         copy.style
-            .computed()
-            .get(&copy.style, &parent, generation(vcx))
+            .slot()
+            .get(copy.style.cascaded(), &parent, generation(vcx))
             .is_none()
     );
     assert!(
         p.style
-            .computed()
-            .get(&p.style, &parent, generation(vcx))
+            .slot()
+            .get(p.style.cascaded(), &parent, generation(vcx))
             .is_some()
     );
 }
@@ -108,15 +108,15 @@ fn cascaded_inherit_is_reused_only_under_the_same_parent() {
     let parent = slot_parent(&span.style).unwrap();
     assert!(
         span.style
-            .computed()
-            .get(&span.style, &parent, generation(vcx))
+            .slot()
+            .get(span.style.cascaded(), &parent, generation(vcx))
             .is_some()
     );
     let copy = (*parent).clone();
     assert!(
         span.style
-            .computed()
-            .get(&span.style, &copy, generation(vcx))
+            .slot()
+            .get(span.style.cascaded(), &copy, generation(vcx))
             .is_none()
     );
 }

@@ -27,14 +27,16 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
             // `writing-mode` и `direction` наследуются (css-writing-modes-4 §3.1, §2.1):
             // логические стороны коробки раскладываются по унаследованному значению, а в
             // собственном стиле его нет (слияние с родителем делает сборщик дерева).
-            let props = WritingProps::of(&e.style).inherit(parent);
+            let props = WritingProps::of(e.style.cascaded()).inherit(parent);
             let wm = props.wm();
             let parent_vertical = parent.wm().vertical();
             // Ячейка таблицы узнаётся и по тегу: `Display::TableCell` на этом шаге
             // приходит только из авторского CSS.
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
-                || e.style.display == Some(crate::style::computed::Display::TableCell);
-            e.style.resolve_logical(wm, parent_vertical, is_cell, vcx);
+                || e.style.cascaded().display == Some(crate::style::computed::Display::TableCell);
+            e.style
+                .cascaded_mut()
+                .resolve_logical(wm, parent_vertical, is_cell, vcx);
             // Слои `:hover`, `::first-letter` и `::first-line` — копии стиля элемента,
             // снятые до этого прохода, поэтому логические стороны ложатся на их
             // физические поля тем же письмом, что у элемента
@@ -47,14 +49,16 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
             .into_iter()
             .flatten()
             {
-                layer.resolve_logical(wm, parent_vertical, is_cell, vcx);
+                layer
+                    .cascaded_mut()
+                    .resolve_logical(wm, parent_vertical, is_cell, vcx);
             }
             // Physical margins are final here; collapsing rewrites them later.
             // An orthogonal flow root keeps them too: its inline size is the
             // fallback available space minus its own inline-axis margins
             // (css-writing-modes-4 §7.3), which collapsing may hoist away.
-            if e.style.clip_ref == Some(1) || wm.vertical() != parent_vertical {
-                e.style.own_margin = Some(e.style.margin);
+            if e.style.cascaded().clip_ref == Some(1) || wm.vertical() != parent_vertical {
+                e.style.cascaded_mut().own_margin = Some(e.style.cascaded().margin);
             }
             walk(&mut e.children, props, vcx);
         }
@@ -103,22 +107,22 @@ pub(super) fn settle_explicit_inherit(
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         if let Some(p) = parent {
-            if e.style.inherit_bits & inh::Z_INDEX != 0 {
-                e.style.z_index = p.z_index;
+            if e.style.cascaded().inherit_bits & inh::Z_INDEX != 0 {
+                e.style.cascaded_mut().z_index = p.z_index;
             }
-            if e.style.inherit_bits & inh::CLIP != 0 {
-                e.style.clip_rect = p.clip_rect;
-                e.style.clip_len = p.clip_len;
+            if e.style.cascaded().inherit_bits & inh::CLIP != 0 {
+                e.style.cascaded_mut().clip_rect = p.clip_rect;
+                e.style.cascaded_mut().clip_len = p.clip_len;
             }
-            if e.style.grid_areas_inherit {
-                e.style.grid_areas = p.grid_areas.clone();
+            if e.style.cascaded().grid_areas_inherit {
+                e.style.cascaded_mut().grid_areas = p.grid_areas.clone();
             }
-            if e.style.text_overflow_inherit {
-                e.style.ellipsis = p.ellipsis;
-                e.style.overflow_marker = p.overflow_marker.clone();
+            if e.style.cascaded().text_overflow_inherit {
+                e.style.cascaded_mut().ellipsis = p.ellipsis;
+                e.style.cascaded_mut().overflow_marker = p.overflow_marker.clone();
             }
         }
-        settle_explicit_inherit(&mut e.children, Some(&e.style));
+        settle_explicit_inherit(&mut e.children, Some(e.style.cascaded()));
     }
 }
 
@@ -128,9 +132,9 @@ pub(super) fn settle_explicit_inherit(
 fn settle_mask_orientation(nodes: &mut [Node], parent: Option<bool>) {
     for node in nodes {
         let Node::Element(e) = node else { continue };
-        let orientation = e.style.image_orient_none.or(parent);
-        if e.style.mask_image.is_some() {
-            e.style.image_orient_none = orientation;
+        let orientation = e.style.cascaded().image_orient_none.or(parent);
+        if e.style.cascaded().mask_image.is_some() {
+            e.style.cascaded_mut().image_orient_none = orientation;
         }
         settle_mask_orientation(&mut e.children, orientation);
     }
@@ -160,8 +164,8 @@ mod tests {
         fn collect(nodes: &[Node], flags: &mut Vec<Option<bool>>) {
             for node in nodes {
                 if let Node::Element(e) = node {
-                    if e.style.mask_image.is_some() {
-                        flags.push(e.style.image_orient_none);
+                    if e.style.cascaded().mask_image.is_some() {
+                        flags.push(e.style.cascaded().image_orient_none);
                     }
                     collect(&e.children, flags);
                 }
@@ -191,8 +195,11 @@ mod tests {
         }
         let p = find(doc.nodes()).expect("p");
         // sideways-lr + rtl: inline-start is the top, block-start the left (§6.4).
-        assert_eq!(p.style.margin.top, Some(Len::Px(15.0)));
-        assert_eq!(p.style.padding.left, Some(Len::Px(5.0)));
-        assert_eq!((p.style.writing_mode, p.style.rtl), (None, None));
+        assert_eq!(p.style.cascaded().margin.top, Some(Len::Px(15.0)));
+        assert_eq!(p.style.cascaded().padding.left, Some(Len::Px(5.0)));
+        assert_eq!(
+            (p.style.cascaded().writing_mode, p.style.cascaded().rtl),
+            (None, None)
+        );
     }
 }

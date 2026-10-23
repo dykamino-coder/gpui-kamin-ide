@@ -33,9 +33,9 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
         // Ортогональный ребёнок (своё горизонтальное письмо) — не наш случай:
         // его строчная ось горизонтальна.
         if ch.inline
-            || ch.style.vertical_decl() == Some(false)
-            || !crate::layout::box_kind::in_flow(&ch.style)
-            || !auto_inline(&ch.style)
+            || ch.style.cascaded().vertical_decl() == Some(false)
+            || !crate::layout::box_kind::in_flow(ch.style.cascaded())
+            || !auto_inline(ch.style.cascaded())
         {
             continue;
         }
@@ -43,7 +43,7 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
             // Auto inline tracks need a contribution before stretch can resolve their size.
             auto_inline(own)
                 || matches!(
-                    ch.style.justify_self.or(own.justify_items),
+                    ch.style.cascaded().justify_self.or(own.justify_items),
                     Some(Align::Start)
                         | Some(Align::Center)
                         | Some(Align::End)
@@ -51,13 +51,13 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
                 )
         } else {
             !matches!(
-                ch.style.display,
+                ch.style.cascaded().display,
                 Some(Display::Flex) | Some(Display::Grid) | Some(Display::Table)
             )
         };
         if hug {
-            ch.style.hug_inline = true;
-            ch.style.hug_claim = true;
+            ch.style.cascaded_mut().hug_inline = true;
+            ch.style.cascaded_mut().hug_claim = true;
         }
     }
     out
@@ -81,7 +81,10 @@ mod tests {
             let Node::Element(child) = &out[0] else {
                 unreachable!()
             };
-            (child.style.hug_inline, child.style.hug_claim)
+            (
+                child.style.cascaded().hug_inline,
+                child.style.cascaded().hug_claim,
+            )
         };
         assert_eq!(claimed(child.clone(), &parent), (true, true));
         parent.height = Some(Len::Px(50.0));
@@ -90,18 +93,18 @@ mod tests {
         assert_eq!(claimed(child.clone(), &parent), (true, true));
         parent.height = None;
         let mut fixed = child.clone();
-        fixed.style.height = Some(Len::Px(50.0));
+        fixed.style.cascaded_mut().height = Some(Len::Px(50.0));
         assert_eq!(claimed(fixed, &parent), (false, false));
         let mut horizontal = child.clone();
-        horizontal.style.writing_mode =
+        horizontal.style.cascaded_mut().writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 false,
-                horizontal.style.wm().block_rl(),
-                horizontal.style.wm().sideways(),
+                horizontal.style.cascaded().wm().block_rl(),
+                horizontal.style.cascaded().wm().sideways(),
             ));
         assert_eq!(claimed(horizontal, &parent), (false, false));
         let mut positioned = child;
-        positioned.style.position = Some(crate::style::computed::Position::Absolute);
+        positioned.style.cascaded_mut().position = Some(crate::style::computed::Position::Absolute);
         assert_eq!(claimed(positioned, &parent), (false, false));
     }
 }

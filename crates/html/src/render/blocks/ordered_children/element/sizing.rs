@@ -12,7 +12,7 @@ pub(crate) fn item_sizing(
     _opts: &RenderOpts,
 ) -> Node {
     let positioned_out = matches!(
-        e.style.position,
+        e.style.cascaded().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     );
@@ -30,13 +30,13 @@ pub(crate) fn item_sizing(
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
         && !positioned_out
-        && (e.style.attr_sized.0 || e.style.attr_sized.1)
+        && (e.style.cascaded().attr_sized.0 || e.style.cascaded().attr_sized.1)
     {
         let stretch = |own: Option<Align>, items: Option<Align>| {
             own == Some(Align::Stretch) || (own.is_none() && items == Some(Align::Stretch))
         };
-        let sx = stretch(e.style.justify_self, inherited.justify_items);
-        let sy = stretch(e.style.align_self, inherited.align_items);
+        let sx = stretch(e.style.cascaded().justify_self, inherited.justify_items);
+        let sy = stretch(e.style.cascaded().align_self, inherited.align_items);
         // Обе оси пришли из атрибутов, а явный `stretch` — ровно
         // у одной: вторая ось тоже `auto` и выводится из
         // растянутой через соотношение (css-sizing-4 «transferred
@@ -46,21 +46,25 @@ pub(crate) fn item_sizing(
         // растянутую: 10×10 вместо 100×100
         // (`replaced-alignment-with-aspect-ratio-001/002`).
         // Вертикальную сетку не трогаем: оси там переставлены.
-        let both_attrs = e.style.attr_sized.0 && e.style.attr_sized.1;
+        let both_attrs = e.style.cascaded().attr_sized.0 && e.style.cascaded().attr_sized.1;
         let transfer = both_attrs && sx != sy && !inherited.wm().vertical();
-        let free_x = e.style.attr_sized.0 && (sx || !e.style.attr_sized.1 || transfer);
-        let free_y = e.style.attr_sized.1 && (sy || !e.style.attr_sized.0 || transfer);
+        let free_x =
+            e.style.cascaded().attr_sized.0 && (sx || !e.style.cascaded().attr_sized.1 || transfer);
+        let free_y =
+            e.style.cascaded().attr_sized.1 && (sy || !e.style.cascaded().attr_sized.0 || transfer);
         if free_x || free_y {
             // Явный `stretch` по ОБЕИМ осям задаёт обе стороны
             // растяжением — соотношение не действует
             // (`-003.tentative`: 10×20 в области 100×100 давал
             // 100×200; то же правило — `grid-aspect-ratio-032/033`).
-            if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.attr_width, e.style.attr_height)
-                && h > 0.0
-                && e.style.aspect_ratio.is_none()
+            if let (Some(Len::Px(w)), Some(Len::Px(h))) = (
+                e.style.cascaded().attr_width,
+                e.style.cascaded().attr_height,
+            ) && h > 0.0
+                && e.style.cascaded().aspect_ratio.is_none()
                 && !(both_attrs && sx && sy)
             {
-                e.style.aspect_ratio = Some(w / h);
+                e.style.cascaded_mut().aspect_ratio = Some(w / h);
             }
             // Нерастянутая ось при `normal` у коробки с
             // соотношением — `start` (css-grid-2 §6.6.1), иначе
@@ -68,26 +72,31 @@ pub(crate) fn item_sizing(
             // заданной ширины умолчание — `Stretch`) и выведет
             // растянутую из неё. Авторское значение не трогаем.
             if transfer {
-                if sy && e.style.justify_self.is_none() && inherited.justify_items.is_none() {
-                    e.style.justify_self = Some(Align::Start);
+                if sy
+                    && e.style.cascaded().justify_self.is_none()
+                    && inherited.justify_items.is_none()
+                {
+                    e.style.cascaded_mut().justify_self = Some(Align::Start);
                 }
-                if sx && e.style.align_self.is_none() && inherited.align_items.is_none() {
-                    e.style.align_self = Some(Align::Start);
+                if sx && e.style.cascaded().align_self.is_none() && inherited.align_items.is_none()
+                {
+                    e.style.cascaded_mut().align_self = Some(Align::Start);
                 }
             }
             if free_x {
-                e.style.width = None;
+                e.style.cascaded_mut().width = None;
             }
             if free_y {
-                e.style.height = None;
+                e.style.cascaded_mut().height = None;
             }
         }
     }
     let ratio_ok = e
         .style
+        .cascaded()
         .aspect_ratio
         .is_some_and(|r| r.is_finite() && r > 0.0);
-    e.style.flex_item_ratio = ratio_ok
+    e.style.cascaded_mut().flex_item_ratio = ratio_ok
         && !positioned_out
         && matches!(
             inherited.display,
@@ -103,28 +112,28 @@ pub(crate) fn item_sizing(
         inherited.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     ) && inherited.writing_mode.is_none()
-        && e.style.border_box != Some(true)
-        && let Some(Len::Px(b)) = e.style.flex_basis
+        && e.style.cascaded().border_box != Some(true)
+        && let Some(Len::Px(b)) = e.style.cascaded().flex_basis
     {
         let px_of = px_lossy_zero;
-        let bd = e.style.borders();
+        let bd = e.style.cascaded().borders();
         let row = matches!(
             inherited.flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         );
         let extra = if row {
-            px_of(e.style.padding.left)
-                + px_of(e.style.padding.right)
+            px_of(e.style.cascaded().padding.left)
+                + px_of(e.style.cascaded().padding.right)
                 + px_of(bd.left)
                 + px_of(bd.right)
         } else {
-            px_of(e.style.padding.top)
-                + px_of(e.style.padding.bottom)
+            px_of(e.style.cascaded().padding.top)
+                + px_of(e.style.cascaded().padding.bottom)
                 + px_of(bd.top)
                 + px_of(bd.bottom)
         };
-        e.style.flex_basis = Some(Len::Px(b + extra));
+        e.style.cascaded_mut().flex_basis = Some(Len::Px(b + extra));
     }
     // Элемент сетки с `aspect-ratio` при `normal` (css-grid-2
     // §6.6.1): «sized consistent with the size calculation
@@ -141,21 +150,24 @@ pub(crate) fn item_sizing(
         && !positioned_out
         && inherited.writing_mode.is_none()
     {
-        let auto_w = matches!(e.style.width, None | Some(Len::Auto));
-        let auto_h = matches!(e.style.height, None | Some(Len::Auto));
+        let auto_w = matches!(e.style.cascaded().width, None | Some(Len::Auto));
+        let auto_h = matches!(e.style.cascaded().height, None | Some(Len::Auto));
         // Обе оси auto: строчная заполняет область, блочная — из
         // соотношения. Блочная определена: строчная — из
         // соотношения (CSS2 §10.3.2 для замещаемого с
         // соотношением; css-sizing-4 §5.1).
         if auto_w
             && !auto_h
-            && e.style.justify_self.is_none()
+            && e.style.cascaded().justify_self.is_none()
             && inherited.justify_items != Some(Align::Stretch)
         {
-            e.style.justify_self = Some(Align::Start);
+            e.style.cascaded_mut().justify_self = Some(Align::Start);
         }
-        if auto_h && e.style.align_self.is_none() && inherited.align_items != Some(Align::Stretch) {
-            e.style.align_self = Some(Align::Start);
+        if auto_h
+            && e.style.cascaded().align_self.is_none()
+            && inherited.align_items != Some(Align::Stretch)
+        {
+            e.style.cascaded_mut().align_self = Some(Align::Start);
         }
     }
     // `flex-basis: content` — основа по содержимому, и
@@ -170,12 +182,16 @@ pub(crate) fn item_sizing(
         e.tag.as_str(),
         "img" | "canvas" | "embed" | "iframe" | "video" | "object" | "svg"
     );
-    if e.style.basis_content == Some(true) {
+    if e.style.cascaded().basis_content == Some(true) {
         match inherited.flex_dir {
             Some(FlexDir::Col) | Some(FlexDir::ColReverse) => {
-                e.style.height = own.then_some(e.style.attr_height).flatten();
+                e.style.cascaded_mut().height =
+                    own.then_some(e.style.cascaded().attr_height).flatten();
             }
-            _ => e.style.width = own.then_some(e.style.attr_width).flatten(),
+            _ => {
+                e.style.cascaded_mut().width =
+                    own.then_some(e.style.cascaded().attr_width).flatten()
+            }
         }
     }
     // Основа-ДОЛЯ у элемента колонки, чей контейнер не определён
@@ -188,9 +204,11 @@ pub(crate) fn item_sizing(
     // (`flex-basis-010`), а `flex: 1 1; height: 100px` делал
     // блок детей определённым, и `height: 100%` ребёнка
     // закрашивал красное (`percentage-heights-017/018`).
-    if e.style.flex_main_def == Some(false) && matches!(e.style.flex_basis, Some(Len::Pct(_))) {
-        e.style.flex_basis = None;
-        e.style.height = own.then_some(e.style.attr_height).flatten();
+    if e.style.cascaded().flex_main_def == Some(false)
+        && matches!(e.style.cascaded().flex_basis, Some(Len::Pct(_)))
+    {
+        e.style.cascaded_mut().flex_basis = None;
+        e.style.cascaded_mut().height = own.then_some(e.style.cascaded().attr_height).flatten();
     }
     Node::Element(e)
 }

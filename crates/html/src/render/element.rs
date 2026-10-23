@@ -76,7 +76,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     // Разбор двунаправленности выберет её сам при наборе, но выключка и
     // прижим текста читают `rtl` из стиля, и без этого шага блок с арабским
     // текстом прижимался влево.
-    if e.attr("dir") == Some("auto") && e.style.rtl.is_none() {
+    if e.attr("dir") == Some("auto") && e.style.cascaded().rtl.is_none() {
         let mut text = String::new();
         gather_text(&e.children, &mut text);
         let strong = text.chars().find_map(|ch| {
@@ -159,8 +159,8 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         let mut copy = e.clone();
         let url = e.attr("data").unwrap_or_default().to_string();
         copy.attrs.push(("src".to_string(), url));
-        copy.style.width = merged.width;
-        copy.style.height = merged.height;
+        copy.style.cascaded_mut().width = merged.width;
+        copy.style.cascaded_mut().height = merged.height;
         iframe(&copy, inherited, opts)
     } else {
         None

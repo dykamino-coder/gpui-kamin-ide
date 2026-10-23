@@ -71,9 +71,9 @@ fn collapsed_column_edges(
         let Some(el) = col_els.get(i).and_then(|layer| layer.element) else {
             continue;
         };
-        let b = el.style.borders();
+        let b = el.style.cascaded().borders();
         let cw = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
-        let hidden = el.style.border_side_styles.contains(&Some(1));
+        let hidden = el.style.cascaded().border_side_styles.contains(&Some(1));
         if !(cw.iter().any(|w| *w > 0.0) || hidden) {
             continue;
         }
@@ -99,7 +99,13 @@ fn collapsed_column_edges(
             a: 1.0,
         };
         let side_colour = |k: usize| {
-            el.style.border_colors[k].resolve(el.style.color.or(inherited.color).unwrap_or(black))
+            el.style.cascaded().border_colors[k].resolve(
+                el.style
+                    .cascaded()
+                    .color
+                    .or(inherited.color)
+                    .unwrap_or(black),
+            )
         };
         let colors = [
             side_colour(0),
@@ -108,7 +114,7 @@ fn collapsed_column_edges(
             side_colour(3),
         ];
         let side_style = |k: usize| {
-            el.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+            el.style.cascaded().border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         d = d.child(crate::layout::table::probes::edge_probe(

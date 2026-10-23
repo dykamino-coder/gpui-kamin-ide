@@ -24,15 +24,15 @@ pub(super) fn walk(
     let mut prev: Option<(u64, bool)> = None;
     for n in p.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { continue };
-        if out_of_flow(&k.style) {
-            if k.style.float.is_some_and(|f| f != 0) {
+        if out_of_flow(k.style.cascaded()) {
+            if k.style.cascaded().float.is_some_and(|f| f != 0) {
                 if solid_box(k) {
                     out.push((
                         k.node_id,
                         Cand::Float {
-                            soft: k.style.break_inside_avoid
+                            soft: k.style.cascaded().break_inside_avoid
                                 && !crate::layout::fragment::probe::size_monolith(k)
-                                && crate::layout::page::paged::visible_overflow(&k.style),
+                                && crate::layout::page::paged::visible_overflow(k.style.cascaded()),
                         },
                     ));
                 } else {
@@ -46,18 +46,18 @@ pub(super) fn walk(
             continue;
         }
         if k.list_item.is_some()
-            || crate::layout::multicol::spanner::multicol_container(&k.style)
+            || crate::layout::multicol::spanner::multicol_container(k.style.cascaded())
             || !matches!(
-                k.style.display,
+                k.style.cascaded().display,
                 None | Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid)
             )
         {
             return None;
         }
-        if column_flex(&p.style) {
+        if column_flex(p.style.cascaded()) {
             out.push((k.node_id, Cand::Item));
         }
-        if let Some(gap) = row_gap(&p.style) {
+        if let Some(gap) = row_gap(p.style.cascaded()) {
             out.push((
                 k.node_id,
                 Cand::Gap {
@@ -69,20 +69,21 @@ pub(super) fn walk(
         // Breaks propagate from the first/last child to the box edge
         // (css-break-3 §3.1 «break propagation»).
         if let Some((pid, avoid_after)) = prev
-            && (avoid_after || k.style.break_before_avoid)
+            && (avoid_after || k.style.cascaded().break_before_avoid)
         {
             out.push((pid, Cand::Item));
             out.push((k.node_id, Cand::Avoid { prev: pid }));
         }
-        prev = Some((k.node_id, k.style.break_after_avoid));
+        prev = Some((k.node_id, k.style.cascaded().break_after_avoid));
         let edge = crate::layout::fragment::breaks::edge_break;
         let forced = force_next || edge(k, false, vcx);
         force_next = edge(k, true, vcx);
         // A forced break before an item of a flex row breaks the whole row
         // (Blink `row_break_between`), not just the item; clipped overflow is
         // not part of the flow thread.
-        if (forced && row_flex(&p.style))
-            || (!crate::layout::page::paged::visible_overflow(&k.style) && !monolith_box(k))
+        if (forced && row_flex(p.style.cascaded()))
+            || (!crate::layout::page::paged::visible_overflow(k.style.cascaded())
+                && !monolith_box(k))
         {
             return None;
         }
@@ -94,9 +95,9 @@ pub(super) fn walk(
             out.push((
                 k.node_id,
                 Cand::Mono {
-                    soft: k.style.break_inside_avoid
+                    soft: k.style.cascaded().break_inside_avoid
                         && !crate::layout::fragment::probe::size_monolith(k)
-                        && crate::layout::page::paged::visible_overflow(&k.style),
+                        && crate::layout::page::paged::visible_overflow(k.style.cascaded()),
                 },
             ));
             continue;
@@ -105,7 +106,7 @@ pub(super) fn walk(
             out.push((
                 k.node_id,
                 Cand::Forced {
-                    mt: px_auto_zero(k.style.margin.top)?,
+                    mt: px_auto_zero(k.style.cascaded().margin.top)?,
                 },
             ));
         }

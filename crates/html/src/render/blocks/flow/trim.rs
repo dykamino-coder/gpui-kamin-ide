@@ -98,7 +98,9 @@ fn root_top(s: &Computed, opts: &RenderOpts) -> f32 {
 pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
     rest.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
-        Node::Element(e) => e.style.display == Some(Display::None) || out_of_flow(&e.style),
+        Node::Element(e) => {
+            e.style.cascaded().display == Some(Display::None) || out_of_flow(e.style.cascaded())
+        }
     })
 }
 

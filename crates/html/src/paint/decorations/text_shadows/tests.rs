@@ -103,10 +103,10 @@ fn mask_keeps_decoration_records_and_original_text_color() {
     let Node::Element(mask) = &masked[0] else {
         panic!("missing span")
     };
-    assert_eq!(mask.style.color, owner.color);
-    assert_eq!(mask.style.decors, owner.decors);
+    assert_eq!(mask.style.cascaded().color, owner.color);
+    assert_eq!(mask.style.cascaded().decors, owner.decors);
     assert_eq!(
-        mask.style.text_shadow_ink,
+        mask.style.cascaded().text_shadow_ink,
         Some(Color::parse("green", vcx).unwrap())
     );
 }

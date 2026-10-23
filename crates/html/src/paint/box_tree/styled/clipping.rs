@@ -84,6 +84,6 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
 pub(super) fn shows_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(_) => false,
-        Node::Element(e) => e.style.hidden == Some(false) || shows_inside(&e.children),
+        Node::Element(e) => e.style.cascaded().hidden == Some(false) || shows_inside(&e.children),
     })
 }

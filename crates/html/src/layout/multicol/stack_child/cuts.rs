@@ -115,10 +115,10 @@ pub(super) fn line_cuts(
                     }));
             let ov = copy_m.as_ref().unwrap_or(copy);
             let block_visible = matches!(
-                ov.style.overflow_y,
+                ov.style.cascaded().overflow_y,
                 None | Some(crate::style::computed::Overflow::Visible)
             ) && matches!(
-                ov.style.overflow_x,
+                ov.style.cascaded().overflow_x,
                 None | Some(crate::style::computed::Overflow::Visible)
                     | Some(crate::style::computed::Overflow::Clip)
             );
@@ -202,17 +202,17 @@ pub(super) fn stack_child_of(
         par: kid_par[ix],
         positioned: !span
             && (matches!(
-                copy.style.position,
+                copy.style.cascaded().position,
                 Some(crate::style::computed::Position::Relative)
                     | Some(crate::style::computed::Position::Sticky)
-            ) || copy.style.transform.is_some())
-            && copy.style.z_index.unwrap_or(0) == 0,
+            ) || copy.style.cascaded().transform.is_some())
+            && copy.style.cascaded().z_index.unwrap_or(0) == 0,
         // Хвост непоследнего фрагмента таблицы — её фоном
         // (`StackChild::slack`).
         slack: if col_vert {
             None
         } else if table_box(copy) {
-            copy.style.background.map(|c| c.to_hsla())
+            copy.style.cascaded().background.map(|c| c.to_hsla())
         } else if dec.is_none() && over <= h + 0.01 {
             // Продолжение одного лишь параллельного
             // потока (`over`) — не продолжение коробки:

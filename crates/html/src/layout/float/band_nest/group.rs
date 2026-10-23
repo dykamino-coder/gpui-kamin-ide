@@ -27,7 +27,7 @@ pub(super) fn positioned_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
             matches!(
-                e.style.position,
+                e.style.cascaded().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) || positioned_inside(&e.children)

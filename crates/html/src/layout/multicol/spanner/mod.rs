@@ -39,27 +39,27 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8, vcx: ValueCx<'_>) ->
     // Монолит такого элемента переполняет колонку, как в блоке (Blink
     // `FinishFragmentation` растит фрагмент контейнера до конца монолита;
     // `monolithic-overflow-003/004.tentative` во flex и сетке).
-    let stacked = (c.style.display == Some(Display::Flex)
-        && c.style.webkit_box != Some(true)
-        && !c.style.wm().vertical()
+    let stacked = (c.style.cascaded().display == Some(Display::Flex)
+        && c.style.cascaded().webkit_box != Some(true)
+        && !c.style.cascaded().wm().vertical()
         && matches!(
-            c.style.flex_dir,
+            c.style.cascaded().flex_dir,
             Some(crate::style::computed::FlexDir::Col)
                 | Some(crate::style::computed::FlexDir::ColReverse)
         )
-        && c.style.flex_wrap != Some(true))
-        || (c.style.display == Some(Display::Grid) && grid_stack(c));
+        && c.style.cascaded().flex_wrap != Some(true))
+        || (c.style.cascaded().display == Some(Display::Grid) && grid_stack(c));
     // `break-inside: avoid` элемента без настоящего монолита — пожелание
     // (css-break-4 §4.4): с верха колонки такой элемент выше колонки рвётся, а
     // ветка переполнения (`overflow_top`) держала бы его целым
     // (`single-line-column-flex-fragmentation-015`: элемент 250 в колонке 100).
     let stacked = stacked
         && !c.children.iter().any(
-            |n| matches!(n, Node::Element(k) if k.style.break_inside_avoid && avoid_only_monolith(k)),
+            |n| matches!(n, Node::Element(k) if k.style.cascaded().break_inside_avoid && avoid_only_monolith(k)),
         );
     let own = !stacked
         && matches!(
-            c.style.display,
+            c.style.cascaded().display,
             Some(Display::Flex)
                 | Some(Display::Grid)
                 | Some(Display::GridLanes)
@@ -68,8 +68,8 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8, vcx: ValueCx<'_>) ->
                 | Some(Display::TableRowGroup)
                 | Some(Display::TableCell)
         )
-        || c.style.webkit_box == Some(true)
-        || multicol_container(&c.style)
+        || c.style.cascaded().webkit_box == Some(true)
+        || multicol_container(c.style.cascaded())
         || matches!(
             c.tag.as_str(),
             "table" | "tr" | "td" | "th" | "thead" | "tbody" | "tfoot"
@@ -84,7 +84,7 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8, vcx: ValueCx<'_>) ->
 /// балансировку он ведёт сам, внешними колонками не фрагментируется, и копия
 /// стопки рисует его плоско (`StackChild::nested_cols`).
 pub(super) fn multicol_inside(c: &Element, depth: u8) -> bool {
-    multicol_container(&c.style)
+    multicol_container(c.style.cascaded())
         || (depth > 0
             && c.children
                 .iter()
@@ -114,7 +114,7 @@ enum SpanPart {
 /// бывает; флоат и абсолют — не в потоке. Тот же признак — у `is_span`
 /// сегментного пути в `element()`.
 pub(crate) fn spanner_box(c: &Element) -> bool {
-    c.style.column_span == Some(true) && block_level_in_flow(c)
+    c.style.cascaded().column_span == Some(true) && block_level_in_flow(c)
 }
 
 /// Пропускает ли предок спаннера его наружу, к многоколоночнику.
@@ -153,7 +153,7 @@ fn passes_spanner(c: &Element) -> bool {
     // caption») расходилась с эталоном, где тот же `<h3>` —
     // `column-span: none`.
     if table_box(c)
-        || c.style.is_caption == Some(true)
+        || c.style.cascaded().is_caption == Some(true)
         || matches!(
             c.tag.as_str(),
             "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th"
@@ -162,7 +162,7 @@ fn passes_spanner(c: &Element) -> bool {
         return false;
     }
     if !matches!(
-        c.style.display,
+        c.style.cascaded().display,
         None | Some(Display::Block) | Some(Display::ListItem)
     ) {
         return false;
@@ -170,21 +170,21 @@ fn passes_spanner(c: &Element) -> bool {
     // Свой многоколоночник: спаннер принадлежит БЛИЖАЙШЕМУ предку-
     // многоколоночнику, а не нашему (§column-span: «the nearest multicol
     // ancestor in the same block formatting context»).
-    if multicol_container(&c.style) {
+    if multicol_container(c.style.cascaded()) {
         return false;
     }
     // Внепоточный и плавающий предок — свой контекст форматирования.
-    if out_of_flow(&c.style) {
+    if out_of_flow(c.style.cascaded()) {
         return false;
     }
-    if c.style.flow_root == Some(true) {
+    if c.style.cascaded().flow_root == Some(true) {
         return false;
     }
     if !matches!(
-        c.style.overflow_x,
+        c.style.cascaded().overflow_x,
         None | Some(crate::style::computed::Overflow::Visible)
     ) || !matches!(
-        c.style.overflow_y,
+        c.style.cascaded().overflow_y,
         None | Some(crate::style::computed::Overflow::Visible)
     ) {
         return false;
@@ -195,11 +195,11 @@ fn passes_spanner(c: &Element) -> bool {
     // created»). На этом запрете стоят зелёные `multicol-span-all-010`
     // (`transform`, `filter`, `contain: paint|layout|content|strict`) и
     // `multicol-span-all-017` (`transform: scale(1)`).
-    if c.style.transform.is_some()
-        || c.style.filter.is_some()
-        || c.style.perspective.is_some()
-        || c.style.contain_layout == Some(true)
-        || c.style.contain_paint == Some(true)
+    if c.style.cascaded().transform.is_some()
+        || c.style.cascaded().filter.is_some()
+        || c.style.cascaded().perspective.is_some()
+        || c.style.cascaded().contain_layout == Some(true)
+        || c.style.cascaded().contain_paint == Some(true)
     {
         return false;
     }
@@ -223,7 +223,7 @@ pub(crate) fn has_deep_spanner(c: &Element) -> bool {
 /// 001`). Атомарные строчные (`inline-block`, кнопка, замещаемые) — барьер:
 /// их `real_inline` не пускает.
 fn splits_for_spanner(k: &Element) -> bool {
-    real_inline(k) && !out_of_flow(&k.style)
+    real_inline(k) && !out_of_flow(k.style.cascaded())
 }
 
 /// Кромка коробки на стороне разреза: есть ли что показывать ПУСТОМУ

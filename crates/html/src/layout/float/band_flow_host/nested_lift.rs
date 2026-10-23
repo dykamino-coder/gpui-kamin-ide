@@ -16,14 +16,14 @@ pub(super) fn lift_nested(c: &mut Element, em: f32, wm: WritingMode, lift: &mut 
     if !band_nest_block(c, em, wm) {
         return;
     }
-    let Some(inner_em) = band_em(&c.style, em) else {
+    let Some(inner_em) = band_em(c.style.cascaded(), em) else {
         return;
     };
     c.children = std::mem::take(&mut c.children)
         .into_iter()
         .filter_map(|mut node| {
             if let Node::Element(child) = &mut node {
-                if abs_pinned(&child.style) {
+                if abs_pinned(child.style.cascaded()) {
                     lift.push(node);
                     return None;
                 }

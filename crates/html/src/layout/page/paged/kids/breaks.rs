@@ -30,7 +30,7 @@ pub(super) fn recorder(
                 && vertical.is_none()
                 && !e.inline
                 && !matches!(
-                    e.style.position,
+                    e.style.cascaded().position,
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
                 && shaped

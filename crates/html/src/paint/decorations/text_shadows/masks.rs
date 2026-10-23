@@ -71,16 +71,16 @@ pub(super) fn mask_nodes(
             Node::Element(e) => {
                 let mut e = e.clone();
                 if atomic(&e, vcx) {
-                    e.style.hidden = Some(true);
+                    e.style.cascaded_mut().hidden = Some(true);
                     return Node::Element(e);
                 }
                 let list = parent.child(&e);
                 let ink = if list.resolved() == group {
-                    shadow.used_color(e.style.current_color())
+                    shadow.used_color(e.style.cascaded().current_color())
                 } else {
                     transparent()
                 };
-                let s = &mut e.style;
+                let s = e.style.cascaded_mut();
                 s.text_shadow_ink = Some(ink);
                 s.background = None;
                 s.bg_image = None;

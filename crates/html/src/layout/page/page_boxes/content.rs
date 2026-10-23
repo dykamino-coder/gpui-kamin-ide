@@ -37,7 +37,7 @@ pub(super) fn content_nodes(
             if let Some(src) = crate::dom::content_image_src(src) {
                 let mut image = crate::layout::table::anon::anon_element("img", vec![]);
                 image.inline = true;
-                image.style.content = Some(vec![item.clone()]);
+                image.style.cascaded_mut().content = Some(vec![item.clone()]);
                 image.attrs.push(("src".into(), src));
                 children.push(Node::Element(image));
             }

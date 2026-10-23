@@ -18,7 +18,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
     fn walk(nodes: &[Node], cells: &mut Vec<Node>, run: &mut Vec<Node>, vcx: ValueCx<'_>) {
         for child in nodes {
             match child {
-                Node::Element(el) if el.style.display == Some(Display::Contents) => {
+                Node::Element(el) if el.style.cascaded().display == Some(Display::Contents) => {
                     // Дети растворённого получают его наследуемое (цвет,
                     // шрифт) — слитый стиль передаётся вниз донором.
                     let merged: Vec<Node> = el
@@ -27,7 +27,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                         .cloned()
                         .map(|n| match n {
                             Node::Element(mut ge) => {
-                                ge.style = box_style(&el.style, &ge.style, vcx).into();
+                                ge.style = box_style(el.style.cascaded(), &ge.style, vcx).into();
                                 Node::Element(ge)
                             }
                             // Голый текст стиля не несёт: наследуемое от
@@ -37,7 +37,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                                 span.style = el.style.clone();
                                 // Сам растворённый display не переносится —
                                 // иначе обёртка растворилась бы следом.
-                                span.style.display = None;
+                                span.style.cascaded_mut().display = None;
                                 span.inline = true;
                                 Node::Element(span)
                             }
@@ -53,7 +53,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                 Node::Element(el)
                     if el.tag == "tr"
                         || matches!(
-                            el.style.display,
+                            el.style.cascaded().display,
                             Some(Display::TableRow) | Some(Display::TableRowGroup)
                         ) =>
                 {
@@ -73,10 +73,10 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
     }
     let needs_fix = row.children.iter().any(|c| match c {
         Node::Element(el) => {
-            el.style.display == Some(Display::Contents)
+            el.style.cascaded().display == Some(Display::Contents)
                 || el.tag == "tr"
                 || matches!(
-                    el.style.display,
+                    el.style.cascaded().display,
                     Some(Display::TableRow) | Some(Display::TableRowGroup)
                 )
                 || !is_cell(el)
@@ -140,10 +140,10 @@ fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<No
                 if !in_group && col_role(el).is_some() {
                     continue;
                 }
-                let group = el.style.display == Some(Display::TableRowGroup)
+                let group = el.style.cascaded().display == Some(Display::TableRowGroup)
                     || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot");
-                let row = el.tag == "tr" || el.style.display == Some(Display::TableRow);
-                let is_cap = el.tag == "caption" || el.style.is_caption == Some(true);
+                let row = el.tag == "tr" || el.style.cascaded().display == Some(Display::TableRow);
+                let is_cap = el.tag == "caption" || el.style.cascaded().is_caption == Some(true);
                 if group && !in_group {
                     // Группа рядов чинится ИЗНУТРИ тоже: contents и бесхозное
                     // содержимое встречаются и там.
@@ -174,15 +174,15 @@ fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<No
                 let inline_like = |n: Option<&Node>| match n {
                     Some(Node::Text(t)) => !t.trim().is_empty(),
                     Some(Node::Element(el)) => {
-                        el.style.display != Some(Display::Contents)
+                        el.style.cascaded().display != Some(Display::Contents)
                             && col_role(el).is_none()
                             && !is_cell(el)
                             && el.tag != "caption"
-                            && el.style.is_caption != Some(true)
+                            && el.style.cascaded().is_caption != Some(true)
                             && el.tag != "tr"
                             && !matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot")
                             && !matches!(
-                                el.style.display,
+                                el.style.cascaded().display,
                                 Some(Display::TableRow) | Some(Display::TableRowGroup)
                             )
                     }
@@ -209,20 +209,20 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
             out.push(n.clone());
             continue;
         };
-        if el.style.display != Some(Display::Contents) {
+        if el.style.cascaded().display != Some(Display::Contents) {
             out.push(n.clone());
             continue;
         }
         for g in flatten_contents(&el.children, vcx) {
             match g {
                 Node::Element(mut ge) => {
-                    ge.style = box_style(&el.style, &ge.style, vcx).into();
+                    ge.style = box_style(el.style.cascaded(), &ge.style, vcx).into();
                     out.push(Node::Element(ge));
                 }
                 Node::Text(t) if !t.trim().is_empty() => {
                     let mut span = anon_element("span", vec![Node::Text(t)]);
                     span.style = el.style.clone();
-                    span.style.display = None;
+                    span.style.cascaded_mut().display = None;
                     span.inline = true;
                     out.push(Node::Element(span));
                 }

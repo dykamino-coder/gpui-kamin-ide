@@ -1,48 +1,81 @@
-//! Разделяет каскадные стили между копиями DOM, изолируя последующие правки used-значений; держит
-//! вычисленный стиль, материализованный из каскадного (`style::cascade::materialize`).
+//! Стиль элемента по стадиям значений css-cascade-5 §4: каскадный (выход каскада, его правит только
+//! подготовка документа), вычисленный (материализуется из каскадного,
+//! `style::cascade::materialize`) и слой used-значений раскладки поверх вычисленного. Раскладка
+//! читает вычисленный стиль и пишет только в свой слой: каскадный и вычисленный стили остаются
+//! общими для всех копий элемента (Blink: `LayoutObject::Style()` — неизменяемый вычисленный стиль;
+//! Servo: `Arc<ComputedValues>`).
 
 use crate::style::cascade::materialize::ComputedSlot;
 use crate::style::computed::Computed;
-use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-/// A cascaded style with copy-on-write ownership for layout adjustments, and
-/// the computed style materialized from it. Any edit through the handle drops
-/// the materialized style of that handle: it was computed from the old value.
+/// The style of an element by value stage. Copies of an element share all
+/// three stages; an edit copies only the stage it edits.
 #[derive(Clone, Debug, Default)]
 pub struct SharedStyle {
-    style: Rc<Computed>,
+    /// The cascaded style: cascade output, edited by document preparation only.
+    cascaded: Rc<Computed>,
+    /// The computed style materialized from `cascaded`.
     computed: ComputedSlot,
+    /// Layout's used values: a copy of the computed style that layout edited.
+    used: Option<Rc<Computed>>,
 }
 
 impl From<Computed> for SharedStyle {
     fn from(style: Computed) -> Self {
         Self {
-            style: Rc::new(style),
+            cascaded: Rc::new(style),
             computed: ComputedSlot::default(),
+            used: None,
         }
     }
 }
 
 impl SharedStyle {
-    /// The computed style materialized from this cascaded style.
-    pub(crate) fn computed(&self) -> &ComputedSlot {
+    /// The cascaded style (css-cascade-5 §4.2): input of the computed-value stage.
+    pub(crate) fn cascaded(&self) -> &Computed {
+        &self.cascaded
+    }
+
+    /// Edit the cascaded style (cascade and document preparation, before
+    /// materialization): drops the computed style and layout's values.
+    pub(crate) fn cascaded_mut(&mut self) -> &mut Computed {
+        self.computed = ComputedSlot::default();
+        self.used = None;
+        Rc::make_mut(&mut self.cascaded)
+    }
+
+    /// The materialization slot of the cascaded style.
+    pub(crate) fn slot(&self) -> &ComputedSlot {
         &self.computed
     }
-}
 
-impl Deref for SharedStyle {
-    type Target = Computed;
-
-    fn deref(&self) -> &Computed {
-        &self.style
+    /// The element's computed style with layout's used values. A style that
+    /// was never materialized (a box layout made) has no cascade: its values
+    /// are already layout's, and the style itself is returned.
+    pub fn computed(&self) -> Rc<Computed> {
+        match &self.used {
+            Some(used) => used.clone(),
+            None => self.base(),
+        }
     }
-}
 
-impl DerefMut for SharedStyle {
-    fn deref_mut(&mut self) -> &mut Computed {
-        self.computed = ComputedSlot::default();
-        Rc::make_mut(&mut self.style)
+    /// Layout's used-value layer, copy-on-write over the computed style.
+    pub(crate) fn used_mut(&mut self) -> &mut Computed {
+        let base = match self.used.take() {
+            Some(used) => used,
+            None => self.base(),
+        };
+        Rc::make_mut(self.used.insert(base))
+    }
+
+    /// Layout's used-value layer, if layout edited this style.
+    pub(crate) fn used(&self) -> Option<&Computed> {
+        self.used.as_deref()
+    }
+
+    fn base(&self) -> Rc<Computed> {
+        self.computed.any().unwrap_or_else(|| self.cascaded.clone())
     }
 }
 
@@ -58,11 +91,12 @@ mod tests {
             ..Computed::default()
         });
         let mut copy = original.clone();
-        assert!(Rc::ptr_eq(&original.style, &copy.style));
-        copy.width = Some(Len::Px(100.0));
-        assert_eq!(original.width, Some(Len::Pct(0.5)));
-        assert_eq!(copy.width, Some(Len::Px(100.0)));
-        assert!(!Rc::ptr_eq(&original.style, &copy.style));
+        assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
+        copy.used_mut().width = Some(Len::Px(100.0));
+        assert_eq!(original.computed().width, Some(Len::Pct(0.5)));
+        assert_eq!(copy.computed().width, Some(Len::Px(100.0)));
+        assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
+        assert_eq!(copy.cascaded().width, Some(Len::Pct(0.5)));
     }
 
     #[test]
@@ -72,17 +106,24 @@ mod tests {
         node.first_letter = node.hover.clone();
         node.first_line = node.hover.clone();
         node.anim = Some(Rc::new(vec![(0.0, Computed::default())]));
-        node.style.width = Some(Len::Pct(0.5));
+        node.style.cascaded_mut().width = Some(Len::Pct(0.5));
         let mut copy = node.clone();
-        copy.style.width = Some(Len::Px(100.0));
-        assert_eq!(node.style.width, Some(Len::Pct(0.5)));
+        copy.style.used_mut().width = Some(Len::Px(100.0));
+        assert_eq!(node.style.computed().width, Some(Len::Pct(0.5)));
         assert!(Rc::ptr_eq(
             node.anim.as_ref().unwrap(),
             copy.anim.as_ref().unwrap()
         ));
-        copy.hover.as_mut().unwrap().font_size = Some(Len::Px(32.0));
-        assert!(node.hover.as_ref().unwrap().font_size.is_none());
-        assert!(copy.first_letter.as_ref().unwrap().font_size.is_none());
+        copy.hover.as_mut().unwrap().cascaded_mut().font_size = Some(Len::Px(32.0));
+        assert!(node.hover.as_ref().unwrap().cascaded().font_size.is_none());
+        assert!(
+            copy.first_letter
+                .as_ref()
+                .unwrap()
+                .cascaded()
+                .font_size
+                .is_none()
+        );
         assert!(std::mem::size_of::<crate::dom::Element>() < 512);
     }
 }

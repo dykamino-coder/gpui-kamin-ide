@@ -67,9 +67,12 @@ pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn pending(nodes: &[Node]) -> bool {
         nodes.iter().any(|n| match n {
             Node::Element(e) => {
-                !e.style.explicit_inherit.is_empty()
-                    || registry_inherits(&e.style).next().is_some()
-                    || !matches!(e.style.svg_path_length, None | Some(Len::Px(_) | Len::Auto))
+                !e.style.cascaded().explicit_inherit.is_empty()
+                    || registry_inherits(e.style.cascaded()).next().is_some()
+                    || !matches!(
+                        e.style.cascaded().svg_path_length,
+                        None | Some(Len::Px(_) | Len::Auto)
+                    )
                     || pending(&e.children)
             }
             _ => false,
@@ -78,11 +81,12 @@ pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn apply_inheritance_to_descendants(nodes: &mut [Node], parent: &Computed, vcx: ValueCx<'_>) {
         for node in nodes {
             let Node::Element(e) = node else { continue };
-            if !e.style.explicit_inherit.is_empty() || registry_inherits(&e.style).next().is_some()
+            if !e.style.cascaded().explicit_inherit.is_empty()
+                || registry_inherits(e.style.cascaded()).next().is_some()
             {
-                settle_registry_inheritance(&mut e.style, parent, vcx);
+                settle_registry_inheritance(e.style.cascaded_mut(), parent, vcx);
             }
-            let mut own = (*e.style).clone();
+            let mut own = e.style.cascaded().clone();
             let media = vcx.doc.media.get();
             own.resolve_viewport((media.width, media.height), vcx);
             let mut computed = super::inherit::inherit_unpainted(parent, &own, vcx);
@@ -92,7 +96,7 @@ pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
                 if let Some(value) = length.to_px(None, font, vcx) {
                     computed.svg_path_length = Some(Len::Px(value.max(0.0)));
                 }
-                e.style.svg_path_length = computed.svg_path_length;
+                e.style.cascaded_mut().svg_path_length = computed.svg_path_length;
             }
             apply_inheritance_to_descendants(&mut e.children, &computed, vcx);
         }

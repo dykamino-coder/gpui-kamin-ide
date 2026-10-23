@@ -51,7 +51,8 @@ fn view_boxed(
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let source = crate::paint::background::element_source(local.unwrap_or(src), &e.style)?;
+    let source =
+        crate::paint::background::element_source(local.unwrap_or(src), e.style.cascaded())?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
     let crate::paint::background::Source::Raster(ready) = source else {
@@ -60,17 +61,17 @@ fn view_boxed(
     let ViewBoxSize {
         view: (vx, vy, vw, vh),
         size: (bw, bh),
-    } = view_box_size(&e.style, vb, (w0, h0))?;
+    } = view_box_size(e.style.cascaded(), vb, (w0, h0))?;
     let mut boxed = e.clone();
-    boxed.style.object_view_box = None;
-    boxed.style.width = Some(Len::Px(bw));
-    boxed.style.height = Some(Len::Px(bh));
-    boxed.style.contain_size = Some(false);
-    boxed.style.contain_inline_size = Some(false);
+    boxed.style.cascaded_mut().object_view_box = None;
+    boxed.style.cascaded_mut().width = Some(Len::Px(bw));
+    boxed.style.cascaded_mut().height = Some(Len::Px(bh));
+    boxed.style.cascaded_mut().contain_size = Some(false);
+    boxed.style.cascaded_mut().contain_inline_size = Some(false);
     let (sx, sy) = (bw / vw, bh / vh);
     let picture = gpui::img(ready)
         .preserve_natural_pixels(true)
-        .pixelated(e.style.image_pixelated == Some(true))
+        .pixelated(e.style.cascaded().image_pixelated == Some(true))
         .absolute()
         .left(px(-vx * sx))
         .top(px(-vy * sy))

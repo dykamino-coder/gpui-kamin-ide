@@ -26,7 +26,7 @@ pub(crate) fn static_overlay(
     anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
-    let mut group_style = (*e.style).clone();
+    let mut group_style = e.style.cascaded().clone();
     group_style.mask_image = merged.mask_image.clone();
     merged.position = None;
     merged.abs_static = true;
@@ -38,13 +38,13 @@ pub(crate) fn static_overlay(
     // `probe/absimg2.html`).
     let inner = if e.tag == "svg" {
         let mut copy = e.clone();
-        copy.style.image_orient_none = merged.image_orient_none;
-        copy.style.position = None;
+        copy.style.cascaded_mut().image_orient_none = merged.image_orient_none;
+        copy.style.cascaded_mut().position = None;
         crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if e.tag == "img" {
         let mut copy = e.clone();
-        copy.style.image_orient_none = merged.image_orient_none;
-        copy.style.position = None;
+        copy.style.cascaded_mut().image_orient_none = merged.image_orient_none;
+        copy.style.cascaded_mut().position = None;
         // `clip: rect(...)` и маска у картинки живут в буфере группы:
         // путь наложения идёт мимо `grouped`, и без обёртки картинка
         // рисовалась бы целиком (`clip-rect-v*`).
@@ -62,7 +62,8 @@ pub(crate) fn static_overlay(
     };
     // Transform the actual out-of-flow box before anchoring it; the
     // paragraph overlay has zero advance and is not a transform reference box.
-    let inner = crate::paint::effects::transform::transformed(inner, &e.style, inherited, vcx);
+    let inner =
+        crate::paint::effects::transform::transformed(inner, e.style.cascaded(), inherited, vcx);
     // Сторона, которой коробка вешается на статическую точку. При
     // `direction: ltr` — левый край (текстовый путь так и кладёт,
     // `lines.rs: prepaint_at(origin)`), при `rtl` — ПРАВЫЙ:

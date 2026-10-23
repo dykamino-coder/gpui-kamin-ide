@@ -35,7 +35,7 @@ fn nested_float_keeps_its_paragraph_and_completed_line_probe() {
         .iter()
         .position(|n| {
             matches!(n, Node::Element(c)
-        if c.style.float == Some(-1))
+        if c.style.cascaded().float == Some(-1))
         })
         .unwrap();
     assert_eq!(float, 1);
@@ -115,7 +115,7 @@ fn paint_group_nests_unless_an_absolute_descendant_needs_it() {
         )
     };
     let wm = WritingMode::default();
-    assert!(paint_group(&group(vec![]).style));
+    assert!(paint_group(group(vec![]).style.cascaded()));
     assert!(band_nest_block(&group(vec![]), 16., wm));
     let absolute = Element::synthetic(
         "div",

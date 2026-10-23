@@ -140,8 +140,8 @@ pub(super) fn synth_clip(
     // Каскад сильнее презентационного атрибута; атрибут разбирается тем же
     // `apply_one`, что и CSS-объявление.
     let parsed: crate::style::computed::Computed;
-    let (c, view_box) = if has(&e.style) {
-        (&*e.style, false)
+    let (c, view_box) = if has(e.style.cascaded()) {
+        (&*e.style.cascaded(), false)
     } else {
         let raw = e
             .attr("clip-path")

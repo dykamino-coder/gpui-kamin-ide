@@ -34,7 +34,7 @@ use crate::style::computed::{Display, Position};
 pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
-        let s = &mut el.style;
+        let s = el.style.cascaded_mut();
         match parent {
             Some(p) => {
                 if s.align_self_inherit {
@@ -112,13 +112,13 @@ pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
         let Node::Element(el) = node else { continue };
         grid_table_items_keep_stretch(&mut el.children);
         if !matches!(
-            el.style.display,
+            el.style.cascaded().display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
             continue;
         }
         if !matches!(
-            el.style.align_items,
+            el.style.cascaded().align_items,
             None | Some(crate::style::computed::Align::Stretch)
         ) {
             continue;
@@ -128,18 +128,19 @@ pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
                 continue;
             };
             if matches!(
-                child.style.position,
+                child.style.cascaded().position,
                 Some(Position::Absolute) | Some(Position::Fixed)
             ) {
                 continue;
             }
             let is_table = child.tag == "table"
                 || matches!(
-                    child.style.display,
+                    child.style.cascaded().display,
                     Some(Display::Table) | Some(Display::InlineTable)
                 );
-            if is_table && child.style.align_self.is_none() {
-                child.style.align_self = Some(crate::style::computed::Align::Stretch);
+            if is_table && child.style.cascaded().align_self.is_none() {
+                child.style.cascaded_mut().align_self =
+                    Some(crate::style::computed::Align::Stretch);
             }
         }
     }

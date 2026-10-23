@@ -31,7 +31,7 @@ pub(super) fn first_strong(nodes: &[Node]) -> Option<bool> {
                 let own_dir = e.attr("dir").is_some_and(|v| {
                     matches!(v.to_ascii_lowercase().as_str(), "ltr" | "rtl" | "auto")
                 });
-                if e.style.rtl.is_some() || e.tag == "bdi" || own_dir {
+                if e.style.cascaded().rtl.is_some() || e.tag == "bdi" || own_dir {
                     continue;
                 }
                 if let Some(found) = first_strong(&e.children) {

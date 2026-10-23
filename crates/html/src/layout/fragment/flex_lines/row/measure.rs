@@ -18,15 +18,15 @@ pub(crate) fn main_size(c: &Element, vcx: ValueCx<'_>) -> Option<f32> {
         .and_then(|cx| cx.frames.last())
         .and_then(|f| f.w)
         .or_else(|| {
-            let Some(Len::Px(w)) = c.style.width else {
+            let Some(Len::Px(w)) = c.style.cascaded().width else {
                 return None;
             };
-            let b = c.style.borders();
-            let edges = px_auto_zero(c.style.padding.left)?
-                + px_auto_zero(c.style.padding.right)?
+            let b = c.style.cascaded().borders();
+            let edges = px_auto_zero(c.style.cascaded().padding.left)?
+                + px_auto_zero(c.style.cascaded().padding.right)?
                 + px_auto_zero(b.left)?
                 + px_auto_zero(b.right)?;
-            Some(if c.style.border_box == Some(true) {
+            Some(if c.style.cascaded().border_box == Some(true) {
                 (w - edges).max(0.0)
             } else {
                 w
@@ -51,7 +51,7 @@ pub(crate) fn measure_rows(
     }
     let main = main_size(c, vcx)?;
     let rows = collect_rows(c, main, depth, cx, vcx)?;
-    let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
+    let gap = px_auto_zero(c.style.cascaded().gap.and_then(|g| g.0))?.max(0.0);
     let mut cuts = Vec::new();
     let mut forced = Vec::new();
     let mut solid = Vec::new();
@@ -119,10 +119,14 @@ pub(crate) fn measure_rows(
     );
     let y = stacked.map_or(top, |s| s.0);
     let natural = y + bot;
-    let h = match c.style.height {
+    let h = match c.style.cascaded().height {
         None | Some(Len::Auto) => natural,
         Some(Len::Px(h)) => {
-            let h = crate::layout::fragment::fragment_size::border_size(h, &c.style, top + bot);
+            let h = crate::layout::fragment::fragment_size::border_size(
+                h,
+                c.style.cascaded(),
+                top + bot,
+            );
             if unclamp { h.max(natural) } else { h }
         }
         _ => return None,

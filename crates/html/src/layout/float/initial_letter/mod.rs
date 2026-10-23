@@ -71,7 +71,7 @@ pub(crate) fn initial_letter_float(
     let block_rl = inherited.wm().block_rl();
     let at = nodes.iter().position(|n| match n {
         Node::Text(t) => !blank_text(t),
-        Node::Element(e) => e.style.float.is_none_or(|f| f == 0),
+        Node::Element(e) => e.style.cascaded().float.is_none_or(|f| f == 0),
     });
     let Some(at) = at else {
         return nodes;

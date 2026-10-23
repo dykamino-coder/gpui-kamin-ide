@@ -20,12 +20,12 @@ pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
                 // блока (`css-position/multicol/*-in-multicols`).
                 Node::Element(e)
                     if matches!(
-                        e.style.position,
+                        e.style.cascaded().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ) => {}
                 Node::Element(e) => {
-                    let s = &e.style;
+                    let s = e.style.cascaded();
                     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
                     let b = s.borders();
                     if !e.inline

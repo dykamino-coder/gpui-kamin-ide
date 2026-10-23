@@ -71,7 +71,7 @@ pub(crate) fn measured_push(c: &Element, line_col_w: Option<f32>, col_vert: bool
     !col_vert
         && line_col_w.is_some()
         && !c.marks.paginate
-        && c.style.column_span != Some(true)
+        && c.style.cascaded().column_span != Some(true)
         && clone_dec(c).is_none()
         && ((plain_block_tree(c, 4) && stacked_tree(c, 4)) || table_tree(c, 4) || grid_tree(c, 4))
 }

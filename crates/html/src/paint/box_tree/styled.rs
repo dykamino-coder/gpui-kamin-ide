@@ -19,7 +19,7 @@ use gpui::{ParentElement, Styled, div};
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
 /// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
 pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
-    styled_div_with(e, &e.style, cx)
+    styled_div_with(e, e.style.cascaded(), cx)
 }
 
 pub(crate) fn styled_div_with(
@@ -105,7 +105,7 @@ pub(crate) fn styled_div_with(
     if c.pointer_events_none != Some(true)
         && let Some(h) = &e.hover
     {
-        d = apply_hover(d, h);
+        d = apply_hover(d, h.cascaded());
     }
     let mut d = clamp::apply(d, e, c, cx);
     let empty = !e.children.iter().any(|n| !is_blank(n));

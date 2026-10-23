@@ -32,7 +32,7 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
     if let [Node::Element(html)] = nodes
         && html.tag == "html"
     {
-        html.marks.quirks_fill = html.style.float.is_none_or(|f| f == 0);
+        html.marks.quirks_fill = html.style.cascaded().float.is_none_or(|f| f == 0);
         if let Some(Node::Element(body)) = html
             .children
             .iter_mut()
@@ -41,12 +41,12 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
         {
             // Float layout clears `float` on the box it puts into a row.
             // Preserve the fill exclusion before that tree rewrite.
-            body.marks.quirks_fill = body.style.float.is_none_or(|f| f == 0);
+            body.marks.quirks_fill = body.style.cascaded().float.is_none_or(|f| f == 0);
         }
     }
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
-        let st = &mut e.style;
+        let st = e.style.cascaded_mut();
         let out_of_flow = matches!(
             st.position,
             Some(Position::Absolute) | Some(Position::Fixed)
@@ -98,7 +98,7 @@ pub(super) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors
     use crate::style::computed::inh;
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
-        let s = &mut el.style;
+        let s = el.style.cascaded_mut();
         if s.inherit_bits & inh::COLUMN_RULE_C != 0 {
             s.column_rule_color = parent.0.clone();
             s.column_rule_colors = parent.1.clone();
@@ -127,13 +127,13 @@ pub(super) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors
 pub(super) fn filter_ref_only_empty(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
-        if el.style.filter_ref.is_some()
+        if el.style.cascaded().filter_ref.is_some()
             && el.children.iter().any(|c| match c {
                 Node::Element(_) => true,
                 Node::Text(t) => !t.trim().is_empty(),
             })
         {
-            el.style.filter_ref = None;
+            el.style.cascaded_mut().filter_ref = None;
         }
         filter_ref_only_empty(&mut el.children);
     }

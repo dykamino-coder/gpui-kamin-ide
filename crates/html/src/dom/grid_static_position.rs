@@ -17,8 +17,12 @@ pub(super) fn adjust(nodes: &mut [Node]) {
 fn walk(nodes: &mut [Node], containing_grid: bool) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
-        let grid = matches!(el.style.display, Some(Display::Grid | Display::InlineGrid));
-        let establishes_cb = crate::style::computed::box_predicates::establishes_cb(&el.style);
+        let grid = matches!(
+            el.style.cascaded().display,
+            Some(Display::Grid | Display::InlineGrid)
+        );
+        let establishes_cb =
+            crate::style::computed::box_predicates::establishes_cb(el.style.cascaded());
         walk(
             &mut el.children,
             if establishes_cb {
@@ -37,37 +41,43 @@ fn walk(nodes: &mut [Node], containing_grid: bool) {
             continue;
         }
         let static_grid = grid && !establishes_cb && !containing_grid;
-        let pad = el.style.padding;
+        let pad = el.style.cascaded().padding;
         for child in el.children.iter_mut() {
             let Node::Element(child) = child else {
                 continue;
             };
-            if child.style.position != Some(Position::Absolute) {
+            if child.style.cascaded().position != Some(Position::Absolute) {
                 continue;
             }
             // CSS Grid 2 sections abspos-items/static-position: placement lines
             // apply only to a grid containing block. Retain them when an outer
             // grid is that block; this pass must not discard its placement.
             if static_grid {
-                child.style.grid_col = None;
-                child.style.grid_row = None;
+                child.style.cascaded_mut().grid_col = None;
+                child.style.cascaded_mut().grid_row = None;
             }
             // Элемент с заданными линиями стоит не на статической позиции, а в
             // СВОЕЙ области сетки — поля туда добавлять нечего.
-            if child.style.grid_col.is_some() || child.style.grid_row.is_some() {
+            if child.style.cascaded().grid_col.is_some()
+                || child.style.cascaded().grid_row.is_some()
+            {
                 continue;
             }
             // `left: auto` — это ОТСУТСТВИЕ края, а не заданный край: именно
             // при `auto` с обеих сторон элемент стоит на статической позиции.
             let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
-            let inset = child.style.inset;
+            let inset = child.style.cascaded().inset;
             if auto(inset.left) && auto(inset.right) {
-                child.style.margin.left = add_len(child.style.margin.left, pad.left);
-                child.style.margin.right = add_len(child.style.margin.right, pad.right);
+                child.style.cascaded_mut().margin.left =
+                    add_len(child.style.cascaded().margin.left, pad.left);
+                child.style.cascaded_mut().margin.right =
+                    add_len(child.style.cascaded().margin.right, pad.right);
             }
             if auto(inset.top) && auto(inset.bottom) {
-                child.style.margin.top = add_len(child.style.margin.top, pad.top);
-                child.style.margin.bottom = add_len(child.style.margin.bottom, pad.bottom);
+                child.style.cascaded_mut().margin.top =
+                    add_len(child.style.cascaded().margin.top, pad.top);
+                child.style.cascaded_mut().margin.bottom =
+                    add_len(child.style.cascaded().margin.bottom, pad.bottom);
             }
         }
     }

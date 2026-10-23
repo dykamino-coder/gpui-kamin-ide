@@ -69,7 +69,7 @@ pub(crate) fn block_like_float(c: &Computed) -> bool {
 /// чтобы резать коробку по колонкам вместо отказа от всей стопки
 /// (`floats-clear-multicol-*`: флоаты 250 в колонках по 100).
 pub(super) fn float_only_box(c: &Element) -> Option<f32> {
-    if c.inline || !matches!(c.style.display, None | Some(Display::Block)) {
+    if c.inline || !matches!(c.style.cascaded().display, None | Some(Display::Block)) {
         return None;
     }
     let (mut left, mut right, mut tall) = (0u8, 0u8, 0.0f32);
@@ -77,26 +77,27 @@ pub(super) fn float_only_box(c: &Element) -> Option<f32> {
         let f = match n {
             Node::Text(t) if blank_text(t) => continue,
             Node::Element(f)
-                if f.style.float.is_some_and(|s| s != 0) && !block_like_float(&f.style) =>
+                if f.style.cascaded().float.is_some_and(|s| s != 0)
+                    && !block_like_float(f.style.cascaded()) =>
             {
                 f
             }
             _ => return None,
         };
-        if !matches!(f.style.width, Some(Len::Px(_)))
-            || !matches!(f.style.height, Some(Len::Px(_)))
-            || f.style.clear.is_some()
-            || f.style.position.is_some()
+        if !matches!(f.style.cascaded().width, Some(Len::Px(_)))
+            || !matches!(f.style.cascaded().height, Some(Len::Px(_)))
+            || f.style.cascaded().clear.is_some()
+            || f.style.cascaded().position.is_some()
             || !f.children.iter().all(is_blank)
         {
             return None;
         }
-        if f.style.float.is_some_and(|s| s < 0) {
+        if f.style.cascaded().float.is_some_and(|s| s < 0) {
             left += 1;
         } else {
             right += 1;
         }
-        tall = tall.max(px_margin_box(&f.style)?.1);
+        tall = tall.max(px_margin_box(f.style.cascaded())?.1);
     }
     (left + right > 0 && left <= 1 && right <= 1).then_some(tall)
 }
@@ -107,7 +108,7 @@ pub(super) fn has_float(n: &Element, depth: u8) -> bool {
     }
     n.children.iter().any(|k| match k {
         Node::Element(e) => {
-            (e.style.float.unwrap_or(0) != 0 && !block_like_float(&e.style))
+            (e.style.cascaded().float.unwrap_or(0) != 0 && !block_like_float(e.style.cascaded()))
                 || has_float(e, depth - 1)
         }
         _ => false,

@@ -49,8 +49,8 @@ pub(super) fn collect_element(
         let join = inherited.ruby_suppress_breaks
             && e.children.is_empty()
             && !crate::layout::box_kind::replaced_tag(e)
-            && matches!(e.style.width, None | Some(Len::Px(0.0)))
-            && matches!(e.style.height, None | Some(Len::Px(0.0)));
+            && matches!(e.style.cascaded().width, None | Some(Len::Px(0.0)))
+            && matches!(e.style.cascaded().height, None | Some(Len::Px(0.0)));
         let joiner = || Piece::Text {
             text: "\u{2060}".into(),
             style: inherited.clone(),
@@ -83,12 +83,12 @@ pub(super) fn collect_element(
     }
     let (mut merged, painted_bg) = element_style(e, inherited, vcx);
     let atomic = matches!(
-        e.style.display,
+        e.style.cascaded().display,
         Some(crate::style::computed::Display::InlineBlock)
             | Some(crate::style::computed::Display::InlineFlex)
             | Some(crate::style::computed::Display::InlineGrid)
             | Some(crate::style::computed::Display::InlineTable)
-    ) && e.style.inline_display != Some(true);
+    ) && e.style.cascaded().inline_display != Some(true);
     // Ограничитель атомарной коробки — служебный знак, а не текст
     // документа: замена нулевого пробела идеографическим его
     // касаться не должна, иначе вокруг `inline-block` появляется
@@ -170,7 +170,7 @@ pub(super) fn collect_element(
     // Своя сторона письма у куска — это знаки управления по
     // Юникоду: разбор двунаправленности их и ждёт, а рисовать их
     // не надо, ширины у них нет.
-    let (open, close) = bidi_marks(&e.style, &merged);
+    let (open, close) = bidi_marks(e.style.cascaded(), &merged);
     // Zero-length markers bound the box content between its edge
     // spacers (`box_extents`); they add no text.
     let box_marker = |start: bool| Piece::Text {
@@ -195,7 +195,7 @@ pub(super) fn collect_element(
     // Относительный сдвиг строчного куска несёт и его потомков вне
     // потока: абсолютный элемент внутри `position: relative`
     // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
-    let cb_here = establishes_cb(&e.style);
+    let cb_here = establishes_cb(e.style.cascaded());
     if cb_here {
         cx.inline_cb_depth += 1;
     }
@@ -209,7 +209,11 @@ pub(super) fn collect_element(
         kids
     };
     let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, vcx);
-    out.extend(shift_overlays(kids, &e.style, merged.wm().turned()));
+    out.extend(shift_overlays(
+        kids,
+        e.style.cascaded(),
+        merged.wm().turned(),
+    ));
     if let Some(mark) = close {
         out.push(Piece::Text {
             text: mark.to_string(),

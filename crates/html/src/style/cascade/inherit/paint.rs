@@ -8,6 +8,7 @@ mod gradient_filter;
 
 pub(super) fn inherit_paint(
     parent: &Computed,
+    declared: &Computed,
     own: &Computed,
     c: &mut Computed,
     paint_filter: bool,
@@ -27,7 +28,7 @@ pub(super) fn inherit_paint(
         if own.background.is_some() {
             c.background = c.background.map(|col| f.apply(col));
         }
-        if own.declares_color() || own.filter.is_some() && parent.color.is_none() {
+        if declared.declares_color() || own.filter.is_some() && parent.color.is_none() {
             c.color = c.color.map(|col| f.apply(col));
         }
         // `currentcolor` сторон решится уже окрашенным цветом текста.
@@ -114,12 +115,12 @@ pub(super) fn inherit_paint(
     } else if parent.text_clip_fill.is_some() && out_of_flow {
         c.text_clip_fill = None;
         c.text_clip_raw = None;
-        if !own.declares_color() {
+        if !declared.declares_color() {
             c.color = parent.text_clip_raw;
         }
     } else if let Some(fill) = parent.text_clip_fill {
         c.text_clip_fill = Some(fill);
-        if own.declares_color() {
+        if declared.declares_color() {
             c.text_clip_raw = c.color;
             c.color = Some(crate::style::values::composite::over(
                 c.color.unwrap_or(black),

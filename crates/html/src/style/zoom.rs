@@ -65,27 +65,32 @@ pub fn resolve(nodes: &mut [Node]) {
 fn walk(nodes: &mut [Node], parent: Option<&Computed>, parent_eff: f32, carried: Carried) {
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
-        let own = e.style.zoom.unwrap_or(1.0);
+        let own = e.style.cascaded().zoom.unwrap_or(1.0);
         let eff = parent_eff * own;
         let zoomed = (eff - 1.0).abs() > f32::EPSILON;
         // `zoom: 2` внутри `zoom: .5` даёт eff = 1, но унаследованные точки
         // всё равно надо домножить на свой множитель — гейт по обоим.
         if zoomed || (own - 1.0).abs() > f32::EPSILON {
-            e.style.zoom_eff = zoomed.then_some(eff);
-            apply(&mut e.style, parent, eff, own, &carried);
+            e.style.cascaded_mut().zoom_eff = zoomed.then_some(eff);
+            apply(e.style.cascaded_mut(), parent, eff, own, &carried);
         }
         let mut below = carried.clone();
-        remember(&e.style, &mut below);
+        remember(e.style.cascaded(), &mut below);
         // `<foreignObject>` content is laid out in SVG user units and magnified
         // with the SVG (its raster scale carries the zoom), so its descendants
         // start unzoomed. Blink reaches the same used size by zooming them and
         // putting the inverse into `LayoutSVGForeignObject::
         // LocalToSVGParentTransform` (`svg-foreignObject-font-size`).
         if e.tag.eq_ignore_ascii_case("foreignObject") {
-            walk(&mut e.children, Some(&e.style), 1.0, Carried::default());
+            walk(
+                &mut e.children,
+                Some(e.style.cascaded()),
+                1.0,
+                Carried::default(),
+            );
             continue;
         }
-        walk(&mut e.children, Some(&e.style), eff, below);
+        walk(&mut e.children, Some(e.style.cascaded()), eff, below);
     }
 }
 

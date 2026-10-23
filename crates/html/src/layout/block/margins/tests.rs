@@ -33,16 +33,17 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let Node::Element(block) = &collapsed[0] else {
             panic!("block")
         };
-        assert_eq!(block.style.height, height);
+        assert_eq!(block.style.cascaded().height, height);
         assert!(block.marks.auto_zero_height);
-        let painted = used_style(block, &block.style).unwrap_or_else(|| (*block.style).clone());
+        let painted = used_style(block, block.style.cascaded())
+            .unwrap_or_else(|| block.style.cascaded().clone());
         assert_eq!(painted.height, Some(Len::Px(0.0)));
         let mut child = Computed {
             writing_mode: Some(WritingModeKw::new(true, false, false)),
             floated_box: true,
             ..Default::default()
         };
-        orthogonal_inline::resolve(&mut child, &block.style, (800.0, 600.0), false);
+        orthogonal_inline::resolve(&mut child, block.style.cascaded(), (800.0, 600.0), false);
         let available = child.orthogonal_inline.expect("root constraint").available;
         assert_eq!(
             available,

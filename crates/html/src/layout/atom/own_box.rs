@@ -24,15 +24,17 @@ pub(super) fn own_box_atom(
     merged.resolve_viewport(opts.viewport, vcx);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
-    if e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true) {
+    if e.style.cascaded().display == Some(Display::InlineBlock)
+        && e.style.cascaded().inline_display != Some(true)
+    {
         pseudo_line_layers::install(e, &mut merged, vcx);
     }
     let mut box_ = opts.cx.build.styled_box(e, &merged, &opts.cx);
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line
     // synthesize an alphabetic baseline at the atomic margin box's under edge.
-    if e.style.display == Some(Display::InlineBlock)
-        && e.style.inline_display != Some(true)
+    if e.style.cascaded().display == Some(Display::InlineBlock)
+        && e.style.cascaded().inline_display != Some(true)
         && merged.wm().vertical()
         && !inherited.wm().vertical()
         && !inherited.wm().turned()
@@ -49,7 +51,8 @@ pub(super) fn own_box_atom(
     // …и только у НАСТОЯЩЕГО строчного: у `inline-block` высота идёт от
     // содержимого, и подставленный кегль строки накрывал детей-блоков
     // (`border-left-width-applies-to-012`: квадрат 96 выходил 19).
-    let genuine_inline = e.style.display.is_none() || e.style.inline_display == Some(true);
+    let genuine_inline =
+        e.style.cascaded().display.is_none() || e.style.cascaded().inline_display == Some(true);
     if genuine_inline
         && merged.height.is_none()
         && !has_text(&e.children)
@@ -61,7 +64,7 @@ pub(super) fn own_box_atom(
     // (CSS 2.1 §10.8.1) — как у строчной таблицы выше. Без этого
     // `inline-block` с `vertical-align: top` сидел на базовой линии
     // и в высокой строке уезжал вниз.
-    let self_align = match e.style.vertical_align {
+    let self_align = match e.style.cascaded().vertical_align {
         Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
         Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
         Some(Align::Center) => Some(gpui::AlignItems::Center),
@@ -81,11 +84,11 @@ pub(super) fn own_box_atom(
     // колонками справа налево (`vertical-rl`) или слева направо
     // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
     // `element()`, поэтому ось ставится здесь.
-    if e.style.display == Some(Display::InlineBlock)
+    if e.style.cascaded().display == Some(Display::InlineBlock)
         && merged.wm().vertical()
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-                if !k.inline || matches!(k.style.display, Some(Display::Block)))
+                if !k.inline || matches!(k.style.cascaded().display, Some(Display::Block)))
         })
     {
         // Предел строчной оси детей — собственная высота коробки (как
@@ -100,13 +103,13 @@ pub(super) fn own_box_atom(
             Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
-        if let Some(h) = px_of(e.style.height) {
-            let b = e.style.borders();
-            let edges = if e.style.border_box == Some(true) {
+        if let Some(h) = px_of(e.style.cascaded().height) {
+            let b = e.style.cascaded().borders();
+            let edges = if e.style.cascaded().border_box == Some(true) {
                 px_of(b.top).unwrap_or(0.0)
                     + px_of(b.bottom).unwrap_or(0.0)
-                    + px_of(e.style.padding.top).unwrap_or(0.0)
-                    + px_of(e.style.padding.bottom).unwrap_or(0.0)
+                    + px_of(e.style.cascaded().padding.top).unwrap_or(0.0)
+                    + px_of(e.style.cascaded().padding.bottom).unwrap_or(0.0)
             } else {
                 0.0
             };
@@ -137,7 +140,7 @@ pub(super) fn own_box_atom(
     // Only `inline-block`: table parts reach this path too, and their
     // absolute children keep the table's own handling
     // (`position-relative-table-*-absolute-child`).
-    let cb_layer = e.style.display == Some(Display::InlineBlock)
+    let cb_layer = e.style.cascaded().display == Some(Display::InlineBlock)
         && !genuine_inline
         && crate::text::inline::establishes_cb(&merged);
     let cb_layer = cb_layer.then(|| {
@@ -156,6 +159,6 @@ pub(super) fn own_box_atom(
     }
     Some(opts.cx.build.effects(
         box_.children(kids).into_any_element(),
-        Effect::group(&e.style, vcx),
+        Effect::group(e.style.cascaded(), vcx),
     ))
 }

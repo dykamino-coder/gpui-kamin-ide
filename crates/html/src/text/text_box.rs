@@ -49,10 +49,10 @@ pub(crate) fn text_box_line_style(
             Node::Text(_) => return Some((inherited.clone(), owner)),
             Node::Element(e) => e,
         };
-        if e.style.display == Some(Display::None) || out_of_flow(&e.style) {
+        if e.style.cascaded().display == Some(Display::None) || out_of_flow(e.style.cascaded()) {
             continue;
         }
-        if e.style.display == Some(Display::Contents) {
+        if e.style.cascaded().display == Some(Display::Contents) {
             return text_box_line_style(
                 &e.children,
                 &box_style(inherited, &e.style, vcx),
@@ -65,7 +65,7 @@ pub(crate) fn text_box_line_style(
             // Через гибкий, сеточный и табличный контекст свойство не
             // распространяется (css-inline-3 §4.2, примечание).
             if matches!(
-                e.style.display,
+                e.style.cascaded().display,
                 Some(Display::Flex)
                     | Some(Display::Grid)
                     | Some(Display::Table)

@@ -36,7 +36,7 @@ pub(crate) fn vertical_paragraph(
     // стопка обязана строиться так же, как при флаге на контейнере.
     let kids_upright = !nodes.is_empty()
         && nodes.iter().all(|n| match n {
-            Node::Element(e) => e.style.wm().upright(),
+            Node::Element(e) => e.style.cascaded().wm().upright(),
             Node::Text(t) => t.trim().is_empty(),
         });
     let upright = (inherited.wm().upright() || kids_upright)

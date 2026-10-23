@@ -1,7 +1,7 @@
 //! Вычисленные MathML style/depth и математическая шкала размеров из CSS Fonts.
 use super::Computed;
 use crate::{style::values::value::Len, text::fonts};
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Depth {
     Absolute(i32),
     Add(i32),

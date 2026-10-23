@@ -28,35 +28,37 @@ pub(crate) fn refusal(
     // Flex gaps adjoining a break are truncated (Blink
     // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
     fn gapped(e: &Element, depth: u8) -> bool {
-        (matches!(e.style.display, Some(Display::Flex) | Some(Display::Grid))
-            && e.style.gap.is_some()
-            && super::row_gap(&e.style).is_none())
+        (matches!(
+            e.style.cascaded().display,
+            Some(Display::Flex) | Some(Display::Grid)
+        ) && e.style.cascaded().gap.is_some()
+            && super::row_gap(e.style.cascaded()).is_none())
             || (depth > 0
                 && e.children.iter().any(
                     |n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k, depth - 1)),
                 ))
     }
     fn has_flex(e: &Element, depth: u8) -> bool {
-        e.style.display == Some(Display::Flex)
+        e.style.cascaded().display == Some(Display::Flex)
             || (depth > 0
                 && e.children.iter().any(
                     |n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k, depth - 1)),
                 ))
     }
     if c.inline
-        || out_of_flow(&c.style)
+        || out_of_flow(c.style.cascaded())
         || !matches!(
-            c.style.display,
+            c.style.cascaded().display,
             Some(Display::Block) | Some(Display::Flex) | None
         )
     {
         return Some("display");
     }
     if monolith_box(c)
-        || crate::layout::multicol::spanner::multicol_container(&c.style)
-        || !crate::layout::page::paged::visible_overflow(&c.style)
-        || c.style.bdb_clone
-        || c.style.column_span == Some(true)
+        || crate::layout::multicol::spanner::multicol_container(c.style.cascaded())
+        || !crate::layout::page::paged::visible_overflow(c.style.cascaded())
+        || c.style.cascaded().bdb_clone
+        || c.style.cascaded().column_span == Some(true)
     {
         return Some("box");
     }

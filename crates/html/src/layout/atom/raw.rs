@@ -36,12 +36,12 @@ pub(super) fn atom_element_raw(
     // мимо сторожа общего пути. `display: inline` после каскада — это
     // `InlineBlock` с `inline_display` — атомом не является.
     let clamp_bfc = matches!(
-        e.style.display,
+        e.style.cascaded().display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) && e.style.inline_display != Some(true);
+    ) && e.style.cascaded().inline_display != Some(true);
     let opts = &*opts.inner(|cx| {
         if clamp_bfc {
             cx.clamp_build = cx.clamp_build.bfc();
@@ -58,7 +58,7 @@ pub(super) fn atom_element_raw(
         return Some(
             opts.cx
                 .build
-                .effects(el, Effect::transform(&e.style, inherited, vcx)),
+                .effects(el, Effect::transform(e.style.cascaded(), inherited, vcx)),
         );
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
@@ -72,7 +72,7 @@ pub(super) fn atom_element_raw(
     // оси перестаёт считаться от содержащего блока
     // (`absolute-replaced-height-*`, `absolute-replaced-width-*`).
     // Вернуть можно только вместе с ненулевой распоркой по занятой оси.
-    if at_static_position(&e.style) {
+    if at_static_position(e.style.cascaded()) {
         return static_position_atom(inherited, e, opts);
     }
     // Абсолютный элемент С заданными краями считается от ближайшего
@@ -81,14 +81,18 @@ pub(super) fn atom_element_raw(
     // содержащим блоком стала бы она сама, и края отсчитывались бы от неё.
     // Пока он был обычной коробкой куска, строка росла под его высоту.
     if matches!(
-        e.style.position,
+        e.style.cascaded().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(opts.cx.build.effects(math, Effect::group(&e.style, vcx)));
+        return Some(
+            opts.cx
+                .build
+                .effects(math, Effect::group(e.style.cascaded(), vcx)),
+        );
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
@@ -138,7 +142,9 @@ pub(super) fn atom_element_raw(
             let url = e.attr("data").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
             if object_is_document(e) {
-                copy.style.resolve_em(atom_base_font(inherited, opts), vcx);
+                copy.style
+                    .cascaded_mut()
+                    .resolve_em(atom_base_font(inherited, opts), vcx);
                 return iframe(&copy, inherited, opts);
             }
             Some(opts.cx.build.replaced(
@@ -168,7 +174,7 @@ pub(super) fn atom_element_raw(
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
         _ if has_own_box(
-            &e.style,
+            e.style.cascaded(),
             match inherited.font_size {
                 Some(Len::Px(v)) => v,
                 _ => 16.0,
@@ -178,7 +184,7 @@ pub(super) fn atom_element_raw(
             // css-writing-modes-4 §3.1 «its display computes instead to
             // inline-block»: коробка со своими размерами
             // (`different-block-flow-dir-001/002`).
-            || (e.style.writing_mode.is_some() && e.style.vertical_decl() != inherited.vertical_decl()) =>
+            || (e.style.cascaded().writing_mode.is_some() && e.style.cascaded().vertical_decl() != inherited.vertical_decl()) =>
         {
             own_box_atom(inherited, e, opts)
         }
@@ -229,11 +235,11 @@ pub(super) fn atom_element_raw(
     };
     // CSS Borders 4 shapes replaced content together with its CSS box.
     built.map(|el| {
-        if crate::layout::box_kind::replaced_tag(e) && e.style.corner_shaped() {
+        if crate::layout::box_kind::replaced_tag(e) && e.style.cascaded().corner_shaped() {
             opts.cx.build.effects(
                 el,
                 Effect::GroupReplaced {
-                    style: &e.style,
+                    style: e.style.cascaded(),
                     vcx,
                 },
             )

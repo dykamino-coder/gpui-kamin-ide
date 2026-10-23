@@ -26,25 +26,25 @@ pub(crate) fn row_plan(
     // `remaining_content_block_size_`, issue 11754 вариант 2);
     // `column-wrap: auto` = `wrap` при заданном
     // `column-height`. `row-gap: normal` в колонках — 1em (§rg).
-    let col_h = match e.style.column_height {
+    let col_h = match e.style.cascaded().column_height {
         Some(Len::Px(h)) if h >= 0.0 => Some(h),
         _ => None,
     };
     // Блочный размер коробки: в вертикальном письме — ширина.
     let box_h = match if col_vert {
-        e.style.width
+        e.style.cascaded().width
     } else {
-        e.style.height
+        e.style.cascaded().height
     } {
         Some(Len::Px(h)) if h > 0.0 => Some(h),
         _ => None,
     };
-    let wrap = e.style.column_wrap.unwrap_or(col_h.is_some());
-    let em = match e.style.font_size {
+    let wrap = e.style.cascaded().column_wrap.unwrap_or(col_h.is_some());
+    let em = match e.style.cascaded().font_size {
         Some(Len::Px(size)) => size,
         _ => opts.base_size(),
     };
-    let row_gap = match e.style.gap.and_then(|g| g.0) {
+    let row_gap = match e.style.cascaded().gap.and_then(|g| g.0) {
         Some(Len::Px(v)) => v.max(0.0),
         Some(Len::Em(k)) => k * em,
         _ => em,
@@ -74,9 +74,9 @@ pub(crate) fn row_plan(
     // точках (доля, `em`) — потолка нет, как до P5: ниже используемой
     // высоты резать нельзя, а её здесь не знаем.
     let (max_block, min_block) = if col_vert {
-        (e.style.max_width, e.style.min_width)
+        (e.style.cascaded().max_width, e.style.cascaded().min_width)
     } else {
-        (e.style.max_height, e.style.min_height)
+        (e.style.cascaded().max_height, e.style.cascaded().min_height)
     };
     let cap_h = box_h.and_then(|h| {
         let h = match max_block {
@@ -99,7 +99,7 @@ pub(crate) fn row_plan(
     let nest_phase = outer_row.map_or(0.0, |r| r.1);
     let nest_rows = outer_row
         .map(|r| r.0)
-        .filter(|_| col_h.is_none() && e.style.column_wrap.is_none() && !col_vert);
+        .filter(|_| col_h.is_none() && e.style.cascaded().column_wrap.is_none() && !col_vert);
     let rows = match nest_rows {
         Some(hh) => Some(crate::layout::fragment::types::Rows {
             h: Some(hh),
@@ -110,7 +110,9 @@ pub(crate) fn row_plan(
         None => rows,
     };
     let rows = rows.or_else(|| {
-        (cap_h.is_some() && e.style.column_fill_auto != Some(true) && !opts.frag.in_stack_copy)
+        (cap_h.is_some()
+            && e.style.cascaded().column_fill_auto != Some(true)
+            && !opts.frag.in_stack_copy)
             .then_some(crate::layout::fragment::types::Rows {
                 h: cap_h,
                 gap: row_gap,

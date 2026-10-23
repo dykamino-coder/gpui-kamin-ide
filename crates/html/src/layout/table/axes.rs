@@ -40,10 +40,10 @@ impl Axes {
 pub(super) fn inherited(e: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Option<Element> {
     let style = crate::style::cascade::materialize::box_style(parent, &e.style, vcx);
     if (
-        e.style.writing_mode,
-        e.style.flat_mode,
-        e.style.rtl,
-        e.style.text_orientation,
+        e.style.cascaded().writing_mode,
+        e.style.cascaded().flat_mode,
+        e.style.cascaded().rtl,
+        e.style.cascaded().text_orientation,
     ) == (
         style.writing_mode,
         style.flat_mode,
@@ -53,10 +53,10 @@ pub(super) fn inherited(e: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Opt
         return None;
     }
     let mut copy = e.clone();
-    copy.style.writing_mode = style.writing_mode;
-    copy.style.flat_mode = style.flat_mode;
-    copy.style.rtl = style.rtl;
-    copy.style.text_orientation = style.text_orientation;
+    copy.style.cascaded_mut().writing_mode = style.writing_mode;
+    copy.style.cascaded_mut().flat_mode = style.flat_mode;
+    copy.style.cascaded_mut().rtl = style.rtl;
+    copy.style.cascaded_mut().text_orientation = style.text_orientation;
     Some(copy)
 }
 

@@ -15,8 +15,8 @@ pub(crate) fn empty(e: &Element) -> bool {
     match e.tag.as_str() {
         "video" => e.attr("poster").is_none(),
         "embed" => e.attr("src").is_none() && e.attr("type").is_some(),
-        "audio" => e.style.contains_width() || e.style.contains_height(),
-        "object" => e.attr("data").is_none() && e.style.contain_size == Some(true),
+        "audio" => e.style.cascaded().contains_width() || e.style.cascaded().contains_height(),
+        "object" => e.attr("data").is_none() && e.style.cascaded().contain_size == Some(true),
         _ => false,
     }
 }
@@ -37,14 +37,14 @@ pub(crate) fn resolve(
     let normalized = replaced_used_style::normalize(e, avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let mut copy = image::pct_height_to_px(e, inherited);
-    copy.style.resolve_viewport(viewport, vcx);
+    copy.style.cascaded_mut().resolve_viewport(viewport, vcx);
     // A media resource is not an image source. Its unavailable natural size
     // must not trigger image decoding or a broken-image text placeholder.
     copy.attrs.retain(|(name, _)| name != "src");
-    if copy.style.contain_size == Some(true) {
+    if copy.style.cascaded().contain_size == Some(true) {
         return Some(copy);
     }
-    let s = &mut copy.style;
+    let s = copy.style.cascaded_mut();
     let ratio = s
         .aspect_ratio
         .or(s.aspect_ratio_auto)
@@ -128,10 +128,10 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.height = Some(Len::Px(40.0));
+        e.style.cascaded_mut().height = Some(Len::Px(40.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.width, Some(Len::Px(300.0)));
-        assert_eq!(sized.style.height, Some(Len::Px(40.0)));
+        assert_eq!(sized.style.cascaded().width, Some(Len::Px(300.0)));
+        assert_eq!(sized.style.cascaded().height, Some(Len::Px(40.0)));
     }
 
     #[test]
@@ -139,12 +139,12 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.attr_width = Some(Len::Px(100.0));
-        e.style.attr_height = Some(Len::Px(100.0));
-        e.style.max_width = Some(Len::Px(100.0));
+        e.style.cascaded_mut().attr_width = Some(Len::Px(100.0));
+        e.style.cascaded_mut().attr_height = Some(Len::Px(100.0));
+        e.style.cascaded_mut().max_width = Some(Len::Px(100.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.width, Some(Len::Px(100.0)));
-        assert_eq!(sized.style.height, Some(Len::Px(100.0)));
+        assert_eq!(sized.style.cascaded().width, Some(Len::Px(100.0)));
+        assert_eq!(sized.style.cascaded().height, Some(Len::Px(100.0)));
     }
 
     #[test]
@@ -152,9 +152,9 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.contain_size = Some(true);
+        e.style.cascaded_mut().contain_size = Some(true);
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.width, None);
-        assert_eq!(sized.style.height, None);
+        assert_eq!(sized.style.cascaded().width, None);
+        assert_eq!(sized.style.cascaded().height, None);
     }
 }

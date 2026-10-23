@@ -129,7 +129,7 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 cur.levels.push(RubyLevel {
                     units,
                     spanning,
-                    container: Some((*k.style).clone()),
+                    container: Some(k.style.cascaded().clone()),
                 });
             }
             Kind::Blank => match (neighbour(i, -1), neighbour(i, 1)) {

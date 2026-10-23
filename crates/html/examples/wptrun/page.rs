@@ -65,7 +65,8 @@ impl Render for Page {
                         Some(kamin_html::value::Len::Px(v)) => *v,
                         _ => 0.0,
                     };
-                    let m = &e.style.margin;
+                    let style = e.style.computed();
+                    let m = &style.margin;
                     [px(&m.top), px(&m.right), px(&m.bottom), px(&m.left)]
                 })
                 .unwrap_or([0.0; 4]);
@@ -83,7 +84,7 @@ impl Render for Page {
                     _ => None,
                 })
                 .map(|e| {
-                    let wm = e.style.wm();
+                    let wm = e.style.computed().wm();
                     (wm.vertical(), wm.block_rl(), wm.rtl())
                 })
                 .unwrap_or((false, false, false));

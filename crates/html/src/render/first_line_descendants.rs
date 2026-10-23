@@ -21,17 +21,17 @@ pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     for node in &mut nodes {
         match node {
             Node::Text(t) if blank_text(t) => continue,
-            Node::Element(e) if out_of_flow(&e.style) => continue,
+            Node::Element(e) if out_of_flow(e.style.cascaded()) => continue,
             Node::Element(e)
                 if block_level_in_flow(e)
                     && !table_box(e)
                     && matches!(
-                        e.style.display,
+                        e.style.cascaded().display,
                         None | Some(Display::Block | Display::ListItem)
                     )
                     && e.first_line.is_none() =>
             {
-                e.style.first_line_own = Some(Box::new(first.clone()));
+                e.style.cascaded_mut().first_line_own = Some(Box::new(first.clone()));
                 e.first_line = Some(first.clone().into());
             }
             _ => {}

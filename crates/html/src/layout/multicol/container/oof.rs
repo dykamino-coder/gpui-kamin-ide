@@ -29,13 +29,15 @@ pub(super) fn place_oof_statics(
         // в `blocks()`.
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (
-                edge_set(oof.style.inset.left) || edge_set(oof.style.inset.right),
-                edge_set(oof.style.inset.top) || edge_set(oof.style.inset.bottom),
+                edge_set(oof.style.cascaded().inset.left)
+                    || edge_set(oof.style.cascaded().inset.right),
+                edge_set(oof.style.cascaded().inset.top)
+                    || edge_set(oof.style.cascaded().inset.bottom),
             ),
             rtl: merged.wm().rtl(),
             vertical: merged.wm().vertical(),
             vertical_rl: merged.wm().block_rl(),
-            own_vertical: oof.style.wm().vertical(),
+            own_vertical: oof.style.cascaded().wm().vertical(),
             ..Default::default()
         });
         let probe = crate::layout::fragment::types::StackChild {
@@ -128,7 +130,7 @@ pub(super) fn column_stack_div(
             rule,
             rows,
             gap_items.clone(),
-            intrinsic_inline_size(&e.style, inherited).then_some({
+            intrinsic_inline_size(e.style.cascaded(), inherited).then_some({
                 crate::layout::fragment::types::Intrinsic(match column_width {
                     Some(Len::Px(w)) if w > 0.0 => Some(w),
                     _ => None,
@@ -143,8 +145,8 @@ pub(super) fn column_stack_div(
                 && rows.is_none()
                 && nest_rows.is_none()
                 && !col_vert
-                && e.style.column_height.is_none()
-                && matches!(e.style.height, None | Some(Len::Auto)),
+                && e.style.cascaded().column_height.is_none()
+                && matches!(e.style.cascaded().height, None | Some(Len::Auto)),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
         // Линейки последней линии — до низа содержимого коробки
@@ -155,7 +157,7 @@ pub(super) fn column_stack_div(
                 if h > 0.0
                     && !col_vert
                     && nest_rows.is_none()
-                    && e.style.border_box != Some(true)
+                    && e.style.cascaded().border_box != Some(true)
                     && !e
                         .children
                         .iter()
@@ -179,8 +181,8 @@ pub(super) fn finish_column_stack(
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
 ) -> AnyElement {
-    let cb_h: Option<f32> = (e.style.position.is_some()
-        && e.style.position != Some(crate::style::computed::Position::Static)
+    let cb_h: Option<f32> = (e.style.cascaded().position.is_some()
+        && e.style.cascaded().position != Some(crate::style::computed::Position::Static)
         && !col_vert)
         .then(|| {
             let px = |l: Option<Len>| match l {
@@ -188,11 +190,13 @@ pub(super) fn finish_column_stack(
                 Some(Len::Px(v)) => Some(v),
                 _ => None,
             };
-            let b = e.style.borders();
-            let pad = px(e.style.padding.top)? + px(e.style.padding.bottom)?;
+            let b = e.style.cascaded().borders();
+            let pad = px(e.style.cascaded().padding.top)? + px(e.style.cascaded().padding.bottom)?;
             let bor = px(b.top)? + px(b.bottom)?;
-            match e.style.height {
-                Some(Len::Px(h)) if e.style.border_box == Some(true) => Some((h - bor).max(pad)),
+            match e.style.cascaded().height {
+                Some(Len::Px(h)) if e.style.cascaded().border_box == Some(true) => {
+                    Some((h - bor).max(pad))
+                }
                 Some(Len::Px(h)) => Some(h.max(0.0) + pad),
                 _ => None,
             }
@@ -201,9 +205,9 @@ pub(super) fn finish_column_stack(
     for (i, (_, oof)) in oof_static.iter().enumerate() {
         let mut oof = oof.clone();
         if let Some(ch) = cb_h
-            && oof.style.position == Some(crate::style::computed::Position::Absolute)
+            && oof.style.cascaded().position == Some(crate::style::computed::Position::Absolute)
         {
-            let style = &mut *oof.style;
+            let style = &mut *oof.style.cascaded_mut();
             for l in [
                 &mut style.height,
                 &mut style.min_height,

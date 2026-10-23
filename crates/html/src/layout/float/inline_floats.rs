@@ -21,7 +21,7 @@ pub(super) fn lift(nodes: Vec<Node>, parent: &Computed, vcx: ValueCx<'_>) -> Vec
 }
 
 pub(crate) fn transparent(e: &Element) -> bool {
-    let s = &e.style;
+    let s = e.style.cascaded();
     let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
     let undecorated = [s.margin, s.padding, s.borders()]
         .iter()
@@ -70,10 +70,14 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     // the block's shared exclusion space, not an atomic paragraph child.
     let margin_fragment = if !transparent(e) {
         let mut bare = e.clone();
-        bare.style.margin = Default::default();
+        bare.style.cascaded_mut().margin = Default::default();
         transparent(&bare)
-            && e.style.preserve_newlines.or(parent.preserve_newlines) != Some(true)
-            && e.style.keep_spaces.or(parent.keep_spaces) != Some(true)
+            && e.style
+                .cascaded()
+                .preserve_newlines
+                .or(parent.preserve_newlines)
+                != Some(true)
+            && e.style.cascaded().keep_spaces.or(parent.keep_spaces) != Some(true)
             && e.children
                 .iter()
                 .all(|n| crate::layout::box_kind::is_blank(n) || floated(n))
@@ -140,8 +144,8 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
             // block, while inherited text properties come through the inline.
             let containing = box_style(parent, &float.style, vcx);
             float.style = box_style(&style, &float.style, vcx).into();
-            float.style.cb_height_def = containing.cb_height_def;
-            float.style.quirk_pct_base = containing.quirk_pct_base;
+            float.style.cascaded_mut().cb_height_def = containing.cb_height_def;
+            float.style.cascaded_mut().quirk_pct_base = containing.quirk_pct_base;
             output.push(Node::Element(float));
         } else {
             pending.push(child);
@@ -163,8 +167,8 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
 /// their intrinsic size inside shrink-to-fit containers
 /// (`orthogonal-writing-mode-float-in-inline`).
 fn floated(node: &Node) -> bool {
-    matches!(node, Node::Element(e) if e.style.float.is_some_and(|f| f != 0)
-        && !e.style.wm().vertical())
+    matches!(node, Node::Element(e) if e.style.cascaded().float.is_some_and(|f| f != 0)
+        && !e.style.cascaded().wm().vertical())
 }
 
 fn contains_float(node: &Node) -> bool {

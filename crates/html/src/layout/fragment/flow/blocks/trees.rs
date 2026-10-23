@@ -15,10 +15,10 @@ use crate::style::computed::Display;
 /// детей иначе — их границы дают свои контексты (строки — `Paragraph`).
 pub(super) fn stacks_blocks(e: &Element) -> bool {
     matches!(
-        e.style.display,
+        e.style.cascaded().display,
         None | Some(Display::Block) | Some(Display::ListItem)
-    ) && e.style.webkit_box != Some(true)
-        && !crate::layout::multicol::spanner::multicol_container(&e.style)
+    ) && e.style.cascaded().webkit_box != Some(true)
+        && !crate::layout::multicol::spanner::multicol_container(e.style.cascaded())
         && !table_box(e)
         && !matches!(e.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
 }
@@ -30,7 +30,7 @@ pub(crate) fn stacked_tree(e: &Element, depth: u8) -> bool {
     stacks_blocks(e)
         && (depth == 0
             || e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style) || k.inline => {
+                Node::Element(k) if out_of_flow(k.style.cascaded()) || k.inline => {
                     !holds_blocks(k) || stacked_tree(k, depth - 1)
                 }
                 Node::Element(k) => {
@@ -50,7 +50,7 @@ pub(crate) fn table_tree(e: &Element, depth: u8) -> bool {
             Node::Element(k) if k.inline => true,
             Node::Element(k)
                 if matches!(
-                    k.style.display,
+                    k.style.cascaded().display,
                     Some(Display::TableRow)
                         | Some(Display::TableRowGroup)
                         | Some(Display::TableCell)
@@ -63,7 +63,7 @@ pub(crate) fn table_tree(e: &Element, depth: u8) -> bool {
         }
     }
     table_box(e)
-        && !e.style.wm().vertical()
+        && !e.style.cascaded().wm().vertical()
         && depth > 0
         && e.children.iter().all(|n| part(n, depth - 1))
 }
@@ -71,9 +71,9 @@ pub(crate) fn table_tree(e: &Element, depth: u8) -> bool {
 /// Строчная коробка с поточным блоком внутри (на любой глубине строчных).
 pub(super) fn holds_blocks(e: &Element) -> bool {
     e.children.iter().any(|n| match n {
-        Node::Element(k) if out_of_flow(&k.style) => false,
+        Node::Element(k) if out_of_flow(k.style.cascaded()) => false,
         Node::Element(k) if !k.inline => true,
-        Node::Element(k) => k.style.display.is_none() && holds_blocks(k),
+        Node::Element(k) => k.style.cascaded().display.is_none() && holds_blocks(k),
         _ => false,
     })
 }

@@ -32,17 +32,21 @@ pub(in crate::layout::table) fn push_col_bands(
         if !have_rows || i >= cols {
             continue;
         }
-        let picture = el.style.bg_image.is_some() || el.style.gradient_raw.is_some();
+        let picture =
+            el.style.cascaded().bg_image.is_some() || el.style.cascaded().gradient_raw.is_some();
         // Дорожка с одним ЦВЕТОМ тоже красится полосой: своей коробки у неё
         // нет, фон рисуют её ячейки.
-        if !(picture || el.style.background.is_some() || !el.style.shadows.is_empty()) {
+        if !(picture
+            || el.style.cascaded().background.is_some()
+            || !el.style.cascaded().shadows.is_empty())
+        {
             continue;
         }
         let rects = by_node.entry(el.node_id).or_default().clone();
         layer.rects = Some(rects.clone());
         if !seen.contains(&el.node_id) {
             seen.push(el.node_id);
-            let mut band_style = (*el.style).clone();
+            let mut band_style = el.style.cascaded().clone();
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
@@ -54,11 +58,14 @@ pub(in crate::layout::table) fn push_col_bands(
 /// Used absolute width of one `<col>` (CSS 2.1 §10.4 over `px` lengths only).
 pub(crate) fn definite_col_px(el: &Element) -> Option<f32> {
     let px = px_strict;
-    let w = match (px(el.style.width), px(el.style.max_width)) {
+    let w = match (
+        px(el.style.cascaded().width),
+        px(el.style.cascaded().max_width),
+    ) {
         (Some(v), Some(mx)) => Some(v.min(mx)),
         (v, _) => v,
     };
-    match px(el.style.min_width) {
+    match px(el.style.cascaded().min_width) {
         Some(mn) => Some(w.map_or(mn, |v| v.max(mn))),
         None => w,
     }
@@ -88,11 +95,11 @@ pub(crate) fn col_element_widths(
     // шаг, не этот.
     let used_w = |el: &Element, w: Option<f32>| -> Option<f32> {
         let len_px = px_strict;
-        let capped = match (w, len_px(el.style.max_width)) {
+        let capped = match (w, len_px(el.style.cascaded().max_width)) {
             (Some(v), Some(mx)) => Some(v.min(mx)),
             (v, _) => v,
         };
-        match len_px(el.style.min_width) {
+        match len_px(el.style.cascaded().min_width) {
             Some(mn) => Some(capped.map_or(mn, |v| v.max(mn))),
             None => capped,
         }
@@ -103,7 +110,7 @@ pub(crate) fn col_element_widths(
             Some(false) => {
                 let w = used_w(
                     el,
-                    match el.style.width {
+                    match el.style.cascaded().width {
                         Some(Len::Px(v)) => Some(v),
                         // `ch` на колонке считается с ЕЁ письмом: стоячий ноль
                         // продвигается на кегль (ch-units-vrl-003/004). Кегль
@@ -113,8 +120,11 @@ pub(crate) fn col_element_widths(
                         // сходится с эталоном. Лежачий `ch` (sideways) оставлен
                         // авто-колонке: явный глиф-замер уводил ширину
                         // (ch-units-vrl-007/008 были зелёными на авто).
-                        Some(Len::Ch(k)) if el.style.wm().upright() && el.style.wm().vertical() => {
-                            let base = match el.style.font_size {
+                        Some(Len::Ch(k))
+                            if el.style.cascaded().wm().upright()
+                                && el.style.cascaded().wm().vertical() =>
+                        {
+                            let base = match el.style.cascaded().font_size {
                                 Some(Len::Px(v)) => v,
                                 _ => base_font,
                             };
@@ -127,9 +137,9 @@ pub(crate) fn col_element_widths(
                 // `visibility: collapse` на колонке — колонка ВЫБРОШЕНА:
                 // нулевая дорожка, ячейки не рисуются (css-tables-3
                 // §visibility-collapse-cell-rendering).
-                let c = el.style.collapsed == Some(true);
+                let c = el.style.cascaded().collapsed == Some(true);
                 let span = col_span(el);
-                let p = match el.style.width {
+                let p = match el.style.cascaded().width {
                     Some(Len::Pct(k)) => Some(k),
                     _ => None,
                 };
@@ -145,12 +155,12 @@ pub(crate) fn col_element_widths(
                     // же — иначе `min-width-applies-to-005` и
                     // `max-width-applies-to-005` (группа вместо колонки)
                     // остались бы красными при зелёных `-006`.
-                    let ww = used_w(el, px_strict(el.style.width));
-                    let pp = match el.style.width {
+                    let ww = used_w(el, px_strict(el.style.cascaded().width));
+                    let pp = match el.style.cascaded().width {
                         Some(Len::Pct(k)) => Some(k),
                         _ => None,
                     };
-                    let cc = el.style.collapsed == Some(true);
+                    let cc = el.style.cascaded().collapsed == Some(true);
                     let span = col_span(el);
                     widths.extend(std::iter::repeat_n(ww, span));
                     collapsed.extend(std::iter::repeat_n(cc, span));

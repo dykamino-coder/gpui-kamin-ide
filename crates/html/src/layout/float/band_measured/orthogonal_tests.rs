@@ -22,7 +22,7 @@ fn orthogonal_block_tail_keeps_its_independent_contents_in_the_measured_host() {
         assert!(host.marks.shape_flow.is_some());
         let tail = find(&host.children, "tail").expect("tail");
         assert!(tail.children.iter().any(has_ruby));
-        assert_eq!(tail.style.height, Some(Len::Px(120.)));
+        assert_eq!(tail.style.cascaded().height, Some(Len::Px(120.)));
     }
 }
 

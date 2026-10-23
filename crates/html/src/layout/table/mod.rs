@@ -197,7 +197,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
-    let table_is_vertical = e.style.wm().vertical() || inherited.wm().vertical();
+    let table_is_vertical = e.style.cascaded().wm().vertical() || inherited.wm().vertical();
     measure_col_widths(
         e,
         inherited,
@@ -231,8 +231,8 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         table_is_vertical,
         bw: [0.0; 4],
         have_rows: !rows.is_empty(),
-        collapse_cells: e.style.border_collapse == Some(true)
-            || (e.style.border_collapse.is_none() && e.attr("rules").is_some()),
+        collapse_cells: e.style.cascaded().border_collapse == Some(true)
+            || (e.style.cascaded().border_collapse.is_none() && e.attr("rules").is_some()),
     };
     let mut out = context::RowsOut {
         cells,

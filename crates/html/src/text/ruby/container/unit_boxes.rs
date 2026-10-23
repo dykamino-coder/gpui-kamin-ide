@@ -46,8 +46,8 @@ pub(super) fn only_space(nodes: &[Node]) -> bool {
         Node::Element(k) => {
             let plain = ruby_role(k)
                 .is_some_and(|r| r != crate::style::computed::RubyRole::Container)
-                || (k.style.display.is_none()
-                    && k.style.inline_display != Some(false)
+                || (k.style.cascaded().display.is_none()
+                    && k.style.cascaded().inline_display != Some(false)
                     && !replaced_tag(k));
             plain && only_space(&k.children)
         }
@@ -114,21 +114,21 @@ pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> A
         )
     {
         let mut block = k.clone();
-        ruby_transform::clear(&mut block.style);
-        block.style.display = Some(Display::Block);
-        block.style.inline_display = None;
-        block.style.ruby_role = None;
-        block.style.text_indent = Some(Len::Px(0.0));
-        block.style.text_indent_each_line = Some(false);
-        block.style.text_indent_hanging = Some(false);
+        ruby_transform::clear(block.style.cascaded_mut());
+        block.style.cascaded_mut().display = Some(Display::Block);
+        block.style.cascaded_mut().inline_display = None;
+        block.style.cascaded_mut().ruby_role = None;
+        block.style.cascaded_mut().text_indent = Some(Len::Px(0.0));
+        block.style.cascaded_mut().text_indent_each_line = Some(false);
+        block.style.cascaded_mut().text_indent_hanging = Some(false);
         // `ruby-align`, заданный на самой базе (css-ruby-1 §4.3, «Applies
         // to: ruby bases, …»), выравнивает её содержимое СВОИМ значением, а
         // не значением контейнера (`ruby-align-001a`: `<rb style=
         // "ruby-align: start">`). Аннотации выравнивает свой путь.
-        if block.style.ruby_align.is_some()
+        if block.style.cascaded().ruby_align.is_some()
             && ruby_role(k) == Some(crate::style::computed::RubyRole::Base)
         {
-            super::stacks::align_units(&mut block.style);
+            super::stacks::align_units(block.style.cascaded_mut());
         }
         return div()
             .children(opts.cx.build.blocks(&[Node::Element(block)], &style, opts))
@@ -143,8 +143,10 @@ fn has_inflow(nodes: &[Node]) -> bool {
     nodes.iter().any(|node| match node {
         Node::Text(text) => !text.is_empty(),
         Node::Element(e) => {
-            !matches!(e.style.position, Some(Position::Absolute | Position::Fixed))
-                && (replaced_tag(e) || has_inflow(&e.children))
+            !matches!(
+                e.style.cascaded().position,
+                Some(Position::Absolute | Position::Fixed)
+            ) && (replaced_tag(e) || has_inflow(&e.children))
         }
     })
 }

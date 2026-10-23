@@ -38,7 +38,7 @@ pub(crate) fn multicol_spanner_segments(
     let mut kids = e.children.clone();
     if e.tag == "fieldset"
         && let Some(i) = kids.iter().position(
-            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style)),
+            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(c.style.cascaded())),
         )
     {
         let legend = kids.remove(i);
@@ -60,7 +60,7 @@ pub(crate) fn multicol_spanner_segments(
             seg_open = true;
             let mut seg = e.clone();
             seg.children = body.to_vec();
-            seg.style.column_span = None;
+            seg.style.cascaded_mut().column_span = None;
             // Одна колонка со спаннером (`lone_span`) — ряд рисуется
             // обычным блоком: `column_flow` спускается в
             // единственного блочного ребёнка и рисует только его
@@ -80,7 +80,7 @@ pub(crate) fn multicol_spanner_segments(
                 // он сам выберет укладку колонок; коробка
                 // (фон/рамки/поля) остаётся на хосте.
                 let mut sub = seg.clone();
-                sub.style.background = None;
+                sub.style.cascaded_mut().background = None;
                 // Всё, что многоколоночник рисует и сдвигает КОРОБКОЙ,
                 // уже стоит на хосте `d` (`styled_div_with(e, ..)`);
                 // клон ряда повторял это на каждом ряду: контур и
@@ -93,33 +93,34 @@ pub(crate) fn multicol_spanner_segments(
                 // §overflow режет коробка многоколоночника, а не ряд.
                 // Ряд остаётся содержащим блоком (`relative`), как
                 // прежде.
-                sub.style.gradient = None;
-                sub.style.bg_image = None;
-                sub.style.border_image = None;
-                sub.style.shadows = Vec::new();
-                sub.style.inset_shadows = Vec::new();
-                sub.style.outline = None;
-                sub.style.opacity = None;
-                sub.style.transform = None;
-                sub.style.filter = None;
-                sub.style.mask_image = None;
-                sub.style.backdrop_blur = None;
+                sub.style.cascaded_mut().gradient = None;
+                sub.style.cascaded_mut().bg_image = None;
+                sub.style.cascaded_mut().border_image = None;
+                sub.style.cascaded_mut().shadows = Vec::new();
+                sub.style.cascaded_mut().inset_shadows = Vec::new();
+                sub.style.cascaded_mut().outline = None;
+                sub.style.cascaded_mut().opacity = None;
+                sub.style.cascaded_mut().transform = None;
+                sub.style.cascaded_mut().filter = None;
+                sub.style.cascaded_mut().mask_image = None;
+                sub.style.cascaded_mut().backdrop_blur = None;
                 if matches!(
-                    sub.style.position,
+                    sub.style.cascaded().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 ) {
-                    sub.style.position = Some(crate::style::computed::Position::Relative);
+                    sub.style.cascaded_mut().position =
+                        Some(crate::style::computed::Position::Relative);
                 }
-                sub.style.inset = Default::default();
-                sub.style.z_index = None;
-                sub.style.overflow_x = None;
-                sub.style.overflow_y = None;
-                sub.style.margin = Default::default();
-                sub.style.padding = Default::default();
-                sub.style.border_width = Default::default();
-                sub.style.width = None;
-                sub.style.height = None;
+                sub.style.cascaded_mut().inset = Default::default();
+                sub.style.cascaded_mut().z_index = None;
+                sub.style.cascaded_mut().overflow_x = None;
+                sub.style.cascaded_mut().overflow_y = None;
+                sub.style.cascaded_mut().margin = Default::default();
+                sub.style.cascaded_mut().padding = Default::default();
+                sub.style.cascaded_mut().border_width = Default::default();
+                sub.style.cascaded_mut().width = None;
+                sub.style.cascaded_mut().height = None;
                 // Хвост после спаннера при `column-fill: auto` —
                 // остаток коробки (`rest_h`): укладка заполняет
                 // колонки подряд, а не балансирует. Только
@@ -135,7 +136,7 @@ pub(crate) fn multicol_spanner_segments(
                     })
                     && let Some(rest) = rest_h
                 {
-                    sub.style.height = Some(Len::Px(rest));
+                    sub.style.cascaded_mut().height = Some(Len::Px(rest));
                 }
                 d = d.child(div().children(opts.cx.build.blocks(
                     &[Node::Element(sub)],

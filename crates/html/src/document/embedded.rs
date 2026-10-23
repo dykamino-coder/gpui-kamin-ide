@@ -92,7 +92,7 @@ pub(crate) fn parse_embedded_sized(
         && let [Node::Element(root)] = nodes.as_mut_slice()
         && root.tag == "html-viewport"
     {
-        root.style.scroll.width = Some(2);
+        root.style.cascaded_mut().scroll.width = Some(2);
     }
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
     // дереву живёт здесь, а не в разборе стиля, и без этой строки
@@ -116,7 +116,7 @@ pub(super) fn unwrap_document(
     loop {
         let single_wrapper = match nodes.as_slice() {
             [Node::Element(e)] if matches!(e.tag.as_str(), "html" | "body") => {
-                !e.marks.quirks_fill && !has_box_style(&e.style)
+                !e.marks.quirks_fill && !has_box_style(e.style.cascaded())
             }
             _ => false,
         };
@@ -126,7 +126,7 @@ pub(super) fn unwrap_document(
         let Some(Node::Element(e)) = nodes.pop() else {
             return (nodes, root);
         };
-        root = crate::style::cascade::inherit::inherit_unpainted(&root, &e.style, vcx);
+        root = crate::style::cascade::inherit::inherit_unpainted(&root, e.style.cascaded(), vcx);
         // Обёртка снимается ради виртуализации: единица прокрутки — блок
         // верхнего уровня, а не документ целиком. Но её ТЕКСТОВЫЙ стиль
         // принадлежит содержимому: `body { font: 13px system-ui }` — самый
@@ -138,8 +138,8 @@ pub(super) fn unwrap_document(
             .map(|n| match n {
                 Node::Element(mut child) => {
                     child.style = crate::style::cascade::inherit::inherit_unpainted(
-                        &e.style,
-                        &child.style,
+                        e.style.cascaded(),
+                        child.style.cascaded(),
                         vcx,
                     )
                     .into();

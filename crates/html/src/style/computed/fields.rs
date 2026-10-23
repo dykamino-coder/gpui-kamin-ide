@@ -3,7 +3,7 @@
 use crate::style::computed::*;
 use crate::style::values::value::{Color, ColorOrAuto, Len, StyleColor};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Computed {
     /// Paint-only fragment ink for a text-shadow mask; decoration records stay intact.
     pub(crate) text_shadow_ink: Option<Color>,

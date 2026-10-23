@@ -66,7 +66,7 @@ pub(super) fn table_outer_box(
             // БЛОЧНАЯ ось, где border-box верен; вместо этого краи инлайн-оси
             // добавляются к самой величине. Гейт тот же, что у
             // транспонирования решётки и у `spacing_phys`.
-            if e.style.wm().vertical()
+            if e.style.cascaded().wm().vertical()
                 && let Some(Len::Px(h)) = c.height
             {
                 // Сросшийся стол несёт свои краи не рамкой, а паддингом в
@@ -117,9 +117,9 @@ pub(super) fn finish_table_outer(
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
         let wrap = Computed {
-            position: e.style.position,
-            inset: e.style.inset,
-            z_index: e.style.z_index,
+            position: e.style.cascaded().position,
+            inset: e.style.cascaded().inset,
+            z_index: e.style.cascaded().z_index,
             ..Default::default()
         };
         let mut wrap = cx

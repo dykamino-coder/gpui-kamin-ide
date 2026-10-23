@@ -25,16 +25,16 @@ pub(crate) fn serial_table_parallel(
     let mut nested = false;
     for n in fixed.iter().filter(|n| !is_blank(n)) {
         let Node::Element(part) = n else { return None };
-        if part.tag == "caption" || part.style.is_caption == Some(true) {
+        if part.tag == "caption" || part.style.cascaded().is_caption == Some(true) {
             nested |= parallel(part, depth - 1);
-        } else if part.tag == "tr" || part.style.display == Some(Display::TableRow) {
+        } else if part.tag == "tr" || part.style.cascaded().display == Some(Display::TableRow) {
             rows.push(part);
         } else if matches!(part.tag.as_str(), "thead" | "tbody" | "tfoot")
-            || part.style.row_group_kind.is_some()
+            || part.style.cascaded().row_group_kind.is_some()
         {
             for n in part.children.iter().filter(|n| !is_blank(n)) {
                 let Node::Element(row) = n else { return None };
-                if row.tag != "tr" && row.style.display != Some(Display::TableRow) {
+                if row.tag != "tr" && row.style.cascaded().display != Some(Display::TableRow) {
                     return None;
                 }
                 rows.push(row);
@@ -81,14 +81,14 @@ mod tests {
 
     fn block() -> Node {
         let mut block = anon_element("div", vec![]);
-        block.style.height = Some(Len::Px(100.0));
-        block.style.contain_size = Some(true);
+        block.style.cascaded_mut().height = Some(Len::Px(100.0));
+        block.style.cascaded_mut().contain_size = Some(true);
         Node::Element(block)
     }
 
     fn table(children: Vec<Node>) -> Element {
         let mut table = anon_element("div", children);
-        table.style.display = Some(Display::Table);
+        table.style.cascaded_mut().display = Some(Display::Table);
         table
     }
 
@@ -130,13 +130,13 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut grid = anon_element("div", vec![]);
-        grid.style.display = Some(Display::Grid);
+        grid.style.cascaded_mut().display = Some(Display::Grid);
         let table = table(vec![Node::Element(grid)]);
         assert_eq!(
             serial_table_parallel(
                 &table,
                 4,
-                |e, _| e.style.display == Some(Display::Grid),
+                |e, _| e.style.cascaded().display == Some(Display::Grid),
                 vcx
             ),
             Some(true)
@@ -148,7 +148,7 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut table = table(vec![block(), block()]);
-        table.style.height = Some(Len::Px(200.0));
+        table.style.cascaded_mut().height = Some(Len::Px(200.0));
         let shape = super::super::table_shape(&table, 4, ShapeCx::COLUMNS, vcx).unwrap();
         assert_eq!(shape.height, 200.0);
         assert!(
@@ -163,7 +163,7 @@ mod tests {
                 .iter()
                 .any(|&(start, end)| start == 0.0 && end == 100.0)
         );
-        table.style.height = Some(Len::Px(300.0));
+        table.style.cascaded_mut().height = Some(Len::Px(300.0));
         assert!(super::super::table_shape(&table, 4, ShapeCx::COLUMNS, vcx).is_none());
     }
 }

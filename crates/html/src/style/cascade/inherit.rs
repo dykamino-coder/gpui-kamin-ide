@@ -35,20 +35,22 @@ use paint::inherit_paint;
 // (`style::zoom::resolve`), а не через самую горячую функцию крейта.
 pub fn inherit(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(parent, own, computed, true, vcx)
+    box_stage(parent, own, own, computed, true, vcx)
 }
 
 /// Document preparation propagates style; Filter Effects 1 §5 applies colors
 /// only when the renderer builds the element, never while removing wrappers.
 pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(parent, own, computed, false, vcx)
+    box_stage(parent, own, own, computed, false, vcx)
 }
 
-/// Стиль коробки из вычисленного стиля `c` элемента с каскадным стилем
-/// `own` под коробкой-родителем со стилем `parent`.
+/// Стиль коробки из вычисленного стиля `c` элемента под коробкой-родителем
+/// со стилем `parent`: `own` — вычисленный стиль элемента с used-значениями
+/// раскладки, `declared` — его каскадный стиль (заданы ли свои цвета).
 pub(crate) fn box_stage(
     parent: &Computed,
+    declared: &Computed,
     own: &Computed,
     mut c: Computed,
     paint_filter: bool,
@@ -59,7 +61,7 @@ pub(crate) fn box_stage(
     quirks::percentage_height(parent, own, &mut c, vcx);
     self_align::self_alignment(parent, own, &mut c);
     flow_align::resolve(parent, &mut c);
-    inherit_paint(parent, own, &mut c, paint_filter, vcx);
+    inherit_paint(parent, declared, own, &mut c, paint_filter, vcx);
     let parent_px = super::compute::parent_font_px(parent);
     let own_px = super::compute::own_font_px(&c, parent_px);
     decorate(parent, own, &mut c, own_px, vcx);
