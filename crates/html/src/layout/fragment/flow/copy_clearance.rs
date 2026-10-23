@@ -21,8 +21,10 @@ pub(crate) fn copy_clearance(nodes: &[Node]) -> bool {
             return true;
         }
         // CSS 2.1 §9.4.1: чужой BFC не экспортирует свои float bands.
-        !own_context(e) && e.children.iter().any(|n|
-            matches!(n, Node::Element(k) if reaches(k, float)))
+        !own_context(e)
+            && e.children
+                .iter()
+                .any(|n| matches!(n, Node::Element(k) if reaches(k, float)))
     }
     let mut floats = false;
     for n in super::box_children::children(nodes) {
@@ -42,10 +44,22 @@ mod tests {
     #[test]
     fn clearance_only_crosses_copies_in_the_same_bfc() {
         for (body, crosses) in [
-            ("<div><div style='float:left;height:250px'></div></div><div style='clear:left'></div>", true),
-            ("<div><div style='float:left'></div><div style='clear:both'></div></div>", false),
-            ("<div style='overflow:hidden'><div style='float:left'></div></div><div style='clear:left'></div>", false),
-            ("<div><div style='float:left'></div></div><div style='overflow:hidden'><div style='clear:left'></div></div>", false),
+            (
+                "<div><div style='float:left;height:250px'></div></div><div style='clear:left'></div>",
+                true,
+            ),
+            (
+                "<div><div style='float:left'></div><div style='clear:both'></div></div>",
+                false,
+            ),
+            (
+                "<div style='overflow:hidden'><div style='float:left'></div></div><div style='clear:left'></div>",
+                false,
+            ),
+            (
+                "<div><div style='float:left'></div></div><div style='overflow:hidden'><div style='clear:left'></div></div>",
+                false,
+            ),
         ] {
             let doc = crate::dom::parse(&format!("<div>{body}</div>"), "");
             fn find(nodes: &[Node]) -> Option<&Element> {
@@ -55,7 +69,11 @@ mod tests {
                     _ => None,
                 })
             }
-            assert_eq!(copy_clearance(&find(&doc).unwrap().children), crosses, "{body}");
+            assert_eq!(
+                copy_clearance(&find(&doc).unwrap().children),
+                crosses,
+                "{body}"
+            );
         }
     }
 }
