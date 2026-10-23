@@ -151,7 +151,7 @@ pub(super) fn multicol_stack_child(
     let own = dec.is_some() || whole || nest_row.is_some();
     let own = own || breaks::trims_at_breaks(&copy, &merged);
     let (watched, breaks_w) =
-        breaks::recorder(&copy, measured_kids, opts, col_vert, col_rl, kid_w, own);
+        breaks::recorder(&copy, measured_kids, opts, col_vert, col_rl, kid_w, own, empty_floats);
     let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();

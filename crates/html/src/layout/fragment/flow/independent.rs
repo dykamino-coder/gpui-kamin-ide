@@ -5,6 +5,7 @@ use crate::layout::fragment::push::measured_tree;
 use crate::style::computed::{Display, Position};
 mod continuation;
 use continuation::continuation;
+pub(crate) use continuation::parallel_overflow;
 
 /// У копии нет отдельного плана фрагментов или параллельного потока.
 /// Отдельные планы clone, OOF и nested требуют продолжений F2-1/F2-2/F2-3.

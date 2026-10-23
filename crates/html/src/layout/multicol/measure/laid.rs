@@ -20,7 +20,9 @@ pub(crate) fn children(
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    if crate::layout::fragment::flow::copy_clearance(&host.children)
+        || merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
     let flow: Vec<_> = host.children.iter().filter(|n| !is_blank(n)).collect();
@@ -66,7 +68,9 @@ pub(crate) fn pending(
     merged: &Computed,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(Element, Shape)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    if crate::layout::fragment::flow::copy_clearance(&host.children)
+        || merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
     host.children
@@ -93,7 +97,9 @@ pub(crate) fn vertical_children(
     reverse: bool,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    if crate::layout::fragment::flow::copy_clearance(&host.children)
+        || merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
     let kids: Option<Vec<_>> = host
@@ -141,7 +147,9 @@ pub(crate) fn pending_vertical(
     vcx: ValueCx<'_>,
     reverse: bool,
 ) -> Option<Vec<(Element, Shape)>> {
-    if merged.text_box_trim_start || merged.text_box_trim_end {
+    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    if crate::layout::fragment::flow::copy_clearance(&host.children)
+        || merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
     host.children

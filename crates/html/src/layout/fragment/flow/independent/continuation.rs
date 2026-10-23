@@ -13,10 +13,7 @@ pub(super) fn continuation(e: &Element) -> bool {
     super::super::blocks::flex_container(e)
         // F2-1: ограниченный блок и видимое переполнение продолжаются
         // независимо; один border box не заменяет обе меры.
-        || (crate::layout::page::paged::visible_overflow(&e.style)
-            && [e.style.height, e.style.max_height]
-                .iter().any(|l| !matches!(l, None | Some(Len::Auto)))
-            && e.children.iter().any(|n| matches!(n, Node::Element(_))))
+        || parallel_overflow(e)
         // F2-1: доля блочного размера зависит от исходного definite CB,
         // который замер MaxContent отдельной копии не сохраняет.
         || [e.style.height, e.style.min_height, e.style.max_height]
@@ -35,4 +32,13 @@ pub(super) fn inline_continuation(e: &Element) -> bool {
         || e.children
             .iter()
             .any(|n| matches!(n, Node::Element(k) if inline_continuation(k)))
+}
+
+/// F2-1: normal flow и видимое переполнение ограниченной коробки
+/// продолжаются отдельно; очистка детей до допуска не должна терять это.
+pub(crate) fn parallel_overflow(e: &Element) -> bool {
+    crate::layout::page::paged::visible_overflow(&e.style)
+        && [e.style.height, e.style.max_height]
+            .iter().any(|l| !matches!(l, None | Some(Len::Auto)))
+        && e.children.iter().any(|n| matches!(n, Node::Element(_)))
 }
