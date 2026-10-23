@@ -29,7 +29,7 @@ impl Computed {
                 self.svg_y = apply_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
             }
             "cx" | "cy" | "r" | "rx" | "ry" | "d" | "path-length" => {
-                crate::svg::geometry_property(self, key, v, vcx);
+                crate::style::values::basic_shape::geometry_property(self, key, v, vcx);
             }
             "caption-side" => {
                 self.caption_bottom =
