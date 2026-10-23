@@ -112,3 +112,6 @@ impl PageStack {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod completion_tests;

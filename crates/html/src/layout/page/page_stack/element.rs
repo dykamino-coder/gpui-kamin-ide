@@ -46,6 +46,7 @@ impl Hooks for PageStack {
         let Ok((kids, mut geoms, names, pages, mut plan)) = self.fragment_plan(window, cx, g, area)
         else {
             self.plan.borrow_mut().clear();
+            self.plan.borrow_mut().incomplete();
             self.geoms.borrow_mut().clear();
             self.pages.set(0);
             self.margin_els.clear();

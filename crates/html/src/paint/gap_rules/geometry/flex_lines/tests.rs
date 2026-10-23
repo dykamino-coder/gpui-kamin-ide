@@ -15,6 +15,8 @@ fn item(id: LayoutId, a: f32, b: f32) -> FlexItemLayout {
         cross_offset: a,
         main_size: 40.0,
         cross_size: 50.0,
+        margin_left: 0.0,
+        margin_right: 0.0,
         margin_top: 0.0,
         margin_bottom: 0.0,
     }

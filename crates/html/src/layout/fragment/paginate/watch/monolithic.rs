@@ -47,26 +47,30 @@ mod tests {
 
     #[test]
     fn copies_preserve_monolithic_classification() {
-        let rec = Watched::for_blocks(BlockBox {
-            id: 1,
-            flex: Some(FlexBox {
-                items: vec![BlockKid {
-                    id: 2,
-                    monolith: true,
-                    inner: Some(BlockBox {
+        let rec = Watched::for_blocks_axis(
+            BlockBox {
+                id: 1,
+                flex: Some(FlexBox {
+                    items: vec![BlockKid {
                         id: 2,
-                        kids: vec![BlockKid {
-                            id: 3,
+                        monolith: true,
+                        inner: Some(BlockBox {
+                            id: 2,
+                            kids: vec![BlockKid {
+                                id: 3,
+                                ..Default::default()
+                            }],
                             ..Default::default()
-                        }],
+                        }),
                         ..Default::default()
-                    }),
+                    }],
                     ..Default::default()
-                }],
+                }),
                 ..Default::default()
-            }),
-            ..Default::default()
-        });
+            },
+            crate::layout::fragment::types::StackAxis::Horizontal,
+            true,
+        );
         for copy in [
             rec.clone(),
             rec.nested(),
