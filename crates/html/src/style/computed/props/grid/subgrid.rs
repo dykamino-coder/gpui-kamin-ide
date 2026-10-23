@@ -85,10 +85,14 @@ fn repeat_count(v: &str, vcx: ValueCx<'_>) -> Option<usize> {
     }
     // CSS Values 4 §10: числовая математика заменяет integer, округляется
     // к ближайшему целому (половина вверх) и ограничивается диапазоном типа.
-    if !v.contains('(') || v.chars().any(|c| c.is_whitespace() && !space(c)) {
+    let open = v.find('(')?;
+    if !selector_tokens::ident(&v[..open])
+        || block_end(v, open, '(')? != v.len() - 1
+        || v.chars().any(|c| c.is_whitespace() && !space(c))
+    {
         return None;
     }
-    let n = number(&v.to_ascii_lowercase(), vcx)?;
+    let n = number(&format!("calc({})", v.to_ascii_lowercase()), vcx)?;
     Some((n + 0.5).floor().max(1.0) as usize)
 }
 
@@ -126,7 +130,7 @@ mod tests {
     use super::{parse, valid};
     use crate::document::state::DocState;
     use crate::style::computed::Computed;
-    use crate::style::css::{Media, parse_decls};
+    use crate::style::css::{Media, parse_decls_in};
 
     #[test]
     fn subgrid_line_name_grammar() {
@@ -142,6 +146,7 @@ mod tests {
             "SUBGRID REPEAT(AUTO-FILL, [])",
             "subgrid repeat(calc(1 + 1), [a])",
             "subgrid repeat(min(3, 2), [a])",
+            "subgrid repeat(clamp(1, 2, 3), [a])",
             "subgrid repeat(calc(-1), [a])",
         ] {
             assert!(valid(value, vcx), "{value}");
@@ -157,6 +162,7 @@ mod tests {
             "subgrid repeat(0, [a])",
             "subgrid repeat(2.0, [a])",
             "subgrid repeat(calc(2px), [a])",
+            "subgrid repeat(calc(2) + calc(2), [a])",
             "subgrid repeat(2,)",
             "subgrid repeat(2, repeat(2, [a]))",
             "subgrid [1a]",
@@ -193,7 +199,7 @@ mod tests {
         let mut style = Computed::default();
         let vcx = state.values();
         style.apply_decls_with_vars(
-            &parse_decls("grid-template: subgrid [row] / subgrid [col]"),
+            &parse_decls_in("grid-template: subgrid [row] / subgrid [col]", vcx),
             &Default::default(),
             vcx,
         );
@@ -215,7 +221,7 @@ mod tests {
                     value.to_string()
                 };
                 style.apply_decls_with_vars(
-                    &parse_decls(&format!("{key}: {value}")),
+                    &parse_decls_in(&format!("{key}: {value}"), vcx),
                     &Default::default(),
                     vcx,
                 );
