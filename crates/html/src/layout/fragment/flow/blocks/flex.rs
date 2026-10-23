@@ -21,6 +21,8 @@ pub(crate) struct FlexBox {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlexFrame {
     pub(crate) column: bool,
+    /// Ряды упорядочены вдоль блочной оси фрагментации, после wrap-reverse;
+    /// `index` сохраняет идентификатор native-линии независимо от этого порядка.
     pub(crate) lines: Vec<FlexLine>,
 }
 

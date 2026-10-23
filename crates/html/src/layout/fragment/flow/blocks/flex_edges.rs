@@ -1,4 +1,4 @@
-//! Перенос break-before/after с действительных крайних flex-линий (§10 CSS Flexbox 1).
+//! Перенос break-before/after с краёв колонок и крайних рядов (§10 CSS Flexbox 1).
 use super::{BlockBox, BlockKid, Laid};
 impl BlockBox {
     pub(crate) fn edge(&self, last: bool, laid: &Laid) -> (bool, bool) {
@@ -10,18 +10,13 @@ impl BlockBox {
         let mut propagated = (false, false);
         if let Some(flex) = &self.flex {
             if let Some(frame) = laid.flexes.get(&self.id) {
-                let edge_line = frame.lines.iter().filter_map(|line| {
-                    let edge = if last {
-                        line.order.last()
-                    } else {
-                        line.order.first()
-                    }?;
-                    Some((edge.0, line.index))
-                });
+                // У ряда единица разрыва — линия, а не item. Рекордер уже
+                // упорядочил линии вдоль блочной оси фрагментации, включая
+                // wrap-reverse. Порядок items определяет края только колонок.
                 let edge_line = if last {
-                    edge_line.max()
+                    frame.lines.last()
                 } else {
-                    edge_line.min()
+                    frame.lines.first()
                 };
                 for line in &frame.lines {
                     let edge_item = if last {
@@ -33,7 +28,7 @@ impl BlockBox {
                         let at_edge = if frame.column {
                             edge_item.is_some_and(|edge| edge.1 == Some(item.id))
                         } else {
-                            edge_line.is_some_and(|edge| edge.1 == line.index)
+                            edge_line.is_some_and(|edge| edge.index == line.index)
                                 && line.items.contains(&item.id)
                         };
                         if at_edge {

@@ -1,4 +1,4 @@
-//! Семантические края не меняются от физического reverse/wrap-reverse.
+//! Края колонки следуют order, края ряда — линиям в блочном потоке.
 use super::*;
 use crate::layout::fragment::flow::blocks::{FlexBox, FlexFrame, FlexLine};
 
@@ -57,32 +57,99 @@ fn column_reverse_propagates_semantic_first_and_last() {
 }
 
 #[test]
-fn wrap_reverse_propagates_semantic_edge_lines() {
+fn wrap_reverse_propagates_block_flow_edge_lines() {
     let (mut root, laid) = scenario(false, &[&[4, 3], &[2, 1]], &[1, 2, 3, 4]);
     let items = &mut root.flex.as_mut().unwrap().items;
-    items[0].force_before = true;
-    items[1].avoid_before = true;
-    items[2].force_after = true;
-    items[3].avoid_after = true;
+    items[0].force_after = true;
+    items[1].avoid_after = true;
+    items[2].force_before = true;
+    items[3].avoid_before = true;
     assert_eq!(root.edge(false, &laid), (true, true));
     assert_eq!(root.edge(true, &laid), (true, true));
 }
 
 #[test]
-fn reversing_document_order_changes_propagation_despite_identical_physical_lines() {
-    // Разворот DOM не эквивалентен wrap-reverse для переноса break-before (§10).
+fn row_propagation_depends_on_lines_not_their_first_ordered_item() {
+    // §10: break-before всех items переносится на линию, затем с крайней
+    // линии на контейнер. Blink ApplyReversals предшествует этому переносу;
+    // Gecko обходит строки от StartmostLine в блочном направлении.
     let physical: &[&[u64]] = &[&[6, 5], &[4, 3], &[2, 1]];
-    for (order, expected) in [
-        ([1, 2, 3, 4, 5, 6], (false, true)),
-        ([6, 5, 4, 3, 2, 1], (true, false)),
-    ] {
+    for order in [[1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1]] {
         let (mut root, laid) = scenario(false, physical, &order);
         for item in &mut root.flex.as_mut().unwrap().items {
             item.avoid_before = item.id == 2;
             item.force_before = item.id == 5;
         }
-        assert_eq!(root.edge(false, &laid), expected);
+        assert_eq!(root.edge(false, &laid), (true, false));
     }
+}
+
+#[test]
+fn reversed_row_line_break_moves_container_after_preceding_content() {
+    use crate::layout::fragment::{flow::FlowGeometry, plan, types::Kid};
+    let (mut root, mut laid) = scenario(false, &[&[6, 5], &[4, 3], &[2, 1]], &[1, 2, 3, 4, 5, 6]);
+    for item in &mut root.flex.as_mut().unwrap().items {
+        item.avoid_before = item.id == 2;
+        item.force_before = item.id == 5;
+    }
+    let frame = laid.flexes.get_mut(&10).unwrap();
+    for (i, (line, (start, end))) in frame
+        .lines
+        .iter_mut()
+        .zip([(0.0, 50.0), (50.0, 100.0), (100.0, 200.0)])
+        .enumerate()
+    {
+        // Идентификатор native-линии не задаёт блочный порядок.
+        line.index = 2 - i;
+        line.start = start;
+        line.end = end;
+        for &id in &line.items {
+            laid.boxes.insert(id, (start, end));
+        }
+    }
+    let measured = root
+        .breaks(200.0, &laid)
+        .finish(FlowGeometry::default(), 200.0);
+    assert!(
+        measured.forced.is_empty(),
+        "forced первой строки выходит наружу"
+    );
+    assert_eq!(
+        measured.avoid.len(),
+        1,
+        "avoid нижней строки остаётся внутри"
+    );
+    let before = root.edge(false, &laid);
+    let kids = [
+        Kid {
+            h: 50.0,
+            over: 50.0,
+            monolith: true,
+            ..Default::default()
+        },
+        Kid {
+            h: 200.0,
+            over: 200.0,
+            force_before: before.0,
+            avoid_before: before.1,
+            cuts: measured.cuts,
+            solid: measured.solid,
+            avoid: measured.avoid,
+            keep: measured.keep,
+            ..Default::default()
+        },
+    ];
+    let (_, _, fragments) = plan::fill(&kids, 100.0, plan::Space::columns(4));
+    let first = fragments.iter().find(|f| f.kid == 1).unwrap();
+    assert_eq!((first.col, first.y, first.from), (1, 0.0, 0.0));
+    assert_eq!(
+        fragments
+            .iter()
+            .filter(|f| f.kid == 1)
+            .map(|f| f.h)
+            .sum::<f32>(),
+        200.0
+    );
 }
 
 #[test]
