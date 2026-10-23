@@ -6,7 +6,6 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::Len;
 
 mod placement;
 mod subgrid;
@@ -16,9 +15,11 @@ pub(crate) mod values;
 impl Computed {
     pub(crate) fn apply_grid(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         if matches!(key, "grid-template-columns" | "grid-template-rows")
-            && v.trim_start().get(..7).is_some_and(|s| s.eq_ignore_ascii_case("subgrid"))
+            && v.trim_start()
+                .get(..7)
+                .is_some_and(|s| s.eq_ignore_ascii_case("subgrid"))
         {
-            if subgrid::valid(v) {
+            if subgrid::valid(v, vcx) {
                 self.apply_grid_templates(key, v, hit, vcx);
             }
             return;
@@ -50,20 +51,6 @@ impl Computed {
             // оно не заплатка, а граница между двумя путями счёта повторов.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
                 self.grid_col_line_names = parse_line_names(v);
-                // `subgrid [a] repeat(auto-fill, [b])` — повтор СПИСКА ИМЁН
-                // подсетки (css-grid-2 §subgrid-listing, `<line-name-list>`),
-                // а не дорожек: такой элемент — подсетка, и дорожки ей выдаёт
-                // родитель (`taffy::compute::grid::subgrid`). Прежде запись
-                // уходила в разбор авто-повтора, и элемент подсеткой не был
-                // (`subgrid/repeat-auto-fill-005`).
-                if v.trim_start().starts_with("subgrid") {
-                    self.accept_declaration();
-                    self.subgrid_cols = true;
-                    self.subgrid = true;
-                    self.grid_cols = count_tracks(v);
-                    self.grid_tracks = parse_tracks(v, vcx);
-                    return;
-                }
                 // css-grid-1 `<auto-track-list>`: ВОКРУГ авто-повтора допустим
                 // только `<fixed-size>`. css-grid-3 §7.2.1 ослабила запись
                 // ВНУТРИ `repeat()`, снаружи всё по-прежнему — голая
@@ -115,13 +102,6 @@ impl Computed {
             "grid-template-rows" if v.contains("auto-fill") || v.contains("auto-fit") => {
                 self.grid_row_line_names = parse_line_names(v);
                 // Подсетка со списком имён в повторе — см. колонки выше.
-                if v.trim_start().starts_with("subgrid") {
-                    self.accept_declaration();
-                    self.subgrid_rows = true;
-                    self.subgrid = true;
-                    self.grid_rows = parse_tracks(v, vcx);
-                    return;
-                }
                 // Та же негодность по РЯДАМ (`row-auto-repeat-auto-005`,
                 // `row-auto-repeat-{fit,max,min}-content-003`).
                 if auto_repeat_outside_intrinsic(v) {

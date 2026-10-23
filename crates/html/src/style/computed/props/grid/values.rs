@@ -26,6 +26,12 @@ pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {
 /// subgrid <line-name-list>?` (css-grid-2 §7.2). Вокруг авто-повтора — только
 /// `<fixed-size>` (`auto_repeat_outside_intrinsic`).
 pub(crate) fn template(v: &str, vcx: ValueCx<'_>) -> bool {
+    if v.trim_start()
+        .get(..7)
+        .is_some_and(|s| s.eq_ignore_ascii_case("subgrid"))
+    {
+        return super::subgrid::valid(v, vcx);
+    }
     let auto_repeat = (v.contains("auto-fill") || v.contains("auto-fit"))
         && !v.trim_start().starts_with("subgrid");
     if auto_repeat {
