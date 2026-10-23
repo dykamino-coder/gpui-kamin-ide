@@ -17,7 +17,6 @@ pub(crate) fn render_with_style(
     let vcx = opts.cx.vcx();
     let resolved = super::marker::resolve(li, inherited, merged, vcx);
     let no_marker = resolved.is_none();
-    let (marker, marker_style) = resolved.map(|m| (m.text, m.style)).unwrap_or_default();
     // `inside`: маркер — ПЕРВЫЙ инлайновый кусок содержимого пункта
     // (css-lists-3 §4), поэтому он просто дописывается текстом в начало.
     // Своей колонки при этом нет, и текст пункта начинается там же, где
@@ -25,15 +24,8 @@ pub(crate) fn render_with_style(
     let inside = merged.list_style_inside == Some(true);
     if inside {
         let mut kids: Vec<Node> = Vec::with_capacity(li.children.len() + 1);
-        if !no_marker {
-            kids.push(super::marker::node(
-                li,
-                merged,
-                super::marker::Marker {
-                    text: marker,
-                    style: marker_style,
-                },
-            ));
+        if let Some(marker) = resolved {
+            kids.push(super::marker::node(li, merged, marker));
         }
         kids.extend(li.children.iter().cloned());
         return shrink0(
@@ -46,6 +38,9 @@ pub(crate) fn render_with_style(
         .children(opts.cx.build.blocks(&kids, merged, opts))
         .into_any_element();
     }
+    let (marker, marker_style, image) = resolved
+        .map(|m| (m.text, m.style, m.image))
+        .unwrap_or_default();
     // Знаки маркера без своего семейства — шрифтом ДОКУМЕНТА: голый
     // `apply_text` без семейства брал шрифт интерфейса (Segoe UI), и
     // строковый маркер выходил чужой гарнитурой рядом с Times пункта
@@ -70,7 +65,18 @@ pub(crate) fn render_with_style(
             .styled_div(Styling::Text(&mark_style), &opts.cx)
             .w_0()
             .whitespace_nowrap()
-            .child(SharedString::from(marker.clone()));
+            .children(image.is_none().then(|| SharedString::from(marker.clone())))
+            .children(
+                image
+                    .as_ref()
+                    .map(|image| {
+                        opts.cx
+                            .build
+                            .blocks(std::slice::from_ref(image), &mark_style, opts)
+                    })
+                    .into_iter()
+                    .flatten(),
+            );
         d.style().visibility = Some(gpui::Visibility::Hidden);
         d
     });
@@ -152,9 +158,24 @@ pub(crate) fn render_with_style(
         // Отбивка после номера (`1. `) — часть маркера: она и
         // даёт зазор до содержимого. Пробел в конце строки
         // свернулся бы, поэтому он неразрывный.
-        .child(SharedString::from(match marker.strip_suffix(' ') {
-            Some(head) => format!("{head}\u{a0}"),
-            None => marker.clone(),
+        .children(
+            image
+                .as_ref()
+                .map(|image| {
+                    opts.cx.build.blocks(
+                        &[image.clone(), Node::Text("\u{a0}".into())],
+                        &mark_style,
+                        opts,
+                    )
+                })
+                .into_iter()
+                .flatten(),
+        )
+        .children(image.is_none().then(|| {
+            SharedString::from(match marker.strip_suffix(' ') {
+                Some(head) => format!("{head}\u{a0}"),
+                None => marker.clone(),
+            })
         }))
     }))
     // Содержимое — своей колонкой, как прежде: выключка пункта

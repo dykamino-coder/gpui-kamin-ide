@@ -10,9 +10,12 @@ use crate::layout::table::anon::anon_element;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 
+mod image;
+
 pub(crate) struct Marker {
     pub text: String,
     pub style: Option<Computed>,
+    pub image: Option<Node>,
 }
 
 pub(crate) fn resolve(
@@ -73,13 +76,18 @@ pub(crate) fn resolve(
     // верно тем более). Без этого эталон `marker-content-019-ref`
     // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
     // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
-    let no_marker = li.style.no_marker.or(inherited.no_marker) == Some(true)
-        || !matches!(li.style.display, None | Some(Display::ListItem));
     let mut style = li
         .style
         .marker_layer
         .as_deref()
         .map(|m| inherit(merged, m, vcx));
+    let layer = li.style.marker_layer.as_deref();
+    let normal = layer.is_none_or(|m| m.content.is_none() && m.content_none != Some(true));
+    let image = normal
+        .then(|| image::resolve(merged, style.as_ref(), vcx))
+        .flatten();
+    let no_marker = (!matches!(li.style.display, None | Some(Display::ListItem)))
+        || (image.is_none() && li.style.no_marker.or(inherited.no_marker) == Some(true));
     // CSS Lists 3 marker-properties: an outside generated symbol has no
     // tracking advance (Blink list_marker.cc:391,407, InlineMarginsForOutside).
     // Preserve text markers and the inside-marker text flow from #355.
@@ -90,6 +98,7 @@ pub(crate) fn resolve(
     (!no_marker).then_some(Marker {
         text: marker,
         style,
+        image,
     })
 }
 
@@ -103,7 +112,11 @@ pub(crate) fn inline_marker(
 }
 
 pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
-    let mut span = anon_element("::marker", vec![Node::Text(marker.text)]);
+    let children = match marker.image {
+        Some(image) => vec![image, Node::Text(" ".into())],
+        None => vec![Node::Text(marker.text)],
+    };
+    let mut span = anon_element("::marker", children);
     span.inline = true;
     span.style = marker.style.unwrap_or_default().into();
     tabular_marker(&mut span.style, merged, li.style.marker_layer.as_deref());

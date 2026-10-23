@@ -19,9 +19,13 @@ impl Computed {
         match key {
             "grid-template-rows" => {
                 let tracks = parsed_value!(self, super::templates::template_tracks(v, vcx));
-                self.subgrid_rows = super::subgrid::valid(v);
+                self.subgrid_rows = super::subgrid::valid(v, vcx);
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
-                self.grid_row_line_names = parse_line_names(v);
+                self.grid_row_line_names = if self.subgrid_rows {
+                    super::subgrid::parse(v, vcx)
+                } else {
+                    parse_line_names(v)
+                };
                 self.grid_rows = tracks;
                 // Поля авто-повтора рядов принадлежат этому же свойству.
                 self.grid_auto_fill_row = None;

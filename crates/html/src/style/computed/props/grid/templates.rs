@@ -29,9 +29,13 @@ impl Computed {
                 // — ряды у подсетки СВОИ, а ИЛИ оставлял их подсеточными, и
                 // с настоящей подсеткой taffy ряд сжимался в один).
                 let tracks = parsed_value!(self, template_tracks(v, vcx));
-                self.subgrid_cols = super::subgrid::valid(v);
+                self.subgrid_cols = super::subgrid::valid(v, vcx);
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
-                self.grid_col_line_names = parse_line_names(v);
+                self.grid_col_line_names = if self.subgrid_cols {
+                    super::subgrid::parse(v, vcx)
+                } else {
+                    parse_line_names(v)
+                };
                 // `none` — ни одной явной дорожки (начальное значение).
                 self.grid_cols = (v != "none").then(|| count_tracks(v)).flatten();
                 self.grid_tracks = tracks;
@@ -95,7 +99,7 @@ impl Computed {
 }
 
 pub(super) fn template_tracks(v: &str, vcx: ValueCx<'_>) -> Option<Option<Vec<TrackSize>>> {
-    if v.trim() == "none" || super::subgrid::valid(v) {
+    if v.trim() == "none" || super::subgrid::valid(v, vcx) {
         Some(None)
     } else {
         parse_tracks(v, vcx).map(Some)

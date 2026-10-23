@@ -47,6 +47,9 @@ fn collect(nodes: &[Node], urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
 }
 
 fn style(c: &Computed, urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
+    if let Some(Some(image)) = &c.list_style_image {
+        operand(image, urls);
+    }
     if let Some(image) = &c.bg_image {
         operand(image, urls);
     }
