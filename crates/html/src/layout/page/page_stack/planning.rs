@@ -22,8 +22,7 @@ impl PageStack {
         let kid_names: Vec<_> = self.kids.iter().map(|k| k.page.clone()).collect();
         let mut geoms = vec![g];
         let mut names = vec![first.clone()];
-        let mut result = (0, Vec::new());
-        for pass in 0..=6 {
+        let result = settle(|| {
             let tail = names.last().cloned().unwrap_or_default();
             self.measured.clear();
             for (index, kid) in self.kids.iter().enumerate() {
@@ -70,9 +69,9 @@ impl PageStack {
                 },
             );
             let extents: Vec<_> = (0..pages).map(heights).collect();
-            if pass < 6 && self.regrow_flex(&kids, &plan, &extents) {
+            if self.regrow_flex(&kids, &plan, &extents) {
                 (kids, _) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
-                continue;
+                return (false, (pages, plan));
             }
             let mut new_names: Vec<Option<String>> = vec![None; pages];
             for f in &plan {
@@ -99,14 +98,25 @@ impl PageStack {
                 .enumerate()
                 .map(|(i, n)| (self.geom_for)(i, n))
                 .collect();
-            result = (pages, plan);
-            if stable {
-                break;
-            }
-        }
+            (stable, (pages, plan))
+        });
         for (pk, k) in self.kids.iter().zip(&kids) {
             pk.end.set(k.h);
         }
         (kids, geoms, names, result.0, result.1)
     }
 }
+
+// После роста прежний план устарел. Число коррекций задаёт содержимое,
+// а не предел проходов; принять можно только согласованный результат.
+fn settle<T>(mut step: impl FnMut() -> (bool, T)) -> T {
+    loop {
+        let (stable, value) = step();
+        if stable {
+            return value;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;
