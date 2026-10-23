@@ -277,7 +277,7 @@ pub struct Computed {
     /// None при ellipsis — многоточие по умолчанию.
     pub overflow_marker: Option<String>,
     /// `text-overflow: inherit` (css-cascade-4 §7.3): свойство не
-    /// наследуемое, значение родителя переносит `doc::settle_explicit_inherit`
+    /// наследуемое, значение родителя переносит `compute::explicit`
     /// (`text-overflow-004`).
     pub text_overflow_inherit: bool,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
