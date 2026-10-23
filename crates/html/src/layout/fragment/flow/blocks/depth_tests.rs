@@ -32,9 +32,8 @@ fn deep_native_groups_record_the_innermost_box() {
             let e = root(&tree);
             let logical = if mode == "horizontal-tb" {
                 assert!(crate::layout::fragment::push::measured_tree(e), "{body}");
-                // TRANSITIONAL(F2-4): рекордер видит flex на любой глубине, но сплошная
-                // копия ещё не заменяет consumed state его продолжения.
-                assert_eq!(independent_copy(e), !body.contains("display:flex"));
+                // Обычный flex сохраняет независимое измерение на любой глубине.
+                assert!(independent_copy(e), "{body}");
                 e.clone()
             } else {
                 assert!(vertical_copy(e, mode == "vertical-rl"), "{mode}: {body}");
