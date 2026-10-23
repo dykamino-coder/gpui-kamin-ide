@@ -66,6 +66,8 @@ image = { version = "0.25", default-features = false, features = [
 resvg = { version = "0.48.0", default-features = false, features = ["text", "raster-images"] }
 
 [dev-dependencies]
+# Идентичности узлов для проверки областей измерения без окна.
+taffy = { path = "../../vendor/taffy" }
 # Снимок окна для прогона reftest-ов WPT (см. examples/wptrun.rs).
 raw-window-handle = "0.6"
 windows = { version = "0.62", features = [

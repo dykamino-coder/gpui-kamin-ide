@@ -18,7 +18,7 @@ impl Frame {
         sticky: Option<&super::exact_probe::StickyShift>,
         vcx: ValueCx<'_>,
     ) -> bool {
-        if !self.marker.get() {
+        if self.marker.borrow().is_empty() {
             return false;
         }
         // Probes exclude ancestor sticky/scroll projections. Use the same
@@ -26,7 +26,12 @@ impl Frame {
         let snap_bounds = bounds;
         let mut bounds = bounds;
         bounds.origin -= super::exact_probe::sticky_shift(sticky);
-        let boxes = self.boxes.borrow();
+        let records = self.boxes.borrow();
+        let boxes: HashMap<_, _> = records.iter().map(|r| (r.id, (r.rect, r.clip))).collect();
+        let snap_areas: HashMap<_, _> = records
+            .iter()
+            .filter_map(|r| r.snap.map(|a| (r.id, a)))
+            .collect();
         let text_boxes = self.text_boxes.borrow();
         fn area(
             e: &Element,
@@ -72,7 +77,7 @@ impl Frame {
         let reversed = crate::interactive::scrollbar_gutter::reversed(c);
         // CSS Grid §5.3 includes the grid itself, even with no grid items.
         // Blink GridLayoutAlgorithm sets inflow bounds to the track span.
-        if let Some(rect) = self.grid_bounds.get() {
+        if let Some(rect) = self.grid_bounds.borrow().iter().rev().find_map(|r| *r) {
             for axis in 0..2 {
                 let shift = f32::from(if axis == 0 { offset.x } else { offset.y });
                 start[axis] = start[axis].min(rect[axis] - shift - padding[axis]);
@@ -155,14 +160,9 @@ impl Frame {
         if changed || bars_changed {
             return true;
         }
-        if c.snap.axis != 0 && !self.snapped.get() && !self.snap_areas.borrow().is_empty() {
+        if c.snap.axis != 0 && !self.snapped.get() && !snap_areas.is_empty() {
             self.snapped.set(true);
-            let mut areas: Vec<_> = self
-                .snap_areas
-                .borrow()
-                .iter()
-                .map(|(&id, &area)| (id, area))
-                .collect();
+            let mut areas: Vec<_> = snap_areas.iter().map(|(&id, &area)| (id, area)).collect();
             areas.sort_by_key(|(id, _)| *id);
             return snap::initial(
                 c,

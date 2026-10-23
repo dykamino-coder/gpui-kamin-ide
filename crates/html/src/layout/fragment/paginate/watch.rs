@@ -28,7 +28,7 @@ pub(crate) use table::{TablePart, table_part};
 /// the wrappers of its rebuilt copies.
 #[derive(Default)]
 pub(crate) struct Watched {
-    pub(crate) flow: Rc<crate::layout::fragment::flow::FlowMeasurements>,
+    pub(crate) flow: Rc<crate::layout::fragment::flow::FlowMeasure>,
     ids: Rc<HashSet<u64>>,
     seen: Rc<RefCell<HashMap<u64, LayoutId>>>,
     /// Block stack of the watched copy whose boundaries are read after layout.
@@ -54,7 +54,7 @@ impl Watched {
     pub(crate) fn for_blocks(blocks: BlockBox) -> Rc<Self> {
         Self::with_blocks(
             blocks,
-            Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+            Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines()),
         )
     }
 
@@ -67,7 +67,7 @@ impl Watched {
 
     fn with_blocks(
         blocks: BlockBox,
-        flow: Rc<crate::layout::fragment::flow::FlowMeasurements>,
+        flow: Rc<crate::layout::fragment::flow::FlowMeasure>,
     ) -> Rc<Self> {
         Rc::new(Watched {
             // With the growth struts before them (`STRUT_ID`).
@@ -93,7 +93,7 @@ impl Watched {
 
     /// Break opportunities of the copy laid out at `origin` with `size`, read
     /// before the layout engine is released: measured lines
-    /// (`FlowMeasurements`) and the block stack's class A boundaries, forced
+    /// (`FlowMeasure`) and the block stack's class A boundaries, forced
     /// breaks and unbreakable ranges from the laid-out border boxes
     /// (`BlockBox::breaks`). `end` bounds the flow (the box or its parallel
     /// flow). Block boundaries are read on the horizontal axis only.
@@ -167,7 +167,7 @@ impl Watched {
 
     pub(crate) fn for_lines() -> Rc<Self> {
         Rc::new(Self {
-            flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+            flow: Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines()),
             ..Self::default()
         })
     }

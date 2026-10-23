@@ -150,7 +150,7 @@ mod tests {
         {
             frame.begin(Some(&root));
             classic::model(Some(&frame), 7, &c);
-            frame.marker.set(true);
+            frame.marker.push(());
             // Original root x=80, child x=110; the ancestor adds 40px.
             let link = ShiftLink::inside(None);
             link.applied(point(px(40.0), px(0.0)), || {

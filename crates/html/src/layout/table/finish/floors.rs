@@ -4,8 +4,6 @@ use crate::dom::Element;
 use crate::layout::fragment::paginate::watch::TablePart;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 pub(super) fn table_size_floors(
     e: &Element,
@@ -82,7 +80,7 @@ pub(super) fn table_size_floors(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn table_grid_child(
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
+    table_edges: &crate::layout::table::probes::CellEdges,
     e: &Element,
     spacing: (f32, f32),
     from_cols: &[Option<f32>],

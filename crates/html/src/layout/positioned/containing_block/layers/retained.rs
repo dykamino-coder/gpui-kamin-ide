@@ -11,7 +11,7 @@ pub(crate) struct Retained {
     pending: Vec<super::Pending>,
     icb: Vec<Destination>,
     late: Vec<Destination>,
-    flex_content: Rc<RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>>,
+    flex_content: crate::layout::probe::Sink<(u64, gpui::Bounds<gpui::Pixels>)>,
 }
 
 impl Positioning {
@@ -105,7 +105,7 @@ impl Retained {
             pending: RefCell::new(self.pending.clone()),
             icb: RefCell::new(icb),
             late: RefCell::new(late),
-            flex_content: Rc::new(RefCell::new(self.flex_content.borrow().clone())),
+            flex_content: self.flex_content.fork(),
         });
         (positioning, Escaped(escaped))
     }

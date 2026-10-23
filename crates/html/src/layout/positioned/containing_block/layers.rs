@@ -56,18 +56,19 @@ pub struct Positioning {
     /// (`absolute_overflow`): an abspos child with safe self-alignment is
     /// placed against its flex parent's content box and its containing block
     /// once both exist. Keyed by the container's node id.
-    flex_content: std::rc::Rc<RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>>,
+    pub(in crate::layout::positioned) flex_content:
+        crate::layout::probe::Sink<(u64, gpui::Bounds<gpui::Pixels>)>,
 }
 
 impl Positioning {
-    /// Record the content box of flex container `id` (prepaint).
-    pub(crate) fn note_flex_content(&self, id: u64, content: gpui::Bounds<gpui::Pixels>) {
-        self.flex_content.borrow_mut().insert(id, content);
-    }
-
     /// The content box of flex container `id`, once its prepaint ran.
     pub(crate) fn flex_content(&self, id: u64) -> Option<gpui::Bounds<gpui::Pixels>> {
-        self.flex_content.borrow().get(&id).copied()
+        self.flex_content
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(key, _)| *key == id)
+            .map(|(_, rect)| *rect)
     }
 
     /// Open a containing-block layer around the children of a positioned

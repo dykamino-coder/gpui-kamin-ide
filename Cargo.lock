@@ -3847,6 +3847,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "svgtypes 0.16.1",
+ "taffy",
  "ttf-parser",
  "unicode-bidi",
  "unicode-linebreak",

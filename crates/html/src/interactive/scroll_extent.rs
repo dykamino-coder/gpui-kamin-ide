@@ -9,6 +9,7 @@ mod geometry;
 mod grid;
 mod snap;
 use crate::dom::Element;
+use crate::layout::probe::Sink;
 use crate::style::computed::Computed;
 use geometry::{Clip, Rect};
 use gpui::{Bounds, Pixels, Size, px, size};
@@ -18,16 +19,23 @@ use std::{
     rc::Rc,
 };
 
+#[derive(Clone, Copy)]
+struct BoxRecord {
+    id: u64,
+    rect: Rect,
+    clip: Clip,
+    snap: Option<snap::Area>,
+}
+
 #[derive(Clone)]
 pub struct Frame {
-    boxes: Rc<RefCell<HashMap<u64, (Rect, Clip)>>>,
+    boxes: Sink<BoxRecord>,
     text_boxes: Rc<RefCell<HashMap<u64, Rect>>>,
-    grid_bounds: Rc<Cell<Option<Rect>>>,
+    grid_bounds: Sink<Option<Rect>>,
     extent: Rc<Cell<Size<Pixels>>>,
-    marker: Rc<Cell<bool>>,
+    marker: Sink<()>,
     root: Rc<Cell<Option<u64>>>,
     viewport: Rc<Cell<bool>>,
-    snap_areas: Rc<RefCell<HashMap<u64, snap::Area>>>,
     snapped: Rc<Cell<bool>>,
     bars: Rc<Cell<[bool; 2]>>,
     reverse: Rc<Cell<[bool; 2]>>,
@@ -41,14 +49,13 @@ pub struct Frame {
 impl Default for Frame {
     fn default() -> Self {
         Self {
-            boxes: Rc::default(),
+            boxes: Sink::default(),
             text_boxes: Rc::default(),
-            grid_bounds: Rc::default(),
+            grid_bounds: Sink::default(),
             extent: Rc::new(Cell::new(size(px(0.0), px(0.0)))),
-            marker: Rc::new(Cell::new(false)),
+            marker: Sink::default(),
             root: Rc::new(Cell::new(None)),
             viewport: Rc::default(),
-            snap_areas: Rc::default(),
             snapped: Rc::default(),
             bars: Rc::default(),
             reverse: Rc::default(),
@@ -76,18 +83,17 @@ impl Frame {
         sticky: Option<&exact_probe::StickyShift>,
     ) {
         b.origin -= exact_probe::sticky_shift(sticky);
-        self.boxes.borrow_mut().insert(
+        self.boxes.push(BoxRecord {
             id,
-            (
-                [
-                    f32::from(b.left()),
-                    f32::from(b.top()),
-                    f32::from(b.right()),
-                    f32::from(b.bottom()),
-                ],
-                Clip::new(c),
-            ),
-        );
+            rect: [
+                f32::from(b.left()),
+                f32::from(b.top()),
+                f32::from(b.right()),
+                f32::from(b.bottom()),
+            ],
+            clip: Clip::new(c),
+            snap: None,
+        });
     }
 
     pub(super) fn bars(&self) -> [bool; 2] {
@@ -103,11 +109,10 @@ impl Frame {
         self.decoration_clip.set(Some(clip));
     }
     pub(super) fn begin(&self, root: Option<&Element>) -> Option<Self> {
-        self.boxes.borrow_mut().clear();
+        self.boxes.take();
         self.text_boxes.borrow_mut().clear();
-        self.grid_bounds.set(None);
-        self.snap_areas.borrow_mut().clear();
-        self.marker.set(false);
+        self.grid_bounds.take();
+        self.marker.take();
         self.root.set(root.map(|e| e.node_id));
         self.viewport
             .set(root.is_some_and(|e| e.tag == "html-viewport"));

@@ -30,7 +30,7 @@ impl EdgePainter {
 
 impl LayerPaint for EdgePainter {
     fn paint(&mut self, window: &mut Window) {
-        let cells = std::mem::take(&mut *self.edges.borrow_mut());
+        let cells = self.edges.take();
         // Начало сетки по каждой оси — отдельно от того, кто эту линию красит.
         let grid_lo = cells
             .iter()

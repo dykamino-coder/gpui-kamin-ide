@@ -26,7 +26,7 @@ pub(super) fn paint_body(
     let bounds = prepaint.0;
     let grid_tracks = prepaint.1.take();
     let buffer = std::mem::take(&mut *group.items.borrow_mut());
-    let items = buffer.items;
+    let (items, margins): (Vec<_>, Vec<_>) = buffer.items.take().into_iter().unzip();
     // A grid's gaps come from its track collection, not from its items
     // (css-gaps-1 §gap-grid; Blink `BuildGridTrackGapData`): an empty
     // grid or subgrid still has gaps to decorate
@@ -99,8 +99,7 @@ pub(super) fn paint_body(
                 .enumerate()
                 .map(|(index, b)| {
                     let mut item = GapItem::from_bounds(b, !stacked_vertically);
-                    item.margin_end = buffer
-                        .margins
+                    item.margin_end = margins
                         .get(index)
                         .map_or(0.0, |m| m[usize::from(!stacked_vertically)]);
                     item
