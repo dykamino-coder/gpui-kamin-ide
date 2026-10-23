@@ -15,7 +15,7 @@ pub(crate) fn draw_rule(
     main_like: bool,
     spec: &GapRuleSpec,
     bounds: Bounds<Pixels>,
-    owner: &crate::paint::context::PaintCx,
+    owner: &crate::layout::cx::deferred::Deferred,
 ) {
     let scope = crate::layout::fragment::gap_fragment::current(owner)
         .filter(|_| {

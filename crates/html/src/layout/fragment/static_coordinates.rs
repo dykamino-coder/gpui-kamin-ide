@@ -1,7 +1,7 @@
 //! Перевод щупов статической позиции из непрерывной копии фрагмента в размещение по
 //! фрагментаинерам: `fixed`-коробка сохраняет область просмотра содержащим блоком, и лишь её
 //! гипотетическое место в потоке следует плану стопки колонок (`Place` по детям и
-//! смещениям, стек `Mapping` в `PaintCx::coordinates` для вложенной фрагментации). План
+//! смещениям, стек `Mapping` в `Deferred::coordinates` для вложенной фрагментации). План
 //! выделяется только деревьям с такими щупами (`needed`,
 //! `ColumnStack::with_static_coordinates`).
 
@@ -25,7 +25,7 @@ pub(crate) struct Mapping {
 }
 
 pub(crate) fn with<R>(
-    owner: &crate::paint::context::PaintCx,
+    owner: &crate::layout::cx::deferred::Deferred,
     mapping: Option<(usize, Point<Pixels>, Places)>,
     f: impl FnOnce() -> R,
 ) -> R {
@@ -43,7 +43,7 @@ pub(crate) fn with<R>(
 }
 
 pub(crate) fn map(
-    owner: &crate::paint::context::PaintCx,
+    owner: &crate::layout::cx::deferred::Deferred,
     mut hole: Bounds<Pixels>,
 ) -> Bounds<Pixels> {
     {
@@ -106,7 +106,7 @@ mod tests {
                 origin: point(px(60.0), px(-180.0)),
             },
         ]));
-        let owner = crate::paint::context::PaintCx::default();
+        let owner = crate::layout::cx::deferred::Deferred::default();
         with(&owner, Some((0, point(px(10.0), px(20.0)), places)), || {
             let probe = |y: f32| Bounds {
                 origin: point(px(10.0), px(20.0 + y)),
@@ -131,7 +131,7 @@ mod tests {
                     .collect(),
             ))
         };
-        let owner = crate::paint::context::PaintCx::default();
+        let owner = crate::layout::cx::deferred::Deferred::default();
         with(
             &owner,
             Some((

@@ -15,7 +15,7 @@ pub(super) fn probe(
     line: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
     child: AnyElement,
     paint_context: Rc<VerticalPaint>,
-    fragments: Rc<crate::paint::context::PaintCx>,
+    fragments: Rc<crate::layout::cx::deferred::Deferred>,
 ) -> AnyElement {
     Probe {
         paint_context,
@@ -30,7 +30,7 @@ pub(super) fn probe(
 
 struct Probe {
     paint_context: Rc<VerticalPaint>,
-    fragments: Rc<crate::paint::context::PaintCx>,
+    fragments: Rc<crate::layout::cx::deferred::Deferred>,
     spot: SpotCell,
     full: bool,
     /// The line box of the text line this probe sits in, when a paragraph

@@ -18,7 +18,7 @@ pub(crate) struct ClampHost {
     pub(crate) geometry: ClampGeometry,
     pub(crate) build: Build,
     pub(crate) border_box: bool,
-    pub(crate) paint: Rc<crate::paint::context::PaintCx>,
+    pub(crate) paint: Rc<crate::layout::cx::deferred::Deferred>,
     plan: Cached,
     built: Option<AnyElement>,
 }
@@ -30,7 +30,7 @@ impl ClampHost {
         geometry: ClampGeometry,
         build: Build,
         border_box: bool,
-        paint: Rc<crate::paint::context::PaintCx>,
+        paint: Rc<crate::layout::cx::deferred::Deferred>,
     ) -> Self {
         Self {
             key,

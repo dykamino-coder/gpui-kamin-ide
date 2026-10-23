@@ -5,14 +5,13 @@
 //! остаются в полосе, чтобы не выйти из её области.
 
 use crate::hooks::{IntoHooked, Wrap};
-use crate::paint::context::PaintCx;
-use gpui::{AnyElement, App, Bounds, ContentMask, IntoElement, Pixels, Window};
+use crate::layout::cx::deferred::Deferred;
+use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Window};
 use std::rc::Rc;
 
-pub(crate) type Outline = (AnyElement, ContentMask<Pixels>);
 /// Each float and stacking context owns its outlines (Servo paint_traversal).
 pub(crate) fn paint(
-    owner: Option<&Rc<PaintCx>>,
+    owner: Option<&Rc<Deferred>>,
     window: &mut Window,
     cx: &mut App,
     f: impl FnOnce(&mut Window, &mut App),
@@ -36,7 +35,7 @@ pub(crate) fn paint(
 /// A formatting context does not itself establish a stacking context. Reuse
 /// the enclosing phase so nested flow outlines also follow outer floats.
 pub(crate) fn flow(
-    owner: Option<&Rc<PaintCx>>,
+    owner: Option<&Rc<Deferred>>,
     window: &mut Window,
     cx: &mut App,
     f: impl FnOnce(&mut Window, &mut App),
@@ -50,7 +49,7 @@ pub(crate) fn flow(
 
 /// Isolate outlines inside an effect only when an outer flow is collecting.
 pub(crate) fn scoped(
-    owner: Option<&Rc<PaintCx>>,
+    owner: Option<&Rc<Deferred>>,
     window: &mut Window,
     cx: &mut App,
     f: impl FnOnce(&mut Window, &mut App),
@@ -62,7 +61,7 @@ pub(crate) fn scoped(
     }
 }
 
-pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
+pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyElement {
     Phase {
         owner: owner.cloned(),
         child,
@@ -72,7 +71,7 @@ pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElem
 }
 
 /// The phase of a formatting context around `child` (see [`flow`]).
-pub(crate) fn flow_phase(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
+pub(crate) fn flow_phase(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyElement {
     Phase {
         owner: owner.cloned(),
         child,
@@ -81,7 +80,7 @@ pub(crate) fn flow_phase(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyE
     .hooked()
 }
 
-pub(crate) fn scope(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
+pub(crate) fn scope(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyElement {
     Phase {
         owner: owner.cloned(),
         child,
@@ -92,7 +91,7 @@ pub(crate) fn scope(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElemen
 
 /// Native opacity is applied by Div while painting its descendants. Keep
 /// their outlines in-band rather than replaying outside that opacity scope.
-pub(crate) fn in_band(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
+pub(crate) fn in_band(child: AnyElement, owner: Option<&Rc<Deferred>>) -> AnyElement {
     Phase {
         owner: owner.cloned(),
         child,
@@ -104,7 +103,7 @@ pub(crate) fn in_band(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElem
 pub(crate) fn context(
     child: AnyElement,
     c: &crate::style::computed::Computed,
-    owner: Option<&Rc<PaintCx>>,
+    owner: Option<&Rc<Deferred>>,
 ) -> AnyElement {
     if c.opacity.is_some_and(|opacity| opacity < 1.0) {
         in_band(child, owner)
@@ -120,7 +119,7 @@ enum Mode {
     InBand,
 }
 struct Phase {
-    owner: Option<Rc<PaintCx>>,
+    owner: Option<Rc<Deferred>>,
     child: AnyElement,
     mode: Mode,
 }

@@ -40,7 +40,7 @@ impl<'a> super::Probe<'a> {
         cx: &'a mut gpui::App,
         vert: bool,
         fragment: Option<&FragmentFlow>,
-        paint: Rc<crate::paint::context::PaintCx>,
+        paint: Rc<crate::layout::cx::deferred::Deferred>,
         scopes: ProbeScopes,
         build: crate::layout::build_contracts::ChildBuild,
     ) -> Self {
