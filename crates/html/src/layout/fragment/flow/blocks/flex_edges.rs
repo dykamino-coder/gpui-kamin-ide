@@ -10,40 +10,37 @@ impl BlockBox {
         let mut propagated = (false, false);
         if let Some(flex) = &self.flex {
             if let Some(frame) = laid.flexes.get(&self.id) {
-                for line in &frame.lines {
-                    let members: Vec<_> = flex
-                        .items
-                        .iter()
-                        .filter(|i| line.items.contains(&i.id))
-                        .collect();
-                    let edge: Vec<_> = if frame.column {
-                        let at = members
-                            .iter()
-                            .filter_map(|i| {
-                                laid.at(i.id).map(|p| (i.id, if last { p.1 } else { p.0 }))
-                            })
-                            .reduce(|a, b| {
-                                if (last && b.1 > a.1) || (!last && b.1 < a.1) {
-                                    b
-                                } else {
-                                    a
-                                }
-                            });
-                        members
-                            .into_iter()
-                            .filter(|i| at.is_some_and(|a| a.0 == i.id))
-                            .collect()
-                    } else if (last && frame.lines.last().is_some_and(|l| l.index == line.index))
-                        || (!last && frame.lines.first().is_some_and(|l| l.index == line.index))
-                    {
-                        members
+                let edge_line = frame.lines.iter().filter_map(|line| {
+                    let edge = if last {
+                        line.order.last()
                     } else {
-                        Vec::new()
+                        line.order.first()
+                    }?;
+                    Some((edge.0, line.index))
+                });
+                let edge_line = if last {
+                    edge_line.max()
+                } else {
+                    edge_line.min()
+                };
+                for line in &frame.lines {
+                    let edge_item = if last {
+                        line.order.last()
+                    } else {
+                        line.order.first()
                     };
-                    for item in edge {
-                        let value = item.edge(last, laid);
-                        propagated.0 |= value.0;
-                        propagated.1 |= value.1;
+                    for item in &flex.items {
+                        let at_edge = if frame.column {
+                            edge_item.is_some_and(|edge| edge.1 == Some(item.id))
+                        } else {
+                            edge_line.is_some_and(|edge| edge.1 == line.index)
+                                && line.items.contains(&item.id)
+                        };
+                        if at_edge {
+                            let value = item.edge(last, laid);
+                            propagated.0 |= value.0;
+                            propagated.1 |= value.1;
+                        }
                     }
                 }
             }
@@ -82,3 +79,6 @@ impl BlockKid {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

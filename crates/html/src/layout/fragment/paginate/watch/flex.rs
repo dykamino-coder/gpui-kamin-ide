@@ -165,12 +165,15 @@ impl Watched {
             let mut lines = Vec::new();
             for (index, line) in flex.lines.into_iter().enumerate() {
                 let mut members = Vec::new();
+                let mut order = Vec::new();
                 let mut top = f32::MAX;
                 let mut bottom = f32::MIN;
                 for item in line.items {
-                    let Some(&id) = items.iter().find(|id| seen.get(id) == Some(&item.id)) else {
-                        continue;
-                    };
+                    let id = items
+                        .iter()
+                        .find(|id| seen.get(id) == Some(&item.id))
+                        .copied();
+                    order.push((item.order, id));
                     let (x, y, width, height) = if flex.is_column {
                         (
                             item.cross_offset,
@@ -190,6 +193,9 @@ impl Watched {
                         .span(point(o.x + px(x), o.y + px(y)), size(px(width), px(height)));
                     let normal = start + shift;
                     let length = end - start;
+                    top = top.min(normal);
+                    bottom = bottom.max(normal + length);
+                    let Some(id) = id else { continue };
                     let delta = boxes.get(&id).map_or(0.0, |p| normal - p.0);
                     if let Some(blocks) = &self.blocks {
                         blocks.shift_flex_item(id, delta, boxes, &mut shifts, &mut tables);
@@ -211,9 +217,10 @@ impl Watched {
                     bottom = bottom.max(normal + length);
                     members.push(id);
                 }
-                if members.is_empty() {
+                if order.is_empty() {
                     continue;
                 }
+                order.sort_unstable_by_key(|item| item.0);
                 if !column {
                     let (a, b) = projection.relative_span(o, line.cross_offset, line.cross_size);
                     top = a + shift;
@@ -224,6 +231,7 @@ impl Watched {
                     start: top,
                     end: bottom,
                     items: members,
+                    order,
                 });
             }
             if !column {

@@ -32,7 +32,7 @@ PACKAGE_REVISIONS = {
 FIXES = {
     "gpui": [
         "Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.",
-        "Expose final Taffy flex line/item geometry and typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).",
+        "Expose final Taffy flex line/item geometry and semantic item order, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).",
         "Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.",
         "CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.",
         "CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.",
