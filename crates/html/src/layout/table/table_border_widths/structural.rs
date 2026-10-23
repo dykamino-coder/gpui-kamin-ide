@@ -42,7 +42,7 @@ impl<'a> Edges<'a> {
 
     fn widths(&self, element: &Element) -> [f32; 4] {
         let border = element.style.computed().borders();
-        let font = match element.style.cascaded().font_size {
+        let font = match element.style.computed().font_size {
             Some(crate::style::values::value::Len::Px(size)) => size,
             _ => self.font,
         };

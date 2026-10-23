@@ -13,7 +13,7 @@ pub(crate) fn cell_settings(c: &Element, cx: ShapeCx) -> Option<(f32, ShapeCx)> 
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let spacing = match &c.style.cascaded().border_spacing {
+    let spacing = match &c.style.computed().border_spacing {
         Some((_, y)) => px_of(y)?,
         None => 0.0,
     };

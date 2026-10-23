@@ -64,7 +64,7 @@ pub(super) fn resolve_cell_heights(
     // без него логическая высота `inline-size: 2em` не проходила
     // Px-ветку ниже и min-height ряда не ставился.
     if let Some(Len::Em(k)) = cell.style.computed().height {
-        let base = match cell.style.cascaded().font_size.or(inherited.font_size) {
+        let base = match cell.style.computed().font_size.or(inherited.font_size) {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
@@ -105,9 +105,9 @@ pub(super) fn resolve_cell_heights(
         };
         let lh_raw = cell
             .style
-            .cascaded()
+            .computed()
             .line_height
-            .or(row.style.cascaded().line_height)
+            .or(row.style.computed().line_height)
             .or(inherited.line_height);
         let lh = match lh_raw {
             Some(Len::Px(v)) => Some(v),

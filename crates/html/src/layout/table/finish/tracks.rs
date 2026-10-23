@@ -80,7 +80,7 @@ pub(super) fn table_tracks(
                 let gap = if e.style.cascaded().border_collapse == Some(true) {
                     0.0
                 } else {
-                    match e.style.cascaded().border_spacing {
+                    match e.style.computed().border_spacing {
                         Some((Some(Len::Px(g)), _)) => g,
                         _ => 0.0,
                     }
@@ -203,8 +203,8 @@ pub(super) fn first_row_widths_of(
                         // (§17.5.2.1) не складывался (`separated-border-model-004c`).
                         Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
                             let size = super::super::col_measure::cell_font_px(
-                                cell.style.cascaded().font_size,
-                                row.style.cascaded().font_size,
+                                cell.style.computed().font_size,
+                                row.style.computed().font_size,
                                 table_font,
                             );
                             let family = cell

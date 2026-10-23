@@ -150,7 +150,7 @@ pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
     t.style.used_mut().overflow_x = c.style.computed().overflow_y;
     // `border-spacing` физическое (`horizontal vertical`), ряды таблицы идут
     // по оси потока: между рядами в вертикали — ГОРИЗОНТАЛЬНАЯ составляющая.
-    if let Some((x, y)) = c.style.cascaded().border_spacing {
+    if let Some((x, y)) = c.style.computed().border_spacing {
         t.style.used_mut().border_spacing = Some((y, x));
     }
     t.children = c

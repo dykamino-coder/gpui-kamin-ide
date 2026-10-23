@@ -69,8 +69,6 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
     // `style::cascade::inherit` (см. заметку перед ней). Идёт после `walk`: логические
     // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
     // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
-    crate::style::cascade::inherited_value::settle(&mut nodes, vcx);
-    crate::style::zoom::resolve(&mut nodes);
     // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
     // `inherit_bits`, а значение родителя кладёт слияние (`style::cascade::inherit`) —
     // в СЛИТЫЙ стиль. Сборщик же дерева решает слой и обрезку по

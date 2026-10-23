@@ -170,11 +170,15 @@ mod tests {
             ("path {path-length:calc(-1px)}", Some(0.0)),
             ("path {path-length:none}", None),
         ] {
-            let mut parsed = crate::dom::parse(
+            let parsed = crate::dom::parse(
                 &format!("<style>{css}</style><svg><g><path pathLength='100'/></g></svg>"),
                 "",
             );
-            crate::style::cascade::inherited_value::settle(&mut parsed.nodes, parsed.doc.values());
+            crate::style::cascade::materialize::materialize(
+                &parsed.nodes,
+                &std::rc::Rc::new(crate::style::computed::Computed::default()),
+                parsed.doc.values(),
+            );
             let out = super::super::serialize(find(&parsed, "svg"), parsed.values());
             if let Some(value) = expected {
                 assert!(

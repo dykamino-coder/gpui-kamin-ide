@@ -95,7 +95,7 @@ lay_used! {
     mask_box_override, hoisted_block, mask_user_scale, mask_clip, mask_composite, clip_rect,
     clip_len, clip_inset, clip_edges, clip_xywh, column_fill_auto, scroll_marker_group,
     scroll_target_group, column_span, page, break_inside_avoid, bdb_clone, break_before_force,
-    break_after_force, break_before_avoid, break_after_avoid, margin_trim, zoom, zoom_eff,
+    break_after_force, break_before_avoid, break_after_avoid, margin_trim, zoom, zoom_eff, zoom_pending, zoom_boundary,
     column_rule_width, column_rule_visible, column_rule_color, row_rule_width, row_rule_visible,
     row_rule_color, column_rule_break, row_rule_break, column_rule_widths, column_rule_styles,
     column_rule_double, row_rule_double, column_rule_kinds, row_rule_kinds, column_rule_colors,

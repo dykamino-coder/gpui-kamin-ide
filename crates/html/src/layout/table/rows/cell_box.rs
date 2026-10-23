@@ -20,7 +20,7 @@ pub(super) fn prepare_cell_box(
     // Наследуемые отступы и рамки берутся из слитого стиля `cm`,
     // где `style::cascade::inherit` уже разрешил значения родителя.
     use crate::style::css::{BoxGroup as G, LonghandId as L};
-    let marked = cell.style.computed().inherit_longhands;
+    let marked = cell.style.cascaded().inherit_longhands;
     let inherits = |group: G| (0..4).any(|i| marked.contains(L::physical(group, i)));
     if inherits(G::Padding) {
         cell.style.used_mut().padding = cm.padding;
@@ -114,8 +114,8 @@ pub(super) fn prepare_cell_box(
     // Preserve authored cell width as a minimum, then stretch to the row.
     if geom.table_is_vertical {
         let size = crate::layout::table::col_measure::cell_font_px(
-            cell.style.cascaded().font_size,
-            row_state.row.style.cascaded().font_size,
+            cell.style.computed().font_size,
+            row_state.row.style.computed().font_size,
             geom.table_font,
         );
         let family = cell

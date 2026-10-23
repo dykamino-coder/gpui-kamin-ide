@@ -2,7 +2,7 @@
 //! значений (`compute::compute`) у элемента без каскадного `inherit`. Их равенство — условие
 //! повторного использования материализованного стиля ребёнка (Blink `ComputedStyle::InheritedEqual`).
 
-use crate::style::computed::{BlendMode, Computed};
+use crate::style::computed::Computed;
 
 macro_rules! inherited_eq {
     ($($field:ident),* $(,)?) => {
@@ -10,11 +10,18 @@ macro_rules! inherited_eq {
         pub(super) fn inherited_eq(a: &Computed, b: &Computed) -> bool {
             $(a.$field == b.$field &&)* a.scroll.colors == b.scroll.colors
         }
+
+        /// Унаследованные данные `from` — в `onto`: родитель с наследуемыми
+        /// значениями коробки и ненаследуемыми значениями элемента.
+        pub(super) fn take_inherited(onto: &mut Computed, from: &Computed) {
+            $(onto.$field = from.$field.clone();)*
+            onto.scroll.colors = from.scroll.colors.clone();
+        }
     };
 }
 
 // Новое чтение `parent.<поле>` в `compute::compute` (или в функции, которую она зовёт с
-// родителем) обязано попасть сюда либо за признак каскадного `inherit` (`inherits_explicitly`).
+// родителем) обязано попасть сюда, если оно не ради каскадного `inherit`.
 inherited_eq! {
     accent_color, auto_phrase, autospace_alpha, autospace_numeric, balance_lines,
     border_collapse, border_spacing, break_after_spaces, break_anywhere, break_anywhere_strict,
@@ -35,19 +42,6 @@ inherited_eq! {
     text_emphasis, text_fit, text_indent, text_indent_each_line, text_indent_hanging,
     text_orientation, text_shadow, text_shadow_rest, text_transform, text_transform_flags,
     underline_offset, underline_pos, vertical_align, webkit_box_vertical, widows,
-    word_break_word, word_space_char, word_spacing, wrap_anywhere, writing_mode,
-}
-
-/// Несёт ли каскадный стиль `own` слово `inherit` у ненаследуемого свойства: такая стадия
-/// читает у родителя его ненаследуемые поля, и стиль считается под каждой коробкой-родителем.
-pub(super) fn inherits_explicitly(own: &Computed) -> bool {
-    !own.inherit_longhands.is_empty()
-        || !own.explicit_inherit.is_empty()
-        || own.inherit_bits != 0
-        || own.shadow_inherit
-        || own.bidi_inherit
-        || own.background_blend == Some(BlendMode::Inherit)
-        || own.snap.inherit != 0
-        || own.scroll.inherit_gutter
-        || own.scroll.inherit_width
+    word_break_word, word_space_char, word_spacing, wrap_anywhere, writing_mode, zoom_boundary,
+    zoom_eff,
 }

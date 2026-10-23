@@ -16,7 +16,7 @@ pub(super) fn border_spacing_of(
     opts: &RenderOpts,
     inherited: &Computed,
 ) -> (f32, f32) {
-    table_spacing(e, opts, inherited, e.style.cascaded().border_spacing)
+    table_spacing(e, opts, inherited, e.style.computed().border_spacing)
 }
 
 pub(super) fn rows_left_and_cols(

@@ -59,7 +59,7 @@ pub(crate) fn pin_inherited_margins(
         for (i, want, src) in [(0usize, top, own.top), (2, bottom, own.bottom)] {
             let side =
                 crate::style::css::LonghandId::physical(crate::style::css::BoxGroup::Margin, i);
-            if !want || !ch.style.computed().inherit_longhands.contains(side) {
+            if !want || !ch.style.cascaded().inherit_longhands.contains(side) {
                 continue;
             }
             let pinned = match src {

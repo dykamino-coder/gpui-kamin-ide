@@ -22,25 +22,52 @@ mod fonts;
 mod longhands;
 mod sizes;
 mod text;
+mod zoom;
 pub(in crate::style::cascade) use text::{decor_family, resolve_decor_len};
 
 /// Вычисленный стиль элемента с каскадным стилем `own` под вычисленным
 /// стилем родителя `parent`.
 pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
+    // Зум — первым (css-viewport-1 §zoom-property): свои длины каскадного
+    // стиля — в зуме элемента, до наследования и `em` ниже.
+    let zoomed;
+    let mut own_zoom = 1.0;
+    let own = match own
+        .zoom_pending
+        .then(|| zoom::factors(parent, own))
+        .flatten()
+    {
+        Some((k, eff)) => {
+            let mut copy = own.clone();
+            zoom::zoom_own(parent, &mut copy, k, eff);
+            own_zoom = k;
+            zoomed = copy;
+            &zoomed
+        }
+        None => own,
+    };
     // Каскадное `inherit` ненаследуемых свойств — вычисленное значение
     // родителя вместо своего (css-cascade-5 §7.3.1), до всех шагов ниже:
-    // они видят его как значение элемента.
+    // они видят его как значение элемента. Длины родителя — в зуме элемента.
     let resolved;
     let own = if own.explicit_inherit.is_empty() && own.inherit_longhands.is_empty() {
         own
     } else {
+        let scaled = zoom::parent_in_own_zoom(parent, own_zoom);
+        let from = scaled.as_ref().unwrap_or(parent);
         let mut copy = own.clone();
-        super::inherited_value::apply_explicit_inheritance(&mut copy, parent, vcx);
-        longhands::inherit_longhands(&mut copy, parent, vcx);
+        super::inherited_value::apply_explicit_inheritance(&mut copy, from, vcx);
+        longhands::inherit_longhands(&mut copy, from, vcx);
         resolved = copy;
         &resolved
     };
     let mut c = own.clone();
+    // Коробка раскладки своего зума не задаёт: она в зуме родителя.
+    if !own.zoom_pending && c.zoom_eff.is_none() {
+        let eff = zoom::parent_eff(parent);
+        c.zoom_eff = ((eff - 1.0).abs() > f32::EPSILON).then_some(eff);
+    }
+    c.zoom_pending = false;
     crate::style::computed::scroll::inherit(parent, &mut c);
     resolve_bidi_inheritance(parent, &mut c);
     sizes::compute_sizes(parent, own, &mut c, vcx);
@@ -74,6 +101,17 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Co
         None => parent.tab_size_len,
     };
     text::inherit_decoration_values(parent, own, &mut c, own_px, vcx);
+    // `path-length` вычисляется в абсолютную длину (SVG 2 §pathLength).
+    if let Some(mut length) = c
+        .svg_path_length
+        .filter(|l| !matches!(l, Len::Px(_) | Len::Auto))
+    {
+        let font = c.font_cx(vcx);
+        length.resolve_line_height(font.line_px.unwrap_or(1.2 * font.font_px), vcx);
+        if let Some(value) = length.to_px(None, font, vcx) {
+            c.svg_path_length = Some(Len::Px(value.max(0.0)));
+        }
+    }
     // Вычисленный стиль несёт значения, а не каскадные слова.
     c.inherit_longhands = Default::default();
     c
