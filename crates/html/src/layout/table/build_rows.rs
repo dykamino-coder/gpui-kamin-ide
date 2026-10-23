@@ -30,7 +30,7 @@ pub(super) fn table_rows_with_bands(
     };
 
     let px_of = |l: Option<Len>| geom.px_of(l, opts);
-    let table_border = e.style.computed().borders();
+    let table_border = e.style.used().borders();
     geom.bw = [
         px_of(table_border.top),
         px_of(table_border.right),

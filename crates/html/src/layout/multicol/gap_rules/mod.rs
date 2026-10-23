@@ -50,7 +50,7 @@ pub(crate) fn gap_rule_spec(
         b: 0.0,
         a: 1.0,
     });
-    let s = &*e.style.computed();
+    let s = &*e.style.used();
     let axis = |column: bool| -> GapAxisRule {
         let (vis, w, c, ws, ss, cs, brk, inset, visibility) = if column {
             (

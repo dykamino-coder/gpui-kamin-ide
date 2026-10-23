@@ -96,12 +96,12 @@ mod tests {
             panic!("anonymous cell")
         };
         assert!(crate::layout::table::is_cell(cell));
-        assert_eq!(cell.style.computed().display, None);
+        assert_eq!(cell.style.used().display, None);
         let Node::Element(block) = &cell.children[0] else {
             panic!("authored block")
         };
         assert_eq!(block.node_id, 123);
-        assert_eq!(block.style.computed().display, Some(Display::Block));
+        assert_eq!(block.style.used().display, Some(Display::Block));
         assert_eq!(block.children.len(), 1);
     }
 }

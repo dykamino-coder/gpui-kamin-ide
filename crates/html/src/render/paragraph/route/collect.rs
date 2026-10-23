@@ -94,7 +94,7 @@ pub(crate) fn paragraph_pieces_routed(
                 // `<div>` с одной абсолютной картинкой вырастал на строку).
                 let lone_abs = !flow_text
                     && matches!(
-                        e.style.computed().position,
+                        e.style.used().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     );

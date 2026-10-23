@@ -144,6 +144,9 @@ pub(super) fn unwrap_document(
                         child.style.cascaded(),
                         vcx,
                     )
+                    // Document preparation: the unwrapped child's cascade takes the
+                    // wrapper's values (before materialization).
+                    .into_computed()
                     .into();
                     Node::Element(child)
                 }

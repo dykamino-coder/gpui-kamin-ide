@@ -40,10 +40,10 @@ pub(crate) fn real_inline(e: &Element) -> bool {
     if ATOMIC.contains(&e.tag.as_str()) {
         return false;
     }
-    if e.style.computed().inline_display == Some(true) {
+    if e.style.used().inline_display == Some(true) {
         return true;
     }
-    match e.style.computed().display {
+    match e.style.used().display {
         Some(_) => false,
         None => e.inline || crate::dom::INLINE_TAGS.contains(&e.tag.as_str()),
     }
@@ -60,15 +60,15 @@ pub(crate) fn breaks_inline(n: &Node) -> bool {
 /// `display` — блочный тег). Ею же решается, кто спаннер (`spanner_box`:
 /// css-multicol-1 §column-span «Applies to: in-flow block-level elements»).
 pub(crate) fn block_level_in_flow(e: &Element) -> bool {
-    if out_of_flow(&e.style.computed()) || real_inline(e) {
+    if out_of_flow(&e.style.used()) || real_inline(e) {
         return false;
     }
     // Рвут строку только НАСТОЯЩИЕ блочные виды. Внутренние части таблицы
     // (ряд, ячейка, группа) сами по себе разрыва не вызывают: вокруг них
     // сборщик строит анонимную таблицу, и её судьба решается отдельно.
-    match e.style.computed().display {
+    match e.style.used().display {
         // Строчные лунки строку НЕ рвут — внешний вид у них `inline`.
-        Some(Display::GridLanes) => !e.style.computed().lanes_inline,
+        Some(Display::GridLanes) => !e.style.used().lanes_inline,
         Some(Display::Block)
         | Some(Display::Flex)
         | Some(Display::Grid)
@@ -85,10 +85,8 @@ pub(crate) fn block_level_in_flow(e: &Element) -> bool {
 /// строчному хозяину как свой (css-display-3 §box-generation).
 pub(crate) fn contains_block(children: &[Node]) -> bool {
     children.iter().any(|n| match n {
-        Node::Element(e)
-            if real_inline(e) || e.style.computed().display == Some(Display::Contents) =>
-        {
-            !out_of_flow(&e.style.computed()) && contains_block(&e.children)
+        Node::Element(e) if real_inline(e) || e.style.used().display == Some(Display::Contents) => {
+            !out_of_flow(&e.style.used()) && contains_block(&e.children)
         }
         other => breaks_inline(other),
     })
@@ -163,9 +161,9 @@ pub(crate) fn atomic_inline(c: &Computed) -> bool {
 /// родителя вместо примыкания к его верху (`phantom-line-boxes-001…006`).
 pub(crate) fn inline_marked_block(e: &Element) -> bool {
     e.inline
-        && e.style.computed().inline_display != Some(true)
+        && e.style.used().inline_display != Some(true)
         && matches!(
-            e.style.computed().display,
+            e.style.used().display,
             Some(Display::Block)
                 | Some(Display::ListItem)
                 | Some(Display::Flex)

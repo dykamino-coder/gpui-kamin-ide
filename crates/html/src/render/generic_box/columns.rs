@@ -14,8 +14,8 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
         // единицах раскладки 1/64 точки, как Blink `LayoutUnit`: иначе
         // `30%` от 50 даёт 15.0000006, и край колонки 25.4999 округлялся
         // не так, как у точного `15px` (`multicol-nested-033`).
-        Some(Len::Pct(k)) if matches!(e.style.computed().width, Some(Len::Px(_))) => {
-            let w = match e.style.computed().width {
+        Some(Len::Pct(k)) if matches!(e.style.used().width, Some(Len::Px(_))) => {
+            let w = match e.style.used().width {
                 Some(Len::Px(w)) => w,
                 _ => 0.0,
             };
@@ -28,7 +28,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     };
     // `column-*` — только у блочных контейнеров (css-multicol-1 §2):
     // сетка ими не режется (`grid-multicol-001`).
-    let multicol = multicol_container(&e.style.computed());
+    let multicol = multicol_container(&e.style.used());
     // css-multicol-1 §3.4 шаги (05)-(07): N считается по ВЫЧИСЛЕННЫМ
     // 'column-width', 'column-gap' и используемой ширине коробки.
     // Пока брались заданные значения, `column-width: 6em` не
@@ -90,8 +90,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // Заданный `column-height` без числа колонок — одна колонка, но с
     // рядами (`column-height-012`: `column-height:40px` и 80px
     // содержимого — два ряда по 40).
-    let height_driven =
-        e.style.computed().column_height.is_some() && used_count.is_none_or(|n| n <= 1);
+    let height_driven = e.style.used().column_height.is_some() && used_count.is_none_or(|n| n <= 1);
     // `column-count: 1` — тоже многоколоночник (css-multicol-1 §2; Blink
     // `ComputedStyle::SpecifiesColumns`: «!HasAutoColumnCount()»), и
     // спаннер в нём режет содержимое на ряды: ряд до спаннера — свой
@@ -105,7 +104,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // (`multicol-span-all-list-item-001/002`).
     let lone_span = used_count == Some(1)
         && !height_driven
-        && e.style.computed().column_wrap.is_none()
+        && e.style.used().column_wrap.is_none()
         && e.list_item.is_none()
         && has_deep_spanner(e);
     ColumnPlan {

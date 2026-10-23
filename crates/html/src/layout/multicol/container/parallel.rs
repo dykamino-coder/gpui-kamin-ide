@@ -38,11 +38,11 @@ fn positioned(
     copies: usize,
     vcx: ValueCx<'_>,
 ) -> bool {
-    if c.style.computed().position != Some(Position::Absolute)
+    if c.style.used().position != Some(Position::Absolute)
         || !block(c)
-        || !matches!(c.style.computed().height, None | Some(Len::Auto))
-        || !zero(c.style.computed().margin.top)
-        || !zero(c.style.computed().margin.bottom)
+        || !matches!(c.style.used().height, None | Some(Len::Auto))
+        || !zero(c.style.used().margin.top)
+        || !zero(c.style.used().margin.bottom)
     {
         return false;
     }
@@ -53,8 +53,8 @@ fn positioned(
         return false;
     }
     let used = match (
-        c.style.computed().inset.top,
-        c.style.computed().inset.bottom,
+        c.style.used().inset.top,
+        c.style.used().inset.bottom,
     ) {
         (Some(Len::Px(top)), None | Some(Len::Auto)) => top,
         (None | Some(Len::Auto), Some(Len::Px(bottom))) => cb_height - bottom - s.height,
@@ -106,12 +106,12 @@ fn grow_positioned_descendants(
     let Some((_, own)) = measure_fragment_and_own_height(c, vcx) else {
         return false;
     };
-    let cb = establishes_cb(&c.style.computed());
+    let cb = establishes_cb(&c.style.used());
     let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     let mut changed = false;
     for n in &mut c.children {
         let Node::Element(k) = n else { continue };
-        if out_of_flow(&k.style.computed()) {
+        if out_of_flow(&k.style.used()) {
             if cb {
                 changed |= positioned(k, own, cursor, origin, h, count, copies, vcx);
             }
@@ -155,7 +155,7 @@ pub(super) fn grow(
                 ..next
             };
         }
-        if !out_of_flow(&c.style.computed()) {
+        if !out_of_flow(&c.style.used()) {
             cursor = start + own;
             previous = s.margin_bottom;
         }

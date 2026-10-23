@@ -113,9 +113,10 @@ pub(crate) fn collapse_margins(
     // guard: its float containment currently depends on the child's height.
     for node in out.iter_mut().filter(|_| !abs_parent) {
         let Node::Element(e) = node else { continue };
-        let has_float = e.children.iter().any(
-            |n| matches!(n, Node::Element(c) if c.style.computed().float.is_some_and(|f| f != 0)),
-        );
+        let has_float = e
+            .children
+            .iter()
+            .any(|n| matches!(n, Node::Element(c) if c.style.used().float.is_some_and(|f| f != 0)));
         if has_float && through_strut_no_clear(e, vcx).is_some() {
             e.marks.auto_zero_height = true;
         }

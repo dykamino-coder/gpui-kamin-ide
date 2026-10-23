@@ -53,22 +53,14 @@ pub(crate) fn place_element(
                 if x_set {
                     0.0
                 } else {
-                    margin_px(
-                        e.style.computed().margin.left,
-                        &e.style.computed(),
-                        opts.cx.vcx(),
-                    )
-                    .unwrap_or(0.0)
+                    margin_px(e.style.used().margin.left, &e.style.used(), opts.cx.vcx())
+                        .unwrap_or(0.0)
                 },
                 if y_set {
                     0.0
                 } else {
-                    margin_px(
-                        e.style.computed().margin.top,
-                        &e.style.computed(),
-                        opts.cx.vcx(),
-                    )
-                    .unwrap_or(0.0)
+                    margin_px(e.style.used().margin.top, &e.style.used(), opts.cx.vcx())
+                        .unwrap_or(0.0)
                 },
             ),
             rtl: inherited.wm().rtl(),
@@ -111,8 +103,8 @@ pub(crate) fn place_element(
             // in-place path gets from `layered` below
             // (`shape-image-009`: `#test` z-index 2 under a z-index 1
             // failure box, both hoisted).
-            let built = if !fixed && e.style.computed().z_index.is_some_and(|z| z > 0) {
-                layered(built, &e.style.computed(), inherited, layer_ok, under_tf)
+            let built = if !fixed && e.style.used().z_index.is_some_and(|z| z > 0) {
+                layered(built, &e.style.used(), inherited, layer_ok, under_tf)
             } else {
                 built
             };

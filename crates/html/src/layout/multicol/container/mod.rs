@@ -58,7 +58,7 @@ pub(crate) fn multicol_column_stack(
             let per = r.h.unwrap_or(f32::MAX).max(1.0);
             let span = kids
                 .iter()
-                .filter(|(c, _)| c.style.computed().column_span != Some(true))
+                .filter(|(c, _)| c.style.used().column_span != Some(true))
                 .map(|(_, s)| (s.height / per).ceil() as usize)
                 .max()
                 .unwrap_or(0);
@@ -121,10 +121,10 @@ pub(crate) fn multicol_column_stack(
     // простая полоса `rule` тогда не рисуется. Без рядов —
     // как прежде (`multicol-rule-*` не трогаются).
     let extended_rules = rows.is_some_and(|r| r.wrap)
-        || e.style.computed().row_rule_visible == Some(true)
-        || e.style.computed().column_rule_break.is_some()
-        || e.style.computed().column_rule_inset.is_some()
-        || e.style.computed().column_rule_visibility.is_some();
+        || e.style.used().row_rule_visible == Some(true)
+        || e.style.used().column_rule_break.is_some()
+        || e.style.used().column_rule_inset.is_some()
+        || e.style.used().column_rule_visibility.is_some();
     let gap_spec = extended_rules
         .then(|| multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap))
         .flatten();

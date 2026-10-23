@@ -17,12 +17,12 @@ pub(super) fn piped_image(
     let values = vcx.keep();
     if let (true, Some(Len::Px(w)), Some(Len::Px(h))) = (
         wants_pipe,
-        e.style.computed().width,
-        e.style.computed().height,
+        e.style.used().width,
+        e.style.used().height,
     ) {
         let pos = e
             .style
-            .computed()
+            .used()
             .object_position
             .unwrap_or(crate::style::computed::BgPos {
                 x: Some(Len::Pct(0.5)),
@@ -32,7 +32,7 @@ pub(super) fn piped_image(
         let bgc = {
             let mut with_inherited =
                 crate::style::computed::Computed {
-                    bg_image: Some(e.style.computed().content_image().cloned().unwrap_or_else(
+                    bg_image: Some(e.style.used().content_image().cloned().unwrap_or_else(
                         || {
                             crate::style::computed::ImageSource::Url(
                                 local.unwrap_or(src).to_string(),
@@ -41,7 +41,7 @@ pub(super) fn piped_image(
                     )),
                     bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
                     bg_pos: pos,
-                    bg_size: match e.style.computed().object_fit.as_deref() {
+                    bg_size: match e.style.used().object_fit.as_deref() {
                         Some("contain") => BgSize::Contain,
                         Some("cover") => BgSize::Cover,
                         Some("none") => BgSize::Auto,
@@ -50,7 +50,7 @@ pub(super) fn piped_image(
                             // размером, нет — вписать.
                             let fits = crate::resources::css_images::element_source(
                                 local.unwrap_or(src),
-                                &e.style.computed(),
+                                &e.style.used(),
                                 vcx,
                             )
                             .map(crate::paint::background::Source::from_cpu)
@@ -78,9 +78,9 @@ pub(super) fn piped_image(
         // скругление её тоже не режет (`overflow-img`, `-svg`,
         // `-border-radius`: эталон — та же картинка без обрезки).
         // Умолчание (`None`) — UA-шный `clip`, прежний путь ниже.
-        let spills = e.style.computed().overflow_x
+        let spills = e.style.used().overflow_x
             == Some(crate::style::computed::Overflow::Visible)
-            && e.style.computed().overflow_y == Some(crate::style::computed::Overflow::Visible);
+            && e.style.used().overflow_y == Some(crate::style::computed::Overflow::Visible);
         if spills {
             let style = bgc;
             let layer = gpui::canvas(

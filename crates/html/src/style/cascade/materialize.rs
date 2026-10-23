@@ -209,7 +209,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
             None => Rc::new(super::compute::compute(parent, cascaded, vcx)),
         },
     };
-    let view = own.computed();
+    let view = own.used();
     // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.
     let declared = match own.slot().any() {
         Some(_) => cascaded,

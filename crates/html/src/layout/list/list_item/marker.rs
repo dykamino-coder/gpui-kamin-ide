@@ -27,9 +27,9 @@ pub(crate) fn resolve(
     let idx = li.list_item.unwrap_or(0);
     // Вид маркера задаёт документ; без указания — умолчание тега.
     // Строковый маркер берётся дословно и без суффикса-точки.
-    let text_marker = li.style.computed().marker_text.clone().or_else(|| {
+    let text_marker = li.style.used().marker_text.clone().or_else(|| {
         (li.style.cascaded().list_style_type.is_none()
-            && li.style.computed().no_marker.is_none()
+            && li.style.used().no_marker.is_none()
             && inherited
                 .marker_layer
                 .as_deref()
@@ -47,7 +47,7 @@ pub(crate) fn resolve(
         text_marker.is_none()
             && li
                 .style
-                .computed()
+                .used()
                 .marker_layer
                 .as_deref()
                 .is_none_or(|m| m.content.is_none()),
@@ -80,11 +80,11 @@ pub(crate) fn resolve(
     // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
     let mut style = li
         .style
-        .computed()
+        .used()
         .marker_layer
         .as_deref()
         .map(|m| inherit(merged, m, vcx));
-    let li_style = li.style.computed();
+    let li_style = li.style.used();
     let layer = li_style.marker_layer.as_deref();
     let normal = layer.is_none_or(|m| m.content.is_none() && m.content_none != Some(true));
     let image = normal
@@ -126,17 +126,17 @@ pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     tabular_marker(
         span.style.used_mut(),
         merged,
-        li.style.computed().marker_layer.as_deref(),
+        li.style.used().marker_layer.as_deref(),
     );
     span.style.used_mut().content = None;
     span.style.used_mut().marker_layer = None;
     // css-lists-3 §marker-properties UA rule `::marker { unicode-bidi:
     // isolate }`: Arabic-Indic digits and the suffix stay one run
     // (`css3-counter-styles-101`, reference `<bdi>١. </bdi>`).
-    if span.style.computed().bidi_isolate.is_none()
-        && span.style.computed().bidi_embed.is_none()
-        && span.style.computed().bidi_override.is_none()
-        && span.style.computed().bidi_plaintext.is_none()
+    if span.style.used().bidi_isolate.is_none()
+        && span.style.used().bidi_embed.is_none()
+        && span.style.used().bidi_override.is_none()
+        && span.style.used().bidi_plaintext.is_none()
     {
         span.style.used_mut().bidi_isolate = Some(true);
     }

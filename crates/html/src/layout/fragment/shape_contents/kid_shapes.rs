@@ -46,15 +46,15 @@ pub(super) fn kid_shapes(
                 // cursor. Their continuous extent travels to the corresponding
                 // containing block (css-position-3 §abspos-breaking), where it
                 // reserves fragmentainers independently of the block's size.
-                Node::Element(k) if out_of_flow(&k.style.computed()) => {
+                Node::Element(k) if out_of_flow(&k.style.used()) => {
                     let top = k
                         .style
-                        .computed()
+                        .used()
                         .inset
                         .top
                         .as_ref()
                         .filter(|l| !matches!(l, Len::Auto))
-                        .and_then(|_| px_or(&k.style.computed().inset.top, false));
+                        .and_then(|_| px_or(&k.style.used().inset.top, false));
                     let (full, up) = measure(k, depth - 1, cx, vcx)
                         .map_or((0.0, Reach::default()), |m| (m.shape.height, m.up));
                     let reach = Reach::positioned(k, full, top, cx, up);
@@ -72,11 +72,11 @@ pub(super) fn kid_shapes(
                 }
                 Node::Element(k)
                     if !k.inline
-                        && (k.style.computed().position.is_none()
-                            || k.style.computed().position
+                        && (k.style.used().position.is_none()
+                            || k.style.used().position
                                 == Some(crate::style::computed::Position::Relative))
-                        && (k.style.computed().float.unwrap_or(0) == 0
-                            || block_like_float(&k.style.computed())) =>
+                        && (k.style.used().float.unwrap_or(0) == 0
+                            || block_like_float(&k.style.used())) =>
                 {
                     // Главный размер элемента КОЛОНКИ flex — его `flex-basis`
                     // (css-flexbox-1 §9.2 шаг 3): `content` — по содержимому,
@@ -102,7 +102,7 @@ pub(super) fn kid_shapes(
                         // in `flex_lines::row` items (Blink slices a block's
                         // remaining block-size after its content).
                         let lines_only = matches!(
-                            c.style.computed().display,
+                            c.style.used().display,
                             Some(crate::style::computed::Display::Flex)
                                 | Some(crate::style::computed::Display::InlineFlex)
                         ) && inline_content(k)

@@ -36,7 +36,7 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
         )
     };
     let unset = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
-    let c = &*e.style.computed();
+    let c = &*e.style.used();
     let Some(w @ Len::Px(_)) = c.width else {
         return None;
     };

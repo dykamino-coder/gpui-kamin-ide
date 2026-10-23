@@ -42,12 +42,12 @@ pub(super) fn atom_element_raw(
     // мимо сторожа общего пути. `display: inline` после каскада — это
     // `InlineBlock` с `inline_display` — атомом не является.
     let clamp_bfc = matches!(
-        e.style.computed().display,
+        e.style.used().display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) && e.style.computed().inline_display != Some(true);
+    ) && e.style.used().inline_display != Some(true);
     let opts = &*opts.inner(|cx| {
         if clamp_bfc {
             cx.clamp.build = cx.clamp.build.bfc();
@@ -62,7 +62,7 @@ pub(super) fn atom_element_raw(
     {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(build.effects(el, Effect::transform(&e.style.computed(), inherited, vcx)));
+        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, vcx)));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -75,7 +75,7 @@ pub(super) fn atom_element_raw(
     // оси перестаёт считаться от содержащего блока
     // (`absolute-replaced-height-*`, `absolute-replaced-width-*`).
     // Вернуть можно только вместе с ненулевой распоркой по занятой оси.
-    if at_static_position(&e.style.computed()) {
+    if at_static_position(&e.style.used()) {
         return static_position_atom(inherited, e, opts);
     }
     // Абсолютный элемент С заданными краями считается от ближайшего
@@ -84,14 +84,14 @@ pub(super) fn atom_element_raw(
     // содержащим блоком стала бы она сама, и края отсчитывались бы от неё.
     // Пока он был обычной коробкой куска, строка росла под его высоту.
     if matches!(
-        e.style.computed().position,
+        e.style.used().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(build.effects(math, Effect::group(&e.style.computed(), vcx)));
+        return Some(build.effects(math, Effect::group(&e.style.used(), vcx)));
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
@@ -173,7 +173,7 @@ pub(super) fn atom_element_raw(
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть
         // прогоном текста: прогон не умеет рисовать вокруг себя рамку.
         _ if has_own_box(
-            &e.style.computed(),
+            &e.style.used(),
             match inherited.font_size {
                 Some(Len::Px(v)) => v,
                 _ => MEDIUM_FONT_SIZE_PX,
@@ -234,11 +234,11 @@ pub(super) fn atom_element_raw(
     };
     // CSS Borders 4 shapes replaced content together with its CSS box.
     built.map(|el| {
-        if crate::layout::box_kind::replaced_tag(e) && e.style.computed().corner_shaped() {
+        if crate::layout::box_kind::replaced_tag(e) && e.style.used().corner_shaped() {
             opts.cx.contracts.build.effects(
                 el,
                 Effect::GroupReplaced {
-                    style: &e.style.computed(),
+                    style: &e.style.used(),
                     vcx,
                 },
             )

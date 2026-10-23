@@ -14,15 +14,15 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     // домножает («It also multiplies the natural size of all replaced
     // elements», css-viewport-1 §zoom; `zoom/svg-stroke-width`). CSS-размеры
     // ниже уже домножены проходом `zoom::resolve`.
-    let z = e.style.computed().zoom_eff.unwrap_or(1.0);
+    let z = e.style.used().zoom_eff.unwrap_or(1.0);
     let facts = SvgFacts::of(e);
     // Стилевые размеры СТАРШЕ атрибутов (CSS поверх разметки).
     let css = |l: Option<crate::style::values::value::Len>| match l {
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => None,
     };
-    let given_w = css(e.style.computed().width).or_else(|| facts.width.map(|v| v * z));
-    let given_h = css(e.style.computed().height).or_else(|| facts.height.map(|v| v * z));
+    let given_w = css(e.style.used().width).or_else(|| facts.width.map(|v| v * z));
+    let given_h = css(e.style.used().height).or_else(|| facts.height.map(|v| v * z));
     // Обособление размера снимает у рисунка ПРИРОДНЫЕ стороны и природное
     // соотношение (`viewBox`), но не написанные автором: «All CSS properties
     // of the size containment box are taken into account as they would be
@@ -30,7 +30,7 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     // Ось без названного размера берёт `contain-intrinsic-*`, иначе ноль.
     // Раньше выбрасывались ОБЕ стороны, и `<svg width="100" viewBox="0 0 50 50">`
     // под `contain: size` выходил нулевой ширины.
-    if e.style.computed().contains_width() || e.style.computed().contains_height() {
+    if e.style.used().contains_width() || e.style.used().contains_height() {
         let axis = |contained: bool, given: Option<f32>, ci: Option<f32>| {
             if contained {
                 given.or(ci).unwrap_or(0.0)
@@ -40,14 +40,14 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         };
         return (
             axis(
-                e.style.computed().contains_width(),
+                e.style.used().contains_width(),
                 given_w,
-                e.style.computed().contain_intrinsic.0,
+                e.style.used().contain_intrinsic.0,
             ),
             axis(
-                e.style.computed().contains_height(),
+                e.style.used().contains_height(),
                 given_h,
-                e.style.computed().contain_intrinsic.1,
+                e.style.used().contain_intrinsic.1,
             ),
         );
     }
@@ -62,13 +62,13 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         return (
             clamp(
                 w,
-                e.style.computed().min_width,
-                e.style.computed().max_width,
+                e.style.used().min_width,
+                e.style.used().max_width,
             ),
             clamp(
                 h,
-                e.style.computed().min_height,
-                e.style.computed().max_height,
+                e.style.used().min_height,
+                e.style.used().max_height,
             ),
         );
     }
@@ -80,12 +80,12 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     // (`aspect-ratio/replaced-element-016`).
     let fallback = e
         .style
-        .computed()
+        .used()
         .aspect_ratio_auto
         .filter(|_| facts.view_box.is_none());
     if let Some(r) = e
         .style
-        .computed()
+        .used()
         .aspect_ratio
         .or(fallback)
         .filter(|r| r.is_finite() && *r > 0.0)
@@ -143,10 +143,10 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     // Обособление размера и любая заданная сторона (стилем или атрибутом)
     // — прежний путь `size_of`, здесь ничего не меняется.
-    if e.style.computed().contains_width()
-        || e.style.computed().contains_height()
-        || !auto(e.style.computed().width)
-        || !auto(e.style.computed().height)
+    if e.style.used().contains_width()
+        || e.style.used().contains_height()
+        || !auto(e.style.used().width)
+        || !auto(e.style.used().height)
         || facts.width.is_some()
         || facts.height.is_some()
     {
@@ -159,24 +159,24 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     // (css-sizing-4 §4) — та же иерархия, что в `size_of`.
     let ratio = e
         .style
-        .computed()
+        .used()
         .aspect_ratio
         .filter(|r| r.is_finite() && *r > 0.0)
         .unwrap_or(vw / vh);
     let side = |l: Option<Len>| px(l).unwrap_or(0.0);
-    let b = e.style.computed().borders();
-    let pb_x = side(e.style.computed().padding.left)
-        + side(e.style.computed().padding.right)
+    let b = e.style.used().borders();
+    let pb_x = side(e.style.used().padding.left)
+        + side(e.style.used().padding.right)
         + side(b.left)
         + side(b.right);
-    let pb_y = side(e.style.computed().padding.top)
-        + side(e.style.computed().padding.bottom)
+    let pb_y = side(e.style.used().padding.top)
+        + side(e.style.used().padding.bottom)
         + side(b.top)
         + side(b.bottom);
     // Внешний размер = содержимое + паддинг + рамка + поля (css-sizing-3
     // §5.1 «outer size»); `size_of` отдаёт размер СОДЕРЖИМОГО.
     let outer_x =
-        side(e.style.computed().margin.left) + side(e.style.computed().margin.right) + pb_x;
+        side(e.style.used().margin.left) + side(e.style.used().margin.right) + pb_x;
     let (mut w, mut h) = match cb_width {
         Some(cb) if cb > 0.0 => {
             let w = (cb - outer_x).max(0.0);
@@ -189,18 +189,18 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     };
     // При `box-sizing: border-box` предел включает паддинг и рамку —
     // содержимому остаётся остальное (как `sub_w`/`sub_h` в `image_with`).
-    let (sub_x, sub_y) = if e.style.computed().border_box == Some(true) {
+    let (sub_x, sub_y) = if e.style.used().border_box == Some(true) {
         (pb_x, pb_y)
     } else {
         (0.0, 0.0)
     };
-    if let Some(m) = px(e.style.computed().max_width).map(|m| (m - sub_x).max(0.0))
+    if let Some(m) = px(e.style.used().max_width).map(|m| (m - sub_x).max(0.0))
         && w > m
     {
         w = m;
         h = w / ratio;
     }
-    if let Some(m) = px(e.style.computed().max_height).map(|m| (m - sub_y).max(0.0))
+    if let Some(m) = px(e.style.used().max_height).map(|m| (m - sub_y).max(0.0))
         && h > m
     {
         h = m;

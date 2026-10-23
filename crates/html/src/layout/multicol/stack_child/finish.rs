@@ -48,7 +48,7 @@ pub(super) fn finish_stack_child(
     // по собственным причинам коробки (css-break-3 §4.1).
     let (measure, monolith) =
         measured_monolith(measured_kids, copy, nest_row, whole, scrolls, monolith);
-    let span = copy.style.computed().column_span == Some(true) && !copy.inline;
+    let span = copy.style.used().column_span == Some(true) && !copy.inline;
     // Переполняющие колонки (css-multicol-1 §8.2: «A multicol
     // container can have more columns than it has room for due
     // to: a declaration that constrains the column height … In
@@ -119,12 +119,12 @@ pub(super) fn nest_row_of(
                 // С верха колонки — и заданная высота, и
                 // `auto` с мерой рядами.
                 Some(y0) if y0 < COORD_EPS => {
-                    matches!(copy.style.computed().height, Some(Len::Px(_)))
+                    matches!(copy.style.used().height, Some(Len::Px(_)))
                         || nested_auto.borrow().contains(&copy.node_id)
                 }
                 // Ниже верха — только заданная высота: мера
                 // коробки от рядов не зависит.
-                Some(_) => matches!(copy.style.computed().height, Some(Len::Px(_))),
+                Some(_) => matches!(copy.style.used().height, Some(Len::Px(_))),
                 None => false,
             }
     })
@@ -148,15 +148,15 @@ pub(super) fn measured_monolith(
     } else if measure.is_some() {
         nest_row.is_none()
             && (size_monolith(copy)
-                || copy.style.computed().break_inside_avoid
+                || copy.style.used().break_inside_avoid
                 // css-break-3 §4.1 допускает монолитный overflow:hidden
                 // с auto block size; сохраняем выбор старого пути для строк.
                 || (monolith
-                    && matches!(copy.style.computed().height, None | Some(Len::Auto))
-                    && [copy.style.computed().overflow_x, copy.style.computed().overflow_y].contains(
+                    && matches!(copy.style.used().height, None | Some(Len::Auto))
+                    && [copy.style.used().overflow_x, copy.style.used().overflow_y].contains(
                         &Some(crate::style::computed::Overflow::Hidden)))
-                || scrolls(copy.style.computed().overflow_x)
-                || scrolls(copy.style.computed().overflow_y))
+                || scrolls(copy.style.used().overflow_x)
+                || scrolls(copy.style.used().overflow_y))
     } else {
         monolith
     };
@@ -180,8 +180,8 @@ pub(super) fn kid_copy_count(
             if rows.is_none()
                 && !span
                 && per > 0.0
-                && visible_overflow(&e.style.computed())
-                && visible_overflow(&copy.style.computed())
+                && visible_overflow(&e.style.used())
+                && visible_overflow(&copy.style.used())
                 && plain_block_tree(copy, 4)
                 && carries_abspos(copy, 4) =>
         {
@@ -197,10 +197,10 @@ pub(super) fn kid_copy_count(
             if rows.is_none()
                 && !span
                 && per > 0.0
-                && visible_overflow(&e.style.computed())
-                && visible_overflow(&copy.style.computed())
+                && visible_overflow(&e.style.used())
+                && visible_overflow(&copy.style.used())
                 && measure.is_none()
-                && matches!(copy.style.computed().display, Some(Display::Grid))
+                && matches!(copy.style.used().display, Some(Display::Grid))
                 && !has_monolith(copy, 4) =>
         {
             ((h.max(over) / per).ceil() as usize + 1)
@@ -211,7 +211,7 @@ pub(super) fn kid_copy_count(
         // и разложенная высота числа колонок не даёт (как выше).
         Some(_)
             if measure.is_some()
-                && matches!(copy.style.computed().display, Some(Display::Grid))
+                && matches!(copy.style.used().display, Some(Display::Grid))
                 && has_monolith(copy, 4) =>
         {
             copies

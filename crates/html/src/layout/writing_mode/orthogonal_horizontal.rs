@@ -9,12 +9,12 @@ use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f32) -> bool {
     // This fallback sizes ordinary blocks; grid and flex own their item sizing.
-    if !matches!(child.style.computed().display, None | Some(Display::Block))
-        || !matches!(child.style.computed().width, None | Some(Len::Auto))
+    if !matches!(child.style.used().display, None | Some(Display::Block))
+        || !matches!(child.style.used().width, None | Some(Len::Auto))
     {
         return false;
     }
-    let original = child.style.computed().width;
+    let original = child.style.used().width;
     child.style.used_mut().width = Some(Len::FitContent);
     if !native_intrinsic::eligible(child) {
         child.style.used_mut().width = original;
@@ -26,12 +26,11 @@ pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f3
         icb_width,
     );
     let px = |value| px_lossy_zero(value);
-    let outer =
-        fallback - px(child.style.computed().margin.left) - px(child.style.computed().margin.right);
-    let adjustment = if child.style.computed().border_box == Some(true) {
+    let outer = fallback - px(child.style.used().margin.left) - px(child.style.used().margin.right);
+    let adjustment = if child.style.used().border_box == Some(true) {
         0.0
     } else {
-        orthogonal_inline::edges(&child.style.computed(), false)
+        orthogonal_inline::edges(&child.style.used(), false)
     };
     // The native functional fit-content clamp preserves min-content when a
     // word is wider than the available space. CSS author limits stay intact.
@@ -59,10 +58,10 @@ mod tests {
             child.style.used_mut().max_width = Some(Len::Px(500.0));
             child.style.used_mut().min_width = Some(Len::Px(10.0));
             assert!(size_auto(&mut child, &container, 800.0));
-            assert_eq!(child.style.computed().width, Some(Len::FitContent));
-            assert_eq!(child.style.computed().fit_arg[0], Some(Len::Px(394.0)));
-            assert_eq!(child.style.computed().max_width, Some(Len::Px(500.0)));
-            assert_eq!(child.style.computed().min_width, Some(Len::Px(10.0)));
+            assert_eq!(child.style.used().width, Some(Len::FitContent));
+            assert_eq!(child.style.used().fit_arg[0], Some(Len::Px(394.0)));
+            assert_eq!(child.style.used().max_width, Some(Len::Px(500.0)));
+            assert_eq!(child.style.used().min_width, Some(Len::Px(10.0)));
         }
     }
 
@@ -81,7 +80,7 @@ mod tests {
         child.style.used_mut().padding.left = Some(Len::Px(20.0));
         child.style.used_mut().border_box = Some(true);
         assert!(size_auto(&mut child, &container, 800.0));
-        assert_eq!(child.style.computed().fit_arg[0], Some(Len::Px(290.0)));
+        assert_eq!(child.style.used().fit_arg[0], Some(Len::Px(290.0)));
     }
 
     #[test]
@@ -96,7 +95,7 @@ mod tests {
         ] {
             child.style.used_mut().display = Some(display);
             assert!(!size_auto(&mut child, &container, 800.0));
-            assert_eq!(child.style.computed().width, None);
+            assert_eq!(child.style.used().width, None);
         }
         child.style.used_mut().display = Some(Display::Block);
         child.style.used_mut().width = Some(Len::Px(100.0));

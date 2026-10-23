@@ -24,7 +24,7 @@ pub(crate) fn render(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> An
             }
             Node::Element(pseudo)
                 if pseudo.tag.starts_with("::")
-                    && pseudo.style.computed().display != Some(Display::ListItem) => {}
+                    && pseudo.style.used().display != Some(Display::ListItem) => {}
             _ => pending.push(child.clone()),
         }
     }

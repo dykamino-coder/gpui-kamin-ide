@@ -31,7 +31,7 @@ pub(crate) fn dispatch_element(
     outer_row: Option<(f32, f32)>,
     built_iframe: Option<AnyElement>,
 ) -> AnyElement {
-    let st = e.style.computed();
+    let st = e.style.used();
     let vcx = opts.cx.vcx();
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
         return math;
@@ -121,14 +121,14 @@ pub(crate) fn dispatch_element(
         {
             let mut copy = pct_height_to_px(e, inherited);
             if !matches!(
-                copy.style.computed().width,
+                copy.style.used().width,
                 Some(Len::Px(_)) | Some(Len::Pct(_))
             ) {
                 copy.style.used_mut().width = Some(Len::Px(DEFAULT_REPLACED_WIDTH_PX));
             }
             let pct_ok =
-                matches!(copy.style.computed().height, Some(Len::Pct(_))) && merged.cb_height_def;
-            if !matches!(copy.style.computed().height, Some(Len::Px(_))) && !pct_ok {
+                matches!(copy.style.used().height, Some(Len::Pct(_))) && merged.cb_height_def;
+            if !matches!(copy.style.used().height, Some(Len::Px(_))) && !pct_ok {
                 copy.style.used_mut().height = Some(Len::Px(DEFAULT_REPLACED_HEIGHT_PX));
             }
             copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;

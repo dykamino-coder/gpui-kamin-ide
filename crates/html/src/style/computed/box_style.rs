@@ -120,8 +120,16 @@ impl BoxStyle {
     }
 }
 
-impl From<BoxStyle> for crate::dom::SharedStyle {
-    fn from(style: BoxStyle) -> Self {
+impl crate::dom::SharedStyle {
+    /// The style of an element that layout made from a box style (a copy styled
+    /// for a fragment, a dissolved `display: contents` child): its values are
+    /// computed already and become its only stage.
+    ///
+    /// TRANSITIONAL(cascade-7b layout-made styles): layout re-enters such copies
+    /// as elements, so their computed box values stand in for a cascade. Remove
+    /// when layout keeps the element's own style handle and passes box styles
+    /// separately.
+    pub(crate) fn layout_made(style: BoxStyle) -> Self {
         style.into_computed().into()
     }
 }

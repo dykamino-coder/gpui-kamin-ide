@@ -46,8 +46,8 @@ pub(super) fn only_space(nodes: &[Node]) -> bool {
         Node::Element(k) => {
             let plain = ruby_role(k)
                 .is_some_and(|r| r != crate::style::computed::RubyRole::Container)
-                || (k.style.computed().display.is_none()
-                    && k.style.computed().inline_display != Some(false)
+                || (k.style.used().display.is_none()
+                    && k.style.used().inline_display != Some(false)
                     && !replaced_tag(k));
             plain && only_space(&k.children)
         }
@@ -149,7 +149,7 @@ fn has_inflow(nodes: &[Node]) -> bool {
         Node::Text(text) => !text.is_empty(),
         Node::Element(e) => {
             !matches!(
-                e.style.computed().position,
+                e.style.used().position,
                 Some(Position::Absolute | Position::Fixed)
             ) && (replaced_tag(e) || has_inflow(&e.children))
         }

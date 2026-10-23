@@ -54,7 +54,7 @@ pub(crate) fn render_with_style(
     tabular_marker(
         &mut mark_style,
         merged,
-        li.style.computed().marker_layer.as_deref(),
+        li.style.used().marker_layer.as_deref(),
     );
     let marker = inline::transform_case(&marker, &mark_style);
     // Without line boxes the outside marker is top-aligned to the item, and
@@ -129,7 +129,7 @@ pub(crate) fn render_with_style(
             // resolve against the padding box, so the start border
             // becomes the marker's end margin (`padding-left-applies-to-
             // 010`: the bullet stays left of a 10px start border).
-            let side = li.style.computed().borders();
+            let side = li.style.used().borders();
             let px_of = |l: Option<crate::style::values::value::Len>| match l {
                 Some(crate::style::values::value::Len::Px(v)) if v > 0.0 => v,
                 _ => 0.0,
@@ -207,9 +207,9 @@ pub(crate) fn render_with_style(
 /// String list-style-type values inherit through ordinary block wrappers;
 /// generated marker content belongs only to the originating item.
 pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut BoxStyle) {
-    if e.style.computed().marker_text.is_none()
+    if e.style.used().marker_text.is_none()
         && e.style.cascaded().list_style_type.is_none()
-        && e.style.computed().no_marker.is_none()
+        && e.style.used().no_marker.is_none()
         && parent
             .marker_layer
             .as_deref()

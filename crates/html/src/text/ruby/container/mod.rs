@@ -151,7 +151,7 @@ pub(crate) fn ruby_container_atom(
                         .first()
                         .and_then(|l| l.units.first())
                         .and_then(|u| match u.as_slice() {
-                            [Node::Element(k)] => match k.style.computed().font_size {
+                            [Node::Element(k)] => match k.style.used().font_size {
                                 Some(Len::Px(v)) => Some(v),
                                 Some(Len::Pct(p)) | Some(Len::Em(p)) => Some(p * base_font),
                                 _ => None,

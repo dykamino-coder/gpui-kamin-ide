@@ -21,7 +21,7 @@ pub(super) fn lift(nodes: Vec<Node>, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec
 }
 
 pub(crate) fn transparent(e: &Element) -> bool {
-    let s = &e.style.computed();
+    let s = &e.style.used();
     let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
     let undecorated = [s.margin, s.padding, s.borders()]
         .iter()
@@ -144,7 +144,8 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
             // CSS 2 sections 9.5 and 10.1: the block remains the containing
             // block, while inherited text properties come through the inline.
             let containing = box_style(parent, &float.style, vcx);
-            float.style = box_style(&style, &float.style, vcx).into();
+            float.style =
+                crate::dom::SharedStyle::layout_made(box_style(&style, &float.style, vcx));
             float.style.used_mut().cb_height_def_hint = containing.cb_height_def;
             float.style.used_mut().quirk_pct_base_hint = containing.quirk_pct_base;
             output.push(Node::Element(float));
@@ -168,7 +169,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
 /// their intrinsic size inside shrink-to-fit containers
 /// (`orthogonal-writing-mode-float-in-inline`).
 fn floated(node: &Node) -> bool {
-    matches!(node, Node::Element(e) if e.style.computed().float.is_some_and(|f| f != 0)
+    matches!(node, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)
         && !e.style.cascaded().wm().vertical())
 }
 

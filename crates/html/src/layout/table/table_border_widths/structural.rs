@@ -28,7 +28,7 @@ impl<'a> Edges<'a> {
         vcx: crate::document::state::ValueCx<'a>,
     ) -> Self {
         Self {
-            axes: super::super::axes::Axes::new(&table.style.computed()),
+            axes: super::super::axes::Axes::new(&table.style.used()),
             rows,
             groups,
             columns: col_elements(&table.children),
@@ -41,8 +41,8 @@ impl<'a> Edges<'a> {
     }
 
     fn widths(&self, element: &Element) -> [f32; 4] {
-        let border = element.style.computed().borders();
-        let font = match element.style.computed().font_size {
+        let border = element.style.used().borders();
+        let font = match element.style.used().font_size {
             Some(crate::style::values::value::Len::Px(size)) => size,
             _ => self.font,
         };

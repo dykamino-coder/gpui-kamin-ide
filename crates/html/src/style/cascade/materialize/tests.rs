@@ -130,7 +130,7 @@ fn used_values_lie_over_the_shared_computed_style() {
     let other = box_style(&BoxStyle::from(bigger.clone()), &copy.style, vcx);
     assert_eq!(other.margin.top, Some(Len::Px(7.0)));
     assert_eq!(other.text_indent, Some(Len::Px(60.0)));
-    assert_ne!(p.style.computed().margin.top, Some(Len::Px(7.0)));
+    assert_ne!(p.style.used().margin.top, Some(Len::Px(7.0)));
 }
 
 #[test]
@@ -218,7 +218,7 @@ fn an_animated_reset_value_reaches_explicit_inherit() {
     copy.style.cascaded_mut().width = Some(Len::Px(200.0));
     let copy = rematerialize(&div.style, copy, vcx);
     let p = element(&copy.children, "p");
-    assert_eq!(p.style.computed().width, Some(Len::Px(200.0)));
+    assert_eq!(p.style.used().width, Some(Len::Px(200.0)));
 }
 
 #[test]
@@ -229,8 +229,8 @@ fn an_own_zoom_scales_the_whole_inherited_text_shadow_list() {
     );
     let vcx = parsed.values();
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let div = element(&parsed.nodes, "div").style.computed();
-    let p = element(&parsed.nodes, "p").style.computed();
+    let div = element(&parsed.nodes, "div").style.used();
+    let p = element(&parsed.nodes, "p").style.used();
     assert_eq!(div.text_shadow_rest.len(), 1);
     assert_eq!(p.text_shadow_rest.len(), 1);
     assert_eq!(
@@ -249,7 +249,7 @@ fn position_try_declarations_pass_the_computed_value_stage() {
     let vcx = parsed.values();
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     let div = element(&parsed.nodes, "div");
-    let mut c = (*div.style.computed()).clone();
+    let mut c = (*div.style.used()).clone();
     assert_eq!(c.width, Some(Len::Px(10.0)));
     // `@position-try { width: 10px }` under `zoom: 2` is 20px, like any author 10px.
     assert!(recompute_onto(
@@ -269,7 +269,7 @@ fn zoom_scales_viewport_units_and_the_absolute_part_of_calc() {
     );
     let vcx = parsed.values();
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let mut div = (*element(&parsed.nodes, "div").style.computed()).clone();
+    let mut div = (*element(&parsed.nodes, "div").style.used()).clone();
     div.resolve_viewport((1000.0, 800.0), vcx);
     // 1vw of a 1000px window is 10px, 20px under `zoom: 2`, like `10px` is.
     assert_eq!(div.width, Some(Len::Px(20.0)));

@@ -14,7 +14,7 @@ fn keyword(value: Option<Len>) -> bool {
 }
 
 pub(crate) fn eligible(element: &Element) -> bool {
-    let style = &element.style.computed();
+    let style = &element.style.used();
     let grid = matches!(
         style.display,
         Some(Display::Grid | Display::InlineGrid | Display::GridLanes)

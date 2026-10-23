@@ -16,7 +16,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
     let nz = |l: &Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
     if vertical
-        || !(nz(&copy.style.computed().margin.left) || nz(&copy.style.computed().margin.right))
+        || !(nz(&copy.style.used().margin.left) || nz(&copy.style.used().margin.right))
     {
         return el;
     }
@@ -37,7 +37,7 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     let inline_level = |n: &Node| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
-            k.inline && !out_of_flow(&k.style.computed()) && k.style.computed().display.is_none()
+            k.inline && !out_of_flow(&k.style.used()) && k.style.used().display.is_none()
         }
     };
     if !e.children.iter().any(|n| inline_level(n) && !is_blank(n)) {
@@ -68,7 +68,7 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     // строку (css-inline-3 §4.2). Строки ушли в анонимные блоки — флаг едет
     // туда, где строка: первому анонимному, если он первый ребёнок, и
     // последнему, если последний (`text-box-trim-multicol-001`).
-    if e.style.computed().text_box_trim_start || e.style.computed().text_box_trim_end {
+    if e.style.used().text_box_trim_start || e.style.used().text_box_trim_end {
         let flow: Vec<usize> = out
             .iter()
             .enumerate()
@@ -76,14 +76,14 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
             .map(|(i, _)| i)
             .collect();
         let anon = |n: &Node| matches!(n, Node::Element(k) if k.tag == "anon-block");
-        if e.style.computed().text_box_trim_start
+        if e.style.used().text_box_trim_start
             && let Some(&i) = flow.first()
             && anon(&out[i])
             && let Node::Element(k) = &mut out[i]
         {
             k.style.used_mut().text_box_trim_start = true;
         }
-        if e.style.computed().text_box_trim_end
+        if e.style.used().text_box_trim_end
             && let Some(&i) = flow.last()
             && anon(&out[i])
             && let Node::Element(k) = &mut out[i]

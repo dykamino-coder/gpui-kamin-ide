@@ -96,21 +96,18 @@ mod tests {
             };
             let sampled = sample(&element, &frame, false, test_vcx());
             assert_eq!(sampled.node_id, 17);
-            assert_eq!(sampled.style.computed().height, Some(Len::Px(height)));
+            assert_eq!(sampled.style.used().height, Some(Len::Px(height)));
+            assert_eq!(sampled.style.used().width, element.style.used().width);
             assert_eq!(
-                sampled.style.computed().width,
-                element.style.computed().width
+                sampled.style.used().margin.top,
+                element.style.used().margin.top
             );
             assert_eq!(
-                sampled.style.computed().margin.top,
-                element.style.computed().margin.top
-            );
-            assert_eq!(
-                sampled.style.computed().padding.left,
-                element.style.computed().padding.left
+                sampled.style.used().padding.left,
+                element.style.used().padding.left
             );
         }
-        assert_eq!(element.style.computed().height, Some(Len::Px(100.0)));
+        assert_eq!(element.style.used().height, Some(Len::Px(100.0)));
     }
 
     #[test]
@@ -140,20 +137,17 @@ mod tests {
             with_inherited
         };
         let sampled = sample(&element, &frame, false, test_vcx());
-        assert_eq!(sampled.style.computed().width, frame.width);
-        assert_eq!(
-            sampled.style.computed().height,
-            element.style.computed().height
-        );
+        assert_eq!(sampled.style.used().width, frame.width);
+        assert_eq!(sampled.style.used().height, element.style.used().height);
         assert_eq!(sampled.style.cascaded().color, frame.color);
         assert_eq!(
-            sampled.style.computed().rotate_prop,
-            element.style.computed().rotate_prop
+            sampled.style.used().rotate_prop,
+            element.style.used().rotate_prop
         );
         assert_eq!(
             sample(&element, &frame, true, test_vcx())
                 .style
-                .computed()
+                .used()
                 .rotate_prop,
             frame.rotate_prop
         );

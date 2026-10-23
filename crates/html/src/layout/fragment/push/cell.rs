@@ -29,8 +29,8 @@ pub(super) fn pushed_cell_at(
     if depth == 0
         || c.style.cascaded().wm().vertical()
         || c.style.cascaded().border_collapse == Some(true)
-        || c.style.computed().height.is_some()
-        || c.style.computed().min_height.is_some()
+        || c.style.used().height.is_some()
+        || c.style.used().min_height.is_some()
     {
         return None;
     }
@@ -39,7 +39,7 @@ pub(super) fn pushed_cell_at(
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let top = px_of(&c.style.computed().padding.top)? + px_of(&c.style.computed().borders().top)?;
+    let top = px_of(&c.style.used().padding.top)? + px_of(&c.style.used().borders().top)?;
     let (spacing, cell_cx) = cell_settings(c, ShapeCx::COLUMNS)?;
     // Щуп разреза ходит по ТОМУ ЖЕ дереву, что мера и рисование: иначе
     // `table_shape` посчитает точки по анонимным рядам, а `pushed_cell_at` на
@@ -86,7 +86,7 @@ pub(super) fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
             continue;
         };
         if k.node_id == id {
-            let old = crate::style::values::value::px_lossy_zero(k.style.computed().margin.top);
+            let old = crate::style::values::value::px_lossy_zero(k.style.used().margin.top);
             k.style.used_mut().margin.top = Some(Len::Px(old + grow));
             return true;
         }

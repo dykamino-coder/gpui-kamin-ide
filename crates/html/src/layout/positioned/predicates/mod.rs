@@ -26,18 +26,18 @@ pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
         depth > 0
             && c.children.iter().any(|n| match n {
                 Node::Element(k) => {
-                    k.style.computed().position == Some(crate::style::computed::Position::Absolute)
+                    k.style.used().position == Some(crate::style::computed::Position::Absolute)
                         || (fixed_cb
-                            && k.style.computed().position
+                            && k.style.used().position
                                 == Some(crate::style::computed::Position::Fixed))
-                        || (visible_overflow(&k.style.computed())
-                            && !multicol_container(&k.style.computed())
+                        || (visible_overflow(&k.style.used())
+                            && !multicol_container(&k.style.used())
                             && walk(
                                 k,
                                 depth - 1,
                                 fixed_cb
                                     || crate::style::computed::stacking::fixed_cb_layer_box(
-                                        &k.style.computed(),
+                                        &k.style.used(),
                                     ),
                             ))
                 }
@@ -47,7 +47,7 @@ pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
     walk(
         c,
         depth,
-        crate::style::computed::stacking::fixed_cb_layer_box(&c.style.computed()),
+        crate::style::computed::stacking::fixed_cb_layer_box(&c.style.used()),
     )
 }
 
@@ -68,7 +68,7 @@ pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
 pub(crate) fn positioned_later(rest: &[Node]) -> bool {
     fn positioned(e: &Element) -> bool {
         matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Relative)
                 | Some(crate::style::computed::Position::Sticky)
                 | Some(crate::style::computed::Position::Absolute)
@@ -83,10 +83,10 @@ pub(crate) fn positioned_later(rest: &[Node]) -> bool {
     rest.iter().any(|n| {
         let Node::Element(e) = n else { return false };
         let late_sibling = matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Relative)
                 | Some(crate::style::computed::Position::Sticky)
-        ) && e.style.computed().z_index.unwrap_or(0) == 0
+        ) && e.style.used().z_index.unwrap_or(0) == 0
             && block_level_in_flow(e);
         if late_sibling {
             return false;
@@ -110,7 +110,7 @@ pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
     fn walk(nodes: &[Node], under_cb: bool) -> bool {
         nodes.iter().any(|n| {
             let Node::Element(e) = n else { return false };
-            let pos = e.style.computed().position;
+            let pos = e.style.used().position;
             let positioned = matches!(
                 pos,
                 Some(crate::style::computed::Position::Relative)
@@ -121,17 +121,17 @@ pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
             // взаимный порядок сохранится.
             let hoisted = pos == Some(crate::style::computed::Position::Absolute)
                 && !under_cb
-                && e.style.computed().z_index.unwrap_or(0) >= 0
-                && (edge_set(e.style.computed().inset.left)
-                    || edge_set(e.style.computed().inset.right)
-                    || edge_set(e.style.computed().inset.top)
-                    || edge_set(e.style.computed().inset.bottom));
+                && e.style.used().z_index.unwrap_or(0) >= 0
+                && (edge_set(e.style.used().inset.left)
+                    || edge_set(e.style.used().inset.right)
+                    || edge_set(e.style.used().inset.top)
+                    || edge_set(e.style.used().inset.bottom));
             // A negative `z-index` paints in the bottom layer (CSS 2.1 §9.9,
             // step 3) whatever its document position: hoisting an earlier
             // sibling cannot reorder against it (spec-examples
             // `shape-outside-001`: `#failure-container` kept `#test` in
             // place, positioned from the collapsed `body` top, 16px low).
-            let below = e.style.computed().z_index.is_some_and(|z| z < 0);
+            let below = e.style.used().z_index.is_some_and(|z| z < 0);
             if positioned && below {
                 // …together with its whole subtree.
                 return false;
@@ -149,7 +149,7 @@ pub(crate) fn stays_positioned(rest: &[Node]) -> bool {
             }
             walk(
                 &e.children,
-                under_cb || crate::text::inline::establishes_cb(&e.style.computed()),
+                under_cb || crate::text::inline::establishes_cb(&e.style.used()),
             )
         })
     }

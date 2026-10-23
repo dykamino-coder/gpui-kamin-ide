@@ -36,7 +36,7 @@ fn nested_float_keeps_its_paragraph_and_completed_line_probe() {
         .iter()
         .position(|n| {
             matches!(n, Node::Element(c)
-        if c.style.computed().float == Some(-1))
+        if c.style.used().float == Some(-1))
         })
         .unwrap();
     assert_eq!(float, 1);

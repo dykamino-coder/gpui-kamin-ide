@@ -23,8 +23,8 @@ pub(super) fn float_box(
     merged.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
     merged.resolve_viewport(opts.viewport, vcx);
-    let el = if copy.style.computed().clamp_lines().is_some()
-        || copy.style.computed().clamp_by_height()
+    let el = if copy.style.used().clamp_lines().is_some()
+        || copy.style.used().clamp_by_height()
     {
         // A float can own a clamp context as well as isolate its parent's
         // counter. The native box installs that context, its cut and probes;
@@ -54,10 +54,10 @@ pub(super) fn float_box(
         // CSS Overflow 4 section 5.3: its lines belong to an independent BFC,
         // but a float intersecting the clamp point keeps its border-box extent.
         let mut probed = merged.clone();
-        probed.float = source.style.computed().float;
+        probed.float = source.style.used().float;
         // The host owns placement margins; the clamp probe still needs the
         // float's non-collapsing end margin for the containing BFC's extent.
-        probed.margin.bottom = match source.style.computed().margin.bottom {
+        probed.margin.bottom = match source.style.used().margin.bottom {
             Some(crate::style::values::value::Len::Pct(k)) => {
                 Some(crate::style::values::value::Len::Px(k * cb))
             }
@@ -77,5 +77,5 @@ pub(super) fn float_box(
     // CSS Transforms 1 section 3: placement keeps the untransformed rectangle.
     let build = opts.cx.contracts.build;
     let el = build.effects(el, Effect::transform(&merged, inherited, vcx));
-    build.effects(el, Effect::group(&copy.style.computed(), vcx))
+    build.effects(el, Effect::group(&copy.style.used(), vcx))
 }

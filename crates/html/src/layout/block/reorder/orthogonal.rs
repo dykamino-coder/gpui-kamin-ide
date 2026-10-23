@@ -25,7 +25,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         if ch.inline || !ch.style.cascaded().wm().vertical() {
             continue;
         }
-        if !in_flow(&ch.style.computed()) {
+        if !in_flow(&ch.style.used()) {
             continue;
         }
         // Элемент СЕТКИ с невытягивающим выравниванием: по строчной оси
@@ -38,7 +38,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             container.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) && matches!(
-            ch.style.computed().align_self.or(container.align_items),
+            ch.style.used().align_self.or(container.align_items),
             Some(Align::Start) | Some(Align::Center) | Some(Align::End) | Some(Align::Baseline)
         ) {
             ch.style.used_mut().hug_inline = true;
@@ -49,17 +49,17 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // canvas-слой — тем страницам якорь не ставится.
         if matches!(ch.tag.as_str(), "html" | "body")
             && ch.style.cascaded().wm().block_rl()
-            && ch.style.computed().align_self.is_none()
-            && ch.style.computed().bg_image.is_none()
+            && ch.style.used().align_self.is_none()
+            && ch.style.used().bg_image.is_none()
         {
             ch.style.used_mut().align_self = Some(crate::style::computed::Align::End);
         }
         // Ordinary orthogonal blocks now compute their own used inline size.
-        if orthogonal_fixed_child::normal_block_flow(&ch.style.computed(), container) {
+        if orthogonal_fixed_child::normal_block_flow(&ch.style.used(), container) {
             ch.style.used_mut().flex_shrink = Some(0.0);
             continue;
         }
-        if ch.style.computed().height.is_some() || ch.style.computed().max_height.is_some() {
+        if ch.style.used().height.is_some() || ch.style.used().max_height.is_some() {
             continue;
         }
         let margin = |l: Option<Len>| match l {
@@ -70,8 +70,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             },
             _ => 0.0,
         };
-        let margins =
-            margin(ch.style.computed().margin.top) + margin(ch.style.computed().margin.bottom);
+        let margins = margin(ch.style.used().margin.top) + margin(ch.style.used().margin.bottom);
         ch.style.used_mut().max_height = Some(match container.height {
             Some(Len::Px(h)) => Len::Px((h - margins).max(0.0)),
             _ => Len::Pct(1.0),
