@@ -1,6 +1,6 @@
 //! Тесты наследования содержащего блока и fixed-фона у трансформированного предка.
 
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 
 #[test]
@@ -16,14 +16,9 @@ fn fixed_background_scrolls_under_a_transform() {
         ..Default::default()
     };
     assert_eq!(
-        super::super::inherit(
-            &crate::style::computed::BoxStyle::from(parent.clone()),
-            &own,
-            vcx
-        )
-        .bg_fixed,
+        super::super::inherit(&BoxStyle::from(parent), &own, vcx).bg_fixed,
         Some(false)
     );
-    let plain = super::super::inherit(&crate::style::computed::BoxStyle::default(), &own, vcx);
+    let plain = super::super::inherit(&BoxStyle::default(), &own, vcx);
     assert_eq!(plain.bg_fixed, Some(true));
 }

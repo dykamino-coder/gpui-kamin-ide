@@ -5,7 +5,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -13,7 +13,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 /// replaced content; its auto dimensions use the default object size.
 pub(crate) fn empty_iframe_size(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     viewport: (f32, f32),
     vcx: ValueCx<'_>,
 ) -> Element {
@@ -94,7 +94,7 @@ pub(crate) fn empty_iframe_size(
 
 pub(crate) fn empty_iframe(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
@@ -105,11 +105,7 @@ pub(crate) fn empty_iframe(
     }
     opts.cx
         .build
-        .styled_box(
-            &copy,
-            &crate::style::computed::BoxStyle::shared(copy.style.computed()),
-            &opts.cx,
-        )
+        .styled_box(&copy, &BoxStyle::shared(copy.style.computed()), &opts.cx)
         .flex_shrink_0()
         .into_any_element()
 }
@@ -130,7 +126,7 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
 pub(crate) fn svg_replaced(
     e: &Element,
     sized: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let boxed = svg_has_box(merged);
@@ -203,7 +199,7 @@ mod tests {
         frame.style.used_mut().flow_root = Some(true);
         for (height, expected) in [(None, 150.0), (Some(Len::Pct(0.5)), 96.0)] {
             frame.style.used_mut().height = height;
-            let mut parent = crate::style::computed::BoxStyle::from(Computed {
+            let mut parent = BoxStyle::from(Computed {
                 height: Some(Len::Px(192.0)),
                 ..Default::default()
             });

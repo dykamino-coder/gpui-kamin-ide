@@ -6,7 +6,7 @@
 
 use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
-use crate::style::computed::{Computed, Overflow};
+use crate::style::computed::{BoxStyle, Computed, Overflow};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Styled, Window, div, px};
 
@@ -55,7 +55,7 @@ pub(crate) fn new(c: &Computed, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<
     if !mask.starts_with("shape:rrect(") {
         return None;
     }
-    let mut own = crate::style::computed::BoxStyle::new(c.clone());
+    let mut own = BoxStyle::new(c.clone());
     own.clip_margin = None;
     own.opacity = None;
     let b = c.borders();

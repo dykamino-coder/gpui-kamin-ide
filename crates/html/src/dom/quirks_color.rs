@@ -7,6 +7,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Color;
 
 pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
@@ -17,7 +18,7 @@ pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
         return;
     }
     let parent = crate::style::cascade::materialize::box_style_unpainted(
-        &crate::style::computed::BoxStyle::default(),
+        &BoxStyle::default(),
         &root.style,
         vcx,
     );
@@ -62,7 +63,7 @@ mod tests {
         nodes.iter().find_map(|node| {
             let Node::Element(e) = node else { return None };
             let computed = crate::style::cascade::inherit::inherit_unpainted(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
+                &BoxStyle::from(parent.clone()),
                 e.style.cascaded(),
                 vcx,
             );

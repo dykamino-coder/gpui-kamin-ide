@@ -7,6 +7,7 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::spanner::spanner_box;
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 /// Хвостовой ряд колонок при `column-fill: auto` НЕ стоит перед
@@ -26,7 +27,7 @@ use crate::style::values::value::Len;
 /// после спаннера 70 в коробке 100).
 pub(crate) fn tail_rest_height(
     e: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     box_h: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
     vcx: crate::document::state::ValueCx<'_>,

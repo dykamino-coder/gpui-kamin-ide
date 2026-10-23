@@ -2,12 +2,13 @@
 //! (css-lists-3: `outside` вычисляется в `inside`) встаёт первым узлом и идёт обычным
 //! текстовым потоком пункта.
 use crate::dom::Element;
+use crate::style::computed::BoxStyle;
 use crate::text::inline::Piece;
 use crate::text::inline::collect::CollectCx;
 
 pub(super) fn children(
     e: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,

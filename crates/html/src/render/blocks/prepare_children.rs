@@ -11,13 +11,13 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_inset_abs;
 use crate::layout::table::anon::wrap_anon_tables;
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Align, Computed, Display};
+use crate::style::computed::{Align, BoxStyle, Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_children(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     _cell_bfc: bool,
 ) -> (Vec<Node>, bool, bool) {

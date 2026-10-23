@@ -10,7 +10,7 @@ use crate::layout::fragment::clone::clone_wrapper_item;
 use crate::layout::fragment::line_shape::group_inline_runs;
 use crate::layout::fragment::{Shape, with_lines};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 
 /// Итог меры стопки: всё, что сборка передаёт `multicol_column_stack`.
@@ -30,7 +30,7 @@ pub(crate) struct StackPlan {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stack_plan(
     e: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     cols: u16,

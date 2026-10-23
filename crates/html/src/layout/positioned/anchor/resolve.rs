@@ -3,7 +3,7 @@
 use super::AnchorRec;
 use super::settle::{DefaultAnchor, default_anchor_of};
 use crate::document::state::ValueCx;
-use crate::style::computed::{Align, Computed, Position};
+use crate::style::computed::{Align, BoxStyle, Computed, Position};
 use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 use std::rc::Rc;
 
@@ -18,7 +18,7 @@ pub(crate) use try_rule::apply_try_rule;
 /// `<position-area>` накладываются на `Computed`, база уезжает в `try_base`
 /// для сборки остальных кандидатов (`place`). Тактики раскладке не нужны:
 /// сдвиг считается абсолютно на подготовке.
-pub fn apply_chosen(c: &mut crate::style::computed::BoxStyle, vcx: ValueCx<'_>) {
+pub fn apply_chosen(c: &mut BoxStyle, vcx: ValueCx<'_>) {
     if c.position_try_fallbacks.is_empty()
         || !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
     {
@@ -92,11 +92,7 @@ pub(super) fn last_named(n: &str, seq: u32, vcx: ValueCx<'_>) -> Option<AnchorRe
 ///
 /// Первый кадр отдаёт запасные значения, второй — верные; стенд ждёт
 /// устоявшихся кадров.
-pub fn resolve_sizes(
-    c: &mut crate::style::computed::BoxStyle,
-    inherited: &Computed,
-    vcx: ValueCx<'_>,
-) {
+pub fn resolve_sizes(c: &mut BoxStyle, inherited: &Computed, vcx: ValueCx<'_>) {
     if !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
         return;
     }

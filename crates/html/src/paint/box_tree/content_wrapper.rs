@@ -9,7 +9,7 @@ use crate::layout::writing_mode::native_intrinsic;
 #[path = "content_wrapper/axis_alignment.rs"]
 mod axis_alignment;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, CssSizingKeyword, IntoElement, ParentElement, Styled, div, px};
 
@@ -31,7 +31,7 @@ fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
 pub(crate) fn for_element(
     el: AnyElement,
     element: &Element,
-    parent: &crate::style::computed::BoxStyle,
+    parent: &BoxStyle,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     vcx: ValueCx<'_>,
 ) -> AnyElement {

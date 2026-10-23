@@ -7,7 +7,7 @@ use crate::dom::Node;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::route::paragraph_probed;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::text::text_box::blank_text;
 use gpui::AnyElement;
 
@@ -35,10 +35,10 @@ impl Scope {
     pub(super) fn paragraph(
         &mut self,
         nodes: &[Node],
-        style: &crate::style::computed::BoxStyle,
+        style: &BoxStyle,
         opts: &RenderOpts,
     ) -> AnyElement {
-        let build = |style: &crate::style::computed::BoxStyle| paragraph_probed(nodes, style, opts);
+        let build = |style: &BoxStyle| paragraph_probed(nodes, style, opts);
         let first = self.first;
         if nodes.iter().any(|n| {
             in_flow(

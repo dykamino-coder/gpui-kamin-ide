@@ -10,8 +10,8 @@ use crate::layout::fragment::Shape;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
 use crate::layout::options::RenderOpts;
 use crate::paint::gap_rules::painter::GapRulePainter;
-use crate::style::computed::Computed;
 use crate::style::computed::stacking::fixed_cb_layer_box;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, ParentElement};
 mod kids;
@@ -31,7 +31,7 @@ pub(crate) fn multicol_column_stack(
     d: gpui::Div,
     e: &Element,
     inherited: &Computed,
-    merged: crate::style::computed::BoxStyle,
+    merged: BoxStyle,
     opts: &RenderOpts,
     kids: Vec<(Element, Shape)>,
     cols: u16,

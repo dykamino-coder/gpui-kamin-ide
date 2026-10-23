@@ -10,7 +10,7 @@ use crate::layout::box_kind::{
 };
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Стиль блока, которому принадлежит первая (`start`) или последняя
@@ -31,11 +31,11 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// узел самого контейнера): ему `line_trim::request` адресует срез.
 pub(crate) fn text_box_line_style(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     start: bool,
     owner: u64,
     vcx: ValueCx<'_>,
-) -> Option<(crate::style::computed::BoxStyle, u64)> {
+) -> Option<(BoxStyle, u64)> {
     let has_block = nodes.iter().any(breaks_inline);
     let order: Vec<&Node> = if start {
         nodes.iter().collect()

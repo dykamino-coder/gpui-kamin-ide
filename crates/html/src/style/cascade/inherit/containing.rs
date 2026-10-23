@@ -3,34 +3,29 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::{BgClip, BoxStyle, Display as D, Overflow};
 
 pub(super) fn inherit_containing(
-    parent: &crate::style::computed::BoxStyle,
+    parent: &BoxStyle,
     own: &Computed,
-    c: &mut crate::style::computed::BoxStyle,
+    c: &mut BoxStyle,
     vcx: ValueCx<'_>,
 ) {
-    set!(
-        c.first_letter_excluded,
-        own.first_letter_excluded || parent.first_letter_excluded
-    );
+    let excluded = own.first_letter_excluded || parent.first_letter_excluded;
+    set!(c.first_letter_excluded, excluded);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));
     c.sc_ancestor = crate::style::computed::stacking::nested_context(parent);
-    set!(
-        c.icb_scroll_insets,
-        own.icb_scroll_insets.or(parent.icb_scroll_insets)
-    );
-    set!(
-        c.viewport_unit_insets,
-        own.viewport_unit_insets.or(parent.viewport_unit_insets)
-    );
+    let icb_insets = own.icb_scroll_insets.or(parent.icb_scroll_insets);
+    set!(c.icb_scroll_insets, icb_insets);
+    let unit_insets = own.viewport_unit_insets.or(parent.viewport_unit_insets);
+    set!(c.viewport_unit_insets, unit_insets);
     c.cb_scroll_insets = if establishes_cb(parent) {
         (parent.scroll.used, parent.scroll.native)
     } else {
         parent.cb_scroll_insets
     };
-    let clipped = |o| matches!(o, Some(o) if o != crate::style::computed::Overflow::Visible);
+    let clipped = |o| matches!(o, Some(o) if o != Overflow::Visible);
     set!(
         c.fragment_clip_ancestor,
         parent.fragment_clip_ancestor
@@ -54,17 +49,11 @@ pub(super) fn inherit_containing(
                 || parent.column_height.is_some())
                 && !matches!(
                     parent.display,
-                    Some(crate::style::computed::Display::Grid)
-                        | Some(crate::style::computed::Display::InlineGrid)
-                        | Some(crate::style::computed::Display::GridLanes)
-                        | Some(crate::style::computed::Display::Flex)
-                        | Some(crate::style::computed::Display::InlineFlex)
+                    Some(D::Grid | D::InlineGrid | D::GridLanes | D::Flex | D::InlineFlex)
                 ))
     );
-    set!(
-        c.backdrop_root_above,
-        parent.backdrop_root_above || backdrop_root(parent)
-    );
+    let backdrop = parent.backdrop_root_above || backdrop_root(parent);
+    set!(c.backdrop_root_above, backdrop);
     // filter-effects-2 §3 шаг 4: содержимое B — и его СОБСТВЕННЫЙ фон —
     // рисуется поверх уже отфильтрованной подложки. Фон коробки красит сама
     // коробка раньше детей, а канвас подложки — ребёнок; явный
@@ -74,12 +63,9 @@ pub(super) fn inherit_containing(
         && !c.backdrop_root_above
         && c.bg_clip.is_none()
         && (c.background.is_some() || c.gradient.is_some())
-        && matches!(
-            c.display,
-            None | Some(crate::style::computed::Display::Block)
-        )
+        && matches!(c.display, None | Some(D::Block))
     {
-        set!(c.bg_clip, Some(crate::style::computed::BgClip::BorderBox));
+        set!(c.bg_clip, Some(BgClip::BorderBox));
     }
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
@@ -116,10 +102,8 @@ pub(super) fn inherit_containing(
     // background-attachment property is treated as if it had a value of
     // scroll.» `will-change: transform` promises the same (Blink/Gecko;
     // `transform-fixed-bg-008.tentative`).
-    set!(
-        c.transformed_ancestor,
-        parent.transformed_ancestor || transformed(parent)
-    );
+    let transformed_above = parent.transformed_ancestor || transformed(parent);
+    set!(c.transformed_ancestor, transformed_above);
     if c.bg_fixed == Some(true)
         && (c.transformed_ancestor || (transformed(c) && !own.root_box && !c.root_box))
     {
@@ -140,10 +124,7 @@ pub(super) fn inherit_containing(
                 | Some(crate::style::computed::Position::Sticky)
         ) || matches!(
             parent.display,
-            Some(crate::style::computed::Display::Flex)
-                | Some(crate::style::computed::Display::InlineFlex)
-                | Some(crate::style::computed::Display::Grid)
-                | Some(crate::style::computed::Display::InlineGrid)
+            Some(D::Flex) | Some(D::InlineFlex) | Some(D::Grid) | Some(D::InlineGrid)
         ))
     {
         c.will_change |= crate::style::computed::wc::STACK;
@@ -172,12 +153,12 @@ pub(super) fn inherit_containing(
     // `*-subgrid-*`).
     let laid_out_parent = matches!(
         parent.display,
-        Some(crate::style::computed::Display::Flex)
-            | Some(crate::style::computed::Display::InlineFlex)
-            | Some(crate::style::computed::Display::Grid)
-            | Some(crate::style::computed::Display::InlineGrid)
-            | Some(crate::style::computed::Display::GridLanes)
-            | Some(crate::style::computed::Display::TableCell)
+        Some(D::Flex)
+            | Some(D::InlineFlex)
+            | Some(D::Grid)
+            | Some(D::InlineGrid)
+            | Some(D::GridLanes)
+            | Some(D::TableCell)
     );
     // Растяжение передаётся дальше: у растянутой коробки высота от полосы, и
     // для её потомков блок определён (`column-align-items-005`).

@@ -16,14 +16,14 @@ use multicol::multicol_box;
 
 use crate::dom::Element;
 use crate::layout::positioned::absolute_overflow;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled, px};
 
 pub(super) fn generic_box(
     e: &Element,
-    mut merged: crate::style::computed::BoxStyle,
-    inherited: &crate::style::computed::BoxStyle,
+    mut merged: BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
 ) -> AnyElement {

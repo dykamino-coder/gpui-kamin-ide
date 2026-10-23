@@ -5,7 +5,7 @@ use crate::hooks::IntoHooked;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
@@ -174,7 +174,7 @@ pub(super) fn column_stack_div(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_column_stack(
     e: &Element,
-    merged: crate::style::computed::BoxStyle,
+    merged: BoxStyle,
     opts: &RenderOpts,
     col_vert: bool,
     oof_static: Vec<(usize, Element)>,

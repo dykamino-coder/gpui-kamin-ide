@@ -3,7 +3,7 @@
 use super::{AnchorRec, frame::note_checked, reframe_if_stale, tf_map};
 use crate::document::state::ValueCx;
 use crate::dom::Node;
-use crate::style::computed::{Computed, PositionAnchor};
+use crate::style::computed::{BoxStyle, Computed, PositionAnchor};
 use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, px};
 
@@ -36,7 +36,7 @@ pub(super) fn wants_implicit(c: &Computed) -> bool {
 /// `hidden` — `visibility: hidden` коробки (§position-visibility).
 pub fn probe_for(
     e: &crate::dom::Element,
-    c: &crate::style::computed::BoxStyle,
+    c: &BoxStyle,
     hidden: bool,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {

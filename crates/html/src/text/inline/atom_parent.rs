@@ -19,7 +19,7 @@ use crate::style::computed::BoxStyle;
 /// atom's containing block (CSS 2.1 §10.1 item 4, `InlineCbOffer`).
 #[derive(Clone, Default)]
 pub struct AtomCx {
-    pub(crate) parent: Option<crate::style::computed::BoxStyle>,
+    pub(crate) parent: Option<BoxStyle>,
     pub(crate) in_inline_cb: bool,
 }
 

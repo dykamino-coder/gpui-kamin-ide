@@ -5,7 +5,7 @@ use super::super::settle::default_anchor_of;
 use super::super::{AnchorPlan, SidePlan};
 use super::flipped;
 use crate::document::state::ValueCx;
-use crate::style::computed::{Align, Computed, Position};
+use crate::style::computed::{Align, BoxStyle, Computed, Position};
 use crate::style::values::value::{Len, anchor_get, px_lossy_zero};
 
 impl AnchorPlan {
@@ -14,7 +14,7 @@ impl AnchorPlan {
     /// списком `position-try-fallbacks` либо с `position-visibility`
     /// (проверка переполнения нужна и без якоря — `no-overflow`).
     pub(in crate::layout::positioned::anchor) fn of(
-        own: &crate::style::computed::BoxStyle,
+        own: &BoxStyle,
         inherited: &Computed,
         vcx: ValueCx<'_>,
     ) -> Option<AnchorPlan> {

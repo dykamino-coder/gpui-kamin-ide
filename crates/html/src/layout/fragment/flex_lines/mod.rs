@@ -12,7 +12,7 @@ use crate::layout::fragment::Shape;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::probe::size_monolith;
 use crate::layout::page::paged::visible_overflow;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::px_lossy_zero;
 mod column;
 mod common;
@@ -63,17 +63,17 @@ pub(crate) fn explodes(c: &Element, col_w: Option<f32>, vcx: ValueCx<'_>) -> boo
 pub(crate) fn split_flex_lines(
     kids: Vec<(Element, Shape)>,
     col_w: Option<f32>,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> (
     Vec<(Element, Shape)>,
     Vec<crate::layout::fragment::types::Par>,
-    Vec<Option<crate::style::computed::BoxStyle>>,
+    Vec<Option<BoxStyle>>,
     Vec<usize>,
 ) {
     let mut out: Vec<(Element, Shape)> = Vec::with_capacity(kids.len());
     let mut par: Vec<crate::layout::fragment::types::Par> = Vec::with_capacity(kids.len());
-    let mut parent: Vec<Option<crate::style::computed::BoxStyle>> = Vec::with_capacity(kids.len());
+    let mut parent: Vec<Option<BoxStyle>> = Vec::with_capacity(kids.len());
     let mut group = 0u32;
     let mut starts: Vec<usize> = Vec::with_capacity(kids.len() + 1);
     for (c, s) in kids {

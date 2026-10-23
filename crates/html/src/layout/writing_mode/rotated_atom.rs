@@ -6,7 +6,7 @@
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::layout::build_contracts::Styling;
-use crate::style::computed::{Computed, Display, Sides};
+use crate::style::computed::{BoxStyle, Computed, Display, Sides};
 use gpui::{IntoElement, ParentElement, Styled};
 
 /// Whether the paragraph's text line is turned around physical atoms.
@@ -16,7 +16,7 @@ pub(crate) fn text_turn(cx: &crate::layout::cx::LayoutCx) -> bool {
 
 pub(crate) fn physical(
     e: &Element,
-    flow: &crate::style::computed::BoxStyle,
+    flow: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<gpui::AnyElement> {
     // Atomic formatting contexts keep physical dimensions and their own

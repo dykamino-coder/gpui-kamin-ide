@@ -4,14 +4,14 @@ use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::anon::has_box_style_probe;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn child_probes(
     e: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     opts: &RenderOpts,
     kids: &mut Vec<AnyElement>,
     makes_bfc: bool,

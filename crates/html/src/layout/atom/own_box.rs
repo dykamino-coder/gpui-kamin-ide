@@ -5,13 +5,13 @@ use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Align, Display};
+use crate::style::computed::{Align, BoxStyle, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::{has_text, line_height_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(super) fn own_box_atom(
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {

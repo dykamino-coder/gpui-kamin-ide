@@ -15,13 +15,14 @@ use crate::layout::fragment::probe::forced_inside;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use std::cell::RefCell;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_children(
     ge: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     opts: &RenderOpts,
     first_flow: Option<*const Node>,
     last_flow: Option<*const Node>,

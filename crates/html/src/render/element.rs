@@ -9,6 +9,7 @@
 use crate::dom::pseudo_line_layers;
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 mod orthogonal;
 mod quirks;
 pub(super) use orthogonal::orthogonal_limit;
@@ -26,11 +27,7 @@ use crate::style::cascade::materialize::box_style;
 use gpui::AnyElement;
 
 /// Блочный элемент.
-pub(crate) fn element(
-    e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
     // не пишутся (`flow::flow_lines`).
     let nested = opts
@@ -50,11 +47,7 @@ pub(crate) fn element(
     )
 }
 
-fn element_inner(
-    e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();

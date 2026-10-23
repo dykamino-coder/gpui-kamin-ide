@@ -12,7 +12,7 @@ pub(crate) use frozen::{bake_frozen, sample_at};
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement};
 
@@ -22,7 +22,7 @@ use gpui::{AnyElement, IntoElement};
 /// применить: у собранного элемента стиль уже зафиксирован.
 pub(crate) fn transitioned(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let seconds = e.style.computed().transition?;

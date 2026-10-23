@@ -5,6 +5,7 @@ use crate::layout::options::RenderOpts;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::text::clamp::{close_clamp_span, open_clamp_span};
 use gpui::{AnyElement, IntoElement, ParentElement};
 
@@ -12,7 +13,7 @@ pub(super) fn float_box(
     copy: &Element,
     source: &Element,
     cb: f32,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
@@ -58,7 +59,7 @@ pub(super) fn float_box(
     // CSS Transforms 1 section 3: placement keeps the untransformed rectangle.
     grouped(
         transformed(el, &merged, inherited, vcx),
-        &crate::style::computed::BoxStyle::shared(copy.style.computed()),
+        &BoxStyle::shared(copy.style.computed()),
         vcx,
     )
 }

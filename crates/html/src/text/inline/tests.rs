@@ -3,7 +3,7 @@
 //! блок, наследование текстовых свойств без коробочных.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use crate::text::inline::hyphenate::*;
 use crate::text::inline::runs::*;
@@ -39,7 +39,7 @@ fn logical_alignment_follows_the_writing_direction() {
     // наследству вложенному блоку справа налево.
     let parent = Computed::default();
     let ltr = inherit(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &BoxStyle::from(parent.clone()),
         &styled("text-align: start", vcx),
         vcx,
     );
@@ -49,7 +49,7 @@ fn logical_alignment_follows_the_writing_direction() {
         crate::text::paragraph::Align::Left
     );
     let rtl = inherit(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &BoxStyle::from(parent.clone()),
         &styled("text-align: start; direction: rtl", vcx),
         vcx,
     );
@@ -58,7 +58,7 @@ fn logical_alignment_follows_the_writing_direction() {
         crate::text::paragraph::Align::Right
     );
     let rtl_end = inherit(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &BoxStyle::from(parent.clone()),
         &styled("text-align: end; direction: rtl", vcx),
         vcx,
     );
@@ -68,11 +68,7 @@ fn logical_alignment_follows_the_writing_direction() {
     );
     // Умолчание CSS — `start`: без выключки текст справа налево прижат
     // вправо, а не влево.
-    let bare = inherit(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
-        &styled("direction: rtl", vcx),
-        vcx,
-    );
+    let bare = inherit(&BoxStyle::from(parent), &styled("direction: rtl", vcx), vcx);
     assert_eq!(
         crate::text::paragraph::align_for(&bare),
         crate::text::paragraph::Align::Right
@@ -127,11 +123,11 @@ fn same_size_pieces_go_into_one_block() {
     let pieces = vec![
         Piece::Text {
             text: "обычный ".into(),
-            style: crate::style::computed::BoxStyle::from(styled("", vcx)),
+            style: BoxStyle::from(styled("", vcx)),
         },
         Piece::Text {
             text: "жирный".into(),
-            style: crate::style::computed::BoxStyle::from(styled("font-weight: 700", vcx)),
+            style: BoxStyle::from(styled("font-weight: 700", vcx)),
         },
     ];
     assert!(single_block(&pieces, 13.0), "вес не мешает единому блоку");
@@ -144,11 +140,11 @@ fn different_size_stays_in_one_block() {
     let pieces = vec![
         Piece::Text {
             text: "обычный ".into(),
-            style: crate::style::computed::BoxStyle::from(styled("", vcx)),
+            style: BoxStyle::from(styled("", vcx)),
         },
         Piece::Text {
             text: "крупный".into(),
-            style: crate::style::computed::BoxStyle::from(styled("font-size: 24px", vcx)),
+            style: BoxStyle::from(styled("font-size: 24px", vcx)),
         },
     ];
     // Кегль едет в прогон (патч GPUI), поэтому разный размер больше не
@@ -171,11 +167,7 @@ fn inheritance_carries_text_not_box() {
     let vcx = doc.values();
     let parent = styled("color: #ff0000; padding: 10px; font-size: 20px", vcx);
     let child = styled("font-weight: 700", vcx);
-    let merged = inherit(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
-        &child,
-        vcx,
-    );
+    let merged = inherit(&BoxStyle::from(parent), &child, vcx);
     assert_eq!(merged.color.map(|c| c.r), Some(1.0), "цвет наследуется");
     assert_eq!(merged.font_size, Some(Len::Px(20.0)), "размер наследуется");
     assert_eq!(merged.font_weight, Some(700), "свой вес сохранён");
@@ -189,13 +181,9 @@ fn own_style_wins_over_inherited() {
     let parent = styled("color: #ff0000", vcx);
     let child = styled("color: #0000ff", vcx);
     assert_eq!(
-        inherit(
-            &crate::style::computed::BoxStyle::from(parent.clone()),
-            &child,
-            vcx
-        )
-        .color
-        .map(|c| c.b),
+        inherit(&BoxStyle::from(parent), &child, vcx)
+            .color
+            .map(|c| c.b),
         Some(1.0)
     );
 }

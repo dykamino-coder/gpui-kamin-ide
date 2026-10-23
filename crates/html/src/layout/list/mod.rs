@@ -6,14 +6,10 @@ pub(crate) mod list_item;
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
-pub(crate) fn render(
-    e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+pub(crate) fn render(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let mut rows = Vec::new();
     let mut pending = Vec::new();
     for child in &e.children {

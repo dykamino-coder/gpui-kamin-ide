@@ -9,13 +9,14 @@ use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed, measured_p
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::multicol::stack_child::multicol_stack_child;
 use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 // Child records keep their layout and paint callbacks with measured geometry.
 #[allow(clippy::type_complexity)]
 pub(super) fn column_kids(
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
     cols: u16,
     used_gap: f32,
@@ -26,7 +27,7 @@ pub(super) fn column_kids(
     (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
     vcx: ValueCx<'_>,
 ) -> (
-    Vec<Option<crate::style::computed::BoxStyle>>,
+    Vec<Option<BoxStyle>>,
     Vec<usize>,
     Vec<crate::layout::fragment::types::Par>,
     Vec<(Element, crate::layout::fragment::Shape)>,
@@ -90,7 +91,7 @@ pub(super) fn column_kids(
 #[allow(clippy::type_complexity)]
 pub(super) fn stack_children(
     e: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     opts: &RenderOpts,
     cols: u16,
     col_vert: bool,
@@ -102,7 +103,7 @@ pub(super) fn stack_children(
     measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
     copies: usize,
     fixed: Option<f32>,
-    kid_parent: Vec<Option<crate::style::computed::BoxStyle>>,
+    kid_parent: Vec<Option<BoxStyle>>,
     kid_par: Vec<crate::layout::fragment::types::Par>,
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
     clone_plan: Vec<Vec<(f32, f32)>>,

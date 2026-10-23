@@ -53,12 +53,12 @@ pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32
 /// якоря — как `center` (css-anchor-position-1 §anchor-center), с якорем его
 /// ведёт `anchor::AnchorPlace`, и сюда он не берётся.
 pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
-    if e.style.computed().inline_display == Some(true) {
+    let st = e.style.computed();
+    if st.inline_display == Some(true) {
         return None;
     }
-    let anchorless = e.style.computed().position_anchor.is_none()
-        && e.style.computed().position_area.is_none()
-        && e.style.computed().implicit_anchor.is_none();
+    let anchorless =
+        st.position_anchor.is_none() && st.position_area.is_none() && st.implicit_anchor.is_none();
     let frac = |a: Option<Align>, last: bool| match a {
         Some(Align::Center) => Some(0.5),
         Some(Align::AnchorCenter) if anchorless => Some(0.5),
@@ -72,22 +72,19 @@ pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f3
     // as `justify_items_style`); `align-items` does not apply in block
     // layout, so `align-self: auto` stays `normal`
     // (`align-items-static-position-001`).
-    let jx = match e.style.computed().justify_self {
-        None if !e.style.computed().justify_self_normal => {
+    let jx = match st.justify_self {
+        None if !st.justify_self_normal => {
             frac(inherited.justify_items, inherited.justify_items_last)
         }
-        own => frac(own, e.style.computed().justify_self_last),
+        own => frac(own, st.justify_self_last),
     };
-    let ky = frac(
-        e.style.computed().align_self,
-        e.style.computed().align_self_last,
-    );
+    let ky = frac(st.align_self, st.align_self_last);
     if jx.is_none() && ky.is_none() {
         return None;
     }
     // Строчная ось: `start`/`end` — по письму родителя, `self-*` — по своему
     // (свой `direction` на этом шаге ещё не унаследован — берём родительский).
-    let rtl = if e.style.computed().justify_self_own_axis {
+    let rtl = if st.justify_self_own_axis {
         e.style.cascaded().rtl.or(inherited.rtl)
     } else {
         inherited.rtl
@@ -125,16 +122,16 @@ pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f3
 /// `justify-items`/`align-items`). Horizontal ltr only — other modes keep the
 /// previous placement (`None`), as does `normal`/`auto` in both axes.
 pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
+    let st = e.style.computed();
     if inherited.wm().vertical()
         || inherited.wm().turned()
         || inherited.wm().rtl()
-        || e.style.computed().inline_display == Some(true)
+        || st.inline_display == Some(true)
     {
         return None;
     }
-    let anchorless = e.style.computed().position_anchor.is_none()
-        && e.style.computed().position_area.is_none()
-        && e.style.computed().implicit_anchor.is_none();
+    let anchorless =
+        st.position_anchor.is_none() && st.position_area.is_none() && st.implicit_anchor.is_none();
     let frac = |a: Option<Align>, last: bool| match a {
         Some(Align::Center) => Some(0.5),
         Some(Align::AnchorCenter) if anchorless => Some(0.5),
@@ -143,14 +140,8 @@ pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Opt
         Some(Align::Start) => Some(0.0),
         _ => None,
     };
-    let jx = frac(
-        e.style.computed().justify_self,
-        e.style.computed().justify_self_last,
-    );
-    let ky = frac(
-        e.style.computed().align_self,
-        e.style.computed().align_self_last,
-    );
+    let jx = frac(st.justify_self, st.justify_self_last);
+    let ky = frac(st.align_self, st.align_self_last);
     if jx.is_none() && ky.is_none() {
         return None;
     }
@@ -233,21 +224,22 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
 /// inline-level: such a box stays a point in the line, a block-level one
 /// starts at the line's start (CSS 2.1 §10.3.7, §10.6.4).
 pub(crate) fn hypothetical_inline_level(e: &Element) -> bool {
+    let st = e.style.computed();
     // A blockified `inline-block`/`inline-flex`/… keeps its inline-level
     // hypothetical box (`dom` marks it `abs_inline_level`).
-    if e.style.computed().abs_inline_level {
+    if st.abs_inline_level {
         return true;
     }
-    match e.style.computed().display {
+    match st.display {
         Some(crate::style::computed::Display::InlineBlock)
         | Some(crate::style::computed::Display::InlineFlex)
         | Some(crate::style::computed::Display::InlineGrid)
         | Some(crate::style::computed::Display::InlineTable) => true,
-        Some(crate::style::computed::Display::GridLanes) => e.style.computed().lanes_inline,
+        Some(crate::style::computed::Display::GridLanes) => st.lanes_inline,
         // Блокифицированный `display: inline` (§9.7) для СТАТИЧЕСКОЙ
         // позиции остаётся строчным: гипотеза §10.3.7 считается без
         // блокификации (htb-rtl-*).
-        Some(_) => e.style.computed().inline_display == Some(true),
+        Some(_) => st.inline_display == Some(true),
         None => e.inline,
     }
 }

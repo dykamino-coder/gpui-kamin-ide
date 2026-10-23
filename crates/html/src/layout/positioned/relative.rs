@@ -1,6 +1,7 @@
 //! Относительный сдвиг и подъём абсолютных коробок.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -21,11 +22,7 @@ use crate::style::values::value::{Len, px_strict};
 /// потоке ему не нужно. Порядок отрисовки тот же: позиционированные красятся
 /// в порядке дерева (прил. E, шаг 8), а вынесенный встаёт сразу за своим
 /// строчным.
-pub(crate) fn hoist_inset_abs(
-    nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> Vec<Node> {
+pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     fn movable(e: &Element) -> bool {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
@@ -51,12 +48,7 @@ pub(crate) fn hoist_inset_abs(
             && e.style.computed().contain_paint != Some(true)
             && !crate::text::inline::establishes_cb(&e.style.computed())
     }
-    fn take(
-        e: &mut Element,
-        out: &mut Vec<Node>,
-        inherited: &crate::style::computed::BoxStyle,
-        vcx: ValueCx<'_>,
-    ) {
+    fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &BoxStyle, vcx: ValueCx<'_>) {
         let parent = box_style_unpainted(inherited, &e.style, vcx);
         let kids = std::mem::take(&mut e.children);
         for n in kids {

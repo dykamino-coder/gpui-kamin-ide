@@ -11,6 +11,7 @@ use crate::layout::fragment::push::{Regrow, measured_push};
 use crate::layout::fragment::types::{BreaksAt, StackChild};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use std::rc::Rc;
 
 /// Что ребёнку стопки даёт раскладка его копии.
@@ -38,7 +39,7 @@ impl Measured {
         child: &mut StackChild,
         opts: &RenderOpts,
         cols: (bool, bool, Option<f32>),
-        merged: &crate::style::computed::BoxStyle,
+        merged: &BoxStyle,
         copy: &Element,
         sizes: (f32, f32),
     ) {

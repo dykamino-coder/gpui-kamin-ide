@@ -3,7 +3,7 @@
 //! тени сохраняет записи декораций и исходный цвет текста.
 
 use super::*;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Color;
 
 #[test]
@@ -15,11 +15,7 @@ fn inherited_currentcolor_uses_the_descendant_color() {
     parent.apply_one("text-shadow", "2px 3px, 4px 5px blue", vcx);
     let mut own = Computed::default();
     own.apply_one("color", "green", vcx);
-    let child = crate::style::cascade::inherit::inherit(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
-        &own,
-        vcx,
-    );
+    let child = crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
     let shadows = shadow_list(&child);
     assert_eq!(shadows.len(), 2);
     assert_eq!(shadows[0].color, Color::parse("green", vcx).unwrap().into());
@@ -97,11 +93,7 @@ fn mask_keeps_decoration_records_and_original_text_color() {
     owner.apply_one("color", "red", vcx);
     owner.apply_one("text-decoration", "underline blue", vcx);
     owner.apply_one("text-shadow", "2px 3px green", vcx);
-    let owner = crate::style::cascade::inherit::inherit(
-        &crate::style::computed::BoxStyle::default(),
-        &owner,
-        vcx,
-    );
+    let owner = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &owner, vcx);
     let context = ShadowStyle::new(&owner);
     let group = context.resolved();
     let nodes = vec![Node::Element(span(

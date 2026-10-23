@@ -6,6 +6,7 @@
 
 mod list_item;
 mod special_nodes;
+use crate::style::computed::{BoxStyle, Display as D};
 use special_nodes::special_node;
 
 mod blank_box;
@@ -24,7 +25,7 @@ use crate::text::inline::*;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn collect_element(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,
@@ -32,6 +33,7 @@ pub(super) fn collect_element(
     gap_at: &mut Option<usize>,
     from: usize,
 ) {
+    let st = e.style.computed();
     let doc = cx.layout.doc().clone();
     let vcx = doc.frame_values();
     if special_node(e, inherited, atom, has_text, cx, out) {
@@ -48,8 +50,8 @@ pub(super) fn collect_element(
         let join = inherited.ruby_suppress_breaks
             && e.children.is_empty()
             && !crate::layout::box_kind::replaced_tag(e)
-            && matches!(e.style.computed().width, None | Some(Len::Px(0.0)))
-            && matches!(e.style.computed().height, None | Some(Len::Px(0.0)));
+            && matches!(st.width, None | Some(Len::Px(0.0)))
+            && matches!(st.height, None | Some(Len::Px(0.0)));
         let joiner = || Piece::Text {
             text: "\u{2060}".into(),
             style: inherited.clone(),
@@ -82,12 +84,9 @@ pub(super) fn collect_element(
     }
     let (mut merged, painted_bg) = element_style(e, inherited, vcx);
     let atomic = matches!(
-        e.style.computed().display,
-        Some(crate::style::computed::Display::InlineBlock)
-            | Some(crate::style::computed::Display::InlineFlex)
-            | Some(crate::style::computed::Display::InlineGrid)
-            | Some(crate::style::computed::Display::InlineTable)
-    ) && e.style.computed().inline_display != Some(true);
+        st.display,
+        Some(D::InlineBlock | D::InlineFlex | D::InlineGrid | D::InlineTable)
+    ) && st.inline_display != Some(true);
     // Ограничитель атомарной коробки — служебный знак, а не текст
     // документа: замена нулевого пробела идеографическим его
     // касаться не должна, иначе вокруг `inline-block` появляется
@@ -124,14 +123,14 @@ pub(super) fn collect_element(
     // Its advance is already carried by the edge spacers; paint those
     // advances instead of extending a descendant's text band into them.
     let painted_padding = merged.inline_bg.is_some() && merged.inline_border.is_none();
+    let side_pad = merged
+        .inline_pad
+        .is_some_and(|pad| pad[1] != 0.0 || pad[3] != 0.0);
     if painted_padding
-        && merged
-            .inline_pad
-            .is_some_and(|pad| pad[1] != 0.0 || pad[3] != 0.0)
+        && side_pad
         && let Some(pad) = &mut merged.inline_pad
     {
-        pad[1] = 0.0;
-        pad[3] = 0.0;
+        (pad[1], pad[3]) = (0.0, 0.0);
     }
     // Box identity of the edge spacers: the line painter moves them
     // to the outermost visual fragments after bidi reordering.
@@ -140,7 +139,7 @@ pub(super) fn collect_element(
     } else {
         0
     };
-    let edge = |mut style: crate::style::computed::BoxStyle, leading: bool| {
+    let edge = |mut style: BoxStyle, leading: bool| {
         style.spacer_edge = Some((box_id, leading != own_rtl, own_rtl));
         style
     };
@@ -177,33 +176,29 @@ pub(super) fn collect_element(
     // Юникоду: разбор двунаправленности их и ждёт, а рисовать их
     // не надо, ширины у них нет.
     let (open, close) = bidi_marks(e.style.cascaded(), &merged);
+    let piece = |text: String, style: BoxStyle| Piece::Text { text, style };
+    let control = || {
+        let mut style = merged.clone();
+        style.inline_control = true;
+        style
+    };
     // Zero-length markers bound the box content between its edge
     // spacers (`box_extents`); they add no text.
-    let box_marker = |start: bool| Piece::Text {
-        text: String::new(),
-        style: {
-            let mut style = merged.clone();
-            style.spacer_edge = Some((box_id, start, own_rtl));
-            style
-        },
+    let box_marker = |start: bool| {
+        let mut style = merged.clone();
+        style.spacer_edge = Some((box_id, start, own_rtl));
+        piece(String::new(), style)
     };
     if box_id != 0 {
         out.push(box_marker(true));
     }
     if let Some(mark) = open {
-        out.push(Piece::Text {
-            text: mark.to_string(),
-            style: {
-                let mut style = merged.clone();
-                style.inline_control = true;
-                style
-            },
-        });
+        out.push(piece(mark.to_string(), control()));
     }
     // Относительный сдвиг строчного куска несёт и его потомков вне
     // потока: абсолютный элемент внутри `position: relative`
     // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
-    let cb_here = establishes_cb(&e.style.computed());
+    let cb_here = establishes_cb(&st);
     if cb_here {
         cx.inline_cb_depth += 1;
     }
@@ -217,20 +212,9 @@ pub(super) fn collect_element(
         kids
     };
     let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, vcx);
-    out.extend(shift_overlays(
-        kids,
-        &e.style.computed(),
-        merged.wm().turned(),
-    ));
+    out.extend(shift_overlays(kids, &st, merged.wm().turned()));
     if let Some(mark) = close {
-        out.push(Piece::Text {
-            text: mark.to_string(),
-            style: {
-                let mut style = merged.clone();
-                style.inline_control = true;
-                style
-            },
-        });
+        out.push(piece(mark.to_string(), control()));
     }
     if box_id != 0 {
         out.push(box_marker(false));

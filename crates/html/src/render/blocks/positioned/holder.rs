@@ -3,14 +3,14 @@
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::render::element::element;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 
 pub(crate) fn inset_holder_box(
     e: &Element,
     block_axis: bool,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     kw_len: &impl Fn(Option<Len>) -> bool,
 ) -> AnyElement {
@@ -77,7 +77,7 @@ pub(crate) fn inset_holder_box(
         inner.style.used_mut().margin.bottom = None;
     }
     inner.style.used_mut().z_index = None;
-    crate::paint::apply::apply(div(), &crate::style::computed::BoxStyle::new(holder), vcx)
+    crate::paint::apply::apply(div(), &BoxStyle::new(holder), vcx)
         .child(element(&inner, inherited, opts))
         .into_any_element()
 }

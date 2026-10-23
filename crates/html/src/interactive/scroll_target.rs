@@ -5,7 +5,7 @@
 
 mod stationary;
 use crate::dom::Element;
-use crate::style::computed::Sides;
+use crate::style::computed::{BoxStyle, Sides};
 use gpui::{
     Div, InteractiveElement, Interactivity, IntoElement, ParentElement, ScrollHandle,
     StatefulInteractiveElement, Styled,
@@ -97,7 +97,7 @@ impl StatefulInteractiveElement for NativeScrollBox {}
 pub(crate) fn attach(
     mut div: Div,
     e: &Element,
-    c: &crate::style::computed::BoxStyle,
+    c: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Div {
     let vcx = cx.vcx();

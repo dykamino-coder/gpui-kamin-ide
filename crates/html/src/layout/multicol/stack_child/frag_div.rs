@@ -3,7 +3,7 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::fragment::grid_bands::grid_rows_px;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{Styled, px};
 
@@ -14,7 +14,7 @@ pub(super) fn frag_box_div(
     copy: &Element,
     h: f32,
     src: &Element,
-    src_inner: &crate::style::computed::BoxStyle,
+    src_inner: &BoxStyle,
     frag_gap_rules: Option<crate::paint::gap_rules::GapRuleSpec>,
     frag_gap_items: Option<crate::paint::gap_rules::GapItems>,
     kids: Vec<Node>,

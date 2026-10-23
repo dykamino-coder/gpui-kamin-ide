@@ -1,6 +1,6 @@
 //! Тесты: нативные цели прокрутки сохраняют CSS-размеры и явную изоляцию владельцев.
 use super::*;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{CssSizingKeyword, Overflow, div, px};
 
@@ -13,7 +13,7 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
-    let mut c = crate::style::computed::BoxStyle::from(Computed {
+    let mut c = BoxStyle::from(Computed {
         width: Some(Len::FitContent),
         ..Computed::default()
     });
@@ -67,7 +67,7 @@ fn colored_numeric_scrollport_tracks_the_css_box() {
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
-    let mut c = crate::style::computed::BoxStyle::from(Computed {
+    let mut c = BoxStyle::from(Computed {
         width: Some(Len::Px(100.0)),
         ..Computed::default()
     });

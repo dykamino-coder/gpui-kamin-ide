@@ -2,6 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::paint::apply::*;
+use crate::style::computed::BoxStyle;
 use crate::style::computed::{
     Align, Computed, Display, FlexDir, Justify, Overflow, Placement, Position,
 };
@@ -19,11 +20,7 @@ use display_axes::{layout_display, layout_flex_axes};
 use grid_gap::layout_grid_gap;
 use sizing::layout_sizing;
 
-pub(super) fn apply_layout(
-    mut d: Div,
-    c: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> Div {
+pub(super) fn apply_layout(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     let constrained = ratio_constraints::resolve(c);
     let c = constrained.as_ref().unwrap_or(c);
     // Вертикальная `-webkit-box` с действующим `continue` (`line-clamp`,

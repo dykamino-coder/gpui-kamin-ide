@@ -8,14 +8,14 @@ use crate::layout::positioned::predicates::edge_set;
 use crate::layout::writing_mode::vertical_hug;
 use crate::render::blocks::flow::BelowRun;
 use crate::render::blocks::inset_holder_box;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn position_element(
     e: &crate::dom::Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     frame: &crate::interactive::sticky::element::StickyCell,
     layer_ok: bool,

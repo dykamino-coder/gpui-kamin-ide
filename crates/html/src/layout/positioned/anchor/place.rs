@@ -4,7 +4,7 @@ use super::parse::{VIS_NO_OVERFLOW, VIS_VALID, VIS_VISIBLE};
 use super::{AnchorPlace, AnchorPlan, geometry, reframe_if_stale, request_rebuild};
 use crate::document::state::ValueCx;
 use crate::hooks::{Hooks, IntoHooked};
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
@@ -16,12 +16,7 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 /// одному на элемент списка: правило `@position-try` накладывается на копию
 /// базы, `<position-area>` подменяет область, тактика переворачивает
 /// готовый план. Правило без определения — «does nothing»: варианта нет.
-pub fn place(
-    el: AnyElement,
-    own: &crate::style::computed::BoxStyle,
-    inherited: &Computed,
-    vcx: ValueCx<'_>,
-) -> AnyElement {
+pub fn place(el: AnyElement, own: &BoxStyle, inherited: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     let base = own.try_base.as_deref().unwrap_or(own);
     let Some(first) = AnchorPlan::of(base, inherited, vcx) else {
         return el;

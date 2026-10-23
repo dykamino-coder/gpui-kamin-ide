@@ -1,7 +1,7 @@
 //! Растяжение (stretch-fit) автоматических размеров, ограниченных парами inset-ов якоря.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::Position;
+use crate::style::computed::{BoxStyle, Position};
 use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Пара вставок оси, хотя бы одна — `anchor()`, при `auto`-размере: коробка
@@ -9,11 +9,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// §abspos-auto-size «stretch-fit»). Раскладка видит `anchor()` нулём и
 /// растянула бы коробку на весь содержащий блок, поэтому размер берётся из
 /// IMCB, найденного на подготовке прошлого кадра (`AREA_LAST`).
-pub(super) fn fill_anchor_pairs(
-    c: &mut crate::style::computed::BoxStyle,
-    grid_parent: Option<bool>,
-    vcx: ValueCx<'_>,
-) {
+pub(super) fn fill_anchor_pairs(c: &mut BoxStyle, grid_parent: Option<bool>, vcx: ValueCx<'_>) {
     let anchored = |l: Option<Len>| matches!(l, Some(Len::Anchor(_)));
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));

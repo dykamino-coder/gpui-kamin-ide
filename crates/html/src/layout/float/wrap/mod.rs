@@ -2,6 +2,7 @@
 //! container into the shared measured band host.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 
 use crate::dom::Node;
 use crate::layout::float::FloatCb;
@@ -13,7 +14,7 @@ use float_run::wrap_float_run;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn wrap_floats(
     nodes: Vec<Node>,
-    parent: &crate::style::computed::BoxStyle,
+    parent: &BoxStyle,
     // Открыт ли ВЕРХНИЙ край содержащего блока для схлопывания с полем
     // первого ребёнка (§8.3.1). Только при открытом крае верхнее поле
     // очищающей коробки увозит вниз сам содержащий блок, а вместе с ним —

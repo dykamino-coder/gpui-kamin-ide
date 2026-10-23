@@ -2,6 +2,7 @@
 
 use super::probe::{Entry, record};
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 use gpui::{Bounds, Pixels, Window};
 
 /// Строчный содержащий блок `node` (CSS 2.1 §10.1 п.4: край отбивки от
@@ -38,7 +39,7 @@ pub fn register_inline_anchor(
 /// `render::element` — свой `node_id`, порядок сборки, ключ клетки,
 /// выбранный вариант `position-try` и `anchor-size()`.
 pub fn prepare_inline_abs(
-    merged: &mut crate::style::computed::BoxStyle,
+    merged: &mut BoxStyle,
     e: &crate::dom::Element,
     inherited: &crate::style::computed::Computed,
     vcx: ValueCx<'_>,

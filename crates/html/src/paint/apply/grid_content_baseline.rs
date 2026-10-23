@@ -25,6 +25,7 @@ pub(super) fn apply(style: &mut gpui::StyleRefinement, c: &Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
 
     #[test]
     fn content_preference_survives_parsing_inheritance_and_reset() {
@@ -35,11 +36,8 @@ mod tests {
         assert_eq!(parent.align_content_baseline, Some(false));
         let mut own = Computed::default();
         own.apply_one("align-content", "inherit", vcx);
-        let inherited = crate::style::cascade::inherit::inherit(
-            &crate::style::computed::BoxStyle::from(parent.clone()),
-            &own,
-            vcx,
-        );
+        let inherited =
+            crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
         assert_eq!(inherited.align_content_baseline, Some(false));
         parent.apply_one("align-content", "last baseline", vcx);
         assert_eq!(parent.align_content_baseline, Some(true));

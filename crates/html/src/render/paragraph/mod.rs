@@ -17,7 +17,7 @@ pub(super) use edges::own_size;
 
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -25,17 +25,13 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 pub(crate) mod atom_piece;
 pub(crate) mod route;
 
-pub(crate) fn paragraph(
-    nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+pub(crate) fn paragraph(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     paragraph_routed(nodes, inherited, opts, None)
 }
 
 fn paragraph_routed(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {
@@ -133,7 +129,7 @@ fn paragraph_routed(
 /// Абзац с готовым разрезом первой строки: `at` — сколько байт в неё вошло.
 fn paragraph_pieces(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     first_line_at: usize,
     first_line: &Computed,

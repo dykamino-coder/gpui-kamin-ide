@@ -4,7 +4,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 
 #[derive(Clone, Copy)]
 pub(super) struct Axes([usize; 4]);
@@ -37,11 +37,7 @@ impl Axes {
     }
 }
 
-pub(super) fn inherited(
-    e: &Element,
-    parent: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> Option<Element> {
+pub(super) fn inherited(e: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Option<Element> {
     let style = crate::style::cascade::materialize::box_style(parent, &e.style, vcx);
     if (
         e.style.cascaded().writing_mode,

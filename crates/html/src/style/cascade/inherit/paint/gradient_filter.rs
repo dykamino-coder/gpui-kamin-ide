@@ -5,14 +5,9 @@
 //! группе поддерева.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::{Computed, Filter, ImageFilter, ImageSource};
+use crate::style::computed::{BoxStyle, Computed, Filter, ImageFilter, ImageSource};
 
-pub(super) fn apply(
-    c: &mut crate::style::computed::BoxStyle,
-    own: &Computed,
-    f: Filter,
-    vcx: ValueCx<'_>,
-) {
+pub(super) fn apply(c: &mut BoxStyle, own: &Computed, f: Filter, vcx: ValueCx<'_>) {
     if own.gradient.is_none() || c.bg_layers(vcx).is_some() || f.color_matrix().is_none() {
         return;
     }

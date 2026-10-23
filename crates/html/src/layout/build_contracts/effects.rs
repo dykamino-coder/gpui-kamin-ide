@@ -7,7 +7,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::paint::context::PaintCx;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use gpui::{AnyElement, Bounds, Pixels};
 use std::cell::Cell;
 use std::rc::Rc;
@@ -76,8 +76,7 @@ impl<'a> Effect<'a> {
 }
 
 type ApplyEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
-type PaintGroup =
-    fn(gpui::Div, &Element, &crate::style::computed::BoxStyle, ValueCx<'_>) -> AnyElement;
+type PaintGroup = fn(gpui::Div, &Element, &BoxStyle, ValueCx<'_>) -> AnyElement;
 type PaintResources = fn(&[Node], ValueCx<'_>);
 
 /// The paint operations of [`ChildBuild`](super::ChildBuild).
@@ -109,7 +108,7 @@ impl EffectBuild {
         &self,
         container: gpui::Div,
         e: &Element,
-        inherited: &crate::style::computed::BoxStyle,
+        inherited: &BoxStyle,
         vcx: ValueCx<'_>,
     ) -> AnyElement {
         (self.paint_group)(container, e, inherited, vcx)

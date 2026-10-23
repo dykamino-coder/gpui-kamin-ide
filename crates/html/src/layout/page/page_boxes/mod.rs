@@ -9,7 +9,7 @@ use crate::layout::options::RenderOpts;
 use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn};
 use crate::layout::page::page_counters;
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 mod content;
@@ -17,7 +17,7 @@ use content::content_nodes;
 
 pub(super) fn builder(
     declarations: PageMarginDeclsFn,
-    root: crate::style::computed::BoxStyle,
+    root: BoxStyle,
     opts: RenderOpts,
     counters: page_counters::PageCounters,
 ) -> crate::layout::page::page_stack::MarginFn {
@@ -46,7 +46,7 @@ fn page_margin_boxes(
     page: usize,
     pages: usize,
     g: &crate::layout::page::page_stack::PageGeom,
-    root: &crate::style::computed::BoxStyle,
+    root: &BoxStyle,
     opts: &RenderOpts,
     counters: &mut page_counters::PageCounters,
 ) -> Vec<crate::layout::page::page_stack::MarginBox> {

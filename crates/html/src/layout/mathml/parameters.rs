@@ -1,6 +1,7 @@
 //! Разрешённые атрибуты длины MathML и параметры контекста форматирования.
 use super::{geometry::Metrics, padded};
 use crate::style::cascade::inherit::inherit;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_strict;
 use crate::{dom::Element, layout::options::RenderOpts, style::computed::Computed};
 
@@ -24,11 +25,7 @@ pub(super) enum ScriptKind {
     Multi(Option<usize>),
 }
 
-pub(super) fn kind(
-    e: &Element,
-    style: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> Kind {
+pub(super) fn kind(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Kind {
     let attr = |name| e.attr(name).and_then(|v| length_px(v, style, opts));
     if e.tag == "mpadded" {
         Kind::Padded(padded::Parameters {
@@ -97,11 +94,7 @@ pub(super) fn kind(
     }
 }
 
-pub(super) fn length_px(
-    raw: &str,
-    style: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> Option<f32> {
+pub(super) fn length_px(raw: &str, style: &BoxStyle, opts: &RenderOpts) -> Option<f32> {
     let vcx = opts.cx.vcx();
     let value = crate::dom::mathml::parse_mathml_length(raw, vcx)?;
     let own = Computed {

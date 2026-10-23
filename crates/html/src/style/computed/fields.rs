@@ -1591,18 +1591,8 @@ pub struct InheritedStyle {
 
 /// Группа наследуемых значений за общим указателем. Равенство — сначала по
 /// указателю (Blink `InheritedEqual`: общая группа — одни и те же данные).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct InheritedGroup(pub(crate) std::rc::Rc<InheritedStyle>);
-
-thread_local! {
-    static INITIAL_INHERITED: std::rc::Rc<InheritedStyle> = std::rc::Rc::default();
-}
-
-impl Default for InheritedGroup {
-    fn default() -> Self {
-        Self(INITIAL_INHERITED.with(std::rc::Rc::clone))
-    }
-}
 
 impl PartialEq for InheritedGroup {
     fn eq(&self, other: &Self) -> bool {

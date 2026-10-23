@@ -9,12 +9,12 @@ use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::table;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Align, Computed, Display};
+use crate::style::computed::{Align, BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn container_atom(
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     e: &Element,
 ) -> Option<Option<AnyElement>> {
@@ -69,11 +69,7 @@ pub(super) fn container_atom(
     None
 }
 
-pub(super) fn img_atom(
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-    e: &Element,
-) -> Option<AnyElement> {
+pub(super) fn img_atom(inherited: &BoxStyle, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
     replaced_used_style::inline_percentage_width(copy.style.used_mut(), opts.cx.avail_w);
@@ -134,13 +130,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // коробки — свой, с решёнными шрифтовыми единицами.
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
-    svg_replaced(
-        &sized,
-        &fitted,
-        &crate::style::computed::BoxStyle::shared(shell.computed()),
-        opts,
-    )
-    .or_else(|| {
+    svg_replaced(&sized, &fitted, &BoxStyle::shared(shell.computed()), opts).or_else(|| {
         Some(opts.cx.build.replaced(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
@@ -150,7 +140,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
 }
 
 pub(super) fn canvas_atom(
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     e: &Element,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<AnyElement> {

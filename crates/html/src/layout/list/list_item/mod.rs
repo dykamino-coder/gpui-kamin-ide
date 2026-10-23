@@ -6,7 +6,7 @@
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use gpui::{AnyElement, Styled};
 pub(crate) mod marker;
 mod styled;
@@ -49,11 +49,7 @@ fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed
     style.font_features = features;
 }
 
-pub(super) fn render(
-    li: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+pub(super) fn render(li: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &li.style, vcx);
     if matches!(

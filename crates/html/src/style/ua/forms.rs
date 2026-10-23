@@ -1,7 +1,7 @@
 //! Метрики нативных элементов управления, независимые от UI встраивающего приложения.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::FontCx;
+use crate::style::computed::{BoxStyle, FontCx};
 use crate::style::values::value::Len;
 
 // Blink html.css / LayoutThemeDefault and WebThemeEngine on Windows.
@@ -23,10 +23,7 @@ pub(crate) fn size(kind: ControlKind) -> [f32; 2] {
 /// HTML rendering: text entry widgets cannot use a line-height below normal,
 /// including when appearance is none. Resolve normal on both paths, so it
 /// cannot accidentally inherit a shorter GPUI line-height from a wrapper.
-pub(crate) fn text_style(
-    style: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> crate::style::computed::BoxStyle {
+pub(crate) fn text_style(style: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
     let mut c = style.clone();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
@@ -67,16 +64,15 @@ mod tests {
             with_inherited.font_size = Some(Len::Px(60.));
             with_inherited
         };
-        let normal =
-            text_style(&crate::style::computed::BoxStyle::from(c.clone()), vcx).line_height;
+        let normal = text_style(&BoxStyle::from(c.clone()), vcx).line_height;
         c.line_height = Some(Len::Px(1.));
         assert_eq!(
-            text_style(&crate::style::computed::BoxStyle::from(c.clone()), vcx).line_height,
+            text_style(&BoxStyle::from(c.clone()), vcx).line_height,
             normal
         );
         c.line_height = Some(Len::Px(200.));
         assert_eq!(
-            text_style(&crate::style::computed::BoxStyle::from(c.clone()), vcx).line_height,
+            text_style(&BoxStyle::from(c.clone()), vcx).line_height,
             c.line_height
         );
     }

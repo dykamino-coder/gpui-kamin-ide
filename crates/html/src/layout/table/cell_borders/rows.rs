@@ -6,7 +6,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::ParentElement;
 use std::cell::RefCell;
@@ -19,7 +19,7 @@ pub(crate) fn collapsed_row_edges(
     span_cols: u16,
     cols: u16,
     row_style: &Computed,
-    table_style: &crate::style::computed::BoxStyle,
+    table_style: &BoxStyle,
     last_row: Option<&Element>,
     table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,

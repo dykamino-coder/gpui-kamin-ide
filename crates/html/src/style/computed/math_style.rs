@@ -79,6 +79,7 @@ fn scale(mut a: i32, mut b: i32, constants: Option<(f32, f32)>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
     #[test]
     fn css_wide_style_reset_controls_auto_depth_font_size() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
@@ -95,11 +96,7 @@ mod tests {
         };
         for (reset, compact, size) in [("initial", false, 500.0), ("unset", true, 355.0)] {
             let own = Computed::resolve(&[], &parse_decls(&format!("math-style: {reset}")), vcx);
-            let middle = inherit(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
-                &own,
-                vcx,
-            );
+            let middle = inherit(&BoxStyle::from(parent.clone()), &own, vcx);
             assert_eq!(middle.math_compact, Some(compact));
             let own = Computed::resolve(
                 &[],

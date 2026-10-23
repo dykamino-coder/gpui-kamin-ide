@@ -4,11 +4,10 @@
 //! при автоматическом минимуме по содержимому жёсткий перенесённый максимум не
 //! вставляется (CSS Sizing 4 §5.2). Возвращает копию стиля только при изменении.
 
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
-pub(super) fn resolve(
-    style: &crate::style::computed::BoxStyle,
-) -> Option<crate::style::computed::BoxStyle> {
+pub(super) fn resolve(style: &BoxStyle) -> Option<BoxStyle> {
     let ratio = style.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0)?;
     let sizes = [style.width, style.height];
     let mins = [style.min_width, style.min_height];
@@ -74,7 +73,7 @@ mod tests {
             max_width: Some(Len::Px(100.0)),
             ..Computed::default()
         };
-        let resolved = resolve(&crate::style::computed::BoxStyle::from(style.clone())).unwrap();
+        let resolved = resolve(&BoxStyle::from(style)).unwrap();
         assert_eq!(resolved.min_width, Some(Len::Px(100.0)));
         assert_eq!(resolved.max_height, Some(Len::Px(200.0)));
     }
@@ -89,9 +88,7 @@ mod tests {
             ..Computed::default()
         };
         assert_eq!(
-            resolve(&crate::style::computed::BoxStyle::from(style.clone()))
-                .unwrap()
-                .max_width,
+            resolve(&BoxStyle::from(style)).unwrap().max_width,
             Some(Len::Px(300.0))
         );
     }
@@ -104,7 +101,7 @@ mod tests {
             max_width: Some(Len::Px(100.0)),
             ..Computed::default()
         };
-        assert!(resolve(&crate::style::computed::BoxStyle::from(style.clone())).is_none());
+        assert!(resolve(&BoxStyle::from(style)).is_none());
     }
 
     #[test]
@@ -116,9 +113,7 @@ mod tests {
         };
         style.padding.bottom = Some(Len::Px(20.0));
         assert_eq!(
-            resolve(&crate::style::computed::BoxStyle::from(style.clone()))
-                .unwrap()
-                .max_width,
+            resolve(&BoxStyle::from(style)).unwrap().max_width,
             Some(Len::Px(100.0))
         );
     }

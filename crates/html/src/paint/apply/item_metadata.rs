@@ -86,7 +86,7 @@ pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::{Align, Display};
+    use crate::style::computed::{Align, BoxStyle, Display};
 
     #[test]
     fn own_vertical_flex_items_keep_the_parent_central_synthesis_policy() {
@@ -109,7 +109,7 @@ mod tests {
                 with_inherited
             };
             let effective = crate::style::cascade::inherit::inherit(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
+                &BoxStyle::from(parent.clone()),
                 &Computed::default(),
                 vcx,
             );
@@ -151,11 +151,8 @@ mod tests {
                     Some(crate::style::computed::writing_mode::TextOrientation::Mixed);
                 with_inherited
             };
-            let effective = crate::style::cascade::inherit::inherit(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
-                &own,
-                vcx,
-            );
+            let effective =
+                crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             project_wrapper(&mut wrapper, &effective);
@@ -181,11 +178,8 @@ mod tests {
                 );
                 with_inherited
             };
-            let effective = crate::style::cascade::inherit::inherit(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
-                &own,
-                vcx,
-            );
+            let effective =
+                crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement {
                 align_self: Some(gpui::AlignItems::End),
@@ -197,7 +191,7 @@ mod tests {
         }
         assert_eq!(
             baseline_x_flags(&crate::style::cascade::inherit::inherit(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
+                &BoxStyle::from(parent),
                 &Computed::default(),
                 vcx
             )),
@@ -224,11 +218,7 @@ mod tests {
             );
             with_inherited
         };
-        let effective = crate::style::cascade::inherit::inherit(
-            &crate::style::computed::BoxStyle::from(parent.clone()),
-            &own,
-            vcx,
-        );
+        let effective = crate::style::cascade::inherit::inherit(&BoxStyle::from(parent), &own, vcx);
         let mut wrapper = gpui::StyleRefinement::default();
         project_wrapper(&mut wrapper, &effective);
         assert_eq!(wrapper.baseline_x_flags, Some(5));

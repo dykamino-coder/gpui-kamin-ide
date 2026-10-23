@@ -9,7 +9,7 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::table_bands::repeat_candidates;
 use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod breaks;
@@ -21,7 +21,7 @@ use names::group_break_names;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn page_kids_from_groups(
     opts: &RenderOpts,
-    root: &crate::style::computed::BoxStyle,
+    root: &BoxStyle,
     left: f32,
     right: f32,
     top: f32,

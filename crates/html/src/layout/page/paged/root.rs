@@ -4,7 +4,7 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 
 #[derive(PartialEq)]
@@ -19,7 +19,7 @@ pub(super) fn resolve_root_page(
     none: &mut bool,
     canvas: &mut Option<gpui::Hsla>,
     canvas_img: &mut Option<Computed>,
-    root: &mut crate::style::computed::BoxStyle,
+    root: &mut BoxStyle,
     nodes: &mut Vec<Node>,
     left: &mut f32,
     right: &mut f32,

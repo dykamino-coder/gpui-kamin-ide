@@ -40,6 +40,7 @@ pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed, vc
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
     use crate::style::values::value::Len;
 
     #[test]
@@ -92,11 +93,8 @@ mod tests {
         let mut specified = Computed::default();
         specified.apply_one("font-size", "20px", vcx);
         specified.apply_one("column-width", "5em", vcx);
-        let parent = super::super::inherit::inherit_unpainted(
-            &crate::style::computed::BoxStyle::default(),
-            &specified,
-            vcx,
-        );
+        let parent =
+            super::super::inherit::inherit_unpainted(&BoxStyle::default(), &specified, vcx);
         let mut child = Computed::default();
         child.apply_one("font-size", "10px", vcx);
         child.apply_one("column-width", "inherit", vcx);

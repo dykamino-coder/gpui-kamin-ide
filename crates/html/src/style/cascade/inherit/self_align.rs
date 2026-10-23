@@ -2,7 +2,7 @@
 //! самого элемента, концы письма под `wrap-reverse` родителя (css-align-3 §6.1–6.2).
 
 use super::*;
-use crate::style::computed::{Align, Display as D};
+use crate::style::computed::{Align, BoxStyle, Display as D};
 
 fn flip(a: Option<Align>) -> Option<Align> {
     match a {
@@ -12,11 +12,7 @@ fn flip(a: Option<Align>) -> Option<Align> {
     }
 }
 
-pub(super) fn self_alignment(
-    parent: &Computed,
-    own: &Computed,
-    c: &mut crate::style::computed::BoxStyle,
-) {
+pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut BoxStyle) {
     let flex_parent = matches!(parent.display, Some(D::Flex) | Some(D::InlineFlex));
     // Не снимать `align-self` у коробки, чей родитель не гибкий контейнер и
     // не сетка (css-align-3 §6.2 «does not apply to block-level boxes»): наш

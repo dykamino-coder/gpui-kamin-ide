@@ -19,23 +19,19 @@ mod stretch;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::px_strict;
 use content::Content;
 use geometry::Metrics;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 use parameters::{Kind, length_px};
 
-pub(crate) fn element(
-    e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> Option<AnyElement> {
+pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Option<AnyElement> {
     build(e, inherited, opts, None)
 }
 fn build(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     target: Option<stretch::Target>,
 ) -> Option<AnyElement> {

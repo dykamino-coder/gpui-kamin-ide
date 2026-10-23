@@ -10,6 +10,7 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -57,11 +58,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     Some(
         opts.cx
             .build
-            .styled_box(
-                e,
-                &crate::style::computed::BoxStyle::shared(e.style.computed()),
-                &opts.cx,
-            )
+            .styled_box(e, &BoxStyle::shared(e.style.computed()), &opts.cx)
             .w(px(w))
             .h(px(h))
             .overflow_hidden()

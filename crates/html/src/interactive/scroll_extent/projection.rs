@@ -8,7 +8,7 @@ use super::{
     exact_probe::{ShiftLink, StickyShift},
 };
 use crate::hooks::{IntoHooked, Wrap};
-use crate::style::computed::Position;
+use crate::style::computed::{BoxStyle, Position};
 use gpui::{AnyElement, App, Bounds, Pixels, ScrollHandle, Window, point, px};
 pub(crate) struct Projection {
     handle: ScrollHandle,
@@ -26,7 +26,7 @@ impl Projection {
 pub(crate) fn projection(
     frame: Option<&Frame>,
     parent: u64,
-    c: Option<&crate::style::computed::BoxStyle>,
+    c: Option<&BoxStyle>,
     outer: Option<&StickyShift>,
 ) -> Option<Projection> {
     let frame = frame?;
@@ -104,7 +104,7 @@ mod tests {
         {
             frame.begin(Some(&root));
             let parent = {
-                let mut with_inherited = crate::style::computed::BoxStyle::from(Computed {
+                let mut with_inherited = BoxStyle::from(Computed {
                     position: Some(Position::Relative),
                     ..Computed::default()
                 });
@@ -114,7 +114,7 @@ mod tests {
             };
             classic::model(Some(&frame), 7, &parent);
             let absolute = crate::style::cascade::inherit::inherit(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
+                &parent,
                 &Computed {
                     position: Some(Position::Absolute),
                     ..Computed::default()
@@ -123,7 +123,7 @@ mod tests {
             );
             assert!(projection(Some(&frame), 7, Some(&absolute), None).is_some());
             let fixed = crate::style::cascade::inherit::inherit(
-                &crate::style::computed::BoxStyle::from(parent.clone()),
+                &parent,
                 &Computed {
                     position: Some(Position::Fixed),
                     ..Computed::default()
@@ -145,7 +145,7 @@ mod tests {
         let frame = Frame::default();
         let handle = ScrollHandle::default();
         let c = {
-            let mut with_inherited = crate::style::computed::BoxStyle::from(Computed {
+            let mut with_inherited = BoxStyle::from(Computed {
                 overflow_x: Some(Overflow::Scroll),
                 overflow_y: Some(Overflow::Scroll),
                 ..Computed::default()

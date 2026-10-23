@@ -3,13 +3,9 @@
 //! предка, подавление маркера, чернила тени текста.
 
 use super::*;
-use crate::style::computed::Display as D;
+use crate::style::computed::{BoxStyle, Display as D};
 
-pub(super) fn inherit_context(
-    parent: &Computed,
-    own: &Computed,
-    c: &mut crate::style::computed::BoxStyle,
-) {
+pub(super) fn inherit_context(parent: &Computed, own: &Computed, c: &mut BoxStyle) {
     set!(
         c.text_shadow_ink,
         own.text_shadow_ink.or(parent.text_shadow_ink)
