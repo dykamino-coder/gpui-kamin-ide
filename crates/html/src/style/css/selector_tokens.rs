@@ -6,7 +6,7 @@
 use super::{AttrSel, unescape};
 
 /// Identifier lists preserve the whitespace consumed by hexadecimal escapes.
-pub(super) fn ident_list(raw: &str) -> Option<Vec<String>> {
+pub(crate) fn ident_list(raw: &str) -> Option<Vec<String>> {
     let mut tokens = Vec::new();
     let mut start = 0;
     let mut at = 0;

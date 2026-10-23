@@ -40,7 +40,14 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // значении (`css_properties.json5:7513`
     // `ConvertComputedLength<float>`) и в `length_utils.cc:1311`
     // `ResolveUsedColumnCount` читает уже точки.
-    let column_width = merged.column_width.filter(|_| multicol);
+    // css-multicol-1 §cw: вычисленное значение сохраняется, используемое
+    // ограничено снизу 1px, в том числе при расчёте числа колонок (§pseudo-algorithm).
+    let column_width = merged.column_width.filter(|_| multicol).map(|width| {
+        match width {
+            Len::Px(w) => Len::Px(w.max(1.0)),
+            other => other,
+        }
+    });
     let column_count = merged.column_count.filter(|_| multicol);
     // Ось прогрессии колонок — СТРОЧНАЯ ось многоколоночника
     // (css-multicol-1 §2, `Overview.bs:375-379`: «The column boxes are
@@ -124,4 +131,29 @@ pub(crate) struct ColumnPlan {
     pub(super) width_driven: bool,
     pub(super) height_driven: bool,
     pub(super) lone_span: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_column_width_uses_one_pixel_without_changing_computed_value() {
+        let opts = RenderOpts {
+            text: Default::default(), viewport: (800., 600.), normal_line_height: 1.2,
+            cx: Default::default(), frag: Default::default(),
+        };
+        for css in ["column-width:0", "columns:0", "column-width:0.5px"] {
+            let doc = crate::document::state::DocState::new(Default::default());
+            let mut style = Computed::default();
+            style.apply_decls_with_vars(&crate::style::css::parse_decls(
+                &format!("width:50px; column-gap:0; {css}")), &Default::default(), doc.values());
+            let computed = style.column_width;
+            let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
+            let plan = column_plan(&e, &style, &opts);
+            assert_eq!(plan.column_width, Some(Len::Px(1.0)), "{css}");
+            assert_eq!(plan.used_count, Some(50), "{css}");
+            assert_eq!(style.column_width, computed);
+        }
+    }
 }
