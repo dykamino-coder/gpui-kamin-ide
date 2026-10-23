@@ -94,8 +94,8 @@ impl SharedStyle {
     }
 
     /// Layout's used-value layer, if layout edited this style.
-    pub(crate) fn used(&self) -> Option<&Computed> {
-        self.used.as_deref()
+    pub(crate) fn used_rc(&self) -> Option<Rc<Computed>> {
+        self.used.clone()
     }
 
     fn base(&self) -> Rc<Computed> {
@@ -144,7 +144,7 @@ mod tests {
         let mut style = SharedStyle::from(Computed::default());
         style.used_mut().width = Some(Len::Px(10.0));
         assert_eq!(style.cascaded().width, Some(Len::Px(10.0)));
-        assert!(style.used().is_none());
+        assert!(style.used.is_none());
     }
 
     #[test]

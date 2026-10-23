@@ -12,7 +12,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 /// What the piece collection tells the builder of an atom: the style of its
 /// nearest open inline ancestor (`None` — the paragraph block is the parent)
@@ -20,13 +20,13 @@ use crate::style::computed::Computed;
 /// atom's containing block (CSS 2.1 §10.1 item 4, `InlineCbOffer`).
 #[derive(Clone, Default)]
 pub struct AtomCx {
-    pub(crate) parent: Option<Computed>,
+    pub(crate) parent: Option<crate::style::computed::BoxStyle>,
     pub(crate) in_inline_cb: bool,
 }
 
 /// Open an inline ancestor on the collection's stack: its style inherits from
 /// the top of the stack (or from `base`, the paragraph's style, when empty).
-pub(crate) fn open(stack: &mut Vec<Computed>, own: &Element, base: &Computed, vcx: ValueCx<'_>) {
+pub(crate) fn open(stack: &mut Vec<BoxStyle>, own: &Element, base: &BoxStyle, vcx: ValueCx<'_>) {
     let parent = stack.last().unwrap_or(base);
     let mut style = crate::style::cascade::materialize::box_style(parent, &own.style, vcx);
     style.self_node = own.node_id;

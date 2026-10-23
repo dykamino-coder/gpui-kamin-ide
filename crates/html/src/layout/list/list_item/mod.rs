@@ -49,7 +49,11 @@ fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed
     style.font_features = features;
 }
 
-pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(super) fn render(
+    li: &Element,
+    inherited: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &li.style, vcx);
     if matches!(

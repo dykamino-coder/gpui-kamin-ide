@@ -2,7 +2,7 @@
 //! §4.2): их inset'ы и размеры в долях пересчитываются от содержащего блока без gutter.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::Position;
 use gpui::{DefiniteLength, Div, Length, Styled};
 fn adjust(value: &mut Option<Length>, side: f32, total: f32, vcx: ValueCx<'_>) {
     let Some(Length::Definite(v)) = value else {
@@ -14,7 +14,7 @@ fn adjust(value: &mut Option<Length>, side: f32, total: f32, vcx: ValueCx<'_>) {
     };
     *v = super::add(*v, side - fraction * total, vcx);
 }
-pub(crate) fn apply(mut div: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(crate) fn apply(mut div: Div, c: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> Div {
     if !matches!(c.position, Some(Position::Absolute | Position::Fixed)) {
         return div;
     }

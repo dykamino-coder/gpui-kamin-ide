@@ -4,7 +4,7 @@
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::table::table_clipped_content;
-use crate::style::computed::{Align, Computed};
+use crate::style::computed::Align;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -78,7 +78,7 @@ pub(super) fn place_cell_in_grid(
 pub(super) fn cell_contents(
     opts: &RenderOpts,
     e: &Element,
-    cm: Computed,
+    cm: crate::style::computed::BoxStyle,
     spans_collapsed: bool,
     clipped: bool,
     cell: &Element,

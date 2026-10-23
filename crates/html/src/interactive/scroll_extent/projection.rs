@@ -8,7 +8,7 @@ use super::{
     exact_probe::{ShiftLink, StickyShift},
 };
 use crate::hooks::{IntoHooked, Wrap};
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::Position;
 use gpui::{AnyElement, App, Bounds, Pixels, ScrollHandle, Window, point, px};
 pub(crate) struct Projection {
     handle: ScrollHandle,
@@ -26,7 +26,7 @@ impl Projection {
 pub(crate) fn projection(
     frame: Option<&Frame>,
     parent: u64,
-    c: Option<&Computed>,
+    c: Option<&crate::style::computed::BoxStyle>,
     outer: Option<&StickyShift>,
 ) -> Option<Projection> {
     let frame = frame?;
@@ -85,6 +85,7 @@ impl Wrap for Projected {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     use crate::style::computed::Overflow;
     use crate::{
         dom::Node,
@@ -103,17 +104,17 @@ mod tests {
         {
             frame.begin(Some(&root));
             let parent = {
-                let mut with_inherited = Computed {
-                    self_node: 7,
+                let mut with_inherited = crate::style::computed::BoxStyle::from(Computed {
                     position: Some(Position::Relative),
                     ..Computed::default()
-                };
+                });
+                with_inherited.self_node = 7;
                 with_inherited.rtl = Some(true);
                 with_inherited
             };
             classic::model(Some(&frame), 7, &parent);
             let absolute = crate::style::cascade::inherit::inherit(
-                &parent,
+                &crate::style::computed::BoxStyle::from(parent.clone()),
                 &Computed {
                     position: Some(Position::Absolute),
                     ..Computed::default()
@@ -122,7 +123,7 @@ mod tests {
             );
             assert!(projection(Some(&frame), 7, Some(&absolute), None).is_some());
             let fixed = crate::style::cascade::inherit::inherit(
-                &parent,
+                &crate::style::computed::BoxStyle::from(parent.clone()),
                 &Computed {
                     position: Some(Position::Fixed),
                     ..Computed::default()
@@ -144,12 +145,12 @@ mod tests {
         let frame = Frame::default();
         let handle = ScrollHandle::default();
         let c = {
-            let mut with_inherited = Computed {
-                self_node: 7,
+            let mut with_inherited = crate::style::computed::BoxStyle::from(Computed {
                 overflow_x: Some(Overflow::Scroll),
                 overflow_y: Some(Overflow::Scroll),
                 ..Computed::default()
-            };
+            });
+            with_inherited.self_node = 7;
             with_inherited.rtl = Some(true);
             with_inherited
         };

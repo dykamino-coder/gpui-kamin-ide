@@ -7,7 +7,6 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::fonts::style_font::measure_font;
 use crate::text::text_box::normal_fraction;
@@ -31,7 +30,7 @@ mod measure;
 /// внутри блоки, колонки набираются из них сеткой, как и раньше.
 pub(crate) fn column_flow(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     count: Option<usize>,
     col_w: Option<f32>,
@@ -77,7 +76,7 @@ pub(crate) fn column_flow(
 #[allow(clippy::type_complexity)]
 fn column_flow_in(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     count: Option<usize>,
     col_w: Option<f32>,

@@ -20,8 +20,8 @@ pub(super) fn active(e: &Element, c: &Computed) -> bool {
 
 pub(super) fn build(
     e: &Element,
-    c: Computed,
-    inherited: &Computed,
+    c: crate::style::computed::BoxStyle,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
     mut d: gpui::Div,

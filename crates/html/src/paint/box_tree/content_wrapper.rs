@@ -31,7 +31,7 @@ fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
 pub(crate) fn for_element(
     el: AnyElement,
     element: &Element,
-    parent: &Computed,
+    parent: &crate::style::computed::BoxStyle,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     vcx: ValueCx<'_>,
 ) -> AnyElement {

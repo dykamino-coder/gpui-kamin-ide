@@ -31,7 +31,7 @@ pub(crate) fn multicol_column_stack(
     d: gpui::Div,
     e: &Element,
     inherited: &Computed,
-    merged: Computed,
+    merged: crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     kids: Vec<(Element, Shape)>,
     cols: u16,

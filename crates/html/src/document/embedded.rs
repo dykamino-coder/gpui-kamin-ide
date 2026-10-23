@@ -111,7 +111,7 @@ pub(super) fn unwrap_document(
     nodes: Vec<Node>,
     vcx: ValueCx<'_>,
 ) -> (Vec<Node>, crate::style::computed::Computed) {
-    let mut root = crate::style::computed::Computed::default();
+    let mut root = crate::style::computed::BoxStyle::default();
     let mut nodes = nodes;
     loop {
         let single_wrapper = match nodes.as_slice() {
@@ -121,10 +121,10 @@ pub(super) fn unwrap_document(
             _ => false,
         };
         if !single_wrapper {
-            return (nodes, root);
+            return (nodes, root.into_computed());
         }
         let Some(Node::Element(e)) = nodes.pop() else {
-            return (nodes, root);
+            return (nodes, root.into_computed());
         };
         root = crate::style::cascade::inherit::inherit_unpainted(&root, e.style.cascaded(), vcx);
         // Обёртка снимается ради виртуализации: единица прокрутки — блок
@@ -132,13 +132,14 @@ pub(super) fn unwrap_document(
         // принадлежит содержимому: `body { font: 13px system-ui }` — самый
         // обычный способ задать типографику страницы, и без этого шага он
         // пропадал молча, а текст набирался умолчанием движка.
+        let wrapper = crate::style::computed::BoxStyle::from(e.style.cascaded().clone());
         nodes = e
             .children
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut child) => {
                     child.style = crate::style::cascade::inherit::inherit_unpainted(
-                        e.style.cascaded(),
+                        &wrapper,
                         child.style.cascaded(),
                         vcx,
                     )

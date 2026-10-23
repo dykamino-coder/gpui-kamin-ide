@@ -58,7 +58,11 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     Some(
         opts.cx
             .build
-            .styled_box(e, &e.style.computed(), &opts.cx)
+            .styled_box(
+                e,
+                &crate::style::computed::BoxStyle::shared(e.style.computed()),
+                &opts.cx,
+            )
             .w(px(w))
             .h(px(h))
             .overflow_hidden()

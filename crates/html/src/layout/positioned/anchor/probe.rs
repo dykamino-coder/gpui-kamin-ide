@@ -36,7 +36,7 @@ pub(super) fn wants_implicit(c: &Computed) -> bool {
 /// `hidden` — `visibility: hidden` коробки (§position-visibility).
 pub fn probe_for(
     e: &crate::dom::Element,
-    c: &Computed,
+    c: &crate::style::computed::BoxStyle,
     hidden: bool,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {

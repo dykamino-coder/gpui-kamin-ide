@@ -4,7 +4,6 @@ use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::paint::decorations::text_shadows::with_text_shadow;
 use crate::render::paragraph::paragraph;
-use crate::style::computed::Computed;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
@@ -23,7 +22,7 @@ pub(crate) fn paint_inline_step7(para: AnyElement) -> AnyElement {
 
 pub(crate) fn paragraph_probed(
     taken: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     // Номер абзаца сопоставляет план с пробами независимо от порядка краски.

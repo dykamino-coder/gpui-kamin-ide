@@ -14,7 +14,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn container_atom(
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     e: &Element,
 ) -> Option<Option<AnyElement>> {
@@ -69,7 +69,11 @@ pub(super) fn container_atom(
     None
 }
 
-pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
+pub(super) fn img_atom(
+    inherited: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+    e: &Element,
+) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
     replaced_used_style::inline_percentage_width(copy.style.used_mut(), opts.cx.avail_w);
@@ -86,13 +90,16 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
         inherited.display,
         Some(Display::TableCell) | Some(Display::GridLanes)
     ) {
-        copy.style.used_mut().cb_height_def = box_style(inherited, &e.style, vcx).cb_height_def;
+        copy.style.used_mut().cb_height_def_hint =
+            box_style(inherited, &e.style, vcx).cb_height_def;
     }
     // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
     // строится из СЫРОГО стиля, а сворачивает их только слитый
     // (`Computed::resolve_viewport`), и `height: calc(60vh - 6px)` у
     // картинки падал в природный размер (`intrinsic-percent-replaced-009-ref`).
-    copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
+    if copy.style.computed().has_viewport_lengths(vcx) {
+        copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
+    }
     if let Some(doc) = crate::layout::replaced::svg_document_image::render(&copy, opts) {
         return Some(doc);
     }
@@ -127,7 +134,13 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // коробки — свой, с решёнными шрифтовыми единицами.
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
-    svg_replaced(&sized, &fitted, &shell.computed(), opts).or_else(|| {
+    svg_replaced(
+        &sized,
+        &fitted,
+        &crate::style::computed::BoxStyle::shared(shell.computed()),
+        opts,
+    )
+    .or_else(|| {
         Some(opts.cx.build.replaced(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
@@ -137,7 +150,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
 }
 
 pub(super) fn canvas_atom(
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     e: &Element,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<AnyElement> {

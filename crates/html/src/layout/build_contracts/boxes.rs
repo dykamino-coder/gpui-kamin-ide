@@ -5,24 +5,24 @@
 
 use crate::dom::Element;
 use crate::layout::cx::LayoutCx;
-use crate::style::computed::{Computed, Sides};
+use crate::style::computed::{BoxStyle, Sides};
 use gpui::AnyElement;
 
 /// Where the wrapped item sits in its parent's grid: line placement and
 /// line names.
 pub(crate) type GridPlacement = (Option<gpui::GridLocation>, Option<gpui::GridLineNames>);
 
-type StyledBox = fn(&Element, &Computed, &LayoutCx) -> gpui::Div;
+type StyledBox = fn(&Element, &BoxStyle, &LayoutCx) -> gpui::Div;
 type StyledDiv = fn(Styling<'_>, &LayoutCx) -> gpui::Div;
-type ContentSized = fn(AnyElement, &Computed, &Computed, GridPlacement, &LayoutCx) -> AnyElement;
+type ContentSized = fn(AnyElement, &BoxStyle, &BoxStyle, GridPlacement, &LayoutCx) -> AnyElement;
 
 /// The computed values a bare div (one without an element) is styled with.
 pub(crate) enum Styling<'a> {
     /// Every box value of the style: display, sizes, edges, paint.
-    Box(&'a Computed),
+    Box(&'a BoxStyle),
     /// Only the text values of the style: font, color, decoration, line
     /// height, alignment and spacing.
-    Text(&'a Computed),
+    Text(&'a BoxStyle),
     /// Only the margins (`auto` kept as an auto margin).
     Margins(&'a Sides),
 }
@@ -48,7 +48,7 @@ impl BoxBuild {
         }
     }
 
-    pub(super) fn styled_box(&self, e: &Element, style: &Computed, cx: &LayoutCx) -> gpui::Div {
+    pub(super) fn styled_box(&self, e: &Element, style: &BoxStyle, cx: &LayoutCx) -> gpui::Div {
         (self.styled_box)(e, style, cx)
     }
 
@@ -59,8 +59,8 @@ impl BoxBuild {
     pub(super) fn content_sized(
         &self,
         el: AnyElement,
-        style: &Computed,
-        item_style: &Computed,
+        style: &BoxStyle,
+        item_style: &BoxStyle,
         placement: GridPlacement,
         cx: &LayoutCx,
     ) -> AnyElement {

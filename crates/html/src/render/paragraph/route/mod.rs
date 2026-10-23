@@ -8,7 +8,6 @@
 //! одних текстовых кусков: строчные атомы, ставшие текстовыми заполнителями, и
 //! внепоточные наложения сохраняют прежний контракт физических координат.
 
-use crate::style::computed::Computed;
 use crate::text::inline::Piece;
 use gpui::AnyElement;
 use std::cell::Cell;
@@ -33,7 +32,7 @@ pub(crate) type LineAtoms = Vec<(
 )>;
 
 pub(crate) struct NativeRequest<'a> {
-    pub style: &'a Computed,
+    pub style: &'a crate::style::computed::BoxStyle,
     pub built: &'a Cell<bool>,
 }
 

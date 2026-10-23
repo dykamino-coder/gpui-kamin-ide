@@ -35,8 +35,11 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         };
         assert_eq!(block.style.computed().height, height);
         assert!(block.marks.auto_zero_height);
-        let painted = used_style(block, block.style.cascaded())
-            .unwrap_or_else(|| block.style.cascaded().clone());
+        let painted = used_style(
+            block,
+            &crate::style::computed::BoxStyle::from((*block.style.cascaded()).clone()),
+        )
+        .unwrap_or_else(|| crate::style::computed::BoxStyle::from(block.style.cascaded().clone()));
         assert_eq!(painted.height, Some(Len::Px(0.0)));
         let mut child = {
             let mut with_inherited = Computed {

@@ -4,15 +4,23 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::paragraph;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// CSS Writing Modes 4 §5.1: orientation belongs to each text run, including
 /// an explicit mixed override inside an upright container. Atomic contents
 /// belong to their own formatting context and cannot select this route.
-pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx<'_>) -> bool {
-    fn visit(nodes: &[Node], style: &Computed, seen: &mut bool, vcx: ValueCx<'_>) -> bool {
+pub(super) fn only_mixed_text(
+    nodes: &[Node],
+    inherited: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> bool {
+    fn visit(
+        nodes: &[Node],
+        style: &crate::style::computed::BoxStyle,
+        seen: &mut bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
         nodes.iter().all(|node| match node {
             Node::Text(text) if !text.trim().is_empty() => {
                 *seen = true;
@@ -40,7 +48,7 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn upright_paragraph(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     if let Some(stack) = super::upright_central::upright_central(nodes, inherited, opts) {

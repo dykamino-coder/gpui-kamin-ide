@@ -12,7 +12,11 @@ fn flip(a: Option<Align>) -> Option<Align> {
     }
 }
 
-pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut Computed) {
+pub(super) fn self_alignment(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut crate::style::computed::BoxStyle,
+) {
     let flex_parent = matches!(parent.display, Some(D::Flex) | Some(D::InlineFlex));
     // Не снимать `align-self` у коробки, чей родитель не гибкий контейнер и
     // не сетка (css-align-3 §6.2 «does not apply to block-level boxes»): наш
@@ -27,7 +31,7 @@ pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut Computed
     // «пусто»: пустое значение брало `align-items` родителя
     // (`self-align-normal-flex`).
     if own.align_self_normal && flex_parent {
-        c.align_self = Some(Align::Stretch);
+        set!(c.align_self, Some(Align::Stretch));
     }
     // `self-start`/`self-end` меряются по письму САМОГО элемента (css-align-3
     // §6.2). Значение уже физическое (начало = левый край при ltr), поэтому
@@ -42,7 +46,7 @@ pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut Computed
     // `flex_cross_reverse` / `flip`).
     if c.parent_grid == 0 && own.align_self_own_axis && c.rtl.unwrap_or(false) != parent.wm().rtl()
     {
-        c.align_self = flip(c.align_self);
+        set!(c.align_self, flip(c.align_self));
     }
     // `start`/`end` (и `self-*`) меряются по ПИСЬМУ, а раскладка знает только
     // гибкие концы (`apply::to_items` → `FlexStart`/`FlexEnd`), которые
@@ -52,6 +56,6 @@ pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut Computed
     // через тот же `WrapReverse`) здесь не участвует — он виден раскладке и
     // для `flex-*`, и для `start` одинаково (`self-align-start-end-flex-001`).
     if !own.align_self_flex_kw && parent.flex_wrap_reverse == Some(true) && flex_parent {
-        c.align_self = flip(c.align_self);
+        set!(c.align_self, flip(c.align_self));
     }
 }

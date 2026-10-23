@@ -19,7 +19,7 @@ pub(super) use parts::band_kid_kind;
 pub(crate) fn band_kids(
     nodes: &[Node],
     count: usize,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     em: f32,
     start_open: bool,

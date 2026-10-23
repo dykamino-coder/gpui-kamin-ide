@@ -13,7 +13,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 /// replaced content; its auto dimensions use the default object size.
 pub(crate) fn empty_iframe_size(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     viewport: (f32, f32),
     vcx: ValueCx<'_>,
 ) -> Element {
@@ -22,8 +22,10 @@ pub(crate) fn empty_iframe_size(
     // Resolve that inherited basis before treating an indefinite percentage as auto.
     let merged = crate::style::cascade::materialize::box_style(inherited, &copy.style, vcx);
     copy.style.used_mut().height = merged.height;
-    copy.style.used_mut().cb_height_def = merged.cb_height_def;
-    copy.style.used_mut().resolve_viewport(viewport, vcx);
+    copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;
+    if copy.style.computed().has_viewport_lengths(vcx) {
+        copy.style.used_mut().resolve_viewport(viewport, vcx);
+    }
     if vcx.doc.quirks()
         && !matches!(
             copy.style.computed().position,
@@ -92,7 +94,7 @@ pub(crate) fn empty_iframe_size(
 
 pub(crate) fn empty_iframe(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
@@ -103,7 +105,11 @@ pub(crate) fn empty_iframe(
     }
     opts.cx
         .build
-        .styled_box(&copy, &copy.style.computed(), &opts.cx)
+        .styled_box(
+            &copy,
+            &crate::style::computed::BoxStyle::shared(copy.style.computed()),
+            &opts.cx,
+        )
         .flex_shrink_0()
         .into_any_element()
 }
@@ -124,7 +130,7 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
 pub(crate) fn svg_replaced(
     e: &Element,
     sized: &Element,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let boxed = svg_has_box(merged);
@@ -197,11 +203,11 @@ mod tests {
         frame.style.used_mut().flow_root = Some(true);
         for (height, expected) in [(None, 150.0), (Some(Len::Pct(0.5)), 96.0)] {
             frame.style.used_mut().height = height;
-            let parent = Computed {
+            let mut parent = crate::style::computed::BoxStyle::from(Computed {
                 height: Some(Len::Px(192.0)),
-                cb_height_def: true,
                 ..Default::default()
-            };
+            });
+            parent.cb_height_def = true;
             let sized = empty_iframe_size(&frame, &parent, (800.0, 600.0), doc.values());
             assert_eq!(sized.style.computed().width, Some(Len::Px(300.0)));
             assert_eq!(sized.style.computed().height, Some(Len::Px(expected)));

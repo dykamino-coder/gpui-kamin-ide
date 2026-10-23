@@ -22,7 +22,7 @@ use crate::layout::atom::pct_resolved_for_wrapper;
 use crate::layout::replaced::limits::content_limit_swapped;
 use crate::paint::stacking::{defers, layered, stacking_context};
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Display;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -31,7 +31,7 @@ pub(crate) fn paint_element(
     e: &crate::dom::Element,
     nodes: &[Node],
     idx: usize,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     ordered_context: bool,
     under_tf: bool,

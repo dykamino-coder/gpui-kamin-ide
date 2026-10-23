@@ -14,9 +14,9 @@ use crate::document::state::ValueCx;
 /// `LayoutBox::ContainingBlockLogicalHeightForPercentageResolution`
 /// (`SkipContainingBlockForPercentHeightCalculation`).
 pub(super) fn percentage_height(
-    parent: &Computed,
+    parent: &crate::style::computed::BoxStyle,
     own: &Computed,
-    c: &mut Computed,
+    c: &mut crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) {
     if !vcx.doc.quirks() {
@@ -37,7 +37,7 @@ pub(super) fn percentage_height(
         (own.height, c.cb_height_def, tabular, parent.quirk_pct_base)
     {
         height = Some(L::Px(k * base));
-        c.height = height;
+        set!(c.height, height);
     }
     // Only block containers and table wrappers transmit an indefinite
     // percentage basis. Flex/grid containers stop the quirks ancestor walk.

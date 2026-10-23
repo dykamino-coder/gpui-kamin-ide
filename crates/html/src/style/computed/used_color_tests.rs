@@ -13,7 +13,12 @@ fn merged(parent: &Computed, decls: &[(&str, &str)]) -> Computed {
     for (key, value) in decls {
         own.apply_one(key, value, vcx);
     }
-    inherit(parent, &own, vcx)
+    (inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &own,
+        vcx,
+    ))
+    .into_computed()
 }
 
 fn rgb(r: f32, g: f32, b: f32) -> Color {

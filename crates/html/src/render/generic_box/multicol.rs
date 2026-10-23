@@ -17,7 +17,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 pub(crate) fn multicol_box(
     mut d: gpui::Div,
     e: &Element,
-    merged: Computed,
+    merged: crate::style::computed::BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     column_width: Option<Len>,
@@ -29,7 +29,7 @@ pub(crate) fn multicol_box(
     col_inline_size: Option<Len>,
     outer_row: Option<(f32, f32)>,
     lone_span: bool,
-) -> Result<(gpui::Div, Computed), AnyElement> {
+) -> Result<(gpui::Div, crate::style::computed::BoxStyle), AnyElement> {
     let vcx = opts.cx.vcx();
     // Сплошной текст режется на колонки по строкам, а не по детям:
     // один длинный абзац иначе оставался в первой колонке целиком.

@@ -4,10 +4,15 @@
 //! поэтому предикат смотрит и на процентную часть смешанной длины.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::Position;
 use crate::style::values::value::{Len, calc_get};
 
-pub(super) fn is_auto(style: &Computed, value: Len, side: u8, vcx: ValueCx<'_>) -> bool {
+pub(super) fn is_auto(
+    style: &crate::style::computed::BoxStyle,
+    value: Len,
+    side: u8,
+    vcx: ValueCx<'_>,
+) -> bool {
     let percentage = match value {
         Len::Pct(_) => true,
         Len::Calc(index) => calc_get(index, vcx).pct != 0.0,

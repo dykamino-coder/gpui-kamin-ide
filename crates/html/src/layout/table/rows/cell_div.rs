@@ -87,7 +87,11 @@ pub(super) fn cell_box_div(
     if bg_layered {
         box_style.used_mut().background = None;
     }
-    let mut d = cx.build.styled_box(cell, &box_style.computed(), cx);
+    let mut d = cx.build.styled_box(
+        cell,
+        &crate::style::computed::BoxStyle::shared(box_style.computed()),
+        cx,
+    );
     if collapsed {
         d.style().opacity = Some(0.0);
     }

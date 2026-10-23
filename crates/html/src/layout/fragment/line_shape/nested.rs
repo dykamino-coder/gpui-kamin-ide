@@ -14,7 +14,7 @@ use crate::layout::multicol::spanner::{has_deep_spanner, multicol_container};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::carries_abspos;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 /// Вложенный многоколоночник, который внешняя стопка ведёт РЯДАМИ (`nest_row`):
@@ -72,7 +72,7 @@ pub(super) fn oof_descendant(e: &Element) -> bool {
 /// Точек разреза нет: внешняя стопка режет коробку краем колонки — по рядам.
 pub(crate) fn nested_rows_shape(
     c: &Element,
-    parent: &Computed,
+    parent: &crate::style::computed::BoxStyle,
     hh: f32,
     cw: f32,
     opts: &RenderOpts,

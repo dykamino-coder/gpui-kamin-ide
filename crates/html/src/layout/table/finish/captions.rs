@@ -11,7 +11,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn collect_captions(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     caps_top: &mut Vec<AnyElement>,
     caps_bot: &mut Vec<AnyElement>,

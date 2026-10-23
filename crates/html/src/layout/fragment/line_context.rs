@@ -4,13 +4,12 @@ use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::line_shape::{items_kind, line_content_w};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use std::rc::Rc;
 
 #[derive(Clone)]
 pub(crate) struct LineFrame {
-    pub(crate) inh: Computed,
+    pub(crate) inh: crate::style::computed::BoxStyle,
     pub(crate) w: Option<f32>,
     pub(crate) anon: bool,
     pub(crate) items: u8,
@@ -23,7 +22,7 @@ pub(crate) struct LineCx {
 }
 
 pub(crate) fn with_lines<T>(
-    base: &Computed,
+    base: &crate::style::computed::BoxStyle,
     w: Option<f32>,
     opts: &RenderOpts,
     f: impl FnOnce(&RenderOpts) -> T,
@@ -71,6 +70,7 @@ impl LineCx {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     #[test]
     fn retained_measurement_survives_nested_failure_without_parent_mutation() {
         let opts = RenderOpts {
@@ -81,19 +81,29 @@ mod tests {
             frag: Default::default(),
         };
         let base = Computed::default();
-        let retained = with_lines(&base, Some(120.0), &opts, |outer| {
-            assert!(
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    with_lines(&base, Some(60.0), outer, |inner| {
-                        assert_eq!(inner.cx.vcx().lines.unwrap().frames[0].w, Some(60.0));
-                        panic!("measurement failed");
-                    });
-                }))
-                .is_err()
-            );
-            assert_eq!(outer.cx.vcx().lines.unwrap().frames[0].w, Some(120.0));
-            outer.cx.vcx().keep()
-        });
+        let retained = with_lines(
+            &crate::style::computed::BoxStyle::from(base.clone()),
+            Some(120.0),
+            &opts,
+            |outer| {
+                assert!(
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        with_lines(
+                            &crate::style::computed::BoxStyle::from(base.clone()),
+                            Some(60.0),
+                            outer,
+                            |inner| {
+                                assert_eq!(inner.cx.vcx().lines.unwrap().frames[0].w, Some(60.0));
+                                panic!("measurement failed");
+                            },
+                        );
+                    }))
+                    .is_err()
+                );
+                assert_eq!(outer.cx.vcx().lines.unwrap().frames[0].w, Some(120.0));
+                outer.cx.vcx().keep()
+            },
+        );
         assert!(opts.cx.vcx().lines.is_none());
         assert_eq!(retained.vcx().lines.unwrap().frames[0].w, Some(120.0));
     }

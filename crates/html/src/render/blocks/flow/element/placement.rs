@@ -10,14 +10,13 @@ use crate::hooks::IntoHooked;
 use crate::layout::block::struts::margin_px;
 use crate::paint::stacking::layered;
 use crate::render::blocks::flow::BelowRun;
-use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn place_element(
     e: &crate::dom::Element,
     under_tf: bool,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     ordered_context: bool,
     geometry_layer_ok: bool,
     nodes: &[crate::dom::Node],

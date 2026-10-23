@@ -17,7 +17,7 @@ use crate::text::text_box::normal_fraction;
 /// (их место — щуп статической позиции), поля форм и руби остаются в ряду.
 pub(crate) fn atom_line_align(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Option<crate::text::paragraph::AtomAlign> {
     let vcx = opts.cx.vcx();

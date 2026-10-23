@@ -3,7 +3,7 @@
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Display;
 
 /// Вынуть из поддерева ленты прокрутки абсолютных потомков, которым лента не
 /// содержащий блок.
@@ -19,7 +19,11 @@ use crate::style::computed::{Computed, Display};
 /// Условия — те же, что у `to_icb`, плюс два ужесточения: только
 /// НЕПОСРЕДСТВЕННЫЕ дети ленты и только при ОБЕИХ заданных осях (по свободной
 /// оси место сообщает щуп, а он остался бы в замыкании).
-pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
+pub(super) fn hoist_from_scroll(
+    e: &mut Element,
+    inherited: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) {
     let vcx = opts.cx.vcx();
     use crate::style::computed::Position;
     if !opts.cx.positioning.icb_active() || opts.cx.paint_depth.inside() {

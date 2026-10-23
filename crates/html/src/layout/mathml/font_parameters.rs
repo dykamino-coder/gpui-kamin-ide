@@ -2,7 +2,7 @@
 use super::{fraction, limits, scripts};
 use crate::style::values::value::px_strict;
 use crate::text::{fonts::math, inline::strut_font, metrics::math_metrics};
-use crate::{dom::Element, layout::options::RenderOpts, style::computed::Computed};
+use crate::{dom::Element, layout::options::RenderOpts};
 
 pub(super) struct FontParameters {
     pub fraction: fraction::Parameters,
@@ -11,7 +11,7 @@ pub(super) struct FontParameters {
     pub radical: super::radical::Parameters,
 }
 impl FontParameters {
-    pub fn new(e: &Element, style: &Computed, opts: &RenderOpts) -> Self {
+    pub fn new(e: &Element, style: &crate::style::computed::BoxStyle, opts: &RenderOpts) -> Self {
         let font = strut_font(style, &opts.text, opts.cx.vcx());
         let size = px_strict(style.font_size).unwrap_or(opts.base_size());
         let (x, rule) = math_metrics(&font, size, opts.cx.vcx());

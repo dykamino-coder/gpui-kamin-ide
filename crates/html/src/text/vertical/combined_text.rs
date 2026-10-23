@@ -9,14 +9,14 @@ use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, TextTransform};
+use crate::style::computed::TextTransform;
 use crate::style::values::value::Len;
 use crate::text::inline;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) fn piece(
     element: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Option<inline::Piece> {
     let vcx = opts.cx.vcx();

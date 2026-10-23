@@ -90,7 +90,7 @@ mod tests {
                 panic!("in-flow block")
             };
             let mut merged = crate::style::cascade::materialize::box_style(
-                &inherited,
+                &crate::style::computed::BoxStyle::from(inherited.clone()),
                 &child.style,
                 doc.values(),
             );
@@ -100,7 +100,7 @@ mod tests {
                 Some(Len::Px(32.))
             );
             assert_ne!(merged.font_size, Some(Len::Px(32.)));
-            inherited = merged;
+            inherited = (merged).into_computed();
         }
     }
 }

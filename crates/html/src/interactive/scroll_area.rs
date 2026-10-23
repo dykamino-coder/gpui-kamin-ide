@@ -16,7 +16,7 @@ pub struct ScrollArea {
     pub(crate) id: ElementId,
     pub(crate) horizontal: bool,
     pub(crate) vertical: bool,
-    pub(crate) style: crate::style::computed::Computed,
+    pub(crate) style: crate::style::computed::BoxStyle,
     tree: Option<Rc<crate::dom::Element>>,
     parent_extent: Option<super::scroll_extent::Frame>,
     /// Shift chain the area is built in (`ShiftLink`): its border box and
@@ -51,7 +51,7 @@ impl ScrollArea {
     }
     pub(crate) fn with_style(
         mut self,
-        style: crate::style::computed::Computed,
+        style: crate::style::computed::BoxStyle,
         freeze: bool,
     ) -> Self {
         self.freeze_scrollbars = freeze;

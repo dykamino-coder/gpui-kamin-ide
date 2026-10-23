@@ -23,11 +23,11 @@ use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::probes::{CellBgs, CellEdges, RowRects};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
 
-type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
+type BuildElement = fn(&Element, &BoxStyle, &RenderOpts) -> AnyElement;
 type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
 
@@ -40,7 +40,7 @@ pub(crate) enum Layer<'a> {
     /// §drawing-backgrounds), under the given style.
     CellBand {
         rects: RowRects,
-        style: Box<Computed>,
+        style: Box<crate::style::computed::Computed>,
         vcx: ValueCx<'a>,
     },
     /// The cell backgrounds of a collapsed-border table, below its edges.
@@ -51,7 +51,11 @@ pub(crate) enum Layer<'a> {
 
 impl<'a> Layer<'a> {
     /// The band over `rects` under `style`, its values from the build `cx`.
-    pub(crate) fn cell_band(rects: RowRects, style: Computed, cx: &'a LayoutCx) -> Self {
+    pub(crate) fn cell_band(
+        rects: RowRects,
+        style: crate::style::computed::Computed,
+        cx: &'a LayoutCx,
+    ) -> Self {
         Layer::CellBand {
             rects,
             style: Box::new(style),
@@ -102,7 +106,7 @@ impl ChildBuild {
     pub(crate) fn blocks(
         &self,
         nodes: &[Node],
-        inherited: &Computed,
+        inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> Vec<AnyElement> {
         self.flow.blocks(nodes, inherited, opts)
@@ -112,7 +116,7 @@ impl ChildBuild {
     pub(crate) fn element(
         &self,
         e: &Element,
-        inherited: &Computed,
+        inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> AnyElement {
         (self.element)(e, inherited, opts)
@@ -122,7 +126,7 @@ impl ChildBuild {
     pub(crate) fn paragraph(
         &self,
         nodes: &[Node],
-        inherited: &Computed,
+        inherited: &BoxStyle,
         opts: &RenderOpts,
     ) -> AnyElement {
         self.flow.paragraph(nodes, inherited, opts)
@@ -130,7 +134,7 @@ impl ChildBuild {
 
     /// The styled div of `e` under `style`, without children: its box,
     /// hover layer, scroll target and the decorations `gpui::Style` lacks.
-    pub(crate) fn styled_box(&self, e: &Element, style: &Computed, cx: &LayoutCx) -> gpui::Div {
+    pub(crate) fn styled_box(&self, e: &Element, style: &BoxStyle, cx: &LayoutCx) -> gpui::Div {
         self.boxes.styled_box(e, style, cx)
     }
 
@@ -146,8 +150,8 @@ impl ChildBuild {
     pub(crate) fn content_sized(
         &self,
         el: AnyElement,
-        style: &Computed,
-        item_style: &Computed,
+        style: &BoxStyle,
+        item_style: &BoxStyle,
         placement: GridPlacement,
         cx: &LayoutCx,
     ) -> AnyElement {
@@ -160,7 +164,7 @@ impl ChildBuild {
     pub(crate) fn probes(
         &self,
         e: &Element,
-        merged: &Computed,
+        merged: &BoxStyle,
         opts: &RenderOpts,
         kids: &mut Vec<AnyElement>,
         makes_bfc: bool,
@@ -172,7 +176,11 @@ impl ChildBuild {
     }
 
     /// Слой первой строки передаётся первому блочному потомку в потоке.
-    pub(crate) fn first_line_route(&self, nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+    pub(crate) fn first_line_route(
+        &self,
+        nodes: Vec<Node>,
+        parent: &crate::style::computed::Computed,
+    ) -> Vec<Node> {
         self.flow.first_line_route(nodes, parent)
     }
 
@@ -202,7 +210,7 @@ impl ChildBuild {
         &self,
         container: gpui::Div,
         e: &Element,
-        inherited: &Computed,
+        inherited: &BoxStyle,
         vcx: ValueCx<'_>,
     ) -> AnyElement {
         self.effects.paint_group(container, e, inherited, vcx)

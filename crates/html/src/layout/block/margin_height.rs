@@ -155,7 +155,11 @@ pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
 /// CSS 2.1 §10.6.3 ignores floats in ordinary blocks' auto content height.
 /// Borders and padding stop margin collapse but do not make floats in-flow.
 /// Prove only zero-height block content; unknown line boxes stay on layout.
-fn zero_inflow(e: &Element, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
+fn zero_inflow(
+    e: &Element,
+    inherited: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> bool {
     if !in_flow(&e.style.computed())
         || own_context(e)
         || inline_level_box(e)
@@ -174,7 +178,7 @@ fn zero_inflow(e: &Element, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
     !merged.wm().vertical() && e.children.iter().all(|node| zero_child(node, &merged, vcx))
 }
 
-fn zero_child(node: &Node, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
+fn zero_child(node: &Node, inherited: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> bool {
     let e = match node {
         Node::Text(text) => {
             return blank_text(text)
@@ -221,7 +225,11 @@ fn zero_child(node: &Node, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
 }
 
 /// Apply the zero-content proof with the real parent's inherited white-space.
-pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed, vcx: ValueCx<'_>) {
+pub(crate) fn zero_float_blocks(
+    nodes: &mut [Node],
+    inherited: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) {
     if matches!(
         inherited.position,
         Some(crate::style::computed::Position::Absolute)
@@ -245,7 +253,10 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed, vcx: V
 
 /// Keep the computed height auto: percentages still need an indefinite basis
 /// (CSS 2.1 §10.5). Only the native box receives the proven used height.
-pub(crate) fn used_style(e: &Element, style: &Computed) -> Option<Computed> {
+pub(crate) fn used_style(
+    e: &Element,
+    style: &crate::style::computed::BoxStyle,
+) -> Option<crate::style::computed::BoxStyle> {
     if !e.marks.auto_zero_height
         || style.wm().vertical()
         || !matches!(style.height, None | Some(Len::Auto))

@@ -6,7 +6,7 @@ use crate::text::inline;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn style_pieces(
     mut pieces: Vec<inline::Piece>,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     first_line_at: usize,
     first_line: &Computed,
     vcx: crate::document::state::ValueCx<'_>,
@@ -36,17 +36,19 @@ pub(crate) fn style_pieces(
             0,
             inline::Piece::Text {
                 text: open.to_string(),
-                style: Computed {
-                    inline_control: true,
-                    ..inherited.clone()
+                style: {
+                    let mut style = inherited.clone();
+                    style.inline_control = true;
+                    style
                 },
             },
         );
         pieces.push(inline::Piece::Text {
             text: close.to_string(),
-            style: Computed {
-                inline_control: true,
-                ..inherited.clone()
+            style: {
+                let mut style = inherited.clone();
+                style.inline_control = true;
+                style
             },
         });
         // Жёсткий разрыв ЗАКАНЧИВАЕТ абзац разбора двунаправленности, и знак

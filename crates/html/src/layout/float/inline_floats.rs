@@ -8,9 +8,12 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
 
-pub(super) fn lift(nodes: Vec<Node>, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
+pub(super) fn lift(
+    nodes: Vec<Node>,
+    parent: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> Vec<Node> {
     if parent.wm().vertical() {
         return nodes;
     }
@@ -62,7 +65,7 @@ pub(crate) fn transparent(e: &Element) -> bool {
         && e.style.cascaded().rtl.is_none()
 }
 
-fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
+fn split(node: Node, parent: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     let Node::Element(e) = &node else {
         return vec![node];
     };
@@ -145,8 +148,8 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
             // block, while inherited text properties come through the inline.
             let containing = box_style(parent, &float.style, vcx);
             float.style = box_style(&style, &float.style, vcx).into();
-            float.style.used_mut().cb_height_def = containing.cb_height_def;
-            float.style.used_mut().quirk_pct_base = containing.quirk_pct_base;
+            float.style.used_mut().cb_height_def_hint = containing.cb_height_def;
+            float.style.used_mut().quirk_pct_base_hint = containing.quirk_pct_base;
             output.push(Node::Element(float));
         } else {
             pending.push(child);

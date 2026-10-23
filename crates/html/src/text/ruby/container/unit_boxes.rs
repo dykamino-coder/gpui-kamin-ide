@@ -7,7 +7,7 @@
 use crate::dom::Node;
 use crate::layout::box_kind::replaced_tag;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 use crate::text::ruby::{ruby_role, ruby_transform};
 use crate::text::text_box::blank_text;
@@ -79,7 +79,11 @@ pub(super) fn spaced(nodes: &[Node], done: &mut bool) -> Vec<Node> {
         .collect()
 }
 
-pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(super) fn unit_box(
+    nodes: &[Node],
+    style: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     // CSS Ruby interlinear-block: an empty base container behaves as a
     // single empty base, whose strut still supplies the shared baseline.
     let strut;

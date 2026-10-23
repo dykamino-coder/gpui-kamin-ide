@@ -168,7 +168,7 @@ mod alignment_axes;
 mod grid_content_baseline;
 pub(crate) mod item_metadata;
 
-pub fn apply(d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub fn apply(d: Div, c: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> Div {
     let mut d = d;
     d = apply_layout(d, c, vcx);
     // CSS 2.1 §10.8.1: an inline-block's baseline is that of its last in-flow

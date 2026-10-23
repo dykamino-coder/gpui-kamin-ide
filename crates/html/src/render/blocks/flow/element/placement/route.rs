@@ -3,13 +3,11 @@
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
 use crate::paint::stacking::{fixed_cb_layer_box, stacking_context};
 
-use crate::style::computed::Computed;
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layer_route(
     paged: bool,
     e: &crate::dom::Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     under_tf: bool,
     ordered_context: bool,
     geometry_layer_ok: bool,

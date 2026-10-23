@@ -37,7 +37,9 @@ pub(crate) fn resolve(
     let normalized = replaced_used_style::normalize(e, avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let mut copy = image::pct_height_to_px(e, inherited);
-    copy.style.used_mut().resolve_viewport(viewport, vcx);
+    if copy.style.computed().has_viewport_lengths(vcx) {
+        copy.style.used_mut().resolve_viewport(viewport, vcx);
+    }
     // A media resource is not an image source. Its unavailable natural size
     // must not trigger image decoding or a broken-image text placeholder.
     copy.attrs.retain(|(name, _)| name != "src");

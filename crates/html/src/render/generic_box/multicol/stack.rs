@@ -16,7 +16,7 @@ mod tests;
 pub(crate) fn stack_box(
     mut d: gpui::Div,
     e: &Element,
-    merged: Computed,
+    merged: crate::style::computed::BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     cols: u16,
@@ -32,7 +32,7 @@ pub(crate) fn stack_box(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
-) -> Result<(gpui::Div, Computed), AnyElement> {
+) -> Result<(gpui::Div, crate::style::computed::BoxStyle), AnyElement> {
     let StackPlan {
         line_col_w,
         layout_col_w,

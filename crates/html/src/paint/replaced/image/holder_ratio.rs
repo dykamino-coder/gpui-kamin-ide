@@ -5,13 +5,12 @@
 //! по противоположной оси.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{Div, Styled};
 
 pub(crate) fn apply(
     holder: &mut Div,
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     ratio: Option<f32>,
     fixed: bool,
     vcx: ValueCx<'_>,
@@ -48,7 +47,11 @@ pub(crate) fn apply(
 
 /// Natural ratios use content coordinates even when authored dimensions are border-box.
 /// Rebuild raw numeric bounds rather than retaining apply's flattened padding offsets.
-fn natural_content_box(holder: &mut Div, style: &Computed, vcx: ValueCx<'_>) -> bool {
+fn natural_content_box(
+    holder: &mut Div,
+    style: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> bool {
     use gpui::{DefiniteLength, Length};
     let border = style.borders();
     let edge = |sides: [Option<Len>; 4]| -> Option<f32> {
@@ -143,19 +146,20 @@ fn natural_content_box(holder: &mut Div, style: &Computed, vcx: ValueCx<'_>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     use gpui::{DefiniteLength, div, px};
 
     #[test]
     fn natural_ratio_translates_padded_border_box_percentage_and_bound() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut style = Computed {
+        let mut style = crate::style::computed::BoxStyle::from(Computed {
             height: Some(Len::Pct(1.0)),
             max_height: Some(Len::Px(100.0)),
-            cb_height_def: true,
             border_box: Some(true),
             ..Computed::default()
-        };
+        });
+        style.cb_height_def = true;
         style.padding.left = Some(Len::Px(10.0));
         style.padding.right = Some(Len::Px(10.0));
         style.padding.top = Some(Len::Px(10.0));
@@ -175,12 +179,12 @@ mod tests {
     fn natural_content_box_keeps_content_box_bounds() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut style = Computed {
+        let mut style = crate::style::computed::BoxStyle::from(Computed {
             height: Some(Len::Pct(1.0)),
             max_height: Some(Len::Px(100.0)),
-            cb_height_def: true,
             ..Computed::default()
-        };
+        });
+        style.cb_height_def = true;
         style.padding.top = Some(Len::Px(7.0));
         style.padding.bottom = Some(Len::Px(7.0));
         // A percentage size already switches `apply` to the native content
@@ -202,9 +206,19 @@ mod tests {
             max_height: Some(Len::Pct(0.5)),
             ..Computed::default()
         };
-        let mut holder = crate::paint::apply::apply(div(), &style, vcx);
+        let mut holder = crate::paint::apply::apply(
+            div(),
+            &crate::style::computed::BoxStyle::from(style.clone()),
+            vcx,
+        );
         assert_eq!(holder.style().max_size.height, None);
-        assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false, vcx));
+        assert!(!apply(
+            &mut holder,
+            &crate::style::computed::BoxStyle::from(style.clone()),
+            Some(113.0 / 120.0),
+            false,
+            vcx
+        ));
         assert_eq!(holder.style().max_size.height, None);
         assert_eq!(holder.style().size.height, None);
         assert_eq!(holder.style().aspect_ratio, Some(113.0 / 120.0));

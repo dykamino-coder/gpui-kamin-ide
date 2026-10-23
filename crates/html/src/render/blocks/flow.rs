@@ -11,7 +11,6 @@ pub(super) use element::paint_element;
 
 use crate::dom::Node;
 use crate::paint::effects::containment_paint;
-use crate::style::computed::Computed;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
@@ -21,7 +20,7 @@ pub(super) fn blocks_flow(
     mut pending: Vec<Node>,
     mut out: Vec<AnyElement>,
     mut letter_scope: crate::render::first_letter_scope::Scope,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     ordered_context: bool,
     under_tf: bool,
@@ -116,7 +115,9 @@ pub(super) fn blocks_flow(
             let patched;
             let e = if e.style.computed().offset_icb {
                 let mut copy = e.clone();
-                copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
+                if copy.style.computed().has_viewport_lengths(vcx) {
+                    copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
+                }
                 crate::animation::motion::apply_icb(copy.style.used_mut(), opts.viewport, vcx);
                 patched = copy;
                 &patched

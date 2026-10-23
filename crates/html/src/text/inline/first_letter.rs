@@ -83,10 +83,10 @@ pub fn split_first_letter(
 }
 
 fn letter_style(
-    own: &Computed,
+    own: &crate::style::computed::BoxStyle,
     style: &Computed,
     vcx: crate::document::state::ValueCx<'_>,
-) -> Computed {
+) -> crate::style::computed::BoxStyle {
     let mut letter = own.clone();
     letter.font_size = style.font_size.or(own.font_size);
     letter.line_height = style.line_height.or(own.line_height);

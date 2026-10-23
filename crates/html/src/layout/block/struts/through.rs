@@ -80,9 +80,9 @@ pub(super) fn through_strut_inner(
     let height_is_auto = matches!(
         e.style.computed().height,
         None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
-    ) || matches!(e.style.computed().height, Some(Len::Pct(_)) if !e.style.computed().cb_height_def);
+    ) || matches!(e.style.computed().height, Some(Len::Pct(_)) if !e.style.computed().cb_height_def_hint);
     let min_height_is_zero = zero(e.style.computed().min_height)
-        || matches!(e.style.computed().min_height, Some(Len::Pct(_)) if !e.style.computed().cb_height_def);
+        || matches!(e.style.computed().min_height, Some(Len::Pct(_)) if !e.style.computed().cb_height_def_hint);
     if !zero(e.style.computed().padding.top)
         || !zero(e.style.computed().padding.bottom)
         || !zero(b.top)

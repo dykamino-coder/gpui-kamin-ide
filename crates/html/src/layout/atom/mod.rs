@@ -12,7 +12,6 @@ use crate::layout::intrinsic_wrap::content_sized_wraps;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::writing_mode::rotated_atom;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -36,7 +35,7 @@ use raw::atom_element_raw;
 /// (`grid-lanes-intrinsic-sizing-cols-002-fr`; css-sizing-3 §5.1).
 pub(crate) fn atom_element(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
@@ -87,7 +86,7 @@ pub(crate) fn atom_element(
     Some(if wraps {
         opts.cx.build.content_sized(
             el,
-            &e.style.computed(),
+            &crate::style::computed::BoxStyle::shared(e.style.computed()),
             &box_style(inherited, &e.style, vcx),
             (None, None),
             &opts.cx,

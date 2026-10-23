@@ -30,7 +30,7 @@ pub(crate) struct StackPlan {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stack_plan(
     e: &Element,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     cols: u16,

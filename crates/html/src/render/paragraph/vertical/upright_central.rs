@@ -17,7 +17,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 struct Glyph {
     text: String,
-    style: Computed,
+    style: crate::style::computed::BoxStyle,
     size: f32,
     shift: f32,
 }
@@ -63,7 +63,7 @@ fn plain_span(own: &Computed, declared: &Computed) -> bool {
 
 fn collect(
     nodes: &[Node],
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     shift: f32,
     opts: &RenderOpts,
     out: &mut Stack,
@@ -116,7 +116,7 @@ fn collect(
 /// already exact (one size, no shifts) or the content is not plain text.
 pub(super) fn upright_central(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     if inherited.wm().rtl() {

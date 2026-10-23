@@ -48,7 +48,7 @@ pub(super) fn unfloated_flow(
 
 pub(super) fn prepare_float_nodes(
     nodes: Vec<Node>,
-    parent: &Computed,
+    parent: &crate::style::computed::BoxStyle,
     cb_top_open: bool,
     cb_px: Option<f32>,
     vcx: ValueCx<'_>,

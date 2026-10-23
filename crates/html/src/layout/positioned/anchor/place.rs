@@ -9,8 +9,8 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
 pub(crate) fn place_in_context(
     el: AnyElement,
-    own: &Computed,
-    inherited: &Computed,
+    own: &crate::style::computed::BoxStyle,
+    inherited: &crate::style::computed::BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
     let Some(mut first) = AnchorPlan::of(own, inherited, cx.vcx()) else {

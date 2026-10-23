@@ -42,7 +42,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Вычисленные стили элементов — до сборки коробок: семейство документа
     // (шрифтовые единицы) известно только отсюда; на неизменном документе
     // проход только сверяет входы.
-    crate::style::cascade::materialize::materialize(nodes, &std::rc::Rc::new(root.clone()), vcx);
+    crate::style::cascade::materialize::materialize(nodes, root.style_rc(), vcx);
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::interactive::frame::frame_sanitize(vcx);
@@ -99,7 +99,7 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     // Вычисленные стили блока — до сборки его коробок (как у `render`).
     crate::style::cascade::materialize::materialize(
         std::slice::from_ref(node),
-        &std::rc::Rc::new(root.clone()),
+        root.style_rc(),
         vcx,
     );
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный

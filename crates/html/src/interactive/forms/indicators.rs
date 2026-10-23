@@ -4,11 +4,14 @@ use super::{SystemColor, native_color};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::paint::apply::apply;
-use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Ползунок: дорожка и заполненная часть по значению.
-pub(super) fn range(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+pub(super) fn range(
+    e: &Element,
+    style: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> AnyElement {
     let num = |name: &str, default: f32| -> f32 {
         e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
     };
@@ -46,7 +49,11 @@ pub(super) fn range(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyEleme
     )
 }
 
-pub(super) fn color_swatch(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+pub(super) fn color_swatch(
+    e: &Element,
+    style: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> AnyElement {
     let color = e
         .attr("value")
         .and_then(|v| crate::style::values::value::Color::parse(v, vcx))
@@ -65,7 +72,11 @@ pub(super) fn color_swatch(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> A
 }
 
 /// Полоса выполнения: `<progress value max>`.
-pub(super) fn progress(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+pub(super) fn progress(
+    e: &Element,
+    style: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> AnyElement {
     let num = |name: &str, default: f32| -> f32 {
         e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
     };

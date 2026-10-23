@@ -12,7 +12,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 pub(super) fn textarea(
     e: &Element,
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();

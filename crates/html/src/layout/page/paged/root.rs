@@ -19,7 +19,7 @@ pub(super) fn resolve_root_page(
     none: &mut bool,
     canvas: &mut Option<gpui::Hsla>,
     canvas_img: &mut Option<Computed>,
-    root: &mut Computed,
+    root: &mut crate::style::computed::BoxStyle,
     nodes: &mut Vec<Node>,
     left: &mut f32,
     right: &mut f32,
@@ -95,7 +95,7 @@ pub(super) fn resolve_root_page(
         if let Some(p) = &e.style.computed().page {
             *root_page = p.clone();
         }
-        *root = box_style(&*root, &e.style, vcx);
+        *root = box_style(root, &e.style, vcx);
         *nodes = e.children;
     }
 }

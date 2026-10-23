@@ -94,7 +94,7 @@ fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::
 /// хвост хоста (`band_seq`), со своим наследованием и кеглем.
 pub(super) fn band_nest(
     c: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     em: f32,
     wm: WritingMode,

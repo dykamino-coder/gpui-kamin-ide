@@ -12,9 +12,21 @@ fn multicol_float_claims_the_used_content_width_only_after_intrinsic_measurement
     style.padding.left = Some(Len::Px(30.));
     style.padding.right = Some(Len::Px(30.));
     let inherited = Computed::default();
-    fit_own_layout(&mut style, &inherited, 0., 0., doc.values());
+    fit_own_layout(
+        &mut style,
+        &crate::style::computed::BoxStyle::from(inherited.clone()),
+        0.,
+        0.,
+        doc.values(),
+    );
     assert!(style.width.is_none());
-    fit_own_layout(&mut style, &inherited, 100., 784., doc.values());
+    fit_own_layout(
+        &mut style,
+        &crate::style::computed::BoxStyle::from(inherited.clone()),
+        100.,
+        784.,
+        doc.values(),
+    );
     assert_eq!(style.width, Some(Len::Px(40.)));
 }
 
@@ -26,7 +38,13 @@ fn specified_multicol_width_is_not_replaced_by_the_probe_width() {
         width: Some(Len::Px(20.)),
         ..Default::default()
     };
-    fit_own_layout(&mut style, &Computed::default(), 100., 784., doc.values());
+    fit_own_layout(
+        &mut style,
+        &crate::style::computed::BoxStyle::default(),
+        100.,
+        784.,
+        doc.values(),
+    );
     assert_eq!(style.width, Some(Len::Px(20.)));
 }
 

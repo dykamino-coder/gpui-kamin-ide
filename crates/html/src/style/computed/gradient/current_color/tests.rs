@@ -16,16 +16,24 @@ fn inherited_background_image_resolves_currentcolor_with_the_child_color() {
     let mut child = Computed::default();
     child.apply_one("background", "inherit", vcx);
     child.apply_one("color", "limegreen", vcx);
-    let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
+    let child = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &child,
+        vcx,
+    );
     let gradient = child.gradient.as_ref().unwrap();
     assert_eq!(gradient.from, Color::parse("limegreen", vcx).unwrap());
     assert_eq!(gradient.to, gradient.from);
     // Canvas propagation moves the painted gradient away from body,
     // while descendants still inherit its authored image expression.
     parent.gradient = None;
-    let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
+    let child = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &child,
+        vcx,
+    );
     assert_eq!(
-        child.gradient.unwrap().from,
+        child.gradient.clone().unwrap().from,
         Color::parse("limegreen", vcx).unwrap()
     );
 }
@@ -42,7 +50,11 @@ fn relative_stops_use_the_inherited_element_color() {
     );
     let mut parent = Computed::default();
     parent.apply_one("color", "blue", vcx);
-    let blue = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+    let blue = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &own,
+        vcx,
+    );
     let gradient = blue.gradient.as_ref().unwrap();
     assert_eq!(gradient.from, Color::parse("blue", vcx).unwrap());
     assert!(matches!(gradient.space, GradSpace::Oklab));
@@ -51,11 +63,18 @@ fn relative_stops_use_the_inherited_element_color() {
     child.apply_one("background-image", "inherit", vcx);
     let green = crate::style::cascade::inherit::inherit(&blue, &child, vcx);
     assert_eq!(
-        green.gradient.unwrap().from,
+        green.gradient.clone().unwrap().from,
         Color::parse("green", vcx).unwrap()
     );
     assert_eq!(
-        green.gradient_raw.unwrap().gradient().unwrap().0.from,
+        green
+            .gradient_raw
+            .clone()
+            .unwrap()
+            .gradient()
+            .unwrap()
+            .0
+            .from,
         Color::parse("green", vcx).unwrap()
     );
 }
@@ -74,7 +93,11 @@ fn cancelled_current_color_image_is_not_reinherited() {
         parent.apply_one("background-image", replacement, vcx);
         let mut child = Computed::default();
         child.apply_one("background-image", "inherit", vcx);
-        let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
+        let child = crate::style::cascade::inherit::inherit(
+            &crate::style::computed::BoxStyle::from(parent.clone()),
+            &child,
+            vcx,
+        );
         assert!(parent.gradient_current.is_none());
         assert!(child.gradient.is_none());
     }
@@ -94,8 +117,12 @@ fn typed_stop_colors_preserve_double_positions_without_css() {
     let mut child = Computed::default();
     child.apply_one("background-image", "inherit", vcx);
     child.apply_one("color", "red", vcx);
-    let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
-    let g = child.gradient.unwrap();
+    let child = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &child,
+        vcx,
+    );
+    let g = child.gradient.clone().unwrap();
     let red = Color::parse("red", vcx).unwrap();
     assert_eq!(
         g.stops_px,
@@ -122,13 +149,17 @@ fn inherited_template_preserves_computed_font_positions() {
         "linear-gradient(currentcolor 1em, blue 2em)",
         vcx,
     );
-    let parent = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+    let parent = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &own,
+        vcx,
+    );
     let mut child = Computed::default();
     child.apply_one("font-size", "80px", vcx);
     child.apply_one("background-image", "inherit", vcx);
     child.apply_one("color", "green", vcx);
     let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
-    let g = child.gradient.unwrap();
+    let g = child.gradient.clone().unwrap();
     assert_eq!(g.stops_px[0], (Color::parse("green", vcx).unwrap(), 20.0));
     assert_eq!(g.stops_px[1].1, 40.0);
     assert!(g.stop_lengths.is_empty());

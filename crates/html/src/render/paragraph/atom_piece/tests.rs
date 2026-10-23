@@ -1,6 +1,7 @@
 //! Тесты: маршрутизация статической позиции учитывает систему координат абзаца.
 
 use super::*;
+use crate::style::computed::Computed;
 use crate::style::computed::Position;
 
 #[test]
@@ -21,10 +22,13 @@ fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
     for (offered, turned) in [(false, false), (true, false), (false, true), (true, true)] {
         let piece = atom_piece_in(
             &element,
-            &Computed {
-                turned_line: turned,
-                ..Default::default()
-            },
+            &crate::style::computed::BoxStyle::from(
+                (Computed {
+                    turned_line: turned,
+                    ..Default::default()
+                })
+                .clone(),
+            ),
             &opts,
             false,
             offered,

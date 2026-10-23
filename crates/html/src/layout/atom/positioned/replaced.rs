@@ -6,16 +6,15 @@ use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn replaced_abs_atom(
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     e: &Element,
     opts: &RenderOpts,
-    merged: &Computed,
+    merged: &crate::style::computed::BoxStyle,
     inline_cb: bool,
     stretched: bool,
 ) -> Option<AnyElement> {

@@ -7,7 +7,7 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, Display, Overflow, Position};
+use crate::style::computed::{Display, Overflow, Position};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px};
 use std::hash::{Hash, Hasher};
@@ -24,7 +24,7 @@ pub(super) struct Layer {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare(
     e: &mut Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     viewport: (f32, f32),
     scale: f32,
@@ -92,7 +92,7 @@ pub(super) fn prepare(
                 .overflow_y
                 .get_or_insert(Overflow::Hidden);
             html.style.used_mut().blend = None;
-            let root = Computed::default();
+            let root = crate::style::computed::BoxStyle::default();
             let mut element = crate::interactive::scroll_box::scrollable(&html, &root, opts)
                 .unwrap_or_else(|| opts.cx.build.element(&html, &root, opts));
             let size = gpui::size(

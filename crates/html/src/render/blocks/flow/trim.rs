@@ -14,7 +14,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 /// владельцы получают запрос через контекст детей контейнера.
 pub(super) fn register(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     ordered_context: bool,
 ) -> Vec<TrimRequest> {
@@ -121,7 +121,7 @@ pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
 pub(super) fn apply(
     out: &mut Vec<AnyElement>,
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) {
     let vcx = opts.cx.vcx();

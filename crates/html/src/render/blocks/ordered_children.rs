@@ -6,14 +6,14 @@ mod element;
 pub(super) use element::ordered_element;
 
 use crate::dom::Node;
-use crate::style::computed::{Computed, FlexDir};
+use crate::style::computed::FlexDir;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn ordered_children(
     collapsed: Vec<Node>,
     ordered_context: bool,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Vec<Node> {
     let collapsed: Vec<Node> = if ordered_context {

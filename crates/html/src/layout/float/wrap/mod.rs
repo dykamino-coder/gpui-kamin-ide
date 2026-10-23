@@ -5,7 +5,6 @@ use crate::document::state::ValueCx;
 
 use crate::dom::Node;
 use crate::layout::float::FloatCb;
-use crate::style::computed::Computed;
 mod prepare;
 use prepare::{prepare_float_nodes, unfloated_flow};
 mod float_run;
@@ -14,7 +13,7 @@ use float_run::wrap_float_run;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn wrap_floats(
     nodes: Vec<Node>,
-    parent: &Computed,
+    parent: &crate::style::computed::BoxStyle,
     // Открыт ли ВЕРХНИЙ край содержащего блока для схлопывания с полем
     // первого ребёнка (§8.3.1). Только при открытом крае верхнее поле
     // очищающей коробки увозит вниз сам содержащий блок, а вместе с ним —

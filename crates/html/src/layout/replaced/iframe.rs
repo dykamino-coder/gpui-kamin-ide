@@ -180,7 +180,11 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             let mut frame = opts
                 .cx
                 .build
-                .styled_box(e, &e.style.computed(), &opts.cx)
+                .styled_box(
+                    e,
+                    &crate::style::computed::BoxStyle::shared(e.style.computed()),
+                    &opts.cx,
+                )
                 .w(px(outer_w));
             // CSS 2.2 §10.8.1 / CSS Inline 3 §A.3: a replaced iframe has no
             // baseline from its embedded document; synthesize from its own box.
@@ -227,7 +231,7 @@ pub(crate) fn build_embedded(
     // Вычисленные стили вложенного документа — от его корня.
     crate::style::cascade::materialize::materialize(
         &nodes,
-        &std::rc::Rc::new(sub.root_style()),
+        sub.root_style().style_rc(),
         sub.cx.vcx(),
     );
     let mut kids = sub.cx.build.blocks(&nodes, &sub.root_style(), &sub);

@@ -12,9 +12,20 @@
 
 use crate::document::state::ValueCx;
 
-use crate::style::computed::Computed;
 use crate::style::computed::box_predicates::{backdrop_root, establishes_cb};
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Color;
+
+/// Запись стадии коробки в общий вычисленный стиль — только изменившегося
+/// значения: равное не копирует стиль коробки (P-18, копия при записи).
+macro_rules! set {
+    ($c:ident . $($f:ident).+, $v:expr) => {{
+        let v = $v;
+        if $c.$($f).+ != v {
+            $c.$($f).+ = v;
+        }
+    }};
+}
 
 mod containing;
 mod context;
@@ -33,29 +44,30 @@ use paint::inherit_paint;
 // не удерживает — домножение задевает общий путь длин (CSS2 `background-*`,
 // таблицы, абсолюты). Только отдельным проходом после каскада
 // (`style::zoom::resolve`), а не через самую горячую функцию крейта.
-pub fn inherit(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
+pub fn inherit(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(parent, own, own, computed, true, vcx)
+    box_stage(parent, own, own, std::rc::Rc::new(computed), true, vcx)
 }
 
 /// Document preparation propagates style; Filter Effects 1 §5 applies colors
 /// only when the renderer builds the element, never while removing wrappers.
-pub(crate) fn inherit_unpainted(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
+pub(crate) fn inherit_unpainted(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(parent, own, own, computed, false, vcx)
+    box_stage(parent, own, own, std::rc::Rc::new(computed), false, vcx)
 }
 
 /// Стиль коробки из вычисленного стиля `c` элемента под коробкой-родителем
 /// со стилем `parent`: `own` — вычисленный стиль элемента с used-значениями
 /// раскладки, `declared` — его каскадный стиль (заданы ли свои цвета).
 pub(crate) fn box_stage(
-    parent: &Computed,
+    parent: &BoxStyle,
     declared: &Computed,
     own: &Computed,
-    mut c: Computed,
+    computed: std::rc::Rc<Computed>,
     paint_filter: bool,
     vcx: ValueCx<'_>,
-) -> Computed {
+) -> BoxStyle {
+    let mut c = BoxStyle::shared(computed);
     context::inherit_context(parent, own, &mut c);
     inherit_containing(parent, own, &mut c, vcx);
     quirks::percentage_height(parent, own, &mut c, vcx);

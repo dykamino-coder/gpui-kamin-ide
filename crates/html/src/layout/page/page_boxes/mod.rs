@@ -17,7 +17,7 @@ use content::content_nodes;
 
 pub(super) fn builder(
     declarations: PageMarginDeclsFn,
-    root: Computed,
+    root: crate::style::computed::BoxStyle,
     opts: RenderOpts,
     counters: page_counters::PageCounters,
 ) -> crate::layout::page::page_stack::MarginFn {
@@ -46,7 +46,7 @@ fn page_margin_boxes(
     page: usize,
     pages: usize,
     g: &crate::layout::page::page_stack::PageGeom,
-    root: &Computed,
+    root: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     counters: &mut page_counters::PageCounters,
 ) -> Vec<crate::layout::page::page_stack::MarginBox> {

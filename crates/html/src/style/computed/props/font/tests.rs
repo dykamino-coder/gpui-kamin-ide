@@ -125,14 +125,26 @@ fn variant_groups_inherit_separately_and_font_resets_them() {
     let vcx = doc.values();
     let parent = style("font-variant: small-caps tabular-nums", vcx);
     let child = style("font-variant-caps: normal", vcx);
-    let c = inherit(&parent, &child, vcx);
+    let c = inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &child,
+        vcx,
+    );
     assert!(c.font_features.iter().any(|(t, _)| t == "tnum"));
     assert!(!c.font_features.iter().any(|(t, _)| t == "smcp"));
     let child = style("font: 16px serif", vcx);
-    let c = inherit(&parent, &child, vcx);
+    let c = inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &child,
+        vcx,
+    );
     assert!(c.font_features.is_empty(), "{:?}", c.font_features);
     let child = style("font-variant-numeric: inherit", vcx);
-    let c = inherit(&parent, &child, vcx);
+    let c = inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &child,
+        vcx,
+    );
     assert!(c.font_features.iter().any(|(t, _)| t == "tnum"));
 }
 

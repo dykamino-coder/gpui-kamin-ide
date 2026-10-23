@@ -5,11 +5,11 @@
 //! (CSS Sizing 3 §5.2.1). Нулевой процент разрешается всегда.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::Position;
 use crate::style::values::value::{Len, calc_get};
 
 pub(super) fn resolve_cyclic_size_percentage(
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     value: Len,
     field: u8,
     vcx: ValueCx<'_>,

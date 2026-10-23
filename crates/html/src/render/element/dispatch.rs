@@ -17,15 +17,15 @@ use crate::paint::box_tree::styled::styled_div;
 use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::replaced::image::{image, image_with};
 use crate::render::generic_box::generic_box;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Display;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dispatch_element(
     e: &Element,
-    merged: Computed,
-    inherited: &Computed,
+    merged: crate::style::computed::BoxStyle,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
     built_iframe: Option<AnyElement>,
@@ -88,10 +88,12 @@ pub(crate) fn dispatch_element(
                 inherited.display,
                 Some(Display::TableCell) | Some(Display::GridLanes)
             ) {
-                copy.style.used_mut().cb_height_def = merged.cb_height_def;
+                copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;
             }
             // Единицы окна — в точки, как у строчной картинки.
-            copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
+            if copy.style.computed().has_viewport_lengths(vcx) {
+                copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
+            }
             crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
                 image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
             })
@@ -137,7 +139,7 @@ pub(crate) fn dispatch_element(
             if !matches!(copy.style.computed().height, Some(Len::Px(_))) && !pct_ok {
                 copy.style.used_mut().height = Some(Len::Px(150.0));
             }
-            copy.style.used_mut().cb_height_def = merged.cb_height_def;
+            copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;
             styled_div(&copy, &opts.cx)
                 .flex_shrink_0()
                 .into_any_element()

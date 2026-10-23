@@ -43,7 +43,7 @@ fn inherited_width_is_the_computed_width_whatever_the_parent_style() {
             &parse_decls_in("border-width: 2em; border-style: hidden", vcx),
             vcx,
         );
-        let parent = inherit(&Computed::default(), &parent, vcx);
+        let parent = inherit(&crate::style::computed::BoxStyle::default(), &parent, vcx);
         assert_eq!(parent.borders().top, None);
         let mut own = Computed::default();
         own.apply_decls(&parse_decls_in(child, vcx), vcx);

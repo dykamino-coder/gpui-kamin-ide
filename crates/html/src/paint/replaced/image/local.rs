@@ -36,7 +36,7 @@ pub(super) fn fit_local_image(
     };
     let fills_holder = holder_ratio::apply(
         &mut d,
-        &e.style.computed(),
+        &crate::style::computed::BoxStyle::shared(e.style.computed()),
         sizing.ratio(),
         узкая.is_some(),
         vcx,

@@ -15,7 +15,11 @@ fn shape_image_uses_computed_lengths_and_clears_with_none_or_basic_shape() {
         "linear-gradient(currentcolor 1em, transparent 2lh)",
         vcx,
     );
-    let computed = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+    let computed = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::default(),
+        &own,
+        vcx,
+    );
     let (gradient, _) = computed.shape_image.as_ref().unwrap().gradient().unwrap();
     assert_eq!(gradient.stops_px[0].1, 20.0);
     assert_eq!(gradient.stops_px[1].1, 80.0);
@@ -92,8 +96,12 @@ fn inherited_mask_uses_own_line_height_before_group_construction() {
     parent.apply_one("line-height", "2", vcx);
     let mut own = Computed::default();
     own.apply_one("mask-image", "conic-gradient(at 1lh 50px, red, blue)", vcx);
-    let computed = inherit(&parent, &own, vcx);
-    let ImageSource::Conic(conic) = &computed.mask_image.unwrap()[0] else {
+    let computed = inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &own,
+        vcx,
+    );
+    let ImageSource::Conic(conic) = &computed.mask_image.clone().unwrap()[0] else {
         panic!("computed conic mask");
     };
     assert_eq!(conic.position.x, Some(Len::Px(100.0)));

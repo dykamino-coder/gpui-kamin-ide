@@ -23,11 +23,14 @@ use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
 use crate::paint::effects::transform::transformed;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
 use gpui::AnyElement;
 
 /// Блочный элемент.
-pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn element(
+    e: &Element,
+    inherited: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
     // не пишутся (`flow::flow_lines`).
     let nested = opts
@@ -47,7 +50,11 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     )
 }
 
-fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+fn element_inner(
+    e: &Element,
+    inherited: &crate::style::computed::BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();

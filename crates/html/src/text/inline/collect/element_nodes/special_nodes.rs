@@ -6,12 +6,11 @@
 use super::collect_with_empty_metrics;
 use crate::dom::Element;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
 use crate::text::inline::*;
 
 pub(super) fn special_node(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,

@@ -8,7 +8,7 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Display;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
@@ -16,7 +16,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 pub(crate) fn multicol_spanner_segments(
     mut d: gpui::Div,
     e: &Element,
-    merged: Computed,
+    merged: crate::style::computed::BoxStyle,
     opts: &RenderOpts,
     col_w_px: Option<f32>,
     want: Option<usize>,

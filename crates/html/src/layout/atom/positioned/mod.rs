@@ -5,7 +5,7 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
+
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -19,7 +19,7 @@ mod static_box;
 pub(super) use static_box::static_position_atom;
 
 pub(super) fn absolute_atom(
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {

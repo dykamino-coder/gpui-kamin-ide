@@ -22,7 +22,7 @@ use gpui::{AnyElement, IntoElement};
 /// применить: у собранного элемента стиль уже зафиксирован.
 pub(crate) fn transitioned(
     e: &Element,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let seconds = e.style.computed().transition?;

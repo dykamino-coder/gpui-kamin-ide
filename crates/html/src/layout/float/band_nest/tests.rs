@@ -80,8 +80,14 @@ fn percentage_nest_uses_its_definite_containing_block_height() {
             },
             frag: Default::default(),
         };
-        let nest = band_nest(&c, &Computed::default(), &opts, 16., WritingMode::default())
-            .expect("percentage block remains in the shared BFC");
+        let nest = band_nest(
+            &c,
+            &crate::style::computed::BoxStyle::default(),
+            &opts,
+            16.,
+            WritingMode::default(),
+        )
+        .expect("percentage block remains in the shared BFC");
         match (nest.height, expected) {
             (Some(actual), Some(expected)) => assert!((actual - expected).abs() < 0.001),
             (actual, expected) => assert_eq!(actual, expected),

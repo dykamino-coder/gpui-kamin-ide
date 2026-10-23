@@ -12,7 +12,7 @@ use crate::document::state::ValueCx;
 pub(super) fn decorate(
     parent: &Computed,
     own: &Computed,
-    c: &mut Computed,
+    c: &mut crate::style::computed::BoxStyle,
     own_px: f32,
     vcx: ValueCx<'_>,
 ) {
@@ -40,11 +40,14 @@ pub(super) fn decorate(
                 own.display,
                 Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
             ));
-    c.decors = if blocked {
-        Vec::new()
-    } else {
-        parent.decors.clone()
-    };
+    set!(
+        c.decors,
+        if blocked {
+            Vec::new()
+        } else {
+            parent.decors.clone()
+        }
+    );
     // Линии, пришедшие в блок, рисуются на его анонимной строчной коробке
     // (css-text-decor-3 §2.1, пример 1): метрики и положение — от шрифта
     // этого блока (`text-decoration-subelements-004`).
@@ -63,10 +66,15 @@ pub(super) fn decorate(
             size: own_px,
         };
         let position = c.underline_pos.unwrap_or(0);
-        for d in c.decors.iter_mut() {
-            d.font = font.clone();
-            d.position = position;
-            d.over_lang = over_lang;
+        if c.decors
+            .iter()
+            .any(|d| d.font != font || d.position != position || d.over_lang != over_lang)
+        {
+            for d in c.decors.iter_mut() {
+                d.font = font.clone();
+                d.position = position;
+                d.over_lang = over_lang;
+            }
         }
     }
     if let Some(lines) = c.td_lines.filter(|l| *l != 0)
@@ -116,6 +124,14 @@ pub(super) fn decorate(
             c.decors.push(d);
         }
     }
-    c.underline = Some(c.decors.iter().any(|d| d.lines & DECOR_UNDER != 0));
-    c.line_through = Some(c.decors.iter().any(|d| d.lines & DECOR_THROUGH != 0));
+    // Отсутствие линии — `None` или `Some(false)`: равные по смыслу значения
+    // стиль коробки не копируют.
+    let under = c.decors.iter().any(|d| d.lines & DECOR_UNDER != 0);
+    if c.underline.unwrap_or(false) != under {
+        c.underline = Some(under);
+    }
+    let through = c.decors.iter().any(|d| d.lines & DECOR_THROUGH != 0);
+    if c.line_through.unwrap_or(false) != through {
+        c.line_through = Some(through);
+    }
 }

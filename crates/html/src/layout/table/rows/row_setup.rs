@@ -10,7 +10,6 @@ use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
@@ -178,10 +177,10 @@ pub(super) fn push_empty_row_track(
 
 pub(super) fn cell_cascaded_style(
     e: &Element,
-    row_style: &Computed,
+    row_style: &crate::style::computed::BoxStyle,
     cell: &Element,
     vcx: ValueCx<'_>,
-) -> Computed {
+) -> crate::style::computed::BoxStyle {
     let mut cm = box_style(row_style, &cell.style, vcx);
     pseudo_line_layers::install(cell, &mut cm, vcx);
     // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
@@ -238,7 +237,7 @@ pub(super) fn cell_cascaded_style(
 
 pub(super) fn hides_empty_cell(
     e: &Element,
-    row_style: &Computed,
+    row_style: &crate::style::computed::BoxStyle,
     cell: &Element,
     vcx: ValueCx<'_>,
 ) -> bool {

@@ -81,11 +81,12 @@ fn flip_justify(j: &mut Option<Justify>) {
 
 /// Resolves the flow keywords of `c` against its own and its parent's lanes
 /// direction.
-pub(super) fn resolve(parent: &Computed, c: &mut Computed) {
+pub(super) fn resolve(parent: &Computed, c: &mut crate::style::computed::BoxStyle) {
     if c.align_flow == 0 {
         return;
     }
-    let has = |bit: u8| c.align_flow & bit != 0;
+    let flow = c.align_flow;
+    let has = |bit: u8| flow & bit != 0;
     if let Some((inline_rev, block_rev)) = reversed_axes(c) {
         let (jc, ac, ji, ai) = (
             has(JUSTIFY_CONTENT) && inline_rev,
@@ -131,7 +132,7 @@ mod tests {
 
     #[test]
     fn track_reverse_flips_inline_flow_keywords_of_column_lanes() {
-        let mut c = lanes(true, false);
+        let mut c = crate::style::computed::BoxStyle::new(lanes(true, false));
         note(&mut c, "justify-content", "flow-start");
         note(&mut c, "align-content", "flow-start");
         c.justify_content = Some(Justify::WmStart);
@@ -144,7 +145,7 @@ mod tests {
     #[test]
     fn self_alignment_follows_the_parent_lanes() {
         let parent = lanes(false, true);
-        let mut c = Computed::default();
+        let mut c = crate::style::computed::BoxStyle::default();
         note(&mut c, "align-self", "flow-end");
         c.align_self = Some(Align::End);
         resolve(&parent, &mut c);

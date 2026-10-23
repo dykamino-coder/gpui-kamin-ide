@@ -84,7 +84,7 @@ impl Positioning {
     /// `own`: an absolute descendant whose nearest containing block is a box
     /// without a layer below it (a table part, a positioned inline) passes
     /// this layer by and keeps its previous route.
-    pub fn cb_open_strict(&self, own: &crate::style::computed::Computed, fixed_cb: bool) {
+    pub fn cb_open_strict(&self, own: &crate::style::computed::BoxStyle, fixed_cb: bool) {
         self.open_cb(ABS | if fixed_cb { FIX } else { 0 }, Some(own.cb_depth + 1));
     }
 

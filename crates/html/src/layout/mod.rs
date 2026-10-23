@@ -88,6 +88,12 @@ mod marks_tests {
     fn author_auto_zero_height_does_not_zero_the_used_height() {
         let tree = parse(r#"<div id="a" auto-zero-height="1">x</div>"#, "");
         let e = find(&tree, "a");
-        assert!(crate::layout::block::margin_height::used_style(e, e.style.cascaded()).is_none());
+        assert!(
+            crate::layout::block::margin_height::used_style(
+                e,
+                &crate::style::computed::BoxStyle::from((*e.style.cascaded()).clone())
+            )
+            .is_none()
+        );
     }
 }

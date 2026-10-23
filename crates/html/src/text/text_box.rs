@@ -31,11 +31,11 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// узел самого контейнера): ему `line_trim::request` адресует срез.
 pub(crate) fn text_box_line_style(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     start: bool,
     owner: u64,
     vcx: ValueCx<'_>,
-) -> Option<(Computed, u64)> {
+) -> Option<(crate::style::computed::BoxStyle, u64)> {
     let has_block = nodes.iter().any(breaks_inline);
     let order: Vec<&Node> = if start {
         nodes.iter().collect()

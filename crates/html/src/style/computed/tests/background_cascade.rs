@@ -97,7 +97,11 @@ fn inherit_shorthand_inherits_each_layer_longhand() {
         vcx,
     );
     let own = style("background: inherit", vcx);
-    let c = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+    let c = crate::style::cascade::inherit::inherit(
+        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &own,
+        vcx,
+    );
     assert_eq!(c.bg_image, parent.bg_image);
     assert_eq!(c.bg_pos, parent.bg_pos);
     assert_eq!(c.bg_repeat, parent.bg_repeat);

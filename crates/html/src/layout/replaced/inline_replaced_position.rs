@@ -11,7 +11,7 @@ pub(crate) fn push(
     spot: SpotCell,
     element: AnyElement,
     own: &Computed,
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     positioning: &Positioning,
 ) -> Option<AnyElement> {
     // CSS 2.1 §10.1: without a positioned ancestor an absolute box uses the
