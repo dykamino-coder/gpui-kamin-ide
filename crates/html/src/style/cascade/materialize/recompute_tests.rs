@@ -89,6 +89,15 @@ fn position_try_declarations_pass_the_computed_value_stage() {
         vcx,
     ));
     assert_eq!(c.width, Some(Len::Px(20.0)));
+    // Следующий кандидат может вернуть исходное значение; сравнение с
+    // исходной материализацией потеряло бы отмену предыдущего варианта.
+    assert!(recompute_onto(
+        &mut c,
+        &div.style,
+        |declared| declared.width = Some(Len::Px(5.0)),
+        vcx,
+    ));
+    assert_eq!(c.width, Some(Len::Px(10.0)));
 }
 
 #[test]

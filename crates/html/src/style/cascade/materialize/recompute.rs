@@ -49,7 +49,12 @@ pub(crate) fn recompute_onto(
     let computed = Rc::new(crate::style::cascade::compute::compute(
         parent, &declared, vcx,
     ));
-    super::used::lay_used(c, &computed, &materialized);
+    let previous = c
+        .element_style
+        .as_ref()
+        .map(|p| p.computed.clone())
+        .unwrap_or_else(|| materialized.clone());
+    super::used::lay_used(c, &computed, &previous);
     c.element_style = Some(ElementStyle {
         original: materialized,
         computed,
