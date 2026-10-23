@@ -9,13 +9,16 @@
 //! (background-root-013a/b).
 
 use crate::hooks::Hooks;
-use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled as _, Window, px};
+use gpui::{
+    AnyElement, App, Bounds, Edges, IntoElement, LayoutId, Pixels, Styled as _, Window, px,
+};
 
 /// Snapped clip and unrounded positioning area of one paint callback.
 #[derive(Clone, Copy)]
 pub(crate) struct PaintGeometry {
     pub(crate) snapped: Bounds<Pixels>,
     exact: Option<Bounds<Pixels>>,
+    pub(crate) parent_edges: Option<(Edges<Pixels>, Edges<Pixels>)>,
 }
 
 impl PaintGeometry {
@@ -34,6 +37,7 @@ pub(crate) struct ExactLayer {
     child: AnyElement,
     paint: PaintFn,
     exact: Option<Bounds<Pixels>>,
+    parent_edges: Option<(Edges<Pixels>, Edges<Pixels>)>,
 }
 
 impl ExactLayer {
@@ -54,6 +58,7 @@ impl ExactLayer {
                 .into_any_element(),
             paint: Box::new(paint),
             exact: None,
+            parent_edges: None,
         }
     }
 }
@@ -74,6 +79,7 @@ impl Hooks for ExactLayer {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
+        self.parent_edges = window.parent_box_edges(*layout_id);
         let exact = Bounds {
             origin: window.layout_origin_unrounded(*layout_id),
             size: window.layout_size_unrounded(*layout_id),
@@ -101,6 +107,7 @@ impl Hooks for ExactLayer {
             PaintGeometry {
                 snapped: bounds,
                 exact: self.exact,
+                parent_edges: self.parent_edges,
             },
             window,
         );

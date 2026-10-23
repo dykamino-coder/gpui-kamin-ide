@@ -74,6 +74,7 @@ mod css_text_background;
 mod css_fill_transform;
 mod plane3d;
 mod render_context;
+mod box_edges;
 pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
