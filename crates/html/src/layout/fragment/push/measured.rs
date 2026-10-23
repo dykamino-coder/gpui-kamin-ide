@@ -140,5 +140,27 @@ pub(crate) fn measured_tree(c: &Element) -> bool {
     !c.marks.paginate
         && c.style.column_span != Some(true)
         && clone_dec(c).is_none()
+        // ADR P-19 F2-1/F2-6: атомарные inline лежат внутри строк, а не
+        // в стопке блоков. До токена строки с её конечным краем сохраняем
+        // прежний маршрут; рекордер не заменяет его Class B glue.
+        && !atomic_inline_flow(c)
         && (stacked_tree(c) || table_tree(c) || grid_tree(c) || flex_tree(c))
 }
+
+fn atomic_inline_flow(e: &Element) -> bool {
+    use crate::dom::Node;
+    use crate::layout::fragment::flow::blocks::{grid_container, flex_container};
+    if grid_container(e) || flex_container(e)
+        || crate::layout::fragment::table_bands::table_box(e) {
+        return false;
+    }
+    crate::layout::fragment::flow::box_children::children(&e.children).any(|n| match n {
+        Node::Element(k) if crate::layout::box_kind::out_of_flow(&k.style) => false,
+        Node::Element(k) => crate::layout::fragment::flex_lines::inline_display(k)
+            || (!crate::layout::fragment::clone::monolith_box(k) && atomic_inline_flow(k)),
+        _ => false,
+    })
+}
+
+#[cfg(test)]
+mod inline_tests;
