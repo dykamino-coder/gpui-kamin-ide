@@ -2,6 +2,7 @@
 //! Зависит от style и контекста документа; не зависит от paint, layout и GPUI.
 
 pub(crate) mod conic;
+pub(crate) mod facts;
 pub(crate) mod filter_image;
 mod filtered_raster;
 pub(crate) mod flat_vector;

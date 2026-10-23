@@ -43,11 +43,12 @@ pub(super) fn piped_image(
                 Some("scale-down") => {
                     // Меньшее из `none` и `contain`: влезает — своим
                     // размером, нет — вписать.
-                    let fits = crate::paint::background::element_source(
+                    let fits = crate::resources::css_images::element_source(
                         local.unwrap_or(src),
                         &e.style,
                         vcx,
                     )
+                    .map(crate::paint::background::Source::from_cpu)
                     .map(|s| s.intrinsic())
                     .is_some_and(|i| {
                         i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)

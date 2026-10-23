@@ -1,6 +1,8 @@
 //! Проверки контракта родительского модуля; вынесены для ограничения размера файлов.
 
 use super::*;
+use crate::resources::images::vector::svg_size;
+use crate::resources::loader::data_url::base64_decode;
 use crate::style::computed::Tiling;
 
 #[test]

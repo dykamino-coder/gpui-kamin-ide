@@ -30,7 +30,8 @@ impl Grouped {
             return crate::resources::images::pixels::bgra(1, 1, vec![0; 4])
                 .map(crate::paint::background::Source::Raster);
         }
-        crate::paint::background::computed_source(image, !self.mask_orient_none, vcx)
+        crate::resources::css_images::computed_source(image, !self.mask_orient_none, vcx)
+            .map(crate::paint::background::Source::from_cpu)
     }
     pub(crate) fn mask_source(
         &self,
@@ -39,11 +40,14 @@ impl Grouped {
     ) -> Option<crate::paint::background::Source> {
         // CSS Images 3 §5.1 applies image-orientation to decorative images too.
         // Keep oriented and encoded rasters (and their intrinsic sizes) distinct.
-        if self.mask_orient_none {
-            crate::paint::background::source(&format!("exif-none|{source}"), vcx)
-        } else {
-            crate::paint::background::source(source, vcx)
+        if !self.mask_orient_none
+            && let Some(raw) = source.strip_prefix("shape:")
+        {
+            return Some(crate::paint::background::Source::Shape { raw: raw.into() });
         }
+        let oriented = self.mask_orient_none.then(|| format!("exif-none|{source}"));
+        crate::resources::css_images::source(oriented.as_deref().unwrap_or(source), vcx)
+            .map(crate::paint::background::Source::from_cpu)
     }
 }
 

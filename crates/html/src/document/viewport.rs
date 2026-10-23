@@ -82,6 +82,7 @@ pub(super) fn prepare_embedded(
     owner_dark: Option<bool>,
     vcx: ValueCx<'_>,
 ) -> Vec<Node> {
+    super::image_values::prepare(&nodes, vcx);
     let canvas = canvas_backing(&nodes, owner_dark);
     let viewport = policy(&nodes, vcx).or_else(|| canvas.map(|_| Computed::default()));
     let (nodes, _) = super::unwrap_document(
@@ -106,6 +107,7 @@ pub(super) fn prepare_embedded(
 
 // Keep document preparation identical for initial, updated, and embedded markup.
 pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Computed) {
+    super::image_values::prepare(&nodes, vcx);
     let canvas = canvas_backing(&nodes, None);
     let viewport = policy(&nodes, vcx)
         .or_else(|| canvas.map(|_| Computed::default()))

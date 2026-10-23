@@ -78,6 +78,9 @@ pub struct DocState {
     /// Запросы картинок документа, его база и политика доступа; декодированное — в
     /// общем процессном кэше по содержимому (`resources::images::store`).
     pub(crate) images: RefCell<crate::resources::images::store::ImageStore>,
+    /// Неизменяемые факты CSS-картинок для прохода стиля, подготовленные оркестратором.
+    pub(crate) background_images:
+        RefCell<Rc<crate::resources::css_images::facts::BackgroundImages>>,
     /// Смешанные суммы `calc()` (`Len::Calc`).
     pub(crate) calc: Arena<Sum>,
     /// Функции `anchor()` (`Len::Anchor`).

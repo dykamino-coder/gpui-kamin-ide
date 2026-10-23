@@ -97,8 +97,9 @@ pub(super) fn inherit_paint(
     // Смешивается только ВОЗНИКШЕЕ на узле (как у фильтра выше): унаследованный
     // цвет уже смешан предком. Внепоточные потомки в геометрию текста не входят
     // (`clip-text-out-of-flow-child`) и получают несмешанный цвет обратно.
+    let images = vcx.background_images();
     if paint_filter {
-        crate::style::computed::flat_background::collapse_flat_stack(c, vcx);
+        crate::style::computed::flat_background::collapse_flat_stack(c, vcx, &images);
     }
     let black = Color {
         r: 0.0,
@@ -111,7 +112,7 @@ pub(super) fn inherit_paint(
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     );
-    if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, vcx) {
+    if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, &images) {
         let foreground = c.text_clip_raw.or(c.color);
         c.text_clip_raw = foreground;
         c.text_clip_fill = Some(fill);
