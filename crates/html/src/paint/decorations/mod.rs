@@ -145,8 +145,8 @@ fn stationary(
     let layers = out.split_off(start);
     out.extend(layers.into_iter().map(|el| {
         crate::interactive::scroll_target::stationary(
-            cx.and_then(|cx| cx.scroll_frame.as_ref()),
-            cx.and_then(|cx| cx.scroll_target.as_deref()),
+            cx.and_then(|cx| cx.scroll.frame.as_ref()),
+            cx.and_then(|cx| cx.scroll.target.as_deref()),
             c.self_node,
             el,
         )

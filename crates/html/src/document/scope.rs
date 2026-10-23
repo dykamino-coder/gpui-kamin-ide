@@ -12,8 +12,8 @@ impl Document {
     pub fn frame_opts(&self, opts: &crate::RenderOpts) -> crate::RenderOpts {
         self.state.begin_frame();
         let mut opts = opts.clone();
-        opts.cx.clamp_input = None;
-        opts.cx.doc = crate::layout::cx::BuildDoc(self.state.clone());
+        opts.cx.clamp.input = None;
+        opts.cx.values.doc = crate::layout::cx::BuildDoc(self.state.clone());
         opts
     }
 

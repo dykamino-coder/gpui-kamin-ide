@@ -29,11 +29,11 @@ pub(crate) fn wrap_floats(
     // Содержащий блок — корень БФК (§10.6.7): его авто-высота обязана
     // охватить флоаты, в том числе внутри вложенных блоков.
     parent_bfc: bool,
-    // The parent is a table cell (see `LayoutCx::cell_bfc`): a BFC root whose float
+    // The parent is a table cell (see `BoxConstraints::cell_bfc`): a BFC root whose float
     // host keeps containing floats, while the band-host choices above stay
     // those of an ordinary block (margin-collapse-121..125, 157, 158).
     cell_bfc: bool,
-    // Ширина содержащего блока в точках (`LayoutCx::cb_width`) — для
+    // Ширина содержащего блока в точках (`BoxConstraints::cb_width`) — для
     // `bfc_no_fit`.
     cb_px: Option<f32>,
     cb_height: Option<f32>,

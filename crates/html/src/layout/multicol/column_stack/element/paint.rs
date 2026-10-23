@@ -3,6 +3,7 @@
 use crate::layout::fragment::types::Frag;
 use crate::layout::fragment::{fragment_mask, gap_fragment};
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
@@ -37,7 +38,8 @@ impl ColumnStack {
             // тоже срез: коробка кончается краем колонки.
             let tail_cut = {
                 let k = &self.children[f.kid];
-                f.from + f.h < k.h - 0.01 && k.cuts.iter().any(|&(_, nf)| nf >= k.h - 0.01)
+                f.from + f.h < k.h - COORD_EPS
+                    && k.cuts.iter().any(|&(_, nf)| nf >= k.h - COORD_EPS)
             };
             let split = (parts[f.kid] > 1 || tail_cut) && self.children[f.kid].clone_dec.is_none();
             // Срез `slice` (css-break-3 §4) — поперёк БЛОЧНОЙ оси. Вбок колонка
@@ -106,7 +108,7 @@ impl ColumnStack {
                     .as_ref()
                     .and_then(|r| r.foot)
                     .map_or(0.0, |b| b.1);
-                let tail = if f.foot > 0.01 {
+                let tail = if f.foot > COORD_EPS {
                     f.foot - band
                 } else {
                     line_h - f.y - f.h
@@ -116,7 +118,7 @@ impl ColumnStack {
                 // (`multi-line-row-flex-fragmentation-090`: пиксель красного у
                 // левого края третьей колонки).
                 let w = kid.laid_w.get().min(col_w);
-                if tail > 0.01 && w > 0.01 {
+                if tail > COORD_EPS && w > COORD_EPS {
                     // По пикселям устройства, как маска фрагмента: дробная
                     // ширина копии (`33.333px`) иначе оставляла полупрозрачный
                     // край рядом с соседом (`multi-line-row-flex-
@@ -163,12 +165,12 @@ impl ColumnStack {
                     (0.0, 0.0)
                 } else {
                     (
-                        if f.copy == 0 && f.from <= 0.01 {
+                        if f.copy == 0 && f.from <= COORD_EPS {
                             f32::from(spill)
                         } else {
                             0.0
                         },
-                        if continued || f.from + f.h < over - 0.01 {
+                        if continued || f.from + f.h < over - COORD_EPS {
                             0.0
                         } else {
                             (line_h - f.y - f.h).max(0.0)
@@ -182,7 +184,7 @@ impl ColumnStack {
                 let mask = fragment_mask::snap(clip, window.scale_factor());
                 window.with_content_mask(Some(mask), |window| {
                     let cut = f32::from(y) + f.h;
-                    let end = if continued && f.foot <= 0.01 {
+                    let end = if continued && f.foot <= COORD_EPS {
                         cut.max(f32::from(y) + line_h - f.y)
                     } else {
                         cut

@@ -2,6 +2,7 @@
 //! для taffy.
 
 use super::*;
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 
 pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
     // Контейнер лунок на пути сетки (`dom::lanes_as_grid`): раскладку лунками
@@ -10,7 +11,7 @@ pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
     if c.lanes_taffy {
         let em = match c.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let (tolerance, tolerance_pct) = match c.lanes_tolerance {
             Some(Len::Px(v)) => (v, None),

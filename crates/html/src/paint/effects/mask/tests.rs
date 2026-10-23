@@ -53,9 +53,9 @@ fn retained_viewport_survives_nested_layout_and_later_builds() {
         cx: Default::default(),
         frag: Default::default(),
     };
-    let outer = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let outer = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let retained = outer.cx.vcx().keep();
-    let inner = outer.inner(|cx| cx.paint_viewport = (320.0, 240.0));
+    let inner = outer.inner(|cx| cx.values.viewport = (320.0, 240.0));
     assert_eq!(inner.cx.vcx().viewport, (320.0, 240.0));
     drop(inner);
     drop(outer);

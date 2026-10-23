@@ -38,7 +38,7 @@ pub(crate) fn transitioned(
         // стиль прыгнул бы поверх плавного.
         mixed.hover = None;
         mixed.style.transition = None;
-        opts.cx.build.element(&mixed, &inherited, &opts)
+        opts.cx.contracts.build.element(&mixed, &inherited, &opts)
     });
     Some(crate::animation::transition::Transition::new(id, seconds, build).into_any_element())
 }

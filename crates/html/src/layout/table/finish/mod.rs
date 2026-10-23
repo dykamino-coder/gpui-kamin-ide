@@ -30,6 +30,7 @@ pub(super) fn table_finish(
     if layers.paint_layers {
         grid_children.push(
             opts.cx
+                .contracts
                 .build
                 .layer(Layer::CellBackgrounds(out.cell_bgs.clone())),
         );
@@ -38,6 +39,7 @@ pub(super) fn table_finish(
     if layers.paint_layers {
         grid_children.push(
             opts.cx
+                .contracts
                 .build
                 .layer(Layer::CollapsedEdges(out.table_edges.clone())),
         );

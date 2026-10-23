@@ -7,6 +7,7 @@
 //! пределов (Blink `ComputeNormalizedNaturalSize`); `border-box` добавляет
 //! края. Обособление по размеру отменяет всё это.
 
+use crate::defaults::DEFAULT_CANVAS_SIZE_PX;
 use crate::style::values::value::px_strict;
 use crate::style::{computed::Computed, values::value::Len};
 
@@ -29,11 +30,11 @@ pub(super) fn resolve(s: &mut Computed) {
     } else {
         (0.0, 0.0)
     };
-    let w = px(s.attr_width).unwrap_or(300.0);
+    let w = px(s.attr_width).unwrap_or(DEFAULT_CANVAS_SIZE_PX.0);
     // Blink ComputeNormalizedNaturalSize coerces the natural block size
     // from the natural inline size, before applying author constraints.
     let h = ratio.map_or_else(
-        || px(s.attr_height).unwrap_or(150.0),
+        || px(s.attr_height).unwrap_or(DEFAULT_CANVAS_SIZE_PX.1),
         |r| ((w + bx) / r - by).max(0.0),
     );
     if s.attr_sized.0 && s.attr_sized.1 && ratio.is_some() {

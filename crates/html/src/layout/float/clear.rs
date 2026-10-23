@@ -7,6 +7,7 @@ use crate::dom::{Element, Node};
 use crate::layout::box_kind::{in_flow, inline_marked_block, own_context};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_missing_zero};
+use crate::tolerance::COORD_EPS;
 
 /// Есть ли в поддереве хоть одна коробка, которую `clear` может очищать:
 /// флоат (свой, у `::first-letter` или под `:hover`) либо буквица
@@ -65,7 +66,7 @@ pub(crate) fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
 /// placing it below any preceding floats». `float_min_w` — нижняя оценка
 /// ширины УЗЧАЙШЕГО флоата: на любой полосе с флоатом свободно не больше
 /// `cb − float_min_w`. Содержащий блок `cb` — ширина ближайшего предка в
-/// точках (`LayoutCx::cb_width`): это верхняя оценка настоящей ширины,
+/// точках (`BoxConstraints::cb_width`): это верхняя оценка настоящей ширины,
 /// поэтому «не влезает» при ней не влезает и в настоящую.
 pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool {
     let Some(cb) = cb else {
@@ -95,5 +96,5 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
             None | Some(Display::Block) | Some(Display::Flex) | Some(Display::Grid)
         )
         && own_context(n)
-        && bw.is_some_and(|bw| bw + float_min_w > cb + 0.01)
+        && bw.is_some_and(|bw| bw + float_min_w > cb + COORD_EPS)
 }

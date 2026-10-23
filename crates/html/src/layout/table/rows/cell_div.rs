@@ -86,7 +86,7 @@ pub(super) fn cell_box_div(
     if bg_layered {
         box_style.background = None;
     }
-    let mut d = cx.build.styled_box(cell, &box_style, cx);
+    let mut d = cx.contracts.build.styled_box(cell, &box_style, cx);
     if collapsed {
         d.style().opacity = Some(0.0);
     }

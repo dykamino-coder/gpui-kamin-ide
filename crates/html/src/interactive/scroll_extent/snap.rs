@@ -8,6 +8,7 @@ use super::geometry::{Rect, sides};
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Sides, snap::SnapStyle};
 use crate::style::values::value::{Len, calc_get};
+use crate::tolerance::COORD_EPS;
 use gpui::{ScrollHandle, point, px};
 
 #[derive(Clone, Copy)]
@@ -119,7 +120,7 @@ pub(super) fn initial(
         }
     }
     let target = selection::choose(choices, current, origin, view);
-    if (target[0] - current[0]).abs() < 0.01 && (target[1] - current[1]).abs() < 0.01 {
+    if (target[0] - current[0]).abs() < COORD_EPS && (target[1] - current[1]).abs() < COORD_EPS {
         return false;
     }
     handle.set_offset(point(px(-target[0]), px(-target[1])));

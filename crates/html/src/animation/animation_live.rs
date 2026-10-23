@@ -32,7 +32,7 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 
 fn painted(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     transformed(
-        opts.cx.build.element(e, inherited, opts),
+        opts.cx.contracts.build.element(e, inherited, opts),
         &e.style,
         inherited,
         opts.cx.vcx(),

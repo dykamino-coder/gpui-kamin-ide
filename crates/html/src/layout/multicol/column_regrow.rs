@@ -39,7 +39,7 @@ impl ColumnStack {
             // Целый вложенный многоколоночник выше колонки — не монолит:
             // его режет край внешней колонки (`StackChild::fit_whole`).
             if c.fit_whole {
-                c.monolith = fixed.is_none_or(|f| h <= f + 0.01);
+                c.monolith = fixed.is_none_or(|f| h <= f + COORD_EPS);
             }
         } else if let Some(BreaksAt::Width(w)) = c.breaks_w {
             // Точки разрыва блочной стопки — по раскладке главной копии

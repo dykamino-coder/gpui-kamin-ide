@@ -3,6 +3,7 @@
 //! `contain: size`, `object-position` у `Img` и замещаемый `<svg>` внутри стилевого `div`
 //! при ненулевой рамке или отбивке (CSS 2.1 §10.3.4), чтобы фон и рамка рисовались.
 
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::Computed;
@@ -60,7 +61,7 @@ pub(crate) fn empty_iframe_size(
         let width = if copy.style.contains_width() {
             copy.style.contain_intrinsic.0.unwrap_or(0.0)
         } else {
-            300.0
+            DEFAULT_REPLACED_WIDTH_PX
         };
         copy.style.width = Some(Len::Px(width));
     }
@@ -71,7 +72,7 @@ pub(crate) fn empty_iframe_size(
             let height = if copy.style.contains_height() {
                 copy.style.contain_intrinsic.1.unwrap_or(0.0)
             } else {
-                150.0
+                DEFAULT_REPLACED_HEIGHT_PX
             };
             Some(Len::Px(height))
         };
@@ -94,9 +95,10 @@ pub(crate) fn empty_iframe(
     let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return opts.cx.build.replaced(&copy, None, &opts.cx);
+        return opts.cx.contracts.build.replaced(&copy, None, &opts.cx);
     }
     opts.cx
+        .contracts
         .build
         .styled_box(&copy, &copy.style, &opts.cx)
         .flex_shrink_0()
@@ -155,6 +157,7 @@ pub(crate) fn svg_replaced(
         + px_of(merged.padding.bottom);
     Some(
         opts.cx
+            .contracts
             .build
             .styled_box(e, merged, &opts.cx)
             .w(px(bw))

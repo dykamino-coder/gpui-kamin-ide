@@ -29,8 +29,8 @@ impl VerticalText {
 
     /// Share measurements with the document that built this paragraph.
     pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
-        self.paint_context = cx.vertical_paint.clone();
-        self.inline_measure = cx.inline_measure.clone();
+        self.paint_context = cx.deferred.vertical_paint.clone();
+        self.inline_measure = cx.inline.inline_measure.clone();
         self
     }
 

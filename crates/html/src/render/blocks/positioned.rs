@@ -116,14 +116,14 @@ pub(crate) fn static_position_layer(
     let taken = if below {
         Some(built)
     } else if paint_last_ok(e, &nodes[idx + 1..], cx) {
-        cx.positioning.late_push(
+        cx.position.state.late_push(
             spot,
             gpui::PaintLast::new(built)
                 .key(paint_key)
                 .into_any_element(),
         )
     } else {
-        cx.positioning.late_push(spot, built)
+        cx.position.state.late_push(spot, built)
     };
     match taken {
         None => out.push(probe),

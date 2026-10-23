@@ -163,9 +163,10 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
     let flow = flow.clamp_measure(
         opts.cx.clamp_measure(),
         opts.cx
-            .clamp_input
+            .clamp
+            .input
             .as_ref()
-            .map(|_| opts.cx.positioning.clone()),
+            .map(|_| opts.cx.position.state.clone()),
     );
     let flow = match parent {
         Some(parent) => flow.fragment_flow(
@@ -179,8 +180,9 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
     // enclosing outline phase (CSS 2.1 Appendix E, step 10).
     let phase = |flow| {
         opts.cx
+            .contracts
             .build
-            .effects(flow, Effect::OutlineFlow(&opts.cx.paint))
+            .effects(flow, Effect::OutlineFlow(&opts.cx.deferred.paint))
     };
     if inherited.wm().vertical() {
         return phase(flow.vertical(inherited.wm()).hooked());

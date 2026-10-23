@@ -27,13 +27,15 @@ pub(super) fn collect_captions(
             let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
-            // contains its floats (§10.6.7), like a cell (`LayoutCx::cell_bfc`).
-            let inside =
-                opts.cx
-                    .build
-                    .blocks(&cap.children, &cm, &opts.inner(|cx| cx.cell_bfc = true));
+            // contains its floats (§10.6.7), like a cell (`BoxConstraints::cell_bfc`).
+            let inside = opts.cx.contracts.build.blocks(
+                &cap.children,
+                &cm,
+                &opts.inner(|cx| cx.constraints.cell_bfc = true),
+            );
             let built = opts
                 .cx
+                .contracts
                 .build
                 .styled_box(cap, &cm, &opts.cx)
                 .flex()
@@ -45,6 +47,7 @@ pub(super) fn collect_captions(
             // (`transform-transformed-caption-contains-fixed-position`).
             let built = opts
                 .cx
+                .contracts
                 .build
                 .effects(built, Effect::transform(&cap.style, inherited, vcx));
             // Подпись — сосед коробки таблицы в стопке обёртки: её border box

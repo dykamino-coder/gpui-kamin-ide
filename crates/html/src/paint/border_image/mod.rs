@@ -11,6 +11,7 @@
 //! увеличенным и сдвинутым так, чтобы нужный кусок лёг ровно в своё место, а
 //! всё остальное срезала маска куска.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 mod gradient;
 mod grid;
@@ -30,7 +31,7 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let family = c.font_family.clone().unwrap_or_default();
     let size = match c.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let border = c.borders();
     let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size, vcx);

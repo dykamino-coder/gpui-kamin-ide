@@ -3,6 +3,7 @@
 use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid};
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 
 impl ColumnStack {
     /// `fill_at` с соблюдением правила 1 css-break-4 §4.3: пока план рвёт
@@ -84,9 +85,9 @@ impl ColumnStack {
                     .rev()
                     .map(|&(need, _)| need)
                     .filter(|&n| {
-                        n > 0.01
-                            && n < pk.h - 0.01
-                            && !pk.forced.iter().any(|&f| (f - n).abs() < 0.01)
+                        n > COORD_EPS
+                            && n < pk.h - COORD_EPS
+                            && !pk.forced.iter().any(|&f| (f - n).abs() < COORD_EPS)
                     })
                     .take(4)
                     .collect();

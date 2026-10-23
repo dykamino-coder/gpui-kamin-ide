@@ -3,6 +3,7 @@
 use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid};
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 
 impl ColumnStack {
     /// Одна линия колонок: высота заданная (fill:auto) либо баланс «оценка +
@@ -39,7 +40,7 @@ impl ColumnStack {
         // разрыве поле по-прежнему усекается — оно только у последнего.
         let tail;
         let kids = match kids.last() {
-            Some(k) if k.mb > 0.01 && !k.span && k.par.group == 0 => {
+            Some(k) if k.mb > COORD_EPS && !k.span && k.par.group == 0 => {
                 let mut v = kids.to_vec();
                 if let Some(l) = v.last_mut() {
                     l.h += l.mb;
@@ -109,7 +110,7 @@ impl ColumnStack {
                         .and_then(|bad| Self::avoid_shortage(kids, &slots, bad, target))
                 {
                     let grown = clamp(target + d);
-                    if grown > target + 0.01 {
+                    if grown > target + COORD_EPS {
                         target = grown;
                         continue;
                     }
@@ -136,7 +137,7 @@ impl ColumnStack {
                 // выше любого прогона (`grid-item-fragmentation-039`:
                 // `columns: 1`, прогоны 100 + 100 — колонка 200 вместо 100).
                 let used = slots.iter().map(|f| f.y + f.h).fold(0.0f32, f32::max);
-                if used > 0.01 && used < target - 0.01 {
+                if used > COORD_EPS && used < target - COORD_EPS {
                     let (cols2, _, slots2) = plan::fill(kids, used, Space::columns(limit));
                     if cols2 == cols {
                         return (used, slots2);

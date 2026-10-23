@@ -1,5 +1,6 @@
 //! Цикл рядов с полосами колонок и групп: подготовка аргументов table_rows.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Element;
 use crate::layout::cx::LayoutCx;
 use crate::layout::options::RenderOpts;
@@ -25,7 +26,7 @@ pub(super) fn table_rows_with_bands(
     // шрифтом давал вчетверо тоньше линию (`border-conflict-element-001d/e`).
     geom.table_em = match inherited.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
 
     let px_of = |l: Option<Len>| geom.px_of(l, opts);

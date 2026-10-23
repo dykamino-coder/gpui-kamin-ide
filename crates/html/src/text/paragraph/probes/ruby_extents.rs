@@ -43,14 +43,14 @@ pub struct RubyOverhangInfo {
     pub base_width: std::rc::Rc<std::cell::Cell<Option<f32>>>,
 }
 
-/// Take-once offer of a ruby column's base-width sink (`LayoutCx::ruby_base`).
+/// Take-once offer of a ruby column's base-width sink (`RubyContext::base`).
 pub(crate) type RubyBaseOffer =
     std::rc::Rc<std::cell::Cell<Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>>>;
 
 /// Build the ruby BASE unit with a width sink offered to it: the first
 /// paragraph built inside takes the sink (`Paragraph::ruby_context`) and
 /// reports its content width into it. Also registers the overhang info for
-/// the atom being collected (`LayoutCx::ruby_extents`).
+/// the atom being collected (`RubyContext::extents`).
 pub fn ruby_base_with_overhang<T>(
     opts: &crate::layout::options::RenderOpts,
     mode: crate::style::computed::RubyOverhang,
@@ -61,8 +61,8 @@ pub fn ruby_base_with_overhang<T>(
 ) -> T {
     let sink = std::rc::Rc::new(std::cell::Cell::new(None));
     let offer: RubyBaseOffer = std::rc::Rc::new(std::cell::Cell::new(Some(sink.clone())));
-    let out = build(&opts.inner(|cx| cx.ruby_base = Some(offer)));
-    if let Some(collect) = &opts.cx.ruby_extents
+    let out = build(&opts.inner(|cx| cx.ruby.base = Some(offer)));
+    if let Some(collect) = &opts.cx.ruby.extents
         && let Some(v) = collect.borrow_mut().as_mut()
         && v.overhang.is_none()
     {

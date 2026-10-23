@@ -7,6 +7,7 @@
 //! этот же размер по обеим осям. Раскладка `<svg>` меряет коробку в точках,
 //! поэтому слова становятся длинами здесь, как `canvas_size` для `<canvas>`.
 
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::style::values::value::px_strict;
 use crate::style::{computed::Computed, values::value::Len};
 
@@ -93,13 +94,13 @@ pub(crate) fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)
         (Some(w), Some(r)) => w / r,
         _ => nat_h
             .or_else(|| nat_w.zip(ratio).map(|(w, r)| w / r))
-            .unwrap_or(150.0),
+            .unwrap_or(DEFAULT_REPLACED_HEIGHT_PX),
     };
     let auto_w = match (given_h, ratio) {
         (Some(h), Some(r)) => h * r,
         _ => nat_w
             .or_else(|| nat_h.zip(ratio).map(|(h, r)| h * r))
-            .unwrap_or(300.0),
+            .unwrap_or(DEFAULT_REPLACED_WIDTH_PX),
     };
     for v in [
         &mut style.height,

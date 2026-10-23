@@ -31,6 +31,7 @@
 
 #[cfg(test)]
 pub mod coverage;
+pub(crate) mod defaults;
 pub(crate) mod hooks;
 pub mod tolerance;
 pub use style::css;

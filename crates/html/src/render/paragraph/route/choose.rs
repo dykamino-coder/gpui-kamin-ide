@@ -30,7 +30,7 @@ pub(crate) fn route_pieces(
     if inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text, opts.cx.vcx())
         // A physical atom row has no turned inline frame for a phantom static point.
-        && (!text.is_empty() || !opts.cx.pure_atom_paragraph)
+        && (!text.is_empty() || !opts.cx.inline.pure_atom_paragraph)
     {
         // `word-space-transform` смотрит на СОСЕДЕЙ точки переноса, а они
         // сплошь и рядом лежат в других кусках (`あ<wbr>い` — это три куска:
@@ -177,7 +177,7 @@ mod tests {
                     cx: Default::default(),
                     frag: Default::default(),
                 };
-                opts.cx.pure_atom_paragraph = physical;
+                opts.cx.inline.pure_atom_paragraph = physical;
                 let inherited = Computed {
                     no_select: Some(true),
                     ..Default::default()

@@ -5,6 +5,7 @@
 //! хвостом `pre-wrap` и сдвигом под флоат (CSS 2.1 §9.5).
 
 use crate::text::paragraph::*;
+use crate::tolerance::COORD_EPS;
 use gpui::px;
 
 impl Paragraph {
@@ -64,7 +65,7 @@ impl Paragraph {
         // кусков и знака переноса, и на ТОЧНОМ совпадении с коробкой
         // накопленная ошибка решала исход (`hyphens-manual-011`: строка,
         // влезающая ровно, уходила на перенос).
-        let over = limit.is_some_and(|w| f32::from(width) > f32::from(w) + 0.01);
+        let over = limit.is_some_and(|w| f32::from(width) > f32::from(w) + COORD_EPS);
         (head, width, over)
     }
 }
@@ -101,7 +102,7 @@ impl Paragraph {
             let mut shifts = 0;
             while (fl > 0.0 || fr > 0.0)
                 && shifts < 4096
-                && f32::from(bare) > f32::from(w - ind0 - px(fl) - px(fr)) + 0.01
+                && f32::from(bare) > f32::from(w - ind0 - px(fl) - px(fr)) + COORD_EPS
             {
                 clearance += self.line_height.max(px(1.));
                 shifts += 1;

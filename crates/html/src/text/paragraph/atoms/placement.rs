@@ -6,6 +6,7 @@
 //! (`tail_spacing`, css-text-3 §8.2), который в ширину строки не входит.
 
 use crate::text::paragraph::*;
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Pixels, Window, px, size};
 
 impl Paragraph {
@@ -81,7 +82,7 @@ impl Paragraph {
             let base = if self.rotated_central && slot.extents.is_empty() {
                 let (asc, desc, _) = self.strut;
                 let h = f32::from(s.height);
-                let central = if (base - h).abs() < 0.01 {
+                let central = if (base - h).abs() < COORD_EPS {
                     h / 2.0
                 } else {
                     base

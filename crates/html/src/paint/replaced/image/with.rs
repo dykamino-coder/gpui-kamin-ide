@@ -16,7 +16,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     // the opposite dimension will transfer through»; Blink
     // `ComputeReplacedSizeInternal`): `width: min-content; height: 100px` —
     // ширина из соотношения (`intrinsic-size-017…025`).
-    let normalized = replaced_used_style::normalize(e, cx.avail_w);
+    let normalized = replaced_used_style::normalize(e, cx.constraints.avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let src = e.attr("src").unwrap_or_default();
     // Размеры коробки ставит общий разбор стиля (`apply`): он же добавляет к
@@ -124,7 +124,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // Автоматический минимум этим парам не корень; корень искать заново.
         let natural = crate::paint::background::element_source(local.unwrap_or(src), &e.style)
             .map(|s| s.intrinsic());
-        let sizing = PictureSizing::new(&e.style, natural, cx.cb_width);
+        let sizing = PictureSizing::new(&e.style, natural, cx.constraints.cb_width);
         return fit_local_image(src, e, local, d, image, vectorize, &sizing, vcx);
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки

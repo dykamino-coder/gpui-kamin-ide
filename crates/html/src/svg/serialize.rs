@@ -1,5 +1,6 @@
 //! Обратная сериализация поддерева `<svg>` в разметку для растеризатора.
 
+use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::document::state::ValueCx;
 mod transform;
 pub(super) use transform::element_transform;
@@ -29,7 +30,7 @@ pub(super) struct SerializeCx {
 impl Default for SerializeCx {
     fn default() -> Self {
         Self {
-            view_box: (300.0, 150.0),
+            view_box: DEFAULT_REPLACED_SIZE_PX,
             in_clip: false,
         }
     }

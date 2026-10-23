@@ -126,7 +126,7 @@ mod tests {
                     doc.values(),
                 );
                 assert_eq!(shape.cut(0., 2.), 0.);
-                assert!((shape.cut(4., 5.) - expected).abs() < 0.01);
+                assert!((shape.cut(4., 5.) - expected).abs() < crate::tolerance::COORD_EPS);
                 assert_eq!(shape.cut(24., 25.), 0.);
             }
         }

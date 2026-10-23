@@ -46,7 +46,11 @@ pub(in crate::layout::table) fn push_col_bands(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(cx.build.layer(Layer::cell_band(rects, band_style, cx)));
+            cells.push(
+                cx.contracts
+                    .build
+                    .layer(Layer::cell_band(rects, band_style, cx)),
+            );
         }
     }
 }

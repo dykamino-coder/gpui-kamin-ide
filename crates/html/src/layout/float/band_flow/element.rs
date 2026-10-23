@@ -29,8 +29,8 @@ pub struct BandFlow {
 impl BandFlow {
     pub(crate) fn new(kids: Vec<Kid>, contain_floats: bool, cx: &LayoutCx) -> Self {
         BandFlow {
-            paint: cx.paint.clone(),
-            build: cx.build,
+            paint: cx.deferred.paint.clone(),
+            build: cx.contracts.build,
             kids: Rc::new(kids),
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),

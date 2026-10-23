@@ -1,5 +1,6 @@
 //! Размер рисунка: атрибуты, `viewBox`, замещаемый размер по умолчанию, вписывание в пределы.
 
+use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::dom::Element;
 use crate::style::values::value::px_strict;
 
@@ -100,19 +101,14 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         // влезает. Прежде отдавали viewBox как СОБСТВЕННЫЙ размер и 120x120
         // без него — рисунок выходил своего масштаба, а не блочного.
         (None, None, Some((vw, vh))) => {
-            let k = (DEFAULT_REPLACED.0 / vw).min(DEFAULT_REPLACED.1 / vh);
+            let k = (DEFAULT_REPLACED_SIZE_PX.0 / vw).min(DEFAULT_REPLACED_SIZE_PX.1 / vh);
             (vw * k, vh * k)
         }
-        (Some(w), None, None) => (w, DEFAULT_REPLACED.1),
-        (None, Some(h), None) => (DEFAULT_REPLACED.0, h),
-        _ => DEFAULT_REPLACED,
+        (Some(w), None, None) => (w, DEFAULT_REPLACED_SIZE_PX.1),
+        (None, Some(h), None) => (DEFAULT_REPLACED_SIZE_PX.0, h),
+        _ => DEFAULT_REPLACED_SIZE_PX,
     }
 }
-
-/// Размер замещаемого элемента, у которого нет собственного (CSS 2.1
-/// §10.3.2: «the used value of 'width' becomes 300px … 'height' becomes
-/// 150px»).
-const DEFAULT_REPLACED: (f32, f32) = (300.0, 150.0);
 
 /// Соотношение сторон из `viewBox`: (ширина, высота) окна просмотра.
 pub(super) fn view_box_ratio(e: &Element) -> Option<(f32, f32)> {
@@ -190,7 +186,7 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
             (w, w / ratio)
         }
         _ => {
-            let k = (DEFAULT_REPLACED.0 / vw).min(DEFAULT_REPLACED.1 / vh);
+            let k = (DEFAULT_REPLACED_SIZE_PX.0 / vw).min(DEFAULT_REPLACED_SIZE_PX.1 / vh);
             (vw * k, vh * k)
         }
     };

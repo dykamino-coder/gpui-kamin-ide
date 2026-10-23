@@ -85,7 +85,7 @@ pub(crate) fn atom_element(
         && !at_static_position(&e.style)
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
     Some(if wraps {
-        opts.cx.build.content_sized(
+        opts.cx.contracts.build.content_sized(
             el,
             &e.style,
             &inherit(inherited, &e.style, vcx),

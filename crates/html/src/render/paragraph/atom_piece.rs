@@ -1,8 +1,6 @@
 //! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из
 //! `paragraph_pieces_routed`.
-use crate::layout::box_kind::inline_level;
-use crate::layout::box_kind::out_of_flow;
-use crate::layout::box_kind::replaced_tag;
+use crate::layout::box_kind::{inline_level, out_of_flow, replaced_tag};
 use crate::layout::options::RenderOpts;
 use crate::paint::box_tree::styled::styled_div_with;
 use crate::render::blocks::blocks;
@@ -46,11 +44,11 @@ pub(crate) fn atom_piece(
     });
     let inherited = parent_style.unwrap_or(inherited);
     let child_opts = opts.inner(|cx| {
-        cx.clamp_atom_depth = if e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true)
+        cx.clamp.atom_depth = if e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true)
         {
             0
         } else {
-            cx.clamp_atom_depth + 1
+            cx.clamp.atom_depth + 1
         };
     });
     atom_piece_in(
@@ -74,8 +72,13 @@ fn atom_piece_in(
     let vcx = opts.cx.vcx();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized =
-        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w, vcx);
+    let media_sized = crate::layout::replaced::media::resolve(
+        e,
+        inherited,
+        opts.viewport,
+        opts.cx.constraints.avail_w,
+        vcx,
+    );
     let e = media_sized.as_ref().unwrap_or(e);
     // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
     // before solving absolute insets; an empty frame is still replaced.

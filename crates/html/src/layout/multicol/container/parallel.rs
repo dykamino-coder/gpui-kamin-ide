@@ -15,6 +15,7 @@ use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::Position;
 use crate::style::values::value::Len;
 use crate::text::inline::establishes_cb;
+use crate::tolerance::COORD_EPS;
 
 mod block;
 use block::{block, zero};
@@ -77,7 +78,7 @@ fn positioned(
         vcx,
     );
     let (mut probe, after) = grown.remove(0);
-    if after.height <= s.height + 0.01 {
+    if after.height <= s.height + COORD_EPS {
         return false;
     }
     probe.style = original;

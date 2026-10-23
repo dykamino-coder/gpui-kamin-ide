@@ -76,7 +76,7 @@ pub(crate) fn vertical_paragraph(
         // A single atom cannot wrap, and an orthogonal box with an automatic
         // inline size gets its line length from the parent's layout, which the
         // turned paragraph cannot query; both keep the physical row.
-        let atom_opts = opts.inner(|cx| cx.pure_atom_paragraph = true);
+        let atom_opts = opts.inner(|cx| cx.inline.pure_atom_paragraph = true);
         let para = paragraph(nodes, &horizontal, &atom_opts);
         // The row sits at the box's inline-start, which is the BOTTOM for
         // `sideways-lr` and for `direction: rtl` (§6.4 Abstract-Physical

@@ -106,7 +106,7 @@ fn push_cell_wrapped(
     let mut built = d.children(inside).into_any_element();
     // Also without own transform: a `preserve-3d` cell or one under a
     // 3D row needs its wrapper for the context chain.
-    let build = &opts.cx.build;
+    let build = &opts.cx.contracts.build;
     built = build.effects(
         built,
         Effect::transform(&cell.style, &row_state.row_style, vcx),

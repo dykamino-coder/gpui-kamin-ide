@@ -33,16 +33,22 @@ pub(super) fn band_atom(
     let mut inner = c.clone();
     inner.style.margin = crate::style::computed::Sides::default();
     let built = if inner.tag == "img" {
-        opts.cx.build.replaced(
+        opts.cx.contracts.build.replaced(
             &with_inherited_font(&inner, inherited),
             Some(atom_base_font(inherited, opts)),
             &opts.cx,
         )
     } else {
         opts.cx
+            .contracts
             .build
             .styled_box(&inner, &merged, &opts.cx)
-            .children(opts.cx.build.blocks(&inner.children, &merged, opts))
+            .children(
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&inner.children, &merged, opts),
+            )
             .into_any_element()
     };
     let el = if px_margin_box(&inner.style) == Some((w, h)) {

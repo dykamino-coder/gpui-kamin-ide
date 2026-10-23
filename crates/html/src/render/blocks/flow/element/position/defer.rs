@@ -35,7 +35,7 @@ pub(super) fn defer(
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
     let nearest = nearest_cb_index(inherited);
-    if !opts.cx.positioning.can_defer(fixed, nearest, to_icb) {
+    if !opts.cx.position.state.can_defer(fixed, nearest, to_icb) {
         return false;
     }
     let axes = (
@@ -77,11 +77,11 @@ pub(super) fn defer(
         ..Default::default()
     });
     let identities = opts.cx.retain_oof_identities(e, paint_key);
-    let retained = opts.cx.positioning.retain();
+    let retained = opts.cx.position.state.retain();
     let source = e.clone();
     let inherited = inherited.clone();
     let mut build_opts = opts.clone();
-    build_opts.cx.oof_identities = Some(identities);
+    build_opts.cx.position.oof_identities = Some(identities);
     let frame = frame.clone();
     let paint_last = crate::layout::order::paint_last_ok(e, rest, &opts.cx);
     let source_paint = (!paint_last
@@ -97,7 +97,7 @@ pub(super) fn defer(
     >,
                           bounds,
                           window: &mut gpui::Window| {
-        build_opts.cx.positioning = positioning;
+        build_opts.cx.position.state = positioning;
         let mut candidate = source.clone();
         if let Some(style) = style {
             crate::layout::positioned::anchor::trials::apply_style(&mut candidate.style, style);
@@ -110,8 +110,8 @@ pub(super) fn defer(
         own.anchor_seq = build_opts.cx.anchor_seq_for(source);
         own.resolve_viewport(build_opts.viewport, vcx);
         let inputs = resolve::current_inputs(&own, &inherited, bounds, window, vcx);
-        build_opts.cx.oof_sizes = Some((own.anchor_key, inputs));
-        build_opts.cx.oof_trial = probe.map(|p| (own.anchor_key, p));
+        build_opts.cx.position.oof_sizes = Some((own.anchor_key, inputs));
+        build_opts.cx.position.oof_trial = probe.map(|p| (own.anchor_key, p));
         let child = super::build::build(
             source,
             &inherited,
@@ -192,7 +192,8 @@ pub(super) fn defer(
     };
     if opts
         .cx
-        .positioning
+        .position
+        .state
         .defer(
             spot.clone(),
             OofKid::Waiting(dependencies, Box::new(kid)),

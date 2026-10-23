@@ -11,7 +11,7 @@ use gpui::{IntoElement, ParentElement, Styled};
 
 /// Whether the paragraph's text line is turned around physical atoms.
 pub(crate) fn text_turn(cx: &crate::layout::cx::LayoutCx) -> bool {
-    !cx.pure_atom_paragraph
+    !cx.inline.pure_atom_paragraph
 }
 
 pub(crate) fn physical(
@@ -68,9 +68,10 @@ pub(crate) fn physical(
     let central = !flow.wm().alphabetic_baseline();
     let ccw = flow.wm().line().line_turn()
         == crate::style::computed::writing_mode::Turn::CounterClockwise;
-    let physical = opts.cx.build.element(&child, &context, opts);
+    let physical = opts.cx.contracts.build.element(&child, &context, opts);
     let mut wrapper = opts
         .cx
+        .contracts
         .build
         .styled_div(Styling::Margins(&margins), &opts.cx)
         .flex()
@@ -86,7 +87,7 @@ pub(crate) fn physical(
                     physical,
                     ccw,
                     central,
-                    opts.cx.vertical_paint.clone(),
+                    opts.cx.deferred.vertical_paint.clone(),
                 )
                 .into_hooked(),
             )
@@ -121,7 +122,7 @@ mod tests {
     fn atom_build_context_is_local_to_its_branch() {
         let parent = crate::layout::cx::LayoutCx::default();
         let mut atoms = parent.clone();
-        atoms.pure_atom_paragraph = true;
+        atoms.inline.pure_atom_paragraph = true;
         let sibling = parent.clone();
         assert!(text_turn(&parent));
         assert!(!text_turn(&atoms));

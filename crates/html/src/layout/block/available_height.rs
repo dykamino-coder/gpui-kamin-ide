@@ -9,7 +9,7 @@ use crate::style::computed::{Computed, Display, Position};
 use crate::style::values::value::Len;
 
 /// Definite content height of a block container with style `st` for its
-/// children (`LayoutCx::avail_h`); `outer` — its own container's, `width` —
+/// children (`BoxConstraints::avail_h`); `outer` — its own container's, `width` —
 /// its own container's available width (percentage padding/borders).
 pub(crate) fn inner(
     st: &Computed,

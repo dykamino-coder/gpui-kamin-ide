@@ -53,7 +53,7 @@ pub(crate) fn band_kids(
         let p = p.clone();
         let inherited = inherited.clone();
         deferred(opts, false, move |opts, _cb, _avail, _shapes, _h| {
-            opts.cx.build.element(&p, &inherited, opts)
+            opts.cx.contracts.build.element(&p, &inherited, opts)
         })
     };
     // Первый прогон — щуп для всех флоатов при `nowrap`.

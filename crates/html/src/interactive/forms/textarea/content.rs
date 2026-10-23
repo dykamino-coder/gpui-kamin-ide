@@ -32,7 +32,7 @@ pub(super) fn content_measure(
             spaces.height = extent(known.height, natural[1], gutter[1]);
         }
         let measured = window.with_nested_layout(|window| {
-            let mut body = opts.cx.build.paragraph(&nodes, &style, &opts);
+            let mut body = opts.cx.contracts.build.paragraph(&nodes, &style, &opts);
             let id = body.request_layout(window, cx);
             window.compute_layout(id, spaces, cx);
             window.layout_size_unrounded(id)

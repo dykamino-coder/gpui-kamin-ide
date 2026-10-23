@@ -3,6 +3,7 @@
 use super::content_radii::content_radii;
 use super::holder_ratio;
 use super::piped::piped_image;
+use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::replaced::image::{Picture, PictureSizing};
@@ -118,7 +119,10 @@ pub(super) fn local_image_source<'a>(
             match s {
                 crate::paint::background::Source::Raster(image) => Some(image),
                 filtered @ crate::paint::background::Source::Filtered { .. } => filtered.raster(
-                    crate::paint::background::default_size(filtered.intrinsic(), (300.0, 150.0)),
+                    crate::paint::background::default_size(
+                        filtered.intrinsic(),
+                        DEFAULT_REPLACED_SIZE_PX,
+                    ),
                     vcx,
                 ),
                 crate::paint::background::Source::Vector { .. }

@@ -8,7 +8,7 @@ use gpui::{Pixels, px};
 /// A paint-time offset that a sticky box (css-position-3 §sticky-pos) or a
 /// reversed scroll projection applies around its subtree in prepaint. Probes
 /// measure layout geometry WITHOUT these offsets, so each probe keeps the
-/// chain of the shifting boxes it was built inside (`LayoutCx::sticky`) and
+/// chain of the shifting boxes it was built inside (`ScrollContext::sticky`) and
 /// subtracts the shifts that are being applied while it prepaints.
 pub(crate) struct ShiftLink {
     shift: std::cell::Cell<gpui::Point<Pixels>>,

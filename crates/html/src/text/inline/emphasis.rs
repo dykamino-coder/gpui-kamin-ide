@@ -17,7 +17,7 @@ pub(crate) fn emphasis_spans(
     base_size: f32,
     normal: f32,
     rotated: Option<bool>,
-    // Слои аннотаций руби-базы, в которой абзац собирается (`LayoutCx::ruby_layers`).
+    // Слои аннотаций руби-базы, в которой абзац собирается (`RubyContext::layers`).
     ruby: Option<&std::rc::Rc<crate::text::ruby::layers::Layers>>,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<crate::text::paragraph::EmphSpan> {

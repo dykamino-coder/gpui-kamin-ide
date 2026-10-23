@@ -4,6 +4,7 @@
 //! `outline-offset` (Blink `AdjustedOutlineOffset`), угол контура от угла коробки, `double`
 //! двумя кольцами и узоры `dotted`/`dashed`; слой уходит в отложенную фазу контуров.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, OUTLINE_DOUBLE};
 use crate::style::values::value::Len;
@@ -23,7 +24,7 @@ pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
         let em = match c.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let px_of = |l: Option<Len>| match l {
             Some(Len::Px(v)) => v,

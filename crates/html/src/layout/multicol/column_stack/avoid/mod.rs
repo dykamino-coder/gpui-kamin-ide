@@ -5,6 +5,7 @@
 
 use crate::layout::fragment::types::{Frag, Kid};
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 mod fill_avoiding;
 
 impl ColumnStack {
@@ -56,7 +57,7 @@ impl ColumnStack {
             let box_h = kids[i - 1].h;
             let prev: Vec<usize> = plan
                 .iter()
-                .filter(|f| f.kid == i - 1 && (f.from < box_h - 0.01 || f.from <= 0.01))
+                .filter(|f| f.kid == i - 1 && (f.from < box_h - COORD_EPS || f.from <= COORD_EPS))
                 .map(|f| f.col)
                 .collect();
             let cur: Vec<usize> = plan.iter().filter(|f| f.kid == i).map(|f| f.col).collect();
@@ -111,11 +112,11 @@ impl ColumnStack {
             k.cuts
                 .iter()
                 .map(|&(need, _)| need)
-                .find(|&n| n > 0.01)
+                .find(|&n| n > COORD_EPS)
                 .unwrap_or(k.h)
         };
         let d = end + lead + piece - target;
-        (d > 0.01).then_some(d)
+        (d > COORD_EPS).then_some(d)
     }
 
     /// Сколько принудительных разрывов в линии: между соседями
@@ -133,7 +134,7 @@ impl ColumnStack {
             .map(|k| {
                 k.forced
                     .iter()
-                    .filter(|&&f| f > 0.01 && f < k.h - 0.01)
+                    .filter(|&&f| f > COORD_EPS && f < k.h - COORD_EPS)
                     .count()
             })
             .sum();

@@ -13,6 +13,7 @@ use crate::layout::fragment::{ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
+use crate::tolerance::COORD_EPS;
 
 #[allow(clippy::too_many_arguments)]
 // Fragment copies carry cuts, heights and continuation flags together.
@@ -51,7 +52,7 @@ pub(super) fn copy_cuts_and_height(
         // сосед: последней коробке её дотяг —
         // мера колонок многоколоночника.
         Some((own, full))
-            if (full - h).abs() < 0.01 && !solid_box(copy) && ix + 1 < kid_par.len() =>
+            if (full - h).abs() < COORD_EPS && !solid_box(copy) && ix + 1 < kid_par.len() =>
         {
             (own, over.max(full))
         }
@@ -124,7 +125,7 @@ pub(super) fn line_cuts(
             );
             fixed.is_some() && plain && block_visible
         })
-        .filter(|s| s.height > h + 0.01)
+        .filter(|s| s.height > h + COORD_EPS)
     {
         Some(s) => (s.height, s.cuts, s.forced, s.solid),
         None => (h, cuts, forced, solid),
@@ -213,7 +214,7 @@ pub(super) fn stack_child_of(
             None
         } else if table_box(copy) {
             copy.style.background.map(|c| c.to_hsla())
-        } else if dec.is_none() && over <= h + 0.01 {
+        } else if dec.is_none() && over <= h + COORD_EPS {
             // Продолжение одного лишь параллельного
             // потока (`over`) — не продолжение коробки:
             // она кончилась, хвоста у неё нет.

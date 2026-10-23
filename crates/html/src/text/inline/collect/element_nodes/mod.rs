@@ -112,7 +112,7 @@ pub(super) fn collect_element(
     // (`CSS2/box/ltr-span-only`). Spacers sit outside the inline's bidi
     // controls; the line painter moves them to the visual side by flag.
     let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
-        inline_spacing::inline_sides(e, &merged, inherited, cx.layout.avail_w, vcx);
+        inline_spacing::inline_sides(e, &merged, inherited, cx.layout.constraints.avail_w, vcx);
     let own_rtl = merged.wm().rtl();
     if own_rtl {
         std::mem::swap(&mut lead, &mut trail);

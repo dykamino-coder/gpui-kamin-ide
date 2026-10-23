@@ -12,6 +12,7 @@ use gpui::{AnyElement, IntoElement};
 
 pub(crate) fn is_root(e: &Element, opts: &RenderOpts) -> bool {
     opts.cx
+        .position
         .oof_trial
         .as_ref()
         .is_some_and(|(key, _)| *key == super::super::key_of(e))
@@ -30,14 +31,19 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
     let nearest = nearest_cb_index(inherited);
     let hoist = crate::layout::order::hoists_inline_abs(e, &opts.cx)
-        && opts.cx.positioning.can_defer(fixed, nearest, to_icb);
+        && opts.cx.position.state.can_defer(fixed, nearest, to_icb);
     let inline_cb = !hoist
-        && opts.cx.inline_cb.as_ref().is_some_and(|o| o.take())
+        && opts
+            .cx
+            .position
+            .inline_cb
+            .as_ref()
+            .is_some_and(|o| o.take())
         && !fixed
         && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
         && (edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom))
         && e.style.z_index.unwrap_or(0) >= 0;
-    if inline_cb && let Some(offer) = &opts.cx.inline_cb {
+    if inline_cb && let Some(offer) = &opts.cx.position.inline_cb {
         offer.note_taken();
     }
     let spot: SpotCell = Default::default();
@@ -62,11 +68,16 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
         ),
         ..Default::default()
     });
-    let probe = spot_probe(spot.clone(), false, opts.cx.line_box.clone(), &opts.cx);
+    let probe = spot_probe(
+        spot.clone(),
+        false,
+        opts.cx.position.line_box.clone(),
+        &opts.cx,
+    );
     let mut build_opts = opts.clone();
     let key = opts.cx.paint_key_for(e);
-    build_opts.cx.oof_identities = Some(opts.cx.retain_oof_identities(e, key));
-    let retained = opts.cx.positioning.retain();
+    build_opts.cx.position.oof_identities = Some(opts.cx.retain_oof_identities(e, key));
+    let retained = opts.cx.position.state.retain();
     let source = e.clone();
     let inherited = inherited.clone();
     let vcx = opts.cx.vcx();
@@ -94,9 +105,9 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                 |style, trial, window| {
                     let (positioning, escaped) = retained.isolate();
                     let mut opts = build_opts.clone();
-                    opts.cx.positioning = positioning;
-                    opts.cx.oof_trial = Some((base.anchor_key, trial));
-                    opts.cx.oof_sizes = Some((
+                    opts.cx.position.state = positioning;
+                    opts.cx.position.oof_trial = Some((base.anchor_key, trial));
+                    opts.cx.position.oof_sizes = Some((
                         base.anchor_key,
                         super::super::resolve::current_inputs(
                             style, &inherited, bounds, window, vcx,
@@ -123,14 +134,16 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     use gpui::{ParentElement, Styled};
     if hoist {
         opts.cx
-            .positioning
+            .position
+            .state
             .defer(spot, kid, fixed, nearest, to_icb)
             .ok()?;
         Some(gpui::div().w_0().h_0().child(probe).into_any_element())
     } else {
         let host = opts
             .cx
-            .positioning
+            .position
+            .state
             .local_oof(spot, kid, cb_node, opts.cx.vcx().keep());
         if inline_cb {
             Some(host)

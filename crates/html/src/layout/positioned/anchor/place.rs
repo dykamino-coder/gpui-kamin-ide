@@ -16,12 +16,12 @@ pub(crate) fn place_in_context(
     let Some(mut first) = AnchorPlan::of(own, inherited, cx.vcx()) else {
         return el;
     };
-    if let Some((key, inputs)) = cx.oof_sizes
+    if let Some((key, inputs)) = cx.position.oof_sizes
         && key == own.anchor_key
     {
         first.refs_default |= inputs.refs_default;
     }
-    if let Some((key, probe)) = &cx.oof_trial
+    if let Some((key, probe)) = &cx.position.oof_trial
         && *key == own.anchor_key
     {
         return probe.wrap(el, first, own.position_visibility, own.anchor_key);

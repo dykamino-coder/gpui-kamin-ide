@@ -3,6 +3,7 @@
 //! размера CSS Images с умолчанием 300×150; пиксельная обрезка ограничивается только при
 //! наличии у документа собственного размера.
 
+use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::paint::background::{default_size, image_decode::svg_size};
 
 pub(super) fn view_box(markup: &str, fragment: &str) -> Option<String> {
@@ -17,7 +18,7 @@ pub(super) fn view_box(markup: &str, fragment: &str) -> Option<String> {
     let [mut x, mut y, mut w, mut h] = rect?;
     let intrinsic = svg_size(markup);
     if percent {
-        let (width, height) = default_size(intrinsic, (300.0, 150.0));
+        let (width, height) = default_size(intrinsic, DEFAULT_REPLACED_SIZE_PX);
         x *= width / 100.0;
         w *= width / 100.0;
         y *= height / 100.0;

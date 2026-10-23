@@ -112,10 +112,10 @@ pub(crate) fn generic_children(
     };
     let child_opts = opts.inner(|cx| {
         if is_clamp {
-            cx.clamp_atom_depth = 0;
-            cx.clamp_build = cx.clamp_build.container(e.node_id);
+            cx.clamp.atom_depth = 0;
+            cx.clamp.build = cx.clamp.build.container(e.node_id);
         } else if makes_bfc {
-            cx.clamp_build = cx.clamp_build.bfc();
+            cx.clamp.build = cx.clamp.build.bfc();
         }
     });
     let opts = &child_opts;
@@ -142,7 +142,7 @@ pub(crate) fn generic_children(
     let cb_layer = crate::text::inline::establishes_cb(&merged);
     let cb_scope = cb_layer.then(|| {
         crate::layout::positioned::layer_scope::LayerScope::cb(
-            &opts.cx.positioning,
+            &opts.cx.position.state,
             fixed_cb_layer_box(&merged),
         )
     });
@@ -161,7 +161,7 @@ pub(crate) fn generic_children(
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
     let viewport = e.tag == "html-viewport";
     let viewport_scope = viewport
-        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
+        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state));
     kids.extend(decorated_children(e, &merged, opts, |opts| {
         // A clamp container establishes an independent formatting context
         // (CSS Overflow 4 section continue; Blink LineClampData). blocks()

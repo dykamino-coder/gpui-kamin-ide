@@ -4,6 +4,7 @@
 //! На выходе `TabStops` для раскладки строк.
 
 use super::Piece;
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::metrics;
@@ -17,7 +18,7 @@ pub fn tab_stops(
 ) -> TabStops {
     let size = match block.font_size {
         Some(Len::Px(v)) => v,
-        _ => f32::from(base.font_size.to_pixels(gpui::px(16.0))),
+        _ => f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX))),
     };
     let family = block.font_family.as_deref().unwrap_or_else(|| {
         if block.monospace == Some(true) {

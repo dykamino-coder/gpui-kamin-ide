@@ -7,6 +7,7 @@
 //! §14.2: корень, а без его фона — тело, чей фон переезжает на корень целиком).
 //! Здесь же предикаты `any_side` и `any_containment` для соседних проходов.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Node;
 use crate::style::values::value::Len;
 
@@ -166,7 +167,7 @@ pub(super) fn mark_canvas_background(
                 // кегле, а в области отсчёта перенесённого фона.
                 let em = match s.font_size {
                     Some(crate::style::values::value::Len::Px(v)) => v,
-                    _ => 16.0,
+                    _ => MEDIUM_FONT_SIZE_PX,
                 };
                 let fam = s.font_family.clone().unwrap_or_default();
                 let to_px = |l: Option<crate::style::values::value::Len>| match l {

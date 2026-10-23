@@ -41,21 +41,21 @@ pub(super) fn build(
     };
     let key = e.node_id;
     let border_box = c.border_box == Some(true);
-    let paint = opts.cx.paint.clone();
+    let paint = opts.cx.deferred.paint.clone();
     let e = e.clone();
     let inherited = inherited.clone();
-    let positioning = opts.cx.positioning.retain();
+    let positioning = opts.cx.position.state.retain();
     let opts = opts.clone();
     let build = Rc::new(move |input: ClampInput, width, used_box, publish| {
         let opts = opts.inner(|cx| {
-            cx.clamp_build = cx.clamp_build.container(key);
-            cx.clamp_input = Some(input);
-            cx.positioning = if publish {
+            cx.clamp.build = cx.clamp.build.container(key);
+            cx.clamp.input = Some(input);
+            cx.position.state = if publish {
                 positioning.resume()
             } else {
                 positioning.isolate().0
             };
-            cx.clamp_frame = Some((key, width));
+            cx.clamp.frame = Some((key, width));
         });
         super::generic_box(
             &e,

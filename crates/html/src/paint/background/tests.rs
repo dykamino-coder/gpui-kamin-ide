@@ -28,7 +28,10 @@ fn space_pins_the_edges_and_shares_the_rest() {
     let xs = tiling(Tiling::Space, 0.0, 32.0, 106.0);
     assert_eq!(xs.len(), 3, "целых плиток влезает три");
     assert_eq!(xs[0], 0.0);
-    assert!((xs[2] + 32.0 - 106.0).abs() < 0.01, "последняя у края");
+    assert!(
+        (xs[2] + 32.0 - 106.0).abs() < crate::tolerance::COORD_EPS,
+        "последняя у края"
+    );
 }
 
 /// `round` подгоняет САМУ плитку под целое их число.

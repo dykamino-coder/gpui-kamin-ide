@@ -1,5 +1,6 @@
 //! Плитки фона: размер, начало, раскладка и отрисовка (paint_tiles).
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 mod geometry;
 pub(super) use geometry::len_px;
@@ -51,7 +52,7 @@ pub(super) fn paint_tiles_in(
     let family = c.font_family.clone().unwrap_or_default();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     // Смещение плитки — та же длина, что и всюду: `background-position: 3em`
     // сводится к точкам ЗДЕСЬ, где известны кегль и гарнитура. Ниже по пути

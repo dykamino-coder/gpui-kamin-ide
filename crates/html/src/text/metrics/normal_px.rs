@@ -5,6 +5,7 @@
 //! области содержимого полосы фона строчной коробки.
 
 use crate::document::state::ValueCx;
+use crate::tolerance::COORD_EPS;
 
 pub(super) fn register(line: f32, ascent: f32, descent: f32, vcx: ValueCx<'_>) {
     if ascent <= 0.0 || descent < 0.0 {
@@ -46,7 +47,7 @@ pub fn content_px(fraction: f32, size: f32, vcx: ValueCx<'_>) -> Option<f32> {
         .get(&fraction.to_bits())
         .copied()
         .map(|(a, d, g)| {
-            if g * size > 0.01 {
+            if g * size > COORD_EPS {
                 normal_px(fraction, size, vcx)
             } else {
                 (a + d) * size

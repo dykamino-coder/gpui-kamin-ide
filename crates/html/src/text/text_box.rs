@@ -196,7 +196,7 @@ pub(crate) fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
         Some(Len::Px(v)) => v,
         // Голое число хранится долей: это множитель к кеглю.
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => size * 1.2,
+        _ => size * crate::defaults::FALLBACK_NORMAL_LINE_HEIGHT,
     }
 }
 

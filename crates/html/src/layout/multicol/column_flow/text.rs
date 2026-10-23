@@ -157,19 +157,19 @@ pub(super) fn build_text_columns(
         }
     }
     for part in parts.into_iter() {
-        row = row.child(
-            div()
-                .w(px(inner))
-                .flex_shrink_0()
-                .flex()
-                .flex_col()
-                .children(
-                    opts_owned
-                        .cx
-                        .build
-                        .blocks(&part, inherited_owned, opts_owned),
-                ),
-        );
+        row =
+            row.child(
+                div()
+                    .w(px(inner))
+                    .flex_shrink_0()
+                    .flex()
+                    .flex_col()
+                    .children(opts_owned.cx.contracts.build.blocks(
+                        &part,
+                        inherited_owned,
+                        opts_owned,
+                    )),
+            );
     }
     row.into_any_element()
 }

@@ -79,7 +79,7 @@ pub struct BoxEnds {
 /// же в пробе и итоговой сборке, пока не меняется дерево.
 pub fn clamp_next_seq(key: u64, cx: &LayoutCx) -> u32 {
     {
-        let m = &cx.clamp_build.seq;
+        let m = &cx.clamp.build.seq;
         let mut m = m.borrow_mut();
         let n = m.entry(key).or_insert(0);
         let v = *n;
@@ -90,7 +90,7 @@ pub fn clamp_next_seq(key: u64, cx: &LayoutCx) -> u32 {
 
 /// Number the next paragraph of the clamp container would get.
 pub fn clamp_peek_seq(key: u64, cx: &LayoutCx) -> u32 {
-    cx.clamp_build.seq.borrow().get(&key).copied().unwrap_or(0)
+    cx.clamp.build.seq.borrow().get(&key).copied().unwrap_or(0)
 }
 
 /// Paragraph-number span of a box being built inside a clamp container:
@@ -99,7 +99,7 @@ pub type ClampSpan = std::rc::Rc<std::cell::Cell<(u32, u32)>>;
 
 pub fn open_clamp_span(cx: &crate::layout::cx::LayoutCx) -> Option<ClampSpan> {
     // Atomic descendants belong to their enclosing line, not the next paragraph.
-    if cx.clamp_atom_depth != 0 {
+    if cx.clamp.atom_depth != 0 {
         return None;
     }
     let (key, _) = clamp_context(cx)?;
@@ -115,5 +115,5 @@ pub fn close_clamp_span(span: Option<ClampSpan>, cx: &LayoutCx) {
 
 /// Active container and its BFC counting boundary for this build.
 pub fn clamp_context(cx: &LayoutCx) -> Option<(u64, bool)> {
-    cx.clamp_build.context
+    cx.clamp.build.context
 }

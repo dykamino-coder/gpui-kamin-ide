@@ -87,16 +87,16 @@ pub(super) fn cell_contents(
     // CSS 2.1 §9.4.1: a table cell establishes a block formatting
     // context, so its auto height contains its floats (§10.6.7). A
     // `td`/`th` gets its role from the tag and carries no `display`,
-    // which `own_context_style` checks; without `LayoutCx::cell_bfc` its float
+    // which `own_context_style` checks; without `BoxConstraints::cell_bfc` its float
     // host took in-flow height only (`floats-wrap-bfc-001-right-
     // overflow`: the cell ended under the float's first 50px).
     // Многоколоночная ячейка режет содержимое на колонки
     // (`cell_columns::column_flow_children`, css-multicol-1 §2).
     let flow = super::cell_columns::column_flow_children(cell);
-    let inside = opts.cx.build.blocks(
+    let inside = opts.cx.contracts.build.blocks(
         flow.as_deref().unwrap_or(&cell.children),
         &cm,
-        &opts.inner(|cx| cx.cell_bfc = true),
+        &opts.inner(|cx| cx.constraints.cell_bfc = true),
     );
     let inside = super::cell_alignment::subject(&cm, inside);
     // Обрезанная ячейка не расталкивает колонки: её минимальный

@@ -103,7 +103,7 @@ pub(crate) fn attach(
     let vcx = cx.vcx();
     // The CSS box owns both sizing and scroll state. An anonymous viewport
     // loses percentage, intrinsic, baseline and flex/grid sizing constraints.
-    let Some(target) = cx.scroll_target.as_ref().filter(|target| {
+    let Some(target) = cx.scroll.target.as_ref().filter(|target| {
         !target.applied.get() && target.node == e.node_id && target.node == c.self_node
     }) else {
         return div;
@@ -126,7 +126,7 @@ pub(crate) fn attach(
         stateful = stateful.overflow_y_scroll();
     }
     let mut div = stateful.0;
-    let bars = super::scroll_extent::classic::reserve(cx.scroll_frame.as_ref(), e.node_id, c);
+    let bars = super::scroll_extent::classic::reserve(cx.scroll.frame.as_ref(), e.node_id, c);
     div.style().scrollbar_width = Some(gpui::px(c.scroll.thickness()).into());
     // Taffy reserves a classic gutter for Scroll, while Hidden has the same
     // sizing semantics without a gutter. Auto starts without bars.
@@ -145,7 +145,7 @@ pub(crate) fn attach(
         div.style().overflow.y = Some(gpui::Overflow::Hidden);
     }
     if let Some(marker) =
-        crate::interactive::scroll_extent::marker(cx.scroll_frame.as_ref(), e.node_id)
+        crate::interactive::scroll_extent::marker(cx.scroll.frame.as_ref(), e.node_id)
     {
         div = div.child(marker);
     }

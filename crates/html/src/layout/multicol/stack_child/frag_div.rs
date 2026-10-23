@@ -21,7 +21,7 @@ pub(super) fn frag_box_div(
     body: &mut Vec<gpui::AnyElement>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
-    let mut d = cx.build.styled_box(src, src_inner, cx);
+    let mut d = cx.contracts.build.styled_box(src, src_inner, cx);
     // Ось блочного потока ВНУТРИ копии — горизонтальная
     // (css-writing-modes-4 §3.1), как у вертикального
     // блока в `element()`: гибкий ряд, у `vertical-rl`
@@ -127,7 +127,7 @@ pub(super) fn frag_box_div(
             crate::hooks::PaintOnly(crate::paint::gap_rules::painter::GapRulePainter::new(
                 items,
                 spec,
-                cx.paint.clone(),
+                cx.deferred.paint.clone(),
             ))
             .hooked(),
         );

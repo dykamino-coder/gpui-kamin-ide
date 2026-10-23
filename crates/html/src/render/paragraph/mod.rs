@@ -68,7 +68,7 @@ fn paragraph_routed(
             let base_lh = base.line_height;
             let for_build = first.clone();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
-            // среза строк (`LayoutCx::trim_para`) едут с ним в `opts_owned`.
+            // среза строк (`InlineContext::trim_para`) едут с ним в `opts_owned`.
             let build: crate::layout::float::split_flow::Split =
                 std::rc::Rc::new(move |at, width| {
                     let mut styled = base.clone();

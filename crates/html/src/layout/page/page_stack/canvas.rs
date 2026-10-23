@@ -64,7 +64,11 @@ pub(crate) fn builder(layers: Computed, root: Computed, opts: RenderOpts) -> Can
             anim: Default::default(),
             list_item: None,
         };
-        let mut els = opts.cx.build.blocks(&[Node::Element(el)], &root, &opts);
+        let mut els = opts
+            .cx
+            .contracts
+            .build
+            .blocks(&[Node::Element(el)], &root, &opts);
         match els.pop() {
             Some(el) if els.is_empty() => el,
             Some(el) => {

@@ -1,6 +1,7 @@
 //! Атом по тегу и роли (atom_element_raw): формы, контейнеры, замещаемые, ruby.
 
 use super::replaced::{canvas_atom, container_atom, img_atom, svg_atom};
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Element;
 use crate::layout::atom::own_box::own_box_atom;
 use crate::layout::atom::positioned::{absolute_atom, static_position_atom};
@@ -26,8 +27,13 @@ pub(super) fn atom_element_raw(
     let vcx = opts.cx.vcx();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized =
-        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w, vcx);
+    let media_sized = crate::layout::replaced::media::resolve(
+        e,
+        inherited,
+        opts.viewport,
+        opts.cx.constraints.avail_w,
+        vcx,
+    );
     let e = media_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
     // `inline-block` в бюджет `line-clamp` не входят (css-overflow-4 §5.3),
@@ -44,9 +50,10 @@ pub(super) fn atom_element_raw(
     ) && e.style.inline_display != Some(true);
     let opts = &*opts.inner(|cx| {
         if clamp_bfc {
-            cx.clamp_build = cx.clamp_build.bfc();
+            cx.clamp.build = cx.clamp.build.bfc();
         }
     });
+    let build = &opts.cx.contracts.build;
     // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
     // да и наследуемое до поля иначе не доходит.
@@ -55,11 +62,7 @@ pub(super) fn atom_element_raw(
     {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(
-            opts.cx
-                .build
-                .effects(el, Effect::transform(&e.style, inherited, vcx)),
-        );
+        return Some(build.effects(el, Effect::transform(&e.style, inherited, vcx)));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -88,7 +91,7 @@ pub(super) fn atom_element_raw(
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(opts.cx.build.effects(math, Effect::group(&e.style, vcx)));
+        return Some(build.effects(math, Effect::group(&e.style, vcx)));
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
@@ -119,7 +122,7 @@ pub(super) fn atom_element_raw(
         // собственный размер (§10.3.2, §10.6.2) — коробки не заводил и уходил
         // прогоном запасного текста. Отсечка по атрибуту обязательна: объект
         // без `data` и видео без `poster` замещаемыми не являются.
-        "embed" if e.attr("src").is_some() => Some(opts.cx.build.replaced(
+        "embed" if e.attr("src").is_some() => Some(build.replaced(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
             &opts.cx,
@@ -141,7 +144,7 @@ pub(super) fn atom_element_raw(
                 copy.style.resolve_em(atom_base_font(inherited, opts), vcx);
                 return iframe(&copy, inherited, opts);
             }
-            Some(opts.cx.build.replaced(
+            Some(build.replaced(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),
                 &opts.cx,
@@ -151,7 +154,7 @@ pub(super) fn atom_element_raw(
             let mut copy = e.clone();
             let url = e.attr("poster").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            Some(opts.cx.build.replaced(
+            Some(build.replaced(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),
                 &opts.cx,
@@ -171,7 +174,7 @@ pub(super) fn atom_element_raw(
             &e.style,
             match inherited.font_size {
                 Some(Len::Px(v)) => v,
-                _ => 16.0,
+                _ => MEDIUM_FONT_SIZE_PX,
             },
          opts.cx.vcx())
             // Инлайн с СОБСТВЕННЫМ письмом, отличным от родителя, — по
@@ -230,7 +233,7 @@ pub(super) fn atom_element_raw(
     // CSS Borders 4 shapes replaced content together with its CSS box.
     built.map(|el| {
         if crate::layout::box_kind::replaced_tag(e) && e.style.corner_shaped() {
-            opts.cx.build.effects(
+            build.effects(
                 el,
                 Effect::GroupReplaced {
                     style: &e.style,

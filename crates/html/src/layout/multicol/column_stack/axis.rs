@@ -3,6 +3,7 @@
 use super::ColumnStack;
 use crate::layout::fragment::fragment_mask;
 use crate::layout::fragment::types::{StackAxis, axis_box};
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, IntoElement, Pixels, Window, point, px, size};
 
 impl ColumnStack {
@@ -120,7 +121,7 @@ impl ColumnStack {
                     .map(|l| {
                         plan.iter()
                             .filter(|f| {
-                                f.h > 0.01 && (if wrap { f.col / self.count } else { 0 }) == l
+                                f.h > COORD_EPS && (if wrap { f.col / self.count } else { 0 }) == l
                             })
                             .map(|f| if wrap { f.col % self.count } else { f.col } + 1)
                             .max()
@@ -170,12 +171,12 @@ impl ColumnStack {
             let line_h = self.lines_plan.borrow().first().map_or(0.0, |l| l.1);
             let k0 = &self.children[f.kid];
             let keep = spill == 0.0 || k0.measure.is_some() || nested_frag;
-            let up = if !keep && f.copy == 0 && f.from <= 0.01 {
+            let up = if !keep && f.copy == 0 && f.from <= COORD_EPS {
                 spill
             } else {
                 0.0
             };
-            let down = if keep || continued || f.from + f.h < k0.over - 0.01 {
+            let down = if keep || continued || f.from + f.h < k0.over - COORD_EPS {
                 0.0
             } else {
                 (line_h - f.y - f.h).max(0.0)

@@ -1,5 +1,6 @@
 //! Анонимные коробки, разделение inline/block и схлопывание полей перед рендером.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Node;
 use crate::layout::block::margin_height;
 use crate::layout::block::margins::{CollapseInputs, collapse_margins};
@@ -180,7 +181,7 @@ pub(crate) fn prepare_children(
         // от родительского.
         let base = match inherited.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         // Ширина содержащего блока для ПРОЦЕНТНЫХ полей (§8.3: проценты полей
         // считаются от ширины содержащего блока, схлопывание — по уже
@@ -202,7 +203,7 @@ pub(crate) fn prepare_children(
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ),
-            opts.cx.cb_width,
+            opts.cx.constraints.cb_width,
             vcx,
         );
         margin_height::zero_float_blocks(&mut out, inherited, vcx);

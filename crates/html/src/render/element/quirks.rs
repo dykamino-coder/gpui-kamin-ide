@@ -25,7 +25,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &Ren
     let basis = if parent.wm().vertical() {
         parent.inline_definite
     } else {
-        opts.cx.avail_w
+        opts.cx.constraints.avail_w
     };
     let px = |value: Option<Len>, style: &Computed| match value {
         None | Some(Len::Auto) => 0.0,
@@ -71,7 +71,9 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &Ren
             parent.min_height
         };
         match parent_size {
-            _ if !vertical && opts.cx.avail_h.is_some() => opts.cx.avail_h.unwrap_or(0.0),
+            _ if !vertical && opts.cx.constraints.avail_h.is_some() => {
+                opts.cx.constraints.avail_h.unwrap_or(0.0)
+            }
             Some(v) if v != Len::Auto => {
                 let size = v
                     .to_px(Some(viewport), parent.font_cx(vcx), vcx)

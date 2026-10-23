@@ -101,18 +101,18 @@ mod tests {
     #[test]
     fn atomic_box_has_no_independent_clamp_span() {
         let mut cx = LayoutCx::default();
-        cx.clamp_build = cx.clamp_build.container(903);
+        cx.clamp.build = cx.clamp.build.container(903);
         assert!(open_clamp_span(&cx).is_some());
-        cx.clamp_atom_depth = 1;
+        cx.clamp.atom_depth = 1;
         assert!(open_clamp_span(&cx).is_none());
         let mut inner = cx.clone();
-        inner.clamp_atom_depth = 0;
-        inner.clamp_build = inner.clamp_build.container(904);
+        inner.clamp.atom_depth = 0;
+        inner.clamp.build = inner.clamp.build.container(904);
         assert!(open_clamp_span(&inner).is_some());
         assert_eq!(clamp_next_seq(904, &inner), 0);
         assert_eq!(clamp_context(&cx), Some((903, false)));
         assert_eq!(clamp_next_seq(903, &cx), 0);
-        cx.clamp_atom_depth = 0;
+        cx.clamp.atom_depth = 0;
         assert!(open_clamp_span(&cx).is_some());
     }
 
@@ -120,7 +120,7 @@ mod tests {
     fn counted_point_hides_later_paragraphs_below_a_tall_float() {
         let key = 1;
         let mut cx = LayoutCx::default();
-        cx.clamp_build = cx.clamp_build.container(key);
+        cx.clamp.build = cx.clamp.build.container(key);
         let mut plan = ClampPlan {
             nodes: vec![],
             sizes: vec![],
@@ -129,12 +129,12 @@ mod tests {
             extent: Some(128.0),
             cut: 200.0,
         };
-        cx.clamp_input = Some(ClampInput::Apply(Rc::new(plan.clone())));
+        cx.clamp.input = Some(ClampInput::Apply(Rc::new(plan.clone())));
         assert!(revealed_extent(key, &cx).is_none());
         assert!(!hidden_after_point(key, 3, &cx));
         assert!(hidden_after_point(key, 4, &cx));
         plan.cut = f32::INFINITY;
-        cx.clamp_input = Some(ClampInput::Apply(Rc::new(plan)));
+        cx.clamp.input = Some(ClampInput::Apply(Rc::new(plan)));
         assert!(!hidden_after_point(key, 4, &cx));
     }
 }

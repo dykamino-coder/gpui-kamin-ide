@@ -33,7 +33,7 @@ pub(super) fn absolute_atom(
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
-    let offer = opts.cx.inline_cb.as_ref();
+    let offer = opts.cx.position.inline_cb.as_ref();
     let inline_cb = offer.is_some_and(|o| o.take())
         && e.style.position == Some(crate::style::computed::Position::Absolute)
         && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
@@ -74,6 +74,7 @@ pub(super) fn absolute_atom(
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
     let inner = anchor::place::place_in_context(
         opts.cx
+            .contracts
             .build
             .styled_box(e, &merged, &opts.cx)
             .children(children::children(e, &merged, opts))
@@ -121,12 +122,13 @@ pub(super) fn absolute_atom(
         let probe = crate::layout::positioned::containing_block::spot_probe(
             spot.clone(),
             false,
-            opts.cx.line_box.clone(),
+            opts.cx.position.line_box.clone(),
             &opts.cx,
         );
         return match opts
             .cx
-            .positioning
+            .position
+            .state
             .late_push(spot, inline_abs_paint_last(e, inner, &opts.cx))
         {
             None => Some(probe),
