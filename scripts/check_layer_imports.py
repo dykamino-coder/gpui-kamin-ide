@@ -3,6 +3,9 @@
 Run from any directory. Exceptions name the exact source file and Rust path,
 an occurrence budget, an owner and a concrete removal task. Stale exceptions
 fail. CI's --base additionally prevents increasing the exception inventory.
+Root/intermediate reexports and aliases resolve to their defining modules.
+Macro expansion/generated imports and include! contents are not resolved;
+literal explicit paths in macro bodies are still scanned (all cfg branches).
 """
 
 import argparse
@@ -15,6 +18,7 @@ import sys
 # Support embedded Python distributions that omit the script directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rust_layer_paths import dependencies
+from rust_layer_exports import Exports
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -28,15 +32,23 @@ def forbidden(source, target):
 
 def inventory(root):
     found = []
-    for filename in sorted((root / 'crates/html/src').rglob('*.rs')):
-        relative = filename.relative_to(root / 'crates/html/src').as_posix()
+    folder = root / 'crates/html/src'
+    sources = {p.relative_to(folder).as_posix(): p.read_text(encoding='utf-8')
+               for p in sorted(folder.rglob('*.rs'))}
+    exports = Exports(sources)
+    for relative, contents in sources.items():
         source = relative.split('/')[0].removesuffix('.rs')
         if source not in STAGE or source == 'render':
             continue
-        for target, line in dependencies(filename.read_text(encoding='utf-8'), relative, STAGE):
-            phase = target.split('::')[0]
-            if phase in STAGE and forbidden(source, phase):
-                found.append((relative, target, line))
+        for target, line in dependencies(contents, relative, STAGE):
+            diagnostics = set()
+            for resolved in exports.paths(target, STAGE):
+                phase = resolved.split('::')[0]
+                if phase in STAGE and forbidden(source, phase):
+                    # Preserve exact debt keys when spelling already names its phase.
+                    diagnostic = target if target.split('::')[0] == phase else resolved
+                    diagnostics.add(diagnostic)
+            found.extend((relative, path, line) for path in sorted(diagnostics))
     return found
 
 
