@@ -4,4 +4,5 @@
 mod source_paint;
 pub(crate) use source_paint::split as split_source_paint;
 
-pub(crate) use source_paint::DeferredPaint;
+mod deferred;
+pub(crate) use deferred::source as deferred_source;

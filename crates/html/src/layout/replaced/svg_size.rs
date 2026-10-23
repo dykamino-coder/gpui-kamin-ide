@@ -2,6 +2,7 @@
 
 use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::dom::Element;
+use crate::dom::resource_facts::SvgFacts;
 use crate::style::values::value::px_strict;
 
 /// Размер рисунка в логических пикселях: из атрибутов, иначе из `viewBox`.
@@ -14,18 +15,14 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     // elements», css-viewport-1 §zoom; `zoom/svg-stroke-width`). CSS-размеры
     // ниже уже домножены проходом `zoom::resolve`.
     let z = e.style.zoom_eff.unwrap_or(1.0);
-    let num = |name: &str| -> Option<f32> {
-        e.attr(name)
-            .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
-            .map(|v| v * z)
-    };
+    let facts = SvgFacts::of(e);
     // Стилевые размеры СТАРШЕ атрибутов (CSS поверх разметки).
     let css = |l: Option<crate::style::values::value::Len>| match l {
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => None,
     };
-    let given_w = css(e.style.width).or_else(|| num("width"));
-    let given_h = css(e.style.height).or_else(|| num("height"));
+    let given_w = css(e.style.width).or_else(|| facts.width.map(|v| v * z));
+    let given_h = css(e.style.height).or_else(|| facts.height.map(|v| v * z));
     // Обособление размера снимает у рисунка ПРИРОДНЫЕ стороны и природное
     // соотношение (`viewBox`), но не написанные автором: «All CSS properties
     // of the size containment box are taken into account as they would be
@@ -76,7 +73,7 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     let fallback = e
         .style
         .aspect_ratio_auto
-        .filter(|_| view_box_ratio(e).is_none());
+        .filter(|_| facts.view_box.is_none());
     if let Some(r) = e
         .style
         .aspect_ratio
@@ -91,7 +88,7 @@ pub fn size_of(e: &Element) -> (f32, f32) {
     }
     // `viewBox` задаёт СООТНОШЕНИЕ сторон, а не собственный размер: заданная
     // сторона тянет за собой вторую (CSS Images 3 §5 default sizing).
-    let ratio = view_box_ratio(e);
+    let ratio = facts.view_box;
     match (given_w, given_h, ratio) {
         (Some(w), None, Some((vw, vh))) => (w, w * vh / vw),
         (None, Some(h), Some((vw, vh))) => (h * vw / vh, h),
@@ -108,18 +105,6 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         (None, Some(h), None) => (DEFAULT_REPLACED_SIZE_PX.0, h),
         _ => DEFAULT_REPLACED_SIZE_PX,
     }
-}
-
-/// Соотношение сторон из `viewBox`: (ширина, высота) окна просмотра.
-pub(super) fn view_box_ratio(e: &Element) -> Option<(f32, f32)> {
-    e.attr("viewBox").and_then(|vb| {
-        let p: Vec<f32> = vb
-            .split([' ', ','])
-            .filter(|s| !s.is_empty())
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        (p.len() == 4 && p[2] > 0.0 && p[3] > 0.0).then(|| (p[2], p[3]))
-    })
 }
 
 /// Рисунок БЕЗ собственного размера, но С соотношением (`<svg viewBox>` без
@@ -144,11 +129,7 @@ pub(super) fn view_box_ratio(e: &Element) -> Option<(f32, f32)> {
 pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     use crate::style::values::value::Len;
     let px = px_strict;
-    let attr_num = |name: &str| -> bool {
-        e.attr(name)
-            .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
-            .is_some()
-    };
+    let facts = SvgFacts::of(e);
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     // Обособление размера и любая заданная сторона (стилем или атрибутом)
     // — прежний путь `size_of`, здесь ничего не меняется.
@@ -156,12 +137,12 @@ pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
         || e.style.contains_height()
         || !auto(e.style.width)
         || !auto(e.style.height)
-        || attr_num("width")
-        || attr_num("height")
+        || facts.width.is_some()
+        || facts.height.is_some()
     {
         return e.clone();
     }
-    let Some((vw, vh)) = view_box_ratio(e) else {
+    let Some((vw, vh)) = facts.view_box else {
         return e.clone();
     };
     // Заявленное `aspect-ratio` старше соотношения из `viewBox`

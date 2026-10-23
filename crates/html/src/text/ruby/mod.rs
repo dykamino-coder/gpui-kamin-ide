@@ -13,9 +13,9 @@ use crate::text::ruby::segment_state::flush_run;
 use crate::text::ruby::segment_state::fresh;
 use crate::text::ruby::segments::ruby_segments;
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
-use crate::text::text_box::blank_text;
 
 pub(crate) mod container;
 pub(crate) mod layers;

@@ -3,7 +3,8 @@
 mod fingerprint;
 #[cfg(test)]
 mod tests;
-use super::path_commands::{Command, Geometry, Sink};
+use super::path_commands::Geometry;
+use crate::style::values::basic_shape::commands::{Command, Sink};
 use crate::style::values::value::Color as CssColor;
 use gpui::path_scene::{Color, Opacity, Size, StrokeMiterlimit, StrokeWidth, Transform, Tree};
 pub(crate) use gpui::path_scene::{

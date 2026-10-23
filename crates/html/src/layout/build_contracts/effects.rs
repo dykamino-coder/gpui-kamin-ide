@@ -8,7 +8,7 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::cx::deferred::Deferred;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, Bounds, Pixels};
+use gpui::{AnyElement, App, Bounds, Pixels, Window};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -75,6 +75,9 @@ impl<'a> Effect<'a> {
     }
 }
 
+pub(crate) type PaintBody<'a> = &'a mut dyn FnMut(&mut Window, &mut App);
+type OutlineFlow = fn(&Rc<Deferred>, &mut Window, &mut App, PaintBody<'_>);
+
 type ApplyEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
 type PaintGroup = fn(gpui::Div, &Element, &Computed, ValueCx<'_>) -> AnyElement;
 type PaintResources = fn(&[Node], ValueCx<'_>);
@@ -85,6 +88,7 @@ pub(crate) struct EffectBuild {
     effect: ApplyEffect,
     paint_group: PaintGroup,
     paint_resources: PaintResources,
+    outline_flow: OutlineFlow,
 }
 
 impl EffectBuild {
@@ -92,12 +96,24 @@ impl EffectBuild {
         effect: ApplyEffect,
         paint_group: PaintGroup,
         paint_resources: PaintResources,
+        outline_flow: OutlineFlow,
     ) -> Self {
         Self {
             effect,
             paint_group,
             paint_resources,
+            outline_flow,
         }
+    }
+
+    pub(super) fn outline_flow(
+        &self,
+        owner: &Rc<Deferred>,
+        window: &mut Window,
+        cx: &mut App,
+        body: PaintBody<'_>,
+    ) {
+        (self.outline_flow)(owner, window, cx, body)
     }
 
     pub(super) fn effect(&self, child: AnyElement, effect: Effect<'_>) -> AnyElement {

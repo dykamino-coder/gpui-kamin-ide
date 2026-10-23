@@ -14,11 +14,11 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::replaced::svg_size::size_of;
 use clip::{shape_box, translate_only};
 use gpui::{AnyElement, IntoElement};
 use masks::masked_layers;
 use serialize::serialize_sized;
-use size::size_of;
 
 mod clip;
 pub(crate) use clip::ClipIds;
@@ -30,7 +30,6 @@ pub(crate) mod path_scene;
 pub(crate) mod raster;
 pub mod serialize;
 pub(crate) use serialize::geometry_property;
-pub(crate) mod size;
 
 /// Во сколько раз растрировать плотнее логического размера: на дробном
 /// системном масштабе (125%, 150%) картинка иначе выглядит мыльной.

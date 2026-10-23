@@ -24,7 +24,6 @@ fn break_spaces_reaches_the_wrap_rules() {
     }
     let div = find(&nodes).expect("блок в дереве");
     assert_eq!(div.style.break_after_spaces, Some(true), "разбор");
-    let wrap = crate::text::paragraph::rules(&div.style).expect("правила");
-    assert!(wrap.break_spaces, "правила переноса");
-    assert!(wrap.keep_spaces, "сохранение пробелов");
+    assert!(whitespace::break_spaces(&div.style), "правила переноса");
+    assert!(whitespace::keep_spaces(&div.style), "сохранение пробелов");
 }

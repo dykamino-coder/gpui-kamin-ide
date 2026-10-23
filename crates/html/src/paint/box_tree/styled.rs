@@ -97,7 +97,7 @@ pub(crate) fn styled_div_with(
     {
         d = d.child(probe);
     }
-    if let Some(probe) = absolute_overflow::probe(c, &cx.position.state, vcx) {
+    if let Some(probe) = absolute_overflow::probe(c, &cx.position.state, vcx, cx.contracts.build) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой

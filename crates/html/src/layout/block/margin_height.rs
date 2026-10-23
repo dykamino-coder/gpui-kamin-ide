@@ -6,6 +6,7 @@
 //! только нативной коробке, вычисленная остаётся `auto` ради неопределённой базы долей (§10.5).
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::{margin_or_bail, margin_px, pin_inherited_margins, zero_len};
 use crate::layout::box_kind::{
@@ -14,7 +15,6 @@ use crate::layout::box_kind::{
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 
 pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
     if !lowers(e, vcx) {

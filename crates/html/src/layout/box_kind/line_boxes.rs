@@ -1,10 +1,10 @@
 //! Классификация inline-коробок и участия в line box.
 
 use super::{atomic_inline, inline_marked_block, replaced_inline};
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::inline_axis_edges;
 use crate::style::computed::Display;
-use crate::text::text_box::blank_text;
 
 /// Содержит ли коробка строчную коробку (§8.3.1, «does not contain a line
 /// box»; нулевые строчные коробки §9.4.2 не в счёт).

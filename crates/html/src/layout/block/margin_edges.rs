@@ -4,6 +4,7 @@
 //! закрытый край, клиренс и обёртка из одних флоатов спуск останавливают. Поглощённые поля
 //! детей обнуляются по пути (`zero_at`), слитое поле пишется родителю.
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::block::containing::with_inner_cb;
 use crate::layout::block::margin_height;
@@ -13,7 +14,6 @@ use crate::layout::block::struts::{
 };
 use crate::layout::box_kind::{in_flow, inline_level_box, own_context, phantom_inline};
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 
 pub(super) fn collapse_top(
     e: &mut Element,

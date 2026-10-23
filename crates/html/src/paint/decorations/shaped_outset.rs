@@ -11,7 +11,8 @@ use crate::document::state::ValueCx;
 use crate::paint::background::{contour_offset, rrect_spec};
 use crate::paint::effects::grouped_element::FillLayer;
 use crate::style::computed::{Computed, OUTLINE_DOUBLE};
-use crate::svg::path_commands::{Command, Geometry, Sink};
+use crate::style::values::basic_shape::commands::{Command, Sink};
+use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::*;
 
 /// Сцена контуров по размеру коробки (bw, bh), выносу (l, t) и холсту (aw, ah).

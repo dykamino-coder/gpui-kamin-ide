@@ -6,6 +6,7 @@
 //! Строчная коробка с содержимым и непустой текст струну обрывают.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::block::struts::{
     adjoin, margin_px, pin_inherited_margins, solve, strut_of, through_strut,
     through_strut_no_clear,
@@ -13,7 +14,6 @@ use crate::layout::block::struts::{
 use crate::layout::box_kind::{in_flow, inline_level_box};
 use crate::layout::float::band_clearance;
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 
 pub(crate) fn emit_margin_struts(
     out: &mut [Node],

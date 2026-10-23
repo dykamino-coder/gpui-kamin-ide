@@ -1,6 +1,6 @@
 //! Разрешение SVG-команд с состоянием в пути tiny-skia.
 
-use super::{Command, Sink};
+use crate::style::values::basic_shape::commands::{Command, Sink};
 use gpui::path_scene::tiny_skia_path::{Path, PathBuilder};
 use std::sync::Arc;
 

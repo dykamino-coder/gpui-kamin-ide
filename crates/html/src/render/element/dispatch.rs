@@ -11,7 +11,7 @@ use crate::layout::replaced::iframe::object_is_document;
 use crate::layout::replaced::image::pct_height_to_px;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::layout::replaced::replaced_used_style;
+use crate::layout::replaced::{replaced_used_style, svg_size};
 use crate::layout::table::anon::anon_element;
 use crate::layout::table::table;
 use crate::paint::box_tree::styled::styled_div;
@@ -164,13 +164,11 @@ pub(crate) fn dispatch_element(
                 _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
-            svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(
-                || {
-                    styled_div_with(e, &merged, &opts.cx)
-                        .child(SharedString::from("[рисунок]"))
-                        .into_any_element()
-                },
-            )
+            svg_replaced(e, &svg_size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(|| {
+                styled_div_with(e, &merged, &opts.cx)
+                    .child(SharedString::from("[рисунок]"))
+                    .into_any_element()
+            })
         }
         // `w_full` — растяжка по СТРОЧНОЙ оси горизонтального родителя. В
         // вертикальном родителе ширина — блочный размер (css-writing-modes-4

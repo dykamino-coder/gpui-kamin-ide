@@ -209,7 +209,9 @@ pub(super) fn defer(
         out.push(spot_probe(spot, true, None, &opts.cx));
     }
     if let Some(paint) = source_paint {
-        out.push(paint.source());
+        out.push(opts.cx.contracts.build.layer(
+            crate::layout::build_contracts::Layer::DeferredPositioned(paint),
+        ));
     }
     true
 }

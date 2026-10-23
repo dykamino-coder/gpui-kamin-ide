@@ -1,5 +1,6 @@
 //! Тесты: дифференциальное покрытие арифметики разрешённых SVG-команд.
-use super::{Command::*, Geometry, Sink};
+use super::Geometry;
+use crate::style::values::basic_shape::commands::{Command::*, Sink};
 
 #[test]
 fn direct_commands_match_svg_parser_points() {

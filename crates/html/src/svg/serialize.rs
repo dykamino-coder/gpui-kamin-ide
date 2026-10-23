@@ -14,12 +14,13 @@ pub(super) use sizing::serialize_sized;
 mod filters;
 
 mod geometry;
+pub(crate) use crate::style::values::basic_shape::geometry_property;
 use filters::subtree_has;
 use filters::untaint_filters;
-pub(crate) use geometry::geometry_property;
 
 use super::clip::synth_clip;
-use super::size::{size_of, view_box_ratio};
+use crate::dom::resource_facts::view_box_ratio;
+use crate::layout::replaced::svg_size::size_of;
 /// Viewport and clip content model of this serialization traversal.
 #[derive(Clone, Copy)]
 pub(super) struct SerializeCx {

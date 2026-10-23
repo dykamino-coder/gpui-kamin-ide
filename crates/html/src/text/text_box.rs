@@ -3,6 +3,7 @@
 //! доля `line-height: normal` по шрифту и пустота текстового узла по CSS.
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::blank_text;
 
 use crate::dom::Node;
 use crate::layout::box_kind::{
@@ -237,14 +238,4 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
     } else {
         opts.normal_line_height
     }
-}
-
-/// Пустой ли текстовый узел ПО CSS.
-///
-/// Схлопывается только `space`, `tab`, `CR`, `LF`. `str::trim` снимает весь
-/// юникодный пробел, и узел из идеографических U+3000 (или неразрывных
-/// U+00A0) считался пустым: строка из них пропадала целиком, а абзац рвался
-/// там, где рваться не должен (`trailing-ideographic-space-017`).
-pub(crate) fn blank_text(t: &str) -> bool {
-    t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
 }

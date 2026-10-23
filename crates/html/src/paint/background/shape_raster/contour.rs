@@ -14,6 +14,7 @@ mod offset;
 #[cfg(test)]
 mod tests;
 
+use crate::style::values::basic_shape::commands::{Command, Sink};
 use corner::{Corner, NOTCH, ROUND, STRAIGHT, add_curved_corner};
 pub use offset::offset;
 
@@ -122,8 +123,7 @@ impl Path {
         Some(out)
     }
     /// Resolved contour commands shared by masks, shadows and outlines.
-    pub(crate) fn commands(&self, d: &mut impl crate::svg::path_commands::Sink, dx: f32, dy: f32) {
-        use crate::svg::path_commands::Command;
+    pub(crate) fn commands(&self, d: &mut impl Sink, dx: f32, dy: f32) {
         let point = |(x, y): P| [x + dx, y + dy];
         d.command(false, Command::Move(point(self.start)));
         for segment in &self.segs {

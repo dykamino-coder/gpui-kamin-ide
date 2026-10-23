@@ -1,70 +1,7 @@
-//! Геометрические свойства SVG 2 из CSS-каскада: `cx`, `cy`, `r`, `rx`, `ry`, `d`,
-//! экспериментальное `path-length`.
-//!
-//! Растеризатор видит только сериализованную разметку, поэтому каскадное геометрическое свойство
-//! записывается атрибутом с тем же именем и ЗАМЕНЯЕТ собственный атрибут элемента: атрибут —
-//! лишь презентационная подсказка, любое авторское правило выигрывает (SVG 2 §9.1–9.4,
-//! Paths §9.3 `d`; Blink сопоставляет атрибуты `CSSPropertyID::kCx`… в svg_circle_element.cc,
-//! svg_ellipse_element.cc, svg_rect_element.cc:63-69, svg_path_element.cc и читает ComputedStyle).
+//! Сериализация каскадных геометрических значений SVG в атрибуты.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-
-mod path_length;
-
-/// Record a cascaded geometry declaration in attribute syntax.
-pub(crate) fn geometry_property(c: &mut Computed, key: &str, v: &str, vcx: ValueCx<'_>) {
-    if key == "path-length" {
-        if let Some(length) = path_length::parse(v, vcx) {
-            c.accept_declaration();
-            c.svg_path_length = Some(length);
-        }
-        return;
-    }
-    let name: &'static str = match key {
-        "cx" => "cx",
-        "cy" => "cy",
-        "r" => "r",
-        "rx" => "rx",
-        "ry" => "ry",
-        "d" => "d",
-        _ => return,
-    };
-    let Some(value) = attribute_value(name, v, vcx) else {
-        return;
-    };
-    c.accept_declaration();
-    c.svg_geometry.retain(|(n, _)| *n != name);
-    c.svg_geometry.push((name, value));
-}
-
-/// `d: path("…")` carries the path data, `d: none` is an empty path; lengths
-/// are absolute px or percentages, `auto` stays a keyword the rasterizer
-/// treats as "not set" (rx/ry `auto` take the other radius).
-fn attribute_value(name: &str, v: &str, vcx: ValueCx<'_>) -> Option<String> {
-    let v = v.trim();
-    if name == "d" {
-        if v.eq_ignore_ascii_case("none") {
-            return Some(String::new());
-        }
-        let inner = v.strip_prefix("path(")?.strip_suffix(')')?.trim();
-        let data = inner
-            .strip_prefix('"')
-            .and_then(|s| s.strip_suffix('"'))
-            .or_else(|| inner.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))?;
-        return Some(data.to_string());
-    }
-    if v.eq_ignore_ascii_case("auto") {
-        return Some("auto".to_string());
-    }
-    match Len::parse(v, vcx)? {
-        Len::Px(px) => Some(format!("{px}")),
-        Len::Pct(f) => Some(format!("{}%", f * 100.0)),
-        _ => None,
-    }
-}
 
 /// Whether the geometry property `name` applies to the element `tag`.
 fn applies(tag: &str, name: &str) -> bool {

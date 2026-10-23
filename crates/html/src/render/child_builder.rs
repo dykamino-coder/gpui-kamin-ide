@@ -26,12 +26,21 @@ impl Default for ChildBuild {
                 crate::render::first_line_descendants::route,
             ),
             element,
-            BoxBuild::new(styled_div_with, styled_div, content_sized),
+            BoxBuild::new(
+                styled_div_with,
+                styled_div,
+                content_sized,
+                content_wrapper::for_element,
+                apply::len_to_gpui,
+                apply::self_align,
+            ),
             crate::paint::replaced::image::image_with,
+            crate::svg::element_with_html,
             EffectBuild::new(
                 effects,
                 crate::paint::effects::grouped::paint_group,
                 crate::paint::effects::mask::collect_mask_defs,
+                |owner, window, cx, body| outline_phase::flow(Some(owner), window, cx, body),
             ),
             layer,
         )
@@ -76,6 +85,9 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
 
 fn layer(layer: Layer<'_>) -> AnyElement {
     match layer {
+        Layer::DeferredPositioned(publication) => {
+            crate::paint::positioned::deferred_source(publication)
+        }
         Layer::CellBand { rects, style, vcx } => {
             table::layer(CellsClipped::new(rects, *style, vcx))
         }

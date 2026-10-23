@@ -61,6 +61,7 @@ mod presentational_hints;
 mod presentational_hr;
 mod presentational_legacy;
 mod replaced_display;
+pub(crate) mod resource_facts;
 mod subgrid_axes;
 mod subgrid_used;
 pub(crate) mod table_boxes;

@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
 use crate::style::css::value_tokens::split_top;
-use crate::svg::path_commands::{Command, Sink};
+use crate::style::values::basic_shape::commands::{Command, Sink};
 
 /// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
 ///

@@ -5,6 +5,7 @@
 
 use crate::document::state::ValueCx;
 use crate::hooks::{IntoHooked, Wrap};
+use crate::layout::build_contracts::ChildBuild;
 use crate::layout::positioned::absolute_overflow_math::{Span, place};
 use crate::layout::positioned::containing_block::Positioning;
 use crate::style::computed::{Align, Computed, Display, FlexDir, Position};
@@ -18,6 +19,7 @@ pub(crate) fn probe(
     style: &Computed,
     positioning: &Rc<Positioning>,
     vcx: ValueCx<'_>,
+    build: ChildBuild,
 ) -> Option<AnyElement> {
     if !matches!(style.display, Some(Display::Flex | Display::InlineFlex)) || style.self_node == 0 {
         return None;
@@ -30,7 +32,8 @@ pub(crate) fn probe(
         let bounds = g.bounds;
         let vcx = values.vcx();
         let side = |length: Option<Len>| {
-            crate::paint::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
+            build
+                .length(length.unwrap_or(Len::Px(0.0)), vcx)
                 .to_pixels(bounds.size.width.into(), window.rem_size())
         };
         let left = side(padding.left);
@@ -130,18 +133,19 @@ impl Plan {
             margin,
         })
     }
-    pub(crate) fn prepare(&self, style: &mut gpui::StyleRefinement) {
+    pub(crate) fn prepare(&self, style: &mut gpui::StyleRefinement, build: ChildBuild) {
         // Native layout supplies the requested static-position alignment; safety
         // is applied once both geometries are available during prepaint.
-        style.align_self = Some(crate::paint::apply::self_align(self.align, false));
+        style.align_self = Some(build.alignment(self.align, false));
         let (items, _, content, justify) = style.safe_alignment.unwrap_or_default();
         style.safe_alignment = Some((items, false, content, justify));
     }
-    pub(crate) fn wrap(self, child: AnyElement, vcx: ValueCx<'_>) -> AnyElement {
+    pub(crate) fn wrap(self, child: AnyElement, vcx: ValueCx<'_>, build: ChildBuild) -> AnyElement {
         SafePlace {
             child,
             plan: self,
             values: vcx.keep(),
+            build,
         }
         .hooked()
     }
@@ -150,6 +154,7 @@ impl Plan {
         bounds: Bounds<Pixels>,
         window: &Window,
         vcx: ValueCx<'_>,
+        build: ChildBuild,
     ) -> gpui::Point<Pixels> {
         let Some(flex) = self.positioning.flex_content(self.flex) else {
             return point(px(0.0), px(0.0));
@@ -174,7 +179,8 @@ impl Plan {
         let (cb_start, cb_size) = axis(cb);
         let margin = self.margin.map(|length| {
             f32::from(
-                crate::paint::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
+                build
+                    .length(length.unwrap_or(Len::Px(0.0)), vcx)
                     .to_pixels(cb.size.width.into(), window.rem_size()),
             )
         });
@@ -205,6 +211,7 @@ struct SafePlace {
     plan: Plan,
     /// Values of the document the plan's lengths come from.
     values: crate::document::state::ValueDoc,
+    build: ChildBuild,
 }
 impl Wrap for SafePlace {
     fn child(&mut self) -> &mut AnyElement {
@@ -212,7 +219,9 @@ impl Wrap for SafePlace {
     }
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let shift = self.plan.shift(bounds, window, self.values.vcx());
+        let shift = self
+            .plan
+            .shift(bounds, window, self.values.vcx(), self.build);
         window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx));
     }
 }

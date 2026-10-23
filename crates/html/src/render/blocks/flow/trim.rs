@@ -2,12 +2,13 @@
 //! среза абзацу-владельцу строки и отрицательные поля первого/последнего ребёнка.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 use crate::text::line_trim::{Trim, TrimRequest};
-use crate::text::text_box::{blank_text, text_box_line_style, text_box_trim_px};
+use crate::text::text_box::{text_box_line_style, text_box_trim_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Запросы среза для абзацев, держащих первую/последнюю строку: их узлы-
