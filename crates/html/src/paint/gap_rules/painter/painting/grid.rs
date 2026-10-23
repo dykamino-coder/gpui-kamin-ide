@@ -2,8 +2,8 @@
 //! шаблона с учётом обращения осей, и одни и те же логические слоты списков служат и для
 //! краски линейки, и для ширины пересекающей линейки в junction'ах.
 
-use crate::paint::gap_rules::geometry::{GapItem, GapRun, GridTracks, grid_runs};
 use crate::layout::multicol::gap_rules::{GapAxisRule, GapRuleSpec};
+use crate::paint::gap_rules::geometry::{GapItem, GapRun, GridTracks, grid_runs};
 use gpui::{Bounds, Pixels};
 
 pub(super) fn layers<'a>(
