@@ -5,7 +5,7 @@
 //! желоб остаются у контейнера. Здесь же нормализация пары `overflow-x/y`
 //! (CSS Overflow 3 §3) при наследовании.
 
-use super::{Computed, split_outside_parens};
+use super::Computed;
 use crate::document::state::ValueCx;
 use crate::style::values::value::StyleColor;
 
@@ -79,25 +79,6 @@ impl Computed {
                 "inherit" => self.scroll.inherit_width = true,
                 _ => (),
             },
-            "scrollbar-color" => {
-                if v == "inherit" {
-                    self.scroll.colors = None;
-                } else if v == "auto" {
-                    self.accept_declaration();
-                    self.scroll.colors = Some(None);
-                } else {
-                    let parts = split_outside_parens(v);
-                    if parts.len() == 2
-                        && let (Some(a), Some(b)) = (
-                            StyleColor::parse_value(&parts[0], vcx),
-                            StyleColor::parse_value(&parts[1], vcx),
-                        )
-                    {
-                        self.accept_declaration();
-                        self.scroll.colors = Some(Some([a, b]));
-                    }
-                }
-            }
             _ => self.apply_snap(key, v, hit, vcx),
         }
     }

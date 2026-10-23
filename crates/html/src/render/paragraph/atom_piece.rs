@@ -45,8 +45,7 @@ pub(crate) fn atom_piece(
     let parent_style = atom_cx.parent.as_ref().filter(|_| !out_of_flow(&e.style));
     let inherited = parent_style.unwrap_or(inherited);
     let child_opts = opts.inner(|cx| {
-        cx.clamp_atom_depth = if e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true)
-        {
+        cx.clamp_atom_depth = if e.style.clamp_lines().is_some() || e.style.clamp_by_height() {
             0
         } else {
             cx.clamp_atom_depth + 1

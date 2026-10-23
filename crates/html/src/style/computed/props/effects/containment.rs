@@ -144,19 +144,6 @@ impl Computed {
                     })
                 )
             }
-            "image-rendering" => {
-                if matches!(
-                    v,
-                    "pixelated" | "crisp-edges" | "auto" | "smooth" | "high-quality"
-                ) {
-                    self.accept_declaration();
-                }
-                self.image_pixelated = match v {
-                    "pixelated" | "crisp-edges" => Some(true),
-                    "auto" | "smooth" | "high-quality" => Some(false),
-                    _ => self.image_pixelated,
-                }
-            }
             "isolation" => {
                 self.isolate = apply_parsed!(
                     self,

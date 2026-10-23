@@ -172,7 +172,6 @@ properties! {
     DecorationColor: "text-decoration-color" => [td_color];
     DecorationThickness: "text-decoration-thickness" => [td_thickness];
     DecorationInset: "text-decoration-inset" => [td_inset];
-    BorderSpacing: "border-spacing" => [border_spacing];
     TopLeftRadius: "border-top-left-radius" => [radius.tl];
     TopRightRadius: "border-top-right-radius" => [radius.tr];
     BottomRightRadius: "border-bottom-right-radius" => [radius.br];
@@ -193,4 +192,7 @@ properties! {
     MaskClip: "mask-clip" => [mask_clip];
     MaskComposite: "mask-composite" => [mask_composite];
     MaskBorderMode: "mask-border-mode" => [mask_border_luminance];
+    MaxLines: "max-lines" => [line_clamp, clamp_auto];
+    Continue: "continue" => [clamp_continue, clamp_legacy];
+    TextBoxTrim: "text-box-trim" => [text_box_trim_start, text_box_trim_end];
 }

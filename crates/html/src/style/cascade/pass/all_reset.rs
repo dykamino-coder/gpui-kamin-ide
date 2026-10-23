@@ -28,26 +28,14 @@ impl Computed {
         self.apply_one("display", "inline", vcx);
         if initial {
             // Наследуемые свойства: пустое поле у нас значит «от
-            // родителя», поэтому начальное значение ставится явно.
-            // Наследуемые длинные свойства реестра — их начальным значением.
-            for id in LonghandId::ALL.iter().filter(|id| id.inherited()) {
+            // родителя», поэтому начальное значение ставится явно — всем
+            // наследуемым длинным свойствам реестра, кроме `direction`
+            // (`all` его не задаёт, §3.2).
+            for id in LonghandId::ALL
+                .iter()
+                .filter(|id| id.inherited() && **id != LonghandId::Direction)
+            {
                 self.apply_one(id.name(), "initial", vcx);
-            }
-            for key in [
-                "color",
-                "letter-spacing",
-                "list-style-position",
-                "list-style-type",
-                "quotes",
-                "text-align",
-                "text-indent",
-                "text-transform",
-                "visibility",
-                "word-spacing",
-            ] {
-                if let Some(start) = initial_value(key) {
-                    self.apply_one(key, start, vcx);
-                }
             }
         }
     }

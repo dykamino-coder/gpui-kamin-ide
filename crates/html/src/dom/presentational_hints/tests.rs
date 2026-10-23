@@ -1,7 +1,6 @@
 //! Проверки каскада представленческих подсказок.
 
 use crate::dom::{Element, Node};
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 #[test]
@@ -89,8 +88,10 @@ fn author_resets_and_nearest_table_control_cell_hints() {
         "<!doctype html><style>table{border-spacing:initial}td{padding-top:initial}</style><table cellspacing=10 cellpadding=10><tr><td></td></tr></table>",
         "",
     );
+    // css-tables-3 §border-spacing: the initial value is 0 (inherited
+    // property, so the initial value is stored explicitly).
     let spacing = find(&nodes, "table").unwrap().style.border_spacing;
-    assert_eq!(spacing, Computed::default().border_spacing);
+    assert_eq!(spacing, Some((Some(Len::Px(0.0)), Some(Len::Px(0.0)))));
     let padding = find(&nodes, "td").unwrap().style.padding;
     // css-box-4 §4.1: the initial value of a padding side is 0.
     assert_eq!(padding.top, Some(Len::Px(0.0)));
@@ -126,7 +127,15 @@ fn css_wide_keywords_override_table_hints() {
         let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
         let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
         let t = &find(nodes, "table").unwrap().style;
-        assert_eq!(t.border_spacing, Computed::default().border_spacing);
+        // `initial` — explicit zero; `unset` of an inherited property —
+        // inheritance (the empty slot).
+        assert!(
+            matches!(
+                t.border_spacing,
+                None | Some((Some(Len::Px(0.0)), Some(Len::Px(0.0))))
+            ),
+            "{keyword}"
+        );
         assert!(auto(t.width) && auto(t.height), "{keyword}");
         assert!(t.background.is_none_or(|c| c.a == 0.0), "{keyword}");
         assert!(zero(t.margin.left), "{keyword}");
@@ -144,8 +153,10 @@ fn css_wide_keywords_override_table_hints() {
     );
     let doc = crate::document::Document::builder(&html, "").build();
     let nodes = doc.nodes();
+    // `border-spacing` is inherited: the own slot is empty (no hint value)
+    // and the merge takes the parent's computed value.
     let spacing = find(nodes, "table").unwrap().style.border_spacing;
-    assert_eq!(spacing, Some((Some(Len::Px(3.0)), Some(Len::Px(3.0)))));
+    assert_eq!(spacing, None);
     let td = &find(nodes, "td").unwrap().style;
     assert!(td.padding_inherit_side[0]);
     assert_eq!(td.padding.bottom, Some(Len::Px(10.0)));

@@ -90,7 +90,7 @@ pub(super) fn breakable(text: &str, style: &Computed) -> String {
         }
         return out;
     }
-    if style.break_anywhere != Some(true) {
+    if style.break_anywhere != Some(true) && style.break_anywhere_strict != Some(true) {
         return owned;
     }
     let text = owned.as_str();

@@ -185,15 +185,7 @@ impl Computed {
         // Типизированный `attr()` подставляется тем же шагом, что и `var()`
         // (css-values-5 §7.7): после него значение разбирается как обычное.
         let resolved = resolve_sibling(resolve_attrs(k, &resolve_vars(value, vars), cx, vcx), cx);
-        // CSS Variables §3: invalid after substitution means unset;
-        // a preceding specified color cannot survive the computed value.
-        if k == "color"
-            && crate::style::css::variable_values::has_var(value)
-            && Color::parse(&resolved, vcx).is_none()
-            && !is_wide(&resolved)
-        {
-            self.apply_one(k, "unset", vcx);
-        } else if is_side_radius(k) && !is_wide(&resolved) {
+        if is_side_radius(k) && !is_wide(&resolved) {
             // Логическая сторона сопоставляется по письму — итогу фазы
             // письма (css-logical-1 §4), а не по полям стиля на этот миг.
             self.apply_side_radius(k, &resolved, compute.wm.rtl(), vcx);

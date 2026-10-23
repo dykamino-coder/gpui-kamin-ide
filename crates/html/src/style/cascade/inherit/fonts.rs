@@ -150,6 +150,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.text_indent_hanging = own.text_indent_hanging.or(parent.text_indent_hanging);
     c.break_anywhere = own.break_anywhere.or(parent.break_anywhere);
     c.break_word = own.break_word.or(parent.break_word);
+    c.word_break_word = own.word_break_word.or(parent.word_break_word);
     c.auto_phrase = own.auto_phrase.or(parent.auto_phrase);
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
@@ -177,10 +178,13 @@ fn match_parent_align(parent: &Computed, own: &Computed, c: &mut Computed) {
         c.text_align = resolve(parent.text_align);
     }
     if own.text_align_match_parent & 2 != 0 {
-        let last = parent.text_align_last.or(match parent.text_align {
-            Some(TextAlign::Justify) => Some(TextAlign::Start),
-            a => a,
-        });
-        c.text_align_last = resolve(last);
+        let last = parent
+            .text_align_last
+            .flatten()
+            .or(match parent.text_align {
+                Some(TextAlign::Justify) => Some(TextAlign::Start),
+                a => a,
+            });
+        c.text_align_last = Some(resolve(last));
     }
 }

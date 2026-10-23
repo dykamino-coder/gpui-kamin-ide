@@ -24,7 +24,6 @@ const KNOWN_GAPS: &[&str] = &[
     "content",
     "display",
     "filter",
-    "list-style",
     "zoom",
 ];
 

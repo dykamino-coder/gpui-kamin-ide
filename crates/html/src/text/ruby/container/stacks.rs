@@ -62,7 +62,7 @@ pub(super) fn align_units(merged: &mut crate::style::computed::Computed) {
         Some(RubyAlign::Start) => merged.text_align = Some(TextAlign::Start),
         Some(RubyAlign::SpaceBetween) => {
             merged.text_align = Some(TextAlign::Justify);
-            merged.text_align_last = Some(TextAlign::Justify);
+            merged.text_align_last = Some(Some(TextAlign::Justify));
         }
         _ => merged.text_align = Some(TextAlign::Center),
     }

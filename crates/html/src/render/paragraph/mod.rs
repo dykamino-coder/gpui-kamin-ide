@@ -149,7 +149,7 @@ pub(super) fn paragraph_style(c: &Computed) -> ParagraphStyle<'_> {
     ParagraphStyle {
         hug_claim: c.hug_claim,
         lines_reversed: c.lines_reversed,
-        text_fit: c.text_fit,
+        text_fit: c.text_fit.flatten(),
         hyphen_char: &c.hyphen_char,
     }
 }
