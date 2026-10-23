@@ -113,6 +113,34 @@ mod tests {
     }
 
     #[test]
+    fn selected_none_image_keeps_marker_space_without_text_fallback() {
+        let doc = DocState::new(Default::default());
+        let vcx = doc.values();
+        for position in ["inside", "outside"] {
+            for image in ["light-dark(none, none)", "none"] {
+                let li = item(
+                    &format!(
+                        "font-size:20px;list-style:decimal {position};list-style-image:{image}"
+                    ),
+                    vcx,
+                );
+                let merged = inherit(&BoxStyle::default(), &li.style.computed(), vcx);
+                let marker =
+                    super::super::resolve(&li, &Computed::default(), &merged, vcx).unwrap();
+                if image == "none" {
+                    assert!(marker.image.is_none());
+                    assert_eq!(marker.text, "3. ");
+                } else {
+                    assert_eq!(
+                        dimensions(marker.image.as_ref().unwrap()),
+                        (Some(Len::Px(20.0)), Some(Len::Px(20.0)))
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn inherited_marker_image_is_prepared_and_explicit_content_takes_precedence() {
         let doc = DocState::new(Default::default());
         let vcx = doc.values();

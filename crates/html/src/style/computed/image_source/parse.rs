@@ -37,7 +37,14 @@ impl ImageSource {
             if parts.len() != 2 {
                 return None;
             }
-            return nested(parts[usize::from(crate::style::values::value::dark_scheme(vcx))]);
+            let selected = parts[usize::from(crate::style::values::value::dark_scheme(vcx))].trim();
+            // CSS Color 5: выбранное none — прозрачное изображение, поэтому
+            // маркер сохраняет место картинки и не возвращается к тексту.
+            return if selected.eq_ignore_ascii_case("none") {
+                ImageColor::parse("transparent", vcx).map(Self::Color)
+            } else {
+                nested(selected)
+            };
         }
         if let Some(image) = crate::style::computed::image_function::arguments(raw, vcx) {
             let color = image.color.and_then(|c| ImageColor::parse(c, vcx));
@@ -109,5 +116,38 @@ impl ImageSource {
             value: Box::new(value),
             repeating: raw.starts_with("repeating-"),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selected_light_dark_none_is_a_transparent_image() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        for dark in [false, true] {
+            let vcx = crate::style::values::value::set_dark_scheme(dark, doc.values());
+            let raw = if dark {
+                "light-dark(url(unselected.png), none)"
+            } else {
+                "light-dark(none, url(unselected.png))"
+            };
+            let image = ImageSource::parse(raw, vcx).expect("selected image");
+            assert_eq!(
+                image,
+                ImageSource::parse("image(transparent)", vcx).unwrap()
+            );
+            assert!(ImageSource::parse("none", vcx).is_none());
+            let raw = if dark {
+                "light-dark(none, url(selected.png))"
+            } else {
+                "light-dark(url(selected.png), none)"
+            };
+            assert_eq!(
+                ImageSource::parse(raw, vcx),
+                Some(ImageSource::Url("selected.png".into()))
+            );
+        }
     }
 }
