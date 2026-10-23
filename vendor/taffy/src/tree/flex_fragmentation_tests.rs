@@ -86,7 +86,12 @@ fn column_break_offset_does_not_change_flexible_lengths() {
     tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
     assert_eq!(tree.layout(root).unwrap().size.height, 110.0);
     assert_eq!(tree.layout(b).unwrap().size.height, 30.0);
-    assert!(tree.set_flex_item_fragmentation_offset(a, -1.0).is_err());
+    assert!(tree.set_flex_item_fragmentation_offset(a, f32::NAN).is_err());
+    // A suppressed gap moves the item back and shrinks an auto-sized container.
+    tree.set_flex_item_fragmentation_offset(b, -10.0).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(b).unwrap().location.y, 20.0);
+    assert_eq!(tree.layout(root).unwrap().size.height, 50.0);
 }
 
 #[test]

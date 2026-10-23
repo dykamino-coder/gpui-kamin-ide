@@ -815,7 +815,9 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     if constants.dir.is_column() && known_dimensions.height.is_none() {
         let consumed = flex_lines.iter().map(|line| line.items.iter()
             .map(|item| tree.flex_item_fragmentation_offset(item.node)).sum::<f32>())
-            .fold(0.0, f32::max);
+            // A suppressed gap (negative offset) shrinks a single line; parallel
+            // lines keep the longest one.
+            .fold(if flex_lines.len() == 1 { f32::NEG_INFINITY } else { 0.0 }, f32::max);
         constants.container_size.height += consumed;
         constants.inner_container_size.height += consumed;
     }
