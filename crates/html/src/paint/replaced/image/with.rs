@@ -33,7 +33,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     } else {
         e
     };
-    if let Some(vb) = e.style.computed().object_view_box
+    if let Some(vb) = e.style.used().object_view_box
         && let Some(el) = view_boxed(e, vb, cx)
     {
         return el;
@@ -47,7 +47,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     // и глушить его здесь значило запрещать картинке ужиматься даже при
     // явных `min-width: 0` и `flex-shrink: 1` (css-flexbox-1 §7.2).
     let mut d = d;
-    match e.style.computed().flex_shrink {
+    match e.style.used().flex_shrink {
         Some(k) => d.style().flex_shrink = Some(k),
         None => d = d.flex_shrink_0(),
     }
@@ -61,7 +61,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         Ok(value) => return value,
         Err(d) => d,
     };
-    if !src.is_empty() || e.style.computed().content_image().is_some() {
+    if !src.is_empty() || e.style.used().content_image().is_some() {
         // Единственный синхронный источник — сервис документа.
         let (local, d, image) = match local_image_source(src, e, d, vcx) {
             Ok(value) => value,
@@ -81,7 +81,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
         let vector: Option<String> = crate::resources::css_images::element_source(
             local.unwrap_or(src),
-            &e.style.computed(),
+            &e.style.used(),
             vcx,
         )
         .map(crate::paint::background::Source::from_cpu)
@@ -118,12 +118,12 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // Автоматический минимум этим парам не корень; корень искать заново.
         let natural = crate::resources::css_images::element_source(
             local.unwrap_or(src),
-            &e.style.computed(),
+            &e.style.used(),
             vcx,
         )
         .map(crate::paint::background::Source::from_cpu)
         .map(|s| s.intrinsic());
-        let own = e.style.computed();
+        let own = e.style.used();
         let sizing = PictureSizing::new(&own, natural, cx.constraints.cb_width);
         return fit_local_image(src, e, local, d, image, vectorize, &sizing, vcx);
     }

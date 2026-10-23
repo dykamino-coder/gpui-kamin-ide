@@ -41,7 +41,7 @@ mod vertical_intrinsic;
 /// элемента место определённое, и подбирать нечего.
 pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) -> AnyElement {
     let starts_here = e.style.cascaded().wm().vertical() && !inherited.wm().vertical();
-    if !starts_here || e.style.computed().width.is_some() {
+    if !starts_here || e.style.used().width.is_some() {
         return el;
     }
     // Письмо, заданное на `body` (или `html`), — ГЛАВНОЕ письмо страницы: оно
@@ -56,7 +56,7 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // the box's layout parent, so `top: 0; left: 0` landed inside the padding
     // (`available-size-001`: the vertical-rl `#red` 1ch below the green 0).
     if matches!(
-        e.style.computed().position,
+        e.style.used().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     ) {
@@ -97,7 +97,7 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
             | Some(Display::InlineGrid)
             | Some(Display::Flex)
             | Some(Display::InlineFlex)
-    ) && in_flow(&e.style.computed())
+    ) && in_flow(&e.style.used())
     {
         return el;
     }

@@ -18,7 +18,7 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn names(nodes: &[Node], out: &mut HashSet<String>) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
-            if let Some(list) = &e.style.computed().anchor_name {
+            if let Some(list) = &e.style.used().anchor_name {
                 out.extend(list.iter().cloned());
             }
             names(&e.children, out);
@@ -27,21 +27,21 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: &Parent, vcx: ValueCx<'_>) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
-            if e.style.computed().position_anchor == Some(PositionAnchor::MatchParent) {
+            if e.style.used().position_anchor == Some(PositionAnchor::MatchParent) {
                 let (pa, implicit) = match_parent(parent);
                 e.style.used_mut().position_anchor = Some(pa);
                 if implicit.is_some() {
                     e.style.used_mut().implicit_anchor = implicit;
                 }
             }
-            let has_default = match &e.style.computed().position_anchor {
+            let has_default = match &e.style.used().position_anchor {
                 Some(PositionAnchor::Named(n)) => known.contains(n),
-                Some(PositionAnchor::Auto) => e.style.computed().implicit_anchor.is_some(),
+                Some(PositionAnchor::Auto) => e.style.used().implicit_anchor.is_some(),
                 // `normal` при непустой `position-area` ведёт себя как `auto`
                 // (§position-anchor); без области — как `none`.
                 Some(PositionAnchor::Normal) | None => {
-                    e.style.computed().position_area.is_some()
-                        && e.style.computed().implicit_anchor.is_some()
+                    e.style.used().position_area.is_some()
+                        && e.style.used().implicit_anchor.is_some()
                 }
                 _ => false,
             };
@@ -50,15 +50,15 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
                 *slot = settle_len(*slot, has_default, known, vcx);
             }
             let abs = matches!(
-                e.style.computed().position,
+                e.style.used().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             );
             let me: Parent = abs.then(|| {
                 (
-                    e.style.computed().position_anchor.clone(),
-                    e.style.computed().position_area.is_some(),
-                    e.style.computed().implicit_anchor,
+                    e.style.used().position_anchor.clone(),
+                    e.style.used().position_area.is_some(),
+                    e.style.used().implicit_anchor,
                 )
             });
             settle(&mut e.children, known, &me, vcx);

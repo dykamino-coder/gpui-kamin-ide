@@ -19,7 +19,7 @@ use crate::style::values::value::Len;
 /// под `position: absolute` (§9.7, `dom::finish_inline_display`) её НЕ снимает.
 /// `None` при выключке по началу строки — прежний ход без изменений.
 pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32> {
-    if e.style.computed().inline_display != Some(true) {
+    if e.style.used().inline_display != Some(true) {
         return None;
     }
     let rtl = inherited.wm().rtl();
@@ -115,7 +115,7 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
 /// inline-level: such a box stays a point in the line, a block-level one
 /// starts at the line's start (CSS 2.1 §10.3.7, §10.6.4).
 pub(crate) fn hypothetical_inline_level(e: &Element) -> bool {
-    let st = e.style.computed();
+    let st = e.style.used();
     // A blockified `inline-block`/`inline-flex`/… keeps its inline-level
     // hypothetical box (`dom` marks it `abs_inline_level`).
     if st.abs_inline_level {

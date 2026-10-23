@@ -15,7 +15,7 @@ pub(crate) fn group_style(
     inherited: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Rc<Computed> {
-    let style = own.computed();
+    let style = own.used();
     if style.mask_image.is_none() {
         return style;
     }
@@ -40,8 +40,8 @@ pub(crate) fn block_group(
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let style = group_style(&e.style, inherited, vcx);
-    if crate::paint::stacking::stacking_context(&e.style.computed())
-        && e.style.computed().isolate != Some(true)
+    if crate::paint::stacking::stacking_context(&e.style.used())
+        && e.style.used().isolate != Some(true)
         && crate::paint::stacking::blends_inside(&e.children, 0)
     {
         let mut iso = (*style).clone();
@@ -61,11 +61,11 @@ pub(crate) fn paint_group(
     inherited: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    let el = crate::paint::apply::static_shift(container, &e.style.computed());
-    let el = crate::paint::apply::apply_opacity(el, &e.style.computed(), vcx);
+    let el = crate::paint::apply::static_shift(container, &e.style.used());
+    let el = crate::paint::apply::apply_opacity(el, &e.style.used(), vcx);
     let el = crate::paint::effects::transform::transformed(
         gpui::IntoElement::into_any_element(el),
-        &e.style.computed(),
+        &e.style.used(),
         inherited,
         vcx,
     );

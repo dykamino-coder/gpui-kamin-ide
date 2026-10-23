@@ -31,13 +31,13 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
     if table_box(e) && !e.style.cascaded().wm().vertical() {
         return BlockBox {
             id: e.node_id,
-            clips_block: !crate::layout::page::paged::visible_overflow(&e.style.computed()),
+            clips_block: !crate::layout::page::paged::visible_overflow(&e.style.used()),
             table: Some(Box::new(TableBox::collect(e, cx, vcx))),
             own_breaks: (
-                e.style.computed().break_before_force,
-                e.style.computed().break_after_force,
-                e.style.computed().break_before_avoid,
-                e.style.computed().break_after_avoid,
+                e.style.used().break_before_force,
+                e.style.used().break_after_force,
+                e.style.used().break_before_avoid,
+                e.style.used().break_after_avoid,
             ),
             ..Default::default()
         };
@@ -52,7 +52,7 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         return out;
     }
     let stacks = stacks_blocks(e)
-        || (blockified && e.style.computed().display == Some(Display::InlineBlock));
+        || (blockified && e.style.used().display == Some(Display::InlineBlock));
     if !stacks {
         return out;
     }
@@ -63,27 +63,27 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
 
 /// Коробка `e` без детей: рамка с отбивкой у краёв и корень контекста.
 pub(super) fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
-    let lens = LenCx::box_viewport(cx.viewport, &e.style.computed());
+    let lens = LenCx::box_viewport(cx.viewport, &e.style.used());
     let px = |l| lens.px_lossy_zero(l, vcx);
-    let b = e.style.computed().borders();
+    let b = e.style.used().borders();
     BlockBox {
         id: e.node_id,
         own_breaks: (
-            e.style.computed().break_before_force,
-            e.style.computed().break_after_force,
-            e.style.computed().break_before_avoid,
-            e.style.computed().break_after_avoid,
+            e.style.used().break_before_force,
+            e.style.used().break_after_force,
+            e.style.used().break_before_avoid,
+            e.style.used().break_after_avoid,
         ),
-        inside_avoid: e.style.computed().break_inside_avoid,
-        clips_block: !crate::layout::page::paged::visible_overflow(&e.style.computed()),
+        inside_avoid: e.style.used().break_inside_avoid,
+        clips_block: !crate::layout::page::paged::visible_overflow(&e.style.used()),
         edge_kids: edges(e),
-        head: px(e.style.computed().padding.top) + px(b.top),
-        tail: px(e.style.computed().padding.bottom) + px(b.bottom),
+        head: px(e.style.used().padding.top) + px(b.top),
+        tail: px(e.style.used().padding.bottom) + px(b.bottom),
         end_margin: crate::layout::box_kind::bfc_root(e)
             && !grid_container(e)
             && !flex_container(e)
             && matches!(
-                e.style.computed().height,
+                e.style.used().height,
                 None | Some(crate::style::values::value::Len::Auto)
             ),
         kids: Vec::new(),
@@ -109,17 +109,17 @@ pub(super) fn push_kids(
         let k = match n {
             // Внепоточные соседей не двигают (CSS 2.1 §9.3.1) и границу
             // соседей не прерывают.
-            Node::Element(k) if out_of_flow(&k.style.computed()) => continue,
-            Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => {
+            Node::Element(k) if out_of_flow(&k.style.used()) => continue,
+            Node::Element(k) if matches!(k.style.used().display, Some(Display::None)) => {
                 continue;
             }
             Node::Element(k)
-                if !k.inline && k.style.computed().display != Some(Display::Contents) =>
+                if !k.inline && k.style.used().display != Some(Display::Contents) =>
             {
                 k
             }
             Node::Element(k)
-                if k.inline && k.style.computed().display.is_none() && holds_blocks(k) =>
+                if k.inline && k.style.used().display.is_none() && holds_blocks(k) =>
             {
                 push_kids(&k.children, out, adjoins, cx, vcx);
                 continue;
@@ -152,7 +152,7 @@ pub(super) fn push_kids(
 /// Крайние поточные узлы; текст и строчная коробка не передают блочный break.
 fn edges(e: &Element) -> (Option<u64>, Option<u64>) {
     let nodes: Vec<_> = children(&e.children).filter(|n| !is_blank(n)).filter(|n| {
-        !matches!(n, Node::Element(k) if out_of_flow(&k.style.computed()) || k.style.computed().display == Some(Display::None))
+        !matches!(n, Node::Element(k) if out_of_flow(&k.style.used()) || k.style.used().display == Some(Display::None))
     }).collect();
     let block = |n: &&Node| match n {
         Node::Element(k) if !k.inline => Some(k.node_id),

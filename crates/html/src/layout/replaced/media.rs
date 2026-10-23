@@ -16,8 +16,8 @@ pub(crate) fn empty(e: &Element) -> bool {
     match e.tag.as_str() {
         "video" => e.attr("poster").is_none(),
         "embed" => e.attr("src").is_none() && e.attr("type").is_some(),
-        "audio" => e.style.computed().contains_width() || e.style.computed().contains_height(),
-        "object" => e.attr("data").is_none() && e.style.computed().contain_size == Some(true),
+        "audio" => e.style.used().contains_width() || e.style.used().contains_height(),
+        "object" => e.attr("data").is_none() && e.style.used().contain_size == Some(true),
         _ => false,
     }
 }
@@ -38,13 +38,13 @@ pub(crate) fn resolve(
     let normalized = replaced_used_style::normalize(e, avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let mut copy = image::pct_height_to_px(e, inherited);
-    if copy.style.computed().has_viewport_lengths(vcx) {
+    if copy.style.used().has_viewport_lengths(vcx) {
         copy.style.used_mut().resolve_viewport(viewport, vcx);
     }
     // A media resource is not an image source. Its unavailable natural size
     // must not trigger image decoding or a broken-image text placeholder.
     copy.attrs.retain(|(name, _)| name != "src");
-    if copy.style.computed().contain_size == Some(true) {
+    if copy.style.used().contain_size == Some(true) {
         return Some(copy);
     }
     let s = copy.style.used_mut();
@@ -133,8 +133,8 @@ mod tests {
         let mut e = video();
         e.style.used_mut().height = Some(Len::Px(40.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.computed().width, Some(Len::Px(300.0)));
-        assert_eq!(sized.style.computed().height, Some(Len::Px(40.0)));
+        assert_eq!(sized.style.used().width, Some(Len::Px(300.0)));
+        assert_eq!(sized.style.used().height, Some(Len::Px(40.0)));
     }
 
     #[test]
@@ -146,8 +146,8 @@ mod tests {
         e.style.used_mut().attr_height = Some(Len::Px(100.0));
         e.style.used_mut().max_width = Some(Len::Px(100.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.computed().width, Some(Len::Px(100.0)));
-        assert_eq!(sized.style.computed().height, Some(Len::Px(100.0)));
+        assert_eq!(sized.style.used().width, Some(Len::Px(100.0)));
+        assert_eq!(sized.style.used().height, Some(Len::Px(100.0)));
     }
 
     #[test]
@@ -157,7 +157,7 @@ mod tests {
         let mut e = video();
         e.style.used_mut().contain_size = Some(true);
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.computed().width, None);
-        assert_eq!(sized.style.computed().height, None);
+        assert_eq!(sized.style.used().width, None);
+        assert_eq!(sized.style.used().height, None);
     }
 }

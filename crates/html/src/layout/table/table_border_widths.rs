@@ -22,8 +22,8 @@ pub(super) fn resolve(
         || (e.style.cascaded().border_collapse.is_none() && e.attr("rules").is_some());
     let px_of_pre =
         |l: Option<Len>| crate::text::metrics::spacing_px(l, table_family, table_font, vcx);
-    let axes = super::axes::Axes::new(&e.style.computed());
-    let tb = e.style.computed().borders();
+    let axes = super::axes::Axes::new(&e.style.used());
+    let tb = e.style.used().borders();
     let bw_pre = axes.logical([
         px_of_pre(tb.top),
         px_of_pre(tb.right),
@@ -79,7 +79,7 @@ pub(super) fn resolve(
                 // (см. `rows_left`), иначе полуширины разбирались бы с
                 // соседом, которого у ячейки нет.
                 let sr = row_span_in_group(cell, rows_left.get(r).copied().unwrap_or(1));
-                let b = cell.style.computed().borders();
+                let b = cell.style.used().borders();
                 let own = axes.logical([
                     px_of_pre(b.top),
                     px_of_pre(b.right),

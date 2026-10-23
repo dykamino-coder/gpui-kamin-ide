@@ -24,9 +24,9 @@ pub(super) fn push_row(dom: &mut Element, row: &RowPush, grow: f32, axis: StackA
         })
     };
     let end = |k: &Element| match axis {
-        StackAxis::Horizontal => k.style.computed().margin.bottom,
-        StackAxis::VerticalLr => k.style.computed().margin.right,
-        StackAxis::VerticalRl => k.style.computed().margin.left,
+        StackAxis::Horizontal => k.style.used().margin.bottom,
+        StackAxis::VerticalLr => k.style.used().margin.right,
+        StackAxis::VerticalRl => k.style.used().margin.left,
     };
     if items().any(|k| !matches!(end(k), None | Some(Len::Px(_)))) {
         return false;
@@ -105,9 +105,9 @@ mod tests {
             };
             assert_eq!(
                 (
-                    item.style.computed().margin.bottom,
-                    item.style.computed().margin.right,
-                    item.style.computed().margin.left
+                    item.style.used().margin.bottom,
+                    item.style.used().margin.right,
+                    item.style.used().margin.left
                 ),
                 (
                     Some(Len::Px(expected.0)),
@@ -116,7 +116,7 @@ mod tests {
                 )
             );
             assert_eq!(
-                grid.style.computed().grid_rows,
+                grid.style.used().grid_rows,
                 Some(vec![TrackSize::Single(Track::Px(31.0))])
             );
         }

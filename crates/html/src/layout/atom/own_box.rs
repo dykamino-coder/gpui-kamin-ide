@@ -28,8 +28,8 @@ pub(super) fn own_box_atom(
     merged.resolve_viewport(opts.viewport, vcx);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
-    if e.style.computed().display == Some(Display::InlineBlock)
-        && e.style.computed().inline_display != Some(true)
+    if e.style.used().display == Some(Display::InlineBlock)
+        && e.style.used().inline_display != Some(true)
     {
         pseudo_line_layers::install(e, &mut merged, vcx);
     }
@@ -37,8 +37,8 @@ pub(super) fn own_box_atom(
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line
     // synthesize an alphabetic baseline at the atomic margin box's under edge.
-    if e.style.computed().display == Some(Display::InlineBlock)
-        && e.style.computed().inline_display != Some(true)
+    if e.style.used().display == Some(Display::InlineBlock)
+        && e.style.used().inline_display != Some(true)
         && merged.wm().vertical()
         && !inherited.wm().vertical()
         && !inherited.wm().turned()
@@ -56,7 +56,7 @@ pub(super) fn own_box_atom(
     // содержимого, и подставленный кегль строки накрывал детей-блоков
     // (`border-left-width-applies-to-012`: квадрат 96 выходил 19).
     let genuine_inline =
-        e.style.computed().display.is_none() || e.style.computed().inline_display == Some(true);
+        e.style.used().display.is_none() || e.style.used().inline_display == Some(true);
     if genuine_inline
         && merged.height.is_none()
         && !has_text(&e.children)
@@ -88,11 +88,11 @@ pub(super) fn own_box_atom(
     // колонками справа налево (`vertical-rl`) или слева направо
     // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
     // `element()`, поэтому ось ставится здесь.
-    if e.style.computed().display == Some(Display::InlineBlock)
+    if e.style.used().display == Some(Display::InlineBlock)
         && merged.wm().vertical()
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-                if !k.inline || matches!(k.style.computed().display, Some(Display::Block)))
+                if !k.inline || matches!(k.style.used().display, Some(Display::Block)))
         })
     {
         // Предел строчной оси детей — собственная высота коробки (как
@@ -107,13 +107,13 @@ pub(super) fn own_box_atom(
             Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
-        if let Some(h) = px_of(e.style.computed().height) {
-            let b = e.style.computed().borders();
-            let edges = if e.style.computed().border_box == Some(true) {
+        if let Some(h) = px_of(e.style.used().height) {
+            let b = e.style.used().borders();
+            let edges = if e.style.used().border_box == Some(true) {
                 px_of(b.top).unwrap_or(0.0)
                     + px_of(b.bottom).unwrap_or(0.0)
-                    + px_of(e.style.computed().padding.top).unwrap_or(0.0)
-                    + px_of(e.style.computed().padding.bottom).unwrap_or(0.0)
+                    + px_of(e.style.used().padding.top).unwrap_or(0.0)
+                    + px_of(e.style.used().padding.bottom).unwrap_or(0.0)
             } else {
                 0.0
             };
@@ -144,7 +144,7 @@ pub(super) fn own_box_atom(
     // Atomic flex/grid containers own the same CB scope. Table parts keep
     // the table-specific handling of their absolute children.
     let cb_layer = matches!(
-        e.style.computed().display,
+        e.style.used().display,
         Some(Display::InlineBlock | Display::InlineFlex | Display::InlineGrid)
     ) && !genuine_inline
         && crate::text::inline::establishes_cb(&merged);
@@ -164,6 +164,6 @@ pub(super) fn own_box_atom(
     }
     Some(opts.cx.contracts.build.effects(
         box_.children(kids).into_any_element(),
-        Effect::group(&e.style.computed(), vcx),
+        Effect::group(&e.style.used(), vcx),
     ))
 }

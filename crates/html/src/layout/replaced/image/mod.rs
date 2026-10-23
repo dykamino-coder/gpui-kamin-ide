@@ -32,12 +32,11 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     // Replaced boxes resolve viewport units from their raw style, too.
     resolved.style.used_mut().viewport_unit_insets = resolved
         .style
-        .computed()
+        .used()
         .viewport_unit_insets
         .or(inherited.viewport_unit_insets);
     let e = &resolved;
-    let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.computed().height, inherited.height)
-    else {
+    let (Some(Len::Pct(k)), Some(Len::Px(h))) = (e.style.used().height, inherited.height) else {
         return e.clone();
     };
     // `inline-block` сюда пускается: картинка СТРОКИ внутри `inline-block` с
@@ -94,10 +93,10 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
     let block_cb = matches!(inherited.display, None | Some(Display::Block));
     let h_base = block_cb.then_some(inherited.height).flatten();
     let mut copy = e.clone();
-    copy.style.used_mut().max_width = of(e.style.computed().max_width, inherited.width);
-    copy.style.used_mut().min_width = of(e.style.computed().min_width, inherited.width);
-    copy.style.used_mut().max_height = of(e.style.computed().max_height, h_base);
-    copy.style.used_mut().min_height = of(e.style.computed().min_height, h_base);
+    copy.style.used_mut().max_width = of(e.style.used().max_width, inherited.width);
+    copy.style.used_mut().min_width = of(e.style.used().min_width, inherited.width);
+    copy.style.used_mut().max_height = of(e.style.used().max_height, h_base);
+    copy.style.used_mut().min_height = of(e.style.used().min_height, h_base);
     copy
 }
 

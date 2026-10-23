@@ -36,7 +36,7 @@ pub(crate) fn generic_children(
     let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
         Cow::Borrowed(children)
     } else {
-        let children = match &e.style.computed().grid_areas {
+        let children = match &e.style.used().grid_areas {
             Some(areas) => place_named_areas(areas, e.children.clone()),
             None => e.children.clone(),
         };
@@ -51,18 +51,18 @@ pub(crate) fn generic_children(
             let lead_margin = if e.tag == "html" {
                 None
             } else {
-                let b = e.style.computed().borders();
+                let b = e.style.used().borders();
                 let (border, pad, own) = if reverse {
                     (
                         b.right,
-                        e.style.computed().padding.right,
-                        e.style.computed().margin.right,
+                        e.style.used().padding.right,
+                        e.style.used().margin.right,
                     )
                 } else {
                     (
                         b.left,
-                        e.style.computed().padding.left,
-                        e.style.computed().margin.left,
+                        e.style.used().padding.left,
+                        e.style.used().margin.left,
                     )
                 };
                 // Независимый контекст форматирования (overflow не
@@ -70,12 +70,12 @@ pub(crate) fn generic_children(
                 // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
                 // modes-4 §7.4): `margin-collapse-vlr-017`/`vrl-016` (`overflow: hidden`).
                 let sealed = makes_bfc
-                    || margin_px(border, &e.style.computed(), opts.cx.vcx()).unwrap_or(0.0) > 0.0
-                    || margin_px(pad, &e.style.computed(), opts.cx.vcx()).unwrap_or(0.0) > 0.0;
+                    || margin_px(border, &e.style.used(), opts.cx.vcx()).unwrap_or(0.0) > 0.0
+                    || margin_px(pad, &e.style.used(), opts.cx.vcx()).unwrap_or(0.0) > 0.0;
                 if sealed {
                     None
                 } else {
-                    Some(margin_px(own, &e.style.computed(), opts.cx.vcx()).unwrap_or(0.0))
+                    Some(margin_px(own, &e.style.used(), opts.cx.vcx()).unwrap_or(0.0))
                 }
             };
             // Доли полей/отступов — в точки от высоты контейнера ДО
@@ -92,7 +92,7 @@ pub(crate) fn generic_children(
                     &merged,
                     opts.viewport.0,
                 ),
-                &e.style.computed(),
+                &e.style.used(),
                 &merged,
             )
         } else {
@@ -106,11 +106,11 @@ pub(crate) fn generic_children(
     // Многоколонник клэмпом не режется (`continue: collapse` там как
     // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
     // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
-    let is_clamp = (e.style.computed().clamp_lines().is_some()
-        || (e.style.computed().clamp_by_height()
-            && e.style.computed().clamp_block_container()
+    let is_clamp = (e.style.used().clamp_lines().is_some()
+        || (e.style.used().clamp_by_height()
+            && e.style.used().clamp_block_container()
             && auto_clamp_limit(&merged).is_some()))
-        && !multicol_container(&e.style.computed());
+        && !multicol_container(&e.style.used());
     let clamp_outer = if is_clamp {
         Some((e.node_id, false))
     } else {

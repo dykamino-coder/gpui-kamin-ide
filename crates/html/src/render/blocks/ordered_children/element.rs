@@ -22,7 +22,7 @@ pub(crate) fn ordered_element(
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
     e.style.used_mut().flex_line_wraps =
-        e.style.computed().flex_item && inherited.flex_wrap == Some(true);
+        e.style.used().flex_item && inherited.flex_wrap == Some(true);
     e.style.used_mut().flex_main_vertical =
         matches!(inherited.flex_dir, Some(FlexDir::Col | FlexDir::ColReverse))
             != (inherited.wm().vertical());
@@ -80,9 +80,9 @@ pub(crate) fn ordered_element(
         None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
     ) && !inherited.wm().vertical()
         && !e.style.cascaded().wm().vertical()
-        && matches!(e.style.computed().height, Some(Len::Pct(_)))
+        && matches!(e.style.used().height, Some(Len::Pct(_)))
         && !matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -101,7 +101,7 @@ pub(crate) fn ordered_element(
             || inherited.aspect_ratio.is_some();
         if !cross_definite {
             e.style.used_mut().height = None;
-            let stretch = match e.style.computed().align_self {
+            let stretch = match e.style.used().align_self {
                 Some(a) => a == crate::style::computed::Align::Stretch,
                 None => matches!(
                     inherited.align_items,

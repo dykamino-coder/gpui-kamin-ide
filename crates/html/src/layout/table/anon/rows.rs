@@ -35,13 +35,13 @@ pub(in crate::layout::table) fn collect_rows<'a>(
             let shift = RowCarry {
                 dx: carry.dx + dx,
                 dy: carry.dy + dy,
-                background: e.style.computed().background.or(carry.background),
+                background: e.style.used().background.or(carry.background),
                 group: carry.group,
             };
             // Retain collapsed rows through intrinsic sizing and rowspan placement.
             // Роль задаётся тегом ИЛИ стилем: разметка на `div` с
             // `display: table-row` встречается не реже настоящих таблиц.
-            if e.tag == "tr" || e.style.computed().display == Some(Display::TableRow) {
+            if e.tag == "tr" || e.style.used().display == Some(Display::TableRow) {
                 out.push(TableRow {
                     element: e,
                     carry: shift,
@@ -49,7 +49,7 @@ pub(in crate::layout::table) fn collect_rows<'a>(
             } else if e.tag == "thead"
                 || e.tag == "tbody"
                 || e.tag == "tfoot"
-                || e.style.computed().display == Some(Display::TableRowGroup)
+                || e.style.used().display == Some(Display::TableRowGroup)
             {
                 // Группа с КАРТИНКОЙ красит и цвет САМА — полосой `grp_band`
                 // (§14.2: цвет лежит ПОД картинкой). Ячейка его не дублирует:
@@ -60,10 +60,10 @@ pub(in crate::layout::table) fn collect_rows<'a>(
                 // Отсечка держится на том, что полоса знает
                 // `attachment: fixed`: без этого ломается тройка
                 // `background-attachment-applies-to-*`.
-                let picture = e.style.computed().bg_image.is_some()
-                    || e.style.computed().gradient_raw.is_some()
-                    || (e.style.computed().background.is_some()
-                        && e.style.computed().bg_clip.is_some());
+                let picture = e.style.used().bg_image.is_some()
+                    || e.style.used().gradient_raw.is_some()
+                    || (e.style.used().background.is_some()
+                        && e.style.used().bg_clip.is_some());
                 let deeper = RowCarry {
                     background: if picture { None } else { shift.background },
                     group: Some(e),
@@ -77,8 +77,8 @@ pub(in crate::layout::table) fn collect_rows<'a>(
 
 /// Row-group collapse applies even when a row specifies visible.
 pub(in crate::layout::table) fn row_collapsed(row: &Element, group: Option<&Element>) -> bool {
-    row.style.computed().collapsed == Some(true)
-        || group.is_some_and(|g| g.style.computed().collapsed == Some(true))
+    row.style.used().collapsed == Some(true)
+        || group.is_some_and(|g| g.style.used().collapsed == Some(true))
 }
 
 #[cfg(test)]
@@ -166,7 +166,7 @@ mod tests {
             assert_eq!(rows.len(), 1);
             assert!(rows[0].carry.background.is_none());
             assert_eq!(
-                rows[0].carry.group.unwrap().style.computed().bg_clip,
+                rows[0].carry.group.unwrap().style.used().bg_clip,
                 Some(clip)
             );
         }

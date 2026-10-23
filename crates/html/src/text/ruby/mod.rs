@@ -66,10 +66,10 @@ fn ruby_unit_blank(unit: &[Node]) -> bool {
 /// действует только без своего `display`.
 pub(crate) fn ruby_role(e: &Element) -> Option<crate::style::computed::RubyRole> {
     use crate::style::computed::RubyRole;
-    if let Some(role) = e.style.computed().ruby_role {
+    if let Some(role) = e.style.used().ruby_role {
         return Some(role);
     }
-    if e.style.computed().display.is_some() {
+    if e.style.used().display.is_some() {
         return None;
     }
     match e.tag.as_str() {

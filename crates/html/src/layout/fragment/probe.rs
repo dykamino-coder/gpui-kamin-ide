@@ -23,14 +23,14 @@ use crate::style::values::value::Len;
 /// `display: flow-root` сюда входит: он
 /// сводится к `Block` с признаком `Computed::flow_root`.
 pub(crate) fn plain_block_tree(c: &Element, depth: u8) -> bool {
-    if c.style.computed().column_count.is_some() || c.style.computed().column_width.is_some() {
+    if c.style.used().column_count.is_some() || c.style.used().column_width.is_some() {
         return false;
     }
-    if c.style.computed().webkit_box == Some(true) {
+    if c.style.used().webkit_box == Some(true) {
         return false;
     }
     if !matches!(
-        c.style.computed().display,
+        c.style.used().display,
         None | Some(Display::Block) | Some(Display::ListItem)
     ) {
         return false;
@@ -53,13 +53,13 @@ pub(crate) fn plain_block_tree(c: &Element, depth: u8) -> bool {
 /// в следующем фрагментаинере параллельным потоком (css-break-3 §3).
 pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
     use crate::style::computed::FlexDir;
-    if c.style.computed().column_count.is_some()
-        || c.style.computed().column_width.is_some()
-        || c.style.computed().webkit_box == Some(true)
+    if c.style.used().column_count.is_some()
+        || c.style.used().column_width.is_some()
+        || c.style.used().webkit_box == Some(true)
     {
         return false;
     }
-    let s = &*c.style.computed();
+    let s = &*c.style.used();
     let flex_stack = s.display == Some(Display::Flex)
         && matches!(s.flex_dir, None | Some(FlexDir::Row))
         && s.flex_wrap == Some(true)
@@ -80,7 +80,7 @@ pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
     }
     c.children.iter().all(|n| match n {
         Node::Element(k) if flex_stack => {
-            let ks = &k.style.computed();
+            let ks = &k.style.used();
             let full = |l: &Option<Len>| matches!(l, Some(Len::Pct(p)) if (*p - 1.0).abs() < 1e-4);
             let zero = |l: &Option<Len>| match l {
                 None => true,
@@ -117,9 +117,9 @@ pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
 /// `IsEligibleForSizeContainment() … return false`). `content-visibility:
 /// hidden` ставит тот же `contain_size`.
 pub(crate) fn size_monolith(k: &Element) -> bool {
-    k.style.computed().contains_block_size()
+    k.style.used().contains_block_size()
         && !matches!(
-            k.style.computed().display,
+            k.style.used().display,
             Some(Display::TableCell) | Some(Display::TableRow) | Some(Display::TableRowGroup)
         )
         && !matches!(
@@ -145,7 +145,7 @@ pub(crate) fn forced_inside(e: &Element, depth: u8) -> bool {
         // Вне потока — свой поток (`edge_break`).
         Node::Element(k)
             if matches!(
-                k.style.computed().position,
+                k.style.used().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) =>
@@ -153,8 +153,8 @@ pub(crate) fn forced_inside(e: &Element, depth: u8) -> bool {
             false
         }
         Node::Element(k) => {
-            k.style.computed().break_before_force
-                || k.style.computed().break_after_force
+            k.style.used().break_before_force
+                || k.style.used().break_after_force
                 || (!forced_opaque(k) && forced_inside(k, depth - 1))
         }
         _ => false,
@@ -166,9 +166,9 @@ pub(crate) fn forced_opaque(k: &Element) -> bool {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     size_monolith(k)
-        || ((scrolls(k.style.computed().overflow_x) || scrolls(k.style.computed().overflow_y))
+        || ((scrolls(k.style.used().overflow_x) || scrolls(k.style.used().overflow_y))
             && !matches!(
-                k.style.computed().display,
+                k.style.used().display,
                 Some(Display::TableRow) | Some(Display::TableRowGroup)
             )
             && !matches!(k.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot"))

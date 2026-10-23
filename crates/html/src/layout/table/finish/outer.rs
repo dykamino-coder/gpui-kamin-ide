@@ -125,9 +125,9 @@ pub(super) fn finish_table_outer(
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
         let wrap = BoxStyle::new(Computed {
-            position: e.style.computed().position,
-            inset: e.style.computed().inset,
-            z_index: e.style.computed().z_index,
+            position: e.style.used().position,
+            inset: e.style.used().inset,
+            z_index: e.style.used().z_index,
             ..Default::default()
         });
         let mut wrap = cx

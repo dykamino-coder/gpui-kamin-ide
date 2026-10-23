@@ -50,7 +50,7 @@ pub(super) fn clone_plan_of(
                     .filter(|_| {
                         fixed.is_some()
                             && plain_block_tree(&m, 4)
-                            && visible_overflow(&m.style.computed())
+                            && visible_overflow(&m.style.used())
                     })
                     .filter(|u| u.height > s.height + COORD_EPS)
                     {
@@ -71,7 +71,7 @@ pub(super) fn clone_plan_of(
                         solid,
                         avoid: Vec::new(),
                         keep: Vec::new(),
-                        span: c.style.computed().column_span == Some(true) && !c.inline,
+                        span: c.style.used().column_span == Some(true) && !c.inline,
                         over,
                         clone_dec: clone_dec(c),
                         // Тот же предикат, что у `StackChild` ниже:
@@ -102,12 +102,12 @@ pub(super) fn column_rule_of(
     merged: &Computed,
     opts: &RenderOpts,
 ) -> Option<(f32, gpui::Hsla)> {
-    if e.style.computed().column_rule_visible == Some(true) {
+    if e.style.used().column_rule_visible == Some(true) {
         Some((
-            match e.style.computed().column_rule_width {
+            match e.style.used().column_rule_width {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => {
-                    k * match e.style.computed().font_size {
+                    k * match e.style.used().font_size {
                         Some(Len::Px(fs)) => fs,
                         _ => opts.base_size(),
                     }
@@ -115,7 +115,7 @@ pub(super) fn column_rule_of(
                 _ => 3.0,
             },
             e.style
-                .computed()
+                .used()
                 .column_rule_color
                 .resolve(merged.current_color())
                 .to_hsla(),

@@ -88,7 +88,7 @@ fn collect(
             }
             Node::Element(e) => {
                 if !crate::layout::box_kind::real_inline(e)
-                    || !plain_span(&e.style.computed(), e.style.cascaded())
+                    || !plain_span(&e.style.used(), e.style.cascaded())
                 {
                     return None;
                 }

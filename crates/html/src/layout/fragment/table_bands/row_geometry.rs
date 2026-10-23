@@ -39,7 +39,7 @@ pub(crate) fn row_geometry<'a>(
 ) -> Option<Vec<RowGeometry<'a>>> {
     let mut out = Vec::with_capacity(rows.len());
     for (i, &(group, row)) in rows.iter().enumerate() {
-        let mut height = match row.style.computed().height {
+        let mut height = match row.style.used().height {
             None => 0.0,
             Some(Len::Px(h)) => h,
             _ => return None,

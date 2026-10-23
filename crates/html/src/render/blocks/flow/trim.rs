@@ -100,7 +100,7 @@ pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
     rest.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
         Node::Element(e) => {
-            e.style.computed().display == Some(Display::None) || out_of_flow(&e.style.computed())
+            e.style.used().display == Some(Display::None) || out_of_flow(&e.style.used())
         }
     })
 }

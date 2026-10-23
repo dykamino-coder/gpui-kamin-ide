@@ -39,14 +39,14 @@ pub(super) fn resolve_root_page(
         // применяются (Blink `StyleForPage`: «The root is display:none. One
         // page box will still be created, but no properties should apply»;
         // `root-element-display-none-print` против `blank-print-ref`).
-        if matches!(e.style.computed().display, Some(Display::None)) {
+        if matches!(e.style.used().display, Some(Display::None)) {
             *none = true;
             *nodes = Vec::new();
             break;
         }
         let e = (*e).clone();
         let side = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-        let b = e.style.computed().borders();
+        let b = e.style.used().borders();
         // Обёртку с видимой рамкой или своим `display` (сетка, флекс) не
         // снимаем: снятая теряла рамку и раскладку (`page-box-011-print-ref`:
         // `body { border: 10px solid }` — чёрной рамки не было;
@@ -57,7 +57,7 @@ pub(super) fn resolve_root_page(
             .iter()
             .any(|l| side(l) > 0.0);
         let boxy = matches!(
-            e.style.computed().display,
+            e.style.used().display,
             Some(Display::Grid)
                 | Some(Display::InlineGrid)
                 | Some(Display::Flex)
@@ -65,34 +65,31 @@ pub(super) fn resolve_root_page(
                 | Some(Display::GridLanes)
         );
         if framed || boxy {
-            if let Some(c) = e.style.computed().background.filter(|c| c.a > 0.0) {
+            if let Some(c) = e.style.used().background.filter(|c| c.a > 0.0) {
                 *canvas = Some(c.to_hsla());
             }
             // Gradients and images of the propagated background (CSS 2.1 §14.2)
             // paint the canvas too, above its colour (`page_stack::canvas`).
-            if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style.computed()) {
+            if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style.used()) {
                 *canvas_img = Some(l);
             }
             break;
         }
-        *left += side(&e.style.computed().margin.left)
-            + side(&b.left)
-            + side(&e.style.computed().padding.left);
-        *right += side(&e.style.computed().margin.right)
+        *left +=
+            side(&e.style.used().margin.left) + side(&b.left) + side(&e.style.used().padding.left);
+        *right += side(&e.style.used().margin.right)
             + side(&b.right)
-            + side(&e.style.computed().padding.right);
-        *top += side(&e.style.computed().margin.top)
-            + side(&b.top)
-            + side(&e.style.computed().padding.top);
-        if let Some(c) = e.style.computed().background.filter(|c| c.a > 0.0) {
+            + side(&e.style.used().padding.right);
+        *top += side(&e.style.used().margin.top) + side(&b.top) + side(&e.style.used().padding.top);
+        if let Some(c) = e.style.used().background.filter(|c| c.a > 0.0) {
             *canvas = Some(c.to_hsla());
         }
         // Gradients and images of the propagated background (CSS 2.1 §14.2)
         // paint the canvas too, above its colour (`page_stack::canvas`).
-        if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style.computed()) {
+        if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style.used()) {
             *canvas_img = Some(l);
         }
-        if let Some(p) = &e.style.computed().page {
+        if let Some(p) = &e.style.used().page {
             *root_page = p.clone();
         }
         *root = box_style(root, &e.style, vcx);

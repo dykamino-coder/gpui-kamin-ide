@@ -44,22 +44,22 @@ pub(crate) fn leading_chain(
             // фантом, строка есть (css-inline-3 §invisible-line-boxes).
             if ch.children.is_empty()
                 && !replaced_inline(&ch.tag)
-                && !inline_axis_edges(&ch.style.computed())
+                && !inline_axis_edges(&ch.style.used())
             {
                 continue;
             }
             return Some(s);
         }
         // Атомарный строчный в потоке есть и рождает строчную коробку.
-        if atomic_inline(&ch.style.computed()) {
+        if atomic_inline(&ch.style.used()) {
             return Some(s);
         }
         // Плавающий и абсолютный в потоке не участвуют и примыкания не рвут.
-        if !in_flow(&ch.style.computed()) {
-            if ch.style.computed().float.is_some_and(|f| f != 0) {
-                adjoining_left |= ch.style.computed().float.is_some_and(|f| f < 0);
-                adjoining_right |= ch.style.computed().float.is_some_and(|f| f > 0);
-                let w = px_margin_w(&ch.style.computed()).unwrap_or(0.0);
+        if !in_flow(&ch.style.used()) {
+            if ch.style.used().float.is_some_and(|f| f != 0) {
+                adjoining_left |= ch.style.used().float.is_some_and(|f| f < 0);
+                adjoining_right |= ch.style.used().float.is_some_and(|f| f > 0);
+                let w = px_margin_w(&ch.style.used()).unwrap_or(0.0);
                 adjoining_floats = Some(adjoining_floats.map_or(w, |v| v.min(w)));
             }
             continue;
@@ -71,8 +71,8 @@ pub(crate) fn leading_chain(
         // Blink HasClearancePastAdjoiningFloats tests the cleared side.
         // Keep definite-height boxes on the existing clearance path: their
         // external float offset cannot be resolved by this margin-only walk.
-        if ch.style.computed().clear.is_some_and(|side| {
-            ch.style.computed().height.is_some()
+        if ch.style.used().clear.is_some_and(|side| {
+            ch.style.used().height.is_some()
                 || (side <= 0 && adjoining_left)
                 || (side >= 0 && adjoining_right)
         }) {
@@ -91,8 +91,8 @@ pub(crate) fn leading_chain(
         s = adjoin(
             s,
             strut_of(margin_or_bail(
-                ch.style.computed().margin.top,
-                &ch.style.computed(),
+                ch.style.used().margin.top,
+                &ch.style.used(),
                 vcx,
             )?),
         );
@@ -114,15 +114,15 @@ pub(crate) fn leading_chain(
         // его первого ребёнка (и всё, что с ним схлопнулось) обрезано, наружу
         // примыкать нечему. Без этого поле 50 ребёнка уходило через контейнер
         // в `body`, и страница съезжала на 50 (`block-container-non-adjoining-item`).
-        if top_edge_open_at(ch, vcx.collapse.width) && ch.style.computed().margin_trim & 1 == 0 {
+        if top_edge_open_at(ch, vcx.collapse.width) && ch.style.used().margin_trim & 1 == 0 {
             // Содержащий блок детей `ch` — сам `ch`: его ширина точками —
             // оценка для `bfc_no_fit` на спуске.
-            let cb = match ch.style.computed().width {
+            let cb = match ch.style.used().width {
                 Some(Len::Px(w)) if w > 0.0 => Some(w),
                 _ => cb,
             };
             // Внуки меряют доли от содержимого `ch`, а не от уровня (§10.1 п.2).
-            let inner = with_inner_cb(&ch.style.computed(), vcx, |vcx| {
+            let inner = with_inner_cb(&ch.style.used(), vcx, |vcx| {
                 leading_chain(&ch.children, path, eat, cb, vcx)
             });
             s = adjoin(s, inner?);
@@ -155,23 +155,23 @@ pub(crate) fn trailing_chain(
         if ch.inline && !inline_marked_block(ch) {
             if ch.children.is_empty()
                 && !replaced_inline(&ch.tag)
-                && !inline_axis_edges(&ch.style.computed())
+                && !inline_axis_edges(&ch.style.used())
             {
                 continue;
             }
             return Some(s);
         }
-        if atomic_inline(&ch.style.computed()) {
+        if atomic_inline(&ch.style.used()) {
             return Some(s);
         }
-        if !in_flow(&ch.style.computed()) {
+        if !in_flow(&ch.style.used()) {
             continue;
         }
         s = adjoin(
             s,
             strut_of(margin_or_bail(
-                ch.style.computed().margin.bottom,
-                &ch.style.computed(),
+                ch.style.used().margin.bottom,
+                &ch.style.used(),
                 vcx,
             )?),
         );
@@ -185,7 +185,7 @@ pub(crate) fn trailing_chain(
         eat.push((path.clone(), false));
         // Заданная высота или нижняя рамка/отступ отрезают цепочку: поле
         // внука к краю контейнера уже не примыкает.
-        if ch.style.computed().height.is_none() && top_edge_open_at(ch, vcx.collapse.width) {
+        if ch.style.used().height.is_none() && top_edge_open_at(ch, vcx.collapse.width) {
             s = adjoin(s, trailing_chain(&ch.children, path, eat, vcx)?);
         }
         path.pop();

@@ -188,10 +188,10 @@ pub(super) fn build_copy(
     // фрагмента клала элементы автоматически
     // (`grid-item-fragmentation-026`: оба в
     // области `a`, второй уезжал во 2-й ряд).
-    let kids = match &copy.style.computed().grid_areas {
+    let kids = match &copy.style.used().grid_areas {
         Some(areas)
             if matches!(
-                copy.style.computed().display,
+                copy.style.used().display,
                 Some(Display::Grid) | Some(Display::InlineGrid)
             ) =>
         {

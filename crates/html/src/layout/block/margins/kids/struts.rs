@@ -45,13 +45,12 @@ pub(crate) fn emit_margin_struts(
         // родня в потоке рождают строчную коробку: в `bidi-box-model-*` такой
         // сосед стоит между блоками сплошь, и разрыв струны разводит их
         // полями врозь. Вернуть можно только с настоящей строчной коробкой.
-        if !in_flow(&e.style.computed()) {
+        if !in_flow(&e.style.used()) {
             band_clearance::remember_float_margin(e, *strut, *emitted);
             continue;
         }
-        let top = margin_px(e.style.computed().margin.top, &e.style.computed(), vcx).unwrap_or(0.0);
-        let bottom =
-            margin_px(e.style.computed().margin.bottom, &e.style.computed(), vcx).unwrap_or(0.0);
+        let top = margin_px(e.style.used().margin.top, &e.style.used(), vcx).unwrap_or(0.0);
+        let bottom = margin_px(e.style.used().margin.bottom, &e.style.used(), vcx).unwrap_or(0.0);
         let through = through_strut(e, vcx);
         let mut merged = match *strut {
             Some(s) => {
@@ -79,7 +78,7 @@ pub(crate) fn emit_margin_struts(
         // Верхнее поле уже выложено рядом обтекания, поэтому наружу идёт
         // только остаток.
         if through.is_none()
-            && e.style.computed().clear.is_some()
+            && e.style.used().clear.is_some()
             && through_strut_no_clear(e, vcx).is_some()
         {
             *emitted = top;

@@ -20,12 +20,12 @@ pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
                 // блока (`css-position/multicol/*-in-multicols`).
                 Node::Element(e)
                     if matches!(
-                        e.style.computed().position,
+                        e.style.used().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ) => {}
                 Node::Element(e) => {
-                    let s = &e.style.computed();
+                    let s = &e.style.used();
                     // Свой шрифт куска — объявленный в каскаде: вычисленный
                     // стиль несёт и унаследованный.
                     let declared = e.style.cascaded();

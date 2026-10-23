@@ -23,25 +23,25 @@ use crate::style::values::value::Len;
 /// поднятое тело без отбивки).
 pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
     use crate::style::computed::Position;
-    if !c.style.computed().bdb_clone {
+    if !c.style.used().bdb_clone {
         return None;
     }
     fn oof_inside(e: &Element) -> bool {
-        e.children.iter().any(
-            |n| matches!(n, Node::Element(k) if out_of_flow(&k.style.computed()) || oof_inside(k)),
-        )
+        e.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style.used()) || oof_inside(k)))
     }
     if c.inline
         || solid_box(c)
         || table_box(c)
-        || c.style.computed().border_box == Some(true)
-        || (multicol_container(&c.style.computed()) && c.children.iter().any(|n| !is_blank(n)))
-        || c.style.computed().transform.is_some()
-        || c.style.computed().filter.is_some()
-        || c.style.computed().mask_image.is_some()
-        || c.style.computed().opacity.is_some_and(|o| o < 1.0)
+        || c.style.used().border_box == Some(true)
+        || (multicol_container(&c.style.used()) && c.children.iter().any(|n| !is_blank(n)))
+        || c.style.used().transform.is_some()
+        || c.style.used().filter.is_some()
+        || c.style.used().mask_image.is_some()
+        || c.style.used().opacity.is_some_and(|o| o < 1.0)
         || matches!(
-            c.style.computed().position,
+            c.style.used().position,
             Some(Position::Sticky) | Some(Position::Absolute) | Some(Position::Fixed)
         )
         || oof_inside(c)
@@ -49,18 +49,18 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
         return None;
     }
     let px_of = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-    let b = c.style.computed().borders();
-    let dt = px_of(&c.style.computed().padding.top) + px_of(&b.top);
-    let db = px_of(&c.style.computed().padding.bottom) + px_of(&b.bottom);
+    let b = c.style.used().borders();
+    let dt = px_of(&c.style.used().padding.top) + px_of(&b.top);
+    let db = px_of(&c.style.used().padding.bottom) + px_of(&b.bottom);
     // Нулевое украшение тоже клонируется, если фрагменту есть что рисовать
     // своё: «'box-shadow' … applied to each fragment independently», «A
     // no-repeat background image will thus be rendered once in each
     // fragment» (§break-decoration). `clone-009`: у каждого квадрата свои тень
     // и контур; маска `slice` срезала бы их у обоих.
-    let paints = !c.style.computed().shadows.is_empty()
-        || c.style.computed().outline.is_some()
-        || c.style.computed().bg_image.is_some()
-        || c.style.computed().gradient.is_some();
+    let paints = !c.style.used().shadows.is_empty()
+        || c.style.used().outline.is_some()
+        || c.style.used().bg_image.is_some()
+        || c.style.used().gradient.is_some();
     (dt + db > 0.01 || paints).then_some((dt, db))
 }
 
@@ -93,7 +93,7 @@ pub(crate) fn clone_fragment(
 ) -> Element {
     use crate::style::computed::{Overflow, Position, Sides};
     let mut body = c.clone();
-    body.style = c.style.computed().paint_off().into();
+    body.style = c.style.used().paint_off().into();
     body.style.used_mut().padding = Sides::default();
     body.style.used_mut().border_width = Sides::default();
     body.style.used_mut().border_visible = [Some(false); 4];

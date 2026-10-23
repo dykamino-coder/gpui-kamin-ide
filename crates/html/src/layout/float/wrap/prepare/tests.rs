@@ -44,10 +44,10 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
     let Node::Element(float) = &nodes[0] else {
         panic!("float")
     };
-    assert_eq!(float.style.computed().margin.left, resolved.margin.left);
-    assert!(matches!(float.style.computed().margin.left, Some(Len::Px(v)) if v > 0.));
-    assert_eq!(float.style.computed().margin.right, Some(Len::Pct(0.1)));
-    assert_eq!(float.style.computed().font_size, Some(Len::Pct(2.)));
+    assert_eq!(float.style.used().margin.left, resolved.margin.left);
+    assert!(matches!(float.style.used().margin.left, Some(Len::Px(v)) if v > 0.));
+    assert_eq!(float.style.used().margin.right, Some(Len::Pct(0.1)));
+    assert_eq!(float.style.used().font_size, Some(Len::Pct(2.)));
 }
 
 #[test]
@@ -96,9 +96,9 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
     let Node::Element(float) = &host.children[0] else {
         panic!("float")
     };
-    assert_eq!(float.style.computed().clamp_lines(), Some(2));
-    assert_eq!(float.style.computed().width, Some(Len::Ch(8.5)));
-    assert!(matches!(float.style.computed().margin.left, Some(Len::Px(v)) if v > 0.));
+    assert_eq!(float.style.used().clamp_lines(), Some(2));
+    assert_eq!(float.style.used().width, Some(Len::Ch(8.5)));
+    assert!(matches!(float.style.used().margin.left, Some(Len::Px(v)) if v > 0.));
 }
 
 #[test]
@@ -166,14 +166,14 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
         panic!("inline fragment")
     };
     assert!(fragment.children.is_empty());
-    assert_eq!(fragment.style.computed().margin.left, Some(Len::Px(40.)));
+    assert_eq!(fragment.style.used().margin.left, Some(Len::Px(40.)));
     for node in &nodes[1..] {
         let Node::Element(float) = node else {
             panic!("float")
         };
-        assert_eq!(float.style.computed().float, Some(-1));
-        assert_eq!(float.style.computed().width, Some(Len::Pct(0.5)));
-        assert_eq!(float.style.computed().margin.left, None);
+        assert_eq!(float.style.used().float, Some(-1));
+        assert_eq!(float.style.used().width, Some(Len::Pct(0.5)));
+        assert_eq!(float.style.used().margin.left, None);
     }
     let (host, end, lead, _) = host_for_run(
         16.,

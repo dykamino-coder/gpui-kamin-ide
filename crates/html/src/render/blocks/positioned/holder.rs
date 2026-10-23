@@ -16,9 +16,9 @@ pub(crate) fn inset_holder_box(
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut holder = Computed {
-        position: e.style.computed().position,
-        inset: e.style.computed().inset,
-        z_index: e.style.computed().z_index,
+        position: e.style.used().position,
+        inset: e.style.used().inset,
+        z_index: e.style.used().z_index,
         display: Some(Display::Flex),
         flex_dir: Some(if block_axis {
             crate::style::computed::FlexDir::Col
@@ -37,31 +37,31 @@ pub(crate) fn inset_holder_box(
     // сам абсолют (css-position-3 §3.8; `inline-size: 100px;
     // margin: auto; inset: 0`).
     if block_axis {
-        holder.margin.left = e.style.computed().margin.left;
-        holder.margin.right = e.style.computed().margin.right;
+        holder.margin.left = e.style.used().margin.left;
+        holder.margin.right = e.style.used().margin.right;
     } else {
-        holder.margin.top = e.style.computed().margin.top;
-        holder.margin.bottom = e.style.computed().margin.bottom;
+        holder.margin.top = e.style.used().margin.top;
+        holder.margin.bottom = e.style.used().margin.bottom;
     }
     // Поперечный размер держателя — border-box внутренней коробки:
     // её рамка и отбивка прибавляются (у держателя своих нет).
     let px_of = px_lossy_zero;
-    let bd = e.style.computed().borders();
+    let bd = e.style.used().borders();
     if block_axis {
-        let extra = px_of(e.style.computed().padding.left)
-            + px_of(e.style.computed().padding.right)
+        let extra = px_of(e.style.used().padding.left)
+            + px_of(e.style.used().padding.right)
             + px_of(bd.left)
             + px_of(bd.right);
-        holder.width = match e.style.computed().width {
+        holder.width = match e.style.used().width {
             Some(Len::Px(w)) => Some(Len::Px(w + extra)),
             other => other.filter(|l| !kw_len(Some(*l))),
         };
     } else {
-        let extra = px_of(e.style.computed().padding.top)
-            + px_of(e.style.computed().padding.bottom)
+        let extra = px_of(e.style.used().padding.top)
+            + px_of(e.style.used().padding.bottom)
             + px_of(bd.top)
             + px_of(bd.bottom);
-        holder.height = match e.style.computed().height {
+        holder.height = match e.style.used().height {
             Some(Len::Px(h)) => Some(Len::Px(h + extra)),
             other => other.filter(|l| !kw_len(Some(*l))),
         };

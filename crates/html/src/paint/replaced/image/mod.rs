@@ -51,7 +51,7 @@ fn view_boxed(
     let local = (src.starts_with("file:") || src.starts_with('/')).then_some(src);
     let source = crate::resources::css_images::element_source(
         local.unwrap_or(src),
-        &e.style.computed(),
+        &e.style.used(),
         vcx,
     )
     .map(crate::paint::background::Source::from_cpu)?;
@@ -63,7 +63,7 @@ fn view_boxed(
     let ViewBoxSize {
         view: (vx, vy, vw, vh),
         size: (bw, bh),
-    } = view_box_size(&e.style.computed(), vb, (w0, h0))?;
+    } = view_box_size(&e.style.used(), vb, (w0, h0))?;
     let mut boxed = e.clone();
     boxed.style.used_mut().object_view_box = None;
     boxed.style.used_mut().width = Some(Len::Px(bw));

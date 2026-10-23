@@ -72,7 +72,7 @@ fn empty_inline_fragment_keeps_its_margin_in_the_paragraph() {
     let Node::Element(span) = &run.children[0] else {
         panic!("inline fragment");
     };
-    assert_eq!(span.style.computed().margin.left, Some(Len::Px(40.)));
+    assert_eq!(span.style.used().margin.left, Some(Len::Px(40.)));
     assert!(span.children.is_empty());
 }
 

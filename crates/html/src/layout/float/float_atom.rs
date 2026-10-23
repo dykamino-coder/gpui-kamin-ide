@@ -19,10 +19,10 @@ pub(super) fn band_atom(
     opts: &RenderOpts,
 ) -> Option<crate::layout::fragment::types::FlowChild> {
     let vcx = opts.cx.vcx();
-    let (w, h) = px_margin_box(&c.style.computed())?;
+    let (w, h) = px_margin_box(&c.style.used())?;
     let (ml, mt) = (
-        px_margin(&c.style.computed().margin.left).unwrap_or(0.0),
-        px_margin(&c.style.computed().margin.top).unwrap_or(0.0),
+        px_margin(&c.style.used().margin.left).unwrap_or(0.0),
+        px_margin(&c.style.used().margin.top).unwrap_or(0.0),
     );
     let mut merged = box_style(inherited, &c.style, vcx);
     // This path bypasses element(); positioned descendants still need the DOM CB key.
@@ -51,7 +51,7 @@ pub(super) fn band_atom(
             )
             .into_any_element()
     };
-    let el = if px_margin_box(&inner.style.computed()) == Some((w, h)) {
+    let el = if px_margin_box(&inner.style.used()) == Some((w, h)) {
         built
     } else {
         div()

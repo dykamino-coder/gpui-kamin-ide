@@ -25,7 +25,7 @@ pub(super) fn prepare_cell_box(
     if inherits(G::Padding) {
         cell.style.used_mut().padding = cm.padding;
     }
-    if cell.style.computed().border_inherit
+    if cell.style.used().border_inherit
         || inherits(G::BorderWidth)
         || inherits(G::BorderStyle)
         || inherits(G::BorderColor)
@@ -70,13 +70,13 @@ pub(super) fn prepare_cell_box(
         cell.style.used_mut(),
         cm,
         spans.span_cols,
-        geom.e.style.computed().table_fixed == Some(true),
+        geom.e.style.used().table_fixed == Some(true),
         geom.table_is_vertical,
         spans.spans_collapsed,
     );
     let orthogonal_inline = cell.style.cascaded().wm().vertical()
         && !geom.e.style.cascaded().wm().vertical()
-        && cell.style.computed().width_from_inline;
+        && cell.style.used().width_from_inline;
     if !geom.table_is_vertical
         && !orthogonal_inline
         // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
@@ -84,7 +84,7 @@ pub(super) fn prepare_cell_box(
         // are treated as auto); left on the box it widened the table alone
         // (`calc-width-table-auto-1` row 4).
         && matches!(
-            cell.style.computed().width,
+            cell.style.used().width,
             Some(Len::Px(_)) | Some(Len::Pct(_)) | Some(Len::Calc(_))
         )
     {
@@ -99,12 +99,12 @@ pub(super) fn prepare_cell_box(
     // высоту.
     if !(cell.style.cascaded().wm().vertical()
         && !geom.e.style.cascaded().wm().vertical()
-        && cell.style.computed().width_from_inline
+        && cell.style.used().width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).
         || geom.table_is_vertical)
         && matches!(
-            cell.style.computed().width,
+            cell.style.used().width,
             Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))
         )
     {
@@ -114,8 +114,8 @@ pub(super) fn prepare_cell_box(
     // Preserve authored cell width as a minimum, then stretch to the row.
     if geom.table_is_vertical {
         let size = crate::layout::table::col_measure::cell_font_px(
-            cell.style.computed().font_size,
-            row_state.row.style.computed().font_size,
+            cell.style.used().font_size,
+            row_state.row.style.used().font_size,
             geom.table_font,
         );
         let family = cell

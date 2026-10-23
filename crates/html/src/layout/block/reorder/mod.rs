@@ -16,7 +16,7 @@ pub(crate) use orthogonal::orthogonal_vertical_children;
 /// разметки, как того требует CSS.
 pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     let ordered = nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.computed().order.is_some(),
+        Node::Element(e) => e.style.used().order.is_some(),
         Node::Text(_) => false,
     });
     if !ordered {
@@ -75,14 +75,14 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
     nodes.sort_by_key(|n| match n {
         Node::Element(e)
             if matches!(
-                e.style.computed().position,
+                e.style.used().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) =>
         {
             0
         }
-        Node::Element(e) => e.style.computed().order.unwrap_or(0),
+        Node::Element(e) => e.style.used().order.unwrap_or(0),
         Node::Text(_) => 0,
     });
     nodes
@@ -160,7 +160,7 @@ pub(crate) fn resolve_inline_pct(
     let base = base.max(0.0);
     for node in children.iter_mut() {
         let Node::Element(ch) = node else { continue };
-        if ch.inline || !in_flow(&ch.style.computed()) {
+        if ch.inline || !in_flow(&ch.style.used()) {
             continue;
         }
         if !vertical && !ch.style.cascaded().wm().vertical() {

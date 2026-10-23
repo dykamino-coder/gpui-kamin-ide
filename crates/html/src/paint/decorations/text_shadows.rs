@@ -127,12 +127,12 @@ fn shadow_list(c: &crate::style::computed::Computed) -> Vec<Shadow> {
 fn atomic(e: &crate::dom::Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
     // Кусок со своей коробкой абзац ставит атомом со СВОИМ абзацем внутри,
     // и тень тот рисует сам (`render::has_own_box`).
-    let font = match e.style.computed().font_size {
+    let font = match e.style.used().font_size {
         Some(crate::style::values::value::Len::Px(v)) => v,
         _ => crate::defaults::MEDIUM_FONT_SIZE_PX,
     };
     !e.inline
-        || crate::layout::positioned::predicates::has_own_box(&e.style.computed(), font, vcx)
+        || crate::layout::positioned::predicates::has_own_box(&e.style.used(), font, vcx)
         || matches!(
             e.tag.as_str(),
             "img"

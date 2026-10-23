@@ -23,7 +23,7 @@ pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>
     // auto height again, undoing the constraint that separated the margins.
     for node in &mut e.children {
         if let Node::Element(child) = node
-            && in_flow(&child.style.computed())
+            && in_flow(&child.style.used())
         {
             pin_inherited_margins(child, false, true, vcx);
             child.style.used_mut().margin.bottom = Some(Len::Px(0.0));
@@ -38,7 +38,7 @@ pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>
 /// Unknown content remains on the existing path; this proof uses only
 /// one definite block child whose border edge can be calculated here.
 pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
-    let st = e.style.computed();
+    let st = e.style.used();
     let Some(mut cap) = margin_px(st.max_height, &st, vcx) else {
         return false;
     };
@@ -68,10 +68,10 @@ pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
         let child = match node {
             Node::Text(text) if blank_text(text) => continue,
             Node::Text(_) => return false,
-            Node::Element(child) if !in_flow(&child.style.computed()) => continue,
+            Node::Element(child) if !in_flow(&child.style.used()) => continue,
             Node::Element(child) => child,
         };
-        let cs = child.style.computed();
+        let cs = child.style.used();
         if bottom.is_some()
             || inline_level_box(child)
             || cs.clear.is_some()
@@ -100,7 +100,7 @@ pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
 }
 
 pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
-    let st = e.style.computed();
+    let st = e.style.used();
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     match margin_px(st.min_height, &st, vcx) {
         None => !zero(st.min_height),
@@ -112,10 +112,10 @@ pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
                 match c {
                     Node::Text(t) if blank_text(t) => {}
                     Node::Text(_) => known = false,
-                    Node::Element(ch) if !in_flow(&ch.style.computed()) => {}
+                    Node::Element(ch) if !in_flow(&ch.style.used()) => {}
                     Node::Element(ch) if ch.inline && inline_level_box(ch) => known = false,
                     Node::Element(ch) => {
-                        let cs = ch.style.computed();
+                        let cs = ch.style.used();
                         let b = cs.borders();
                         let side = |l: Option<Len>| match l {
                             None => Some(0.0),

@@ -105,9 +105,9 @@ fn mask_keeps_decoration_records_and_original_text_color() {
         panic!("missing span")
     };
     assert_eq!(mask.style.cascaded().color, owner.color);
-    assert_eq!(mask.style.computed().decors, owner.decors);
+    assert_eq!(mask.style.used().decors, owner.decors);
     assert_eq!(
-        mask.style.computed().text_shadow_ink,
+        mask.style.used().text_shadow_ink,
         Some(Color::parse("green", vcx).unwrap())
     );
 }

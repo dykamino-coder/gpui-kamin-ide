@@ -15,7 +15,7 @@ use crate::style::computed::{AnimSpec, Computed};
 /// (css-cascade-5 §cascade-origin) — `translation-animation-on-important-
 /// property` с `transform: none !important` уехала бы на середину пути.
 pub(crate) fn bake_frozen(e: &Element, transforms: bool, vcx: ValueCx<'_>) -> Option<Element> {
-    let own = e.style.computed();
+    let own = e.style.used();
     let (Some(frames), Some(spec)) = (e.anim.as_ref(), own.animation.as_ref()) else {
         return None;
     };

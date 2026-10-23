@@ -24,7 +24,7 @@ pub(crate) fn group_shape(
 ) {
     let positioned = |e: &Element| {
         matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -51,7 +51,7 @@ pub(crate) fn group_shape(
                      mut forced,
                      mut solid,
                  }| {
-                    let floated = e.style.computed().float.unwrap_or(0) != 0;
+                    let floated = e.style.used().float.unwrap_or(0) != 0;
                     // Письмо — своё или унаследованное от корня (`html, body {
                     // writing-mode }` снимаются выше, свой стиль ребёнка его не
                     // несёт).

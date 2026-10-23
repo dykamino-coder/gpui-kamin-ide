@@ -53,7 +53,7 @@ pub(crate) fn pin_inherited_margins(
     bottom: bool,
     vcx: crate::document::state::ValueCx<'_>,
 ) {
-    let own = e.style.computed().margin;
+    let own = e.style.used().margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
         for (i, want, src) in [(0usize, top, own.top), (2, bottom, own.bottom)] {
@@ -64,7 +64,7 @@ pub(crate) fn pin_inherited_margins(
             }
             let pinned = match src {
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    margin_px(Some(l), &e.style.computed(), vcx)
+                    margin_px(Some(l), &e.style.used(), vcx)
                         .map(Len::Px)
                         .or(Some(l))
                 }

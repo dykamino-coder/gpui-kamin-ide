@@ -68,7 +68,7 @@ pub(crate) fn wrap_floats(
             i += 1;
             continue;
         };
-        if e.style.computed().float.is_none_or(|f| f == 0) {
+        if e.style.used().float.is_none_or(|f| f == 0) {
             out.push(nodes[i].clone());
             i += 1;
             continue;

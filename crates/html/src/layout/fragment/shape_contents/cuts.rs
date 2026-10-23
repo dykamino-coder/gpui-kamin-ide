@@ -35,19 +35,13 @@ pub(crate) fn finish_shape_cuts(
     let own_h = h;
     let (reach_end, up) = oof_reach.finish(c, cx);
     let h = h.max(reach_end + bot);
-    let h = fragment_size::constrain(h, &c.style.computed(), top + bot, cx.viewport, unclamp, vcx);
+    let h = fragment_size::constrain(h, &c.style.used(), top + bot, cx.viewport, unclamp, vcx);
     // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
     // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
     // (css-position-3 §abspos-breaking; Blink ведёт OOF во фрагментаинере
     // отдельно от потока). Стопка берёт собственный размер из `Measure::own`.
-    let own = fragment_size::constrain(
-        own_h,
-        &c.style.computed(),
-        top + bot,
-        cx.viewport,
-        unclamp,
-        vcx,
-    );
+    let own =
+        fragment_size::constrain(own_h, &c.style.used(), top + bot, cx.viewport, unclamp, vcx);
     let own = (own < h - 0.01).then_some((own, h));
     // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
     // disappears when it coincides with a fragmentation break»; Blink
@@ -62,7 +56,7 @@ pub(crate) fn finish_shape_cuts(
     // an exact start boundary. Moving it by a tolerance shortens the painted
     // fragment and can discard a device row. Only extend the end interval
     // for Blink's inclusive last_gap_end_offset >= fragmentainer_space check.
-    for (a, b) in grid_row_gaps(&c.style.computed(), h - top - bot) {
+    for (a, b) in grid_row_gaps(&c.style.used(), h - top - bot) {
         cuts.push((top + a, top + b));
         solid.push((top + a, top + b + 0.05));
     }
@@ -179,29 +173,29 @@ pub(super) fn bottom_edge_cuts(
 /// трогаем. Внепоточный первым — у меры нулевая запись, `through` не рождается.
 pub(crate) fn strip_through_top(c: &mut Element, depth: u8) {
     if depth == 0
-        || c.style.computed().height.is_some()
+        || c.style.used().height.is_some()
         || table_box(c)
-        || multicol_container(&c.style.computed())
-        || c.style.computed().webkit_box == Some(true)
+        || multicol_container(&c.style.used())
+        || c.style.used().webkit_box == Some(true)
         || !matches!(
-            c.style.computed().display,
+            c.style.used().display,
             None | Some(Display::Block) | Some(Display::ListItem)
         )
     {
         return;
     }
     let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-    let b = c.style.computed().borders();
-    if px(&c.style.computed().padding.top) + px(&b.top) != 0.0 {
+    let b = c.style.used().borders();
+    if px(&c.style.used().padding.top) + px(&b.top) != 0.0 {
         return;
     }
     let Some(Node::Element(k)) = c.children.iter_mut().find(|n| !is_blank(n)) else {
         return;
     };
     if k.inline
-        || out_of_flow(&k.style.computed())
+        || out_of_flow(&k.style.used())
         || !matches!(
-            k.style.computed().position,
+            k.style.used().position,
             None | Some(crate::style::computed::Position::Relative)
         )
     {

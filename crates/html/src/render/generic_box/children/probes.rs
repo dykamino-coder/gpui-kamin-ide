@@ -20,7 +20,7 @@ pub(crate) fn child_probes(
 ) {
     if let Some(items) = opts.cx.deferred.gap_items.clone()
         && !matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -36,7 +36,7 @@ pub(crate) fn child_probes(
             Some(Len::Em(k)) => k * fs,
             _ => 0.0,
         };
-        let b = e.style.computed().borders();
+        let b = e.style.used().borders();
         kids.push(crate::layout::multicol::gap_rules::gap_item_probe(
             items,
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
@@ -71,7 +71,7 @@ pub(crate) fn child_probes(
             );
         // A box with a definite height ends where its size says, even when
         // unstyled: lines overflowing it fit with it (`line-clamp-auto-040`).
-        let sized = e.style.computed().height.is_some()
+        let sized = e.style.used().height.is_some()
             && !skip
             && matches!(merged.display, None | Some(Display::Block));
         let side = px_lossy_zero;
@@ -82,7 +82,7 @@ pub(crate) fn child_probes(
         // `LineClampAncestorChain`), so an in-flow block with any of them
         // is probed even without paint (`line-clamp-024`, `-auto-027`).
         let bp_after =
-            side(e.style.computed().borders().bottom) + side(e.style.computed().padding.bottom);
+            side(e.style.used().borders().bottom) + side(e.style.used().padding.bottom);
         let in_flow_block = !skip
             && merged.float.is_none_or(|f| f == 0)
             && !matches!(
@@ -109,22 +109,22 @@ pub(crate) fn child_probes(
             0.0
         };
         // `min-height` as a border-box extent from the border-box top.
-        let min_end = match len_px(e.style.computed().min_height) {
+        let min_end = match len_px(e.style.used().min_height) {
             Some(m) if in_flow_block && m > 0.0 => {
                 if merged.border_box == Some(true) {
                     m
                 } else {
-                    m + side(e.style.computed().borders().top)
-                        + side(e.style.computed().padding.top)
+                    m + side(e.style.used().borders().top)
+                        + side(e.style.used().padding.top)
                         + bp_after
                 }
             }
             _ => 0.0,
         };
-        let capped = in_flow_block && e.style.computed().max_height.is_some();
+        let capped = in_flow_block && e.style.used().max_height.is_some();
         let ends =
             in_flow_block && (bp_after > 0.0 || end_margin != 0.0 || min_end > 0.0 || capped);
-        if !is_clamp && (has_box_style_probe(&e.style.computed()) || monolithic || sized || ends) {
+        if !is_clamp && (has_box_style_probe(&e.style.used()) || monolithic || sized || ends) {
             kids.push(crate::text::clamp::clamp_probe(
                 measure,
                 0.0,
@@ -134,9 +134,9 @@ pub(crate) fn child_probes(
                 // (`line-clamp-auto-062`); only a definite `height` does,
                 // or `min-height` of a size-contained box, whose height
                 // does not depend on its content (`line-clamp-auto-047`).
-                e.style.computed().height.is_some()
-                    || (e.style.computed().min_height.is_some()
-                        && e.style.computed().contain_size == Some(true))
+                e.style.used().height.is_some()
+                    || (e.style.used().min_height.is_some()
+                        && e.style.used().contain_size == Some(true))
                     || monolithic,
                 bp_after,
                 crate::text::clamp::BoxEnds {
@@ -150,7 +150,7 @@ pub(crate) fn child_probes(
                 None,
                 None,
                 span,
-                side(e.style.computed().borders().top),
+                side(e.style.used().borders().top),
                 matches!(
                     merged.position,
                     Some(crate::style::computed::Position::Absolute)
@@ -163,7 +163,7 @@ pub(crate) fn child_probes(
             && e.children.iter().all(|n| {
                 is_blank(n)
                     || matches!(n, crate::dom::Node::Element(c) if matches!(
-                        c.style.computed().position,
+                        c.style.used().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ))

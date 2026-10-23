@@ -9,9 +9,7 @@ use crate::style::computed::{Computed, Display, inh};
 pub(crate) fn used(e: &Element) -> Option<Element> {
     // A block ruby principal box remains transformable. Author display changes
     // that remove a ruby role likewise retain ordinary transform behavior.
-    if crate::text::ruby::ruby_role(e).is_none()
-        || e.style.computed().display == Some(Display::Block)
-    {
+    if crate::text::ruby::ruby_role(e).is_none() || e.style.used().display == Some(Display::Block) {
         return None;
     }
     let mut e = e.clone();

@@ -28,11 +28,11 @@ pub(super) fn sections(
     if nodes.next().is_some() {
         return None;
     }
-    let folded_margin = if lead > 0.0 || e.style.computed().float.unwrap_or(0) != 0 {
+    let folded_margin = if lead > 0.0 || e.style.used().float.unwrap_or(0) != 0 {
         // Поле — значение стиля с базой страницы; геометрия содержимого
         // таблицы не участвует в разрешении этого поля (CSS 2.1 §8.3).
-        LenCx::box_viewport(cx.viewport, &e.style.computed())
-            .px_lossy_zero(e.style.computed().margin.top, vcx)
+        LenCx::box_viewport(cx.viewport, &e.style.used())
+            .px_lossy_zero(e.style.used().margin.top, vcx)
     } else {
         0.0
     };

@@ -34,22 +34,22 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_gr
     // распорка встала бы соседом БОК О БОК и подняла бы весь ряд. Оба
     // случая забирает подъём разрыва, а не рост.
     let is_flex = matches!(
-        c.style.computed().display,
+        c.style.used().display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) || c.style.computed().webkit_box == Some(true);
+    ) || c.style.used().webkit_box == Some(true);
     let row_nowrap = is_flex
         && matches!(
-            c.style.computed().flex_dir,
+            c.style.used().flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && c.style.computed().flex_wrap != Some(true)
+        && c.style.used().flex_wrap != Some(true)
         && c.style.cascaded().webkit_box_vertical != Some(true);
     // Зазор гибкой стопки (`row-gap`) встал бы и перед распоркой — лишний
     // зазор, как у сетки-стопки; такой разрыв остаётся без роста.
     let flex_gapped = is_flex
-        && c.style.computed().webkit_box != Some(true)
-        && matches!(c.style.computed().gap, Some((Some(Len::Px(v)), _)) if v > 0.0);
+        && c.style.used().webkit_box != Some(true)
+        && matches!(c.style.used().gap, Some((Some(Len::Px(v)), _)) if v > 0.0);
     let at = if grid_stack(c) || row_nowrap || flex_gapped {
         None
     } else {
@@ -73,7 +73,7 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_gr
         // `margin-bottom: 50px`, обе зелёные).
         let pi = c.children[..i].iter().rposition(|n| !is_blank(n));
         let prev_mb = match pi.map(|j| &c.children[j]) {
-            Some(Node::Element(k)) => k.style.computed().margin.bottom,
+            Some(Node::Element(k)) => k.style.used().margin.bottom,
             _ => None,
         };
         if prev_mb.is_some()
@@ -92,13 +92,13 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_gr
         // высотой и стоять в визуальном порядке рядом со своей коробкой
         // (`order`, `reorder` в `blocks()`).
         if matches!(
-            c.style.computed().display,
+            c.style.used().display,
             Some(Display::Flex) | Some(Display::InlineFlex)
         ) {
             style.width = Some(Len::Pct(1.0));
             style.flex_shrink = Some(0.0);
             if let Node::Element(k) = &c.children[i] {
-                style.order = k.style.computed().order;
+                style.order = k.style.used().order;
             }
         }
         c.children.insert(
@@ -127,7 +127,7 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_gr
         // на первом заходе. Проба `p2-single-line-column-flex-fragmentation-
         // 037` осталась красной именно поэтому, а `p3-…` с высотой 100 → 150
         // сняла 4/5 площади (3906 → 756 точек).
-        if fixed_grows && let Some(Len::Px(h)) = c.style.computed().height {
+        if fixed_grows && let Some(Len::Px(h)) = c.style.used().height {
             c.style.used_mut().height = Some(Len::Px(h + grow));
         }
         return true;

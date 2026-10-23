@@ -38,13 +38,13 @@ pub(crate) fn atom_piece(
     // Остальным OOF сохраняем прежний путь статической позиции, пока он
     // не поддерживает направление позиционированного строчного предка.
     let parent_style = atom_cx.parent.as_ref().filter(|_| {
-        !out_of_flow(&e.style.computed())
-            || crate::layout::positioned::anchor::resolve::needs_host(&e.style.computed(), &opts.cx)
+        !out_of_flow(&e.style.used())
+            || crate::layout::positioned::anchor::resolve::needs_host(&e.style.used(), &opts.cx)
     });
     let inherited = parent_style.unwrap_or(inherited);
     let child_opts = opts.inner(|cx| {
         cx.clamp.atom_depth =
-            if e.style.computed().clamp_lines().is_some() || e.style.computed().clamp_by_height() {
+            if e.style.used().clamp_lines().is_some() || e.style.used().clamp_by_height() {
                 0
             } else {
                 cx.clamp.atom_depth + 1
@@ -83,7 +83,7 @@ fn atom_piece_in(
     // before solving absolute insets; an empty frame is still replaced.
     let iframe_sized = (replaced_content::default_iframe(e)
         && matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
@@ -109,12 +109,12 @@ fn atom_piece_in(
     // строками, и его до-поворотное место — гипотетическая коробка §10.6.4.
     let rot_block = inherited.wm().turned()
         && !inline_level(e)
-        && e.style.computed().inline_display != Some(true);
+        && e.style.used().inline_display != Some(true);
     if plain_flow
         && (!in_inline_cb || inherited.wm().turned())
-        && at_static_position(&e.style.computed())
+        && at_static_position(&e.style.used())
         && (inline_level(e)
-            || e.style.computed().inline_display == Some(true)
+            || e.style.used().inline_display == Some(true)
             || rot_block
             || inherited.band_kid)
     {
@@ -132,7 +132,7 @@ fn atom_piece_in(
     // ГОРИЗОНТАЛЬНЫМ письмом контр-поворачивается — его содержимое
     // обязано стоять прямо (эмуляция tcy в эталонах compression-*).
     if inherited.wm().turned()
-        && e.style.computed().display == Some(Display::InlineBlock)
+        && e.style.used().display == Some(Display::InlineBlock)
         && e.style.cascaded().vertical_decl() == Some(false)
     {
         // An orthogonal atomic inline keeps its physical box and own writing
@@ -198,7 +198,7 @@ fn atom_piece_in(
             | Some(crate::style::computed::Align::End)
             | Some(crate::style::computed::Align::Center)
     );
-    let original_margin = rotated_atom::margin(&e.style.computed(), inherited);
+    let original_margin = rotated_atom::margin(&e.style.used(), inherited);
     let bare;
     let e = if wrapped {
         let mut copy = e.clone();
@@ -217,11 +217,11 @@ fn atom_piece_in(
     let e = if (inherited.wm().turned() || inherited.upright_stack)
         && e.style.cascaded().writing_mode.is_none()
         && matches!(
-            e.style.computed().position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
-        && !at_static_position(&e.style.computed())
+        && !at_static_position(&e.style.used())
         && !replaced_tag(e)
     {
         let mut copy = e.clone();
@@ -240,7 +240,7 @@ fn atom_piece_in(
     // строчную коробку ей передаёт абзац (`LineBoxSlot`).
     // Позиционированный строчный предок предлагается атому содержащим
     // блоком (`InlineCbOffer`); предложение — только этому атому.
-    let line_box = out_of_flow(&e.style.computed())
+    let line_box = out_of_flow(&e.style.used())
         .then(crate::layout::positioned::containing_block::LineBoxSlot::default);
     let offer = in_inline_cb.then(crate::text::inline::InlineCbOffer::offered);
     let opts = &*atom_cx::atom_opts(opts, ruby, &line_box, &offer);

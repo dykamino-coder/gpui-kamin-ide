@@ -25,7 +25,7 @@ pub(crate) fn ordered_children(
             // (flexbox-collapsed-item-baseline-001). Распорка — тот же
             // элемент с нулевой ГЛАВНОЙ осью и невидимой краской.
             .map(|n| match n {
-                Node::Element(mut e) if e.style.computed().collapsed == Some(true) => {
+                Node::Element(mut e) if e.style.used().collapsed == Some(true) => {
                     match inherited.flex_dir {
                         Some(FlexDir::Col) | Some(FlexDir::ColReverse) => {
                             e.style.used_mut().height = Some(Len::Px(0.0));

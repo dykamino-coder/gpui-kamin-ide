@@ -78,7 +78,7 @@ pub(super) fn build_band_kid(
         copy.style.used_mut().border_box = None;
         // A paint group's opacity and transform belong to the group around
         // the box and its descendants (`Nest::group`), not to the box alone.
-        if crate::layout::float::band_nest::paint_group(&copy.style.computed()) {
+        if crate::layout::float::band_nest::paint_group(&copy.style.used()) {
             crate::layout::float::band_nest::group_shell(copy.style.used_mut());
         }
         return opts.cx.contracts.build.element(&copy, inherited, opts);
@@ -92,7 +92,7 @@ pub(super) fn build_band_kid(
     // `child_available_inline_size`), и его оставляем каркасу
     // (`bfc-next-to-float-1`); `100%` рядом с флоатом не влез бы
     // ни в какое окно, а ниже флоатов окно и есть содержащий блок.
-    if let Some(Len::Pct(k)) = copy.style.computed().width
+    if let Some(Len::Pct(k)) = copy.style.used().width
         && cb > 0.0
         && (float || k != 1.0)
         && !vertical
@@ -104,7 +104,7 @@ pub(super) fn build_band_kid(
     // с неопределённой высотой, и доля там вырождалась в `auto`:
     // плавающий `height: 100%` в блоке `height: 200px` выходил
     // высотой в свой текст (`flexbox-align-self-horiz-001-ref`).
-    if let Some(Len::Pct(k)) = copy.style.computed().height
+    if let Some(Len::Pct(k)) = copy.style.used().height
         && let Some(Len::Px(h)) = cb_height
     {
         copy.style.used_mut().height = Some(Len::Px(k * h));
@@ -116,7 +116,7 @@ pub(super) fn build_band_kid(
     // (эталон `css-break/background-image-001`: колонки-флоаты
     // `block-size: 100%` во `flow-root` `vertical-rl`).
     if vertical
-        && let Some(Len::Pct(k)) = copy.style.computed().width
+        && let Some(Len::Pct(k)) = copy.style.used().width
         && let Some(Len::Px(w)) = cb_block_w
     {
         copy.style.used_mut().width = Some(Len::Px(k * w));
@@ -139,7 +139,7 @@ pub(super) fn build_band_kid(
         && (!vertical
             || copy
                 .style
-                .computed()
+                .used()
                 .sideways_decl()
                 .unwrap_or(inherited.wm().sideways())
                 == (inherited.wm().sideways()));
@@ -148,7 +148,7 @@ pub(super) fn build_band_kid(
     }
     let table = copy.tag == "table"
         || matches!(
-            copy.style.computed().display,
+            copy.style.used().display,
             Some(Display::Table) | Some(Display::InlineTable)
         );
     if copy.marks.atoms {
@@ -163,7 +163,7 @@ pub(super) fn build_band_kid(
             .collect();
         let shapes = copy
             .style
-            .computed()
+            .used()
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
@@ -202,7 +202,7 @@ pub(super) fn build_band_kid(
     // CSS Lists 3 §2: a floated list item (a `::before`/`::after`
     // with `display: list-item` too) keeps its marker, which only
     // `element`'s list-item painter draws.
-    let list_item = copy.style.computed().display == Some(Display::ListItem);
+    let list_item = copy.style.used().display == Some(Display::ListItem);
     // Writing Modes 4 §7.3: the float's own formatting context determines its
     // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
     // element() installs the vertical block axis and containing-block scopes.
@@ -217,7 +217,7 @@ pub(super) fn build_band_kid(
     }
     // CSS Multicol 1: a floated multicol still balances and hoists spanners
     // through element(), then contributes its measured outer box to bands.
-    let multicol = crate::layout::multicol::spanner::multicol_container(&copy.style.computed());
+    let multicol = crate::layout::multicol::spanner::multicol_container(&copy.style.used());
     if float && !table && !replaced && !vertical && !own_vertical && !list_item && !multicol {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег.
         // Таблица — своей веткой `element` ниже: каркас блока её
@@ -238,7 +238,7 @@ pub(super) fn build_band_kid(
             opts.cx
                 .contracts
                 .build
-                .effects(el, Effect::group(&copy.style.computed(), vcx))
+                .effects(el, Effect::group(&copy.style.used(), vcx))
         } else {
             opts.cx
                 .contracts

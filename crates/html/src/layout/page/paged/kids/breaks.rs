@@ -31,7 +31,7 @@ pub(super) fn recorder(
                 && (vertical.is_none() || measured)
                 && !e.inline
                 && !matches!(
-                    e.style.computed().position,
+                    e.style.used().position,
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
                 && (measured || (shaped && (plain_tree(e) || table_tree(e) || flex_tree(e)))) =>
