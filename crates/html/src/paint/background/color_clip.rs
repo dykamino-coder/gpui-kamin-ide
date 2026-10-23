@@ -57,14 +57,10 @@ pub(crate) fn paint_color(c: &Computed, area: ColorBox, window: &mut Window, vcx
     if matches!(clip, BgClip::Text | BgClip::BorderArea) {
         return;
     }
-    let Some(fill) = c
-        .background
-        .map(|v| gpui::Background::from(v.to_hsla()))
-        .or_else(|| {
-            (matches!(area, ColorBox::Padding { .. }) && !c.gradient_as_tile())
-                .then(|| c.gradient.as_ref().map(crate::paint::apply::fill))
-                .flatten()
-        })
+    let Some(fill) = (matches!(area, ColorBox::Padding { .. }) && !c.gradient_as_tile())
+        .then(|| c.gradient.as_ref().map(crate::paint::apply::fill))
+        .flatten()
+        .or_else(|| c.background.map(|v| gpui::Background::from(v.to_hsla())))
     else {
         return;
     };
