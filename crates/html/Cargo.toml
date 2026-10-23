@@ -66,6 +66,8 @@ image = { version = "0.25", default-features = false, features = [
 resvg = { version = "0.48.0", default-features = false, features = ["text", "raster-images"] }
 
 [dev-dependencies]
+# Настоящие фазы GPUI на тестовой платформе для проверки порядка краски.
+gpui = { workspace = true, features = ["test-support"] }
 # Идентичности узлов для проверки областей измерения без окна.
 taffy = "0.14.0"
 # Снимок окна для прогона reftest-ов WPT (см. examples/wptrun.rs).

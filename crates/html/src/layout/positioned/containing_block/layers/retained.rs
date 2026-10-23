@@ -176,6 +176,17 @@ impl crate::hooks::Wrap for Published {
         }
         self.child.prepaint(window, cx);
     }
+
+    fn paint(
+        &mut self,
+        _: gpui::Bounds<gpui::Pixels>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) {
+        // Публикация не создаёт stacking context: сохраняем внешние фазы
+        // CSS 2.1 Appendix E для float, строк и позиционированных потомков.
+        gpui::paint_reopen(|| self.child.paint(window, cx));
+    }
 }
 
 #[cfg(test)]

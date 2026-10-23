@@ -103,3 +103,6 @@ fn selected_escaped_children_and_later_descendants_use_the_host() {
         3
     );
 }
+
+#[cfg(test)]
+mod paint;
