@@ -18,7 +18,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod inherited;
+mod recompute;
 mod used;
+pub(crate) use recompute::{recompute_onto, rematerialize};
 
 /// Место материализованного стиля при каскадном стиле элемента (`dom::SharedStyle`): копия
 /// элемента делит его с оригиналом, правка каскадного стиля через ручку его сбрасывает.
@@ -159,46 +161,6 @@ fn walk(
     }
 }
 
-/// Материализовать заново элемент `e`, чей каскадный стиль правлен после материализации
-/// (кадр анимации — источник каскада), и его поддерево под тем же родителем-элементом, что и
-/// у исходного `original`: потомки с каскадным `inherit` видят новые значения.
-pub(crate) fn rematerialize(
-    original: &SharedStyle,
-    e: crate::dom::Element,
-    vcx: ValueCx<'_>,
-) -> crate::dom::Element {
-    let Some((_, parent)) = original.slot().with_parent() else {
-        return e;
-    };
-    let nodes = [Node::Element(e)];
-    materialize(&nodes, &parent, vcx);
-    let [Node::Element(e)] = nodes else {
-        unreachable!("one element in, one element out")
-    };
-    e
-}
-
-/// Вычислить элемент заново с дополнительными объявлениями `edit` (источник каскада
-/// position-try, css-anchor-position-1 §fallback-rule) под его родителем-элементом и
-/// положить изменившиеся поля на стиль коробки `c`: значения проходят ту же стадию
-/// вычисления (zoom, шрифтовые единицы, `inherit`), что и остальные. `false` — у стиля
-/// нет материализации (стиль одной стадии), объявления не применены.
-pub(crate) fn recompute_onto(
-    c: &mut Computed,
-    own: &SharedStyle,
-    edit: impl FnOnce(&mut Computed),
-    vcx: ValueCx<'_>,
-) -> bool {
-    let Some((materialized, parent)) = own.slot().with_parent() else {
-        return false;
-    };
-    let mut declared = own.cascaded().clone();
-    edit(&mut declared);
-    let computed = super::compute::compute(&parent, &declared, vcx);
-    used::lay_used(c, &computed, &materialized);
-    true
-}
-
 /// Стиль коробки элемента с каскадным стилем `own` под коробкой-родителем со стилем `parent`.
 pub fn box_style(parent: &BoxStyle, own: &SharedStyle, vcx: ValueCx<'_>) -> BoxStyle {
     styled(parent, own, true, vcx)
@@ -264,4 +226,8 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
 }
 
 #[cfg(test)]
+mod recompute_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tree_tests;

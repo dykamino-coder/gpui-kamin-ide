@@ -102,3 +102,28 @@ mod tests {
         assert_eq!(c.width, Some(Len::Px(7.0)));
     }
 }
+
+/// Объявления правила `@position-try` на стиле коробки `c`: каскад элемента с источником
+/// Try вычисляется заново (zoom, шрифтовые единицы, `inherit`), а не кладётся поверх
+/// вычисленных значений.
+pub(crate) fn try_rule_onto(
+    c: &mut crate::style::computed::BoxStyle,
+    decls: &crate::style::css::DeclBlock,
+    vcx: ValueCx<'_>,
+) {
+    let own = c.try_style.clone();
+    let computed = own.is_some_and(|own| {
+        crate::style::cascade::materialize::recompute_onto(
+            c,
+            &own,
+            |declared| apply_try_rule(declared, decls, vcx),
+            vcx,
+        )
+    });
+    if !computed {
+        // TRANSITIONAL(cascade-7b layout-made styles): a style without a cascade
+        // stage (a box layout made) takes the declarations as they are; remove
+        // when layout-made boxes keep their element's cascade.
+        apply_try_rule(c, decls, vcx);
+    }
+}

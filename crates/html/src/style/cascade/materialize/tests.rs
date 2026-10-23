@@ -6,7 +6,7 @@ use crate::dom::Element;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
-fn element<'a>(nodes: &'a [Node], tag: &str) -> &'a Element {
+pub(super) fn element<'a>(nodes: &'a [Node], tag: &str) -> &'a Element {
     nodes
         .iter()
         .find_map(|n| match n {
@@ -18,7 +18,7 @@ fn element<'a>(nodes: &'a [Node], tag: &str) -> &'a Element {
 }
 
 /// The first element `tag` in document order, at any depth.
-fn find<'a>(nodes: &'a [Node], tag: &str) -> Option<&'a Element> {
+pub(super) fn find<'a>(nodes: &'a [Node], tag: &str) -> Option<&'a Element> {
     nodes.iter().find_map(|n| match n {
         Node::Element(e) if e.tag == tag => Some(e),
         Node::Element(e) => find(&e.children, tag),
@@ -210,124 +210,4 @@ fn inherited_values_are_one_shared_group() {
     copy.font_size = Some(Len::Px(9.0));
     assert!(!Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
     assert_eq!(span_style.font_size, Some(Len::Px(20.0)));
-}
-
-#[test]
-fn an_animated_reset_value_reaches_explicit_inherit() {
-    let parsed = crate::dom::parse(
-        r#"<body><div style="width: 100px"><p style="width: inherit">a</p></div></body>"#,
-        "",
-    );
-    let vcx = parsed.values();
-    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let div = element(&parsed.nodes, "div");
-    // A sampled animation frame is a cascade edit of a copy of the element
-    // (`animation_frame::sample`); its inherited group stays the same.
-    let mut copy = div.clone();
-    copy.style.cascaded_mut().width = Some(Len::Px(200.0));
-    let copy = rematerialize(&div.style, copy, vcx);
-    let p = element(&copy.children, "p");
-    assert_eq!(p.style.used().width, Some(Len::Px(200.0)));
-}
-
-#[test]
-fn an_own_zoom_scales_the_whole_inherited_text_shadow_list() {
-    let parsed = crate::dom::parse(
-        r#"<body><div style="text-shadow: 1px 1px red, 2px 2px blue"><p style="zoom: 2">a</p></div></body>"#,
-        "",
-    );
-    let vcx = parsed.values();
-    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let div = element(&parsed.nodes, "div").style.used();
-    let p = element(&parsed.nodes, "p").style.used();
-    assert_eq!(div.text_shadow_rest.len(), 1);
-    assert_eq!(p.text_shadow_rest.len(), 1);
-    assert_eq!(
-        p.text_shadow.as_ref().unwrap().x,
-        2.0 * div.text_shadow.as_ref().unwrap().x
-    );
-    assert_eq!(p.text_shadow_rest[0].x, 2.0 * div.text_shadow_rest[0].x);
-}
-
-#[test]
-fn position_try_declarations_pass_the_computed_value_stage() {
-    let parsed = crate::dom::parse(
-        r#"<body><div style="position: absolute; zoom: 2; width: 5px">a</div></body>"#,
-        "",
-    );
-    let vcx = parsed.values();
-    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let div = element(&parsed.nodes, "div");
-    let mut c = (*div.style.used()).clone();
-    assert_eq!(c.width, Some(Len::Px(10.0)));
-    // `@position-try { width: 10px }` under `zoom: 2` is 20px, like any author 10px.
-    assert!(recompute_onto(
-        &mut c,
-        &div.style,
-        |declared| declared.width = Some(Len::Px(10.0)),
-        vcx,
-    ));
-    assert_eq!(c.width, Some(Len::Px(20.0)));
-}
-
-#[test]
-fn zoom_scales_viewport_units_and_the_absolute_part_of_calc() {
-    let parsed = crate::dom::parse(
-        r#"<body><div style="zoom: 2; width: 1vw; height: calc(10px + 1vw)">a</div></body>"#,
-        "",
-    );
-    let vcx = parsed.values();
-    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let mut div = (*element(&parsed.nodes, "div").style.used()).clone();
-    div.resolve_viewport((1000.0, 800.0), vcx);
-    // 1vw of a 1000px window is 10px, 20px under `zoom: 2`, like `10px` is.
-    assert_eq!(div.width, Some(Len::Px(20.0)));
-    assert_eq!(div.height, Some(Len::Px(40.0)));
-}
-
-#[test]
-fn a_moved_grid_descendant_inherits_from_its_parent_element() {
-    let parsed = crate::dom::parse(
-        r#"<body><div style="display: grid; position: relative; font-size: 10px; color: red; padding-left: 3px"><section style="font-size: 20px; color: blue; padding-left: 7px"><i style="position: absolute; grid-column: 1; padding-left: inherit">x</i></section></div></body>"#,
-        "",
-    );
-    let vcx = parsed.values();
-    let grid = element(&parsed.nodes, "div");
-    // The box moved under the grid (its containing block), the element did not.
-    assert!(
-        grid.children
-            .iter()
-            .any(|n| matches!(n, Node::Element(e) if e.tag == "i"))
-    );
-    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let section = element(&parsed.nodes, "section").style.computed();
-    let i = find(&parsed.nodes, "i").unwrap();
-    let computed = i.style.computed();
-    assert_eq!(computed.font_size, section.font_size);
-    assert_eq!(computed.color, section.color);
-    assert_eq!(computed.padding.left, Some(Len::Px(7.0)));
-    // The box under the grid's box keeps the element parent's values.
-    let boxed = box_style(&BoxStyle::shared(grid.style.computed()), &i.style, vcx);
-    assert_eq!(boxed.font_size, section.font_size);
-    assert_eq!(boxed.color, section.color);
-    assert_eq!(boxed.padding.left, Some(Len::Px(7.0)));
-}
-
-#[test]
-fn an_anonymous_table_passes_its_parent_element_through() {
-    let parsed = crate::dom::parse(
-        r#"<body><span style="padding-left: 5px">a<b style="display: table-cell; padding-left: inherit">c</b></span></body>"#,
-        "",
-    );
-    let vcx = parsed.values();
-    let span = element(&parsed.nodes, "span");
-    assert!(
-        span.children
-            .iter()
-            .any(|n| matches!(n, Node::Element(e) if e.marks.anonymous_wrapper))
-    );
-    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let b = find(&parsed.nodes, "b").unwrap();
-    // `inherit` takes the value of the parent element, not of the anonymous table.
-    assert_eq!(b.style.computed().padding.left, Some(Len::Px(5.0)));
 }
