@@ -82,11 +82,17 @@ fn inherited(c: &mut Computed, own: f32, carried: &Carried) {
     put(&mut c.word_spacing, carried.word_spacing);
     put(&mut c.text_indent, carried.text_indent);
     put(&mut c.tab_size_len, carried.tab_size);
+    // `text-shadow` is inherited as one list: the whole list is scaled.
     if c.text_shadow.is_none()
+        && !c.text_shadow_none
         && let Some(mut sh) = carried.text_shadow.clone()
     {
         scale_shadow(&mut sh, own);
         c.text_shadow = Some(sh);
+        c.text_shadow_rest = carried.text_shadow_rest.clone();
+        for sh in &mut c.text_shadow_rest {
+            scale_shadow(sh, own);
+        }
     }
     if c.underline_offset.is_none()
         && let Some(v) = carried.underline_offset

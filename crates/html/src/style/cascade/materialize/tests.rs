@@ -220,3 +220,22 @@ fn an_animated_reset_value_reaches_explicit_inherit() {
     let p = element(&copy.children, "p");
     assert_eq!(p.style.computed().width, Some(Len::Px(200.0)));
 }
+
+#[test]
+fn an_own_zoom_scales_the_whole_inherited_text_shadow_list() {
+    let parsed = crate::dom::parse(
+        r#"<body><div style="text-shadow: 1px 1px red, 2px 2px blue"><p style="zoom: 2">a</p></div></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let div = element(&parsed.nodes, "div").style.computed();
+    let p = element(&parsed.nodes, "p").style.computed();
+    assert_eq!(div.text_shadow_rest.len(), 1);
+    assert_eq!(p.text_shadow_rest.len(), 1);
+    assert_eq!(
+        p.text_shadow.as_ref().unwrap().x,
+        2.0 * div.text_shadow.as_ref().unwrap().x
+    );
+    assert_eq!(p.text_shadow_rest[0].x, 2.0 * div.text_shadow_rest[0].x);
+}
