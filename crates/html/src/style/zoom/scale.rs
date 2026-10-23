@@ -7,6 +7,22 @@ mod rule_widths;
 mod shape_lengths;
 mod structured;
 
+/// The absolute part of a `calc()` sum in the element's zoom. Font-relative terms
+/// follow the zoomed font size, viewport terms the zoomed viewport
+/// (`ViewportCx::for_box`), percentages their basis.
+fn scale_calc(
+    i: crate::style::values::value::CalcId,
+    k: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Len {
+    let mut sum = crate::style::values::value::calc_get(i, vcx);
+    if sum.px == 0.0 {
+        return Len::Calc(i);
+    }
+    sum.px *= k;
+    Len::Calc(crate::style::values::value::calc_store(sum, vcx))
+}
+
 pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
     sh.x *= k;
     sh.y *= k;
@@ -17,12 +33,13 @@ pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
 /// Собственные длины в точках × `k`. Доли, `auto`, единицы окна, calc-арена
 /// и единицы шрифта не трогаются (§493; шрифтовые считаются от уже
 /// домноженного кегля).
-pub(crate) fn scale_own(c: &mut Computed, k: f32) {
+pub(crate) fn scale_own(c: &mut Computed, k: f32, vcx: crate::document::state::ValueCx<'_>) {
     rule_widths::scale(c, k);
     let mul = |l: &mut Option<Len>| match *l {
         Some(Len::Px(v)) => *l = Some(Len::Px(v * k)),
         Some(Len::EmPx(e, add)) => *l = Some(Len::EmPx(e, add * k)),
         Some(Len::LhPx(e, add)) => *l = Some(Len::LhPx(e, add * k)),
+        Some(Len::Calc(i)) => *l = Some(scale_calc(i, k, vcx)),
         _ => {}
     };
     let sides = |s: &mut Sides| {

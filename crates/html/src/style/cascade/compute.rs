@@ -39,7 +39,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Co
     {
         Some((k, eff)) => {
             let mut copy = own.clone();
-            zoom::zoom_own(parent, &mut copy, k, eff);
+            zoom::zoom_own(parent, &mut copy, k, eff, vcx);
             own_zoom = k;
             zoomed = copy;
             &zoomed
@@ -53,7 +53,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Co
     let own = if own.explicit_inherit.is_empty() && own.inherit_longhands.is_empty() {
         own
     } else {
-        let scaled = zoom::parent_in_own_zoom(parent, own_zoom);
+        let scaled = zoom::parent_in_own_zoom(parent, own_zoom, vcx);
         let from = scaled.as_ref().unwrap_or(parent);
         let mut copy = own.clone();
         super::inherited_value::apply_explicit_inheritance(&mut copy, from, vcx);
