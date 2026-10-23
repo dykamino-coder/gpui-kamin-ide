@@ -91,12 +91,14 @@ impl Regrow {
 
     /// Идентичность цели берётся до правок дерева: координаты могут совпадать.
     fn push(&mut self, pushed: Pushed, grow: f32, forced: bool) -> bool {
+        // Элемент flex сдвигается своим смещением (колонка — по главной оси,
+        // ряд — по блочной после выравнивания), а не распоркой.
         if let Pushed::Box(id) = &pushed
             && self
                 .laid
                 .flexes
                 .values()
-                .any(|f| f.column && f.lines.iter().any(|l| l.items.contains(id)))
+                .any(|f| f.lines.iter().any(|l| l.items.contains(id)))
         {
             return self.watched.grow_flex_item(*id, grow);
         }

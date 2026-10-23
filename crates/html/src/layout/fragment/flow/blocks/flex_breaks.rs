@@ -95,13 +95,17 @@ impl FlexBox {
                 } else if let Some(inner) = &item.inner {
                     walk(inner, top, bottom, laid, &mut flow);
                 }
-                // Первая неделимая часть переносит линию целиком. Остальные
+                // Первая неделимая часть элемента у начала линии переносит
+                // линию целиком; элемент, выровненный ниже начала линии,
+                // переносится сам (Blink сдвигает элемент, а не ряд). Остальные
                 // диапазоны и forced принадлежат item; их рост считает Regrow.
+                let at_start =
+                    laid.margin_box(item.id).map_or(top, |m| m.0) <= line.start + COORD_EPS;
                 out.solid.extend(
                     flow.solid
                         .iter()
                         .filter(|s| s.0 <= top + COORD_EPS)
-                        .map(|s| (line.start, s.1)),
+                        .map(|s| if at_start { (line.start, s.1) } else { *s }),
                 );
                 out.cuts.extend(flow.cuts);
                 out.keep.extend(flow.keep);
