@@ -79,10 +79,25 @@ mod tests {
     use crate::layout::fragment::{ShapeCx, flow::blocks::BlockBox};
 
     #[test]
+    fn ordinary_horizontal_flex_uses_native_copy_geometry() {
+        for css in [
+            "",
+            "flex-direction:column",
+            "flex-direction:row-reverse;flex-wrap:wrap-reverse",
+        ] {
+            let tree = crate::dom::parse(
+                &format!(
+                    "<div style='display:flex;{css}'><div style='height:20px'></div><div style='height:30px'></div></div>"
+                ),
+                "",
+            );
+            assert!(independent_copy(authored(&tree)), "{css}");
+        }
+    }
+
+    #[test]
     fn independent_copy_requires_a_single_consumed_flow() {
         for body in [
-            "<div style='display:flex'><div></div></div>",
-            "<div><div style='display:flex;flex-direction:column'></div></div>",
             "<div style='height:50px'><div style='height:150px'></div></div>",
             "<div style='max-height:0'><div style='height:150px'></div></div>",
             "<div style='min-height:200px'><div style='height:160px'></div></div>",
@@ -91,6 +106,8 @@ mod tests {
             assert!(!independent_copy(authored(&tree)), "{body}");
         }
         for body in [
+            "<div style='display:flex'><div></div></div>",
+            "<div><div style='display:flex;flex-direction:column'></div></div>",
             "<div><div style='height:20px'></div><div style='height:30px'></div></div>",
             "<div style='height:50px'></div>",
             "<div style='height:50px;overflow:hidden'><div style='height:150px'></div></div>",

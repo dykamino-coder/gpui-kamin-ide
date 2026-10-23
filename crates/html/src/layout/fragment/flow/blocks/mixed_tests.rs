@@ -87,9 +87,9 @@ fn flex_in_table_cells_and_captions_has_frames_flows_and_relative_shifts() {
             "",
         );
         let root = authored(&doc);
-        // TRANSITIONAL(F2-4): геометрия записывается, продолжения flex пока отдельные.
+        // Обычный flex в ячейке/подписи использует записанную геометрию.
         assert!(crate::layout::fragment::push::measured_tree(root));
-        assert!(!independent_copy(root));
+        assert!(independent_copy(root));
         let b = BlockBox::collect(root, ShapeCx::COLUMNS, doc.values());
         let mut flexes = Vec::new();
         b.flexes(&mut flexes);
@@ -110,6 +110,11 @@ fn flex_in_table_cells_and_captions_has_frames_flows_and_relative_shifts() {
                     start: 0.0,
                     end: 137.0,
                     items: items.clone(),
+                    order: items
+                        .iter()
+                        .enumerate()
+                        .map(|(i, id)| (i as u32, Some(*id)))
+                        .collect(),
                 }],
             },
         );

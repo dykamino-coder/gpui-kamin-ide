@@ -8,12 +8,9 @@ pub(super) fn continuation(e: &Element) -> bool {
     if e.style.computed().display == Some(Display::None) {
         return false;
     }
-    // TRANSITIONAL(F2-4): flex_breaks экспортирует лишь первый монолит потока. Нужны
-    // consumed block size и отдельные продолжения каждого flex item.
-    super::super::blocks::flex_container(e)
-        // TRANSITIONAL(F2-1): ограничения блочного размера требуют consumed
-        // size; один border box не хранит остаток min-height и переполнение.
-        || parallel_overflow(e)
+    // TRANSITIONAL(F2-1): ограничения блочного размера требуют consumed
+    // size; один border box не хранит остаток min-height и переполнение.
+    parallel_overflow(e)
         // TRANSITIONAL(F2-1): доля блочного размера зависит от исходного definite CB,
         // который замер MaxContent отдельной копии не сохраняет.
         || [e.style.computed().height, e.style.computed().min_height, e.style.computed().max_height]
