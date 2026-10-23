@@ -1756,10 +1756,10 @@ index 0000000000000000000000000000000000000000..487b3be1ce665eec3e31d55667e4c0bb
 +}
 diff --git a/vendor/taffy/src/compute/flex_fragmentation.rs b/vendor/taffy/src/compute/flex_fragmentation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..26dab704e7f0446afb10e6c0fd2a18ed2290a272
+index 0000000000000000000000000000000000000000..c73a6368b155c95164df09c36361858883f9f71a
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_fragmentation.rs
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,143 @@
 +//! KaminIDE patch: CSS Flexbox 1 §10 fragmentation in the writing-mode block axis.
 +//! Constraints consume space after native flexible sizing; they cannot add flex items or margins.
 +use super::*;
@@ -1774,7 +1774,10 @@ index 0000000000000000000000000000000000000000..26dab704e7f0446afb10e6c0fd2a18ed
 +                .map(|item| tree.flex_item_fragmentation_offset(item.node))
 +                .sum::<f32>()
 +        })
-+        .fold(0.0, f32::max)
++        // Подавленный промежуток уменьшает auto-размер; параллельные линии
++        // выбирают наибольший подписанный расход, а не минимум в нуле.
++        .reduce(f32::max)
++        .unwrap_or(0.0)
 +}
 +
 +/// Apply fragmentainer space after flexible sizing and before native line placement.
@@ -2162,7 +2165,7 @@ index 0000000000000000000000000000000000000000..a4e022902e6087ae2d05432cebc4bc61
 +#[path = "../tree/flex_main_fit_tests.rs"]
 +mod tests;
 diff --git a/vendor/taffy/src/compute/flexbox.rs b/vendor/taffy/src/compute/flexbox.rs
-index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..b1be21879cfb0e520e11db4d3ee235a0a925aba1
+index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..7c90615e9b754c3ddbf336a2e201e7a89ae57330
 --- a/vendor/taffy/src/compute/flexbox.rs
 +++ b/vendor/taffy/src/compute/flexbox.rs
 @@ -1,0 +2,5 @@
@@ -2578,7 +2581,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..b1be21879cfb0e520e11db4d3ee235a0
 +    // KaminIDE patch: a row item pushed past a fragmentainer break moves in the
 +    // block axis after line alignment; completed lines and the container keep
 +    // their used sizes (the item's own overflow is a parallel flow).
-+    if constants.dir.is_row() {
++    if constants.dir.is_row() && constants.fragmentation_axis.0 == constants.dir.cross_axis() {
 +        for line in flex_lines.iter_mut() {
 +            for item in line.items.iter_mut() {
 +                item.offset_cross += tree.flex_item_fragmentation_offset(item.node);
