@@ -18,12 +18,13 @@ pub(crate) use try_rule::apply_try_rule;
 /// `<position-area>` накладываются на `Computed`, база уезжает в `try_base`
 /// для сборки остальных кандидатов (`place`). Тактики раскладке не нужны:
 /// сдвиг считается абсолютно на подготовке.
-pub fn apply_chosen(c: &mut BoxStyle, vcx: ValueCx<'_>) {
+pub fn apply_chosen(c: &mut BoxStyle, own: &crate::dom::SharedStyle, vcx: ValueCx<'_>) {
     if c.position_try_fallbacks.is_empty()
         || !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
     {
         return;
     }
+    c.try_style = Some(own.clone());
     let base = Rc::new(c.clone());
     let chosen = vcx
         .doc
@@ -39,13 +40,38 @@ pub fn apply_chosen(c: &mut BoxStyle, vcx: ValueCx<'_>) {
         if let Some(n) = &fb.name
             && let Some(decls) = vcx.doc.try_rule(n)
         {
-            apply_try_rule(c, &decls, vcx);
+            try_rule_onto(c, &decls, vcx);
         }
         if let Some(area) = fb.area {
             c.position_area = Some(area);
         }
     }
     c.try_base = Some(base);
+}
+
+/// Объявления правила `@position-try` на стиле коробки `c`: каскад элемента с источником
+/// Try вычисляется заново (zoom, шрифтовые единицы, `inherit`), а не кладётся поверх
+/// вычисленных значений.
+pub(crate) fn try_rule_onto(
+    c: &mut crate::style::computed::BoxStyle,
+    decls: &crate::style::css::DeclBlock,
+    vcx: ValueCx<'_>,
+) {
+    let own = c.try_style.clone();
+    let computed = own.is_some_and(|own| {
+        crate::style::cascade::materialize::recompute_onto(
+            c,
+            &own,
+            |declared| apply_try_rule(declared, decls, vcx),
+            vcx,
+        )
+    });
+    if !computed {
+        // TRANSITIONAL(cascade-7b layout-made styles): a style without a cascade
+        // stage (a box layout made) takes the declarations as they are; remove
+        // when layout-made boxes keep their element's cascade.
+        apply_try_rule(c, decls, vcx);
+    }
 }
 
 /// Якорь из реестра ПРОШЛОГО кадра: по имени — последняя запись с этим

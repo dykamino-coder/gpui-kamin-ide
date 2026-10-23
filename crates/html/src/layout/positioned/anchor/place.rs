@@ -28,7 +28,7 @@ pub fn place(el: AnyElement, own: &BoxStyle, inherited: &Computed, vcx: ValueCx<
             let Some(decls) = vcx.doc.try_rule(n) else {
                 continue;
             };
-            super::resolve::apply_try_rule(&mut c, &decls, vcx);
+            super::resolve::try_rule_onto(&mut c, &decls, vcx);
         }
         if let Some(area) = fb.area {
             c.position_area = Some(area);
