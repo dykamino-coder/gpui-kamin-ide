@@ -75,9 +75,11 @@ pub(crate) fn render_with_style(
                 image
                     .as_ref()
                     .map(|image| {
-                        opts.cx
-                            .build
-                            .blocks(std::slice::from_ref(image), &mark_style, opts)
+                        opts.cx.contracts.build.blocks(
+                            std::slice::from_ref(image),
+                            &mark_style,
+                            opts,
+                        )
                     })
                     .into_iter()
                     .flatten(),
@@ -171,7 +173,7 @@ pub(crate) fn render_with_style(
             image
                 .as_ref()
                 .map(|image| {
-                    opts.cx.build.blocks(
+                    opts.cx.contracts.build.blocks(
                         &[image.clone(), Node::Text("\u{a0}".into())],
                         &mark_style,
                         opts,

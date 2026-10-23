@@ -1,7 +1,7 @@
-//! РћР±С‰РµРµ СЂР°Р·СЂРµС€РµРЅРёРµ РјР°СЂРєРµСЂР° РґР»СЏ Р±Р»РѕС‡РЅС‹С… Рё СЃС‚СЂРѕС‡РЅС‹С… РїСѓРЅРєС‚РѕРІ СЃРїРёСЃРєР°: С‚РµРєСЃС‚ РјР°СЂРєРµСЂР°
-//! (`content` Сѓ `::marker`, `list-style-type`, СЃС‡С‘С‚С‡РёРє РїСѓРЅРєС‚Р°), РїСЂРёР·РЅР°Рє `list-style: none`
-//! Рё С‡СѓР¶РѕРіРѕ `display`, СЃС‚РёР»СЊ СЃР»РѕСЏ `::marker` Рё СЃР±РѕСЂРєР° Р°РЅРѕРЅРёРјРЅРѕРіРѕ СѓР·Р»Р° `::marker`
-//! СЃ UA-РїСЂР°РІРёР»Р°РјРё css-lists-3 (`unicode-bidi: isolate`, Р±РµР· `letter-spacing` Сѓ СЃРёРјРІРѕР»Р°).
+//! Общее разрешение маркера для блочных и строчных пунктов списка: текст маркера
+//! (`content` у `::marker`, `list-style-type`, счётчик пункта), признак `list-style: none`
+//! и чужого `display`, стиль слоя `::marker` и сборка анонимного узла `::marker`
+//! с UA-правилами css-lists-3 (`unicode-bidi: isolate`, без `letter-spacing` у символа).
 
 use super::tabular_marker;
 use crate::document::state::ValueCx;
@@ -25,8 +25,8 @@ pub(crate) fn resolve(
     vcx: ValueCx<'_>,
 ) -> Option<Marker> {
     let idx = li.list_item.unwrap_or(0);
-    // Р’РёРґ РјР°СЂРєРµСЂР° Р·Р°РґР°С‘С‚ РґРѕРєСѓРјРµРЅС‚; Р±РµР· СѓРєР°Р·Р°РЅРёСЏ вЂ” СѓРјРѕР»С‡Р°РЅРёРµ С‚РµРіР°.
-    // РЎС‚СЂРѕРєРѕРІС‹Р№ РјР°СЂРєРµСЂ Р±РµСЂС‘С‚СЃСЏ РґРѕСЃР»РѕРІРЅРѕ Рё Р±РµР· СЃСѓС„С„РёРєСЃР°-С‚РѕС‡РєРё.
+    // Вид маркера задаёт документ; без указания — умолчание тега.
+    // Строковый маркер берётся дословно и без суффикса-точки.
     let text_marker = li.style.computed().marker_text.clone().or_else(|| {
         (li.style.cascaded().list_style_type.is_none()
             && li.style.computed().no_marker.is_none()
@@ -56,8 +56,8 @@ pub(crate) fn resolve(
     let marker = if let Some(t) = text_marker {
         t
     } else {
-        // РЈРјРѕР»С‡Р°РЅРёРµ С‚РµРіР°: Сѓ РЅСѓРјРµСЂРѕРІР°РЅРЅРѕРіРѕ РїРµСЂРµС‡РЅСЏ РґРµСЃСЏС‚РёС‡РЅС‹Р№ СЃС‡С‘С‚, Сѓ
-        // СЃРїРёСЃРєР° РІРѕР·РјРѕР¶РЅРѕСЃС‚РµР№ вЂ” С‚РѕС‡РєР°.
+        // Умолчание тега: у нумерованного перечня десятичный счёт, у
+        // списка возможностей — точка.
         let name = kind.unwrap_or_else(|| "disc".to_string());
         crate::style::generated::counter_style::marker_repr(
             idx,
@@ -66,18 +66,18 @@ pub(crate) fn resolve(
             vcx,
         )
     };
-    // `list-style: none` вЂ” РЅР° СЃРїРёСЃРєР°С… РІРµСЂСЃС‚Р°СЋС‚ РЅР°РІРёРіР°С†РёСЋ Рё РЅР°Р±РѕСЂС‹ С‡РёРїРѕРІ,
-    // Рё С‚РѕС‡РєРё С‚Р°Рј Р»РёС€РЅРёРµ. РЎРІРѕС‘ СЃР»РѕРІРѕ РїСѓРЅРєС‚Р° СЃС‚Р°СЂС€Рµ СЃР»РѕРІР° СЃРїРёСЃРєР°:
-    // `list-style-type` РЅР°СЃР»РµРґСѓРµРјРѕРµ, Рё `<ul style="list-style-type:
-    // none">` РЅРµ РіР°СЃРёС‚ `li::marker { content }` (`marker-content-012`).
+    // `list-style: none` — на списках верстают навигацию и наборы чипов,
+    // и точки там лишние. Своё слово пункта старше слова списка:
+    // `list-style-type` наследуемое, и `<ul style="list-style-type:
+    // none">` не гасит `li::marker { content }` (`marker-content-012`).
     //
-    // Р§СѓР¶РѕР№ `display` РЅР° РїСѓРЅРєС‚Рµ СЃРЅРёРјР°РµС‚ СЃ РЅРµРіРѕ РїСЂРёР·РЅР°Рє РїСѓРЅРєС‚Р°, Р° СЃ РЅРёРј Рё
-    // РјР°СЂРєРµСЂ (css-display-3: `list-item` РµСЃС‚СЊ С‚РѕР»СЊРєРѕ Сѓ `display:
-    // list-item`; css-pseudo-4 В§marker-pseudo: В«the computed value of
-    // 'display' on ::marker always loses any list-item aspectВ» вЂ” РѕР±СЂР°С‚РЅРѕРµ
-    // РІРµСЂРЅРѕ С‚РµРј Р±РѕР»РµРµ). Р‘РµР· СЌС‚РѕРіРѕ СЌС‚Р°Р»РѕРЅ `marker-content-019-ref`
-    // (`li { display: block }`) СЂРёСЃРѕРІР°Р» Сѓ РЅР°СЃ РїРѕР»РЅС‹Р№ РЅР°Р±РѕСЂ `1. 2. 3. 4.`,
-    // Рё СЃРІС‘СЂС‚РєР° `content: none` РІ С‚РµСЃС‚Рµ СЂР°Р·РІРѕРґРёР»Р° СЃС‚РѕСЂРѕРЅС‹ Р•Р©РЃ РґР°Р»СЊС€Рµ.
+    // Чужой `display` на пункте снимает с него признак пункта, а с ним и
+    // маркер (css-display-3: `list-item` есть только у `display:
+    // list-item`; css-pseudo-4 §marker-pseudo: «the computed value of
+    // 'display' on ::marker always loses any list-item aspect» — обратное
+    // верно тем более). Без этого эталон `marker-content-019-ref`
+    // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
+    // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
     let mut style = li
         .style
         .computed()
@@ -130,9 +130,9 @@ pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     );
     span.style.used_mut().content = None;
     span.style.used_mut().marker_layer = None;
-    // css-lists-3 В§marker-properties UA rule `::marker { unicode-bidi:
+    // css-lists-3 §marker-properties UA rule `::marker { unicode-bidi:
     // isolate }`: Arabic-Indic digits and the suffix stay one run
-    // (`css3-counter-styles-101`, reference `<bdi>ЩЎ. </bdi>`).
+    // (`css3-counter-styles-101`, reference `<bdi>١. </bdi>`).
     if span.style.computed().bidi_isolate.is_none()
         && span.style.computed().bidi_embed.is_none()
         && span.style.computed().bidi_override.is_none()

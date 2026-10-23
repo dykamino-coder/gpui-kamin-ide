@@ -11,6 +11,8 @@ pub(crate) use containing::restore_containing_block;
 mod edges;
 use edges::drop_inline_side;
 mod flush;
+#[cfg(test)]
+mod tests;
 pub(super) use flush::flush_inline;
 
 use crate::dom::Node;
@@ -110,8 +112,8 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // не действуют (`Computed::hoisted_block`, `transformed`).
                 block.style.used_mut().hoisted_block = true;
                 containing::hoist(&mut block, e);
-                // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
-                // Preserve inherited marker properties before hoisting the block.
+                // Разрыв коробок не меняет наследование стилей (CSS 2 §9.2.1.1).
+                // Сохраняем свойства маркера до выноса блока из родителя.
                 let (own, host, decl) = (
                     block.style.computed(),
                     e.style.computed(),
@@ -125,6 +127,10 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                     .or(decl.list_style_inside);
                 let used = block.style.used_mut();
                 used.list_style_type = list_type.or_else(|| decl.list_style_type.clone());
+                used.list_style_image = own
+                    .list_style_image
+                    .clone()
+                    .or_else(|| host.list_style_image.clone());
                 used.list_style_inside = inside;
                 used.no_marker = own.no_marker.or(host.no_marker);
                 used.marker_text = own.marker_text.clone().or_else(|| host.marker_text.clone());

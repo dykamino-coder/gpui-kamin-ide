@@ -20,11 +20,12 @@ pub(super) fn resolve(
     let (w, h) = default_size(source.intrinsic(), (em, em));
     let mut node = anon_element("img", vec![]);
     node.inline = true;
-    node.style.content = Some(vec![ContentItem::Image(image.clone())]);
-    node.style.width = Some(Len::Px(w));
-    node.style.height = Some(Len::Px(h));
-    node.style.image_orient_none = item.image_orient_none;
-    node.style.image_pixelated = item.image_pixelated;
+    let used = node.style.used_mut();
+    used.content = Some(vec![ContentItem::Image(image.clone())]);
+    used.width = Some(Len::Px(w));
+    used.height = Some(Len::Px(h));
+    used.image_orient_none = item.image_orient_none;
+    used.image_pixelated = item.image_pixelated;
     Some(Node::Element(node))
 }
 
@@ -34,6 +35,7 @@ mod tests {
     use crate::document::{image_values, state::DocState};
     use crate::dom::Element;
     use crate::style::cascade::inherit::inherit;
+    use crate::style::computed::BoxStyle;
     use crate::style::css::parse_decls;
 
     fn item(css: &str, vcx: ValueCx<'_>) -> Element {
@@ -49,8 +51,8 @@ mod tests {
             panic!("image element")
         };
         assert_eq!(e.tag, "img");
-        assert!(e.inline && e.style.content_image().is_some());
-        (e.style.width, e.style.height)
+        assert!(e.inline && e.style.computed().content_image().is_some());
+        (e.style.computed().width, e.style.computed().height)
     }
 
     #[test]
@@ -69,7 +71,7 @@ mod tests {
             ),
         ] {
             let li = item(&format!("font-size:20px; list-style-image:{image}"), vcx);
-            let merged = inherit(&Computed::default(), &li.style, vcx);
+            let merged = inherit(&BoxStyle::default(), &li.style.computed(), vcx);
             let image = resolve(&merged, None, vcx).unwrap();
             assert_eq!(
                 dimensions(&image),
@@ -89,7 +91,7 @@ mod tests {
                 ),
                 vcx,
             );
-            let merged = inherit(&Computed::default(), &li.style, vcx);
+            let merged = inherit(&BoxStyle::default(), &li.style.computed(), vcx);
             let marker = super::super::resolve(&li, &Computed::default(), &merged, vcx).unwrap();
             assert!(marker.image.is_none());
             assert_eq!(marker.text, "3. ");
@@ -99,7 +101,7 @@ mod tests {
                 ),
                 vcx,
             );
-            let merged = inherit(&Computed::default(), &li.style, vcx);
+            let merged = inherit(&BoxStyle::default(), &li.style.computed(), vcx);
             let marker = super::super::resolve(&li, &Computed::default(), &merged, vcx).unwrap();
             let Node::Element(span) = super::super::node(&li, &merged, marker) else {
                 panic!()
@@ -126,26 +128,31 @@ mod tests {
         );
         assert!(doc.images.borrow_mut().take_jobs().is_empty());
         let mut li = item("list-style-type:none", vcx);
-        let merged = inherit(&parent.style, &li.style, vcx);
+        let merged = inherit(
+            &BoxStyle::shared(parent.style.computed()),
+            &li.style.computed(),
+            vcx,
+        );
         assert!(
-            super::super::resolve(&li, &parent.style, &merged, vcx)
+            super::super::resolve(&li, &parent.style.computed(), &merged, vcx)
                 .unwrap()
                 .image
                 .is_some()
         );
         let mut layer = Computed::default();
         layer.apply_one("content", "none", vcx);
-        li.style.marker_layer = Some(Box::new(layer));
-        li.style.no_marker = Some(true);
-        assert!(super::super::resolve(&li, &parent.style, &merged, vcx).is_none());
+        li.style.used_mut().marker_layer = Some(Box::new(layer));
+        li.style.used_mut().no_marker = Some(true);
+        assert!(super::super::resolve(&li, &parent.style.computed(), &merged, vcx).is_none());
         li.style
+            .used_mut()
             .marker_layer
             .as_mut()
             .unwrap()
             .apply_one("content", "'custom'", vcx);
-        li.style.no_marker = Some(false);
-        li.style.marker_text = Some("custom".into());
-        let marker = super::super::resolve(&li, &parent.style, &merged, vcx).unwrap();
+        li.style.used_mut().no_marker = Some(false);
+        li.style.used_mut().marker_text = Some("custom".into());
+        let marker = super::super::resolve(&li, &parent.style.computed(), &merged, vcx).unwrap();
         assert!(marker.image.is_none());
         assert_eq!(marker.text, "custom");
     }
