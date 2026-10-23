@@ -239,3 +239,24 @@ fn an_own_zoom_scales_the_whole_inherited_text_shadow_list() {
     );
     assert_eq!(p.text_shadow_rest[0].x, 2.0 * div.text_shadow_rest[0].x);
 }
+
+#[test]
+fn position_try_declarations_pass_the_computed_value_stage() {
+    let parsed = crate::dom::parse(
+        r#"<body><div style="position: absolute; zoom: 2; width: 5px">a</div></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let div = element(&parsed.nodes, "div");
+    let mut c = (*div.style.computed()).clone();
+    assert_eq!(c.width, Some(Len::Px(10.0)));
+    // `@position-try { width: 10px }` under `zoom: 2` is 20px, like any author 10px.
+    assert!(recompute_onto(
+        &mut c,
+        &div.style,
+        |declared| declared.width = Some(Len::Px(10.0)),
+        vcx,
+    ));
+    assert_eq!(c.width, Some(Len::Px(20.0)));
+}

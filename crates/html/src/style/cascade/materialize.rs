@@ -136,6 +136,27 @@ pub(crate) fn rematerialize(
     e
 }
 
+/// Вычислить элемент заново с дополнительными объявлениями `edit` (источник каскада
+/// position-try, css-anchor-position-1 §fallback-rule) под его родителем-элементом и
+/// положить изменившиеся поля на стиль коробки `c`: значения проходят ту же стадию
+/// вычисления (zoom, шрифтовые единицы, `inherit`), что и остальные. `false` — у стиля
+/// нет материализации (стиль одной стадии), объявления не применены.
+pub(crate) fn recompute_onto(
+    c: &mut Computed,
+    own: &SharedStyle,
+    edit: impl FnOnce(&mut Computed),
+    vcx: ValueCx<'_>,
+) -> bool {
+    let Some((materialized, parent)) = own.slot().with_parent() else {
+        return false;
+    };
+    let mut declared = own.cascaded().clone();
+    edit(&mut declared);
+    let computed = super::compute::compute(&parent, &declared, vcx);
+    used::lay_used(c, &computed, &materialized);
+    true
+}
+
 /// Стиль коробки элемента с каскадным стилем `own` под коробкой-родителем со стилем `parent`.
 pub fn box_style(parent: &BoxStyle, own: &SharedStyle, vcx: ValueCx<'_>) -> BoxStyle {
     styled(parent, own, true, vcx)

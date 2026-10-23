@@ -15,6 +15,9 @@ pub struct BoxStyle {
     /// Стиль ДО наложения выбранного варианта `position-try` — из него
     /// `anchor::place` строит остальные кандидаты. Ставит `anchor::apply_chosen`.
     pub(crate) try_base: Option<Rc<BoxStyle>>,
+    /// Стиль элемента с вариантами `position-try-fallbacks`: вариант вычисляется
+    /// заново из его каскада (`resolve::try_rule_onto`).
+    pub(crate) try_style: Option<crate::dom::SharedStyle>,
     /// Служебные поля якорного шага, ставит `render::element`: свой `node_id`
     /// (ключ реестра содержащих блоков `anchor::CB`), `node_id` ближайшего
     /// содержащего блока абсолюта (`style::cascade::inherit`; 0 — начальный, окно),
