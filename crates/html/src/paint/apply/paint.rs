@@ -55,10 +55,10 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).
-    // Фон, обрезанный внутренним краем (`background-clip`), красит не сама
-    // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
-    // раскладке красится целиком, вместе с рамкой и полями.
-    if c.color_inset_clip(vcx).is_none()
+    if matches!(
+        c.color_clip(vcx),
+        None | Some(crate::style::computed::BgClip::BorderBox)
+    ) && !crate::paint::background::needs_color_layer(c, vcx)
         && !crate::style::computed::single_corner::eligible(c)
         && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {

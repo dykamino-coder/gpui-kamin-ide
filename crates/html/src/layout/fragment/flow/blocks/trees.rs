@@ -6,7 +6,7 @@
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::monolith_box;
-use crate::layout::fragment::probe::plain_block_tree;
+use crate::layout::fragment::flow::box_children::children;
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::Display;
 
@@ -15,65 +15,74 @@ use crate::style::computed::Display;
 /// детей иначе — их границы дают свои контексты (строки — `Paragraph`).
 pub(super) fn stacks_blocks(e: &Element) -> bool {
     matches!(
-        e.style.display,
+        e.style.used().display,
         None | Some(Display::Block) | Some(Display::ListItem)
-    ) && e.style.webkit_box != Some(true)
-        && !crate::layout::multicol::spanner::multicol_container(&e.style)
+    ) && e.style.used().webkit_box != Some(true)
+        && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
         && !table_box(e)
         && !matches!(e.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
 }
 
-/// Всё поточное блочное поддерево `e` до глубины `depth` — блочные стопки и
-/// монолиты: каждую коробку, перед которой может встать распорка, рекордер
-/// стопки видит (таблица, flex и сетка кладут детей иначе).
-pub(crate) fn stacked_tree(e: &Element, depth: u8) -> bool {
+/// Обычные блоки без контекстов с отдельной раскладкой. В отличие от
+/// legacy probe проверяется всё дерево, без глубины оценщика.
+pub(crate) fn plain_tree(e: &Element) -> bool {
     stacks_blocks(e)
-        && (depth == 0
-            || e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style) || k.inline => {
-                    !holds_blocks(k) || stacked_tree(k, depth - 1)
-                }
-                Node::Element(k) => {
-                    monolith_box(k) || stacked_tree(k, depth - 1) || table_tree(k, depth - 1)
-                }
-                _ => true,
-            }))
+        && children(&e.children).all(|n| match n {
+            Node::Element(k) => k.inline || plain_tree(k),
+            _ => true,
+        })
+}
+
+/// Все коробки, перед которыми может встать распорка, видит рекордер.
+/// Таблица внутри обычной стопки сохраняет собственные ряды и ячейки;
+/// plain_tree здесь неприменим, поскольку намеренно исключает таблицы.
+pub(crate) fn stacked_tree(e: &Element) -> bool {
+    stacks_blocks(e)
+        && children(&e.children).all(|n| match n {
+            Node::Element(k) if out_of_flow(&k.style.used()) || k.inline => {
+                !holds_blocks(k) || stacked_tree(k)
+            }
+            Node::Element(k) => monolith_box(k) || stacked_tree(k) || table_tree(k),
+            _ => true,
+        })
 }
 
 /// Таблица горизонтального письма, всё поддерево которой — части таблицы
 /// (группы, ряды, ячейки, подписи) и поддеревья обычных блоков
-/// (`plain_block_tree`): её подписи, ряды и содержимое ячеек видит рекордер
+/// (`plain_tree`): её подписи, ряды и содержимое ячеек видит рекордер
 /// (`table::TableBox`), а не оценка формы.
-pub(crate) fn table_tree(e: &Element, depth: u8) -> bool {
-    fn part(n: &Node, depth: u8) -> bool {
+pub(crate) fn table_tree(e: &Element) -> bool {
+    fn part(n: &Node) -> bool {
         match n {
             Node::Element(k) if k.inline => true,
             Node::Element(k)
                 if matches!(
-                    k.style.display,
+                    k.style.used().display,
                     Some(Display::TableRow)
                         | Some(Display::TableRowGroup)
                         | Some(Display::TableCell)
+                ) || matches!(
+                    k.tag.as_str(),
+                    "tr" | "thead" | "tbody" | "tfoot" | "td" | "th"
                 ) =>
             {
-                depth > 0 && k.children.iter().all(|n| part(n, depth - 1))
+                children(&k.children).all(part)
             }
-            Node::Element(k) => plain_block_tree(k, depth) || table_tree(k, depth),
+            Node::Element(k) => {
+                stacked_tree(k) || table_tree(k) || super::grid_tree(k) || super::flex_tree(k)
+            }
             _ => true,
         }
     }
-    table_box(e)
-        && !e.style.wm().vertical()
-        && depth > 0
-        && e.children.iter().all(|n| part(n, depth - 1))
+    table_box(e) && !e.style.cascaded().wm().vertical() && children(&e.children).all(part)
 }
 
 /// Строчная коробка с поточным блоком внутри (на любой глубине строчных).
 pub(super) fn holds_blocks(e: &Element) -> bool {
-    e.children.iter().any(|n| match n {
-        Node::Element(k) if out_of_flow(&k.style) => false,
+    children(&e.children).any(|n| match n {
+        Node::Element(k) if out_of_flow(&k.style.used()) => false,
         Node::Element(k) if !k.inline => true,
-        Node::Element(k) => k.style.display.is_none() && holds_blocks(k),
+        Node::Element(k) => k.style.used().display.is_none() && holds_blocks(k),
         _ => false,
     })
 }

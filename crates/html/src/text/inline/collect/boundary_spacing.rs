@@ -4,6 +4,7 @@
 //! (`letter_spacing_after`), распорки пропускаются; за строчной коробкой, ушедшей в раскладку,
 //! зазор предка держит отдельная распорка.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -18,7 +19,8 @@ pub(super) fn boundary_gap_after_box(
     inherited: &Computed,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<f32> {
-    let inline_level = e.style.display.is_none() || e.style.inline_display == Some(true);
+    let inline_level =
+        e.style.used().display.is_none() || e.style.used().inline_display == Some(true);
     let replaced = matches!(
         e.tag.as_str(),
         "img"
@@ -33,12 +35,12 @@ pub(super) fn boundary_gap_after_box(
             | "select"
             | "textarea"
     );
-    if !inline_level || replaced || e.style.ruby_role.is_some() {
+    if !inline_level || replaced || e.style.used().ruby_role.is_some() {
         return None;
     }
     let size = match inherited.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let gap = crate::text::metrics::spacing_px(
         inherited.letter_spacing,
@@ -58,7 +60,9 @@ pub(super) fn set_boundary_spacing(pieces: &mut [Piece], spacing: Option<Len>) {
         Piece::Text { text, style } if !text.is_empty() && text != SPACER => Some(style),
         _ => None,
     });
-    if let Some(style) = last {
+    if let Some(style) = last
+        && style.letter_spacing_after != spacing
+    {
         style.letter_spacing_after = spacing;
     }
 }
@@ -74,10 +78,13 @@ pub(super) fn set_parent_boundary_spacing(pieces: &mut [Piece], parent: Option<L
         _ => None,
     });
     if let Some(style) = last {
-        style.letter_spacing_after = match parent {
+        let after = match parent {
             Some(len) => Some(len),
             None if style.letter_spacing.is_some() => Some(Len::Px(0.0)),
             None => None,
         };
+        if style.letter_spacing_after != after {
+            style.letter_spacing_after = after;
+        }
     }
 }

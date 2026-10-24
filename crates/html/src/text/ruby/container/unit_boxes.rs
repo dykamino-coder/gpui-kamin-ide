@@ -5,12 +5,12 @@
 //! получает распорку ради общей базовой линии.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::replaced_tag;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{BoxStyle, Display, Position};
 use crate::style::values::value::Len;
 use crate::text::ruby::{ruby_role, ruby_transform};
-use crate::text::text_box::blank_text;
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 
 // Единица из ОДНОГО `<rb>`/`<rt>` (или элемента с ролью базы /
@@ -46,8 +46,8 @@ pub(super) fn only_space(nodes: &[Node]) -> bool {
         Node::Element(k) => {
             let plain = ruby_role(k)
                 .is_some_and(|r| r != crate::style::computed::RubyRole::Container)
-                || (k.style.display.is_none()
-                    && k.style.inline_display != Some(false)
+                || (k.style.used().display.is_none()
+                    && k.style.used().inline_display != Some(false)
                     && !replaced_tag(k));
             plain && only_space(&k.children)
         }
@@ -79,11 +79,11 @@ pub(super) fn spaced(nodes: &[Node], done: &mut bool) -> Vec<Node> {
         .collect()
 }
 
-pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     // CSS Ruby interlinear-block: an empty base container behaves as a
     // single empty base, whose strut still supplies the shared baseline.
     let strut;
-    let nodes = if opts.cx.ruby_layers.is_some() && !has_inflow(nodes) {
+    let nodes = if opts.cx.ruby.layers.is_some() && !has_inflow(nodes) {
         strut = empty_base(nodes);
         &strut[..]
     } else {
@@ -114,28 +114,29 @@ pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> A
         )
     {
         let mut block = k.clone();
-        ruby_transform::clear(&mut block.style);
-        block.style.display = Some(Display::Block);
-        block.style.inline_display = None;
-        block.style.ruby_role = None;
-        block.style.text_indent = Some(Len::Px(0.0));
-        block.style.text_indent_each_line = Some(false);
-        block.style.text_indent_hanging = Some(false);
-        // `ruby-align`, заданный на самой базе (css-ruby-1 §4.3, «Applies
-        // to: ruby bases, …»), выравнивает её содержимое СВОИМ значением, а
-        // не значением контейнера (`ruby-align-001a`: `<rb style=
-        // "ruby-align: start">`). Аннотации выравнивает свой путь.
-        if block.style.ruby_align.is_some()
-            && ruby_role(k) == Some(crate::style::computed::RubyRole::Base)
-        {
-            super::stacks::align_units(&mut block.style);
-        }
+        ruby_transform::clear(block.style.used_mut());
+        block.style.used_mut().display = Some(Display::Block);
+        block.style.used_mut().inline_display = None;
+        block.style.used_mut().ruby_role = None;
+        block.style.used_mut().ruby_unit = true;
+        block.style.used_mut().nowrap = Some(true);
+        block.style.used_mut().text_indent = Some(Len::Px(0.0));
+        block.style.used_mut().text_indent_each_line = Some(false);
+        block.style.used_mut().text_indent_hanging = Some(false);
+        // База и аннотация выравнивают содержимое своим computed
+        // `ruby-align` (css-ruby-1 §4.3), включая унаследованное значение.
+        super::stacks::align_units(block.style.used_mut());
         return div()
-            .children(opts.cx.build.blocks(&[Node::Element(block)], &style, opts))
+            .children(
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&[Node::Element(block)], &style, opts),
+            )
             .into_any_element();
     }
     div()
-        .children(opts.cx.build.blocks(nodes, &style, opts))
+        .children(opts.cx.contracts.build.blocks(nodes, &style, opts))
         .into_any_element()
 }
 
@@ -143,8 +144,10 @@ fn has_inflow(nodes: &[Node]) -> bool {
     nodes.iter().any(|node| match node {
         Node::Text(text) => !text.is_empty(),
         Node::Element(e) => {
-            !matches!(e.style.position, Some(Position::Absolute | Position::Fixed))
-                && (replaced_tag(e) || has_inflow(&e.children))
+            !matches!(
+                e.style.used().position,
+                Some(Position::Absolute | Position::Fixed)
+            ) && (replaced_tag(e) || has_inflow(&e.children))
         }
     })
 }

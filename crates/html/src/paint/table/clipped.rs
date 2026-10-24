@@ -1,5 +1,6 @@
 //! Полоса фона ряда/группы, обрезанная прямоугольниками ячеек (CellsClipped).
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::layout::table::probes::RowRects;
 use gpui::{Bounds, Pixels, Window};
@@ -24,7 +25,7 @@ impl CellsClipped {
         if let Some(o) = &self.style.outline {
             let em = match self.style.font_size {
                 Some(crate::style::values::value::Len::Px(v)) => v,
-                _ => 16.0,
+                _ => MEDIUM_FONT_SIZE_PX,
             };
             let px_of = |l: Option<crate::style::values::value::Len>| match l {
                 Some(crate::style::values::value::Len::Px(v)) => v,

@@ -321,6 +321,40 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     ///
     /// Interpreted in the container's axes (see [`LayoutPartialTree::get_core_container_style`]).
     fn get_flexbox_child_style(&self, child_node_id: NodeId) -> Self::FlexboxItemStyle<'_>;
+
+    /// KaminIDE patch: optionally retain the final solver lines and item positions.
+    /// Size-only probes do not publish geometry. Fragmentation policy stays with the caller.
+    fn set_detailed_flex_info(&mut self, _node_id: NodeId, _info: crate::tree::DetailedFlexInfo) {}
+
+    /// KaminIDE patch: physical block axis and whether block-start is its high edge.
+    /// Defaults to horizontal writing mode for existing callers.
+    fn flex_fragmentation_axis(&self, _node_id: NodeId) -> (crate::geometry::AbsoluteAxis, bool) {
+        (crate::geometry::AbsoluteAxis::Vertical, false)
+    }
+
+    /// KaminIDE patch: border-box extent consumed in a row continuation.
+    fn flex_item_fragmentation_consumed(&self, _node_id: NodeId) -> f32 { 0.0 }
+
+    /// KaminIDE patch: consumed block space before a column item, after flex sizing.
+    fn flex_item_fragmentation_offset(&self, _node_id: NodeId) -> f32 { 0.0 }
+
+    /// KaminIDE patch: space consumed by fragmentation after each row flex line.
+    /// Applied after item sizing/alignment: completed items retain their used size.
+    /// Values are physical line indices as returned by `DetailedFlexInfo`.
+    fn flex_line_fragmentation_growth(&self, _node_id: NodeId, _line: usize) -> f32 { 0.0 }
+
+    /// KaminIDE patch: the item's line index fixed before fragmentation, if any.
+    /// When every item of a wrapping container has one, in non-decreasing order,
+    /// lines are taken from it instead of being re-collected.
+    fn flex_item_fragmentation_line(&self, _node_id: NodeId) -> Option<usize> { None }
+
+    /// KaminIDE patch: caller-owned atomic box classification (replaced, scroll, etc.).
+    fn fragmentation_monolithic(&self, _node_id: NodeId) -> bool { false }
+
+    /// KaminIDE patch: the container is laid out inside a fragmentation context.
+    /// Column items whose block size may not shrink then encompass their
+    /// intrinsic block size (Blink `MinBlockSizeShouldEncompassIntrinsicSize`).
+    fn flex_fragmentation(&self, _node_id: NodeId) -> bool { false }
 }
 
 #[cfg(feature = "grid")]

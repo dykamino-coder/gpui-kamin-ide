@@ -5,16 +5,15 @@
 //! стопки, слой содержащего блока `position: fixed` и флоаты соседями стопки.
 
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
 use crate::layout::fragment::Shape;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
 use crate::layout::options::RenderOpts;
-use crate::paint::gap_rules::painter::GapRulePainter;
-use crate::style::computed::Computed;
 use crate::style::computed::stacking::fixed_cb_layer_box;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, ParentElement};
-mod kids;
+pub(super) mod kids;
 mod parallel;
 use kids::{column_kids, stack_children};
 mod clone_plan;
@@ -31,7 +30,7 @@ pub(crate) fn multicol_column_stack(
     d: gpui::Div,
     e: &Element,
     inherited: &Computed,
-    merged: Computed,
+    merged: BoxStyle,
     opts: &RenderOpts,
     kids: Vec<(Element, Shape)>,
     cols: u16,
@@ -59,7 +58,7 @@ pub(crate) fn multicol_column_stack(
             let per = r.h.unwrap_or(f32::MAX).max(1.0);
             let span = kids
                 .iter()
-                .filter(|(c, _)| c.style.column_span != Some(true))
+                .filter(|(c, _)| c.style.used().column_span != Some(true))
                 .map(|(_, s)| (s.height / per).ceil() as usize)
                 .max()
                 .unwrap_or(0);
@@ -80,10 +79,14 @@ pub(crate) fn multicol_column_stack(
     // `multi-line-row-flex-fragmentation-037/038` («красное видно»).
     // Проверено: баланс одними колонками (без рядов) ничего не меняет.
     // Балансу нужен свой подбор высоты по строкам, а не оценка.
-    // Строки flex и распорки роста (`grow_pushed`) меряют
-    // ФИЗИЧЕСКОЕ дерево и знают только вертикальную ось —
-    // в вертикальном письме их нет (следующий шаг).
-    let (kid_parent, kid_starts, kid_par, kids) =
+    let deferred = (line_col_w.is_none() && nest_rows.is_none())
+        .then(|| {
+            super::deferred::Recipe::new(e, &merged, opts, cols, used_gap, fixed, col_axis, rows)
+        })
+        .flatten();
+    let (kid_parent, kid_starts, kid_par, kids) = if deferred.is_some() {
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+    } else {
         crate::layout::fragment::with_lines(&merged, line_col_w, opts, |opts| {
             let vcx = opts.cx.vcx();
             column_kids(
@@ -98,7 +101,8 @@ pub(crate) fn multicol_column_stack(
                 (line_col_w, layout_col_w),
                 vcx,
             )
-        });
+        })
+    };
     // `box-decoration-break: clone`: геометрия фрагментов —
     // ДО сборки копий: каждая копия такой коробки строится
     // отдельной коробкой своей высоты (`clone_fragment`).
@@ -106,7 +110,9 @@ pub(crate) fn multicol_column_stack(
     // потоком соседей (та же мера, что у `StackChild` ниже):
     // иначе план соседа с потоком разошёлся бы с укладкой.
     // Без `clone` среди детей не считается вовсе.
-    let clone_plan = clone_plan_of(cols, col_vert, rows, copies, fixed, &kid_par, &kids, vcx);
+    let clone_plan = clone_plan_of(
+        cols, col_vert, rows, copies, fixed, &kid_par, &kids, vcx, opts,
+    );
     let rule = column_rule_of(e, &merged, opts);
     // С рядами линейки (`column-rule` со втяжкой/разрывом,
     // `row-rule` — css-multicol-2 §rg/§crc → css-gaps-1)
@@ -115,16 +121,16 @@ pub(crate) fn multicol_column_stack(
     // простая полоса `rule` тогда не рисуется. Без рядов —
     // как прежде (`multicol-rule-*` не трогаются).
     let extended_rules = rows.is_some_and(|r| r.wrap)
-        || e.style.row_rule_visible == Some(true)
-        || e.style.column_rule_break.is_some()
-        || e.style.column_rule_inset.is_some()
-        || e.style.column_rule_visibility.is_some();
+        || e.style.used().row_rule_visible == Some(true)
+        || e.style.used().column_rule_break.is_some()
+        || e.style.used().column_rule_inset.is_some()
+        || e.style.used().column_rule_visibility.is_some();
     let gap_spec = extended_rules
         .then(|| multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap))
         .flatten();
     let gap_items = gap_spec
         .as_ref()
-        .map(|_| crate::paint::gap_rules::GapItems::default());
+        .map(|_| crate::layout::multicol::gap_rules::GapItems::default());
     let rule = rule.filter(|_| gap_spec.is_none());
     // Где начинается ребёнок в первой внешней колонке — для
     // вложенного рядами с заданной высотой (`nest_row`): все
@@ -142,45 +148,32 @@ pub(crate) fn multicol_column_stack(
     // Blink `fixedpos_containing_block`, out_of_flow_layout_part.cc).
     // Слой берёт только `fixed`: абсолюты копий режутся колонками на месте.
     let fixed_layer = fixed_cb_layer_box(&merged).then(|| {
-        crate::layout::positioned::layer_scope::LayerScope::fixed_only(&opts.cx.positioning)
+        crate::layout::positioned::layer_scope::LayerScope::fixed_only(&opts.cx.position.state)
     });
-    let children = stack_children(
-        e,
-        &merged,
-        opts,
-        cols,
-        col_vert,
-        col_rl,
-        (line_col_w, layout_col_w),
-        rows,
-        nested_auto,
-        nested_whole,
-        measured_kids,
-        copies,
-        fixed,
-        kid_parent,
-        kid_par,
-        kids,
-        clone_plan,
-    );
-    // Щуп статической позиции — НУЛЕВОЙ записью стопки на
-    // месте позиционированного ребёнка: высоты нет, полей
-    // нет, точек разреза нет, монолитных диапазонов нет —
-    // план укладки от него не двигается (`fill_at`:
-    // `rest = 0` всегда влезает в остаток колонки), а
-    // холст `layout::positioned::containing_block::late::spot::spot_probe` запоминает экранную
-    // дырку. Сама коробка в стопку НЕ идёт: она рисуется
-    // после стопки заместителем `spot_place` и сдвигается
-    // в эту дырку. Тем это отличается от прежней пробы
-    // «нулевая запись в стопке», о которой говорит
-    // комментарий у `direct_oof`: там в колонку уходил САМ
-    // элемент, и его резала маска
-    // (`out-of-flow-in-multicolumn-094…097`).
-    //
-    // Blink берёт статическую позицию оттуда же —
-    // `out_of_flow_layout_part.cc`,
-    // `LayoutFragmentainerDescendants`: позиция кандидата
-    // считается относительно ФРАГМЕНТАИНЕРА.
+    let children = if deferred.is_some() {
+        Vec::new()
+    } else {
+        stack_children(
+            e,
+            &merged,
+            opts,
+            cols,
+            col_vert,
+            col_rl,
+            (line_col_w, layout_col_w),
+            rows,
+            nested_auto,
+            nested_whole,
+            measured_kids,
+            copies,
+            fixed,
+            kid_parent,
+            kid_par,
+            kids,
+            clone_plan,
+        )
+    };
+    // Статические места OOF — нулевые записи в исходном порядке потока.
     let (children, oof_spots) = place_oof_statics(&merged, opts, &oof_static, kid_starts, children);
     // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
     // это высота, значит коробка кладёт её гибким рядом
@@ -190,7 +183,10 @@ pub(crate) fn multicol_column_stack(
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
     let painter = gap_items.clone().zip(gap_spec);
     let d = d.children(painter.map(|(b, s)| {
-        crate::hooks::PaintOnly(GapRulePainter::new(b, s, opts.cx.paint.clone())).hooked()
+        opts.cx
+            .contracts
+            .build
+            .layer(Layer::gap_rules(b, s, &opts.cx))
     }));
     let mut d = column_stack_div(
         d,
@@ -211,13 +207,14 @@ pub(crate) fn multicol_column_stack(
         rule,
         children,
         opts,
+        deferred,
     );
     if let Some(layer) = fixed_layer {
         d = d.children(layer.finish());
     }
     // Флоаты — прежним ходом, соседями стопки.
     for oof in &direct_oof {
-        d = d.child(opts.cx.build.element(oof, &merged, opts));
+        d = d.child(opts.cx.contracts.build.element(oof, &merged, opts));
     }
     // Заместитель на месте щупа: рисуется ПОСЛЕ стопки и
     // после флоатов (позиционированная коробка выше и

@@ -25,21 +25,22 @@ pub(super) fn apply_offset_transforms(
         let Node::Element(e) = n else { continue };
         // Геометрия снимается ДО правки стиля: `transform` на размеры коробки
         // не влияет, но порядок так честнее читается.
-        let mine = cb_of(&e.style).map(|g| (g, crate::text::inline::establishes_cb(&e.style)));
-        let est = crate::text::inline::establishes_cb(&e.style);
-        let in_icb = match e.style.position {
+        let mine = cb_of(&e.style.used())
+            .map(|g| (g, crate::text::inline::establishes_cb(&e.style.used())));
+        let est = crate::text::inline::establishes_cb(&e.style.used());
+        let in_icb = match e.style.used().position {
             Some(Position::Absolute) => icb_open,
             Some(Position::Fixed) => true,
             _ => false,
         };
-        if super::motion_style(&e.style).offset_path.is_some() && in_icb {
-            e.style.offset_icb = true;
-        } else if super::motion_style(&e.style).offset_path.is_some() {
+        if super::motion_style(&e.style.used()).offset_path.is_some() && in_icb {
+            e.style.used_mut().offset_icb = true;
+        } else if super::motion_style(&e.style.used()).offset_path.is_some() {
             let cb = parent
-                .filter(|(_, est)| cb_is_parent(&e.style, *est))
-                .map(|(g, _)| with_self(g, &e.style));
+                .filter(|(_, est)| cb_is_parent(&e.style.used(), *est))
+                .map(|(g, _)| with_self(g, &e.style.used()));
             let origin = svg_origin(e);
-            apply_offset_transform(&mut e.style, cb.as_ref(), origin, Some(shapes), vcx);
+            apply_offset_transform(e.style.used_mut(), cb.as_ref(), origin, Some(shapes), vcx);
         }
         apply_offset_transforms(&mut e.children, mine, icb_open && !est, shapes, vcx);
     }
@@ -156,7 +157,7 @@ pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
 /// Левый верх `fill-box`/`stroke-box` SVG-фигуры (css-transforms-1
 /// §transform-box); у остальных элементов и при `view-box` — нулевой.
 fn svg_origin(e: &crate::dom::Element) -> (f32, f32) {
-    let stroke = match e.style.transform_box {
+    let stroke = match e.style.used().transform_box {
         Some(1) => false,
         Some(2) => true,
         _ => return (0.0, 0.0),

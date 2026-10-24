@@ -14,7 +14,7 @@ use crate::layout::float::band_host::band_margins;
 use crate::layout::float::band_measured::has_ruby;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::writing_mode::WritingMode;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 mod inline_run;
@@ -66,7 +66,7 @@ pub(super) fn own_layout_mode(c: &Computed) -> bool {
 /// font in `inherited`.
 pub(super) fn fit_own_layout(
     c: &mut Computed,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     avail: f32,
     cb: f32,
     vcx: crate::document::state::ValueCx<'_>,
@@ -103,15 +103,15 @@ pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
         && !c.children.iter().any(has_ruby)
         // Заголовок таблицы вне таблицы — анонимная таблица (§17.2.1), то
         // есть коробка, флоаты не перекрывающая (`clear-applies-to-015`).
-        && c.style.is_caption != Some(true)
+        && c.style.used().is_caption != Some(true)
         && c.tag != "caption"
         && flow_interior_plain(c)
-        && (c.style.clear.is_none() || band_clear_supported(c))
+        && (c.style.used().clear.is_none() || band_clear_supported(c))
         && matches!(
-            c.style.display,
+            c.style.used().display,
             None | Some(Display::Block) | Some(Display::ListItem)
         )
-        && band_margins(&c.style, em).is_some()
+        && band_margins(&c.style.used(), em).is_some()
 }
 
 /// Хвост измеряемого хоста с шагом F4: куски `band_piece_m`, блоки обычного
@@ -131,7 +131,7 @@ pub(super) fn band_flow_rest(
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
-pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn band_flow_host(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let host = e.marks.shape_flow.unwrap_or_default();
     let count = host.count;
     let em: f32 = host.em.unwrap_or(opts.base_size());
@@ -163,9 +163,10 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
     let flow = flow.clamp_measure(
         opts.cx.clamp_measure(),
         opts.cx
-            .clamp_input
+            .clamp
+            .input
             .as_ref()
-            .map(|_| opts.cx.positioning.clone()),
+            .map(|_| opts.cx.position.state.clone()),
     );
     let flow = match parent {
         Some(parent) => flow.fragment_flow(
@@ -179,8 +180,9 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
     // enclosing outline phase (CSS 2.1 Appendix E, step 10).
     let phase = |flow| {
         opts.cx
+            .contracts
             .build
-            .effects(flow, Effect::OutlineFlow(&opts.cx.paint))
+            .effects(flow, Effect::OutlineFlow(&opts.cx.deferred.paint))
     };
     if inherited.wm().vertical() {
         return phase(flow.vertical(inherited.wm()).hooked());

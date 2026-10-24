@@ -12,6 +12,7 @@
 //! содержимое (класс C есть только при ненулевом зазоре, css-break-4 §possible-breaks).
 //! Таблица — своими подписями и рядами (`table::geometry`).
 
+use super::stack::walk_kids;
 use super::table::TableSections;
 use super::{BlockBox, Laid, Pushed};
 use crate::tolerance::COORD_EPS;
@@ -27,6 +28,8 @@ pub(crate) struct BlockBreaks {
     pub(super) pending: Vec<Pending>,
     /// Диапазоны запрета, достижимые только переносом (`MeasuredBreaks::avoid`).
     pub(crate) avoid: Vec<(f32, f32)>,
+    /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
+    pub(crate) keep: Vec<(f32, f32)>,
     /// Секции повтора, если корень стопки — таблица.
     pub(super) sections: Option<TableSections>,
 }
@@ -42,6 +45,8 @@ pub(crate) struct MeasuredBreaks {
     /// разрыв не уводит: в начало диапазона уходит лишь разрыв, перенесённый
     /// к его концу монолитом (`Kid::avoid`).
     pub(crate) avoid: Vec<(f32, f32)>,
+    /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
+    pub(crate) keep: Vec<(f32, f32)>,
     /// Разложенные секции повтора таблицы-корня (css-tables-3
     /// §repeated-headers).
     pub(crate) sections: Option<TableSections>,
@@ -82,7 +87,10 @@ impl BlockBox {
     pub(crate) fn breaks(&self, bottom: f32, laid: &Laid) -> BlockBreaks {
         let mut out = BlockBreaks::default();
         let top = laid.at(self.id).map_or(0.0, |b| b.0);
-        walk(self, top, bottom, laid, &mut out);
+        // Собственный avoid учитывает Kid::monolith: с пустого листа
+        // он ослабляется (css-break-4 §4.4). Повторный keep от border box
+        // после отбивки ошибочно создавал бы разрыв перед содержимым.
+        walk_contents(self, top, bottom, laid, &mut out);
         out.sections = self.table.as_ref().and_then(|t| t.sections(laid));
         out
     }
@@ -99,23 +107,75 @@ impl BlockBox {
         if let Some(g) = &self.grid {
             return g.pushed_at(self.id, a, laid);
         }
+        if let Some(f) = &self.flex {
+            return f.pushed_at(self.id, a, laid);
+        }
         for k in &self.kids {
             let Some((top, bottom)) = laid.at(k.id) else {
                 continue;
             };
-            if (top - a).abs() < COORD_EPS {
+            // Элемент потока flex-колонки сдвигается вместе со своим полем:
+            // граница перед ним — начало его margin box (`walk_kids`).
+            let start = if self.flex_gap.is_some() {
+                laid.margin_box(k.id).map_or(top, |m| m.0)
+            } else {
+                top
+            };
+            if (top - a).abs() < COORD_EPS || (start - a).abs() < COORD_EPS {
                 return Some(Pushed::Box(k.id));
             }
-            if top < a && a < bottom - COORD_EPS {
-                return k.inner.as_ref()?.pushed_at(a, laid);
+            if top < a
+                && a < bottom - COORD_EPS
+                && let Some(found) = k.inner.as_ref().and_then(|b| b.pushed_at(a, laid))
+            {
+                return Some(found);
             }
         }
-        None
+        laid.lines
+            .get(&self.id)?
+            .iter()
+            .find(|p| (p.at - a).abs() < COORD_EPS)
+            .cloned()
+            .map(Pushed::Line)
     }
 }
 
 /// Точки стопки `b`, стоящей в `[top, bottom)`.
 pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut BlockBreaks) {
+    if b.inside_avoid {
+        out.keep.push((top, bottom));
+    }
+    walk_contents(b, top, bottom, laid, out);
+}
+
+fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut BlockBreaks) {
+    if let Some(flow) = laid.flows.get(&b.id) {
+        out.cuts.extend_from_slice(&flow.cuts);
+        let lines = laid.content.get(&b.id).map_or(&[][..], |l| l.as_slice());
+        for &(top, bottom) in &flow.solid {
+            let inside: Vec<_> = lines
+                .iter()
+                .filter(|l| l.top >= top - COORD_EPS && l.bottom <= bottom + COORD_EPS)
+                .collect();
+            if inside.len() < 2 {
+                out.solid.push((top, bottom));
+                continue;
+            }
+            // Строки, сведённые `orphans`/`widows` (`FlowGeometry::keep_lines`),
+            // — пожелание, а не монолит: правило 3 css-break-3 §4.4 снимается,
+            // если иначе содержимое не помещается во фрагментаинер (Blink
+            // `kBreakAppealViolatingOrphansAndWidows`).
+            out.keep.push((top, bottom));
+            for pair in inside.windows(2) {
+                out.cuts.push((pair[0].bottom, pair[1].top));
+            }
+            out.solid.extend(
+                inside
+                    .iter()
+                    .map(|l| (l.top.max(top), l.bottom.min(bottom))),
+            );
+        }
+    }
     if let Some(t) = &b.table {
         t.walk(top, laid, out);
         return;
@@ -124,9 +184,10 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
         out.solid.push((top, top + b.head));
     }
     let floor = top + b.head;
-    let last = match &b.grid {
-        Some(g) => g.breaks(b.id, floor, laid, out),
-        None => walk_kids(b, floor, laid, out),
+    let last = match (&b.grid, &b.flex) {
+        (Some(g), _) => g.breaks(b.id, floor, laid, out),
+        (_, Some(f)) => f.breaks(b.id, floor, laid, out),
+        _ => walk_kids(b, floor, laid, out),
     };
     if b.end_margin
         && b.tail <= 0.0
@@ -145,50 +206,4 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
             gapless: last.is_none_or(|lb| (edge - lb).abs() < 0.01),
         });
     }
-}
-
-/// Блочные дети стопки: границы соседей, принудительные разрывы и запреты,
-/// монолиты и вложенные стопки. Возвращает низ последнего ребёнка.
-fn walk_kids(b: &BlockBox, floor: f32, laid: &Laid, out: &mut BlockBreaks) -> Option<f32> {
-    let mut prev: Option<(&super::BlockKid, f32, f32)> = None;
-    let mut last: Option<f32> = None;
-    // Конечное имя страницы последнего именованного соседа.
-    let mut page_prev: Option<&str> = None;
-    for k in &b.kids {
-        let Some((kt, kb)) = laid.at(k.id) else {
-            // Коробка без записи раскладки: её места нет, границы вокруг неё
-            // не строятся.
-            prev = None;
-            last = None;
-            continue;
-        };
-        let renamed = matches!((page_prev, &k.page), (Some(a), Some((b, _))) if a != b);
-        if let Some((_, end)) = &k.page {
-            page_prev = Some(end);
-        }
-        if let Some((p, pt, pb)) = prev.filter(|_| k.adjoins) {
-            // Распорка роста перед коробкой (`STRUT_ID`) — содержимое
-            // предыдущего фрагмента: граница встаёт под ней.
-            let pb = laid.at(k.id ^ super::STRUT_ID).map_or(pb, |s| s.1.max(pb));
-            out.cuts.push((pb, kt));
-            if p.force_after || k.force_before || renamed {
-                out.forced.push(pb);
-            } else if p.avoid_after || k.avoid_before {
-                out.pending.push(Pending::Avoid {
-                    top: pt,
-                    bottom: pb,
-                    floor,
-                    next: kt,
-                });
-            }
-        }
-        if k.monolith {
-            out.solid.push((kt, kb));
-        } else if let Some(inner) = &k.inner {
-            walk(inner, kt, kb, laid, out);
-        }
-        prev = Some((k, kt, kb));
-        last = Some(kb);
-    }
-    last
 }

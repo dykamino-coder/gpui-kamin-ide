@@ -1,10 +1,10 @@
 //! Исходная связь CB сохраняется при перестройке дерева коробок (CSS 2 §9.2.1.1).
 
 use crate::dom::{Element, InlineCb};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 pub(super) fn hoist(block: &mut Element, inline: &Element) {
-    if crate::text::inline::establishes_cb(&inline.style) {
+    if crate::text::inline::establishes_cb(&inline.style.used()) {
         let old = block.marks.inline_cb;
         block.marks.inline_cb = Some(InlineCb {
             node: old.map_or(inline.node_id, |cb| cb.node),
@@ -14,7 +14,7 @@ pub(super) fn hoist(block: &mut Element, inline: &Element) {
 }
 
 /// Геометрия продолжения не меняет исходного CSS containing block.
-pub(crate) fn restore_containing_block(e: &Element, own: &mut Computed) {
+pub(crate) fn restore_containing_block(e: &Element, own: &mut BoxStyle) {
     if let Some(cb) = e.marks.inline_cb {
         own.cb_node = cb.node;
         own.cb_ancestor = true;
@@ -26,7 +26,7 @@ pub(crate) fn restore_containing_block(e: &Element, own: &mut Computed) {
 mod tests {
     use super::*;
     use crate::dom::Node;
-    use crate::style::computed::Position;
+    use crate::style::computed::{Computed, Position};
 
     #[test]
     fn nested_inline_splits_keep_the_nearest_original_cb() {
@@ -54,11 +54,9 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let mut own = Computed {
-            cb_node: 9,
-            cb_depth: 3,
-            ..Default::default()
-        };
+        let mut own = BoxStyle::default();
+        own.cb_node = 9;
+        own.cb_depth = 3;
         restore_containing_block(block, &mut own);
         assert_eq!((own.cb_node, own.cb_depth, own.cb_ancestor), (12, 5, true));
     }

@@ -9,7 +9,7 @@ fn spans(nodes: &[Node], out: &mut Vec<Computed>) {
     for n in nodes {
         if let Node::Element(e) = n {
             if e.tag == "span" {
-                out.push((*e.style).clone());
+                out.push(e.style.cascaded().clone());
             }
             spans(&e.children, out);
         }

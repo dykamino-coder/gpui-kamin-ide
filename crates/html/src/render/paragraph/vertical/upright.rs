@@ -4,15 +4,15 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::paragraph;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// CSS Writing Modes 4 §5.1: orientation belongs to each text run, including
 /// an explicit mixed override inside an upright container. Atomic contents
 /// belong to their own formatting context and cannot select this route.
-pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx<'_>) -> bool {
-    fn visit(nodes: &[Node], style: &Computed, seen: &mut bool, vcx: ValueCx<'_>) -> bool {
+pub(super) fn only_mixed_text(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
+    fn visit(nodes: &[Node], style: &BoxStyle, seen: &mut bool, vcx: ValueCx<'_>) -> bool {
         nodes.iter().all(|node| match node {
             Node::Text(text) if !text.trim().is_empty() => {
                 *seen = true;
@@ -20,10 +20,14 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx
             }
             Node::Element(element)
                 if crate::layout::box_kind::real_inline(element)
-                    || element.style.display == Some(crate::style::computed::Display::Contents) =>
+                    || element.style.used().display
+                        == Some(crate::style::computed::Display::Contents) =>
             {
-                let child =
-                    crate::style::cascade::inherit::inherit_unpainted(style, &element.style, vcx);
+                let child = crate::style::cascade::materialize::box_style_unpainted(
+                    style,
+                    &element.style,
+                    vcx,
+                );
                 visit(&element.children, &child, seen, vcx)
             }
             _ => true,
@@ -36,13 +40,14 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn upright_paragraph(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     if let Some(stack) = super::upright_central::upright_central(nodes, inherited, opts) {
         return stack;
     }
     let mut stack = inherited.clone();
+    stack.inline_format = Some(crate::style::computed::InlineFormat::Upright);
     stack.flat_mode = stack.flow_mode();
     stack.writing_mode = None;
     stack.upright_stack = true;
@@ -88,12 +93,13 @@ pub(crate) fn upright_paragraph(
 /// Строчные элементы без физических левых и правых полей, отбивок и рамок.
 fn drop_block_axis_sides(n: &Node) -> Node {
     match n {
-        Node::Element(e) if e.inline && e.style.display.is_none() => {
+        Node::Element(e) if e.inline && e.style.used().display.is_none() => {
             let mut e = e.clone();
+            let style = &mut *e.style.used_mut();
             for sides in [
-                &mut e.style.margin,
-                &mut e.style.padding,
-                &mut e.style.border_width,
+                &mut style.margin,
+                &mut style.padding,
+                &mut style.border_width,
             ] {
                 sides.left = None;
                 sides.right = None;

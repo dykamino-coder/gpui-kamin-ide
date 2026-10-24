@@ -80,3 +80,23 @@ pub fn align_of_value(a: crate::style::computed::TextAlign) -> Align {
         _ => Align::Left,
     }
 }
+
+#[cfg(test)]
+mod white_space_tests {
+    #[test]
+    fn parsed_break_spaces_reaches_paragraph_rules() {
+        fn find(nodes: &[crate::dom::Node]) -> Option<&crate::dom::Element> {
+            nodes.iter().find_map(|node| match node {
+                crate::dom::Node::Element(e) if e.tag == "div" => Some(e),
+                crate::dom::Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        let nodes = crate::dom::parse(r#"<div style="white-space: break-spaces">X XX X</div>"#, "");
+        let style = &find(&nodes).unwrap().style;
+        let wrap = super::rules(&style.used()).unwrap();
+        assert!(wrap.break_spaces);
+        assert!(wrap.keep_spaces);
+        assert!(!wrap.nowrap);
+    }
+}

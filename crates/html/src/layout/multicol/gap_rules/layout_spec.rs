@@ -1,7 +1,7 @@
 //! Геометрия правил промежутков: вид контейнера, промежутки, дорожки, направление и отступы (вторая
 //! половина gap_rule_spec).
 
-use crate::paint::gap_rules::GapLayout;
+use crate::layout::multicol::gap_rules::GapLayout;
 use crate::style::computed::FlexDir;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -10,9 +10,9 @@ pub(super) fn gap_rule_layout(
     merged: &Computed,
     size: f32,
     s: &Computed,
-    col: Option<crate::paint::gap_rules::GapAxisRule>,
-    row: Option<crate::paint::gap_rules::GapAxisRule>,
-) -> Option<crate::paint::gap_rules::GapRuleSpec> {
+    col: Option<crate::layout::multicol::gap_rules::GapAxisRule>,
+    row: Option<crate::layout::multicol::gap_rules::GapAxisRule>,
+) -> Option<crate::layout::multicol::gap_rules::GapRuleSpec> {
     let vertical = merged.wm().vertical();
     // Лунки идут путём сетки (`dom::lanes_to_grid`: `display: grid` с
     // пометкой `lanes_taffy`), но промежутки у них — ленты: главные между
@@ -149,20 +149,9 @@ pub(super) fn gap_rule_layout(
         Some(Display::Grid) | Some(Display::InlineGrid) => 0,
         _ => 1,
     };
-    Some(crate::paint::gap_rules::GapRuleSpec {
+    Some(crate::layout::multicol::gap_rules::GapRuleSpec {
         pad,
         lines_extent,
-        flex_line_stretch: !lanes
-            && matches!(
-                merged.align_content,
-                None | Some(crate::style::computed::Justify::Stretch)
-            )
-            && matches!(
-                merged.align_items,
-                None | Some(
-                    crate::style::computed::Align::Start | crate::style::computed::Align::Stretch
-                )
-            ),
         lanes_content_aligned: lanes
             && if crate::dom::lanes_row_dir(merged) {
                 merged.justify_content.is_some()

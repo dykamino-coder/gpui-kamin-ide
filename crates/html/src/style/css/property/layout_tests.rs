@@ -69,7 +69,16 @@ fn flex_flow_gap_and_columns_fill_omitted_parts() {
         texts("columns", "auto / 0").unwrap(),
         ["auto", "auto", "0", "auto"]
     );
-    for bad in ["8 auto 6em", "0", "2 3", "10%", "2 /"] {
+    assert_eq!(
+        texts("columns", "0").unwrap(),
+        ["0", "auto", "auto", "auto"]
+    );
+    assert_eq!(
+        texts("columns", "+0 2").unwrap(),
+        ["+0", "2", "auto", "auto"]
+    );
+    assert_eq!(texts("columns", "2 0").unwrap(), ["0", "2", "auto", "auto"]);
+    for bad in ["8 auto 6em", "0 0", "2 3", "10%", "2 /"] {
         assert_eq!(texts("columns", bad), None, "{bad}");
     }
 }

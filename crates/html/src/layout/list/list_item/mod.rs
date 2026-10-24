@@ -5,12 +5,12 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Computed, Display};
 use gpui::{AnyElement, Styled};
 pub(crate) mod marker;
+mod outside;
 mod styled;
-pub(crate) use styled::inherited_style;
 pub(crate) use styled::render_with_style;
 
 fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
@@ -21,7 +21,7 @@ fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
             | Some(Display::Grid)
             | Some(Display::InlineGrid)
     );
-    if li.style.flex_shrink.is_none() && !flex_parent {
+    if li.style.used().flex_shrink.is_none() && !flex_parent {
         d.flex_shrink_0()
     } else {
         d
@@ -49,14 +49,14 @@ fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed
     style.font_features = features;
 }
 
-pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(super) fn render(li: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &li.style, vcx);
+    let mut merged = box_style(inherited, &li.style, vcx);
     if matches!(
-        li.style.display,
+        li.style.used().display,
         None | Some(Display::Block | Display::ListItem | Display::TableCell)
-    ) || (li.style.display == Some(Display::InlineBlock)
-        && li.style.inline_display != Some(true))
+    ) || (li.style.used().display == Some(Display::InlineBlock)
+        && li.style.used().inline_display != Some(true))
     {
         crate::dom::pseudo_line_layers::install(li, &mut merged, vcx);
     }

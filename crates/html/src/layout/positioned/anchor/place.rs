@@ -3,25 +3,25 @@
 use super::parse::{VIS_NO_OVERFLOW, VIS_VALID, VIS_VISIBLE};
 use super::{AnchorPlan, PlacementPlans, geometry};
 use crate::hooks::{Hooks, IntoHooked};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
 pub(crate) fn place_in_context(
     el: AnyElement,
-    own: &Computed,
-    inherited: &Computed,
+    own: &BoxStyle,
+    inherited: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
     let Some(mut first) = AnchorPlan::of(own, inherited, cx.vcx()) else {
         return el;
     };
-    if let Some((key, inputs)) = cx.oof_sizes
+    if let Some((key, inputs)) = cx.position.oof_sizes
         && key == own.anchor_key
     {
         first.refs_default |= inputs.refs_default;
     }
-    if let Some((key, probe)) = &cx.oof_trial
+    if let Some((key, probe)) = &cx.position.oof_trial
         && *key == own.anchor_key
     {
         return probe.wrap(el, first, own.position_visibility, own.anchor_key);

@@ -1,11 +1,11 @@
 //! Участие узла в inline-прогоне с учётом позиционирования и flex/grid.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::contains_block;
 use crate::layout::positioned::static_position::{at_static_position, cb_padding_shifts_replaced};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn inline_node(
@@ -38,14 +38,14 @@ pub(crate) fn inline_node(
         // `atom_element` (`x_set != y_set`).
         Node::Element(e)
             if matches!(
-                e.style.position,
+                e.style.used().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) && !at_static_position(&e.style)
+            ) && !at_static_position(&e.style.used())
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.inset.left) || edge(e.style.inset.right))
-                        && (edge(e.style.inset.top) || edge(e.style.inset.bottom))
+                    (edge(e.style.used().inset.left) || edge(e.style.used().inset.right))
+                        && (edge(e.style.used().inset.top) || edge(e.style.used().inset.bottom))
                 }
                 // Поле формы и заменяемый элемент строит СВОЙ путь
                 // (`forms::element`, картинка), и краями он распоряжается
@@ -70,7 +70,7 @@ pub(crate) fn inline_node(
             if inherited.band_kid
                 && !ordered_context
                 && matches!(
-                    e.style.position,
+                    e.style.used().position,
                     Some(
                         crate::style::computed::Position::Absolute
                             | crate::style::computed::Position::Fixed
@@ -92,26 +92,28 @@ pub(crate) fn inline_node(
         // такой абсолют остаётся прежним блочным путём
         // (`left-applies-to-012/014`: абсолют — единственный ребёнок).
         Node::Element(e)
-            if e.style.abs_inline_level
+            if e.style.used().abs_inline_level
                 && !ordered_context
                 && pending.iter().any(|p| match p {
                     Node::Text(t) => !t.trim().is_empty(),
                     Node::Element(x) => !matches!(
-                        x.style.position,
+                        x.style.used().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ),
                 })
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.inset.left) || edge(e.style.inset.right))
-                        != (edge(e.style.inset.top) || edge(e.style.inset.bottom))
+                    (edge(e.style.used().inset.left) || edge(e.style.used().inset.right))
+                        != (edge(e.style.used().inset.top) || edge(e.style.used().inset.bottom))
                 } =>
         {
             true
         }
-        Node::Element(e) => match e.style.display {
-            Some(Display::ListItem) if e.style.inline_display == Some(true) => !ordered_context,
+        Node::Element(e) => match e.style.used().display {
+            Some(Display::ListItem) if e.style.used().inline_display == Some(true) => {
+                !ordered_context
+            }
             // Явно заявленная инлайновая коробка остаётся в строке даже у
             // блочного по природе тега — но НЕ внутри гибкого контейнера
             // или сетки: там каждый ребёнок сам себе элемент раскладки
@@ -127,7 +129,7 @@ pub(crate) fn inline_node(
             // семьи `grid-lanes-intrinsic-sizing-*` написаны на
             // `display: inline-grid`, и без этой строки девять сеток
             // вставали столбиком вместо ряда.
-            Some(Display::GridLanes) if e.style.lanes_inline => !ordered_context,
+            Some(Display::GridLanes) if e.style.used().lanes_inline => !ordered_context,
             // `display: contents` without block-level descendants: its
             // children are inline-level boxes and text runs of THIS
             // container (css-display-3 §2.5 «as if they replaced the
@@ -169,7 +171,7 @@ pub(crate) fn inline_node(
             None => {
                 e.inline
                     && (!ordered_context || e.tag == "br")
-                    && e.style.float.is_none_or(|f| f == 0)
+                    && e.style.used().float.is_none_or(|f| f == 0)
             }
         },
     }
@@ -188,28 +190,28 @@ mod tests {
             ..Default::default()
         };
         let mut e = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
-        e.style.position = Some(Position::Absolute);
+        e.style.used_mut().position = Some(Position::Absolute);
         assert!(inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        e.style.inset.top = Some(Len::Px(0.));
+        e.style.used_mut().inset.top = Some(Len::Px(0.));
         assert!(inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        e.style.inset.left = Some(Len::Px(0.));
+        e.style.used_mut().inset.left = Some(Len::Px(0.));
         assert!(!inline_node(
             &Node::Element(e.clone()),
             &inherited,
             false,
             &[]
         ));
-        *e.style = Computed {
+        *e.style.used_mut() = Computed {
             float: Some(-1),
             ..Default::default()
         };

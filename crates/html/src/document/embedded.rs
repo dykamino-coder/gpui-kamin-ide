@@ -12,6 +12,7 @@ use crate::document::box_style::has_box_style;
 use crate::document::state::DocState;
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::style::computed::BoxStyle;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -92,7 +93,7 @@ pub(crate) fn parse_embedded_sized(
         && let [Node::Element(root)] = nodes.as_mut_slice()
         && root.tag == "html-viewport"
     {
-        root.style.scroll.width = Some(2);
+        root.style.cascaded_mut().scroll.width = Some(2);
     }
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
     // дереву живёт здесь, а не в разборе стиля, и без этой строки
@@ -111,37 +112,41 @@ pub(super) fn unwrap_document(
     nodes: Vec<Node>,
     vcx: ValueCx<'_>,
 ) -> (Vec<Node>, crate::style::computed::Computed) {
-    let mut root = crate::style::computed::Computed::default();
+    let mut root = BoxStyle::default();
     let mut nodes = nodes;
     loop {
         let single_wrapper = match nodes.as_slice() {
             [Node::Element(e)] if matches!(e.tag.as_str(), "html" | "body") => {
-                !e.marks.quirks_fill && !has_box_style(&e.style)
+                !e.marks.quirks_fill && !has_box_style(e.style.cascaded())
             }
             _ => false,
         };
         if !single_wrapper {
-            return (nodes, root);
+            return (nodes, root.into_computed());
         }
         let Some(Node::Element(e)) = nodes.pop() else {
-            return (nodes, root);
+            return (nodes, root.into_computed());
         };
-        root = crate::style::cascade::inherit::inherit_unpainted(&root, &e.style, vcx);
+        root = crate::style::cascade::inherit::inherit_unpainted(&root, e.style.cascaded(), vcx);
         // Обёртка снимается ради виртуализации: единица прокрутки — блок
         // верхнего уровня, а не документ целиком. Но её ТЕКСТОВЫЙ стиль
         // принадлежит содержимому: `body { font: 13px system-ui }` — самый
         // обычный способ задать типографику страницы, и без этого шага он
         // пропадал молча, а текст набирался умолчанием движка.
+        let wrapper = BoxStyle::from(e.style.cascaded().clone());
         nodes = e
             .children
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut child) => {
                     child.style = crate::style::cascade::inherit::inherit_unpainted(
-                        &e.style,
-                        &child.style,
+                        &wrapper,
+                        child.style.cascaded(),
                         vcx,
                     )
+                    // Document preparation: the unwrapped child's cascade takes the
+                    // wrapper's values (before materialization).
+                    .into_computed()
                     .into();
                     Node::Element(child)
                 }

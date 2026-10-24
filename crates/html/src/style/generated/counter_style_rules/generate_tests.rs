@@ -111,9 +111,12 @@ fn disclosure_context_survives_extends_and_fallback() {
             ..Raw::default()
         },
     );
-    let mut style = crate::style::computed::Computed {
-        rtl: Some(true),
-        ..Default::default()
+    let mut style = {
+        let mut with_inherited = crate::style::computed::Computed {
+            ..Default::default()
+        };
+        with_inherited.rtl = Some(true);
+        with_inherited
     };
     let rtl = Context::new(&style, Context::default());
     assert_eq!(super::generate(&rules, 2, "alias", 0, rtl, vcx), "◂");

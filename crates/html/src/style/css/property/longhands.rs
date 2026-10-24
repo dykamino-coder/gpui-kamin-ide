@@ -240,3 +240,5 @@ with_inherited_rows! {
 }
 
 mod info;
+mod set;
+pub use set::LonghandSet;

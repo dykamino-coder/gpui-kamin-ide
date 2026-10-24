@@ -14,8 +14,8 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
         // единицах раскладки 1/64 точки, как Blink `LayoutUnit`: иначе
         // `30%` от 50 даёт 15.0000006, и край колонки 25.4999 округлялся
         // не так, как у точного `15px` (`multicol-nested-033`).
-        Some(Len::Pct(k)) if matches!(e.style.width, Some(Len::Px(_))) => {
-            let w = match e.style.width {
+        Some(Len::Pct(k)) if matches!(e.style.used().width, Some(Len::Px(_))) => {
+            let w = match e.style.used().width {
                 Some(Len::Px(w)) => w,
                 _ => 0.0,
             };
@@ -28,7 +28,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     };
     // `column-*` — только у блочных контейнеров (css-multicol-1 §2):
     // сетка ими не режется (`grid-multicol-001`).
-    let multicol = multicol_container(&e.style);
+    let multicol = multicol_container(&e.style.used());
     // css-multicol-1 §3.4 шаги (05)-(07): N считается по ВЫЧИСЛЕННЫМ
     // 'column-width', 'column-gap' и используемой ширине коробки.
     // Пока брались заданные значения, `column-width: 6em` не
@@ -40,7 +40,15 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // значении (`css_properties.json5:7513`
     // `ConvertComputedLength<float>`) и в `length_utils.cc:1311`
     // `ResolveUsedColumnCount` читает уже точки.
-    let column_width = merged.column_width.filter(|_| multicol);
+    // css-multicol-1 §cw: вычисленное значение сохраняется, используемое
+    // ограничено снизу 1px, в том числе при расчёте числа колонок (§pseudo-algorithm).
+    let column_width = merged
+        .column_width
+        .filter(|_| multicol)
+        .map(|width| match width {
+            Len::Px(w) => Len::Px(w.max(1.0)),
+            other => other,
+        });
     let column_count = merged.column_count.filter(|_| multicol);
     // Ось прогрессии колонок — СТРОЧНАЯ ось многоколоночника
     // (css-multicol-1 §2, `Overview.bs:375-379`: «The column boxes are
@@ -82,7 +90,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // Заданный `column-height` без числа колонок — одна колонка, но с
     // рядами (`column-height-012`: `column-height:40px` и 80px
     // содержимого — два ряда по 40).
-    let height_driven = e.style.column_height.is_some() && used_count.is_none_or(|n| n <= 1);
+    let height_driven = e.style.used().column_height.is_some() && used_count.is_none_or(|n| n <= 1);
     // `column-count: 1` — тоже многоколоночник (css-multicol-1 §2; Blink
     // `ComputedStyle::SpecifiesColumns`: «!HasAutoColumnCount()»), и
     // спаннер в нём режет содержимое на ряды: ряд до спаннера — свой
@@ -96,7 +104,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // (`multicol-span-all-list-item-001/002`).
     let lone_span = used_count == Some(1)
         && !height_driven
-        && e.style.column_wrap.is_none()
+        && e.style.used().column_wrap.is_none()
         && e.list_item.is_none()
         && has_deep_spanner(e);
     ColumnPlan {
@@ -124,4 +132,44 @@ pub(crate) struct ColumnPlan {
     pub(super) width_driven: bool,
     pub(super) height_driven: bool,
     pub(super) lone_span: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::computed::BoxStyle;
+
+    #[test]
+    fn zero_column_width_uses_one_pixel_without_changing_computed_value() {
+        let opts = RenderOpts {
+            text: Default::default(),
+            viewport: (800., 600.),
+            normal_line_height: 1.2,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        for (css, expected) in [
+            ("column-width:0", Len::Px(0.)),
+            ("columns:0", Len::Px(0.)),
+            ("column-width:0.5px", Len::Px(0.5)),
+            ("column-width:0em", Len::Em(0.)),
+            ("column-width:0.01em", Len::Em(0.01)),
+        ] {
+            let doc = crate::document::state::DocState::new(Default::default());
+            let mut style = Computed::default();
+            style.apply_decls_with_vars(
+                &crate::style::css::parse_decls(&format!("width:50px; column-gap:0; {css}")),
+                &Default::default(),
+                doc.values(),
+            );
+            assert_eq!(style.column_width, Some(expected), "{css}");
+            let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
+            let merged =
+                crate::style::cascade::inherit::inherit(&BoxStyle::default(), &style, doc.values());
+            let plan = column_plan(&e, &merged, &opts);
+            assert_eq!(plan.column_width, Some(Len::Px(1.0)), "{css}");
+            assert_eq!(plan.used_count, Some(50), "{css}");
+            assert_eq!(style.column_width, Some(expected));
+        }
+    }
 }

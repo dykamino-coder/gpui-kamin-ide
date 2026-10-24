@@ -2,7 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 /// Клон поддерева с длинами коробки в ТОЧКАХ: `em`/`ch`/`ex`/`rem` в
@@ -12,8 +12,8 @@ use crate::style::values::value::Len;
 /// нулём (нестрогий `px_or`), а `height: 4em` — отказом всей стопки, хотя
 /// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
 /// трогаются: число в `line-height` наследуется множителем.
-pub(crate) fn resolved_lengths(c: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Element {
-    let m = crate::style::cascade::inherit::inherit(parent, &c.style, vcx);
+pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Element {
+    let m = crate::style::cascade::materialize::box_style(parent, &c.style, vcx);
     let mut t = c.clone();
     // Подменяются ТОЛЬКО шрифтовые единицы, разрешённые в точки: прочее
     // (`None`, `auto`, доли, точки) остаётся как было — `inherit` дописывает
@@ -32,16 +32,16 @@ pub(crate) fn resolved_lengths(c: &Element, parent: &Computed, vcx: ValueCx<'_>)
         fix(&mut own.bottom, res.bottom);
         fix(&mut own.left, res.left);
     }
-    fix(&mut t.style.width, m.width);
-    fix(&mut t.style.height, m.height);
-    fix(&mut t.style.min_width, m.min_width);
-    fix(&mut t.style.min_height, m.min_height);
-    fix(&mut t.style.max_width, m.max_width);
-    fix(&mut t.style.max_height, m.max_height);
-    fix_sides(&mut t.style.margin, &m.margin);
-    fix_sides(&mut t.style.padding, &m.padding);
-    fix_sides(&mut t.style.border_width, &m.border_width);
-    fix_sides(&mut t.style.inset, &m.inset);
+    fix(&mut t.style.used_mut().width, m.width);
+    fix(&mut t.style.used_mut().height, m.height);
+    fix(&mut t.style.used_mut().min_width, m.min_width);
+    fix(&mut t.style.used_mut().min_height, m.min_height);
+    fix(&mut t.style.used_mut().max_width, m.max_width);
+    fix(&mut t.style.used_mut().max_height, m.max_height);
+    fix_sides(&mut t.style.used_mut().margin, &m.margin);
+    fix_sides(&mut t.style.used_mut().padding, &m.padding);
+    fix_sides(&mut t.style.used_mut().border_width, &m.border_width);
+    fix_sides(&mut t.style.used_mut().inset, &m.inset);
     t.children = c
         .children
         .iter()

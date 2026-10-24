@@ -11,14 +11,18 @@ use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 
 mod collect;
+mod registry;
 use collect::{collect, frame, push_kids};
+mod column_avoid;
 mod finish;
 mod geometry;
+mod parallel;
+mod stack;
 pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
 mod laid;
 pub(crate) use laid::{Laid, TableFrame};
 mod trees;
-pub(crate) use trees::{stacked_tree, table_tree};
+pub(crate) use trees::{plain_tree, stacked_tree, table_tree};
 pub(crate) mod table;
 use table::TableBox;
 mod grid;
@@ -26,8 +30,26 @@ mod grid_breaks;
 pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container, item_rows};
 mod grid_tree;
 pub(crate) use grid_tree::grid_tree;
+mod flex;
+mod flex_breaks;
+mod flex_edges;
+mod flex_tree;
+pub(crate) use flex::{FlexBox, FlexFrame, FlexLine, FlexPush, flex_container};
+pub(crate) use flex_tree::flex_tree;
+#[cfg(test)]
+mod depth_tests;
+#[cfg(test)]
+mod flex_avoid_tests;
+#[cfg(test)]
+mod flex_column_tests;
+#[cfg(test)]
+mod flex_overflow_tests;
+#[cfg(test)]
+mod flex_tests;
 #[cfg(test)]
 mod grid_tests;
+#[cfg(test)]
+mod mixed_tests;
 #[cfg(test)]
 mod tests;
 
@@ -36,15 +58,18 @@ mod tests;
 /// граница, на которой встаёт разрыв перед коробкой.
 pub(crate) const STRUT_ID: u64 = 0x5350_4143_4552_0001;
 
-/// Глубина спуска — та же, что у меры стопки (`shape_full(c, 4, ..)`) плюс
-/// корень копии.
-const DEPTH: u8 = 5;
-
 /// Блочный контейнер стопки: его рамка с отбивкой у краёв и поточные
 /// блочные дети в порядке потока.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BlockBox {
     pub(crate) id: u64,
+    /// Собственные before/after force, before/after avoid до переноса с детей.
+    pub(crate) own_breaks: (bool, bool, bool, bool),
+    pub(crate) inside_avoid: bool,
+    /// Обрезка блочного переполнения ограничивает продолжение размером коробки.
+    pub(crate) clips_block: bool,
+    /// Поточные крайние дети: строчный текст на краю останавливает перенос break.
+    pub(crate) edge_kids: (Option<u64>, Option<u64>),
     /// Рамка и отбивка у начального края блочной оси: разрыв внутри них
     /// недопустим (Blink «avoid breaking inside block-start border»).
     pub(crate) head: f32,
@@ -60,6 +85,10 @@ pub(crate) struct BlockBox {
     pub(crate) table: Option<Box<TableBox>>,
     /// Элементы, если контейнер — сетка: детей стопкой она не кладёт.
     pub(crate) grid: Option<GridBox>,
+    pub(crate) flex: Option<FlexBox>,
+    /// Поток элементов flex-колонки: промежуток главной оси (`row-gap`) между
+    /// соседями.
+    pub(crate) flex_gap: Option<f32>,
 }
 
 /// Поточный блочный ребёнок контейнера.
@@ -90,7 +119,7 @@ impl BlockBox {
     /// Стопка копии `e` в условиях меры `cx`: у страниц (`paged`) — имена
     /// страниц, `viewport` решает единицы окна рамок (как у меры формы).
     pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
-        collect(e, DEPTH, false, cx, vcx)
+        collect(e, false, cx, vcx)
     }
 
     /// Номера узлов корня и всех коробок стопки (их раскладку пишет
@@ -101,17 +130,20 @@ impl BlockBox {
         out
     }
 
-    /// Нет ни блочных детей, ни таблицы, ни элементов сетки: рекордеру
-    /// стопки нечего наблюдать.
+    /// Даже без элементов сетка имеет дорожки, которые наблюдает рекордер.
     pub(crate) fn is_empty(&self) -> bool {
         self.kids.is_empty()
             && self.table.is_none()
-            && self.grid.as_ref().is_none_or(|g| g.items.is_empty())
+            && self.grid.is_none()
+            && self.flex.as_ref().is_none_or(|f| f.items.is_empty())
     }
 
     /// Сетки стопки: номер контейнера и номера его элементов — дорожки рядов
-    /// читаются у разложенного элемента (`parent_grid_tracks`).
+    /// читаются у самого разложенного контейнера (`grid_tracks`).
     pub(crate) fn grids(&self, out: &mut Vec<(u64, Vec<u64>)>) {
+        for flow in self.table.iter().flat_map(|t| t.flows()) {
+            flow.grids(out);
+        }
         if let Some(g) = &self.grid {
             out.push((self.id, g.items.iter().map(|i| i.id).collect()));
             for it in &g.items {
@@ -120,25 +152,14 @@ impl BlockBox {
                 }
             }
         }
-        for k in &self.kids {
+        for k in self
+            .kids
+            .iter()
+            .chain(self.flex.iter().flat_map(|f| &f.items))
+        {
             if let Some(inner) = &k.inner {
                 inner.grids(out);
             }
-        }
-    }
-
-    fn push_ids(&self, out: &mut Vec<u64>) {
-        if let Some(g) = &self.grid {
-            g.push_ids(out);
-        }
-        for k in &self.kids {
-            out.push(k.id);
-            if let Some(inner) = &k.inner {
-                inner.push_ids(out);
-            }
-        }
-        if let Some(t) = &self.table {
-            t.push_ids(out);
         }
     }
 
@@ -150,33 +171,13 @@ impl BlockBox {
         out
     }
 
-    fn push_keys(&self, out: &mut Vec<u64>) {
-        if let Some(g) = &self.grid {
-            for it in &g.items {
-                if let Some(inner) = &it.inner {
-                    inner.push_keys(out);
-                }
-            }
-        }
-        for k in &self.kids {
-            if let Some(inner) = &k.inner {
-                inner.push_keys(out);
-            }
-        }
-        if let Some(t) = &self.table {
-            t.push_keys(out);
-        }
-    }
-
     /// Стопка блочного контейнера по определению — ячейки или подписи
     /// таблицы (CSS 2.1 §17.4, §17.5): дети кладутся блочной стопкой, какое
     /// бы значение `display` ни несла коробка.
-    pub(crate) fn container(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn container(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
         let mut out = frame(e, cx, vcx);
-        if depth > 0 {
-            let mut adjoins = false;
-            push_kids(&e.children, &mut out.kids, &mut adjoins, depth, cx, vcx);
-        }
+        let mut adjoins = false;
+        push_kids(&e.children, &mut out.kids, &mut adjoins, cx, vcx);
         out
     }
 }

@@ -1,8 +1,6 @@
 //! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из
 //! `paragraph_pieces_routed`.
-use crate::layout::box_kind::inline_level;
-use crate::layout::box_kind::out_of_flow;
-use crate::layout::box_kind::replaced_tag;
+use crate::layout::box_kind::{inline_level, out_of_flow, replaced_tag};
 use crate::layout::options::RenderOpts;
 use crate::paint::box_tree::styled::styled_div_with;
 use crate::render::blocks::blocks;
@@ -20,8 +18,7 @@ use crate::layout::atom::atom_element;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
 use crate::layout::writing_mode::rotated_atom;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use crate::text::inline;
 use crate::text::ruby::ruby_transform;
@@ -31,7 +28,7 @@ use gpui::{IntoElement, ParentElement};
 
 pub(crate) fn atom_piece(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     flow_text: bool,
     atom_cx: &inline::atom_parent::AtomCx,
@@ -41,16 +38,17 @@ pub(crate) fn atom_piece(
     // Остальным OOF сохраняем прежний путь статической позиции, пока он
     // не поддерживает направление позиционированного строчного предка.
     let parent_style = atom_cx.parent.as_ref().filter(|_| {
-        !out_of_flow(&e.style)
-            || crate::layout::positioned::anchor::resolve::needs_host(&e.style, &opts.cx)
+        !out_of_flow(&e.style.used())
+            || crate::layout::positioned::anchor::resolve::needs_host(&e.style.used(), &opts.cx)
     });
     let inherited = parent_style.unwrap_or(inherited);
     let child_opts = opts.inner(|cx| {
-        cx.clamp_atom_depth = if e.style.clamp_lines().is_some() || e.style.clamp_by_height() {
-            0
-        } else {
-            cx.clamp_atom_depth + 1
-        };
+        cx.clamp.atom_depth =
+            if e.style.used().clamp_lines().is_some() || e.style.used().clamp_by_height() {
+                0
+            } else {
+                cx.clamp.atom_depth + 1
+            };
     });
     atom_piece_in(
         e,
@@ -64,7 +62,7 @@ pub(crate) fn atom_piece(
 
 fn atom_piece_in(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     flow_text: bool,
     in_inline_cb: bool,
@@ -73,14 +71,19 @@ fn atom_piece_in(
     let vcx = opts.cx.vcx();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized =
-        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w, vcx);
+    let media_sized = crate::layout::replaced::media::resolve(
+        e,
+        inherited,
+        opts.viewport,
+        opts.cx.constraints.avail_w,
+        vcx,
+    );
     let e = media_sized.as_ref().unwrap_or(e);
     // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
     // before solving absolute insets; an empty frame is still replaced.
     let iframe_sized = (replaced_content::default_iframe(e)
         && matches!(
-            e.style.position,
+            e.style.used().position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
@@ -105,12 +108,12 @@ fn atom_piece_in(
     // начале следующей строки (`next_line_point`): поворачивается вместе со
     // строками, и его до-поворотное место — гипотетическая коробка §10.6.4.
     let rot_block =
-        inherited.wm().turned() && !inline_level(e) && e.style.inline_display != Some(true);
+        inherited.wm().turned() && !inline_level(e) && e.style.used().inline_display != Some(true);
     if plain_flow
         && (!in_inline_cb || inherited.wm().turned())
-        && at_static_position(&e.style)
+        && at_static_position(&e.style.used())
         && (inline_level(e)
-            || e.style.inline_display == Some(true)
+            || e.style.used().inline_display == Some(true)
             || rot_block
             || inherited.band_kid)
     {
@@ -128,8 +131,8 @@ fn atom_piece_in(
     // ГОРИЗОНТАЛЬНЫМ письмом контр-поворачивается — его содержимое
     // обязано стоять прямо (эмуляция tcy в эталонах compression-*).
     if inherited.wm().turned()
-        && e.style.display == Some(Display::InlineBlock)
-        && e.style.vertical_decl() == Some(false)
+        && e.style.used().display == Some(Display::InlineBlock)
+        && e.style.cascaded().vertical_decl() == Some(false)
     {
         // An orthogonal atomic inline keeps its physical box and own writing
         // mode (css-writing-modes-4 §4.3); the line synthesizes its baseline
@@ -142,7 +145,7 @@ fn atom_piece_in(
         if alphabetic && let Some(physical) = rotated_atom::physical(e, inherited, opts) {
             return Some(inline::Piece::Atom(physical));
         }
-        let mut merged = inherit(inherited, &e.style, vcx);
+        let mut merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
         merged.turned_line = false;
         let em = match merged.width {
             Some(Len::Px(v)) => v,
@@ -189,16 +192,16 @@ fn atom_piece_in(
     // (эталоны `fixed-table-layout-021..023`: `img{vertical-align:top}`
     // плюс `margin-left`).
     let wrapped = matches!(
-        e.style.vertical_align,
+        e.style.own_vertical_align(),
         Some(crate::style::computed::Align::Start)
             | Some(crate::style::computed::Align::End)
             | Some(crate::style::computed::Align::Center)
     );
-    let original_margin = rotated_atom::margin(&e.style, inherited);
+    let original_margin = rotated_atom::margin(&e.style.used(), inherited);
     let bare;
     let e = if wrapped {
         let mut copy = e.clone();
-        copy.style.margin = Default::default();
+        copy.style.used_mut().margin = Default::default();
         bare = copy;
         &bare
     } else {
@@ -211,21 +214,22 @@ fn atom_piece_in(
     // `vertical` cleared. Carry the writing mode on the box itself.
     let vertical_abs;
     let e = if (inherited.wm().turned() || inherited.upright_stack)
-        && e.style.writing_mode.is_none()
+        && e.style.cascaded().writing_mode.is_none()
         && matches!(
-            e.style.position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
-        && !at_static_position(&e.style)
+        && !at_static_position(&e.style.used())
         && !replaced_tag(e)
     {
         let mut copy = e.clone();
-        copy.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true,
-            inherited.wm().block_rl(),
-            inherited.wm().sideways(),
-        ));
+        copy.style.used_mut().writing_mode =
+            Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true,
+                inherited.wm().block_rl(),
+                inherited.wm().sideways(),
+            ));
         vertical_abs = copy;
         &vertical_abs
     } else {
@@ -235,7 +239,7 @@ fn atom_piece_in(
     // строчную коробку ей передаёт абзац (`LineBoxSlot`).
     // Позиционированный строчный предок предлагается атому содержащим
     // блоком (`InlineCbOffer`); предложение — только этому атому.
-    let line_box = out_of_flow(&e.style)
+    let line_box = out_of_flow(&e.style.used())
         .then(crate::layout::positioned::containing_block::LineBoxSlot::default);
     let offer = in_inline_cb.then(crate::text::inline::InlineCbOffer::offered);
     let opts = &*atom_cx::atom_opts(opts, ruby, &line_box, &offer);

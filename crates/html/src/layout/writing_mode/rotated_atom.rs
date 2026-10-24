@@ -6,17 +6,17 @@
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::layout::build_contracts::Styling;
-use crate::style::computed::{Computed, Display, Sides};
+use crate::style::computed::{BoxStyle, Computed, Display, Sides};
 use gpui::{IntoElement, ParentElement, Styled};
 
 /// Whether the paragraph's text line is turned around physical atoms.
 pub(crate) fn text_turn(cx: &crate::layout::cx::LayoutCx) -> bool {
-    !cx.pure_atom_paragraph
+    !cx.inline.pure_atom_paragraph
 }
 
 pub(crate) fn physical(
     e: &Element,
-    flow: &Computed,
+    flow: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<gpui::AnyElement> {
     // Atomic formatting contexts keep physical dimensions and their own
@@ -24,9 +24,9 @@ pub(crate) fn physical(
     // enclosing paragraph's text is turned (CSS Writing Modes 4, section 4.3).
     if !text_turn(&opts.cx)
         || !flow.wm().turned()
-        || e.style.inline_display == Some(true)
+        || e.style.used().inline_display == Some(true)
         || !(matches!(
-            e.style.display,
+            e.style.used().display,
             Some(
                 Display::InlineBlock
                     | Display::InlineFlex
@@ -35,7 +35,7 @@ pub(crate) fn physical(
             )
         ) || physical_replaced(e))
         || matches!(
-            e.style.position,
+            e.style.used().position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
@@ -55,22 +55,23 @@ pub(crate) fn physical(
     context.para_vertical = None;
     let mut child =
         crate::layout::atom::pct_resolved_against_block(e, flow).unwrap_or_else(|| e.clone());
-    let margins = margin(&child.style, flow);
-    child.style.margin = Sides::default();
+    let margins = margin(&child.style.used(), flow);
+    child.style.used_mut().margin = Sides::default();
     // The atom is its own layout root inside the counter-rotation, where a
     // relative offset has nothing to shift against. Offsets are physical
     // (CSS 2.1 §9.4.3), so they move the wrapper in the turned line's frame.
     let (dx, dy) = crate::layout::positioned::relative::relative_shift(&child, None);
     if (dx, dy) != (0.0, 0.0) {
-        child.style.inset = Default::default();
+        child.style.used_mut().inset = Default::default();
     }
     let (sx, sy) = crate::text::inline::to_rotated_frame(flow, (dx, dy));
     let central = !flow.wm().alphabetic_baseline();
     let ccw = flow.wm().line().line_turn()
         == crate::style::computed::writing_mode::Turn::CounterClockwise;
-    let physical = opts.cx.build.element(&child, &context, opts);
+    let physical = opts.cx.contracts.build.element(&child, &context, opts);
     let mut wrapper = opts
         .cx
+        .contracts
         .build
         .styled_div(Styling::Margins(&margins), &opts.cx)
         .flex()
@@ -86,7 +87,7 @@ pub(crate) fn physical(
                     physical,
                     ccw,
                     central,
-                    opts.cx.vertical_paint.clone(),
+                    opts.cx.deferred.vertical_paint.clone(),
                 )
                 .into_hooked(),
             )
@@ -101,13 +102,14 @@ fn physical_replaced(e: &Element) -> bool {
     matches!(
         e.tag.as_str(),
         "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
-    ) && e.style.display.is_none()
+    ) && e.style.used().display.is_none()
 }
 
 pub(crate) fn resolved(e: &Element, flow: &Computed) -> Option<Element> {
-    (e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true))
-        .then(|| crate::layout::atom::pct_resolved_against_block(e, flow))
-        .flatten()
+    (e.style.used().display == Some(Display::InlineBlock)
+        && e.style.used().inline_display != Some(true))
+    .then(|| crate::layout::atom::pct_resolved_against_block(e, flow))
+    .flatten()
 }
 
 pub(crate) fn margin(style: &Computed, flow: &Computed) -> Sides {
@@ -121,7 +123,7 @@ mod tests {
     fn atom_build_context_is_local_to_its_branch() {
         let parent = crate::layout::cx::LayoutCx::default();
         let mut atoms = parent.clone();
-        atoms.pure_atom_paragraph = true;
+        atoms.inline.pure_atom_paragraph = true;
         let sibling = parent.clone();
         assert!(text_turn(&parent));
         assert!(!text_turn(&atoms));

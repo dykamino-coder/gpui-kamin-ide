@@ -52,21 +52,10 @@ impl Computed {
                     self.basis_content = Some(content);
                 }
             }
-            "align-self" if v.trim() == "inherit" => {
-                self.align_self_inherit = true;
-            }
-            "align-items" | "justify-items" | "align-content" | "justify-content"
-            | "justify-self"
-                if v.trim() == "inherit" =>
-            {
-                self.align_inherit |= match key {
-                    "align-items" => ainh::ALIGN_ITEMS,
-                    "justify-items" => ainh::JUSTIFY_ITEMS,
-                    "align-content" => ainh::ALIGN_CONTENT,
-                    "justify-content" => ainh::JUSTIFY_CONTENT,
-                    _ => ainh::JUSTIFY_SELF,
-                };
-            }
+            // Каскадное `inherit` держит каскад (`Computed::inherit_longhands`).
+            "align-self" | "align-items" | "justify-items" | "align-content"
+            | "justify-content" | "justify-self"
+                if v.trim() == "inherit" => {}
             "align-self" => {
                 // `left`/`right` у `align-self` недействительны: это
                 // `<self-position>` без них, физические стороны есть только у
@@ -79,7 +68,6 @@ impl Computed {
                 {
                     self.align_self = accept_parsed!(self, a);
                     self.align_self_decl = Some(a);
-                    self.align_self_inherit = false;
                     self.align_self_safe = is_safe(v);
                     self.align_self_normal = v.trim() == "normal";
                     self.align_self_own_axis =
@@ -90,7 +78,6 @@ impl Computed {
             }
             "align-items" => {
                 if let Ok(a) = align_keyword(v) {
-                    self.align_inherit &= !ainh::ALIGN_ITEMS;
                     self.align_items = accept_parsed!(self, a);
                     self.align_items_safe = is_safe(v);
                     self.align_items_last = v.split_whitespace().any(|w| w == "last");
@@ -106,7 +93,6 @@ impl Computed {
                         .map(Some)
                         .or_else(|| (v == "normal").then_some(None))
                 );
-                self.align_inherit &= !ainh::JUSTIFY_CONTENT;
                 self.justify_content = parsed;
                 if v == "normal" {
                     self.accept_declaration();

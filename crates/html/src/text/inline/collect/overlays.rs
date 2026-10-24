@@ -32,7 +32,7 @@ pub(crate) fn overlay_in_row(
     }
     let probe =
         crate::layout::positioned::containing_block::spot_probe(spot.clone(), false, None, cx);
-    match cx.positioning.late_push(spot, el) {
+    match cx.position.state.late_push(spot, el) {
         None => probe,
         Some(kept) => {
             let mut hole = gpui::div().relative().w_0().h_0().flex_shrink_0();

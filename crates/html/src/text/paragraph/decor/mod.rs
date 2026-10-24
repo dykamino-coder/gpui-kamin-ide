@@ -6,6 +6,7 @@
 //! (zoom-for-DSF): толщина округляется там, линия прижимается по вертикали к
 //! сетке устройства, а концы прогона ложатся на целые точки устройства.
 
+use crate::tolerance::COORD_EPS;
 mod ink;
 mod paint_decor;
 mod shaped;
@@ -171,7 +172,7 @@ impl DecorLine {
             && self.y == next.y
             && self.t == next.t
             && self.color == next.color
-            && (next.x0 - self.x1).abs() < 0.01
+            && (next.x0 - self.x1).abs() < COORD_EPS
     }
 }
 

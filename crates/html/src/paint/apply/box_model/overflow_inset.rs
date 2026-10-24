@@ -3,9 +3,10 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_lossy_zero;
 
-fn box_inset(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // §9.4.3: у относительно сдвинутой коробки с ОБОИМИ горизонтальными
     // краями один из них избыточен — «if neither is auto, one of them must be
     // ignored: for direction ltr `right`, for rtl `left`». Раскладка под нами
@@ -101,7 +102,7 @@ fn box_inset(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     d
 }
 
-pub(super) fn box_overflow(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(super) fn box_overflow(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // Обрезка — ДО разбора краёв: ниже стоит ранний выход для непозиционированных,
     // и всё, что после него, у обычного блока не выполнялось вовсе. Из-за этого
     // `overflow: hidden` не обрезал ничего (проверено пробой: коробка с ним и

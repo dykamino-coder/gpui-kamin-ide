@@ -1,7 +1,7 @@
 //! Вычисленные MathML style/depth и математическая шкала размеров из CSS Fonts.
 use super::Computed;
 use crate::{style::values::value::Len, text::fonts};
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Depth {
     Absolute(i32),
     Add(i32),
@@ -79,20 +79,24 @@ fn scale(mut a: i32, mut b: i32, constants: Option<(f32, f32)>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
     #[test]
     fn css_wide_style_reset_controls_auto_depth_font_size() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         use crate::style::{cascade::inherit::inherit, css::parse_decls};
-        let parent = Computed {
-            math_compact: Some(true),
-            font_size: Some(Len::Px(500.0)),
-            font_family: Some("Ahem".into()),
-            ..Computed::default()
+        let parent = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.math_compact = Some(true);
+            with_inherited.font_size = Some(Len::Px(500.0));
+            with_inherited.font_family = Some("Ahem".into());
+            with_inherited
         };
         for (reset, compact, size) in [("initial", false, 500.0), ("unset", true, 355.0)] {
             let own = Computed::resolve(&[], &parse_decls(&format!("math-style: {reset}")), vcx);
-            let middle = inherit(&parent, &own, vcx);
+            let middle = inherit(&BoxStyle::from(parent.clone()), &own, vcx);
             assert_eq!(middle.math_compact, Some(compact));
             let own = Computed::resolve(
                 &[],

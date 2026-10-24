@@ -4,7 +4,7 @@ use crate::dom::Node;
 use crate::dom::text_content::split_nodes;
 use crate::dom::whitespace::is_blank;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 // `<br>` — жёсткий разрыв: в собранном тексте он помечается U+2028,
@@ -72,7 +72,7 @@ pub(super) fn build_text_columns(
     gap: f32,
     rule_owned: Option<(f32, crate::style::values::value::Color)>,
     nodes: &[Node],
-    inherited_owned: &Computed,
+    inherited_owned: &BoxStyle,
     opts_owned: &RenderOpts,
     cuts: &[usize],
     used: usize,
@@ -157,19 +157,19 @@ pub(super) fn build_text_columns(
         }
     }
     for part in parts.into_iter() {
-        row = row.child(
-            div()
-                .w(px(inner))
-                .flex_shrink_0()
-                .flex()
-                .flex_col()
-                .children(
-                    opts_owned
-                        .cx
-                        .build
-                        .blocks(&part, inherited_owned, opts_owned),
-                ),
-        );
+        row =
+            row.child(
+                div()
+                    .w(px(inner))
+                    .flex_shrink_0()
+                    .flex()
+                    .flex_col()
+                    .children(opts_owned.cx.contracts.build.blocks(
+                        &part,
+                        inherited_owned,
+                        opts_owned,
+                    )),
+            );
     }
     row.into_any_element()
 }

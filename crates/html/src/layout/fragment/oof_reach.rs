@@ -83,7 +83,7 @@ impl Reach {
     ) -> Self {
         if cx.paged || cx.legacy_oof {
             return Self {
-                legacy: if k.style.position == Some(Position::Absolute) {
+                legacy: if k.style.used().position == Some(Position::Absolute) {
                     (top.unwrap_or(0.0) + full).max(0.0)
                 } else {
                     0.0
@@ -103,7 +103,7 @@ impl Reach {
                 flow: Some(full),
             }
         };
-        match k.style.position {
+        match k.style.used().position {
             Some(Position::Absolute) => reach.absolute.merge(extent, 0.0),
             Some(Position::Fixed) => reach.fixed.merge(extent, 0.0),
             _ => {}
@@ -120,7 +120,7 @@ impl Reach {
         up: Reach,
         own: Option<(f32, f32)>,
     ) -> (f32, Self) {
-        if cx.paged || cx.legacy_oof || !visible_overflow(&k.style) {
+        if cx.paged || cx.legacy_oof || !visible_overflow(&k.style.used()) {
             return (full, Self::default());
         }
         let mut reach = up;
@@ -145,7 +145,7 @@ impl Reach {
     /// содержащему блоку предка (второе значение отдаёт `measure(c)`).
     pub(crate) fn finish(mut self, c: &Element, cx: ShapeCx) -> (f32, Self) {
         if cx.paged || cx.legacy_oof {
-            let own = if crate::text::inline::establishes_cb(&c.style) {
+            let own = if crate::text::inline::establishes_cb(&c.style.used()) {
                 self.legacy
             } else {
                 0.0
@@ -153,11 +153,11 @@ impl Reach {
             return (own, Self::default());
         }
         let mut end = self.overflow.take().unwrap_or(0.0);
-        if crate::text::inline::establishes_cb(&c.style) {
+        if crate::text::inline::establishes_cb(&c.style.used()) {
             end = end.max(self.absolute.end());
             self.absolute = Extent::default();
         }
-        if fixed_cb_layer_box(&c.style) {
+        if fixed_cb_layer_box(&c.style.used()) {
             end = end.max(self.fixed.end());
             self.fixed = Extent::default();
         }

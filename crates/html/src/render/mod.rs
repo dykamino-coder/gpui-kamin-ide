@@ -33,42 +33,47 @@ pub(crate) use blocks::blocks;
 /// каждый кадр, поэтому стоимость кадра обязана зависеть от видимой части, а
 /// не от размера документа.
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
-    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     crate::document::image_values::prepare(nodes, vcx);
-    let stripped = without_inert_clear(nodes);
-    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::text::metrics::set_doc_family(&opts.text.font_family, vcx);
     let root = opts.root_style();
+    // Вычисленные стили элементов — до сборки коробок: семейство документа
+    // (шрифтовые единицы) известно только отсюда; на неизменном документе
+    // проход только сверяет входы.
+    crate::style::cascade::materialize::materialize(nodes, root.style_rc(), vcx);
+    let stripped = without_inert_clear(nodes);
+    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::interactive::frame::frame_sanitize(vcx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
-    // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
+    // `BoxConstraints::avail_w` вычитает поля/рамки/отступы `html` и `body`.
     // Слои содержащих блоков — свои у каждой сборки документа.
     let opts = &*opts.inner(|cx| {
-        cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
-        cx.positioning = Default::default();
-        if !cx.in_render {
-            cx.vertical_paint = Default::default();
-            cx.paint = Default::default();
+        cx.constraints.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.position.state = Default::default();
+        if !cx.contracts.in_render {
+            cx.deferred.vertical_paint = Default::default();
+            cx.deferred.paint = Default::default();
         }
     });
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
     // их края решает область просмотра (§10.1 п.4).
-    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
+    let icb_layer =
+        crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
     // Шаг 8 приложения E: позиционированные `z-index: auto | 0` красятся
     // после потока корневого контекста в порядке разметки — собиратель
     // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
     // и сбрасывает собиратели (пойманная паника кадра оставила бы их
     // открытыми); вложенный документ (рамка) собирает своё внутри.
-    if !opts.cx.in_render {
+    if !opts.cx.contracts.in_render {
         gpui::paint_collect_reset();
     }
     let opts = &*opts.inner(|cx| {
-        cx.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes));
-        cx.in_render = true;
+        cx.deferred.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes));
+        cx.contracts.in_render = true;
     });
     let mut out = blocks(nodes, &root, opts);
     out.extend(icb_layer.finish());
@@ -84,7 +89,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
 /// не стоит ничего: ни раскладки, ни отрисовки. Это то же ухищрение, которым
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
-    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
@@ -92,17 +97,24 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     crate::interactive::frame::frame_sanitize(vcx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let root = opts.root_style();
+    // Вычисленные стили блока — до сборки его коробок (как у `render`).
+    crate::style::cascade::materialize::materialize(
+        std::slice::from_ref(node),
+        root.style_rc(),
+        vcx,
+    );
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
     let opts = &*opts.inner(|cx| {
-        cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
-        cx.positioning = Default::default();
-        if !cx.in_render {
-            cx.vertical_paint = Default::default();
-            cx.paint = Default::default();
+        cx.constraints.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.position.state = Default::default();
+        if !cx.contracts.in_render {
+            cx.deferred.vertical_paint = Default::default();
+            cx.deferred.paint = Default::default();
         }
     });
-    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
+    let icb_layer =
+        crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
     let out = blocks(std::slice::from_ref(node), &root, opts);
     let layer = icb_layer.finish();
     let first = out.into_iter().next()?;

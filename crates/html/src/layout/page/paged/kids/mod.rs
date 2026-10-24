@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-2): оценочный reach остаётся у параллельного потока; независимые группы меряет копия.
 //! Дети листов из групп корневых узлов: копии ICB/fixed, имена страниц, формы.
 
 use super::PAGE_COPIES;
@@ -9,10 +10,14 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::table_bands::repeat_candidates;
 use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
+use crate::tolerance::COORD_EPS;
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 mod breaks;
+mod flex;
+mod frame;
+mod laid;
 mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
@@ -21,7 +26,7 @@ use names::group_break_names;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn page_kids_from_groups(
     opts: &RenderOpts,
-    root: &Computed,
+    root: &BoxStyle,
     left: f32,
     right: f32,
     top: f32,
@@ -33,6 +38,7 @@ pub(super) fn page_kids_from_groups(
     kids: &mut Vec<super::super::page_stack::PageKid>,
     mut prev_end: Option<String>,
     mut first: bool,
+    aw: f32,
     ah: f32,
     layer: impl Fn(Vec<AnyElement>) -> Vec<AnyElement>,
     floated: impl Fn(&Node) -> bool,
@@ -43,42 +49,51 @@ pub(super) fn page_kids_from_groups(
     for group in &groups {
         let n = &group[0];
         if let Node::Element(e) = n
-            && matches!(e.style.display, Some(Display::None))
+            && matches!(e.style.used().display, Some(Display::None))
         {
             continue;
         }
         if let Node::Element(e) = n
-            && out_of_flow(&e.style)
+            && out_of_flow(&e.style.used())
         {
             *icb_reach = icb_reach.max(oof_reach(e, shape_cx, vcx));
         }
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
         first = false;
-        // Мера поддерева — те же точки разреза, что у колонок. Обёртка
-        // первого ребёнка несёт отбивку корня сверху (`pad_top`): все
-        // смещения меры сдвигаются на неё, а высота растёт.
-        // Внепоточный корня места в стопке не занимает (CSS 2.1 §9.3.1):
-        // его мера — обёртка (0); иначе абсолют `height: 4in` двигал соседей
-        // на 384 (`monolithic-overflow-027`, абсолют `fixedpos-007` — 720).
-        // Флоат: не влезший MARGIN box уходит на следующую страницу целиком
-        // (`float-with-large-margin-bottom-cross-page-002`: эталон —
-        // `break-before: page`), нижнее поле — часть его меры.
-        // Флоат корня — ребёнок стопки СО СВОЕЙ мерой: css-break-4 §3.1
-        // «User agents should also apply these properties to floated boxes
-        // whose containing block is in the normal flow of the root fragmented
-        // element». Гейт `out_of_flow` отнимал у него меру вместе с
-        // абсолютами: таблица `float: left; break-inside: avoid` выше листа
-        // резалась срезом по краю сквозь абзац вместо точки класса A между
-        // абзацами ячейки (`float-page-break-inside-avoid-1-print` против
-        // эталона с обычной таблицей), а ветка `h + mb` ниже была мёртвой.
-        // The subtree measure is physical (heights): a vertical root has no
-        // class-A cut list yet and its kids are sliced at the page edge.
-        let (margins, shape) = match vertical {
-            Some(_) => ((0.0, 0.0, 0.0), None),
-            None => group_shape(root, shape_cx, group, n, pad_top, vcx),
+        let prepared = match vertical {
+            Some(rl) => laid::vertical_group(
+                group,
+                root,
+                ah - top,
+                if first_kid {
+                    if rl { right } else { left }
+                } else {
+                    0.0
+                },
+                rl,
+                vcx,
+            ),
+            None => laid::group(group, root, aw - left - right, pad_top, vcx),
         };
-        let watched = breaks::recorder(group, n, vertical, shape.is_some(), shape_cx, vcx);
+        let group = prepared
+            .as_ref()
+            .map_or(group.as_slice(), |p| p.nodes.as_slice());
+        let n = &group[0];
+        let (margins, shape) = match (&prepared, vertical) {
+            (Some(p), _) => (p.margins, None),
+            (_, Some(_)) => ((0.0, 0.0, 0.0), None),
+            _ => group_shape(root, shape_cx, group, n, pad_top, vcx),
+        };
+        let watched = breaks::recorder(
+            group,
+            n,
+            vertical,
+            shape.is_some(),
+            prepared.as_ref().is_some_and(|p| p.blocks),
+            shape_cx,
+            vcx,
+        );
         // Таблица, чьи ряды даёт раскладка копии: может ли повторяться её
         // шапка и подвал (`break-inside: avoid*` секции).
         let measured_table = watched
@@ -92,30 +107,14 @@ pub(super) fn page_kids_from_groups(
             let mut opts = opts.clone();
             opts.frag.watch = main.then(|| watched.clone());
             let icb_layer =
-                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
+                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
             opts.clear_paged_fixed();
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
-            // Writing Modes 4: vertical blocks advance along x. Repeat the
-            // inline-start padding; slice block-start decoration on later pages
-            // (CSS Break 3 section 5.4).
-            let mut wrap = match vertical {
-                Some(rl) => {
-                    // Inline size: the page area's height (a block's `auto`
-                    // inline size fills its containing block, CSS 2.1 §10.3.3).
-                    let d = div().flex().h(px(ah)).pt(px(top));
-                    match (rl, first_kid) {
-                        (true, true) => d.flex_row_reverse().pr(px(right)),
-                        (true, false) => d.flex_row_reverse(),
-                        (false, true) => d.flex_row().pl(px(left)),
-                        (false, false) => d.flex_row(),
-                    }
-                }
-                None => div().pl(px(left)).pr(px(right)).pt(px(pad_top)),
-            };
-            if let [Node::Element(r)] = group.as_slice()
+            let mut wrap = frame::wrap((left, right, top), ah, first_kid, vertical);
+            if let [Node::Element(r)] = group
                 && matches!(r.tag.as_str(), "html" | "body")
-                && matches!(r.style.height, Some(Len::Pct(_)))
+                && matches!(r.style.used().height, Some(Len::Pct(_)))
             {
                 wrap = wrap.h(px(ah));
             }
@@ -131,16 +130,33 @@ pub(super) fn page_kids_from_groups(
             };
             let source = if band { band_group.as_slice() } else { group };
             let el = wrap
-                .children(opts.cx.build.blocks(source, root, &opts))
+                .children(opts.cx.contracts.build.blocks(source, root, &opts))
                 .into_any_element();
             slot.extend(layer(icb_layer.finish()));
             fixed_slot.extend(layer(opts.take_paged_fixed()));
             el
         };
-        let el = build(true, false, &mut icb_copies[0], &mut fixed_copies[0]);
-        let frags: Vec<AnyElement> = (1..PAGE_COPIES)
-            .map(|i| build(false, false, &mut icb_copies[i], &mut fixed_copies[i]))
-            .collect();
+        let regrow = flex::regrow(
+            opts,
+            root,
+            group,
+            &watched,
+            (left, right, top),
+            first_kid,
+            (aw, ah),
+            vertical,
+            icb_copies,
+            fixed_copies,
+        );
+        let (el, frags) = match &regrow {
+            Some(r) => r.rebuild(PAGE_COPIES - 1),
+            None => (
+                build(true, false, &mut icb_copies[0], &mut fixed_copies[0]),
+                (1..PAGE_COPIES)
+                    .map(|i| build(false, false, &mut icb_copies[i], &mut fixed_copies[i]))
+                    .collect(),
+            ),
+        };
         // CSS Paged Media: anonymous runs inherit the page name; floats
         // and out-of-flow boxes do not pass a name to subsequent pages.
         let (fb, fa, monolith, renamed, start_name) =
@@ -152,18 +168,22 @@ pub(super) fn page_kids_from_groups(
         // pages after it (css-break-3 §2.1 parallel overflow; Blink
         // `ReserveSpaceForMonolithicOverflow`, `monolithic-overflow-026`).
         let reach = match (n, &shape) {
-            (Node::Element(e), Some(s)) if vertical.is_none() && visible_overflow(&e.style) => {
+            (Node::Element(e), Some(s))
+                if vertical.is_none() && visible_overflow(&e.style.used()) =>
+            {
                 let cx = ShapeCx {
                     unclamped: true,
                     ..shape_cx
                 };
                 shape_full(e, 4, cx, vcx)
                     .map(|u| u.height + pad_top)
-                    .filter(|&u| u > s.0 + 0.01)
+                    .filter(|&u| u > s.0 + COORD_EPS)
             }
             _ => None,
         };
         kids.push(crate::layout::page::page_stack::PageKid {
+            #[cfg(feature = "wpt-harness")]
+            probe: opts.frag.probe.clone(),
             repeat: vertical
                 .is_none()
                 .then(|| {
@@ -181,17 +201,20 @@ pub(super) fn page_kids_from_groups(
                     }
                 })
                 .flatten(),
+            regrow,
             watched: Some(watched),
             float_id: match n {
                 Node::Element(e) if floated(n) => Some(e.node_id),
                 _ => None,
             },
+            float_extent: prepared.as_ref().is_some_and(|p| p.float_extent),
             reach,
             end: Default::default(),
             el,
             frags,
             monolith,
             force_before: fb || renamed,
+            renamed,
             force_after: fa,
             shape,
             page: start_name,

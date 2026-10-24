@@ -10,7 +10,7 @@
 use super::{PageGeom, PageStack};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Window, point, px, size};
 
 /// Builds the canvas image layer for a border box of `(w, h)` points.
@@ -39,7 +39,7 @@ pub(crate) fn image_layers(s: &Computed) -> Option<Computed> {
 }
 
 /// A builder that lays the image layers out as a `w × h` block.
-pub(crate) fn builder(layers: Computed, root: Computed, opts: RenderOpts) -> CanvasLayerFn {
+pub(crate) fn builder(layers: Computed, root: BoxStyle, opts: RenderOpts) -> CanvasLayerFn {
     std::rc::Rc::new(move |w, h| {
         let vcx = opts.cx.vcx();
         let mut st = layers.clone();
@@ -64,7 +64,11 @@ pub(crate) fn builder(layers: Computed, root: Computed, opts: RenderOpts) -> Can
             anim: Default::default(),
             list_item: None,
         };
-        let mut els = opts.cx.build.blocks(&[Node::Element(el)], &root, &opts);
+        let mut els = opts
+            .cx
+            .contracts
+            .build
+            .blocks(&[Node::Element(el)], &root, &opts);
         match els.pop() {
             Some(el) if els.is_empty() => el,
             Some(el) => {

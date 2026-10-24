@@ -93,7 +93,7 @@ fn layout_parent(s: &crate::style::computed::Computed) -> bool {
 /// fragmentation contexts). Lines remain in the measured flow geometry.
 pub(crate) fn candidates(c: &Element, vcx: ValueCx<'_>) -> Option<Vec<(u64, Cand)>> {
     let mut out = Vec::new();
-    candidates::walk(c, 8, &mut out, vcx)?;
+    candidates::walk(c, &mut out, vcx)?;
     Some(out)
 }
 
@@ -103,14 +103,14 @@ pub(crate) fn candidates(c: &Element, vcx: ValueCx<'_>) -> Option<Vec<(u64, Cand
 /// `kBreakAppealViolatingBreakAvoid` vs the row's `EarlyBreak`), so the row
 /// is avoided as a whole.
 pub(crate) fn avoid_row(p: &Element) -> bool {
-    row_flex(&p.style)
-        && p.style.flex_wrap != Some(true)
+    row_flex(&p.style.used())
+        && p.style.used().flex_wrap != Some(true)
         && p.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-                if !out_of_flow(&k.style)
-                    && k.style.break_inside_avoid
+                if !out_of_flow(&k.style.used())
+                    && k.style.used().break_inside_avoid
                     && !crate::layout::fragment::probe::size_monolith(k)
-                    && crate::layout::page::paged::visible_overflow(&k.style))
+                    && crate::layout::page::paged::visible_overflow(&k.style.used()))
         })
 }
 

@@ -116,8 +116,8 @@ pub(super) fn row_band_shape(
     // (css-tables-3 §computing-the-table-height, CSSWG #5336).
     let content_h = y + spacing + bot;
     let edges = top + bot;
-    let border_box =
-        c.style.border_box == Some(true) || (c.tag == "table" && c.style.border_box.is_none());
+    let border_box = c.style.used().border_box == Some(true)
+        || (c.tag == "table" && c.style.used().border_box.is_none());
     let floor_h = spec_h
         .map(|v| if border_box { v.max(edges) } else { v + edges })
         .into_iter()

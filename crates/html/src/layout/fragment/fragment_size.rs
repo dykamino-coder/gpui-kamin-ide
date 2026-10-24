@@ -1,3 +1,4 @@
+//! ADR P-19 F2-1–F2-6: остаточный preplan сохраняется до токенов продолжения.
 //! Мера коробки для фрагментации (`shape_full`): к мере содержимого (`shape_contents`)
 //! применяются `min-height`/`max-height`, рамки и отступы, а точки разреза и монолиты режутся
 //! по использованной высоте. Использованный блочный размер и протяжённость переполнения —
@@ -16,6 +17,7 @@ use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::{Computed, LenCx, Overflow};
 use crate::style::values::value::Len;
 
+#[cfg_attr(feature = "wpt-harness", track_caller)]
 pub(crate) fn shape_full(
     element: &Element,
     depth: u8,
@@ -27,16 +29,28 @@ pub(crate) fn shape_full(
 
 /// Мера фрагментации коробки (`shape_full`) вместе с её внепоточной
 /// досягаемостью и собственным размером (`Measure`).
+#[cfg_attr(feature = "wpt-harness", track_caller)]
 pub(crate) fn measure(
     element: &Element,
     depth: u8,
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) -> Option<Measure> {
+    #[cfg(feature = "wpt-harness")]
+    if let Some(probe) = cx
+        .probe
+        .or_else(|| vcx.lines.map(|lines| &lines.opts.frag.probe))
+    {
+        probe.estimate(if cx.paged {
+            "pages.estimate"
+        } else {
+            "columns.estimate"
+        });
+    }
     let cx = ShapeCx {
         legacy_oof: cx.legacy_oof
-            || element.style.bdb_clone
-            || crate::layout::multicol::spanner::multicol_container(&element.style),
+            || element.style.used().bdb_clone
+            || crate::layout::multicol::spanner::multicol_container(&element.style.used()),
         ..cx
     };
     let mut m = shape_contents(element, depth, cx, vcx)?;
@@ -47,16 +61,16 @@ pub(crate) fn measure(
     }
     let shape = &mut m.shape;
     // Рамка и отступ: нерешённое ничего не добавляет к мере.
-    let lens = LenCx::box_viewport(cx.viewport, &element.style);
+    let lens = LenCx::box_viewport(cx.viewport, &element.style.used());
     let resolve = |value: Option<Len>| lens.px_lossy_zero(value, vcx);
-    let border = element.style.borders();
-    let decoration = resolve(element.style.padding.top)
-        + resolve(element.style.padding.bottom)
+    let border = element.style.used().borders();
+    let decoration = resolve(element.style.used().padding.top)
+        + resolve(element.style.used().padding.bottom)
         + resolve(border.top)
         + resolve(border.bottom);
     let height = constrain(
         shape.height,
-        &element.style,
+        &element.style.used(),
         decoration,
         cx.viewport,
         cx.unclamped,

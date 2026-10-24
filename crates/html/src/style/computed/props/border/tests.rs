@@ -5,7 +5,7 @@
 use crate::document::Document;
 use crate::dom::{Element, Node};
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::css::parse_decls_in;
 use crate::style::values::value::{ColorOrAuto, Len, StyleColor};
 
@@ -43,7 +43,7 @@ fn inherited_width_is_the_computed_width_whatever_the_parent_style() {
             &parse_decls_in("border-width: 2em; border-style: hidden", vcx),
             vcx,
         );
-        let parent = inherit(&Computed::default(), &parent, vcx);
+        let parent = inherit(&BoxStyle::default(), &parent, vcx);
         assert_eq!(parent.borders().top, None);
         let mut own = Computed::default();
         own.apply_decls(&parse_decls_in(child, vcx), vcx);
@@ -144,15 +144,17 @@ fn logical_border_sides_compete_with_physical_ones_by_cascade() {
     )
     .build();
     let a = find(doc.nodes(), "a").expect("a");
-    assert_eq!(a.style.border_width.top, Some(Len::Px(1.0)));
+    assert_eq!(a.style.cascaded().border_width.top, Some(Len::Px(1.0)));
     let b = find(doc.nodes(), "b").expect("b");
-    assert_eq!(b.style.border_width.top, Some(Len::Px(5.0)));
+    assert_eq!(b.style.cascaded().border_width.top, Some(Len::Px(5.0)));
     // `vertical-rl`: inline-start is the top.
     let v = find(doc.nodes(), "v").expect("v");
-    assert_eq!(v.style.borders().top, Some(Len::Px(7.0)));
-    assert_eq!(v.style.borders().left, None);
+    assert_eq!(v.style.cascaded().borders().top, Some(Len::Px(7.0)));
+    assert_eq!(v.style.cascaded().borders().left, None);
     let i = find(doc.nodes(), "i").expect("i");
-    assert!(i.style.border_inherit_w[0] && i.style.border_inherit_w[2]);
+    use crate::style::css::LonghandId as L;
+    let marked = i.style.cascaded().inherit_longhands;
+    assert!(marked.contains(L::BorderTopWidth) && marked.contains(L::BorderBottomWidth));
     // Invalid after substitution: every longhand of the shorthand is unset.
-    assert_eq!(i.style.border_side_styles[3], Some(0));
+    assert_eq!(i.style.cascaded().border_side_styles[3], Some(0));
 }

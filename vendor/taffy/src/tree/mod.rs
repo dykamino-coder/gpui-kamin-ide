@@ -7,6 +7,11 @@
 mod cache;
 mod layout;
 mod node;
+// KaminIDE patch: structured flex geometry from the solver's final pass.
+#[cfg(feature = "flexbox")]
+mod flex;
+#[cfg(feature = "flexbox")]
+pub use flex::{DetailedFlexInfo, DetailedFlexItem, DetailedFlexLine};
 pub mod traits;
 
 #[doc(hidden)]
@@ -39,10 +44,10 @@ pub use taffy_tree::{TaffyError, TaffyResult, TaffyTree};
 mod kamin_calc;
 #[cfg(feature = "taffy_tree")]
 mod kamin_output;
-#[cfg(all(feature = "taffy_tree", feature = "std"))]
-pub use kamin_calc::{CalcScope, calc_handle};
 #[cfg(feature = "taffy_tree")]
 pub use kamin_calc::calc_value;
+#[cfg(all(feature = "taffy_tree", feature = "std"))]
+pub use kamin_calc::{calc_handle, CalcScope};
 
 pub use layout::DetailedLayoutInfo;
 
@@ -214,3 +219,18 @@ mod grid_calc_repeat_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_perf_contract_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_layout_info_tests;
+
+// KaminIDE patch: fragmentation constraints preserve completed item geometry.
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fragmentation_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fragmentation_axis_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fragmentation_continuation_tests;
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout"))]
+mod flex_fragmentation_min_tests;

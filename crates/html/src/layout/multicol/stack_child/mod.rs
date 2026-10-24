@@ -2,15 +2,11 @@
 //! `multicol_column_stack`).
 
 use crate::dom::Element;
-use crate::layout::block::struts::through_strut;
-use crate::layout::float::float_only_box;
 use crate::layout::fragment::clone::clone_dec;
 use crate::layout::fragment::shape_contents::strip_through_top;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_relative;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::computed::BoxStyle;
 mod finish;
 use finish::{finish_stack_child, nest_row_of};
 mod cuts;
@@ -18,11 +14,14 @@ use cuts::{copy_cuts_and_height, stack_child_of};
 mod breaks;
 mod build;
 mod fixed;
+mod floats;
+mod vertical;
 mod whole;
 use whole::{copy_kids, copy_whole_box};
 mod frag_div;
 mod paginate;
 mod regrow;
+use crate::style::cascade::materialize::box_style;
 use frag_div::frag_box_div;
 
 #[allow(clippy::too_many_arguments)]
@@ -36,10 +35,10 @@ pub(super) fn multicol_stack_child(
     forced: Vec<f32>,
     solid: Vec<(f32, f32)>,
     e: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     opts: &RenderOpts,
     clone_plan: &[Vec<(f32, f32)>],
-    kid_parent: &[Option<Computed>],
+    kid_parent: &[Option<BoxStyle>],
     kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
     col_rl: bool,
@@ -65,67 +64,51 @@ pub(super) fn multicol_stack_child(
     // Элемент строки flex (`split_flex_lines`) наследует от
     // СВОЕГО контейнера, а не от многоколоночника.
     let merged_k = kid_parent.get(ix).cloned().flatten();
-    let merged: &Computed = merged_k.as_ref().unwrap_or(&merged);
+    let merged: &BoxStyle = merged_k.as_ref().unwrap_or(&merged);
     let mut copy = c;
     // Поля кладёт укладка колонок, не коробка. В
     // вертикальном письме блочные поля — левое и
     // правое; схлопывание сквозь верх (`strip_through_top`)
     // там не считается вовсе (мера повёрнутая).
     if col_vert {
-        copy.style.margin.left = None;
-        copy.style.margin.right = None;
+        copy.style.used_mut().margin.left = None;
+        copy.style.used_mut().margin.right = None;
     } else {
-        copy.style.margin.top = None;
-        copy.style.margin.bottom = None;
+        copy.style.used_mut().margin.top = None;
+        copy.style.used_mut().margin.bottom = None;
         // И поле, схлопнутое СКВОЗЬ верх (`through` в
         // `mt`): стопка уже положила его `lead`-ом,
         // второй раз его вставил бы корень копии.
         strip_through_top(&mut copy, 4);
     }
-    // Коробка из одних флоатов меряется высотой их
-    // ряда (`float_only_box`), но сама по §10.6.3
-    // высотой НОЛЬ — вне колонок это делает
-    // `collapse_margins`, а копия фрагмента
-    // строится мимо него. Без нуля в каждой
-    // колонке проступил бы фон контейнера
-    // (`floats-clear-multicol-*`: `background:
-    // red`); флоаты переполняют нулевую коробку, и
-    // маска колонки режет их по разрезам меры.
-    let float_zero = !col_vert
-        && float_only_box(&copy).is_some()
-        && through_strut(&copy, opts.cx.vcx()).is_some();
-    if float_zero {
-        copy.style.height = Some(Len::Px(0.0));
-    }
-    // Параллельный поток (css-break-3 §3):
-    // содержимое, переполняющее коробку с заданной
-    // высотой, продолжается в следующей колонке
-    // САМО ПО СЕБЕ, а сосед встаёт сразу под
-    // коробкой. Протяжённость потока — та же мера
-    // без обрезки высотой; вместе с ней берём её
-    // НЕусечённые точки разреза и монолитные
-    // диапазоны (в пределах `h` они совпадают с
-    // обычными: усечение только отбрасывает записи
-    // ниже `h`).
-    // ТРОЕ ворот, каждые обязательны:
-    //  1) `column-fill: auto` — иначе поток уходит
-    //     в балансировку и меняет высоту колонки
-    //     (`single-line-column-flex-
-    //     fragmentation-051`);
-    //  2) поддерево обычных блоков — иначе мера
-    //     `shape_full` приближённая и
-    //     протяжённость выдуманная;
-    //  3) коробка своё переполнение показывает —
-    //     у обрезающей и прокручиваемой потока нет.
-    // Четвёртые ворота — внутри меры: бюджет
-    // разжатия ОДИН на путь (`ShapeCx::unclamped`,
-    // перепривязка `cx` в `shape_full`). Без него
-    // разъезжался ЭТАЛОН четырёх пар
-    // `flex-item-content-overflow-*`.
-    let (cuts, forced, solid, h, over, no_reach) = copy_cuts_and_height(
-        ix, h, cuts, forced, solid, opts, kid_par, col_vert, col_rl, line_col_w, fixed, merged,
-        &copy,
-    );
+    let (empty_floats, float_zero) = floats::normalize(&mut copy, col_vert, col_rl, opts.cx.vcx());
+    // Независимая копия получает высоту, переполнение и разрывы в lay_out_main.
+    // Остальные копии сохраняют старую меру: clone/nested/OOF требуют
+    // F2-1/F2-3/F2-2; ортогональные потоки требуют F2-3.
+    let laid = measured_kids
+        .borrow()
+        .iter()
+        .any(|&(id, _)| id == copy.node_id)
+        && (if col_vert {
+            crate::layout::fragment::flow::vertical_copy(&copy, col_rl)
+        } else {
+            crate::layout::fragment::flow::independent_copy(&copy)
+                || empty_floats
+                || (copy.marks.paginate
+                    && crate::layout::multicol::measure::native_float::float_copy(
+                        &copy,
+                        opts.cx.vcx(),
+                    ))
+        });
+    let (cuts, forced, solid, h, over, no_reach) = if laid {
+        // Высоту, переполнение и разрывы заменяет lay_out_main до плана.
+        (cuts, forced, solid, h, h, true)
+    } else {
+        copy_cuts_and_height(
+            ix, h, cuts, forced, solid, opts, kid_par, col_vert, col_rl, line_col_w, fixed, merged,
+            &copy,
+        )
+    };
     // Относительный сдвиг — не коробке, а фрагменту
     // (css-break-3 §5.5): его кладёт `ColumnStack`
     // вместе со срезом.
@@ -133,10 +116,10 @@ pub(super) fn multicol_stack_child(
     // Срез строки хоста (`Marks::host_trim_*`) — рисует
     // `blocks()` копии по её флагам.
     if copy.marks.host_trim_start {
-        copy.style.text_box_trim_start = true;
+        copy.style.used_mut().text_box_trim_start = true;
     }
     if copy.marks.host_trim_end {
-        copy.style.text_box_trim_end = true;
+        copy.style.used_mut().text_box_trim_end = true;
     }
     // Вложенный многоколоночник с ВЕРХА внешней колонки
     // (первый ребёнок без поля) и заданной высотой —
@@ -158,7 +141,7 @@ pub(super) fn multicol_stack_child(
         &copy,
     );
     let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
-    let mut inner = inherit(&merged, &copy.style, opts.cx.vcx());
+    let mut inner = box_style(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
     inner.fragment_clip_ancestor = false;
     // Копии на случай разреза между колонками: элемент GPUI рисуется один раз,
@@ -167,11 +150,28 @@ pub(super) fn multicol_stack_child(
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
     let own = dec.is_some() || whole || nest_row.is_some();
     let own = own || breaks::trims_at_breaks(&copy, &merged);
-    let (watched, breaks_w) = breaks::recorder(&copy, measured_kids, opts, col_vert, kid_w, own);
+    let (watched, breaks_w) = breaks::recorder(
+        &copy,
+        measured_kids,
+        opts,
+        col_vert,
+        col_rl,
+        kid_w,
+        own,
+        empty_floats,
+    );
     let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
-        opts.frag.watch = (first && !band).then(|| watched.clone());
+        // Копии фрагментов flex тоже наблюдаются: элемент рисует только
+        // копия его фрагментов (`Watched::set_flex_owners`).
+        opts.frag.watch = if first && !band {
+            Some(watched.clone())
+        } else if !band && watched.blocks().is_some_and(|b| b.has_flex()) {
+            Some(watched.for_part(part))
+        } else {
+            None
+        };
         build::build_copy(
             &opts,
             col_vert,
@@ -218,6 +218,7 @@ pub(super) fn multicol_stack_child(
         whole,
         build,
         measured_table,
+        crate::layout::fragment::ShapeCx::COLUMNS.observed(opts),
         opts.cx.vcx(),
     );
     let measured = regrow::Measured {
@@ -242,7 +243,7 @@ pub(super) fn multicol_stack_child(
     child.par.rtl_root_in_ltr = !col_vert
         && !merged.wm().rtl()
         && !merged.wm().vertical()
-        && copy.style.wm().rtl()
-        && !copy.style.wm().vertical();
+        && copy.style.cascaded().wm().rtl()
+        && !copy.style.cascaded().wm().vertical();
     child
 }

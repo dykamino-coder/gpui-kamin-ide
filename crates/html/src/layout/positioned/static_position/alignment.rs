@@ -1,7 +1,7 @@
 //! Самовыравнивание в прямоугольнике статической позиции.
 
 use crate::dom::Element;
-use crate::style::computed::{Align, Computed};
+use crate::style::computed::{Align, BoxStyle, Computed};
 
 /// Доли выравнивания абсолюта в прямоугольнике статической позиции
 /// (`containing_block::spot`, поле `self_align`). У блочного родителя прямоугольник по
@@ -19,11 +19,11 @@ use crate::style::computed::{Align, Computed};
 /// `last baseline` — как `end` (css-align-3 §9.3); `anchor-center` без
 /// якоря — как `center` (css-anchor-position-1 §anchor-center), с якорем его
 /// ведёт `anchor::place::place_one`, и сюда он не берётся.
-pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
-    static_self_align_style(&e.style, inherited)
+pub(crate) fn static_self_align(e: &Element, inherited: &BoxStyle) -> Option<(f32, f32)> {
+    static_self_align_style(&e.style.used(), inherited)
 }
 
-pub(crate) fn static_self_align_style(own: &Computed, inherited: &Computed) -> Option<(f32, f32)> {
+pub(crate) fn static_self_align_style(own: &Computed, inherited: &BoxStyle) -> Option<(f32, f32)> {
     if own.inline_display == Some(true) {
         return None;
     }
@@ -92,17 +92,17 @@ pub(crate) fn static_self_align_style(own: &Computed, inherited: &Computed) -> O
 /// `FragmentBuilder::AddOutOfFlowInlineChildCandidate`, which ignores
 /// `justify-items`/`align-items`). Horizontal ltr only — other modes keep the
 /// previous placement (`None`), as does `normal`/`auto` in both axes.
-pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
+pub(crate) fn inline_static_self_align(e: &Element, inherited: &BoxStyle) -> Option<(f32, f32)> {
     if inherited.wm().vertical()
         || inherited.wm().turned()
         || inherited.wm().rtl()
-        || e.style.inline_display == Some(true)
+        || e.style.used().inline_display == Some(true)
     {
         return None;
     }
-    let anchorless = e.style.position_anchor.is_none()
-        && e.style.position_area.is_none()
-        && e.style.implicit_anchor.is_none();
+    let anchorless = e.style.used().position_anchor.is_none()
+        && e.style.used().position_area.is_none()
+        && e.style.used().implicit_anchor.is_none();
     let frac = |a: Option<Align>, last: bool| match a {
         Some(Align::Center) => Some(0.5),
         Some(Align::AnchorCenter) if anchorless => Some(0.5),
@@ -111,8 +111,11 @@ pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Opt
         Some(Align::Start) => Some(0.0),
         _ => None,
     };
-    let jx = frac(e.style.justify_self, e.style.justify_self_last);
-    let ky = frac(e.style.align_self, e.style.align_self_last);
+    let jx = frac(
+        e.style.used().justify_self,
+        e.style.used().justify_self_last,
+    );
+    let ky = frac(e.style.used().align_self, e.style.used().align_self_last);
     if jx.is_none() && ky.is_none() {
         return None;
     }

@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-5): оценочные полосы нужны оставшемуся preplan повторов и продолжений таблицы.
 //! Общая геометрия рядов и ячеек для меры таблицы и щупов продолжения (`row_geometry`):
 //! высота ряда — наибольшая мера его ячеек без охвата, `rowspan` разрешается в пределах
 //! группы рядов (HTML table model: `0` — до конца группы). По css-tables-3 §fragmentation
@@ -38,7 +39,7 @@ pub(crate) fn row_geometry<'a>(
 ) -> Option<Vec<RowGeometry<'a>>> {
     let mut out = Vec::with_capacity(rows.len());
     for (i, &(group, row)) in rows.iter().enumerate() {
-        let mut height = match row.style.height {
+        let mut height = match row.style.used().height {
             None => 0.0,
             Some(Len::Px(h)) => h,
             _ => return None,
@@ -117,7 +118,7 @@ mod tests {
 
     fn block(height: f32) -> Node {
         let mut e = anon_element("div", Vec::new());
-        e.style.height = Some(Len::Px(height));
+        e.style.used_mut().height = Some(Len::Px(height));
         Node::Element(e)
     }
 

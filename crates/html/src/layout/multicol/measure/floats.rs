@@ -37,19 +37,19 @@ fn floats_in(
     // лежит под флоатом, CSS 2.1 §9.5), а стопка поставила бы его ниже
     // (`spanner-in-child-after-parallel-flow-001`: флоат 50px в колонке
     // 50px, дальше только пустой обломок предка спаннера).
-    let wide_px = |c: &Element| matches!((c.style.width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
+    let wide_px = |c: &Element| matches!((c.style.used().width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
     let inert = |n: &Node| match n {
         Node::Text(_) => is_blank(n),
         Node::Element(k) => {
             k.children.iter().all(is_blank)
-                && matches!(k.style.height, None | Some(Len::Auto))
-                && matches!(k.style.min_height, None | Some(Len::Auto))
-                && k.style.padding.top.is_none()
-                && k.style.padding.bottom.is_none()
-                && k.style.borders().top.is_none()
-                && k.style.borders().bottom.is_none()
-                && zero_m(&k.style.margin.top)
-                && zero_m(&k.style.margin.bottom)
+                && matches!(k.style.used().height, None | Some(Len::Auto))
+                && matches!(k.style.used().min_height, None | Some(Len::Auto))
+                && k.style.used().padding.top.is_none()
+                && k.style.used().padding.bottom.is_none()
+                && k.style.used().borders().top.is_none()
+                && k.style.used().borders().bottom.is_none()
+                && zero_m(&k.style.used().margin.top)
+                && zero_m(&k.style.used().margin.bottom)
         }
     };
     let last_content = |i: usize| {
@@ -58,19 +58,19 @@ fn floats_in(
             .is_some_and(|rest| rest.iter().all(inert))
     };
     let full_float = |i: usize, c: &Element| {
-        c.style.float.is_some_and(|f| f != 0)
-            && (matches!(c.style.width, Some(Len::Pct(k)) if (k - 1.0).abs() < 1e-4)
+        c.style.used().float.is_some_and(|f| f != 0)
+            && (matches!(c.style.used().width, Some(Len::Pct(k)) if (k - 1.0).abs() < 1e-4)
                 || (wide_px(c) && last_content(i)))
-            && zero_m(&c.style.margin.left)
-            && zero_m(&c.style.margin.right)
+            && zero_m(&c.style.used().margin.left)
+            && zero_m(&c.style.used().margin.right)
             // Поля флоата не схлопываются и у края колонки не
             // усекаются (CSS 2.1 §8.3.1), а у блока стопки —
             // да: флоат с вертикальными полями — прежним путём
             // (`multicol-fill-balance-037`: `margin: 40px 0`).
-            && zero_m(&c.style.margin.top)
-            && zero_m(&c.style.margin.bottom)
-            && c.style.shape_outside.is_none()
-            && !positioned(&c.style)
+            && zero_m(&c.style.used().margin.top)
+            && zero_m(&c.style.used().margin.bottom)
+            && c.style.used().shape_outside.is_none()
+            && !positioned(&c.style.used())
     };
     let full: Vec<bool> = ge
         .children
@@ -97,8 +97,8 @@ fn floats_in(
         for ((n, f), w) in g.children.iter_mut().zip(&full).zip(nested) {
             if let Node::Element(c) = n {
                 if *f {
-                    c.style.float = None;
-                    c.style.clear = None;
+                    c.style.used_mut().float = None;
+                    c.style.used_mut().clear = None;
                     c.marks.float_block = true;
                 } else if let Some(w) = w {
                     *c = w;
@@ -113,7 +113,7 @@ fn floats_in(
 /// рамок и вертикальных полей, ни флоата и позиционирования, ни нового
 /// контекста форматирования (`overflow`/`display`).
 fn plain_wrapper(c: &Element, positioned: &dyn Fn(&Computed) -> bool) -> bool {
-    let s = &c.style;
+    let s = &c.style.used();
     let none = |l: &Option<Len>| match l {
         None => true,
         Some(Len::Px(v)) => v.abs() < COORD_EPS,

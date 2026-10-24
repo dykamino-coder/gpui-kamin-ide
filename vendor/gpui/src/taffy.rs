@@ -1,9 +1,13 @@
 mod grid_item_rows;
+// KaminIDE patch: final flex line metadata for fragmentation.
+mod flex_layout;
+pub use flex_layout::{FlexItemLayout, FlexLayout, FlexLineLayout};
 mod alignment_adapter;
 mod measurement;
 mod line_baselines;
 mod measured_content;
 mod measured_box;
+mod box_edges;
 pub use measured_box::MeasuredBox;
 pub use measured_content::MeasuredContent;
 pub use measurement::LayoutMeasurement;
@@ -13,6 +17,9 @@ mod root_origin_tests;
 
 #[cfg(test)]
 mod native_sizing_tests;
+
+#[cfg(test)]
+mod grid_tracks_tests;
 
 use crate::{
     AbsoluteLength, App, Bounds, DefiniteLength, Edges, GridTemplate, Length, Pixels, Point, Size,
@@ -457,6 +464,11 @@ impl TaffyLayoutEngine {
         grid_item_rows::grid_item_rows(&self.taffy, child.into())
     }
 
+    /// KaminIDE patch: parent identity for joining completed layout metadata.
+    pub fn parent_layout_id(&self, child: LayoutId) -> Option<LayoutId> {
+        self.taffy.parent(child.into()).map(Into::into)
+    }
+
     /// KaminIDE patch: дорожки РОДИТЕЛЯ-сетки узла `child` — `(начало
     /// рамочного бокса родителя без округления, дорожки по x, дорожки по y)`,
     /// дорожки — `(начало, конец)` в логических точках от рамочного бокса
@@ -471,6 +483,18 @@ impl TaffyLayoutEngine {
         scale_factor: f32,
     ) -> Option<((f32, f32), Vec<(f32, f32)>, Vec<(f32, f32)>)> {
         let parent = self.taffy.parent(child.0)?;
+        self.grid_tracks(parent.into(), scale_factor)
+    }
+
+    /// KaminIDE patch: готовые дорожки самой сетки, в том числе без элементов.
+    #[allow(clippy::type_complexity)]
+    pub fn grid_tracks(
+        &mut self,
+        grid: LayoutId,
+        scale_factor: f32,
+    ) -> Option<((f32, f32), Vec<(f32, f32)>, Vec<(f32, f32)>)> {
+        let parent = grid.0;
+        self.taffy.computed_layout_output(parent).ok()??;
         let taffy::DetailedLayoutInfo::Grid(info) = self.taffy.detailed_layout_info(parent) else {
             return None;
         };

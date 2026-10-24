@@ -1,6 +1,7 @@
 //! Куски ребёнка по колонкам: цикл размещения фрагментов одного ребёнка (fill_pieces).
 
 use super::{cut_at, fill_clone_dec, forced_or_fits, place_cut};
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::{Frag, Kid};
 
@@ -14,7 +15,7 @@ pub(super) fn fill_pieces(
     not_top: usize,
     placed: &mut bool,
     shortage: &mut f32,
-    out: &mut Vec<Frag>,
+    out: &mut Plan,
     float_hold: &mut Option<(usize, usize, f32)>,
     kid: usize,
     k: &Kid,
@@ -23,8 +24,18 @@ pub(super) fn fill_pieces(
     mut copy: usize,
     flow: f32,
     rg: crate::layout::fragment::types::RepeatGeom,
+    remeasure: &mut super::Remeasure<'_>,
 ) {
+    let mut measured = None;
     loop {
+        let current = measured.as_ref().unwrap_or(k);
+        if let Some((next, offset)) = remeasure(kid, copy, *col, current, from) {
+            measured = Some(next);
+            from = offset;
+        }
+        let k = measured.as_ref().unwrap_or(k);
+        let flow = measured.as_ref().map_or(flow, |k| k.h.max(k.over));
+        let rg = measured.as_ref().map_or(rg, |k| k.repeat);
         let target = target_at(*col);
         let room = target - cur;
         // `box-decoration-break: clone` (css-break-4 §break-decoration):
@@ -69,13 +80,14 @@ pub(super) fn fill_pieces(
                 0.0
             }
         };
-        // Принудительный разрыв ВНУТРИ коробки раньше её конца и раньше
-        // края колонки — режем ровно там.
+        // Принудительный разрыв ВНУТРИ коробки раньше края колонки — режем
+        // ровно там. Разрыв в самом её конце — перед коробкой нулевой высоты
+        // (`BlockBreaks::finish`): её содержимое начинает следующий фрагмент.
         let forced = k
             .forced
             .iter()
             .copied()
-            .find(|&f| f > from + 0.01 && f < flow - 0.01 && f - from <= room + 0.01);
+            .find(|&f| f > from + 0.01 && f < flow + 0.01 && f - from <= room + 0.01);
         match forced_or_fits(
             limit, col, y, not_top, placed, out, float_hold, kid, k, &mut cur, &mut from,
             &mut copy, rg, target, rest, hd, room_all, ft, forced,
@@ -214,6 +226,7 @@ pub(super) fn fill_pieces(
             break;
         }
         if copy + 1 >= limit {
+            out.incomplete();
             // Копий больше нет — остаток за кадром.
             *y = target;
             *placed = true;

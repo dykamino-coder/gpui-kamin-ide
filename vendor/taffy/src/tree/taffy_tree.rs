@@ -135,6 +135,27 @@ struct NodeData {
     /// KaminIDE patch: y offset of this node's children inside its box (see
     /// `LayoutGridContainer::set_content_shift`).
     pub(crate) content_shift: f32,
+    /// KaminIDE patch: consumed fragmentainer space after physical row flex lines.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_line_growth: Vec<f32>,
+    /// KaminIDE patch: consumed block space before a column flex item.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_item_offset: f32,
+    /// KaminIDE patch: consumed border-box cross extent in a row continuation.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_item_consumed: f32,
+    /// KaminIDE patch: flex line of this item fixed before fragmentation.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_item_line: Option<usize>,
+    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_fragmentation: bool,
+    /// KaminIDE patch: physical block axis and block-start direction of fragmentation.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_fragmentation_axis: (crate::geometry::AbsoluteAxis, bool),
+    /// KaminIDE patch: fragmentation cannot expand a monolithic item.
+    #[cfg(feature = "flexbox")]
+    pub(crate) fragmentation_monolithic: bool,
 }
 
 impl NodeData {
@@ -153,6 +174,20 @@ impl NodeData {
             subgrid_tracks: None,
             pct_parent_h: None,
             content_shift: 0.0,
+            #[cfg(feature = "flexbox")]
+            flex_line_growth: Vec::new(),
+            #[cfg(feature = "flexbox")]
+            flex_item_offset: 0.0,
+            #[cfg(feature = "flexbox")]
+            flex_item_consumed: 0.0,
+            #[cfg(feature = "flexbox")]
+            flex_item_line: None,
+            #[cfg(feature = "flexbox")]
+            flex_fragmentation: false,
+            #[cfg(feature = "flexbox")]
+            flex_fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
+            #[cfg(feature = "flexbox")]
+            fragmentation_monolithic: false,
         }
     }
 
@@ -199,6 +234,91 @@ pub struct TaffyTree<NodeContext = ()> {
 impl Default for TaffyTree {
     fn default() -> TaffyTree<()> {
         TaffyTree::new()
+    }
+}
+
+#[cfg(feature = "flexbox")]
+impl<NodeContext> TaffyTree<NodeContext> {
+    /// KaminIDE patch: fragmentation follows the writing-mode block axis (CSS Writing Modes 3 §6).
+    /// Reversal affects consumed-space placement, never flex sizing or line membership.
+    pub fn set_flex_fragmentation_axis(&mut self, node: NodeId, axis: crate::geometry::AbsoluteAxis, reversed: bool) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_fragmentation_axis != (axis, reversed) {
+            data.flex_fragmentation_axis = (axis, reversed);
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: content extent already consumed by a row flex item.
+    /// The item retains its main size and full contents; only its remaining
+    /// cross contribution and final cross position change (CSS Flexbox 1 §10).
+    pub fn set_flex_item_fragmentation_consumed(&mut self, node: NodeId, consumed: f32) -> TaffyResult<()> {
+        if !consumed.is_finite() || consumed < 0.0 { return Err(TaffyError::InvalidInputNode(node)); }
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_item_consumed != consumed {
+            data.flex_item_consumed = consumed;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: consumed block space before a column flex item.
+    /// Applied after flex sizing, so a break cannot redistribute flexible lengths.
+    pub fn set_flex_item_fragmentation_offset(&mut self, node: NodeId, offset: f32) -> TaffyResult<()> {
+        if !offset.is_finite() { return Err(TaffyError::InvalidInputNode(node)); }
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_item_offset != offset {
+            data.flex_item_offset = offset;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: the flex line of an item, fixed before fragmentation.
+    /// Line breaking precedes fragmentation (css-flexbox-1 §10): growth imposed
+    /// by fragmentation inside an item must not move it to another line.
+    pub fn set_flex_item_fragmentation_line(&mut self, node: NodeId, line: Option<usize>) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_item_line != line {
+            data.flex_item_line = line;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: caller-owned monolithic classification, independent of style.
+    pub fn set_fragmentation_monolithic(&mut self, node: NodeId, on: bool) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.fragmentation_monolithic != on {
+            data.fragmentation_monolithic = on;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
+    pub fn set_flex_fragmentation(&mut self, node: NodeId, on: bool) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_fragmentation != on {
+            data.flex_fragmentation = on;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: consumed space after row flex lines (css-flexbox-1 §10).
+    /// This constraint is outside the style/cache key; changing it invalidates layout.
+    pub fn set_flex_line_fragmentation_growth(&mut self, node: NodeId, growth: Vec<f32>) -> TaffyResult<()> {
+        if growth.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(TaffyError::InvalidInputNode(node));
+        }
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_line_growth != growth {
+            data.flex_line_growth = growth;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
     }
 }
 
@@ -585,6 +705,40 @@ where
     #[inline(always)]
     fn get_flexbox_child_style(&self, child_node_id: NodeId) -> Self::FlexboxItemStyle<'_> {
         &self.taffy.nodes[child_node_id.into()].style
+    }
+
+    // KaminIDE patch: store geometry only after the final placement pass.
+    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
+        self.taffy.nodes[node_id.into()].detailed_layout_info =
+            DetailedLayoutInfo::Flex(Box::new(info));
+    }
+
+    fn flex_fragmentation_axis(&self, node: NodeId) -> (crate::geometry::AbsoluteAxis, bool) {
+        self.taffy.nodes[node.into()].flex_fragmentation_axis
+    }
+
+    fn flex_item_fragmentation_consumed(&self, node: NodeId) -> f32 {
+        self.taffy.nodes[node.into()].flex_item_consumed
+    }
+
+    fn flex_item_fragmentation_offset(&self, node: NodeId) -> f32 {
+        self.taffy.nodes[node.into()].flex_item_offset
+    }
+
+    fn flex_line_fragmentation_growth(&self, node: NodeId, line: usize) -> f32 {
+        self.taffy.nodes[node.into()].flex_line_growth.get(line).copied().unwrap_or(0.0)
+    }
+
+    fn flex_item_fragmentation_line(&self, node: NodeId) -> Option<usize> {
+        self.taffy.nodes[node.into()].flex_item_line
+    }
+
+    fn fragmentation_monolithic(&self, node: NodeId) -> bool {
+        self.taffy.nodes[node.into()].fragmentation_monolithic
+    }
+
+    fn flex_fragmentation(&self, node: NodeId) -> bool {
+        self.taffy.nodes[node.into()].flex_fragmentation
     }
 }
 

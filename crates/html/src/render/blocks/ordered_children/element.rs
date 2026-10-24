@@ -5,24 +5,25 @@ mod sizing;
 pub(super) use sizing::item_sizing;
 
 use crate::dom::Node;
-use crate::style::computed::{Computed, Display, FlexDir};
+use crate::style::computed::{BoxStyle, Display, FlexDir};
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn ordered_element(
     mut e: crate::dom::Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Node {
-    e.style.float = None;
-    e.style.clear = None;
-    e.style.vertical_align = None;
-    e.style.flex_item = matches!(
+    e.style.used_mut().float = None;
+    e.style.used_mut().clear = None;
+    e.style.used_mut().vertical_align = None;
+    e.style.used_mut().flex_item = matches!(
         inherited.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
-    e.style.flex_line_wraps = e.style.flex_item && inherited.flex_wrap == Some(true);
-    e.style.flex_main_vertical =
+    e.style.used_mut().flex_line_wraps =
+        e.style.used().flex_item && inherited.flex_wrap == Some(true);
+    e.style.used_mut().flex_main_vertical =
         matches!(inherited.flex_dir, Some(FlexDir::Col | FlexDir::ColReverse))
             != (inherited.wm().vertical());
     // Элемент КОЛОНКИ: определён ли главный размер
@@ -60,7 +61,7 @@ pub(crate) fn ordered_element(
             || abs_both_insets
             || inherited.stretched
             || inherited.root_box;
-        e.style.flex_main_def = Some(definite);
+        e.style.used_mut().flex_main_def = Some(definite);
     }
     // Доля высоты элемента РЯДА при неопределённой высоте
     // контейнера ведёт себя как `auto` (CSS 2.1 §10.5;
@@ -78,10 +79,10 @@ pub(crate) fn ordered_element(
         inherited.flex_dir,
         None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
     ) && !inherited.wm().vertical()
-        && !e.style.wm().vertical()
-        && matches!(e.style.height, Some(Len::Pct(_)))
+        && !e.style.cascaded().wm().vertical()
+        && matches!(e.style.used().height, Some(Len::Pct(_)))
         && !matches!(
-            e.style.position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -99,8 +100,8 @@ pub(crate) fn ordered_element(
             || inherited.root_box
             || inherited.aspect_ratio.is_some();
         if !cross_definite {
-            e.style.height = None;
-            let stretch = match e.style.align_self {
+            e.style.used_mut().height = None;
+            let stretch = match e.style.used().align_self {
                 Some(a) => a == crate::style::computed::Align::Stretch,
                 None => matches!(
                     inherited.align_items,
@@ -108,7 +109,7 @@ pub(crate) fn ordered_element(
                 ),
             };
             if stretch {
-                e.style.align_self = Some(crate::style::computed::Align::Start);
+                e.style.used_mut().align_self = Some(crate::style::computed::Align::Start);
             }
         }
     }

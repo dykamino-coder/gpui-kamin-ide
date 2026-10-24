@@ -1,10 +1,27 @@
 //! Масштаб zoom собственных длин элемента: тени, размеры, поля, рамки, шрифт.
 
-use super::*;
+use crate::style::computed::{Computed, Shadow, Sides};
+use crate::style::values::value::Len;
 
 mod rule_widths;
 mod shape_lengths;
 mod structured;
+
+/// The absolute part of a `calc()` sum in the element's zoom. Font-relative terms
+/// follow the zoomed font size, viewport terms the zoomed viewport
+/// (`ViewportCx::for_box`), percentages their basis.
+fn scale_calc(
+    i: crate::style::values::value::CalcId,
+    k: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Len {
+    let mut sum = crate::style::values::value::calc_get(i, vcx);
+    if sum.px == 0.0 {
+        return Len::Calc(i);
+    }
+    sum.px *= k;
+    Len::Calc(crate::style::values::value::calc_store(sum, vcx))
+}
 
 pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
     sh.x *= k;
@@ -16,12 +33,13 @@ pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
 /// Собственные длины в точках × `k`. Доли, `auto`, единицы окна, calc-арена
 /// и единицы шрифта не трогаются (§493; шрифтовые считаются от уже
 /// домноженного кегля).
-pub(super) fn scale_own(c: &mut Computed, k: f32) {
+pub(crate) fn scale_own(c: &mut Computed, k: f32, vcx: crate::document::state::ValueCx<'_>) {
     rule_widths::scale(c, k);
     let mul = |l: &mut Option<Len>| match *l {
         Some(Len::Px(v)) => *l = Some(Len::Px(v * k)),
         Some(Len::EmPx(e, add)) => *l = Some(Len::EmPx(e, add * k)),
         Some(Len::LhPx(e, add)) => *l = Some(Len::LhPx(e, add * k)),
+        Some(Len::Calc(i)) => *l = Some(scale_calc(i, k, vcx)),
         _ => {}
     };
     let sides = |s: &mut Sides| {
@@ -37,14 +55,19 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
         &mut c.max_width,
         &mut c.max_height,
         &mut c.flex_basis,
-        &mut c.letter_spacing,
-        &mut c.word_spacing,
-        &mut c.text_indent,
-        &mut c.line_height,
-        &mut c.tab_size_len,
         &mut c.column_width,
         &mut c.column_gap,
         &mut c.shape_margin,
+    ] {
+        mul(l);
+    }
+    let inh = &mut **c;
+    for l in [
+        &mut inh.letter_spacing,
+        &mut inh.word_spacing,
+        &mut inh.text_indent,
+        &mut inh.line_height,
+        &mut inh.tab_size_len,
     ] {
         mul(l);
     }
@@ -60,9 +83,12 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
     ] {
         mul(corner);
     }
-    for pair in [c.gap.as_mut(), c.border_spacing.as_mut()]
-        .into_iter()
-        .flatten()
+    if let Some(pair) = c.gap.as_mut() {
+        mul(&mut pair.0);
+        mul(&mut pair.1);
+    }
+    if c.border_spacing.is_some()
+        && let Some(pair) = c.border_spacing.as_mut()
     {
         mul(&mut pair.0);
         mul(&mut pair.1);
@@ -104,14 +130,18 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
     c.transform_origin_z = c.transform_origin_z.map(|v| v * k);
     c.perspective_origin_px.0 = c.perspective_origin_px.0.map(|v| v * k);
     c.perspective_origin_px.1 = c.perspective_origin_px.1.map(|v| v * k);
-    for sh in c
-        .shadows
-        .iter_mut()
-        .chain(c.inset_shadows.iter_mut())
-        .chain(c.text_shadow.iter_mut())
-        .chain(c.text_shadow_rest.iter_mut())
-    {
+    for sh in c.shadows.iter_mut().chain(c.inset_shadows.iter_mut()) {
         scale_shadow(sh, k);
+    }
+    if c.text_shadow.is_some() || !c.text_shadow_rest.is_empty() {
+        let inh = &mut **c;
+        for sh in inh
+            .text_shadow
+            .iter_mut()
+            .chain(inh.text_shadow_rest.iter_mut())
+        {
+            scale_shadow(sh, k);
+        }
     }
     // `vertical-align: 20px` хранится точками со знаком — тоже длина.
     c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);

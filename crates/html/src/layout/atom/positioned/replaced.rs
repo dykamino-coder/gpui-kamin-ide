@@ -6,41 +6,45 @@ use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn replaced_abs_atom(
-    inherited: &Computed,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
-    merged: &Computed,
+    merged: &BoxStyle,
     inline_cb: bool,
     stretched: bool,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut copy = e.clone();
-    copy.style.image_orient_none = merged.image_orient_none;
-    copy.style.position = None;
-    copy.style.margin = Default::default();
-    if matches!(copy.style.width, Some(Len::Pct(_))) {
-        copy.style.width = Some(Len::Pct(1.0));
+    copy.style.used_mut().image_orient_none = merged.image_orient_none;
+    copy.style.used_mut().position = None;
+    copy.style.used_mut().margin = Default::default();
+    if matches!(copy.style.used().width, Some(Len::Pct(_))) {
+        copy.style.used_mut().width = Some(Len::Pct(1.0));
     }
-    if matches!(copy.style.height, Some(Len::Pct(_))) {
-        copy.style.height = Some(Len::Pct(1.0));
+    if matches!(copy.style.used().height, Some(Len::Pct(_))) {
+        copy.style.used_mut().height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
-        crate::svg::element_with_html(&copy, opts)
-            .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
+        opts.cx
+            .contracts
+            .build
+            .svg(&copy, opts)
+            .unwrap_or_else(|| opts.cx.contracts.build.replaced(&copy, None, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.
         div().w_0().h_0().flex_shrink_0().into_any_element()
     } else {
-        opts.cx.build.replaced(&copy, None, &opts.cx)
+        opts.cx.contracts.build.replaced(&copy, None, &opts.cx)
     };
     let holder = opts
         .cx
+        .contracts
         .build
         .styled_box(e, merged, &opts.cx)
         .child(built)
@@ -48,6 +52,7 @@ pub(super) fn replaced_abs_atom(
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
         opts.cx
+            .contracts
             .build
             .effects(holder, Effect::GroupReplaced { style: merged, vcx })
     } else {
@@ -59,9 +64,9 @@ pub(super) fn replaced_abs_atom(
     if crate::layout::positioned::anchor::trials::inline::is_root(e, opts) {
         return Some(holder);
     }
-    let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
-    let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
-    if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
+    let x_set = edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right);
+    let y_set = edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom);
+    if x_set != y_set && e.style.used().z_index.unwrap_or(0) >= 0 {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {
             hole: None,
@@ -71,7 +76,7 @@ pub(super) fn replaced_abs_atom(
             rtl: inherited.wm().rtl(),
             vertical: inherited.wm().vertical(),
             vertical_rl: inherited.wm().block_rl(),
-            own_vertical: e.style.wm().vertical(),
+            own_vertical: e.style.cascaded().wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -81,15 +86,15 @@ pub(super) fn replaced_abs_atom(
         let probe = crate::layout::positioned::containing_block::spot_probe(
             spot.clone(),
             false,
-            opts.cx.line_box.clone(),
+            opts.cx.position.line_box.clone(),
             &opts.cx,
         );
         return match inline_replaced_position::push(
             spot,
             inline_abs_paint_last(e, holder, &opts.cx),
-            &e.style,
+            &e.style.used(),
             inherited,
-            &opts.cx.positioning,
+            &opts.cx.position.state,
         ) {
             None => Some(probe),
             Some(kept) => {
@@ -99,7 +104,7 @@ pub(super) fn replaced_abs_atom(
             }
         };
     }
-    let below_icb = e.style.z_index.is_some_and(|z| z < 0)
+    let below_icb = e.style.used().z_index.is_some_and(|z| z < 0)
         && !crate::style::computed::stacking::nested_context(inherited);
     // Позиционированный предок есть — слой ЕГО содержащего блока
     // (CSS 2.1 §10.1 п.4): держатель нулевого размера в строке краёв
@@ -110,11 +115,11 @@ pub(super) fn replaced_abs_atom(
     if x_set
         && y_set
         && !inline_cb
-        && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
+        && (e.style.used().z_index.unwrap_or(0) >= 0 || below_icb)
         && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {
-            opts.cx.build.effects(holder, Effect::Underlay)
+            opts.cx.contracts.build.effects(holder, Effect::Underlay)
         } else {
             holder
         };
@@ -124,7 +129,7 @@ pub(super) fn replaced_abs_atom(
             rtl: inherited.wm().rtl(),
             vertical: inherited.wm().vertical(),
             vertical_rl: inherited.wm().block_rl(),
-            own_vertical: e.style.wm().vertical(),
+            own_vertical: e.style.cascaded().wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -134,14 +139,15 @@ pub(super) fn replaced_abs_atom(
         // Слоя нет — элемент возвращается назад, и рисуем его на
         // месте прежним путём.
         let pushed = if positioned_cb {
-            opts.cx.positioning.cb_push(
+            opts.cx.position.state.cb_push(
                 spot,
                 holder.into_any_element(),
                 crate::layout::positioned::containing_block::nearest_cb_index(inherited),
             )
         } else {
             opts.cx
-                .positioning
+                .position
+                .state
                 .icb_push(spot, holder.into_any_element())
         };
         match pushed {

@@ -10,8 +10,8 @@ use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::push::{Regrow, measured_push};
 use crate::layout::fragment::types::{BreaksAt, StackChild};
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use std::rc::Rc;
 
 /// Что ребёнку стопки даёт раскладка его копии.
@@ -39,10 +39,14 @@ impl Measured {
         child: &mut StackChild,
         opts: &RenderOpts,
         cols: (bool, bool, Option<f32>),
-        merged: &Computed,
+        merged: &BoxStyle,
         copy: &Element,
         sizes: (f32, f32),
     ) {
+        #[cfg(feature = "wpt-harness")]
+        {
+            child.probe = opts.frag.probe.clone();
+        }
         let (col_vert, col_rl, line_col_w) = cols;
         child.breaks_w = self
             .breaks_w
@@ -59,10 +63,14 @@ impl Measured {
             let (h, over) = sizes;
             let build = move |dom: &Element, part: usize| {
                 let vcx = opts_b.cx.vcx();
-                let mut inner = inherit(&merged, &dom.style, vcx);
+                let mut inner = box_style(&merged, &dom.style, vcx);
                 inner.fragment_clip_ancestor = false;
                 let mut opts = opts_b.in_stack_copy();
-                opts.frag.watch = (part == 0).then(|| watched.clone());
+                opts.frag.watch = Some(if part == 0 {
+                    watched.clone()
+                } else {
+                    watched.for_part(part)
+                });
                 let el = build_copy(
                     &opts,
                     col_vert,
@@ -85,11 +93,22 @@ impl Measured {
                 side_margin_wrap(el, dom, col_vert)
             };
             child.regrow = Some(Regrow {
+                axis: if col_vert {
+                    if col_rl {
+                        crate::layout::fragment::types::StackAxis::VerticalRl
+                    } else {
+                        crate::layout::fragment::types::StackAxis::VerticalLr
+                    }
+                } else {
+                    crate::layout::fragment::types::StackAxis::Horizontal
+                },
                 dom: copy.clone(),
-                build: Box::new(build),
+                source: copy.clone(),
+                build: Rc::new(build),
                 opts: opts.clone(),
                 laid: Default::default(),
                 laid_h: self.laid_h,
+                watched: self.watched.clone(),
             });
         }
         child.watched = Some(self.watched);

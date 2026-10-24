@@ -5,7 +5,7 @@
 
 use super::Piece;
 use super::first_line_background;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 
 /// Одеть первые `at` байт абзаца в стиль первой строки (`::first-line`).
 ///
@@ -24,7 +24,7 @@ pub fn style_first_line(
         match p {
             Piece::Text { style: ref own, .. } if own.inline_control => out.push(p),
             Piece::Text { text, style: own } if seen < at => {
-                let dress = |base: &Computed| {
+                let dress = |base: &BoxStyle| {
                     let mut c = base.clone();
                     c.font_size = style.font_size.or(base.font_size);
                     // The fictional `::first-line` tag sequence wraps the
@@ -67,6 +67,10 @@ pub fn style_first_line(
                     c.inline_bg =
                         first_line_background::paint_color(base.inline_bg, style.background);
                     c.line_height = style.line_height.or(base.line_height);
+                    // TRANSITIONAL(first-line vertical-align): the layer leaves out
+                    // `vertical-align`, a ::first-line property (CSS 2 §5.12.1), because
+                    // `float::FirstLine` measures the paragraph without the shift; remove
+                    // when that measurement applies the first line's vertical shift.
                     // Не переносить сюда сдвиг по вертикали (§5.12.1 относит
                     // `vertical-align` к свойствам `::first-line`): краска
                     // поднимается, а коробка нет — высоту абзаца заявляет
@@ -120,14 +124,17 @@ mod tests {
     fn generated_controls_do_not_shorten_the_styled_source_range() {
         let piece = |text: &str, inline_control| Piece::Text {
             text: text.into(),
-            style: Computed {
+            style: BoxStyle::from(Computed {
                 inline_control,
                 ..Computed::default()
-            },
+            }),
         };
-        let first = Computed {
-            font_weight: Some(700),
-            ..Computed::default()
+        let first = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_weight = Some(700);
+            with_inherited
         };
         for (generated, at, expected) in [(true, 2, "ab"), (false, 5, "ab")] {
             let pieces = style_first_line(

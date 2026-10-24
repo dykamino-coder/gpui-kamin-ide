@@ -1,19 +1,16 @@
 //! Балансировка по строкам: строка баланса, avoid на пределе, прогон.
 
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::plan::{self, Space};
-use crate::layout::fragment::types::{Frag, Kid};
+use crate::layout::fragment::types::Kid;
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 
 impl ColumnStack {
     /// Одна линия колонок: высота заданная (fill:auto) либо баланс «оценка +
     /// добавка на минимальный недолаз» (blink `ResolveColumnAutoBlockSize`);
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
-    pub(crate) fn balance_line(
-        &self,
-        kids: &[Kid],
-        limit: usize,
-        cap: Option<f32>,
-    ) -> (f32, Vec<Frag>) {
+    pub(crate) fn balance_line(&self, kids: &[Kid], limit: usize, cap: Option<f32>) -> (f32, Plan) {
         if let Some(h) = self.fixed_height {
             // Правило 1 css-break-4 §4.3 применяется ТОЛЬКО здесь —
             // `column-fill: auto` с заданной высотой колонки. Балансировку
@@ -39,7 +36,7 @@ impl ColumnStack {
         // разрыве поле по-прежнему усекается — оно только у последнего.
         let tail;
         let kids = match kids.last() {
-            Some(k) if k.mb > 0.01 && !k.span && k.par.group == 0 => {
+            Some(k) if k.mb > COORD_EPS && !k.span && k.par.group == 0 => {
                 let mut v = kids.to_vec();
                 if let Some(l) = v.last_mut() {
                     l.h += l.mb;
@@ -109,7 +106,7 @@ impl ColumnStack {
                         .and_then(|bad| Self::avoid_shortage(kids, &slots, bad, target))
                 {
                     let grown = clamp(target + d);
-                    if grown > target + 0.01 {
+                    if grown > target + COORD_EPS {
                         target = grown;
                         continue;
                     }
@@ -136,7 +133,7 @@ impl ColumnStack {
                 // выше любого прогона (`grid-item-fragmentation-039`:
                 // `columns: 1`, прогоны 100 + 100 — колонка 200 вместо 100).
                 let used = slots.iter().map(|f| f.y + f.h).fold(0.0f32, f32::max);
-                if used > 0.01 && used < target - 0.01 {
+                if used > COORD_EPS && used < target - COORD_EPS {
                     let (cols2, _, slots2) = plan::fill(kids, used, Space::columns(limit));
                     if cols2 == cols {
                         return (used, slots2);
@@ -162,12 +159,7 @@ impl ColumnStack {
     /// `LayoutRow` той же `block_layout_algorithm` с `early_break_`,
     /// `fragmentation_utils.cc:1250`). `flex-container-fragmentation-003/004`:
     /// 50 + 50 + 300 при `break-before: avoid` у третьей — разрыв после первой.
-    pub(crate) fn avoid_at_cap(
-        kids: &[Kid],
-        target: f32,
-        limit: usize,
-        slots: Vec<Frag>,
-    ) -> Vec<Frag> {
+    pub(crate) fn avoid_at_cap(kids: &[Kid], target: f32, limit: usize, slots: Plan) -> Plan {
         if Self::first_avoid_violation(kids, &slots).is_none() {
             return slots;
         }
@@ -189,7 +181,7 @@ impl ColumnStack {
         cap: f32,
         balance_last: bool,
         not_at_start: usize,
-    ) -> (usize, Vec<Frag>, f32) {
+    ) -> (usize, Plan, f32) {
         let count = self.count;
         let space = Space::columns(self.copies).with_not_at_start(not_at_start);
         let line_h = |l: usize| if l == 0 { first } else { cap };

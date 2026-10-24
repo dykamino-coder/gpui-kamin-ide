@@ -2,6 +2,7 @@
 mod layer_offset;
 mod stacks;
 mod unit_boxes;
+use crate::style::computed::BoxStyle;
 use crate::text::ruby::container::stacks::level_wrap;
 use crate::text::ruby::container::stacks::over_stack;
 use crate::text::ruby::container::unit_boxes::unit_box;
@@ -9,19 +10,19 @@ use crate::text::ruby::container::unit_boxes::unit_box;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
 use crate::style::values::value::Len;
 use crate::text::ruby::{RubyUnit, ruby_hiding, ruby_segments, ruby_unit_blank};
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) fn ruby_container_atom(
-    inherited: &Computed,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     let segments = ruby_segments(&e.children);
     // Без хотя бы одной непустой аннотации руби — обычный строчный
     // (`ruby-line-breaking-001`: `<rtc><rt>` пустой; `ruby-intrinsic-isize-*`).
@@ -68,14 +69,14 @@ pub(crate) fn ruby_container_atom(
                 under,
                 base_half,
                 layers,
-                opts.cx.ruby_extents.as_ref(),
+                opts.cx.ruby.extents.as_ref(),
             );
             layer_offset::offset(el, layers, under)
         };
     let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
     for seg in &segments {
         // Стиль уровня: аннотации внутри `<rtc>` наследуют от него.
-        let level_style: Vec<Computed> = seg
+        let level_style: Vec<BoxStyle> = seg
             .levels
             .iter()
             .map(|l| {
@@ -84,7 +85,9 @@ pub(crate) fn ruby_container_atom(
                     None => merged.clone(),
                 };
                 // Decorations propagated to a ruby container apply to bases.
-                style.text_emphasis = None;
+                if style.text_emphasis.is_some() {
+                    style.text_emphasis = None;
+                }
                 style
             })
             .collect();
@@ -148,7 +151,7 @@ pub(crate) fn ruby_container_atom(
                         .first()
                         .and_then(|l| l.units.first())
                         .and_then(|u| match u.as_slice() {
-                            [Node::Element(k)] => match k.style.font_size {
+                            [Node::Element(k)] => match k.style.used().font_size {
                                 Some(Len::Px(v)) => Some(v),
                                 Some(Len::Pct(p)) | Some(Len::Em(p)) => Some(p * base_font),
                                 _ => None,

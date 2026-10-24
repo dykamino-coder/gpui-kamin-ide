@@ -22,22 +22,22 @@ pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>)
 /// `relative`/`sticky` строчного уровня и строчный абсолют — те идут в
 /// абзац. Такие красятся первым проходом там, где стоят.
 fn unkeyed_positioned(e: &Element) -> bool {
-    if e.style.z_index.unwrap_or(0) != 0 {
+    if e.style.used().z_index.unwrap_or(0) != 0 {
         return false;
     }
     let table_part = matches!(
-        e.style.display,
+        e.style.used().display,
         Some(Display::TableRow) | Some(Display::TableCell) | Some(Display::TableRowGroup)
-    ) || (e.style.display.is_none()
+    ) || (e.style.used().display.is_none()
         && matches!(
             e.tag.as_str(),
             "tr" | "td" | "th" | "tbody" | "thead" | "tfoot" | "caption" | "col" | "colgroup"
         ));
-    match e.style.position {
+    match e.style.used().position {
         Some(crate::style::computed::Position::Relative)
         | Some(crate::style::computed::Position::Sticky) => table_part || !block_level_in_flow(e),
         Some(crate::style::computed::Position::Absolute) => {
-            table_part || (e.style.display.is_none() && e.inline)
+            table_part || (e.style.used().display.is_none() && e.inline)
         }
         _ => false,
     }
@@ -82,15 +82,15 @@ pub(crate) fn unkeyed_positions(
 /// step-8 collector: it is a known node of this document walk and no later
 /// positioned box stays in the first paint pass (`unkeyed_positions`).
 pub(crate) fn hoists_inline_abs(e: &Element, cx: &LayoutCx) -> bool {
-    let u = &*cx.unkeyed;
+    let u = &*cx.deferred.unkeyed;
     let known =
         u.0.get(&e.node_id)
             .map(|&end| u.1.is_none_or(|last| last < end));
-    e.style.z_index.unwrap_or(0) == 0 && known == Some(true)
+    e.style.used().z_index.unwrap_or(0) == 0 && known == Some(true)
 }
 
 pub(crate) fn paint_last_ok(e: &Element, rest: &[Node], cx: &LayoutCx) -> bool {
-    let u = &*cx.unkeyed;
+    let u = &*cx.deferred.unkeyed;
     let known =
         u.0.get(&e.node_id)
             .map(|&end| u.1.is_none_or(|last| last < end));

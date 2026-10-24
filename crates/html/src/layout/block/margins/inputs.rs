@@ -1,5 +1,6 @@
 //! Входы раннего разрешения длин полей, до наследования стиля потомками.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CollapseInputs {
     pub font: f32,
@@ -10,7 +11,7 @@ pub(crate) struct CollapseInputs {
 impl Default for CollapseInputs {
     fn default() -> Self {
         Self {
-            font: 16.0,
+            font: MEDIUM_FONT_SIZE_PX,
             width: None,
             height_def: false,
         }

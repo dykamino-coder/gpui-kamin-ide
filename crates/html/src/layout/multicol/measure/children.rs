@@ -1,8 +1,12 @@
-//! Измерение блочных детей и вложенных многоколоночников.
+//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4/F2-6): preplan смешанных групп требует состояний продолжения.
+//! Независимые plain/grid/table/flex, включая vertical, проходят native-dispatch до этой ветки.
+//! Пустую grid с известной/отложенной шириной измеряет native путь до этой ветки.
+//! Разрываемые floats — F2-1: отдельные consumed/resume для float и main flow.
 
 use super::grid_kid;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::margins::fragment_margins as measured_margins;
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
@@ -15,14 +19,14 @@ use crate::layout::fragment::probe::forced_inside;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use std::cell::RefCell;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_children(
     ge: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     opts: &RenderOpts,
     first_flow: Option<*const Node>,
     last_flow: Option<*const Node>,
@@ -41,14 +45,14 @@ pub(crate) fn measure_children(
     ge.children
         .iter()
         .filter(|n| !is_blank(n))
-        .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+        .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
         .map(|n| match n {
             // Вложенный многоколоночник `height: auto` с верха
             // внешней колонки — рядами (`nested_rows_shape`).
             Node::Element(c)
                 if first_flow == Some(n as *const Node)
-                    && matches!(c.style.height, None | Some(Len::Auto))
-                    && zero_len(c.style.margin.top)
+                    && matches!(c.style.used().height, None | Some(Len::Auto))
+                    && zero_len(c.style.used().margin.top)
                     && outer_frag.is_some()
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
@@ -77,8 +81,8 @@ pub(crate) fn measure_children(
             Node::Element(c)
                 if measure_ok
                     && first_flow != Some(n as *const Node)
-                    && c.style.column_fill_auto != Some(true)
-                    && matches!(c.style.height, None | Some(Len::Auto))
+                    && c.style.used().column_fill_auto != Some(true)
+                    && matches!(c.style.used().height, None | Some(Len::Auto))
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
@@ -87,7 +91,7 @@ pub(crate) fn measure_children(
             }
             Node::Element(c)
                 if whole_ok
-                    && matches!(c.style.height, None | Some(Len::Auto))
+                    && matches!(c.style.used().height, None | Some(Len::Auto))
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
@@ -101,6 +105,7 @@ pub(crate) fn measure_children(
             // break decisions on the laid-out copy, not on this estimate.
             Node::Element(c)
                 if pag_ok
+                    && !grid_kid::flex_gate(c, measure_ok || whole_ok, line_col_w)
                     && line_col_w.is_some()
                     && crate::layout::fragment::paginate::gate(
                         c,
@@ -130,10 +135,11 @@ pub(crate) fn measure_children(
             // накладывается на месте (корень A1).
             Node::Element(c)
                 if !c.inline
-                    && (c.style.position.is_none()
-                        || c.style.position
+                    && (c.style.used().position.is_none()
+                        || c.style.used().position
                             == Some(crate::style::computed::Position::Relative))
-                    && (c.style.float.unwrap_or(0) == 0 || block_like_float(&c.style)) =>
+                    && (c.style.used().float.unwrap_or(0) == 0
+                        || block_like_float(&c.style.used())) =>
             {
                 // В вертикальном письме мера — по БЛОЧНОЙ оси
                 // (css-multicol-1 §2: «The column height is the
@@ -187,7 +193,7 @@ pub(crate) fn measure_children(
                             // Таблицу из обычных блоков мерит раскладка копии
                             // целиком, с её принудительными разрывами
                             // (`flow::blocks::table`).
-                            let table = table_tree(c, 4);
+                            let table = table_tree(c);
                             if !measure_ok || (forced_inside(c, 6) && !table) {
                                 return None;
                             }
@@ -228,16 +234,6 @@ fn measured_nested(
             ..Shape::default()
         },
     ))
-}
-
-/// Мера копии принимает только разрешённые отступы; auto равен нулю.
-pub(super) fn measured_margins(c: &Element) -> Option<(f32, f32)> {
-    let m = |l: &Option<Len>| match l {
-        Some(Len::Px(v)) => Some(*v),
-        None | Some(Len::Auto) => Some(0.0),
-        _ => None,
-    };
-    Some((m(&c.style.margin.top)?, m(&c.style.margin.bottom)?))
 }
 
 #[cfg(test)]

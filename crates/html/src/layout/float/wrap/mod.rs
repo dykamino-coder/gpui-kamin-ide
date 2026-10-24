@@ -2,10 +2,10 @@
 //! container into the shared measured band host.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 
 use crate::dom::Node;
 use crate::layout::float::FloatCb;
-use crate::style::computed::Computed;
 mod prepare;
 use prepare::{prepare_float_nodes, unfloated_flow};
 mod float_run;
@@ -14,7 +14,7 @@ use float_run::wrap_float_run;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn wrap_floats(
     nodes: Vec<Node>,
-    parent: &Computed,
+    parent: &BoxStyle,
     // Открыт ли ВЕРХНИЙ край содержащего блока для схлопывания с полем
     // первого ребёнка (§8.3.1). Только при открытом крае верхнее поле
     // очищающей коробки увозит вниз сам содержащий блок, а вместе с ним —
@@ -29,11 +29,11 @@ pub(crate) fn wrap_floats(
     // Содержащий блок — корень БФК (§10.6.7): его авто-высота обязана
     // охватить флоаты, в том числе внутри вложенных блоков.
     parent_bfc: bool,
-    // The parent is a table cell (see `LayoutCx::cell_bfc`): a BFC root whose float
+    // The parent is a table cell (see `BoxConstraints::cell_bfc`): a BFC root whose float
     // host keeps containing floats, while the band-host choices above stay
     // those of an ordinary block (margin-collapse-121..125, 157, 158).
     cell_bfc: bool,
-    // Ширина содержащего блока в точках (`LayoutCx::cb_width`) — для
+    // Ширина содержащего блока в точках (`BoxConstraints::cb_width`) — для
     // `bfc_no_fit`.
     cb_px: Option<f32>,
     cb_height: Option<f32>,
@@ -68,7 +68,7 @@ pub(crate) fn wrap_floats(
             i += 1;
             continue;
         };
-        if e.style.float.is_none_or(|f| f == 0) {
+        if e.style.used().float.is_none_or(|f| f == 0) {
             out.push(nodes[i].clone());
             i += 1;
             continue;

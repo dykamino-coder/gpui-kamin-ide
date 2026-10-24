@@ -83,7 +83,7 @@ pub(super) fn hidden_element(
         );
         kids = raw
             .into_iter()
-            .filter(|n| matches!(n, Node::Element(c) if c.style.col_role == Some(0)))
+            .filter(|n| matches!(n, Node::Element(c) if c.style.cascaded().col_role == Some(0)))
             .collect();
     }
     counters.leave();

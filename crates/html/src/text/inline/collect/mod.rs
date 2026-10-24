@@ -5,7 +5,7 @@ mod element_nodes;
 mod tests {
     use crate::dom::{Node, parse};
     use crate::layout::cx::{BuildDoc, LayoutCx};
-    use crate::style::computed::Computed;
+    use crate::style::computed::BoxStyle;
     use crate::text::inline::{self, Piece};
     use gpui::IntoElement;
 
@@ -19,7 +19,8 @@ mod tests {
         fn positioned(nodes: &[Node]) -> Option<&crate::dom::Element> {
             nodes.iter().find_map(|node| match node {
                 Node::Element(e)
-                    if e.style.position == Some(crate::style::computed::Position::Relative) =>
+                    if e.style.used().position
+                        == Some(crate::style::computed::Position::Relative) =>
                 {
                     Some(e)
                 }
@@ -30,15 +31,18 @@ mod tests {
         let parent = positioned(&parsed.nodes).expect("positioned inline parent");
         assert_ne!(parent.node_id, 0);
         let cx = LayoutCx {
-            doc: BuildDoc(parsed.doc.clone()),
+            values: crate::layout::cx::ValueContext {
+                doc: BuildDoc(parsed.doc.clone()),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let mut seen_atom = false;
         let pieces = inline::collect(
             &parsed.nodes,
-            &Computed::default(),
+            &BoxStyle::default(),
             &mut |e, atom| {
-                if crate::layout::box_kind::out_of_flow(&e.style) {
+                if crate::layout::box_kind::out_of_flow(&e.style.used()) {
                     assert!(atom.in_inline_cb);
                     assert_eq!(atom.parent.as_ref().unwrap().self_node, parent.node_id);
                     seen_atom = true;
@@ -77,7 +81,7 @@ pub(super) use crate::text::inline::collect::overlays::overlay_in_row;
 use crate::text::inline::collect::text_nodes::collect_text;
 
 use crate::dom::{Element, Node};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::text::inline::*;
 
 /// What the piece collection carries across the inline boxes it descends:
@@ -87,9 +91,9 @@ use crate::text::inline::*;
 pub(crate) struct CollectCx {
     pub(super) case: text_case::Context,
     pub(super) layout: crate::layout::cx::LayoutCx,
-    /// Computed styles of the open inline ancestors (`atom_parent`): an atom
+    /// BoxStyle styles of the open inline ancestors (`atom_parent`): an atom
     /// inherits from the nearest one.
-    pub(super) inline_parents: Vec<crate::style::computed::Computed>,
+    pub(super) inline_parents: Vec<BoxStyle>,
     /// How many of them establish a containing block (positioned inlines).
     pub(super) inline_cb_depth: usize,
 }
@@ -106,7 +110,7 @@ impl CollectCx {
 
 pub(super) fn collect_with_empty_metrics(
     children: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,

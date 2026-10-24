@@ -6,14 +6,14 @@
 mod lifecycle;
 mod painting;
 
-use crate::paint::gap_rules::{GapItems, GapRuleSpec};
+use crate::layout::multicol::gap_rules::{GapItems, GapRuleSpec};
 
 /// Слой линеек промежутков. Забирает буфер проб в `paint` (к этому моменту
 /// prepaint всех детей уже прошёл — так же работает `EdgePainter`), строит
 /// геометрию промежутков по границам элементов и красит отрезки линеек
 /// (css-gaps-1 §geometry, §break, §inset, §visibility-items, §lists).
 pub struct GapRulePainter {
-    pub(crate) paint: std::rc::Rc<crate::paint::context::PaintCx>,
+    pub(crate) paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     pub(crate) items: GapItems,
     pub(crate) spec: GapRuleSpec,
 }
@@ -22,7 +22,7 @@ impl GapRulePainter {
     pub fn new(
         items: GapItems,
         spec: GapRuleSpec,
-        paint: std::rc::Rc<crate::paint::context::PaintCx>,
+        paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     ) -> Self {
         GapRulePainter { items, spec, paint }
     }

@@ -2,6 +2,7 @@
 
 use crate::layout::options::RenderOpts;
 use crate::layout::order::paint_last_ok;
+use crate::style::computed::BoxStyle;
 mod route;
 pub(super) use route::layer_route;
 
@@ -10,14 +11,13 @@ use crate::hooks::IntoHooked;
 use crate::layout::block::struts::margin_px;
 use crate::paint::stacking::layered;
 use crate::render::blocks::flow::BelowRun;
-use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn place_element(
     e: &crate::dom::Element,
     under_tf: bool,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     ordered_context: bool,
     geometry_layer_ok: bool,
     nodes: &[crate::dom::Node],
@@ -53,18 +53,20 @@ pub(crate) fn place_element(
                 if x_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.left, &e.style, opts.cx.vcx()).unwrap_or(0.0)
+                    margin_px(e.style.used().margin.left, &e.style.used(), opts.cx.vcx())
+                        .unwrap_or(0.0)
                 },
                 if y_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.top, &e.style, opts.cx.vcx()).unwrap_or(0.0)
+                    margin_px(e.style.used().margin.top, &e.style.used(), opts.cx.vcx())
+                        .unwrap_or(0.0)
                 },
             ),
             rtl: inherited.wm().rtl(),
             vertical: inherited.wm().vertical(),
             vertical_rl: inherited.wm().block_rl(),
-            own_vertical: e.style.wm().vertical(),
+            own_vertical: e.style.cascaded().wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -85,8 +87,8 @@ pub(crate) fn place_element(
             // на лист без сдвига (`PagedBuild::fixed`). Обёртка `LatePlace`
             // та же, что у слоя ICB, — через вложенный слой.
             let icb_layer =
-                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
-            let _ = opts.cx.positioning.icb_push(spot.clone(), built);
+                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
+            let _ = opts.cx.position.state.icb_push(spot.clone(), built);
             paged.push_fixed(icb_layer.finish());
             None
         } else {
@@ -101,8 +103,8 @@ pub(crate) fn place_element(
             // in-place path gets from `layered` below
             // (`shape-image-009`: `#test` z-index 2 under a z-index 1
             // failure box, both hoisted).
-            let built = if !fixed && e.style.z_index.is_some_and(|z| z > 0) {
-                layered(built, &e.style, inherited, layer_ok, under_tf)
+            let built = if !fixed && e.style.used().z_index.is_some_and(|z| z > 0) {
+                layered(built, &e.style.used(), inherited, layer_ok, under_tf)
             } else {
                 built
             };
@@ -133,11 +135,11 @@ pub(crate) fn place_element(
                     built
                 };
             if to_icb {
-                opts.cx.positioning.icb_push(spot.clone(), built)
+                opts.cx.position.state.icb_push(spot.clone(), built)
             } else if far_fixed {
-                opts.cx.positioning.cb_push_fixed(spot.clone(), built)
+                opts.cx.position.state.cb_push_fixed(spot.clone(), built)
             } else {
-                opts.cx.positioning.cb_push(
+                opts.cx.position.state.cb_push(
                     spot.clone(),
                     built,
                     crate::layout::positioned::containing_block::nearest_cb_index(inherited),

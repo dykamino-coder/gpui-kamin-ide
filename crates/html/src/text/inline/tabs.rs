@@ -4,6 +4,7 @@
 //! На выходе `TabStops` для раскладки строк.
 
 use super::Piece;
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::metrics;
@@ -17,7 +18,7 @@ pub fn tab_stops(
 ) -> TabStops {
     let size = match block.font_size {
         Some(Len::Px(v)) => v,
-        _ => f32::from(base.font_size.to_pixels(gpui::px(16.0))),
+        _ => f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX))),
     };
     let family = block.font_family.as_deref().unwrap_or_else(|| {
         if block.monospace == Some(true) {
@@ -54,6 +55,7 @@ pub fn tab_stops(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
 
     #[test]
     fn numeric_tabs_use_shaped_spaces_with_the_block_font() {
@@ -66,20 +68,26 @@ mod tests {
             },
             vcx,
         );
-        let block = Computed {
-            font_size: Some(Len::Px(20.0)),
-            font_weight: Some(700),
-            letter_spacing: Some(Len::Px(2.0)),
-            word_spacing: Some(Len::Px(3.0)),
-            tab_size: Some(4.0),
-            ..Default::default()
+        let block = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Px(20.0));
+            with_inherited.font_weight = Some(700);
+            with_inherited.letter_spacing = Some(Len::Px(2.0));
+            with_inherited.word_spacing = Some(Len::Px(3.0));
+            with_inherited.tab_size = Some(4.0);
+            with_inherited
         };
         let pieces = vec![Piece::Text {
             text: "\t".into(),
-            style: Computed {
-                font_size: Some(Len::Px(80.0)),
-                tab_size: Some(4.0),
-                ..Default::default()
+            style: {
+                let mut with_inherited = Computed {
+                    ..Default::default()
+                };
+                with_inherited.font_size = Some(Len::Px(80.0));
+                with_inherited.tab_size = Some(4.0);
+                BoxStyle::from(with_inherited)
             },
         }];
         let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);
@@ -99,15 +107,18 @@ mod tests {
             },
             vcx,
         );
-        let block = Computed {
-            font_size: Some(Len::Px(20.0)),
-            monospace: Some(true),
-            tab_size: Some(2.0),
-            ..Default::default()
+        let block = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Px(20.0));
+            with_inherited.monospace = Some(true);
+            with_inherited.tab_size = Some(2.0);
+            with_inherited
         };
         let pieces = vec![Piece::Text {
             text: "\t".into(),
-            style: block.clone(),
+            style: BoxStyle::from(block.clone()),
         }];
         assert_eq!(
             tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx).next(0, 0.0),
@@ -119,15 +130,21 @@ mod tests {
     fn numeric_override_cancels_an_inherited_length() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let parent = Computed {
-            tab_size_len: Some(Len::Px(200.0)),
-            ..Default::default()
+        let parent = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.tab_size_len = Some(Len::Px(200.0));
+            with_inherited
         };
-        let own = Computed {
-            tab_size: Some(5.0),
-            ..Default::default()
+        let own = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.tab_size = Some(5.0);
+            with_inherited
         };
-        let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+        let child = crate::style::cascade::inherit::inherit(&BoxStyle::from(parent), &own, vcx);
         assert_eq!(child.tab_size, Some(5.0));
         assert_eq!(child.tab_size_len, None);
     }
@@ -136,19 +153,25 @@ mod tests {
     fn inline_font_does_not_replace_the_block_metrics() {
         let doc = crate::document::state::DocState::new(Default::default());
         let vcx = doc.values();
-        let block = Computed {
-            font_size: Some(Len::Px(20.0)),
-            letter_spacing: Some(Len::Px(2.0)),
-            word_spacing: Some(Len::Px(3.0)),
-            tab_size: Some(2.0),
-            ..Default::default()
+        let block = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Px(20.0));
+            with_inherited.letter_spacing = Some(Len::Px(2.0));
+            with_inherited.word_spacing = Some(Len::Px(3.0));
+            with_inherited.tab_size = Some(2.0);
+            with_inherited
         };
         let pieces = vec![Piece::Text {
             text: "水\t".into(),
-            style: Computed {
-                font_size: Some(Len::Px(80.0)),
-                tab_size: Some(5.0),
-                ..Default::default()
+            style: {
+                let mut with_inherited = Computed {
+                    ..Default::default()
+                };
+                with_inherited.font_size = Some(Len::Px(80.0));
+                with_inherited.tab_size = Some(5.0);
+                BoxStyle::from(with_inherited)
             },
         }];
         let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);

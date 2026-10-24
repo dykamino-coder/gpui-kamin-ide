@@ -4,6 +4,9 @@
 //! (`layout::float::shapes`), отрисовка (`paint::background`, `paint::effects`), `svg` и
 //! `offset-path` анимаций.
 
+pub(crate) mod commands;
+mod geometry_property;
+pub(crate) use geometry_property::geometry_property;
 mod circle_ellipse;
 mod path;
 mod rounded_rect;

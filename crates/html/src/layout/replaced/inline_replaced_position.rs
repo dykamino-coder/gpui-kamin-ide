@@ -4,14 +4,14 @@
 //! блоком не становится; остальные идут отложенным размещением `late_push`.
 
 use crate::layout::positioned::containing_block::{Positioning, SpotCell};
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::{BoxStyle, Computed, Position};
 use gpui::AnyElement;
 
 pub(crate) fn push(
     spot: SpotCell,
     element: AnyElement,
     own: &Computed,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     positioning: &Positioning,
 ) -> Option<AnyElement> {
     // CSS 2.1 §10.1: without a positioned ancestor an absolute box uses the

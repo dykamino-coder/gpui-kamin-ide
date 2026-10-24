@@ -5,7 +5,12 @@ use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 mod children;
+mod items;
 mod layout_spec;
+mod spec;
+pub use items::{GapBuffer, MulticolGaps, gap_item_probe};
+pub use spec::{GapAxisRule, GapLayout, GapRuleSpec};
+pub type GapItems = std::rc::Rc<std::cell::RefCell<GapBuffer>>;
 pub(crate) use children::decorated_children;
 use layout_spec::gap_rule_layout;
 
@@ -17,8 +22,8 @@ pub(crate) fn gap_rule_spec(
     e: &Element,
     merged: &Computed,
     opts: &RenderOpts,
-) -> Option<crate::paint::gap_rules::GapRuleSpec> {
-    use crate::paint::gap_rules::GapAxisRule;
+) -> Option<crate::layout::multicol::gap_rules::GapRuleSpec> {
+    use crate::layout::multicol::gap_rules::GapAxisRule;
     use crate::style::computed::{GapInset, GapList};
     if !matches!(
         merged.display,
@@ -45,7 +50,7 @@ pub(crate) fn gap_rule_spec(
         b: 0.0,
         a: 1.0,
     });
-    let s = &e.style;
+    let s = &*e.style.used();
     let axis = |column: bool| -> GapAxisRule {
         let (vis, w, c, ws, ss, cs, brk, inset, visibility) = if column {
             (
@@ -137,12 +142,12 @@ pub(super) fn multicol_gap_rule_spec(
     opts: &RenderOpts,
     column_gap: f32,
     row_gap: f32,
-) -> Option<crate::paint::gap_rules::GapRuleSpec> {
+) -> Option<crate::layout::multicol::gap_rules::GapRuleSpec> {
     let mut probe = merged.clone();
     probe.display = Some(Display::Flex);
     let mut spec = gap_rule_spec(e, &probe, opts)?;
     let vertical = spec.vertical;
-    spec.kind = crate::paint::gap_rules::GapLayout::Multicol;
+    spec.kind = crate::layout::multicol::gap_rules::GapLayout::Multicol;
     if let Some(c) = spec.col.as_mut()
         && c.brk == 1
     {

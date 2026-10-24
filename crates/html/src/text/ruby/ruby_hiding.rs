@@ -23,7 +23,7 @@ pub(super) fn hidden(annotation: &[Node], base: &str, container: &Computed) -> b
         return false;
     }
     let collapsed = if let [Node::Element(e)] = annotation {
-        e.style.collapsed.or(container.collapsed)
+        e.style.used().collapsed.or(container.collapsed)
     } else {
         container.collapsed
     };

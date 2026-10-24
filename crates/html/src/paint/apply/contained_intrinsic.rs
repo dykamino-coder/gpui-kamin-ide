@@ -4,6 +4,7 @@
 //! щелями и «число × ширина колонки + щели» многоколонника — сохраняется.
 //! Авто-ширина блока по-прежнему заполняет определённое место.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::style::computed::{Computed, Display, Track, TrackSize};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{Div, Styled};
@@ -38,7 +39,7 @@ pub(super) fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
             Some(Len::Px(v)) => v,
             _ => match c.font_size {
                 Some(Len::Px(size)) => size,
-                _ => 16.0,
+                _ => MEDIUM_FONT_SIZE_PX,
             },
         };
         return count as f32 * w + (count as f32 - 1.0) * g;

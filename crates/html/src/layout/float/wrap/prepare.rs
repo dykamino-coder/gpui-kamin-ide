@@ -9,7 +9,7 @@ use crate::layout::float::band_measured::{band_host_m, band_host_nested};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::{inline_float_host, split_leading_float};
 use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_floats};
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 
 pub(super) fn unfloated_flow(
@@ -22,7 +22,7 @@ pub(super) fn unfloated_flow(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     let floated = nodes.iter().any(|n| match n {
-        Node::Element(e) => e.style.float.is_some_and(|f| f != 0),
+        Node::Element(e) => e.style.used().float.is_some_and(|f| f != 0),
         Node::Text(_) => false,
     });
     if !floated {
@@ -48,7 +48,7 @@ pub(super) fn unfloated_flow(
 
 pub(super) fn prepare_float_nodes(
     nodes: Vec<Node>,
-    parent: &Computed,
+    parent: &BoxStyle,
     cb_top_open: bool,
     cb_px: Option<f32>,
     vcx: ValueCx<'_>,
@@ -58,15 +58,16 @@ pub(super) fn prepare_float_nodes(
     let nodes: Vec<Node> = nodes
         .into_iter()
         .map(|n| match n {
-            Node::Element(mut e) if e.style.display == Some(Display::Contents) => {
-                e.style.float = None;
+            Node::Element(mut e) if e.style.used().display == Some(Display::Contents) => {
+                e.style.used_mut().float = None;
                 Node::Element(e)
             }
-            Node::Element(mut e) if e.style.float.is_some_and(|f| f != 0) => {
+            Node::Element(mut e) if e.style.used().float.is_some_and(|f| f != 0) => {
                 // Font-relative margins use the float's computed font, before
                 // the band planner takes ownership of its margin box.
-                e.style.margin =
-                    crate::style::cascade::inherit::inherit_unpainted(parent, &e.style, vcx).margin;
+                e.style.used_mut().margin =
+                    crate::style::cascade::materialize::box_style_unpainted(parent, &e.style, vcx)
+                        .margin;
                 Node::Element(e)
             }
             n => n,
@@ -124,7 +125,7 @@ pub(super) fn prepare_float_nodes(
         && let Some(b) =
             (a + 1..nodes.len()).find(|&k| !is_blank(&nodes[k]) && !phantom_inline(&nodes[k]))
         && let Node::Element(n) = &nodes[b]
-        && (match n.style.clear {
+        && (match n.style.used().clear {
             Some(0) => true,
             Some(c) if c < 0 => left,
             Some(_) => right,
@@ -132,10 +133,10 @@ pub(super) fn prepare_float_nodes(
         } || bfc_no_fit(n, min_w, cb_px))
     {
         if let Node::Element(w) = &mut nodes[a] {
-            w.style.height = None;
+            w.style.used_mut().height = None;
         }
         if let Node::Element(n) = &mut nodes[b] {
-            n.style.margin.top = Some(Len::Px(0.0));
+            n.style.used_mut().margin.top = Some(Len::Px(0.0));
         }
     }
     nodes
@@ -167,7 +168,7 @@ pub(super) fn host_for_run(
             Node::Element(c) => {
                 !inline_level(c)
                     || c.tag == "br"
-                    || out_of_flow(&c.style)
+                    || out_of_flow(&c.style.used())
                     || c.marks.shape_flow.is_some()
             }
         })
@@ -213,9 +214,9 @@ pub(super) fn wrap_into_host(
         // Внепоточные соседи (абсолюты, флоаты) строк не образуют
         // (`below-float3`: абсолют перед флоатом).
         if host.marks.shape_flow.is_some()
-            && out
-                .iter()
-                .all(|n| is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+            && out.iter().all(|n| {
+                is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style.used()))
+            })
         {
             host.first_line = parent.first_line.as_deref().cloned().map(Into::into);
         }

@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4): рост preplan требует consumed и статической позиции OOF.
 //! Рост перенесённой коробки, монолиты под avoid и поля абзаца.
 
 use super::super::cell::grow_before;
@@ -45,6 +46,9 @@ pub(crate) fn grow_pushed(
     measured: &dyn Fn(&Element) -> bool,
     vcx: ValueCx<'_>,
 ) -> Vec<(Element, Shape)> {
+    if kids.iter().all(|(c, _)| c.marks.paginate || measured(c)) {
+        return kids;
+    }
     for _ in 0..6 {
         let probe: Vec<crate::layout::fragment::types::Kid> = kids
             .iter()
@@ -68,7 +72,8 @@ pub(crate) fn grow_pushed(
                 forced: s.forced.clone(),
                 solid: s.solid.clone(),
                 avoid: Vec::new(),
-                span: c.style.column_span == Some(true) && !c.inline,
+                keep: Vec::new(),
+                span: c.style.used().column_span == Some(true) && !c.inline,
                 // Щуп роста параллельного потока не знает: распорка
                 // (`spacer_before`) — про в-поточную высоту, а поток высоты
                 // не даёт (css-break-3 §3). Раздвинуть коробку им значило бы
@@ -84,7 +89,7 @@ pub(crate) fn grow_pushed(
                 overflow_top: fixed.is_some()
                     && rows.is_none()
                     && !parallel_items_inside(c, 4, vcx),
-                repeat: repeat_leads(c, fixed, rows, vcx),
+                repeat: repeat_leads(c, fixed, rows, ShapeCx::COLUMNS, vcx),
                 par: par.get(i).copied().unwrap_or_default(),
             })
             .collect();
@@ -145,16 +150,16 @@ pub(crate) fn avoid_only_monolith(c: &Element) -> bool {
     let scrolls = |o: Option<crate::style::computed::Overflow>| {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
-    let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.display == Some(Display::Block));
+    let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.used().display == Some(Display::Block));
     !(size_monolith(c)
-        || scrolls(c.style.overflow_x)
-        || scrolls(c.style.overflow_y)
+        || scrolls(c.style.used().overflow_x)
+        || scrolls(c.style.used().overflow_y)
         || matches!(
             c.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
         )
         || matches!(
-            c.style.display,
+            c.style.used().display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
         )
         || (c.children.iter().any(|n| !is_blank(n)) && !c.children.iter().any(block_kid)))

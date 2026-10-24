@@ -2,7 +2,7 @@
 //! фона (`background-repeat`, `-origin`, `-clip`, `-size`, `-position-x/-y`,
 //! `-attachment`, `-blend-mode`) и `object-position`/`object-view-box`.
 //! Разбор — функции `values` (те же, что проверяют объявление); `inherit`
-//! ставит разряд `inherit_bits`, значение его снимает. Начальное значение
+//! держит каскад (`Computed::inherit_longhands`). Начальное значение
 //! хранится отсутствием значения: вычисленное значение у них одно.
 
 use super::values::{attachment, bg_size, clip_box, origin_box, repeat_style};
@@ -17,22 +17,19 @@ impl Computed {
         hit: &mut bool,
         vcx: ValueCx<'_>,
     ) {
-        let bit = match key {
-            "background-repeat" => inh::BG_REPEAT,
-            "background-origin" => inh::BG_ORIGIN,
-            "background-clip" | "-webkit-background-clip" => inh::BG_CLIP,
-            "background-size" => inh::BG_SIZE,
-            "background-position-x" => inh::BG_POS,
-            "background-position-y" => inh::BG_POS_Y,
-            "background-attachment" => inh::BG_ATTACH,
-            _ => 0,
-        };
-        if bit != 0 {
-            if v.trim().eq_ignore_ascii_case("inherit") {
-                self.inherit_bits |= bit;
-                return;
-            }
-            self.inherit_bits &= !bit;
+        let layer_key = matches!(
+            key,
+            "background-repeat"
+                | "background-origin"
+                | "background-clip"
+                | "-webkit-background-clip"
+                | "background-size"
+                | "background-position-x"
+                | "background-position-y"
+                | "background-attachment"
+        );
+        if layer_key && v.trim().eq_ignore_ascii_case("inherit") {
+            return;
         }
         match key {
             "background-blend-mode" => {

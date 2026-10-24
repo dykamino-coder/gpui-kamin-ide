@@ -1,7 +1,6 @@
 //! Сборка детей общей коробки: ортогональные оси, clamp и контексты окраски.
 
 use crate::layout::options::RenderOpts;
-use crate::paint::box_tree::styled::clip_layer;
 use crate::render::blocks::blocks;
 mod formatting_context;
 mod probes;
@@ -19,7 +18,7 @@ use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, IntoElement, ParentElement};
 use std::borrow::Cow;
 
@@ -27,8 +26,8 @@ use std::borrow::Cow;
 pub(crate) fn generic_children(
     e: &Element,
     d: gpui::Div,
-    merged: Computed,
-    inherited: &Computed,
+    merged: BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {
@@ -37,7 +36,7 @@ pub(crate) fn generic_children(
     let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
         Cow::Borrowed(children)
     } else {
-        let children = match &e.style.grid_areas {
+        let children = match &e.style.used().grid_areas {
             Some(areas) => place_named_areas(areas, e.children.clone()),
             None => e.children.clone(),
         };
@@ -52,23 +51,31 @@ pub(crate) fn generic_children(
             let lead_margin = if e.tag == "html" {
                 None
             } else {
-                let b = e.style.borders();
+                let b = e.style.used().borders();
                 let (border, pad, own) = if reverse {
-                    (b.right, e.style.padding.right, e.style.margin.right)
+                    (
+                        b.right,
+                        e.style.used().padding.right,
+                        e.style.used().margin.right,
+                    )
                 } else {
-                    (b.left, e.style.padding.left, e.style.margin.left)
+                    (
+                        b.left,
+                        e.style.used().padding.left,
+                        e.style.used().margin.left,
+                    )
                 };
                 // Независимый контекст форматирования (overflow не
                 // `visible`, флоат, `display: flow-root`, `contain`) не
                 // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
                 // modes-4 §7.4): `margin-collapse-vlr-017`/`vrl-016` (`overflow: hidden`).
                 let sealed = makes_bfc
-                    || margin_px(border, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0
-                    || margin_px(pad, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0;
+                    || margin_px(border, &e.style.used(), opts.cx.vcx()).unwrap_or(0.0) > 0.0
+                    || margin_px(pad, &e.style.used(), opts.cx.vcx()).unwrap_or(0.0) > 0.0;
                 if sealed {
                     None
                 } else {
-                    Some(margin_px(own, &e.style, opts.cx.vcx()).unwrap_or(0.0))
+                    Some(margin_px(own, &e.style.used(), opts.cx.vcx()).unwrap_or(0.0))
                 }
             };
             // Доли полей/отступов — в точки от высоты контейнера ДО
@@ -85,7 +92,7 @@ pub(crate) fn generic_children(
                     &merged,
                     opts.viewport.0,
                 ),
-                &e.style,
+                &e.style.used(),
                 &merged,
             )
         } else {
@@ -94,17 +101,16 @@ pub(crate) fn generic_children(
         Cow::Owned(children)
     };
     let mut kids: Vec<AnyElement> = Vec::new();
-    kids.extend(clip_layer(&merged, opts));
     // Бюджет строк обрезки: сторожа контекста живут, пока строится
     // поддерево — пробы детей пишут строки в буфер контейнера.
     // Многоколонник клэмпом не режется (`continue: collapse` там как
     // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
     // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
-    let is_clamp = (e.style.clamp_lines().is_some()
-        || (e.style.clamp_by_height()
-            && e.style.clamp_block_container()
+    let is_clamp = (e.style.used().clamp_lines().is_some()
+        || (e.style.used().clamp_by_height()
+            && e.style.used().clamp_block_container()
             && auto_clamp_limit(&merged).is_some()))
-        && !multicol_container(&e.style);
+        && !multicol_container(&e.style.used());
     let clamp_outer = if is_clamp {
         Some((e.node_id, false))
     } else {
@@ -112,10 +118,10 @@ pub(crate) fn generic_children(
     };
     let child_opts = opts.inner(|cx| {
         if is_clamp {
-            cx.clamp_atom_depth = 0;
-            cx.clamp_build = cx.clamp_build.container(e.node_id);
+            cx.clamp.atom_depth = 0;
+            cx.clamp.build = cx.clamp.build.container(e.node_id);
         } else if makes_bfc {
-            cx.clamp_build = cx.clamp_build.bfc();
+            cx.clamp.build = cx.clamp.build.bfc();
         }
     });
     let opts = &child_opts;
@@ -142,7 +148,7 @@ pub(crate) fn generic_children(
     let cb_layer = crate::text::inline::establishes_cb(&merged);
     let cb_scope = cb_layer.then(|| {
         crate::layout::positioned::layer_scope::LayerScope::cb(
-            &opts.cx.positioning,
+            &opts.cx.position.state,
             fixed_cb_layer_box(&merged),
         )
     });
@@ -161,16 +167,17 @@ pub(crate) fn generic_children(
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
     let viewport = e.tag == "html-viewport";
     let viewport_scope = viewport
-        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
+        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state));
     kids.extend(decorated_children(e, &merged, opts, |opts| {
         // A clamp container establishes an independent formatting context
         // (CSS Overflow 4 section continue; Blink LineClampData). blocks()
         // receives only Computed, whose inherited clamp value cannot identify
         // the container. Preserve this box's known BFC boundary for its float
         // containment without turning its descendants into clamp containers.
-        let formatting = is_clamp.then(|| Computed {
-            flow_root: Some(true),
-            ..merged.clone()
+        let formatting = is_clamp.then(|| {
+            let mut formatting = merged.clone();
+            formatting.flow_root = Some(true);
+            formatting
         });
         blocks(&children, formatting.as_ref().unwrap_or(&merged), opts)
     }));
@@ -194,7 +201,7 @@ pub(crate) fn generic_children(
     // коробка возвращается как есть.
     let child = d.children(kids).into_any_element();
     let child = match overflow_plan {
-        Some(plan) => plan.wrap(child, vcx),
+        Some(plan) => plan.wrap(child, vcx, opts.cx.contracts.build),
         None => child,
     };
     crate::layout::positioned::anchor::place::place_in_context(child, &merged, inherited, &opts.cx)

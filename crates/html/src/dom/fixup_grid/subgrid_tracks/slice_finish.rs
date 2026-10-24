@@ -25,16 +25,24 @@ pub(crate) fn finish_slice(
     slice: Vec<crate::style::computed::TrackSize>,
 ) {
     let px = px_lossy_zero;
-    let bs = child.style.borders();
+    let bs = child.style.cascaded().borders();
     let (lead, trail) = if row_dir {
         (
-            px(child.style.margin.top) + px(bs.top) + px(child.style.padding.top),
-            px(child.style.margin.bottom) + px(bs.bottom) + px(child.style.padding.bottom),
+            px(child.style.cascaded().margin.top)
+                + px(bs.top)
+                + px(child.style.cascaded().padding.top),
+            px(child.style.cascaded().margin.bottom)
+                + px(bs.bottom)
+                + px(child.style.cascaded().padding.bottom),
         )
     } else {
         (
-            px(child.style.margin.left) + px(bs.left) + px(child.style.padding.left),
-            px(child.style.margin.right) + px(bs.right) + px(child.style.padding.right),
+            px(child.style.cascaded().margin.left)
+                + px(bs.left)
+                + px(child.style.cascaded().padding.left),
+            px(child.style.cascaded().margin.right)
+                + px(bs.right)
+                + px(child.style.cascaded().padding.right),
         )
     };
     let mut slice = slice;
@@ -57,7 +65,7 @@ pub(crate) fn finish_slice(
     // стыка, а свой зазор остаётся. Менять только симметрично
     // обоим путям.
     let (prow, pcol) = parent.gap.unwrap_or((None, None));
-    let (crow, ccol) = child.style.gap.unwrap_or((None, None));
+    let (crow, ccol) = child.style.cascaded().gap.unwrap_or((None, None));
     let par = if row_dir { prow } else { pcol };
     let own = if row_dir { crow } else { ccol };
     // Незаданный зазор подсетки — это `normal`, а он по
@@ -73,9 +81,9 @@ pub(crate) fn finish_slice(
     let unset = own.is_none();
     let own = own.or(par);
     if own != Some(Len::Px(0.0)) && unset {
-        child.style.gap = Some(if row_dir { (par, ccol) } else { (crow, par) });
+        child.style.cascaded_mut().gap = Some(if row_dir { (par, ccol) } else { (crow, par) });
         if !row_dir {
-            child.style.column_gap = par;
+            child.style.cascaded_mut().column_gap = par;
         }
     }
     subgrid_gap_slice(&mut slice, par, own);
@@ -116,9 +124,9 @@ pub(crate) fn finish_slice(
     // отдельный шаг.
     if !parallel {
         let own = if row_dir {
-            child.style.subgrid_cols
+            child.style.cascaded().subgrid_cols
         } else {
-            child.style.subgrid_rows
+            child.style.cascaded().subgrid_rows
         };
         let vertical_axis = row_dir != parent.wm().vertical();
         // СРЕЗ в скрещенную ось (колонки родителя → `grid_rows`
@@ -131,52 +139,52 @@ pub(crate) fn finish_slice(
         // Скрещивать можно только вместе с `render::generic_box` (Blink
         // `grid_item.cc:192-207`).
         if row_dir {
-            child.style.grid_rows = Some(slice);
-            child.style.align_self = None;
+            child.style.cascaded_mut().grid_rows = Some(slice);
+            child.style.cascaded_mut().align_self = None;
         } else {
-            child.style.grid_tracks = Some(slice);
-            child.style.grid_cols = Some(span as u16);
-            child.style.justify_self = None;
+            child.style.cascaded_mut().grid_tracks = Some(slice);
+            child.style.cascaded_mut().grid_cols = Some(span as u16);
+            child.style.cascaded_mut().justify_self = None;
         }
         if own {
             if vertical_axis {
-                child.style.height = None;
-                child.style.max_height = None;
-                child.style.min_height = Some(Len::Px(0.0));
+                child.style.cascaded_mut().height = None;
+                child.style.cascaded_mut().max_height = None;
+                child.style.cascaded_mut().min_height = Some(Len::Px(0.0));
             } else {
-                child.style.width = None;
-                child.style.max_width = None;
-                child.style.min_width = Some(Len::Px(0.0));
+                child.style.cascaded_mut().width = None;
+                child.style.cascaded_mut().max_width = None;
+                child.style.cascaded_mut().min_width = Some(Len::Px(0.0));
             }
             let stretch = Some(crate::style::computed::Align::Stretch);
             if row_dir {
-                child.style.align_self = stretch;
+                child.style.cascaded_mut().align_self = stretch;
             } else {
-                child.style.justify_self = stretch;
+                child.style.cascaded_mut().justify_self = stretch;
             }
         }
     } else if row_dir {
-        child.style.grid_rows = Some(slice);
-        child.style.align_self = None;
-        if parallel && child.style.subgrid_rows {
-            child.style.height = None;
-            child.style.max_height = None;
+        child.style.cascaded_mut().grid_rows = Some(slice);
+        child.style.cascaded_mut().align_self = None;
+        if parallel && child.style.cascaded().subgrid_rows {
+            child.style.cascaded_mut().height = None;
+            child.style.cascaded_mut().max_height = None;
             // Не `None`, а НОЛЬ: `None` вернул бы автоминимум
             // элемента сетки, и подсетка раздулась бы шире
             // своей области. Спека требует «размер
             // игнорируется», а не «минимум по содержимому».
-            child.style.min_height = Some(Len::Px(0.0));
-            child.style.align_self = Some(crate::style::computed::Align::Stretch);
+            child.style.cascaded_mut().min_height = Some(Len::Px(0.0));
+            child.style.cascaded_mut().align_self = Some(crate::style::computed::Align::Stretch);
         }
     } else {
-        child.style.grid_tracks = Some(slice);
-        child.style.grid_cols = Some(span as u16);
-        child.style.justify_self = None;
-        if parallel && child.style.subgrid_cols {
-            child.style.width = None;
-            child.style.max_width = None;
-            child.style.min_width = Some(Len::Px(0.0));
-            child.style.justify_self = Some(crate::style::computed::Align::Stretch);
+        child.style.cascaded_mut().grid_tracks = Some(slice);
+        child.style.cascaded_mut().grid_cols = Some(span as u16);
+        child.style.cascaded_mut().justify_self = None;
+        if parallel && child.style.cascaded().subgrid_cols {
+            child.style.cascaded_mut().width = None;
+            child.style.cascaded_mut().max_width = None;
+            child.style.cascaded_mut().min_width = Some(Len::Px(0.0));
+            child.style.cascaded_mut().justify_self = Some(crate::style::computed::Align::Stretch);
         }
     }
 }

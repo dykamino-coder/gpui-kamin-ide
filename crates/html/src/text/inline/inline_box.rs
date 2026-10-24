@@ -12,7 +12,7 @@
 
 use super::{InlineCb, OverlayAt, Piece};
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::IntoElement;
 use std::rc::Rc;
@@ -35,6 +35,8 @@ pub struct InlineBoxInfo {
     pub border: [f32; 4],
     /// `visibility: hidden` (§position-visibility: anchors-visible).
     pub hidden: bool,
+    /// Собственный шрифт коробки, независимо от шрифтов её потомков.
+    pub font_style: crate::style::computed::Computed,
 }
 
 fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 4] {
@@ -47,14 +49,14 @@ fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 
 pub(super) fn mark_inline_box(
     pieces: Vec<Piece>,
     e: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Piece> {
     if e.node_id == 0 {
         return pieces;
     }
-    let names = e.style.anchor_name.clone().unwrap_or_default();
-    let cb = super::establishes_cb(&e.style)
+    let names = e.style.used().anchor_name.clone().unwrap_or_default();
+    let cb = super::establishes_cb(&e.style.used())
         && pieces.iter().any(|p| {
             matches!(p, Piece::Overlay(_, h) if h.cb_marker.is_none() && h.box_marker.is_none() && h.inline_box.is_none())
         });
@@ -63,8 +65,8 @@ pub(super) fn mark_inline_box(
     }
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let b = e.style.borders();
-    let p = &e.style.padding;
+    let b = e.style.used().borders();
+    let p = &e.style.used().padding;
     let info = Rc::new(InlineBoxInfo {
         node: e.node_id,
         names,
@@ -74,6 +76,7 @@ pub(super) fn mark_inline_box(
         pad: px4(p.top, p.right, p.bottom, p.left),
         border: px4(b.top, b.right, b.bottom, b.left),
         hidden: merged.hidden == Some(true),
+        font_style: (**merged).clone(),
     });
     let marker = |start: bool| {
         Piece::Overlay(

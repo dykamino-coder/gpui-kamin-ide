@@ -33,12 +33,15 @@ mod tests {
     use super::*;
     #[test]
     fn free_absolute_inline_size_uses_intrinsics_instead_of_zero() {
-        let style = Computed {
-            position: Some(Position::Absolute),
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let style = {
+            let mut with_inherited = Computed {
+                position: Some(Position::Absolute),
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         let c = constraint(&style, 600.0).unwrap();
         assert_eq!(c.used(120.0, 120.0), 120.0);
@@ -53,12 +56,15 @@ mod tests {
     }
     #[test]
     fn two_auto_size_insets_and_parent_layout_keep_their_contracts() {
-        let mut style = Computed {
-            position: Some(Position::Absolute),
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let mut style = {
+            let mut with_inherited = Computed {
+                position: Some(Position::Absolute),
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         style.height = Some(Len::Px(200.0));
         assert_eq!(constraint(&style, 600.0).unwrap().fixed, Some(200.0));
@@ -77,14 +83,17 @@ mod tests {
 
     #[test]
     fn definite_absolute_inline_size_replaces_fallback_before_alignment() {
-        let mut style = Computed {
-            position: Some(Position::Absolute),
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            rtl: Some(true),
-            height: Some(Len::Px(80.0)),
-            ..Computed::default()
+        let mut style = {
+            let mut with_inherited = Computed {
+                position: Some(Position::Absolute),
+                height: Some(Len::Px(80.0)),
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited.rtl = Some(true);
+            with_inherited
         };
         style.inset.top = Some(Len::Px(160.0));
         style.inset.bottom = Some(Len::Px(160.0));

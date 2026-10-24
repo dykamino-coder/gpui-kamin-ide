@@ -39,19 +39,19 @@ pub(crate) fn orthogonal_limit(
         // `sizing-orthog-vlr-in-htb-007`, `vrl-in-htb-007/010`
         // (`box-sizing: border-box; height: 400px`, рамка 3) переносили на
         // 400, а тест после вычета рамок — на 394.
-        let own_edges = if e.style.border_box == Some(true) {
-            let b = e.style.borders();
+        let own_edges = if e.style.used().border_box == Some(true) {
+            let b = e.style.used().borders();
             px_of(b.top).unwrap_or(0.0)
                 + px_of(b.bottom).unwrap_or(0.0)
-                + px_of(e.style.padding.top).unwrap_or(0.0)
-                + px_of(e.style.padding.bottom).unwrap_or(0.0)
+                + px_of(e.style.used().padding.top).unwrap_or(0.0)
+                + px_of(e.style.used().padding.bottom).unwrap_or(0.0)
         } else {
             0.0
         };
         let content = |v: f32| (v - own_edges).max(0.0);
-        let h = px_of(e.style.height).map(content);
-        let min_h = px_of(e.style.min_height).map(content);
-        let max_h = px_of(e.style.max_height).map(content);
+        let h = px_of(e.style.used().height).map(content);
+        let min_h = px_of(e.style.used().min_height).map(content);
+        let max_h = px_of(e.style.used().max_height).map(content);
         // Предел, поставленный СВОЕЙ высотой, уже содержимый (content-box
         // по умолчанию, border-box переведён выше) — вычитать из него нечего. Вычет нужен
         // только УНАСЛЕДОВАННОМУ пределу, см. ниже.
@@ -64,9 +64,9 @@ pub(crate) fn orthogonal_limit(
         // Только для потокового ребёнка БЛОЧНОГО родителя: у абсолюта база —
         // его содержащий блок, у элемента сетки — область, у гибкого — своя
         // развязка.
-        let h = h.or(match (e.style.height, inherited.height) {
+        let h = h.or(match (e.style.used().height, inherited.height) {
             (Some(Len::Pct(k)), Some(Len::Px(ph)))
-                if in_flow(&e.style)
+                if in_flow(&e.style.used())
                     && matches!(inherited.display, None | Some(Display::Block)) =>
             {
                 Some(k * ph)
@@ -95,7 +95,7 @@ pub(crate) fn orthogonal_limit(
             // «предок уже дал предел» писалось под `max-height` ячейки
             // (table-cell-002), а `max-height` определённого размера не даёт
             // — поэтому вето сужено до случая без своей `height`.
-            if !e.style.wm().vertical() || merged.ortho_limit.is_none() || h.is_some() {
+            if !e.style.cascaded().wm().vertical() || merged.ortho_limit.is_none() || h.is_some() {
                 merged.ortho_limit = Some(avail);
                 own_limit = true;
             }
@@ -119,11 +119,11 @@ pub(crate) fn orthogonal_limit(
             && merged.wm().vertical()
             && let Some(l) = merged.ortho_limit
         {
-            let b = e.style.borders();
+            let b = e.style.used().borders();
             let edges = px_of(b.top).unwrap_or(0.0)
                 + px_of(b.bottom).unwrap_or(0.0)
-                + px_of(e.style.padding.top).unwrap_or(0.0)
-                + px_of(e.style.padding.bottom).unwrap_or(0.0);
+                + px_of(e.style.used().padding.top).unwrap_or(0.0)
+                + px_of(e.style.used().padding.bottom).unwrap_or(0.0);
             if edges > 0.0 {
                 merged.ortho_limit = Some((l - edges).max(0.0));
             }

@@ -2,6 +2,7 @@
 
 use crate::layout::fragment::types::{Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
+use crate::tolerance::COORD_EPS;
 
 impl ColumnStack {
     fn growth_probe(
@@ -76,7 +77,8 @@ impl ColumnStack {
             // вызов при принудительном разрыве `:3212`). Без этого фон обёртки во
             // второй колонке `multicol-fill-balance-041` обрывался на 40 из 100.
             let has_next = plan.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1);
-            let cut_short = end < k.h - 0.01 && k.forced.iter().any(|&x| (x - end).abs() < 0.01);
+            let cut_short =
+                end < k.h - COORD_EPS && k.forced.iter().any(|&x| (x - end).abs() < COORD_EPS);
             if !has_next && !cut_short {
                 continue;
             }
@@ -89,16 +91,24 @@ impl ColumnStack {
             // Прежде принудительные разрывы отвергались, и фон коробки
             // обрывался на точке разрыва (`single-line-column-flex-
             // fragmentation-022`: колонка 1 красная 50..100).
-            let at_solid = k.solid.iter().any(|&(a, _)| (a - end).abs() < 0.01);
-            let at_forced = k.forced.iter().any(|&x| (x - end).abs() < 0.01);
+            // Разрыв, перенесённый к началу `break-inside: avoid`, — такой же
+            // перенос содержимого, как у монолита: коробка занимает остаток
+            // фрагментаинера (css-break-3 §box-splitting).
+            let at_solid = k
+                .solid
+                .iter()
+                .chain(&k.keep)
+                .any(|&(a, _)| (a - end).abs() < COORD_EPS);
+            let at_forced = k.forced.iter().any(|&x| (x - end).abs() < COORD_EPS);
             if !at_solid && !at_forced {
                 continue;
             }
-            let Some(&(_, line_h)) = lines.get(f.col / count) else {
+            // Колонки сверх последней линии переполняют её вбок (css-multicol-1 §8.2).
+            let Some(&(_, line_h)) = lines.get(f.col / count).or(lines.last()) else {
                 continue;
             };
             let grow = line_h - f.y - f.h - k.repeat.foot;
-            if grow > 0.01 {
+            if grow > COORD_EPS {
                 // Монолит растёт от НАЧАЛА своего диапазона; принудительный
                 // разрыв стоит ПЕРЕД полем следующей коробки, и распорку надо
                 // ставить перед самой коробкой — её верх это `nf` из `cuts`
@@ -111,7 +121,7 @@ impl ColumnStack {
                 } else {
                     k.cuts
                         .iter()
-                        .find(|&&(need, _)| (need - end).abs() < 0.01)
+                        .find(|&&(need, _)| (need - end).abs() < COORD_EPS)
                         .map(|&(_, nf)| nf)
                         .unwrap_or(end)
                 };
@@ -163,29 +173,47 @@ impl ColumnStack {
     pub(crate) fn runs_guess(kids: &[Kid], count: usize) -> f32 {
         let mut runs: Vec<f32> = Vec::new();
         let mut cur = 0.0f32;
+        // Протяжённость прогона вместе с параллельным потоком переполнения
+        // (css-break-3 §3): содержимое, переполняющее коробку заданной высоты,
+        // занимает колонки так же, как поток (Blink меряет прогоны по
+        // раскладке содержимого, `ContentRuns`). Поток — как у укладки
+        // (`plan::measured`): не у монолита и не у `clone`.
+        let mut peak = 0.0f32;
         let mut started = false;
         let mut force_next = false;
         for k in kids {
             if (k.force_before || force_next) && started {
-                runs.push(cur);
+                runs.push(cur.max(peak));
                 cur = 0.0;
+                peak = 0.0;
             }
             force_next = k.force_after;
             started = true;
             let mut from = 0.0f32;
-            for &f in k.forced.iter().filter(|&&f| f > 0.01 && f < k.h - 0.01) {
+            for &f in k
+                .forced
+                .iter()
+                .filter(|&&f| f > COORD_EPS && f < k.h - COORD_EPS)
+            {
                 cur += (f - from).max(0.0);
-                runs.push(cur);
+                runs.push(cur.max(peak));
                 cur = 0.0;
+                peak = 0.0;
                 from = k
                     .cuts
                     .iter()
-                    .find(|&&(need, _)| (need - f).abs() < 0.01)
+                    .find(|&&(need, _)| (need - f).abs() < COORD_EPS)
                     .map_or(f, |&(_, nf)| nf);
             }
+            let flow = if k.over > k.h + 0.01 && !k.monolith && k.clone_dec.is_none() {
+                k.over
+            } else {
+                k.h
+            };
+            peak = peak.max(cur + (flow - from).max(0.0));
             cur += (k.h - from).max(0.0);
         }
-        runs.push(cur);
+        runs.push(cur.max(peak));
         // `DistributeImplicitBreaks`: очередной неявный разрыв — в прогон с самой
         // высокой колонкой на данный момент.
         let mut split = vec![1usize; runs.len()];

@@ -4,15 +4,16 @@
 //! анонимного вьюпорта, который потерял бы его рост, basis и intrinsic-ограничения.
 
 use super::{Muted, field_box};
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 mod content;
-use crate::style::computed::FontCx;
+use crate::style::computed::{BoxStyle, FontCx};
 use crate::{dom::Element, style::computed::Computed, style::values::value::Len};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 pub(super) fn textarea(
     e: &Element,
-    style: &Computed,
+    style: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
@@ -26,7 +27,7 @@ pub(super) fn textarea(
             ))
             .into_any_element()
     } else {
-        opts.cx.build.paragraph(&e.children, style, opts)
+        opts.cx.contracts.build.paragraph(&e.children, style, opts)
     };
     let natural = natural(e, style, vcx);
     let mut paint = field_box(style, vcx)
@@ -63,7 +64,7 @@ pub(super) fn textarea(
 fn natural(e: &Element, c: &Computed, vcx: ValueCx<'_>) -> [f32; 2] {
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let family = c.font_family.as_deref().unwrap_or("");
     let (ch, _) = crate::text::metrics::ch_ex_px(family, font, vcx);

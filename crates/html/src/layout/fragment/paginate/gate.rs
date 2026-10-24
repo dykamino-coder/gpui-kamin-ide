@@ -9,6 +9,7 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::monolith_box;
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 
 /// Gate of the path: a block-level, non-monolithic child of a horizontal
@@ -21,73 +22,56 @@ pub(crate) fn gate(c: &Element, col_w: Option<f32>, auto_fill: bool, vcx: ValueC
 /// Why `gate` refuses `c` (`None` — accepted).
 pub(crate) fn refusal(
     c: &Element,
-    col_w: Option<f32>,
-    auto_fill: bool,
+    _col_w: Option<f32>,
+    _auto_fill: bool,
     vcx: ValueCx<'_>,
 ) -> Option<&'static str> {
-    // Flex gaps adjoining a break are truncated (Blink
-    // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
-    fn gapped(e: &Element, depth: u8) -> bool {
-        (matches!(e.style.display, Some(Display::Flex) | Some(Display::Grid))
-            && e.style.gap.is_some()
-            && super::row_gap(&e.style).is_none())
-            || (depth > 0
-                && e.children.iter().any(
-                    |n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k, depth - 1)),
-                ))
+    // TRANSITIONAL(F2-4): распорки выражают усечение зазора только для рядов
+    // с переносом и разрешённым пиксельным row-gap. Удалить отказ после
+    // поддержки ограничений зазора других осей flex и дорожек grid.
+    fn gapped(e: &Element) -> bool {
+        (matches!(
+            e.style.used().display,
+            Some(Display::Flex) | Some(Display::Grid)
+        ) && e.style.used().gap.is_some()
+            && super::row_gap(&e.style.used()).is_none())
+            || (children(&e.children)
+                .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k))))
     }
-    fn has_flex(e: &Element, depth: u8) -> bool {
-        e.style.display == Some(Display::Flex)
-            || (depth > 0
-                && e.children.iter().any(
-                    |n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k, depth - 1)),
-                ))
+    fn has_flex(e: &Element) -> bool {
+        e.style.used().display == Some(Display::Flex)
+            || (children(&e.children)
+                .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k))))
     }
     if c.inline
-        || out_of_flow(&c.style)
+        || out_of_flow(&c.style.used())
         || !matches!(
-            c.style.display,
+            c.style.used().display,
             Some(Display::Block) | Some(Display::Flex) | None
         )
     {
         return Some("display");
     }
     if monolith_box(c)
-        || crate::layout::multicol::spanner::multicol_container(&c.style)
-        || !crate::layout::page::paged::visible_overflow(&c.style)
-        || c.style.bdb_clone
-        || c.style.column_span == Some(true)
+        || crate::layout::multicol::spanner::multicol_container(&c.style.used())
+        || !crate::layout::page::paged::visible_overflow(&c.style.used())
+        || c.style.used().bdb_clone
+        || c.style.used().column_span == Some(true)
     {
         return Some("box");
     }
-    // Lines opened as parallel flows keep that model: it fixes the line
-    // breaking before fragmentation (css-flexbox-1 §12), a strut would rewrap.
-    if auto_fill && crate::layout::fragment::flex_lines::explodes(c, col_w, vcx) {
-        return Some("exploded");
-    }
-    if gapped(c, 4) {
+    if gapped(c) {
         return Some("gap");
     }
     match candidates(c, vcx) {
         None => Some("subtree"),
         Some(v)
-            if !has_flex(c, 4)
+            if !has_flex(c)
                 && !v.iter().any(|x| {
                     matches!(x.1, super::Cand::Float { .. } | super::Cand::Forced { .. })
                 }) =>
         {
             Some("no-layout-candidate")
-        }
-        // Row gaps alone keep the old path: this path paints gap decorations
-        // half a gap low (css-gaps flex-gap-decorations-fragmentation-023/024/
-        // 031), and a test with rules must take the same path as its ref.
-        Some(v)
-            if !v
-                .iter()
-                .any(|x| !matches!(x.1, super::Cand::Item | super::Cand::Gap { .. }))
-                && !super::avoid_row(c) =>
-        {
-            Some("no-cand")
         }
         Some(_) => None,
     }
@@ -96,6 +80,31 @@ pub(crate) fn refusal(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ordinary_flex_uses_measured_layout_with_and_without_rules() {
+        for flow in ["flex-direction:column", "flex-wrap:wrap;row-gap:10px"] {
+            for rules in ["", "row-rule:2px solid green;column-rule:2px solid green"] {
+                let html = format!(
+                    "<div style='display:flex;width:80px;{flow};{rules}'><div style='width:40px;height:50px'></div><div style='width:40px;height:50px'></div><div style='width:40px;height:50px'></div></div>"
+                );
+                let tree = crate::dom::parse(&html, "");
+                fn flex(node: &Node) -> Option<&Element> {
+                    let Node::Element(e) = node else { return None };
+                    if e.style.used().display == Some(Display::Flex) {
+                        return Some(e);
+                    }
+                    e.children.iter().find_map(flex)
+                }
+                let parent = tree.iter().find_map(flex).expect("flex root");
+                assert_eq!(
+                    refusal(parent, Some(80.0), false, tree.values()),
+                    None,
+                    "{html}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn tables_keep_their_row_fragmentation_planner() {
@@ -148,5 +157,34 @@ mod tests {
         // CSS Break 3 section 3.1: forced breaks apply to ordinary block flow;
         // they do not require a flex or float formatting context.
         assert!(gate(parent, Some(9.0), true, tree.values()));
+    }
+    #[test]
+    fn deep_float_and_forced_candidates_keep_native_geometry() {
+        for body in [
+            "<div style='float:left;overflow:scroll;width:10px'>float</div>",
+            "<div style='break-before:column'>forced</div>",
+        ] {
+            let html = format!(
+                "<div>{}{}{}</div>",
+                "<div>".repeat(24),
+                body,
+                "</div>".repeat(24)
+            );
+            let tree = crate::dom::parse(&html, "");
+            let Node::Element(parent) = &tree[0] else {
+                panic!("block")
+            };
+            assert!(gate(parent, None, true, tree.values()));
+        }
+        let html = format!(
+            "<div>{}<div style='display:flex;gap:10%'><div>gap</div></div>{}</div>",
+            "<div>".repeat(24),
+            "</div>".repeat(24)
+        );
+        let tree = crate::dom::parse(&html, "");
+        let Node::Element(parent) = &tree[0] else {
+            panic!("block")
+        };
+        assert_eq!(refusal(parent, None, true, tree.values()), Some("gap"));
     }
 }

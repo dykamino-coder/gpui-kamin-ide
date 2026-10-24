@@ -4,12 +4,19 @@ use super::painting::paint_body;
 use crate::hooks::Painter;
 
 use super::GapRulePainter;
-use crate::paint::gap_rules::GapLayout;
+use crate::layout::multicol::gap_rules::GapLayout;
 use crate::paint::gap_rules::geometry::{GridTracks, uncollapsed};
 use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
+#[derive(Default)]
+pub(crate) struct GapGeometry {
+    pub(crate) bounds: Bounds<Pixels>,
+    pub(crate) tracks: Option<GridTracks>,
+    pub(crate) flex: Option<(gpui::Point<Pixels>, gpui::FlexLayout)>,
+}
+
 impl Painter for GapRulePainter {
-    type Prepaint = (Bounds<Pixels>, Option<GridTracks>);
+    type Prepaint = GapGeometry;
 
     fn style(&self) -> gpui::Style {
         // Художник занимает паддинг-бокс контейнера: от него считается поле
@@ -42,7 +49,14 @@ impl Painter for GapRulePainter {
                     uncollapsed(rows.iter().map(|&(a, b)| (oy + a, oy + b)).collect(), gy),
                 )
             });
-        (bounds, tracks)
+        let flex = (self.spec.lines_extent == 1)
+            .then(|| window.parent_flex_layout(state))
+            .flatten();
+        GapGeometry {
+            bounds,
+            tracks,
+            flex,
+        }
     }
 
     fn paint(

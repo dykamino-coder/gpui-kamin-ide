@@ -44,6 +44,7 @@ pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
 mod tests {
     use super::*;
     use crate::layout::native_box::native_content_box;
+    use crate::style::computed::BoxStyle;
     use gpui::{Styled, div, px};
     #[test]
     fn functional_fit_uses_one_box_model_for_keywords_and_numeric_axes() {
@@ -60,7 +61,7 @@ mod tests {
         for argument in [Len::Px(394.0), Len::Pct(0.5)] {
             c.fit_arg[0] = Some(argument);
             assert!(native_content_box(&c));
-            let mut d = super::super::apply(div(), &c, vcx);
+            let mut d = super::super::apply(div(), &BoxStyle::from(c.clone()), vcx);
             assert_eq!(d.style().content_box, Some(true));
             assert_eq!(d.style().size.height, Some(px(60.0).into()));
         }

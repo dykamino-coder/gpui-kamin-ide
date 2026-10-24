@@ -9,6 +9,7 @@
 use crate::dom::pseudo_line_layers;
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 mod orthogonal;
 mod quirks;
 pub(super) use orthogonal::orthogonal_limit;
@@ -17,29 +18,25 @@ mod dispatch;
 pub(super) use dispatch::dispatch_element;
 
 use crate::dom::Element;
-use crate::layout::list::list_item;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
 use crate::paint::effects::transform::transformed;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
 use gpui::AnyElement;
 
 /// Блочный элемент.
-pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
     // не пишутся (`flow::flow_lines`).
-    let nested = opts
-        .frag
-        .watch
-        .as_ref()
-        .filter(|w| w.takes_lines() && !crate::layout::fragment::flow::flow_lines(e))
-        .map(|w| {
-            let mut o = opts.clone();
-            o.frag.watch = Some(w.nested());
-            o
-        });
+    let nested = opts.frag.watch.as_ref().and_then(|w| {
+        let watch = w.for_flex_item(e.node_id).or_else(|| {
+            (w.takes_lines() && !crate::layout::fragment::flow::flow_lines(e)).then(|| w.nested())
+        })?;
+        let mut inner = opts.clone();
+        inner.frag.watch = Some(watch);
+        Some(inner)
+    });
     crate::layout::fragment::paginate::watch::wrap(
         e.node_id,
         element_inner(e, inherited, nested.as_ref().unwrap_or(opts)),
@@ -47,21 +44,25 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     )
 }
 
-fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+    let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized =
-        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w, vcx);
+    let media_sized = crate::layout::replaced::media::resolve(
+        e,
+        inherited,
+        opts.viewport,
+        opts.cx.constraints.avail_w,
+        vcx,
+    );
     let e = media_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_row`).
     let (outer_row, inner_opts) = opts.take_outer_row();
     let opts = inner_opts.as_ref().unwrap_or(opts);
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
-    list_item::inherited_style(e, inherited, &mut merged);
     // Ключи реестров и размеры из опубликованной геометрии текущего кадра.
     merged.self_node = e.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(e);
@@ -71,7 +72,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     // Разбор двунаправленности выберет её сам при наборе, но выключка и
     // прижим текста читают `rtl` из стиля, и без этого шага блок с арабским
     // текстом прижимался влево.
-    if e.attr("dir") == Some("auto") && e.style.rtl.is_none() {
+    if e.attr("dir") == Some("auto") && e.style.cascaded().rtl.is_none() {
         let mut text = String::new();
         gather_text(&e.children, &mut text);
         let strong = text.chars().find_map(|ch| {
@@ -106,7 +107,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     quirks::fill(e, &mut merged, inherited, opts);
     crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
     let gutters = crate::interactive::scroll_extent::classic::model(
-        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll.frame.as_ref(),
         e.node_id,
         &merged,
     );
@@ -124,15 +125,15 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     let scroll_projection = crate::interactive::scroll_extent::projection(
-        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll.frame.as_ref(),
         inherited.self_node,
         Some(&merged),
-        opts.cx.sticky.as_ref(),
+        opts.cx.scroll.sticky.as_ref(),
     );
     // Проецируемое поддерево строится в цепочке сдвига проекции (`ShiftLink`).
     let projected_opts = scroll_projection
         .as_ref()
-        .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
+        .map(|p| opts.inner(|cx| cx.scroll.sticky = Some(p.link().clone())));
     let opts = projected_opts.as_deref().unwrap_or(opts);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
@@ -154,8 +155,8 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         let mut copy = e.clone();
         let url = e.attr("data").unwrap_or_default().to_string();
         copy.attrs.push(("src".to_string(), url));
-        copy.style.width = merged.width;
-        copy.style.height = merged.height;
+        copy.style.used_mut().width = merged.width;
+        copy.style.used_mut().height = merged.height;
         iframe(&copy, inherited, opts)
     } else {
         None

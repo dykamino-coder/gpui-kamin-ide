@@ -4,12 +4,13 @@
 //! сохраняет предпочтительный размер, который видит родитель, несёт отрицательные
 //! боковые поля, прижим авто-полями, `align-self` и размещение в сетке родителя.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::layout::writing_mode::native_intrinsic;
 #[path = "content_wrapper/axis_alignment.rs"]
 mod axis_alignment;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, CssSizingKeyword, IntoElement, ParentElement, Styled, div, px};
 
@@ -31,7 +32,7 @@ fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
 pub(crate) fn for_element(
     el: AnyElement,
     element: &Element,
-    parent: &Computed,
+    parent: &BoxStyle,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     vcx: ValueCx<'_>,
 ) -> AnyElement {
@@ -40,8 +41,8 @@ pub(crate) fn for_element(
     } else {
         content_sized(
             el,
-            &element.style,
-            &crate::style::cascade::inherit::inherit(parent, &element.style, vcx),
+            &element.style.used(),
+            &crate::style::cascade::materialize::box_style(parent, &element.style, vcx),
             placement,
             vcx,
         )
@@ -113,7 +114,7 @@ pub(crate) fn content_sized(
     let side = |l: Option<Len>| -> Option<f32> {
         let size = match c.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let family = c.font_family.clone().unwrap_or_default();
         match l {

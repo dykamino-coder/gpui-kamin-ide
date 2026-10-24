@@ -5,7 +5,7 @@ use crate::hooks::IntoHooked;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
@@ -29,16 +29,20 @@ pub(super) fn place_oof_statics(
         // в `blocks()`.
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (
-                edge_set(oof.style.inset.left) || edge_set(oof.style.inset.right),
-                edge_set(oof.style.inset.top) || edge_set(oof.style.inset.bottom),
+                edge_set(oof.style.used().inset.left) || edge_set(oof.style.used().inset.right),
+                edge_set(oof.style.used().inset.top) || edge_set(oof.style.used().inset.bottom),
             ),
             rtl: merged.wm().rtl(),
             vertical: merged.wm().vertical(),
             vertical_rl: merged.wm().block_rl(),
-            own_vertical: oof.style.wm().vertical(),
+            own_vertical: oof.style.cascaded().wm().vertical(),
             ..Default::default()
         });
         let probe = crate::layout::fragment::types::StackChild {
+            #[cfg(feature = "wpt-harness")]
+            probe_pending: false,
+            #[cfg(feature = "wpt-harness")]
+            probe: opts.frag.probe.clone(),
             watched: None,
             breaks_w: None,
             regrow: None,
@@ -60,6 +64,7 @@ pub(super) fn place_oof_statics(
             forced: Vec::new(),
             solid: Vec::new(),
             avoid: Vec::new(),
+            keep: Vec::new(),
             h: 0.0,
             mt: 0.0,
             mb: 0.0,
@@ -103,10 +108,11 @@ pub(super) fn column_stack_div(
     nest_rows: Option<f32>,
     nest_phase: f32,
     fixed: Option<f32>,
-    gap_items: &Option<crate::paint::gap_rules::GapItems>,
+    gap_items: &Option<crate::layout::multicol::gap_rules::GapItems>,
     rule: Option<(f32, gpui::Hsla)>,
     children: Vec<crate::layout::fragment::types::StackChild>,
     opts: &RenderOpts,
+    deferred: Option<std::rc::Rc<super::super::deferred::Recipe>>,
 ) -> gpui::Div {
     let d = if col_vert {
         let d = d.flex();
@@ -128,14 +134,15 @@ pub(super) fn column_stack_div(
             rule,
             rows,
             gap_items.clone(),
-            intrinsic_inline_size(&e.style, inherited).then_some({
+            intrinsic_inline_size(&e.style.used(), inherited).then_some({
                 crate::layout::fragment::types::Intrinsic(match column_width {
                     Some(Len::Px(w)) if w > 0.0 => Some(w),
                     _ => None,
                 })
             }),
-            opts.cx.paint.clone(),
+            opts.cx.deferred.paint.clone(),
         )
+        .with_deferred(deferred)
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
         .with_fill_shrink(
@@ -143,8 +150,8 @@ pub(super) fn column_stack_div(
                 && rows.is_none()
                 && nest_rows.is_none()
                 && !col_vert
-                && e.style.column_height.is_none()
-                && matches!(e.style.height, None | Some(Len::Auto)),
+                && e.style.used().column_height.is_none()
+                && matches!(e.style.used().height, None | Some(Len::Auto)),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
         // Линейки последней линии — до низа содержимого коробки
@@ -155,7 +162,7 @@ pub(super) fn column_stack_div(
                 if h > 0.0
                     && !col_vert
                     && nest_rows.is_none()
-                    && e.style.border_box != Some(true)
+                    && e.style.used().border_box != Some(true)
                     && !e
                         .children
                         .iter()
@@ -172,15 +179,15 @@ pub(super) fn column_stack_div(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_column_stack(
     e: &Element,
-    merged: Computed,
+    merged: BoxStyle,
     opts: &RenderOpts,
     col_vert: bool,
     oof_static: Vec<(usize, Element)>,
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
 ) -> AnyElement {
-    let cb_h: Option<f32> = (e.style.position.is_some()
-        && e.style.position != Some(crate::style::computed::Position::Static)
+    let cb_h: Option<f32> = (e.style.used().position.is_some()
+        && e.style.used().position != Some(crate::style::computed::Position::Static)
         && !col_vert)
         .then(|| {
             let px = |l: Option<Len>| match l {
@@ -188,11 +195,13 @@ pub(super) fn finish_column_stack(
                 Some(Len::Px(v)) => Some(v),
                 _ => None,
             };
-            let b = e.style.borders();
-            let pad = px(e.style.padding.top)? + px(e.style.padding.bottom)?;
+            let b = e.style.used().borders();
+            let pad = px(e.style.used().padding.top)? + px(e.style.used().padding.bottom)?;
             let bor = px(b.top)? + px(b.bottom)?;
-            match e.style.height {
-                Some(Len::Px(h)) if e.style.border_box == Some(true) => Some((h - bor).max(pad)),
+            match e.style.used().height {
+                Some(Len::Px(h)) if e.style.used().border_box == Some(true) => {
+                    Some((h - bor).max(pad))
+                }
                 Some(Len::Px(h)) => Some(h.max(0.0) + pad),
                 _ => None,
             }
@@ -201,12 +210,13 @@ pub(super) fn finish_column_stack(
     for (i, (_, oof)) in oof_static.iter().enumerate() {
         let mut oof = oof.clone();
         if let Some(ch) = cb_h
-            && oof.style.position == Some(crate::style::computed::Position::Absolute)
+            && oof.style.used().position == Some(crate::style::computed::Position::Absolute)
         {
+            let style = &mut *oof.style.used_mut();
             for l in [
-                &mut oof.style.height,
-                &mut oof.style.min_height,
-                &mut oof.style.max_height,
+                &mut style.height,
+                &mut style.min_height,
+                &mut style.max_height,
             ] {
                 if let Some(Len::Pct(k)) = *l {
                     *l = Some(Len::Px(k * ch));
@@ -215,7 +225,7 @@ pub(super) fn finish_column_stack(
         }
         d = d.child(crate::layout::positioned::containing_block::spot_place(
             oof_spots[i].clone(),
-            opts.cx.build.element(&oof, &merged, opts),
+            opts.cx.contracts.build.element(&oof, &merged, opts),
         ));
     }
     d.into_any_element()

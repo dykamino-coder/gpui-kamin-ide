@@ -1,9 +1,10 @@
 //! Использованные края и процентные размеры каркаса из исходного CB.
 
+use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, calc_get};
-use crate::{document::state::ValueCx, style::computed::Computed};
 
-pub(super) fn resolved_style(c: &Computed, used: gpui::MeasuredBox, vcx: ValueCx<'_>) -> Computed {
+pub(super) fn resolved_style(c: &BoxStyle, used: gpui::MeasuredBox, vcx: ValueCx<'_>) -> BoxStyle {
     let mut frame = c.clone();
     let resolve = |value: Option<Len>, basis: Option<gpui::Pixels>| {
         value.and_then(|v| match v {
@@ -20,10 +21,12 @@ pub(super) fn resolved_style(c: &Computed, used: gpui::MeasuredBox, vcx: ValueCx
     frame.padding.right = Some(Len::Px(used.padding.right.into()));
     frame.padding.bottom = Some(Len::Px(used.padding.bottom.into()));
     frame.padding.left = Some(Len::Px(used.padding.left.into()));
+    let style: &mut crate::style::computed::Computed = &mut frame;
     for (axis, basis) in [used.parent_size.width, used.parent_size.height]
         .into_iter()
         .enumerate()
     {
+        let frame = &mut *style;
         if !c.stretch_size[axis] {
             let dimension = if axis == 0 {
                 &mut frame.width
@@ -47,6 +50,7 @@ pub(super) fn resolved_style(c: &Computed, used: gpui::MeasuredBox, vcx: ValueCx
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     use gpui::{px, size};
 
     #[test]
@@ -74,7 +78,7 @@ mod tests {
                 border_box: Some(border_box),
                 ..c.clone()
             };
-            let frame = resolved_style(&c, used, values);
+            let frame = resolved_style(&BoxStyle::from(c.clone()), used, values);
             assert_eq!(frame.width, Some(Len::Px(150.)));
             assert_eq!(frame.height, Some(Len::Px(100.)));
             assert_eq!(frame.min_height, Some(Len::Px(50.)));

@@ -117,7 +117,7 @@ pub(crate) fn paragraph_spans(
             ),
             (inherited.wm().turned() || inherited.wm().vertical())
                 .then(|| inherited.wm().sideways_lr()),
-            opts.cx.ruby_layers.as_ref(),
+            opts.cx.ruby.layers.as_ref(),
             opts.cx.vcx(),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у

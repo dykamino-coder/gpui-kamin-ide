@@ -3,7 +3,7 @@
 //! хоста.
 
 use crate::dom::{Element, Node};
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 
 /// The block is a paint group: a stacking context (CSS 2.1 Appendix E;
 /// CSS Color 4 §opacity, CSS Transforms 1 §transform-rendering) or a mask or
@@ -27,7 +27,7 @@ pub(super) fn positioned_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
             matches!(
-                e.style.position,
+                e.style.used().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) || positioned_inside(&e.children)
@@ -42,10 +42,15 @@ pub(super) fn positioned_inside(nodes: &[Node]) -> bool {
 /// effects. The shell of the box carries none of them (`group_shell`).
 pub(super) fn group_wrap(
     c: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> crate::layout::float::band_flow::GroupWrap {
-    let (c, inherited, values, build) = (c.clone(), inherited.clone(), cx.vcx().keep(), cx.build);
+    let (c, inherited, values, build) = (
+        c.clone(),
+        inherited.clone(),
+        cx.vcx().keep(),
+        cx.contracts.build,
+    );
     std::rc::Rc::new(move |container: gpui::Div| {
         build.paint_group(container, &c, &inherited, values.vcx())
     })

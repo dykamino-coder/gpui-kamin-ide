@@ -7,6 +7,7 @@
 use super::Indent;
 use super::Paragraph;
 use crate::text::paragraph::tabs;
+use crate::tolerance::COORD_EPS;
 use gpui::{AnyElement, Hsla, Pixels, SharedString};
 
 impl Paragraph {
@@ -38,13 +39,13 @@ impl Paragraph {
             // Незримый знак с ОБЩИМ трекингом — просто унаследовавший его
             // знак управления двунаправленностью: расхождением он не является.
             // Расходится только распорка, чей трекинг и есть её ширина.
-            if invisible && (seen - common).abs() <= 0.01 {
+            if invisible && (seen - common).abs() <= COORD_EPS {
                 return false;
             }
             if invisible {
                 seen != 0.0
             } else {
-                (seen - common).abs() > 0.01
+                (seen - common).abs() > COORD_EPS
             }
         })
     }

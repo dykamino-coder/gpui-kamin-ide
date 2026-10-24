@@ -1,5 +1,6 @@
 //! Текст: шрифт, цвет, выравнивание (apply_text).
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
 use crate::style::computed::{Computed, TextAlign};
@@ -62,9 +63,10 @@ pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
         d = match lh {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(relative(mult)),
-            l @ (Len::Em(_) | Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => {
-                d.line_height(px(l.to_px(None, FontCx::FALLBACK, vcx).unwrap_or(16.0)))
-            }
+            l @ (Len::Em(_) | Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => d
+                .line_height(px(l
+                    .to_px(None, FontCx::FALLBACK, vcx)
+                    .unwrap_or(MEDIUM_FONT_SIZE_PX))),
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             // Окно на этом шаге неизвестно (узел вне сборщика дерева):
             // запасная трактовка — доля, как у `len_to_gpui`.

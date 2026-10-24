@@ -6,14 +6,14 @@ use gpui::{Bounds, point, px, size};
 
 #[test]
 fn frame_keeps_only_last_success_for_boxes_seen_in_the_previous_frame() {
-    use crate::style::computed::{Computed, Position};
+    use crate::style::computed::{BoxStyle, Computed, Position};
     let doc = DocState::new(Default::default());
     let vcx = doc.values();
-    let mut c = Computed {
+    let mut c = BoxStyle::new(Computed {
         position: Some(Position::Absolute),
-        anchor_key: 7,
         ..Default::default()
-    };
+    });
+    c.anchor_key = 7;
     super::trials::Options::new(&c, &c, vcx).record(0, vcx);
     c.anchor_key = 8;
     super::trials::Options::new(&c, &c, vcx).record(0, vcx);

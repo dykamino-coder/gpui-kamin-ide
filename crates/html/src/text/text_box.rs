@@ -3,14 +3,15 @@
 //! доля `line-height: normal` по шрифту и пустота текстового узла по CSS.
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::blank_text;
 
 use crate::dom::Node;
 use crate::layout::box_kind::{
     breaks_inline, contains_block, holds_line_box, out_of_flow, real_inline,
 };
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Стиль блока, которому принадлежит первая (`start`) или последняя
@@ -31,11 +32,11 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// узел самого контейнера): ему `line_trim::request` адресует срез.
 pub(crate) fn text_box_line_style(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     start: bool,
     owner: u64,
     vcx: ValueCx<'_>,
-) -> Option<(Computed, u64)> {
+) -> Option<(BoxStyle, u64)> {
     let has_block = nodes.iter().any(breaks_inline);
     let order: Vec<&Node> = if start {
         nodes.iter().collect()
@@ -49,13 +50,13 @@ pub(crate) fn text_box_line_style(
             Node::Text(_) => return Some((inherited.clone(), owner)),
             Node::Element(e) => e,
         };
-        if e.style.display == Some(Display::None) || out_of_flow(&e.style) {
+        if e.style.used().display == Some(Display::None) || out_of_flow(&e.style.used()) {
             continue;
         }
-        if e.style.display == Some(Display::Contents) {
+        if e.style.used().display == Some(Display::Contents) {
             return text_box_line_style(
                 &e.children,
-                &inherit(inherited, &e.style, vcx),
+                &box_style(inherited, &e.style, vcx),
                 start,
                 owner,
                 vcx,
@@ -65,7 +66,7 @@ pub(crate) fn text_box_line_style(
             // Через гибкий, сеточный и табличный контекст свойство не
             // распространяется (css-inline-3 §4.2, примечание).
             if matches!(
-                e.style.display,
+                e.style.used().display,
                 Some(Display::Flex)
                     | Some(Display::Grid)
                     | Some(Display::Table)
@@ -73,7 +74,7 @@ pub(crate) fn text_box_line_style(
             ) {
                 return None;
             }
-            let merged = inherit(inherited, &e.style, vcx);
+            let merged = box_style(inherited, &e.style, vcx);
             let px_of = px_lossy_zero;
             let bs = merged.borders();
             let blocked = if start {
@@ -196,7 +197,7 @@ pub(crate) fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
         Some(Len::Px(v)) => v,
         // Голое число хранится долей: это множитель к кеглю.
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => size * 1.2,
+        _ => size * crate::defaults::FALLBACK_NORMAL_LINE_HEIGHT,
     }
 }
 
@@ -237,14 +238,4 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
     } else {
         opts.normal_line_height
     }
-}
-
-/// Пустой ли текстовый узел ПО CSS.
-///
-/// Схлопывается только `space`, `tab`, `CR`, `LF`. `str::trim` снимает весь
-/// юникодный пробел, и узел из идеографических U+3000 (или неразрывных
-/// U+00A0) считался пустым: строка из них пропадала целиком, а абзац рвался
-/// там, где рваться не должен (`trailing-ideographic-space-017`).
-pub(crate) fn blank_text(t: &str) -> bool {
-    t.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
 }

@@ -72,7 +72,7 @@ pub(super) fn finish_element(
         .chain(sp.buttons.iter_mut())
         .chain(sp.group_after.iter_mut())
     {
-        el.style.implicit_anchor = Some(node_id);
+        el.style.cascaded_mut().implicit_anchor = Some(node_id);
     }
     if tag == "html" {
         if let Some(g) = sp.group_before.take() {

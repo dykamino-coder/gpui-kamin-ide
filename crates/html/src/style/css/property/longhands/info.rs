@@ -27,6 +27,14 @@ impl LonghandId {
         Self::SLOT[self as usize]
     }
 
+    /// Физическое свойство группы `group` на месте `i` (сторона или размер).
+    pub fn physical(group: super::BoxGroup, i: usize) -> LonghandId {
+        *Self::ALL
+            .iter()
+            .find(|id| id.slot() == Slot::Physical(group, i))
+            .expect("каждое место логической группы — физическое свойство")
+    }
+
     /// Годится ли значение (не общее слово и без подстановки) этому
     /// свойству: негодное объявление отбрасывается разбором (CSS Syntax
     /// §4.1.7 / css-cascade-5 §4) и в каскад не попадает.

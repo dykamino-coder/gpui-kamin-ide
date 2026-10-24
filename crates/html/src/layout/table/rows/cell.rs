@@ -31,11 +31,11 @@ pub(super) fn table_cell(
     // она держать не может — дорожки под них нет (§17.5.2.1).
     let cell = &if прячем_пустую {
         let mut copy = cell.clone();
-        copy.style.background = None;
-        copy.style.gradient = None;
-        copy.style.bg_image = None;
-        copy.style.border_visible = [Some(false); 4];
-        copy.style.border_width = Default::default();
+        copy.style.used_mut().background = None;
+        copy.style.used_mut().gradient = None;
+        copy.style.used_mut().bg_image = None;
+        copy.style.used_mut().border_visible = [Some(false); 4];
+        copy.style.used_mut().border_width = Default::default();
         copy
     } else {
         cell.clone()
@@ -43,15 +43,15 @@ pub(super) fn table_cell(
     let cell = &if geom.zero_cols.get(cursor.col_ix).copied().unwrap_or(false) {
         let mut copy = cell.clone();
         if geom.table_is_vertical {
-            copy.style.padding.top = Some(Len::Px(0.0));
-            copy.style.padding.bottom = Some(Len::Px(0.0));
-            copy.style.border_width.top = Some(Len::Px(0.0));
-            copy.style.border_width.bottom = Some(Len::Px(0.0));
+            copy.style.used_mut().padding.top = Some(Len::Px(0.0));
+            copy.style.used_mut().padding.bottom = Some(Len::Px(0.0));
+            copy.style.used_mut().border_width.top = Some(Len::Px(0.0));
+            copy.style.used_mut().border_width.bottom = Some(Len::Px(0.0));
         } else {
-            copy.style.padding.left = Some(Len::Px(0.0));
-            copy.style.padding.right = Some(Len::Px(0.0));
-            copy.style.border_width.left = Some(Len::Px(0.0));
-            copy.style.border_width.right = Some(Len::Px(0.0));
+            copy.style.used_mut().padding.left = Some(Len::Px(0.0));
+            copy.style.used_mut().padding.right = Some(Len::Px(0.0));
+            copy.style.used_mut().border_width.left = Some(Len::Px(0.0));
+            copy.style.used_mut().border_width.right = Some(Len::Px(0.0));
         }
         copy
     } else {

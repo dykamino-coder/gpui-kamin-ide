@@ -7,10 +7,10 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 
-pub(super) fn lift(nodes: Vec<Node>, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
+pub(super) fn lift(nodes: Vec<Node>, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     if parent.wm().vertical() {
         return nodes;
     }
@@ -21,7 +21,7 @@ pub(super) fn lift(nodes: Vec<Node>, parent: &Computed, vcx: ValueCx<'_>) -> Vec
 }
 
 pub(crate) fn transparent(e: &Element) -> bool {
-    let s = &e.style;
+    let s = &e.style.used();
     let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
     let undecorated = [s.margin, s.padding, s.borders()]
         .iter()
@@ -53,15 +53,16 @@ pub(crate) fn transparent(e: &Element) -> bool {
         && s.bidi_isolate.is_none()
         && s.bidi_embed.is_none()
         && s.bidi_plaintext.is_none()
-        && s.vertical_align.is_none()
+        && e.style.own_vertical_align().is_none()
         && s.vertical_shift.is_none()
         && s.vertical_shift_len.is_none()
-        && s.writing_mode.is_none()
+        // Своё письмо и направление — объявленные: вычисленные наследуются.
+        && e.style.cascaded().writing_mode.is_none()
         && !s.turned_line
-        && s.rtl.is_none()
+        && e.style.cascaded().rtl.is_none()
 }
 
-fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
+fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     let Node::Element(e) = &node else {
         return vec![node];
     };
@@ -70,10 +71,14 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     // the block's shared exclusion space, not an atomic paragraph child.
     let margin_fragment = if !transparent(e) {
         let mut bare = e.clone();
-        bare.style.margin = Default::default();
+        bare.style.used_mut().margin = Default::default();
         transparent(&bare)
-            && e.style.preserve_newlines.or(parent.preserve_newlines) != Some(true)
-            && e.style.keep_spaces.or(parent.keep_spaces) != Some(true)
+            && e.style
+                .cascaded()
+                .preserve_newlines
+                .or(parent.preserve_newlines)
+                != Some(true)
+            && e.style.cascaded().keep_spaces.or(parent.keep_spaces) != Some(true)
             && e.children
                 .iter()
                 .all(|n| crate::layout::box_kind::is_blank(n) || floated(n))
@@ -83,7 +88,7 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     if (!transparent(e) && !margin_fragment) || !e.children.iter().any(contains_float) {
         return vec![node];
     }
-    let style = inherit(parent, &e.style, vcx);
+    let style = box_style(parent, &e.style, vcx);
     let children = lift(e.children.clone(), &style, vcx);
     if !children.iter().any(floated) {
         return vec![node];
@@ -100,7 +105,7 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
             .all(|n| matches!(n, Node::Text(_)) || floated(n))
         && matches!(
             children.iter().find(|n| match n {
-                Node::Text(t) => !crate::text::text_box::blank_text(t),
+                Node::Text(t) => !crate::dom::whitespace::blank_text(t),
                 _ => true,
             }),
             Some(Node::Text(_))
@@ -138,10 +143,11 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
             };
             // CSS 2 sections 9.5 and 10.1: the block remains the containing
             // block, while inherited text properties come through the inline.
-            let containing = inherit(parent, &float.style, vcx);
-            float.style = inherit(&style, &float.style, vcx).into();
-            float.style.cb_height_def = containing.cb_height_def;
-            float.style.quirk_pct_base = containing.quirk_pct_base;
+            let containing = box_style(parent, &float.style, vcx);
+            float.style =
+                crate::dom::SharedStyle::layout_made(box_style(&style, &float.style, vcx));
+            float.style.used_mut().cb_height_def_hint = containing.cb_height_def;
+            float.style.used_mut().quirk_pct_base_hint = containing.quirk_pct_base;
             output.push(Node::Element(float));
         } else {
             pending.push(child);
@@ -163,8 +169,8 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
 /// their intrinsic size inside shrink-to-fit containers
 /// (`orthogonal-writing-mode-float-in-inline`).
 fn floated(node: &Node) -> bool {
-    matches!(node, Node::Element(e) if e.style.float.is_some_and(|f| f != 0)
-        && !e.style.wm().vertical())
+    matches!(node, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)
+        && !e.style.cascaded().wm().vertical())
 }
 
 fn contains_float(node: &Node) -> bool {

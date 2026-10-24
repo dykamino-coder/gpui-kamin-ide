@@ -6,8 +6,8 @@ use crate::layout::float::band_host::{band_em, band_margins};
 use crate::layout::float::band_measured::band_piece_m;
 use crate::layout::float::shape_exclusion::measured_shape;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
+use crate::style::computed::{BoxStyle, Computed};
 mod deferred;
 mod parts;
 use deferred::deferred;
@@ -19,7 +19,7 @@ pub(super) use parts::band_kid_kind;
 pub(crate) fn band_kids(
     nodes: &[Node],
     count: usize,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     em: f32,
     start_open: bool,
@@ -53,7 +53,7 @@ pub(crate) fn band_kids(
         let p = p.clone();
         let inherited = inherited.clone();
         deferred(opts, false, move |opts, _cb, _avail, _shapes, _h| {
-            opts.cx.build.element(&p, &inherited, opts)
+            opts.cx.contracts.build.element(&p, &inherited, opts)
         })
     };
     // Первый прогон — щуп для всех флоатов при `nowrap`.
@@ -106,12 +106,13 @@ pub(crate) fn band_kids(
         let c = if initial_letter && c.marks.anon {
             // The initial letter already consumed the paragraph's indent.
             continued = c.clone();
-            continued.style.text_indent = Some(crate::style::values::value::Len::Px(0.0));
+            continued.style.used_mut().text_indent =
+                Some(crate::style::values::value::Len::Px(0.0));
             &continued
         } else {
             c
         };
-        let Some(margin) = band_margins(&c.style, em) else {
+        let Some(margin) = band_margins(&c.style.used(), em) else {
             continue;
         };
         let [t, r, b, l] = margin;
@@ -126,7 +127,7 @@ pub(crate) fn band_kids(
         if vert.is_some() && band_piece_m(n, em, wm) == Some(false) {
             continue;
         }
-        let float = idx < count || c.style.float.is_some_and(|f| f != 0);
+        let float = idx < count || c.style.used().float.is_some_and(|f| f != 0);
         // `::first-line` содержащего блока — первой строке его потока
         // (CSS 2.1 §5.12.1); флоаты строк не образуют. Анонимный прогон
         // своего `first_line` не несёт (`element` берёт псевдоэлементы только
@@ -164,13 +165,13 @@ pub(crate) fn band_kids(
                 avail, shapes, height,
             )
         });
-        let clear = if float { None } else { c.style.clear };
+        let clear = if float { None } else { c.style.used().clear };
         // css-shapes-1 §2: the float's shape shortens the lines next to it.
         let shape: Option<crate::layout::float::band_flow::ShapeOf> =
-            (float && c.style.shape_outside.is_some()).then(|| {
+            (float && c.style.used().shape_outside.is_some()).then(|| {
                 let f = c.clone();
-                let side = c.style.float.unwrap_or(-1);
-                let em = band_em(&c.style, em).unwrap_or(em);
+                let side = c.style.used().float.unwrap_or(-1);
+                let em = band_em(&c.style.used(), em).unwrap_or(em);
                 std::rc::Rc::new(move |bw: f32, bh: f32, m: [f32; 4], cbw: f32| {
                     measured_shape(&f, side, (bw, bh), m, cbw, em, wm, shape_values.vcx())
                 }) as crate::layout::float::band_flow::ShapeOf
@@ -187,7 +188,7 @@ pub(crate) fn band_kids(
             anon: c.marks.anon,
             lead: if float { lead_for(idx) } else { None },
             lead_base: if float { base_for(idx) } else { None },
-            margin_offset: c.style.float_margin_offset.unwrap_or(0.0),
+            margin_offset: c.style.used().float_margin_offset.unwrap_or(0.0),
             start_open,
             shape,
         });

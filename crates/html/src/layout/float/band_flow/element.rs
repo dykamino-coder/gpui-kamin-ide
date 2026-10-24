@@ -6,13 +6,13 @@ use super::{COORD_EPS, Plan, Probe, plan};
 use crate::hooks::Hooks;
 use crate::layout::build_contracts::ChildBuild;
 use crate::layout::cx::LayoutCx;
-use crate::paint::context::PaintCx;
+use crate::layout::cx::deferred::Deferred;
 use gpui::{AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, Window, px, size};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct BandFlow {
-    pub(super) paint: Rc<PaintCx>,
+    pub(super) paint: Rc<Deferred>,
     pub(super) build: ChildBuild,
     pub(super) kids: Rc<Vec<Kid>>,
     pub(super) plan: Rc<RefCell<Option<Plan>>>,
@@ -29,8 +29,8 @@ pub struct BandFlow {
 impl BandFlow {
     pub(crate) fn new(kids: Vec<Kid>, contain_floats: bool, cx: &LayoutCx) -> Self {
         BandFlow {
-            paint: cx.paint.clone(),
-            build: cx.build,
+            paint: cx.deferred.paint.clone(),
+            build: cx.contracts.build,
             kids: Rc::new(kids),
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),

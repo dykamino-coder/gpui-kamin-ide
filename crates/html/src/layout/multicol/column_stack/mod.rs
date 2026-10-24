@@ -2,7 +2,8 @@
 //! (`StackChild`), колонки, зазор, ось, ряды, линейка и буферы плана после укладки; сама
 //! укладка — в подмодулях `balance`, `fill`, `avoid`, `paginate`, `element`.
 
-use crate::layout::fragment::types::{Frag, Intrinsic, Kid, Rows, StackAxis, StackChild};
+use crate::layout::fragment::plan::Plan;
+use crate::layout::fragment::types::{Intrinsic, Kid, Rows, StackAxis, StackChild};
 use gpui::{Bounds, Pixels};
 
 pub mod avoid;
@@ -13,8 +14,9 @@ mod gap_geometry;
 mod paginate;
 
 pub struct ColumnStack {
-    pub(crate) paint: std::rc::Rc<crate::paint::context::PaintCx>,
+    pub(crate) paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     pub(crate) children: Vec<StackChild>,
+    pub(crate) deferred: Option<std::rc::Rc<super::deferred::Recipe>>,
     pub(crate) count: usize,
     pub(crate) gap: f32,
     /// Ось прогрессии колонок (`StackAxis`); при вертикальном письме —
@@ -50,8 +52,8 @@ pub struct ColumnStack {
     /// Буфер границ колонок и спаннеров для `GapRulePainter` (css-gaps-1
     /// §gap-multicol): колонки линии — элементы строки, спаннер — элемент во
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
-    pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
-    pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    pub(crate) gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
+    pub(crate) plan: std::cell::RefCell<Plan>,
     /// Reuse placement storage while mapping viewport static-position probes.
     pub(crate) static_places: Option<crate::layout::fragment::static_coordinates::Places>,
     pub(crate) col_w: std::cell::Cell<f32>,
@@ -73,9 +75,9 @@ impl ColumnStack {
         fixed_height: Option<f32>,
         rule: Option<(f32, gpui::Hsla)>,
         rows: Option<Rows>,
-        gap_items: Option<crate::paint::gap_rules::GapItems>,
+        gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
         intrinsic: Option<Intrinsic>,
-        paint: std::rc::Rc<crate::paint::context::PaintCx>,
+        paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     ) -> Self {
         // Без рядов копий ровно столько, сколько колонок (как прежде); с
         // рядами — сколько построил `render::generic_box::multicol`: ребёнок может занять
@@ -103,6 +105,7 @@ impl ColumnStack {
         ColumnStack {
             paint,
             children,
+            deferred: None,
             count: count.max(1),
             gap,
             fixed_height,
@@ -116,12 +119,20 @@ impl ColumnStack {
             copies,
             gap_items,
             intrinsic,
-            plan: std::cell::RefCell::new(Vec::new()),
+            plan: std::cell::RefCell::new(Plan::default()),
             static_places: Default::default(),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    pub(crate) fn with_deferred(
+        mut self,
+        recipe: Option<std::rc::Rc<super::deferred::Recipe>>,
+    ) -> Self {
+        self.deferred = recipe;
+        self
     }
 
     /// Коробка по самой высокой занятой колонке (см. `fill_shrink`).

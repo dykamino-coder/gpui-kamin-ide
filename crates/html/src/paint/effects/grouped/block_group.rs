@@ -3,25 +3,26 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use gpui::AnyElement;
-use std::borrow::Cow;
+use std::rc::Rc;
 
 /// The box's own style, with mask image lengths and colors taken from its
 /// inherited computed value; the wrapper keeps the box's own positioning
 /// and clipping.
-pub(crate) fn group_style<'a>(
-    own: &'a Computed,
-    inherited: &Computed,
+pub(crate) fn group_style(
+    own: &crate::dom::SharedStyle,
+    inherited: &BoxStyle,
     vcx: ValueCx<'_>,
-) -> Cow<'a, Computed> {
-    if own.mask_image.is_none() {
-        return Cow::Borrowed(own);
+) -> Rc<Computed> {
+    let style = own.used();
+    if style.mask_image.is_none() {
+        return style;
     }
-    let computed = crate::style::cascade::inherit::inherit(inherited, own, vcx);
-    let mut style = own.clone();
-    style.mask_image = computed.mask_image;
-    Cow::Owned(style)
+    let computed = crate::style::cascade::materialize::box_style(inherited, own, vcx);
+    let mut style = (*style).clone();
+    style.mask_image = computed.mask_image.clone();
+    Rc::new(style)
 }
 
 /// `grouped` around the built box `el` of block `e`.
@@ -35,15 +36,15 @@ pub(crate) fn group_style<'a>(
 pub(crate) fn block_group(
     el: AnyElement,
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let style = group_style(&e.style, inherited, vcx);
-    if crate::paint::stacking::stacking_context(&e.style)
-        && e.style.isolate != Some(true)
+    if crate::paint::stacking::stacking_context(&e.style.used())
+        && e.style.used().isolate != Some(true)
         && crate::paint::stacking::blends_inside(&e.children, 0)
     {
-        let mut iso = style.into_owned();
+        let mut iso = (*style).clone();
         iso.isolate = Some(true);
         return super::grouped(el, &iso, vcx);
     }
@@ -57,14 +58,14 @@ pub(crate) fn block_group(
 pub(crate) fn paint_group(
     container: gpui::Div,
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    let el = crate::paint::apply::static_shift(container, &e.style);
-    let el = crate::paint::apply::apply_opacity(el, &e.style, vcx);
+    let el = crate::paint::apply::static_shift(container, &e.style.used());
+    let el = crate::paint::apply::apply_opacity(el, &e.style.used(), vcx);
     let el = crate::paint::effects::transform::transformed(
         gpui::IntoElement::into_any_element(el),
-        &e.style,
+        &e.style.used(),
         inherited,
         vcx,
     );

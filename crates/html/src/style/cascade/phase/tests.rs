@@ -26,7 +26,13 @@ const ROOT: CascadeCx<'static> = CascadeCx {
 
 #[test]
 fn dependencies_come_before_their_consumers() {
-    for early in ["writing-mode", "direction", "text-orientation", "zoom"] {
+    for early in [
+        "writing-mode",
+        "direction",
+        "text-orientation",
+        "zoom",
+        "color-scheme",
+    ] {
         assert_eq!(Phase::of(early), Phase::CascadeAffecting, "{early}");
     }
     for font in [
@@ -37,7 +43,6 @@ fn dependencies_come_before_their_consumers() {
         "line-height",
         "font-size-adjust",
         "color",
-        "color-scheme",
         "math-depth",
     ] {
         assert_eq!(Phase::of(font), Phase::Font, "{font}");
@@ -88,4 +93,28 @@ fn root_rem_uses_the_root_font_phase() {
     let child = rule("width: 1rem", "div");
     let c = Computed::resolve(&[&child], &none, vcx);
     assert_eq!(c.width, Some(Len::Px(32.0)));
+}
+
+/// `color-scheme` решается раньше цветов того же элемента: `light-dark()` в
+/// `color` берёт схему из более слабого блока (css-color-adjust-1 §2,
+/// css-color-5 §light-dark), не из порядка блоков; без своего значения —
+/// схема, с которой пришёл контекст родителя.
+#[test]
+fn color_scheme_decides_light_dark_of_the_same_element() {
+    let doc = DocState::new(Media {
+        dark: true,
+        ..Media::default()
+    });
+    let vcx = doc.values();
+    let r = rule("color-scheme: dark", "p");
+    let inline = parse_decls_in("color: light-dark(rgb(255, 0, 0), rgb(0, 128, 0))", vcx);
+    let c = Computed::resolve(&[&r], &inline, vcx);
+    assert_eq!(c.color_scheme.as_deref(), Some("dark"));
+    assert_eq!(c.color.map(|c| (c.r, c.g > 0.0)), Some((0.0, true)));
+    let light = rule("color-scheme: only light", "p");
+    let c = Computed::resolve(&[&light], &inline, vcx);
+    assert_eq!(c.color_scheme.as_deref(), Some("only light"));
+    assert_eq!(c.color.map(|c| c.r), Some(1.0));
+    let none = parse_decls_in("color-scheme: only only light", vcx);
+    assert_eq!(Computed::resolve(&[], &none, vcx).color_scheme, None);
 }

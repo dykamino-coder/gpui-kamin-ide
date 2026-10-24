@@ -2,15 +2,13 @@
 //! значением родителя (CSS Cascade 4 §7.3.1), а не его заданными относительными
 //! единицами. Выигравшее CSS-слово записывается в тот же слот, что и обычный
 //! longhand (`explicit_inherit`); `apply_explicit_inheritance` копирует поля родителя по
-//! реестру, `settle` делает это по всему дереву до прохода масштаба `zoom`.
+//! реестру в стадии вычисленных значений (`compute::compute`).
 
 use crate::document::state::ValueCx;
-use crate::dom::Node;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 
 mod registry;
-pub(crate) use registry::Property;
+pub(crate) use registry::{Property, of_longhand};
 
 /// Record winning CSS-wide keywords in the same slots as ordinary longhands.
 pub(super) fn note(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) -> bool {
@@ -39,47 +37,10 @@ pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed, vc
     }
 }
 
-/// CSS Cascade 4 section 7.3.1: inherit the computed value, never the parent's
-/// specified relative units. The zoom pass subsequently scales absolute lengths
-/// using this element's effective zoom, including nested inheritance chains.
-pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
-    fn pending(nodes: &[Node]) -> bool {
-        nodes.iter().any(|n| match n {
-            Node::Element(e) => {
-                !e.style.explicit_inherit.is_empty()
-                    || !matches!(e.style.svg_path_length, None | Some(Len::Px(_) | Len::Auto))
-                    || pending(&e.children)
-            }
-            _ => false,
-        })
-    }
-    fn apply_inheritance_to_descendants(nodes: &mut [Node], parent: &Computed, vcx: ValueCx<'_>) {
-        for node in nodes {
-            let Node::Element(e) = node else { continue };
-            apply_explicit_inheritance(&mut e.style, parent, vcx);
-            let mut own = (*e.style).clone();
-            let media = vcx.doc.media.get();
-            own.resolve_viewport((media.width, media.height), vcx);
-            let mut computed = super::inherit::inherit_unpainted(parent, &own, vcx);
-            if let Some(mut length) = computed.svg_path_length {
-                let font = computed.font_cx(vcx);
-                length.resolve_line_height(font.line_px.unwrap_or(1.2 * font.font_px), vcx);
-                if let Some(value) = length.to_px(None, font, vcx) {
-                    computed.svg_path_length = Some(Len::Px(value.max(0.0)));
-                }
-                e.style.svg_path_length = computed.svg_path_length;
-            }
-            apply_inheritance_to_descendants(&mut e.children, &computed, vcx);
-        }
-    }
-    if pending(nodes) {
-        apply_inheritance_to_descendants(nodes, &Computed::default(), vcx);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
     use crate::style::values::value::Len;
 
     #[test]
@@ -88,14 +49,16 @@ mod tests {
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("column-width", "100px", vcx);
+        let compute = super::super::compute::compute;
         let mut child = Computed::default();
         child.apply_one("column-width", "inherit", vcx);
-        apply_explicit_inheritance(&mut child, &parent, vcx);
-        assert_eq!(child.column_width, Some(Len::Px(100.0)));
+        assert_eq!(
+            compute(&parent, &child, vcx).column_width,
+            Some(Len::Px(100.0))
+        );
         child.apply_one("column-width", "inherit", vcx);
         child.apply_one("column-width", "auto", vcx);
-        apply_explicit_inheritance(&mut child, &parent, vcx);
-        assert_eq!(child.column_width, None);
+        assert_eq!(compute(&parent, &child, vcx).column_width, None);
     }
 
     #[test]
@@ -107,7 +70,7 @@ mod tests {
         let mut child = Computed::default();
         child.apply_one("gap", "inherit", vcx);
         child.apply_one("row-gap", "30px", vcx);
-        apply_explicit_inheritance(&mut child, &parent, vcx);
+        let child = super::super::compute::compute(&parent, &child, vcx);
         assert_eq!(child.gap, Some((Some(Len::Px(30.0)), Some(Len::Px(20.0)))));
     }
 
@@ -131,7 +94,7 @@ mod tests {
         specified.apply_one("font-size", "20px", vcx);
         specified.apply_one("column-width", "5em", vcx);
         let parent =
-            super::super::inherit::inherit_unpainted(&Computed::default(), &specified, vcx);
+            super::super::inherit::inherit_unpainted(&BoxStyle::default(), &specified, vcx);
         let mut child = Computed::default();
         child.apply_one("font-size", "10px", vcx);
         child.apply_one("column-width", "inherit", vcx);

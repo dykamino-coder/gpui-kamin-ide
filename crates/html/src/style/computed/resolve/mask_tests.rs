@@ -1,6 +1,6 @@
 //! Тесты: источники маски делят вычисленное разрешение изображений и сохраняют порядок слоёв.
 
-use crate::style::computed::{Computed, ImageSource};
+use crate::style::computed::{BoxStyle, Computed, ImageSource};
 use crate::style::values::value::Len;
 
 #[test]
@@ -15,7 +15,7 @@ fn shape_image_uses_computed_lengths_and_clears_with_none_or_basic_shape() {
         "linear-gradient(currentcolor 1em, transparent 2lh)",
         vcx,
     );
-    let computed = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+    let computed = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
     let (gradient, _) = computed.shape_image.as_ref().unwrap().gradient().unwrap();
     assert_eq!(gradient.stops_px[0].1, 20.0);
     assert_eq!(gradient.stops_px[1].1, 80.0);
@@ -38,10 +38,13 @@ fn masks_and_backgrounds_share_computed_font_lengths() {
         "linear-gradient(red 10px, blue 20px)",
         "url(mask.svg)",
     ] {
-        let mut style = Computed {
-            font_size: Some(Len::Px(20.0)),
-            line_height: Some(Len::Pct(1.5)),
-            ..Computed::default()
+        let mut style = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(20.0));
+            with_inherited.line_height = Some(Len::Pct(1.5));
+            with_inherited
         };
         style.apply_one("mask-image", raw, vcx);
         style.bg_image = ImageSource::parse(raw, vcx);
@@ -89,8 +92,8 @@ fn inherited_mask_uses_own_line_height_before_group_construction() {
     parent.apply_one("line-height", "2", vcx);
     let mut own = Computed::default();
     own.apply_one("mask-image", "conic-gradient(at 1lh 50px, red, blue)", vcx);
-    let computed = inherit(&parent, &own, vcx);
-    let ImageSource::Conic(conic) = &computed.mask_image.unwrap()[0] else {
+    let computed = inherit(&BoxStyle::from(parent.clone()), &own, vcx);
+    let ImageSource::Conic(conic) = &computed.mask_image.clone().unwrap()[0] else {
         panic!("computed conic mask");
     };
     assert_eq!(conic.position.x, Some(Len::Px(100.0)));

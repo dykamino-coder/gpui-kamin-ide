@@ -5,8 +5,8 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::columns::col_role;
 use crate::layout::table::{is_cell, table_roles};
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Display;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Display};
 
 /// Починка детей таблицы (css-tables-3 §3): `display: contents` растворить,
 /// бесхозные ячейки и непустой текст завернуть в анонимный ряд.
@@ -18,16 +18,19 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
     fn walk(nodes: &[Node], cells: &mut Vec<Node>, run: &mut Vec<Node>, vcx: ValueCx<'_>) {
         for child in nodes {
             match child {
-                Node::Element(el) if el.style.display == Some(Display::Contents) => {
+                Node::Element(el) if el.style.used().display == Some(Display::Contents) => {
                     // Дети растворённого получают его наследуемое (цвет,
-                    // шрифт) — слитый стиль передаётся вниз донором.
+                    // шрифт) — вычисленный стиль растворённого передаётся вниз донором.
+                    let donor = BoxStyle::shared(el.style.computed());
                     let merged: Vec<Node> = el
                         .children
                         .iter()
                         .cloned()
                         .map(|n| match n {
                             Node::Element(mut ge) => {
-                                ge.style = inherit(&el.style, &ge.style, vcx).into();
+                                ge.style = crate::dom::SharedStyle::layout_made(box_style(
+                                    &donor, &ge.style, vcx,
+                                ));
                                 Node::Element(ge)
                             }
                             // Голый текст стиля не несёт: наследуемое от
@@ -37,7 +40,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                                 span.style = el.style.clone();
                                 // Сам растворённый display не переносится —
                                 // иначе обёртка растворилась бы следом.
-                                span.style.display = None;
+                                span.style.used_mut().display = None;
                                 span.inline = true;
                                 Node::Element(span)
                             }
@@ -53,7 +56,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                 Node::Element(el)
                     if el.tag == "tr"
                         || matches!(
-                            el.style.display,
+                            el.style.used().display,
                             Some(Display::TableRow) | Some(Display::TableRowGroup)
                         ) =>
                 {
@@ -73,10 +76,10 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
     }
     let needs_fix = row.children.iter().any(|c| match c {
         Node::Element(el) => {
-            el.style.display == Some(Display::Contents)
+            el.style.used().display == Some(Display::Contents)
                 || el.tag == "tr"
                 || matches!(
-                    el.style.display,
+                    el.style.used().display,
                     Some(Display::TableRow) | Some(Display::TableRowGroup)
                 )
                 || !is_cell(el)
@@ -140,10 +143,10 @@ fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<No
                 if !in_group && col_role(el).is_some() {
                     continue;
                 }
-                let group = el.style.display == Some(Display::TableRowGroup)
+                let group = el.style.used().display == Some(Display::TableRowGroup)
                     || matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot");
-                let row = el.tag == "tr" || el.style.display == Some(Display::TableRow);
-                let is_cap = el.tag == "caption" || el.style.is_caption == Some(true);
+                let row = el.tag == "tr" || el.style.used().display == Some(Display::TableRow);
+                let is_cap = el.tag == "caption" || el.style.used().is_caption == Some(true);
                 if group && !in_group {
                     // Группа рядов чинится ИЗНУТРИ тоже: contents и бесхозное
                     // содержимое встречаются и там.
@@ -174,15 +177,15 @@ fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<No
                 let inline_like = |n: Option<&Node>| match n {
                     Some(Node::Text(t)) => !t.trim().is_empty(),
                     Some(Node::Element(el)) => {
-                        el.style.display != Some(Display::Contents)
+                        el.style.used().display != Some(Display::Contents)
                             && col_role(el).is_none()
                             && !is_cell(el)
                             && el.tag != "caption"
-                            && el.style.is_caption != Some(true)
+                            && el.style.used().is_caption != Some(true)
                             && el.tag != "tr"
                             && !matches!(el.tag.as_str(), "thead" | "tbody" | "tfoot")
                             && !matches!(
-                                el.style.display,
+                                el.style.used().display,
                                 Some(Display::TableRow) | Some(Display::TableRowGroup)
                             )
                     }
@@ -209,20 +212,24 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
             out.push(n.clone());
             continue;
         };
-        if el.style.display != Some(Display::Contents) {
+        if el.style.used().display != Some(Display::Contents) {
             out.push(n.clone());
             continue;
         }
+        // The donor is the dissolved element's COMPUTED style: a cascaded one has
+        // unresolved relative values (`font-size: 150%` fell back to 16px).
+        let donor = BoxStyle::shared(el.style.computed());
         for g in flatten_contents(&el.children, vcx) {
             match g {
                 Node::Element(mut ge) => {
-                    ge.style = inherit(&el.style, &ge.style, vcx).into();
+                    ge.style =
+                        crate::dom::SharedStyle::layout_made(box_style(&donor, &ge.style, vcx));
                     out.push(Node::Element(ge));
                 }
                 Node::Text(t) if !t.trim().is_empty() => {
                     let mut span = anon_element("span", vec![Node::Text(t)]);
                     span.style = el.style.clone();
-                    span.style.display = None;
+                    span.style.used_mut().display = None;
                     span.inline = true;
                     out.push(Node::Element(span));
                 }
@@ -232,3 +239,6 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests;

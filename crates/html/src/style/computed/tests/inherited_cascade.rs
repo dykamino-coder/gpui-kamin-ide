@@ -5,7 +5,8 @@
 //! свои поля.
 
 use crate::document::state::DocState;
-use crate::style::computed::{Computed, TextAlign};
+use crate::style::computed::MarkerType::{Counter, Text};
+use crate::style::computed::{BoxStyle, Computed, MarkerType, TextAlign};
 use crate::style::css::{DeclBlock, Media, VarMap, parse_decls_in};
 use crate::style::values::value::{Color, Len};
 
@@ -24,28 +25,29 @@ fn style(css: &str) -> Computed {
 #[test]
 fn list_style_assigns_none_to_the_unset_components() {
     let c = style("list-style: none");
-    assert_eq!(c.list_style_type.as_deref(), Some("none"));
-    assert_eq!(c.no_marker, Some(true));
+    assert_eq!(c.list_style_type, Some(MarkerType::None));
+    assert_eq!(c.no_marker, None);
     assert_eq!(c.list_style_image, Some(None));
     assert_eq!(c.list_style_inside, Some(false));
     let c = style("list-style: none square inside");
-    assert_eq!(c.list_style_type.as_deref(), Some("square"));
+    assert_eq!(c.list_style_type, Some(Counter("square".into())));
     assert_eq!(c.list_style_inside, Some(true));
     assert_eq!(c.list_style_image, Some(None));
     // A second `none` has no free component: the declaration is dropped.
     let c = style("list-style-type: circle; list-style: none none square");
-    assert_eq!(c.list_style_type.as_deref(), Some("circle"));
+    assert_eq!(c.list_style_type, Some(Counter("circle".into())));
     let c = style("list-style: url(m.png)");
-    assert_eq!(c.list_style_type.as_deref(), Some("disc"));
+    assert_eq!(c.list_style_type, Some(Counter("disc".into())));
     assert!(matches!(c.list_style_image, Some(Some(_))));
     let c = style("list-style: '→ ' inside");
-    assert_eq!(c.marker_text.as_deref(), Some("→ "));
-    assert_eq!(c.no_marker, Some(false));
+    assert_eq!(c.list_style_type, Some(Text("→ ".into())));
+    assert_eq!(c.marker_text, None);
+    assert_eq!(c.no_marker, None);
     // Order of the shorthand and its longhand in one block: by position.
     let c = style("list-style: square; list-style-type: decimal");
-    assert_eq!(c.list_style_type.as_deref(), Some("decimal"));
+    assert_eq!(c.list_style_type, Some(Counter("decimal".into())));
     let c = style("list-style-type: decimal; list-style: square");
-    assert_eq!(c.list_style_type.as_deref(), Some("square"));
+    assert_eq!(c.list_style_type, Some(Counter("square".into())));
 }
 
 #[test]
@@ -55,7 +57,7 @@ fn inherit_empties_own_fields_and_initial_is_explicit() {
     let c = style("list-style-type: square; list-style-type: unset");
     assert_eq!(c.list_style_type, None);
     let c = style("list-style-type: square; list-style-type: initial");
-    assert_eq!(c.list_style_type.as_deref(), Some("disc"));
+    assert_eq!(c.list_style_type, Some(Counter("disc".into())));
     let c = style("visibility: hidden; visibility: initial");
     assert_eq!((c.hidden, c.collapsed), (Some(false), Some(false)));
     let c = style("text-indent: 5px hanging; text-indent: initial");
@@ -82,7 +84,7 @@ fn invalid_substitution_is_unset() {
     assert_eq!(c.color, None);
     vars.insert("--v".into(), "square inside".into());
     let c = style_with("list-style: var(--v)", &vars);
-    assert_eq!(c.list_style_type.as_deref(), Some("square"));
+    assert_eq!(c.list_style_type, Some(Counter("square".into())));
     assert_eq!(c.list_style_inside, Some(true));
 }
 
@@ -198,4 +200,40 @@ fn tab_size_number_and_length_replace_each_other() {
         let c = style(&format!("tab-size: 2.5; tab-size: {invalid}"));
         assert_eq!((c.tab_size, c.tab_size_len), (Some(2.5), None), "{invalid}");
     }
+}
+
+#[test]
+fn user_select_is_not_inherited_and_auto_follows_the_parent_box() {
+    use crate::style::cascade::inherit::inherit;
+    use crate::style::computed::UserSelect;
+    let doc = DocState::new(Media::default());
+    let vcx = doc.values();
+    let none = inherit(&BoxStyle::default(), &style("user-select: none"), vcx);
+    assert_eq!(none.user_select, Some(UserSelect::None));
+    assert_eq!(none.no_select, Some(true));
+    // css-ui-4 §6.1: the computed value is not inherited ...
+    let child = inherit(&none, &Computed::default(), vcx);
+    assert_eq!(child.user_select, None);
+    // ... but the used value of `auto` under a `none` box is `none`.
+    assert_eq!(child.no_select, Some(true));
+    assert_eq!(
+        inherit(&none, &style("user-select: auto"), vcx).no_select,
+        Some(true)
+    );
+    assert_eq!(
+        inherit(&none, &style("user-select: text"), vcx).no_select,
+        Some(false)
+    );
+    let all = inherit(&BoxStyle::default(), &style("user-select: all"), vcx);
+    assert_eq!(
+        inherit(&all, &style("user-select: auto"), vcx).no_select,
+        Some(false)
+    );
+    // `inherit` takes the parent's computed keyword.
+    let explicit = inherit(&all, &style("user-select: inherit"), vcx);
+    assert_eq!(explicit.user_select, Some(UserSelect::All));
+    assert_eq!(
+        style("-webkit-user-select: contain").user_select,
+        Some(UserSelect::Contain)
+    );
 }

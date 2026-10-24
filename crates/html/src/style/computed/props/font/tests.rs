@@ -2,7 +2,7 @@
 //! наследование групп `font-variant-*`.
 
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::css::parse_decls;
 use crate::style::values::value::Len;
 
@@ -125,14 +125,14 @@ fn variant_groups_inherit_separately_and_font_resets_them() {
     let vcx = doc.values();
     let parent = style("font-variant: small-caps tabular-nums", vcx);
     let child = style("font-variant-caps: normal", vcx);
-    let c = inherit(&parent, &child, vcx);
+    let c = inherit(&BoxStyle::from(parent.clone()), &child, vcx);
     assert!(c.font_features.iter().any(|(t, _)| t == "tnum"));
     assert!(!c.font_features.iter().any(|(t, _)| t == "smcp"));
     let child = style("font: 16px serif", vcx);
-    let c = inherit(&parent, &child, vcx);
+    let c = inherit(&BoxStyle::from(parent.clone()), &child, vcx);
     assert!(c.font_features.is_empty(), "{:?}", c.font_features);
     let child = style("font-variant-numeric: inherit", vcx);
-    let c = inherit(&parent, &child, vcx);
+    let c = inherit(&BoxStyle::from(parent), &child, vcx);
     assert!(c.font_features.iter().any(|(t, _)| t == "tnum"));
 }
 

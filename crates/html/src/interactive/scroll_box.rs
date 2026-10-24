@@ -9,7 +9,7 @@ use hoisting::hoist_from_scroll;
 use crate::dom::Element;
 use crate::layout::box_kind::in_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -19,23 +19,23 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 /// это `hidden`, и подменять одно другим значило терять содержимое.
 pub(crate) fn scrollable(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    if e.style.scroller || e.tag == "frameset" || crate::layout::box_kind::real_inline(e) {
+    if e.style.used().scroller || e.tag == "frameset" || crate::layout::box_kind::real_inline(e) {
         return None;
     }
     use crate::style::computed::Overflow;
     // Eligibility follows computed overflow; the initially visible opposite
     // axis becomes auto even when it has no declaration (Overflow 3 §3).
-    if ![e.style.overflow_x, e.style.overflow_y]
+    if ![e.style.used().overflow_x, e.style.used().overflow_y]
         .into_iter()
         .any(|o| matches!(o, Some(Overflow::Scroll | Overflow::Hidden)))
     {
         return None;
     }
-    let scroll_style = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
+    let scroll_style = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
     let snap = scroll_style.snap.axis != 0;
     let horizontal = scroll_style.overflow_x == Some(Overflow::Scroll)
         || snap && scroll_style.overflow_x == Some(Overflow::Hidden);
@@ -45,22 +45,22 @@ pub(crate) fn scrollable(
         return None;
     }
     let scroll_projection = crate::interactive::scroll_extent::projection(
-        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll.frame.as_ref(),
         inherited.self_node,
         Some(&scroll_style),
-        opts.cx.sticky.as_ref(),
+        opts.cx.scroll.sticky.as_ref(),
     );
     // Лента и её содержимое — внутри проекции (`ShiftLink`).
     let projected_opts = scroll_projection
         .as_ref()
-        .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
+        .map(|p| opts.inner(|cx| cx.scroll.sticky = Some(p.link().clone())));
     let opts = projected_opts.as_deref().unwrap_or(opts);
-    let area_sticky = opts.cx.sticky.clone();
-    let parent_frame = opts.cx.scroll_frame.clone();
-    let freeze_scrollbars = opts.cx.freeze_scrollbars;
+    let area_sticky = opts.cx.scroll.sticky.clone();
+    let parent_frame = opts.cx.scroll.frame.clone();
+    let freeze_scrollbars = opts.cx.deferred.freeze_scrollbars;
     let mut node = e.clone();
-    node.style.overflow_x = scroll_style.overflow_x;
-    node.style.overflow_y = scroll_style.overflow_y;
+    node.style.used_mut().overflow_x = scroll_style.overflow_x;
+    node.style.used_mut().overflow_y = scroll_style.overflow_y;
     // Слой ICB закрывается раньше, чем `ScrollArea` позовёт `build`, — поэтому
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
     hoist_from_scroll(&mut node, inherited, opts);
@@ -71,7 +71,7 @@ pub(crate) fn scrollable(
             // Keep CSS overflow on the native box; `scroller` only prevents
             // recursive adapters while its ScrollHandle is attached.
             let mut inner = node.clone();
-            inner.style.scroller = true;
+            inner.style.used_mut().scroller = true;
             // Доли высоты коробки — от её СОДЕРЖАЩЕГО блока (CSS 2.1 §10.5,
             // §10.7: «calculated with respect to the height of the generated
             // box's containing block»), а не от ленты: лента `d` своей высоты
@@ -89,7 +89,7 @@ pub(crate) fn scrollable(
             // высотой в точках (у гибкого и сеточного долю решает раскладка, у
             // абсолюта содержащий блок другой); `border-box` родителя — мимо,
             // его `height` не высота содержимого.
-            if in_flow(&node.style)
+            if in_flow(&node.style.used())
                 && matches!(inherited.display, None | Some(Display::Block))
                 && inherited.border_box != Some(true)
                 && let Some(Len::Px(ph)) = inherited.height
@@ -99,15 +99,15 @@ pub(crate) fn scrollable(
                     Some(Len::Pct(k)) => Some(Len::Px(k * ph)),
                     other => other,
                 };
-                inner.style.height = of(inner.style.height);
-                inner.style.min_height = of(inner.style.min_height);
-                inner.style.max_height = of(inner.style.max_height);
+                inner.style.used_mut().height = of(inner.style.used().height);
+                inner.style.used_mut().min_height = of(inner.style.used().min_height);
+                inner.style.used_mut().max_height = of(inner.style.used().max_height);
             }
             // Наружный отступ принадлежит коробке, а не видимой области:
             // оставленный внутри, он увеличивал ленту на свою величину, и
             // содержимое было видно ниже края панели.
-            let outer_margin = inner.style.margin;
-            inner.style.margin = Default::default();
+            let outer_margin = inner.style.used().margin;
+            inner.style.used_mut().margin = Default::default();
             let target = crate::interactive::scroll_target::Target::new(
                 node.node_id,
                 handle,
@@ -116,10 +116,14 @@ pub(crate) fn scrollable(
                 outer_margin,
             );
             let inner_opts = opts.inner(|cx| {
-                cx.scroll_target = Some(target.clone());
-                cx.scroll_frame = frame;
+                cx.scroll.target = Some(target.clone());
+                cx.scroll.frame = frame;
             });
-            let built = inner_opts.cx.build.element(&inner, &inherited, &inner_opts);
+            let built = inner_opts
+                .cx
+                .contracts
+                .build
+                .element(&inner, &inherited, &inner_opts);
             if target.applied() {
                 return built;
             }
@@ -134,7 +138,7 @@ pub(crate) fn scrollable(
             // прокрутки (0) давал ленте ужаться под первым же потолком
             // родителя до нуля (`line-clamp-007`: `overflow:auto`-ребёнок
             // клэмп-контейнера пропадал целиком).
-            if let Some(shrink) = node.style.flex_shrink {
+            if let Some(shrink) = node.style.used().flex_shrink {
                 d.style().flex_shrink = Some(shrink);
             }
             if h {
@@ -155,7 +159,8 @@ pub(crate) fn scrollable(
             // ширины не резала ничего (`white-space-pre-wrap-trailing-spaces-
             // 021`: висящие пробелы `overflow: auto`-коробки шириной в `ch`
             // выходили за её край).
-            let sized = crate::style::cascade::inherit::inherit(&inherited, &inner.style, vcx);
+            let sized =
+                crate::style::cascade::materialize::box_style(&inherited, &inner.style, vcx);
             if h && let Some(Len::Px(w)) = sized.width {
                 let side = |l: Option<Len>| match l {
                     None | Some(Len::Auto) => Some(0.0),
@@ -167,7 +172,7 @@ pub(crate) fn scrollable(
                     .zip(side(sized.padding.right))
                     .zip(side(b.left).zip(side(b.right)))
                     .map(|((pl, pr), (bl, br))| pl + pr + bl + br);
-                let lane = if inner.style.border_box == Some(true) {
+                let lane = if inner.style.used().border_box == Some(true) {
                     Some(w)
                 } else {
                     edges.map(|e| w + e)
@@ -185,7 +190,7 @@ pub(crate) fn scrollable(
                         inherited.display,
                         Some(Display::Flex) | Some(Display::InlineFlex)
                     );
-                    if node.style.flex_shrink.is_none() && !flex_item {
+                    if node.style.used().flex_shrink.is_none() && !flex_item {
                         d = d.flex_shrink_0();
                     }
                 }
@@ -212,13 +217,13 @@ pub(crate) fn scrollable(
 /// Обернуть элемент ручкой изменения размера, если `resize` разрешает.
 pub(crate) fn resizable(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    if e.style.pointer_events_none == Some(true) {
+    if e.style.cascaded().pointer_events_none == Some(true) {
         return None;
     }
-    let (horizontal, vertical) = e.style.resize?;
+    let (horizontal, vertical) = e.style.used().resize?;
     let axis = match (horizontal, vertical) {
         (true, true) => crate::interactive::resizable::ResizeAxis::Both,
         (true, false) => crate::interactive::resizable::ResizeAxis::Horizontal,
@@ -231,14 +236,14 @@ pub(crate) fn resizable(
         // Заданный мышью размер побеждает разметку — как и в браузере, где
         // он пишется в инлайн-стиль элемента.
         let mut mixed = node.clone();
-        mixed.style.resize = None;
+        mixed.style.used_mut().resize = None;
         if let Some(w) = w {
-            mixed.style.width = Some(Len::Px(w));
+            mixed.style.used_mut().width = Some(Len::Px(w));
         }
         if let Some(h) = h {
-            mixed.style.height = Some(Len::Px(h));
+            mixed.style.used_mut().height = Some(Len::Px(h));
         }
-        opts.cx.build.element(&mixed, &inherited, &opts)
+        opts.cx.contracts.build.element(&mixed, &inherited, &opts)
     });
     Some(crate::interactive::resizable::Resizable::new(id, axis, build).into_any_element())
 }

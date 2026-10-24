@@ -118,12 +118,24 @@ mod tests {
             style="color: green; background-color: blue; font-size: 30px">x</mtext></math>"#,
             "",
         );
-        assert_eq!(find(&nodes, "html").style.font_size, None);
-        assert_eq!(find(&nodes, "html").style.color, None);
-        assert_eq!(find(&nodes, "hint").style.color, Color::parse("red", vcx));
-        assert_eq!(find(&nodes, "hint").style.font_size, Some(Len::Pct(2.0)));
-        assert_eq!(find(&nodes, "css").style.font_size, Some(Len::Px(30.0)));
-        assert_eq!(find(&nodes, "css").style.color, Color::parse("green", vcx));
+        assert_eq!(find(&nodes, "html").style.cascaded().font_size, None);
+        assert_eq!(find(&nodes, "html").style.cascaded().color, None);
+        assert_eq!(
+            find(&nodes, "hint").style.cascaded().color,
+            Color::parse("red", vcx)
+        );
+        assert_eq!(
+            find(&nodes, "hint").style.cascaded().font_size,
+            Some(Len::Pct(2.0))
+        );
+        assert_eq!(
+            find(&nodes, "css").style.cascaded().font_size,
+            Some(Len::Px(30.0))
+        );
+        assert_eq!(
+            find(&nodes, "css").style.cascaded().color,
+            Color::parse("green", vcx)
+        );
     }
     #[test]
     fn invalid_mathsize_and_injected_declarations_are_rejected() {
@@ -132,8 +144,8 @@ mod tests {
             "",
         );
         let e = find(&nodes, "bad");
-        assert_eq!(e.style.font_size, None);
-        assert_eq!(e.style.color, None);
+        assert_eq!(e.style.cascaded().font_size, None);
+        assert_eq!(e.style.cascaded().color, None);
     }
     #[test]
     fn semantics_ua_hiding_remains_overridable() {

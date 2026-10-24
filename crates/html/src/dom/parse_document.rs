@@ -221,7 +221,6 @@ pub(super) fn parse_input(
     if tree.doc.quirks() {
         super::quirks_color::resolve(&mut out, vcx);
     }
-    resolve_rule_color_inherit(&mut out, &RuleColors::default());
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
     crate::dom::table_boxes::inline_anon_tables(&mut out);

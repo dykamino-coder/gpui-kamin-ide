@@ -13,7 +13,7 @@ use crate::style::values::value::Len;
 /// only for the outermost SVG. An authored CSS dimension takes precedence.
 pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     if element.tag != "svg"
-        || element.style.position == Some(Position::Fixed)
+        || element.style.used().position == Some(Position::Fixed)
         || parent.inline_display == Some(true)
         || !matches!(
             parent.display,
@@ -24,14 +24,14 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     }
     // Fixed positioning needs the viewport or a transformed containing block,
     // neither of which can be inferred from the immediate parent's dimensions.
-    let positioned = element.style.position == Some(Position::Absolute);
+    let positioned = element.style.used().position == Some(Position::Absolute);
     if positioned && matches!(parent.position, None | Some(Position::Static)) && !parent.root_box {
         // The DOM parent is not necessarily the positioned containing block.
         return None;
     }
     let percentages = [
-        ("width", element.style.width),
-        ("height", element.style.height),
+        ("width", element.style.used().width),
+        ("height", element.style.used().height),
     ]
     .map(|(name, dimension)| {
         if dimension.is_some() {
@@ -70,9 +70,10 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     });
     let mut copy = element.clone();
     let mut changed = false;
+    let style = &mut *copy.style.used_mut();
     for (axis, (base, dimension)) in [
-        (parent.width, &mut copy.style.width),
-        (parent.height, &mut copy.style.height),
+        (parent.width, &mut style.width),
+        (parent.height, &mut style.height),
     ]
     .into_iter()
     .enumerate()

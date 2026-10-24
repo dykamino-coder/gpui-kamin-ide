@@ -51,8 +51,8 @@ mod tests {
             .map(|_| {
                 let mut element =
                     crate::layout::table::anon::anon_element("div", vec![Node::Text("É".into())]);
-                element.style.margin.left = Some(Len::Px(12.0));
-                element.style.margin.right = Some(Len::Px(6.0));
+                element.style.used_mut().margin.left = Some(Len::Px(12.0));
+                element.style.used_mut().margin.right = Some(Len::Px(6.0));
                 Node::Element(element)
             })
             .collect()
@@ -70,19 +70,23 @@ mod tests {
             Display::GridLanes,
         ] {
             for reverse in [false, true] {
-                let parent = Computed {
-                    display: Some(display),
-                    writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                        true, false, false,
-                    )),
-                    ..Computed::default()
+                let parent = {
+                    let mut with_inherited = Computed {
+                        display: Some(display),
+                        ..Computed::default()
+                    };
+                    with_inherited.writing_mode =
+                        Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                            true, false, false,
+                        ));
+                    with_inherited
                 };
                 for node in children(items(), &parent, reverse, Some(0.0), vcx) {
                     let Node::Element(item) = node else {
                         panic!("element expected")
                     };
-                    assert_eq!(item.style.margin.left, Some(Len::Px(12.0)));
-                    assert_eq!(item.style.margin.right, Some(Len::Px(6.0)));
+                    assert_eq!(item.style.used().margin.left, Some(Len::Px(12.0)));
+                    assert_eq!(item.style.used().margin.right, Some(Len::Px(6.0)));
                 }
             }
         }
@@ -92,18 +96,21 @@ mod tests {
     fn ordinary_vertical_blocks_still_collapse_adjacent_positive_margins() {
         let metric_doc = crate::document::state::DocState::new(Default::default());
         let vcx = metric_doc.values();
-        let parent = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let parent = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         let result = children(items(), &parent, false, None, vcx);
         let Node::Element(second) = &result[1] else {
             panic!("element expected")
         };
-        assert_eq!(second.style.margin.left, Some(Len::Px(6.0)));
-        assert_eq!(second.style.margin.right, Some(Len::Px(6.0)));
+        assert_eq!(second.style.used().margin.left, Some(Len::Px(6.0)));
+        assert_eq!(second.style.used().margin.right, Some(Len::Px(6.0)));
     }
 
     #[test]
@@ -115,14 +122,14 @@ mod tests {
             let Node::Element(middle) = &mut input[1] else {
                 unreachable!()
             };
-            middle.style.display = Some(Display::InlineBlock);
+            middle.style.used_mut().display = Some(Display::InlineBlock);
             let output = children(input, &Computed::default(), reverse, None, vcx);
             for index in [1, 2] {
                 let Node::Element(item) = &output[index] else {
                     unreachable!()
                 };
-                assert_eq!(item.style.margin.left, Some(Len::Px(12.0)));
-                assert_eq!(item.style.margin.right, Some(Len::Px(6.0)));
+                assert_eq!(item.style.used().margin.left, Some(Len::Px(12.0)));
+                assert_eq!(item.style.used().margin.right, Some(Len::Px(6.0)));
             }
         }
     }
@@ -138,7 +145,10 @@ mod tests {
             let Node::Element(second) = &output[2] else {
                 unreachable!()
             };
-            assert_eq!(second.style.margin.left, Some(Len::Px(expected_left)));
+            assert_eq!(
+                second.style.used().margin.left,
+                Some(Len::Px(expected_left))
+            );
         }
     }
 }

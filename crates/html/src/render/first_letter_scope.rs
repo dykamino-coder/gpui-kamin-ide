@@ -4,11 +4,11 @@
 //! поздние анонимные абзацы собираются уже без `first_letter`.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::route::paragraph_probed;
-use crate::style::computed::{Computed, Display};
-use crate::text::text_box::blank_text;
+use crate::style::computed::{BoxStyle, Computed, Display};
 use gpui::AnyElement;
 
 pub(crate) struct Scope {
@@ -35,10 +35,10 @@ impl Scope {
     pub(super) fn paragraph(
         &mut self,
         nodes: &[Node],
-        style: &Computed,
+        style: &BoxStyle,
         opts: &RenderOpts,
     ) -> AnyElement {
-        let build = |style: &Computed| paragraph_probed(nodes, style, opts);
+        let build = |style: &BoxStyle| paragraph_probed(nodes, style, opts);
         let first = self.first;
         if nodes.iter().any(|n| {
             in_flow(
@@ -66,19 +66,19 @@ fn in_flow(node: &Node, spaces: bool, newlines: bool) -> bool {
             !blank_text(t) || (spaces && !t.is_empty()) || (newlines && t.contains('\n'))
         }
         Node::Element(e)
-            if out_of_flow(&e.style)
-                || e.style.display == Some(Display::None)
-                || e.style.first_letter_excluded
+            if out_of_flow(&e.style.used())
+                || e.style.used().display == Some(Display::None)
+                || e.style.used().first_letter_excluded
                 || e.tag == "::marker" =>
         {
             false
         }
-        Node::Element(e) if e.style.display == Some(Display::Contents) => {
+        Node::Element(e) if e.style.used().display == Some(Display::Contents) => {
             e.children.iter().any(|n| {
                 in_flow(
                     n,
-                    e.style.keep_spaces.unwrap_or(spaces),
-                    e.style.preserve_newlines.unwrap_or(newlines),
+                    e.style.cascaded().keep_spaces.unwrap_or(spaces),
+                    e.style.cascaded().preserve_newlines.unwrap_or(newlines),
                 )
             })
         }

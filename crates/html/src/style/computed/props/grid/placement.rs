@@ -19,9 +19,13 @@ impl Computed {
         match key {
             "grid-template-rows" => {
                 let tracks = parsed_value!(self, super::templates::template_tracks(v, vcx));
-                self.subgrid_rows = v.contains("subgrid");
+                self.subgrid_rows = super::subgrid::valid(v, vcx);
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
-                self.grid_row_line_names = parse_line_names(v);
+                self.grid_row_line_names = if self.subgrid_rows {
+                    super::subgrid::parse(v, vcx)
+                } else {
+                    parse_line_names(v)
+                };
                 self.grid_rows = tracks;
                 // Поля авто-повтора рядов принадлежат этому же свойству.
                 self.grid_auto_fill_row = None;
@@ -66,12 +70,11 @@ impl Computed {
                 self.set_grid_line(key, v);
             }
             "grid-template-areas" => {
-                // Явное `inherit` — запись родителя (её переносит
-                // `doc::settle_explicit_inherit`): прежде слово само шло в
-                // область `inherit`, а `grid-area: a` у детей не находил
-                // области (`grid-placement-using-named-grid-lines-008`).
-                self.grid_areas_inherit = v.trim().eq_ignore_ascii_case("inherit");
-                if self.grid_areas_inherit {
+                // Явное `inherit` — запись родителя (её копирует стадия
+                // вычисленных значений, `compute::longhands`): прежде слово
+                // само шло в область `inherit`, а `grid-area: a` у детей не
+                // находил области (`grid-placement-using-named-grid-lines-008`).
+                if v.trim().eq_ignore_ascii_case("inherit") {
                     return;
                 }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.

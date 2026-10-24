@@ -12,6 +12,7 @@
 //! доступным (`inline_layout_algorithm.cc` → `LayoutAtomicInline`).
 
 use super::*;
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Window, px, size};
 
 pub(super) struct FitAtom {
@@ -57,11 +58,11 @@ impl AtomFit {
         }
         let mut out = Vec::new();
         for a in self.atoms.iter_mut() {
-            if avail >= a.max - 0.01 {
+            if avail >= a.max - COORD_EPS {
                 continue;
             }
             let w = avail.max(a.min);
-            if w >= a.max - 0.01 {
+            if w >= a.max - COORD_EPS {
                 continue;
             }
             a.snap.cap_child_outer_width(ATOM_CHILD, px(w));
@@ -107,7 +108,7 @@ impl Paragraph {
                     cx,
                 );
                 let min = f32::from(smin.width);
-                if min >= max - 0.01 {
+                if min >= max - COORD_EPS {
                     continue;
                 }
                 let (smax, sbase, _) = snap.measure(

@@ -19,7 +19,7 @@ pub(super) fn hoist_grid_abspos(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         hoist_grid_abspos(&mut el.children);
-        if !is_grid(&el.style) || !own_containing_block(&el.style) {
+        if !is_grid(el.style.cascaded()) || !own_containing_block(el.style.cascaded()) {
             continue;
         }
         let mut taken = vec![];
@@ -27,22 +27,30 @@ pub(super) fn hoist_grid_abspos(nodes: &mut [Node]) {
             let Node::Element(child) = child else {
                 continue;
             };
-            if own_containing_block(&child.style) || is_grid(&child.style) {
+            if own_containing_block(child.style.cascaded()) || is_grid(child.style.cascaded()) {
                 continue;
             }
-            steal_placed(&mut child.children, &mut taken);
+            steal_placed(child, &mut taken);
         }
         el.children.extend(taken);
     }
 }
 
-/// Забрать из поддерева абсолютные элементы с заданными линиями сетки.
-fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
-    let mut kept = Vec::with_capacity(children.len());
-    for mut node in children.drain(..) {
+/// Забрать из поддерева `owner` абсолютные элементы с заданными линиями сетки. Переносится
+/// коробка, а не элемент: родителем-элементом для наследования остаётся `owner`
+/// (`Marks::style_parent`, css-display-3 §1).
+fn steal_placed(owner: &mut Element, out: &mut Vec<Node>) {
+    let mut kept = Vec::with_capacity(owner.children.len());
+    let mut lent = false;
+    for mut node in owner.children.drain(..) {
         if let Node::Element(el) = &mut node {
-            let placed = el.style.grid_col.is_some() || el.style.grid_row.is_some();
-            if el.style.position == Some(Position::Absolute) && placed {
+            let placed =
+                el.style.cascaded().grid_col.is_some() || el.style.cascaded().grid_row.is_some();
+            if el.style.cascaded().position == Some(Position::Absolute) && placed {
+                if owner.node_id != 0 {
+                    el.marks.style_parent = Some(owner.node_id);
+                    lent = true;
+                }
                 out.push(node);
                 continue;
             }
@@ -52,13 +60,14 @@ fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
             // собственному числу дорожек (`subgrid/abs-pos-001`). А вот обычная
             // вложенная сетка без своего отсчёта помехой не служит: её потомок
             // по-прежнему принадлежит внешней сетке (css-grid-2 §9).
-            if !own_containing_block(&el.style) && !el.style.subgrid {
-                steal_placed(&mut el.children, out);
+            if !own_containing_block(el.style.cascaded()) && !el.style.cascaded().subgrid {
+                steal_placed(el, out);
             }
         }
         kept.push(node);
     }
-    *children = kept;
+    owner.children = kept;
+    owner.marks.lends_style |= lent;
 }
 
 /// Контейнер сетки — это и `inline-grid`: разница только в том, как коробка

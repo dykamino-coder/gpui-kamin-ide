@@ -2,14 +2,13 @@
 
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
 use crate::paint::stacking::{fixed_cb_layer_box, stacking_context};
-
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layer_route(
     paged: bool,
     e: &crate::dom::Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     under_tf: bool,
     ordered_context: bool,
     geometry_layer_ok: bool,
@@ -17,16 +16,17 @@ pub(crate) fn layer_route(
     idx: usize,
     cx: &crate::layout::cx::LayoutCx,
 ) -> (bool, bool, bool, bool, bool, bool, bool) {
-    let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
-    let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
+    let x_set = edge_set(e.style.used().inset.left) || edge_set(e.style.used().inset.right);
+    let y_set = edge_set(e.style.used().inset.top) || edge_set(e.style.used().inset.bottom);
     // `fixed` считается ОТ ОКНА всегда (§10.1 п.3): позиционированный
     // предок ему не содержащий блок, и заданной оси от него не
     // требуется — незаданная сторона держит статическое место. Пока он
     // шёл общим путём, коробка висела от края родителя.
-    let fixed = e.style.position == Some(crate::style::computed::Position::Fixed) && !under_tf;
+    let fixed =
+        e.style.used().position == Some(crate::style::computed::Position::Fixed) && !under_tf;
     // `fixed` под трансформом — абсолют относительно этого предка.
-    let abs_like = e.style.position == Some(crate::style::computed::Position::Absolute)
-        || (e.style.position == Some(crate::style::computed::Position::Fixed) && under_tf);
+    let abs_like = e.style.used().position == Some(crate::style::computed::Position::Absolute)
+        || (e.style.used().position == Some(crate::style::computed::Position::Fixed) && under_tf);
     // В стопке страниц абсолют корня уходит в слой и без заданных
     // сторон: на месте его резала бы маска фрагмента кида
     // (`monolithic-overflow-013`); статическую позицию копии 0 даёт
@@ -58,7 +58,8 @@ pub(crate) fn layer_route(
     // css-contain-2 §3.2), а позиционированные между ними — нет
     // (`out-of-flow-in-multicolumn-029`: `fixed` внутри абсолюта
     // внутри трансформа). Родитель-трансформ держит его на месте.
-    let tf_fixed = e.style.position == Some(crate::style::computed::Position::Fixed) && under_tf;
+    let tf_fixed =
+        e.style.used().position == Some(crate::style::computed::Position::Fixed) && under_tf;
     // Без заданных сторон — тоже: на месте раскладка разрешила бы
     // проценты размеров от РОДИТЕЛЯ (`width: 100%` у абсолютного
     // родителя нулевой ширины, `out-of-flow-in-multicolumn-044`), а
@@ -78,7 +79,7 @@ pub(crate) fn layer_route(
                 // Replaced boxes and inline static positions retain their
                 // intrinsic/line wrapper until those layout paths carry CB
                 // geometry separately from the hypothetical inline box.
-                && e.style.inline_display != Some(true)
+                && e.style.used().inline_display != Some(true)
                 && !matches!(
                     e.tag.as_str(),
                     "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -90,7 +91,7 @@ pub(crate) fn layer_route(
     // parent's box, e.g. a `body` lowered by a collapsed margin
     // (spec-examples `shape-outside-001`: `#failure-container`).
     let below_icb = (orphan_abs || fixed)
-        && e.style.z_index.is_some_and(|z| z < 0)
+        && e.style.used().z_index.is_some_and(|z| z < 0)
         && !stacking_context(inherited);
     // In a flex/grid container the static-position probe is missing, but with
     // both axes set it is not needed: the containing block of `fixed` (and of an
@@ -99,9 +100,9 @@ pub(crate) fn layer_route(
     let to_icb = (!ordered_context || (x_set && y_set))
         && geometry_layer_ok
         && (fixed || orphan_abs)
-        && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
+        && (e.style.used().z_index.unwrap_or(0) >= 0 || below_icb)
         && (!stays_positioned(&nodes[idx + 1..])
-            || cx.positioning.icb_active() && !(fixed && paged));
+            || cx.position.state.icb_active() && !(fixed && paged));
     // В гибком контейнере и сетке слой содержащего блока закрыт: там
     // нет щупа статической позиции. Но при ОБЕИХ заданных осях щуп и не
     // нужен (CSS 2.1 §10.1 п.4 — содержащий блок ближайший
@@ -112,7 +113,7 @@ pub(crate) fn layer_route(
         && (!ordered_context || (x_set && y_set))
         && geometry_layer_ok
         && far_abs
-        && e.style.z_index.unwrap_or(0) >= 0
-        && (!stays_positioned(&nodes[idx + 1..]) || cx.positioning.cb_active(far_fixed));
+        && e.style.used().z_index.unwrap_or(0) >= 0
+        && (!stays_positioned(&nodes[idx + 1..]) || cx.position.state.cb_active(far_fixed));
     (x_set, y_set, fixed, below_icb, to_icb, to_cb, far_fixed)
 }

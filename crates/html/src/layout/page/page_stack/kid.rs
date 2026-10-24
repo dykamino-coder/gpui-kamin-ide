@@ -5,6 +5,26 @@
 use gpui::AnyElement;
 
 impl PageKid {
+    /// Break propagation follows measured flex line membership.
+    pub(super) fn measured_edge(&self, last: bool) -> (bool, bool) {
+        self.regrow
+            .as_ref()
+            .and_then(|r| {
+                self.watched
+                    .as_ref()?
+                    .blocks()
+                    .map(|b| b.edge(last, &r.laid))
+            })
+            .unwrap_or((
+                if last {
+                    self.force_after
+                } else {
+                    self.force_before
+                },
+                false,
+            ))
+    }
+
     /// Полосы повтора таблицы по её разложенным секциям `sections` на листе с
     /// page area высотой `per` (`table_bands::repeat_spec`); без повторяемой
     /// секции повтора нет вовсе.
@@ -58,12 +78,18 @@ impl PageKid {
 // A page shape stores height, cuts, forced breaks and monolithic intervals together.
 #[allow(clippy::type_complexity)]
 pub struct PageKid {
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe: crate::FragmentProbes,
     pub el: AnyElement,
+    /// Повторная раскладка flex после роста независимого потока.
+    pub(crate) regrow: Option<crate::layout::fragment::push::Regrow>,
     /// Recorder of the main copy: measured lines and, for a group of one block
     /// box, its block stack (`paged::kids::breaks`).
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// A root float contributes its measured border box even outside normal flow.
     pub(crate) float_id: Option<u64>,
+    /// Пустые floats задают измеренную протяжённость за пределами normal flow.
+    pub(crate) float_extent: bool,
     /// Repeated table sections reserved by the common fragmentation planner.
     pub repeat: Option<crate::layout::fragment::types::Repeat>,
     /// Копии на случай разреза между страницами (см. `StackChild::frags`).
@@ -73,6 +99,8 @@ pub struct PageKid {
     /// Принудительный разрыв страницы перед/после (css-break-4 §3.1), включая
     /// смену имени страницы (css-page-3 §"Using named pages", п. 4).
     pub force_before: bool,
+    /// Смена имени страницы создаёт собственный разрыв перед группой.
+    pub(crate) renamed: bool,
     pub force_after: bool,
     /// Мера поддерева от `render::shape_full` (css-break-4 §possible-breaks):
     /// высота, точки разреза `(need, from)`, принудительные разрывы и монолиты

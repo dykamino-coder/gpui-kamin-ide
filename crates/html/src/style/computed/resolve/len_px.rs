@@ -193,11 +193,14 @@ mod tests {
     fn computed_font_context_reads_size_family_and_line() {
         let doc = crate::document::state::DocState::new(Default::default());
         let vcx = doc.values();
-        let c = Computed {
-            font_size: Some(Len::Px(10.0)),
-            font_family: Some("Ahem".into()),
-            line_height: Some(Len::Pct(2.0)),
-            ..Default::default()
+        let c = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Px(10.0));
+            with_inherited.font_family = Some("Ahem".into());
+            with_inherited.line_height = Some(Len::Pct(2.0));
+            with_inherited
         };
         let f = c.font_cx(vcx);
         assert_eq!((f.family, f.font_px, f.line_px), ("Ahem", 10.0, Some(20.0)));

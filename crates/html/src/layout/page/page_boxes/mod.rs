@@ -4,12 +4,13 @@
 //! и поля в точках листа, замыкания сборки элемента на готовый размер и меры по содержимому.
 //! Раскладку готовых `MarginBox` делает `page_stack`.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn};
 use crate::layout::page::page_counters;
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 mod content;
@@ -17,7 +18,7 @@ use content::content_nodes;
 
 pub(super) fn builder(
     declarations: PageMarginDeclsFn,
-    root: Computed,
+    root: BoxStyle,
     opts: RenderOpts,
     counters: page_counters::PageCounters,
 ) -> crate::layout::page::page_stack::MarginFn {
@@ -46,7 +47,7 @@ fn page_margin_boxes(
     page: usize,
     pages: usize,
     g: &crate::layout::page::page_stack::PageGeom,
-    root: &Computed,
+    root: &BoxStyle,
     opts: &RenderOpts,
     counters: &mut page_counters::PageCounters,
 ) -> Vec<crate::layout::page::page_stack::MarginBox> {
@@ -100,7 +101,7 @@ fn page_margin_boxes(
         own.resolve_logical(own.wm(), ctx_style.wm().vertical(), false, vcx);
         let fs = match resolved.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let mut content_counters = counters.for_margin(&own);
         let children = content_nodes(&items, &resolved, &mut content_counters, vcx);
@@ -208,10 +209,11 @@ fn page_margin_boxes(
                 children: vec![Node::Element(inner.clone())],
                 ..inner
             };
-            let mut els = opts
-                .cx
-                .build
-                .blocks(&[Node::Element(outer)], &ctx_style, &opts);
+            let mut els =
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&[Node::Element(outer)], &ctx_style, &opts);
             if els.len() == 1
                 && let Some(element) = els.pop()
             {

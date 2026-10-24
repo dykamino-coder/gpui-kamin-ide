@@ -3,6 +3,7 @@
 use super::ColumnStack;
 use crate::layout::fragment::fragment_mask;
 use crate::layout::fragment::types::{StackAxis, axis_box};
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, IntoElement, Pixels, Window, point, px, size};
 
 impl ColumnStack {
@@ -21,8 +22,12 @@ impl ColumnStack {
         let (inline_avail, block_avail) = self.axis_sizes(bounds);
         let col_w =
             ((inline_avail - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        if let Some(recipe) = self.deferred.clone() {
+            recipe.prepare(self, col_w, window, cx);
+        }
         let heights = self.kid_geoms();
-        let (_, lines, plan, spans) = self.balance(&heights);
+        let (_, lines, mut plan, spans) = self.balance(&heights);
+        plan.check_copies(|kid| self.children[kid].frags.len() + 1);
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;
@@ -43,6 +48,11 @@ impl ColumnStack {
                 full_h,
             );
             let kid = &mut self.children[f.kid];
+            let measured = kid.measure.is_some()
+                || matches!(
+                    kid.breaks_w,
+                    Some(crate::layout::fragment::types::BreaksAt::Width(_))
+                );
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
             else {
@@ -55,7 +65,9 @@ impl ColumnStack {
             // по доступному месту не тянет — тянет поперечная ось обёртки
             // (`align-items: stretch`). У `vertical-rl` начало блочной оси —
             // ПРАВЫЙ край обёртки (`flex_row_reverse`).
-            {
+            // Измеренная копия уже имеет эту обёртку при построении: нельзя
+            // переподчинять разложенный корень новому элементу GPUI.
+            if !measured {
                 use gpui::{ParentElement as _, Styled as _};
                 let inner = std::mem::replace(el, gpui::Empty.into_any_element());
                 let w = gpui::div().flex().w(b.size.width).h(b.size.height);
@@ -120,7 +132,7 @@ impl ColumnStack {
                     .map(|l| {
                         plan.iter()
                             .filter(|f| {
-                                f.h > 0.01 && (if wrap { f.col / self.count } else { 0 }) == l
+                                f.h > COORD_EPS && (if wrap { f.col / self.count } else { 0 }) == l
                             })
                             .map(|f| if wrap { f.col % self.count } else { f.col } + 1)
                             .max()
@@ -169,13 +181,15 @@ impl ColumnStack {
                 .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
             let line_h = self.lines_plan.borrow().first().map_or(0.0, |l| l.1);
             let k0 = &self.children[f.kid];
-            let keep = spill == 0.0 || k0.measure.is_some() || nested_frag;
-            let up = if !keep && f.copy == 0 && f.from <= 0.01 {
+            // Измерение размера не обрезает чернильное переполнение краёв
+            // без разрыва (css-break-3 §5.4). Свой clip задаёт вложенная стопка.
+            let keep = spill == 0.0 || nested_frag;
+            let up = if !keep && f.copy == 0 && f.from <= COORD_EPS {
                 spill
             } else {
                 0.0
             };
-            let down = if keep || continued || f.from + f.h < k0.over - 0.01 {
+            let down = if keep || continued || f.from + f.h < k0.over - COORD_EPS {
                 0.0
             } else {
                 (line_h - f.y - f.h).max(0.0)

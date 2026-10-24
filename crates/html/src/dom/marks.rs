@@ -27,6 +27,8 @@ pub struct Marks {
     pub(crate) host_trim_end: bool,
     /// A stack child fragmented by the paginate path of the multicol container.
     pub(crate) paginate: bool,
+    /// Оставшийся row-gap, перенесённый пагинацией в поле flex-элемента.
+    pub(crate) carried_row_gap: f32,
     /// `node_id` of the source-tree parent of a hoisted column spanner: margins
     /// of spanners from different parents do not collapse.
     pub(crate) span_parent: Option<u64>,
@@ -37,6 +39,17 @@ pub struct Marks {
     pub(crate) auto_zero_height: bool,
     /// Anonymous table cell (CSS 2.1 §17.2.1), not an HTML `td`.
     pub(crate) anonymous_cell: bool,
+    /// Anonymous box that document preparation wrapped around elements (an
+    /// anonymous table, CSS 2.1 §17.2.1): the parent element of the elements
+    /// inside is the element around it (CSS 2.1 §9.2.1.1, §6.2).
+    pub(crate) anonymous_wrapper: bool,
+    /// `node_id` of the parent element of an element whose box document
+    /// preparation moved under another box (a grid's absolutely positioned
+    /// descendant): inheritance still follows the element tree (css-display-3
+    /// §1, css-cascade-5 §7.2).
+    pub(crate) style_parent: Option<u64>,
+    /// The element is the `style_parent` of a moved element.
+    pub(crate) lends_style: bool,
     /// Synthetic measured float band host (`band_flow_host`).
     pub(crate) shape_flow: Option<ShapeFlow>,
     /// The band host's in-flow content alone sizes it (CSS 2.1 §10.6.3).

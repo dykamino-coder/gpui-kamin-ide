@@ -48,4 +48,7 @@ pub(super) fn has_box_style(c: &crate::style::computed::Computed) -> bool {
         || c.gradient.is_some()
         || c.bg_image.is_some()
         || c.background_color.is_some()
+        // Зум обёртки домножает длины всего содержимого: он живёт в
+        // вычисленном стиле коробки и без неё до потомков не дойдёт.
+        || c.zoom.is_some_and(|z| (z - 1.0).abs() > f32::EPSILON)
 }

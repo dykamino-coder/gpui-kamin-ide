@@ -121,3 +121,46 @@ fn row_push_grows_the_items_ending_above() {
     );
     assert_eq!(b.pushed_at(20.0, &laid), None);
 }
+
+#[test]
+fn empty_grid_keeps_native_tracks_and_their_break_boundaries() {
+    let (b, ids) = grid("<div style='display:grid;grid-template-rows:auto 1fr 10%'></div>");
+    assert!(ids.is_empty());
+    assert!(!b.is_empty());
+    assert!(b.ids().contains(&b.id));
+    let mut laid = Laid::of_boxes(&[(b.id, 0.0, 137.0)]);
+    laid.grids
+        .insert(b.id, vec![(0.0, 61.0), (61.0, 120.0), (120.0, 137.0)]);
+    assert_eq!(b.pushed_at(61.0, &laid), None);
+    let m = breaks(
+        &b,
+        &[(b.id, 0.0, 137.0)],
+        &[(0.0, 61.0), (61.0, 120.0), (120.0, 137.0)],
+        137.0,
+    );
+    assert!(m.cuts.is_empty());
+    assert!(m.solid.is_empty());
+    assert!(m.forced.is_empty());
+    // В пустых дорожках нет содержимого, которое нужно вытолкнуть.
+    // Разрез не переразрешает auto/fr/percent и не меняет align-content.
+    let kid = crate::layout::fragment::types::Kid {
+        h: 137.0,
+        over: 137.0,
+        cuts: m.cuts,
+        solid: m.solid,
+        forced: m.forced,
+        ..Default::default()
+    };
+    for height in [50.0, 61.0, 100.0] {
+        assert!(
+            crate::layout::multicol::column_stack::ColumnStack::growths(
+                std::slice::from_ref(&kid),
+                2,
+                Some(height),
+                None,
+                8,
+            )
+            .is_empty()
+        );
+    }
+}

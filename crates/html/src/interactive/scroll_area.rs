@@ -4,6 +4,7 @@
 //! измерения переполнения просит перерисовку, красит полосы и их области попадания.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, ElementId};
 mod lifecycle;
 use std::rc::Rc;
@@ -16,7 +17,7 @@ pub struct ScrollArea {
     pub(crate) id: ElementId,
     pub(crate) horizontal: bool,
     pub(crate) vertical: bool,
-    pub(crate) style: crate::style::computed::Computed,
+    pub(crate) style: BoxStyle,
     tree: Option<Rc<crate::dom::Element>>,
     parent_extent: Option<super::scroll_extent::Frame>,
     /// Shift chain the area is built in (`ShiftLink`): its border box and
@@ -49,11 +50,7 @@ impl ScrollArea {
             sticky: None,
         }
     }
-    pub(crate) fn with_style(
-        mut self,
-        style: crate::style::computed::Computed,
-        freeze: bool,
-    ) -> Self {
+    pub(crate) fn with_style(mut self, style: BoxStyle, freeze: bool) -> Self {
         self.freeze_scrollbars = freeze;
         self.style = style;
         self

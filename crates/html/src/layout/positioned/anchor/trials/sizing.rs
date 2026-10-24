@@ -2,15 +2,23 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
+use crate::style::css::LonghandId as L;
 use crate::style::values::value::{AnchorFn, AnchorSize, Len, anchor_get, anchor_store};
 
 pub(super) fn transpose(c: &mut Computed, vcx: ValueCx<'_>) {
     std::mem::swap(&mut c.width, &mut c.height);
     std::mem::swap(&mut c.min_width, &mut c.min_height);
     std::mem::swap(&mut c.max_width, &mut c.max_height);
-    std::mem::swap(&mut c.width_inherit, &mut c.height_inherit);
-    c.minmax_inherit.swap(0, 1);
-    c.minmax_inherit.swap(2, 3);
+    for (a, b) in [
+        (L::Width, L::Height),
+        (L::MinWidth, L::MinHeight),
+        (L::MaxWidth, L::MaxHeight),
+    ] {
+        let av = c.inherit_longhands.contains(a);
+        let bv = c.inherit_longhands.contains(b);
+        c.inherit_longhands.set(a, bv);
+        c.inherit_longhands.set(b, av);
+    }
     c.calc_size.swap(0, 1);
     c.calc_size.swap(2, 3);
     c.calc_size_max.swap(0, 1);

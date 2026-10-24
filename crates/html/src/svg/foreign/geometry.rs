@@ -2,17 +2,20 @@
 //! матрицы), область снимка с запасом под `overflow: visible` отдельно от вьюпорта HTML,
 //! раскрытие `<image>` во вложенный `<svg>` с `overflow="visible"` для вылезшей краски и выбор
 //! единственного вклада `mix-blend-mode`, который может смешиваться с подложкой хоста.
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Overflow};
+use crate::style::values::value::Len;
 use gpui::{Pixels, Point, Size, point, px, size};
 
 // Largest singular value bounds the magnification, including skew/rotation.
 pub(super) fn scale(e: &Element) -> f32 {
     let matrix = e
         .style
+        .used()
         .transform
         .map(|t| {
-            t.after_individual(e.style.rotate_prop, e.style.scale_prop)
+            t.after_individual(e.style.used().rotate_prop, e.style.used().scale_prop)
                 .lin
         })
         .or_else(|| {
@@ -32,6 +35,7 @@ pub(super) fn capture(
     style: &Computed,
     (w, h): (f32, f32),
     viewport: (f32, f32),
+    zoom: f32,
 ) -> (Point<Pixels>, Size<Pixels>) {
     let x = if style.overflow_x == Some(Overflow::Visible) {
         viewport.0
@@ -43,17 +47,41 @@ pub(super) fn capture(
     } else {
         0.0
     };
-    (point(px(x), px(y)), size(px(w + 2.0 * x), px(h + 2.0 * y)))
+    (
+        point(px(x * zoom), px(y * zoom)),
+        size(px((w + 2.0 * x) * zoom), px((h + 2.0 * y) * zoom)),
+    )
 }
 
-pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>) {
+/// Геометрия SVG — в пользовательских единицах; абсолютная CSS-длина уже
+/// несёт действующий зум, а атрибут и процент от SVG-вьюпорта — ещё нет.
+pub(super) fn length(
+    style: Option<Len>,
+    attr: Option<&str>,
+    base: f32,
+    zoom: f32,
+    vcx: ValueCx<'_>,
+) -> f32 {
+    match style {
+        Some(Len::Px(v)) => v / zoom,
+        Some(Len::Pct(v)) => base * v,
+        None => match attr.and_then(|s| Len::parse(s, vcx)) {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(v)) => base * v,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    }
+}
+
+pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>, zoom: f32) {
     let mut image = e.clone();
     image.style = Computed::default().into();
     image.attrs = [
-        ("x", -f32::from(origin.x)),
-        ("y", -f32::from(origin.y)),
-        ("width", f32::from(size.width)),
-        ("height", f32::from(size.height)),
+        ("x", -f32::from(origin.x) / zoom),
+        ("y", -f32::from(origin.y) / zoom),
+        ("width", f32::from(size.width) / zoom),
+        ("height", f32::from(size.height) / zoom),
     ]
     .into_iter()
     .map(|(k, v)| (k.into(), v.to_string()))
@@ -69,7 +97,7 @@ pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>)
 // A sole SVG paint contribution can blend with the host backdrop after SVG
 // transforms/clips have been applied. Multiple contributions retain SVG order.
 pub(super) fn sole_blend(e: &Element) -> Option<u8> {
-    if e.style.isolate == Some(true) || e.style.opacity.is_some_and(|v| v < 1.0) {
+    if e.style.used().isolate == Some(true) || e.style.used().opacity.is_some_and(|v| v < 1.0) {
         return None;
     }
     let mut children = e.children.iter().filter_map(|n| match n {
@@ -83,10 +111,13 @@ pub(super) fn sole_blend(e: &Element) -> Option<u8> {
         return None;
     }
     if child.tag.eq_ignore_ascii_case("foreignObject") {
-        child.style.blend.filter(|v| *v != 0)
+        child.style.used().blend.filter(|v| *v != 0)
     } else if matches!(child.tag.as_str(), "g" | "svg") {
         sole_blend(child)
     } else {
         None
     }
 }
+
+#[cfg(test)]
+mod zoom_tests;

@@ -1,6 +1,7 @@
 //! Тесты: разобранные операнды изображений проходят каскад без повторного разбора CSS.
 
 use super::*;
+use crate::style::computed::BoxStyle;
 use crate::style::{
     cascade::inherit::inherit,
     computed::{GradientShape, RadialSize},
@@ -41,7 +42,7 @@ fn border_radial_lengths_and_current_color_are_computed() {
         "radial-gradient(ellipse 2em 3em at 1em 1lh, currentcolor 1em, blue calc(50% + 2lh))",
         vcx,
     );
-    let mut c = inherit(&Computed::default(), &own, vcx);
+    let mut c = inherit(&BoxStyle::default(), &own, vcx);
     let image = c.border_image.as_mut().unwrap().src.as_mut().unwrap();
     let ImageSource::Gradient { value, .. } = image else {
         panic!("gradient")
@@ -120,7 +121,7 @@ fn background_layers_inherit_computed_image_lengths_and_current_colors() {
     own.apply_one("font-size", "20px", vcx);
     own.apply_one("line-height", "2", vcx);
     own.apply_one("background-image", "conic-gradient(at 1lh 1em, currentcolor, blue), linear-gradient(currentcolor 1em, blue 2em)", vcx);
-    let parent = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+    let parent = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
     let mut own = Computed::default();
     own.apply_one("background", "inherit", vcx);
     own.apply_one("font-size", "80px", vcx);
@@ -148,7 +149,7 @@ fn layered_background_geometry_uses_own_line_height() {
     own.apply_one("background-image", "url(a), url(b)", vcx);
     own.apply_one("background-size", "1lh 2lh, 3lh 4lh", vcx);
     own.apply_one("background-position", "1lh 2lh, 3lh 4lh", vcx);
-    let c = inherit(&Computed::default(), &own, vcx);
+    let c = inherit(&BoxStyle::default(), &own, vcx);
     let layers = c.bg_layers(vcx).unwrap();
     assert_eq!(layers[1].bg_pos.x, Some(Len::Px(120.0)));
     assert_eq!(layers[1].bg_pos.y, Some(Len::Px(160.0)));

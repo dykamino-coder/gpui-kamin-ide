@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::css::parse_decls;
 use gpui::{Styled, px, relative};
 
@@ -12,7 +12,7 @@ use gpui::{Styled, px, relative};
 fn styled(css: &str, vcx: ValueCx<'_>) -> gpui::StyleRefinement {
     let mut c = Computed::default();
     c.apply_decls(&parse_decls(css), vcx);
-    let mut d = apply(gpui::div(), &c, vcx);
+    let mut d = apply(gpui::div(), &BoxStyle::from(c.clone()), vcx);
     d.style().clone()
 }
 
@@ -120,7 +120,7 @@ fn vertical_grid_axes_preserve_last_baseline_keywords() {
         vcx,
     );
     c.parent_grid = 2;
-    let mut child = apply(gpui::div(), &c, vcx);
+    let mut child = apply(gpui::div(), &BoxStyle::from(c.clone()), vcx);
     assert_eq!(child.style().align_self, Some(gpui::AlignItems::Center));
     assert_eq!(
         child.style().justify_self,
@@ -169,7 +169,7 @@ fn grid_safety_moves_with_container_and_parent_axes() {
         vcx,
     );
     c.parent_grid = 2;
-    let mut child = apply(gpui::div(), &c, vcx);
+    let mut child = apply(gpui::div(), &BoxStyle::from(c.clone()), vcx);
     assert_eq!(
         child.style().safe_alignment,
         Some((false, true, false, false))

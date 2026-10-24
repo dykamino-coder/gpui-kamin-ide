@@ -5,7 +5,7 @@ use crate::dom::Element;
 use crate::layout::build_contracts::Styling;
 use crate::layout::cx::LayoutCx;
 use crate::layout::fragment::paginate::watch::TablePart;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
@@ -20,7 +20,7 @@ pub(super) fn table_outer_box(
     min_w: Option<Len>,
     table_border_box: bool,
     fixed_floor: Option<f32>,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     needs_clone: bool,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
@@ -66,7 +66,7 @@ pub(super) fn table_outer_box(
             // БЛОЧНАЯ ось, где border-box верен; вместо этого краи инлайн-оси
             // добавляются к самой величине. Гейт тот же, что у
             // транспонирования решётки и у `spacing_phys`.
-            if e.style.wm().vertical()
+            if e.style.used().wm().vertical()
                 && let Some(Len::Px(h)) = c.height
             {
                 // Сросшийся стол несёт свои краи не рамкой, а паддингом в
@@ -81,9 +81,17 @@ pub(super) fn table_outer_box(
             }
         }
         host_style = c;
-        cx.build.styled_box(e, &host_style, cx).flex().flex_col()
+        cx.contracts
+            .build
+            .styled_box(e, &host_style, cx)
+            .flex()
+            .flex_col()
     } else {
-        cx.build.styled_box(e, inherited, cx).flex().flex_col()
+        cx.contracts
+            .build
+            .styled_box(e, inherited, cx)
+            .flex()
+            .flex_col()
     }
 }
 
@@ -93,7 +101,7 @@ pub(super) fn finish_table_outer(
     caps_top: Vec<AnyElement>,
     caps_bot: Vec<AnyElement>,
     split_wrapper: bool,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     root_table: bool,
     outer: gpui::Div,
     shrink_wrap: bool,
@@ -116,13 +124,14 @@ pub(super) fn finish_table_outer(
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
-        let wrap = Computed {
-            position: e.style.position,
-            inset: e.style.inset,
-            z_index: e.style.z_index,
+        let wrap = BoxStyle::new(Computed {
+            position: e.style.used().position,
+            inset: e.style.used().inset,
+            z_index: e.style.used().z_index,
             ..Default::default()
-        };
+        });
         let mut wrap = cx
+            .contracts
             .build
             .styled_div(Styling::Box(&wrap), cx)
             .flex()

@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4): рекурсивный preplan до consumed/OOF состояния детей.
 //! Формы детей (KidShape): рекурсивный замер вырезов каждого ребёнка.
 
 use crate::document::state::ValueCx;
@@ -45,14 +46,15 @@ pub(super) fn kid_shapes(
                 // cursor. Their continuous extent travels to the corresponding
                 // containing block (css-position-3 §abspos-breaking), where it
                 // reserves fragmentainers independently of the block's size.
-                Node::Element(k) if out_of_flow(&k.style) => {
+                Node::Element(k) if out_of_flow(&k.style.used()) => {
                     let top = k
                         .style
+                        .used()
                         .inset
                         .top
                         .as_ref()
                         .filter(|l| !matches!(l, Len::Auto))
-                        .and_then(|_| px_or(&k.style.inset.top, false));
+                        .and_then(|_| px_or(&k.style.used().inset.top, false));
                     let (full, up) = measure(k, depth - 1, cx, vcx)
                         .map_or((0.0, Reach::default()), |m| (m.shape.height, m.up));
                     let reach = Reach::positioned(k, full, top, cx, up);
@@ -70,10 +72,11 @@ pub(super) fn kid_shapes(
                 }
                 Node::Element(k)
                     if !k.inline
-                        && (k.style.position.is_none()
-                            || k.style.position
+                        && (k.style.used().position.is_none()
+                            || k.style.used().position
                                 == Some(crate::style::computed::Position::Relative))
-                        && (k.style.float.unwrap_or(0) == 0 || block_like_float(&k.style)) =>
+                        && (k.style.used().float.unwrap_or(0) == 0
+                            || block_like_float(&k.style.used())) =>
                 {
                     // Главный размер элемента КОЛОНКИ flex — его `flex-basis`
                     // (css-flexbox-1 §9.2 шаг 3): `content` — по содержимому,
@@ -99,7 +102,7 @@ pub(super) fn kid_shapes(
                         // in `flex_lines::row` items (Blink slices a block's
                         // remaining block-size after its content).
                         let lines_only = matches!(
-                            c.style.display,
+                            c.style.used().display,
                             Some(crate::style::computed::Display::Flex)
                                 | Some(crate::style::computed::Display::InlineFlex)
                         ) && inline_content(k)

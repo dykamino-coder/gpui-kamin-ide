@@ -50,16 +50,22 @@ pub(super) fn measure_col_widths(
                 // (вертикальное письмо в htb-таблице) `block-size` лёг в
                 // height (размеры при вертикали не переставляются, см.
                 // resolve_logical) — он и задаёт колонку.
-                let table_vertical = e.style.wm().vertical() || inherited.wm().vertical();
-                let orthogonal = cell.style.wm().vertical() && !table_vertical;
-                let source = if table_vertical || orthogonal {
+                let table_vertical = e.style.used().wm().vertical() || inherited.wm().vertical();
+                let orthogonal = cell.style.used().wm().vertical() && !table_vertical;
+                let (declared, source) = if table_vertical || orthogonal {
                     // У ортогональной ячейки width несёт ЛОГИЧЕСКИЙ
                     // inline-size — физически это ВЫСОТА, не колонка
                     // (table-cell-align-005/006); колонку задаёт block-size,
                     // осевший в height.
-                    cell.style.height
+                    (cell.style.cascaded().height, cell.style.used().height)
                 } else {
-                    cell.style.width
+                    (cell.style.cascaded().width, cell.style.used().width)
+                };
+                // `ch` ячейки таблица решает сама — кеглем и шрифтом ячейки
+                // по горизонтальному нулю (ветка ниже, как `cell_heights`).
+                let source = match declared {
+                    Some(Len::Ch(_)) => declared,
+                    _ => source,
                 };
                 // Известная потеря — `css-writing-modes/table-progression-*`:
                 // эталон горизонтальный, тест вертикальный, и слагаемые ложатся
@@ -76,31 +82,33 @@ pub(super) fn measure_col_widths(
                     Some(Len::Px(p)) => p,
                     _ => 0.0,
                 };
-                let extra = if cell.style.border_box == Some(true) {
+                let extra = if cell.style.used().border_box == Some(true) {
                     0.0
                 } else {
-                    let b = cell.style.borders();
-                    let border = if table_vertical || orthogonal {
+                    let b = cell.style.used().borders();
+                    // Стороны уже физические: ось дорожки задаёт таблица,
+                    // а не собственное письмо ортогональной ячейки.
+                    let border = if table_vertical {
                         side(b.top) + side(b.bottom)
                     } else {
                         side(b.left) + side(b.right)
                     };
-                    let pad = if table_vertical || orthogonal {
-                        side(cell.style.padding.top) + side(cell.style.padding.bottom)
+                    let pad = if table_vertical {
+                        side(cell.style.used().padding.top) + side(cell.style.used().padding.bottom)
                     } else {
-                        side(cell.style.padding.left) + side(cell.style.padding.right)
+                        side(cell.style.used().padding.left) + side(cell.style.used().padding.right)
                     };
                     // В сросшейся модели дорожка считает ПОЛОВИНУ победившей
                     // линии — ту же, что легла в паддинг ячейки; своя кромка
                     // могла быть у́же соседней.
-                    pad + if e.style.border_collapse == Some(true) {
+                    pad + if e.style.cascaded().border_collapse == Some(true) {
                         let w = win_edges.get(&cell.node_id).copied().unwrap_or([
-                            side(cell.style.borders().top),
-                            side(cell.style.borders().right),
-                            side(cell.style.borders().bottom),
-                            side(cell.style.borders().left),
+                            side(cell.style.used().borders().top),
+                            side(cell.style.used().borders().right),
+                            side(cell.style.used().borders().bottom),
+                            side(cell.style.used().borders().left),
                         ]);
-                        if table_vertical || orthogonal {
+                        if table_vertical {
                             (w[0] + w[2]) / 2.0
                         } else {
                             (w[1] + w[3]) / 2.0
@@ -124,12 +132,13 @@ pub(super) fn measure_col_widths(
                     // `table { font: 50px }` — колонка 100px, не пропуск.
                     Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
                         let size = cell_font_px(
-                            cell.style.font_size,
-                            row.style.font_size.or(inherited.font_size),
+                            cell.style.used().font_size,
+                            row.style.used().font_size.or(inherited.font_size),
                             table_font,
                         );
                         let family = cell
                             .style
+                            .cascaded()
                             .font_family
                             .clone()
                             .unwrap_or_else(|| table_family.clone());
@@ -164,5 +173,72 @@ pub(super) fn cell_font_px(own: Option<Len>, parent: Option<Len>, table_font: f3
         Some(Len::Em(k)) => k * parent_px,
         None => parent_px,
         _ => table_font,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::state::DocState;
+    use crate::style::css::parse_decls;
+
+    #[test]
+    fn orthogonal_cell_extras_follow_the_table_inline_axis() {
+        let doc = DocState::new(Default::default());
+        let vcx = doc.values();
+        let style = |css: &str| {
+            let mut c = Computed::default();
+            c.apply_decls_with_vars(&parse_decls(css), &Default::default(), vcx);
+            c
+        };
+        for (table_wm, cell_wm, collapse, expected) in [
+            ("horizontal-tb", "vertical-rl", false, 126.0),
+            ("horizontal-tb", "vertical-rl", true, 117.0),
+            ("vertical-rl", "horizontal-tb", false, 118.0),
+            ("vertical-rl", "horizontal-tb", true, 111.0),
+        ] {
+            let cell = Element::synthetic(
+                "td",
+                style(&format!(
+                    "display:table-cell;writing-mode:{cell_wm};width:100px;height:100px;border-style:solid;border-width:5px 7px 9px 11px;padding:1px 2px 3px 6px"
+                )),
+                Default::default(),
+                vec![],
+            );
+            let edges = std::collections::HashMap::from([(cell.node_id, [5.0, 7.0, 9.0, 11.0])]);
+            let row = Element::synthetic(
+                "tr",
+                Computed::default(),
+                Default::default(),
+                vec![Node::Element(cell)],
+            );
+            let table = Element::synthetic(
+                "table",
+                style(&format!(
+                    "writing-mode:{table_wm};border-collapse:{}",
+                    if collapse { "collapse" } else { "separate" }
+                )),
+                Default::default(),
+                vec![],
+            );
+            let mut widths = [(None, None)];
+            measure_col_widths(
+                &table,
+                &Computed::default(),
+                &[1],
+                &vec![&row],
+                &mut widths,
+                16.0,
+                String::new(),
+                vec![0],
+                &edges,
+                vcx,
+            );
+            assert_eq!(
+                widths[0].0,
+                Some(expected),
+                "{table_wm}/{cell_wm}/{collapse}"
+            );
+        }
     }
 }

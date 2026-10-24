@@ -7,45 +7,51 @@ use crate::dom::Element;
 use crate::layout::float::band_host::{px_margin, px_margin_box};
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use gpui::{IntoElement, ParentElement, Styled, div, px};
 
 /// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в
 /// точках. Поля кладёт слот (обёртка), а не сама коробка.
 pub(super) fn band_atom(
     c: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<crate::layout::fragment::types::FlowChild> {
     let vcx = opts.cx.vcx();
-    let (w, h) = px_margin_box(&c.style)?;
+    let (w, h) = px_margin_box(&c.style.used())?;
     let (ml, mt) = (
-        px_margin(&c.style.margin.left).unwrap_or(0.0),
-        px_margin(&c.style.margin.top).unwrap_or(0.0),
+        px_margin(&c.style.used().margin.left).unwrap_or(0.0),
+        px_margin(&c.style.used().margin.top).unwrap_or(0.0),
     );
-    let mut merged = inherit(inherited, &c.style, vcx);
+    let mut merged = box_style(inherited, &c.style, vcx);
     // This path bypasses element(); positioned descendants still need the DOM CB key.
     merged.self_node = c.node_id;
     // CSS 2.1 sections 9.4.2 and 10.6.6: the outer holder already
     // represents the margin box; its contents paint the border box once.
     merged.margin = crate::style::computed::Sides::default();
     let mut inner = c.clone();
-    inner.style.margin = crate::style::computed::Sides::default();
+    inner.style.used_mut().margin = crate::style::computed::Sides::default();
     let built = if inner.tag == "img" {
-        opts.cx.build.replaced(
+        opts.cx.contracts.build.replaced(
             &with_inherited_font(&inner, inherited),
             Some(atom_base_font(inherited, opts)),
             &opts.cx,
         )
     } else {
         opts.cx
+            .contracts
             .build
             .styled_box(&inner, &merged, &opts.cx)
-            .children(opts.cx.build.blocks(&inner.children, &merged, opts))
+            .children(
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&inner.children, &merged, opts),
+            )
             .into_any_element()
     };
-    let el = if px_margin_box(&inner.style) == Some((w, h)) {
+    let el = if px_margin_box(&inner.style.used()) == Some((w, h)) {
         built
     } else {
         div()

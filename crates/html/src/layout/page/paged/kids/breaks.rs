@@ -9,9 +9,9 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::{BlockBox, table_tree};
+use crate::layout::fragment::flow::blocks::plain_tree;
+use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
-use crate::layout::fragment::probe::plain_block_tree;
 use crate::style::computed::Position;
 use std::rc::Rc;
 
@@ -20,6 +20,7 @@ pub(super) fn recorder(
     n: &Node,
     vertical: Option<bool>,
     shaped: bool,
+    measured: bool,
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) -> Rc<Watched> {
@@ -27,21 +28,31 @@ pub(super) fn recorder(
     match n {
         Node::Element(e)
             if single
-                && vertical.is_none()
+                && (vertical.is_none() || measured)
                 && !e.inline
                 && !matches!(
-                    e.style.position,
+                    e.style.used().position,
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
-                && shaped
-                && (plain_block_tree(e, 4) || table_tree(e, 4)) =>
+                && (measured || (shaped && (plain_tree(e) || table_tree(e) || flex_tree(e)))) =>
         {
+            let logical = vertical.map(|rl| {
+                crate::layout::fragment::flow::logical_copy(e, rl)
+                    .expect("measured vertical copy retains its logical metadata")
+            });
+            let e = logical.as_ref().unwrap_or(e);
             let blocks = BlockBox::collect(e, cx, vcx);
             // Without block children the copy keeps its measured lines alone.
-            if blocks.is_empty() {
+            if blocks.is_empty() && !measured {
                 Watched::new(&[])
             } else {
-                Watched::for_blocks(blocks)
+                use crate::layout::fragment::types::StackAxis;
+                let axis = match vertical {
+                    None => StackAxis::Horizontal,
+                    Some(false) => StackAxis::VerticalLr,
+                    Some(true) => StackAxis::VerticalRl,
+                };
+                Watched::for_blocks_axis(blocks, axis, crate::layout::fragment::flow::flow_lines(e))
             }
         }
         _ => Watched::new(&[]),

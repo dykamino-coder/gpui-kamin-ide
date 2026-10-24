@@ -3,7 +3,7 @@
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 
 /// Вынуть из поддерева ленты прокрутки абсолютных потомков, которым лента не
 /// содержащий блок.
@@ -19,13 +19,13 @@ use crate::style::computed::{Computed, Display};
 /// Условия — те же, что у `to_icb`, плюс два ужесточения: только
 /// НЕПОСРЕДСТВЕННЫЕ дети ленты и только при ОБЕИХ заданных осях (по свободной
 /// оси место сообщает щуп, а он остался бы в замыкании).
-pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
+pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &BoxStyle, opts: &RenderOpts) {
     let vcx = opts.cx.vcx();
     use crate::style::computed::Position;
-    if !opts.cx.positioning.icb_active() || opts.cx.paint_depth.inside() {
+    if !opts.cx.position.state.icb_active() || opts.cx.deferred.depth.inside() {
         return;
     }
-    let merged = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
+    let merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
     // Лента внутри позиционированного предка не выносит ничего: у её потомков
     // содержащий блок есть.
     if merged.cb_ancestor || crate::text::inline::establishes_cb(&merged) {
@@ -46,10 +46,10 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &Re
             let Node::Element(c) = &e.children[i] else {
                 return false;
             };
-            let x_set = edge_set(c.style.inset.left) || edge_set(c.style.inset.right);
-            let y_set = edge_set(c.style.inset.top) || edge_set(c.style.inset.bottom);
-            c.style.position == Some(Position::Absolute)
-                && c.style.z_index.unwrap_or(0) >= 0
+            let x_set = edge_set(c.style.used().inset.left) || edge_set(c.style.used().inset.right);
+            let y_set = edge_set(c.style.used().inset.top) || edge_set(c.style.used().inset.bottom);
+            c.style.used().position == Some(Position::Absolute)
+                && c.style.used().z_index.unwrap_or(0) >= 0
                 && x_set
                 && y_set
                 && !stays_positioned(&e.children[i + 1..])
@@ -69,6 +69,7 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &Re
         // поэтому список возвращается пустым.
         let left = opts
             .cx
+            .contracts
             .build
             .blocks(std::slice::from_ref(&child), &merged, opts);
         if left.is_empty() {

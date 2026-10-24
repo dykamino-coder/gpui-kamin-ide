@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-5): preplan повторов сохраняется до табличных продолжений.
 //! Повтор шапки и подвала таблицы на страницах: для одиночной таблицы в группе детей
 //! корня резервируются те же полосы `Repeat`, что и в колонках (`table_bands`), со
 //! сдвигом на схлопнутое поле и копиями элементов полос по числу страниц. У таблицы, чьи
@@ -8,6 +9,7 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::{ShapeCx, table_bands::repeat_bands_in, types::Repeat};
+use crate::style::computed::LenCx;
 use gpui::AnyElement;
 
 pub(super) fn sections(
@@ -26,8 +28,11 @@ pub(super) fn sections(
     if nodes.next().is_some() {
         return None;
     }
-    let folded_margin = if lead > 0.0 || e.style.float.unwrap_or(0) != 0 {
-        crate::layout::fragment::fragment_size::shape_full(e, 4, cx, vcx)?.margin_top
+    let folded_margin = if lead > 0.0 || e.style.used().float.unwrap_or(0) != 0 {
+        // Поле — значение стиля с базой страницы; геометрия содержимого
+        // таблицы не участвует в разрешении этого поля (CSS 2.1 §8.3).
+        LenCx::box_viewport(cx.viewport, &e.style.used())
+            .px_lossy_zero(e.style.used().margin.top, vcx)
     } else {
         0.0
     };

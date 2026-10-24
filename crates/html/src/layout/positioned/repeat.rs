@@ -22,12 +22,12 @@ pub(crate) fn fixed_cb_box(c: &crate::style::computed::Computed) -> bool {
 pub(crate) fn drop_uncontained_oof(n: &Node, abs_cb: bool, fixed_cb: bool) -> Option<Node> {
     use crate::style::computed::Position;
     match n {
-        Node::Element(k) if k.style.position == Some(Position::Absolute) && !abs_cb => None,
-        Node::Element(k) if k.style.position == Some(Position::Fixed) && !fixed_cb => None,
+        Node::Element(k) if k.style.used().position == Some(Position::Absolute) && !abs_cb => None,
+        Node::Element(k) if k.style.used().position == Some(Position::Fixed) && !fixed_cb => None,
         Node::Element(k) => {
             let mut c = k.clone();
-            let fixed = fixed_cb || fixed_cb_box(&k.style);
-            let abs = abs_cb || fixed || crate::text::inline::establishes_cb(&k.style);
+            let fixed = fixed_cb || fixed_cb_box(&k.style.used());
+            let abs = abs_cb || fixed || crate::text::inline::establishes_cb(&k.style.used());
             c.children = k
                 .children
                 .iter()

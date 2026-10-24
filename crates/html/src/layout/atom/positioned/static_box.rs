@@ -5,13 +5,13 @@ use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(in crate::layout::atom) fn static_position_atom(
-    inherited: &Computed,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
@@ -19,7 +19,7 @@ pub(in crate::layout::atom) fn static_position_atom(
         return Some(child);
     }
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
@@ -36,12 +36,12 @@ pub(in crate::layout::atom) fn static_position_atom(
     let replaced: Option<AnyElement> = match e.tag.as_str() {
         "img" | "svg" => {
             let mut copy = e.clone();
-            copy.style.position = None;
+            copy.style.used_mut().position = None;
             // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4), а
             // копия несёт только собственный стиль элемента: без этой
             // строки `image-orientation: none`, заданный на `body`, до
             // картинки не доезжает и EXIF-разворот применяется всё равно.
-            copy.style.image_orient_none = merged.image_orient_none;
+            copy.style.used_mut().image_orient_none = merged.image_orient_none;
             Some(match copy.tag.as_str() {
                 // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`;
                 // позиция снята и со слитого стиля, как с копии выше.
@@ -49,14 +49,14 @@ pub(in crate::layout::atom) fn static_position_atom(
                     let mut unpositioned = merged.clone();
                     unpositioned.position = None;
                     svg_replaced(&copy, &copy, &unpositioned, opts)
-                        .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
+                        .unwrap_or_else(|| opts.cx.contracts.build.replaced(&copy, None, &opts.cx))
                 }
-                _ => opts.cx.build.replaced(&copy, None, &opts.cx),
+                _ => opts.cx.contracts.build.replaced(&copy, None, &opts.cx),
             })
         }
         _ => None,
     };
-    let inner = opts.cx.build.styled_box(e, &merged, &opts.cx);
+    let inner = opts.cx.contracts.build.styled_box(e, &merged, &opts.cx);
     let inner = inner.children(super::children::children(e, &positioned, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
@@ -66,7 +66,7 @@ pub(in crate::layout::atom) fn static_position_atom(
     // уходит в верхний слой блока-контейнера, а в строке остаётся щуп: он
     // и держит место, и сообщает, куда потом вернуть содержимое.
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
-    let below = e.style.z_index.is_some_and(|z| z < 0);
+    let below = e.style.used().z_index.is_some_and(|z| z < 0);
     // Блочный элемент встал бы на НОВУЮ строку — там его статическая
     // позиция и находится: левый край содержимого родителя, верх — низ
     // текущей строки. Строчный остаётся точкой в самой строке.
@@ -91,13 +91,15 @@ pub(in crate::layout::atom) fn static_position_atom(
     let probe = crate::layout::positioned::containing_block::spot_probe(
         spot.clone(),
         false,
-        opts.cx.line_box.clone(),
+        opts.cx.position.line_box.clone(),
         &opts.cx,
     );
     let inner = match replaced {
-        Some(el) if merged.corner_shaped() => {
-            opts.cx.build.effects(el, Effect::group(&merged, vcx))
-        }
+        Some(el) if merged.corner_shaped() => opts
+            .cx
+            .contracts
+            .build
+            .effects(el, Effect::group(&merged, vcx)),
         Some(el) => el,
         None => inner.into_any_element(),
     };
@@ -108,7 +110,7 @@ pub(in crate::layout::atom) fn static_position_atom(
     let taken = if below {
         Some(inner)
     } else {
-        opts.cx.positioning.late_push(spot, inner)
+        opts.cx.position.state.late_push(spot, inner)
     };
     return match taken {
         None => Some(probe),

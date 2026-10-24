@@ -31,6 +31,7 @@
 
 #[cfg(test)]
 pub mod coverage;
+pub(crate) mod defaults;
 pub(crate) mod hooks;
 pub mod tolerance;
 pub use style::css;
@@ -165,6 +166,9 @@ pub const BROWSER_CSS: &str = r#"
                overflow-wrap: break-word; border: 1px solid #767676;
                border-radius: 0; padding: 2px; margin: 0 }
 "#;
+
+#[cfg(feature = "wpt-harness")]
+pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
 
 pub use document::{Document, DocumentBuilder};
 pub use dom::{Element, Node, parse};

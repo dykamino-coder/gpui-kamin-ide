@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-1/F2-5): подписи clone-preplan требуют состояния продолжения таблицы.
 //! Мера обёртки таблицы с подписями (`caption_slots_shape`): верхние подписи, коробка рядов и
 //! нижние подписи складываются стопкой со схлопыванием полей (CSS 2.1 §8.3.1; поле первого
 //! уходит сквозь верх обёртки), точки разреза и принудительные разрывы между ними,
@@ -79,8 +80,8 @@ pub(crate) fn caption_slots_shape(
                     ccuts,
                     cforced,
                     csolid,
-                    cap.style.break_before_force,
-                    cap.style.break_after_force,
+                    cap.style.used().break_before_force,
+                    cap.style.used().break_after_force,
                 )
             }
         };

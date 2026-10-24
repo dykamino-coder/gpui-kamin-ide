@@ -62,7 +62,7 @@ impl MaskResources {
                         id.to_string(),
                         MaskDefinition {
                             markup,
-                            alpha: tag == "mask" && e.style.mask_type_alpha == Some(true),
+                            alpha: tag == "mask" && e.style.used().mask_type_alpha == Some(true),
                         },
                     );
                 }

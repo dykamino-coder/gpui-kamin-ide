@@ -10,7 +10,7 @@ use gpui::IntoElement;
 
 /// A positioned inline ancestor offered as the containing block of the atom
 /// being built (CSS 2.1 §10.1 item 4): the paragraph's atom builder makes the
-/// offer (`LayoutCx::inline_cb`), the first absolute atom that can use it
+/// offer (`PositioningContext::inline_cb`), the first absolute atom that can use it
 /// takes it, and the builder learns whether it was taken.
 #[derive(Debug)]
 pub(crate) struct InlineCbOffer {
@@ -55,10 +55,10 @@ pub(super) fn mark_inline_cb(pieces: Vec<Piece>, e: &Element) -> Vec<Piece> {
     let id = CB_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let px_of = px_lossy_zero;
     let pad = [
-        px_of(e.style.padding.top),
-        px_of(e.style.padding.right),
-        px_of(e.style.padding.bottom),
-        px_of(e.style.padding.left),
+        px_of(e.style.used().padding.top),
+        px_of(e.style.used().padding.right),
+        px_of(e.style.used().padding.bottom),
+        px_of(e.style.used().padding.left),
     ];
     let marker = |start: bool| {
         Piece::Overlay(

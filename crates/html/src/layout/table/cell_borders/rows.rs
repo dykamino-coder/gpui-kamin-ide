@@ -5,8 +5,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::ParentElement;
 
@@ -17,7 +17,7 @@ pub(crate) fn collapsed_row_edges(
     span_cols: u16,
     cols: u16,
     row_style: &Computed,
-    table_style: &Computed,
+    table_style: &BoxStyle,
     last_row: Option<&Element>,
     table_edges: &crate::layout::table::probes::CellEdges,
     px_of: &impl Fn(Option<Len>) -> f32,
@@ -34,13 +34,13 @@ pub(crate) fn collapsed_row_edges(
     let candidates = std::iter::once((row, first))
         .chain(last_row.map(|last| (last, [false, false, true, false])));
     for (source, active) in candidates {
-        let b = source.style.borders();
+        let b = source.style.used().borders();
         let widths = axes.mask(
             [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)],
             active,
         );
         let raw_styles = std::array::from_fn(|i| {
-            source.style.border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
+            source.style.used().border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
         });
         let logical_styles = axes.logical(raw_styles);
         let styles = axes.physical(std::array::from_fn(|i| {
@@ -53,7 +53,7 @@ pub(crate) fn collapsed_row_edges(
         let computed = if std::ptr::eq(source, row) {
             row_style
         } else {
-            end_style = inherit(table_style, &source.style, vcx);
+            end_style = box_style(table_style, &source.style, vcx);
             &end_style
         };
         let black = crate::style::values::value::Color {
@@ -63,7 +63,7 @@ pub(crate) fn collapsed_row_edges(
             a: 1.0,
         };
         let colors = std::array::from_fn(|i| {
-            source.style.border_colors[i].resolve(computed.color.unwrap_or(black))
+            source.style.used().border_colors[i].resolve(computed.color.unwrap_or(black))
         });
         d = d.child(crate::layout::table::probes::edge_probe(
             table_edges.clone(),

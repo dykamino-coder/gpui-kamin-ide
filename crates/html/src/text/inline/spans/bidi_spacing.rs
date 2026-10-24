@@ -133,13 +133,13 @@ pub fn block_letter_spacing(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::Computed;
+    use crate::style::computed::{BoxStyle, Computed};
     use gpui::px;
 
     fn text(t: &str) -> Piece {
         Piece::Text {
             text: t.into(),
-            style: Computed::default(),
+            style: BoxStyle::from(Computed::default()),
         }
     }
 

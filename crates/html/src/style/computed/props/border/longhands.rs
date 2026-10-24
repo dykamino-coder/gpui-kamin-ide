@@ -1,14 +1,14 @@
 //! Длинные свойства рамки и контура по реестру: толщина, стиль и цвет каждой
 //! физической стороны, логические кромки, `outline-*` и части `border-image`.
-//! Значение пишется целиком или никак, `inherit` — признаком наследования
-//! этого свойства; чужих свойств обработчик не читает. Правило «толщина
+//! Значение пишется целиком или никак, `inherit` держит каскад
+//! (`Computed::inherit_longhands`); чужих свойств обработчик не читает. Правило «толщина
 //! без рисунка — ноль» — используемое значение (css-backgrounds-3 §4.3), его
 //! решает `Computed::borders`, а вычисленная толщина остаётся заданной.
 
 use super::values::{border_style_rank, line_width, outline_line_style, outline_offset};
 use crate::document::state::ValueCx;
+use crate::style::computed::Computed;
 use crate::style::computed::props::box_model::side_slot;
-use crate::style::computed::{Computed, inh};
 use crate::style::css::{BoxGroup, Grammar, LonghandId, Slot};
 use crate::style::values::value::{ColorOrAuto, StyleColor};
 
@@ -61,7 +61,6 @@ impl Computed {
                 if !inherit && width.is_none() {
                     return;
                 }
-                self.border_inherit_w[side] = inherit;
                 if width.is_some() {
                     *side_slot(&mut self.border_width, side) = width;
                 }
@@ -71,7 +70,6 @@ impl Computed {
                 if !inherit && rank.is_none() {
                     return;
                 }
-                self.border_inherit_s[side] = inherit;
                 if let Some(rank) = rank {
                     self.border_side_styles[side] = Some(rank);
                     self.border_visible[side] = Some(rank >= 3);
@@ -83,7 +81,6 @@ impl Computed {
                 if !inherit && color.is_none() {
                     return;
                 }
-                self.border_inherit_c[side] = inherit;
                 if let Some(color) = color {
                     self.border_colors[side] = color;
                 }
@@ -127,14 +124,7 @@ impl Computed {
     /// `outline-width`, `-style`, `-color`, `-offset`: одна часть записи
     /// контура.
     fn apply_outline_longhand(&mut self, id: LonghandId, v: &str, vcx: ValueCx<'_>) {
-        let bit = match id {
-            LonghandId::OutlineWidth => inh::OUTLINE_W,
-            LonghandId::OutlineStyle => inh::OUTLINE_S,
-            LonghandId::OutlineColor => inh::OUTLINE_C,
-            _ => inh::OUTLINE_O,
-        };
         if v.trim() == "inherit" {
-            self.inherit_bits |= bit;
             return;
         }
         let mut o = self.outline.clone().unwrap_or_default();
@@ -156,7 +146,6 @@ impl Computed {
                 None => return,
             },
         }
-        self.inherit_bits &= !bit;
         self.outline = Some(o);
     }
 }

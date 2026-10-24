@@ -1,6 +1,7 @@
 //! Тесты-регрессии построения абзацев вложенных float.
 
 use super::*;
+use crate::style::computed::BoxStyle;
 
 #[test]
 fn nested_float_keeps_its_paragraph_and_completed_line_probe() {
@@ -35,7 +36,7 @@ fn nested_float_keeps_its_paragraph_and_completed_line_probe() {
         .iter()
         .position(|n| {
             matches!(n, Node::Element(c)
-        if c.style.float == Some(-1))
+        if c.style.used().float == Some(-1))
         })
         .unwrap();
     assert_eq!(float, 1);
@@ -75,18 +76,21 @@ fn percentage_nest_uses_its_definite_containing_block_height() {
             viewport: (800., 600.),
             normal_line_height: 1.2,
             cx: crate::layout::cx::LayoutCx {
-                avail_h: basis,
+                constraints: crate::layout::cx::BoxConstraints {
+                    avail_h: basis,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             frag: Default::default(),
         };
-        let nest = band_nest(&c, &Computed::default(), &opts, 16., WritingMode::default())
+        let nest = band_nest(&c, &BoxStyle::default(), &opts, 16., WritingMode::default())
             .expect("percentage block remains in the shared BFC");
         match (nest.height, expected) {
             (Some(actual), Some(expected)) => assert!((actual - expected).abs() < 0.001),
             (actual, expected) => assert_eq!(actual, expected),
         }
-        assert_eq!(opts.cx.avail_h, basis);
+        assert_eq!(opts.cx.constraints.avail_h, basis);
     }
 }
 
@@ -115,7 +119,7 @@ fn paint_group_nests_unless_an_absolute_descendant_needs_it() {
         )
     };
     let wm = WritingMode::default();
-    assert!(paint_group(&group(vec![]).style));
+    assert!(paint_group(group(vec![]).style.cascaded()));
     assert!(band_nest_block(&group(vec![]), 16., wm));
     let absolute = Element::synthetic(
         "div",

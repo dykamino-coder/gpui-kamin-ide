@@ -113,7 +113,7 @@ struct Slot {
 /// coordinates once (`geometry/writing_mode_converter.cc:80-102`); only the
 /// probe frames and the holders at `prepaint` are physical.
 pub(super) struct Probe<'a> {
-    paint: Rc<crate::paint::context::PaintCx>,
+    paint: Rc<crate::layout::cx::deferred::Deferred>,
     build: crate::layout::build_contracts::ChildBuild,
     pub(super) window: &'a mut Window,
     pub(super) cx: &'a mut App,
@@ -147,7 +147,7 @@ fn frame(
     el: AnyElement,
     tap: Rc<Cell<Option<LayoutId>>>,
     vert: bool,
-    paint: &Rc<crate::paint::context::PaintCx>,
+    paint: &Rc<crate::layout::cx::deferred::Deferred>,
     build: &crate::layout::build_contracts::ChildBuild,
 ) -> AnyElement {
     // Вертикальное письмо: строчная ось — физическая высота, каркас — ряд

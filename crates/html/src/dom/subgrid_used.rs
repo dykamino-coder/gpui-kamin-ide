@@ -23,7 +23,7 @@ fn walk(nodes: &mut [Node], parent: Option<GridContext>, inherited_vertical: boo
         let Node::Element(element) = node else {
             continue;
         };
-        let style = &mut element.style;
+        let style = element.style.cascaded_mut();
         let vertical = style.vertical_decl().unwrap_or(inherited_vertical);
         let linked_rows = parent.and_then(|grid| {
             grid.lanes_rows.map(|rows| {

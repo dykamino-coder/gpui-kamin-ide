@@ -7,7 +7,7 @@ use super::{Computed, Sides, split_outside_parens};
 use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SnapStyle {
     /// 0 none, 1 x, 2 y, 3 block, 4 inline, 5 both.
     pub axis: u8,
@@ -180,6 +180,7 @@ pub(crate) fn inherit(parent: &Computed, c: &mut Computed) {
 #[cfg(test)]
 mod tests {
     //! Snap cascade regression checks, including invalid declarations and CSS-wide resets.
+    use crate::style::computed::BoxStyle;
     use crate::style::{cascade::inherit::inherit, computed::Computed, values::value::Len};
 
     #[test]
@@ -192,10 +193,15 @@ mod tests {
         parent.apply_one("scroll-padding", "10px 20px", vcx);
         parent.apply_one("scroll-margin", "5px", vcx);
         let mut own = Computed::default();
-        assert_eq!(inherit(&parent, &own, vcx).snap.axis, 0);
+        assert_eq!(
+            inherit(&BoxStyle::from(parent.clone()), &own, vcx)
+                .snap
+                .axis,
+            0
+        );
         own.apply_one("scroll-snap-type", "inherit", vcx);
         own.apply_one("scroll-padding-left", "inherit", vcx);
-        let child = inherit(&parent, &own, vcx);
+        let child = inherit(&BoxStyle::from(parent.clone()), &own, vcx);
         assert_eq!(child.snap.axis, 5);
         assert_eq!(child.snap.strictness, 2);
         assert_eq!(child.snap.align, [0; 2]);
@@ -203,7 +209,12 @@ mod tests {
         assert_eq!(child.snap.padding.top, None);
         assert_eq!(child.snap.margin.top, None);
         own.apply_one("scroll-snap-type", "initial", vcx);
-        assert_eq!(inherit(&parent, &own, vcx).snap.axis, 0);
+        assert_eq!(
+            inherit(&BoxStyle::from(parent.clone()), &own, vcx)
+                .snap
+                .axis,
+            0
+        );
     }
 
     #[test]

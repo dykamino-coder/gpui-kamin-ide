@@ -86,7 +86,7 @@ pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::{Align, Display};
+    use crate::style::computed::{Align, BoxStyle, Display};
 
     #[test]
     fn own_vertical_flex_items_keep_the_parent_central_synthesis_policy() {
@@ -98,15 +98,21 @@ mod tests {
             (false, true, 4),
             (true, true, 5),
         ] {
-            let parent = Computed {
-                display: Some(Display::Flex),
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    true, rl, sideways,
-                )),
-                ..Computed::default()
+            let parent = {
+                let mut with_inherited = Computed {
+                    display: Some(Display::Flex),
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(true, rl, sideways),
+                );
+                with_inherited
             };
-            let effective =
-                crate::style::cascade::inherit::inherit(&parent, &Computed::default(), vcx);
+            let effective = crate::style::cascade::inherit::inherit(
+                &BoxStyle::from(parent.clone()),
+                &Computed::default(),
+                vcx,
+            );
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             project_wrapper(&mut wrapper, &effective);
@@ -124,23 +130,29 @@ mod tests {
             (false, true, 0),
             (true, true, 1),
         ] {
-            let parent = Computed {
-                display: Some(Display::Flex),
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    true, rl, sideways,
-                )),
-                ..Computed::default()
+            let parent = {
+                let mut with_inherited = Computed {
+                    display: Some(Display::Flex),
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(true, rl, sideways),
+                );
+                with_inherited
             };
-            let own = Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    false, false, false,
-                )),
-                text_orientation: Some(
-                    crate::style::computed::writing_mode::TextOrientation::Mixed,
-                ),
-                ..Computed::default()
+            let own = {
+                let mut with_inherited = Computed {
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(false, false, false),
+                );
+                with_inherited.text_orientation =
+                    Some(crate::style::computed::writing_mode::TextOrientation::Mixed);
+                with_inherited
             };
-            let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+            let effective =
+                crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             project_wrapper(&mut wrapper, &effective);
@@ -157,13 +169,17 @@ mod tests {
             ..Computed::default()
         };
         for (rl, flags) in [(false, 4), (true, 5)] {
-            let own = Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    true, rl, false,
-                )),
-                ..Computed::default()
+            let own = {
+                let mut with_inherited = Computed {
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(true, rl, false),
+                );
+                with_inherited
             };
-            let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+            let effective =
+                crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement {
                 align_self: Some(gpui::AlignItems::End),
@@ -175,7 +191,7 @@ mod tests {
         }
         assert_eq!(
             baseline_x_flags(&crate::style::cascade::inherit::inherit(
-                &parent,
+                &BoxStyle::from(parent),
                 &Computed::default(),
                 vcx
             )),
@@ -191,15 +207,18 @@ mod tests {
             display: Some(Display::GridLanes),
             ..Computed::default()
         };
-        let own = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, true, false,
-            )),
-            justify_self: Some(Align::Baseline),
-            justify_self_last: true,
-            ..Computed::default()
+        let own = {
+            let mut with_inherited = Computed {
+                justify_self: Some(Align::Baseline),
+                justify_self_last: true,
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, true, false),
+            );
+            with_inherited
         };
-        let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+        let effective = crate::style::cascade::inherit::inherit(&BoxStyle::from(parent), &own, vcx);
         let mut wrapper = gpui::StyleRefinement::default();
         project_wrapper(&mut wrapper, &effective);
         assert_eq!(wrapper.baseline_x_flags, Some(5));

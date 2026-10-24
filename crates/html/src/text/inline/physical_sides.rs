@@ -53,12 +53,15 @@ mod tests {
     use crate::style::values::value::Len;
 
     fn flow(rotated: bool, ccw: bool) -> Computed {
-        Computed {
-            flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, !ccw, ccw,
-            )),
-            turned_line: rotated,
-            ..Computed::default()
+        {
+            let mut with_inherited = Computed {
+                turned_line: rotated,
+                ..Computed::default()
+            };
+            with_inherited.flat_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, !ccw, ccw),
+            );
+            with_inherited
         }
     }
 

@@ -1,7 +1,7 @@
 //! Коробка элемента: базовый стиль div, обрезка и покраска фона за вычетом области.
 
 mod clipping;
-pub(crate) use clipping::clip_layer;
+use crate::style::computed::BoxStyle;
 use clipping::shows_inside;
 
 mod clamp;
@@ -10,21 +10,20 @@ use crate::dom::whitespace::is_blank;
 use crate::layout::block::margin_height;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::writing_mode::native_intrinsic;
-use crate::paint::apply::{apply, apply_hover};
+use crate::paint::apply::{apply_for_decorations, apply_hover};
 use crate::paint::decorations::decorations;
-use crate::style::computed::Computed;
 use gpui::{ParentElement, Styled, div};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
 /// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
 pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
-    styled_div_with(e, &e.style, cx)
+    styled_div_with(e, &BoxStyle::shared(e.style.used()), cx)
 }
 
 pub(crate) fn styled_div_with(
     e: &Element,
-    style: &Computed,
+    style: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     let vcx = cx.vcx();
@@ -38,7 +37,7 @@ pub(crate) fn styled_div_with(
     let c = if style.hidden == Some(true)
         && (shows_inside(&e.children) || style.filter_ref.is_some())
     {
-        bare = style.paint_off();
+        bare = style.restyled(style.paint_off());
         &bare
     } else {
         style
@@ -62,25 +61,26 @@ pub(crate) fn styled_div_with(
             .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some())
         && !e.children.iter().any(|n| !is_blank(n))
     {
-        unfilled = Computed {
-            background: None,
-            ..c.clone()
+        unfilled = {
+            let mut unfilled = c.clone();
+            unfilled.background = None;
+            unfilled
         };
         &unfilled
     } else {
         c
     };
     let auto_height = margin_height::used_style(e, paint);
-    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint), vcx);
+    let mut d = apply_for_decorations(div(), auto_height.as_ref().unwrap_or(paint), vcx);
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     }
     d = crate::interactive::scroll_target::attach(d, e, c, cx);
     if let Some(probe) = crate::interactive::scroll_extent::probe(
-        cx.scroll_frame.as_ref(),
+        cx.scroll.frame.as_ref(),
         e.node_id,
         c,
-        cx.sticky.as_ref(),
+        cx.scroll.sticky.as_ref(),
     ) {
         d = d.child(probe);
     }
@@ -97,7 +97,7 @@ pub(crate) fn styled_div_with(
     {
         d = d.child(probe);
     }
-    if let Some(probe) = absolute_overflow::probe(c, &cx.positioning, vcx) {
+    if let Some(probe) = absolute_overflow::probe(c, &cx.position.state, vcx, cx.contracts.build) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
@@ -105,7 +105,7 @@ pub(crate) fn styled_div_with(
     if c.pointer_events_none != Some(true)
         && let Some(h) = &e.hover
     {
-        d = apply_hover(d, h);
+        d = apply_hover(d, h.cascaded());
     }
     let mut d = clamp::apply(d, e, c, cx);
     let empty = !e.children.iter().any(|n| !is_blank(n));
@@ -114,9 +114,10 @@ pub(crate) fn styled_div_with(
     // СОСЕДОМ коробки и попал бы в копию кадра (`backdrop-filter-root-element`).
     let rootless;
     let c = if e.tag == "html" && c.backdrop_color.is_some() {
-        rootless = Computed {
-            backdrop_color: None,
-            ..c.clone()
+        rootless = {
+            let mut rootless = c.clone();
+            rootless.backdrop_color = None;
+            rootless
         };
         &rootless
     } else {

@@ -7,13 +7,13 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 /// Зазор берётся из каскада; контекст меры ячеек не зависит от HTML-атрибутов.
-pub(crate) fn cell_settings(c: &Element, cx: ShapeCx) -> Option<(f32, ShapeCx)> {
+pub(crate) fn cell_settings<'a>(c: &Element, cx: ShapeCx<'a>) -> Option<(f32, ShapeCx<'a>)> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let spacing = match &c.style.border_spacing {
+    let spacing = match &c.style.used().border_spacing {
         Some((_, y)) => px_of(y)?,
         None => 0.0,
     };
@@ -21,13 +21,13 @@ pub(crate) fn cell_settings(c: &Element, cx: ShapeCx) -> Option<(f32, ShapeCx)> 
 }
 
 pub(crate) fn is_row(e: &Element) -> bool {
-    e.tag == "tr" || e.style.display == Some(Display::TableRow)
+    e.tag == "tr" || e.style.used().display == Some(Display::TableRow)
 }
 
 fn is_group(e: &Element) -> bool {
     matches!(e.tag.as_str(), "thead" | "tbody" | "tfoot")
-        || e.style.display == Some(Display::TableRowGroup)
-        || e.style.row_group_kind.is_some()
+        || e.style.used().display == Some(Display::TableRowGroup)
+        || e.style.used().row_group_kind.is_some()
 }
 
 /// Подписи обрабатывает вызывающий; остальные части сортируются стабильно.
@@ -46,7 +46,7 @@ pub(crate) fn ordered_parts<'a>(
             "thead" => Some(0u8),
             "tbody" => Some(1),
             "tfoot" => Some(2),
-            _ => e.style.row_group_kind,
+            _ => e.style.used().row_group_kind,
         };
         let kind = match role {
             Some(0) if !head => {
@@ -126,12 +126,12 @@ mod tests {
             ("cellspacing".into(), " 7px ".into()),
             ("cellpadding".into(), "3".into()),
         ];
-        table.style.border_spacing = Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))));
+        table.style.used_mut().border_spacing = Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))));
         let (spacing, _) = cell_settings(&table, ShapeCx::COLUMNS).unwrap();
         assert_eq!(spacing, 2.0);
-        table.style.border_spacing = Some((Some(Len::Px(5.0)), Some(Len::Px(9.0))));
+        table.style.used_mut().border_spacing = Some((Some(Len::Px(5.0)), Some(Len::Px(9.0))));
         assert_eq!(cell_settings(&table, ShapeCx::COLUMNS).unwrap().0, 9.0);
-        table.style.border_spacing = None;
+        table.style.used_mut().border_spacing = None;
         assert_eq!(cell_settings(&table, ShapeCx::COLUMNS).unwrap().0, 0.0);
     }
 }

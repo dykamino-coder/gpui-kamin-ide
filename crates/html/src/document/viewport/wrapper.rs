@@ -22,19 +22,23 @@ pub(in crate::document) fn wrap(
     let id = maximum_id(&nodes) + 1;
     let mut viewport = crate::layout::table::anon::anon_element("html-viewport", nodes);
     viewport.node_id = id;
-    viewport.style = Computed {
-        display: Some(Display::Block),
-        width: Some(Len::Vw(1.0)),
-        height: Some(Len::Vh(1.0)),
-        border_box: Some(true),
-        background: canvas,
-        overflow_x: c.overflow_x,
-        overflow_y: c.overflow_y,
-        rtl: c.rtl,
-        writing_mode: c.writing_mode,
-        scroll: c.scroll,
-        viewport_unit_insets: c.viewport_unit_insets,
-        ..Computed::default()
+    let (rtl, writing_mode) = (c.rtl, c.writing_mode);
+    viewport.style = {
+        let mut with_inherited = Computed {
+            display: Some(Display::Block),
+            width: Some(Len::Vw(1.0)),
+            height: Some(Len::Vh(1.0)),
+            border_box: Some(true),
+            background: canvas,
+            overflow_x: c.overflow_x,
+            overflow_y: c.overflow_y,
+            scroll: c.scroll,
+            viewport_unit_insets: c.viewport_unit_insets,
+            ..Computed::default()
+        };
+        with_inherited.rtl = rtl;
+        with_inherited.writing_mode = writing_mode;
+        with_inherited
     }
     .into();
     vec![Node::Element(viewport)]

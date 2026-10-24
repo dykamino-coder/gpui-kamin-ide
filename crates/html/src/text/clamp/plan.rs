@@ -28,7 +28,7 @@ mod tests {
     #[test]
     fn plans_are_local_to_the_active_container_and_apply_build() {
         let mut cx = LayoutCx::default();
-        cx.clamp_build = cx.clamp_build.container(1);
+        cx.clamp.build = cx.clamp.build.container(1);
         let plan = Rc::new(ClampPlan {
             nodes: vec![9],
             sizes: vec![(9, 30.0)],
@@ -41,16 +41,16 @@ mod tests {
             ClampInput::Apply(plan.clone()),
             ClampInput::ApplyMeasured(plan.clone(), ClampMeasure::default()),
         ] {
-            cx.clamp_input = Some(input);
+            cx.clamp.input = Some(input);
             assert_eq!(cx.clamp_plan(1), Some(plan.as_ref()));
             assert!(cx.clamp_plan(2).is_none());
             assert_eq!(cx.clamp_box_height(9), Some(30.0));
             assert!(cx.clamp_box_height(10).is_none());
         }
-        cx.clamp_input = Some(ClampInput::Measure(ClampMeasure::default()));
+        cx.clamp.input = Some(ClampInput::Measure(ClampMeasure::default()));
         assert!(cx.clamp_plan(1).is_none());
         assert!(cx.clamp_box_height(9).is_none());
-        cx.clamp_input = None;
+        cx.clamp.input = None;
         assert!(cx.clamp_plan(1).is_none());
         assert!(cx.clamp_plan(2).is_none());
         assert!(cx.clamp_box_height(9).is_none());

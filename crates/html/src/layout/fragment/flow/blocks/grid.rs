@@ -13,6 +13,7 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_blockified;
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::{Display, LenCx};
 use crate::tolerance::COORD_EPS;
 
@@ -80,33 +81,33 @@ pub(crate) fn item_rows(
 /// Контейнер сетки, чьи ряды дают точки разрыва его элементам.
 pub(crate) fn grid_container(e: &Element) -> bool {
     matches!(
-        e.style.display,
+        e.style.used().display,
         Some(Display::Grid) | Some(Display::InlineGrid)
     )
 }
 
-/// Элементы сетки `e` до глубины `depth`.
-pub(super) fn collect_grid(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBox {
+/// Все элементы сетки `e`, записываемые native рекордером.
+pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBox {
     let mut out = GridBox::default();
-    for k in e.children.iter().filter(|n| !is_blank(n)) {
+    for k in children(&e.children).filter(|n| !is_blank(n)) {
         let Node::Element(k) = k else { continue };
-        if out_of_flow(&k.style) || matches!(k.style.display, Some(Display::None)) {
+        if out_of_flow(&k.style.used()) || matches!(k.style.used().display, Some(Display::None)) {
             continue;
         }
-        let lens = LenCx::box_viewport(cx.viewport, &k.style);
+        let lens = LenCx::box_viewport(cx.viewport, &k.style.used());
         let px = |l| lens.px_lossy_zero(l, vcx);
         let monolith = monolith_blockified(k);
         out.items.push(GridItem {
             id: k.node_id,
-            mt: px(k.style.margin.top),
-            mb: px(k.style.margin.bottom),
+            mt: px(k.style.used().margin.top),
+            mb: px(k.style.used().margin.bottom),
             force_before: edge_break(k, false, vcx),
             force_after: edge_break(k, true, vcx),
             avoid_before: edge_avoid(k, false, vcx),
             avoid_after: edge_avoid(k, true, vcx),
             monolith,
             span: row_span(e, k),
-            inner: (!monolith).then(|| collect(k, depth, true, cx, vcx)),
+            inner: (!monolith).then(|| collect(k, true, cx, vcx)),
         });
     }
     out
@@ -115,9 +116,10 @@ pub(super) fn collect_grid(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>
 /// Охват рядов элемента `k` сетки `grid` по размещению (css-grid-1 §8.3.1).
 fn row_span(grid: &Element, k: &Element) -> Option<usize> {
     use crate::style::computed::Placement::{Auto, Line, Span};
-    if let Some(name) = &k.style.grid_area_name {
+    if let Some(name) = &k.style.used().grid_area_name {
         let rows: Vec<usize> = grid
             .style
+            .used()
             .grid_areas
             .as_ref()?
             .iter()
@@ -127,7 +129,7 @@ fn row_span(grid: &Element, k: &Element) -> Option<usize> {
             .collect();
         return Some(rows.last()? - rows.first()? + 1);
     }
-    match k.style.grid_row.unwrap_or((Auto, Auto)) {
+    match k.style.used().grid_row.unwrap_or((Auto, Auto)) {
         (Line(a), Line(b)) if a == b => Some(1),
         (Line(a), Line(b)) if a != b && (a > 0) == (b > 0) => Some(a.abs_diff(b) as usize),
         (Line(_), Line(_)) => None,
@@ -154,10 +156,13 @@ pub(crate) struct RowPush {
 /// Куда встаёт распорка роста в разложенной стопке.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Pushed {
+    /// Строка абзаца в независимом потоке flex-item.
+    Line(super::super::LinePush),
     /// Коробка, начинающаяся в точке (распорка перед ней).
     Box(u64),
     /// Ряд сетки без зазора перед ним, начинающийся в точке.
     Row(RowPush),
+    Flex(super::FlexPush),
 }
 
 impl GridBox {

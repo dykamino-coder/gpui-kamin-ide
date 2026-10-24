@@ -3,14 +3,16 @@
 //! и используемые размеры; простой холст без рамок, отбивок и эффектов отдаётся как
 //! `MeasuredReplaced` с нативным стилем и выравниванием `start` по умолчанию.
 
+use crate::defaults::DEFAULT_CANVAS_SIZE_PX;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::style::computed::BoxStyle;
 use crate::style::{computed::Computed, values::value::Len};
 use gpui::{AnyElement, IntoElement, Refineable, Styled, px, size};
 
 pub(crate) fn render(
     e: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     parent: &Computed,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<AnyElement> {
@@ -53,10 +55,10 @@ pub(crate) fn render(
         Some(Len::Px(v)) => v,
         _ => default,
     };
-    let w = natural(c.attr_width, 300.0);
+    let w = natural(c.attr_width, DEFAULT_CANVAS_SIZE_PX.0);
     let ratio = c
         .aspect_ratio
-        .unwrap_or_else(|| w / natural(c.attr_height, 150.0));
+        .unwrap_or_else(|| w / natural(c.attr_height, DEFAULT_CANVAS_SIZE_PX.1));
     if !ratio.is_finite() || ratio <= 0.0 || w <= 0.0 {
         return None;
     }
@@ -74,7 +76,7 @@ pub(crate) fn render(
     // Grid supplies a definite percentage base at final layout. Leave the
     // percentage in the native style for intrinsic sizing to resolve as auto.
     computed.cb_height_def = true;
-    let mut painted = cx.build.styled_box(e, &computed, cx);
+    let mut painted = cx.contracts.build.styled_box(e, &computed, cx);
     let mut native = gpui::Style::default();
     native.refine(painted.style());
     native.aspect_ratio = Some(ratio);

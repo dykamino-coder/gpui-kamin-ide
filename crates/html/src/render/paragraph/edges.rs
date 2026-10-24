@@ -21,7 +21,7 @@ pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(e) => {
             !matches!(
-                e.style.position,
+                e.style.used().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) && has_flow_text(&e.children)

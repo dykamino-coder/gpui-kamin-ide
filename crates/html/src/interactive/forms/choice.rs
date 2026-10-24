@@ -4,11 +4,11 @@ use super::{SystemColor, field_box, native_color};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::paint::apply::apply;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 /// Список выбора: показываем выбранный вариант либо первый.
-pub(super) fn select(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+pub(super) fn select(e: &Element, style: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
     let options = super::options::Options::from_element(e);
     let text = options.selected_label().to_owned();
     let label = if text.is_empty() {
@@ -86,7 +86,7 @@ pub(super) fn select(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElem
 }
 
 /// Флажок и переключатель отличаются только скруглением и отметкой.
-pub(super) fn toggle(e: &Element, style: &Computed, round: bool, vcx: ValueCx<'_>) -> AnyElement {
+pub(super) fn toggle(e: &Element, style: &BoxStyle, round: bool, vcx: ValueCx<'_>) -> AnyElement {
     let on = e.attr("checked").is_some();
     // `accent-color` красит именно отметку флажка и переключателя — это
     // единственное, на что оно влияет.

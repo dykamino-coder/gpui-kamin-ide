@@ -1,12 +1,12 @@
 //! Струны полей: сквозное схлопывание, цепочки первого и последнего ребёнка.
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::{
     holds_line_box, in_flow, inline_level_box, own_context, replaced_inline,
 };
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 mod through;
 pub(super) use through::adjoin;
 pub(crate) use through::float_only_wrapper;
@@ -80,15 +80,15 @@ pub(super) fn first_in_flow<'a>(
                 // внутри обязан оборвать поиск — иначе отступ предыдущего
                 // блока протекает под анонимную коробку, и строка встаёт на
                 // него выше (`inline-formatting-context-002`).
-                if ch.style.inline_display == Some(true) {
+                if ch.style.used().inline_display == Some(true) {
                     if replaced_inline(&ch.tag) || holds_line_box(&ch.children) {
                         return None;
                     }
                     continue;
                 }
-                if ch.style.inline_display != Some(true)
+                if ch.style.used().inline_display != Some(true)
                     && matches!(
-                        ch.style.display,
+                        ch.style.used().display,
                         Some(Display::InlineBlock)
                             | Some(Display::InlineFlex)
                             | Some(Display::InlineGrid)
@@ -97,7 +97,7 @@ pub(super) fn first_in_flow<'a>(
                 {
                     return None;
                 }
-                if !in_flow(&ch.style) {
+                if !in_flow(&ch.style.used()) {
                     continue;
                 }
                 return Some((i, ch));
@@ -126,10 +126,10 @@ pub(crate) fn top_edge_open_at(e: &Element, width: Option<f32>) -> bool {
     // (§8.3.1 «no top padding»): `margin-collapse-028` — `padding: 50%` внутри
     // `width: 0`, поле внука уходило внутрь, и зелёная полоса ехала на 40 ниже.
     // Ширина — уровня или (в цепочке) содержимого родителя `e`.
-    let pct_zero = matches!(e.style.padding.top, Some(Len::Pct(_))) && width == Some(0.0);
+    let pct_zero = matches!(e.style.used().padding.top, Some(Len::Pct(_))) && width == Some(0.0);
     !own_context(e)
-        && (zero_len(e.style.padding.top) || pct_zero)
-        && zero_len(e.style.borders().top)
+        && (zero_len(e.style.used().padding.top) || pct_zero)
+        && zero_len(e.style.used().borders().top)
 }
 
 /// Струна примыкающих полей (CSS 2.1 §8.3.1): больший положительный и самый

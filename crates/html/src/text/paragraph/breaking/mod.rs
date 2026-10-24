@@ -30,7 +30,7 @@ use crate::text::paragraph::*;
 pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
     Wrap {
         nowrap: c.nowrap == Some(true),
-        break_spaces: c.break_after_spaces == Some(true),
+        break_spaces: crate::dom::whitespace::break_spaces(c),
         break_all: c.break_anywhere == Some(true) && c.break_anywhere_strict != Some(true),
         anywhere: c.break_anywhere_strict == Some(true),
         keep_all: c.keep_all == Some(true),
@@ -41,7 +41,7 @@ pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
         wrap_anywhere: c.wrap_anywhere == Some(true) || c.word_break_word == Some(true),
         rtl: c.wm().rtl(),
         balance: c.balance_lines == Some(true),
-        keep_spaces: c.keep_spaces == Some(true),
+        keep_spaces: crate::dom::whitespace::keep_spaces(c),
         loose: c.line_break_loose.unwrap_or(0),
         cjk_lang: c.lang.as_deref().is_some_and(cjk_writing),
     }

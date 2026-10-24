@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::style::computed::Position;
+use crate::style::computed::{BoxStyle, Computed};
 
 #[test]
 fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
@@ -9,8 +10,8 @@ fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
     let crate::dom::Node::Element(mut element) = nodes.remove(0) else {
         panic!("element")
     };
-    element.style.position = Some(Position::Absolute);
-    element.style.inline_display = Some(true);
+    element.style.used_mut().position = Some(Position::Absolute);
+    element.style.used_mut().inline_display = Some(true);
     let opts = RenderOpts {
         text: gpui::TextStyle::default(),
         viewport: (800.0, 600.0),
@@ -21,10 +22,13 @@ fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
     for (offered, turned) in [(false, false), (true, false), (false, true), (true, true)] {
         let piece = atom_piece_in(
             &element,
-            &Computed {
-                turned_line: turned,
-                ..Default::default()
-            },
+            &BoxStyle::from(
+                (Computed {
+                    turned_line: turned,
+                    ..Default::default()
+                })
+                .clone(),
+            ),
             &opts,
             false,
             offered,

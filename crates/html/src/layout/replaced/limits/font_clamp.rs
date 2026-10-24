@@ -17,11 +17,11 @@ use crate::style::values::value::{Len, px_strict};
 /// прямоугольниками).
 pub(crate) fn with_inherited_font(e: &Element, inherited: &Computed) -> Element {
     let mut copy = e.clone();
-    if copy.style.font_family.is_none() {
-        copy.style.font_family = inherited.font_family.clone();
+    if copy.style.cascaded().font_family.is_none() {
+        copy.style.used_mut().font_family = inherited.font_family.clone();
     }
-    if copy.style.monospace.is_none() {
-        copy.style.monospace = inherited.monospace;
+    if copy.style.cascaded().monospace.is_none() {
+        copy.style.used_mut().monospace = inherited.monospace;
     }
     // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4, «Inherited: yes»),
     // а копия несёт только собственный стиль элемента. Замещаемая коробка
@@ -32,18 +32,18 @@ pub(crate) fn with_inherited_font(e: &Element, inherited: &Computed) -> Element 
     // равно (`image-orientation-none`, `-none-content-images`).
     // Ранний возврат снят намеренно: он экономил только клон, а перенос
     // обязан идти и у элемента со своим шрифтом.
-    if copy.style.image_orient_none.is_none() {
-        copy.style.image_orient_none = inherited.image_orient_none;
+    if copy.style.cascaded().image_orient_none.is_none() {
+        copy.style.used_mut().image_orient_none = inherited.image_orient_none;
     }
     // `color` наследуется (CSS 2.1 §14.1), а цвет рамки по умолчанию —
     // `currentColor` (css-backgrounds-3 §4.1): без переноса рамка картинки
     // в белом абзаце рисовалась чёрной (`c44-ln-box-001/002/003`).
     // `image-rendering` тоже наследуется (css-images-3 §image-rendering).
-    if copy.style.image_pixelated.is_none() {
-        copy.style.image_pixelated = inherited.image_pixelated;
+    if copy.style.cascaded().image_pixelated.is_none() {
+        copy.style.used_mut().image_pixelated = inherited.image_pixelated;
     }
-    if copy.style.color.is_none() {
-        copy.style.color = inherited.color;
+    if copy.style.cascaded().color.is_none() {
+        copy.style.used_mut().color = inherited.color;
     }
     copy
 }
@@ -109,7 +109,7 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
         )
     };
-    let c = &e.style;
+    let c = &*e.style.used();
     if !(kw(c.min_width) || kw(c.max_width) || kw(c.min_height) || kw(c.max_height)) {
         return e.clone();
     }
@@ -124,7 +124,7 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
         _ => px(c.attr_height),
     };
     let mut copy = e.clone();
-    let s = &mut copy.style;
+    let s = &mut *copy.style.used_mut();
     for (lim, nat) in [
         (&mut s.min_width, nat_w),
         (&mut s.max_width, nat_w),

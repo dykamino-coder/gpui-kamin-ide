@@ -3,7 +3,8 @@
 //! готового плана укладки, независимо от щупов отдельных элементов.
 use super::ColumnStack;
 use crate::layout::fragment::types::{Frag, axis_box};
-use crate::paint::gap_rules::MulticolGaps;
+use crate::layout::multicol::gap_rules::MulticolGaps;
+use crate::tolerance::COORD_EPS;
 use gpui::{Bounds, Pixels};
 impl ColumnStack {
     pub(super) fn collect_gap_geometry(
@@ -20,7 +21,7 @@ impl ColumnStack {
         let lines = self.lines_plan.borrow();
         let wrap = self.rows.is_some_and(|r| r.wrap);
         let mut used = vec![0; lines.len()];
-        for f in plan.iter().filter(|f| f.h > 0.01) {
+        for f in plan.iter().filter(|f| f.h > COORD_EPS) {
             let line = if wrap { f.col / self.count } else { 0 };
             let col = if wrap { f.col % self.count } else { f.col };
             if let Some(u) = used.get_mut(line) {

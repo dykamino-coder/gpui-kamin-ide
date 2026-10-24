@@ -9,6 +9,8 @@ pub(super) struct Page {
     pub(super) doc: Rc<Document>,
     /// Сравниваемые листы печатного теста (с нуля), `None` — все.
     pub(super) select: Option<Vec<usize>>,
+    #[cfg(feature = "wpt-harness")]
+    pub(super) probes: kamin_html::FragmentProbes,
 }
 
 impl Render for Page {
@@ -65,7 +67,8 @@ impl Render for Page {
                         Some(kamin_html::value::Len::Px(v)) => *v,
                         _ => 0.0,
                     };
-                    let m = &e.style.margin;
+                    let style = e.style.computed();
+                    let m = &style.margin;
                     [px(&m.top), px(&m.right), px(&m.bottom), px(&m.left)]
                 })
                 .unwrap_or([0.0; 4]);
@@ -83,7 +86,7 @@ impl Render for Page {
                     _ => None,
                 })
                 .map(|e| {
-                    let wm = e.style.wm();
+                    let wm = e.style.computed().wm();
                     (wm.vertical(), wm.block_rl(), wm.rtl())
                 })
                 .unwrap_or((false, false, false));
@@ -118,7 +121,11 @@ impl Render for Page {
             cx: Default::default(),
             frag: Default::default(),
         };
-        opts.cx.freeze_scrollbars = true;
+        #[cfg(feature = "wpt-harness")]
+        {
+            opts.frag.probe = self.probes.clone();
+        }
+        opts.cx.deferred.freeze_scrollbars = true;
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся
         // неопределённой, и абсолютный элемент, растянутый краями

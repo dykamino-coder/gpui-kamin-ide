@@ -1,8 +1,7 @@
 //! Метрики нативных элементов управления, независимые от UI встраивающего приложения.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::Computed;
-use crate::style::computed::FontCx;
+use crate::style::computed::{BoxStyle, FontCx};
 use crate::style::values::value::Len;
 
 // Blink html.css / LayoutThemeDefault and WebThemeEngine on Windows.
@@ -24,7 +23,7 @@ pub(crate) fn size(kind: ControlKind) -> [f32; 2] {
 /// HTML rendering: text entry widgets cannot use a line-height below normal,
 /// including when appearance is none. Resolve normal on both paths, so it
 /// cannot accidentally inherit a shorter GPUI line-height from a wrapper.
-pub(crate) fn text_style(style: &Computed, vcx: ValueCx<'_>) -> Computed {
+pub(crate) fn text_style(style: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
     let mut c = style.clone();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
@@ -44,6 +43,7 @@ pub(crate) fn text_style(style: &Computed, vcx: ValueCx<'_>) -> Computed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
 
     #[test]
     fn native_metrics_use_browser_defaults() {
@@ -57,14 +57,23 @@ mod tests {
     fn text_entry_clamps_only_short_lines() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = Computed {
-            font_size: Some(Len::Px(60.)),
-            ..Computed::default()
+        let mut c = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(60.));
+            with_inherited
         };
-        let normal = text_style(&c, vcx).line_height;
+        let normal = text_style(&BoxStyle::from(c.clone()), vcx).line_height;
         c.line_height = Some(Len::Px(1.));
-        assert_eq!(text_style(&c, vcx).line_height, normal);
+        assert_eq!(
+            text_style(&BoxStyle::from(c.clone()), vcx).line_height,
+            normal
+        );
         c.line_height = Some(Len::Px(200.));
-        assert_eq!(text_style(&c, vcx).line_height, c.line_height);
+        assert_eq!(
+            text_style(&BoxStyle::from(c.clone()), vcx).line_height,
+            c.line_height
+        );
     }
 }

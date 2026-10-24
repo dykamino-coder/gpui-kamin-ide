@@ -8,8 +8,8 @@ use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::replaced::image::image;
 use crate::render::blocks::blocks;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::text::inline;
 use gpui::{IntoElement, ParentElement, Styled, div};
@@ -17,7 +17,7 @@ use gpui::{IntoElement, ParentElement, Styled, div};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn static_overlay(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     rot_block: bool,
 ) -> Option<inline::Piece> {
@@ -25,14 +25,23 @@ pub(crate) fn static_overlay(
         return Some(inline::Piece::Overlay(child, inline::OverlayAt::default()));
     }
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
-    let mut group_style = (*e.style).clone();
+    let mut group_style = (*e.style.used()).clone();
     group_style.mask_image = merged.mask_image.clone();
     merged.position = None;
     merged.abs_static = true;
+    // Самостоятельная коробка сохраняет computed-письмо; поворот содержащей
+    // строки отменяется обёрткой, как у атомарного строчного контекста.
+    let physical = inherited.inline_format == Some(crate::style::computed::InlineFormat::Turned)
+        && crate::layout::writing_mode::rotated_atom::text_turn(&opts.cx);
+    if physical {
+        merged.turned_line = false;
+        merged.lines_reversed = None;
+        merged.para_vertical = None;
+    }
     // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
     // путь блоков давал пустую коробку (clip-path-ellipse-2-ref).
     // Картинка — тем же порядком: у неё детей нет вовсе, и путь
@@ -41,13 +50,13 @@ pub(crate) fn static_overlay(
     // `probe/absimg2.html`).
     let inner = if e.tag == "svg" {
         let mut copy = e.clone();
-        copy.style.image_orient_none = merged.image_orient_none;
-        copy.style.position = None;
+        copy.style.used_mut().image_orient_none = merged.image_orient_none;
+        copy.style.used_mut().position = None;
         crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if e.tag == "img" {
         let mut copy = e.clone();
-        copy.style.image_orient_none = merged.image_orient_none;
-        copy.style.position = None;
+        copy.style.used_mut().image_orient_none = merged.image_orient_none;
+        copy.style.used_mut().position = None;
         // `clip: rect(...)` и маска у картинки живут в буфере группы:
         // путь наложения идёт мимо `grouped`, и без обёртки картинка
         // рисовалась бы целиком (`clip-rect-v*`).
@@ -63,9 +72,22 @@ pub(crate) fn static_overlay(
             vcx,
         )
     };
+    let inner = if physical {
+        crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
+            inner,
+            inherited.wm().line().line_turn()
+                == crate::style::computed::writing_mode::Turn::CounterClockwise,
+            !inherited.wm().alphabetic_baseline(),
+            opts.cx.deferred.vertical_paint.clone(),
+        )
+        .hooked()
+    } else {
+        inner
+    };
     // Transform the actual out-of-flow box before anchoring it; the
     // paragraph overlay has zero advance and is not a transform reference box.
-    let inner = crate::paint::effects::transform::transformed(inner, &e.style, inherited, vcx);
+    let inner =
+        crate::paint::effects::transform::transformed(inner, &e.style.used(), inherited, vcx);
     // Сторона, которой коробка вешается на статическую точку. При
     // `direction: ltr` — левый край (текстовый путь так и кладёт,
     // `lines.rs: prepaint_at(origin)`), при `rtl` — ПРАВЫЙ:

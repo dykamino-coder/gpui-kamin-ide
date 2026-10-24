@@ -14,7 +14,7 @@ macro_rules! properties {
 
         impl Property {
             #[allow(clippy::clone_on_copy)] // One registry covers both owned and Copy fields.
-            pub(super) fn copy(self, p: &Computed, c: &mut Computed, vcx: ValueCx<'_>) {
+            pub(crate) fn copy(self, p: &Computed, c: &mut Computed, vcx: ValueCx<'_>) {
                 match self {
                     $(Self::$id => { $(c.$field $(.$part)* = p.$field $(.$part)*.clone();)+ },)*
                     Self::RowGap => c.gap.get_or_insert((None, None)).0 = p.gap.and_then(|g| g.0),
@@ -101,6 +101,12 @@ macro_rules! properties {
                     c.subgrid = c.subgrid_cols || c.subgrid_rows;
                 }
             }
+        }
+
+        /// Поля реестра у длинного свойства реестра `id` (пусто — его поля
+        /// копирует `compute::longhands` по группе).
+        pub(crate) fn of_longhand(id: crate::style::css::LonghandId) -> &'static [Property] {
+            properties(id.name())
         }
 
         pub(super) fn properties(key: &str) -> &'static [Property] {
@@ -195,4 +201,5 @@ properties! {
     MaxLines: "max-lines" => [line_clamp, clamp_auto];
     Continue: "continue" => [clamp_continue, clamp_legacy];
     TextBoxTrim: "text-box-trim" => [text_box_trim_start, text_box_trim_end];
+    UserSelect: "user-select" => [user_select];
 }

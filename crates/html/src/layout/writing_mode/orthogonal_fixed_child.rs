@@ -172,21 +172,27 @@ mod tests {
     fn parallel_block_retains_inline_block_height_during_intrinsic_measurement() {
         use crate::layout::writing_mode::native_vertical;
         use crate::layout::writing_mode::orthogonal_inline::resolve;
-        let mut container = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            display: Some(Display::InlineBlock),
-            height: Some(Len::Px(160.0)),
-            ortho_limit: Some(160.0),
-            ..Computed::default()
+        let mut container = {
+            let mut with_inherited = Computed {
+                display: Some(Display::InlineBlock),
+                height: Some(Len::Px(160.0)),
+                ortho_limit: Some(160.0),
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
-        let mut child = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            display: Some(Display::Block),
-            ..bordered()
+        let mut child = {
+            let mut with_inherited = Computed {
+                display: Some(Display::Block),
+                ..bordered()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         resolve(&mut child, &container, (800.0, 600.0), false);
         let contribution = native_vertical::constraint(&child, 160.0).unwrap();
@@ -205,20 +211,24 @@ mod tests {
     fn parallel_cell_children_fill_the_cells_authored_inline_size() {
         use crate::layout::writing_mode::native_vertical;
         use crate::layout::writing_mode::orthogonal_inline::resolve;
-        let mut cell = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            display: Some(Display::TableCell),
-            height: Some(Len::Px(180.0)),
-            ortho_limit: Some(180.0),
-            ..Computed::default()
+        let mut cell = {
+            let mut with_inherited = Computed {
+                display: Some(Display::TableCell),
+                height: Some(Len::Px(180.0)),
+                ortho_limit: Some(180.0),
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
-        let mut child = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..bordered()
+        let mut child = {
+            let mut with_inherited = Computed { ..bordered() };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         resolve(&mut child, &cell, (800.0, 600.0), false);
         let constraint = native_vertical::constraint(&child, 180.0).unwrap();

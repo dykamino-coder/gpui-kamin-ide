@@ -35,12 +35,17 @@ impl Hooks for ColumnStack {
         };
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        if let Some(recipe) = self.deferred.clone() {
+            recipe.prepare(self, col_w, window, cx);
+        }
         self.column_breaks(col_w, window, cx);
         let heights = self.kid_geoms();
-        let (_, lines, plan, spans) = self.balance(&heights);
+        let (_, lines, mut plan, spans) = self.balance(&heights);
+        plan.check_copies(|kid| self.children[kid].frags.len() + 1);
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;
+        self.assign_flex_owners(&plan);
         self.prepaint_frags(window, cx, bounds, col_w, &plan, step);
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
@@ -97,7 +102,7 @@ impl Hooks for ColumnStack {
         for f in &plan {
             parts[f.kid] += 1;
         }
-        let plan_all = plan.clone();
+        let plan_all = plan.fragments.clone();
         // CSS 2.1 Appendix E: блочные потомки потока (шаг 4) раньше
         // позиционированных (шаг 8) — фрагменты позиционированных детей
         // красятся вторым проходом, в порядке разметки.

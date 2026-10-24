@@ -8,22 +8,25 @@ use crate::dom::text_content::gather_text;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, TextTransform};
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, TextTransform};
 use crate::style::values::value::Len;
 use crate::text::inline;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) fn piece(
     element: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<inline::Piece> {
     let vcx = opts.cx.vcx();
-    if !inherited.wm().turned() || inherited.wm().sideways() || element.style.display.is_some() {
+    if !inherited.wm().turned()
+        || inherited.wm().sideways()
+        || element.style.used().display.is_some()
+    {
         return None;
     }
-    let mut merged = inherit(inherited, &element.style, vcx);
+    let mut merged = box_style(inherited, &element.style, vcx);
     let count = merged.combine_upright.flatten()?;
     let mut plain = String::new();
     gather_text(&element.children, &mut plain);
@@ -36,6 +39,7 @@ pub(crate) fn piece(
         return None;
     }
     merged.combine_upright = Some(None);
+    merged.inline_format = Some(crate::style::computed::InlineFormat::Combined);
     // An explicit zero overrides inherited spacing in nested inline descendants.
     merged.letter_spacing = Some(Len::Px(0.0));
     let em = match merged.font_size {
@@ -72,7 +76,7 @@ pub(crate) fn piece(
     } else {
         element.children.as_slice()
     };
-    let inner = opts.cx.build.paragraph(nodes, &merged, opts);
+    let inner = opts.cx.contracts.build.paragraph(nodes, &merged, opts);
     Some(inline::Piece::Atom(
         crate::text::vertical::CombinedUpright::new(inner, em).hooked(),
     ))

@@ -38,7 +38,7 @@ fn measured_host_keeps_float_order_and_containing_width() {
         band_host_m(nodes, 0, 16.0, &[], FloatCb::of(&parent), vcx).expect("measured host");
     assert_eq!(end, nodes.len());
     assert!(lifted.is_empty());
-    assert_eq!(host.style.width, None);
+    assert_eq!(host.style.used().width, None);
     let shape = host.marks.shape_flow.expect("band marks");
     assert_eq!(shape.cbw, Some(200.0));
     assert_eq!(shape.count, 2);
@@ -129,7 +129,11 @@ fn nested_percentage_width_keeps_one_shared_float_context() {
     assert_eq!(end, nodes.len());
     assert!(host.marks.shape_flow.is_some());
     assert_eq!(
-        find(&host.children, "nested").expect("nested").style.width,
+        find(&host.children, "nested")
+            .expect("nested")
+            .style
+            .used()
+            .width,
         Some(Len::Pct(2.))
     );
 }

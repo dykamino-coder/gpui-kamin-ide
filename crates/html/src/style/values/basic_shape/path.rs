@@ -2,7 +2,7 @@
 
 use super::ShapeBox;
 use crate::document::state::ValueCx;
-use crate::svg::path_commands::{Command, Sink};
+use crate::style::values::basic_shape::commands::{Command, Sink};
 
 /// Контур для SVG-растеризатора: polygon / path / shape.
 pub(crate) fn svg_path_of(

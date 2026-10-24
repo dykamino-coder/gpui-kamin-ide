@@ -8,7 +8,7 @@ use super::{
     exact_probe::{ShiftLink, StickyShift},
 };
 use crate::hooks::{IntoHooked, Wrap};
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::{BoxStyle, Position};
 use gpui::{AnyElement, App, Bounds, Pixels, ScrollHandle, Window, point, px};
 pub(crate) struct Projection {
     handle: ScrollHandle,
@@ -17,7 +17,7 @@ pub(crate) struct Projection {
     link: StickyShift,
 }
 impl Projection {
-    /// The chain the projected subtree is built with (`LayoutCx::sticky`).
+    /// The chain the projected subtree is built with (`ScrollContext::sticky`).
     pub(crate) fn link(&self) -> &StickyShift {
         &self.link
     }
@@ -26,7 +26,7 @@ impl Projection {
 pub(crate) fn projection(
     frame: Option<&Frame>,
     parent: u64,
-    c: Option<&Computed>,
+    c: Option<&BoxStyle>,
     outer: Option<&StickyShift>,
 ) -> Option<Projection> {
     let frame = frame?;
@@ -85,6 +85,7 @@ impl Wrap for Projected {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     use crate::style::computed::Overflow;
     use crate::{
         dom::Node,
@@ -102,11 +103,14 @@ mod tests {
         frame.set_handle(ScrollHandle::default());
         {
             frame.begin(Some(&root));
-            let parent = Computed {
-                self_node: 7,
-                rtl: Some(true),
-                position: Some(Position::Relative),
-                ..Computed::default()
+            let parent = {
+                let mut with_inherited = BoxStyle::from(Computed {
+                    position: Some(Position::Relative),
+                    ..Computed::default()
+                });
+                with_inherited.self_node = 7;
+                with_inherited.rtl = Some(true);
+                with_inherited
             };
             classic::model(Some(&frame), 7, &parent);
             let absolute = crate::style::cascade::inherit::inherit(
@@ -140,12 +144,15 @@ mod tests {
         root.node_id = 7;
         let frame = Frame::default();
         let handle = ScrollHandle::default();
-        let c = Computed {
-            self_node: 7,
-            rtl: Some(true),
-            overflow_x: Some(Overflow::Scroll),
-            overflow_y: Some(Overflow::Scroll),
-            ..Computed::default()
+        let c = {
+            let mut with_inherited = BoxStyle::from(Computed {
+                overflow_x: Some(Overflow::Scroll),
+                overflow_y: Some(Overflow::Scroll),
+                ..Computed::default()
+            });
+            with_inherited.self_node = 7;
+            with_inherited.rtl = Some(true);
+            with_inherited
         };
         {
             frame.begin(Some(&root));

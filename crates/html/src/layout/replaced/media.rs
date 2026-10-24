@@ -3,6 +3,7 @@
 //! CSS Images 3 §default-sizing отдельно от пропорции `aspect-ratio` или атрибутов,
 //! с пределами CSS 2.1 §10.4 и исчезновением под `contain: size`.
 
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
@@ -15,15 +16,15 @@ pub(crate) fn empty(e: &Element) -> bool {
     match e.tag.as_str() {
         "video" => e.attr("poster").is_none(),
         "embed" => e.attr("src").is_none() && e.attr("type").is_some(),
-        "audio" => e.style.contains_width() || e.style.contains_height(),
-        "object" => e.attr("data").is_none() && e.style.contain_size == Some(true),
+        "audio" => e.style.used().contains_width() || e.style.used().contains_height(),
+        "object" => e.attr("data").is_none() && e.style.used().contain_size == Some(true),
         _ => false,
     }
 }
 
 /// HTML 15.4.1 and CSS Images 3 default sizing: fallback dimensions are
 /// separate from a natural aspect ratio and disappear under size containment.
-/// `avail_w` — доступная ширина блока (`LayoutCx::avail_w`) для долей.
+/// `avail_w` — доступная ширина блока (`BoxConstraints::avail_w`) для долей.
 pub(crate) fn resolve(
     e: &Element,
     inherited: &Computed,
@@ -37,14 +38,16 @@ pub(crate) fn resolve(
     let normalized = replaced_used_style::normalize(e, avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let mut copy = image::pct_height_to_px(e, inherited);
-    copy.style.resolve_viewport(viewport, vcx);
+    if copy.style.used().has_viewport_lengths(vcx) {
+        copy.style.used_mut().resolve_viewport(viewport, vcx);
+    }
     // A media resource is not an image source. Its unavailable natural size
     // must not trigger image decoding or a broken-image text placeholder.
     copy.attrs.retain(|(name, _)| name != "src");
-    if copy.style.contain_size == Some(true) {
+    if copy.style.used().contain_size == Some(true) {
         return Some(copy);
     }
-    let s = &mut copy.style;
+    let s = copy.style.used_mut();
     let ratio = s
         .aspect_ratio
         .or(s.aspect_ratio_auto)
@@ -68,12 +71,12 @@ pub(crate) fn resolve(
     let dw = if s.contains_width() {
         s.contain_intrinsic.0.unwrap_or(0.0)
     } else {
-        300.0
+        DEFAULT_REPLACED_WIDTH_PX
     };
     let dh = if s.contains_height() {
         s.contain_intrinsic.1.unwrap_or(0.0)
     } else {
-        150.0
+        DEFAULT_REPLACED_HEIGHT_PX
     };
     match (aw, ah, ratio) {
         (true, true, Some(r)) => {
@@ -112,7 +115,7 @@ pub(crate) fn resolve(
 }
 
 pub(crate) fn render(e: &Element, opts: &RenderOpts) -> AnyElement {
-    opts.cx.build.replaced(e, None, &opts.cx)
+    opts.cx.contracts.build.replaced(e, None, &opts.cx)
 }
 
 #[cfg(test)]
@@ -128,10 +131,10 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.height = Some(Len::Px(40.0));
+        e.style.used_mut().height = Some(Len::Px(40.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.width, Some(Len::Px(300.0)));
-        assert_eq!(sized.style.height, Some(Len::Px(40.0)));
+        assert_eq!(sized.style.used().width, Some(Len::Px(300.0)));
+        assert_eq!(sized.style.used().height, Some(Len::Px(40.0)));
     }
 
     #[test]
@@ -139,12 +142,12 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.attr_width = Some(Len::Px(100.0));
-        e.style.attr_height = Some(Len::Px(100.0));
-        e.style.max_width = Some(Len::Px(100.0));
+        e.style.used_mut().attr_width = Some(Len::Px(100.0));
+        e.style.used_mut().attr_height = Some(Len::Px(100.0));
+        e.style.used_mut().max_width = Some(Len::Px(100.0));
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.width, Some(Len::Px(100.0)));
-        assert_eq!(sized.style.height, Some(Len::Px(100.0)));
+        assert_eq!(sized.style.used().width, Some(Len::Px(100.0)));
+        assert_eq!(sized.style.used().height, Some(Len::Px(100.0)));
     }
 
     #[test]
@@ -152,9 +155,9 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut e = video();
-        e.style.contain_size = Some(true);
+        e.style.used_mut().contain_size = Some(true);
         let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
-        assert_eq!(sized.style.width, None);
-        assert_eq!(sized.style.height, None);
+        assert_eq!(sized.style.used().width, None);
+        assert_eq!(sized.style.used().height, None);
     }
 }

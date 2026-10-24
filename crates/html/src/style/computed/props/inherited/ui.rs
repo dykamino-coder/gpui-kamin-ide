@@ -2,7 +2,7 @@
 //! §4.1), `cursor` (css-ui-4 §6.1), `pointer-events` (SVG 2 §pointer-events),
 //! `visibility` (css-display-4 §4), `accent-color`, `caret-color` (css-ui-4
 //! §6.2), `scrollbar-color` (css-scrollbars-1 §2), `image-rendering`
-//! (css-images-3 §6.2), `image-orientation` (§5.4).
+//! (css-images-3 §6.2), `image-orientation` (§5.4), `color-scheme` (css-color-adjust-1 §2.1).
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
@@ -122,10 +122,36 @@ pub(crate) fn scrollbar_color(v: &str, vcx: ValueCx<'_>) -> Option<Option<[Style
     }
 }
 
+/// `color-scheme: normal | [ light | dark | <custom-ident> ]+ && only?`
+/// (css-color-adjust-1 §2.1): вычисленное значение — ключевые слова как
+/// заданы, строчными, через пробел. `only` и `normal` — не имена схем.
+pub(crate) fn color_scheme(v: &str) -> Option<String> {
+    let words: Vec<String> = v.split_whitespace().map(str::to_ascii_lowercase).collect();
+    if words.len() == 1 && words[0] == "normal" {
+        return Some("normal".into());
+    }
+    let only = words.iter().filter(|w| *w == "only").count();
+    let schemes = words.len() - only;
+    let ident = |w: &str| {
+        let mut chars = w.chars();
+        chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '-' || !c.is_ascii())
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || !c.is_ascii())
+            && !matches!(w, "normal" | "default")
+            && !crate::style::computed::css_wide_keyword(w)
+    };
+    let edge = |w: Option<&String>| w.map(String::as_str) == Some("only");
+    let only_at_edge = only == 0 || (only == 1 && (edge(words.first()) || edge(words.last())));
+    (schemes > 0 && only <= 1 && only_at_edge && words.iter().all(|w| ident(w)))
+        .then(|| words.join(" "))
+}
+
 pub(super) fn accepts(id: LonghandId, v: &str, vcx: ValueCx<'_>) -> bool {
     use LonghandId::*;
     match id {
         Color => StyleColor::parse_value(v, vcx).is_some(),
+        ColorScheme => color_scheme(v).is_some(),
         Cursor => cursor(v).is_some(),
         PointerEvents => pointer_events(v).is_some(),
         Visibility => visibility(v).is_some(),
@@ -155,6 +181,7 @@ impl Computed {
                     function => (None, Some(function)),
                 };
             }
+            ColorScheme => self.color_scheme = color_scheme(v).or(self.color_scheme.take()),
             Cursor => self.cursor = cursor(v).or(self.cursor.take()),
             PointerEvents => {
                 self.pointer_events_none = pointer_events(v).or(self.pointer_events_none)
@@ -196,6 +223,7 @@ impl Computed {
                 self.color_function = None;
                 self.color_initial = false;
             }
+            ColorScheme => self.color_scheme = None,
             Cursor => self.cursor = None,
             PointerEvents => self.pointer_events_none = None,
             Visibility => {

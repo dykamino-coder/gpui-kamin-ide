@@ -31,15 +31,15 @@ pub(super) fn copy_monolith(
     };
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(k)
-            if !k.inline || k.style.display == Some(Display::Block))
+            if !k.inline || k.style.used().display == Some(Display::Block))
     };
     // Size containment uses the same monolith predicate as fragment
     // measurement and grow_pushed. Nested row copies remain fragmentable.
     let monolith = nest_row.is_none()
         && (size_monolith(copy)
-        || copy.style.break_inside_avoid
-        || scrolls(copy.style.overflow_x)
-        || scrolls(copy.style.overflow_y)
+        || copy.style.used().break_inside_avoid
+        || scrolls(copy.style.used().overflow_x)
+        || scrolls(copy.style.used().overflow_y)
         || matches!(
             copy.tag.as_str(),
             "img"
@@ -53,7 +53,7 @@ pub(super) fn copy_monolith(
         // Таблица и ячейка — не монолиты
         // (css-break-4 §4.1).
         || matches!(
-            copy.style.display,
+            copy.style.used().display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)

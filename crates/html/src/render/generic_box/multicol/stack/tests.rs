@@ -3,6 +3,7 @@
 use super::*;
 use crate::dom::Node;
 use crate::layout::fragment::types::StackAxis;
+use crate::style::computed::BoxStyle;
 
 #[test]
 fn empty_multicol_keeps_the_original_box_without_column_tracks() {
@@ -19,7 +20,7 @@ fn empty_multicol_keeps_the_original_box_without_column_tracks() {
             let result = stack_box(
                 gpui::div().w(px(32.)),
                 &e,
-                Computed::default(),
+                BoxStyle::from(Computed::default()),
                 &Computed::default(),
                 &opts,
                 cols,

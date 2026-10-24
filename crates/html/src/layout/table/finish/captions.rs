@@ -4,14 +4,14 @@ use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Effect;
 use crate::layout::fragment::paginate::watch::TablePart;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn collect_captions(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     caps_top: &mut Vec<AnyElement>,
     caps_bot: &mut Vec<AnyElement>,
@@ -19,21 +19,28 @@ pub(super) fn collect_captions(
     let vcx = opts.cx.vcx();
     for c in &e.children {
         if let Node::Element(cap) = c
-            && (cap.tag == "caption" || cap.style.is_caption == Some(true))
+            && (cap.tag == "caption" || cap.style.used().is_caption == Some(true))
         {
-            let cm = inherit(inherited, &cap.style, vcx);
+            let cm = box_style(inherited, &cap.style, vcx);
             // Сторона — с самого заголовка, при пустоте — от таблицы
             // (наследование caption-side).
-            let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
+            let cap_side_bottom = cap
+                .style
+                .cascaded()
+                .caption_bottom
+                .or(e.style.cascaded().caption_bottom)
+                == Some(true);
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
-            // contains its floats (§10.6.7), like a cell (`LayoutCx::cell_bfc`).
-            let inside =
-                opts.cx
-                    .build
-                    .blocks(&cap.children, &cm, &opts.inner(|cx| cx.cell_bfc = true));
+            // contains its floats (§10.6.7), like a cell (`BoxConstraints::cell_bfc`).
+            let inside = opts.cx.contracts.build.blocks(
+                &cap.children,
+                &cm,
+                &opts.inner(|cx| cx.constraints.cell_bfc = true),
+            );
             let built = opts
                 .cx
+                .contracts
                 .build
                 .styled_box(cap, &cm, &opts.cx)
                 .flex()
@@ -45,8 +52,9 @@ pub(super) fn collect_captions(
             // (`transform-transformed-caption-contains-fixed-position`).
             let built = opts
                 .cx
+                .contracts
                 .build
-                .effects(built, Effect::transform(&cap.style, inherited, vcx));
+                .effects(built, Effect::transform(&cap.style.used(), inherited, vcx));
             // Подпись — сосед коробки таблицы в стопке обёртки: её border box
             // читает фрагментация (`watch::wrap`).
             let built = crate::layout::fragment::paginate::watch::wrap(cap.node_id, built, opts);
@@ -83,7 +91,7 @@ pub(super) fn wrap_with_captions(
         // (css-writing-modes-4 §6, особое исключение для caption-side): в
         // вертикальном письме заголовок стоит СБОКУ — справа при `vertical-rl`,
         // слева при `vertical-lr` (`caption-side-vrl-002`).
-        let vertical = e.style.wm().vertical();
+        let vertical = e.style.used().wm().vertical();
         let mut wrap = if vertical {
             div().flex().flex_row()
         } else {
@@ -117,19 +125,21 @@ pub(super) fn wrap_with_captions(
             let w = wrap.style();
             w.flex_grow = grow;
             w.flex_shrink = shrink;
-            w.align_self = if e.style.align_self.is_some() {
+            w.align_self = if e.style.used().align_self.is_some() {
                 own_align
             } else {
                 None
             };
             // Render sizing has already included content-box borders/padding.
             // Move that resolved inline basis to the wrapper exactly once.
-            if !inherited.flex_main_vertical && matches!(e.style.flex_basis, Some(Len::Px(_))) {
+            if !inherited.flex_main_vertical
+                && matches!(e.style.used().flex_basis, Some(Len::Px(_)))
+            {
                 w.flex_basis = s.flex_basis.take();
             } else if inherited.flex_main_vertical
                 && grow == Some(0.0)
                 && shrink == Some(0.0)
-                && matches!(e.style.flex_basis, Some(Len::Px(_)))
+                && matches!(e.style.used().flex_basis, Some(Len::Px(_)))
             {
                 // A fully inflexible table keeps its definite main size.
                 // Include that size when the wrapper measures its captions.
@@ -141,9 +151,9 @@ pub(super) fn wrap_with_captions(
         // CSS 2.1 §17.4: the wrapper uses the table's border-edge inline size.
         // styled_div_with has resolved box sizing and font units on the grid.
         let inline_size = if vertical {
-            e.style.height
+            e.style.used().height
         } else {
-            e.style.width
+            e.style.used().width
         };
         if matches!(inline_size, Some(Len::Px(_) | Len::Pct(_))) {
             if vertical {
@@ -177,13 +187,17 @@ pub(super) fn wrap_with_captions(
         // колонки (`anonymous-table-box-width-001`: пустая подпись в 100
         // точек, рамка `border-bottom: 100px` у стола нулевой ширины).
         let caps_px = e.children.iter().all(|n| match n {
-            Node::Element(c) if c.tag == "caption" || c.style.is_caption == Some(true) => {
-                matches!(c.style.width, Some(Len::Px(_)))
+            Node::Element(c) if c.tag == "caption" || c.style.used().is_caption == Some(true) => {
+                matches!(c.style.used().width, Some(Len::Px(_)))
             }
             _ => true,
         });
         let mut outer = outer;
-        if !vertical && caps_px && e.style.width.is_none() && e.style.align_self.is_none() {
+        if !vertical
+            && caps_px
+            && e.style.used().width.is_none()
+            && e.style.used().align_self.is_none()
+        {
             outer.style().align_self = Some(gpui::AlignItems::Stretch);
         }
         cap_wrap.push(own_width(mark(TablePart::Box, outer.into_any_element())));
@@ -195,7 +209,7 @@ pub(super) fn wrap_with_captions(
         // переворачивается ВЕСЬ порядок обёртки. Прежнее
         // `cap_first = caption_bottom == (vertical && vertical_rl)` — тот же
         // разворот, записанный для ОДНОЙ подписи.
-        if vertical && e.style.wm().block_rl() {
+        if vertical && e.style.used().wm().block_rl() {
             cap_wrap.reverse();
         }
         wrap.style().no_inline_block_baseline = Some(true);

@@ -6,8 +6,8 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display, Overflow, Position};
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Display, Overflow, Position};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px};
 use std::hash::{Hash, Hasher};
@@ -24,7 +24,7 @@ pub(super) struct Layer {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare(
     e: &mut Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     viewport: (f32, f32),
     scale: f32,
@@ -33,17 +33,28 @@ pub(super) fn prepare(
     layers: &mut Vec<Layer>,
 ) {
     let vcx = opts.cx.vcx();
-    let merged = inherit(inherited, &e.style, vcx);
+    let merged = box_style(inherited, &e.style, vcx);
     let scale = scale * super::geometry::scale(e);
     if e.tag.eq_ignore_ascii_case("foreignObject") {
-        let w = length(e.style.width, e.attr("width"), viewport.0, vcx);
-        let h = length(e.style.height, e.attr("height"), viewport.1, vcx);
+        let zoom = merged.zoom_eff.unwrap_or(1.0);
+        let w =
+            super::geometry::length(e.style.used().width, e.attr("width"), viewport.0, zoom, vcx);
+        let h = super::geometry::length(
+            e.style.used().height,
+            e.attr("height"),
+            viewport.1,
+            zoom,
+            vcx,
+        );
         if w <= 0.0 || h <= 0.0 {
             e.children.clear();
             return;
         }
-        let (origin, paint_size) = super::geometry::capture(&merged, (w, h), viewport);
-        let density = (super::super::DENSITY * scale).clamp(1.0, 8.0);
+        // HTML раскладывается в CSS-пикселях с действующим зумом. SVG 2
+        // задаёт содержащий блок в пользовательских единицах; при размещении
+        // снимка переход обратно снимает зум ровно один раз.
+        let (origin, paint_size) = super::geometry::capture(&merged, (w, h), viewport, zoom);
+        let density = (super::super::DENSITY * scale / zoom).clamp(1.0, 8.0);
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         format!("{e:?}{merged:?}").hash(&mut hasher);
         // Raster identity includes document content and the application text
@@ -61,37 +72,43 @@ pub(super) fn prepare(
             html.tag = "div".into();
             html.attrs.clear();
             html.marks = Default::default();
-            html.style = merged.into();
-            html.style.width = Some(Len::Px(w));
-            html.style.height = Some(Len::Px(h));
-            html.style.display = Some(Display::Block);
-            html.style.position = Some(Position::Relative);
-            html.style.flow_root = Some(true);
-            html.style.transform = None;
-            html.style.transform_raw = None;
-            html.style.translate = None;
-            html.style.opacity = None;
-            html.style.clip_ref = None;
-            html.style.clip_inset = None;
-            html.style.clip_edges = None;
-            html.style.clip_xywh = None;
-            html.style.clip_shape = None;
-            html.style.clip_polygon = None;
-            html.style.clip_bare_box = false;
-            html.style.mask_image = None;
-            html.style.filter = None;
-            html.style.filter_ref = None;
-            html.style.rotate_prop = None;
-            html.style.scale_prop = None;
-            html.style.overflow_x.get_or_insert(Overflow::Hidden);
-            html.style.overflow_y.get_or_insert(Overflow::Hidden);
-            html.style.blend = None;
-            let root = Computed::default();
+            html.style = crate::dom::SharedStyle::layout_made(merged);
+            html.style.used_mut().width = Some(Len::Px(w * zoom));
+            html.style.used_mut().height = Some(Len::Px(h * zoom));
+            html.style.used_mut().display = Some(Display::Block);
+            html.style.used_mut().position = Some(Position::Relative);
+            html.style.used_mut().flow_root = Some(true);
+            html.style.used_mut().transform = None;
+            html.style.used_mut().transform_raw = None;
+            html.style.used_mut().translate = None;
+            html.style.used_mut().opacity = None;
+            html.style.used_mut().clip_ref = None;
+            html.style.used_mut().clip_inset = None;
+            html.style.used_mut().clip_edges = None;
+            html.style.used_mut().clip_xywh = None;
+            html.style.used_mut().clip_shape = None;
+            html.style.used_mut().clip_polygon = None;
+            html.style.used_mut().clip_bare_box = false;
+            html.style.used_mut().mask_image = None;
+            html.style.used_mut().filter = None;
+            html.style.used_mut().filter_ref = None;
+            html.style.used_mut().rotate_prop = None;
+            html.style.used_mut().scale_prop = None;
+            html.style
+                .used_mut()
+                .overflow_x
+                .get_or_insert(Overflow::Hidden);
+            html.style
+                .used_mut()
+                .overflow_y
+                .get_or_insert(Overflow::Hidden);
+            html.style.used_mut().blend = None;
+            let root = BoxStyle::default();
             let mut element = crate::interactive::scroll_box::scrollable(&html, &root, opts)
-                .unwrap_or_else(|| opts.cx.build.element(&html, &root, opts));
+                .unwrap_or_else(|| opts.cx.contracts.build.element(&html, &root, opts));
             let size = gpui::size(
-                AvailableSpace::Definite(px(w)),
-                AvailableSpace::Definite(px(h)),
+                AvailableSpace::Definite(px(w * zoom)),
+                AvailableSpace::Definite(px(h * zoom)),
             );
             window.with_scene_capture_scale(density, |window| {
                 window.with_absolute_transformation(gpui::TransformationMatrix::unit(), |window| {
@@ -133,12 +150,12 @@ pub(super) fn prepare(
         }
         e.attrs.push(("preserveAspectRatio".into(), "none".into()));
         if origin != gpui::Point::default() {
-            super::geometry::expand(e, origin, paint_size);
+            super::geometry::expand(e, origin, paint_size, zoom);
         }
         return;
     }
     let viewport = if e.tag.eq_ignore_ascii_case("svg") {
-        super::super::size::view_box_ratio(e).unwrap_or(viewport)
+        crate::dom::resource_facts::view_box_ratio(e).unwrap_or(viewport)
     } else {
         viewport
     };
@@ -146,15 +163,6 @@ pub(super) fn prepare(
         if let Node::Element(child) = child {
             prepare(child, &merged, opts, viewport, scale, window, cx, layers);
         }
-    }
-}
-
-fn length(style: Option<Len>, attr: Option<&str>, base: f32, vcx: ValueCx<'_>) -> f32 {
-    let value = style.or_else(|| attr.and_then(|s| Len::parse(s, vcx)));
-    match value {
-        Some(Len::Px(v)) => v,
-        Some(Len::Pct(v)) => base * v,
-        _ => 0.0,
     }
 }
 

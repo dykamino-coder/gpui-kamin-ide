@@ -5,11 +5,12 @@
 //! осадка (`sink`), сдвиг в вертикальном письме и `text-indent`; стиль и сборка узла —
 //! в `letter`, ведущий флоат строки — в `leading`.
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use crate::text::text_box::{blank_text, normal_fraction};
+use crate::text::text_box::normal_fraction;
 mod letter;
 use letter::{emit_initial_letter, initial_letter_style};
 mod leading;
@@ -71,7 +72,7 @@ pub(crate) fn initial_letter_float(
     let block_rl = inherited.wm().block_rl();
     let at = nodes.iter().position(|n| match n {
         Node::Text(t) => !blank_text(t),
-        Node::Element(e) => e.style.float.is_none_or(|f| f == 0),
+        Node::Element(e) => e.style.used().float.is_none_or(|f| f == 0),
     });
     let Some(at) = at else {
         return nodes;

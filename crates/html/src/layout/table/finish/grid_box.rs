@@ -16,15 +16,15 @@ pub(super) fn table_grid_box(
     vcx: ValueCx<'_>,
 ) -> gpui::Div {
     let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
-        true if !e.style.wm().vertical() => Some(
+        true if !e.style.used().wm().vertical() => Some(
             row_elements
                 .iter()
                 .map(|row| {
                     let cell_h = |c: &Node| match c {
-                        Node::Element(cell) if is_cell(cell) => px_strict(cell.style.height),
+                        Node::Element(cell) if is_cell(cell) => px_strict(cell.style.used().height),
                         _ => None,
                     };
-                    let own = px_strict(row.style.height);
+                    let own = px_strict(row.style.used().height);
                     match own
                         .into_iter()
                         .chain(row.children.iter().filter_map(cell_h))
@@ -49,14 +49,14 @@ pub(super) fn table_grid_box(
     // `1fr` с `flex_grow`, и ряды растягивались на высоту растянутого стола;
     // здесь авто-ряд остаётся `auto`, а пол — только у ряда с высотой.
     let row_floors: Option<Vec<gpui::GridTrack>> = (row_tracks.is_none()
-        && !e.style.wm().vertical()
+        && !e.style.used().wm().vertical()
         && row_elements
             .iter()
-            .any(|r| matches!(r.style.height, Some(Len::Px(h)) if h > 0.0)))
+            .any(|r| matches!(r.style.used().height, Some(Len::Px(h)) if h > 0.0)))
     .then(|| {
         row_elements
             .iter()
-            .map(|row| match row.style.height {
+            .map(|row| match row.style.used().height {
                 Some(Len::Px(h)) if h > 0.0 => gpui::GridTrack::MinMax(Box::new((
                     gpui::GridTrack::Pixels(px(h)),
                     gpui::GridTrack::Auto,
@@ -66,7 +66,7 @@ pub(super) fn table_grid_box(
             .collect()
     });
 
-    let mut grid = if e.style.wm().vertical() {
+    let mut grid = if e.style.used().wm().vertical() {
         // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
         // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
         let mut g = div().grid().grid_template_rows(tracks);
@@ -111,7 +111,9 @@ pub(super) fn paint_table_border(
     inherited: &Computed,
     mut outer: gpui::Div,
 ) -> gpui::Div {
-    if collapse && (bw.iter().any(|w| *w > 0.0) || e.style.border_side_styles.contains(&Some(1))) {
+    if collapse
+        && (bw.iter().any(|w| *w > 0.0) || e.style.used().border_side_styles.contains(&Some(1)))
+    {
         // Рамка самой таблицы — участник разбора конфликтов: её кромки
         // уходят в тот же слой (EdgePainter), линии — внутренние края
         // рамочного места, победившая кромка рисуется наружу.
@@ -122,15 +124,16 @@ pub(super) fn paint_table_border(
             a: 1.0,
         };
         let side_colour =
-            |i: usize| e.style.border_colors[i].resolve(inherited.color.unwrap_or(black));
+            |i: usize| e.style.used().border_colors[i].resolve(inherited.color.unwrap_or(black));
         let colors = [
             side_colour(0),
             side_colour(1),
             side_colour(2),
             side_colour(3),
         ];
-        let side_style =
-            |i: usize| e.style.border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 });
+        let side_style = |i: usize| {
+            e.style.used().border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 })
+        };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         // Линия рамки СТОЛА — та же ЛИНИЯ СЕТКИ, на которой стоят кромки
         // краевых ячеек (§17.6.2: «borders are centered on the grid lines»).
@@ -180,14 +183,16 @@ fn collapsed_tracks(e: &Element, vcx: ValueCx<'_>) -> Option<(bool, Vec<u16>)> {
         .enumerate()
         .filter_map(|(i, row)| {
             let collapse = crate::layout::table::anon::row_collapsed(row.element, row.carry.group);
-            collapse.then_some(if e.style.wm().vertical() && e.style.wm().block_rl() {
-                (logical_rows.len() - i - 1) as u16
-            } else {
-                i as u16
-            })
+            collapse.then_some(
+                if e.style.used().wm().vertical() && e.style.used().wm().block_rl() {
+                    (logical_rows.len() - i - 1) as u16
+                } else {
+                    i as u16
+                },
+            )
         })
         .collect();
-    (!collapsed.is_empty()).then_some((e.style.wm().vertical(), collapsed))
+    (!collapsed.is_empty()).then_some((e.style.used().wm().vertical(), collapsed))
 }
 
 #[cfg(test)]
@@ -201,7 +206,7 @@ mod tests {
         let vcx = doc.values();
         let block = anon_element("div", vec![Node::Element(anon_element("td", vec![]))]);
         let mut group = anon_element("tbody", vec![Node::Element(block)]);
-        group.style.collapsed = Some(true);
+        group.style.used_mut().collapsed = Some(true);
         group.node_id = 1;
         let mut header = anon_element("thead", vec![Node::Element(anon_element("tr", vec![]))]);
         header.node_id = 2;
@@ -209,11 +214,12 @@ mod tests {
         assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![0])));
         table.children.push(Node::Element(header));
         assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![1])));
-        table.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true,
-            true,
-            table.style.wm().sideways(),
-        ));
+        table.style.used_mut().writing_mode =
+            Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true,
+                true,
+                table.style.used().wm().sideways(),
+            ));
         assert_eq!(collapsed_tracks(&table, vcx), Some((true, vec![0])));
     }
 }

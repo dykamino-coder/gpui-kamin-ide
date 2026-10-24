@@ -2,10 +2,11 @@
 
 use super::{SerializeCx, escape_attr, escape_text, write_with};
 use crate::document::state::ValueCx;
+use crate::dom::resource_facts::view_box_ratio;
 use crate::dom::{Element, Node};
+use crate::layout::replaced::svg_size::size_of;
 use crate::svg::serialize::filters::subtree_has;
 use crate::svg::serialize::filters::untaint_filters;
-use crate::svg::size::{size_of, view_box_ratio};
 
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
@@ -44,7 +45,7 @@ pub(crate) fn serialize_sized(
     // §zoom): `viewBox` в незумленных единицах растягивает содержимое на
     // зумленную канву (`zoom/svg-path`, `zoom/svg`). С `viewBox` масштаб уже
     // задаёт он сам.
-    let z = e.style.zoom_eff.unwrap_or(1.0);
+    let z = e.style.used().zoom_eff.unwrap_or(1.0);
     let shifted = nx > 0.0 || ny > 0.0;
     if ((z - 1.0).abs() > f32::EPSILON || shifted)
         && !e

@@ -13,14 +13,14 @@ use super::{paragraph, paragraph_routed};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
 use crate::layout::writing_mode::native_vertical;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn vertical_paragraph(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     _native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {
@@ -36,7 +36,7 @@ pub(crate) fn vertical_paragraph(
     // стопка обязана строиться так же, как при флаге на контейнере.
     let kids_upright = !nodes.is_empty()
         && nodes.iter().all(|n| match n {
-            Node::Element(e) => e.style.wm().upright(),
+            Node::Element(e) => e.style.cascaded().wm().upright(),
             Node::Text(t) => t.trim().is_empty(),
         });
     let upright = (inherited.wm().upright() || kids_upright)
@@ -45,6 +45,7 @@ pub(crate) fn vertical_paragraph(
         return upright_paragraph(nodes, inherited, opts);
     }
     let mut horizontal = inherited.clone();
+    horizontal.inline_format = Some(crate::style::computed::InlineFormat::Turned);
     horizontal.flat_mode = horizontal.flow_mode();
     horizontal.writing_mode = None;
     // Пометка для `text-combine-upright`: кускам внутри повёрнутого
@@ -76,7 +77,7 @@ pub(crate) fn vertical_paragraph(
         // A single atom cannot wrap, and an orthogonal box with an automatic
         // inline size gets its line length from the parent's layout, which the
         // turned paragraph cannot query; both keep the physical row.
-        let atom_opts = opts.inner(|cx| cx.pure_atom_paragraph = true);
+        let atom_opts = opts.inner(|cx| cx.inline.pure_atom_paragraph = true);
         let para = paragraph(nodes, &horizontal, &atom_opts);
         // The row sits at the box's inline-start, which is the BOTTOM for
         // `sideways-lr` and for `direction: rtl` (§6.4 Abstract-Physical

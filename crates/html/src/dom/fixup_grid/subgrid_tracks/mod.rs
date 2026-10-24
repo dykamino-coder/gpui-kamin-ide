@@ -20,20 +20,20 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         if matches!(
-            el.style.display,
+            el.style.cascaded().display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
             for row_dir in [false, true] {
                 let raw = if row_dir {
-                    el.style.grid_rows.clone()
+                    el.style.cascaded().grid_rows.clone()
                 } else {
-                    el.style.grid_tracks.clone()
+                    el.style.cascaded().grid_tracks.clone()
                 }
                 .unwrap_or_default();
                 // Доли `fr` при точечном размере родителя — в точки ДО нарезки
                 // (`fr_tracks_to_px`). Такой срез годен только оси, где ребёнок
                 // вправду подсеточный (проверка ниже, у ребёнка).
-                let fr_px = fr_tracks_to_px(&el.style, &raw, row_dir);
+                let fr_px = fr_tracks_to_px(el.style.cascaded(), &raw, row_dir);
                 let from_fr = fr_px.is_some();
                 let tracks = fr_px.unwrap_or(raw);
                 // Гейт не расширять с «все дорожки `Px`» до «все нарезаемы»
@@ -67,9 +67,9 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                         continue;
                     };
                     let place = if row_dir {
-                        &child.style.grid_row
+                        &child.style.cascaded().grid_row
                     } else {
-                        &child.style.grid_col
+                        &child.style.cascaded().grid_col
                     };
                     let slot = match subgrid_slot(place, tracks.len()) {
                         Some((at, span)) => {
@@ -86,7 +86,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                             (at + span <= tracks.len()).then_some((at, span))
                         }
                     };
-                    if !child.style.subgrid {
+                    if !child.style.cascaded().subgrid {
                         continue;
                     }
                     // css-grid-2 §subgrid-listing: использованное значение у
@@ -94,12 +94,12 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // выдали», а «явных дорожек нет вовсе». Иначе слово
                     // `subgrid` доживает до раскладки счётной дорожкой:
                     // `count_tracks` считает его за одну.
-                    if subgrid_inhibited(&child.style) {
+                    if subgrid_inhibited(child.style.cascaded()) {
                         if row_dir {
-                            child.style.grid_rows = None;
+                            child.style.cascaded_mut().grid_rows = None;
                         } else {
-                            child.style.grid_tracks = None;
-                            child.style.grid_cols = None;
+                            child.style.cascaded_mut().grid_tracks = None;
+                            child.style.cascaded_mut().grid_cols = None;
                         }
                         continue;
                     }
@@ -107,8 +107,9 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // написано `subgrid`: своя ось подсетки остаётся своей
                     // (`subgrid-gap-decorations-003`: ряды `subgrid`, колонки
                     // `repeat(2, 1fr)` — сырая доля в своей оси ломает пару).
-                    let parallel = child.style.wm().vertical() == el.style.wm().vertical();
-                    if !subgrid_axes::linked(&el.style, &child.style, row_dir)
+                    let parallel = child.style.cascaded().wm().vertical()
+                        == el.style.cascaded().wm().vertical();
+                    if !subgrid_axes::linked(el.style.cascaded(), child.style.cascaded(), row_dir)
                         || (from_fr && !parallel)
                     {
                         continue;
@@ -125,7 +126,14 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // Свои края подсетки вычитаются из первой и последней
                     // дорожки куска — ровно как в раскладке лунок.
                     finish_slice(
-                        child, &el.style, row_dir, parallel, at, span, &tracks, slice,
+                        child,
+                        el.style.cascaded(),
+                        row_dir,
+                        parallel,
+                        at,
+                        span,
+                        &tracks,
+                        slice,
                     );
                 }
             }

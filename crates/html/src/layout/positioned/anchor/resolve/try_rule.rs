@@ -102,3 +102,33 @@ mod tests {
         assert_eq!(c.width, Some(Len::Px(7.0)));
     }
 }
+
+/// Объявления правила `@position-try` на стиле коробки `c`: каскад элемента с источником
+/// Try вычисляется заново (zoom, шрифтовые единицы, `inherit`), а не кладётся поверх
+/// вычисленных значений.
+pub(crate) fn try_rule_onto(
+    c: &mut crate::style::computed::BoxStyle,
+    inherited: &crate::style::computed::BoxStyle,
+    decls: &crate::style::css::DeclBlock,
+    vcx: ValueCx<'_>,
+) {
+    let own = c.try_style.clone();
+    let computed = own.as_ref().is_some_and(|own| {
+        crate::style::cascade::materialize::recompute_onto(
+            c,
+            own,
+            |declared| apply_try_rule(declared, decls, vcx),
+            vcx,
+        )
+    });
+    if !computed {
+        // Анонимный стиль одной стадии: объявления тоже проходят compute,
+        // но его родитель по CSS Display §2.5 — родитель коробки.
+        let mut declared = own
+            .as_ref()
+            .map(|own| own.cascaded().clone())
+            .unwrap_or_else(|| (**c).clone());
+        apply_try_rule(&mut declared, decls, vcx);
+        *c = crate::style::cascade::inherit::inherit(inherited, &declared, vcx);
+    }
+}

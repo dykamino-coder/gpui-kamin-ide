@@ -1,3 +1,5 @@
+//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4/F2-6): края, OOF, вложенные и параллельные потоки, clamp.
+//! Пустую grid измеряет laid::group; разрываемый float — отдельный поток F2-1.
 //! Форма группы корневых узлов на листе: поля и вырезы.
 
 use crate::document::state::ValueCx;
@@ -22,7 +24,7 @@ pub(crate) fn group_shape(
 ) {
     let positioned = |e: &Element| {
         matches!(
-            e.style.position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -49,11 +51,12 @@ pub(crate) fn group_shape(
                      mut forced,
                      mut solid,
                  }| {
-                    let floated = e.style.float.unwrap_or(0) != 0;
+                    let floated = e.style.used().float.unwrap_or(0) != 0;
                     // Письмо — своё или унаследованное от корня (`html, body {
                     // writing-mode }` снимаются выше, свой стиль ребёнка его не
                     // несёт).
-                    let vertical = e.style.vertical_decl().or(root.vertical_decl()) == Some(true);
+                    let vertical =
+                        e.style.cascaded().vertical_decl().or(root.vertical_decl()) == Some(true);
                     let fold = pad_top > 0.0 || floated;
                     let lead = if vertical {
                         pad_top

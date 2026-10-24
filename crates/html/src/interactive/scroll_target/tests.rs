@@ -1,5 +1,6 @@
 //! Тесты: нативные цели прокрутки сохраняют CSS-размеры и явную изоляцию владельцев.
 use super::*;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{CssSizingKeyword, Overflow, div, px};
 
@@ -7,16 +8,19 @@ use gpui::{CssSizingKeyword, Overflow, div, px};
 fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let cx = crate::layout::cx::LayoutCx {
-        doc: crate::layout::cx::BuildDoc(doc),
+        values: crate::layout::cx::ValueContext {
+            doc: crate::layout::cx::BuildDoc(doc),
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
-    let c = Computed {
-        self_node: 7,
+    let mut c = BoxStyle::from(Computed {
         width: Some(Len::FitContent),
         ..Computed::default()
-    };
+    });
+    c.self_node = 7;
     let margin = Sides {
         left: Some(Len::Px(10.0)),
         ..Default::default()
@@ -25,13 +29,19 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
     let outer = Target::new(7, &handle, true, false, margin);
     {
         let cx = crate::layout::cx::LayoutCx {
-            scroll_target: Some(outer.clone()),
+            scroll: crate::layout::cx::ScrollContext {
+                target: Some(outer.clone()),
+                ..cx.scroll.clone()
+            },
             ..cx.clone()
         };
         let child = Target::new(8, &handle, false, true, Sides::default());
         {
             let cx = crate::layout::cx::LayoutCx {
-                scroll_target: Some(child.clone()),
+                scroll: crate::layout::cx::ScrollContext {
+                    target: Some(child.clone()),
+                    ..cx.scroll.clone()
+                },
                 ..cx.clone()
             };
             let mut d = attach(div(), &e, &c, &cx);
@@ -61,22 +71,28 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
 fn colored_numeric_scrollport_tracks_the_css_box() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let cx = crate::layout::cx::LayoutCx {
-        doc: crate::layout::cx::BuildDoc(doc),
+        values: crate::layout::cx::ValueContext {
+            doc: crate::layout::cx::BuildDoc(doc),
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut e = crate::layout::table::anon::anon_element("div", vec![]);
     e.node_id = 7;
-    let mut c = Computed {
-        self_node: 7,
+    let mut c = BoxStyle::from(Computed {
         width: Some(Len::Px(100.0)),
         ..Computed::default()
-    };
+    });
+    c.self_node = 7;
     c.apply_one("scrollbar-color", "red blue", cx.vcx());
     let handle = ScrollHandle::default();
     let outer = Target::new(7, &handle, false, true, Sides::default());
     {
         let cx = crate::layout::cx::LayoutCx {
-            scroll_target: Some(outer.clone()),
+            scroll: crate::layout::cx::ScrollContext {
+                target: Some(outer.clone()),
+                ..cx.scroll.clone()
+            },
             ..cx.clone()
         };
         let mut d = attach(div(), &e, &c, &cx);

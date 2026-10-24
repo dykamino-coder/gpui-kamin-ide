@@ -4,12 +4,12 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 
 pub(super) fn borrowed<'a>(element: &'a Element, merged: &Computed) -> Option<&'a [Node]> {
-    if element.style.grid_areas.is_some() || merged.wm().vertical() {
+    if element.style.used().grid_areas.is_some() || merged.wm().vertical() {
         return None;
     }
     // Horizontal preparation only adjusts non-inline vertical children.
     if element.children.iter().any(
-        |node| matches!(node, Node::Element(child) if !child.inline && child.style.wm().vertical()),
+        |node| matches!(node, Node::Element(child) if !child.inline && child.style.cascaded().wm().vertical()),
     ) {
         return None;
     }
@@ -33,24 +33,27 @@ mod tests {
             unreachable!()
         };
         child.inline = false;
-        child.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        ));
+        child.style.used_mut().writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
         assert!(borrowed(&parent, &merged).is_none());
     }
 
     #[test]
     fn grid_and_vertical_flow_keep_the_preparation_path() {
         let mut parent = crate::layout::table::anon::anon_element("div", vec![]);
-        let mut merged = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let mut merged = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         assert!(borrowed(&parent, &merged).is_none());
         merged.writing_mode = None;
-        parent.style.grid_areas = Some(vec![vec!["area".into()]]);
+        parent.style.used_mut().grid_areas = Some(vec![vec!["area".into()]]);
         assert!(borrowed(&parent, &merged).is_none());
     }
 }

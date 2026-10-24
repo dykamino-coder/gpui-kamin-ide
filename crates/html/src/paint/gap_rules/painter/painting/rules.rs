@@ -1,9 +1,10 @@
 //! Окраска одного сегмента линейки промежутка на сетке устройства.
 
-use crate::paint::gap_rules::GapRuleSpec;
+use crate::layout::multicol::gap_rules::GapRuleSpec;
+use crate::layout::multicol::gap_rules::{GapAxisRule, GapLayout};
+use crate::paint::gap_rules::gap_fragment_runs;
 use crate::paint::gap_rules::gap_segments::segments;
 use crate::paint::gap_rules::geometry::GapRun;
-use crate::paint::gap_rules::{GapAxisRule, GapLayout, gap_fragment_runs};
 use gpui::{Bounds, Pixels, TransformationMatrix, Window};
 
 #[allow(clippy::too_many_arguments)]
@@ -15,7 +16,7 @@ pub(crate) fn draw_rule(
     main_like: bool,
     spec: &GapRuleSpec,
     bounds: Bounds<Pixels>,
-    owner: &crate::paint::context::PaintCx,
+    owner: &crate::layout::cx::deferred::Deferred,
 ) {
     let scope = crate::layout::fragment::gap_fragment::current(owner)
         .filter(|_| {

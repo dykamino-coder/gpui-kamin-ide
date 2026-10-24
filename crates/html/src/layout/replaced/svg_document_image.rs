@@ -10,11 +10,13 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-    if !e.tag.eq_ignore_ascii_case("img") || opts.cx.frame_depth >= 3 {
+    if !e.tag.eq_ignore_ascii_case("img") || opts.cx.contracts.frame_depth >= 3 {
         return None;
     }
     let src = e.attr("src")?;
@@ -35,10 +37,10 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     // different box would need the SVG viewBox transform on the whole page.
     let fits = |l: Option<Len>, v: f32| match l {
         None | Some(Len::Auto) => true,
-        Some(Len::Px(p)) => (p - v).abs() < 0.01,
+        Some(Len::Px(p)) => (p - v).abs() < COORD_EPS,
         _ => false,
     };
-    if !fits(e.style.width, w) || !fits(e.style.height, h) {
+    if !fits(e.style.used().width, w) || !fits(e.style.used().height, h) {
         return None;
     }
     let html = format!(
@@ -57,8 +59,9 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let kids = super::iframe::build_embedded(embedded, (w, h), opts, |nodes| nodes);
     Some(
         opts.cx
+            .contracts
             .build
-            .styled_box(e, &e.style, &opts.cx)
+            .styled_box(e, &BoxStyle::shared(e.style.used()), &opts.cx)
             .w(px(w))
             .h(px(h))
             .overflow_hidden()

@@ -4,7 +4,7 @@ use super::{ShadowStyle, atomic};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Shadow};
+use crate::style::computed::{BoxStyle, Shadow};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 pub(super) fn transparent() -> crate::style::values::value::Color {
@@ -24,7 +24,7 @@ pub(super) fn masked_layer(
     shadow: &Shadow,
     block: &ShadowStyle,
     nodes: &[Node],
-    style: &Computed,
+    style: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
@@ -40,7 +40,7 @@ pub(super) fn masked_layer(
     mask.text_shadow_rest.clear();
     mask.text_shadow_raw = None;
     let masked = mask_nodes(nodes, block, group, shadow, opts.cx.vcx());
-    let copy = opts.cx.build.paragraph(&masked, &mask, opts);
+    let copy = opts.cx.contracts.build.paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
         let mut g = crate::paint::effects::grouped_element::Grouped::new(copy, vcx);
         g.blur = shadow.blur * 0.5;
@@ -71,16 +71,16 @@ pub(super) fn mask_nodes(
             Node::Element(e) => {
                 let mut e = e.clone();
                 if atomic(&e, vcx) {
-                    e.style.hidden = Some(true);
+                    e.style.used_mut().hidden = Some(true);
                     return Node::Element(e);
                 }
                 let list = parent.child(&e);
                 let ink = if list.resolved() == group {
-                    shadow.used_color(e.style.current_color())
+                    shadow.used_color(e.style.cascaded().current_color())
                 } else {
                     transparent()
                 };
-                let s = &mut e.style;
+                let s = e.style.used_mut();
                 s.text_shadow_ink = Some(ink);
                 s.background = None;
                 s.bg_image = None;

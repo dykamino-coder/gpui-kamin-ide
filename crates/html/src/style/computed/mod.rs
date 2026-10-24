@@ -50,15 +50,19 @@ pub(super) mod props;
 pub(crate) use props::display_flex::values::alignment as alignment_value;
 pub(crate) use props::font::values::GROUP_TAGS as FONT_VARIANT_GROUPS;
 pub(crate) use props::grid::values::area_name as grid_area_name;
+pub use props::inherited::MarkerType;
 mod queries;
 mod resolve;
 pub use resolve::{FontCx, LenCx, ViewportCx};
 
 use crate::style::values::value::Len;
+mod box_style;
 mod fields;
 pub(crate) mod scroll;
 pub(crate) mod snap;
 mod used_color;
+pub use crate::style::computed::box_style::BoxStyle;
+pub(crate) use crate::style::computed::box_style::{ElementStyle, InlineFormat};
 pub use crate::style::computed::fields::*;
 pub(super) mod transform;
 pub use crate::style::computed::transform::*;
@@ -133,46 +137,18 @@ pub struct Corners {
     pub bl: Option<Len>,
 }
 
-/// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
-/// обязано скопировать вычисленное значение родителя (§6.2.1).
-pub(crate) mod ainh {
-    pub(crate) const ALIGN_ITEMS: u8 = 1 << 0;
-    pub(crate) const JUSTIFY_ITEMS: u8 = 1 << 1;
-    pub(crate) const ALIGN_CONTENT: u8 = 1 << 2;
-    pub(crate) const JUSTIFY_CONTENT: u8 = 1 << 3;
-    pub(crate) const JUSTIFY_SELF: u8 = 1 << 4;
-}
-
 pub(crate) mod inh {
-    pub(crate) const BG_REPEAT: u32 = 1 << 0;
     pub(crate) const Z_INDEX: u32 = 1 << 1;
-    pub(crate) const OUTLINE_W: u32 = 1 << 2;
     pub(crate) const DISPLAY: u32 = 1 << 3;
-    pub(crate) const BG_IMAGE: u32 = 1 << 4;
-    pub(crate) const BG_POS: u32 = 1 << 5;
     pub(crate) const CLIP: u32 = 1 << 6;
-    pub(crate) const BG_ORIGIN: u32 = 1 << 7;
-    pub(crate) const BG_CLIP: u32 = 1 << 8;
-    pub(crate) const BG_SIZE: u32 = 1 << 9;
     pub(crate) const TRANSFORM: u32 = 1 << 10;
     pub(crate) const TRANSFORM_ORIGIN: u32 = 1 << 11;
-    pub(crate) const OUTLINE_C: u32 = 1 << 12;
-    pub(crate) const OUTLINE_S: u32 = 1 << 13;
-    pub(crate) const OUTLINE_O: u32 = 1 << 14;
     /// `overflow-clip-margin: inherit` — коробка отсчёта и поле родителя.
     pub(crate) const CLIP_MARGIN: u32 = 1 << 15;
-    /// `column-rule-color: inherit` — скалярный цвет и список линеек родителя.
-    pub(crate) const COLUMN_RULE_C: u32 = 1 << 16;
-    /// `row-rule-color: inherit`.
-    pub(crate) const ROW_RULE_C: u32 = 1 << 17;
     /// `corner-shape: inherit` — параметры углов родителя.
     pub(crate) const CORNER_SHAPE: u32 = 1 << 18;
     /// `border-radius: inherit` — радиусы углов родителя.
     pub(crate) const RADIUS: u32 = 1 << 19;
-    /// `background-position-y: inherit` (`BG_POS` — ось x).
-    pub(crate) const BG_POS_Y: u32 = 1 << 20;
-    /// `background-attachment: inherit`.
-    pub(crate) const BG_ATTACH: u32 = 1 << 21;
 }
 
 /// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,

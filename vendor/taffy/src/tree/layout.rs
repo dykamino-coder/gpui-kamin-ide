@@ -778,6 +778,9 @@ impl Layout {
 /// The additional information from layout algorithm
 #[derive(Debug, Clone, PartialEq)]
 pub enum DetailedLayoutInfo<S: CheapCloneStr = DefaultCheapStr> {
+    /// KaminIDE patch: final flex lines and normal-flow item geometry.
+    #[cfg(feature = "flexbox")]
+    Flex(crate::util::sys::Box<crate::tree::DetailedFlexInfo>),
     /// Enum variant for [`DetailedGridInfo`](crate::compute::grid::DetailedGridInfo)
     #[cfg(feature = "grid")]
     Grid(crate::util::sys::Box<crate::compute::grid::DetailedGridInfo<S>>),

@@ -136,7 +136,7 @@ pub(super) fn kid_break_flags(
 ) {
     let oof_kid: Vec<bool> = kids
         .iter()
-        .map(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style)))
+        .map(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style.used())))
         .collect();
     // Абсолют с заданным `top` стоит от верха содержащего блока, а не на
     // статическом месте (CSS 2.1 §10.6.4): его дотяг у страниц отсчитывается
@@ -147,8 +147,8 @@ pub(super) fn kid_break_flags(
         .iter()
         .map(|n| {
             matches!(n, Node::Element(k)
-                if k.style.position == Some(crate::style::computed::Position::Absolute)
-                    && matches!(k.style.inset.top, Some(l) if !matches!(l, Len::Auto)))
+                if k.style.used().position == Some(crate::style::computed::Position::Absolute)
+                    && matches!(k.style.used().inset.top, Some(l) if !matches!(l, Len::Auto)))
         })
         .collect();
     // Запреты `break-before/after: avoid*` элементов гибкой стопки — с
@@ -164,14 +164,14 @@ pub(super) fn kid_break_flags(
     // `wrap-reverse` кладёт строки с другого края, а стопка — в порядке DOM
     // (`multi-line-row-flex-fragmentation-050`).
     let avoid_chains = flex_items
-        && !c.style.wm().vertical()
+        && !c.style.cascaded().wm().vertical()
         && matches!(
-            c.style.flex_dir,
+            c.style.used().flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && c.style.flex_wrap == Some(true)
-        && c.style.flex_wrap_reverse != Some(true);
+        && c.style.used().flex_wrap == Some(true)
+        && c.style.used().flex_wrap_reverse != Some(true);
     let avoid_kid: Vec<(bool, bool)> = kids
         .iter()
         .map(|n| match n {
@@ -206,7 +206,7 @@ pub(super) fn kid_break_flags(
     let blk_avoid: Vec<(bool, bool)> = kids
         .iter()
         .map(|n| match n {
-            Node::Element(k) if !flex_items && !out_of_flow(&k.style) => {
+            Node::Element(k) if !flex_items && !out_of_flow(&k.style.used()) => {
                 (edge_avoid(k, false, vcx), edge_avoid(k, true, vcx))
             }
             _ => (false, false),

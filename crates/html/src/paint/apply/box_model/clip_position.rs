@@ -3,9 +3,10 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_lossy_zero;
 
-pub(super) fn box_clip_position(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // `clip-path: circle()` — обрезка содержимого по кругу. Прямоугольная
     // обрезка со скруглением — единственная в конвейере, но для круга и
     // эллипса она точна.

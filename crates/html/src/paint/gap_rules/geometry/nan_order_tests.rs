@@ -2,7 +2,7 @@
 //! must neither panic the sort (Rust detects comparators that are not a total
 //! order on slices of 21+ elements) nor leave the finite values unsorted.
 
-use super::{GapItem, grid, lines, tracks, uniq_sorted};
+use super::{grid, tracks, uniq_sorted};
 
 /// 64 coordinates with every third one NaN, in scrambled order.
 fn scrambled() -> Vec<f32> {
@@ -36,22 +36,5 @@ fn merged_spans_and_tracks_tolerate_nan_starts() {
     assert!(finite_sorted(&starts), "{starts:?}");
     let kept = tracks::uncollapsed(spans, 4.0);
     let starts: Vec<f32> = kept.iter().map(|s| s.0).collect();
-    assert!(finite_sorted(&starts), "{starts:?}");
-}
-
-#[test]
-fn flex_line_groups_tolerate_nan_extents() {
-    let items: Vec<GapItem> = scrambled()
-        .into_iter()
-        .map(|a0| GapItem {
-            a0,
-            a1: a0 + 0.5,
-            b0: 0.0,
-            b1: 1.0,
-            margin_end: 0.0,
-        })
-        .collect();
-    let groups = lines::line_groups(&items);
-    let starts: Vec<f32> = groups.iter().map(|g| g.0).collect();
     assert!(finite_sorted(&starts), "{starts:?}");
 }

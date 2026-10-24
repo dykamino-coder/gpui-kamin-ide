@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-5): оценочные полосы повторов сохраняются до продолжений секций и ячеек.
 //! Полосы формы таблицы: группы, ряды, шапки и подвалы (table_shape_bands).
 
 use super::TableBands;
@@ -19,12 +20,23 @@ pub(super) fn table_shape_bands(
     bands: &mut TableBands,
     vcx: ValueCx<'_>,
 ) -> Option<Shape> {
+    // Повтор секций вызывает оценку напрямую, минуя fragment_size::measure.
+    #[cfg(feature = "wpt-harness")]
+    if let Some(probe) = cx
+        .probe
+        .or_else(|| vcx.lines.map(|lines| &lines.opts.frag.probe))
+    {
+        probe.estimate("table.estimate");
+    }
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    if depth == 0 || c.style.wm().vertical() || c.style.border_collapse == Some(true) {
+    if depth == 0
+        || c.style.cascaded().wm().vertical()
+        || c.style.cascaded().border_collapse == Some(true)
+    {
         return None;
     }
     // Заданная высота таблицы БОЛЬШЕ не повод отказаться от меры: она просто
@@ -44,13 +56,13 @@ pub(super) fn table_shape_bands(
         Some(Len::Px(v)) => Some(Some(*v)),
         _ => None,
     };
-    let spec_h = spec_of(&c.style.height)?;
-    let spec_min_h = spec_of(&c.style.min_height)?;
-    let b = c.style.borders();
-    let mt = px_of(&c.style.margin.top).unwrap_or(0.0);
-    let mb = px_of(&c.style.margin.bottom).unwrap_or(0.0);
-    let top = px_of(&c.style.padding.top)? + px_of(&b.top)?;
-    let bot = px_of(&c.style.padding.bottom)? + px_of(&b.bottom)?;
+    let spec_h = spec_of(&c.style.used().height)?;
+    let spec_min_h = spec_of(&c.style.used().min_height)?;
+    let b = c.style.used().borders();
+    let mt = px_of(&c.style.used().margin.top).unwrap_or(0.0);
+    let mb = px_of(&c.style.used().margin.bottom).unwrap_or(0.0);
+    let top = px_of(&c.style.used().padding.top)? + px_of(&b.top)?;
+    let bot = px_of(&c.style.used().padding.bottom)? + px_of(&b.bottom)?;
     let (spacing, cell_cx) = cell_settings(c, cx)?;
     // Дети чинятся ТЕМ ЖЕ `fixup_table_children`, которым их чинит рисователь
     // `layout::table::table` (css-tables-3 §3 fixup): бесхозная ячейка,
@@ -76,14 +88,19 @@ pub(super) fn table_shape_bands(
     // `caption-side`), ровно как в рисователе `table()`; порядок внутри
     // стороны — разметки (`sections-and-captions-mixed-order`: сверху 1 и 2,
     // снизу 14 и 15…20).
-    let is_cap_kid = |e: &Element| e.tag == "caption" || e.style.is_caption == Some(true);
+    let is_cap_kid = |e: &Element| e.tag == "caption" || e.style.used().is_caption == Some(true);
     let mut caps_top: Vec<&Element> = Vec::new();
     let mut caps_bot: Vec<&Element> = Vec::new();
     // Части в порядке отрисовки: первая заголовочная группа — вперёд,
     // первая подвальная — назад, остальное как в разметке (`table()`).
     let parts = ordered_parts(&fixed, |e| {
         if is_cap_kid(e) {
-            if e.style.caption_bottom.or(c.style.caption_bottom) == Some(true) {
+            if e.style
+                .cascaded()
+                .caption_bottom
+                .or(c.style.cascaded().caption_bottom)
+                == Some(true)
+            {
                 caps_bot.push(e);
             } else {
                 caps_top.push(e);
@@ -120,15 +137,15 @@ pub(super) fn table_shape_bands(
             rows.push(RowRef {
                 row: r,
                 group: gi,
-                avoid: e.style.break_inside_avoid,
-                fb: row_force(r, false, vcx) || (i == 0 && e.style.break_before_force),
-                fa: row_force(r, true, vcx) || (i == last && e.style.break_after_force),
+                avoid: e.style.used().break_inside_avoid,
+                fb: row_force(r, false, vcx) || (i == 0 && e.style.used().break_before_force),
+                fa: row_force(r, true, vcx) || (i == last && e.style.used().break_after_force),
                 // Край ГРУППЫ — тот же перенос, что у принудительных выше:
                 // `break-before: avoid` группы действует на её ПЕРВОМ ряду,
                 // `break-after: avoid` — на ПОСЛЕДНЕМ (css-break-4 §break-between,
                 // «Applies to: … table row groups, table rows»).
-                ab: row_avoid(r, false, vcx) || (i == 0 && e.style.break_before_avoid),
-                aa: row_avoid(r, true, vcx) || (i == last && e.style.break_after_avoid),
+                ab: row_avoid(r, false, vcx) || (i == 0 && e.style.used().break_before_avoid),
+                aa: row_avoid(r, true, vcx) || (i == last && e.style.used().break_after_avoid),
             });
         }
     }

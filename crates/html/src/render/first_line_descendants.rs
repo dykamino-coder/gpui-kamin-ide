@@ -9,10 +9,10 @@
 //! как и в `first_letter_descendants`.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Computed, Display};
-use crate::text::text_box::blank_text;
 
 pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     let Some(first) = parent.first_line_own.as_deref() else {
@@ -21,17 +21,17 @@ pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     for node in &mut nodes {
         match node {
             Node::Text(t) if blank_text(t) => continue,
-            Node::Element(e) if out_of_flow(&e.style) => continue,
+            Node::Element(e) if out_of_flow(&e.style.used()) => continue,
             Node::Element(e)
                 if block_level_in_flow(e)
                     && !table_box(e)
                     && matches!(
-                        e.style.display,
+                        e.style.used().display,
                         None | Some(Display::Block | Display::ListItem)
                     )
                     && e.first_line.is_none() =>
             {
-                e.style.first_line_own = Some(Box::new(first.clone()));
+                e.style.used_mut().first_line_own = Some(Box::new(first.clone()));
                 e.first_line = Some(first.clone().into());
             }
             _ => {}
@@ -46,16 +46,18 @@ pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
 mod tests {
     use super::*;
     use crate::dom::Element;
-    use crate::style::cascade::inherit::inherit;
-    use crate::style::computed::Position;
+    use crate::style::computed::{BoxStyle, Position};
     use crate::style::values::value::Len;
 
     #[test]
     fn nested_first_line_skips_positioned_children_at_each_level() {
         let doc = crate::document::state::DocState::new(Default::default());
-        let first = Computed {
-            font_size: Some(Len::Px(32.)),
-            ..Default::default()
+        let first = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Px(32.));
+            with_inherited
         };
         let parent = Computed {
             first_line_own: Some(Box::new(first)),
@@ -87,14 +89,18 @@ mod tests {
             let Node::Element(child) = &nodes[1] else {
                 panic!("in-flow block")
             };
-            let mut merged = inherit(&inherited, &child.style, doc.values());
+            let mut merged = crate::style::cascade::materialize::box_style(
+                &BoxStyle::from(inherited.clone()),
+                &child.style,
+                doc.values(),
+            );
             crate::dom::pseudo_line_layers::install(child, &mut merged, doc.values());
             assert_eq!(
                 merged.first_line.as_ref().unwrap().font_size,
                 Some(Len::Px(32.))
             );
             assert_ne!(merged.font_size, Some(Len::Px(32.)));
-            inherited = merged;
+            inherited = (merged).into_computed();
         }
     }
 }

@@ -4,7 +4,8 @@ use super::spans::{paragraph_spans, rotate_rel_spans};
 use super::{LineAtoms, NativeRequest};
 use crate::layout::options::{RenderOpts, own_size};
 use crate::render::paragraph::metrics::flow_metrics;
-use crate::style::{computed::Computed, values::value::Len};
+use crate::style::computed::BoxStyle;
+use crate::style::values::value::Len;
 use crate::text::{
     fonts::style_font::measure_font, inline, metrics, paragraph::text_id::text_id,
     text_box::normal_fraction,
@@ -15,7 +16,7 @@ use gpui::{AnyElement, IntoElement, SharedString};
 // Paragraph construction consumes the span geometry records used by the probes.
 #[allow(clippy::type_complexity)]
 pub(crate) fn native_paragraph(
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
     native: bool,
@@ -144,9 +145,9 @@ pub(crate) fn native_paragraph(
         // Счётный режим (`line-clamp: <N>`) берёт предел из стиля;
         // авто-режим — из бюджета, посчитанного по точке среза.
         .line_clamp(clamp_budget.or_else(|| {
-            (opts.cx.clamp_input.is_none()
+            (opts.cx.clamp.input.is_none()
                 && !crate::text::clamp::clamp_context(&opts.cx).is_some_and(|(_, skip)| skip)
-                && opts.cx.clamp_atom_depth == 0)
+                && opts.cx.clamp.atom_depth == 0)
                 .then(|| inherited.clamp_lines().map(|n| n as usize))
                 .flatten()
         }))
@@ -206,7 +207,7 @@ pub(crate) fn native_paragraph(
         // Срез строки — только у абзаца, держащего первую/последнюю строку
         // срезающего контейнера (`text::line_trim`).
         .ruby_trim(
-            crate::text::line_trim::para(opts.cx.trim_para, inherited.self_node).unwrap_or(
+            crate::text::line_trim::para(opts.cx.inline.trim_para, inherited.self_node).unwrap_or(
                 crate::text::line_trim::Trim {
                     start: inherited.text_box_trim_start,
                     end: inherited.text_box_trim_end,
@@ -232,17 +233,17 @@ pub(crate) fn native_paragraph(
         request.built.set(true);
     }
     let projection = crate::interactive::scroll_extent::projection(
-        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll.frame.as_ref(),
         inherited.self_node,
         None,
-        opts.cx.sticky.as_ref(),
+        opts.cx.scroll.sticky.as_ref(),
     );
     let sticky = projection
         .as_ref()
         .map(|p| p.link().clone())
-        .or_else(|| opts.cx.sticky.clone());
+        .or_else(|| opts.cx.scroll.sticky.clone());
     crate::interactive::scroll_extent::project(
-        para.scroll_owner(inherited.self_node, sticky, opts.cx.scroll_frame.clone())
+        para.scroll_owner(inherited.self_node, sticky, opts.cx.scroll.frame.clone())
             .into_any_element(),
         projection,
     )

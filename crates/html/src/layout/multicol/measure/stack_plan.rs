@@ -10,7 +10,7 @@ use crate::layout::fragment::clone::clone_wrapper_item;
 use crate::layout::fragment::line_shape::group_inline_runs;
 use crate::layout::fragment::{Shape, with_lines};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 
 /// Итог меры стопки: всё, что сборка передаёт `multicol_column_stack`.
@@ -30,7 +30,7 @@ pub(crate) struct StackPlan {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn stack_plan(
     e: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     cols: u16,
@@ -60,9 +60,12 @@ pub(crate) fn stack_plan(
         used_gap,
     );
     // Строчные прогоны среди блоков — анонимными блоками (CSS 2.1
-    // §9.2.1.1), только когда строки можно измерить.
-    let grouped_e = line_col_w.and_then(|_| group_inline_runs(e));
-    let ge: &Element = grouped_e.as_ref().unwrap_or(e);
+    // §9.2.1.1); неизвестная ширина разрешается в deferred layout.
+    let mut boxed = e.clone();
+    boxed.children =
+        crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx());
+    let grouped_e = group_inline_runs(&boxed);
+    let ge: &Element = grouped_e.as_ref().unwrap_or(&boxed);
     let floats_blocked = block_floats(ge, positioned, line_col_w);
     let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
     // Обёртка flex/сетки с ЕДИНСТВЕННЫМ элементом-`clone`
@@ -91,7 +94,9 @@ pub(crate) fn stack_plan(
         .children
         .iter()
         .filter_map(|n| match n {
-            Node::Element(c) if out_of_flow(&c.style) && !positioned(&c.style) => Some(c.clone()),
+            Node::Element(c) if out_of_flow(&c.style.used()) && !positioned(&c.style.used()) => {
+                Some(c.clone())
+            }
             _ => None,
         })
         .collect();
@@ -109,9 +114,9 @@ pub(crate) fn stack_plan(
                 at += 1;
                 continue;
             };
-            if positioned(&c.style) {
+            if positioned(&c.style.used()) {
                 out.push((at, c.clone()));
-            } else if !out_of_flow(&c.style) {
+            } else if !out_of_flow(&c.style.used()) {
                 at += 1;
             }
         }
@@ -120,7 +125,7 @@ pub(crate) fn stack_plan(
     // Высота внешнего фрагментаинера для вложенного рядами
     // (`nested_rows_shape`): `column-fill: auto` и блочный размер
     // в точках, без своих рядов.
-    let outer_frag = (e.style.column_fill_auto == Some(true) && rows.is_none() && !col_vert)
+    let outer_frag = (e.style.used().column_fill_auto == Some(true) && rows.is_none() && !col_vert)
         .then(|| col_h.or(box_h))
         .flatten();
     let layout_col_w = column_layout_width(
@@ -135,7 +140,7 @@ pub(crate) fn stack_plan(
     let first_flow = ge
         .children
         .iter()
-        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
         .map(|n| n as *const Node);
     // Чью меру дала `nested_rows_shape` — только их копии рядами.
     let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
@@ -147,17 +152,17 @@ pub(crate) fn stack_plan(
     // Копия стопки шла узкой веткой `styled_div_with` и рисовала его
     // плоско — без колонок и линеек (`multicol-rule-color-inherit-001`).
     let nested_whole: std::cell::RefCell<Vec<u64>> = Default::default();
-    let whole_ok = e.style.column_fill_auto != Some(true)
+    let whole_ok = e.style.used().column_fill_auto != Some(true)
         && rows.is_none_or(|r| r.cap)
         && nest_rows.is_none()
         && !col_vert;
     // Дети, чью высоту меряет раскладка копии (`StackChild::measure`).
     let measured_kids: std::cell::RefCell<Vec<(u64, f32)>> = Default::default();
-    let measure_ok = e.style.column_fill_auto == Some(true)
+    let measure_ok = e.style.used().column_fill_auto == Some(true)
         && rows.is_none()
         && nest_rows.is_none()
         && !col_vert
-        && (col_h.is_some() || matches!(e.style.height, Some(Len::Px(_))));
+        && (col_h.is_some() || matches!(e.style.used().height, Some(Len::Px(_))));
     // Layout-driven pagination (`fragment::paginate`): one line of columns,
     // no spanners, horizontal writing.
     let pag_ok = !opts.frag.in_stack_copy
@@ -167,31 +172,62 @@ pub(crate) fn stack_plan(
         && !ge
             .children
             .iter()
-            .any(|n| matches!(n, Node::Element(c) if c.style.column_span == Some(true)));
+            .any(|n| matches!(n, Node::Element(c) if c.style.used().column_span == Some(true)));
     let last_flow = ge
         .children
         .iter()
         .rev()
-        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
         .map(|n| n as *const Node);
-    let stackable: Option<Vec<(Element, Shape)>> = with_lines(merged, line_col_w, opts, |opts| {
-        measure_children(
-            ge,
-            merged,
-            opts,
-            first_flow,
-            last_flow,
-            outer_frag,
-            (line_col_w, layout_col_w),
-            &nested_auto,
-            whole_ok,
-            &nested_whole,
-            &measured_kids,
-            col_vert,
-            col_rl,
-            measure_ok,
-            pag_ok,
-        )
+    let laid = line_col_w
+        .filter(|_| !col_vert && nest_rows.is_none())
+        .and_then(|w| {
+            super::laid::children(ge, merged, opts.cx.vcx(), w, &measured_kids).or_else(|| {
+                pag_ok
+                    .then(|| {
+                        super::native_float::children(ge, merged, opts.cx.vcx(), w, &measured_kids)
+                    })
+                    .flatten()
+            })
+        });
+    let pending = (line_col_w.is_none() && nest_rows.is_none())
+        .then(|| {
+            if col_vert {
+                super::laid::pending_vertical(ge, merged, opts.cx.vcx(), col_rl)
+            } else {
+                super::laid::pending(ge, merged, opts.cx.vcx()).or_else(|| {
+                    pag_ok
+                        .then(|| super::native_float::pending(ge, merged, opts.cx.vcx()))
+                        .flatten()
+                })
+            }
+        })
+        .flatten();
+    let vertical = line_col_w
+        .filter(|_| col_vert && nest_rows.is_none())
+        .and_then(|w| {
+            super::laid::vertical_children(ge, merged, opts.cx.vcx(), w, col_rl, &measured_kids)
+        });
+    let stackable: Option<Vec<(Element, Shape)>> = laid.or(pending).or(vertical).or_else(|| {
+        with_lines(merged, line_col_w, opts, |opts| {
+            measure_children(
+                ge,
+                merged,
+                opts,
+                first_flow,
+                last_flow,
+                outer_frag,
+                (line_col_w, layout_col_w),
+                &nested_auto,
+                whole_ok,
+                &nested_whole,
+                &measured_kids,
+                col_vert,
+                col_rl,
+                measure_ok,
+                pag_ok,
+            )
+        })
     });
     StackPlan {
         line_col_w,

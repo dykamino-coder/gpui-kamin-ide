@@ -7,12 +7,14 @@ use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, res
 use crate::style::computed::{Computed, ParseResult, css_wide_keyword};
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 
+pub(crate) mod compute;
 mod compute_cx;
 pub mod defaults;
 pub mod inherit;
 pub(crate) mod inherited_value;
 pub(crate) mod key;
 pub(crate) mod map;
+pub mod materialize;
 mod pass;
 mod phase;
 pub mod vars;
@@ -91,6 +93,8 @@ impl Computed {
             if let Some(wide) = CssWide::parse(v) {
                 return self.apply_wide(id, wide, vcx);
             }
+            // Значение заменяет прежнее каскадное `inherit` свойства.
+            self.inherit_longhands.set(id, false);
             // Наследуемые свойства вне шрифта и текста: один разбор на
             // свойство (`props::inherited`), обработчики по имени их не видят.
             if crate::style::computed::props::inherited::owns(id) {
@@ -164,15 +168,23 @@ impl Computed {
         // полей `inherited_value`; у наследуемого свои поля пусты (значение
         // придёт слиянием с родителем) — очистку знает модуль свойства или
         // его обработчик.
-        if inherit {
-            if inherited_value::note(self, id.name(), "inherit", vcx) {
-                // Записано в `explicit_inherit`.
-            } else if crate::style::computed::props::inherited::owns(id) {
+        if inherit && !id.inherited() {
+            // Ненаследуемое: вычисленное значение родителя скопирует стадия
+            // вычисленных значений (`compute::longhands`). Обработчик видит
+            // слово ради порядка сторон (логическое против физического).
+            self.inherit_longhands.set(id, true);
+            if inherited_value::of_longhand(id).is_empty() {
+                self.apply_property(id.name(), "inherit", vcx);
+            }
+        } else if inherit {
+            // Наследуемое: свои поля пусты, значение придёт от родителя.
+            if crate::style::computed::props::inherited::owns(id) {
                 self.inherit_longhand(id);
             } else {
                 self.apply_property(id.name(), "inherit", vcx);
             }
         } else {
+            self.inherit_longhands.set(id, false);
             self.apply_one(id.name(), id.initial(), vcx);
             // Quirks Mode §3.12: таблица с НАЧАЛЬНЫМ цветом из листа агента
             // берёт цвет `<body>` (`dom::quirks_color`).

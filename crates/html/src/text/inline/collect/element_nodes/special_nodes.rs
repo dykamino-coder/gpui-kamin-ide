@@ -5,13 +5,13 @@
 
 use super::collect_with_empty_metrics;
 use crate::dom::Element;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::text::inline::*;
 
 pub(super) fn special_node(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,
@@ -24,7 +24,7 @@ pub(super) fn special_node(
     // line break, no break opportunity
     // (`display-contents-sharing-001`).
     if matches!(e.tag.as_str(), "br" | "wbr")
-        && e.style.display == Some(crate::style::computed::Display::Contents)
+        && e.style.used().display == Some(crate::style::computed::Display::Contents)
     {
         return true;
     }
@@ -49,7 +49,7 @@ pub(super) fn special_node(
         // (css-text-4 §word-space-transform: свойство наследуемое,
         // и у элемента своё значение).
         let mut style = inherited.clone();
-        style.word_space_char = e.style.word_space_char.or(style.word_space_char);
+        style.word_space_char = e.style.cascaded().word_space_char.or(style.word_space_char);
         out.push(Piece::Text {
             text: "\u{200b}".into(),
             style,
@@ -64,8 +64,8 @@ pub(super) fn special_node(
     // а строчный сбор вёл такой элемент обычным
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
-    if e.style.display == Some(crate::style::computed::Display::Contents) {
-        let merged = inherit(inherited, &e.style, vcx);
+    if e.style.used().display == Some(crate::style::computed::Display::Contents) {
+        let merged = box_style(inherited, &e.style, vcx);
         out.extend(collect_with_empty_metrics(
             &e.children,
             &merged,

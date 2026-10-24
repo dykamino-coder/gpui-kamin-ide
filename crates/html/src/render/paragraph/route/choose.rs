@@ -9,7 +9,7 @@ use crate::layout::writing_mode::upright_in_mixed;
 use crate::paint::apply::apply;
 use crate::render::paragraph::edges::edge_pieces;
 use crate::render::paragraph::metrics::line_box_spans;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -17,7 +17,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn route_pieces(
     pieces: Vec<inline::Piece>,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
     indent: crate::text::paragraph::Indent,
@@ -30,7 +30,7 @@ pub(crate) fn route_pieces(
     if inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text, opts.cx.vcx())
         // A physical atom row has no turned inline frame for a phantom static point.
-        && (!text.is_empty() || !opts.cx.pure_atom_paragraph)
+        && (!text.is_empty() || !opts.cx.inline.pure_atom_paragraph)
     {
         // `word-space-transform` смотрит на СОСЕДЕЙ точки переноса, а они
         // сплошь и рядом лежат в других кусках (`あ<wbr>い` — это три куска:
@@ -134,7 +134,7 @@ pub(crate) fn route_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(div(), &style.text_only(), vcx)
+        let d = apply(div(), &BoxStyle::new(style.text_only()), vcx)
             .max_w_full()
             .child(SharedString::from(t));
         d.into_any_element()
@@ -177,7 +177,7 @@ mod tests {
                     cx: Default::default(),
                     frag: Default::default(),
                 };
-                opts.cx.pure_atom_paragraph = physical;
+                opts.cx.inline.pure_atom_paragraph = physical;
                 let inherited = Computed {
                     no_select: Some(true),
                     ..Default::default()
@@ -185,13 +185,13 @@ mod tests {
                 let pieces = vec![
                     inline::Piece::Text {
                         text: text.into(),
-                        style: inherited.clone(),
+                        style: BoxStyle::from(inherited.clone()),
                     },
                     inline::Piece::Overlay(div().into_any_element(), Default::default()),
                 ];
                 let mut element = route_pieces(
                     pieces,
-                    &inherited,
+                    &BoxStyle::from(inherited.clone()),
                     &opts,
                     None,
                     Default::default(),

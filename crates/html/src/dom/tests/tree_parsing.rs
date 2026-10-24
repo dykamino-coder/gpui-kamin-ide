@@ -40,7 +40,7 @@ pub(super) fn child_colors(html: &str) -> Vec<Option<crate::style::values::value
             e.children
                 .iter()
                 .filter_map(|n| match n {
-                    Node::Element(c) => Some(c.style.color),
+                    Node::Element(c) => Some(c.style.cascaded().color),
                     Node::Text(_) => None,
                 })
                 .collect()

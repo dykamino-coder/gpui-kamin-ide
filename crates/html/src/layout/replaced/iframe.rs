@@ -3,11 +3,12 @@
 //! и умолчанию 300×150, свой viewport, quirks и слой ICB для вложенного дерева,
 //! ограничение глубины вложенности и высота по содержимому (css-sizing-4 §frame-sizing).
 
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::Element;
 use crate::layout::block::reorder::orthogonal_vertical_children;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::responsive_embedded_sizing;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -67,7 +68,7 @@ pub(crate) fn object_is_document(e: &Element) -> bool {
 pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     // Глубина вложенных документов — от циклических рамок.
-    if opts.cx.frame_depth >= 3 {
+    if opts.cx.contracts.frame_depth >= 3 {
         return None;
     }
     // HTML: the presence of srcdoc (even empty) takes precedence over src.
@@ -86,22 +87,25 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     };
     // Resolve against the containing block, before sizing the child viewport.
     let mut resolved = super::image::pct_height_to_px(e, inherited);
-    resolved.style.resolve_viewport(opts.viewport, vcx);
+    resolved
+        .style
+        .used_mut()
+        .resolve_viewport(opts.viewport, vcx);
     let in_flow = !matches!(
-        e.style.position,
+        e.style.used().position,
         Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
     );
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.width
-        && let Some(width) = opts.cx.avail_w
+        && let Some(Len::Pct(k)) = resolved.style.used().width
+        && let Some(width) = opts.cx.constraints.avail_w
     {
-        resolved.style.width = Some(Len::Px(k * width));
+        resolved.style.used_mut().width = Some(Len::Px(k * width));
     }
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.height
-        && let Some(height) = opts.cx.avail_h
+        && let Some(Len::Pct(k)) = resolved.style.used().height
+        && let Some(height) = opts.cx.constraints.avail_h
     {
-        resolved.style.height = Some(Len::Px(k * height));
+        resolved.style.used_mut().height = Some(Len::Px(k * height));
     }
     let e = &resolved;
     let attr_len = |k: &str| e.attr(k).and_then(|v| v.parse::<f32>().ok());
@@ -110,7 +114,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     // `box-sizing: content-box`), а раскладка меряет `w`/`h` как border-box:
     // без поправки `border: 1px` съедал 300×150 изнутри
     // (`responsive-iframe-unsized-ref`: 302×152).
-    let st = &e.style;
+    let st = &*e.style.used();
     let px_sum = |sides: &[Option<Len>]| -> f32 {
         sides
             .iter()
@@ -134,7 +138,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         Some(Len::Px(v)) if border_box => ((v - ex).max(0.0), v),
         Some(Len::Px(v)) => (v, v + ex),
         _ => {
-            let v = attr_len("width").unwrap_or(300.0);
+            let v = attr_len("width").unwrap_or(DEFAULT_REPLACED_WIDTH_PX);
             (v, v + ex)
         }
     };
@@ -142,7 +146,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         Some(Len::Px(v)) if border_box => ((v - ey).max(0.0), v),
         Some(Len::Px(v)) => (v, v + ey),
         _ => {
-            let v = attr_len("height").unwrap_or(150.0);
+            let v = attr_len("height").unwrap_or(DEFAULT_REPLACED_HEIGHT_PX);
             (v, v + ey)
         }
     };
@@ -176,8 +180,9 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         {
             let mut frame = opts
                 .cx
+                .contracts
                 .build
-                .styled_box(e, &e.style, &opts.cx)
+                .styled_box(e, &BoxStyle::shared(e.style.used()), &opts.cx)
                 .w(px(outer_w));
             // CSS 2.2 §10.8.1 / CSS Inline 3 §A.3: a replaced iframe has no
             // baseline from its embedded document; synthesize from its own box.
@@ -211,17 +216,27 @@ pub(crate) fn build_embedded(
     let nodes = prepare(embedded.nodes);
     let mut sub = opts.clone();
     sub.viewport = viewport;
-    sub.cx.positioning = Default::default();
-    sub.cx.frame_depth += 1;
-    sub.cx.clamp_input = None;
-    sub.cx.doc = crate::layout::cx::BuildDoc(embedded.state.clone());
+    sub.cx.position.state = Default::default();
+    sub.cx.contracts.frame_depth += 1;
+    sub.cx.clamp.input = None;
+    sub.cx.values.doc = crate::layout::cx::BuildDoc(embedded.state.clone());
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
     // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
     // верхний угол внешнего документа).
-    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&sub.cx.positioning);
-    let mut kids = sub.cx.build.blocks(&nodes, &sub.root_style(), &sub);
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&sub.cx.position.state);
+    // Вычисленные стили вложенного документа — от его корня.
+    crate::style::cascade::materialize::materialize(
+        &nodes,
+        sub.root_style().style_rc(),
+        sub.cx.vcx(),
+    );
+    let mut kids = sub
+        .cx
+        .contracts
+        .build
+        .blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(icb_layer.finish());
     kids.into_iter()
         .map(|k| crate::document::state::Scoped::wrap(&embedded.state, k))

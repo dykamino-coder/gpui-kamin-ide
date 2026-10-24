@@ -1,6 +1,7 @@
 //! Тесты: нативный shrink-to-fit контейнера сохраняет intrinsic-размеры и размеры content-box.
 
 use super::*;
+use crate::style::computed::BoxStyle;
 
 #[test]
 fn multicol_float_claims_the_used_content_width_only_after_intrinsic_measurement() {
@@ -12,9 +13,21 @@ fn multicol_float_claims_the_used_content_width_only_after_intrinsic_measurement
     style.padding.left = Some(Len::Px(30.));
     style.padding.right = Some(Len::Px(30.));
     let inherited = Computed::default();
-    fit_own_layout(&mut style, &inherited, 0., 0., doc.values());
+    fit_own_layout(
+        &mut style,
+        &BoxStyle::from(inherited.clone()),
+        0.,
+        0.,
+        doc.values(),
+    );
     assert!(style.width.is_none());
-    fit_own_layout(&mut style, &inherited, 100., 784., doc.values());
+    fit_own_layout(
+        &mut style,
+        &BoxStyle::from(inherited),
+        100.,
+        784.,
+        doc.values(),
+    );
     assert_eq!(style.width, Some(Len::Px(40.)));
 }
 
@@ -26,7 +39,7 @@ fn specified_multicol_width_is_not_replaced_by_the_probe_width() {
         width: Some(Len::Px(20.)),
         ..Default::default()
     };
-    fit_own_layout(&mut style, &Computed::default(), 100., 784., doc.values());
+    fit_own_layout(&mut style, &BoxStyle::default(), 100., 784., doc.values());
     assert_eq!(style.width, Some(Len::Px(20.)));
 }
 
@@ -48,7 +61,7 @@ fn empty_inline_fragment_keeps_its_margin_in_the_paragraph() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut span = Element::synthetic("span", Computed::default(), Default::default(), vec![]);
     span.inline = true;
-    span.style.margin.left = Some(Len::Px(40.));
+    span.style.used_mut().margin.left = Some(Len::Px(40.));
     let nodes = vec![Node::Element(span)];
     let lifted = band_flow_rest_lift(nodes, 16., None, WritingMode::default(), None, doc.values())
         .expect("empty inline fragment belongs to the paragraph");
@@ -59,7 +72,7 @@ fn empty_inline_fragment_keeps_its_margin_in_the_paragraph() {
     let Node::Element(span) = &run.children[0] else {
         panic!("inline fragment");
     };
-    assert_eq!(span.style.margin.left, Some(Len::Px(40.)));
+    assert_eq!(span.style.used().margin.left, Some(Len::Px(40.)));
     assert!(span.children.is_empty());
 }
 

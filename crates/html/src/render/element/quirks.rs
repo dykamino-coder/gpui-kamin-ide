@@ -2,10 +2,10 @@
 
 use crate::dom::Element;
 use crate::render::RenderOpts;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{BoxStyle, Computed, Display, Position};
 use crate::style::values::value::Len;
 
-pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &RenderOpts) {
+pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &RenderOpts) {
     if !e.marks.quirks_fill
         || matches!(st.display, Some(Display::None | Display::Contents))
         || matches!(st.position, Some(Position::Absolute | Position::Fixed))
@@ -25,7 +25,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &Ren
     let basis = if parent.wm().vertical() {
         parent.inline_definite
     } else {
-        opts.cx.avail_w
+        opts.cx.constraints.avail_w
     };
     let px = |value: Option<Len>, style: &Computed| match value {
         None | Some(Len::Auto) => 0.0,
@@ -71,7 +71,9 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &Ren
             parent.min_height
         };
         match parent_size {
-            _ if !vertical && opts.cx.avail_h.is_some() => opts.cx.avail_h.unwrap_or(0.0),
+            _ if !vertical && opts.cx.constraints.avail_h.is_some() => {
+                opts.cx.constraints.avail_h.unwrap_or(0.0)
+            }
             Some(v) if v != Len::Auto => {
                 let size = v
                     .to_px(Some(viewport), parent.font_cx(vcx), vcx)
@@ -138,9 +140,9 @@ mod tests {
             })
             .expect("body");
         let mut body = body.clone();
-        body.style.float = None;
+        body.style.used_mut().float = None;
         let mut st = Computed::default();
-        fill(&body, &mut st, &Computed::default(), &opts());
+        fill(&body, &mut st, &BoxStyle::default(), &opts());
         assert_eq!(st.min_height, None);
     }
 
@@ -166,7 +168,7 @@ mod tests {
             height: Some(Len::Px(200.0)),
             ..Default::default()
         };
-        fill(&body, &mut st, &parent, &opts());
+        fill(&body, &mut st, &BoxStyle::from(parent), &opts());
         assert_eq!(st.min_height, Some(Len::Px(173.0)));
         assert_eq!(st.height, None);
         assert_eq!(
@@ -202,7 +204,7 @@ mod tests {
             },
         ] {
             body.style = st.clone().into();
-            fill(&body, &mut st, &Computed::default(), &opts());
+            fill(&body, &mut st, &BoxStyle::default(), &opts());
             assert_eq!(st.min_height, None);
         }
     }
@@ -221,7 +223,7 @@ mod tests {
             width: Some(Len::Px(200.0)),
             ..Default::default()
         };
-        fill(&body, &mut st, &parent, &opts());
+        fill(&body, &mut st, &BoxStyle::from(parent), &opts());
         assert_eq!(st.min_width, Some(Len::Px(180.0)));
         assert_eq!(st.width, None);
     }
@@ -235,7 +237,7 @@ mod tests {
             let mut st = Computed::default();
             st.apply_one("writing-mode", mode, doc.values());
             st.apply_one(property, "calc-size(auto, size)", doc.values());
-            fill(&body, &mut st, &Computed::default(), &opts());
+            fill(&body, &mut st, &BoxStyle::default(), &opts());
             assert_eq!(st.min_width, None);
             assert_eq!(st.min_height, None);
         }

@@ -21,7 +21,7 @@ use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 pub(super) mod canvas;
@@ -36,29 +36,29 @@ pub(crate) use positioned::inset_holder_box;
 // (`text-emphasis-line-height-004a..d`, `text-emphasis-punctuation-1/2`).
 // Вернуть можно только вместе с настоящей надстрочной аннотацией (сдвиг
 // базовой линии без атома).
-pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
-    // Only the cell's own content list is the BFC root's (see `LayoutCx::cell_bfc`).
-    let cell_bfc = opts.cx.cell_bfc;
+    // Only the cell's own content list is the BFC root's (see `BoxConstraints::cell_bfc`).
+    let cell_bfc = opts.cx.constraints.cell_bfc;
     // Контекст детей этого уровня: ширина содержащего блока, доступные
     // ширина и высота (см. `LayoutCx`).
     let outer = &opts.cx;
     let cb_width = match inherited.width {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
-        _ => outer.cb_width,
+        _ => outer.constraints.cb_width,
     };
     let avail_h = crate::layout::block::available_height::inner(
         inherited,
-        outer.avail_h,
-        outer.avail_w,
+        outer.constraints.avail_h,
+        outer.constraints.avail_w,
         opts.viewport.1,
     );
-    let avail_w = available_width::inner(inherited, outer.avail_w);
+    let avail_w = available_width::inner(inherited, outer.constraints.avail_w);
     let opts = &*opts.inner(|cx| {
-        cx.cb_width = cb_width;
-        cx.avail_w = avail_w;
-        cx.avail_h = avail_h;
-        cx.cell_bfc = false;
+        cx.constraints.cb_width = cb_width;
+        cx.constraints.avail_w = avail_w;
+        cx.constraints.avail_h = avail_h;
+        cx.constraints.cell_bfc = false;
     });
     // `content-visibility: hidden`: содержимое пропускается целиком
     // (css-contain-2 §4) — коробка остаётся, детей нет.
@@ -111,7 +111,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
         && (!inherited.wm().block_rl() || inherited.wm().vertical());
-    let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.avail_w);
+    let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.constraints.avail_w);
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
@@ -124,8 +124,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             measured_ok,
             own_context_style(inherited) || inherited.flex_item,
             cell_bfc,
-            opts.cx.cb_width,
-            opts.cx.avail_h,
+            opts.cx.constraints.cb_width,
+            opts.cx.constraints.avail_h,
             vcx,
         ),
         flex_ctx,
@@ -157,8 +157,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let collapsed: Vec<Node> = if ordered_context {
         let in_flow = |n: &Node| match n {
             Node::Element(e) => {
-                e.style.position != Some(crate::style::computed::Position::Absolute)
-                    || e.style.z_index.is_some_and(|z| z < 0)
+                e.style.used().position != Some(crate::style::computed::Position::Absolute)
+                    || e.style.used().z_index.is_some_and(|z| z < 0)
             }
             Node::Text(_) => true,
         };
@@ -192,7 +192,9 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // родителя и видимая часть ленты. Их снимает распорка — она идёт первой,
     // потому что готовит замер до отрисовки детей.
     let sticky = collapsed.iter().any(|n| match n {
-        Node::Element(e) => e.style.position == Some(crate::style::computed::Position::Sticky),
+        Node::Element(e) => {
+            e.style.used().position == Some(crate::style::computed::Position::Sticky)
+        }
         _ => false,
     });
     let frame: crate::interactive::sticky::element::StickyCell = Default::default();

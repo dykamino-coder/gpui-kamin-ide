@@ -10,7 +10,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
-use crate::style::computed::{Computed, Display, Overflow};
+use crate::style::cascade::inherit::inherit_unpainted;
+use crate::style::computed::{BoxStyle, Computed, Display, Overflow};
 #[cfg(test)]
 use crate::style::values::value::Len;
 
@@ -25,8 +26,7 @@ pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
     if super::canvas_background::any_containment(root) {
         return None;
     }
-    let mut c =
-        crate::style::cascade::inherit::inherit_unpainted(&Computed::default(), &root.style, vcx);
+    let mut c = inherit_unpainted(&BoxStyle::default(), root.style.cascaded(), vcx);
     // The viewport takes the root's USED scrollbar colors (CSS Scrollbars 1
     // §3): `currentcolor` is the root's color, not the viewport's.
     c.scroll.colors = c
@@ -56,7 +56,7 @@ pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
     }) {
-        let body_style = crate::style::cascade::inherit::inherit_unpainted(&c, &body.style, vcx);
+        let body_style = inherit_unpainted(&c, body.style.cascaded(), vcx);
         c.rtl = body_style.rtl;
         // The viewport takes the block flow of the body's mode, not `sideways`.
         c.writing_mode = body_style.writing_mode.map(|m| {
@@ -66,19 +66,20 @@ pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
                 false,
             )
         });
+        let decl = body.style.cascaded();
         if visible(c.overflow_x)
             && visible(c.overflow_y)
-            && !matches!(body.style.display, Some(Display::None | Display::Contents))
+            && !matches!(decl.display, Some(Display::None | Display::Contents))
             && !super::canvas_background::any_containment(body)
         {
-            c.overflow_x = body.style.overflow_x;
-            c.overflow_y = body.style.overflow_y;
-            c.scroll.forced = body.style.scroll.forced;
+            c.overflow_x = decl.overflow_x;
+            c.overflow_y = decl.overflow_y;
+            c.scroll.forced = decl.scroll.forced;
         }
     }
     c.overflow_x = viewport_axis(c.overflow_x);
     c.overflow_y = viewport_axis(c.overflow_y);
-    Some(c)
+    Some(c.into_computed())
 }
 
 pub(super) fn prepare_embedded(
@@ -105,7 +106,7 @@ pub(super) fn prepare_embedded(
         && let [Node::Element(root)] = nodes.as_mut_slice()
         && root.tag == "html-viewport"
     {
-        root.style.height = None;
+        root.style.cascaded_mut().height = None;
     }
     nodes
 }
@@ -140,7 +141,7 @@ fn canvas_backing(
     owner: Option<bool>,
 ) -> Option<crate::style::values::value::Color> {
     let dark = nodes.iter().find_map(|n| match n {
-        Node::Element(e) if e.tag == "html" => Some(e.style.dark_color_scheme),
+        Node::Element(e) if e.tag == "html" => Some(e.style.cascaded().dark_color_scheme),
         _ => None,
     })?;
     if owner.map_or(!dark, |owner| owner == dark) {
@@ -190,8 +191,8 @@ mod tests {
             let nodes = crate::dom::parse(&format!("<style>{css}</style>"), "");
             let c = policy(&nodes, vcx).unwrap();
             assert_eq!(c.viewport_unit_insets, Some(expected), "{css}");
-            let mut child = crate::style::cascade::inherit::inherit_unpainted(
-                &c,
+            let mut child = inherit_unpainted(
+                &BoxStyle::from(c.clone()),
                 &Computed {
                     width: Some(Len::Vw(1.0)),
                     height: Some(Len::Vh(1.0)),
@@ -203,10 +204,11 @@ mod tests {
             assert_eq!(child.width, Some(Len::Px(800.0 - expected[0])));
             assert_eq!(child.height, Some(Len::Px(600.0 - expected[1])));
             let mut image = crate::layout::table::anon::anon_element("img", vec![]);
-            image.style.width = Some(Len::Vw(1.0));
+            image.style.cascaded_mut().width = Some(Len::Vw(1.0));
             let mut image = crate::layout::replaced::image::pct_height_to_px(&image, &c);
-            image.style.resolve_viewport((800.0, 600.0), vcx);
-            assert_eq!(image.style.width, Some(Len::Px(800.0 - expected[0])));
+            let image = image.style.cascaded_mut();
+            image.resolve_viewport((800.0, 600.0), vcx);
+            assert_eq!(image.width, Some(Len::Px(800.0 - expected[0])));
         }
     }
 

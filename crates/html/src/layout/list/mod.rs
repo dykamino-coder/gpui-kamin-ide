@@ -6,30 +6,31 @@ pub(crate) mod list_item;
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
-pub(crate) fn render(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn render(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let mut rows = Vec::new();
     let mut pending = Vec::new();
     for child in &e.children {
         match child {
             Node::Element(li) if li.tag == "li" && !crate::layout::box_kind::real_inline(li) => {
-                rows.extend(
-                    opts.cx
-                        .build
-                        .blocks(&std::mem::take(&mut pending), inherited, opts),
-                );
+                rows.extend(opts.cx.contracts.build.blocks(
+                    &std::mem::take(&mut pending),
+                    inherited,
+                    opts,
+                ));
                 rows.push(list_item::render(li, inherited, opts));
             }
             Node::Element(pseudo)
                 if pseudo.tag.starts_with("::")
-                    && pseudo.style.display != Some(Display::ListItem) => {}
+                    && pseudo.style.used().display != Some(Display::ListItem) => {}
             _ => pending.push(child.clone()),
         }
     }
-    rows.extend(opts.cx.build.blocks(&pending, inherited, opts));
+    rows.extend(opts.cx.contracts.build.blocks(&pending, inherited, opts));
     opts.cx
+        .contracts
         .build
         .styled_box(e, inherited, &opts.cx)
         .flex()

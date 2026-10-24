@@ -5,7 +5,7 @@
 use super::ruby_role;
 use super::{RubySegment, RubyUnit};
 use crate::dom::Node;
-use crate::text::text_box::blank_text;
+use crate::dom::whitespace::blank_text;
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Kind {

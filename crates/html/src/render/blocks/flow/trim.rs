@@ -2,19 +2,20 @@
 //! среза абзацу-владельцу строки и отрицательные поля первого/последнего ребёнка.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 use crate::text::line_trim::{Trim, TrimRequest};
-use crate::text::text_box::{blank_text, text_box_line_style, text_box_trim_px};
+use crate::text::text_box::{text_box_line_style, text_box_trim_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Запросы среза для абзацев, держащих первую/последнюю строку: их узлы-
 /// владельцы получают запрос через контекст детей контейнера.
 pub(super) fn register(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     ordered_context: bool,
 ) -> Vec<TrimRequest> {
@@ -98,7 +99,9 @@ fn root_top(s: &Computed, opts: &RenderOpts) -> f32 {
 pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
     rest.iter().all(|n| match n {
         Node::Text(t) => blank_text(t),
-        Node::Element(e) => e.style.display == Some(Display::None) || out_of_flow(&e.style),
+        Node::Element(e) => {
+            e.style.used().display == Some(Display::None) || out_of_flow(&e.style.used())
+        }
     })
 }
 
@@ -119,7 +122,7 @@ pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
 pub(super) fn apply(
     out: &mut Vec<AnyElement>,
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) {
     let vcx = opts.cx.vcx();

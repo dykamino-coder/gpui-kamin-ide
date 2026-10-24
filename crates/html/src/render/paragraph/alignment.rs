@@ -4,8 +4,7 @@ use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::options::own_size;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::ruby::ruby_role;
 use crate::text::text_box::normal_fraction;
@@ -18,12 +17,12 @@ use crate::text::text_box::normal_fraction;
 /// (их место — щуп статической позиции), поля форм и руби остаются в ряду.
 pub(crate) fn atom_line_align(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<crate::text::paragraph::AtomAlign> {
     let vcx = opts.cx.vcx();
     use crate::text::paragraph::AtomAlign;
-    let st = &e.style;
+    let st = &*e.style.used();
     let atomic = matches!(
         st.display,
         Some(Display::InlineBlock)
@@ -60,15 +59,15 @@ pub(crate) fn atom_line_align(
     fn has_vertical(nodes: &[Node], in_box_layout: bool) -> bool {
         nodes.iter().any(|n| match n {
             Node::Element(k) => {
-                let sized_by_parent = in_box_layout || k.style.height.is_some();
+                let sized_by_parent = in_box_layout || k.style.used().height.is_some();
                 // Ломает замер только ортогональный ФЛОАТ (его ширина «по
                 // содержимому» берётся от доступного места); ортогональный
                 // блок в потоке раскладывается одинаково, и исключать атом
                 // ради него значило вести тест рядом, а эталон строкой
                 // (`baseline-with-orthogonal-flow-001`).
-                let floated = k.style.float.is_some_and(|f| f != 0);
-                (k.style.writing_mode.is_some() && !sized_by_parent && floated)
-                    || has_vertical(&k.children, box_layout(&k.style))
+                let floated = k.style.used().float.is_some_and(|f| f != 0);
+                (k.style.cascaded().writing_mode.is_some() && !sized_by_parent && floated)
+                    || has_vertical(&k.children, box_layout(&k.style.used()))
             }
             _ => false,
         })
@@ -90,7 +89,8 @@ pub(crate) fn atom_line_align(
         && st.wm().vertical()
         && !inherited.wm().vertical()
         && !inherited.wm().turned();
-    if (st.writing_mode.is_some() && !box_layout(st) && !orthogonal_block)
+    // Своё письмо атома — объявленное (вычисленное наследуется).
+    if (e.style.cascaded().writing_mode.is_some() && !box_layout(st) && !orthogonal_block)
         || has_vertical(&e.children, box_layout(st))
     {
         return None;
@@ -137,12 +137,14 @@ pub(crate) fn atom_line_align(
     }
     // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
     // САМОГО атома; ось подъёма смотрит вверх.
-    let merged = inherit(inherited, st, vcx);
+    let merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),
     };
-    Some(match st.vertical_align {
+    // The atom's own `vertical-align` (not inherited, CSS 2.1 §10.8.1): the
+    // computed style also carries an inline ancestor's value for its text.
+    Some(match e.style.own_vertical_align() {
         Some(crate::style::computed::Align::Start) => AtomAlign::Top,
         Some(crate::style::computed::Align::End) => AtomAlign::Bottom,
         Some(crate::style::computed::Align::Center) => AtomAlign::Middle,
@@ -153,7 +155,7 @@ pub(crate) fn atom_line_align(
                 if let Some(v) = st.vertical_shift_px {
                     AtomAlign::Shift(-v)
                 } else if let Some(l) = st.vertical_shift_len {
-                    let family = merged.font_family.unwrap_or_default();
+                    let family = merged.font_family.clone().unwrap_or_default();
                     AtomAlign::Shift(crate::text::metrics::spacing_px(
                         Some(l),
                         &family,
@@ -181,3 +183,6 @@ pub(crate) fn atom_line_align(
         },
     })
 }
+
+#[cfg(test)]
+mod tests;

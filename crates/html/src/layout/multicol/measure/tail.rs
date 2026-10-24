@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-3): остаток внешнего ряда требует продолжения вложенного fragmentainer.
 //! Высота хвостового ряда колонок после единственного измеримого спаннера:
 //! остаток блочного размера коробки (css-multicol-1 §column-fill).
 
@@ -6,8 +7,8 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::spanner::spanner_box;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 /// Хвостовой ряд колонок при `column-fill: auto` НЕ стоит перед
@@ -27,9 +28,10 @@ use crate::style::values::value::Len;
 /// после спаннера 70 в коробке 100).
 pub(crate) fn tail_rest_height(
     e: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     box_h: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
+    shape_cx: ShapeCx<'_>,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<f32> {
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
@@ -54,8 +56,8 @@ pub(crate) fn tail_rest_height(
                     return None;
                 }
                 spans += 1;
-                let st = inherit(merged, &sp.style, vcx);
-                used += shape_full(sp, 4, ShapeCx::COLUMNS, vcx)?.height
+                let st = box_style(merged, &sp.style, vcx);
+                used += shape_full(sp, 4, shape_cx, vcx)?.height
                     + px(&st.margin.top)?
                     + px(&st.margin.bottom)?;
             }

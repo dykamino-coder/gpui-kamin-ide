@@ -16,7 +16,7 @@ use crate::style::values::value::Len;
 /// (css-break-3 §4.4, разрыв класса C внутри блока). Монолит выше ряда
 /// `nested_rows_shape` отклоняет: Blink переносит его иначе, чем наша укладка.
 pub(super) fn plain_block_kid(k: &Element) -> bool {
-    let s = &k.style;
+    let s = &k.style.used();
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
     let unset = |l: &Option<Len>| matches!(l, None | Some(Len::Auto));
     matches!(s.display, None | Some(Display::Block))
@@ -39,7 +39,7 @@ pub(super) fn plain_block_kid(k: &Element) -> bool {
                     && k.children.iter().all(|n| match n {
                         // Абсолют внутри абсолюта — тоже в этой коробке:
                         // его дотяг `shape_full` складывает цепочкой.
-                        Node::Element(a) => a.style.position == Some(Position::Absolute),
+                        Node::Element(a) => a.style.used().position == Some(Position::Absolute),
                         other => is_blank(other),
                     })
             }
@@ -53,7 +53,7 @@ pub(super) fn plain_block_kid(k: &Element) -> bool {
 pub(super) fn oof_in_plain_kids(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Element(k) => {
-            if out_of_flow(&k.style) {
+            if out_of_flow(&k.style.used()) {
                 false
             } else if super::nested::oof_descendant(k) {
                 plain_block_kid(k)

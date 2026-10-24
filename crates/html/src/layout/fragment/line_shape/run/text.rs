@@ -20,12 +20,15 @@ pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
                 // блока (`css-position/multicol/*-in-multicols`).
                 Node::Element(e)
                     if matches!(
-                        e.style.position,
+                        e.style.used().position,
                         Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     ) => {}
                 Node::Element(e) => {
-                    let s = &e.style;
+                    let s = &e.style.used();
+                    // Свой шрифт куска — объявленный в каскаде: вычисленный
+                    // стиль несёт и унаследованный.
+                    let declared = e.style.cascaded();
                     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
                     let b = s.borders();
                     if !e.inline
@@ -36,13 +39,13 @@ pub(crate) fn line_text(nodes: &[Node]) -> Option<String> {
                         // (`text-box-trim-multicol-002-ref`: `<span
                         // style="position: relative">`).
                         || !matches!(s.position, None | Some(crate::style::computed::Position::Relative))
-                        || s.font_size.is_some()
-                        || s.font_family.is_some()
-                        || s.font_weight.is_some()
-                        || s.italic.is_some()
-                        || s.line_height.is_some()
-                        || s.vertical_align.is_some()
-                        || s.letter_spacing.is_some()
+                        || declared.font_size.is_some()
+                        || declared.font_family.is_some()
+                        || declared.font_weight.is_some()
+                        || declared.italic.is_some()
+                        || declared.line_height.is_some()
+                        || e.style.own_vertical_align().is_some()
+                        || declared.letter_spacing.is_some()
                         || !zero(&s.padding.left)
                         || !zero(&s.padding.right)
                         || !zero(&s.margin.left)

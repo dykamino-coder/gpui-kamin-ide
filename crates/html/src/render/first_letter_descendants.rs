@@ -7,10 +7,10 @@
 //! своей раскладкой и сюда не попадают.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Computed, Display};
-use crate::text::text_box::blank_text;
 
 pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     let Some(first) = parent.first_letter_own.as_deref() else {
@@ -28,13 +28,13 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     for node in &mut nodes {
         match node {
             Node::Text(t) if blank_text(t) => continue,
-            Node::Element(e) if out_of_flow(&e.style) || e.tag == "::marker" => continue,
+            Node::Element(e) if out_of_flow(&e.style.used()) || e.tag == "::marker" => continue,
             Node::Element(e)
                 if block_level_in_flow(e)
-                    && e.style.position.is_none()
+                    && e.style.used().position.is_none()
                     && !table_box(e)
                     && matches!(
-                        e.style.display,
+                        e.style.used().display,
                         None | Some(Display::Block | Display::ListItem)
                     )
                     && e.first_letter.is_none()
@@ -44,7 +44,7 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
                 // #first-letter-tree put this fictitious inline inside the
                 // descendant. Keep relative fonts relative to that text.
                 let layer = first.clone();
-                e.style.first_letter_own = Some(Box::new(layer.clone()));
+                e.style.used_mut().first_letter_own = Some(Box::new(layer.clone()));
                 e.first_letter = Some(layer.into());
             }
             _ => {}

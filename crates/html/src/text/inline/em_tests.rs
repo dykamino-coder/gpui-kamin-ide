@@ -2,7 +2,7 @@
 //! `text-emphasis` у наследника: форма и сторона по режиму письма и языку, явное `none`.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 
 use crate::style::cascade::inherit::inherit;
@@ -21,7 +21,7 @@ fn em_resolves_against_the_font_size() {
     // Родитель 12px, свой размер 2em = 24px, высота 1em = 24px.
     let parent = styled("font-size: 12px", vcx);
     let child = styled("font-size: 2em; height: 1em", vcx);
-    let merged = inherit(&parent, &child, vcx);
+    let merged = inherit(&BoxStyle::from(parent), &child, vcx);
     assert_eq!(
         merged.font_size,
         Some(Len::Px(24.0)),
@@ -42,7 +42,7 @@ fn em_without_own_font_size_uses_the_inherited_one() {
     let vcx = doc.values();
     let parent = styled("font-size: 20px", vcx);
     let child = styled("width: 10em", vcx);
-    let merged = inherit(&parent, &child, vcx);
+    let merged = inherit(&BoxStyle::from(parent), &child, vcx);
     assert_eq!(merged.width, Some(Len::Px(200.0)));
 }
 
@@ -54,7 +54,11 @@ fn inherited_emphasis_resolves_the_childs_typographic_context() {
         "text-emphasis-style: open; text-emphasis-position: auto",
         vcx,
     );
-    let child = inherit(&parent, &styled("writing-mode: vertical-rl", vcx), vcx);
+    let child = inherit(
+        &BoxStyle::from(parent.clone()),
+        &styled("writing-mode: vertical-rl", vcx),
+        vcx,
+    );
     let pieces = [super::Piece::Text {
         text: "試験".into(),
         style: child,
@@ -63,7 +67,7 @@ fn inherited_emphasis_resolves_the_childs_typographic_context() {
     assert_eq!(spans[0].mark, "\u{fe46}");
     assert!(!spans[0].under);
 
-    let mut child = inherit(&parent, &Computed::default(), vcx);
+    let mut child = inherit(&BoxStyle::from(parent), &Computed::default(), vcx);
     child.lang = Some("Zh-Hant".into());
     let pieces = [super::Piece::Text {
         text: "你好".into(),
@@ -83,7 +87,7 @@ fn explicit_emphasis_none_and_position_override_the_parent() {
         vcx,
     );
     let child = inherit(
-        &parent,
+        &BoxStyle::from(parent),
         &styled(
             "text-emphasis-style: none; text-emphasis-position: over right",
             vcx,

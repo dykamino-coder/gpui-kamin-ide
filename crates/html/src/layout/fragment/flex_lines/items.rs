@@ -1,25 +1,9 @@
 //! Предикаты флекс-элементов: ограничение внутри, ширина в ряду, класс A, контейнер.
 
-use crate::dom::whitespace::is_blank;
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-
-/// В поддереве (до `depth`) — коробка с заданной высотой и содержимым: свой
-/// параллельный поток (css-break-3 §3), которого раскрытый элемент ряда не
-/// выражает (`flex_row_lines_of`).
-pub(super) fn constrained_inside(c: &Element, depth: u8) -> bool {
-    depth > 0
-        && c.children.iter().any(|n| match n {
-            Node::Element(k) => {
-                (matches!(k.style.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
-                    && k.children.iter().any(|n| !is_blank(n)))
-                    || constrained_inside(k, depth - 1)
-            }
-            _ => false,
-        })
-}
 
 /// Главный размер элемента многострочного ряда для `flex_row_lines_of`:
 /// `flex-basis` (точки/проценты) при `flex-grow: 0`, иначе `width`; проценты —
@@ -48,7 +32,7 @@ pub(super) fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
 pub(crate) fn class_a_box(e: &Element) -> bool {
     let blocky = (!e.inline && !inline_display(e))
         || matches!(
-            e.style.display,
+            e.style.used().display,
             Some(Display::Block)
                 | Some(Display::Flex)
                 | Some(Display::Grid)
@@ -56,10 +40,10 @@ pub(crate) fn class_a_box(e: &Element) -> bool {
                 | Some(Display::ListItem)
         );
     blocky
-        && !out_of_flow(&e.style)
-        && e.style.float.unwrap_or(0) == 0
+        && !out_of_flow(&e.style.used())
+        && e.style.used().float.unwrap_or(0) == 0
         && !matches!(
-            e.style.display,
+            e.style.used().display,
             Some(Display::None) | Some(Display::Contents)
         )
 }
@@ -73,7 +57,7 @@ pub(crate) fn class_a_box(e: &Element) -> bool {
 /// (`page-name-flex-004-print`).
 pub(crate) fn item_container(e: &Element) -> bool {
     matches!(
-        e.style.display,
+        e.style.used().display,
         Some(Display::Flex)
             | Some(Display::InlineFlex)
             | Some(Display::Grid)
@@ -90,9 +74,9 @@ pub(crate) fn inline_display(e: &Element) -> bool {
     // `inline_display`: блоки внутри такого строчного разрывают его
     // (block-in-inline), и их разрывы — точки класса A
     // (`css-break/block-in-inline-015-print`). Его не трогаем.
-    e.style.inline_display != Some(true)
+    e.style.used().inline_display != Some(true)
         && matches!(
-            e.style.display,
+            e.style.used().display,
             Some(Display::InlineBlock)
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)

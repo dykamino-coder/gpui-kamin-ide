@@ -14,6 +14,16 @@ pub(crate) struct LineFlow {
 }
 
 impl Paragraph {
+    /// Consumed fragmentainer space belongs above the continued line box.
+    pub(super) fn fragment_padding(&self, mut pads: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+        if let Some(fragment) = &self.fragment {
+            for ((above, _), growth) in pads.iter_mut().zip(fragment.node.growth.borrow().iter()) {
+                *above += growth;
+            }
+        }
+        pads
+    }
+
     pub(crate) fn fragment_flow(
         mut self,
         flow: Option<Rc<FlowMeasure>>,
@@ -34,12 +44,31 @@ impl Paragraph {
             let mut geometry = FlowGeometry::lines(pads.iter().map(|(a, b)| height + a + b));
             // CSS 2.1 section 9.5: avoidance is free space before a real
             // line, so a fragment cut may lie at the end of that space.
-            for (solid, line) in geometry.solid.iter_mut().zip(&self.lines) {
+            let growth = node.growth.borrow();
+            let mut starts = node.starts.borrow_mut();
+            starts.clear();
+            for (index, (solid, line)) in geometry.solid.iter_mut().zip(&self.lines).enumerate() {
+                let consumed = growth.get(index).copied().unwrap_or(0.0);
+                starts.push(solid.0 + consumed);
+                solid.0 += consumed;
                 solid.0 += f32::from(line.clearance);
-                if line.clearance > gpui::px(0.) {
+                if line.clearance > gpui::px(0.) || consumed > 0.0 {
                     geometry.cuts.push((solid.0, solid.0));
                 }
             }
+            *node.content.borrow_mut() = geometry
+                .solid
+                .iter()
+                .zip(&self.lines)
+                .map(
+                    |(&(top, bottom), line)| crate::layout::fragment::flow::ContentLine {
+                        paragraph: node.ordinal,
+                        byte: line.range.start,
+                        top,
+                        bottom,
+                    },
+                )
+                .collect();
             geometry.keep_lines(keep.0, keep.1);
             *node.geometry.borrow_mut() = geometry;
         }
@@ -87,5 +116,75 @@ mod tests {
         assert!(geometry.cuts.contains(&(48., 48.)));
         assert!(geometry.cuts.contains(&(16., 16.)));
         assert!(geometry.cuts.contains(&(64., 64.)));
+    }
+    #[test]
+    fn consumed_space_moves_only_the_continuation_and_survives_rebuild() {
+        let flow = Rc::new(FlowMeasure::for_lines());
+        let mut paragraph = Paragraph::new(
+            "ab".into(),
+            Vec::new(),
+            px(20.),
+            px(20.),
+            Align::Left,
+            Wrap::default(),
+        );
+        paragraph.lines = [0..1, 1..2]
+            .into_iter()
+            .map(|range| Line {
+                clearance: px(0.),
+                range,
+                width: px(0.),
+                ellipsis: false,
+                clamped: false,
+                vis_cut: None,
+                hyphen: false,
+                indent: px(0.),
+            })
+            .collect();
+        paragraph = paragraph.fragment_flow(Some(flow.clone()), StackAxis::Horizontal, (1, 1));
+        let node = paragraph.fragment.as_ref().unwrap().node.clone();
+        let push = crate::layout::fragment::flow::LinePush {
+            at: 20.,
+            line: 1,
+            growth: node.growth.clone(),
+        };
+        assert!(push.grow(15.));
+        let pads = paragraph.line_padding();
+        paragraph.publish_fragment_lines(&pads, 20.);
+        assert_eq!(pads, [(0., 0.), (15., 0.)]);
+        assert_eq!(node.geometry.borrow().solid, [(0., 20.), (35., 55.)]);
+        assert!(node.geometry.borrow().cuts.contains(&(35., 35.)));
+        flow.rewind();
+        let rebuilt = FlowNode::new(flow.clone(), StackAxis::Horizontal);
+        assert!(Rc::ptr_eq(&rebuilt.growth, &node.growth));
+        let spare = FlowNode::new(Rc::new(flow.constraints_only()), StackAxis::Horizontal);
+        assert!(Rc::ptr_eq(&spare.growth, &node.growth));
+        let content = node.content.borrow();
+        assert_eq!(
+            content
+                .iter()
+                .map(|l| (l.paragraph, l.byte, l.top))
+                .collect::<Vec<_>>(),
+            [(0, 0, 0.), (0, 1, 35.)]
+        );
+        flow.resume_lines(&content, 20.);
+        assert_eq!(rebuilt.resume.get(), 1);
+        assert_eq!(spare.resume.get(), 0);
+    }
+}
+
+impl super::Paragraph {
+    pub(crate) fn lay_continuation(
+        &self,
+        limit: Option<gpui::Pixels>,
+        segs: &[super::Seg],
+    ) -> Option<Vec<super::Line>> {
+        let resume = self.fragment.as_ref()?.node.resume.get();
+        if resume == 0 || resume >= self.text.len() || !self.text.is_char_boundary(resume) {
+            return None;
+        }
+        let mut lines = self.lay_in(0..resume, limit, segs);
+        lines.extend(self.lay_in(resume..self.text.len(), limit, segs));
+        Some(lines)
     }
 }

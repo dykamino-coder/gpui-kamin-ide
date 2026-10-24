@@ -11,7 +11,7 @@ fn table(html: &str) -> (BlockBox, Vec<u64>) {
     let doc = crate::dom::parse(html, "");
     fn find(n: &Node) -> Option<&Element> {
         let Node::Element(e) = n else { return None };
-        if e.style.display == Some(Display::Table) {
+        if e.style.used().display == Some(Display::Table) {
             return Some(e);
         }
         e.children.iter().find_map(find)
@@ -172,4 +172,22 @@ fn block_start_edge_without_a_gap_holds_the_first_row_monolith() {
     laid.boxes.insert(mono, (10.0, 60.0));
     let m = b.breaks(70.0, &laid).finish(FlowGeometry::default(), 70.0);
     assert!(m.solid.contains(&(0.0, 60.0)));
+}
+
+#[test]
+fn caption_line_geometry_stays_inside_the_table_wrapper_flow() {
+    let (b, ps) = table(
+        "<table style=\"display:table\"><caption style=\"display:table-caption\"><p style=\"margin:0\">caption</p></caption></table>",
+    );
+    let t = b.table.as_ref().unwrap();
+    let cap = t.caps_top[0].id;
+    let laid = Laid::of_boxes(&[(b.id, 0.0, 32.0), (cap, 0.0, 32.0), (ps[0], 0.0, 32.0)]);
+    // Строка подписи — неделимый диапазон внутри обёртки; 16px остатка
+    // колонки не разрешают разрезать её. Измерение строки должно дать
+    // именно собственный поток подписи, а не выдуманную высоту таблицы.
+    let lines = FlowGeometry::lines([32.0]);
+    let m = b.breaks(32.0, &laid).finish(lines, 32.0);
+    assert!(m.cuts.is_empty());
+    assert_eq!(m.solid, vec![(0.0, 32.0)]);
+    assert_eq!(b.pushed_at(0.0, &laid), Some(Pushed::Box(cap)));
 }

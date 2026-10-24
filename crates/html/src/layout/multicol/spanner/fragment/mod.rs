@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-3): оценка долей спаннера остаётся до токенов вложенных рядов.
 //! Фрагменты охватчика: видимость, доля высоты, части многоколоночника.
 
 use super::spanner_edge;
@@ -7,6 +8,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 mod parts;
 pub(super) use parts::spanner_parts;
 
@@ -20,14 +22,14 @@ pub(super) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last
     if kids.iter().any(|n| !is_blank(n)) {
         return true;
     }
-    let b = &c.style.border_width;
+    let b = &c.style.used().border_width;
     (first
-        && (spanner_edge(&c.style.margin.top)
-            || spanner_edge(&c.style.padding.top)
+        && (spanner_edge(&c.style.used().margin.top)
+            || spanner_edge(&c.style.used().padding.top)
             || spanner_edge(&b.top)))
         || (last
-            && (spanner_edge(&c.style.margin.bottom)
-                || spanner_edge(&c.style.padding.bottom)
+            && (spanner_edge(&c.style.used().margin.bottom)
+                || spanner_edge(&c.style.used().padding.bottom)
                 || spanner_edge(&b.bottom)))
 }
 
@@ -55,22 +57,22 @@ pub(super) fn spanner_fragment(
     let mut f = c.clone();
     f.children = kids;
     if !first {
-        f.style.margin.top = None;
-        f.style.padding.top = None;
-        f.style.border_width.top = None;
+        f.style.used_mut().margin.top = None;
+        f.style.used_mut().padding.top = None;
+        f.style.used_mut().border_width.top = None;
         // Устойчивый номер узла у продолжения свой: по нему GPUI хранит
         // состояние (анимация, буферы линеек промежутков), и два фрагмента
         // с одним номером слились бы в один.
         f.node_id = c.node_id ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     }
     if !last {
-        f.style.margin.bottom = None;
-        f.style.padding.bottom = None;
-        f.style.border_width.bottom = None;
+        f.style.used_mut().margin.bottom = None;
+        f.style.used_mut().padding.bottom = None;
+        f.style.used_mut().border_width.bottom = None;
     }
     if !keep_size {
-        f.style.height = None;
-        f.style.min_height = None;
+        f.style.used_mut().height = None;
+        f.style.used_mut().min_height = None;
     }
     f
 }
@@ -88,9 +90,10 @@ pub(super) fn spanner_fragment(
 pub(super) fn spanner_height_share(
     c: &Element,
     bodies: &[Vec<Node>],
+    shape_cx: ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<Option<f32>>> {
-    let Some(Len::Px(total)) = c.style.height else {
+    let Some(Len::Px(total)) = c.style.used().height else {
         return None;
     };
     let n = bodies.len();
@@ -112,7 +115,7 @@ pub(super) fn spanner_height_share(
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let edge = px(&c.style.padding.top)? + px(&c.style.borders().top)?;
+    let edge = px(&c.style.used().padding.top)? + px(&c.style.used().borders().top)?;
     let mut left = total;
     let mut out = Vec::with_capacity(n);
     for (i, b) in bodies.iter().enumerate() {
@@ -125,10 +128,10 @@ pub(super) fn spanner_height_share(
             continue;
         }
         let f = spanner_fragment(c, b.clone(), i == 0, false, false, i);
-        let h = shape_full(&f, 4, ShapeCx::COLUMNS, vcx)?.height;
+        let h = shape_full(&f, 4, shape_cx, vcx)?.height;
         let own = (h - if i == 0 { edge } else { 0.0 }).max(0.0);
         let take = own.min(left);
-        out.push((own > left + 0.01).then_some(take));
+        out.push((own > left + COORD_EPS).then_some(take));
         left -= take;
     }
     Some(out)

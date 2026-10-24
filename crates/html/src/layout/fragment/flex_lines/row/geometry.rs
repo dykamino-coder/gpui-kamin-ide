@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-4): остаточный preplan продолжений flex пока использует оценку.
 //! Общая гипотетическая геометрия строк flex-ряда для фрагментации (css-flexbox-1 §9.3/§9.4):
 //! гейт контейнера (`row_container`), строки с мерами элементов (`collect_rows`), высота
 //! строки — наибольшая внешняя высота, растяжение элемента `height: auto` на строку полом
@@ -27,7 +28,7 @@ pub(crate) struct FlexRow {
 }
 
 pub(crate) fn row_container(c: &Element) -> bool {
-    let s = &c.style;
+    let s = &c.style.used();
     s.display == Some(Display::Flex)
         && s.webkit_box != Some(true)
         && matches!(s.flex_dir, None | Some(FlexDir::Row))
@@ -77,9 +78,12 @@ pub(crate) fn collect_rows(
     }
     for row in &mut rows {
         for item in &mut row.items {
-            let s = &mut item.element.style;
+            let s = item.element.style.used_mut();
             if matches!(s.height, None | Some(Len::Auto))
-                && !matches!(s.align_self.or(c.style.align_items), Some(Align::Start))
+                && !matches!(
+                    s.align_self.or(c.style.used().align_items),
+                    Some(Align::Start)
+                )
                 && item.shape.height + item.shape.margin_top + item.shape.margin_bottom
                     < row.height - 0.01
             {

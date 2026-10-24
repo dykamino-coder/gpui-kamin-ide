@@ -12,7 +12,7 @@ use crate::style::values::value::StyleColor;
 mod inherit;
 pub(crate) use inherit::inherit;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScrollStyle {
     pub forced: [bool; 2],
     pub width: Option<u8>,
@@ -87,7 +87,7 @@ impl Computed {
 #[cfg(test)]
 mod tests {
     //! Regression checks for the cascade boundary of HTML scrollbar policies.
-    use crate::style::computed::Computed;
+    use crate::style::computed::{BoxStyle, Computed};
 
     #[test]
     fn scrollbar_color_inherits_but_geometry_does_not() {
@@ -96,12 +96,17 @@ mod tests {
         let mut parent = Computed::default();
         parent.apply_one("scrollbar-color", "rgb(255, 0, 0) blue", vcx);
         parent.apply_one("scrollbar-width", "none", vcx);
-        let child = crate::style::cascade::inherit::inherit(&parent, &Computed::default(), vcx);
+        let child = crate::style::cascade::inherit::inherit(
+            &BoxStyle::from(parent.clone()),
+            &Computed::default(),
+            vcx,
+        );
         assert_eq!(child.scroll.colors, parent.scroll.colors);
         assert_eq!(child.scroll.width, None);
         let mut reset = Computed::default();
         reset.apply_one("scrollbar-color", "initial", vcx);
-        let child = crate::style::cascade::inherit::inherit(&parent, &reset, vcx);
+        let child =
+            crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &reset, vcx);
         assert_eq!(child.scroll.colors, Some(None));
     }
 
@@ -113,7 +118,7 @@ mod tests {
         declaration.apply_one("color", "red", vcx);
         declaration.apply_one("scrollbar-color", "currentColor blue", vcx);
         let parent =
-            crate::style::cascade::inherit::inherit(&Computed::default(), &declaration, vcx);
+            crate::style::cascade::inherit::inherit(&BoxStyle::default(), &declaration, vcx);
         let mut own = Computed::default();
         own.apply_one("color", "green", vcx);
         // css-color-4 §6.4: the keyword is inherited, not the parent's color.
@@ -149,7 +154,7 @@ mod tests {
         use crate::style::computed::Overflow;
         let mut own = Computed::default();
         own.apply_one("overflow-x", "scroll", vcx);
-        let c = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+        let c = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
         assert_eq!([c.overflow_x, c.overflow_y], [Some(Overflow::Scroll); 2]);
         assert_eq!(c.scroll.forced, [true, false]);
         let child = crate::style::cascade::inherit::inherit(&c, &Computed::default(), vcx);
@@ -173,7 +178,7 @@ mod tests {
         ] {
             let mut own = Computed::default();
             own.apply_one("overflow", declaration, vcx);
-            let c = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+            let c = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
             assert_eq!([c.overflow_x, c.overflow_y], expected);
             assert_eq!(c.scroll.forced, [false; 2]);
         }
@@ -189,10 +194,15 @@ mod tests {
         let mut own = Computed::default();
         own.apply_one("scrollbar-gutter", "inherit", vcx);
         own.apply_one("scrollbar-gutter", "both-edges", vcx); // invalid declaration retains inherit
-        let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+        let child =
+            crate::style::cascade::inherit::inherit(&BoxStyle::from(parent.clone()), &own, vcx);
         assert_eq!(child.scroll.gutter, Some(2));
         assert!(!child.scroll.viewport_root);
-        let local = crate::style::cascade::inherit::inherit(&parent, &Computed::default(), vcx);
+        let local = crate::style::cascade::inherit::inherit(
+            &BoxStyle::from(parent.clone()),
+            &Computed::default(),
+            vcx,
+        );
         assert_eq!(local.scroll.gutter, None);
     }
 }

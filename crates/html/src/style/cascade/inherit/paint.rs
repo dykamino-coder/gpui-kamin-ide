@@ -1,42 +1,40 @@
-//! inherit_stage, этап краски: filter и drop-shadow с цветом, заливка текста под background-clip:
-//! text, белые пробелы, курсор, таблицы, caret-color.
+//! Стадия коробки, краска: цветовой `filter` поддерева и drop-shadow, заливка текста под
+//! background-clip: text.
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::computed::{BgListProp, BlendMode};
+use crate::style::computed::BoxStyle;
 
 mod gradient_filter;
 
 pub(super) fn inherit_paint(
     parent: &Computed,
+    declared: &Computed,
     own: &Computed,
-    c: &mut Computed,
+    c: &mut BoxStyle,
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) {
-    if c.background_blend == Some(BlendMode::Inherit) {
-        c.background_blend = parent.background_blend;
-        c.bg_lists.remove(BgListProp::BlendMode);
-        if let Some(list) = parent.bg_lists.get(BgListProp::BlendMode) {
-            c.bg_lists.set_layers(BgListProp::BlendMode, list.to_vec());
-        }
-    }
     // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и
     // применяем к собственным цветам потомка: раньше фильтр действовал только
     // на узел, где написан, и дети оставались цветными.
     if c.filter.is_none() {
-        c.filter = parent.filter;
-        c.scrollbar_filter_ops = parent.scrollbar_filter_ops.clone();
+        set!(c.filter, parent.filter);
+        set!(c.scrollbar_filter_ops, parent.scrollbar_filter_ops.clone());
     }
     // ЕДИНСТВЕННАЯ точка окраски фильтром (каскад цвета не трогает).
-    // Красится только ВОЗНИКШЕЕ на этом узле: унаследованный цвет уже
-    // покрашен предком — повторная окраска давала f^N по поколениям.
+    // Computed-цвет элемента ещё не окрашен, в том числе унаследованный.
+    // Анонимная коробка получает уже окрашенный цвет от коробки-родителя:
+    // у неё фильтруются только собственные объявления.
     if paint_filter && let Some(f) = c.filter {
         if own.background.is_some() {
-            c.background = c.background.map(|col| f.apply(col));
+            set!(c.background, c.background.map(|col| f.apply(col)));
         }
-        if own.declares_color() || own.filter.is_some() && parent.color.is_none() {
-            c.color = c.color.map(|col| f.apply(col));
+        if c.element_style.is_some()
+            || declared.declares_color()
+            || own.filter.is_some() && parent.color.is_none()
+        {
+            set!(c.color, c.color.map(|col| f.apply(col)));
         }
         // `currentcolor` сторон решится уже окрашенным цветом текста.
         for side in c.border_colors.iter_mut() {
@@ -94,9 +92,9 @@ pub(super) fn inherit_paint(
     // цветом. Для одноцветного непрозрачного фона это ровно «цвет текста
     // поверх заливки» — маска глифов не нужна, а подчёркивания, многоточие и
     // знаки выделения цветом `currentColor` получают тот же цвет сами.
-    // Смешивается только ВОЗНИКШЕЕ на узле (как у фильтра выше): унаследованный
-    // цвет уже смешан предком. Внепоточные потомки в геометрию текста не входят
-    // (`clip-text-out-of-flow-child`) и получают несмешанный цвет обратно.
+    // Computed-цвет элемента смешивается на его коробке; анонимная коробка
+    // получает уже смешанный цвет. Внепоточные потомки в геометрию текста
+    // не входят (`clip-text-out-of-flow-child`) и сохраняют исходный цвет.
     let images = vcx.background_images();
     if paint_filter {
         crate::style::computed::flat_background::collapse_flat_stack(c, vcx, &images);
@@ -114,47 +112,34 @@ pub(super) fn inherit_paint(
     );
     if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, &images) {
         let foreground = c.text_clip_raw.or(c.color);
-        c.text_clip_raw = foreground;
-        c.text_clip_fill = Some(fill);
-        c.color = Some(crate::style::values::composite::over(
-            foreground.unwrap_or(black),
-            fill,
-        ));
+        set!(c.text_clip_raw, foreground);
+        set!(c.text_clip_fill, Some(fill));
+        set!(
+            c.color,
+            Some(crate::style::values::composite::over(
+                foreground.unwrap_or(black),
+                fill,
+            ))
+        );
     } else if parent.text_clip_fill.is_some() && out_of_flow {
-        c.text_clip_fill = None;
-        c.text_clip_raw = None;
-        if !own.declares_color() {
-            c.color = parent.text_clip_raw;
+        set!(c.text_clip_fill, None);
+        set!(c.text_clip_raw, None);
+        if c.element_style.is_none() && !declared.declares_color() {
+            set!(c.color, parent.text_clip_raw);
         }
     } else if let Some(fill) = parent.text_clip_fill {
-        c.text_clip_fill = Some(fill);
-        if own.declares_color() {
-            c.text_clip_raw = c.color;
-            c.color = Some(crate::style::values::composite::over(
-                c.color.unwrap_or(black),
-                fill,
-            ));
+        set!(c.text_clip_fill, Some(fill));
+        if c.element_style.is_some() || declared.declares_color() {
+            set!(c.text_clip_raw, c.color);
+            set!(
+                c.color,
+                Some(crate::style::values::composite::over(
+                    c.color.unwrap_or(black),
+                    fill,
+                ))
+            );
         } else {
-            c.text_clip_raw = parent.text_clip_raw;
+            set!(c.text_clip_raw, parent.text_clip_raw);
         }
     }
-    // Наследуемые по CSS, но забытые прежде: без них `white-space: pre` на
-    // контейнере не доходил до вложенного текста, а маркер, курсор и зазор
-    // ячеек не доставались детям.
-    c.preserve_newlines = own.preserve_newlines.or(parent.preserve_newlines);
-    c.keep_spaces = own.keep_spaces.or(parent.keep_spaces);
-    c.hidden = own.hidden.or(parent.hidden);
-    c.cursor = own.cursor.clone().or(parent.cursor.clone());
-    c.no_marker = own.no_marker.or(parent.no_marker);
-    c.border_collapse = own.border_collapse.or(parent.border_collapse);
-    c.empty_cells_hide = own.empty_cells_hide.or(parent.empty_cells_hide);
-    c.border_spacing = own.border_spacing.or(parent.border_spacing);
-    c.caret_color = own
-        .caret_color
-        .clone()
-        .or_else(|| parent.caret_color.clone());
-    c.accent_color = own
-        .accent_color
-        .clone()
-        .or_else(|| parent.accent_color.clone());
 }

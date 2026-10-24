@@ -3,6 +3,7 @@
 pub(crate) mod inline;
 mod run;
 pub(crate) use run::run;
+mod candidates;
 mod owned;
 mod signature;
 mod sizing;
@@ -14,10 +15,9 @@ mod tests;
 use super::{AnchorPlan, Placement, PlacementPlans};
 use crate::document::state::ValueCx;
 use crate::hooks::{Hooks, IntoHooked};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use signature::Signature;
-use snapshot::Accepted;
 pub(crate) use snapshot::apply_style;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -35,11 +35,12 @@ pub(crate) struct Options {
     vertical: bool,
     remembered: bool,
     signature: Signature,
-    pub(crate) styles: Vec<(usize, Computed)>,
+    pub(crate) styles: Vec<(usize, BoxStyle)>,
 }
 
 impl Options {
-    pub(crate) fn new(base: &Computed, inherited: &Computed, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn new(base: &BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) -> Self {
+        let mut styles = candidates::build(base, inherited, vcx);
         let signature = Signature::of(base, vcx);
         let previous = vcx
             .doc
@@ -50,35 +51,16 @@ impl Options {
             .filter(|p| p.signature.as_ref() == Some(&signature) && p.accepted.is_some())
             .cloned();
         let remembered = previous.is_some();
-        let mut current = base.clone();
-        let index = previous.as_ref().map_or(0, |p| p.index);
         if let Some(p) = previous
-            && let Some(accepted) = p.accepted
+            && let Some(index) = styles.iter().position(|s| s.0 == p.index)
         {
-            accepted.apply(&mut current, vcx);
-        }
-        let mut styles = vec![(index, current)];
-        for k in 0..=base.position_try_fallbacks.len() {
-            if k == index {
-                continue;
+            let mut current = styles.remove(index);
+            let accepted = p.accepted.unwrap();
+            accepted.apply(&mut current.1, vcx);
+            if let Some(element) = &mut current.1.element_style {
+                accepted.apply(Rc::make_mut(&mut element.computed), vcx);
             }
-            let mut c = base.clone();
-            if k != 0 {
-                let fb = &base.position_try_fallbacks[k - 1];
-                if let Some(name) = &fb.name {
-                    let Some(rule) = vcx.doc.try_rule(name) else {
-                        continue;
-                    };
-                    super::resolve::apply_try_rule(&mut c, &rule, vcx);
-                }
-                if let Some(area) = fb.area {
-                    c.position_area = Some(area);
-                }
-                let resolved = crate::style::cascade::inherit::inherit(inherited, &c, vcx);
-                Accepted::of(&resolved).apply(&mut c);
-                tactics::apply(&mut c, inherited, fb.tactics, vcx);
-            }
-            styles.push((k, c));
+            styles.insert(0, current);
         }
         Self {
             key: base.anchor_key,

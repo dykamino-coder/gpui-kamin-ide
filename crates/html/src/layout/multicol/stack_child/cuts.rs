@@ -1,4 +1,4 @@
-//! Разрезы ребёнка по строкам и высота копии; заполнение полей StackChild.
+//! Разрезы и высота StackChild: ADR P-19 F2-1/F2-3/F2-4 сохраняют preplan до consumed токенов.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
@@ -12,10 +12,9 @@ use crate::layout::fragment::table_bands::{repeat_bands, table_box};
 use crate::layout::fragment::{ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
-
+use crate::style::computed::BoxStyle;
+use crate::tolerance::COORD_EPS;
 #[allow(clippy::too_many_arguments)]
-// Fragment copies carry cuts, heights and continuation flags together.
 #[allow(clippy::type_complexity)]
 pub(super) fn copy_cuts_and_height(
     ix: usize,
@@ -29,7 +28,7 @@ pub(super) fn copy_cuts_and_height(
     col_rl: bool,
     line_col_w: Option<f32>,
     fixed: Option<f32>,
-    merged: &Computed,
+    merged: &BoxStyle,
     copy: &Element,
 ) -> (Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, f32, f32, bool) {
     let copy_m = if col_vert {
@@ -51,7 +50,7 @@ pub(super) fn copy_cuts_and_height(
         // сосед: последней коробке её дотяг —
         // мера колонок многоколоночника.
         Some((own, full))
-            if (full - h).abs() < 0.01 && !solid_box(copy) && ix + 1 < kid_par.len() =>
+            if (full - h).abs() < COORD_EPS && !solid_box(copy) && ix + 1 < kid_par.len() =>
         {
             (own, over.max(full))
         }
@@ -61,7 +60,6 @@ pub(super) fn copy_cuts_and_height(
 }
 
 #[allow(clippy::too_many_arguments)]
-// Line cuts retain their associated height and break flags.
 #[allow(clippy::type_complexity)]
 pub(super) fn line_cuts(
     h: f32,
@@ -71,7 +69,7 @@ pub(super) fn line_cuts(
     opts: &RenderOpts,
     line_col_w: Option<f32>,
     fixed: Option<f32>,
-    merged: &Computed,
+    merged: &BoxStyle,
     copy: &Element,
     copy_m: Option<Element>,
 ) -> (
@@ -115,16 +113,16 @@ pub(super) fn line_cuts(
                     }));
             let ov = copy_m.as_ref().unwrap_or(copy);
             let block_visible = matches!(
-                ov.style.overflow_y,
+                ov.style.used().overflow_y,
                 None | Some(crate::style::computed::Overflow::Visible)
             ) && matches!(
-                ov.style.overflow_x,
+                ov.style.used().overflow_x,
                 None | Some(crate::style::computed::Overflow::Visible)
                     | Some(crate::style::computed::Overflow::Clip)
             );
             fixed.is_some() && plain && block_visible
         })
-        .filter(|s| s.height > h + 0.01)
+        .filter(|s| s.height > h + COORD_EPS)
     {
         Some(s) => (s.height, s.cuts, s.forced, s.solid),
         None => (h, cuts, forced, solid),
@@ -155,10 +153,15 @@ pub(super) fn stack_child_of(
     span: bool,
     kid_copies: usize,
     measured_table: Option<(bool, bool)>,
+    shape_cx: crate::layout::fragment::ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
-    let repeat = repeat_bands(copy, fixed, rows, measured_table, vcx);
+    let repeat = repeat_bands(copy, fixed, rows, measured_table, shape_cx, vcx);
     crate::layout::fragment::types::StackChild {
+        #[cfg(feature = "wpt-harness")]
+        probe_pending: measure.is_none(),
+        #[cfg(feature = "wpt-harness")]
+        probe: Default::default(),
         watched: None,
         breaks_w: None,
         regrow: None,
@@ -184,6 +187,7 @@ pub(super) fn stack_child_of(
         forced,
         solid,
         avoid: Vec::new(),
+        keep: Vec::new(),
         h,
         mt,
         mb,
@@ -202,18 +206,18 @@ pub(super) fn stack_child_of(
         par: kid_par[ix],
         positioned: !span
             && (matches!(
-                copy.style.position,
+                copy.style.used().position,
                 Some(crate::style::computed::Position::Relative)
                     | Some(crate::style::computed::Position::Sticky)
-            ) || copy.style.transform.is_some())
-            && copy.style.z_index.unwrap_or(0) == 0,
+            ) || copy.style.used().transform.is_some())
+            && copy.style.used().z_index.unwrap_or(0) == 0,
         // Хвост непоследнего фрагмента таблицы — её фоном
         // (`StackChild::slack`).
         slack: if col_vert {
             None
         } else if table_box(copy) {
-            copy.style.background.map(|c| c.to_hsla())
-        } else if dec.is_none() && over <= h + 0.01 {
+            copy.style.used().background.map(|c| c.to_hsla())
+        } else if dec.is_none() && over <= h + COORD_EPS {
             // Продолжение одного лишь параллельного
             // потока (`over`) — не продолжение коробки:
             // она кончилась, хвоста у неё нет.
@@ -223,9 +227,7 @@ pub(super) fn stack_child_of(
         },
         laid_w: Default::default(),
         paginate: None,
-        // Повтор шапки/подвала таблицы — полосы своими
-        // копиями (`flow::Repeat`); та же мера, что у
-        // щупов (`repeat_leads`).
+        // Повтор шапки/подвала — копии flow::Repeat с мерой repeat_leads.
         repeat: repeat
             .filter(|_| !span && !col_vert)
             .map(

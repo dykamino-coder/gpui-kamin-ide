@@ -1,6 +1,7 @@
 //! Украшения коробки: тени, рамки по форме, слои градиентов.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 mod borders;
 pub(super) use borders::box_borders;
 pub(super) use borders::coloured_borders;
@@ -10,7 +11,6 @@ use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
 use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
-use crate::style::computed::Computed;
 use gpui::AnyElement;
 
 mod backdrop;
@@ -29,7 +29,7 @@ pub(crate) mod text_shadows;
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
 pub(crate) fn decorations(
-    c: &Computed,
+    c: &BoxStyle,
     empty: bool,
     vcx: ValueCx<'_>,
     cx: Option<&crate::layout::cx::LayoutCx>,
@@ -81,6 +81,16 @@ pub(crate) fn decorations(
     // content on top of it; borders after it stay unfiltered
     // (`backdrop-filter-with-background-clip-padding-box`).
     backdrop_matrix(c, &mut out, vcx);
+    if !(empty
+        && !c.transform_ancestor
+        && c.transform.is_none()
+        && c.filter_ref
+            .as_deref()
+            .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some()))
+        && let Some(layer) = crate::paint::background::color_layer(c, vcx)
+    {
+        out.push(layer);
+    }
 
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
     // остальным — тот же порядок, что в браузере.
@@ -138,7 +148,7 @@ pub(crate) fn decorations(
 }
 
 fn stationary(
-    c: &Computed,
+    c: &BoxStyle,
     out: &mut Vec<AnyElement>,
     start: usize,
     cx: Option<&crate::layout::cx::LayoutCx>,
@@ -146,8 +156,8 @@ fn stationary(
     let layers = out.split_off(start);
     out.extend(layers.into_iter().map(|el| {
         crate::interactive::scroll_target::stationary(
-            cx.and_then(|cx| cx.scroll_frame.as_ref()),
-            cx.and_then(|cx| cx.scroll_target.as_deref()),
+            cx.and_then(|cx| cx.scroll.frame.as_ref()),
+            cx.and_then(|cx| cx.scroll.target.as_deref()),
             c.self_node,
             el,
         )

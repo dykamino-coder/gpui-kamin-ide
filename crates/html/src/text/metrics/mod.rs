@@ -9,6 +9,7 @@
 //! Пока щуп не поставлен, работает запасное значение спецификации (полкегля):
 //! CSS сам разрешает его, когда нужного глифа в шрифте не нашлось.
 
+use crate::defaults::FALLBACK_NORMAL_LINE_HEIGHT;
 mod families;
 mod font_loader;
 mod platform;
@@ -54,7 +55,7 @@ const PROBE_SIZE: f32 = 100.0;
 /// Доли кегля по спецификации, когда глифа нет или щуп не поставлен.
 // Продвижение иероглифа без замера — целый кегль: так его определяет
 // спецификация для шрифта, в котором знака `水` нет (CSS Values §6.1.4).
-const FALLBACK: (f32, f32, f32, f32) = (0.5, 0.5, 1.2, 1.0);
+const FALLBACK: (f32, f32, f32, f32) = (0.5, 0.5, FALLBACK_NORMAL_LINE_HEIGHT, 1.0);
 
 /// Моноширинные семейства в порядке предпочтения: своё встроенное, затем то,
 /// что подставляет за `font-family: monospace` браузер на этой системе.
@@ -92,6 +93,7 @@ pub fn install_vprobe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static, vc
     *vcx.doc.metrics.vprobe.borrow_mut() = Some(Box::new(probe));
     vcx.doc.metrics.vcache.borrow_mut().clear();
     vcx.doc.metrics.parts.borrow_mut().clear();
+    vcx.doc.metrics.invalidate();
 }
 
 /// Подъём, спуск и высота прописной в ТОЧКАХ для семейства и кегля.
@@ -164,6 +166,7 @@ pub fn install_probe(
     *vcx.doc.metrics.probe.borrow_mut() = Some(Box::new(probe));
     vcx.doc.metrics.cache.borrow_mut().clear();
     vcx.doc.metrics.parts.borrow_mut().clear();
+    vcx.doc.metrics.invalidate();
 }
 
 /// Длина `1ch` и `1ex` в точках для семейства и кегля.

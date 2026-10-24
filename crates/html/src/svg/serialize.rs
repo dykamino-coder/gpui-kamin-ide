@@ -1,5 +1,6 @@
 //! Обратная сериализация поддерева `<svg>` в разметку для растеризатора.
 
+use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::document::state::ValueCx;
 mod transform;
 pub(super) use transform::element_transform;
@@ -15,10 +16,10 @@ mod filters;
 mod geometry;
 use filters::subtree_has;
 use filters::untaint_filters;
-pub(crate) use geometry::geometry_property;
 
 use super::clip::synth_clip;
-use super::size::{size_of, view_box_ratio};
+use crate::dom::resource_facts::view_box_ratio;
+use crate::layout::replaced::svg_size::size_of;
 /// Viewport and clip content model of this serialization traversal.
 #[derive(Clone, Copy)]
 pub(super) struct SerializeCx {
@@ -29,7 +30,7 @@ pub(super) struct SerializeCx {
 impl Default for SerializeCx {
     fn default() -> Self {
         Self {
-            view_box: (300.0, 150.0),
+            view_box: DEFAULT_REPLACED_SIZE_PX,
             in_clip: false,
         }
     }
@@ -145,18 +146,18 @@ fn escape_text(v: &str, out: &mut String) {
 pub(super) fn write_paint(e: &Element, out: &mut String) {
     let has = |name: &str| e.attrs.iter().any(|(k, _)| k == name);
     if e.tag != "svg" {
-        if let Some(crate::style::values::value::Len::Px(w)) = e.style.width
+        if let Some(crate::style::values::value::Len::Px(w)) = e.style.used().width
             && !has("width")
         {
             out.push_str(&format!(" width=\"{w}\""));
         }
-        if let Some(crate::style::values::value::Len::Px(h)) = e.style.height
+        if let Some(crate::style::values::value::Len::Px(h)) = e.style.used().height
             && !has("height")
         {
             out.push_str(&format!(" height=\"{h}\""));
         }
     }
-    if let Some(fill) = &e.style.svg_fill
+    if let Some(fill) = &e.style.used().svg_fill
         && !has("fill")
     {
         out.push_str(" fill=\"");
@@ -167,14 +168,14 @@ pub(super) fn write_paint(e: &Element, out: &mut String) {
     // stroke: black }` живёт в `<style>` с селектором, в разметке фигуры его
     // нет, а растеризатор видит только разметку. Разметка сильнее: свой
     // атрибут не перебиваем — как у `fill` выше.
-    if let Some(stroke) = &e.style.svg_stroke
+    if let Some(stroke) = &e.style.used().svg_stroke
         && !has("stroke")
     {
         out.push_str(" stroke=\"");
         escape_attr(stroke, out);
         out.push('"');
     }
-    if let Some(w) = &e.style.svg_stroke_width
+    if let Some(w) = &e.style.used().svg_stroke_width
         && !has("stroke-width")
     {
         // `vector-effect: non-scaling-stroke` из КАСКАДА (SVG 2
@@ -183,7 +184,7 @@ pub(super) fn write_paint(e: &Element, out: &mut String) {
         // здесь: равномерный множитель стилевой матрицы √|det| (масштаб
         // предков не учитывается). Без этого `svgbox-stroke-box-003/004` при
         // верной геометрии рисовали обводку вдвое тоньше эталонной.
-        let k = match (e.style.svg_non_scaling, e.style.transform) {
+        let k = match (e.style.used().svg_non_scaling, e.style.used().transform) {
             (Some(true), Some(t)) if !has("vector-effect") => (t.lin[0][0] * t.lin[1][1]
                 - t.lin[0][1] * t.lin[1][0])
                 .abs()
@@ -202,12 +203,12 @@ pub(super) fn write_paint(e: &Element, out: &mut String) {
         }
     }
     if e.tag != "svg" {
-        if let Some(crate::style::values::value::Len::Px(x)) = e.style.svg_x
+        if let Some(crate::style::values::value::Len::Px(x)) = e.style.used().svg_x
             && !has("x")
         {
             out.push_str(&format!(" x=\"{x}\""));
         }
-        if let Some(crate::style::values::value::Len::Px(y)) = e.style.svg_y
+        if let Some(crate::style::values::value::Len::Px(y)) = e.style.used().svg_y
             && !has("y")
         {
             out.push_str(&format!(" y=\"{y}\""));

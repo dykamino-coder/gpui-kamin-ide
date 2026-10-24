@@ -16,7 +16,7 @@ pub(super) fn border_spacing_of(
     opts: &RenderOpts,
     inherited: &Computed,
 ) -> (f32, f32) {
-    table_spacing(e, opts, inherited, e.style.border_spacing)
+    table_spacing(e, opts, inherited, e.style.used().border_spacing)
 }
 
 pub(super) fn rows_left_and_cols(
@@ -67,7 +67,7 @@ pub(super) fn table_spacing(
     border_spacing: Option<(Option<Len>, Option<Len>)>,
 ) -> (f32, f32) {
     let vcx = opts.cx.vcx();
-    match (e.style.border_collapse, border_spacing) {
+    match (e.style.cascaded().border_collapse, border_spacing) {
         (Some(true), _) => (0.0, 0.0),
         (None, _) if e.attr("rules").is_some() => (0.0, 0.0),
         // Заданный `border-spacing` перекрывает умолчание браузера в 2px.
@@ -102,7 +102,7 @@ pub(super) fn table_rows_fixed(fixed: Vec<Node>) -> Vec<Node> {
                 "thead" => Some(0),
                 "tbody" => Some(1),
                 "tfoot" => Some(2),
-                _ => g.style.row_group_kind,
+                _ => g.style.used().row_group_kind,
             }
         };
         let first_with = |k: u8| -> Option<u64> {
@@ -144,15 +144,15 @@ pub(super) fn cell_paints_over(nodes: &[Node], depth: u8) -> bool {
         && nodes.iter().any(|n| match n {
             Node::Element(k) => {
                 inline_level_box(k)
-                    || k.style.float.unwrap_or(0) != 0
+                    || k.style.used().float.unwrap_or(0) != 0
                     || matches!(
-                        k.style.position,
+                        k.style.used().position,
                         Some(crate::style::computed::Position::Relative)
                             | Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                             | Some(crate::style::computed::Position::Sticky)
                     )
-                    || stacking_context(&k.style)
+                    || stacking_context(&k.style.used())
                     || cell_paints_over(&k.children, depth - 1)
             }
             Node::Text(_) => false,

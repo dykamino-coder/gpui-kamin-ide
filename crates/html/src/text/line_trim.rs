@@ -10,9 +10,9 @@
 //! он держит срезаемую строку: строка может лежать в потомке контейнера
 //! (css-pseudo-4 «first formatted line»). Контейнер адресует запрос
 //! узлу-владельцу строки (`TrimRequest`) и передаёт его своим детям
-//! (`LayoutCx::trim_requests`), `blocks_flow` владельца забирает свои
+//! (`InlineContext::trim_requests`), `blocks_flow` владельца забирает свои
 //! запросы (`take`) и собирает нужный абзац с флагами
-//! (`LayoutCx::trim_para`), а сборщик абзаца читает их по своему узлу
+//! (`InlineContext::trim_para`), а сборщик абзаца читает их по своему узлу
 //! (`para`).
 
 /// Флаги среза абзаца: начало, конец и предел надбавки первой строки над
@@ -48,7 +48,7 @@ pub(crate) fn take(requests: &[TrimRequest], owner: u64) -> Trim {
 }
 
 /// Trim flags for a paragraph of block `owner`, given the paragraph scope
-/// `(block, flags)` it is built in (`LayoutCx::trim_para`; the block is
+/// `(block, flags)` it is built in (`InlineContext::trim_para`; the block is
 /// checked: nested atoms build their own paragraphs inside the same call).
 /// `None` — the paragraph is not built by its block's `blocks_flow` loop:
 /// its own style decides.

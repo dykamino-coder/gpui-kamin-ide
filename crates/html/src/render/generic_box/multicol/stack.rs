@@ -5,7 +5,7 @@ use crate::dom::whitespace::is_blank;
 use crate::layout::multicol::container::multicol_column_stack;
 use crate::layout::multicol::measure::{StackPlan, stack_plan};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled, px};
 
@@ -16,7 +16,7 @@ mod tests;
 pub(crate) fn stack_box(
     mut d: gpui::Div,
     e: &Element,
-    merged: Computed,
+    merged: BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     cols: u16,
@@ -32,7 +32,7 @@ pub(crate) fn stack_box(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
-) -> Result<(gpui::Div, Computed), AnyElement> {
+) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     let StackPlan {
         line_col_w,
         layout_col_w,

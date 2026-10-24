@@ -11,7 +11,7 @@
 use super::presentational_hints;
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
-use crate::style::cascade::map::{CascadeMap, Pick};
+use crate::style::cascade::map::CascadeMap;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, LinkMatch, Rule, VarMap, parse_decls_in};
@@ -110,18 +110,7 @@ pub(super) fn cascade_element(
             syntax_accepts(s, v, vcx)
         });
     let vars = &own_vars;
-    // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
-    // своё `color-scheme` — последнее по каскаду, иначе родительская
-    // (свойство наследуемое). При `light dark` берётся предпочтение
-    // текущего документа, включая схему embedding element. Держится на время узла и его потомков.
-    let scheme = match pre.picks("color-scheme").next() {
-        Some(Pick::Value(_, v)) => Some(v.to_string()),
-        _ => None,
-    };
     drop(pre);
-    let vcx = scheme
-        .as_deref()
-        .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
     // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
     let element = CascadeCx {
@@ -145,6 +134,15 @@ pub(super) fn cascade_element(
         matched.push(&basic);
         style = Computed::resolve_in(&matched, &inline_decls, vars, element, vcx);
     }
+    // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
+    // вычисленное `color-scheme` элемента (каскад уже решил им свои цвета,
+    // `ComputeCx`), иначе родительская — свойство наследуемое. При
+    // `light dark` берётся предпочтение текущего документа, включая схему
+    // embedding element. Держится на время узла и его потомков.
+    let vcx = style
+        .color_scheme
+        .as_deref()
+        .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
     style.mathml = crate::dom::mathml::is_mathml(handle);
     if crate::dom::mathml_routing::enabled(handle) {
         if let Some(display) = style.math_layout {

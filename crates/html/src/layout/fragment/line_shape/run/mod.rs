@@ -30,17 +30,17 @@ pub(crate) fn line_run_shape(
 ) -> Option<Shape> {
     // Высота в точках — коробка своей высоты, строки внутри неё режутся так
     // же (css-break-3 §4.3); строки ниже её низа — переполнение, точек там нет.
-    let fixed_h = match c.style.height {
+    let fixed_h = match c.style.used().height {
         None | Some(Len::Auto) => None,
-        Some(Len::Px(v)) if v >= 0.0 => Some(if c.style.border_box == Some(true) {
+        Some(Len::Px(v)) if v >= 0.0 => Some(if c.style.used().border_box == Some(true) {
             (v - top - bot).max(0.0)
         } else {
             v
         }),
         _ => return None,
     };
-    if c.style.min_height.is_some()
-        || c.style.max_height.is_some()
+    if c.style.used().min_height.is_some()
+        || c.style.used().max_height.is_some()
         || c.children.iter().all(is_blank)
     {
         return None;
@@ -110,12 +110,12 @@ pub(crate) fn line_run_shape(
     // с неё начинается (`text-box-trim-multicol-001…012`).
     let tt = trim_amount(&inh, size, lh, true, opts.cx.vcx());
     let tb = trim_amount(&inh, size, lh, false, opts.cx.vcx());
-    let shift = if c.style.text_box_trim_start || c.marks.host_trim_start {
+    let shift = if c.style.used().text_box_trim_start || c.marks.host_trim_start {
         tt
     } else {
         0.0
     };
-    let tail = if c.style.text_box_trim_end || c.marks.host_trim_end {
+    let tail = if c.style.used().text_box_trim_end || c.marks.host_trim_end {
         tb
     } else {
         0.0

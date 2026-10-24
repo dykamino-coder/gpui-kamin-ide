@@ -19,14 +19,14 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
     if depth == 0 || !row_container(c) || main <= 0.0 {
         return None;
     }
-    let gap = px_auto_zero(c.style.gap.and_then(|g| g.1))?.max(0.0);
+    let gap = px_auto_zero(c.style.used().gap.and_then(|g| g.1))?.max(0.0);
     let mut items = Vec::new();
     for (source, n) in c.children.iter().enumerate().filter(|(_, n)| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
-        if k.style.display == Some(crate::style::computed::Display::None) {
+        if k.style.used().display == Some(crate::style::computed::Display::None) {
             continue;
         }
-        let s = &k.style;
+        let s = &*k.style.used();
         if k.inline
             || out_of_flow(s)
             || s.float.unwrap_or(0) != 0
@@ -78,11 +78,11 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
             hypothetical
         };
         let mut element = k.clone();
-        element.style.width = Some(Len::Px(actual));
-        element.style.flex_basis = None;
+        element.style.used_mut().width = Some(Len::Px(actual));
+        element.style.used_mut().flex_basis = None;
         items.push((outer, source, element));
     }
-    items.sort_by_key(|(_, _, item)| item.style.order.unwrap_or(0));
+    items.sort_by_key(|(_, _, item)| item.style.used().order.unwrap_or(0));
     let mut lines: Lines = Vec::new();
     let mut used = 0.0;
     for (outer, source, item) in items {

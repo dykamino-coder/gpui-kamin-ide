@@ -17,7 +17,7 @@ pub(super) use edges::own_size;
 
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -25,13 +25,13 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 pub(crate) mod atom_piece;
 pub(crate) mod route;
 
-pub(crate) fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn paragraph(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     paragraph_routed(nodes, inherited, opts, None)
 }
 
 fn paragraph_routed(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {
@@ -68,7 +68,7 @@ fn paragraph_routed(
             let base_lh = base.line_height;
             let for_build = first.clone();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
-            // среза строк (`LayoutCx::trim_para`) едут с ним в `opts_owned`.
+            // среза строк (`InlineContext::trim_para`) едут с ним в `opts_owned`.
             let build: crate::layout::float::split_flow::Split =
                 std::rc::Rc::new(move |at, width| {
                     let mut styled = base.clone();
@@ -129,7 +129,7 @@ fn paragraph_routed(
 /// Абзац с готовым разрезом первой строки: `at` — сколько байт в неё вошло.
 fn paragraph_pieces(
     nodes: &[Node],
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     first_line_at: usize,
     first_line: &Computed,

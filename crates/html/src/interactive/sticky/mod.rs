@@ -42,7 +42,7 @@ pub(crate) fn sticky_wrap(
     frame: &crate::interactive::sticky::element::StickyCell,
     allowed: bool,
     // The box's link in the shift chain its subtree was built with
-    // (`LayoutCx::sticky`).
+    // (`ScrollContext::sticky`).
     link: Option<crate::interactive::scroll_extent::StickyShift>,
 ) -> AnyElement {
     if c.position != Some(crate::style::computed::Position::Sticky) {

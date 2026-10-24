@@ -7,11 +7,11 @@ mod grid;
 mod rules;
 pub(super) use rules::draw_rule;
 
+use crate::layout::multicol::gap_rules::{GapAxisRule, GapLayout};
 use crate::paint::gap_rules::geometry::{
-    GAP_RULE_EPS, GapItem, GapRun, GridTracks, line_runs, uniq_sorted,
+    FlexLines, GAP_RULE_EPS, GapItem, GapRun, line_runs, uniq_sorted,
 };
 use crate::paint::gap_rules::painter::GapRulePainter;
-use crate::paint::gap_rules::{GapAxisRule, GapLayout};
 use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]
@@ -19,19 +19,27 @@ pub(super) fn paint_body(
     group: &mut GapRulePainter,
     _bounds: Bounds<Pixels>,
     _state: &mut LayoutId,
-    prepaint: &mut (Bounds<Pixels>, Option<GridTracks>),
+    prepaint: &mut super::lifecycle::GapGeometry,
     window: &mut Window,
     _cx: &mut App,
 ) {
-    let bounds = prepaint.0;
-    let grid_tracks = prepaint.1.take();
+    let bounds = prepaint.bounds;
+    let grid_tracks = prepaint.tracks.take();
     let buffer = std::mem::take(&mut *group.items.borrow_mut());
     let (items, margins): (Vec<_>, Vec<_>) = buffer.items.take().into_iter().unzip();
+    let flex = prepaint.flex.take().map(|(origin, layout)| {
+        FlexLines::from_layout(
+            (f32::from(origin.x), f32::from(origin.y)),
+            &layout,
+            &buffer.carried_row_gaps.take().into_iter().collect(),
+        )
+    });
     // A grid's gaps come from its track collection, not from its items
     // (css-gaps-1 §gap-grid; Blink `BuildGridTrackGapData`): an empty
     // grid or subgrid still has gaps to decorate
     // (`subgrid-gap-decorations-012/015/016/017`).
     if items.is_empty()
+        && flex.is_none()
         && buffer.multicol.is_none()
         && !(group.spec.kind == GapLayout::Grid && grid_tracks.is_some())
         // Grid lanes likewise: main gaps come from the grid-axis tracks
@@ -162,20 +170,7 @@ pub(super) fn paint_body(
                 extent,
                 spec.lanes_content_aligned,
                 lane_tracks,
-                spec.flex_line_stretch.then(|| {
-                    let [pt, pr, pb, pl] = spec.pad;
-                    if stacked_vertically {
-                        (
-                            f32::from(bounds.top()) + pt,
-                            f32::from(bounds.bottom()) - pb,
-                        )
-                    } else {
-                        (
-                            f32::from(bounds.left()) + pl,
-                            f32::from(bounds.right()) - pr,
-                        )
-                    }
-                }),
+                flex.as_ref(),
             );
             if let Some(r) = main {
                 for run in mains {

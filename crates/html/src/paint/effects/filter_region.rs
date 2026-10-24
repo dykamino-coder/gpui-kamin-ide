@@ -8,6 +8,7 @@
 //! сначала берётся в пользовательских единицах и тоже читается как доля (так же делает usvg
 //! `units::convert_length`).
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use std::borrow::Cow;
 
 /// Attribute value inside the `<filter` start tag.
@@ -54,8 +55,13 @@ fn length(v: &str, base: f32, user: bool, font: f32) -> Option<f32> {
 fn font_size(open: &str) -> f32 {
     attr(open, "font-size")
         .and_then(|v| v.trim_end_matches("px").trim().parse::<f32>().ok())
-        .unwrap_or(16.0)
+        .unwrap_or(MEDIUM_FONT_SIZE_PX)
 }
+
+// Filter Effects §8: начальные x/y = −10%, width/height = 120%.
+// https://www.w3.org/TR/filter-effects-1/#FilterElement
+const DEFAULT_FILTER_ORIGIN: f32 = -0.1;
+const DEFAULT_FILTER_EXTENT: f32 = 1.2;
 
 const REGION: [(&str, bool); 4] = [
     ("x", true),
@@ -67,7 +73,12 @@ const REGION: [(&str, bool); 4] = [
 /// Region `[x, y, width, height]` in points from the box corner; a missing
 /// attribute takes the default −10 %/120 %.
 pub(super) fn filter_region(def: &str, w: f32, h: f32) -> [f32; 4] {
-    let defaults = [-0.1 * w, -0.1 * h, 1.2 * w, 1.2 * h];
+    let defaults = [
+        DEFAULT_FILTER_ORIGIN * w,
+        DEFAULT_FILTER_ORIGIN * h,
+        DEFAULT_FILTER_EXTENT * w,
+        DEFAULT_FILTER_EXTENT * h,
+    ];
     let Some((_, open)) = open_tag(def) else {
         return defaults;
     };

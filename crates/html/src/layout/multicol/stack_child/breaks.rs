@@ -8,10 +8,10 @@
 
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::{BlockBox, grid_tree, table_tree};
+use crate::layout::fragment::flow::blocks::plain_tree;
+use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, grid_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
-use crate::layout::fragment::probe::plain_block_tree;
-use crate::layout::fragment::types::BreaksAt;
+use crate::layout::fragment::types::{BreaksAt, StackAxis};
 use crate::layout::options::RenderOpts;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,17 +19,26 @@ use std::rc::Rc;
 /// Рекордер копии и ширина её раскладки до укладки (`StackChild::breaks_w`).
 /// `own_plan` — у ребёнка свой план фрагментов (клон украшений, целый или
 /// рядами вложенный многоколоночник): его точки остаются у оценки.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn recorder(
     copy: &Element,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
     opts: &RenderOpts,
     col_vert: bool,
+    col_rl: bool,
     line_col_w: Option<f32>,
     own_plan: bool,
+    empty_floats: bool,
 ) -> (Rc<Watched>, Option<BreaksAt>) {
-    if col_vert {
-        return (Watched::new(&[]), None);
-    }
+    let logical = if col_vert {
+        if own_plan || !crate::layout::fragment::flow::vertical_copy(copy, col_rl) {
+            return (Watched::new(&[]), None);
+        }
+        crate::layout::fragment::flow::logical_copy(copy, col_rl)
+    } else {
+        None
+    };
+    let copy = logical.as_ref().unwrap_or(copy);
     let measured = measured_kids
         .borrow()
         .iter()
@@ -38,28 +47,45 @@ pub(super) fn recorder(
     // after the stack box is laid out (`BreaksAt::Column`); a table or grid
     // tree only at a width known before (`kid_w`), its rows recorded by the
     // layout.
-    let plain = !own_plan && plain_block_tree(copy, 4);
-    let rows = !own_plan && line_col_w.is_some() && (table_tree(copy, 4) || grid_tree(copy, 4));
+    let plain = !own_plan && plain_tree(copy);
+    let rows = !own_plan
+        && line_col_w.is_some()
+        && (table_tree(copy) || grid_tree(copy) || flex_tree(copy));
     if !(measured || plain || rows) {
         return (Watched::new(&[]), None);
     }
     let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.vcx());
     let breaks_w = (!measured).then(|| line_col_w.map_or(BreaksAt::Column, BreaksAt::Width));
+    // Независимая измеренная копия сохраняет и корневую коробку: она нужна
+    // для пересборки дополнительных видов после реальной меры рядов.
+    let independent = measured
+        && (col_vert
+            || crate::layout::fragment::flow::independent_copy(copy)
+            // Допуск получен до normalize: синтетическая нулевая высота
+            // не является авторским ограничением с отдельным overflow.
+            || empty_floats);
     // A measured box without block children keeps its measured lines alone
     // (css-break-3 §4.3 class B, orphans/widows by `Paragraph`); a box whose
     // estimate is replaced keeps its own border and padding edges too.
     // A box of another context without recorded parts keeps its own
     // estimate; its line boxes are not lines of the stack flow
     // (`flow::flow_lines`).
+    let axis = if !col_vert {
+        StackAxis::Horizontal
+    } else if col_rl {
+        StackAxis::VerticalRl
+    } else {
+        StackAxis::VerticalLr
+    };
     match recorded(
-        blocks.is_empty(),
+        blocks.is_empty() && !independent,
         measured,
         crate::layout::fragment::flow::flow_lines(copy),
     ) {
         Recorded::Estimate => (Watched::new(&[]), None),
         Recorded::Lines => (Watched::for_lines(), breaks_w),
-        Recorded::Blocks => (Watched::for_blocks(blocks), breaks_w),
-        Recorded::BlocksOnly => (Watched::for_blocks_only(blocks), breaks_w),
+        Recorded::Blocks => (Watched::for_blocks_axis(blocks, axis, true), breaks_w),
+        Recorded::BlocksOnly => (Watched::for_blocks_axis(blocks, axis, false), breaks_w),
     }
 }
 
@@ -95,8 +121,8 @@ fn recorded(empty: bool, measured: bool, flow_lines: bool) -> Recorded {
 /// такой копии остаются у оценки строк (`line_run_shape`).
 pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::Computed) -> bool {
     fn trims(e: &Element, depth: u8) -> bool {
-        e.style.text_box_trim_start
-            || e.style.text_box_trim_end
+        e.style.used().text_box_trim_start
+            || e.style.used().text_box_trim_end
             || e.marks.host_trim_start
             || e.marks.host_trim_end
             || (depth > 0

@@ -1,6 +1,8 @@
 //! Computes the [flexbox](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) layout algorithm on [`TaffyTree`](crate::TaffyTree) according to the [spec](https://www.w3.org/TR/css-flexbox-1/)
 // KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
 use super::content_size_limits;
+#[path = "flex_fragmentation.rs"]
+mod fragmentation;
 
 use crate::compute::common::alignment::{compute_alignment_offset, resolve_self_alignment_safety};
 #[path = "flex_baseline_x.rs"]
@@ -29,6 +31,8 @@ use crate::tree::{
     OofPositioningArea,
 };
 use crate::tree::{Baselines, Layout, LayoutInput, LayoutOutput, OofCandidate, OofCandidates, RunMode, SizingMode};
+// KaminIDE patch: publish final solver geometry without reconstructing line membership.
+use crate::tree::{DetailedFlexInfo, DetailedFlexItem, DetailedFlexLine};
 use crate::util::debug::debug_log;
 use crate::util::sys::{f32_max, f32_min, new_vec_with_capacity, Vec};
 use crate::util::MaybeMath;
@@ -206,6 +210,12 @@ struct FlexLine<'a> {
     cross_size: f32,
     /// The relative offset of the cross-axis
     offset_cross: f32,
+    /// KaminIDE patch: placement-only cross translation and parallel continuation state.
+    fragmentation_shift: f32,
+    /// Preserve the block-start edge of items when their line grows in reverse flow.
+    fragmentation_item_shift: f32,
+    /// Whether this line represents parallel item continuations.
+    fragmented: bool,
 }
 
 /// Values that can be cached during the flexbox algorithm
@@ -214,6 +224,12 @@ struct AlgoConstants {
     dir: FlexDirection,
     /// The layout direction of the current segment being laid out
     layout_direction: Direction,
+    /// KaminIDE patch: block-axis constraints are independent of physical flex direction.
+    fragmentation_axis: (crate::geometry::AbsoluteAxis, bool),
+    /// Space reserved in an intrinsically sized main axis after native flex sizing.
+    fragmentation_main_growth: f32,
+    /// Fragmentainer growth excluded from native align-content free space.
+    fragmentation_cross_alignment: f32,
     /// Is this segment a row
     is_row: bool,
     /// Is this segment a column
@@ -585,6 +601,7 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
         parent_size,
         available_space,
     );
+    constants.fragmentation_axis = tree.flex_fragmentation_axis(node);
     constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
     constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);
 
@@ -645,6 +662,12 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     // 3. Determine the flex base size and hypothetical main size of each item.
     debug_log!("determine_flex_base_size");
     determine_flex_base_size(tree, &constants, available_space, &mut flex_items);
+    // KaminIDE patch: in a fragmentation context a column item that may not
+    // shrink encompasses its intrinsic block size (Blink
+    // `MinBlockSizeShouldEncompassIntrinsicSize`, flex_layout_algorithm.cc).
+    if constants.dir.is_column() && tree.flex_fragmentation(node) {
+        encompass_intrinsic_block_size(tree, &constants, available_space, &mut flex_items);
+    }
 
     #[cfg(feature = "debug")]
     for item in flex_items.iter() {
@@ -662,14 +685,27 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
 
     // 5. Collect flex items into flex lines.
     debug_log!("collect_flex_lines");
+    // KaminIDE patch: line breaking precedes fragmentation (css-flexbox-1 §10).
+    // Lines fixed by the fragmenter are kept while fragmentation grows items.
+    let pinned: Option<Vec<usize>> = constants
+        .is_wrap
+        .then(|| flex_items.iter().map(|item| tree.flex_item_fragmentation_line(item.node)).collect::<Option<Vec<_>>>())
+        .flatten()
+        .filter(|lines| !lines.is_empty() && lines.windows(2).all(|w| w[0] <= w[1]));
     #[cfg(feature = "flexbox_balance")]
-    let mut flex_lines = if constants.is_balance {
+    let mut flex_lines = if let Some(lines) = pinned {
+        pinned_flex_lines(&lines, &mut flex_items)
+    } else if constants.is_balance {
         collect_balanced_flex_lines(&constants, available_space, &mut flex_items)
     } else {
         collect_flex_lines(&constants, available_space, &mut flex_items)
     };
     #[cfg(not(feature = "flexbox_balance"))]
-    let mut flex_lines = collect_flex_lines(&constants, available_space, &mut flex_items);
+    let mut flex_lines = if let Some(lines) = pinned {
+        pinned_flex_lines(&lines, &mut flex_items)
+    } else {
+        collect_flex_lines(&constants, available_space, &mut flex_items)
+    };
 
     // Trimming happens after line collection, before both intrinsic container
     // sizing and flex length resolution. Line collection itself still needs
@@ -712,7 +748,12 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
             RequestedAxis::Both => false,
         };
         if main_axis_is_requested_axis {
-            let size = Size::ZERO.with_main(constants.dir, constants.container_size.main(constants.dir));
+            // KaminIDE patch: a main-only probe still includes consumed block space.
+            let growth = if constants.fragmentation_axis.0 == constants.dir.main_axis()
+                && known_dimensions.main(constants.dir).is_none() {
+                fragmentation::main_growth(tree, &flex_lines)
+            } else { 0.0 };
+            let size = Size::ZERO.with_main(constants.dir, constants.container_size.main(constants.dir) + growth);
             return LayoutOutput::from_outer_size(size);
         }
     }
@@ -775,6 +816,9 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     debug_log!("resolve_cross_axis_auto_margins");
     resolve_cross_axis_auto_margins(&mut flex_lines, &constants);
 
+    // KaminIDE patch: CSS Flexbox 1 §10 consumes fragmentainer space after sizing.
+    fragmentation::apply(tree, node, &mut flex_lines, known_dimensions, &mut constants);
+
     // 15. Determine the flex container’s used cross size.
     debug_log!("determine_container_cross_size");
     let total_line_cross_size = determine_container_cross_size(&flex_lines, known_dimensions, &mut constants);
@@ -789,9 +833,21 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     debug_log!("align_flex_lines_per_align_content");
     align_flex_lines_per_align_content(&mut flex_lines, &constants, total_line_cross_size);
 
+    // KaminIDE patch: a row item pushed past a fragmentainer break moves in the
+    // block axis after line alignment; completed lines and the container keep
+    // their used sizes (the item's own overflow is a parallel flow).
+    if constants.dir.is_row() && constants.fragmentation_axis.0 == constants.dir.cross_axis() {
+        for line in flex_lines.iter_mut() {
+            for item in line.items.iter_mut() {
+                item.offset_cross += tree.flex_item_fragmentation_offset(item.node);
+            }
+        }
+    }
+
     // Do a final layout pass and gather the resulting layouts
     debug_log!("final_layout_pass");
-    let inflow_overflow_rect = final_layout_pass(tree, &mut flex_lines, &constants);
+    let (inflow_overflow_rect, flex_info) = final_layout_pass(tree, &mut flex_lines, &constants);
+    tree.set_detailed_flex_info(node, flex_info);
 
     // Collect out-of-flow candidates in document order (direct out-of-flow children interleaved
     // with candidates bubbled from in-flow children's subtrees). These are laid out by the
@@ -1047,6 +1103,9 @@ fn compute_constants(
     AlgoConstants {
         dir,
         layout_direction,
+        fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
+        fragmentation_main_growth: 0.0,
+        fragmentation_cross_alignment: 0.0,
         is_row,
         is_column,
         is_wrap,
@@ -1370,6 +1429,52 @@ fn transfer_min_max(
             height: max_h,
         },
     )
+}
+
+/// KaminIDE patch: raise the minimum main size of qualifying column items to
+/// their content block size: a fragmentable item with block-size `auto`, and
+/// either no shrink opportunity or a content-based automatic minimum (§4.5).
+/// Scroll containers and caller-classified monolithic boxes retain their flex size.
+fn encompass_intrinsic_block_size(
+    tree: &mut impl LayoutFlexboxContainer,
+    constants: &AlgoConstants,
+    available_space: Size<AvailableSpace>,
+    flex_items: &mut [FlexItem],
+) {
+    let dir = constants.dir;
+    for child in flex_items.iter_mut() {
+        if child.size.main(dir).is_some()
+            || child.overflow.main(dir).is_scroll_container()
+            || tree.fragmentation_monolithic(child.node)
+        {
+            continue;
+        }
+        let can_shrink = child.flex_shrink != 0.0 && constants.node_inner_size.main(dir).is_some();
+        let min_auto = tree.get_flexbox_child_style(child.node).min_size().main(dir).is_auto();
+        if can_shrink && !min_auto {
+            continue;
+        }
+        let cross = constants.node_inner_size.cross(dir).maybe_sub(child.margin.cross_axis_sum(dir));
+        let known = Size::NONE.with_cross(dir, child.size.cross(dir).or(cross));
+        let space = Size::MAX_CONTENT.with_cross(dir, available_space.cross(dir));
+        let content = tree.measure_child_size(
+            child.node,
+            known,
+            constants.node_inner_size,
+            space,
+            SizingMode::InherentSize,
+            dir.main_axis(),
+            Line::FALSE,
+        );
+        let content = content.maybe_min(child.max_size.main(dir));
+        if content > child.resolved_minimum_main_size {
+            child.resolved_minimum_main_size = content;
+            let clamped = child.hypothetical_inner_size.main(dir).max(content);
+            let outer = clamped + child.margin.main_axis_sum(dir);
+            child.hypothetical_inner_size.set_main(dir, clamped);
+            child.hypothetical_outer_size.set_main(dir, outer);
+        }
+    }
 }
 
 /// Determine the flex base size and hypothetical main size of each item.
@@ -1809,6 +1914,21 @@ fn determine_flex_base_size(
     }
 }
 
+/// KaminIDE patch: lines given by each item's fixed line index.
+fn pinned_flex_lines<'a>(lines: &[usize], flex_items: &'a mut [FlexItem]) -> Vec<FlexLine<'a>> {
+    let mut out = new_vec_with_capacity(1);
+    let mut items = flex_items;
+    let mut start = 0;
+    while !items.is_empty() {
+        let count = lines[start..].iter().take_while(|&&line| line == lines[start]).count();
+        let (line_items, rest) = items.split_at_mut(count);
+        out.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
+        items = rest;
+        start += count;
+    }
+    out
+}
+
 /// Collect flex items into flex lines.
 ///
 /// # [9.3. Main Size Determination](https://www.w3.org/TR/css-flexbox-1/#main-sizing)
@@ -1843,7 +1963,7 @@ fn collect_flex_lines<'a>(
                 .is_none())
     {
         let mut lines = new_vec_with_capacity(1);
-        lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0 });
+        lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
         lines
     } else {
         let available_space =
@@ -1883,7 +2003,7 @@ fn collect_flex_lines<'a>(
             // (at least for now - future extensions to the CSS spec may add provisions for forced wrap points)
             AvailableSpace::MaxContent => {
                 let mut lines = new_vec_with_capacity(1);
-                lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0 });
+                lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
                 lines
             }
             // If flex-wrap is Wrap and we're sizing under a min-content constraint, then we take every possible wrapping opportunity
@@ -1893,7 +2013,7 @@ fn collect_flex_lines<'a>(
                 let mut items = &mut flex_items[..];
                 while !items.is_empty() {
                     let (line_items, rest) = items.split_at_mut(1);
-                    lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
+                    lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
                     items = rest;
                 }
                 lines
@@ -1926,7 +2046,7 @@ fn collect_flex_lines<'a>(
                         .unwrap_or(flex_items.len());
 
                     let (items, rest) = flex_items.split_at_mut(index);
-                    lines.push(FlexLine { items, cross_size: 0.0, offset_cross: 0.0 });
+                    lines.push(FlexLine { items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
                     flex_items = rest;
                 }
                 lines
@@ -2113,7 +2233,7 @@ fn collect_balanced_flex_lines<'a>(
         let mut items = &mut flex_items[..];
         while !items.is_empty() {
             let (line_items, rest) = items.split_at_mut(1);
-            lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
+            lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
             items = rest;
         }
         return lines;
@@ -2132,7 +2252,7 @@ fn collect_balanced_flex_lines<'a>(
     let mut items = &mut flex_items[..];
     for count in item_counts {
         let (line_items, rest) = items.split_at_mut(count);
-        lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
+        lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
         items = rest;
     }
     debug_assert!(items.is_empty());
@@ -3404,7 +3524,9 @@ fn align_flex_lines_per_align_content(flex_lines: &mut [FlexLine], constants: &A
     let num_lines = flex_lines.len();
     let gap = constants.gap.cross(constants.dir);
     let total_cross_axis_gap = sum_axis_gaps(gap, num_lines);
-    let free_space = constants.inner_container_size.cross(constants.dir) - total_cross_size - total_cross_axis_gap;
+    // KaminIDE patch: fragmentainer space must not realign already sized flex lines (§10).
+    let free_space = constants.inner_container_size.cross(constants.dir) - total_cross_size - total_cross_axis_gap
+        + constants.fragmentation_cross_alignment;
 
     let align_content_mode = apply_alignment_fallback(free_space, num_lines, constants.align_content);
 
@@ -3428,10 +3550,13 @@ fn calculate_flex_item(
     total_offset_main: &mut f32,
     total_offset_cross: f32,
     line_offset_cross: f32,
+    fragmentation_main_shift: f32,
+    line_cross_size: f32,
+    line_fragmented: bool,
     #[cfg(feature = "content_size")] total_overflow_rect: &mut Rect<f32>,
     #[cfg(feature = "content_size")] border: Rect<f32>,
     constants: &AlgoConstants,
-) {
+) -> DetailedFlexItem {
     let container_size = constants.container_size;
     let node_inner_size = constants.pct_basis();
     let direction = constants.dir;
@@ -3464,17 +3589,26 @@ fn calculate_flex_item(
     let cross_relative_inset = item.relative_inset.cross(direction);
     let effective_line_offset_cross = if is_rtl_column { 0.0 } else { line_offset_cross };
 
-    let offset_main = if is_rtl_row {
+    let offset_main = fragmentation_main_shift + if is_rtl_row {
         *total_offset_main - item.offset_main - item.margin.main_end(direction) - main_relative_inset - size.width
     } else {
         *total_offset_main + item.offset_main + item.margin.main_start(direction) + main_relative_inset
     };
 
-    let offset_cross = total_offset_cross
+    let consumed_cross = if constants.fragmentation_axis.0 == direction.cross_axis() {
+        tree.flex_item_fragmentation_consumed(item.node)
+    } else { 0.0 };
+    let offset_cross = if line_fragmented && constants.fragmentation_axis.1 {
+        total_offset_cross + effective_line_offset_cross + line_cross_size - size.cross(direction)
+            + consumed_cross - if consumed_cross > 0.0 { 0.0 } else { item.margin.cross_end(direction) }
+            + cross_relative_inset
+    } else { total_offset_cross
         + item.offset_cross
         + effective_line_offset_cross
         + item.margin.cross_start(direction)
-        + cross_relative_inset;
+        + cross_relative_inset
+        - consumed_cross
+        - if consumed_cross > 0.0 { item.margin.cross_start(direction) } else { 0.0 } };
 
     if direction.is_row() {
         let baseline_offset_cross =
@@ -3492,7 +3626,7 @@ fn calculate_flex_item(
         };
         item.baseline = baseline_offset_cross + inner_baseline;
     } else {
-        let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction);
+        let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction) + fragmentation_main_shift;
         let inner_baseline = crate::compute::common::alignment::baseline_coordinate(
             layout_output.baselines.first, size.height, item.overflow.y.is_scroll_container(),
         );
@@ -3512,7 +3646,7 @@ fn calculate_flex_item(
             + effective_line_offset_cross
             + item.margin.cross_start(direction)
     } else {
-        *total_offset_main + item.offset_main + item.margin.main_start(direction)
+        *total_offset_main + item.offset_main + item.margin.main_start(direction) + fragmentation_main_shift
     };
     let last_y = layout_output.last_or_first_y().unwrap_or(size.height);
     let last_y = if item.overflow.y.is_scroll_container() {
@@ -3603,6 +3737,21 @@ fn calculate_flex_item(
             constants.is_scroll_container,
         ));
     }
+
+    // KaminIDE patch: fragmentation uses normal-flow positions (css-break-3 §5.5).
+    DetailedFlexItem {
+        node: item.node,
+        order: item.order,
+        main_offset: offset_main
+            + if is_rtl_row {
+                main_relative_inset
+            } else {
+                -main_relative_inset
+            },
+        cross_offset: offset_cross - cross_relative_inset,
+        main_size: size.main(direction),
+        cross_size: size.cross(direction),
+    }
 }
 
 /// Calculates the layout line
@@ -3614,7 +3763,7 @@ fn calculate_layout_line(
     #[cfg(feature = "content_size")] overflow_rect: &mut Rect<f32>,
     #[cfg(feature = "content_size")] border: Rect<f32>,
     constants: &AlgoConstants,
-) {
+) -> DetailedFlexLine {
     let container_size = constants.container_size;
     let padding_border = constants.content_box_inset;
     let direction = constants.dir;
@@ -3631,40 +3780,66 @@ fn calculate_layout_line(
         *total_offset_cross -= line_offset_cross + line.cross_size;
     }
 
+    // KaminIDE patch: capture the aligned line before advancing the placement cursor.
+    let cross_offset = *total_offset_cross
+        + if is_rtl_column {
+            0.0
+        } else {
+            line_offset_cross
+        };
+    let mut items = new_vec_with_capacity(line.items.len());
+    let mut fragmentation = fragmentation::MainCursor::new(tree, line, constants);
+    let fragment_cross = line.fragmentation_shift + line.fragmentation_item_shift;
+    let fragment_size = line.cross_size;
+    let fragmented = line.fragmented;
+
     if direction.is_reverse() {
         for item in line.items.iter_mut().rev() {
-            calculate_flex_item(
+            let fragment_main = fragmentation.next(tree.flex_item_fragmentation_offset(item.node));
+            items.push(calculate_flex_item(
                 tree,
                 item,
                 &mut total_offset_main,
-                *total_offset_cross,
+                *total_offset_cross + fragment_cross,
                 line_offset_cross,
+                fragment_main,
+                fragment_size,
+                fragmented,
                 #[cfg(feature = "content_size")]
                 overflow_rect,
                 #[cfg(feature = "content_size")]
                 border,
                 constants,
-            );
+            ));
         }
     } else {
         for item in line.items.iter_mut() {
-            calculate_flex_item(
+            let fragment_main = fragmentation.next(tree.flex_item_fragmentation_offset(item.node));
+            items.push(calculate_flex_item(
                 tree,
                 item,
                 &mut total_offset_main,
-                *total_offset_cross,
+                *total_offset_cross + fragment_cross,
                 line_offset_cross,
+                fragment_main,
+                fragment_size,
+                fragmented,
                 #[cfg(feature = "content_size")]
                 overflow_rect,
                 #[cfg(feature = "content_size")]
                 border,
                 constants,
-            );
+            ));
         }
     }
 
     if !is_rtl_column {
         *total_offset_cross += line_offset_cross + line.cross_size;
+    }
+    DetailedFlexLine {
+        cross_offset: cross_offset + line.fragmentation_shift,
+        cross_size: line.cross_size,
+        items,
     }
 }
 
@@ -3674,7 +3849,7 @@ fn final_layout_pass(
     tree: &mut impl LayoutFlexboxContainer,
     flex_lines: &mut [FlexLine],
     constants: &AlgoConstants,
-) -> Rect<f32> {
+) -> (Rect<f32>, DetailedFlexInfo) {
     let mut total_offset_cross = if constants.is_column && constants.layout_direction.is_rtl() {
         constants.container_size.width - constants.content_box_inset.cross_end(constants.dir)
     } else {
@@ -3683,10 +3858,12 @@ fn final_layout_pass(
 
     #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
     let mut overflow_rect = Rect::ZERO;
+    // KaminIDE patch: these are the solver's actual lines, not grouped child rectangles.
+    let mut lines = new_vec_with_capacity(flex_lines.len());
 
     if constants.is_wrap_reverse {
         for line in flex_lines.iter_mut().rev() {
-            calculate_layout_line(
+            lines.push(calculate_layout_line(
                 tree,
                 line,
                 &mut total_offset_cross,
@@ -3695,11 +3872,11 @@ fn final_layout_pass(
                 #[cfg(feature = "content_size")]
                 constants.border,
                 constants,
-            );
+            ));
         }
     } else {
         for line in flex_lines.iter_mut() {
-            calculate_layout_line(
+            lines.push(calculate_layout_line(
                 tree,
                 line,
                 &mut total_offset_cross,
@@ -3708,7 +3885,7 @@ fn final_layout_pass(
                 #[cfg(feature = "content_size")]
                 constants.border,
                 constants,
-            );
+            ));
         }
     }
 
@@ -3726,7 +3903,13 @@ fn final_layout_pass(
             constants.content_box_inset.bottom - constants.border.bottom - constants.scrollbar_gutter.y;
     }
 
-    overflow_rect
+    (
+        overflow_rect,
+        DetailedFlexInfo {
+            direction: constants.dir,
+            lines,
+        },
+    )
 }
 
 /// Collect out-of-flow candidates in document order: direct out-of-flow children (computing their

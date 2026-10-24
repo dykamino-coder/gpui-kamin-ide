@@ -1,14 +1,15 @@
 //! Измерение осей `<textarea>`, заданных intrinsic-ключевыми словами (`min-content`,
 //! `max-content`, `fit-content`): тем же параграфом, которым красится редактор, с добавкой
 //! gutter полос прокрутки; остальные оси берут natural-размер из `rows`/`cols`.
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
-use crate::{dom::Node, layout::options::RenderOpts, style::computed::Computed};
+use crate::{dom::Node, layout::options::RenderOpts};
 use gpui::{AvailableSpace, px, size};
 use std::rc::Rc;
 
 pub(super) fn content_measure(
     nodes: Vec<Node>,
-    style: &Computed,
+    style: &BoxStyle,
     opts: &RenderOpts,
     natural: [f32; 2],
     gutter: [f32; 2],
@@ -32,7 +33,7 @@ pub(super) fn content_measure(
             spaces.height = extent(known.height, natural[1], gutter[1]);
         }
         let measured = window.with_nested_layout(|window| {
-            let mut body = opts.cx.build.paragraph(&nodes, &style, &opts);
+            let mut body = opts.cx.contracts.build.paragraph(&nodes, &style, &opts);
             let id = body.request_layout(window, cx);
             window.compute_layout(id, spaces, cx);
             window.layout_size_unrounded(id)

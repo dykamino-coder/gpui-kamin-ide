@@ -7,7 +7,7 @@ use crate::layout::fragment::line_shape::nested_box_w;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::table;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) -> Vec<Node> {
@@ -21,15 +21,15 @@ pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) 
         // содержащий блок вне контекста. `hoist_relative` снимает лишь
         // ВСТАВКИ, `transform`/`contain` остаются — проверка по
         // `copy.style` законна.
-        let fixed_cb_root = fixed_cb_box(&copy.style);
+        let fixed_cb_root = fixed_cb_box(&copy.style.used());
         src.children
             .iter()
             .filter_map(|n| drop_viewport_fixed(n, fixed_cb_root))
             .collect()
     };
     if band {
-        let fixed = fixed_cb_box(&copy.style);
-        let abs = fixed || crate::text::inline::establishes_cb(&copy.style);
+        let fixed = fixed_cb_box(&copy.style.used());
+        let abs = fixed || crate::text::inline::establishes_cb(&copy.style.used());
         return kids
             .iter()
             .filter_map(|n| drop_uncontained_oof(n, abs, fixed))
@@ -42,12 +42,12 @@ pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) 
 pub(super) fn copy_whole_box(
     opts: &RenderOpts,
     line_col_w: Option<f32>,
-    merged: &Computed,
+    merged: &BoxStyle,
     copy: &Element,
     h: f32,
     nest_row: Option<f32>,
     nest_phase_k: f32,
-    inner: &Computed,
+    inner: &BoxStyle,
     whole: bool,
     part: usize,
     kids: &mut Vec<Node>,
@@ -62,52 +62,57 @@ pub(super) fn copy_whole_box(
         // Ширина `auto` — по колонке (CSS 2.1 §10.3.3):
         // копия кладётся корнем, и её многоколоночнику
         // нужна ширина в точках для меры строк.
-        if matches!(mc.style.width, None | Some(Len::Auto))
+        if matches!(mc.style.used().width, None | Some(Len::Auto))
             && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
-            mc.style.width = Some(Len::Px(w));
-        } else if let (Some(Len::Pct(k)), Some(cw)) = (mc.style.width, line_col_w) {
+            mc.style.used_mut().width = Some(Len::Px(w));
+        } else if let (Some(Len::Pct(k)), Some(cw)) = (mc.style.used().width, line_col_w) {
             // Доля — от внешней колонки (CSS 2.1 §10.2): в точках её ждёт
             // доля `column-gap` коробки (`column_plan`).
-            mc.style.width = Some(Len::Px(crate::layout::fragment::line_shape::layout_unit(
-                k * cw,
-            )));
+            mc.style.used_mut().width = Some(Len::Px(
+                crate::layout::fragment::line_shape::layout_unit(k * cw),
+            ));
         }
         // `height: auto` — высота из меры рядами
         // (`nested_rows_shape`): стопка с рядами
         // отдаёт полный последний ряд, а коробка
         // кончается на сбалансированном хвосте.
-        if matches!(mc.style.height, None | Some(Len::Auto)) {
-            let b = mc.style.borders();
+        if matches!(mc.style.used().height, None | Some(Len::Auto)) {
+            let b = mc.style.used().borders();
             let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-            let bot = px(&mc.style.padding.bottom) + px(&b.bottom);
-            mc.style.height = Some(Len::Px((h - bot).max(0.0)));
-            mc.style.border_box = None;
+            let bot = px(&mc.style.used().padding.bottom) + px(&b.bottom);
+            mc.style.used_mut().height = Some(Len::Px((h - bot).max(0.0)));
+            mc.style.used_mut().border_box = None;
         }
-        return Some(
-            opts.cx
-                .build
-                .element(&mc, merged, &opts.with_outer_row((hh, nest_phase_k))),
-        );
+        return Some(opts.cx.contracts.build.element(
+            &mc,
+            merged,
+            &opts.with_outer_row((hh, nest_phase_k)),
+        ));
     }
-    if whole {
+    // css-lists-3 §3: маркер принадлежит коробке пункта. Сборка через
+    // blocks + styled_div теряет его и меняет высоту строки у summary.
+    // Общий рисователь сохраняет маркер; разрезы по-прежнему даёт рекордер.
+    // CSS 2.1 §9.4.1: fieldset содержит независимый BFC. Обычный blocks
+    // не создаёт его анонимную коробку и выпускает нижнее поле ребёнка наружу.
+    if whole || copy.list_item.is_some() || copy.tag == "fieldset" {
         let mut mc = copy.clone();
         mc.children = std::mem::take(kids);
-        if matches!(mc.style.width, None | Some(Len::Auto))
+        if matches!(mc.style.used().width, None | Some(Len::Auto))
             && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
-            mc.style.width = Some(Len::Px(w));
+            mc.style.used_mut().width = Some(Len::Px(w));
         }
-        return Some(opts.cx.build.element(&mc, merged, opts));
+        return Some(opts.cx.contracts.build.element(&mc, merged, opts));
     }
     if table_box(copy) {
         let mut tc = copy.clone();
         tc.children = std::mem::take(kids);
         // Содержащий блок таблицы в колонке — колонка (css-multicol-1 §2):
         // от её ширины и доли размеров содержимого, а не от многоколоночника.
-        let col = line_col_w.map(|w| opts.inner(|cx| cx.avail_w = Some(w)));
+        let col = line_col_w.map(|w| opts.inner(|cx| cx.constraints.avail_w = Some(w)));
         let opts = col.as_deref().unwrap_or(opts);
-        return Some(opts.cx.build.effects(
+        return Some(opts.cx.contracts.build.effects(
             table(&tc, inner, opts),
             Effect::transform(inner, merged, opts.cx.vcx()),
         ));

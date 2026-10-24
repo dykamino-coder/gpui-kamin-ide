@@ -76,7 +76,7 @@ pub(super) fn masked_layers(
         }
     }
     let mut root = gpui::div().w(gpui::px(w)).h(gpui::px(h)).flex_shrink_0();
-    if let Some(bg) = e.style.background {
+    if let Some(bg) = e.style.used().background {
         root = root.bg(bg.to_hsla());
     }
     let mut run: Vec<Unit> = Vec::new();

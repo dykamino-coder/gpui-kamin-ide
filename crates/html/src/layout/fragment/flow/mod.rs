@@ -6,7 +6,14 @@
 //! временными.
 
 pub(crate) mod blocks;
+pub(crate) mod box_children;
+mod continuation;
+mod coordinates;
+mod line_growth;
 mod measurements;
+mod normalize;
+pub(crate) use continuation::ContentLine;
+pub(crate) use line_growth::LinePush;
 mod stack;
 pub(crate) use measurements::{FlowMeasure, FlowNode};
 
@@ -19,17 +26,17 @@ pub(crate) use measurements::{FlowMeasure, FlowNode};
 pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
     use crate::style::computed::Display;
     matches!(
-        e.style.display,
+        e.style.used().display,
         None | Some(Display::Block) | Some(Display::ListItem) | Some(Display::Contents)
-    ) && e.style.webkit_box != Some(true)
+    ) && e.style.used().webkit_box != Some(true)
         && !matches!(
             e.tag.as_str(),
             "table" | "caption" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th"
         )
-        && !crate::layout::multicol::spanner::multicol_container(&e.style)
+        && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
         && !crate::layout::fragment::table_bands::table_box(e)
         && !crate::layout::fragment::clone::monolith_box(e)
-        && !crate::layout::box_kind::out_of_flow(&e.style)
+        && !crate::layout::box_kind::out_of_flow(&e.style.used())
 }
 
 #[derive(Clone, Debug, Default)]
@@ -76,22 +83,6 @@ impl FlowGeometry {
             .extend(other.cuts.iter().map(|&(a, b)| (a + offset, b + offset)));
         self.solid
             .extend(other.solid.iter().map(|&(a, b)| (a + offset, b + offset)));
-    }
-
-    pub(crate) fn normalize(&mut self) {
-        use crate::tolerance::COORD_EPS;
-        self.cuts.retain(|&(a, _)| {
-            a.is_finite()
-                && a > COORD_EPS
-                && !self
-                    .solid
-                    .iter()
-                    .any(|&(s, e)| s + COORD_EPS < a && a < e - COORD_EPS)
-        });
-        self.cuts
-            .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
-        self.cuts
-            .dedup_by(|a, b| (a.0 - b.0).abs() < COORD_EPS && (a.1 - b.1).abs() < COORD_EPS);
     }
 
     /// Keep the first `orphans` and the last `widows` line boxes of one inline
@@ -206,3 +197,12 @@ mod tests {
         assert_eq!(geometry.solid[1], (15.0, 45.0));
     }
 }
+
+mod logical;
+pub(crate) use logical::transpose_tree;
+mod independent;
+pub(crate) use independent::{independent_copy, logical_copy, parallel_overflow, vertical_copy};
+mod copy_clearance;
+pub(crate) use copy_clearance::copy_clearance;
+mod empty_floats;
+pub(crate) use empty_floats::empty_floats;

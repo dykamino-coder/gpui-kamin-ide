@@ -1,5 +1,6 @@
 //! Сгруппированная покраска (непрозрачность, обрезка).
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
 mod bare_clip;
 pub(super) use bare_clip::bare_clip;
@@ -53,7 +54,7 @@ pub(super) fn grouped_with(
     // Смесь `calc()` по-прежнему отбрасывается ещё на разборе.
     let poly_font = match c.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let poly_family = c.font_family.clone().unwrap_or_default();
     let poly_vp = crate::style::computed::ViewportCx::for_box(vcx.viewport, c);
@@ -140,7 +141,7 @@ pub(super) fn grouped_with(
         }
         let px = match c.font_size {
             Some(Len::Px(v)) => v,
-            _ => 16.0,
+            _ => MEDIUM_FONT_SIZE_PX,
         };
         let family = c.font_family.clone().unwrap_or_default();
         let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px, vcx);
@@ -174,7 +175,7 @@ pub(super) fn grouped_with(
         .map(|sides| {
             let base = match c.font_size {
                 Some(Len::Px(v)) => v,
-                _ => 16.0,
+                _ => MEDIUM_FONT_SIZE_PX,
             };
             let family = c.font_family.clone().unwrap_or_default();
             sides.map(|l| match l {

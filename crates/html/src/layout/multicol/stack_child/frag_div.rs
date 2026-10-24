@@ -1,33 +1,31 @@
 //! Div фрагмента копии: стиль, ширина колонки, линейки промежутков.
 
 use crate::dom::{Element, Node};
-use crate::hooks::IntoHooked;
-use crate::layout::fragment::grid_bands::grid_rows_px;
-use crate::style::computed::{Computed, Display};
+use crate::layout::build_contracts::Layer;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
-use gpui::{Styled, px};
+use gpui::Styled;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn frag_box_div(
     col_vert: bool,
     col_rl: bool,
     copy: &Element,
-    h: f32,
     src: &Element,
-    src_inner: &Computed,
-    frag_gap_rules: Option<crate::paint::gap_rules::GapRuleSpec>,
-    frag_gap_items: Option<crate::paint::gap_rules::GapItems>,
+    src_inner: &BoxStyle,
+    frag_gap_rules: Option<crate::layout::multicol::gap_rules::GapRuleSpec>,
+    frag_gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
     kids: Vec<Node>,
     body: &mut Vec<gpui::AnyElement>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
-    let mut d = cx.build.styled_box(src, src_inner, cx);
+    let mut d = cx.contracts.build.styled_box(src, src_inner, cx);
     // Ось блочного потока ВНУТРИ копии — горизонтальная
     // (css-writing-modes-4 §3.1), как у вертикального
     // блока в `element()`: гибкий ряд, у `vertical-rl`
     // обратный. Гибкому и сеточному ось ставит `apply`.
-    if col_vert && matches!(src.style.display, None | Some(Display::Block)) {
-        d = d.flex();
+    if col_vert && matches!(src.style.used().display, None | Some(Display::Block)) {
+        d = d.flex().flex_shrink(0.0);
         d = if col_rl {
             d.flex_row_reverse()
         } else {
@@ -56,12 +54,15 @@ pub(super) fn frag_box_div(
         matches!(n, Node::Element(k)
             if !k.inline
                 && k.style
-                    .aspect_ratio
+                    .used().aspect_ratio
                     .is_some_and(|r| r.is_finite() && r > 0.0)
-                && matches!(k.style.width, None | Some(Len::Auto))
-                && matches!(k.style.height, Some(Len::Px(_))))
+                && matches!(k.style.used().width, None | Some(Len::Auto))
+                && matches!(k.style.used().height, Some(Len::Px(_))))
     };
-    if src.style.display.is_none() && !src_inner.wm().vertical() && kids.iter().any(ratio_kid) {
+    if src.style.used().display.is_none()
+        && !src_inner.wm().vertical()
+        && kids.iter().any(ratio_kid)
+    {
         d = d.flex().flex_col();
     }
     // Для ЛЮБОЙ flex/grid-копии, не только с линейками:
@@ -80,31 +81,13 @@ pub(super) fn frag_box_div(
     // `multi-line-*-flex-fragmentation-*`; её
     // закрывает мера гибкой стопки (`flex_items`
     // в `shape_full`) — держать их вместе.
-    if matches!(copy.style.width, None | Some(Len::Auto))
+    if matches!(copy.style.used().width, None | Some(Len::Auto))
         && matches!(
-            copy.style.display,
+            copy.style.used().display,
             Some(Display::Grid) | Some(Display::InlineGrid) | Some(Display::Flex)
         )
     {
         d = d.w_full();
-    }
-    // Пустая сетка: taffy раскладывает бездетный
-    // узел ЛИСТОМ (vendor/taffy/src/tree/
-    // taffy_tree.rs: `(_, false) =>
-    // compute_leaf_layout`), явные дорожки ему
-    // не видны, и копия выходила нулевой при
-    // мере 200 (`grid-container-fragmentation-
-    // 002`: `grid-template-rows: 200px`). Дорожка
-    // существует без элементов (css-grid-1
-    // §7.1) — высота копии та же, что в мере.
-    if kids.is_empty()
-        && matches!(
-            copy.style.display,
-            Some(Display::Grid) | Some(Display::InlineGrid)
-        )
-        && grid_rows_px(&copy.style).is_some()
-    {
-        d = d.min_h(px(h));
     }
     if let (Some(items), Some(spec)) = (frag_gap_items, frag_gap_rules) {
         // Копия кладётся `layout_as_root(Definite(col_w), …)`
@@ -124,12 +107,7 @@ pub(super) fn frag_box_div(
         // (css-gaps-1: «just above the border»).
         body.insert(
             0,
-            crate::hooks::PaintOnly(crate::paint::gap_rules::painter::GapRulePainter::new(
-                items,
-                spec,
-                cx.paint.clone(),
-            ))
-            .hooked(),
+            cx.contracts.build.layer(Layer::gap_rules(items, spec, cx)),
         );
     }
     d

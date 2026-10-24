@@ -118,17 +118,23 @@ mod tests {
             ("dark", "blue", true),
         ] {
             let el = find(&parsed.nodes, id).unwrap();
-            assert_eq!(el.style.color, Color::parse(color, vcx), "{id}");
-            assert_eq!(el.style.dark_color_scheme, dark, "{id}");
+            assert_eq!(el.style.cascaded().color, Color::parse(color, vcx), "{id}");
+            assert_eq!(el.style.cascaded().dark_color_scheme, dark, "{id}");
         }
         let other = crate::dom::parse(
             "<span id=other style='color:light-dark(red,blue)'></span>",
             "",
         );
         assert_eq!(
-            find(&other.nodes, "other").unwrap().style.color,
+            find(&other.nodes, "other").unwrap().style.cascaded().color,
             Color::parse("red", vcx)
         );
-        assert!(find(&parsed.nodes, "dark").unwrap().style.dark_color_scheme);
+        assert!(
+            find(&parsed.nodes, "dark")
+                .unwrap()
+                .style
+                .cascaded()
+                .dark_color_scheme
+        );
     }
 }

@@ -9,16 +9,23 @@
 //! (`DetailedLayoutInfo::Grid` разложенной сетки, читается у её элемента) и таблицы стопки
 //! кадрами (`table`: коробка таблицы, сетка и дорожки рядов).
 
-use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, Laid, MeasuredBreaks};
+use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, MeasuredBreaks};
 use crate::layout::fragment::types::StackAxis;
 use gpui::{LayoutId, Pixels, Point, Size, Window};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+mod axis;
 mod hook;
+mod monolithic;
 pub(crate) use hook::wrap;
 use hook::{Slot, Watch};
+mod flex;
+mod flex_flows;
+mod geometry;
+mod grid;
+mod owner;
 mod table;
 use table::TableNodes;
 pub(crate) use table::{TablePart, table_part};
@@ -37,6 +44,24 @@ pub(crate) struct Watched {
     tables: Rc<HashSet<u64>>,
     /// Layout nodes of the watched tables' parts by the last layout.
     table_nodes: Rc<RefCell<HashMap<u64, TableNodes>>>,
+    copies: RefCell<HashMap<usize, Rc<Self>>>,
+    independent: bool,
+    axis: Option<StackAxis>,
+    flex_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
+    flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
+    flex_consumed: Rc<RefCell<HashMap<u64, (f32, bool)>>>,
+    item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasure>>>,
+    /// Линии элементов колонки flex, закреплённые до фрагментации (`flex`).
+    flex_lines: Rc<RefCell<HashMap<u64, usize>>>,
+    /// Номер копии-фрагмента, которую строит этот рекордер (`owner`).
+    part: usize,
+    /// Первый фрагмент каждого flex-элемента по плану стопки (`owner`).
+    paint_owners: Rc<RefCell<HashMap<u64, usize>>>,
+    /// Маска предка окна фрагмента на время краски копии (`owner`).
+    paint_outer: Rc<RefCell<Option<gpui::ContentMask<Pixels>>>>,
+    /// Flex-контейнеры `blocks`: раскладываются в контексте фрагментации.
+    flex_ids: std::cell::OnceCell<HashSet<u64>>,
+    monolithic_ids: std::cell::OnceCell<HashSet<u64>>,
 }
 
 impl Watched {
@@ -49,26 +74,13 @@ impl Watched {
         })
     }
 
-    /// Recorder of a stack child's main copy: measured line edges plus the
-    /// border boxes of its block stack `blocks`.
-    pub(crate) fn for_blocks(blocks: BlockBox) -> Rc<Self> {
-        Self::with_blocks(
-            blocks,
-            Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines()),
-        )
-    }
-
-    /// Recorder of a copy root of another context (a grid or a table,
-    /// `flow::flow_lines` false): the border boxes and rows of its block
-    /// stack, without line boxes — they are not lines of the stack flow.
-    pub(crate) fn for_blocks_only(blocks: BlockBox) -> Rc<Self> {
-        Self::with_blocks(blocks, Rc::default())
-    }
-
-    fn with_blocks(
-        blocks: BlockBox,
-        flow: Rc<crate::layout::fragment::flow::FlowMeasure>,
-    ) -> Rc<Self> {
+    /// Ось копии задаёт направление native flex growth и consumed-space clipping.
+    pub(crate) fn for_blocks_axis(blocks: BlockBox, axis: StackAxis, lines: bool) -> Rc<Self> {
+        let flow = if lines {
+            Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines())
+        } else {
+            Rc::default()
+        };
         Rc::new(Watched {
             // With the growth struts before them (`STRUT_ID`).
             ids: Rc::new(
@@ -81,9 +93,15 @@ impl Watched {
             seen: Rc::default(),
             tables: Rc::new(blocks.table_keys().into_iter().collect()),
             flow,
+            item_flows: Self::flex_item_flows(&blocks),
             blocks: Some(blocks),
+            axis: Some(axis),
             ..Self::default()
         })
+    }
+
+    pub(super) fn axis(&self) -> StackAxis {
+        self.axis.unwrap_or(StackAxis::Horizontal)
     }
 
     /// Whether the recorder watches a block stack (`for_blocks`).
@@ -96,7 +114,7 @@ impl Watched {
     /// (`FlowMeasure`) and the block stack's class A boundaries, forced
     /// breaks and unbreakable ranges from the laid-out border boxes
     /// (`BlockBox::breaks`). `end` bounds the flow (the box or its parallel
-    /// flow). Block boundaries are read on the horizontal axis only.
+    /// flow). Границы блоков переводятся в логическую блочную ось.
     pub(crate) fn breaks(
         &self,
         origin: Point<Pixels>,
@@ -106,58 +124,10 @@ impl Watched {
         window: &mut Window,
     ) -> MeasuredBreaks {
         let lines = self.flow.at(origin, size, axis, window);
-        let blocks = match (&self.blocks, axis) {
-            (Some(b), StackAxis::Horizontal) => b.breaks(end, &self.laid(origin, window)),
-            _ => BlockBreaks::default(),
-        };
+        let blocks = self.blocks.as_ref().map_or_else(BlockBreaks::default, |b| {
+            b.breaks(end, &self.laid_axis(origin, size, axis, window))
+        });
         blocks.finish(lines, end)
-    }
-
-    /// Laid-out geometry of the copy relative to `origin`, read before the
-    /// layout engine is released: border boxes `(top, bottom)` of the watched
-    /// boxes and frames of the watched tables.
-    pub(crate) fn laid(&self, origin: Point<Pixels>, window: &mut Window) -> Laid {
-        let boxes = self
-            .seen
-            .borrow()
-            .iter()
-            .map(|(&id, &lid)| {
-                let top = f32::from(window.layout_origin_unrounded(lid).y - origin.y);
-                let h = f32::from(window.layout_size_unrounded(lid).height);
-                (id, (top, top + h))
-            })
-            .collect();
-        Laid {
-            boxes,
-            tables: self.table_frames(origin, window),
-            grids: self.rows(origin, window),
-        }
-    }
-
-    /// Row tracks `(start, end)` of the watched grids relative to `origin`,
-    /// read from the laid-out grid (taffy `DetailedLayoutInfo::Grid`) through
-    /// its first recorded item, before the layout engine is released.
-    pub(crate) fn rows(
-        &self,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) -> HashMap<u64, Vec<(f32, f32)>> {
-        let mut grids = Vec::new();
-        if let Some(b) = &self.blocks {
-            b.grids(&mut grids);
-        }
-        let mut out = HashMap::new();
-        for (grid, items) in grids {
-            let Some(lid) = items.iter().find_map(|&id| self.seen(id)) else {
-                continue;
-            };
-            let Some((o, _, rows)) = window.parent_grid_tracks(lid) else {
-                continue;
-            };
-            let off = f32::from(o.y - origin.y);
-            out.insert(grid, rows.iter().map(|r| (r.0 + off, r.1 + off)).collect());
-        }
-        out
     }
 
     /// Block stack watched by the recorder (`for_blocks`).
@@ -185,6 +155,20 @@ impl Watched {
             // recorder: their nodes belong to the watched flow's tables.
             tables: self.tables.clone(),
             table_nodes: self.table_nodes.clone(),
+            flex_growth: self.flex_growth.clone(),
+            flex_offsets: self.flex_offsets.clone(),
+            flex_consumed: self.flex_consumed.clone(),
+            item_flows: self.item_flows.clone(),
+            copies: RefCell::default(),
+            independent: self.independent,
+            part: self.part,
+            flex_lines: self.flex_lines.clone(),
+            paint_owners: self.paint_owners.clone(),
+            paint_outer: self.paint_outer.clone(),
+            // Вложенные flex-контейнеры — тоже из стопки родителя.
+            flex_ids: self.flex_ids_of().clone().into(),
+            axis: self.axis,
+            monolithic_ids: self.monolithic_ids_of().clone().into(),
         })
     }
 
@@ -198,6 +182,9 @@ impl Watched {
         self.seen.borrow_mut().clear();
         self.table_nodes.borrow_mut().clear();
         self.flow.reset();
+        for flow in self.item_flows.values() {
+            flow.reset();
+        }
     }
 
     /// Layout node recorded for `id` by the last layout.

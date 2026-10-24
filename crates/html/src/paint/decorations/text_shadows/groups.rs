@@ -27,11 +27,11 @@ impl ShadowStyle {
 
     pub(super) fn child(&self, e: &Element) -> Self {
         Self {
-            color: e.style.color.unwrap_or(self.color),
-            list: if e.style.text_shadow_none {
+            color: e.style.cascaded().color.unwrap_or(self.color),
+            list: if e.style.used().text_shadow_none {
                 Vec::new()
-            } else if e.style.text_shadow.is_some() {
-                raw_list(&e.style)
+            } else if e.style.cascaded().text_shadow.is_some() {
+                raw_list(&e.style.used())
             } else {
                 self.list.clone()
             },

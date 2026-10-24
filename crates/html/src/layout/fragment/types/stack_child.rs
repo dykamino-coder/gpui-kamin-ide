@@ -18,6 +18,11 @@ pub(crate) enum BreaksAt {
 /// (схлопываются между соседями по правилам потока).
 pub struct StackChild {
     pub el: AnyElement,
+    /// Первый замер сравнивается с оценкой до замены геометрии на измеренную.
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe_pending: bool,
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe: crate::FragmentProbes,
     /// Recorder of the main copy (`Watched::for_blocks`): measured breaks.
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
@@ -74,6 +79,8 @@ pub struct StackChild {
     /// Диапазоны запрета `break-*: avoid`, достижимые только переносом
     /// (`MeasuredBreaks::avoid`, `Kid::avoid`).
     pub(crate) avoid: Vec<(f32, f32)>,
+    /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
+    pub(crate) keep: Vec<(f32, f32)>,
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
@@ -222,6 +229,7 @@ impl StackChild {
             forced: self.forced.clone(),
             solid: self.solid.clone(),
             avoid: self.avoid.clone(),
+            keep: self.keep.clone(),
             span: self.span,
             over: self.over,
             clone_dec: self.clone_dec,

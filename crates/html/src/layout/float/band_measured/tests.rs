@@ -23,11 +23,11 @@ fn transformed_float_keeps_untransformed_margins() {
     let turned = Element::synthetic("div", style, Default::default(), vec![]);
     assert_eq!(band_float_m(&plain, 16.0), Some(()));
     assert_eq!(band_float_m(&turned, 16.0), Some(()));
-    let margins = band_margins(&turned.style, 16.0).expect("resolvable margins");
+    let margins = band_margins(&turned.style.used(), 16.0).expect("resolvable margins");
     assert!(matches!(margins[3], Edge::Px(v) if v == 32.0));
     assert!(matches!(margins[1], Edge::Pct(v) if v == 0.1));
-    assert_eq!(turned.style.width, plain.style.width);
-    assert_eq!(turned.style.height, plain.style.height);
+    assert_eq!(turned.style.used().width, plain.style.used().width);
+    assert_eq!(turned.style.used().height, plain.style.used().height);
 }
 
 #[test]
@@ -74,16 +74,22 @@ fn orthogonal_text_float_uses_the_shared_measured_host() {
     use crate::dom::Node;
     use crate::style::computed::writing_mode::WritingModeKw;
     for rl in [false, true] {
-        let parent = Computed {
-            writing_mode: Some(WritingModeKw::new(true, rl, false)),
-            ..Default::default()
+        let parent = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.writing_mode = Some(WritingModeKw::new(true, rl, false));
+            with_inherited
         };
         let child = Element::synthetic(
             "div",
-            Computed {
-                float: Some(-1),
-                writing_mode: Some(WritingModeKw::new(false, false, false)),
-                ..Default::default()
+            {
+                let mut with_inherited = Computed {
+                    float: Some(-1),
+                    ..Default::default()
+                };
+                with_inherited.writing_mode = Some(WritingModeKw::new(false, false, false));
+                with_inherited
             },
             Default::default(),
             vec![Node::Text("a horizontal floated line".into())],

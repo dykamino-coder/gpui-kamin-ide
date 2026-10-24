@@ -8,7 +8,7 @@ use crate::style::css::LonghandId;
 
 /// Вид маркера: стиль счётчика (имя или `symbols()`), строка или `none`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MarkerType {
+pub enum MarkerType {
     Counter(String),
     Text(String),
     None,
@@ -114,22 +114,11 @@ pub(super) fn accepts(id: LonghandId, v: &str, vcx: ValueCx<'_>) -> bool {
 impl Computed {
     pub(super) fn apply_list(&mut self, id: LonghandId, v: &str, vcx: ValueCx<'_>) {
         match id {
-            LonghandId::ListStyleType => match marker_type(v) {
-                Some(MarkerType::Text(text)) => {
-                    self.list_style_type = None;
-                    self.marker_text = Some(text);
-                    self.no_marker = Some(false);
+            LonghandId::ListStyleType => {
+                if let Some(kind) = marker_type(v) {
+                    self.list_style_type = Some(kind);
                 }
-                Some(kind) => {
-                    self.no_marker = Some(kind == MarkerType::None);
-                    self.marker_text = None;
-                    self.list_style_type = Some(match kind {
-                        MarkerType::Counter(name) => name,
-                        _ => "none".into(),
-                    });
-                }
-                None => {}
-            },
+            }
             LonghandId::ListStylePosition => {
                 if let Some(inside) = position(v) {
                     self.list_style_inside = Some(inside);
@@ -153,8 +142,6 @@ impl Computed {
         match id {
             LonghandId::ListStyleType => {
                 self.list_style_type = None;
-                self.marker_text = None;
-                self.no_marker = None;
             }
             LonghandId::ListStylePosition => self.list_style_inside = None,
             LonghandId::ListStyleImage => self.list_style_image = None,

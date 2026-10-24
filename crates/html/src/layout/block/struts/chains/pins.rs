@@ -26,12 +26,12 @@ pub(crate) fn zero_at(
     }
     pin_inherited_margins(ch, top || deep, !top || deep, vcx);
     if deep {
-        ch.style.margin.top = Some(Len::Px(0.0));
-        ch.style.margin.bottom = Some(Len::Px(0.0));
+        ch.style.used_mut().margin.top = Some(Len::Px(0.0));
+        ch.style.used_mut().margin.bottom = Some(Len::Px(0.0));
     } else if top {
-        ch.style.margin.top = Some(Len::Px(0.0));
+        ch.style.used_mut().margin.top = Some(Len::Px(0.0));
     } else {
-        ch.style.margin.bottom = Some(Len::Px(0.0));
+        ch.style.used_mut().margin.bottom = Some(Len::Px(0.0));
     }
 }
 
@@ -53,25 +53,29 @@ pub(crate) fn pin_inherited_margins(
     bottom: bool,
     vcx: crate::document::state::ValueCx<'_>,
 ) {
-    let own = e.style.margin;
+    let own = e.style.used().margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
         for (i, want, src) in [(0usize, top, own.top), (2, bottom, own.bottom)] {
-            if !want || !ch.style.margin_inherit[i] {
+            let side =
+                crate::style::css::LonghandId::physical(crate::style::css::BoxGroup::Margin, i);
+            if !want || !ch.style.cascaded().inherit_longhands.contains(side) {
                 continue;
             }
             let pinned = match src {
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    margin_px(Some(l), &e.style, vcx).map(Len::Px).or(Some(l))
+                    margin_px(Some(l), &e.style.used(), vcx)
+                        .map(Len::Px)
+                        .or(Some(l))
                 }
                 other => other,
             };
             if i == 0 {
-                ch.style.margin.top = pinned;
+                ch.style.used_mut().margin.top = pinned;
             } else {
-                ch.style.margin.bottom = pinned;
+                ch.style.used_mut().margin.bottom = pinned;
             }
-            ch.style.margin_inherit[i] = false;
+            ch.style.used_mut().inherit_longhands.set(side, false);
         }
     }
 }
@@ -82,8 +86,7 @@ pub(crate) fn pin_inherited_margins(
 /// не реже, чем в точках: без перевода правило не срабатывало ни разу на таких
 /// отступах, и блоки уезжали вниз на целый отступ. Кегль берётся свой, если
 /// элемент его задал, иначе базовый — унаследованного здесь ещё нет.
-/// Проценты не переводятся: они считаются от ширины родителя, а её тут никто
-/// не знает, и выдуманное число было бы хуже пропуска.
+/// Доли, в том числе в calc(), требуют известной ширины содержащего блока.
 pub(crate) fn margin_px(
     l: Option<Len>,
     style: &Computed,
@@ -117,6 +120,11 @@ pub(crate) fn margin_px(
         // Процент — от ширины содержащего блока, когда она известна в точках
         // (`margin-top-103`, `margin-bottom-113`); иначе поле пропускается.
         Len::Pct(k) => vcx.collapse.width.map(|w| k * w),
+        l @ Len::Calc(_) => crate::style::computed::LenCx {
+            basis: vcx.collapse.width,
+            ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), style)
+        }
+        .px(l, vcx),
         _ => None,
     }
 }

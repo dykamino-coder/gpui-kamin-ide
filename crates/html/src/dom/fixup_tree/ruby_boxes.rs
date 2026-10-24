@@ -56,7 +56,7 @@ pub(crate) fn wrap_misparented_ruby(
 ) -> Vec<Node> {
     use crate::style::computed::RubyRole;
     let internal = |n: &Node| {
-        matches!(n, Node::Element(e) if ruby_box_role(&e.tag, &e.style).is_some_and(|r| {
+        matches!(n, Node::Element(e) if ruby_box_role(&e.tag, e.style.cascaded()).is_some_and(|r| {
             match r {
                 RubyRole::Container => false,
                 RubyRole::Base => !matches!(parent, Some(RubyRole::Container | RubyRole::BaseContainer)),

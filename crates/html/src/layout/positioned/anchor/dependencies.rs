@@ -5,7 +5,7 @@ use super::{
     parse::{VIS_VALID, VIS_VISIBLE},
 };
 use crate::document::state::ValueCx;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, anchor_get};
 
 pub(crate) struct Dependencies(Vec<Inputs>);
@@ -16,7 +16,7 @@ struct Inputs {
 }
 
 impl Dependencies {
-    pub(crate) fn of(c: &Computed, inherited: &Computed, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn of(c: &BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) -> Self {
         let styles = super::trials::Options::new(c, inherited, vcx).styles;
         Self(
             styles
@@ -45,7 +45,7 @@ impl Dependencies {
 }
 
 impl Inputs {
-    fn of(c: &Computed, inherited: &Computed, vcx: ValueCx<'_>) -> Self {
+    fn of(c: &BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) -> Self {
         let plan = AnchorPlan::of(c, inherited, vcx);
         let mut names = Vec::new();
         if plan

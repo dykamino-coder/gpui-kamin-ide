@@ -47,12 +47,10 @@ impl Computed {
     /// элемента (css-color-4 §4.6).
     pub(super) fn apply_background_color(&mut self, v: &str, vcx: ValueCx<'_>) {
         if v.trim().eq_ignore_ascii_case("inherit") {
-            self.background_inherit = true;
             return;
         }
         if let Some(color) = StyleColor::parse_value(v, vcx) {
             self.accept_declaration();
-            self.background_inherit = false;
             self.bg_explicit = true;
             // Начальное `transparent` хранится отсутствием цвета, как у
             // прочих длинных свойств фона: вычисленное значение то же.

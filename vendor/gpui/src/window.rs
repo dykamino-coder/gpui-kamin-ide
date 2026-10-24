@@ -74,6 +74,7 @@ mod css_text_background;
 mod css_fill_transform;
 mod plane3d;
 mod render_context;
+mod box_edges;
 pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
@@ -6259,6 +6260,70 @@ impl Window {
         self.layout_engine.as_ref()?.grid_item_rows(child)
     }
 
+    /// KaminIDE patch: layout parent identity, independent of physical coordinates.
+    pub fn parent_layout_id(&self, child: LayoutId) -> Option<LayoutId> {
+        self.layout_engine.as_ref()?.parent_layout_id(child)
+    }
+
+    /// KaminIDE patch: реальные линии родителя-flex и начало его border box.
+    pub fn parent_flex_layout(&mut self, child: LayoutId) -> Option<(Point<Pixels>, crate::FlexLayout)> {
+        let scale = self.scale_factor();
+        let (origin, layout) = self.layout_engine.as_mut()?.parent_flex_layout(child, scale)?;
+        Some((origin + self.element_offset(), layout))
+    }
+
+    /// KaminIDE patch: select the writing-mode block axis before applying flex constraints.
+    pub fn set_flex_fragmentation_axis(&mut self, id: LayoutId, axis: crate::Axis, reversed: bool) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_fragmentation_axis(id, axis, reversed);
+        }
+    }
+
+    /// KaminIDE patch: consumed cross extent of a row flex continuation.
+    pub fn set_flex_item_fragmentation_consumed(&mut self, id: LayoutId, consumed: f32) {
+        let scale = self.scale_factor();
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_item_fragmentation_consumed(id, consumed, scale);
+        }
+    }
+
+    /// KaminIDE patch: consumed block space before a column flex item.
+    pub fn set_flex_item_fragmentation_offset(&mut self, id: LayoutId, offset: f32) {
+        let scale = self.scale_factor();
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_item_fragmentation_offset(id, offset, scale);
+        }
+    }
+
+    /// KaminIDE patch: монолит не растёт из-за внутренних разрывов.
+    pub fn set_fragmentation_monolithic(&mut self, id: LayoutId, on: bool) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_fragmentation_monolithic(id, on);
+        }
+    }
+
+    /// KaminIDE patch: flex-контейнер раскладывается в контексте фрагментации.
+    pub fn set_flex_fragmentation(&mut self, id: LayoutId, on: bool) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_fragmentation(id, on);
+        }
+    }
+
+    /// KaminIDE patch: flex-линия элемента, закреплённая до фрагментации.
+    pub fn set_flex_item_fragmentation_line(&mut self, id: LayoutId, line: Option<usize>) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_item_fragmentation_line(id, line);
+        }
+    }
+
+    /// KaminIDE patch: пространство, занятое фрагментацией после flex-линий.
+    pub fn set_flex_line_fragmentation_growth(&mut self, id: LayoutId, growth: &[f32]) {
+        let scale = self.scale_factor();
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_line_fragmentation_growth(id, growth, scale);
+        }
+    }
+
     /// KaminIDE patch: дорожки родителя-сетки (см.
     /// `TaffyLayoutEngine::parent_grid_tracks`); начало родителя — в окне,
     /// со смещением текущего элемента.
@@ -6272,6 +6337,20 @@ impl Window {
             .layout_engine
             .as_mut()?
             .parent_grid_tracks(child, scale_factor)?;
+        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
+    }
+
+    /// KaminIDE patch: готовые дорожки самой сетки без поиска её ребёнка.
+    #[allow(clippy::type_complexity)]
+    pub fn grid_tracks(
+        &mut self,
+        grid: LayoutId,
+    ) -> Option<(Point<Pixels>, Vec<(f32, f32)>, Vec<(f32, f32)>)> {
+        let scale_factor = self.scale_factor();
+        let ((x, y), cols, rows) = self
+            .layout_engine
+            .as_mut()?
+            .grid_tracks(grid, scale_factor)?;
         Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
     }
 

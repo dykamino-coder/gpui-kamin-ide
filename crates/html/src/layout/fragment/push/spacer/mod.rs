@@ -17,28 +17,39 @@ pub(crate) use grow::grow_pushed;
 /// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
 /// новый поточный сосед.
 pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>) -> bool {
+    insert_spacer(c, id, grow, vcx, true)
+}
+
+/// Распорка по РАЗЛОЖЕННОЙ копии (`push::Regrow`): заданная высота хозяина не
+/// растёт — прирост от фрагментации засчитывается в неё (css-break-3
+/// §box-splitting, примечание), содержимое за ней — его переполнение.
+pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>) -> bool {
+    insert_spacer(c, id, grow, vcx, false)
+}
+
+fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_grows: bool) -> bool {
     // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
     // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
     // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
     // распорка встала бы соседом БОК О БОК и подняла бы весь ряд. Оба
     // случая забирает подъём разрыва, а не рост.
     let is_flex = matches!(
-        c.style.display,
+        c.style.used().display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) || c.style.webkit_box == Some(true);
+    ) || c.style.used().webkit_box == Some(true);
     let row_nowrap = is_flex
         && matches!(
-            c.style.flex_dir,
+            c.style.used().flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && c.style.flex_wrap != Some(true)
-        && c.style.webkit_box_vertical != Some(true);
+        && c.style.used().flex_wrap != Some(true)
+        && c.style.cascaded().webkit_box_vertical != Some(true);
     // Зазор гибкой стопки (`row-gap`) встал бы и перед распоркой — лишний
     // зазор, как у сетки-стопки; такой разрыв остаётся без роста.
     let flex_gapped = is_flex
-        && c.style.webkit_box != Some(true)
-        && matches!(c.style.gap, Some((Some(Len::Px(v)), _)) if v > 0.0);
+        && c.style.used().webkit_box != Some(true)
+        && matches!(c.style.used().gap, Some((Some(Len::Px(v)), _)) if v > 0.0);
     let at = if grid_stack(c) || row_nowrap || flex_gapped {
         None
     } else {
@@ -62,13 +73,13 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_
         // `margin-bottom: 50px`, обе зелёные).
         let pi = c.children[..i].iter().rposition(|n| !is_blank(n));
         let prev_mb = match pi.map(|j| &c.children[j]) {
-            Some(Node::Element(k)) => k.style.margin.bottom,
+            Some(Node::Element(k)) => k.style.used().margin.bottom,
             _ => None,
         };
         if prev_mb.is_some()
             && let Some(Node::Element(k)) = pi.map(|j| &mut c.children[j])
         {
-            k.style.margin.bottom = None;
+            k.style.used_mut().margin.bottom = None;
         }
         let mut style = crate::style::computed::Computed {
             height: Some(Len::Px(grow)),
@@ -81,13 +92,13 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_
         // высотой и стоять в визуальном порядке рядом со своей коробкой
         // (`order`, `reorder` в `blocks()`).
         if matches!(
-            c.style.display,
+            c.style.used().display,
             Some(Display::Flex) | Some(Display::InlineFlex)
         ) {
             style.width = Some(Len::Pct(1.0));
             style.flex_shrink = Some(0.0);
             if let Node::Element(k) = &c.children[i] {
-                style.order = k.style.order;
+                style.order = k.style.used().order;
             }
         }
         c.children.insert(
@@ -116,14 +127,14 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_
         // на первом заходе. Проба `p2-single-line-column-flex-fragmentation-
         // 037` осталась красной именно поэтому, а `p3-…` с высотой 100 → 150
         // сняла 4/5 площади (3906 → 756 точек).
-        if let Some(Len::Px(h)) = c.style.height {
-            c.style.height = Some(Len::Px(h + grow));
+        if fixed_grows && let Some(Len::Px(h)) = c.style.used().height {
+            c.style.used_mut().height = Some(Len::Px(h + grow));
         }
         return true;
     }
     for n in c.children.iter_mut() {
         if let Node::Element(k) = n
-            && spacer_before(k, id, grow, vcx)
+            && insert_spacer(k, id, grow, vcx, fixed_grows)
         {
             return true;
         }

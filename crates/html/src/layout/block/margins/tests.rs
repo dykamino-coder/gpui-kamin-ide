@@ -4,8 +4,8 @@ use super::*;
 use crate::dom::Element;
 use crate::layout::block::margin_height::used_style;
 use crate::layout::writing_mode::orthogonal_inline;
-use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingModeKw;
+use crate::style::computed::{BoxStyle, Computed};
 
 #[test]
 fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
@@ -33,16 +33,20 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let Node::Element(block) = &collapsed[0] else {
             panic!("block")
         };
-        assert_eq!(block.style.height, height);
+        assert_eq!(block.style.used().height, height);
         assert!(block.marks.auto_zero_height);
-        let painted = used_style(block, &block.style).unwrap_or_else(|| *block.style.clone());
+        let painted = used_style(block, &BoxStyle::from((*block.style.cascaded()).clone()))
+            .unwrap_or_else(|| BoxStyle::from(block.style.cascaded().clone()));
         assert_eq!(painted.height, Some(Len::Px(0.0)));
-        let mut child = Computed {
-            writing_mode: Some(WritingModeKw::new(true, false, false)),
-            floated_box: true,
-            ..Default::default()
+        let mut child = {
+            let mut with_inherited = Computed {
+                floated_box: true,
+                ..Default::default()
+            };
+            with_inherited.writing_mode = Some(WritingModeKw::new(true, false, false));
+            with_inherited
         };
-        orthogonal_inline::resolve(&mut child, &block.style, (800.0, 600.0), false);
+        orthogonal_inline::resolve(&mut child, &block.style.used(), (800.0, 600.0), false);
         let available = child.orthogonal_inline.expect("root constraint").available;
         assert_eq!(
             available,
@@ -53,4 +57,24 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
             }
         );
     }
+}
+
+#[test]
+fn fieldset_fragment_keeps_child_end_margin_inside_its_bfc() {
+    let doc = crate::document::state::DocState::new(Default::default());
+    let mut child = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
+    child.style.used_mut().height = Some(Len::Px(70.0));
+    child.style.used_mut().margin.bottom = Some(Len::Px(50.0));
+    let fieldset = Element::synthetic(
+        "fieldset",
+        Computed::default(),
+        Default::default(),
+        vec![Node::Element(child)],
+    );
+    let fieldset = fragment_box(fieldset, 50.0, doc.values());
+    assert_eq!(fragment_margins(&fieldset), Some((0.0, 0.0)));
+    let Node::Element(child) = &fieldset.children[0] else {
+        panic!("child")
+    };
+    assert_eq!(child.style.used().margin.bottom, Some(Len::Px(50.0)));
 }

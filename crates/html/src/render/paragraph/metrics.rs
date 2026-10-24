@@ -8,6 +8,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;
 use crate::text::text_box::normal_fraction;
+use crate::tolerance::COORD_EPS;
 
 /// Самый крупный кегль и наибольшая `line-height` кусков ВНЕ краевых: струт
 /// строки и её базовая линия от прижатых к краю не зависят (§10.8.1).
@@ -113,8 +114,8 @@ pub(crate) fn line_box_spans(
             }
             _ => return None,
         };
-        if (size - own).abs() > 0.01
-            || (lh - strut).abs() > 0.01
+        if (size - own).abs() > COORD_EPS
+            || (lh - strut).abs() > COORD_EPS
             || style.font_family != inherited.font_family
         {
             mixed = true;

@@ -6,14 +6,14 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn non_inline_columns(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     count: Option<usize>,
     col_w: Option<f32>,
@@ -30,7 +30,7 @@ pub(super) fn non_inline_columns(
         let (Some(Node::Element(only)), None) = (blocks.next(), blocks.next()) else {
             return Some(None);
         };
-        if only.style.position.is_some() || only.style.float.is_some_and(|f| f != 0) {
+        if only.style.used().position.is_some() || only.style.used().float.is_some_and(|f| f != 0) {
             return Some(None);
         }
         // Пункт списка — не «тот же поток»: его `::marker` (css-lists-3 §3)
@@ -48,7 +48,7 @@ pub(super) fn non_inline_columns(
         if nested_rows_box(only) {
             return Some(None);
         }
-        let inside = inherit(inherited, &only.style, vcx);
+        let inside = box_style(inherited, &only.style, vcx);
         return Some(column_flow_in(
             only,
             &inside,

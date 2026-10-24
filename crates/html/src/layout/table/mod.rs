@@ -5,7 +5,7 @@ use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::anon::{RowCarry, collect_rows, fixup_table_children};
 use crate::layout::table::columns::col_element_widths;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -45,8 +45,9 @@ use setup::{
 /// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
-pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn table(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
+    let constraints = &opts.cx.constraints;
     let inherited_axes = axes::inherited(e, inherited, vcx);
     let e = inherited_axes.as_ref().unwrap_or(e);
     // Ключевое слово содержимого в `max-height` таблицы горизонтального
@@ -183,7 +184,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
     // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
     // которой умерли три прошлых захода (см. записи ниже по ячейке).
-    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols, opts.cx.cb_width);
+    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols, constraints.cb_width);
     let busy: Vec<u16> = vec![0; cols as usize];
     let (win_edges, outer_win) = table_border_widths::resolve(
         e,
@@ -197,7 +198,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
-    let table_is_vertical = e.style.wm().vertical() || inherited.wm().vertical();
+    let table_is_vertical = e.style.used().wm().vertical() || inherited.wm().vertical();
     measure_col_widths(
         e,
         inherited,
@@ -220,7 +221,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         row_elements,
         col_widths,
         table_font,
-        table_em: 16.0,
+        table_em: crate::defaults::MEDIUM_FONT_SIZE_PX,
         table_family: inherited.font_family.clone().unwrap_or_default(),
         from_cols,
         cols_collapsed,
@@ -231,8 +232,8 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         table_is_vertical,
         bw: [0.0; 4],
         have_rows: !rows.is_empty(),
-        collapse_cells: e.style.border_collapse == Some(true)
-            || (e.style.border_collapse.is_none() && e.attr("rules").is_some()),
+        collapse_cells: e.style.cascaded().border_collapse == Some(true)
+            || (e.style.cascaded().border_collapse.is_none() && e.attr("rules").is_some()),
     };
     let mut out = context::RowsOut {
         cells,

@@ -7,30 +7,21 @@ use crate::layout::fragment::clone::clone_fragment;
 use crate::layout::grid::place_named_areas;
 use crate::layout::multicol::gap_rules::gap_rule_spec;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::stacking::fixed_cb_layer_box;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use gpui::{IntoElement, ParentElement};
 
-/// Не строить копию через `element(&copy, &merged,
-/// opts)` ради сетки и гибкого контейнера внутри
-/// стопки (`grid-container-fragmentation-*`): общий
-/// путь элемента кладёт слои и выносит абсолюты
-/// иначе, чем ждёт стопка, — рамки, тени,
-/// `break-between-avoid-*`, `fieldset` ломаются.
-/// Возвращать узкой веткой только для сетки.
-/// Линейки промежутков (css-gaps-1) у копии
-/// фрагмента: слой строится ТОЛЬКО при заданном
-/// стиле линейки (`gap_rule_spec`), как в
-/// `element()`, — ни одна старая пара сюда не
-/// попадает. Буфер проб — СВОЙ на копию: пробы
-/// всех копий одного узла иначе сливаются в один
-/// буфер, первая копия забирает всё (`take`) и
-/// строит дорожки по смеси поднятых на `from`
-/// копий. Отрезки красятся в координатах полной
-/// раскладки копии, маска колонки (`ColumnStack`,
-/// `with_content_mask`) режет их вместе с
-/// содержимым — вид `slice` css-break-3 §4.
+/// Не строить копию через `element(&copy, &merged, opts)` ради сетки и гибкого контейнера
+/// внутри стопки (`grid-container-fragmentation-*`): общий путь элемента кладёт слои и выносит
+/// абсолюты иначе, чем ждёт стопка, — рамки, тени, `break-between-avoid-*`, `fieldset`
+/// ломаются. Возвращать узкой веткой только для сетки. Линейки промежутков (css-gaps-1) у копии
+/// фрагмента: слой строится ТОЛЬКО при заданном стиле линейки (`gap_rule_spec`), как в
+/// `element()`, — ни одна старая пара сюда не попадает. Буфер проб — СВОЙ на копию: пробы всех
+/// копий одного узла иначе сливаются в один буфер, первая копия забирает всё (`take`) и строит
+/// дорожки по смеси поднятых на `from` копий. Отрезки красятся в координатах полной раскладки
+/// копии, маска колонки (`ColumnStack`, `with_content_mask`) режет их вместе с содержимым — вид
+/// `slice` css-break-3 §4.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_copy(
     opts: &RenderOpts,
@@ -39,19 +30,20 @@ pub(super) fn build_copy(
     line_col_w: Option<f32>,
     frag_geom: &[(f32, f32)],
     dec: Option<(f32, f32)>,
-    merged: &Computed,
+    merged: &BoxStyle,
     copy: &Element,
     h: f32,
     over: f32,
     nest_row: Option<f32>,
     nest_phase_k: f32,
-    inner: &Computed,
+    inner: &BoxStyle,
     whole: bool,
     first: bool,
     part: usize,
     band: bool,
 ) -> gpui::AnyElement {
     let vcx = opts.cx.vcx();
+    let build = &opts.cx.contracts.build;
     // `box-decoration-break: clone`: копия — САМ
     // фрагмент (`clone_fragment`), и корень, и
     // наследуемый стиль берутся у НЕГО. Со стилем
@@ -72,17 +64,17 @@ pub(super) fn build_copy(
         }
         _ => None,
     };
-    let frag_inner = frag.as_ref().map(|f| inherit(merged, &f.style, vcx));
+    let frag_inner = frag.as_ref().map(|f| box_style(merged, &f.style, vcx));
     let src: &Element = frag.as_ref().unwrap_or(copy);
-    let src_inner: &Computed = frag_inner.as_ref().unwrap_or(inner);
+    let src_inner: &BoxStyle = frag_inner.as_ref().unwrap_or(inner);
     let mut kids = copy_kids(copy, first, src, band);
     let frag_gap_rules = gap_rule_spec(copy, inner, opts);
     let frag_gap_items = frag_gap_rules
         .as_ref()
-        .map(|_| crate::paint::gap_rules::GapItems::default());
+        .map(|_| crate::layout::multicol::gap_rules::GapItems::default());
     let child_opts = opts.inner(|cx| {
         if let Some(items) = &frag_gap_items {
-            cx.gap_items = Some(items.clone());
+            cx.deferred.gap_items = Some(items.clone());
         }
     });
     // css-break-3 §5.5: «Fragmentation … occurs
@@ -129,11 +121,13 @@ pub(super) fn build_copy(
     // `table()` его не вешает (в `element()`
     // таблица идёт мимо него), а копия обязана
     // нести трансформ на каждом фрагменте.
+    // css-break-3 §4.4: общий рисователь тоже получает коробку ФРАГМЕНТА,
+    // а не исходную: clone_fragment уже задал её высоту, декорацию и тело.
     if let Some(value) = copy_whole_box(
         opts,
         line_col_w,
         merged,
-        copy,
+        src,
         h,
         nest_row,
         nest_phase_k,
@@ -142,7 +136,7 @@ pub(super) fn build_copy(
         part,
         &mut kids,
     ) {
-        return value;
+        return super::vertical::wrap(value, copy, col_vert, col_rl, line_col_w);
     }
     // Абсолютный потомок ищет ближайшего
     // позиционированного предка (CSS 2.1
@@ -194,10 +188,10 @@ pub(super) fn build_copy(
     // фрагмента клала элементы автоматически
     // (`grid-item-fragmentation-026`: оба в
     // области `a`, второй уезжал во 2-й ряд).
-    let kids = match &copy.style.grid_areas {
+    let kids = match &copy.style.used().grid_areas {
         Some(areas)
             if matches!(
-                copy.style.display,
+                copy.style.used().display,
                 Some(Display::Grid) | Some(Display::InlineGrid)
             ) =>
         {
@@ -207,11 +201,12 @@ pub(super) fn build_copy(
     };
     let frag_cb_layer = crate::text::inline::establishes_cb(inner).then(|| {
         crate::layout::positioned::layer_scope::LayerScope::cb(
-            &opts.cx.positioning,
+            &opts.cx.position.state,
             fixed_cb_layer_box(inner),
         )
     });
-    let mut body = child_opts.cx.build.blocks(&kids, src_inner, &child_opts);
+    let child_build = &child_opts.cx.contracts.build;
+    let mut body = child_build.blocks(&kids, src_inner, &child_opts);
     if let Some(layer) = frag_cb_layer {
         body.extend(layer.finish());
     }
@@ -219,7 +214,6 @@ pub(super) fn build_copy(
         col_vert,
         col_rl,
         copy,
-        h,
         src,
         src_inner,
         frag_gap_rules,
@@ -228,19 +222,25 @@ pub(super) fn build_copy(
         &mut body,
         &opts.cx,
     );
-    let el = opts.cx.build.effects(
+    // Корень копии тоже наблюдается рекордером: ограничения роста строк
+    // flex-контейнера (`Watched::grow_flex_line`) ставятся на ЕГО узел, а
+    // узкая ветка копии идёт мимо общего `element()` с его `watch::wrap`.
+    let root = crate::layout::fragment::paginate::watch::wrap(
+        copy.node_id,
         d.children(body).into_any_element(),
-        Effect::transform(inner, merged, vcx),
+        opts,
     );
+    let el = build.effects(root, Effect::transform(inner, merged, vcx));
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
-    if inner.clip_inset.is_some()
+    let el = if inner.clip_inset.is_some()
         || inner.clip_shape.is_some()
         || inner.clip_polygon.is_some()
         || inner.mask_image.is_some()
     {
-        opts.cx.build.effects(el, Effect::group(inner, vcx))
+        build.effects(el, Effect::group(inner, vcx))
     } else {
         el
-    }
+    };
+    super::vertical::wrap(el, copy, col_vert, col_rl, line_col_w)
 }

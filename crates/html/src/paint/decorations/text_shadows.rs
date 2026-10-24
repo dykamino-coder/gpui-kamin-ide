@@ -12,7 +12,7 @@ use masks::masked_layer;
 use crate::dom::Node;
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Shadow};
+use crate::style::computed::{BoxStyle, Shadow};
 use crate::text::shadow_text::normalize_for_shadow;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
@@ -20,7 +20,7 @@ fn shadow_layer(
     text: &str,
     shadow: &Shadow,
     nodes: &[Node],
-    style: &Computed,
+    style: &BoxStyle,
     opts: &RenderOpts,
     same_paragraph: bool,
 ) -> AnyElement {
@@ -34,7 +34,7 @@ fn shadow_layer(
         // CSS Text Decoration 3 §4: a shadow masks both glyphs and their
         // decorations. Reusing the paragraph keeps baseline, spacing and
         // decoration geometry identical; its color is the shadow's color.
-        opts.cx.build.paragraph(nodes, &mask, opts)
+        opts.cx.contracts.build.paragraph(nodes, &mask, opts)
     } else {
         div()
             .text_color(shadow.used_color(style.current_color()).to_hsla())
@@ -58,7 +58,7 @@ fn shadow_layer(
 
 pub(crate) fn with_text_shadow(
     el: AnyElement,
-    style: &Computed,
+    style: &BoxStyle,
     nodes: &[Node],
     opts: &RenderOpts,
 ) -> AnyElement {
@@ -118,7 +118,7 @@ pub(crate) fn with_text_shadow(
 }
 
 #[cfg(test)]
-fn shadow_list(c: &Computed) -> Vec<Shadow> {
+fn shadow_list(c: &crate::style::computed::Computed) -> Vec<Shadow> {
     ShadowStyle::new(c).resolved()
 }
 
@@ -127,12 +127,12 @@ fn shadow_list(c: &Computed) -> Vec<Shadow> {
 fn atomic(e: &crate::dom::Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
     // Кусок со своей коробкой абзац ставит атомом со СВОИМ абзацем внутри,
     // и тень тот рисует сам (`render::has_own_box`).
-    let font = match e.style.font_size {
+    let font = match e.style.used().font_size {
         Some(crate::style::values::value::Len::Px(v)) => v,
-        _ => 16.0,
+        _ => crate::defaults::MEDIUM_FONT_SIZE_PX,
     };
     !e.inline
-        || crate::layout::positioned::predicates::has_own_box(&e.style, font, vcx)
+        || crate::layout::positioned::predicates::has_own_box(&e.style.used(), font, vcx)
         || matches!(
             e.tag.as_str(),
             "img"

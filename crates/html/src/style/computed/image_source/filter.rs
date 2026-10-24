@@ -54,10 +54,13 @@ mod tests {
     fn generated_filters_resolve_relative_lengths_once() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut style = Computed {
-            font_size: Some(Len::Px(20.0)),
-            line_height: Some(Len::Pct(1.5)),
-            ..Computed::default()
+        let mut style = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(20.0));
+            with_inherited.line_height = Some(Len::Pct(1.5));
+            with_inherited
         };
         style.apply_one(
             "content",

@@ -9,10 +9,11 @@ use crate::paint::apply;
 use crate::paint::box_tree::{content_wrapper, styled::styled_div_with};
 use crate::paint::decorations::outline_phase;
 use crate::paint::effects::{grouped, transform, underlay::Underlay};
+use crate::paint::gap_rules::painter::GapRulePainter;
 use crate::paint::stacking;
 use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 
 impl Default for ChildBuild {
@@ -25,12 +26,21 @@ impl Default for ChildBuild {
                 crate::render::first_line_descendants::route,
             ),
             element,
-            BoxBuild::new(styled_div_with, styled_div, content_sized),
+            BoxBuild::new(
+                styled_div_with,
+                styled_div,
+                content_sized,
+                content_wrapper::for_element,
+                apply::len_to_gpui,
+                apply::self_align,
+            ),
             crate::paint::replaced::image::image_with,
+            crate::svg::element_with_html,
             EffectBuild::new(
                 effects,
                 crate::paint::effects::grouped::paint_group,
                 crate::paint::effects::mask::collect_mask_defs,
+                |owner, window, cx, body| outline_phase::flow(Some(owner), window, cx, body),
             ),
             layer,
         )
@@ -48,8 +58,8 @@ fn styled_div(styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
 
 fn content_sized(
     el: AnyElement,
-    style: &Computed,
-    item_style: &Computed,
+    style: &BoxStyle,
+    item_style: &BoxStyle,
     placement: GridPlacement,
     cx: &LayoutCx,
 ) -> AnyElement {
@@ -75,10 +85,16 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
 
 fn layer(layer: Layer<'_>) -> AnyElement {
     match layer {
+        Layer::DeferredPositioned(publication) => {
+            crate::paint::positioned::deferred_source(publication)
+        }
         Layer::CellBand { rects, style, vcx } => {
             table::layer(CellsClipped::new(rects, *style, vcx))
         }
         Layer::CellBackgrounds(bgs) => table::layer(CellBgPainter::new(bgs)),
         Layer::CollapsedEdges(edges) => table::layer(EdgePainter::new(edges)),
+        Layer::GapRules { items, spec, owner } => {
+            crate::hooks::PaintOnly(GapRulePainter::new(items, *spec, owner)).hooked()
+        }
     }
 }

@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-1): consumed и края украшений ещё не представлены токеном продолжения.
 //! План клонов (box-decoration-break: clone) по колонкам и правило колонок (column-rule).
 
 use crate::document::state::ValueCx;
@@ -13,6 +14,7 @@ use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
 // The clone plan preserves each child's measured shape and painting callback.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -25,69 +27,72 @@ pub(super) fn clone_plan_of(
     kid_par: &[crate::layout::fragment::types::Par],
     kids: &[(Element, crate::layout::fragment::Shape)],
     vcx: ValueCx<'_>,
+    opts: &RenderOpts,
 ) -> Vec<Vec<(f32, f32)>> {
-    let clone_plan: Vec<Vec<(f32, f32)>> =
-        if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
-            let probe: Vec<crate::layout::fragment::types::Kid> = kids
-                .iter()
-                .enumerate()
-                .map(|(pi, (c, s))| {
-                    let mut m = c.clone();
-                    m.style.margin.top = None;
-                    m.style.margin.bottom = None;
-                    let (over, cuts, forced, solid) = match shape_full(
-                        &m,
-                        4,
-                        ShapeCx {
-                            unclamped: true,
-                            ..ShapeCx::COLUMNS
-                        },
-                        vcx,
-                    )
-                    .filter(|_| {
-                        fixed.is_some() && plain_block_tree(&m, 4) && visible_overflow(&m.style)
-                    })
-                    .filter(|u| u.height > s.height + 0.01)
-                    {
-                        Some(u) => (u.height, u.cuts, u.forced, u.solid),
-                        None => (s.height, s.cuts.clone(), s.forced.clone(), s.solid.clone()),
-                    };
-                    crate::layout::fragment::types::Kid {
-                        h: s.height,
-                        mt: s.margin_top,
-                        mb: s.margin_bottom,
-                        monolith: solid_box(c),
-                        cuts,
-                        force_before: edge_break(c, false, vcx),
-                        force_after: edge_break(c, true, vcx),
-                        avoid_before: edge_avoid(c, false, vcx),
-                        avoid_after: edge_avoid(c, true, vcx),
-                        forced,
-                        solid,
-                        avoid: Vec::new(),
-                        span: c.style.column_span == Some(true) && !c.inline,
-                        over,
-                        clone_dec: clone_dec(c),
-                        // Тот же предикат, что у `StackChild` ниже:
-                        // иначе план соседа разошёлся бы с укладкой.
-                        overflow_top: fixed.is_some()
-                            && rows.is_none()
-                            && !parallel_items_inside(c, 4, vcx),
-                        repeat: repeat_leads(c, fixed, rows, vcx),
-                        par: kid_par[pi],
-                    }
+    let clone_plan: Vec<Vec<(f32, f32)>> = if !col_vert
+        && kids.iter().any(|(c, _)| clone_dec(c).is_some())
+    {
+        let probe: Vec<crate::layout::fragment::types::Kid> = kids
+            .iter()
+            .enumerate()
+            .map(|(pi, (c, s))| {
+                let mut m = c.clone();
+                m.style.used_mut().margin.top = None;
+                m.style.used_mut().margin.bottom = None;
+                let (over, cuts, forced, solid) = match shape_full(
+                    &m,
+                    4,
+                    ShapeCx {
+                        unclamped: true,
+                        ..ShapeCx::COLUMNS.observed(opts)
+                    },
+                    vcx,
+                )
+                .filter(|_| {
+                    fixed.is_some() && plain_block_tree(&m, 4) && visible_overflow(&m.style.used())
                 })
-                .collect();
-            crate::layout::multicol::column_stack::ColumnStack::frags_of(
-                &probe,
-                cols as usize,
-                fixed,
-                rows,
-                copies,
-            )
-        } else {
-            Vec::new()
-        };
+                .filter(|u| u.height > s.height + COORD_EPS)
+                {
+                    Some(u) => (u.height, u.cuts, u.forced, u.solid),
+                    None => (s.height, s.cuts.clone(), s.forced.clone(), s.solid.clone()),
+                };
+                crate::layout::fragment::types::Kid {
+                    h: s.height,
+                    mt: s.margin_top,
+                    mb: s.margin_bottom,
+                    monolith: solid_box(c),
+                    cuts,
+                    force_before: edge_break(c, false, vcx),
+                    force_after: edge_break(c, true, vcx),
+                    avoid_before: edge_avoid(c, false, vcx),
+                    avoid_after: edge_avoid(c, true, vcx),
+                    forced,
+                    solid,
+                    avoid: Vec::new(),
+                    keep: Vec::new(),
+                    span: c.style.used().column_span == Some(true) && !c.inline,
+                    over,
+                    clone_dec: clone_dec(c),
+                    // Тот же предикат, что у `StackChild` ниже:
+                    // иначе план соседа разошёлся бы с укладкой.
+                    overflow_top: fixed.is_some()
+                        && rows.is_none()
+                        && !parallel_items_inside(c, 4, vcx),
+                    repeat: repeat_leads(c, fixed, rows, ShapeCx::COLUMNS.observed(opts), vcx),
+                    par: kid_par[pi],
+                }
+            })
+            .collect();
+        crate::layout::multicol::column_stack::ColumnStack::frags_of(
+            &probe,
+            cols as usize,
+            fixed,
+            rows,
+            copies,
+        )
+    } else {
+        Vec::new()
+    };
     clone_plan
 }
 
@@ -96,12 +101,12 @@ pub(super) fn column_rule_of(
     merged: &Computed,
     opts: &RenderOpts,
 ) -> Option<(f32, gpui::Hsla)> {
-    if e.style.column_rule_visible == Some(true) {
+    if e.style.used().column_rule_visible == Some(true) {
         Some((
-            match e.style.column_rule_width {
+            match e.style.used().column_rule_width {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => {
-                    k * match e.style.font_size {
+                    k * match e.style.used().font_size {
                         Some(Len::Px(fs)) => fs,
                         _ => opts.base_size(),
                     }
@@ -109,6 +114,7 @@ pub(super) fn column_rule_of(
                 _ => 3.0,
             },
             e.style
+                .used()
                 .column_rule_color
                 .resolve(merged.current_color())
                 .to_hsla(),

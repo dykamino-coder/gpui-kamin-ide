@@ -75,10 +75,13 @@ mod tests {
             width: Some(200.0),
             height_def: true,
         });
-        let style = Computed {
-            width: Some(Len::Pct(0.5)),
-            font_size: Some(Len::Em(2.0)),
-            ..Default::default()
+        let style = {
+            let mut with_inherited = Computed {
+                width: Some(Len::Pct(0.5)),
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Em(2.0));
+            with_inherited
         };
         let snapshot = with_inner_cb(&style, parent, |child| {
             assert_eq!(
@@ -89,9 +92,12 @@ mod tests {
                     height_def: true
                 }
             );
-            let grandchild = Computed {
-                font_size: Some(Len::Em(0.5)),
-                ..Default::default()
+            let grandchild = {
+                let mut with_inherited = Computed {
+                    ..Default::default()
+                };
+                with_inherited.font_size = Some(Len::Em(0.5));
+                with_inherited
             };
             with_inner_cb(&grandchild, child, |grandchild| {
                 assert_eq!(grandchild.collapse.font, 20.0);
@@ -111,7 +117,7 @@ mod tests {
     fn percent_padding_uses_only_the_supplied_level_width() {
         let doc = DocState::new(Default::default());
         let mut e = crate::layout::table::anon::anon_element("div", vec![]);
-        e.style.padding.top = Some(Len::Pct(0.5));
+        e.style.used_mut().padding.top = Some(Len::Pct(0.5));
         use crate::layout::block::struts::{top_edge_open, top_edge_open_at};
         assert!(top_edge_open_at(&e, Some(0.0)));
         assert!(!top_edge_open_at(&e, Some(100.0)));

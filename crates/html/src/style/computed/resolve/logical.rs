@@ -89,27 +89,18 @@ impl Computed {
                 let Some(order) = from.order[lside] else {
                     continue;
                 };
-                let (sides, flags, orders) = match group {
-                    BoxGroup::Padding => (
-                        &mut self.padding,
-                        &mut self.padding_inherit_side,
-                        &self.side_order.padding,
-                    ),
-                    BoxGroup::Margin => (
-                        &mut self.margin,
-                        &mut self.margin_inherit,
-                        &self.side_order.margin,
-                    ),
-                    _ => (
-                        &mut self.inset,
-                        &mut self.inset_inherit,
-                        &self.side_order.inset,
-                    ),
+                let (sides, orders) = match group {
+                    BoxGroup::Padding => (&mut self.padding, &self.side_order.padding),
+                    BoxGroup::Margin => (&mut self.margin, &self.side_order.margin),
+                    _ => (&mut self.inset, &self.side_order.inset),
                 };
                 if order < orders[side] {
                     continue;
                 }
-                flags[side] = from.inherit[lside];
+                self.inherit_longhands.set(
+                    crate::style::css::LonghandId::physical(group, side),
+                    from.inherit[lside],
+                );
                 if let Some(v) = from.get(lside) {
                     *side_slot(sides, side) = Some(v);
                 }
@@ -172,11 +163,10 @@ impl Computed {
             4 => self.fit_arg[2] = None,
             _ => {}
         }
-        match i {
-            0 => self.width_inherit = inherit,
-            1 => self.height_inherit = inherit,
-            _ => self.minmax_inherit[i - 2] = inherit,
-        }
+        self.inherit_longhands.set(
+            crate::style::css::LonghandId::physical(BoxGroup::Size, i),
+            inherit,
+        );
         if inherit {
             return;
         }

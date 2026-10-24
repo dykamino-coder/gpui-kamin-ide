@@ -15,14 +15,15 @@ use crate::style::computed::{AnimSpec, Computed};
 /// (css-cascade-5 §cascade-origin) — `translation-animation-on-important-
 /// property` с `transform: none !important` уехала бы на середину пути.
 pub(crate) fn bake_frozen(e: &Element, transforms: bool, vcx: ValueCx<'_>) -> Option<Element> {
-    let (Some(frames), Some(spec)) = (e.anim.as_ref(), e.style.animation.as_ref()) else {
+    let own = e.style.used();
+    let (Some(frames), Some(spec)) = (e.anim.as_ref(), own.animation.as_ref()) else {
         return None;
     };
     if !spec.frozen() {
         return None;
     }
     let frame = sample_at(frames, spec, 0.0, vcx)?;
-    Some(animation_frame::sample(e, &frame, transforms))
+    Some(animation_frame::sample(e, &frame, transforms, vcx))
 }
 
 /// A backwards fill holds the endpoint without applying its easing.

@@ -7,6 +7,7 @@
 //! §14.2: корень, а без его фона — тело, чей фон переезжает на корень целиком).
 //! Здесь же предикаты `any_side` и `any_containment` для соседних проходов.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Node;
 use crate::style::values::value::Len;
 
@@ -43,14 +44,14 @@ pub(super) fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
                 // Viewport Propagation): иначе во вьюпорт идёт корневое, а
                 // тело держит своё (`overflow-body-propagation-012`).
                 let root_own_overflow = e.tag == "html"
-                    && (matches!(e.style.overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
-                        || matches!(e.style.overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible));
+                    && (matches!(e.style.cascaded().overflow_x, Some(o) if o != crate::style::computed::Overflow::Visible)
+                        || matches!(e.style.cascaded().overflow_y, Some(o) if o != crate::style::computed::Overflow::Visible));
                 if !own && !root_contained {
                     if e.tag == "html" {
-                        e.style.scroll.viewport_root = true;
+                        e.style.cascaded_mut().scroll.viewport_root = true;
                     }
-                    e.style.overflow_x = None;
-                    e.style.overflow_y = None;
+                    e.style.cascaded_mut().overflow_x = None;
+                    e.style.cascaded_mut().overflow_y = None;
                 }
                 strip(
                     &mut e.children,
@@ -67,11 +68,11 @@ pub(super) fn viewport_overflow(mut nodes: Vec<Node>) -> Vec<Node> {
 /// `content-visibility: hidden`): оно выключает распространение свойств
 /// элемента в область просмотра.
 pub(super) fn any_containment(e: &crate::dom::Element) -> bool {
-    e.style.contain_paint == Some(true)
-        || e.style.contain_size == Some(true)
-        || e.style.contain_layout == Some(true)
-        || e.style.contain_style == Some(true)
-        || e.style.skip_content == Some(true)
+    e.style.cascaded().contain_paint == Some(true)
+        || e.style.cascaded().contain_size == Some(true)
+        || e.style.cascaded().contain_layout == Some(true)
+        || e.style.cascaded().contain_style == Some(true)
+        || e.style.cascaded().skip_content == Some(true)
 }
 
 /// Отметить узел, чей фон красит канвас (CSS 2.2 §14.2): корневой `html`,
@@ -83,12 +84,12 @@ pub(super) fn mark_canvas_background(
     fn has_bg(e: &crate::dom::Element) -> bool {
         // Прозрачный цвет — НЕ краска: `html { background: transparent }`
         // отдаёт канвас телу, как и отсутствие объявления.
-        e.style.background.is_some_and(|c| c.a > 0.0)
-            || e.style.gradient.is_some()
+        e.style.cascaded().background.is_some_and(|c| c.a > 0.0)
+            || e.style.cascaded().gradient.is_some()
             // Фон-картинка — та же краска канваса (CSS 2.2 §14.2): без
             // пометки она рисовалась коробкой корня и начиналась с его
             // сдвинутого схлопкой верха (background-size-document-root-vrl).
-            || e.style.bg_image.is_some()
+            || e.style.cascaded().bg_image.is_some()
     }
     for n in nodes.iter_mut() {
         let Node::Element(html) = n else { continue };
@@ -97,13 +98,13 @@ pub(super) fn mark_canvas_background(
         // всегда. Пометка живёт на самом узле: снимаемая обёртка уносит её с
         // собой, и дети `body` верхнего уровня её не получают.
         if html.tag == "html" {
-            html.style.root_box = true;
+            html.style.cascaded_mut().root_box = true;
             // css-display-3 §2.7: «a display of contents computes to block on
             // the root element». Без коробки корня слой канваса (`canvas_bg`
             // ниже) не заводился, и фон-картинка корня пропадала целиком
             // (`display-contents-root-background` 99.93).
-            if html.style.display == Some(crate::style::computed::Display::Contents) {
-                html.style.display = Some(crate::style::computed::Display::Block);
+            if html.style.cascaded().display == Some(crate::style::computed::Display::Contents) {
+                html.style.cascaded_mut().display = Some(crate::style::computed::Display::Block);
             }
         }
         // Фон переносится только от элемента С КОРОБКОЙ: `display: none` и
@@ -111,7 +112,7 @@ pub(super) fn mark_canvas_background(
         // (`background-color-body-propagation-007`, `-root-propagation-001`).
         let boxed = |e: &crate::dom::Element| {
             !matches!(
-                e.style.display,
+                e.style.cascaded().display,
                 Some(crate::style::computed::Display::None)
                     | Some(crate::style::computed::Display::Contents)
             )
@@ -123,7 +124,7 @@ pub(super) fn mark_canvas_background(
             // одну `contain-{body,html}-bg-002`, где написан именно
             // `contain: paint`; `layout`, `size` и `style` пролезали.
             if html.tag == "body" && has_bg(html) && boxed(html) && !any_containment(html) {
-                html.style.canvas_bg = true;
+                html.style.cascaded_mut().canvas_bg = true;
             }
             continue;
         }
@@ -133,7 +134,7 @@ pub(super) fn mark_canvas_background(
             continue;
         }
         if has_bg(html) && boxed(html) {
-            html.style.canvas_bg = true;
+            html.style.cascaded_mut().canvas_bg = true;
             continue;
         }
         // §14.2: «the propagated values are treated as if they were specified
@@ -147,7 +148,7 @@ pub(super) fn mark_canvas_background(
             // (CSS 2.1 §14.2, «treated as if they were specified on the root
             // element»). Любое обособление тела его отменяет.
             if body.tag == "body" && has_bg(body) && boxed(body) && !any_containment(body) {
-                let s = &mut body.style;
+                let s = body.style.cascaded_mut();
                 let mut take = crate::style::computed::Computed::default();
                 take.background = s.background.take();
                 take.background_color = s.background_color.take();
@@ -166,7 +167,7 @@ pub(super) fn mark_canvas_background(
                 // кегле, а в области отсчёта перенесённого фона.
                 let em = match s.font_size {
                     Some(crate::style::values::value::Len::Px(v)) => v,
-                    _ => 16.0,
+                    _ => MEDIUM_FONT_SIZE_PX,
                 };
                 let fam = s.font_family.clone().unwrap_or_default();
                 let to_px = |l: Option<crate::style::values::value::Len>| match l {
@@ -194,7 +195,7 @@ pub(super) fn mark_canvas_background(
             }
         }
         if let Some(take) = moved {
-            let s = &mut html.style;
+            let s = html.style.cascaded_mut();
             s.background = take.background;
             s.background_color = take.background_color;
             s.gradient = take.gradient;

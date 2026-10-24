@@ -1,3 +1,4 @@
+//! ADR P-19 TRANSITIONAL(F2-3): оценка остаётся у внешнего плана рядов и спаннеров до вложенных Space.
 //! Сегменты многоколоночника между охватывающими элементами (column-span: all).
 
 use crate::dom::whitespace::is_blank;
@@ -7,8 +8,8 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
@@ -16,7 +17,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 pub(crate) fn multicol_spanner_segments(
     mut d: gpui::Div,
     e: &Element,
-    merged: Computed,
+    merged: BoxStyle,
     opts: &RenderOpts,
     col_w_px: Option<f32>,
     want: Option<usize>,
@@ -38,11 +39,11 @@ pub(crate) fn multicol_spanner_segments(
     let mut kids = e.children.clone();
     if e.tag == "fieldset"
         && let Some(i) = kids.iter().position(
-            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style)),
+            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style.used())),
         )
     {
         let legend = kids.remove(i);
-        d = d.children(opts.cx.build.blocks(&[legend], &merged, opts));
+        d = d.children(opts.cx.contracts.build.blocks(&[legend], &merged, opts));
     }
     for chunk in kids.split_inclusive(&is_span) {
         let (body, span) = match chunk.split_last() {
@@ -60,7 +61,7 @@ pub(crate) fn multicol_spanner_segments(
             seg_open = true;
             let mut seg = e.clone();
             seg.children = body.to_vec();
-            seg.style.column_span = None;
+            seg.style.used_mut().column_span = None;
             // Одна колонка со спаннером (`lone_span`) — ряд рисуется
             // обычным блоком: `column_flow` спускается в
             // единственного блочного ребёнка и рисует только его
@@ -80,7 +81,7 @@ pub(crate) fn multicol_spanner_segments(
                 // он сам выберет укладку колонок; коробка
                 // (фон/рамки/поля) остаётся на хосте.
                 let mut sub = seg.clone();
-                sub.style.background = None;
+                sub.style.used_mut().background = None;
                 // Всё, что многоколоночник рисует и сдвигает КОРОБКОЙ,
                 // уже стоит на хосте `d` (`styled_div_with(e, ..)`);
                 // клон ряда повторял это на каждом ряду: контур и
@@ -93,33 +94,34 @@ pub(crate) fn multicol_spanner_segments(
                 // §overflow режет коробка многоколоночника, а не ряд.
                 // Ряд остаётся содержащим блоком (`relative`), как
                 // прежде.
-                sub.style.gradient = None;
-                sub.style.bg_image = None;
-                sub.style.border_image = None;
-                sub.style.shadows = Vec::new();
-                sub.style.inset_shadows = Vec::new();
-                sub.style.outline = None;
-                sub.style.opacity = None;
-                sub.style.transform = None;
-                sub.style.filter = None;
-                sub.style.mask_image = None;
-                sub.style.backdrop_blur = None;
+                sub.style.used_mut().gradient = None;
+                sub.style.used_mut().bg_image = None;
+                sub.style.used_mut().border_image = None;
+                sub.style.used_mut().shadows = Vec::new();
+                sub.style.used_mut().inset_shadows = Vec::new();
+                sub.style.used_mut().outline = None;
+                sub.style.used_mut().opacity = None;
+                sub.style.used_mut().transform = None;
+                sub.style.used_mut().filter = None;
+                sub.style.used_mut().mask_image = None;
+                sub.style.used_mut().backdrop_blur = None;
                 if matches!(
-                    sub.style.position,
+                    sub.style.used().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 ) {
-                    sub.style.position = Some(crate::style::computed::Position::Relative);
+                    sub.style.used_mut().position =
+                        Some(crate::style::computed::Position::Relative);
                 }
-                sub.style.inset = Default::default();
-                sub.style.z_index = None;
-                sub.style.overflow_x = None;
-                sub.style.overflow_y = None;
-                sub.style.margin = Default::default();
-                sub.style.padding = Default::default();
-                sub.style.border_width = Default::default();
-                sub.style.width = None;
-                sub.style.height = None;
+                sub.style.used_mut().inset = Default::default();
+                sub.style.used_mut().z_index = None;
+                sub.style.used_mut().overflow_x = None;
+                sub.style.used_mut().overflow_y = None;
+                sub.style.used_mut().margin = Default::default();
+                sub.style.used_mut().padding = Default::default();
+                sub.style.used_mut().border_width = Default::default();
+                sub.style.used_mut().width = None;
+                sub.style.used_mut().height = None;
                 // Хвост после спаннера при `column-fill: auto` —
                 // остаток коробки (`rest_h`): укладка заполняет
                 // колонки подряд, а не балансирует. Только
@@ -131,13 +133,17 @@ pub(crate) fn multicol_spanner_segments(
                         is_blank(n)
                             || matches!(n, Node::Element(k)
                                 if !k.inline
-                                    && shape_full(k, 4, ShapeCx::COLUMNS, vcx).is_some())
+                                    && (crate::layout::fragment::flow::independent_copy(k)
+                                        || crate::layout::fragment::flow::empty_floats(k)
+                                        // ADR P-19 TRANSITIONAL(F2-3): хвост со своим вложенным
+                                        // планом ещё зависит от consumed внешнего ряда.
+                                        || shape_full(k, 4, ShapeCx::COLUMNS.observed(opts), vcx).is_some()))
                     })
                     && let Some(rest) = rest_h
                 {
-                    sub.style.height = Some(Len::Px(rest));
+                    sub.style.used_mut().height = Some(Len::Px(rest));
                 }
-                d = d.child(div().children(opts.cx.build.blocks(
+                d = d.child(div().children(opts.cx.contracts.build.blocks(
                     &[Node::Element(sub)],
                     &merged,
                     opts,
@@ -165,7 +171,7 @@ pub(crate) fn multicol_spanner_segments(
             }
             seg_open = true;
             span_prev = Some(key);
-            let inner = inherit(&merged, &sp.style, vcx);
+            let inner = box_style(&merged, &sp.style, vcx);
             // Спаннер — независимый контекст форматирования
             // (§column-span). Голый `styled_div_with` — блок taffy,
             // и тот схлопывал поле первого/последнего ребёнка
@@ -177,14 +183,14 @@ pub(crate) fn multicol_spanner_segments(
             // пути (`d.flex().flex_col()` при пустом `display`), где
             // поля детей сводит сам `blocks()` — а он с предикатом
             // `own_context_style` поле наружу больше не отдаёт.
-            let shell = opts.cx.build.styled_box(sp, &inner, &opts.cx);
+            let shell = opts.cx.contracts.build.styled_box(sp, &inner, &opts.cx);
             let shell =
                 if matches!(inner.display, None | Some(Display::Block)) && !inner.wm().vertical() {
                     shell.flex().flex_col()
                 } else {
                     shell
                 };
-            d = d.child(shell.children(opts.cx.build.blocks(&sp.children, &inner, opts)));
+            d = d.child(shell.children(opts.cx.contracts.build.blocks(&sp.children, &inner, opts)));
         }
     }
     // Нижняя сторожка: нижнее поле последнего спаннера остаётся

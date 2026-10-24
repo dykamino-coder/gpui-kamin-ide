@@ -12,7 +12,7 @@ pub(crate) use frozen::{bake_frozen, sample_at};
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement};
 
@@ -22,10 +22,10 @@ use gpui::{AnyElement, IntoElement};
 /// применить: у собранного элемента стиль уже зафиксирован.
 pub(crate) fn transitioned(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let seconds = e.style.transition?;
+    let seconds = e.style.used().transition?;
     let hover = e.hover.clone()?;
     let id = e.state_id("html-transition", opts.cx.vcx());
     let node = e.clone();
@@ -33,12 +33,12 @@ pub(crate) fn transitioned(
     let opts = opts.clone();
     let build = std::rc::Rc::new(move |k: f32| {
         let mut mixed = node.clone();
-        mixed.style = node.style.blend(&hover, k).into();
+        mixed.style = node.style.used().blend(hover.cascaded(), k).into();
         // Слой наведения снят: его роль уже сыграла доля перехода, иначе
         // стиль прыгнул бы поверх плавного.
         mixed.hover = None;
-        mixed.style.transition = None;
-        opts.cx.build.element(&mixed, &inherited, &opts)
+        mixed.style.used_mut().transition = None;
+        opts.cx.contracts.build.element(&mixed, &inherited, &opts)
     });
     Some(crate::animation::transition::Transition::new(id, seconds, build).into_any_element())
 }

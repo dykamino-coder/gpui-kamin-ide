@@ -102,7 +102,7 @@ pub(super) fn table_row_cuts(
         } else if let Some(s) = avoid_run.take() {
             solid.push((s, *y));
         }
-        if r.row.style.break_inside_avoid {
+        if r.row.style.used().break_inside_avoid {
             solid.push((open, start + h));
         }
         if let Some((g, gs)) = *group_open
@@ -130,7 +130,7 @@ pub(super) fn table_row_cuts(
                 Some((a, _)) => (a, start + h - a),
                 None => (start, h),
             });
-            *avoid = sec.style.break_inside_avoid;
+            *avoid = sec.style.used().break_inside_avoid;
         }
         row_box.push((start, h));
         *y = start + h;

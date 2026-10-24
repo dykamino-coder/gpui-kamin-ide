@@ -3,9 +3,10 @@
 //! `contain: size`, `object-position` у `Img` и замещаемый `<svg>` внутри стилевого `div`
 //! при ненулевой рамке или отбивке (CSS 2.1 §10.3.4), чтобы фон и рамка рисовались.
 
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -13,92 +14,98 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 /// replaced content; its auto dimensions use the default object size.
 pub(crate) fn empty_iframe_size(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     viewport: (f32, f32),
     vcx: ValueCx<'_>,
 ) -> Element {
     let mut copy = crate::layout::replaced::image::pct_height_to_px(e, inherited);
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
     // Resolve that inherited basis before treating an indefinite percentage as auto.
-    let merged = crate::style::cascade::inherit::inherit(inherited, &copy.style, vcx);
-    copy.style.height = merged.height;
-    copy.style.cb_height_def = merged.cb_height_def;
-    copy.style.resolve_viewport(viewport, vcx);
+    let merged = crate::style::cascade::materialize::box_style(inherited, &copy.style, vcx);
+    copy.style.used_mut().height = merged.height;
+    copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;
+    if copy.style.used().has_viewport_lengths(vcx) {
+        copy.style.used_mut().resolve_viewport(viewport, vcx);
+    }
     if vcx.doc.quirks()
         && !matches!(
-            copy.style.position,
+            copy.style.used().position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
             )
         )
-        && let Some(Len::Pct(k)) = copy.style.height
+        && let Some(Len::Pct(k)) = copy.style.used().height
     {
-        copy.style.height = Some(Len::Px(k * inherited.quirk_pct_base.unwrap_or(viewport.1)));
+        copy.style.used_mut().height =
+            Some(Len::Px(k * inherited.quirk_pct_base.unwrap_or(viewport.1)));
     }
     // Containment suppresses natural dimensions (CSS Containment 2 §3.1),
     // while retaining authored dimensions, ratios and intrinsic overrides.
-    if copy.style.contain_size == Some(true) {
+    if copy.style.used().contain_size == Some(true) {
         return copy;
     }
     let ratio = copy
         .style
+        .used()
         .aspect_ratio
         .is_some_and(|r| r.is_finite() && r > 0.0);
-    let auto_width = matches!(copy.style.width, None | Some(Len::Auto));
-    let auto_height = matches!(copy.style.height, None | Some(Len::Auto))
-        || (matches!(copy.style.height, Some(Len::Pct(_)))
+    let auto_width = matches!(copy.style.used().width, None | Some(Len::Auto));
+    let auto_height = matches!(copy.style.used().height, None | Some(Len::Auto))
+        || (matches!(copy.style.used().height, Some(Len::Pct(_)))
             && !inherited.cb_height_def
             && !matches!(
-                copy.style.position,
+                copy.style.used().position,
                 Some(
                     crate::style::computed::Position::Absolute
                         | crate::style::computed::Position::Fixed
                 )
             ));
     if auto_width && (!ratio || auto_height) {
-        let width = if copy.style.contains_width() {
-            copy.style.contain_intrinsic.0.unwrap_or(0.0)
+        let width = if copy.style.used().contains_width() {
+            copy.style.used().contain_intrinsic.0.unwrap_or(0.0)
         } else {
-            300.0
+            DEFAULT_REPLACED_WIDTH_PX
         };
-        copy.style.width = Some(Len::Px(width));
+        copy.style.used_mut().width = Some(Len::Px(width));
     }
     if auto_height {
-        copy.style.height = if ratio {
+        copy.style.used_mut().height = if ratio {
             None
         } else {
-            let height = if copy.style.contains_height() {
-                copy.style.contain_intrinsic.1.unwrap_or(0.0)
+            let height = if copy.style.used().contains_height() {
+                copy.style.used().contain_intrinsic.1.unwrap_or(0.0)
             } else {
-                150.0
+                DEFAULT_REPLACED_HEIGHT_PX
             };
             Some(Len::Px(height))
         };
     }
     if ratio
         && auto_height
-        && let (Some(Len::Px(w)), Some(r)) = (copy.style.width, copy.style.aspect_ratio)
+        && let (Some(Len::Px(w)), Some(r)) =
+            (copy.style.used().width, copy.style.used().aspect_ratio)
     {
-        copy.style.height = Some(Len::Px(w / r));
+        copy.style.used_mut().height = Some(Len::Px(w / r));
     }
     copy
 }
 
 pub(crate) fn empty_iframe(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
-    if copy.style.contain_size == Some(true) {
+    if copy.style.used().contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return opts.cx.build.replaced(&copy, None, &opts.cx);
+        return opts.cx.contracts.build.replaced(&copy, None, &opts.cx);
     }
     opts.cx
+        .contracts
         .build
-        .styled_box(&copy, &copy.style, &opts.cx)
+        .styled_box(&copy, &BoxStyle::shared(copy.style.used()), &opts.cx)
         .flex_shrink_0()
         .into_any_element()
 }
@@ -106,7 +113,7 @@ pub(crate) fn empty_iframe(
 pub(crate) fn default_iframe(e: &Element) -> bool {
     e.tag == "iframe"
         && e.attr("src").is_none_or(|src| src.trim().is_empty())
-        && e.style.contain_size != Some(true)
+        && e.style.used().contain_size != Some(true)
 }
 
 /// Замещаемый `<svg>` с учётом его CSS-коробки (CSS 2.1 §10.3.4): растр —
@@ -119,25 +126,25 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
 pub(crate) fn svg_replaced(
     e: &Element,
     sized: &Element,
-    merged: &Computed,
+    merged: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let boxed = svg_has_box(merged);
     let inner;
     let sized = if boxed {
         let mut copy = sized.clone();
-        copy.style.background = None;
+        copy.style.used_mut().background = None;
         inner = copy;
         &inner
     } else {
         sized
     };
-    let raster = crate::svg::element_with_html(sized, opts);
+    let raster = opts.cx.contracts.build.svg(sized, opts);
     if !boxed {
         return raster;
     }
     let px_of = px_lossy_zero;
-    let (w, h) = crate::svg::size::size_of(sized);
+    let (w, h) = crate::layout::replaced::svg_size::size_of(sized);
     // Empty replaced content still has its CSS padding, border and background.
     if raster.is_none() && w > 0.0 && h > 0.0 {
         return None;
@@ -155,6 +162,7 @@ pub(crate) fn svg_replaced(
         + px_of(merged.padding.bottom);
     Some(
         opts.cx
+            .contracts
             .build
             .styled_box(e, merged, &opts.cx)
             .w(px(bw))
@@ -188,18 +196,18 @@ mod tests {
         let doc = crate::document::state::DocState::new(Default::default());
         let mut frame =
             Element::synthetic("iframe", Computed::default(), Default::default(), vec![]);
-        frame.style.floated_box = true;
-        frame.style.flow_root = Some(true);
+        frame.style.used_mut().floated_box = true;
+        frame.style.used_mut().flow_root = Some(true);
         for (height, expected) in [(None, 150.0), (Some(Len::Pct(0.5)), 96.0)] {
-            frame.style.height = height;
-            let parent = Computed {
+            frame.style.used_mut().height = height;
+            let mut parent = BoxStyle::from(Computed {
                 height: Some(Len::Px(192.0)),
-                cb_height_def: true,
                 ..Default::default()
-            };
+            });
+            parent.cb_height_def = true;
             let sized = empty_iframe_size(&frame, &parent, (800.0, 600.0), doc.values());
-            assert_eq!(sized.style.width, Some(Len::Px(300.0)));
-            assert_eq!(sized.style.height, Some(Len::Px(expected)));
+            assert_eq!(sized.style.used().width, Some(Len::Px(300.0)));
+            assert_eq!(sized.style.used().height, Some(Len::Px(expected)));
         }
     }
 }

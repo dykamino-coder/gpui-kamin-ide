@@ -3,6 +3,7 @@
 //! открывающие знаки класса OP (UAX #14), широкие знаки письма (без хангыля) и широкие знаки
 //! препинания, между которыми перевод строки удаляется (css-text-3 §4.1.2).
 
+use crate::defaults::{FALLBACK_NORMAL_LINE_HEIGHT, MEDIUM_FONT_SIZE_PX};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline::*;
@@ -37,12 +38,12 @@ pub(super) fn opening_punct(c: char) -> bool {
 pub(crate) fn blank_line_break(style: &Computed) -> AnyElement {
     let size = match style.font_size {
         Some(Len::Px(v)) => v,
-        _ => 16.0,
+        _ => MEDIUM_FONT_SIZE_PX,
     };
     let lh = match style.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => size * 1.2,
+        _ => size * FALLBACK_NORMAL_LINE_HEIGHT,
     };
     gpui::div()
         .w_full()

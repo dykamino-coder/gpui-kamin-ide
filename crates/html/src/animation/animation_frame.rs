@@ -8,9 +8,16 @@
 use crate::dom::Element;
 use crate::style::computed::Computed;
 
-pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
+pub(super) fn sample(
+    e: &Element,
+    frame: &Computed,
+    transforms: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Element {
     let mut inner = e.clone();
-    let style = &mut inner.style;
+    // Animations are an origin of the cascade (css-cascade-5 §6.2): the sampled
+    // values enter the cascaded style and are computed with it.
+    let style = inner.style.cascaded_mut();
     style.margin.top = frame.margin.top.or(style.margin.top);
     style.margin.right = frame.margin.right.or(style.margin.right);
     style.margin.bottom = frame.margin.bottom.or(style.margin.bottom);
@@ -59,7 +66,7 @@ pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element
             style.transform = frame.transform;
         }
     }
-    inner
+    crate::style::cascade::materialize::rematerialize(&e.style, inner, vcx)
 }
 
 #[cfg(test)]
@@ -67,59 +74,81 @@ mod tests {
     use super::*;
     use crate::style::values::value::{Color, Len};
 
+    fn test_vcx() -> crate::document::state::ValueCx<'static> {
+        let doc = Box::leak(Box::new(crate::document::state::DocState::new(
+            crate::style::css::Media::default(),
+        )));
+        doc.values()
+    }
+
     #[test]
     fn sampled_height_keeps_identity_placement_edges_and_unanimated_width() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
         element.node_id = 17;
-        element.style.width = Some(Len::Px(200.0));
-        element.style.height = Some(Len::Px(100.0));
-        element.style.margin.top = Some(Len::Px(12.0));
-        element.style.padding.left = Some(Len::Px(4.0));
+        element.style.used_mut().width = Some(Len::Px(200.0));
+        element.style.used_mut().height = Some(Len::Px(100.0));
+        element.style.used_mut().margin.top = Some(Len::Px(12.0));
+        element.style.used_mut().padding.left = Some(Len::Px(4.0));
         for height in [50.0, 75.0, 100.0] {
             let frame = Computed {
                 height: Some(Len::Px(height)),
                 ..Computed::default()
             };
-            let sampled = sample(&element, &frame, false);
+            let sampled = sample(&element, &frame, false, test_vcx());
             assert_eq!(sampled.node_id, 17);
-            assert_eq!(sampled.style.height, Some(Len::Px(height)));
-            assert_eq!(sampled.style.width, element.style.width);
-            assert_eq!(sampled.style.margin.top, element.style.margin.top);
-            assert_eq!(sampled.style.padding.left, element.style.padding.left);
+            assert_eq!(sampled.style.used().height, Some(Len::Px(height)));
+            assert_eq!(sampled.style.used().width, element.style.used().width);
+            assert_eq!(
+                sampled.style.used().margin.top,
+                element.style.used().margin.top
+            );
+            assert_eq!(
+                sampled.style.used().padding.left,
+                element.style.used().padding.left
+            );
         }
-        assert_eq!(element.style.height, Some(Len::Px(100.0)));
+        assert_eq!(element.style.used().height, Some(Len::Px(100.0)));
     }
 
     #[test]
     fn sampled_percent_and_color_replace_actual_node_declarations() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.width = Some(Len::Px(200.0));
-        element.style.height = Some(Len::Px(100.0));
-        element.style.color = Some(Color {
+        element.style.used_mut().width = Some(Len::Px(200.0));
+        element.style.used_mut().height = Some(Len::Px(100.0));
+        element.style.used_mut().color = Some(Color {
             r: 0.0,
             g: 0.0,
             b: 1.0,
             a: 1.0,
         });
-        element.style.rotate_prop = Some(10.0);
-        let frame = Computed {
-            width: Some(Len::Pct(0.5)),
-            color: Some(Color {
+        element.style.used_mut().rotate_prop = Some(10.0);
+        let frame = {
+            let mut with_inherited = Computed {
+                width: Some(Len::Pct(0.5)),
+                rotate_prop: Some(20.0),
+                ..Computed::default()
+            };
+            with_inherited.color = Some(Color {
                 r: 1.0,
                 g: 0.0,
                 b: 0.0,
                 a: 1.0,
-            }),
-            rotate_prop: Some(20.0),
-            ..Computed::default()
+            });
+            with_inherited
         };
-        let sampled = sample(&element, &frame, false);
-        assert_eq!(sampled.style.width, frame.width);
-        assert_eq!(sampled.style.height, element.style.height);
-        assert_eq!(sampled.style.color, frame.color);
-        assert_eq!(sampled.style.rotate_prop, element.style.rotate_prop);
+        let sampled = sample(&element, &frame, false, test_vcx());
+        assert_eq!(sampled.style.used().width, frame.width);
+        assert_eq!(sampled.style.used().height, element.style.used().height);
+        assert_eq!(sampled.style.cascaded().color, frame.color);
         assert_eq!(
-            sample(&element, &frame, true).style.rotate_prop,
+            sampled.style.used().rotate_prop,
+            element.style.used().rotate_prop
+        );
+        assert_eq!(
+            sample(&element, &frame, true, test_vcx())
+                .style
+                .used()
+                .rotate_prop,
             frame.rotate_prop
         );
     }

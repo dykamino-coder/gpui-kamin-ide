@@ -34,7 +34,7 @@ pub(crate) use stack::grow_grid_track;
 /// начинает новый ряд. Любая непонятная форма — пустой список, а не догадка.
 pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(f32, f32)>) {
     use crate::style::computed::{AutoFlow, Placement};
-    let s = &c.style;
+    let s = &*c.style.used();
     if matches!(
         s.grid_auto_flow,
         Some(AutoFlow::Col) | Some(AutoFlow::ColDense) | Some(AutoFlow::RowDense)
@@ -53,7 +53,7 @@ pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(
     // область в один ряд. `Some(None)` — ряд по курсору, `None` — форма,
     // которой мы не знаем (отказ целиком, как прежде).
     let own_row = |k: &Element| -> Option<Option<usize>> {
-        if let Some(name) = &k.style.grid_area_name {
+        if let Some(name) = &k.style.used().grid_area_name {
             let areas = s.grid_areas.as_ref()?;
             let hit: Vec<usize> = areas
                 .iter()
@@ -66,7 +66,7 @@ pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(
                 _ => None,
             };
         }
-        match k.style.grid_row {
+        match k.style.used().grid_row {
             None | Some((Placement::Auto, Placement::Auto)) => Some(None),
             Some((Placement::Line(a), Placement::Auto)) if a >= 1 => Some(Some((a - 1) as usize)),
             Some((Placement::Line(a), Placement::Line(b))) if a >= 1 && b == a + 1 => {
@@ -80,7 +80,7 @@ pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(
         let Node::Element(k) = n else {
             return (Vec::new(), Vec::new());
         };
-        if matches!(k.style.display, Some(Display::None)) || out_of_flow(&k.style) {
+        if matches!(k.style.used().display, Some(Display::None)) || out_of_flow(&k.style.used()) {
             continue;
         }
         let Some(r) = own_row(k) else {
@@ -107,7 +107,7 @@ pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(
         let r = match fixed {
             Some(r) => r,
             None => {
-                let (line, span) = match k.style.grid_col {
+                let (line, span) = match k.style.used().grid_col {
                     None | Some((Placement::Auto, Placement::Auto)) => (None, 1usize),
                     Some((Placement::Span(m), Placement::Auto)) => (None, m.max(1) as usize),
                     Some((Placement::Line(a), Placement::Span(m))) => (Some(a), m.max(1) as usize),
@@ -157,7 +157,7 @@ pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(
         if r + 1 < bands.len() && edge_break(k, true, vcx) {
             out.push(bands[r + 1].0);
         }
-        if r > 0 && (k.style.break_inside_avoid || size_monolith(k)) {
+        if r > 0 && (k.style.used().break_inside_avoid || size_monolith(k)) {
             mono.push(bands[r]);
         }
     }

@@ -1,6 +1,7 @@
 //! Диспетчер специальных тегов; сохраняет порядок ветвей element.
 
 use super::element;
+use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level;
 use crate::layout::float::band_flow_host::band_flow_host;
@@ -10,26 +11,27 @@ use crate::layout::replaced::iframe::object_is_document;
 use crate::layout::replaced::image::pct_height_to_px;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::layout::replaced::replaced_used_style;
+use crate::layout::replaced::{replaced_used_style, svg_size};
 use crate::layout::table::anon::anon_element;
 use crate::layout::table::table;
 use crate::paint::box_tree::styled::styled_div;
 use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::replaced::image::{image, image_with};
 use crate::render::generic_box::generic_box;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dispatch_element(
     e: &Element,
-    merged: Computed,
-    inherited: &Computed,
+    merged: BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
     built_iframe: Option<AnyElement>,
 ) -> AnyElement {
+    let st = e.style.used();
     let vcx = opts.cx.vcx();
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
         return math;
@@ -43,8 +45,7 @@ pub(crate) fn dispatch_element(
     match e.tag.as_str() {
         // CSS Lists 3 §2: a block list item generates its own marker even
         // when its parent is an ordinary block rather than a list container.
-        _ if (e.style.display == Some(Display::ListItem)
-            || (e.tag == "li" && e.style.display.is_none()))
+        _ if (st.display == Some(Display::ListItem) || (e.tag == "li" && st.display.is_none()))
             && !matches!(
                 e.tag.as_str(),
                 "img" | "svg" | "embed" | "object" | "video" | "canvas" | "iframe"
@@ -68,15 +69,12 @@ pub(crate) fn dispatch_element(
             // (`c43-rpl-bbx-002`). CSS 2.1 §4.3.2: `em` — вычисленный кегль
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
+            let used = copy.style.used_mut();
             if inline_level(e) {
-                replaced_used_style::inline_percentage_width(&mut copy.style, opts.cx.avail_w);
+                replaced_used_style::inline_percentage_width(used, opts.cx.constraints.avail_w);
             }
-            copy.style.image_orient_none = merged.image_orient_none;
-            crate::layout::replaced::image::inherit_item_metadata(
-                &mut copy.style,
-                &merged,
-                inherited,
-            );
+            used.image_orient_none = merged.image_orient_none;
+            crate::layout::replaced::image::inherit_item_metadata(used, &merged, inherited);
             // Признак определённого блока (§10.5) — от слитого стиля: держатель
             // строится из сырого, и `apply` иначе выбрасывал `height: %`
             // (см. строчный рукав `"img"` в `atom_element`; ячейка и лунки —
@@ -85,10 +83,10 @@ pub(crate) fn dispatch_element(
                 inherited.display,
                 Some(Display::TableCell) | Some(Display::GridLanes)
             ) {
-                copy.style.cb_height_def = merged.cb_height_def;
+                used.cb_height_def_hint = merged.cb_height_def;
             }
             // Единицы окна — в точки, как у строчной картинки.
-            copy.style.resolve_viewport(opts.viewport, vcx);
+            used.resolve_viewport(opts.viewport, vcx);
             crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
                 image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
             })
@@ -101,8 +99,7 @@ pub(crate) fn dispatch_element(
         // контекст просмотра держит размер по умолчанию (CSS 2.1 §§10.3.2,
         // 10.6.2).
         "iframe"
-            if e.style.floated_box
-                && crate::layout::replaced::replaced_content::default_iframe(e) =>
+            if st.floated_box && crate::layout::replaced::replaced_content::default_iframe(e) =>
         {
             crate::layout::replaced::replaced_content::empty_iframe(e, inherited, opts)
         }
@@ -114,23 +111,27 @@ pub(crate) fn dispatch_element(
         // (рукав `"iframe"` в `atom_element`), у обёрток флоатов свой путь
         // размеров с процентной базой (`float-replaced-height-005/007`).
         "iframe"
-            if e.style.float.is_none_or(|f| f == 0)
+            if st.float.is_none_or(|f| f == 0)
                 && matches!(inherited.display, None | Some(Display::Block))
-                && e.style.flow_root != Some(true)
+                && st.flow_root != Some(true)
                 && !matches!(
-                    e.style.width,
+                    st.width,
                     Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
                 ) =>
         {
             let mut copy = pct_height_to_px(e, inherited);
-            if !matches!(copy.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
-                copy.style.width = Some(Len::Px(300.0));
+            if !matches!(
+                copy.style.used().width,
+                Some(Len::Px(_)) | Some(Len::Pct(_))
+            ) {
+                copy.style.used_mut().width = Some(Len::Px(DEFAULT_REPLACED_WIDTH_PX));
             }
-            let pct_ok = matches!(copy.style.height, Some(Len::Pct(_))) && merged.cb_height_def;
-            if !matches!(copy.style.height, Some(Len::Px(_))) && !pct_ok {
-                copy.style.height = Some(Len::Px(150.0));
+            let pct_ok =
+                matches!(copy.style.used().height, Some(Len::Pct(_))) && merged.cb_height_def;
+            if !matches!(copy.style.used().height, Some(Len::Px(_))) && !pct_ok {
+                copy.style.used_mut().height = Some(Len::Px(DEFAULT_REPLACED_HEIGHT_PX));
             }
-            copy.style.cb_height_def = merged.cb_height_def;
+            copy.style.used_mut().cb_height_def_hint = merged.cb_height_def;
             styled_div(&copy, &opts.cx)
                 .flex_shrink_0()
                 .into_any_element()
@@ -157,16 +158,14 @@ pub(crate) fn dispatch_element(
             // уже собственный стиль рисунка.
             let cb_w = match inherited.width {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
-                _ => opts.cx.cb_width.filter(|v| *v > 0.0),
+                _ => opts.cx.constraints.cb_width.filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
-            svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(
-                || {
-                    styled_div_with(e, &merged, &opts.cx)
-                        .child(SharedString::from("[рисунок]"))
-                        .into_any_element()
-                },
-            )
+            svg_replaced(e, &svg_size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(|| {
+                styled_div_with(e, &merged, &opts.cx)
+                    .child(SharedString::from("[рисунок]"))
+                    .into_any_element()
+            })
         }
         // `w_full` — растяжка по СТРОЧНОЙ оси горизонтального родителя. В
         // вертикальном родителе ширина — блочный размер (css-writing-modes-4
@@ -192,7 +191,7 @@ pub(crate) fn dispatch_element(
         // письмо, `rtl`) ведёт `taffy::compute::grid::lanes`.
         _ if merged.display == Some(Display::GridLanes) => {
             let mut copy = e.clone();
-            crate::dom::lanes_to_grid(&mut copy.style);
+            crate::dom::lanes_to_grid(copy.style.used_mut());
             element(&copy, inherited, opts)
         }
         // Таблица — независимый контекст форматирования: её строки в бюджет
@@ -200,32 +199,32 @@ pub(crate) fn dispatch_element(
         // Табличный путь минует общий, где стоит этот сторож (`makes_bfc`),
         // поэтому он ставится здесь.
         _ if matches!(
-            e.style.display,
+            st.display,
             Some(Display::Table) | Some(Display::InlineTable)
         ) =>
         {
-            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
+            let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             table(e, &merged, opts)
         }
         // Ряд, группа рядов или ячейка ВНЕ таблицы получают анонимную
         // таблицу-обёртку (css-tables-3 §3.1): иначе ячейки складывались
         // столбиком обычных блоков.
         _ if matches!(
-            e.style.display,
+            st.display,
             Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
         ) =>
         {
-            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
+            let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             let wrapper = anon_element("table", vec![Node::Element(e.clone())]);
             table(&wrapper, &merged, opts)
         }
         "table" => {
-            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
+            let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             table(e, &merged, opts)
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if e.style.display.is_none() => list::render(e, &merged, opts),
+        "ul" | "ol" if st.display.is_none() => list::render(e, &merged, opts),
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.

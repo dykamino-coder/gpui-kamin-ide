@@ -3,11 +3,12 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_strict;
 
 pub(super) fn layout_sizing(
     mut d: Div,
-    c: &Computed,
+    c: &BoxStyle,
     pad_x: f32,
     pad_y: f32,
     vcx: ValueCx<'_>,

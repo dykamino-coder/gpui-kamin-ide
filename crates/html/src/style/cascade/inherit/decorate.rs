@@ -1,9 +1,9 @@
-//! Оформление текста при наследовании: линии text-decoration, их цвет, толщина и смещение,
-//! распространение на потомков.
+//! Стадия коробки, оформление текста: линии text-decoration распространяются на потомков в потоке
+//! (css-text-decor-3 §2.1) с цветом, толщиной, смещением и шрифтом украшающей коробки.
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::computed::FontCx;
+use crate::style::computed::BoxStyle;
 
 /// Украшения текста (css-text-decor-3 §2.1): линии не наследуются, а
 /// РАСПРОСТРАНЯЮТСЯ на всех потомков в потоке, кроме атомарных строчных
@@ -13,34 +13,13 @@ use crate::style::computed::FontCx;
 pub(super) fn decorate(
     parent: &Computed,
     own: &Computed,
-    c: &mut Computed,
+    c: &mut BoxStyle,
     own_px: f32,
     vcx: ValueCx<'_>,
 ) {
     use crate::style::computed::Display as D;
     use crate::style::computed::Position as P;
     use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};
-    // Семейство для `ch`/`ex` — как у `resolve_em`: родовое `monospace`
-    // имени не даёт, а меряться должно тем шрифтом, которым набран текст.
-    let family = c.font_family.clone().unwrap_or_else(|| {
-        if c.monospace == Some(true) {
-            crate::text::metrics::mono_family_for(c.lang.as_deref(), vcx).to_string()
-        } else {
-            String::new()
-        }
-    });
-    let resolve = |l: DecorLen| match l {
-        DecorLen::Raw(raw) => raw
-            .to_px(None, FontCx::new(&family, own_px), vcx)
-            .map_or(DecorLen::Auto, DecorLen::Px),
-        other => other,
-    };
-    // Наследуемое смещение — вычисленной длиной (доля остаётся долей).
-    c.underline_offset = own
-        .underline_offset
-        .map(resolve)
-        .or(parent.underline_offset);
-    c.underline_pos = own.underline_pos.or(parent.underline_pos);
     let over_lang = c.lang.as_deref().is_some_and(|l| {
         let l = l.to_ascii_lowercase();
         ["ja", "ko", "mn"]
@@ -62,13 +41,14 @@ pub(super) fn decorate(
                 own.display,
                 Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
             ));
-    c.skip_ink = own.skip_ink.or(parent.skip_ink);
-    c.skip_spaces = own.skip_spaces.or(parent.skip_spaces);
-    c.decors = if blocked {
-        Vec::new()
-    } else {
-        parent.decors.clone()
-    };
+    set!(
+        c.decors,
+        if blocked {
+            Vec::new()
+        } else {
+            parent.decors.clone()
+        }
+    );
     // Линии, пришедшие в блок, рисуются на его анонимной строчной коробке
     // (css-text-decor-3 §2.1, пример 1): метрики и положение — от шрифта
     // этого блока (`text-decoration-subelements-004`).
@@ -78,23 +58,33 @@ pub(super) fn decorate(
         Some(_) => true,
     };
     if block {
-        for d in c.decors.iter_mut() {
-            d.font = DecorFont {
-                family: c.font_family.clone(),
-                monospace: c.monospace,
-                weight: c.font_weight,
-                italic: c.italic,
-                stretch: c.font_stretch,
-                size: own_px,
-            };
-            d.position = c.underline_pos.unwrap_or(0);
-            d.over_lang = over_lang;
+        let font = DecorFont {
+            family: c.font_family.clone(),
+            monospace: c.monospace,
+            weight: c.font_weight,
+            italic: c.italic,
+            stretch: c.font_stretch,
+            size: own_px,
+        };
+        let position = c.underline_pos.unwrap_or(0);
+        if c.decors
+            .iter()
+            .any(|d| d.font != font || d.position != position || d.over_lang != over_lang)
+        {
+            for d in c.decors.iter_mut() {
+                d.font = font.clone();
+                d.position = position;
+                d.over_lang = over_lang;
+            }
         }
     }
-    if let Some(lines) = own.td_lines.filter(|l| *l != 0)
+    if let Some(lines) = c.td_lines.filter(|l| *l != 0)
         && own.display != Some(D::Contents)
     {
-        let thickness = match own.td_thickness.map(resolve).unwrap_or_default() {
+        let family = crate::style::cascade::compute::decor_family(c, vcx);
+        let resolve =
+            |l| crate::style::cascade::compute::resolve_decor_len(l, &family, own_px, vcx);
+        let thickness = match c.td_thickness.map(resolve).unwrap_or_default() {
             DecorLen::Pct(k) => DecorLen::Px(k * own_px),
             t => t,
         };
@@ -110,8 +100,8 @@ pub(super) fn decorate(
         };
         let d = Decor {
             lines,
-            style: own.td_style.unwrap_or_default(),
-            color: c.used_color(&own.td_color),
+            style: c.td_style.unwrap_or_default(),
+            color: c.used_color(&c.td_color),
             thickness,
             offset,
             position: c.underline_pos.unwrap_or(0),
@@ -135,6 +125,14 @@ pub(super) fn decorate(
             c.decors.push(d);
         }
     }
-    c.underline = Some(c.decors.iter().any(|d| d.lines & DECOR_UNDER != 0));
-    c.line_through = Some(c.decors.iter().any(|d| d.lines & DECOR_THROUGH != 0));
+    // Отсутствие линии — `None` или `Some(false)`: равные по смыслу значения
+    // стиль коробки не копируют.
+    let under = c.decors.iter().any(|d| d.lines & DECOR_UNDER != 0);
+    if c.underline.unwrap_or(false) != under {
+        c.underline = Some(under);
+    }
+    let through = c.decors.iter().any(|d| d.lines & DECOR_THROUGH != 0);
+    if c.line_through.unwrap_or(false) != through {
+        c.line_through = Some(through);
+    }
 }

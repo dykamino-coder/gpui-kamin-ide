@@ -45,8 +45,8 @@ fn plain_length(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
 }
 
 /// `column-width: auto | <length [0,∞]>` (css-multicol-1 §3.1); `None`
-/// внутри — `auto`. Нулевая ширина колонке не задаётся (раскладка числа
-/// колонок делит на неё) — прежнее ограничение обработчика.
+/// внутри — `auto`. Вычисленный ноль сохраняется; used value раскладка
+/// ограничивает снизу одним CSS px (css-multicol-1 §3.1).
 pub(crate) fn column_width(v: &str, vcx: ValueCx<'_>) -> Option<Option<Len>> {
     if v.trim().eq_ignore_ascii_case("auto") {
         return Some(None);
@@ -55,7 +55,7 @@ pub(crate) fn column_width(v: &str, vcx: ValueCx<'_>) -> Option<Option<Len>> {
         return None;
     }
     plain_length(v.trim(), vcx)
-        .filter(|l| !matches!(l, Len::Px(w) | Len::Em(w) if *w <= 0.0))
+        .filter(|l| !matches!(l, Len::Px(w) | Len::Em(w) if *w < 0.0))
         .map(Some)
 }
 

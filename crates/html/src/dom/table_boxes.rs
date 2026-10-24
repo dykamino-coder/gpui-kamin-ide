@@ -17,9 +17,9 @@ use crate::style::computed::{Computed, Display};
 /// трогает — их судьбу решает прежний путь.
 fn anon_role(n: &Node) -> Option<bool> {
     let Node::Element(e) = n else { return None };
-    if e.style.float.is_some_and(|f| f != 0)
+    if e.style.used().float.is_some_and(|f| f != 0)
         || matches!(
-            e.style.position,
+            e.style.used().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -32,7 +32,7 @@ fn anon_role(n: &Node) -> Option<bool> {
     if is_cell(e) {
         return Some(false);
     }
-    match e.style.display {
+    match e.style.used().display {
         Some(Display::TableRow) | Some(Display::TableRowGroup) => Some(true),
         _ => match e.tag.as_str() {
             "tr" | "thead" | "tbody" | "tfoot" => Some(true),
@@ -60,7 +60,7 @@ pub(crate) fn inline_anon_tables(nodes: &mut [Node]) {
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         inline_anon_tables(&mut e.children);
-        if e.style.display.is_none()
+        if e.style.used().display.is_none()
             && e.inline
             && e.children.iter().any(|c| anon_role(c).is_some())
         {
@@ -78,7 +78,8 @@ fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
             return;
         }
         let mut t = anon_element("table", std::mem::take(run));
-        t.style.display = Some(display);
+        t.style.cascaded_mut().display = Some(display);
+        t.marks.anonymous_wrapper = true;
         // Свой номер узла: по нему таблица просит буферы проб. Нулевой у
         // всех анонимных узлов общий, и две таблицы делили бы один буфер —
         // первая забрала бы его, вторая осталась пустой.
@@ -140,7 +141,7 @@ pub(crate) fn col_role(el: &Element) -> Option<bool> {
     match el.tag.as_str() {
         "col" => Some(false),
         "colgroup" => Some(true),
-        _ => match el.style.col_role {
+        _ => match el.style.used().col_role {
             Some(0) => Some(false),
             Some(1) => Some(true),
             _ => None,
@@ -149,7 +150,7 @@ pub(crate) fn col_role(el: &Element) -> Option<bool> {
 }
 
 pub(crate) fn is_cell(element: &Element) -> bool {
-    match element.style.display {
+    match element.style.used().display {
         Some(Display::TableCell) => true,
         None => matches!(element.tag.as_str(), "td" | "th"),
         _ => false,

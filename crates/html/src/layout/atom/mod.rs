@@ -12,8 +12,7 @@ use crate::layout::intrinsic_wrap::content_sized_wraps;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::writing_mode::rotated_atom;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -24,6 +23,7 @@ mod replaced;
 pub(super) use pct::pct_resolved_against_block;
 pub(crate) use pct::pct_resolved_for_wrapper;
 mod raw;
+use crate::style::cascade::materialize::box_style;
 use raw::atom_element_raw;
 
 /// Не-текстовые инлайн-элементы, которые в поток встроить нельзя.
@@ -36,17 +36,17 @@ use raw::atom_element_raw;
 /// (`grid-lanes-intrinsic-sizing-cols-002-fr`; css-sizing-3 §5.1).
 pub(crate) fn atom_element(
     e: &Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     // Atomic inline containers own a scrollport just like block containers
     // (CSS Overflow 3 §3). The raw atom path otherwise only clips their content.
-    if !e.style.scroller
-        && e.style.snap.axis != 0
+    if !e.style.used().scroller
+        && e.style.used().snap.axis != 0
         && !replaced_tag(e)
         && matches!(
-            e.style.display,
+            e.style.used().display,
             Some(
                 crate::style::computed::Display::InlineBlock
                     | crate::style::computed::Display::InlineFlex
@@ -54,7 +54,7 @@ pub(crate) fn atom_element(
                     | crate::style::computed::Display::InlineTable
             )
         )
-        && e.style.inline_display != Some(true)
+        && e.style.used().inline_display != Some(true)
         && let Some(scroll) = crate::interactive::scroll_box::scrollable(e, inherited, opts)
     {
         return Some(scroll);
@@ -76,19 +76,19 @@ pub(crate) fn atom_element(
     // горизонтально, но ось строки там вертикальна.
     let inline_axis_only = !inherited.wm().vertical()
         && !inherited.wm().turned()
-        && !e.style.wm().vertical()
-        && keyword(e.style.width)
-        && !keyword(e.style.height);
+        && !e.style.cascaded().wm().vertical()
+        && keyword(e.style.used().width)
+        && !keyword(e.style.used().height);
     let wraps = inline_axis_only
         && content_sized_wraps(e)
         && !replaced_tag(e)
-        && !at_static_position(&e.style)
+        && !at_static_position(&e.style.used())
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
     Some(if wraps {
-        opts.cx.build.content_sized(
+        opts.cx.contracts.build.content_sized(
             el,
-            &e.style,
-            &inherit(inherited, &e.style, vcx),
+            &BoxStyle::shared(e.style.used()),
+            &box_style(inherited, &e.style, vcx),
             (None, None),
             &opts.cx,
         )

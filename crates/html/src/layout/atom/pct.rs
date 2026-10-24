@@ -21,7 +21,7 @@ pub(crate) fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Opt
 /// блоком стоит наша служебная обёртка (сетка `content_sized`, строка
 /// абзаца у `inline-block`), и раскладка решала бы долю от неё.
 pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Element> {
-    if replaced_tag(e) || e.style.wm().vertical() {
+    if replaced_tag(e) || e.style.cascaded().wm().vertical() {
         return None;
     }
     if !matches!(inherited.display, None | Some(Display::Block)) || inherited.wm().vertical() {
@@ -75,15 +75,16 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
     };
     let mut copy = e.clone();
     let mut changed = false;
-    if let Some(v) = of(e.style.height, base_h) {
-        copy.style.height = v;
+    if let Some(v) = of(e.style.used().height, base_h) {
+        copy.style.used_mut().height = v;
         changed = true;
     }
+    let padding = &mut copy.style.used_mut().padding;
     for (dst, src) in [
-        (&mut copy.style.padding.top, e.style.padding.top),
-        (&mut copy.style.padding.bottom, e.style.padding.bottom),
-        (&mut copy.style.padding.left, e.style.padding.left),
-        (&mut copy.style.padding.right, e.style.padding.right),
+        (&mut padding.top, e.style.used().padding.top),
+        (&mut padding.bottom, e.style.used().padding.bottom),
+        (&mut padding.left, e.style.used().padding.left),
+        (&mut padding.right, e.style.used().padding.right),
     ] {
         if let Some(v) = of(src, base_w) {
             *dst = v;

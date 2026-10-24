@@ -4,19 +4,19 @@ use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Align, Computed, Display};
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{Align, BoxStyle, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::{has_text, line_height_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(super) fn own_box_atom(
-    inherited: &Computed,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     // Atomic containers publish the same node/order keys as block containers.
     merged.self_node = e.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(e);
@@ -28,15 +28,17 @@ pub(super) fn own_box_atom(
     merged.resolve_viewport(opts.viewport, vcx);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
-    if e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true) {
+    if e.style.used().display == Some(Display::InlineBlock)
+        && e.style.used().inline_display != Some(true)
+    {
         pseudo_line_layers::install(e, &mut merged, vcx);
     }
-    let mut box_ = opts.cx.build.styled_box(e, &merged, &opts.cx);
+    let mut box_ = opts.cx.contracts.build.styled_box(e, &merged, &opts.cx);
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line
     // synthesize an alphabetic baseline at the atomic margin box's under edge.
-    if e.style.display == Some(Display::InlineBlock)
-        && e.style.inline_display != Some(true)
+    if e.style.used().display == Some(Display::InlineBlock)
+        && e.style.used().inline_display != Some(true)
         && merged.wm().vertical()
         && !inherited.wm().vertical()
         && !inherited.wm().turned()
@@ -53,7 +55,8 @@ pub(super) fn own_box_atom(
     // …и только у НАСТОЯЩЕГО строчного: у `inline-block` высота идёт от
     // содержимого, и подставленный кегль строки накрывал детей-блоков
     // (`border-left-width-applies-to-012`: квадрат 96 выходил 19).
-    let genuine_inline = e.style.display.is_none() || e.style.inline_display == Some(true);
+    let genuine_inline =
+        e.style.used().display.is_none() || e.style.used().inline_display == Some(true);
     if genuine_inline
         && merged.height.is_none()
         && !has_text(&e.children)
@@ -65,7 +68,7 @@ pub(super) fn own_box_atom(
     // (CSS 2.1 §10.8.1) — как у строчной таблицы выше. Без этого
     // `inline-block` с `vertical-align: top` сидел на базовой линии
     // и в высокой строке уезжал вниз.
-    let self_align = match e.style.vertical_align {
+    let self_align = match e.style.own_vertical_align() {
         Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
         Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
         Some(Align::Center) => Some(gpui::AlignItems::Center),
@@ -85,11 +88,11 @@ pub(super) fn own_box_atom(
     // колонками справа налево (`vertical-rl`) или слева направо
     // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
     // `element()`, поэтому ось ставится здесь.
-    if e.style.display == Some(Display::InlineBlock)
+    if e.style.used().display == Some(Display::InlineBlock)
         && merged.wm().vertical()
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
-                if !k.inline || matches!(k.style.display, Some(Display::Block)))
+                if !k.inline || matches!(k.style.used().display, Some(Display::Block)))
         })
     {
         // Предел строчной оси детей — собственная высота коробки (как
@@ -104,13 +107,13 @@ pub(super) fn own_box_atom(
             Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
-        if let Some(h) = px_of(e.style.height) {
-            let b = e.style.borders();
-            let edges = if e.style.border_box == Some(true) {
+        if let Some(h) = px_of(e.style.used().height) {
+            let b = e.style.used().borders();
+            let edges = if e.style.used().border_box == Some(true) {
                 px_of(b.top).unwrap_or(0.0)
                     + px_of(b.bottom).unwrap_or(0.0)
-                    + px_of(e.style.padding.top).unwrap_or(0.0)
-                    + px_of(e.style.padding.bottom).unwrap_or(0.0)
+                    + px_of(e.style.used().padding.top).unwrap_or(0.0)
+                    + px_of(e.style.used().padding.bottom).unwrap_or(0.0)
             } else {
                 0.0
             };
@@ -141,26 +144,26 @@ pub(super) fn own_box_atom(
     // Atomic flex/grid containers own the same CB scope. Table parts keep
     // the table-specific handling of their absolute children.
     let cb_layer = matches!(
-        e.style.display,
+        e.style.used().display,
         Some(Display::InlineBlock | Display::InlineFlex | Display::InlineGrid)
     ) && !genuine_inline
         && crate::text::inline::establishes_cb(&merged);
     let cb_layer = cb_layer.then(|| {
         crate::layout::positioned::layer_scope::LayerScope::strict(
-            &opts.cx.positioning,
+            &opts.cx.position.state,
             &merged,
             crate::style::computed::stacking::fixed_cb_layer_box(&merged),
         )
     });
     let mut kids =
         crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, |opts| {
-            opts.cx.build.blocks(&e.children, &merged, opts)
+            opts.cx.contracts.build.blocks(&e.children, &merged, opts)
         });
     if let Some(layer) = cb_layer {
         kids.extend(layer.finish());
     }
-    Some(opts.cx.build.effects(
+    Some(opts.cx.contracts.build.effects(
         box_.children(kids).into_any_element(),
-        Effect::group(&e.style, vcx),
+        Effect::group(&e.style.used(), vcx),
     ))
 }

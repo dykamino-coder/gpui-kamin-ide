@@ -7,28 +7,42 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 
 /// CSS 2 sections 5.12.1-5.12.2 apply to block containers, including
 /// inline-blocks and table cells. These specialized render paths must seed
 /// their contents with the same layers as the ordinary block path.
-pub(crate) fn install(element: &Element, merged: &mut Computed, vcx: ValueCx<'_>) {
+pub(crate) fn install(element: &Element, merged: &mut BoxStyle, vcx: ValueCx<'_>) {
     install_first_letter(element, merged);
-    merged.first_line = element.first_line.as_ref().map(|layer| {
+    // Без слоя у блока и у стиля нечего менять: запись копировала бы общий
+    // вычисленный стиль коробки (P-18).
+    if element.first_line.is_none() && merged.first_line.is_none() {
+        return;
+    }
+    let first_line = element.first_line.as_ref().map(|layer| {
         // CSS Pseudo 4 §2.1.3: inherit the block's computed values,
         // then cascade the pseudo's own declarations. Its old snapshot
         // still contains the block's specified em font size.
-        let own = element.style.first_line_own.as_deref().unwrap_or(layer);
-        Box::new(crate::style::cascade::inherit::inherit(merged, own, vcx))
+        let own = element
+            .style
+            .cascaded()
+            .first_line_own
+            .as_deref()
+            .unwrap_or(layer.cascaded());
+        Box::new(crate::style::cascade::inherit::inherit(merged, own, vcx).into_computed())
     });
+    merged.first_line = first_line;
 }
 
-pub(crate) fn install_first_letter(element: &Element, merged: &mut Computed) {
+pub(crate) fn install_first_letter(element: &Element, merged: &mut BoxStyle) {
+    if element.first_letter.is_none() && merged.first_letter.is_none() {
+        return;
+    }
     merged.first_letter = element
         .first_letter
         .as_ref()
-        .map(|l| resolve_first_letter_font_size(l, merged.font_size));
+        .map(|l| resolve_first_letter_font_size(l.cascaded(), merged.font_size));
 }
 
 fn resolve_first_letter_font_size(layer: &Computed, base: Option<Len>) -> Box<Computed> {

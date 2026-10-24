@@ -5,7 +5,7 @@
 //! внутренним краям фрагмента (`paint_shadow`, §5.4) и проекция среза под трансформацией
 //! (`paint`): срез фрагмента идёт до эффектов и до привязки к пикселям.
 
-use crate::paint::context::PaintCx;
+use crate::layout::cx::deferred::Deferred;
 use gpui::{Bounds, ContentMask, Pixels, TransformationMatrix, Window, point, px, size};
 
 #[derive(Clone, Copy)]
@@ -15,7 +15,7 @@ pub(crate) struct Scope {
     pub clip: Bounds<Pixels>,
 }
 
-pub(crate) fn with<R>(owner: &PaintCx, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
+pub(crate) fn with<R>(owner: &Deferred, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
     let previous = owner.effect.replace(scope);
     let result = f();
     owner.effect.replace(previous);
@@ -23,12 +23,12 @@ pub(crate) fn with<R>(owner: &PaintCx, scope: Option<Scope>, f: impl FnOnce() ->
 }
 
 /// Краска идёт внутри фрагмента внешней фрагментации.
-pub(crate) fn active(owner: &PaintCx) -> bool {
+pub(crate) fn active(owner: &Deferred) -> bool {
     owner.effect.borrow().is_some()
 }
 
 pub(crate) fn reference_box(
-    owner: Option<&PaintCx>,
+    owner: Option<&Deferred>,
     bounds: Bounds<Pixels>,
 ) -> Option<Bounds<Pixels>> {
     let scope = *owner?.effect.borrow();
@@ -54,7 +54,7 @@ pub(crate) fn reference_box(
 /// CSS Break 3 §5.4: slice the continuous shadow at internal fragment edges,
 /// retaining its ink overflow at the box's genuine outer edges.
 pub(crate) fn paint_shadow<R>(
-    owner: Option<&PaintCx>,
+    owner: Option<&Deferred>,
     bounds: Bounds<Pixels>,
     ink: (Pixels, Pixels),
     window: &mut Window,
@@ -93,7 +93,7 @@ pub(crate) fn paint_shadow<R>(
 }
 
 pub(crate) fn paint<R>(
-    owner: Option<&PaintCx>,
+    owner: Option<&Deferred>,
     matrix: TransformationMatrix,
     clip_matrix: TransformationMatrix,
     clip_ancestor: bool,
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn continued_box_uses_the_remaining_border_box_not_the_continuous_height() {
-        let owner = PaintCx::default();
+        let owner = Deferred::default();
         with(&owner, Some(scope(49.71875, 100.0)), || {
             let reference = reference_box(Some(&owner), bounds(-50.28125, 120.0)).unwrap();
             assert_eq!(reference.origin.y, px(49.71875));
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn overflow_only_reference_box_is_empty_at_fragmentainer_start() {
-        let owner = PaintCx::default();
+        let owner = Deferred::default();
         with(&owner, Some(scope(49.71875, 100.0)), || {
             for y in [-150.28125, 149.71875] {
                 let reference = reference_box(Some(&owner), bounds(y, 77.0)).unwrap();
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn nested_scope_restores_the_outer_fragment_reference() {
-        let owner = PaintCx::default();
+        let owner = Deferred::default();
         with(&owner, Some(scope(50.0, 100.0)), || {
             with(&owner, Some(scope(100.0, 50.0)), || {
                 assert_eq!(

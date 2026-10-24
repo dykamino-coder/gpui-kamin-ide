@@ -1,5 +1,6 @@
 //! Текст и прогоны абзаца, строка из элементов, склейка атомов.
 
+use crate::defaults::MEDIUM_FONT_SIZE_PX;
 mod atom_glue;
 mod wrapped_row;
 use crate::text::inline::runs::atom_glue::glue_atoms;
@@ -179,7 +180,7 @@ pub(super) fn run_for(
     };
     // Кегль куска: без него разный размер в строке собрать в один блок было
     // нельзя (см. `single_block`).
-    let base_px = f32::from(base.font_size.to_pixels(gpui::px(16.)));
+    let base_px = f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX)));
     let font_size = match style.font_size {
         Some(Len::Px(v)) => Some(gpui::px(v)),
         Some(Len::Em(k)) => Some(gpui::px(k * base_px)),

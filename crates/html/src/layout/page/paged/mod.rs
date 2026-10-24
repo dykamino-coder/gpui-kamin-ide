@@ -59,10 +59,10 @@ pub fn render_paged_select(
     select: Option<Vec<usize>>,
 ) -> AnyElement {
     let opts = &*opts.inner(|cx| {
-        cx.paint_viewport = opts.viewport;
-        if !cx.in_render {
-            cx.vertical_paint = Default::default();
-            cx.paint = Default::default();
+        cx.values.viewport = opts.viewport;
+        if !cx.contracts.in_render {
+            cx.deferred.vertical_paint = Default::default();
+            cx.deferred.paint = Default::default();
         }
     });
     let vcx = opts.cx.vcx();
@@ -74,7 +74,7 @@ pub fn render_paged_select(
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize(vcx);
-    opts.cx.build.paint_resources(nodes, vcx);
+    opts.cx.contracts.build.paint_resources(nodes, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();
@@ -96,6 +96,8 @@ pub fn render_paged_select(
     if !root.wm().vertical() {
         hoist_named_wrappers(&mut nodes, vcx);
     }
+    // Вычисленные стили элементов — до сборки листов (как у `render::render`).
+    crate::style::cascade::materialize::materialize(&nodes, root.style_rc(), vcx);
     let geom_for: crate::layout::page::page_stack::PageGeomFn =
         std::rc::Rc::new(move |i, name: &str| {
             let mut g = geom_for(i, name);
@@ -114,10 +116,10 @@ pub fn render_paged_select(
     // `resolve_viewport` работает на копии внутри `element()`).
     let shape_cx = ShapeCx {
         paged: true,
-        legacy_oof: false,
         viewport: Some(opts.viewport),
-        unclamped: false,
-    };
+        ..ShapeCx::COLUMNS
+    }
+    .observed(opts);
     // Слой ICB — по КОПИИ на страницу: каждая сборка ребёнка рождает свои
     // `LatePlace` абсолютов, копия `c` уходит на лист `c` (`PageStack.icb`).
     let mut icb_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();
@@ -162,9 +164,9 @@ pub fn render_paged_select(
         Node::Text(_) => true,
         Node::Element(e) => {
             (e.inline || inline_display(e))
-                && !out_of_flow(&e.style)
+                && !out_of_flow(&e.style.used())
                 && !matches!(
-                    e.style.display,
+                    e.style.used().display,
                     Some(Display::Block)
                         | Some(Display::Flex)
                         | Some(Display::Grid)
@@ -182,18 +184,20 @@ pub fn render_paged_select(
     // `clear: both`). Группа флоата закрывается первым блоком после него.
     let floated = |n: &Node| match n {
         Node::Element(e) => {
-            e.style.float.is_some_and(|f| f != 0)
+            e.style.used().float.is_some_and(|f| f != 0)
                 && !matches!(
-                    e.style.position,
+                    e.style.used().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 )
-                && !matches!(e.style.display, Some(Display::None))
+                && !matches!(e.style.used().display, Some(Display::None))
         }
         _ => false,
     };
     let mut groups: Vec<Vec<Node>> = Vec::new();
     let run = Run::None;
+    let nodes =
+        crate::layout::fragment::flow::box_children::projected(&nodes, &root, opts.cx.vcx());
     group_runs(nodes, inline_level, floated, &mut groups, run);
     for g in groups.iter_mut() {
         while g.last().is_some_and(is_blank) {
@@ -214,6 +218,7 @@ pub fn render_paged_select(
         &mut kids,
         prev_end,
         first,
+        aw,
         ah,
         layer,
         floated,

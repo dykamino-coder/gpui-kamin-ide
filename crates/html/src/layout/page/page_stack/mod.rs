@@ -4,15 +4,20 @@
 //! ICB и `position: fixed` по копии на лист, план фрагментов и маски page area;
 //! укладка, листы, марджин-боксы, канвас и ось письма — в подмодулях.
 
-use crate::layout::fragment::types::Frag;
+use crate::layout::fragment::plan::Plan;
 use gpui::{AnyElement, Bounds, Pixels, point, px, size};
 mod canvas;
 pub(crate) use canvas::{CanvasLayerFn, builder as canvas_builder, image_layers};
 mod axis;
 mod contents;
+mod continuation;
 mod element;
 mod kids;
+mod measure;
 mod pages;
+mod planning;
+mod regrow;
+mod resume;
 mod sheets;
 
 /// Лист страницы (css-page-3 §page-model): полный размер, поля, рамка и
@@ -88,7 +93,10 @@ pub type MarginFn = std::rc::Rc<dyn Fn(usize, &str, usize, &PageGeom) -> Vec<Mar
 /// сравнивает кадр целиком, а печатный эталон WPT тоже многостраничен, и
 /// сравнивать надо все страницы обеих сторон.
 pub struct PageStack {
+    complete: std::cell::Cell<bool>,
     pub(crate) kids: Vec<PageKid>,
+    measured: std::collections::HashMap<(usize, usize), continuation::CopyGeometry>,
+    continuations: std::collections::HashMap<(usize, usize), crate::layout::fragment::push::Regrow>,
     /// Лист `i` с именем страницы — его геометрия (css-page-3 §cascading).
     pub(crate) geom_for: PageGeomFn,
     /// Геометрия КАЖДОГО листа, итог `prepaint` (листы бывают разные:
@@ -113,7 +121,7 @@ pub struct PageStack {
     /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига (Blink
     /// `IsMonolithic`: fixed при печати повторяется на каждой странице).
     pub(crate) fixed: Vec<Vec<AnyElement>>,
-    pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    pub(crate) plan: std::cell::RefCell<Plan>,
     pub(crate) pages: std::cell::Cell<usize>,
     pub(crate) grid: std::cell::Cell<(usize, f32)>,
     /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
@@ -136,7 +144,10 @@ impl PageStack {
         margin_for: Option<MarginFn>,
     ) -> Self {
         PageStack {
+            complete: std::cell::Cell::new(false),
             kids,
+            measured: Default::default(),
+            continuations: Default::default(),
             geom_for,
             geoms: std::cell::RefCell::new(Vec::new()),
             cell: std::cell::Cell::new((1.0, 1.0)),
@@ -145,7 +156,7 @@ impl PageStack {
             icb,
             icb_reach,
             fixed,
-            plan: std::cell::RefCell::new(Vec::new()),
+            plan: std::cell::RefCell::new(Plan::default()),
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
             select: None,
@@ -153,6 +164,12 @@ impl PageStack {
             canvas_els: Vec::new(),
             axis: crate::layout::fragment::types::StackAxis::Horizontal,
         }
+    }
+
+    /// Последняя предраскладка получила согласованный план; incomplete не рисуется.
+    pub fn has_complete_plan(&self) -> bool {
+        self.complete.get()
+            && self.plan.borrow().completion == crate::layout::fragment::plan::Completion::Complete
     }
 
     pub fn with_select(mut self, select: Option<Vec<usize>>) -> Self {
