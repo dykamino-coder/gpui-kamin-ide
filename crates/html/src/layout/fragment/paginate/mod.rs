@@ -117,6 +117,7 @@ pub(crate) fn avoid_row(p: &Element) -> bool {
 /// Rebuild of a paginated child's copies with a strut map: `(main, extra
 /// copies)` for `n` copies in all, or `None` when the struts cannot be
 /// expressed.
+/// TRANSITIONAL(F2-7): Rebuild повторно строит полные копии с распорками вместо продолжения; удалить callback в P22 после перевода consumers P13–P21 на child tokens.
 pub(crate) type Rebuild =
     dyn Fn(&Struts, usize) -> Option<(gpui::AnyElement, Vec<gpui::AnyElement>)>;
 

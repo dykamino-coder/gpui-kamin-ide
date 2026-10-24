@@ -1,4 +1,5 @@
 //! Клонирование коробок по фрагментам (`box-decoration-break`).
+//! TRANSITIONAL(F2-7): Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование.
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};

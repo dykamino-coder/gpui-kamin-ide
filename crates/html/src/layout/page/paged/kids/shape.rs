@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4/F2-6): края, OOF, вложенные и параллельные потоки, clamp.
 //! Пустую grid измеряет laid::group; разрываемый float — отдельный поток F2-1.
 //! Форма группы корневых узлов на листе: поля и вырезы.
 
@@ -42,6 +41,7 @@ pub(crate) fn group_shape(
     let shape = match n {
         _ if group.iter().filter(|g| !is_blank(g)).count() > 1 => None,
         Node::Element(e) if !e.inline && !positioned(e) => {
+            // TRANSITIONAL(F2-6): Группа листа оценивается целиком без PageIdentity и clamp scope продолжения; удалить в P21 после typed child resume поверх P05/P08/P10/P16.
             shape_full(e, 4, shape_cx, vcx).map(
                 |crate::layout::fragment::Shape {
                      height: h,

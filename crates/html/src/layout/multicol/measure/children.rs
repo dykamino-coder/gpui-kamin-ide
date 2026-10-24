@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4/F2-6): preplan смешанных групп требует состояний продолжения.
 //! Независимые plain/grid/table/flex, включая vertical, проходят native-dispatch до этой ветки.
 //! Пустую grid с известной/отложенной шириной измеряет native путь до этой ветки.
 //! Разрываемые floats — F2-1: отдельные consumed/resume для float и main flow.
@@ -66,6 +65,7 @@ pub(crate) fn measure_children(
                         nested_auto.borrow_mut().push(c.node_id);
                         Some(((*c).clone(), h))
                     }
+                    // TRANSITIONAL(F2-3): Первый вложенный auto row при отказе native пути получает оценку; удалить fallback в P10 после actual outer Space и typed child outcome.
                     None => shape_full(c, 4, ShapeCx::COLUMNS, vcx).map(|h| ((*c).clone(), h)),
                 }
             }
@@ -167,8 +167,10 @@ pub(crate) fn measure_children(
                 let c = &c;
                 if col_vert {
                     let t = transpose_tree(c, col_rl)?;
+                    // TRANSITIONAL(F2-4): Вертикальная смешанная группа оценивается через временный root; удалить в P21 после child resume в логических осях и OOF поверх P08/P10/P16.
                     shape_full(&t, 4, ShapeCx::COLUMNS, vcx).map(|h| ((*c).clone(), h))
                 } else {
+                    // TRANSITIONAL(F2-6): Смешанная горизонтальная группа попадает в preplan без clamp scope и child resume; удалить в P21 после typed dispatch поверх P05/P08/P10/P16.
                     shape_full(c, 4, ShapeCx::COLUMNS, vcx)
                         .map(|h| ((*c).clone(), h))
                         .or_else(|| {

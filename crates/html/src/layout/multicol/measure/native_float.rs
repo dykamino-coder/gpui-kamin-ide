@@ -11,12 +11,10 @@ use crate::layout::fragment::{Shape, paginate};
 use crate::style::computed::{BoxStyle, Display};
 use std::cell::RefCell;
 
-/// TRANSITIONAL(F2-1): разрываемый float и обтекающий текст имеют разные consumed/resume.
-/// Этот путь переносит только вход цельного float, как существующий Cand::Float.
+/// TRANSITIONAL(F2-1): Разрываемый float и обтекающий текст имеют разные consumed/resume; удалить monolith-only gate в P06 после независимого продолжения float и main flow.
 pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
     fn separate(e: &Element) -> bool {
-        // ADR P-19 TRANSITIONAL(F2-1): поля float не усекаются как поля обычного
-        // блока; перенос margin box требует отдельного consumed/resume.
+        // TRANSITIONAL(F2-1): Поля float требуют продолжения margin box без усечения как у блока; удалить отказ в P06 после собственного consumed/resume float.
         (e.style.used().float.is_some_and(|f| f != 0)
             && [e.style.used().margin.top, e.style.used().margin.bottom]
                 .iter()
@@ -71,7 +69,7 @@ fn prepare(
     width: Option<f32>,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    // ADR P-19 TRANSITIONAL(F2-1): clearance следующей копии зависит от float bands предыдущей.
+    // TRANSITIONAL(F2-1): Замер float_copy не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
         || merged.text_box_trim_start
         || merged.text_box_trim_end

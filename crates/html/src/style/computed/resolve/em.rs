@@ -88,11 +88,7 @@ impl Computed {
         // `line-height` остаются от `base`, метрики шрифта — от `used`, и сам
         // текст набирается `used` (`font_size`), а детям уходит `base`.
         let used = base * self.used_font_factor(&family, vcx);
-        // TRANSITIONAL(cascade-7b font-size-adjust): `font_size` carries the used
-        // (adjusted) size that shapes the text, the computed size lives in
-        // `font_adjust_base`; every em reader goes through `parent_font_px` /
-        // `own_font_px`. Remove when the used font size moves to the box's used
-        // values and `font_size` stays the computed value.
+        // TRANSITIONAL(cascade-7b-font-size-adjust): font_size хранит used размер для shaping, а computed размер спрятан в font_adjust_base; удалить обходные em readers после переноса used размера в BoxStyle и возврата computed font_size.
         if used != base && self.font_adjust_base.is_none() {
             self.font_adjust_base = Some((base, self.line_height));
             if let Some(Len::Pct(m)) = self.line_height {

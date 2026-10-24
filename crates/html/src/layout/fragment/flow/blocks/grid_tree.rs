@@ -43,8 +43,7 @@ fn measured_tree(e: &Element, item: bool, lines: bool) -> bool {
         return false;
     }
     if crate::layout::fragment::table_bands::table_box(e) {
-        // Внутри элемента сетки строки таблицы — отдельные параллельные
-        // потоки (F2-4/F2-5); вне него таблицу уже читает TableBox.
+        // TRANSITIONAL(F2-4): Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17.
         return lines && super::table_tree(e);
     }
     if grid_container(e) {

@@ -83,8 +83,7 @@ pub(super) fn multicol_stack_child(
     }
     let (empty_floats, float_zero) = floats::normalize(&mut copy, col_vert, col_rl, opts.cx.vcx());
     // Независимая копия получает высоту, переполнение и разрывы в lay_out_main.
-    // Остальные копии сохраняют старую меру: clone/nested/OOF требуют
-    // F2-1/F2-3/F2-2; ортогональные потоки требуют F2-3.
+    // TRANSITIONAL(F2-4): Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10.
     let laid = measured_kids
         .borrow()
         .iter()

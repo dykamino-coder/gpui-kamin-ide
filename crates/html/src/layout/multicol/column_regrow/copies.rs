@@ -3,12 +3,10 @@
 use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
-    /// Ряды используют прежний предел копий (ADR P-19 F2-1), но высоту
-    /// для их числа даёт главная разложенная копия, включая распорки роста.
+    /// Высоту для числа копий даёт главная разложенная копия, включая распорки роста.
     pub(super) fn reserve_row_copies(&mut self) {
         let Some(rows) = self.rows else { return };
-        // Общий старый preplan clone/nested/OOF (F2-1/2/3) не смешивается
-        // с ещё не измеренной копией: тот же контракт, что у laid::children.
+        // TRANSITIONAL(F2-4): Смешанный clone/nested/OOF preplan исключён из роста копий; удалить общий gate в P21 после recorded child resume поверх P05/P08/P10.
         if self
             .children
             .iter()
@@ -25,6 +23,7 @@ impl ColumnStack {
             .map(|c| (c.h.max(c.over) / per).ceil() as usize)
             .max()
             .unwrap_or(0);
+        // TRANSITIONAL(F2-3): Запас копий рядов ограничен 48 вместо завершения row tokens; удалить предел в P11 после проверки реального прогресса продолжений.
         let copies = (span + self.count + 1).min(48).max(self.copies);
         self.copies = copies;
         for c in self.children.iter_mut().filter(|c| !c.span) {

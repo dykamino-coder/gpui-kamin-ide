@@ -26,9 +26,7 @@ pub(crate) fn refusal(
     _auto_fill: bool,
     vcx: ValueCx<'_>,
 ) -> Option<&'static str> {
-    // TRANSITIONAL(F2-4): распорки выражают усечение зазора только для рядов
-    // с переносом и разрешённым пиксельным row-gap. Удалить отказ после
-    // поддержки ограничений зазора других осей flex и дорожек grid.
+    // TRANSITIONAL(F2-4): Распорки усекают только пиксельный row-gap рядов flex с переносом; удалить отказ после gap constraints для остальных flex/grid осей в P13/P16.
     fn gapped(e: &Element) -> bool {
         (matches!(
             e.style.used().display,

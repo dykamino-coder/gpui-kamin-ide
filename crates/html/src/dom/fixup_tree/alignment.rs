@@ -24,13 +24,7 @@ use crate::style::computed::{Display, Position};
 /// остаётся и наследуется словом `inherit`. Родитель `display: contents` —
 /// настоящий контейнер выше, такие дети не трогаются; корневой уровень тоже.
 ///
-/// TRANSITIONAL(align-self applicability): the author's value is dropped from the
-/// cascaded style (and by `inherit` in `compute::longhands`) instead of being kept
-/// as the computed value and ignored by block layout, because layout's own
-/// alignment commands (block aspect ratio, floats, table shrink) share the
-/// `align_self` field and read an empty one as "no author value". Remove when
-/// those commands live in the box's used values and block layout checks
-/// applicability itself (css-align-3 §6.1).
+/// TRANSITIONAL(cascade-7b-R06): Авторский align-self гасится в cascaded из-за общего поля с командами layout; удалить гашение после переноса команд в used values и проверки применимости в block layout.
 pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };

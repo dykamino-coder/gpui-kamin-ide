@@ -72,10 +72,7 @@ impl SharedStyle {
     /// The element's computed style (css-cascade-5 §4.4): the style materialized
     /// from the cascaded one; layout's used values are not in it.
     ///
-    /// TRANSITIONAL(cascade-7b layout-made styles): a style that was never
-    /// materialized (document preparation before materialization, a box layout
-    /// made, `SharedStyle::layout_made`) has one stage, returned here. Remove
-    /// when layout-made boxes stop being elements with a style handle.
+    /// TRANSITIONAL(cascade-7b-layout-made): computed() возвращает единственную стадию нематериализованных стилей и layout-made коробок; удалить fallback после отказа от element style handles для синтетических коробок.
     pub fn computed(&self) -> Rc<Computed> {
         self.base()
     }
@@ -91,9 +88,7 @@ impl SharedStyle {
 
     /// Layout's used-value layer, copy-on-write over the computed style.
     ///
-    /// TRANSITIONAL(cascade-7b layout-made styles): a style that was never
-    /// materialized has one stage, and that stage is edited. Remove with the
-    /// single-stage styles (`computed`).
+    /// TRANSITIONAL(cascade-7b-layout-made): used_mut() меняет единственную стадию нематериализованного стиля; удалить fallback после разделения стадий у всех синтетических коробок.
     pub(crate) fn used_mut(&mut self) -> &mut Computed {
         if self.used.is_none() && self.computed.any().is_none() {
             return Rc::make_mut(&mut self.cascaded);

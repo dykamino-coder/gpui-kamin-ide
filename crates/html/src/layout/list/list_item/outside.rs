@@ -23,8 +23,7 @@ pub(super) fn content_style(
 
 pub(super) fn position(m: Div, item: &Computed, merged: &Computed) -> Div {
     let wm = merged.wm().used_direction();
-    // TRANSITIONAL(F2-1): привязка к началу блока ещё не заменяет baseline
-    // первой строки и владение внешним маркером в продолжении фрагмента.
+    // TRANSITIONAL(F2-1): Привязка внешнего маркера к block-start не хранит baseline первой строки и владельца продолжения; удалить в P05 после привязки к реальному продолжению строки.
     let m = match wm.block_start() {
         Side::Top => m.top_0(),
         Side::Right => m.right_0(),

@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-2): оценки здесь обслуживают OOF reach; forced/avoid остаются фактами стиля.
 //! Принудительные разрывы и запреты разрыва при фрагментации: `break-before/after` и
 //! `avoid` на краях коробки (`edges`), монолиты стопки страниц (`page_monolith`, css-break-4
 //! §4.1; Blink `IsMonolithic`) и досягаемость внепоточного корня стопки страниц
@@ -37,6 +36,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
     // Мера `None` (строчное содержимое) — не «пусто»: хотя бы точка высоты,
     // чтобы лист под самой строкой родился (`fixedpos-005-print`: `top:
     // 300vh` внутри `top: 100vh` — текст ровно на краю четвёртого листа).
+    // TRANSITIONAL(F2-2): OOF reach оценивает полный border box; удалить в P08 после разделения normal size и продолжения OOF.
     let own = shape_full(e, 4, cx, vcx)
         .map(|s| s.height)
         .unwrap_or_else(|| {
@@ -59,6 +59,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
             .iter()
             .filter_map(|n| match n {
                 Node::Element(k) if !k.inline && !out_of_flow(&k.style.used()) => {
+                    // TRANSITIONAL(F2-2): Static position получает sibling offsets суммой оценок высоты и полей; удалить в P08 после измеренного normal-flow static rect.
                     shape_full(k, 3, cx, vcx).map(|s| s.height + s.margin_top + s.margin_bottom)
                 }
                 _ => None,
