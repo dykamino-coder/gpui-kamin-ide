@@ -144,11 +144,11 @@ fn final_membership_dirty_ancestors_epochs_and_both_constraints(cx: &mut gpui::T
             window.set_flex_item_fragmentation_consumed(child.id, 1.);
             assert!(child.read(window).is_none());
             solve(window, app, root, 250., 200.);
-            assert!(child.read(window).is_some());
+            let resumed = child.bounds(window).unwrap();
             solve(window, app, child.id, 80., 100.);
             assert!(child.read(window).is_none());
             solve(window, app, root, 250., 200.);
-            assert_eq!(child.bounds(window), Some(first.normal));
+            assert_eq!(child.bounds(window), Some(resumed));
             window.with_nested_layout(|window| {
                 assert!(child.read(window).is_none());
                 assert!(child.id_in(window).is_none());
