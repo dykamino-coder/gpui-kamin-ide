@@ -70,6 +70,7 @@ fn load_error(error: LoadError) -> ImageError {
     match error {
         LoadError::UnsupportedScheme(scheme) => ImageError::UnsupportedScheme(scheme),
         LoadError::InvalidUrl | LoadError::NotFound | LoadError::Io(_) => ImageError::Io,
+        LoadError::TooLarge { .. } => ImageError::LimitExceeded,
     }
 }
 
