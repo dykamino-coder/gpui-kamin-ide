@@ -137,7 +137,8 @@ mod tests {
         assert_eq!(values["--a"], "green");
         let decls = parse_decls(r"--a:green\!important");
         let values = cascade(&[], &decls, &VarMap::new(), &HashMap::new(), |_, _| true);
-        assert_eq!(values["--a"], "green!important");
+        // Экранированный ! принадлежит идентификатору, а не токену-разделителю.
+        assert_eq!(values["--a"], r"green\!important");
     }
 
     #[test]

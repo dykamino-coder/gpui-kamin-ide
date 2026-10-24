@@ -17,6 +17,11 @@ pub(crate) struct DirectGradient {
 }
 
 impl DirectGradient {
+    /// Числовые операнды интерполяции для ключа растрового кэша.
+    pub(crate) fn operands(&self) -> (&[[f32; 3]], bool, bool) {
+        (&self.colors, self.ok, self.single)
+    }
+
     pub(crate) fn new(raw: &str, count: usize, space: GradSpace, vcx: ValueCx<'_>) -> Option<Self> {
         let (name, ok) = match space {
             GradSpace::Lch => ("lch(", false),

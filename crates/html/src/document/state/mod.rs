@@ -12,11 +12,12 @@
 //! Арены `calc()`/`anchor()` документа и их ручки — `arena`.
 
 mod arena;
+mod property_registry;
 mod scoped;
 mod synthetic_ids;
 mod value_cx;
 
-use crate::style::css::{DeclBlock, Media, PageRule, Registered};
+use crate::style::css::{DeclBlock, Media, PageRule};
 use crate::style::generated::counter_style_rules::CounterStyles;
 use crate::style::values::value::{AnchorFn, RootMetrics, Sum};
 use std::cell::{Cell, RefCell};
@@ -70,7 +71,7 @@ pub struct DocState {
     /// `@position-try <dashed-ident>` (css-anchor-position-1 §fallback-rule).
     pub(crate) try_rules: RefCell<HashMap<String, DeclBlock>>,
     /// `@property` (css-properties-values-api-1 §3).
-    pub(crate) property_rules: RefCell<HashMap<String, Registered>>,
+    pub(crate) property_rules: RefCell<property_registry::PropertyRegistry>,
     /// `@counter-style` (css-counter-styles-3 §3).
     pub(crate) counter_styles: RefCell<CounterStyles>,
     /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile).
@@ -129,9 +130,9 @@ impl DocState {
         self.try_rules.borrow().get(name).cloned()
     }
 
-    /// Копия реестра `@property` — его читает сборка переменных узла.
-    pub(crate) fn property_rules(&self) -> HashMap<String, Registered> {
-        self.property_rules.borrow().clone()
+    /// Неизменяемая ревизия реестра @property документа, общая для его узлов.
+    pub(crate) fn property_rules(&self) -> Rc<property_registry::PropertySnapshot> {
+        self.property_rules.borrow().snapshot()
     }
 
     /// Правила `@page` документа (копией — их читает хост на каждом кадре).

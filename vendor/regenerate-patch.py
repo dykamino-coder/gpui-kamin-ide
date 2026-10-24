@@ -64,7 +64,8 @@ FIXES = {
         "Tests: use crate-local markdown and initialize extended GPUI font/run fields so standalone regressions compile.",
     ],
     "gpui-component": [
-        "Highlighter: cache captures within one budget (including empty results), resolving styles afresh so mutable/reused resolvers cannot return stale colors.",
+        "Highlighter: share immutable captures on hits; bound retained capture bytes and entry count (including empty results), evict FIFO without sorting and bypass oversize entries.",
+        "Highlighter: resolve styles afresh so mutable/reused theme resolvers cannot return stale colors; invalidate captures after text/tree changes.",
         "Tests: retain exact upstream fixtures so published-crate tests do not depend on the original monorepo layout.",
         "Editor integration: root overlays and WebView hosting; expose a scrollbar policy hook so product geometry belongs to the application.",
     ],
@@ -110,7 +111,8 @@ FIXES = {
         "Paint inheritance: empty gradient/pattern transforms preserve href inheritance; singular transforms use the fallback paint.",
         "Symbol instances: display:none suppresses rendering; use dimensions override symbol dimensions (SVG 2 section 5.6.2).",
         "Paint keywords are ASCII case-insensitive (CSS Values 4 section 2.1).",
-        "External use resources: resolve local URLs/fragments with cycle/depth limits and bounded reads so oversized files are rejected before full allocation.",
+        "External use resources: resolve URLs/fragments through an authoritative injectable loader, preserving standalone bounded local reads and shared cycle/depth/allocation limits.",
+        "External use follows the document resource policy and secure static processing, including nested SVG images; imported references retain their source URL bases.",
         "Preserve snapshots of referenced definitions and their resource bases, including imported images.",
     ],
 }

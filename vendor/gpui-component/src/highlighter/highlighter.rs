@@ -1182,12 +1182,14 @@ impl SyntaxHighlighter {
         let start_offset = range.start;
         let highlights = self
             .styles_cache
-            .get_or_insert_with((range.start, range.end), || {
-                self.match_styles(range.clone())
-            });
+            .get_or_insert_with(
+                (range.start, range.end),
+                || self.match_styles(range.clone()),
+                |item| item.name.len(),
+            );
 
         // let mut iter_count = 0;
-        for item in highlights {
+        for item in highlights.iter() {
             // iter_count += 1;
             let node_range = &item.range;
             let name = &item.name;

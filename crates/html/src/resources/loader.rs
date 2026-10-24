@@ -8,6 +8,7 @@
 //! запрос тех же байт, поэтому он отделяется при разрешении и в ключ загрузки не входит.
 
 pub(crate) mod data_url;
+mod limits;
 #[cfg(test)]
 mod tests;
 
@@ -155,6 +156,8 @@ pub(crate) enum LoadError {
     NotFound,
     /// Иная ошибка ввода-вывода.
     Io(std::io::ErrorKind),
+    /// Входной ресурс превысил бюджет байтов до декодирования содержимого.
+    TooLarge { limit: usize },
 }
 
 /// Источник байт документа. Реализация не хранит документ и не знает о картинках.
@@ -177,7 +180,7 @@ impl ResourceLoader for SyncLoader {
                     .text
                     .strip_prefix("data:")
                     .ok_or(LoadError::InvalidUrl)?;
-                let bytes = data_url::decode(rest).ok_or(LoadError::InvalidUrl)?;
+                let bytes = data_url::decode(rest)?;
                 Ok(Loaded {
                     bytes: bytes.into(),
                     revision: Revision::Immutable,
@@ -187,10 +190,14 @@ impl ResourceLoader for SyncLoader {
                 // Ревизия снимается ДО чтения: изменение между ними даст при следующей
                 // перепроверке другую ревизию, а не молча закреплённые новые байты.
                 let revision = file_revision(path);
-                let bytes = std::fs::read(path).map_err(|e| match e.kind() {
-                    std::io::ErrorKind::NotFound => LoadError::NotFound,
-                    kind => LoadError::Io(kind),
-                })?;
+                let file = std::fs::File::open(path).map_err(limits::io_error)?;
+                if file.metadata().map_err(limits::io_error)?.len() > limits::RESOURCE_BYTES as u64
+                {
+                    return Err(LoadError::TooLarge {
+                        limit: limits::RESOURCE_BYTES,
+                    });
+                }
+                let bytes = limits::read(file, limits::RESOURCE_BYTES)?;
                 Ok(Loaded {
                     bytes: bytes.into(),
                     revision,

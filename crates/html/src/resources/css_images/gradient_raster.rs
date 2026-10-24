@@ -4,14 +4,14 @@
 //! кэшируются по записи, размеру растра и конкретному CSS-размеру.
 
 use super::{gradient_geometry::Geometry, place_stops, wrap_repeat};
-use crate::cache::{BoundedCache, Hinted, MIB, hint};
+use crate::cache::{BoundedCache, FloatKey, Hinted, MIB, hint};
 use crate::document::state::ValueCx;
 use crate::resources::images::pixels::optional_bytes as optional_image_bytes;
 use crate::resources::images::types::CpuRaster;
 use crate::style::values::color_space::gradient_colour_at as colour_at;
 use std::sync::Arc;
 
-type TileKey = Hinted<(crate::style::computed::ImageSource, u32, u32, u32, u32)>;
+type TileKey = Hinted<(super::raster_keys::ImageKey, u32, u32, [FloatKey; 2])>;
 /// Бюджет 64 МиБ: плитка не больше 2048 x 2048 точек (16 МиБ).
 static TILES: BoundedCache<TileKey, Option<Arc<CpuRaster>>> =
     BoundedCache::new(64 * MIB, optional_image_bytes);
@@ -27,10 +27,19 @@ pub(crate) fn tile(
     if !src.cacheable() {
         return raster(src, w, h, css, true, vcx);
     }
-    let bits = (css.0.to_bits(), css.1.to_bits());
+    // Conic-растр использует конкретный размер bitmap, остальные — CSS-плитку.
+    let size = if matches!(src, crate::style::computed::ImageSource::Conic(_)) {
+        (w as f32, h as f32)
+    } else {
+        css
+    };
+    let Some(image) = super::raster_keys::ImageKey::new(src, size, vcx) else {
+        return raster(src, w, h, css, true, vcx);
+    };
+    let size = [size.0, size.1].map(FloatKey::from);
     let key = Hinted {
-        hint: hint((std::mem::discriminant(src), w, h, bits)),
-        key: (src.clone(), w, h, bits.0, bits.1),
+        hint: hint((std::mem::discriminant(src), w, h, size)),
+        key: (image, w, h, size),
     };
     TILES.get_or_insert_with(key, || raster(src, w, h, css, true, vcx))
 }
@@ -108,3 +117,6 @@ pub(crate) fn resolved_stops(
         .collect();
     place_stops(raw)
 }
+
+#[cfg(test)]
+mod tests;

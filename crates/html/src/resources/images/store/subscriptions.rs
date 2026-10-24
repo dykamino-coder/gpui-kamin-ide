@@ -12,6 +12,10 @@ pub(crate) struct ConsumerId(pub(crate) u64);
 
 /// Ради чего потребитель читает картинку — от этого зависит, какое изменение его касается.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Потребители пока читают картинки без подписки")
+)]
 pub(crate) enum ImageUse {
     /// Природный размер и соотношение — раскладка замещаемых.
     Intrinsic,
@@ -86,6 +90,10 @@ fn same_image(a: &super::DecodedImage, b: &super::DecodedImage) -> bool {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "Потребители пока читают картинки без подписки")
+)]
 impl ImageStore {
     /// Подписать потребителя; `None`, если ручка устарела.
     pub(crate) fn subscribe(

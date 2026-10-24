@@ -23,7 +23,7 @@ use crate::style::values::value::Len;
 pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -> Vec<Node> {
     let auto_inline = |c: &Computed| matches!(c.height, None | Some(Len::Auto));
     let grid = matches!(own.display, Some(Display::Grid) | Some(Display::InlineGrid));
-    let shrink = merged.hug_claim && auto_inline(own) && !grid;
+    let shrink = merged.hug_claim && auto_inline(own);
     if !grid && !shrink {
         return children;
     }

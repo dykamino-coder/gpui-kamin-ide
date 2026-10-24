@@ -34,6 +34,8 @@ mod presentational_hint_tests;
 mod presentational_tests;
 mod quirks_color;
 #[cfg(test)]
+pub(crate) mod test_support;
+#[cfg(test)]
 mod tests;
 mod ua_style;
 #[cfg(test)]

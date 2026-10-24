@@ -70,6 +70,7 @@ fn load_error(error: LoadError) -> ImageError {
     match error {
         LoadError::UnsupportedScheme(scheme) => ImageError::UnsupportedScheme(scheme),
         LoadError::InvalidUrl | LoadError::NotFound | LoadError::Io(_) => ImageError::Io,
+        LoadError::TooLarge { .. } => ImageError::LimitExceeded,
     }
 }
 
@@ -93,6 +94,10 @@ impl ImageStore {
     }
 
     /// Службы, над которыми выполняются задания.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Задания пока выполняются внутри хранилища")
+    )]
     pub(crate) fn services(&self) -> &ImageServices {
         &self.services
     }

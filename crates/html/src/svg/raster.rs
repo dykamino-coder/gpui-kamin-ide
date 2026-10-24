@@ -47,7 +47,7 @@ pub(crate) fn geometry(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>>
         markup,
         crate::resources::images::svg_raster::RasterRequest::new(w, h, DENSITY, 0.0),
         Arc::new(resvg::usvg::fontdb::Database::new()),
-        &[],
+        &|_| None,
         true,
     )?;
     crate::paint::background::image_adapter::upload(&cpu)
