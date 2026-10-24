@@ -1,6 +1,6 @@
 //! Вытеснение по байтам, отсутствие полного сброса и конкурентный доступ `BoundedCache`.
 
-use super::{BoundedCache, ENTRY_OVERHEAD, Hinted, hint};
+use super::{BoundedCache, ENTRY_OVERHEAD, FloatKey, Hinted, hint};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -87,14 +87,61 @@ fn borrowed_lookup_and_hinted_keys() {
     names.insert("a.png".to_owned(), vec![1]);
     assert_eq!(names.get("a.png"), Some(vec![1]));
     // Равные ключи с равной подсказкой находятся; неравные — нет даже при общей подсказке.
-    let floats: BoundedCache<Hinted<(f32, u32)>, Vec<u8>> = BoundedCache::new(MIB_TEST, len);
+    let floats: BoundedCache<Hinted<(FloatKey, u32)>, Vec<u8>> = BoundedCache::new(MIB_TEST, len);
     let key = |x: f32| Hinted {
         hint: hint(3u32),
-        key: (x, 3),
+        key: (x.into(), 3),
     };
     floats.insert(key(0.5), vec![2]);
     assert_eq!(floats.get(&key(0.5)), Some(vec![2]));
     assert_eq!(floats.get(&key(0.25)), None);
+    assert_eq!(
+        floats.get(&Hinted {
+            hint: hint(4u32),
+            key: (0.5.into(), 3)
+        }),
+        None
+    );
+}
+
+#[test]
+fn float_keys_have_canonical_equality_and_hashes() {
+    for values in [[0.0, -0.0], [f32::NAN, f32::from_bits(0xff80_0001)]] {
+        let [a, b] = values.map(FloatKey::from);
+        assert_eq!(a, a);
+        assert_eq!(a, b);
+        assert_eq!(hint(a), hint(b));
+    }
+    for values in [
+        [1.0, 1.0f32.next_up()],
+        [f32::INFINITY, f32::NEG_INFINITY],
+        [f32::INFINITY, f32::NAN],
+    ] {
+        let [a, b] = values.map(FloatKey::from);
+        assert_ne!(a, b);
+    }
+}
+
+#[test]
+fn nan_and_zero_entries_are_found_and_replaced() {
+    let cache = BoundedCache::new(MIB_TEST, len);
+    for values in [[0.0, -0.0], [f32::NAN, f32::from_bits(0x7f80_0123)]] {
+        let key = |v: f32| {
+            let v = FloatKey::from(v);
+            Hinted {
+                hint: hint(v),
+                key: v,
+            }
+        };
+        cache.insert(key(values[0]), vec![1]);
+        assert_eq!(
+            cache.get_or_insert_with(key(values[1]), || panic!("cache miss")),
+            vec![1]
+        );
+        cache.insert(key(values[1]), vec![2]);
+        assert_eq!(cache.get(&key(values[0])), Some(vec![2]));
+    }
+    assert_eq!(cache.len(), 2);
 }
 
 #[test]
