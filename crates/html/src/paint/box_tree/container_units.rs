@@ -8,13 +8,20 @@ use gpui::{Div, LayoutId, LayoutObserver, Window};
 #[cfg(test)]
 mod box_tests;
 #[cfg(test)]
+mod convergence_tests;
+#[cfg(test)]
 mod fixture;
 #[cfg(test)]
 mod tests;
 
 pub(super) fn observe(div: Div, element: &Element, style: &BoxStyle) -> Div {
     let axes = style.query_container_axes();
-    if axes == (false, false) || element.marks.anonymous_wrapper {
+    if axes == (false, false)
+        || element.marks.anonymous_wrapper
+        || element.style.slot().any().is_none()
+    {
+        // Layout-made копия уже имеет computed values и не является новым
+        // источником стиля DOM. Её временный слот не переживает сборку кадра.
         return div;
     }
     div.observe_layout(ContainerInput {
@@ -47,8 +54,9 @@ impl LayoutObserver for ContainerInput {
             self.axes.0.then_some(f32::from(size.width) / self.zoom),
             self.axes.1.then_some(f32::from(size.height) / self.zoom),
         );
-        if self.slot.set_container_size(input) {
-            window.request_layout_retry();
+        if window.update_layout_input(self.slot.container_input_id(), || {
+            self.slot.set_container_size(input)
+        }) {
             // Геометрия потомков посчитана с прежним входом предка.
             return false;
         }

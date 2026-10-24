@@ -42,7 +42,7 @@ lay_used! {
     grid_tracks, grid_areas, grid_area_name, grid_col_line_names,
     grid_row_line_names, grid_col_named, grid_row_named, grid_auto_fill_min,
     grid_auto_fill_tracks, grid_auto_fill_row, subgrid, subgrid_cols, subgrid_rows,
-    container_type, auto_repeat_cols, auto_repeat_rows, auto_repeat_body_cols,
+    container_type, svg_no_css_box, auto_repeat_cols, auto_repeat_rows, auto_repeat_body_cols,
     auto_repeat_body_rows, width, height, min_width, min_height, max_width, max_height, padding,
     margin, own_margin, border_width, radius, position, inset, anchor_name, position_anchor,
     implicit_anchor, position_area, position_try_fallbacks, position_try_order,

@@ -78,6 +78,7 @@ mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
 use layout_inputs::PrepaintRoots;
+pub use layout_inputs::LayoutInputId;
 pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
@@ -1285,6 +1286,7 @@ pub struct Window {
     pub(crate) refreshing: bool,
     // KaminIDE patch: a completed layout changed an input to style/layout.
     layout_retry: bool,
+    layout_inputs: Option<FxHashSet<LayoutInputId>>,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
     /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
@@ -2230,6 +2232,7 @@ impl Window {
             long_press_capture: None,
             refreshing: false,
             layout_retry: false,
+            layout_inputs: None,
             activation_observers: SubscriberSet::new(),
             focus: None,
             // KaminIDE patch: см. `Window::focus_visible`

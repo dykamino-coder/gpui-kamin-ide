@@ -9,11 +9,20 @@ struct Fixture {
     doc: Rc<Document>,
     width: Rc<Cell<f32>>,
     renders: Rc<Cell<usize>>,
+    render_budget: usize,
+    active: Rc<Cell<bool>>,
 }
 
 impl Render for Fixture {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl gpui::IntoElement {
+        if !self.active.get() {
+            return div();
+        }
         self.renders.set(self.renders.get() + 1);
+        assert!(
+            self.renders.get() <= self.render_budget,
+            "style/layout did not converge"
+        );
         let opts = RenderOpts {
             text: gpui::TextStyle::default(),
             viewport: (self.width.get(), 600.),
@@ -53,15 +62,31 @@ pub(super) fn run(
     html: &str,
     check: impl FnOnce(&Document, &Rc<Cell<f32>>, &Rc<Cell<usize>>, &mut gpui::VisualTestContext),
 ) {
+    run_bounded(cx, html, usize::MAX, check);
+}
+
+pub(super) fn run_bounded(
+    cx: &mut gpui::TestAppContext,
+    html: &str,
+    render_budget: usize,
+    check: impl FnOnce(&Document, &Rc<Cell<f32>>, &Rc<Cell<usize>>, &mut gpui::VisualTestContext),
+) {
     let doc = Rc::new(Document::builder(html, "").build());
     let width = Rc::new(Cell::new(400.));
     let renders = Rc::new(Cell::new(0));
+    let active = Rc::new(Cell::new(false));
     let (_, cx) = cx.add_window_view(|_, _| Fixture {
         doc: doc.clone(),
         width: width.clone(),
         renders: renders.clone(),
+        render_budget,
+        active: active.clone(),
     });
+    // Открытие окна рисует служебные кадры (включая appearance_changed).
+    // Документ включается после них: счётчик измеряет один явный draw.
+    active.set(true);
     cx.update(|window, app| {
+        window.refresh();
         window.draw(app).clear(app);
     });
     check(&doc, &width, &renders, cx);

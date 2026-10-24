@@ -82,13 +82,14 @@ impl Computed {
     }
 
     /// Обособление размера не действует на таблицу: её размер задают
-    /// дорожки, а не «содержимое как таковое» (css-contain-2 §size
-    /// containment; Blink `layout_table.h` — таблица не годится под него).
+    /// дорожки. Для SVG contain применим только при наличии CSS-коробки
+    /// (css-contain-2 §2 и §size-containment).
     pub(crate) fn size_containment_applies(&self) -> bool {
-        !matches!(
-            self.display,
-            Some(Display::Table) | Some(Display::InlineTable)
-        )
+        !self.svg_no_css_box
+            && !matches!(
+                self.display,
+                Some(Display::Table) | Some(Display::InlineTable)
+            )
     }
 
     /// Повтор «сколько влезет» по оси РЯДОВ, если он задан и годен к

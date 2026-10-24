@@ -2,6 +2,10 @@
 use super::ComputedSlot;
 
 impl ComputedSlot {
+    pub(crate) fn container_input_id(&self) -> gpui::LayoutInputId {
+        self.2
+    }
+
     /// Правка каскада сбрасывает computed values, сохраняя вход раскладки элемента.
     pub(crate) fn invalidate(&mut self) {
         *self.0.get_mut() = None;
