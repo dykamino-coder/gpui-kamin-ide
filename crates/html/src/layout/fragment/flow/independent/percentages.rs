@@ -53,7 +53,6 @@ fn block_percentages(e: &Element, parent: &BoxStyle, opts: &RenderOpts) -> Eleme
 pub(crate) fn column_percentages(
     nodes: &[Node],
     parent: &BoxStyle,
-    column_height: Option<f32>,
     width: Option<f32>,
     opts: &RenderOpts,
 ) -> Vec<Node> {
@@ -73,12 +72,9 @@ pub(crate) fn column_percentages(
             Node::Element(e)
                 if !e.inline && !crate::layout::box_kind::out_of_flow(&e.style.used()) =>
             {
-                let base = if e.style.used().column_span == Some(true) {
-                    height
-                } else {
-                    column_height.or(height)
-                };
-                Node::Element(resolve(e, parent, base, width, opts))
+                // Процентная высота использует content box многоколоночника,
+                // ширина — колонку (Blink ColumnPercentageResolutionSize).
+                Node::Element(resolve(e, parent, height, width, opts))
             }
             other => other.clone(),
         })
@@ -95,6 +91,11 @@ fn resolve(
     let mut element = e.clone();
     let mut used = crate::style::cascade::materialize::box_style(parent, &e.style, opts.cx.vcx());
     used.resolve_viewport(opts.viewport, opts.cx.vcx());
+    // Физическая height вертикальной коробки — её строчная ось;
+    // процент разрешает вертикальная раскладка, а не блочная цепочка CSS2.
+    if used.wm().vertical() {
+        return element;
+    }
     let base = if used.root_box {
         Some(opts.viewport.1)
     } else {
