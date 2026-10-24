@@ -103,7 +103,9 @@ fn attrs(
         if name.starts_with("*|") {
             return None;
         }
-        if ty.is_empty() {
+        // Тип по умолчанию и raw-string используют строковый вычислитель
+        // generated content: ему доступен исходный элемент и для псевдостилей.
+        if ty.is_empty() || ty.eq_ignore_ascii_case("raw-string") {
             out.push_str(&value[from..f.start]);
             from = (end + 1).min(value.len());
             out.push_str(&value[f.start..from]);
