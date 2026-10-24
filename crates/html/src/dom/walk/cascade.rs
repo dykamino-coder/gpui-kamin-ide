@@ -144,6 +144,7 @@ pub(super) fn cascade_element(
         .as_deref()
         .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
     style.mathml = crate::dom::mathml::is_mathml(handle);
+    style.svg_no_css_box = super::ancestor::svg_no_css_box(handle);
     if crate::dom::mathml_routing::enabled(handle) {
         if let Some(display) = style.math_layout {
             style.display = Some(display);

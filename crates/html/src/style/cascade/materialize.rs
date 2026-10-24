@@ -29,6 +29,7 @@ pub(crate) use recompute::{recompute_onto, rematerialize};
 pub struct ComputedSlot(
     RefCell<Option<Rc<Materialized>>>,
     Rc<Cell<(Option<f32>, Option<f32>)>>,
+    gpui::LayoutInputId,
 );
 
 type Inputs = (u64, [u32; 2]);
@@ -50,7 +51,11 @@ struct Materialized {
 
 impl Clone for ComputedSlot {
     fn clone(&self) -> Self {
-        Self(RefCell::new(self.0.borrow().clone()), self.1.clone())
+        Self(
+            RefCell::new(self.0.borrow().clone()),
+            self.1.clone(),
+            self.2,
+        )
     }
 }
 

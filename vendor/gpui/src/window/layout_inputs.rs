@@ -1,6 +1,19 @@
 //! KaminIDE patch: завершение входов стиля из layout до фиксации кадра.
 use super::*;
 
+/// Идентичность постоянного источника layout-dependent style input.
+/// Копии одной коробки используют тот же идентификатор.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct LayoutInputId(u64);
+
+impl Default for LayoutInputId {
+    fn default() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
 pub(super) struct PrepaintRoots {
     pub(super) root_element: AnyElement,
     #[cfg(any(feature = "inspector", debug_assertions))]
@@ -11,12 +24,25 @@ pub(super) struct PrepaintRoots {
 }
 
 impl Window {
-    /// Повторить стиль/layout до paint этого кадра. Вызывающий публикует
-    /// изменённый вход в prepaint и обеспечивает продвижение: например,
-    /// size-contained предок стабилизируется раньше своих потомков.
-    pub fn request_layout_retry(&mut self) {
+    /// Опубликовать вход один раз за кадр, после layout его источника.
+    /// Предок обязан отложить prepaint потомков, если вход изменился:
+    /// тогда они будут обработаны только с окончательным стилем предка.
+    /// Изолированный prepaint вне сборки кадра входы не публикует.
+    pub fn update_layout_input(
+        &mut self,
+        id: LayoutInputId,
+        update: impl FnOnce() -> bool,
+    ) -> bool {
         self.invalidator.debug_assert_prepaint();
-        self.layout_retry = true;
+        let Some(inputs) = self.layout_inputs.as_mut() else {
+            return false;
+        };
+        if !inputs.insert(id) {
+            return false;
+        }
+        let changed = update();
+        self.layout_retry |= changed;
+        changed
     }
 
     pub(super) fn prepaint_roots_with_layout_inputs(
@@ -26,6 +52,7 @@ impl Window {
         cx: &mut App,
     ) -> PrepaintRoots {
         let text_index = self.text_system.layout_index();
+        self.layout_inputs = Some(FxHashSet::default());
         loop {
             self.layout_retry = false;
             if self.a11y.is_active() {
@@ -67,6 +94,7 @@ impl Window {
                 tooltip_element = self.prepaint_tooltip(cx);
             }
             if !self.layout_retry {
+                self.layout_inputs = None;
                 return PrepaintRoots {
                     root_element: root,
                     #[cfg(any(feature = "inspector", debug_assertions))]

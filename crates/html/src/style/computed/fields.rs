@@ -122,6 +122,9 @@ pub struct Computed {
     /// `contain: size` подсетку не отменяет — это отдельно проверяют случаи
     /// 8 и 9 `independent-formatting-context.html`.
     pub container_type: ContainerType,
+    /// Внутренний SVG использует SVG layout, без главной CSS-коробки.
+    /// Только внешний svg может быть size query container (css-contain-2 §2).
+    pub(crate) svg_no_css_box: bool,
     pub auto_repeat_cols: Option<AutoRepeat>,
     pub auto_repeat_rows: Option<AutoRepeat>,
     /// Тело авто-повтора ДОРОЖКА ЗА ДОРОЖКОЙ: `repeat(auto-fill, max-content
