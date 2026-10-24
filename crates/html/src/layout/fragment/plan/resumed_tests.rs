@@ -48,7 +48,7 @@ fn siblings_use_the_actual_end_of_the_resumed_leaf() {
                 content_block: 180.0,
             })
         },
-        &mut |_| None,
+        &mut |_| super::Measurement::default(),
     )
     .unwrap();
     let middle: Vec<_> = plan
@@ -78,7 +78,7 @@ fn stalled_leaf_is_an_error_instead_of_a_partial_plan() {
         &|_| 0.0,
         Space::pages(12),
         &|_| Some(Leaf { content_block: 1.0 }),
-        &mut |_| None,
+        &mut |_| super::Measurement::default(),
     );
     assert!(matches!(result, Err(Error::NoProgress)));
 }

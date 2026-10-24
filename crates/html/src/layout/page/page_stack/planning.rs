@@ -35,7 +35,8 @@ impl PageStack {
             .first()
             .map(|k| k.page.clone())
             .unwrap_or_default();
-        let (mut kids, limit) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
+        let (mut kids, mut inline, limit) =
+            self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
         let kid_names: Vec<_> = self.kids.iter().map(|k| k.page.clone()).collect();
         let mut geoms = vec![g];
         let mut names = vec![first.clone()];
@@ -57,6 +58,7 @@ impl PageStack {
                             from: 0.0,
                             offset: 0.0,
                             kid: kids[index].clone(),
+                            inline: inline[index].clone(),
                             laid: r.laid.clone(),
                             continued: false,
                         },
@@ -104,7 +106,14 @@ impl PageStack {
                     } else {
                         (pg.area.0, block_size)
                     };
-                    self.remeasure_copy(kid, copy, area, from, window, cx)
+                    let geometry = self.remeasure_copy(kid, copy, area, from, window, cx);
+                    plan::Measurement {
+                        copy: geometry,
+                        inline: self
+                            .measured
+                            .get(&(kid, copy))
+                            .map_or_else(|| inline[kid].clone(), |m| m.inline.clone()),
+                    }
                 },
             );
             let (pages, _, plan) = match planned {
@@ -120,7 +129,7 @@ impl PageStack {
             let extents: Vec<_> = (0..pages).map(heights).collect();
             let state = State::new(&names, &geoms, &plan, &self.measured);
             if self.regrow_flex(&kids, &plan, &extents) {
-                (kids, _) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
+                (kids, inline, _) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
                 return (false, state, Ok((pages, plan)));
             }
             let mut new_names: Vec<Option<String>> = vec![None; pages];

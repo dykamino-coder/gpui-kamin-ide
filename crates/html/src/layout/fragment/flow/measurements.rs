@@ -17,7 +17,7 @@ pub(crate) struct FlowNode {
     pub(crate) growth: ParagraphGrowth,
     pub(crate) starts: Rc<RefCell<Vec<f32>>>,
     pub(crate) content: Rc<RefCell<Vec<super::ContentLine>>>,
-    pub(crate) resume: Rc<Cell<usize>>,
+    pub(crate) resume: Rc<super::inline::Cursor>,
     pub(crate) ordinal: usize,
 }
 
@@ -57,7 +57,7 @@ impl FlowNode {
 #[derive(Debug, Default)]
 pub(crate) struct FlowMeasure {
     pub(super) records: Records<Record>,
-    pub(super) resumes: RefCell<Vec<Rc<Cell<usize>>>>,
+    pub(super) resumes: RefCell<Vec<Rc<super::inline::Cursor>>>,
     pub(crate) lines: bool,
     paragraphs: Rc<RefCell<Vec<ParagraphGrowth>>>,
     next: Cell<usize>,

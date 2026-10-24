@@ -13,6 +13,13 @@ pub(crate) struct MeasureRequest {
     pub(crate) block_size: f32,
 }
 
+/// IFC принадлежат снимку страничного consumer; общий Kid не хранит их адреса.
+#[derive(Default)]
+pub(crate) struct Measurement {
+    pub(crate) copy: Option<(Kid, f32)>,
+    pub(crate) inline: crate::layout::fragment::flow::inline::Geometry,
+}
+
 // Filling returns column geometry and continuation metadata together.
 pub(crate) fn fill_measured(
     kids: &[Kid],
@@ -21,8 +28,13 @@ pub(crate) fn fill_measured(
     remeasure: &mut super::Remeasure<'_>,
 ) -> (usize, f32, Plan) {
     // Потребители копий сохраняют прежний контракт; token consumer ошибок не скрывает.
-    fill_resumed(kids, target_at, space, &|_| None, remeasure)
-        .expect("copy planner does not execute tokens")
+    fill_resumed(kids, target_at, space, &|_| None, &mut |request| {
+        Measurement {
+            copy: remeasure(request),
+            inline: Default::default(),
+        }
+    })
+    .expect("copy planner does not execute tokens")
 }
 
 #[allow(clippy::type_complexity)]
@@ -31,7 +43,7 @@ pub(crate) fn fill_resumed(
     target_at: &dyn Fn(usize) -> f32,
     space: Space,
     leaf_at: &dyn Fn(usize) -> Option<crate::layout::fragment::flow::blocks::leaf::Leaf>,
-    remeasure: &mut super::Remeasure<'_>,
+    remeasure: &mut super::ResumeMeasure<'_>,
 ) -> Result<(usize, f32, Plan), crate::layout::fragment::token::Error> {
     let limit = space.limit;
     let paged = space.space.is_paginated();
@@ -124,7 +136,7 @@ pub(crate) fn fill_resumed(
             flow,
             rg,
             remeasure,
-        );
+        )?;
         // Флоат ушёл целиком в следующую колонку, а в текущей осталось
         // место: следующие коробки продолжают её (`Par::float`).
         if k.par.float && k.par.group == 0 && float_hold.is_none() {
