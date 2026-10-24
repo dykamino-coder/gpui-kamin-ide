@@ -1,5 +1,6 @@
-//! Продолжение при смене ограничений: новая мера и адрес содержимого каждого flex-потока.
+//! Продолжение при смене ограничений: новая мера и адрес обычного и независимых flex-потоков.
 mod inline;
+mod normal;
 use super::{PageStack, measure::measure, resume::Resume};
 use crate::layout::fragment::flow::blocks::Laid;
 use crate::layout::fragment::types::Kid;
@@ -81,6 +82,9 @@ impl PageStack {
         let original = k.regrow.as_ref()?.laid.clone();
         let original_space = k.regrow.as_ref()?.space;
         let main = k.watched.clone()?;
+        let normal = main
+            .blocks()
+            .and_then(|blocks| normal::Cursor::at(blocks, &old.laid, &old.inline.paragraphs, from));
         let rec = if copy == 0 {
             main.clone()
         } else {
@@ -120,8 +124,10 @@ impl PageStack {
         } else {
             let root = inline::offset(&inline_addresses, &next_inline.paragraphs);
             root.into_iter()
-                .chain(std::iter::once(token.offset(&fresh, next.h)))
-                .min_by(f32::total_cmp)?
+                .chain(normal.and_then(|cursor| cursor.offset(&fresh, &next_inline.paragraphs)))
+                .chain(token.offset(&fresh))
+                .min_by(f32::total_cmp)
+                .unwrap_or(next.h)
         };
         own.laid = fresh.clone();
         own.space = fresh_space;

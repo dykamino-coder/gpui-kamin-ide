@@ -163,3 +163,45 @@ fn font_lengths_and_border_box_limits_are_resolved_before_consumption() {
         (10.0, 10.0, true)
     );
 }
+
+#[test]
+fn viewport_leaf_limits_and_edges_keep_the_initial_page_basis() {
+    let tree = crate::dom::parse(
+        "<section style='height:150vh;min-height:110vh;max-height:120vh;box-sizing:border-box;padding:2vh;border:1vh solid'></section>",
+        "",
+    );
+    let opts = opts(&tree);
+    let (nodes, contexts) = page_percentages(&tree, &opts.root_style(), &opts);
+    for page in [600.0, 400.0] {
+        let (leaf, _) = contexts.context(target(&nodes).node_id).leaf(
+            crate::layout::fragment::token::Space {
+                inline_size: Some(800.0),
+                block_size: Some(page),
+                ..crate::layout::fragment::token::Space::pages()
+            },
+            &opts,
+        );
+        assert_eq!(leaf.content_block, 684.0);
+        assert_eq!((leaf.edges.start, leaf.edges.end), (18.0, 18.0));
+    }
+}
+
+#[test]
+fn viewport_parent_supplies_a_definite_percentage_containing_block() {
+    let tree = crate::dom::parse(
+        "<div style='height:50vh'><section style='height:50%'></section></div>",
+        "",
+    );
+    let opts = opts(&tree);
+    let (nodes, contexts) = page_percentages(&tree, &opts.root_style(), &opts);
+    assert_eq!(target(&nodes).style.used().height, Some(Len::Px(150.0)));
+    let (leaf, _) = contexts.context(target(&nodes).node_id).leaf(
+        crate::layout::fragment::token::Space {
+            inline_size: Some(800.0),
+            block_size: Some(400.0),
+            ..crate::layout::fragment::token::Space::pages()
+        },
+        &opts,
+    );
+    assert_eq!(leaf.content_block, 150.0);
+}
