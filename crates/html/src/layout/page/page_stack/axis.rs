@@ -20,15 +20,13 @@ impl PageStack {
         self.axis = axis;
         if crate::layout::fragment::types::StackAxis::of(self.principal) != axis {
             use crate::style::computed::{Computed, writing_mode::WritingModeKw};
-            self.principal = Computed {
-                writing_mode: Some(match axis {
-                    StackAxis::Horizontal => WritingModeKw::HorizontalTb,
-                    StackAxis::VerticalRl => WritingModeKw::VerticalRl,
-                    StackAxis::VerticalLr => WritingModeKw::VerticalLr,
-                }),
-                ..Computed::default()
-            }
-            .wm();
+            let mut style = Computed::default();
+            style.writing_mode = Some(match axis {
+                StackAxis::Horizontal => WritingModeKw::HorizontalTb,
+                StackAxis::VerticalRl => WritingModeKw::VerticalRl,
+                StackAxis::VerticalLr => WritingModeKw::VerticalLr,
+            });
+            self.principal = style.wm();
         }
         self
     }

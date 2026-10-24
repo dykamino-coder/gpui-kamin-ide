@@ -81,6 +81,7 @@ fn store_walks_nested_tokens_parent_first() {
         }],
         child: Some(a),
         parallel: vec![ChildToken { idx: 2, token: b }],
+        ..Default::default()
     }));
     root.oof.push(OofResume {
         idx: 0,
