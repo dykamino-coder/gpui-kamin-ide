@@ -64,8 +64,23 @@ impl PagePercentages {
         let context = self.context(e.node_id);
         let style = context.style(space, opts);
         let used = e.style.used_mut();
-        (used.height, used.min_height, used.max_height) =
-            (style.height, style.min_height, style.max_height);
+        for (original, resolved, target) in [
+            (context.style.height, style.height, &mut used.height),
+            (
+                context.style.min_height,
+                style.min_height,
+                &mut used.min_height,
+            ),
+            (
+                context.style.max_height,
+                style.max_height,
+                &mut used.max_height,
+            ),
+        ] {
+            if matches!(original, Some(Len::Pct(_))) {
+                *target = resolved;
+            }
+        }
         if matches!(
             style.display,
             None | Some(
