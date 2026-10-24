@@ -8,6 +8,33 @@ use super::*;
 use crate::style::values::value::Color;
 
 #[test]
+fn shadow_fast_path_uses_normalized_html_attribute_names() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let green = Color::parse("green", doc.values());
+    for attr in ["shadowrootmode", "SHADOWROOTMODE", "ShAdOwRoOtMoDe"] {
+        for mode in ["open", "CLOSED"] {
+            let html = format!(
+                "<!doctype html><div><template {attr}='{mode}'><style>\
+                 ::slotted(i) {{color:green}}\
+                 </style><slot id=box></slot></template><i>assigned</i></div>"
+            );
+            assert_eq!(child_colors(&html), [green], "{attr}={mode}");
+        }
+    }
+}
+
+#[test]
+fn shadow_fast_path_finds_nested_uppercase_templates() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let colors = child_colors(
+        "<!doctype html><main><template SHADOWROOTMODE=open>\
+         <div><template SHADOWROOTMODE=open><style>i{color:green}</style>\
+         <div id=box><i></i></div></template></div></template></main>",
+    );
+    assert_eq!(colors, [Color::parse("green", doc.values())]);
+}
+
+#[test]
 fn slotted_has_matches_the_assigned_elements_own_subtree() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
