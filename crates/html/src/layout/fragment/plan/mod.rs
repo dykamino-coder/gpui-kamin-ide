@@ -103,8 +103,10 @@ pub(crate) fn fill_at(
 }
 
 mod measured;
-pub(crate) use measured::{MeasureRequest, fill_measured};
+pub(crate) use measured::{MeasureRequest, fill_measured, fill_resumed};
 pub(super) type Remeasure<'a> = dyn FnMut(MeasureRequest) -> Option<(Kid, f32)> + 'a;
 
+#[cfg(test)]
+mod resumed_tests;
 #[cfg(test)]
 mod tests;

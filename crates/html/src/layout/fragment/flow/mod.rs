@@ -16,6 +16,7 @@ pub(crate) use continuation::ContentLine;
 pub(crate) use line_growth::LinePush;
 mod stack;
 pub(crate) use measurements::{FlowMeasure, FlowNode};
+pub(crate) use stack::fragment_leaf;
 
 /// Whether the line boxes inside `e` are line boxes of the block flow that
 /// contains `e` (css-break-3 §4.3 class B): a block container in normal flow

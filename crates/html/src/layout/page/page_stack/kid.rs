@@ -83,6 +83,8 @@ pub struct PageKid {
     pub el: AnyElement,
     /// Повторная раскладка flex после роста независимого потока.
     pub(crate) regrow: Option<crate::layout::fragment::push::Regrow>,
+    /// Paint slices первого token consumer; создаются только по готовому плану.
+    pub(crate) leaf: Option<std::rc::Rc<dyn Fn() -> AnyElement>>,
     /// Recorder of the main copy: measured lines and, for a group of one block
     /// box, its block stack (`paged::kids::breaks`).
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
