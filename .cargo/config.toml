@@ -16,4 +16,3 @@ RUST_MIN_STACK = "67108864"
 # Изолированный профиль агента; dev/release и installer не меняются.
 html-build = ["build", "-p", "kamin-html", "--lib", "--profile", "agent", "--config", "target.x86_64-pc-windows-msvc.linker=\"rust-lld\""]
 html-test = ["test", "-p", "kamin-html", "--lib", "--profile", "agent", "--config", "target.x86_64-pc-windows-msvc.linker=\"rust-lld\""]
-html-wptrun = ["build", "-p", "kamin-html", "--example", "wptrun", "--features", "wpt-harness", "--profile", "agent", "--config", "target.x86_64-pc-windows-msvc.linker=\"rust-lld\""]
