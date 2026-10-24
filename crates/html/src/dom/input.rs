@@ -1,96 +1,166 @@
-//! Ограничивает глубину HTML-дерева до рекурсии селекторов, сбора стилей и конвертации в DOM.
+//! Полный HTML/XML DOM: парсер не обрезает и не сплющивает вложенность.
+//!
+//! B1 ограничивает глубину downstream, но не allocation/work самого парсера (B3).
 
+use crate::document::DocumentFailure;
 use html5ever::tendril::TendrilSink;
-use markup5ever_rcdom::{NodeData, RcDom};
+use markup5ever_rcdom::RcDom;
 
-// Bound adversarial nesting before recursive consumers, as HTML parsers do.
-// Our style frames exceed Blink's parser frames: 512 still overflows a native
-// test thread when building a Document. Keep a tested engine-wide budget of 64.
-// The document node is depth zero.
-pub(crate) const MAX_DEPTH: usize = 64;
-
-pub(crate) fn html(source: &str) -> RcDom {
-    let dom = html5ever::parse_document(RcDom::default(), Default::default()).one(source);
-    bound(&dom);
-    dom
+/// Исходное дерево остаётся во владении revision независимо от её представления.
+pub(crate) struct Admitted {
+    pub dom: RcDom,
+    pub xhtml: bool,
 }
 
-pub(crate) fn bound(dom: &RcDom) {
-    let mut pending = vec![(dom.document.clone(), 0)];
-    while let Some((node, depth)) = pending.pop() {
-        if depth >= MAX_DEPTH {
-            node.children.borrow_mut().clear();
-            if let NodeData::Element {
-                template_contents, ..
-            } = &node.data
-            {
-                template_contents.borrow_mut().take();
-            }
-            continue;
-        }
-        pending.extend(
-            node.children
-                .borrow()
-                .iter()
-                .map(|child| (child.clone(), depth + 1)),
-        );
-        if let NodeData::Element {
-            template_contents, ..
-        } = &node.data
-            && let Some(contents) = template_contents.borrow().as_ref()
+impl Admitted {
+    pub fn parse(source: &str, xml: bool) -> Result<Self, DocumentFailure> {
+        let mut dom = if xml {
+            super::xml::xml_dom(source)?
+        } else {
+            raw_html(source)
+        };
+        let xhtml = xml || super::content::is_xhtml(&dom.document);
+        if xhtml
+            && !xml
+            && let std::borrow::Cow::Owned(expanded) =
+                super::xhtml::expand_xhtml_self_closing(source)
         {
-            pending.push((contents.clone(), depth + 1));
+            dom = raw_html(&expanded);
         }
+        Ok(Self { dom, xhtml })
     }
+}
+
+fn raw_html(source: &str) -> RcDom {
+    html5ever::parse_document(RcDom::default(), Default::default()).one(source)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    //! Полная вложенность HTML/XML, неявные узлы, templates и малый стек парсера.
 
-    #[test]
-    fn deeply_nested_input_is_bounded_before_recursive_walks() {
-        let source = format!("{}text{}", "<div>".repeat(10_000), "</div>".repeat(10_000));
-        let dom = html(&source);
-        #[expect(
-            clippy::redundant_clone,
-            reason = "keep the root alive: Node::drop drains descendant children"
-        )]
-        let mut pending = vec![(dom.document.clone(), 0)];
-        let mut maximum = 0;
+    use super::*;
+    use markup5ever_rcdom::{Handle, NodeData};
+
+    fn nested(depth: usize, xml: bool) -> String {
+        let wrappers = if xml { depth - 1 } else { depth - 3 };
+        format!(
+            "{}text{}",
+            "<div>".repeat(wrappers),
+            "</div>".repeat(wrappers)
+        )
+    }
+
+    fn facts(root: &Handle) -> (usize, String) {
+        let mut pending = vec![(root.clone(), 0)];
+        let (mut maximum, mut text) = (0, String::new());
         while let Some((node, depth)) = pending.pop() {
             maximum = maximum.max(depth);
+            if let NodeData::Text { contents } = &node.data {
+                text.push_str(&contents.borrow());
+            }
+            if let NodeData::Element {
+                template_contents, ..
+            } = &node.data
+                && let Some(root) = template_contents.borrow().as_ref()
+            {
+                pending.push((root.clone(), depth + 1));
+            }
             pending.extend(
                 node.children
                     .borrow()
                     .iter()
-                    .map(|child| (child.clone(), depth + 1)),
+                    .rev()
+                    .map(|n| (n.clone(), depth + 1)),
             );
         }
-        assert_eq!(maximum, MAX_DEPTH);
-        let nodes = super::super::parse(&source, "");
-        assert!(!nodes.is_empty());
-        let document = crate::document::Document::builder(&source, "")
-            .base_uri("file:///deep.html")
-            .build();
-        assert!(document.node_count() <= MAX_DEPTH);
+        (maximum, text)
     }
 
     #[test]
-    fn ordinary_html_keeps_its_text() {
-        let dom = html("<p>Hello <b>world</b></p>");
-        #[expect(
-            clippy::redundant_clone,
-            reason = "keep the root alive: Node::drop drains descendant children"
-        )]
-        let mut pending = vec![dom.document.clone()];
-        let mut text = String::new();
-        while let Some(node) = pending.pop() {
-            if let NodeData::Text { contents } = &node.data {
-                text.push_str(&contents.borrow());
+    fn html_and_xml_preserve_all_three_boundaries_without_flattening() {
+        for xml in [false, true] {
+            for depth in [63, 64, 65] {
+                let input = Admitted::parse(&nested(depth, xml), xml).unwrap();
+                assert_eq!(facts(&input.dom.document), (depth, "text".into()));
             }
-            pending.extend(node.children.borrow().iter().rev().cloned());
         }
-        assert_eq!(text, "Hello world");
+    }
+
+    #[test]
+    fn implied_nodes_and_tree_repair_preserve_the_actual_tree() {
+        for depth in [63, 64, 65] {
+            let source = format!(
+                "{}<table><tr><td>x</table>{}",
+                "<div>".repeat(depth - 7),
+                "</div>".repeat(depth - 7)
+            );
+            let input = Admitted::parse(&source, false).unwrap();
+            assert_eq!(facts(&input.dom.document), (depth, "x".into()));
+        }
+        let input = Admitted::parse(&"<p>x".repeat(1000), false).unwrap();
+        assert_eq!(facts(&input.dom.document), (4, "x".repeat(1000)));
+    }
+
+    #[test]
+    fn inert_and_shadow_templates_retain_fragment_and_slot_edges() {
+        for shadow in ["", " shadowrootmode='open'"] {
+            for depth in [63, 64, 65] {
+                let source = format!(
+                    "<div><template{shadow}>{}<slot>x</slot>{}</template></div>",
+                    "<div>".repeat(depth - 7),
+                    "</div>".repeat(depth - 7)
+                );
+                let input = Admitted::parse(&source, false).unwrap();
+                assert_eq!(facts(&input.dom.document), (depth, "x".into()));
+            }
+        }
+    }
+
+    #[test]
+    fn xhtml_self_closing_expansion_keeps_siblings_and_text() {
+        let source = format!(
+            "<html xmlns='http://www.w3.org/1999/xhtml'><body>{}<span>text</span></body></html>",
+            "<span/>".repeat(64)
+        );
+        let input = Admitted::parse(&source, false).unwrap();
+        assert_eq!(facts(&input.dom.document), (4, "text".into()));
+    }
+
+    #[test]
+    fn deep_html_xml_and_templates_parse_and_drop_on_a_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                for xml in [false, true] {
+                    let input = Admitted::parse(&nested(10_000, xml), xml).unwrap();
+                    assert_eq!(facts(&input.dom.document), (10_000, "text".into()));
+                }
+                let source = format!(
+                    "{}x{}",
+                    "<template>".repeat(2000),
+                    "</template>".repeat(2000)
+                );
+                let input = Admitted::parse(&source, false).unwrap();
+                let (depth, text) = facts(&input.dom.document);
+                assert!(depth > 2000);
+                assert_eq!(text, "x");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn xml_templates_and_slots_have_no_implied_html_wrappers() {
+        for depth in [63, 64, 65] {
+            let source = format!(
+                "<template>{}<slot>x</slot>{}</template>",
+                "<div>".repeat(depth - 3),
+                "</div>".repeat(depth - 3)
+            );
+            let input = Admitted::parse(&source, true).unwrap();
+            assert_eq!(facts(&input.dom.document), (depth, "x".into()));
+        }
     }
 }

@@ -46,7 +46,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let html = format!(
         "<!DOCTYPE html><html><head><style>html,body{{margin:0;padding:0}}</style></head><body>{markup}</body></html>"
     );
-    let embedded = crate::document::parse_embedded_sized(
+    let embedded = match crate::document::parse_embedded_sized(
         &html,
         crate::BROWSER_CSS,
         (w, h),
@@ -55,7 +55,12 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         false,
         None,
         &opts.cx.doc().metrics.font_context(),
-    );
+    ) {
+        Ok(embedded) => embedded,
+        Err(failure) => {
+            return Some(super::iframe::rejected(failure, opts));
+        }
+    };
     let kids = super::iframe::build_embedded(embedded, (w, h), opts, |nodes| nodes);
     Some(
         opts.cx

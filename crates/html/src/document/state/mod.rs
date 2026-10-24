@@ -16,6 +16,7 @@ mod property_registry;
 mod readiness;
 mod scoped;
 mod synthetic_ids;
+mod traversal;
 mod value_cx;
 
 use crate::style::css::{DeclBlock, Media, PageRule};
@@ -34,6 +35,9 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    pub(crate) traversal: traversal::TraversalState,
+    /// Первый отказ вложенного документа этой revision; не теряется при повторном кадре.
+    pub(crate) embedded_failure: Cell<Option<crate::document::DocumentFailure>>,
     /// Следующий ключ синтетической коробки, независимо от авторских node_id.
     synthetic_id: RefCell<Vec<u8>>,
     /// Anchor geometry and fallback selection belonging to this document.

@@ -165,7 +165,12 @@ fn main() {
         // Щуп метрик ставится ПОСЛЕ регистрации: до неё `Ahem` ещё не найден,
         // и `ch` мерился бы по шрифту-подмене.
         let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
-        let empty = Rc::new(Document::builder("", BROWSER_CSS).fonts(&fonts).build());
+        let empty = Rc::new(
+            Document::builder("", BROWSER_CSS)
+                .fonts(&fonts)
+                .build()
+                .expect("static empty runner document"),
+        );
         if capture::offscreen() || capture::first_frame() {
             gpui::frame_capture::enable();
         }

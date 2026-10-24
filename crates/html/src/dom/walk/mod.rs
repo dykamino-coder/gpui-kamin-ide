@@ -2,13 +2,11 @@
 
 mod ancestor;
 use ancestor::{element_ancestor, element_attrs};
-
 mod sibling_survey;
 pub(super) use sibling_survey::walk_children;
 
 mod text_nodes;
 use crate::dom::walk::text_nodes::walk_text;
-
 mod hidden;
 use crate::dom::walk::hidden::hidden_element;
 
@@ -58,6 +56,13 @@ fn build_dom_node(
     out: &mut Vec<Node>,
     vcx: crate::document::state::ValueCx<'_>,
 ) {
+    let Some(_guard) = tree
+        .doc
+        .traversal
+        .enter(crate::document::TraversalKind::BoxBuild)
+    else {
+        return;
+    };
     match &handle.data {
         NodeData::Text { contents } => {
             walk_text(
@@ -94,10 +99,6 @@ fn build_dom_node(
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let (hover, first_letter, first_line, marker_layer) =
                 pseudo_styles(&mut style, &tag, rules, vars, &me, path, sibs, vcx);
-            // Обратный счётчик без числа: начальное значение — итог
-            // предварительного обхода области (css-lists-3
-            // §instantiating-counters). Считается ЗДЕСЬ, до применения
-            // директив: запись создаётся уже готовым числом.
             let reversed_start =
                 |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
                     crate::style::generated::counters_scan::reversed_initial(

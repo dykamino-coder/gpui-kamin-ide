@@ -9,6 +9,13 @@ use kamin_html::{BROWSER_CSS, Document};
 use std::rc::Rc;
 
 impl Stage {
+    pub(super) fn record_report(&self, doc: &Document) {
+        let report = doc.report();
+        if report.degradation.is_some() && self.degradation.get().is_none() {
+            self.degradation.set(Some(report));
+        }
+    }
+
     pub(super) fn prepare(
         &self,
         cx: &mut AsyncApp,
@@ -16,13 +23,14 @@ impl Stage {
         source: Option<&str>,
         print: bool,
         first: bool,
-    ) {
+    ) -> bool {
+        let mut admitted = false;
         let parse_started = std::time::Instant::now();
         let _ = cx.update_window(self.window, |view, window, cx| {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
                     let fonts = page.doc.font_context();
-                    page.doc = Rc::new(match source {
+                    let candidate = match source {
                         Some(path) => Document::builder(html, BROWSER_CSS)
                             .fonts(&fonts)
                             .path(std::path::Path::new(path))
@@ -32,7 +40,20 @@ impl Stage {
                             .fonts(&fonts)
                             .print(print)
                             .build(),
-                    });
+                    };
+                    match candidate {
+                        Ok(doc) => {
+                            self.record_report(&doc);
+                            page.doc = Rc::new(doc);
+                            admitted = true;
+                        }
+                        Err(failure) => {
+                            if self.document_failure.get().is_none() {
+                                self.document_failure.set(Some(failure));
+                            }
+                            return;
+                        }
+                    }
                     page.select = reftest_pages(html);
                     cx.notify();
                 });
@@ -43,6 +64,7 @@ impl Stage {
             window.refresh();
         });
         super::phase_timing::emit(source, "parse", parse_started.elapsed(), 1);
+        admitted
     }
 
     pub(super) fn checked(

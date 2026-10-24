@@ -11,7 +11,8 @@ fn values(spot: &Spot) -> (usize, usize, usize, usize) {
 fn census_preserves_local_name_keys_and_non_element_slots() {
     let dom = crate::dom::xml::xml_dom(
         "<root>text<A/><a/><!--comment--><A xmlns='urn:other'/><a/><B/></root>",
-    );
+    )
+    .unwrap();
     let root = dom.document.children.borrow()[0].clone();
     let children = root.children.borrow();
     let (spots, all) = census_of(&children, &TreeIndex::default());
@@ -36,7 +37,8 @@ fn census_preserves_local_name_keys_and_non_element_slots() {
 
 #[test]
 fn census_large_sibling_group_has_forward_and_reverse_positions() {
-    let dom = crate::dom::xml::xml_dom(&format!("<root>{}</root>", "<a/><b/>".repeat(4096)));
+    let dom =
+        crate::dom::xml::xml_dom(&format!("<root>{}</root>", "<a/><b/>".repeat(4096))).unwrap();
     let root = dom.document.children.borrow()[0].clone();
     let (spots, all) = census_of(&root.children.borrow(), &TreeIndex::default());
     assert_eq!(all.len(), 8192);
@@ -48,7 +50,7 @@ fn census_large_sibling_group_has_forward_and_reverse_positions() {
 
 #[test]
 fn census_empty_and_non_element_groups_have_no_elements() {
-    let dom = crate::dom::xml::xml_dom("<root>text<!--comment--></root>");
+    let dom = crate::dom::xml::xml_dom("<root>text<!--comment--></root>").unwrap();
     let root = dom.document.children.borrow()[0].clone();
     for children in [&[][..], &root.children.borrow()[..]] {
         let (spots, all) = census_of(children, &TreeIndex::default());

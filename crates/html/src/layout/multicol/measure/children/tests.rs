@@ -16,7 +16,9 @@ fn element(nodes: &[Node]) -> &Element {
 
 #[test]
 fn measured_margins_keep_auto_zero_and_reject_unresolved_lengths() {
-    let doc = Document::builder("<!doctype html><div>x</div>", "").build();
+    let doc = Document::builder("<!doctype html><div>x</div>", "")
+        .build()
+        .unwrap();
     let mut c = element(doc.nodes()).clone();
     let kids = RefCell::new(Vec::new());
     let whole = RefCell::new(Vec::new());
@@ -53,7 +55,8 @@ fn flex_avoid_boundaries_keep_solver_line_membership() {
          <div style='height:150px;break-before:avoid'></div></div></div>",
         "",
     )
-    .build();
+    .build()
+    .unwrap();
     let parent = element(doc.nodes());
     let opts = RenderOpts {
         text: Default::default(),
@@ -95,7 +98,8 @@ fn wrapped_multicol_uses_its_laid_height_instead_of_summing_inner_columns() {
          </div></div></div>",
         "",
     )
-    .build();
+    .build()
+    .unwrap();
     let parent = element(doc.nodes());
     let opts = RenderOpts {
         text: Default::default(),
@@ -150,7 +154,8 @@ fn direct_multicol_keeps_its_outer_fragmentation_dispatch() {
             &format!("<div style='{style}'><div style='height:300px'></div></div>"),
             "",
         )
-        .build();
+        .build()
+        .unwrap();
         let c = authored(doc.nodes()).expect("authored multicol");
         assert!(crate::layout::multicol::spanner::multicol_container(
             &c.style.used()

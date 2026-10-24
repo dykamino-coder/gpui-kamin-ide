@@ -83,6 +83,13 @@ impl Scan<'_> {
     }
 
     fn node(&mut self, h: &Handle, me: &Ancestor, path: &[Ancestor], sibs: Sibs, root: bool) {
+        let doc = self.tree.doc.clone();
+        let Some(_guard) = doc
+            .traversal
+            .enter(crate::document::TraversalKind::Counters)
+        else {
+            return;
+        };
         let vcx = self.vcx;
         if self.done {
             return;

@@ -4,7 +4,7 @@
 //! Разобрать один раз, рисовать каждый кадр:
 //!
 //! ```ignore
-//! let doc = kamin_html::Document::builder(html, theme_css).build(); // разбор + каскад
+//! let doc = kamin_html::Document::builder(html, theme_css).build()?; // разбор + каскад
 //! let elements = doc.render(&RenderOpts { text, ..Default::default() });
 //! ```
 //!
@@ -163,6 +163,9 @@ pub const BROWSER_CSS: &str = r#"
 #[cfg(feature = "wpt-harness")]
 pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
 
-pub use document::{Document, DocumentBuilder};
-pub use dom::{Element, Node, parse};
+pub use document::{
+    BuildReport, Document, DocumentBuilder, DocumentFailure, FailureReason, FailureScope,
+    RevisionStatus, TraversalKind, TraversalLimit,
+};
+pub use dom::{Element, Node, try_parse as parse};
 pub use render::{RenderOpts, render, render_block};

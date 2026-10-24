@@ -10,19 +10,20 @@ use crate::dom::Node;
 use markup5ever_rcdom::{Handle, NodeData};
 use url::Url;
 
-pub(super) fn document_base(html: &str, fallback: Option<&Url>) -> Option<Url> {
+pub(super) fn document_base(root: &Handle, fallback: Option<&Url>) -> Option<Url> {
     fn find(node: &Handle) -> Option<String> {
-        if let NodeData::Element { name, attrs, .. } = &node.data
-            && &*name.local == "base"
-            && &*name.ns == "http://www.w3.org/1999/xhtml"
-            && let Some(attr) = attrs.borrow().iter().find(|a| &*a.name.local == "href")
-        {
-            return Some(attr.value.to_string());
+        for node in crate::dom::source_walk::descendants(node, false) {
+            if let NodeData::Element { name, attrs, .. } = &node.data
+                && &*name.local == "base"
+                && &*name.ns == "http://www.w3.org/1999/xhtml"
+                && let Some(attr) = attrs.borrow().iter().find(|a| &*a.name.local == "href")
+            {
+                return Some(attr.value.to_string());
+            }
         }
-        node.children.borrow().iter().find_map(find)
+        None
     }
-    let dom = crate::dom::input::html(html);
-    find(&dom.document)
+    find(root)
         .and_then(|href| {
             fallback
                 .map_or_else(|| Url::parse(&href), |base| base.join(&href))
@@ -96,15 +97,21 @@ mod tests {
         let html = "<svg><use href='sprite.svg#green'/></svg>";
         let mut doc = super::super::Document::builder(html, "")
             .base_uri("file:///tests/page.html")
-            .build();
+            .build()
+            .unwrap();
         let mut links = Vec::new();
         hrefs(doc.nodes(), &mut links);
         assert_eq!(links, ["file:///tests/sprite.svg#green"]);
         let other = super::super::Document::builder(html, "")
             .base_uri("file:///elsewhere/page.html")
-            .build();
+            .build()
+            .unwrap();
         assert_ne!(doc.salt(), other.salt());
-        assert!(doc.update("<svg><use href='new.svg#blue'/></svg>", ""));
+        assert!(
+            doc.update("<svg><use href='new.svg#blue'/></svg>", "")
+                .unwrap()
+                .changed()
+        );
         links.clear();
         hrefs(doc.nodes(), &mut links);
         assert_eq!(links, ["file:///tests/new.svg#blue"]);
@@ -114,7 +121,8 @@ mod tests {
         let html = "<base href='assets/'><svg xml:base='icons/'><use href='sprite.svg#x'/><use href='#local'/></svg>";
         let doc = super::super::Document::builder(html, "")
             .base_uri("file:///tests/page.html")
-            .build();
+            .build()
+            .unwrap();
         let mut links = Vec::new();
         hrefs(doc.nodes(), &mut links);
         assert_eq!(links, ["file:///tests/assets/icons/sprite.svg#x", "#local"]);

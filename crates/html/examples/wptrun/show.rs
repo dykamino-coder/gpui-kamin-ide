@@ -5,7 +5,7 @@ use super::capture_dump::Shot;
 use super::frame_metrics::flat;
 use super::page::Page;
 use gpui::{AnyWindowHandle, AppContext as _, AsyncApp};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -22,6 +22,8 @@ pub(super) struct Stage {
     /// Без этого «пара идёт 27 секунд» и «пара пустая» — два разных
     /// наблюдения без связи между ними.
     pub(super) trace: Rc<RefCell<String>>,
+    pub(super) document_failure: Rc<Cell<Option<kamin_html::DocumentFailure>>>,
+    pub(super) degradation: Rc<Cell<Option<kamin_html::BuildReport>>>,
     pub(super) frame_errors: Rc<RefCell<Vec<String>>>,
 }
 
@@ -52,6 +54,17 @@ impl Stage {
                 eprintln!("FRAGMENT_PROBES source={source:?} {probes:?}");
             }
         });
+        let _ = cx.update_window(self.window, |view, _, cx| {
+            if let Ok(page) = view.downcast::<Page>() {
+                let doc = &page.read(cx).doc;
+                self.record_report(doc);
+                if let Some(failure) = doc.embedded_failure()
+                    && self.document_failure.get().is_none()
+                {
+                    self.document_failure.set(Some(failure));
+                }
+            }
+        });
         shot
     }
 
@@ -67,7 +80,9 @@ impl Stage {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
         let mut captures = CaptureCursor::new();
         let first = first_frame();
-        self.prepare(cx, &html, source, print, first);
+        if !self.prepare(cx, &html, source, print, first) {
+            return None;
+        }
         let mut timing = super::phase_timing::PageTiming::new(source);
         let lower = html.to_ascii_lowercase();
         let has_image = lower.contains("<img");

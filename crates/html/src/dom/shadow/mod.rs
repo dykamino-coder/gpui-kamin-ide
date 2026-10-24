@@ -136,6 +136,19 @@ pub(super) fn scan_shadows(
     drafts: &mut HashMap<NodeKey, SlotInfo>,
     tree: &mut TreeIndex,
 ) {
+    if !children
+        .iter()
+        .any(|node| matches!(&node.data, NodeData::Element { .. }))
+    {
+        return;
+    }
+    let doc = tree.doc.clone();
+    let Some(_guard) = doc
+        .traversal
+        .enter(crate::document::TraversalKind::ShadowTree)
+    else {
+        return;
+    };
     let (_, all) = census_of(children, tree);
     let all = Rc::new(all);
     let mut pos = 0usize;

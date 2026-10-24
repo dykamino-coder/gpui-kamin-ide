@@ -101,6 +101,16 @@ fn has_in_subtree(
     path: &mut Vec<Ancestor>,
     tree: &TreeIndex,
 ) -> bool {
+    if handle.children.borrow().is_empty() {
+        return false;
+    }
+    let Some(_guard) = tree
+        .doc
+        .traversal
+        .enter(crate::document::TraversalKind::Selectors)
+    else {
+        return false;
+    };
     let children = handle.children.borrow();
     let (spots, all) = census_of(&children, tree);
     let mut pos = 0usize;
@@ -138,6 +148,16 @@ pub(crate) fn mark_has(
     path: &mut Vec<Ancestor>,
     tree: &mut TreeIndex,
 ) {
+    if handle.children.borrow().is_empty() {
+        return;
+    }
+    let doc = tree.doc.clone();
+    let Some(_guard) = doc
+        .traversal
+        .enter(crate::document::TraversalKind::Selectors)
+    else {
+        return;
+    };
     let children = handle.children.borrow();
     let (spots, all) = census_of(&children, tree);
     let mut pos = 0usize;

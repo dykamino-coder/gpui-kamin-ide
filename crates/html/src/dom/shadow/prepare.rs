@@ -51,17 +51,18 @@ fn collect(
     scopes: &mut Prepared,
     vcx: ValueCx<'_>,
 ) {
-    if let Some((_, root)) = declarative_shadow(node) {
-        let (scope, inner_args) = shadow_scope(&root, agent, media, layers, vcx);
-        for arg in inner_args {
-            if !args.iter().any(|a| a.id == arg.id) {
-                args.push(arg);
+    let mut pending = vec![node.clone()];
+    while let Some(node) = pending.pop() {
+        pending.extend(node.children.borrow().iter().rev().cloned());
+        if let Some((_, root)) = declarative_shadow(&node) {
+            let (scope, inner_args) = shadow_scope(&root, agent, media, layers, vcx);
+            for arg in inner_args {
+                if !args.iter().any(|a| a.id == arg.id) {
+                    args.push(arg);
+                }
             }
+            scopes.insert(NodeKey::of(&node), (root.clone(), scope));
+            pending.push(root);
         }
-        scopes.insert(NodeKey::of(node), (root.clone(), scope));
-        collect(&root, agent, media, layers, args, scopes, vcx);
-    }
-    for child in node.children.borrow().iter() {
-        collect(child, agent, media, layers, args, scopes, vcx);
     }
 }

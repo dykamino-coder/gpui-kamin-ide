@@ -22,11 +22,15 @@ use kamin_html::{BROWSER_CSS, Document, RenderOpts};
 use std::rc::Rc;
 
 struct Page {
-    doc: Rc<Document>,
+    doc: Result<Rc<Document>, kamin_html::DocumentFailure>,
 }
 
 impl Render for Page {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let doc = match &self.doc {
+            Ok(doc) => doc,
+            Err(failure) => return div().child(failure.to_string()).into_any_element(),
+        };
         let mut text = window.text_style();
         text.color = rgb(0x1a1c23).into();
         // Тот же базовый шрифт, что у браузера по умолчанию: иначе замер
@@ -48,7 +52,9 @@ impl Render for Page {
             .size_full()
             .bg(rgb(0xffffff))
             .text_size(px(16.))
-            .children(self.doc.render(&opts))
+            .children(doc.status_message().map(|message| div().child(message)))
+            .children(doc.render(&opts))
+            .into_any_element()
     }
 }
 
@@ -83,7 +89,10 @@ fn main() {
                     .into_iter()
                     .find(|name| !before.contains(name))
             });
-        let doc = Rc::new(Document::builder(&html, BROWSER_CSS).fonts(&fonts).build());
+        let doc = Document::builder(&html, BROWSER_CSS)
+            .fonts(&fonts)
+            .build()
+            .map(Rc::new);
         cx.open_window(
             WindowOptions {
                 // Точка в углу экрана и точный размер: снимок сравнивается с

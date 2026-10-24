@@ -61,7 +61,10 @@ impl<'a> DocumentBuilder<'a> {
     }
 
     /// Разобрать документ с выбранными настройками в свежем состоянии.
-    pub fn build(&self) -> Document {
+    ///
+    /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
+    /// Ошибка XML возвращает типизированный отказ. Бюджет парсера — отдельная задача.
+    pub fn build(&self) -> Result<Document, super::DocumentFailure> {
         Document::build(
             self.html,
             self.theme_css,
@@ -93,12 +96,16 @@ mod tests {
     #[test]
     fn builder_selects_source_format_and_medium() {
         let html = "<p>x</p>";
-        let screen = Document::builder(html, "").build();
+        let screen = Document::builder(html, "").build().unwrap();
         assert!(screen.base_url.is_none());
         assert!(!screen.xml && !screen.is_print());
         for print in [false, true] {
             for path in [Path::new("source.html"), Path::new("source.SVG")] {
-                let doc = Document::builder(html, "").path(path).print(print).build();
+                let doc = Document::builder(html, "")
+                    .path(path)
+                    .print(print)
+                    .build()
+                    .unwrap();
                 assert_eq!(doc.is_print(), print);
                 assert_eq!(doc.xml, path.extension().unwrap() == "SVG");
                 assert_eq!(
@@ -109,10 +116,14 @@ mod tests {
         }
         let base = Document::builder(html, "")
             .base_uri("file:///tests/source.html")
-            .build();
+            .build()
+            .unwrap();
         assert_eq!(base.base_url, Url::parse("file:///tests/source.html").ok());
         assert!(!base.xml && !base.is_print());
-        let invalid = Document::builder(html, "").base_uri("invalid url").build();
+        let invalid = Document::builder(html, "")
+            .base_uri("invalid url")
+            .build()
+            .unwrap();
         assert!(invalid.base_url.is_none());
         assert!(!invalid.xml && !invalid.is_print());
     }
@@ -122,22 +133,23 @@ mod tests {
         let html = "<svg xmlns='http://www.w3.org/2000/svg'><g/></svg>";
         let mut builder = Document::builder(html, "");
         builder.path(Path::new("source.SVG")).print(true);
-        let mut a = builder.build();
-        let b = builder.build();
+        let mut a = builder.build().unwrap();
+        let b = builder.build().unwrap();
         same(&a, &b);
         assert!(!Rc::ptr_eq(&a.state, &b.state));
         assert!(a.xml && a.is_print());
         let new = "<svg xmlns='http://www.w3.org/2000/svg'><metadata/></svg>";
-        assert!(a.update(new, ""));
+        assert!(a.update(new, "").unwrap().changed());
         same(
             &a,
             &Document::builder(new, "")
                 .path(Path::new("source.SVG"))
                 .print(true)
-                .build(),
+                .build()
+                .unwrap(),
         );
         builder.base_uri("invalid url");
-        let html_doc = builder.build();
+        let html_doc = builder.build().unwrap();
         assert!(!html_doc.xml);
         assert!(html_doc.base_url.is_none());
         assert!(html_doc.is_print());
