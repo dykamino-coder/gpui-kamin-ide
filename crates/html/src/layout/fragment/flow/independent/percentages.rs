@@ -28,12 +28,14 @@ pub(crate) fn page_percentages(
 }
 
 fn block_percentages(e: &Element, parent: &BoxStyle, opts: &RenderOpts) -> Element {
+    let mut parent = parent.clone();
+    parent.resolve_viewport(opts.viewport, opts.cx.vcx());
     let constraints = &opts.cx.constraints;
     let height = if parent.icb {
         Some(opts.viewport.1)
     } else {
         available_height::inner(
-            parent,
+            &parent,
             constraints.avail_h,
             constraints.avail_w,
             opts.viewport.1,
@@ -42,9 +44,9 @@ fn block_percentages(e: &Element, parent: &BoxStyle, opts: &RenderOpts) -> Eleme
     let width = if parent.icb {
         Some(opts.viewport.0)
     } else {
-        available_width::inner(parent, constraints.avail_w)
+        available_width::inner(&parent, constraints.avail_w)
     };
-    resolve(e, parent, height, width, opts)
+    resolve(e, &parent, height, width, opts)
 }
 
 /// Колонка передаёт размер исходного CB отдельно от доступного остатка.
@@ -56,6 +58,7 @@ pub(crate) fn column_percentages(
     opts: &RenderOpts,
 ) -> Vec<Node> {
     let mut ordinary = parent.clone();
+    ordinary.resolve_viewport(opts.viewport, opts.cx.vcx());
     ordinary.column_count = None;
     ordinary.column_width = None;
     let height = available_height::inner(
@@ -91,6 +94,7 @@ fn resolve(
 ) -> Element {
     let mut element = e.clone();
     let mut used = crate::style::cascade::materialize::box_style(parent, &e.style, opts.cx.vcx());
+    used.resolve_viewport(opts.viewport, opts.cx.vcx());
     let base = if used.root_box {
         Some(opts.viewport.1)
     } else {

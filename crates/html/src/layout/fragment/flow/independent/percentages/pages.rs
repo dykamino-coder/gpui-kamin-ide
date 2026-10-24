@@ -117,19 +117,24 @@ impl Context {
         let viewport = (space.inline_size.unwrap(), space.block_size.unwrap());
         let (mut width, mut height) = (opts.cx.constraints.avail_w, opts.cx.constraints.avail_h);
         for parent in &self.parents {
+            let mut parent = (**parent).clone();
+            parent.resolve_viewport(opts.viewport, opts.cx.vcx());
             let next_height = if parent.icb {
                 Some(viewport.1)
             } else {
-                available_height::inner(parent, height, width, viewport.1)
+                available_height::inner(&parent, height, width, viewport.1)
             };
             width = if parent.icb {
                 Some(viewport.0)
             } else {
-                available_width::inner(parent, width)
+                available_width::inner(&parent, width)
             };
             height = next_height;
         }
         let mut style = (*self.style).clone();
+        // css-page-3 §7: единицы окна используют ICB первой страницы,
+        // проценты — содержащий блок текущей страницы.
+        style.resolve_viewport(opts.viewport, opts.cx.vcx());
         let base = if style.root_box {
             Some(viewport.1)
         } else {

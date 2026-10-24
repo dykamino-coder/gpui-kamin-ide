@@ -93,7 +93,7 @@ impl Resume {
             .collect()
     }
 
-    pub(super) fn offset(&self, new: &Laid, end: f32) -> f32 {
+    pub(super) fn offset(&self, new: &Laid) -> Option<f32> {
         new.flexes
             .values()
             .flat_map(|f| {
@@ -111,7 +111,6 @@ impl Resume {
                 })
             })
             .min_by(f32::total_cmp)
-            .unwrap_or(end)
     }
 }
 
@@ -181,7 +180,7 @@ mod tests {
             token.consumed(&new),
             HashMap::from([(1, (40., false)), (2, (20., true))])
         );
-        assert_eq!(token.offset(&new, 120.), 0.);
+        assert_eq!(token.offset(&new), Some(0.));
     }
     #[test]
     fn non_content_box_keeps_consumed_block_size_when_used_height_changes() {
@@ -222,6 +221,6 @@ mod tests {
         new.boxes.insert(2, (100., 120.));
         new.content.get_mut(&1).unwrap()[0].top = 40.;
         assert!(token.consumed(&new).is_empty());
-        assert_eq!(token.offset(&new, 120.), 40.);
+        assert_eq!(token.offset(&new), Some(40.));
     }
 }
