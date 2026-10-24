@@ -225,8 +225,5 @@ pub(crate) fn register_property(
     name: &str,
     reg: Registered,
 ) {
-    doc.property_rules
-        .borrow_mut()
-        .entry(name.to_string())
-        .or_insert(reg);
+    doc.property_rules.borrow_mut().register(name, reg);
 }
