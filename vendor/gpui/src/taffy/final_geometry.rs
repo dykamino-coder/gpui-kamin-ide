@@ -36,6 +36,8 @@ pub struct LayoutSpace {
 pub struct FinalLayout {
     /// Normal border box, excluding relative positioning and paint placement.
     pub normal: Bounds<Pixels>,
+    /// Used content box, excluding resolved padding, borders and scrollbar gutters.
+    pub content_size: Size<Pixels>,
     /// Accumulated used relative displacement. Transforms/paint placement are separate.
     pub relative_offset: Point<Pixels>,
     /// Constraints and epoch producing this geometry.
@@ -123,6 +125,10 @@ impl TaffyLayoutEngine {
                 origin: normal / scale,
                 size: size(Pixels(layout.size.width / scale), Pixels(layout.size.height / scale)),
             },
+            content_size: size(
+                Pixels((layout.content_box_width() - layout.scrollbar_size.width).max(0.0) / scale),
+                Pixels((layout.content_box_height() - layout.scrollbar_size.height).max(0.0) / scale),
+            ),
             relative_offset: relative / scale,
             space,
         })

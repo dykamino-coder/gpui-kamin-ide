@@ -57,9 +57,10 @@ impl SharedStyle {
     }
 
     /// Edit the cascaded style (cascade and document preparation, before
-    /// materialization): drops the computed style and layout's values.
+    /// materialization): drops computed/used values, retaining the element's
+    /// completed container-size input across render-time style copies.
     pub(crate) fn cascaded_mut(&mut self) -> &mut Computed {
-        self.computed = ComputedSlot::default();
+        self.computed.invalidate();
         self.used = None;
         Rc::make_mut(&mut self.cascaded)
     }
