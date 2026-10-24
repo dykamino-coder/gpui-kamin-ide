@@ -94,8 +94,9 @@ pub(crate) fn resolve(
     // tracking advance (Blink list_marker.cc:391,407, InlineMarginsForOutside).
     // Preserve text markers and the inside-marker text flow from #355.
     if symbol && merged.list_style_inside != Some(true) {
-        style.get_or_insert_with(|| merged.clone()).letter_spacing =
-            Some(crate::style::values::value::Len::Px(0.0));
+        style
+            .get_or_insert_with(|| inherit(merged, &Computed::default(), vcx))
+            .letter_spacing = Some(crate::style::values::value::Len::Px(0.0));
     }
     (!no_marker).then_some(Marker {
         text: marker,

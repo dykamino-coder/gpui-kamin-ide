@@ -45,7 +45,7 @@ pub(crate) fn render_with_style(
     // `apply_text` без семейства брал шрифт интерфейса (Segoe UI), и
     // строковый маркер выходил чужой гарнитурой рядом с Times пункта
     // (`list-style-type-string-*`).
-    let mut mark_style = marker_style.unwrap_or_else(|| merged.clone());
+    let mut mark_style = super::outside::content_style(marker_style, merged, vcx);
     if mark_style.font_family.as_deref().is_none_or(str::is_empty)
         && mark_style.monospace != Some(true)
     {
@@ -108,56 +108,14 @@ pub(crate) fn render_with_style(
         // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
         // маркера объявлены на нём (css-lists-3
         // §marker-properties).
-        // Сторона начала строки пункта: при `direction: rtl`
-        // маркер висит СПРАВА от коробки и равняется к ней своим
-        // левым краем (`list-style-type-string-003`: строка
-        // маркера уходила за левый край окна).
-        {
-            // TRANSITIONAL(F2-1): top_0 ещё не привязан к первой строке.
-            // Продолжению нужен её baseline и владение внешним маркером;
-            // удалять маркер в копии вместо этой привязки нельзя.
-            let m = opts
-                .cx
+        super::outside::position(
+            opts.cx
                 .contracts
                 .build
-                .styled_div(Styling::Text(&mark_style), &opts.cx)
-                .absolute()
-                .top_0();
-            // An outside marker sits outside the item's principal BORDER
-            // box (CSS 2.1 §12.5.1; Blink places it before the content
-            // start minus border and padding). The absolute insets here
-            // resolve against the padding box, so the start border
-            // becomes the marker's end margin (`padding-left-applies-to-
-            // 010`: the bullet stays left of a 10px start border).
-            let side = li.style.used().borders();
-            let px_of = |l: Option<crate::style::values::value::Len>| match l {
-                Some(crate::style::values::value::Len::Px(v)) if v > 0.0 => v,
-                _ => 0.0,
-            };
-            // CSS 2.1 §12.5.1: the outside marker follows the first
-            // line's available area, including a preceding float.
-            // The hidden strut supplies that line for an empty item.
-            let intrusion = merged.flow_shapes.as_ref().map_or(0.0, |shapes| {
-                let side = if merged.wm().rtl() {
-                    &shapes.1
-                } else {
-                    &shapes.0
-                };
-                side.iter().map(|s| s.cut(0.0, 1.0)).fold(0.0, f32::max)
-            });
-            if merged.wm().rtl() {
-                m.left(gpui::relative(1.))
-                    .ml(gpui::px(px_of(side.right) - intrusion))
-                    .text_left()
-            } else {
-                let m = m.mr(gpui::px(px_of(side.left) - intrusion));
-                // Строки многострочного маркера равняются по
-                // КОНЦУ, к началу содержимого пункта
-                // (`marker-text-align-001`: `"[m] longtext"` при
-                // `white-space: pre`).
-                m.right(gpui::relative(1.)).text_right()
-            }
-        }
+                .styled_div(Styling::Text(&mark_style), &opts.cx),
+            &li.style.used(),
+            merged,
+        )
         .whitespace_nowrap()
         // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
         // (обычный пробел после номера пункта). Авторская

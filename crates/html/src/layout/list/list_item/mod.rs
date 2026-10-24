@@ -9,6 +9,7 @@ use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Computed, Display};
 use gpui::{AnyElement, Styled};
 pub(crate) mod marker;
+mod outside;
 mod styled;
 pub(crate) use styled::render_with_style;
 
