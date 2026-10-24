@@ -15,6 +15,7 @@ mod registry;
 use collect::{collect, frame, push_kids};
 mod finish;
 mod geometry;
+mod parallel;
 mod stack;
 pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
 mod laid;
@@ -38,6 +39,8 @@ pub(crate) use flex_tree::flex_tree;
 mod depth_tests;
 #[cfg(test)]
 mod flex_column_tests;
+#[cfg(test)]
+mod flex_overflow_tests;
 #[cfg(test)]
 mod flex_tests;
 #[cfg(test)]

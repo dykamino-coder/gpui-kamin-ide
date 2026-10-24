@@ -36,18 +36,29 @@ pub(crate) fn growths(
         let breaks = flow
             .breaks(f32::MAX, laid)
             .finish(FlowGeometry::default(), f32::MAX);
+        // Внутри выделенного места элемента колонки разрывы обслуживает
+        // последовательный поток. За его концом содержимое независимо от
+        // следующего элемента (css-break-3 §2.1); цель ищется в самом item.
+        let overflow_start = column_item(laid, flow.id)
+            .then(|| laid.at(flow.id).map(|p| p.1))
+            .flatten();
+        let local = |at: f32| overflow_start.is_none_or(|start| at >= start - COORD_EPS);
+        let overflow_edge = overflow_start.is_none_or(|start| edge > start + COORD_EPS);
         let forced = breaks
             .forced
             .iter()
             .copied()
-            .filter(|&f| f > from + COORD_EPS && f < edge - COORD_EPS && f <= end + COORD_EPS)
+            .filter(|&f| {
+                local(f) && f > from + COORD_EPS && f < edge - COORD_EPS && f <= end + COORD_EPS
+            })
             .min_by(f32::total_cmp);
         let solid = breaks
             .solid
             .iter()
             .chain(&breaks.keep)
             .filter(|&&(a, b)| {
-                a > from + COORD_EPS
+                overflow_edge
+                    && a > from + COORD_EPS
                     && a <= end + COORD_EPS
                     && a < edge - COORD_EPS
                     && b > edge + COORD_EPS

@@ -153,22 +153,17 @@ impl FlexBox {
 }
 
 impl BlockBox {
-    /// Независимые потоки flex: элементы ряда либо последовательность элементов колонки.
+    /// Потоки flex: колонки и собственное содержимое элементов, включая переполнение.
     pub(crate) fn flex_flows(&self, laid: &Laid, out: &mut Vec<BlockBox>) {
         if let Some(f) = &self.flex
             && let Some(frame) = laid.flexes.get(&self.id)
         {
             if frame.column {
                 out.extend(f.column_flows(frame, laid, 0.0));
-            } else {
-                for item in &f.items {
-                    if let Some(b) = &item.inner {
-                        out.push(b.clone());
-                    }
-                }
             }
             for item in &f.items {
                 if let Some(b) = &item.inner {
+                    out.push(b.clone());
                     b.flex_flows(laid, out);
                 }
             }
