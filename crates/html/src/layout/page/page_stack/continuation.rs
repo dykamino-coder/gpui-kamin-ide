@@ -50,6 +50,20 @@ impl PageStack {
         cx: &mut App,
     ) -> Option<(Kid, f32)> {
         let base = self.kids[index].regrow.as_ref()?.clone();
+        // Рост границ блоков допустим без токена атомарной строки; смена
+        // ограничений требует полного независимого продолжения её содержимого.
+        if !self.axis.is_vertical()
+            && !crate::layout::fragment::flow::independent_copy(&base.source)
+        {
+            let mut flexes = Vec::new();
+            if let Some(blocks) = base.watched.blocks() {
+                blocks.flexes(&mut flexes);
+            }
+            // Независимые flex-потоки уже имеют собственный адрес продолжения.
+            if flexes.is_empty() {
+                return None;
+            }
+        }
         let inputs = Inputs {
             constraints: crate::layout::cx::FragmentConstraints {
                 area,

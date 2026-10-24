@@ -134,7 +134,21 @@ fn consumed_space_moves_only_the_continuation_and_survives_rebuild() {
     paragraph.publish_fragment_lines(&pads, 20.);
     assert_eq!(pads, [(0., 0.), (15., 0.)]);
     assert_eq!(node.geometry.borrow().solid, [(0., 20.), (35., 55.)]);
-    assert!(node.geometry.borrow().cuts.contains(&(35., 35.)));
+    assert_eq!(node.geometry.borrow().cuts, [(35., 35.), (55., 55.)]);
+    let inline = &node.geometry.borrow().inline[0];
+    let mut space = crate::layout::fragment::token::Space::pages();
+    space.block_size = Some(35.);
+    let mut store = crate::layout::fragment::token::TokenStore::default();
+    let candidate = inline.resume(space, 0., None, &mut store, false).unwrap();
+    assert_eq!(candidate.end, 35.);
+    let next = candidate.next.unwrap();
+    assert_eq!(store.get(next).unwrap().consumed, 35.);
+    space.block_size = Some(20.);
+    let continuation = inline
+        .resume(space, 0., Some(next), &mut store, false)
+        .unwrap();
+    assert_eq!(continuation.end, 55.);
+    assert!(continuation.next.is_none());
     flow.rewind();
     let rebuilt = FlowNode::new(flow.clone(), StackAxis::Horizontal);
     assert!(Rc::ptr_eq(&rebuilt.growth, &node.growth));

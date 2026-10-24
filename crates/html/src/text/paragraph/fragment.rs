@@ -49,10 +49,16 @@ impl Paragraph {
             starts.clear();
             for (index, (solid, line)) in geometry.solid.iter_mut().zip(&self.lines).enumerate() {
                 let consumed = growth.get(index).copied().unwrap_or(0.0);
+                // Остаток принадлежит предыдущему фрагменту, а не line box.
+                // Его прежний конец больше не является точкой разрыва.
+                if index > 0 && consumed > 0.0 {
+                    geometry.cuts[index - 1].0 += consumed;
+                    geometry.cuts[index - 1].1 += consumed;
+                }
                 starts.push(solid.0 + consumed);
                 solid.0 += consumed;
                 solid.0 += f32::from(line.clearance);
-                if line.clearance > gpui::px(0.) || consumed > 0.0 {
+                if line.clearance > gpui::px(0.) || (index == 0 && consumed > 0.0) {
                     geometry.cuts.push((solid.0, solid.0));
                 }
             }
@@ -84,6 +90,7 @@ impl Paragraph {
                         .expect("invalid shaped line address"),
                         top,
                         bottom,
+                        consumed_before: growth.get(index).copied().unwrap_or(0.0),
                     },
                 )
                 .collect();
