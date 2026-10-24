@@ -25,7 +25,7 @@ impl Edges {
     /// css-break-3 §4.4: при нехватке места сначала усекается клонированный
     /// конец, затем начало; место для продвижения содержимого остаётся всегда.
     pub(crate) fn fit_clone(self, room: f32, content: f32) -> Self {
-        if self.sum() < room || content == 0.0 {
+        if self.sum() < room {
             return self;
         }
         let budget = (room - content.min(1.0)).max(0.0);

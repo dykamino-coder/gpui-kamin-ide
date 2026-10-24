@@ -93,8 +93,10 @@ impl Leaf {
         let start = self.edges.start_at(first);
         let rest = self.content_block - from;
         let room = (available - offset).max(0.0);
-        let defer_edges =
-            offset > 0.0 && self.edges.clone && start + self.edges.end >= room && rest > 0.0;
+        let defer_edges = offset > 0.0
+            && self.edges.clone
+            && start + self.edges.end >= room
+            && (rest > 0.0 || start + self.edges.end > room);
         if (rest + start + self.edges.end > 0.0 && room == 0.0) || defer_edges {
             if offset == 0.0 {
                 return Err(Error::NoProgress);
