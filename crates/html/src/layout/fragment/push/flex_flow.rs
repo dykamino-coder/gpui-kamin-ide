@@ -52,10 +52,14 @@ pub(crate) fn growths(
                 local(f) && f > from + COORD_EPS && f < edge - COORD_EPS && f <= end + COORD_EPS
             })
             .min_by(f32::total_cmp);
+        // Мягкий avoid закрывает и точную границу соседей без монолита.
+        // Внутри пустого элемента сам диапазон не запрещает разрез класса C.
+        let boundary = breaks.cuts.iter().any(|p| (p.0 - edge).abs() < COORD_EPS);
         let solid = breaks
             .solid
             .iter()
             .chain(&breaks.keep)
+            .chain(breaks.avoid.iter().filter(|_| boundary))
             .filter(|&&(a, b)| {
                 overflow_edge
                     && a > from + COORD_EPS

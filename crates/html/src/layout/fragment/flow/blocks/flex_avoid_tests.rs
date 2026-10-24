@@ -113,3 +113,35 @@ fn forced_boundary_ends_avoid_chain() {
     assert_eq!(m.forced, vec![72.0]);
     assert!(m.avoid.iter().any(|&(a, b)| a == 82.0 && b > 122.0));
 }
+
+#[test]
+fn avoided_empty_item_boundary_moves_its_predecessor() {
+    for after in [false, true] {
+        let (mut root, mut laid) = column();
+        root.head = 0.0;
+        root.tail = 0.0;
+        let flex = root.flex.as_mut().unwrap();
+        flex.items.truncate(3);
+        flex.main_gap = 0.0;
+        for item in &mut flex.items {
+            item.avoid_before = false;
+        }
+        flex.items[1].avoid_after = after;
+        flex.items[2].avoid_before = !after;
+        laid.flows.clear();
+        laid.boxes
+            .extend([(1, (0.0, 50.0)), (2, (50.0, 100.0)), (3, (100.0, 400.0))]);
+        let line = &mut laid.flexes.get_mut(&10).unwrap().lines[0];
+        line.start = 0.0;
+        line.end = 400.0;
+        line.items = vec![1, 2, 3];
+        let grows = crate::layout::fragment::push::flex_flow::growths;
+        let growth = grows(&root, &laid, 0.0, 100.0, 100.0);
+        assert_eq!(growth.len(), 1, "break-after={after}");
+        assert_eq!(growth[0].target, Pushed::Box(2));
+        assert_eq!(growth[0].amount, 50.0);
+        // Внутри пустого хвоста разрез допустим; avoid закрывает границу соседей.
+        assert!(grows(&root, &laid, 0.0, 75.0, 75.0).is_empty());
+        assert!(grows(&root, &laid, 50.0, 150.0, 150.0).is_empty());
+    }
+}
