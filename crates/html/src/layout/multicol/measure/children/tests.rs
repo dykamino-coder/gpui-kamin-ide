@@ -85,3 +85,81 @@ fn flex_avoid_boundaries_keep_solver_line_membership() {
     assert!(!result[0].0.marks.paginate);
     assert_eq!(*measured.borrow(), vec![(result[0].0.node_id, 50.0)]);
 }
+
+#[test]
+fn wrapped_multicol_uses_its_laid_height_instead_of_summing_inner_columns() {
+    let doc = Document::builder(
+        "<div><div><div style='columns:2;column-height:20px;column-wrap:wrap;row-gap:10px'>\
+         <div style='height:20px'></div><div style='height:20px'></div>\
+         <div style='height:20px'></div><div style='height:20px'></div>\
+         </div></div></div>",
+        "",
+    )
+    .build();
+    let parent = element(doc.nodes());
+    let opts = RenderOpts {
+        text: Default::default(),
+        viewport: (800.0, 600.0),
+        normal_line_height: 1.2,
+        cx: Default::default(),
+        frag: Default::default(),
+    };
+    let measured = RefCell::default();
+    let kids = measure_children(
+        parent,
+        &BoxStyle::default(),
+        &opts,
+        None,
+        None,
+        None,
+        (Some(100.0), Some(100.0)),
+        &RefCell::default(),
+        true,
+        &RefCell::default(),
+        &measured,
+        false,
+        false,
+        false,
+        true,
+    )
+    .expect("independently laid-out multicol descendant");
+    assert_eq!(kids.len(), 1);
+    assert!(!kids[0].0.marks.paginate);
+    assert_eq!(
+        kids[0].1.height, 0.0,
+        "height is deferred to the copy layout"
+    );
+    assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
+}
+
+#[test]
+fn direct_multicol_keeps_its_outer_fragmentation_dispatch() {
+    fn authored(nodes: &[Node]) -> Option<&Element> {
+        nodes.iter().find_map(|node| match node {
+            Node::Element(e) if e.tag == "div" => Some(e),
+            Node::Element(e) => authored(&e.children),
+            _ => None,
+        })
+    }
+    for style in [
+        "columns:2;height:200px",
+        "columns:2;column-fill:auto",
+        "columns:2;column-height:20px;column-wrap:wrap",
+    ] {
+        let doc = Document::builder(
+            &format!("<div style='{style}'><div style='height:300px'></div></div>"),
+            "",
+        )
+        .build();
+        let c = authored(doc.nodes()).expect("authored multicol");
+        assert!(crate::layout::multicol::spanner::multicol_container(
+            &c.style.used()
+        ));
+        assert!(!super::independent_kid::gate(c, true, Some(100.0)));
+        assert!(!super::independent_kid::own_layout_gate(
+            c,
+            true,
+            Some(100.0)
+        ));
+    }
+}

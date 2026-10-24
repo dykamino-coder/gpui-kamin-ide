@@ -107,8 +107,8 @@ fn paint_rule(
             origin: gpui::point(l, t),
             size: gpui::size(r - l, b - t),
         };
-        let third = (w / 3.0).round();
-        if (kind == 3 || rule.double) && third >= 1.0 {
+        let third = (w * scale / 3.0).round() / scale;
+        if (kind == 3 || rule.double) && third * scale >= 1.0 {
             // Two lines across the rule's width, each a third of it
             // (rounded like the `double` border in `paint::decorations::borders`).
             let (a0, a1) = (c - w / 2.0, c + w / 2.0);

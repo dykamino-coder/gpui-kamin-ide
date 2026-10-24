@@ -1,6 +1,6 @@
 //! `impl Element` для `ColumnStack`: запрос раскладки, `prepaint` (укладка по реальной
 //! ширине, расстановка кусков по колонкам, спаннеры во всю ширину, границы для линеек
-//! промежутков) и `paint` (линейки, маски только у разрезанных детей, позиционированные
+//! промежутков) и `paint` (маски только у разрезанных детей, позиционированные
 //! фрагменты вторым проходом по CSS 2.1 Appendix E). Вертикальная ось уходит в `axis`.
 
 use crate::hooks::Hooks;
@@ -20,19 +20,19 @@ impl Hooks for ColumnStack {
 
     fn prepaint(
         &mut self,
-        bounds: Bounds<Pixels>,
+        _bounds: Bounds<Pixels>,
         state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
-        if self.axis.is_vertical() {
-            self.prepaint_axis(bounds, window, cx);
-            return bounds;
-        }
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*state),
             size: window.layout_size_unrounded(*state),
         };
+        if self.axis.is_vertical() {
+            self.prepaint_axis(bounds, window, cx);
+            return bounds;
+        }
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
         if let Some(recipe) = self.deferred.clone() {
@@ -67,7 +67,7 @@ impl Hooks for ColumnStack {
         // ЗАНЯТЫХ колонок каждой линии (как Blink `AddCrossGap` на колонку
         // ряда; в третьем ряду `column-height-009` линейка одна) и спаннеры
         // во всю ширину — они обрывают линейки колонок.
-        self.prepaint_gap_items(bounds, col_w, &plan, &spans, step);
+        self.collect_gap_geometry(bounds, col_w, &plan, &spans);
         *self.plan.borrow_mut() = plan;
         *self.spans_plan.borrow_mut() = spans;
         bounds
@@ -75,22 +75,17 @@ impl Hooks for ColumnStack {
 
     fn paint(
         &mut self,
-        bounds: Bounds<Pixels>,
+        _bounds: Bounds<Pixels>,
         _state: &mut Self::Layout,
         prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
+        let bounds = *prepaint;
         if self.axis.is_vertical() {
             self.paint_axis(bounds, window, cx);
             return;
         }
-        let bounds = *prepaint;
-        // Линейки — по центрам промежутков, высотой в колонку, в каждой линии.
-        // Это простая `column-rule` без рядов; при рядах линейки (в том числе
-        // `row-rule`, css-multicol-2 §rg) отдаются художнику `GapRulePainter`
-        // по буферу `gap_items`, и `rule` здесь `None`.
-        self.paint_column_rules(window, bounds);
         let plan = self.plan.borrow().clone();
         let col_w = self.col_w.get();
         let step = col_w + self.gap;

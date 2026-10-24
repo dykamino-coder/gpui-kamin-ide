@@ -49,7 +49,8 @@ pub(super) fn paint_body(
     {
         return;
     }
-    let spec = &group.spec;
+    let snapped = super::widths::snapped_spec(&group.spec, window.scale_factor());
+    let spec = &snapped;
     // Физические семейства: промежутки, лежащие по x (линейки
     // вертикальные), и по y. `column-rule` — колонки; в вертикальном
     // письме колонки идут по y.

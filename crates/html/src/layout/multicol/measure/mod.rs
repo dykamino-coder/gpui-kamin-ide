@@ -4,7 +4,7 @@
 
 mod children;
 mod floats;
-mod grid_kid;
+mod independent_kid;
 pub(crate) mod laid;
 pub(crate) mod native_float;
 mod rows;
