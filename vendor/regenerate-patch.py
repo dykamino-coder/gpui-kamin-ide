@@ -64,7 +64,8 @@ FIXES = {
         "Tests: use crate-local markdown and initialize extended GPUI font/run fields so standalone regressions compile.",
     ],
     "gpui-component": [
-        "Highlighter: cache captures within one budget (including empty results), resolving styles afresh so mutable/reused resolvers cannot return stale colors.",
+        "Highlighter: share immutable captures on hits; bound retained capture bytes and entry count (including empty results), evict FIFO without sorting and bypass oversize entries.",
+        "Highlighter: resolve styles afresh so mutable/reused theme resolvers cannot return stale colors; invalidate captures after text/tree changes.",
         "Tests: retain exact upstream fixtures so published-crate tests do not depend on the original monorepo layout.",
         "Editor integration: root overlays and WebView hosting; expose a scrollbar policy hook so product geometry belongs to the application.",
     ],
