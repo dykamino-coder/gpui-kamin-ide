@@ -56,7 +56,13 @@ pub(super) fn walk_kids(
         if k.monolith {
             out.solid.push((kt, kb));
         } else if let Some(inner) = &k.inner {
-            walk(inner, kt, kb, laid, out);
+            if b.flex_gap.is_some() {
+                let mut local = BlockBreaks::default();
+                walk(inner, kt, kb, laid, &mut local);
+                out.append_within(local, kt, kb);
+            } else {
+                walk(inner, kt, kb, laid, out);
+            }
         }
         prev = Some((k, kt, kb));
         last = Some(kb);
