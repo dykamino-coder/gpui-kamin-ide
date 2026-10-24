@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::resources::images::store::{ImageServices, ResourcePolicy};
+use crate::resources::images::svg_links;
 use crate::resources::images::{cache::DecodedImageCache, fixtures, tests_support::TempDir};
 use crate::resources::loader::{LoadError, Loaded, ResourceLoader};
 use std::sync::{

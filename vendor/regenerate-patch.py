@@ -110,7 +110,8 @@ FIXES = {
         "Paint inheritance: empty gradient/pattern transforms preserve href inheritance; singular transforms use the fallback paint.",
         "Symbol instances: display:none suppresses rendering; use dimensions override symbol dimensions (SVG 2 section 5.6.2).",
         "Paint keywords are ASCII case-insensitive (CSS Values 4 section 2.1).",
-        "External use resources: resolve local URLs/fragments with cycle/depth limits and bounded reads so oversized files are rejected before full allocation.",
+        "External use resources: resolve URLs/fragments through an authoritative injectable loader, preserving standalone bounded local reads and shared cycle/depth/allocation limits.",
+        "External use follows the document resource policy and secure static processing, including nested SVG images; imported references retain their source URL bases.",
         "Preserve snapshots of referenced definitions and their resource bases, including imported images.",
     ],
 }
