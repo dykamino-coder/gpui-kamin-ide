@@ -1,12 +1,27 @@
 //! Согласование имён листов, их размеров и роста фрагментируемого flex.
 use super::{PageGeom, PageStack};
+use crate::layout::fragment::flow::blocks::leaf::Leaf;
 use crate::layout::fragment::plan::{self, Plan, Space};
+use crate::layout::fragment::token::Error;
 use crate::layout::fragment::types::Kid;
 use gpui::{App, Window};
 mod settlement;
 use settlement::{Incomplete, State, settle};
 
 pub(super) type PlannedPages = (Vec<Kid>, Vec<PageGeom>, Vec<String>, usize, Plan);
+#[derive(Debug)]
+pub(super) enum Failure {
+    Settlement,
+    Continuation(Error),
+}
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Settlement => f.write_str("page geometry did not converge"),
+            Self::Continuation(error) => error.fmt(f),
+        }
+    }
+}
 impl PageStack {
     pub(super) fn fragment_plan(
         &mut self,
@@ -14,7 +29,7 @@ impl PageStack {
         cx: &mut App,
         g: PageGeom,
         area: (f32, f32),
-    ) -> Result<PlannedPages, Incomplete> {
+    ) -> Result<PlannedPages, Failure> {
         let first = self
             .kids
             .first()
@@ -61,8 +76,18 @@ impl PageStack {
                     pg.area.1.max(1.0)
                 }
             };
-            let (pages, _, plan) =
-                plan::fill_measured(&kids, &heights, Space::pages(limit), &mut |request| {
+            let leaves: Vec<_> = self
+                .kids
+                .iter()
+                .zip(&kids)
+                .map(|(p, k)| p.leaf.as_ref().map(|_| Leaf { content_block: k.h }))
+                .collect();
+            let planned = plan::fill_resumed(
+                &kids,
+                &heights,
+                Space::pages(limit),
+                &|index| leaves[index],
+                &mut |request| {
                     let plan::MeasureRequest {
                         kid,
                         copy,
@@ -80,12 +105,23 @@ impl PageStack {
                         (pg.area.0, block_size)
                     };
                     self.remeasure_copy(kid, copy, area, from, window, cx)
-                });
+                },
+            );
+            let (pages, _, plan) = match planned {
+                Ok(plan) => plan,
+                Err(error) => {
+                    return (
+                        true,
+                        State::new(&names, &geoms, &[], &self.measured),
+                        Err(error),
+                    );
+                }
+            };
             let extents: Vec<_> = (0..pages).map(heights).collect();
             let state = State::new(&names, &geoms, &plan, &self.measured);
             if self.regrow_flex(&kids, &plan, &extents) {
                 (kids, _) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
-                return (false, state, (pages, plan));
+                return (false, state, Ok((pages, plan)));
             }
             let mut new_names: Vec<Option<String>> = vec![None; pages];
             for f in &plan {
@@ -112,8 +148,26 @@ impl PageStack {
                 .enumerate()
                 .map(|(i, n)| (self.geom_for)(i, n))
                 .collect();
-            (stable, state, (pages, plan))
-        })?;
+            (stable, state, Ok((pages, plan)))
+        })
+        .map_err(|Incomplete| Failure::Settlement)?
+        .map_err(Failure::Continuation)?;
+        for (index, kid) in self.kids.iter_mut().enumerate() {
+            if let Some(build) = &kid.leaf {
+                let count = result
+                    .1
+                    .iter()
+                    .filter(|f| f.kid == index)
+                    .count()
+                    .checked_sub(1)
+                    .ok_or(Failure::Continuation(Error::InvalidToken))?;
+                kid.frags.clear();
+                kid.frags
+                    .try_reserve(count)
+                    .map_err(|_| Failure::Continuation(Error::ResourceExhausted))?;
+                kid.frags.extend((0..count).map(|_| build()));
+            }
+        }
         for (pk, k) in self.kids.iter().zip(&kids) {
             pk.end.set(k.h);
         }

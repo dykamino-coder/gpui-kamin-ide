@@ -35,7 +35,8 @@ pub(crate) struct FloatExclusion {
 /// `ChildBreakTokens`, Gecko `nsBlockFrame` overflow lines).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BlockState {
-    /// Первый ребёнок, ещё не уложенный целиком.
+    /// Прерванный normal-flow ребёнок при `child=Some`, иначе первый ещё не начатый.
+    /// Более ранние независимые продолжения находятся только в `parallel`.
     pub(crate) child_idx: u32,
     /// Поля, схлопнутые до разрыва (CSS 2.1 §8.3.1): усекаются на
     /// непринудительном разрыве и сохраняются на принудительном (css-break-3 §5.2).
@@ -44,7 +45,7 @@ pub(crate) struct BlockState {
     /// Токен ребёнка `child_idx`, прерванного внутри себя.
     pub(crate) child: Option<TokenId>,
     /// Параллельные потоки: флоаты и переполнение коробок с заданной высотой
-    /// продолжаются сами по себе (Blink `IsInParallelFlow`).
+    /// продолжаются сами по себе (Blink `IsInParallelFlow`), по возрастанию `idx`.
     pub(crate) parallel: Vec<ChildToken>,
 }
 
@@ -136,15 +137,15 @@ pub(crate) enum FcState {
 
 impl FcState {
     /// Токены детей, на которые ссылается это состояние, в порядке обхода.
-    pub(crate) fn child_tokens(&self) -> Vec<TokenId> {
-        let kids = |v: &[ChildToken]| v.iter().map(|c| c.token).collect::<Vec<_>>();
-        match self {
-            FcState::Block(b) => b.child.into_iter().chain(kids(&b.parallel)).collect(),
-            FcState::Inline(i) => i.child.into_iter().collect(),
-            FcState::Flex(f) => kids(&f.items),
-            FcState::Grid(g) => kids(&g.items),
-            FcState::Table(t) => kids(&t.cells),
-            FcState::Multicol(m) => m.flow.into_iter().collect(),
-        }
+    pub(crate) fn child_tokens(&self) -> impl Iterator<Item = TokenId> + '_ {
+        let (one, kids): (_, &[ChildToken]) = match self {
+            FcState::Block(b) => (b.child, &b.parallel),
+            FcState::Inline(i) => (i.child, &[]),
+            FcState::Flex(f) => (None, &f.items),
+            FcState::Grid(g) => (None, &g.items),
+            FcState::Table(t) => (None, &t.cells),
+            FcState::Multicol(m) => (m.flow, &[]),
+        };
+        one.into_iter().chain(kids.iter().map(|c| c.token))
     }
 }

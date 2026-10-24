@@ -10,13 +10,14 @@ use crate::layout::fragment::table_bands::repeat_candidates;
 use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::{BoxStyle, Display};
-use crate::style::values::value::Len;
 use crate::tolerance::COORD_EPS;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
+use gpui::AnyElement;
 mod breaks;
 mod flex;
 mod frame;
 mod laid;
+mod leaf;
+mod paint;
 mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
@@ -99,67 +100,52 @@ pub(super) fn page_kids_from_groups(
             .blocks()
             .and_then(|b| b.table.as_ref())
             .map(|t| (t.head.is_some_and(|s| s.2), t.foot.is_some_and(|s| s.2)));
-        let build = |main: bool,
-                     band: bool,
-                     slot: &mut Vec<AnyElement>,
-                     fixed_slot: &mut Vec<AnyElement>| {
-            let mut opts = opts.clone();
-            opts.frag.watch = main.then(|| watched.clone());
-            let icb_layer =
-                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
-            opts.clear_paged_fixed();
-            // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
-            // page area — содержащего блока корня (css-page-3 §page-model).
-            let mut wrap = frame::wrap((left, right, top), ah, first_kid, vertical);
-            if let [Node::Element(r)] = group
-                && matches!(r.tag.as_str(), "html" | "body")
-                && matches!(r.style.used().height, Some(Len::Pct(_)))
-            {
-                wrap = wrap.h(px(ah));
-            }
-            let band_group: Vec<Node> = if band {
-                group
-                    .iter()
-                    .filter_map(|n| {
-                        crate::layout::positioned::repeat::drop_uncontained_oof(n, false, false)
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            let source = if band { band_group.as_slice() } else { group };
-            let el = wrap
-                .children(opts.cx.contracts.build.blocks(source, root, &opts))
-                .into_any_element();
-            slot.extend(layer(icb_layer.finish()));
-            fixed_slot.extend(layer(opts.take_paged_fixed()));
-            el
-        };
-        let regrow = flex::regrow(
+        let (fb, fa, monolith, renamed, start_name) =
+            group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
+        let leaf = (vertical.is_none() && prepared.is_some() && !monolith)
+            .then(|| leaf::paint_leaf(opts, root, group, (left, right, pad_top), ah))
+            .flatten();
+        let paint = paint::Paint {
             opts,
             root,
             group,
-            &watched,
-            (left, right, top),
-            first_kid,
-            (aw, ah),
+            watched: &watched,
+            padding: (left, right, top),
+            height: ah,
+            first: first_kid,
             vertical,
-            icb_copies,
-            fixed_copies,
-        );
-        let (el, frags) = match &regrow {
-            Some(r) => r.rebuild(PAGE_COPIES - 1),
-            None => (
-                build(true, false, &mut icb_copies[0], &mut fixed_copies[0]),
+            layer: &layer,
+        };
+        let regrow = leaf
+            .is_none()
+            .then(|| {
+                flex::regrow(
+                    opts,
+                    root,
+                    group,
+                    &watched,
+                    (left, right, top),
+                    first_kid,
+                    (aw, ah),
+                    vertical,
+                    icb_copies,
+                    fixed_copies,
+                )
+            })
+            .flatten();
+        let (el, frags) = match (&leaf, &regrow) {
+            (Some(_), _) => (
+                paint.build(true, false, &mut icb_copies[0], &mut fixed_copies[0]),
+                Vec::new(),
+            ),
+            (_, Some(r)) => r.rebuild(PAGE_COPIES - 1),
+            _ => (
+                paint.build(true, false, &mut icb_copies[0], &mut fixed_copies[0]),
                 (1..PAGE_COPIES)
-                    .map(|i| build(false, false, &mut icb_copies[i], &mut fixed_copies[i]))
+                    .map(|i| paint.build(false, false, &mut icb_copies[i], &mut fixed_copies[i]))
                     .collect(),
             ),
         };
-        // CSS Paged Media: anonymous runs inherit the page name; floats
-        // and out-of-flow boxes do not pass a name to subsequent pages.
-        let (fb, fa, monolith, renamed, start_name) =
-            group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
         // Монолит выше листа решается в `fill` (правило «сначала перенос,
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.
@@ -187,7 +173,7 @@ pub(super) fn page_kids_from_groups(
             repeat: vertical
                 .is_none()
                 .then(|| {
-                    let band = || build(false, true, &mut Vec::new(), &mut Vec::new());
+                    let band = || paint.build(false, true, &mut Vec::new(), &mut Vec::new());
                     match measured_table {
                         Some((head, foot)) => repeat_candidates(
                             head,
@@ -202,6 +188,7 @@ pub(super) fn page_kids_from_groups(
                 })
                 .flatten(),
             regrow,
+            leaf,
             watched: Some(watched),
             float_id: match n {
                 Node::Element(e) if floated(n) => Some(e.node_id),

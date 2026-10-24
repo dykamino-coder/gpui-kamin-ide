@@ -6,6 +6,8 @@ use crate::layout::fragment::flow::blocks::table::TableSections;
 use crate::layout::fragment::table_bands::repeat_spec;
 use crate::layout::fragment::types::{StackAxis, StackChild};
 use gpui::{Pixels, Size, Window, point, px};
+mod leaf;
+pub(crate) use leaf::fragment_leaf;
 
 impl StackChild {
     /// Точки разрыва ребёнка, чью высоту дала раскладка копии (`measure`):

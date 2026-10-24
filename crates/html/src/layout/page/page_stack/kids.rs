@@ -66,6 +66,7 @@ impl PageStack {
         let limit = self
             .kids
             .iter()
+            .filter(|k| k.leaf.is_none())
             .map(|k| k.frags.len() + 1)
             .min()
             .unwrap_or(1);
