@@ -18,7 +18,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod kids;
 use kids::page_kids_from_groups;
 mod root;
-use root::{Run, group_runs, resolve_root_page};
+use root::{group_runs, resolve_root_page};
 mod overflow;
 pub(crate) use overflow::visible_overflow;
 use root::root_axis;
@@ -194,10 +194,9 @@ pub fn render_paged_select(
         _ => false,
     };
     let mut groups: Vec<Vec<Node>> = Vec::new();
-    let run = Run::None;
     let nodes =
         crate::layout::fragment::flow::box_children::projected(&nodes, &root, opts.cx.vcx());
-    group_runs(nodes, inline_level, floated, &mut groups, run);
+    group_runs(nodes, inline_level, floated, &mut groups, vcx);
     for g in groups.iter_mut() {
         while g.last().is_some_and(is_blank) {
             g.pop();

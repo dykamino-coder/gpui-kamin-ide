@@ -67,7 +67,6 @@ pub(crate) fn stack_plan(
         boxed.children = crate::layout::fragment::flow::column_percentages(
             &boxed.children,
             merged,
-            col_h,
             line_col_w,
             opts,
         );

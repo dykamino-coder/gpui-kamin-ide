@@ -62,6 +62,9 @@ impl PagePercentages {
     /// Обновляет размеры существующей continuation, сохраняя её child identities.
     pub(crate) fn refresh(&self, e: &mut crate::dom::Element, space: Space, opts: &RenderOpts) {
         let context = self.context(e.node_id);
+        if context.style.wm().vertical() {
+            return;
+        }
         let style = context.style(space, opts);
         let used = e.style.used_mut();
         for (original, resolved, target) in [

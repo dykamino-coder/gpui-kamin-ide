@@ -58,12 +58,10 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_gr
             .position(|n| matches!(n, Node::Element(k) if k.node_id == id))
     };
     if let Some(i) = at {
-        // Распорка двигает только разрыв ПЕРЕД коробкой. Разрыв ПОСЛЕ
-        // предыдущего соседа несёт `force_next`, и `forced.push(y)`
-        // сработает на границе самой распорки: точка не сдвинется, а у
-        // коробки исчезнет вовсе — распорка уедет в следующую колонку
-        // вместе с ней. Случай `break-after` забирает подъём разрыва, а не рост.
-        if !matches!(&c.children[i], Node::Element(k) if edge_break(k, false, vcx)) {
+        // Оценка формы видит распорку отдельным соседом и сохраняет break-after
+        // перед ней. Измеренная стопка хранит исходных соседей и переносит
+        // границу под распорку по STRUT_ID, поэтому принимает оба края.
+        if fixed_grows && !matches!(&c.children[i], Node::Element(k) if edge_break(k, false, vcx)) {
             return false;
         }
         // Нижнее поле предыдущего соседа переносится на распорку. Иначе
@@ -140,4 +138,50 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_gr
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::fragment::{
+        ShapeCx,
+        flow::blocks::{BlockBox, Laid, STRUT_ID},
+    };
+
+    #[test]
+    fn measured_forced_break_after_moves_below_its_growth_strut() {
+        let tree = crate::dom::parse(
+            "<section><div style='height:20px;break-after:page'></div><div style='height:30px'></div></section>",
+            "",
+        );
+        fn find(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == "section" => Some(e),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        let mut root = find(&tree).unwrap().clone();
+        let blocks = BlockBox::collect(&root, ShapeCx::COLUMNS, tree.values());
+        let (first, next) = (blocks.kids[0].id, blocks.kids[1].id);
+        assert!(spacer_before_laid(&mut root, next, 80.0, tree.values()));
+        let strut = root
+            .children
+            .iter()
+            .find_map(|n| match n {
+                Node::Element(e) if e.node_id == next ^ STRUT_ID => Some(e),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(strut.style.used().height, Some(Len::Px(80.0)));
+        let laid = Laid::of_boxes(&[
+            (blocks.id, 0.0, 130.0),
+            (first, 0.0, 20.0),
+            (next ^ STRUT_ID, 20.0, 100.0),
+            (next, 100.0, 130.0),
+        ]);
+        let breaks = blocks.breaks(130.0, &laid);
+        assert_eq!(breaks.forced, vec![100.0]);
+        assert!(breaks.cuts.contains(&(100.0, 100.0)));
+    }
 }

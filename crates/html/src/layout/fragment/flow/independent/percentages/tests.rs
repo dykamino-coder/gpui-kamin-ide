@@ -124,20 +124,21 @@ fn column_cb_is_not_the_remaining_fragment_height() {
     let columns = column_percentages(
         &[Node::Element(section.clone())],
         &parent,
-        Some(300.0),
         Some(200.0),
         &opts,
     );
-    assert_eq!(target(&columns).style.used().height, Some(Len::Px(150.0)));
+    assert_eq!(target(&columns).style.used().height, Some(Len::Px(200.0)));
+    assert_eq!(
+        target(&columns).style.used().min_height,
+        Some(Len::Px(100.0))
+    );
+    assert_eq!(
+        target(&columns).style.used().max_height,
+        Some(Len::Px(300.0))
+    );
     let mut span = section;
     span.style.used_mut().column_span = Some(true);
-    let spanning = column_percentages(
-        &[Node::Element(span)],
-        &parent,
-        Some(300.0),
-        Some(200.0),
-        &opts,
-    );
+    let spanning = column_percentages(&[Node::Element(span)], &parent, Some(200.0), &opts);
     assert_eq!(target(&spanning).style.used().height, Some(Len::Px(200.0)));
 }
 
@@ -204,4 +205,31 @@ fn viewport_parent_supplies_a_definite_percentage_containing_block() {
         &opts,
     );
     assert_eq!(leaf.content_block, 150.0);
+}
+
+#[test]
+fn vertical_inline_percentages_remain_owned_by_vertical_layout() {
+    let tree = crate::dom::parse(
+        "<div style='writing-mode:vertical-rl;height:400px'><section style='height:50%;min-height:25%;max-height:75%'></section></div>",
+        "",
+    );
+    let opts = opts(&tree);
+    let (mut nodes, contexts) = page_percentages(&tree, &opts.root_style(), &opts);
+    let original = target(&tree).style.used();
+    let Node::Element(root) = &mut nodes[0] else {
+        unreachable!()
+    };
+    contexts.refresh(
+        root,
+        crate::layout::fragment::token::Space {
+            inline_size: Some(800.0),
+            block_size: Some(300.0),
+            ..crate::layout::fragment::token::Space::pages()
+        },
+        &opts,
+    );
+    let actual = target(&nodes).style.used();
+    assert_eq!(actual.height, original.height);
+    assert_eq!(actual.min_height, original.min_height);
+    assert_eq!(actual.max_height, original.max_height);
 }
