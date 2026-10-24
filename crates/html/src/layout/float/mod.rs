@@ -72,7 +72,7 @@ pub(super) fn float_only_box(c: &Element) -> Option<f32> {
     if c.inline || !matches!(c.style.used().display, None | Some(Display::Block)) {
         return None;
     }
-    let (mut left, mut right, mut tall) = (0u8, 0u8, 0.0f32);
+    let (mut left, mut right, mut tall) = (0usize, 0usize, 0.0f32);
     for n in &c.children {
         let f = match n {
             Node::Text(t) if blank_text(t) => continue,
@@ -99,7 +99,7 @@ pub(super) fn float_only_box(c: &Element) -> Option<f32> {
         }
         tall = tall.max(px_margin_box(&f.style.used())?.1);
     }
-    (left + right > 0 && left <= 1 && right <= 1).then_some(tall)
+    ((left != 0 || right != 0) && left <= 1 && right <= 1).then_some(tall)
 }
 
 pub(super) fn has_float(n: &Element, depth: u8) -> bool {
@@ -113,4 +113,45 @@ pub(super) fn has_float(n: &Element, depth: u8) -> bool {
         }
         _ => false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn floats(left: usize, right: usize) -> Element {
+        let children = (0..left)
+            .map(|_| -1)
+            .chain((0..right).map(|_| 1))
+            .map(|side| {
+                let style = Computed {
+                    float: Some(side),
+                    width: Some(Len::Px(10.0)),
+                    height: Some(Len::Px(if side < 0 { 20.0 } else { 30.0 })),
+                    ..Default::default()
+                };
+                Node::Element(Element::synthetic("div", style, Default::default(), vec![]))
+            })
+            .collect();
+        Element::synthetic("div", Computed::default(), Default::default(), children)
+    }
+
+    #[test]
+    fn float_only_row_accepts_at_most_one_float_on_each_side() {
+        assert_eq!(float_only_box(&floats(0, 0)), None);
+        assert_eq!(float_only_box(&floats(1, 0)), Some(20.0));
+        assert_eq!(float_only_box(&floats(0, 1)), Some(30.0));
+        assert_eq!(float_only_box(&floats(1, 1)), Some(30.0));
+        assert_eq!(float_only_box(&floats(2, 0)), None);
+        assert_eq!(float_only_box(&floats(0, 2)), None);
+    }
+
+    #[test]
+    fn wide_float_rows_do_not_wrap_counts_or_their_sum() {
+        for count in [255, 256, 257] {
+            assert_eq!(float_only_box(&floats(count, 0)), None);
+            assert_eq!(float_only_box(&floats(0, count)), None);
+        }
+        assert_eq!(float_only_box(&floats(128, 128)), None);
+    }
 }
