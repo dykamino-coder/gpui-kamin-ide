@@ -118,3 +118,14 @@ fn typed_attr_uses_host_language_case_rules_in_the_style_walk() {
         );
     }
 }
+
+#[test]
+fn raw_string_attributes_use_each_pseudo_elements_originating_element() {
+    for kind in ["", "raw-string", "RAW-STRING"] {
+        let parsed = parse(
+            "<!doctype html><div data-x='x'></div><div data-x='y'></div>",
+            &format!("div::before {{ content: attr(data-x {kind}) }}"),
+        );
+        assert_eq!(pseudo_text(&parsed), ["x", "y"], "{kind}");
+    }
+}

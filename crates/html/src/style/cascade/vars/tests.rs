@@ -122,3 +122,18 @@ fn declaration_normalization_cannot_create_substitution_tokens() {
         assert_eq!(resolve_sibling(value.into(), ELEMENT), value);
     }
 }
+
+#[test]
+fn string_attribute_types_reach_the_originating_element_evaluator() {
+    let doc = DocState::new(Media::default());
+    for source in [
+        "attr(x)",
+        "attr(x raw-string)",
+        "ATTR(x RAW-STRING, 'fallback')",
+    ] {
+        assert_eq!(
+            resolve_attrs("content", source, CascadeCx::NONE, doc.values()),
+            source
+        );
+    }
+}
