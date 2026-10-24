@@ -1,7 +1,7 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
 # 1. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
-# 2. DirectX: CSS primitives, images, filters, masks, gradients and frame capture.
+# 2. DirectX: CSS primitives, images, filters, masks, gradients and frame capture with CPU copy/map timing for WPT phase measurements.
 # 3. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
 # 4. Diagnostics: GPU batch measurements consumed by the application's diagnostic panel.
 # 5. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
@@ -6513,7 +6513,7 @@ index 8e65e6e626aa9bca9bdf60d268d2309ec4b4c1e1..cae1d32fb8223d5aac5b9ce5daea0d35
 +    }
 +    create(bgra)
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8adecca94
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..8e0cf9f1b0cbc99658ad54bdca1e0eee2721f3f0
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7013,11 +7013,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -341,0 +689,54 @@
+@@ -341,0 +689,55 @@
 +    }
 +
 +    /// KaminIDE patch: copy the drawn back buffer to memory (`frame_capture`).
 +    fn capture_frame(&mut self) -> Result<()> {
++        let started = std::time::Instant::now();
 +        let (w, h) = (self.width, self.height);
 +        let desc = D3D11_TEXTURE2D_DESC {
 +            Width: w,
@@ -7066,12 +7067,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +            bgra[y * row..(y + 1) * row].copy_from_slice(src);
 +        }
 +        unsafe { ctx.Unmap(&staging, 0) };
-+        gpui::frame_capture::store(w, h, bgra);
++        gpui::frame_capture::store_timed(w, h, bgra, started.elapsed());
 +        Ok(())
-@@ -353,0 +755,2 @@
+@@ -353,0 +756,2 @@
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
-@@ -357,0 +761,33 @@
+@@ -357,0 +762,33 @@
 +        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
 +        self.gpu_timer.begin(&device, &ctx);
 +        // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
@@ -7105,9 +7106,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +    /// заново: проходы размытия предыдущей группы привязывали свои.
 +    fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
 +        self.restore_frame_globals()?;
-@@ -365,0 +802 @@
+@@ -365,0 +803 @@
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -402,0 +840,352 @@
+@@ -402,0 +841,352 @@
 +            if let Some((kind, prims, area)) = cost {
 +                batch_cost::count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -7460,13 +7461,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1200,0 @@
+@@ -412 +1201,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -488 +1276,2 @@
+@@ -488 +1277,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1283,21 @@
+@@ -494 +1284,21 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            unsafe {
@@ -7489,7 +7490,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +        &mut self,
 +        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
 +    ) -> Result<()> {
-@@ -500,19 +1309 @@
+@@ -500,19 +1310 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -7510,7 +7511,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -599,0 +1391,7 @@
+@@ -599,0 +1392,7 @@
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
@@ -7518,15 +7519,15 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +        } else {
 +            (start, len)
 +        };
-@@ -672 +1470 @@
+@@ -672 +1471 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
-@@ -815,0 +1614,4 @@
+@@ -815,0 +1615,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1622,23 @@
+@@ -819,0 +1623,23 @@
 +        for surface in surfaces {
 +            // KaminIDE patch: метка группы (`Window::paint_group`) — не
 +            // размытие фона, а «положить сюда готовый буфер группы».
@@ -7550,7 +7551,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -820,0 +1646,394 @@
+@@ -820,0 +1647,394 @@
 +    }
 +
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
@@ -7945,7 +7946,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
 +        }
 +        drawn
-@@ -890,0 +2110,12 @@
+@@ -890,0 +2111,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -7958,9 +7959,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +                (!h.is_invalid()).then_some(FrameLatencyGate(h))
 +            })
 +        };
-@@ -904,0 +2136 @@
+@@ -904,0 +2137 @@
 +            frame_gate,
-@@ -999,0 +2232,7 @@
+@@ -999,0 +2233,7 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -7968,20 +7969,20 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +            4,
 +            create_blend_state(device)?,
 +        )?;
-@@ -1009,0 +2249 @@
+@@ -1009,0 +2250 @@
 +            blur_pipeline,
-@@ -1018,0 +2259,4 @@
+@@ -1018,0 +2260,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2268 @@
+@@ -1023,0 +2269 @@
 +            comp_root,
-@@ -1030 +2275,2 @@
+@@ -1030 +2276,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1076,0 +2323,13 @@
+@@ -1076,0 +2324,13 @@
 +}
 +
 +/// KaminIDE patch: параметры кадра для вьюпорта `viewport_size` — общие у
@@ -7995,7 +7996,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +        is_bgr: font_info.is_bgr as u32,
 +        _pad: [0; 3],
 +    }
-@@ -1190,0 +2450,45 @@
+@@ -1190,0 +2451,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8041,18 +8042,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2501 @@
+@@ -1197 +2502 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1319 +2623,2 @@
+@@ -1319 +2624,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2652,2 @@
+@@ -1347 +2653,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1492,0 +2799,33 @@
+@@ -1492,0 +2800,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8086,17 +8087,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..376214d12dbe7c9751e9cf518ae1a1a8
 +    }
 +}
 +
-@@ -1719,0 +3059,2 @@
+@@ -1719,0 +3060,2 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
-@@ -1796,0 +3138,4 @@
+@@ -1796,0 +3139,4 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
 +                },
-@@ -1883,0 +3229 @@
+@@ -1883,0 +3230 @@
 +                ShaderModule::Blur => "blur",
-@@ -2070,0 +3417,33 @@
+@@ -2070,0 +3418,33 @@
 +
 +mod backdrop;
 +mod recovery;

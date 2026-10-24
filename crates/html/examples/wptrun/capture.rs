@@ -1,4 +1,6 @@
-//! Capture a restored client area without accepting minimized title-bar images.
+//! Снимок завершённого GPU-кадра либо восстановленной клиентской области.
+
+use gpui::AsyncApp;
 
 /// Fence the previous document and count each completed GPU draw only once.
 pub(super) struct CaptureCursor {
@@ -8,8 +10,19 @@ pub(super) struct CaptureCursor {
 impl CaptureCursor {
     pub(super) fn new() -> Self {
         Self {
-            seq: offscreen().then(|| gpui::frame_capture::latest().map_or(0, |f| f.seq)),
+            seq: offscreen().then(gpui::frame_capture::sequence),
         }
+    }
+
+    /// Ждать новый завершённый readback, не опрашивая и не копируя старый кадр.
+    pub(super) async fn wait(&self, cx: &AsyncApp) -> bool {
+        use futures::future::{Either, select};
+        let Some(seq) = self.seq else { return false };
+        let event = gpui::frame_capture::after(seq);
+        let timeout = cx
+            .background_executor()
+            .timer(std::time::Duration::from_millis(500));
+        matches!(select(event, timeout).await, Either::Left((Ok(_), _)))
     }
 
     fn advance(&mut self, seq: u64) -> bool {
@@ -158,9 +171,19 @@ mod tests {
     #[test]
     fn first_frame_survives_later_draws_and_rearms_for_the_next_document() {
         use gpui::frame_capture::{arm_first, store, take_first};
+        let seq = gpui::frame_capture::sequence();
+        let mut next = gpui::frame_capture::after(seq);
+        assert_eq!(next.try_recv().unwrap(), None);
         arm_first();
         assert!(take_first().is_none());
         store(1, 1, vec![1, 2, 3, 255]);
+        let completed = gpui::frame_capture::sequence();
+        assert!(completed > seq);
+        assert_eq!(next.try_recv().unwrap(), Some(completed));
+        assert_eq!(
+            gpui::frame_capture::after(seq).try_recv().unwrap(),
+            Some(completed)
+        );
         store(1, 1, vec![4, 5, 6, 255]);
         assert_eq!(take_first().unwrap().bgra, [1, 2, 3, 255]);
         assert!(take_first().is_none());

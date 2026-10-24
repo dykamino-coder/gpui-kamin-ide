@@ -3832,6 +3832,7 @@ name = "kamin-html"
 version = "1.0.79"
 dependencies = [
  "encoding_rs",
+ "futures",
  "gpui-pre",
  "gpui-pre-platform",
  "html5ever 0.40.1",

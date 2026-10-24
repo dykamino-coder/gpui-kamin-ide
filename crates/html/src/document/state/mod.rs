@@ -12,6 +12,7 @@
 //! Арены `calc()`/`anchor()` документа и их ручки — `arena`.
 
 mod arena;
+mod readiness;
 mod scoped;
 mod synthetic_ids;
 mod value_cx;
@@ -90,6 +91,8 @@ pub struct DocState {
     frame_owner: Cell<u32>,
     /// Документ красился после последнего сброса области кадра.
     painted: Cell<bool>,
+    /// Наблюдение за незавершённой работой кадра; не управляет раскладкой.
+    readiness: readiness::FrameState,
     this: Weak<DocState>,
 }
 
@@ -110,6 +113,7 @@ impl DocState {
     /// Начало сборки кадра хостом: область кадра прошлого, уже покрашенного
     /// кадра больше никто не читает — сбросить.
     pub(crate) fn begin_frame(&self) {
+        self.readiness.begin();
         self.images.borrow_mut().revalidate();
         self.vertical_measures.begin_frame();
         if self.painted.replace(false) {

@@ -9,7 +9,6 @@ use super::{
 };
 use gpui::{AnyWindowHandle, AppContext as _, AsyncApp};
 use std::rc::Rc;
-use std::time::Duration;
 
 /// Что и как прогонять.
 pub(super) struct RunConfig {
@@ -50,9 +49,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
         }
     }
     // Первый кадр окна: до него снимок пустой.
-    cx.background_executor()
-        .timer(Duration::from_millis(900))
-        .await;
+    super::ready::startup(cx).await;
     // Указатель окна нужен снимку: рисует его система, а не мы.
     let hwnd = hwnd_of(cx, window);
     // Свой файл отчёта на шард: параллельные прогоны не бьются за один путь.

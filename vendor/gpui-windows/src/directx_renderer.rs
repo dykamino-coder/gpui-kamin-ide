@@ -690,6 +690,7 @@ impl DirectXRenderer {
 
     /// KaminIDE patch: copy the drawn back buffer to memory (`frame_capture`).
     fn capture_frame(&mut self) -> Result<()> {
+        let started = std::time::Instant::now();
         let (w, h) = (self.width, self.height);
         let desc = D3D11_TEXTURE2D_DESC {
             Width: w,
@@ -738,7 +739,7 @@ impl DirectXRenderer {
             bgra[y * row..(y + 1) * row].copy_from_slice(src);
         }
         unsafe { ctx.Unmap(&staging, 0) };
-        gpui::frame_capture::store(w, h, bgra);
+        gpui::frame_capture::store_timed(w, h, bgra, started.elapsed());
         Ok(())
     }
 
