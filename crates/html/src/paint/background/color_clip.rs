@@ -1,4 +1,4 @@
-//! Общая заливка фона по внутреннему краю коробки (css-backgrounds-3 §3.7, §5.3).
+//! Общая заливка фона по использованным краям коробки (css-backgrounds-3 §3.7, §5.3).
 //! Установка слоя не зависит от display: блоки, атомы, таблицы и replaced
 //! используют общий слой; табличные полосы вызывают тот же painter.
 
@@ -24,13 +24,22 @@ pub(crate) enum ColorBox {
     TableBand(Bounds<Pixels>),
 }
 
-/// Абсолютные слои отсчитываются от padding-box: рамка уже исключена
-/// раскладкой. Даже при нулевых отступах используется тот же путь.
-pub(crate) fn inset_color_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
-    if !matches!(
-        c.color_clip(vcx),
-        Some(BgClip::PaddingBox | BgClip::ContentBox)
-    ) || crate::style::computed::single_corner::eligible(c)
+/// Filter Effects 2 §2.1, шаг 5: собственный фон рисуется после фильтрации
+/// подложки. Квад GPUI предшествует детям, поэтому здесь нужен слой фона,
+/// даже когда background-clip оставляет всю border-box.
+pub(crate) fn needs_color_layer(c: &Computed, vcx: ValueCx<'_>) -> bool {
+    match c.color_clip(vcx) {
+        Some(BgClip::PaddingBox | BgClip::ContentBox) => true,
+        None | Some(BgClip::BorderBox) => c.backdrop_filter_set,
+        _ => false,
+    }
+}
+
+/// Абсолютный слой измеряется от padding-box; painter восстанавливает
+/// border-box по использованным краям родителя, независимо от clip.
+pub(crate) fn color_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
+    if !needs_color_layer(c, vcx)
+        || crate::style::computed::single_corner::eligible(c)
         || crate::paint::effects::corner_clip::insets(c, vcx).is_some()
         || (c.background.is_none() && (c.gradient.is_none() || c.gradient_as_tile()))
     {
@@ -95,6 +104,32 @@ mod tests {
     use crate::style::values::value::Len;
 
     #[test]
+    fn backdrop_background_is_painted_after_sampling_for_every_position_and_clip() {
+        use gpui::Styled;
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        for position in ["static", "relative", "absolute", "fixed", "sticky"] {
+            for clip in ["border-box", "padding-box", "content-box"] {
+                for filter in ["invert(1)", "blur(2px)", "url(#filter)"] {
+                    let mut c = Computed::default();
+                    c.apply_one("position", position, vcx);
+                    c.apply_one("background", &format!("#fff8 {clip}"), vcx);
+                    c.apply_one("backdrop-filter", filter, vcx);
+                    let mut d = crate::paint::apply::apply_paint(gpui::div(), &c, vcx);
+                    assert!(d.style().background.is_none(), "{position} {clip} {filter}");
+                    assert!(color_layer(&c, vcx).is_some(), "{clip} {filter}");
+                }
+            }
+        }
+        let mut ordinary = Computed::default();
+        ordinary.apply_one("background", "#fff8", vcx);
+        ordinary.apply_one("backdrop-filter", "none", vcx);
+        let mut d = crate::paint::apply::apply_paint(gpui::div(), &ordinary, vcx);
+        assert!(d.style().background.is_some());
+        assert!(color_layer(&ordinary, vcx).is_none());
+    }
+
+    #[test]
     fn inset_color_is_installed_for_every_box_kind_even_when_edges_coincide() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
@@ -113,9 +148,9 @@ mod tests {
                 let mut c = Computed::default();
                 c.display = Some(display);
                 c.apply_one("background", &format!("blue {clip}"), vcx);
-                assert!(inset_color_layer(&c, vcx).is_some(), "{display:?}: {clip}");
+                assert!(color_layer(&c, vcx).is_some(), "{display:?}: {clip}");
                 c.parent_flex_grid = true;
-                assert!(inset_color_layer(&c, vcx).is_some());
+                assert!(color_layer(&c, vcx).is_some());
             }
         }
     }
@@ -158,11 +193,11 @@ mod tests {
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("background", "url(a) border-box, blue content-box", vcx);
-        assert!(inset_color_layer(&c, vcx).is_some());
+        assert!(color_layer(&c, vcx).is_some());
         c.apply_one("background", "url(a) content-box, blue border-box", vcx);
-        assert!(inset_color_layer(&c, vcx).is_none());
+        assert!(color_layer(&c, vcx).is_none());
         c.padding.left = Some(Len::Px(10.0));
         c.apply_one("background-clip", "text", vcx);
-        assert!(inset_color_layer(&c, vcx).is_none());
+        assert!(color_layer(&c, vcx).is_none());
     }
 }

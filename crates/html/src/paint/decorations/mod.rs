@@ -87,7 +87,7 @@ pub(crate) fn decorations(
         && c.filter_ref
             .as_deref()
             .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some()))
-        && let Some(layer) = crate::paint::background::inset_color_layer(c, vcx)
+        && let Some(layer) = crate::paint::background::color_layer(c, vcx)
     {
         out.push(layer);
     }

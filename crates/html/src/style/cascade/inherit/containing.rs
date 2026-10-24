@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::computed::{BgClip, BoxStyle, Display as D, Overflow};
+use crate::style::computed::{BoxStyle, Display as D, Overflow};
 
 pub(super) fn inherit_containing(
     parent: &BoxStyle,
@@ -54,19 +54,6 @@ pub(super) fn inherit_containing(
     );
     let backdrop = parent.backdrop_root_above || backdrop_root(parent);
     set!(c.backdrop_root_above, backdrop);
-    // filter-effects-2 §3 шаг 4: содержимое B — и его СОБСТВЕННЫЙ фон —
-    // рисуется поверх уже отфильтрованной подложки. Фон коробки красит сама
-    // коробка раньше детей, а канвас подложки — ребёнок; явный
-    // `background-clip: border-box` уводит фон в слой-ребёнка
-    // `render::clip_layer`, который идёт после декораций.
-    if c.backdrop_color.is_some()
-        && !c.backdrop_root_above
-        && c.bg_clip.is_none()
-        && (c.background.is_some() || c.gradient.is_some())
-        && matches!(c.display, None | Some(D::Block))
-    {
-        set!(c.bg_clip, Some(BgClip::BorderBox));
-    }
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
     // содержащий блок, окно.
