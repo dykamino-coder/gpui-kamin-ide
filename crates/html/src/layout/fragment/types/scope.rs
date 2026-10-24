@@ -7,6 +7,7 @@ use crate::layout::options::RenderOpts;
 /// Контекст фрагментации сборки — часть `RenderOpts`, которую ставит не
 /// приложение, а код, строящий фрагменты (Blink несёт то же в
 /// `ConstraintSpace` каждого вызова раскладки, а не в глобальном состоянии).
+/// TRANSITIONAL(F2-7): FragCx несёт implicit in_stack_copy/outer_row вместо явного Space/resume; удалить эти поля в P22 после последних consumers P09/P10/P21.
 #[derive(Clone, Debug, Default)]
 pub struct FragCx {
     /// Сборщик диагностики конкретного прогона; хост забирает снимок через take.

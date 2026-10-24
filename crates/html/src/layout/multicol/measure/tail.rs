@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-3): остаток внешнего ряда требует продолжения вложенного fragmentainer.
 //! Высота хвостового ряда колонок после единственного измеримого спаннера:
 //! остаток блочного размера коробки (css-multicol-1 §column-fill).
 
@@ -57,6 +56,7 @@ pub(crate) fn tail_rest_height(
                 }
                 spans += 1;
                 let st = box_style(merged, &sp.style, vcx);
+                // TRANSITIONAL(F2-3): Остаток внешнего ряда вычитается из оценок целых спаннеров; удалить в P10 после outer-row extent и spanner token.
                 used += shape_full(sp, 4, shape_cx, vcx)?.height
                     + px(&st.margin.top)?
                     + px(&st.margin.bottom)?;

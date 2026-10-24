@@ -2,6 +2,7 @@
 
 /// Размеры в CSS px; смещения отсчитываются от начала измеряемой коробки
 /// в системе координат `shape_full`, внешние поля в них не входят.
+/// TRANSITIONAL(F2-7): Shape объединяет оценочную высоту и synthetic cuts/forced/solid; удалить оценочную роль в P22 после P21, сохранив только реальные geometry types.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Shape {
     /// Измеренная протяжённость коробки и её потока без внешних полей.

@@ -158,10 +158,7 @@ impl crate::dom::SharedStyle {
     /// for a fragment, a dissolved `display: contents` child): its values are
     /// computed already and become its only stage.
     ///
-    /// TRANSITIONAL(cascade-7b layout-made styles): layout re-enters such copies
-    /// as elements, so their computed box values stand in for a cascade. Remove
-    /// when layout keeps the element's own style handle and passes box styles
-    /// separately.
+    /// TRANSITIONAL(cascade-7b-layout-made): layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle.
     pub(crate) fn layout_made(style: BoxStyle) -> Self {
         style.into_computed().into()
     }
@@ -181,15 +178,7 @@ impl std::ops::Deref for BoxStyle {
     }
 }
 
-/// TRANSITIONAL(P-18 box context): the box-context fields that `inherit::context`
-/// writes for children of grid, flex and lanes containers (`parent_grid`,
-/// `parent_flex_grid`, `parent_grid_align_items`, `parent_lanes`,
-/// `parent_subgrid`, `cq_box`, ...) and layout's used values still live in
-/// `Computed`, so the first differing write copies the whole shared computed
-/// style (measured: `Computed::clone` 3-5% of a frame after P-18). They stay
-/// there because paint (`paint::apply`) and layout-made element styles
-/// (`SharedStyle::layout_made`, the used layer) read them from a `Computed`.
-/// Remove when paint takes the `BoxStyle` and these fields move into it.
+/// TRANSITIONAL(cascade-7b-R10): Контекст grid/flex/lanes и used values остаётся в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle.
 impl std::ops::DerefMut for BoxStyle {
     fn deref_mut(&mut self) -> &mut Computed {
         Rc::make_mut(&mut self.style)

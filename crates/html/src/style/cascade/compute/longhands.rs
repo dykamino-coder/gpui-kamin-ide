@@ -174,8 +174,7 @@ fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
             c.align_self_own_axis = p.align_self_own_axis;
             c.align_self_flex_kw = p.align_self_flex_kw;
             c.align_self_last = p.align_self_last;
-            // TRANSITIONAL(align-self applicability): see
-            // `dom::fixup_tree::alignment::align_self_from_dom_parent`.
+            // TRANSITIONAL(cascade-7b-R06): Явный inherit align-self гасится для block parent в computed стадии; удалить гашение после сохранения computed значения и проверки применимости в used block layout.
             use crate::style::computed::{Display as D, Position as P};
             let block_parent = matches!(
                 p.display,

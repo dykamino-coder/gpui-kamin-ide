@@ -321,6 +321,26 @@ jobs:
           BASE_SHA: ${{ needs.scope.outputs.base_sha }}
         run: python3 scripts/check_layer_imports.py --base "$BASE_SHA"
 
+  html-transitional:
+    name: HTML transitional paths
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Test transitional comments and shrinking registry
+        run: python3 -m unittest discover -s scripts -p test_check_transitional.py -v
+
+      - name: Enforce registered transitional paths and shrinking inventory
+        env:
+          BASE_SHA: ${{ needs.scope.outputs.base_sha }}
+        run: python3 scripts/check_transitional.py --base "$BASE_SHA"
+
   rust-windows:
     name: Windows Rust tests (no GUI acceptance)
     needs: scope
@@ -681,6 +701,7 @@ jobs:
       - bridge-webview
       - rust-windows
       - html-layer-imports
+      - html-transitional
       - vendor-patches
       - vendor-taffy
       - windows-installer
@@ -699,6 +720,7 @@ jobs:
           WEBVIEW_RESULT: ${{ needs.bridge-webview.result }}
           RUST_RESULT: ${{ needs.rust-windows.result }}
           HTML_LAYERS_RESULT: ${{ needs.html-layer-imports.result }}
+          HTML_TRANSITIONAL_RESULT: ${{ needs.html-transitional.result }}
           VENDOR_RESULT: ${{ needs.vendor-patches.result }}
           TAFFY_RESULT: ${{ needs.vendor-taffy.result }}
           INSTALLER_RESULT: ${{ needs.windows-installer.result }}
@@ -715,6 +737,7 @@ jobs:
             "$WEBVIEW_RESULT" \
             "$RUST_RESULT" \
             "$HTML_LAYERS_RESULT" \
+            "$HTML_TRANSITIONAL_RESULT" \
             "$VENDOR_RESULT" \
             "$TAFFY_RESULT" \
             "$INSTALLER_RESULT" \

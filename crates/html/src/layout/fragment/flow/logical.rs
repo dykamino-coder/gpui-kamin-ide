@@ -23,6 +23,7 @@ fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
     if recorded && c.style.used().display == Some(crate::style::computed::Display::None) {
         return Some(c.clone());
     }
+    // TRANSITIONAL(F2-3): Transpose отказывает ортогональным потокам и оценочным RTL строкам; удалить отказ в P10 после child logical Space и собственного resume.
     if c.style.cascaded().vertical_decl() == Some(false)
         || c.style.cascaded().rl_decl().is_some_and(|v| v != rl)
         || (!recorded && c.style.cascaded().wm().rtl())

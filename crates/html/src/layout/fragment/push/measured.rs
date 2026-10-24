@@ -157,9 +157,7 @@ pub(crate) fn measured_tree(c: &Element) -> bool {
     !c.marks.paginate
         && c.style.used().column_span != Some(true)
         && clone_dec(c).is_none()
-        // ADR P-19 TRANSITIONAL(F2-1/F2-6): атомарные inline лежат внутри строк, а не
-        // в стопке блоков. До токена строки с её конечным краем сохраняем
-        // прежний маршрут; рекордер не заменяет его Class B glue.
+        // TRANSITIONAL(F2-6): Atomic inline лежит внутри строки, а measured_tree знает стопку блоков; удалить отказ в P20 после токена строки с конечным краем поверх P03.
         && !atomic_inline_flow(c)
         && (stacked_tree(c) || table_tree(c) || grid_tree(c) || flex_tree(c))
 }

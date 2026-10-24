@@ -1,4 +1,3 @@
-//! ADR P-19 TRANSITIONAL(F2-1): consumed и края украшений ещё не представлены токеном продолжения.
 //! План клонов (box-decoration-break: clone) по колонкам и правило колонок (column-rule).
 
 use crate::document::state::ValueCx;
@@ -39,6 +38,7 @@ pub(super) fn clone_plan_of(
                 let mut m = c.clone();
                 m.style.used_mut().margin.top = None;
                 m.style.used_mut().margin.bottom = None;
+                // TRANSITIONAL(F2-1): Clone preplan повторно оценивает целую копию без consumed и slice/clone edges; удалить в P04 после child token и краёв каждого фрагмента.
                 let (over, cuts, forced, solid) = match shape_full(
                     &m,
                     4,
