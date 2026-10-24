@@ -24,6 +24,13 @@ impl Default for ResourcePolicy {
 
 impl ResourcePolicy {
     /// Только встроенные `data:`-ресурсы (документ без доступа к файлам).
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "Документы пока создаются с политикой по умолчанию"
+        )
+    )]
     pub(crate) fn data_only() -> Self {
         Self {
             data: true,

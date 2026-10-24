@@ -159,23 +159,31 @@ fn evict<K: Eq + Hash, V>(store: &mut Store<K, V>, budget: usize) {
     store.bytes -= freed;
 }
 
-/// Ключ без своего `Hash` (значения с `f32` внутри): хэшируется подсказкой `hint`, а
-/// сравнивается целиком. Равные ключи обязаны давать равную подсказку — её строят из
-/// части полей ключа.
-#[derive(Clone)]
+/// Число в ключе: конечные значения сохраняются точно, оба нуля совпадают,
+/// все NaN образуют одно значение. Бесконечности различаются по знаку.
+/// Сырые `f32` не подходят для `Eq`: NaN не равен себе.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct FloatKey(u32);
+
+impl From<f32> for FloatKey {
+    fn from(value: f32) -> Self {
+        Self(if value == 0.0 {
+            0
+        } else if value.is_nan() {
+            f32::NAN.to_bits()
+        } else {
+            value.to_bits()
+        })
+    }
+}
+
+/// Ключ без своего `Hash`: хэшируется подсказкой `hint`, сравнивается целиком.
+/// Подсказка участвует в равенстве; её строят из канонических полей ключа.
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Hinted<K> {
     pub(crate) hint: u64,
     pub(crate) key: K,
 }
-
-impl<K: PartialEq> PartialEq for Hinted<K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.hint == other.hint && self.key == other.key
-    }
-}
-
-// Ключ с NaN не равен себе и просто не находится — запись уйдёт по вытеснению.
-impl<K: PartialEq> Eq for Hinted<K> {}
 
 impl<K> Hash for Hinted<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {

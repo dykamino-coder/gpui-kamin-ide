@@ -11,10 +11,12 @@ mod budget;
 use budget::Budget;
 
 #[derive(Default)]
-struct Session {
+struct Session<'a> {
     active: HashSet<String>,
     cache: HashMap<String, Option<Arc<Resource>>>,
     budget: Budget,
+    // KaminIDE patch: an injected loader is authoritative, including rejection.
+    resolver: Option<&'a crate::UseHrefResolver<'a>>,
 }
 struct Resource {
     file: String,
@@ -27,7 +29,7 @@ impl Document<'_> {
             .resources_dir
             .as_ref()
             .and_then(|p| Url::from_directory_path(p).ok());
-        let mut session = Session::default();
+        let mut session = Session { resolver: opt.use_href_resolver.as_ref(), ..Session::default() };
         if session.budget.bytes(source_bytes as u64) && session.budget.nodes(source_nodes + self.nodes.len()) {
             session.expand(self, base.as_ref(), 0);
         }
@@ -35,7 +37,7 @@ impl Document<'_> {
     }
 }
 
-impl Session {
+impl Session<'_> {
     fn expand(&mut self, doc: &mut Document, base: Option<&Url>, depth: usize) {
         if depth >= 32 {
             return;
@@ -98,9 +100,20 @@ impl Session {
         }
     }
 
-    fn load(&mut self, uri: Url, depth: usize) -> Option<Arc<Resource>> {
-        let path = std::fs::canonicalize(uri.to_file_path().ok()?).ok()?;
-        let canonical = Url::from_file_path(&path).ok()?;
+    fn load(&mut self, mut uri: Url, depth: usize) -> Option<Arc<Resource>> {
+        // KaminIDE patch: SVG 2 use href forbids data URL resource requests.
+        if uri.scheme() == "data" {
+            return None;
+        }
+        uri.set_fragment(None);
+        // KaminIDE patch: custom loaders own URL identity and access policy.
+        // Do not even canonicalize a filesystem path before asking them.
+        let canonical = if self.resolver.is_some() {
+            uri
+        } else {
+            let path = std::fs::canonicalize(uri.to_file_path().ok()?).ok()?;
+            Url::from_file_path(path).ok()?
+        };
         // KaminIDE patch: the parsed document belongs to the file, not a fragment.
         let key = canonical.to_string();
         if depth >= 32 {
@@ -114,7 +127,15 @@ impl Session {
             return None;
         }
         let result = (|| {
-            let bytes = self.budget.read_resource(&path)?;
+            let bytes = if let Some(resolver) = self.resolver {
+                let bytes = (resolver.0)(&key)?;
+                if bytes.len() as u64 > RESOURCE_BYTE_LIMIT || !self.budget.bytes(bytes.len() as u64) {
+                    return None;
+                }
+                bytes
+            } else {
+                Arc::new(self.budget.read_resource(&canonical.to_file_path().ok()?)?)
+            };
             let text = std::str::from_utf8(&bytes).ok()?;
             let xml = self.budget.parse_xml(text)?;
             let mut source = self.budget.parse_tree(&xml)?;

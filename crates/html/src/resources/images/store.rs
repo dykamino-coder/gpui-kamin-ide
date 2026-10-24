@@ -49,7 +49,13 @@ pub(crate) enum ImageState {
         metadata: ImageMetadata,
         image: DecodedImage,
     },
-    Failed(ImageError),
+    Failed(
+        #[cfg_attr(
+            not(test),
+            expect(dead_code, reason = "Причина ошибки хранится для диагностики запроса")
+        )]
+        ImageError,
+    ),
 }
 
 struct Entry {

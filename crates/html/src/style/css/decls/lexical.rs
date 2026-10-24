@@ -28,9 +28,9 @@ pub(in crate::style::css) fn ends_with_open_escape(cur: &str) -> bool {
     rest.next() == Some('\\') && rest.next() != Some('\\')
 }
 
-/// Значение без экранирования — но кавычки не трогая.
+/// Раскрыть экраны букв в значении, сохраняя строки и границы токенов.
 ///
-/// Раскрывается всё, что раскрывается в имени, кроме внутренности строк:
+/// Внутренность строк и экраны ASCII-разделителей сохраняются:
 /// `"\\""` — это кавычка ВНУТРИ строки, и раскрыв её, мы получили бы три
 /// кавычки подряд и порвали значение (`escapes-001`).
 ///
@@ -60,12 +60,13 @@ pub(in crate::style::css) fn unescape_value(value: &str) -> String {
         let tail = &value[at + ch.len_utf8()..];
         let taken = first_escape(tail);
         let one = unescape(&format!("\\{taken}"));
-        // Пробел, полученный из кода, — часть ИМЕНИ, а не отступ, и
-        // значение с таким именем недействительно. Наш конвейер
-        // обрезает значение при использовании, поэтому раскрытие
-        // потеряло бы ровно ту особенность, из-за которой объявление и
-        // должно отпасть (`escapes-014`, `color:\\0020yellow`).
-        if one.chars().all(char::is_whitespace) {
+        // Экранированная пунктуация принадлежит токену идентификатора.
+        // Декодирование до подстановки не должно порождать пробел, функцию
+        // или разделитель (`color:\\0020yellow`, `attr\\(x px\\)`).
+        if one
+            .chars()
+            .any(|c| c.is_ascii() && !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_'))
+        {
             out.push(ch);
             out.push_str(taken);
         } else {
@@ -117,6 +118,10 @@ pub(crate) fn split_top_level(raw: &str, sep: char) -> Vec<&str> {
     let mut at = 0usize;
     while at < raw.len() {
         let ch = raw[at..].chars().next().unwrap_or('\0');
+        if raw[at..].starts_with("/*") {
+            at += raw[at + 2..].find("*/").map_or(raw.len() - at, |n| n + 4);
+            continue;
+        }
         match ch {
             // Экранированный разделитель разделителем не служит:
             // `background: red\;` — одно объявление со значением `red;`.

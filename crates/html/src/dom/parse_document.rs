@@ -64,33 +64,29 @@ pub(super) fn parse_input(
     xml: bool,
 ) -> Vec<Node> {
     let vcx = doc.values();
-    let xhtml = content::is_xhtml(html);
     // `@font-feature-values` — от прошлого разбора (слои `@layer` — свои у
     // разбора, `LayerRegistry` ниже).
     crate::text::fonts::alternates::reset(vcx);
-    // XML document (`super::xml`): XML parser, no HTML tree-builder fixups.
-    let html = if xml {
-        std::borrow::Cow::Borrowed(html)
+    let mut dom = if xml {
+        super::xml::xml_dom(html)
     } else {
-        expand_xhtml_self_closing(html)
+        super::input::html(html)
     };
-    let dom = if xml {
-        super::xml::xml_dom(&html)
-    } else {
-        super::input::html(&html)
-    };
+    let xhtml = xml || content::is_xhtml(&dom.document);
+    if xhtml
+        && !xml
+        && let std::borrow::Cow::Owned(expanded) = expand_xhtml_self_closing(html)
+    {
+        dom = super::input::html(&expanded);
+    }
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
         media.dark = dark;
     }
     let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
-    // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
-    // documents … always in no-quirks mode»), а мы разбираем и его HTML-
-    // разборщиком, поэтому пространство имён корня его исключает.
-    doc.quirks.set(
-        dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks
-            && !html.contains("http://www.w3.org/1999/xhtml"),
-    );
+    // DOCTYPE). XML и HTML-адаптер XHTML всегда работают без quirks.
+    doc.quirks
+        .set(dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks && !xhtml);
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
@@ -175,7 +171,7 @@ pub(super) fn parse_input(
     // индексом по узлу. Документ без теней предпроход не платит.
     let mut tree = TreeIndex::new(doc.clone(), xhtml);
     let doc = Rc::new(Scope { rules, frames });
-    if html.contains("shadowrootmode") {
+    if has_declarative_shadow(&dom.document) {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
         let prepared = prepare(

@@ -1,9 +1,14 @@
-//! Проверки контракта родительского модуля; вынесены для ограничения размера файлов.
+//! Проверки SVG документа: сериализация, растеризация и циклы ссылочных ресурсов.
 
-use super::raster::geometry as rasterize;
 use super::serialize::serialize;
 use super::*;
 use crate::dom::parse;
+
+fn rasterize(markup: &str, w: f32, h: f32) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    // SVG документа проверяется с его загрузчиком, включая внешние use.
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    super::raster::rasterize(markup, w, h, doc.values())
+}
 
 fn find_svg(nodes: &[Node]) -> Option<&Element> {
     for n in nodes {
