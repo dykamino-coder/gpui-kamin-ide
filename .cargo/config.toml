@@ -11,3 +11,8 @@ rustflags = ["-C", "link-args=/STACK:67108864"]
 # крошечных документах (has_relational_pseudo после поля own_margin). Тесты
 # должны жить в том же стеке, что и приложение.
 RUST_MIN_STACK = "67108864"
+
+[alias]
+# Изолированный профиль агента; dev/release и installer не меняются.
+html-build = ["build", "-p", "kamin-html", "--lib", "--profile", "agent", "--config", "target.x86_64-pc-windows-msvc.linker=\"rust-lld\""]
+html-test = ["test", "-p", "kamin-html", "--lib", "--profile", "agent", "--config", "target.x86_64-pc-windows-msvc.linker=\"rust-lld\""]

@@ -90,6 +90,22 @@ opt-level = 2
 [profile.dev]
 opt-level = 2
 
+# Быстрые проверки агентов: артефакты отдельно в target/agent.
+# Отладочная информация не нужна при автоматических проверках.
+[profile.agent]
+inherits = "dev"
+opt-level = 0
+debug = 0
+incremental = true
+codegen-units = 256
+
+# Wildcard Cargo относится только к зависимостям вне workspace.
+# GPUI и декодеры сохраняют оптимизацию; их код меняется редко.
+[profile.agent.package."*"]
+opt-level = 2
+debug = "line-tables-only"
+codegen-units = 16
+
 [patch.crates-io]
 # Vendored gpui (gpui-pre 0.3.8 + патчи KaminIDE: рендер CSS, текст, раскладка,
 # захват кадра). Windows-платформа в 0.3.8 — отдельный крейт, тоже с патчами
