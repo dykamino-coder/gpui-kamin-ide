@@ -157,6 +157,17 @@ fn oversized_clone_edges_are_truncated_end_then_start() {
         .unwrap();
     assert_eq!(last.fragment.unwrap().block_size, 5.0);
     assert_eq!(last.next, None);
+    let empty = Leaf {
+        content_block: 0.0,
+        ..leaf
+    };
+    let deferred = empty.resume(space(100.0), 95.0, None, &mut store).unwrap();
+    assert_eq!(deferred.fragment, None);
+    let clipped = empty
+        .resume(space(5.0), 0.0, deferred.next, &mut store)
+        .unwrap();
+    assert_eq!(clipped.fragment.unwrap().block_size, 5.0);
+    assert_eq!(clipped.next, None);
 }
 
 #[test]

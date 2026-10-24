@@ -13,7 +13,7 @@ impl Piece {
     pub(super) fn new(leaf: Leaf, from: f32, first: bool, sliced: (f32, f32), room: f32) -> Self {
         let rest = leaf.content_block - from;
         if leaf.edges.clone {
-            let fits = rest + leaf.edges.sum() <= room || rest == 0.0;
+            let fits = rest + leaf.edges.sum() <= room;
             let edges = if fits {
                 leaf.edges
             } else {
