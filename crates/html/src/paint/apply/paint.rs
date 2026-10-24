@@ -58,7 +58,8 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if matches!(
         c.color_clip(vcx),
         None | Some(crate::style::computed::BgClip::BorderBox)
-    ) && !crate::style::computed::single_corner::eligible(c)
+    ) && !crate::paint::background::needs_color_layer(c, vcx)
+        && !crate::style::computed::single_corner::eligible(c)
         && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {
         if let Some(g) = &c.gradient {

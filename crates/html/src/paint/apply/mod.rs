@@ -170,7 +170,7 @@ pub(crate) mod item_metadata;
 
 pub fn apply(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     let mut d = apply_for_decorations(d, c, vcx);
-    if let Some(layer) = crate::paint::background::inset_color_layer(c, vcx) {
+    if let Some(layer) = crate::paint::background::color_layer(c, vcx) {
         d = d.child(layer);
     }
     d

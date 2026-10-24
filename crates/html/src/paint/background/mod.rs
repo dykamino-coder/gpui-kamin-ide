@@ -17,7 +17,7 @@ pub use root_area::RootArea;
 pub(crate) use root_box::{Measurement as RootMeasurement, record as record_root_box};
 
 mod color_clip;
-pub(crate) use color_clip::{ColorBox, inset_color_layer, paint_color};
+pub(crate) use color_clip::{ColorBox, color_layer, needs_color_layer, paint_color};
 mod fills;
 use crate::hooks::IntoHooked;
 use fills::border_area_fill;
