@@ -89,16 +89,14 @@ mod tests {
         let names = [String::new(), "chapter".into()];
         let interned = ["chapter".into()];
         let geoms = [geom_for(0, ""), geom_for(1, "chapter")];
+        let mut style = Computed::default();
+        style.writing_mode = Some(WritingModeKw::VerticalRl);
         let pages = Pages {
             names: &names,
             interned: &interned,
             geoms: &geoms,
             geom_for: &geom_for,
-            principal: Computed {
-                writing_mode: Some(WritingModeKw::VerticalRl),
-                ..Computed::default()
-            }
-            .wm(),
+            principal: style.wm(),
         };
         assert_eq!(pages.at(0).page.unwrap().name, None);
         let space = pages.at(2);

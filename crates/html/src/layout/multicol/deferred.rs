@@ -116,6 +116,25 @@ impl Recipe {
             (Some(width), Some(width)),
             vcx,
         );
+        let prepared = kids
+            .iter()
+            .enumerate()
+            .map(|(ix, (c, s))| {
+                super::stack_child::prepare(
+                    ix,
+                    c,
+                    s,
+                    parents[ix].as_ref().unwrap_or(&self.merged),
+                    &opts,
+                    &parallel,
+                    vertical,
+                    reverse,
+                    Some(width),
+                    self.fixed,
+                    &measured,
+                )
+            })
+            .collect();
         stack_children(
             &self.host,
             &self.merged,
@@ -134,6 +153,7 @@ impl Recipe {
             parallel,
             kids,
             Vec::new(),
+            prepared,
         )
     }
 
