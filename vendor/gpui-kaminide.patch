@@ -7362,7 +7362,7 @@ index 0000000000000000000000000000000000000000..08346850fb33a5dcb84176f662333246
 +}
 diff --git a/vendor/gpui/src/frame_capture.rs b/vendor/gpui/src/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..104d82fe7b18928e2508e5f8c6ee2494418b07d2
+index 0000000000000000000000000000000000000000..09fb28df28f64b571935e3a65106a5f3e0c8ca3f
 --- /dev/null
 +++ b/vendor/gpui/src/frame_capture.rs
 @@ -0,0 +1,78 @@
@@ -7371,7 +7371,7 @@ index 0000000000000000000000000000000000000000..104d82fe7b18928e2508e5f8c6ee2494
 +//! The runner used to capture its window with `PrintWindow`, i.e. from the DWM
 +//! compositor: an occluded or off-screen window gets its frames consumed rarely,
 +//! the swap chain's latency gate then skips drawing, and captures came late or
-+//! blank (2026-10-06: 11 instead of 70 pairs/min, 350 false blank pages). With
++//! blank. With
 +//! capture enabled the renderer copies every drawn frame's back buffer to memory
 +//! before presenting and no longer waits for the compositor, so the result does
 +//! not depend on where the window is or what covers it.
@@ -12934,7 +12934,7 @@ index 63dc89ba41ea9cf44bdffb7d81d3015d696f4413..5462b9187e77fa30da6629fa4f46aace
 +        }
 +    }
 diff --git a/vendor/gpui/src/text_system/line.rs b/vendor/gpui/src/text_system/line.rs
-index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f492ec46d0
+index f5210052e2b73d03521c35207b0e05550aba3e48..cceb43e369967f86a2c7764bfd725210b96fbbc4
 --- a/vendor/gpui/src/text_system/line.rs
 +++ b/vendor/gpui/src/text_system/line.rs
 @@ -4 +4 @@
@@ -13182,7 +13182,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +            Point<Pixels>,
 +            (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
 +        )> = None;
-@@ -828,0 +999,36 @@
+@@ -828,0 +999,30 @@
 +        // KaminIDE patch: выключка — добавка на каждый пройденный промежуток.
 +        let mut line_ix = 0usize;
 +        let mut prev_space = false;
@@ -13192,14 +13192,8 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +        // коробки: место под своё поле и отступ она держит знаком-распоркой, а
 +        // ширину распорке даёт трекинг (§8.4 — боковые поля, рамки и отступы
 +        // строчной коробки занимают место в строке и красятся).
-+        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v138, `scout-ui-2026-09.md` план K2):
-+        // заводить полосу прогона не только от фона, но и от
-+        // `background_border` (контур/рамка строчной коробки без заливки).
-+        // Срез css-ui+css-overflow+css-backgrounds+css-text+CSS2 8331: +2
-+        // (`outline-004`, `inlines-002`) при −15 — вся семья `CSS2/bidi/
-+        // bidi-00*` (0.26…0.42 → 0.52…1.02), `split-inline-borders`,
-+        // `inlines-017`, `clip-border-area-box-decoration-break`: обычная
-+        // рамка строчной коробки начинает рисоваться дважды.
++        // Полоса нужна только для заливки: добавление `background_border`
++        // в условие ниже дублирует рамку строчной коробки.
 +        if layout.runs.iter().all(|r| r.glyphs.is_empty())
 +            && let Some(style_run) = all_style_runs
 +                .iter()
@@ -13219,10 +13213,10 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +                style_run.background_border,
 +            ), window));
 +        }
-@@ -830 +1036 @@
+@@ -830 +1030 @@
 -            max_glyph_size = text_system.bounding_box(run.font_id, layout.font_size).size;
 +            max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
-@@ -834,0 +1041,10 @@
+@@ -834,0 +1035,10 @@
 +                let space = text.as_bytes().get(glyph.index) == Some(&b' ');
 +                if let Some(extras) = justify.as_ref() {
 +                    // Та же добавка, что и в проходе глифов: подложки прогонов
@@ -13233,10 +13227,10 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +                }
 +                prev_space = space;
 +
-@@ -836,0 +1053,2 @@
+@@ -836,0 +1047,2 @@
 +                    line_ix += 1;
 +                    prev_space = false;
-@@ -842,8 +1060,33 @@
+@@ -842,8 +1054,33 @@
 -                        window.paint_quad(fill(
 -                            Bounds {
 -                                origin: *background_origin,
@@ -13278,16 +13272,16 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +                        ), window));
 +                        if !run_ends_here {
 +                            background_color.3 = false;
-@@ -869 +1112,4 @@
+@@ -869 +1106,4 @@
 -                let mut finished_background: Option<(Point<Pixels>, Hsla)> = None;
 +                let mut finished_background: Option<(
 +                    Point<Pixels>,
 +                    (Hsla, [Pixels; 4], Pixels, bool, Option<(Hsla, [Pixels; 4])>),
 +                )> = None;
-@@ -884 +1130 @@
+@@ -884 +1124 @@
 -                            && style_run.background_color.as_ref() != Some(background_color)
 +                            && style_run.background_color.as_ref() != Some(&background_color.0)
-@@ -891 +1137,9 @@
+@@ -891 +1131,9 @@
 -                                run_background,
 +                                (
 +                                    run_background,
@@ -13298,7 +13292,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +                                    true,
 +                                    style_run.background_border,
 +                                ),
-@@ -906,7 +1160,12 @@
+@@ -906,7 +1154,12 @@
 -                    window.paint_quad(fill(
 -                        Bounds {
 -                            origin: background_origin,
@@ -13318,7 +13312,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +                        true,
 +                        background_color.4,
 +                    ), window));
-@@ -928,7 +1187,12 @@
+@@ -928,7 +1181,12 @@
 -            window.paint_quad(fill(
 -                Bounds {
 -                    origin: background_origin,
@@ -13338,7 +13332,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +                true,
 +                background_color.4,
 +            ), window));
-@@ -940,0 +1205,99 @@
+@@ -940,0 +1199,99 @@
 +/// KaminIDE patch: the band of an inline box with a border is pixel-snapped
 +/// like a box border (`style::border_snap`, Blink box_border_painter.cc): the
 +/// outer and inner edges round to device pixels separately, so a fractional
@@ -13438,7 +13432,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +    }
 +}
 +
-@@ -941,0 +1305,27 @@
+@@ -941,0 +1299,27 @@
 +    origin: Point<Pixels>,
 +    layout: &LineLayout,
 +    line_height: Pixels,
@@ -13466,66 +13460,66 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..b208b8f1632108c3a370d472327090f4
 +}
 +
 +fn line_rows_bounds(
-@@ -956 +1346,2 @@
+@@ -956 +1340,2 @@
 -    if align == TextAlign::Left || layout.len == 0 {
 +    // KaminIDE patch: выключка (`Justify`) начинается от левого края, как `Left`.
 +    if matches!(align, TextAlign::Left | TextAlign::Justify) || layout.len == 0 {
-@@ -973 +1364 @@
+@@ -973 +1358 @@
 -            TextAlign::Left => Pixels::ZERO,
 +            TextAlign::Left | TextAlign::Justify => Pixels::ZERO,
-@@ -1003 +1394,3 @@
+@@ -1003 +1388,3 @@
 -        TextAlign::Left => origin.x,
 +        // Выключка начинается от левого края: остаток раздают пробелы внутри
 +        // строки, а не сдвиг всей строки (см. `justify_extras`).
 +        TextAlign::Left | TextAlign::Justify => origin.x,
-@@ -1043,0 +1437 @@
+@@ -1043,0 +1431 @@
 +                    font_size: px(16.0),
-@@ -1135,0 +1530,4 @@
+@@ -1135,0 +1524,4 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
 +                background_border: None,
-@@ -1278,0 +1677,4 @@
+@@ -1278,0 +1671,4 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
 +                background_border: None,
-@@ -1356,0 +1759,4 @@
+@@ -1356,0 +1753,4 @@
 +                        background_pad: [px(0.); 4],
 +                        background_radius: px(0.),
 +                        background_line_gap: false,
 +                        background_border: None,
-@@ -1392,0 +1799 @@
+@@ -1392,0 +1793 @@
 +                    &wrapped.text,
-@@ -1490,0 +1898 @@
+@@ -1490,0 +1892 @@
 +                        font_size: px(16.0),
-@@ -1513,0 +1922 @@
+@@ -1513,0 +1916 @@
 +                        font_size: px(16.0),
-@@ -1611,0 +2021,4 @@
+@@ -1611,0 +2015,4 @@
 +                    background_pad: [px(0.); 4],
 +                    background_radius: px(0.),
 +                    background_line_gap: false,
 +                    background_border: None,
-@@ -1618,0 +2032,4 @@
+@@ -1618,0 +2026,4 @@
 +                    background_pad: [px(0.); 4],
 +                    background_radius: px(0.),
 +                    background_line_gap: false,
 +                    background_border: None,
-@@ -1625,0 +2043,4 @@
+@@ -1625,0 +2037,4 @@
 +                    background_pad: [px(0.); 4],
 +                    background_radius: px(0.),
 +                    background_line_gap: false,
 +                    background_border: None,
-@@ -1736,0 +2158 @@
+@@ -1736,0 +2152 @@
 +                        font_size: px(16.0),
-@@ -1759,0 +2182 @@
+@@ -1759,0 +2176 @@
 +                        font_size: px(16.0),
-@@ -1861,0 +2285,4 @@
+@@ -1861,0 +2279,4 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
 +                background_border: None,
-@@ -1884,0 +2312,4 @@
+@@ -1884,0 +2306,4 @@
 +                background_pad: [px(0.); 4],
 +                background_radius: px(0.),
 +                background_line_gap: false,
@@ -13712,7 +13706,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..3a67fe2baa683c0af878e59410140b1c
 @@ -1094,0 +1233 @@
 +                font_size: px(16.),
 diff --git a/vendor/gpui/src/text_system/line_wrapper.rs b/vendor/gpui/src/text_system/line_wrapper.rs
-index ca821bbbb43a6fd17dd363b15f45165f86289b10..3e7fa3a4e89161daa1663e51560e3e19c60c4fcf
+index ca821bbbb43a6fd17dd363b15f45165f86289b10..7fc6dd80ff681700d31611004117e5983eb24819
 --- a/vendor/gpui/src/text_system/line_wrapper.rs
 +++ b/vendor/gpui/src/text_system/line_wrapper.rs
 @@ -1 +1,5 @@
@@ -13820,7 +13814,7 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..3e7fa3a4e89161daa1663e51560e3e19
 +                // пробел и рождает ложный кандидат (слово ровно в ширину
 +                // колонки рвалось как «x»+«xxxx»).
 +                prev_c = new_prev_c;
-@@ -120 +209,25 @@
+@@ -120 +209,23 @@
 -                if width > wrap_width && ix > last_wrap_ix {
 +                // KaminIDE patch: пробел за краем строки висит (css-text §3:
 +                // trailing spaces hang) и сам перенос не вызывает — иначе он
@@ -13834,9 +13828,7 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..3e7fa3a4e89161daa1663e51560e3e19
 +                // вылезти за край, как в браузере. `line-breaking-atomic-001`:
 +                // кусок `AB&nbsp;` шириной 150 в коробке 100 рвался на `AB` и
 +                // `&nbsp;`, становился вдвое выше `line-height`, и атом уезжал
-+                // на вторую строку ряда — на 100 точек вместо 50 (снимок
-+                // `target/wpt-shots/line-breaking-atomic-001.png`: зелёное 50,
-+                // красное 50, зелёное 50). Законный кандидат
++                // на вторую строку ряда. Законный кандидат
 +                // (`last_candidate_ix > 0`) по-прежнему сильнее: там переносим
 +                // как раньше.
 +                let glue_ahead = css
@@ -13847,10 +13839,10 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..3e7fa3a4e89161daa1663e51560e3e19
 +                            if Self::is_glue_before(c)
 +                    );
 +                if width > wrap_width && ix > last_wrap_ix && !hanging_space && !glue_ahead {
-@@ -181,2 +293,0 @@
+@@ -181,2 +291,0 @@
 -
 -                prev_c = new_prev_c;
-@@ -762,0 +874 @@
+@@ -762,0 +872 @@
 +                    stretch: Default::default(),
 diff --git a/vendor/gpui/src/text_system/line_wrapper/break_classes.rs b/vendor/gpui/src/text_system/line_wrapper/break_classes.rs
 new file mode 100644

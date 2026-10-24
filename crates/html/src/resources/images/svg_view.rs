@@ -25,7 +25,8 @@ struct View<'a> {
 
 /// Разметка рисунка с начальным видом по фрагменту адреса (процентно-кодированному, как
 /// в адресе). Не UTF-8, не XML, не `<svg>` или вида нет — байты как есть.
-pub(crate) fn apply_view(bytes: Vec<u8>, fragment: &str) -> Vec<u8> {
+#[cfg(test)]
+pub(super) fn apply_view(bytes: Vec<u8>, fragment: &str) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(&bytes) else {
         return bytes;
     };

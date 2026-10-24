@@ -20,15 +20,13 @@ pub(crate) mod positioned;
 pub(crate) mod probe;
 pub(crate) mod replaced;
 pub(crate) mod table;
-// Writing-mode algorithms keep their explicit per-axis predicates.
-#[allow(clippy::nonminimal_bool)]
 pub(crate) mod writing_mode;
 
 #[cfg(test)]
 mod marks_tests {
     use crate::dom::{Element, Marks, Node, parse};
 
-    /// Former side-channel attribute names of the layout protocol.
+    /// Прежние служебные атрибуты протокола раскладки.
     const FORGED: &str = r#"kamin-outside-block="1" kamin-float-block="1"
     kamin-host-trim-start="1" kamin-host-trim-end="1" kamin-paginate=""
     kamin-span-parent="7" auto-zero-height="1" anonymous-cell="1" anon="1"
@@ -46,10 +44,7 @@ mod marks_tests {
     }
 
     fn find<'a>(nodes: &'a [Node], id: &str) -> &'a Element {
-        let mut all = Vec::new();
-        walk(nodes, &mut all);
-        all.into_iter()
-            .find(|e| e.attr("id") == Some(id))
+        crate::dom::test_support::find(nodes, &|e| e.attr("id") == Some(id))
             .unwrap_or_else(|| panic!("no #{id}"))
     }
 
@@ -67,7 +62,7 @@ mod marks_tests {
         for e in all {
             assert_eq!(e.marks, Marks::default(), "<{}> got marks", e.tag);
         }
-        // The attributes stay ordinary author data (DOM, selectors).
+        // Атрибуты остаются обычными авторскими данными для DOM и селекторов.
         assert_eq!(find(&tree, "a").attr("kamin-outside-block"), Some("1"));
         assert_eq!(find(&tree, "c").tag, "shape-flow");
     }

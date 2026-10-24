@@ -94,6 +94,13 @@ impl ImageStore {
             bytes,
         }
     }
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "База шрифтов пока не меняется после создания документа"
+        )
+    )]
     pub(crate) fn set_svg_fonts(&mut self, fonts: Arc<Database>) {
         if !Arc::ptr_eq(&self.rasters.fonts, &fonts) {
             self.rasters = Rasters {

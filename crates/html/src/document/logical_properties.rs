@@ -52,10 +52,10 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
                     .cascaded_mut()
                     .resolve_logical(wm, parent_vertical, is_cell, vcx);
             }
-            // Physical margins are final here; collapsing rewrites them later.
-            // An orthogonal flow root keeps them too: its inline size is the
-            // fallback available space minus its own inline-axis margins
-            // (css-writing-modes-4 §7.3), which collapsing may hoist away.
+            // Физические поля здесь окончательны; схлопывание изменит их позже.
+            // Ортогональный корень потока тоже сохраняет их: его строчный размер —
+            // запасное доступное место минус собственные поля строчной оси
+            // (css-writing-modes-4 §7.3), которые схлопывание может вынести наружу.
             if e.style.cascaded().clip_ref == Some(1) || wm.vertical() != parent_vertical {
                 e.style.cascaded_mut().own_margin = Some(e.style.cascaded().margin);
             }
@@ -80,9 +80,9 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
     nodes
 }
 
-/// CSS Images 3 §5.1: image-orientation inherits for decorative images too.
-/// Mask grouping consumes the element style before the render-time merge, so
-/// resolve this inherited input here, without giving unstyled ancestors a box.
+/// CSS Images 3 §5.1: image-orientation наследуется и для декоративных картинок.
+/// Группировка масок читает стиль до слияния при отрисовке, поэтому разрешаем
+/// наследование здесь, не создавая коробок для предков без собственного стиля.
 fn settle_mask_orientation(nodes: &mut [Node], parent: Option<bool>) {
     for node in nodes {
         let Node::Element(e) = node else { continue };
@@ -96,7 +96,7 @@ fn settle_mask_orientation(nodes: &mut [Node], parent: Option<bool>) {
 
 #[cfg(test)]
 mod tests {
-    //! Image orientation survives document preparation for CSS masks.
+    //! Ориентация картинок масок сохраняется при подготовке документа.
     use crate::document::Document;
     use crate::dom::Node;
 
@@ -140,15 +140,9 @@ mod tests {
             "",
         )
         .build();
-        fn find(nodes: &[Node]) -> Option<&crate::dom::Element> {
-            nodes.iter().find_map(|n| match n {
-                Node::Element(e) if e.attrs.iter().any(|(k, v)| k == "id" && v == "a") => Some(e),
-                Node::Element(e) => find(&e.children),
-                _ => None,
-            })
-        }
-        let p = find(doc.nodes()).expect("p");
-        // sideways-lr + rtl: inline-start is the top, block-start the left (§6.4).
+        let p =
+            crate::dom::test_support::find(doc.nodes(), &|e| e.attr("id") == Some("a")).expect("p");
+        // sideways-lr + rtl: inline-start сверху, block-start слева (§6.4).
         assert_eq!(p.style.cascaded().margin.top, Some(Len::Px(15.0)));
         assert_eq!(p.style.cascaded().padding.left, Some(Len::Px(5.0)));
         assert_eq!(

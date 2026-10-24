@@ -54,12 +54,8 @@ pub(crate) fn collect(markup: &str, xml: bool) -> Vec<String> {
 }
 
 /// Содержимое `<style>`-тегов документа, каждый — отдельной таблицей;
-/// html5ever кладёт его текстом внутрь.
-/// Ссылки на знаки (`&gt;`, `&amp;`) в `<style>` XHTML-документа остаются
-/// нераскрытыми: построитель HTML держит `<style>` сырым текстом, хотя по
-/// разбору XML их следует раскрыть. Известное ограничение: раскрытые правила
-/// вскрывают ошибки раскладки ниже (`text-indent-intrinsic-001/003`), а
-/// раскрытая `&quot;` закрывает строку CSS раньше времени (`content-177`).
+/// HTML сохраняет сырой текст, а XHTML раскрывает ссылки на знаки
+/// на стадии XML-разбора, до передачи дерева этому сборщику.
 pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
     if let NodeData::Element { name, .. } = &handle.data
         && &*name.local == "style"
@@ -76,7 +72,7 @@ pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
                     .strip_prefix("<![CDATA[")
                     .and_then(|rest| rest.strip_suffix("]]>"))
                     .unwrap_or(&text);
-                // Preserve child text content: an invented LF makes EOF strings invalid.
+                // Сохраняем текст детей: добавленный LF меняет строки CSS на EOF.
                 sheet.push_str(body);
             }
         }
