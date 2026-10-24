@@ -39,15 +39,22 @@ fn geometry(paragraphs: Vec<Inline>) -> crate::layout::fragment::flow::inline::G
     }
 }
 fn fill(k: Kid, inline: Vec<Inline>, height: f32) -> Plan {
-    fill_resumed(&[k], &|_| height, Space::pages(8), &|_| None, &mut |_| {
-        Measurement {
+    fill_resumed(
+        &[k],
+        &|_| crate::layout::fragment::token::Space {
+            block_size: Some(height),
+            ..crate::layout::fragment::token::Space::pages()
+        },
+        Space::pages(8),
+        &|_, _| None,
+        &mut |_| Measurement {
             copy: None,
             inline: crate::layout::fragment::flow::inline::Geometry {
                 paragraphs: inline.clone(),
                 ..Default::default()
             },
-        }
-    })
+        },
+    )
     .unwrap()
     .2
 }
@@ -145,12 +152,19 @@ fn structural_barrier_rolls_back_and_rechecks_line_boundaries() {
     let mut g = geometry(vec![paragraph(10, 0, 0.0)]);
     g.barriers = vec![(25.0, 45.0)];
     let k = kid(10);
-    let plan = fill_resumed(&[k], &|_| 40.0, Space::pages(8), &|_| None, &mut |_| {
-        Measurement {
+    let plan = fill_resumed(
+        &[k],
+        &|_| crate::layout::fragment::token::Space {
+            block_size: Some(40.0),
+            ..crate::layout::fragment::token::Space::pages()
+        },
+        Space::pages(8),
+        &|_, _| None,
+        &mut |_| Measurement {
             copy: None,
             inline: g.clone(),
-        }
-    })
+        },
+    )
     .unwrap()
     .2;
     assert_eq!(plan[0].h, 20.0);

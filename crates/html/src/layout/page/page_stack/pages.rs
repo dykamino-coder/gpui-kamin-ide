@@ -39,10 +39,23 @@ impl PageStack {
             let pg = geoms.get(f.col).copied().unwrap_or(g);
             let (ax, ay) = pg.area_origin();
             let aw = pg.area.0.max(1.0);
-            let full_h = self
-                .measured
-                .get(&(f.kid, f.copy))
-                .map_or(kids[f.kid].h, |m| m.kid.h);
+            let leaf = self.kids[f.kid].leaf.as_ref().map(|l| {
+                (l.geometry)(crate::layout::fragment::token::Space {
+                    inline_size: Some(pg.area.0.max(1.0)),
+                    block_size: Some(pg.area.1.max(1.0)),
+                    ..crate::layout::fragment::token::Space::pages()
+                })
+            });
+            let clone_leaf = leaf.is_some_and(|l| l.edges.clone);
+            let full_h = if clone_leaf {
+                f.h
+            } else if let Some(leaf) = leaf {
+                leaf.content_block + leaf.edges.sum()
+            } else {
+                self.measured
+                    .get(&(f.kid, f.copy))
+                    .map_or(kids[f.kid].h, |m| m.kid.h)
+            };
             let inner_top = self.kids[f.kid].inner_top;
             // The copy is laid out WHOLE and shifted onto its slice; physical
             // box by the root's block axis (`page_stack/axis.rs`).
@@ -56,7 +69,12 @@ impl PageStack {
                     full_h + inner_top + self.kids[f.kid].mb,
                 )
             } else {
-                (ax, ay + f.y - f.from - inner_top, aw, full_h)
+                (
+                    ax,
+                    ay + f.y - if clone_leaf { 0.0 } else { f.from } - inner_top,
+                    aw,
+                    full_h,
+                )
             };
             let kid = &mut self.kids[f.kid];
             if let Some(r) = kid.repeat.as_mut() {
@@ -98,12 +116,12 @@ impl PageStack {
                 cx,
             );
         }
-        // Слой ICB — копия `p` на листе `p`, в его page area, поднятая на `p`
-        // высот area: непрерывный поток абсолютов, разрезанный страницами.
+        // Слой ICB поднят на сумму предшествующих area: непрерывный поток
+        // абсолютов разрезается страницами с их действительными размерами.
+        let mut lift = 0.0;
         for p in 0..pages.min(self.icb.len()) {
             let (sx, sy) = self.sheet_origin(p);
             let (ax, ay) = geoms[p].area_origin();
-            let lift = p as f32 * ah;
             for el in &mut self.icb[p] {
                 el.prepaint_at(
                     point(
@@ -114,6 +132,7 @@ impl PageStack {
                     cx,
                 );
             }
+            lift += self.area_logical(&geoms[p]).1;
         }
         // Слой `fixed` — копия `p` на листе `p` без сдвига: page area каждого
         // листа — его содержащий блок.

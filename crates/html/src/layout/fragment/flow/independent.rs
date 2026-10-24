@@ -4,8 +4,11 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::push::measured_tree;
 use crate::style::computed::{Display, Position};
 mod continuation;
+mod percentages;
 use continuation::continuation;
 pub(crate) use continuation::parallel_overflow;
+pub(crate) use percentages::PagePercentages;
+pub(crate) use percentages::{column_percentages, page_percentages};
 
 /// У копии нет отдельного плана фрагментов или параллельного потока.
 /// TRANSITIONAL(F2-7): Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21.

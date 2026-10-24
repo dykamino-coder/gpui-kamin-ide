@@ -5,19 +5,18 @@ use crate::layout::fragment::token::{Error, Space, TokenStore};
 use crate::layout::fragment::types::Frag;
 
 pub(crate) fn fragment_leaf(
-    leaf: Leaf,
+    leaf_at: &dyn Fn(Space) -> Leaf,
     kid: usize,
     mut col: usize,
     mut offset: f32,
-    target_at: &dyn Fn(usize) -> f32,
+    space_at: &dyn Fn(usize) -> Space,
 ) -> Result<Vec<Frag>, Error> {
     let mut store = TokenStore::default();
     let mut token = None;
     let mut fragments = Vec::new();
     loop {
-        let mut space = Space::pages();
-        space.block_size = Some(target_at(col));
-        let output = leaf.resume(space, offset, token, &mut store)?;
+        let space = space_at(col);
+        let output = leaf_at(space).resume(space, offset, token, &mut store)?;
         if let Some(f) = output.fragment {
             fragments
                 .try_reserve(1)

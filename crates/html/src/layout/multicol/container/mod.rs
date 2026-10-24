@@ -104,15 +104,28 @@ pub(crate) fn multicol_column_stack(
             )
         })
     };
-    // `box-decoration-break: clone`: геометрия фрагментов —
-    // ДО сборки копий: каждая копия такой коробки строится
-    // отдельной коробкой своей высоты (`clone_fragment`).
-    // Щуп — как у `grow_pushed`, но с НАСТОЯЩИМ параллельным
-    // потоком соседей (та же мера, что у `StackChild` ниже):
-    // иначе план соседа с потоком разошёлся бы с укладкой.
-    // Без `clone` среди детей не считается вовсе.
+    // Один результат подготовки используется и планом, и сборкой фрагментов.
+    let prepared: Vec<_> = kids
+        .iter()
+        .enumerate()
+        .map(|(ix, (c, s))| {
+            crate::layout::multicol::stack_child::prepare(
+                ix,
+                c,
+                s,
+                kid_parent[ix].as_ref().unwrap_or(&merged),
+                opts,
+                &kid_par,
+                col_vert,
+                col_rl,
+                line_col_w,
+                fixed,
+                &measured_kids,
+            )
+        })
+        .collect();
     let clone_plan = clone_plan_of(
-        cols, col_vert, rows, copies, fixed, &kid_par, &kids, vcx, opts,
+        cols, col_vert, rows, copies, fixed, &kid_par, &kids, &prepared, vcx, opts,
     );
     let rule = column_rule_of(e, &merged, opts);
     // С рядами линейки (`column-rule` со втяжкой/разрывом,
@@ -172,6 +185,7 @@ pub(crate) fn multicol_column_stack(
             kid_par,
             kids,
             clone_plan,
+            prepared,
         )
     };
     // Статические места OOF — нулевые записи в исходном порядке потока.

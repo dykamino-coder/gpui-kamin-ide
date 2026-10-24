@@ -1,6 +1,5 @@
-//! Мера стопки колонок до сборки: строчный размер колонки, подготовка детей
-//! (анонимные строчные блоки, флоаты во всю ширину, обёртки `clone`), внепоточные
-//! прямые дети со статическим местом в потоке и замер детей, уходящих в стопку.
+//! Мера стопки до сборки: размер колонки, анонимные блоки, флоаты и clone.
+//! Прямые внепоточные дети сохраняют статическое место в потоке.
 
 use super::{block_floats, column_layout_width, column_measure_width, measure_children};
 use crate::dom::whitespace::is_blank;
@@ -64,6 +63,15 @@ pub(crate) fn stack_plan(
     let mut boxed = e.clone();
     boxed.children =
         crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx());
+    if !col_vert {
+        boxed.children = crate::layout::fragment::flow::column_percentages(
+            &boxed.children,
+            merged,
+            col_h,
+            line_col_w,
+            opts,
+        );
+    }
     let grouped_e = group_inline_runs(&boxed);
     let ge: &Element = grouped_e.as_ref().unwrap_or(&boxed);
     let floats_blocked = block_floats(ge, positioned, line_col_w);

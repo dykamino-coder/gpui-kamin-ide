@@ -11,6 +11,7 @@ pub(crate) struct MeasureRequest {
     pub(crate) col: usize,
     pub(crate) from: f32,
     pub(crate) block_size: f32,
+    pub(crate) page: Option<crate::layout::fragment::token::space::PageIdentity>,
 }
 
 /// IFC принадлежат снимку страничного consumer; общий Kid не хранит их адреса.
@@ -28,23 +29,34 @@ pub(crate) fn fill_measured(
     remeasure: &mut super::Remeasure<'_>,
 ) -> (usize, f32, Plan) {
     // Потребители копий сохраняют прежний контракт; token consumer ошибок не скрывает.
-    fill_resumed(kids, target_at, space, &|_| None, &mut |request| {
-        Measurement {
+    fill_resumed(
+        kids,
+        &|col| crate::layout::fragment::token::Space {
+            block_size: Some(target_at(col)),
+            ..space.space
+        },
+        space,
+        &|_, _| None,
+        &mut |request| Measurement {
             copy: remeasure(request),
             inline: Default::default(),
-        }
-    })
+        },
+    )
     .expect("copy planner does not execute tokens")
 }
 
 #[allow(clippy::type_complexity)]
 pub(crate) fn fill_resumed(
     kids: &[Kid],
-    target_at: &dyn Fn(usize) -> f32,
+    space_at: &dyn Fn(usize) -> crate::layout::fragment::token::Space,
     space: Space,
-    leaf_at: &dyn Fn(usize) -> Option<crate::layout::fragment::flow::blocks::leaf::Leaf>,
+    leaf_at: &dyn Fn(
+        usize,
+        crate::layout::fragment::token::Space,
+    ) -> Option<crate::layout::fragment::flow::blocks::leaf::Leaf>,
     remeasure: &mut super::ResumeMeasure<'_>,
 ) -> Result<(usize, f32, Plan), crate::layout::fragment::token::Error> {
+    let target_at = &|col| space_at(col).block_size.expect("definite fragmentainer");
     let limit = space.limit;
     let paged = space.space.is_paginated();
     let not_top = space.space.not_at_start;
@@ -78,9 +90,14 @@ pub(crate) fn fill_resumed(
             k,
         );
         let cur = y + lead;
-        if let Some(leaf) = leaf_at(kid) {
-            let fragments =
-                crate::layout::fragment::flow::fragment_leaf(leaf, kid, col, cur, target_at)?;
+        if leaf_at(kid, space_at(col)).is_some() {
+            let fragments = crate::layout::fragment::flow::fragment_leaf(
+                &|space| leaf_at(kid, space).expect("leaf consumer is stable"),
+                kid,
+                col,
+                cur,
+                space_at,
+            )?;
             if let Some(end) = fragments.last() {
                 col = end.col;
                 y = end.y + end.h;
@@ -135,7 +152,10 @@ pub(crate) fn fill_resumed(
             copy,
             flow,
             rg,
-            remeasure,
+            &mut |mut request| {
+                request.page = space_at(request.col).page;
+                remeasure(request)
+            },
         )?;
         // Флоат ушёл целиком в следующую колонку, а в текущей осталось
         // место: следующие коробки продолжают её (`Par::float`).

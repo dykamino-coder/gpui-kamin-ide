@@ -206,7 +206,10 @@ mod tests {
 mod logical;
 pub(crate) use logical::transpose_tree;
 mod independent;
-pub(crate) use independent::{independent_copy, logical_copy, parallel_overflow, vertical_copy};
+pub(crate) use independent::{
+    PagePercentages, column_percentages, independent_copy, logical_copy, page_percentages,
+    parallel_overflow, vertical_copy,
+};
 mod copy_clearance;
 pub(crate) use copy_clearance::copy_clearance;
 mod empty_floats;

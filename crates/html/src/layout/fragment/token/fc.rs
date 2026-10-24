@@ -35,6 +35,11 @@ pub(crate) struct FloatExclusion {
 /// `ChildBreakTokens`, Gecko `nsBlockFrame` overflow lines).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BlockState {
+    /// Размер normal content, относительно которого накоплен consumed у leaf.
+    /// При смене геометрии страницы сохраняется доля пройденного (css-break-3 §5.1).
+    pub(crate) content_block_size: Option<f32>,
+    /// Доли пройденных начального/концевого краёв slice; не входят в consumed.
+    pub(crate) sliced_edges: Option<(f32, f32)>,
     /// Прерванный normal-flow ребёнок при `child=Some`, иначе первый ещё не начатый.
     /// Более ранние независимые продолжения находятся только в `parallel`.
     pub(crate) child_idx: u32,
