@@ -109,7 +109,6 @@ pub(super) fn column_stack_div(
     nest_phase: f32,
     fixed: Option<f32>,
     gap_items: &Option<crate::layout::multicol::gap_rules::GapItems>,
-    rule: Option<(f32, gpui::Hsla)>,
     children: Vec<crate::layout::fragment::types::StackChild>,
     opts: &RenderOpts,
     deferred: Option<std::rc::Rc<super::super::deferred::Recipe>>,
@@ -131,7 +130,6 @@ pub(super) fn column_stack_div(
             cols as usize,
             used_gap,
             fixed,
-            rule,
             rows,
             gap_items.clone(),
             intrinsic_inline_size(&e.style.used(), inherited).then_some({
@@ -154,24 +152,29 @@ pub(super) fn column_stack_div(
                 && matches!(e.style.used().height, None | Some(Len::Auto)),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
-        // Линейки последней линии — до низа содержимого коробки
-        // заданной высоты (Blink `PaintColumnRules`), без
+        // Линейки последней линии — до блочного конца содержимого коробки
+        // заданного размера (Blink `PaintColumnRules`), без
         // спаннеров и рядов (`multicol-rule-nested-balancing-001`).
-        .with_rule_stretch(match merged.height {
-            Some(Len::Px(h))
-                if h > 0.0
-                    && !col_vert
-                    && nest_rows.is_none()
-                    && e.style.used().border_box != Some(true)
-                    && !e
-                        .children
-                        .iter()
-                        .any(|n| matches!(n, Node::Element(c) if spanner_box(c))) =>
-            {
-                Some(h)
-            }
-            _ => None,
-        })
+        .with_rule_stretch(
+            match if col_vert {
+                merged.width
+            } else {
+                merged.height
+            } {
+                Some(Len::Px(h))
+                    if h > 0.0
+                        && nest_rows.is_none()
+                        && e.style.used().border_box != Some(true)
+                        && !e
+                            .children
+                            .iter()
+                            .any(|n| matches!(n, Node::Element(c) if spanner_box(c))) =>
+                {
+                    Some(h)
+                }
+                _ => None,
+            },
+        )
         .into_hooked(),
     )
 }

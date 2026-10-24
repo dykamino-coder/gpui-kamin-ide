@@ -122,36 +122,6 @@ impl ColumnStack {
         let (_, block_avail) = self.axis_sizes(bounds);
         let col_w = self.col_w.get();
         let step = col_w + self.gap;
-        let wrap = matches!(self.rows, Some(r) if r.wrap);
-        if let Some((rw, color)) = self.rule {
-            let rows = self.lines_plan.borrow().clone();
-            // css-multicol-1 §4: линейка только между ЗАНЯТЫМИ колонками.
-            let used: Vec<usize> = {
-                let plan = self.plan.borrow();
-                (0..rows.len())
-                    .map(|l| {
-                        plan.iter()
-                            .filter(|f| {
-                                f.h > COORD_EPS && (if wrap { f.col / self.count } else { 0 }) == l
-                            })
-                            .map(|f| if wrap { f.col % self.count } else { f.col } + 1)
-                            .max()
-                            .unwrap_or(0)
-                    })
-                    .collect()
-            };
-            for (l, &(ry, rh)) in rows.iter().enumerate() {
-                for i in 1..used.get(l).copied().unwrap_or(0).min(self.count) {
-                    // Толщина линейки идёт по СТРОЧНОЙ оси (она стоит в
-                    // промежутке между колонками), длина — по блочной.
-                    let io = i as f32 * step - self.gap * 0.5 - rw * 0.5;
-                    window.paint_quad(gpui::fill(
-                        axis_box(axis, bounds.origin, block_avail, io, rw, ry, rh),
-                        color,
-                    ));
-                }
-            }
-        }
         let plan = self.plan.borrow().clone();
         let plan_all = plan.clone();
         let mut parts = vec![0usize; self.children.len()];

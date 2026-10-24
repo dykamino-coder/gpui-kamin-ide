@@ -5,6 +5,7 @@
 
 mod lifecycle;
 mod painting;
+mod widths;
 
 use crate::layout::multicol::gap_rules::{GapItems, GapRuleSpec};
 

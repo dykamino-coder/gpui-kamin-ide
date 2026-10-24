@@ -17,7 +17,7 @@ pub(super) mod kids;
 mod parallel;
 use kids::{column_kids, stack_children};
 mod clone_plan;
-use clone_plan::{clone_plan_of, column_rule_of};
+use clone_plan::clone_plan_of;
 mod oof;
 use oof::{column_stack_div, finish_column_stack, place_oof_statics};
 mod spanner;
@@ -114,25 +114,12 @@ pub(crate) fn multicol_column_stack(
     let clone_plan = clone_plan_of(
         cols, col_vert, rows, copies, fixed, &kid_par, &kids, vcx, opts,
     );
-    let rule = column_rule_of(e, &merged, opts);
-    // С рядами линейки (`column-rule` со втяжкой/разрывом,
-    // `row-rule` — css-multicol-2 §rg/§crc → css-gaps-1)
-    // красит `GapRulePainter` по границам колонок и
-    // спаннеров из стопки (`ColumnStack::gap_items`);
-    // простая полоса `rule` тогда не рисуется. Без рядов —
-    // как прежде (`multicol-rule-*` не трогаются).
-    let extended_rules = rows.is_some_and(|r| r.wrap)
-        || e.style.used().row_rule_visible == Some(true)
-        || e.style.used().column_rule_break.is_some()
-        || e.style.used().column_rule_inset.is_some()
-        || e.style.used().column_rule_visibility.is_some();
-    let gap_spec = extended_rules
-        .then(|| multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap))
-        .flatten();
+    // Все линейки колонок используют общую геометрию и художника:
+    // стиль и writing-mode не меняют владельца отрисовки (css-gaps-1 §3).
+    let gap_spec = multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap);
     let gap_items = gap_spec
         .as_ref()
         .map(|_| crate::layout::multicol::gap_rules::GapItems::default());
-    let rule = rule.filter(|_| gap_spec.is_none());
     // Где начинается ребёнок в первой внешней колонке — для
     // вложенного рядами с заданной высотой (`nest_row`): все
     // предыдущие встают целиком в первую колонку, без
@@ -205,7 +192,6 @@ pub(crate) fn multicol_column_stack(
         nest_phase,
         fixed,
         &gap_items,
-        rule,
         children,
         opts,
         deferred,

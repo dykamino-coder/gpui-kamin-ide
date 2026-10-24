@@ -2,7 +2,7 @@
 //! Пустую grid с известной/отложенной шириной измеряет native путь до этой ветки.
 //! Разрываемые floats — F2-1: отдельные consumed/resume для float и main flow.
 
-use super::grid_kid;
+use super::independent_kid;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::fragment_margins as measured_margins;
@@ -105,7 +105,7 @@ pub(crate) fn measure_children(
             // break decisions on the laid-out copy, not on this estimate.
             Node::Element(c)
                 if pag_ok
-                    && !grid_kid::flex_gate(c, measure_ok || whole_ok, line_col_w)
+                    && !independent_kid::own_layout_gate(c, measure_ok || whole_ok, line_col_w)
                     && line_col_w.is_some()
                     && crate::layout::fragment::paginate::gate(
                         c,
@@ -127,9 +127,9 @@ pub(crate) fn measure_children(
                     },
                 ))
             }
-            // Поддерево с сеткой: мера — раскладка копии (`grid_kid`).
-            Node::Element(c) if grid_kid::gate(c, measure_ok || whole_ok, line_col_w) => {
-                grid_kid::measured(c, merged, vcx, line_col_w?, measured_kids)
+            // Независимый контекст: мера — раскладка копии, не сумма потомков.
+            Node::Element(c) if independent_kid::gate(c, measure_ok || whole_ok, line_col_w) => {
+                independent_kid::measured(c, merged, vcx, line_col_w?, measured_kids)
             }
             // `position: relative` укладке не мешает — сдвиг
             // накладывается на месте (корень A1).

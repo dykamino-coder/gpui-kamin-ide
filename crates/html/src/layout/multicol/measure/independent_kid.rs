@@ -1,7 +1,6 @@
-//! Ребёнок многоколоночника с сеткой (`flow::blocks::grid_tree`): высоту, параллельный поток
-//! и точки разрыва даёт раскладка копии в колонку (`StackChild::measure`; ряды и элементы
-//! разложенной сетки — `flow::blocks`), а не оценка дорожек по стилю (css-grid-1 §12:
-//! фрагментация идёт после раскладки сетки).
+//! Мера сетки, flex и обычной обёртки вложенных колонок:
+//! высоту и точки разрыва даёт раскладка копии (`StackChild::measure`).
+//! Сумма размеров потомков не выражает блочный размер этих контекстов.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
@@ -9,6 +8,13 @@ use crate::layout::fragment::Shape;
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::{BoxStyle, Position};
 use std::cell::RefCell;
+
+fn multicol_wrapper(c: &Element) -> bool {
+    // Сам многоколоночник требует специализированного пути с внешним
+    // фрагментаинером; обычная обёртка сохраняет этот контекст в потомке.
+    !crate::layout::multicol::spanner::multicol_container(&c.style.used())
+        && crate::layout::multicol::spanner::multicol_inside(c, 4)
+}
 
 /// Блочный поточный ребёнок с сеткой в стопке с известной шириной колонки;
 /// `fits` — стопка допускает меру раскладкой (без рядов колонок).
@@ -19,12 +25,13 @@ pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
         && matches!(c.style.used().position, None | Some(Position::Relative))
         && c.style.used().float.unwrap_or(0) == 0
         && (crate::layout::fragment::flow::blocks::grid_tree(c)
-            || crate::layout::fragment::flow::blocks::flex_tree(c))
+            || crate::layout::fragment::flow::blocks::flex_tree(c)
+            || multicol_wrapper(c))
 }
 
-/// Flex с реальными линиями не передаётся DOM-пагинации: та не сохраняет членство.
-pub(super) fn flex_gate(c: &Element, fits: bool, w: Option<f32>) -> bool {
-    gate(c, fits, w) && crate::layout::fragment::flow::blocks::flex_tree(c)
+/// Flex и вложенные колонки сами определяют линии; DOM-пагинация теряет их членство.
+pub(super) fn own_layout_gate(c: &Element, fits: bool, w: Option<f32>) -> bool {
+    gate(c, fits, w) && (crate::layout::fragment::flow::blocks::flex_tree(c) || multicol_wrapper(c))
 }
 
 /// Запись ребёнка, чью высоту меряет раскладка копии; поля не в точках —

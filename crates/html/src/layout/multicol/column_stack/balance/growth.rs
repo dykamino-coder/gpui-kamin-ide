@@ -16,7 +16,6 @@ impl ColumnStack {
             count,
             0.0,
             fixed_height,
-            None,
             rows,
             None,
             None,

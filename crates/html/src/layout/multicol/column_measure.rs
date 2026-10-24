@@ -139,7 +139,6 @@ impl ColumnStack {
                     fixed_height: fixed,
                     forced_h,
                     fill_shrink,
-                    rule: None,
                     rule_to: None,
                     rows,
                     copies,

@@ -68,7 +68,6 @@ fn reserve_views(axis: StackAxis, mode: &str) {
         2,
         0.0,
         Some(100.0),
-        None,
         Some(rows),
         None,
         None,
