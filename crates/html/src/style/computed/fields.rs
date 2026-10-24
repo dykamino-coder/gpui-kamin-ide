@@ -1498,9 +1498,6 @@ pub struct InheritedStyle {
     /// Ставит стадия вычисленных значений; коробка, которую сделала
     /// раскладка, несёт зум своего родителя.
     pub zoom_eff: Option<f32>,
-    /// `<foreignObject>`: его содержимое раскладывается в единицах SVG и
-    /// масштабируется вместе с ним, поэтому дети начинают без зума.
-    pub(crate) zoom_boundary: bool,
     /// Возможности шрифта (`font-feature-settings`, `font-variant`).
     pub font_features: Vec<(String, u32)>,
     /// Значение СВОЙСТВА `font-feature-settings` целиком (`normal` — пустой

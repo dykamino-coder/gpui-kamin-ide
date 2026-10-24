@@ -130,7 +130,7 @@ lay_inherited! {
     hyphen_limit_lines, lang, vertical_align, pointer_events_none, text_shadow,
     text_shadow_rest, rtl, combine_upright, wrap_anywhere, word_space_char, autospace_alpha,
     autospace_numeric, hyphenate, color_scheme, font_stretch, font_size_adjust,
-    font_adjust_base, tab_size, tab_size_len, zoom_eff, zoom_boundary, font_features,
+    font_adjust_base, tab_size, tab_size_len, zoom_eff, font_features,
     font_settings, font_alternates, font_synth, font_kerning, text_emphasis,
     emphasis_auto_shape, emphasis_position_auto, emphasis_under, emphasis_left, emphasis_color,
     underline_offset, underline_pos, skip_ink, skip_spaces, ruby_under, ruby_align,

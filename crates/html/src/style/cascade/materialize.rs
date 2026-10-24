@@ -224,3 +224,5 @@ mod recompute_tests;
 mod tests;
 #[cfg(test)]
 mod tree_tests;
+#[cfg(test)]
+mod zoom_tests;

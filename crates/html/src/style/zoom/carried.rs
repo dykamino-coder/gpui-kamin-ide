@@ -21,10 +21,9 @@ pub(super) struct Carried {
 }
 
 impl Carried {
-    /// Длины, которые вычисленный стиль родителя передаёт детям. Содержимое
-    /// `<foreignObject>` начинает без зума и без них.
+    /// Длины, которые вычисленный стиль родителя передаёт детям.
     pub(super) fn of(parent: Option<&Computed>) -> Self {
-        let Some(c) = parent.filter(|p| !p.zoom_boundary) else {
+        let Some(c) = parent else {
             return Self::default();
         };
         let px = px_strict;

@@ -2,8 +2,10 @@
 //! матрицы), область снимка с запасом под `overflow: visible` отдельно от вьюпорта HTML,
 //! раскрытие `<image>` во вложенный `<svg>` с `overflow="visible"` для вылезшей краски и выбор
 //! единственного вклада `mix-blend-mode`, который может смешиваться с подложкой хоста.
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Overflow};
+use crate::style::values::value::Len;
 use gpui::{Pixels, Point, Size, point, px, size};
 
 // Largest singular value bounds the magnification, including skew/rotation.
@@ -33,6 +35,7 @@ pub(super) fn capture(
     style: &Computed,
     (w, h): (f32, f32),
     viewport: (f32, f32),
+    zoom: f32,
 ) -> (Point<Pixels>, Size<Pixels>) {
     let x = if style.overflow_x == Some(Overflow::Visible) {
         viewport.0
@@ -44,17 +47,41 @@ pub(super) fn capture(
     } else {
         0.0
     };
-    (point(px(x), px(y)), size(px(w + 2.0 * x), px(h + 2.0 * y)))
+    (
+        point(px(x * zoom), px(y * zoom)),
+        size(px((w + 2.0 * x) * zoom), px((h + 2.0 * y) * zoom)),
+    )
 }
 
-pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>) {
+/// Геометрия SVG — в пользовательских единицах; абсолютная CSS-длина уже
+/// несёт действующий зум, а атрибут и процент от SVG-вьюпорта — ещё нет.
+pub(super) fn length(
+    style: Option<Len>,
+    attr: Option<&str>,
+    base: f32,
+    zoom: f32,
+    vcx: ValueCx<'_>,
+) -> f32 {
+    match style {
+        Some(Len::Px(v)) => v / zoom,
+        Some(Len::Pct(v)) => base * v,
+        None => match attr.and_then(|s| Len::parse(s, vcx)) {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(v)) => base * v,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    }
+}
+
+pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>, zoom: f32) {
     let mut image = e.clone();
     image.style = Computed::default().into();
     image.attrs = [
-        ("x", -f32::from(origin.x)),
-        ("y", -f32::from(origin.y)),
-        ("width", f32::from(size.width)),
-        ("height", f32::from(size.height)),
+        ("x", -f32::from(origin.x) / zoom),
+        ("y", -f32::from(origin.y) / zoom),
+        ("width", f32::from(size.width) / zoom),
+        ("height", f32::from(size.height) / zoom),
     ]
     .into_iter()
     .map(|(k, v)| (k.into(), v.to_string()))
@@ -91,3 +118,6 @@ pub(super) fn sole_blend(e: &Element) -> Option<u8> {
         None
     }
 }
+
+#[cfg(test)]
+mod zoom_tests;

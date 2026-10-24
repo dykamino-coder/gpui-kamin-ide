@@ -11,15 +11,10 @@
 
 use crate::style::computed::Computed;
 
-/// Действующий зум, с которым родитель передаёт значения детям: содержимое
-/// `<foreignObject>` раскладывается в единицах SVG и масштабируется вместе с
-/// ним, поэтому начинает без зума.
+/// Действующий зум родителя: произведение по всей цепочке предков,
+/// включая границы пространств имён SVG/HTML (css-viewport-1 §zoom-property).
 pub(super) fn parent_eff(parent: &Computed) -> f32 {
-    if parent.zoom_boundary {
-        1.0
-    } else {
-        parent.zoom_eff.unwrap_or(1.0)
-    }
+    parent.zoom_eff.unwrap_or(1.0)
 }
 
 /// Собственный множитель и действующий зум каскадного стиля `own`, если зум
