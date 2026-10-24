@@ -66,10 +66,11 @@ pub(crate) fn growths(
             .map(|p| p.0)
             .min_by(f32::total_cmp);
         let solid = solid.map(|mut point| {
-            for _ in 0..breaks.keep.len() {
+            for _ in 0..breaks.keep.len() + breaks.avoid.len() {
                 let start = breaks
                     .keep
                     .iter()
+                    .chain(&breaks.avoid)
                     .filter(|&&(a, b)| {
                         a > from + COORD_EPS && a < point - COORD_EPS && point < b - COORD_EPS
                     })

@@ -13,6 +13,7 @@ use crate::layout::fragment::ShapeCx;
 mod collect;
 mod registry;
 use collect::{collect, frame, push_kids};
+mod column_avoid;
 mod finish;
 mod geometry;
 mod parallel;
@@ -37,6 +38,8 @@ pub(crate) use flex::{FlexBox, FlexFrame, FlexLine, FlexPush, flex_container};
 pub(crate) use flex_tree::flex_tree;
 #[cfg(test)]
 mod depth_tests;
+#[cfg(test)]
+mod flex_avoid_tests;
 #[cfg(test)]
 mod flex_column_tests;
 #[cfg(test)]
