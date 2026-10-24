@@ -142,7 +142,8 @@ fn logical_border_sides_compete_with_physical_ones_by_cascade() {
         <div id="p"><div id="i"></div></div></body>"#,
         "",
     )
-    .build();
+    .build()
+    .unwrap();
     let a = find(doc.nodes(), "a").expect("a");
     assert_eq!(a.style.cascaded().border_width.top, Some(Len::Px(1.0)));
     let b = find(doc.nodes(), "b").expect("b");

@@ -26,6 +26,9 @@ pub(super) fn flatten_slot(
 ) {
     let Some(info) = drafts.get(key) else { return };
     if depth > 32 {
+        tree.doc
+            .traversal
+            .limit(crate::document::TraversalKind::Slots, 32, depth);
         return;
     }
     if !info.assigned.is_empty() {

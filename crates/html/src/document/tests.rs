@@ -8,7 +8,7 @@ use super::*;
 
 #[test]
 fn html_after_survives_unwrap() {
-    let doc = Document::builder("<style>html::after { content: \"AFTER\"; display: block; }</style>             <body><div>x</div></body>", "").build();
+    let doc = Document::builder("<style>html::after { content: \"AFTER\"; display: block; }</style>             <body><div>x</div></body>", "").build().unwrap();
     let tags: Vec<String> = doc
         .nodes()
         .iter()
@@ -28,22 +28,24 @@ fn html_after_survives_unwrap() {
 
 #[test]
 fn same_markup_is_not_reparsed() {
-    let mut doc = Document::builder("<p>раз</p>", "").build();
+    let mut doc = Document::builder("<p>раз</p>", "").build().unwrap();
     assert!(
-        !doc.update("<p>раз</p>", ""),
+        !doc.update("<p>раз</p>", "").unwrap().changed(),
         "разметка та же — разбора нет"
     );
     assert!(
-        doc.update("<p>два</p>", ""),
+        doc.update("<p>два</p>", "").unwrap().changed(),
         "разметка иная — разобрали заново"
     );
 }
 
 #[test]
 fn theme_change_also_triggers_a_reparse() {
-    let mut doc = Document::builder("<p>раз</p>", "").build();
+    let mut doc = Document::builder("<p>раз</p>", "").build().unwrap();
     assert!(
-        doc.update("<p>раз</p>", "p { color: red }"),
+        doc.update("<p>раз</p>", "p { color: red }")
+            .unwrap()
+            .changed(),
         "сменилась тема"
     );
 }
@@ -52,7 +54,9 @@ fn theme_change_also_triggers_a_reparse() {
 fn standards_document_wrappers_are_unwrapped() {
     // Парсер всегда добавляет <html><body>; для виртуализации нужны
     // настоящие блоки документа, а не одна обёртка.
-    let doc = Document::builder("<!DOCTYPE html><div>раз</div><div>два</div>", "").build();
+    let doc = Document::builder("<!DOCTYPE html><div>раз</div><div>два</div>", "")
+        .build()
+        .unwrap();
     assert_eq!(
         doc.top_level_blocks(),
         2,
@@ -63,13 +67,17 @@ fn standards_document_wrappers_are_unwrapped() {
 
 #[test]
 fn quirks_document_wrappers_retain_their_fill_boxes() {
-    let doc = Document::builder("<div>раз</div><div>два</div>", "").build();
+    let doc = Document::builder("<div>раз</div><div>два</div>", "")
+        .build()
+        .unwrap();
     assert_eq!(doc.top_level_blocks(), 1);
 }
 
 #[test]
 fn node_count_walks_the_whole_tree() {
-    let doc = Document::builder("<div><p>раз</p><p>два</p></div>", "").build();
+    let doc = Document::builder("<div><p>раз</p><p>два</p></div>", "")
+        .build()
+        .unwrap();
     // html + body + div + два абзаца + два текста — важна не точная цифра,
     // а то, что счёт идёт вглубь.
     assert!(doc.node_count() >= 5, "получено {}", doc.node_count());

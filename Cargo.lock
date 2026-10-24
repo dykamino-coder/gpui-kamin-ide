@@ -3857,6 +3857,7 @@ dependencies = [
  "url",
  "windows 0.62.2",
  "wuff",
+ "xml-rs",
 ]
 
 [[package]]

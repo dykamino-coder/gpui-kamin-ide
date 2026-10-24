@@ -114,7 +114,8 @@ mod tests {
         </body>"#,
             "",
         )
-        .build();
+        .build()
+        .unwrap();
         fn collect(nodes: &[Node], flags: &mut Vec<Option<bool>>) {
             for node in nodes {
                 if let Node::Element(e) = node {
@@ -139,7 +140,8 @@ mod tests {
             </div></body>"#,
             "",
         )
-        .build();
+        .build()
+        .unwrap();
         let p =
             crate::dom::test_support::find(doc.nodes(), &|e| e.attr("id") == Some("a")).expect("p");
         // sideways-lr + rtl: inline-start сверху, block-start слева (§6.4).

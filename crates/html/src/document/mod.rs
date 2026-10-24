@@ -10,17 +10,27 @@
 //! `render`. Пересборка происходит лишь когда сменилась сама разметка — что
 //! проверяется по хэшу, а не по строке целиком.
 
+#[cfg(test)]
+mod admission_tests;
 mod base_url;
 mod builder;
+mod outcome;
+mod revision;
 pub use builder::DocumentBuilder;
+pub use outcome::{
+    BuildReport, DocumentFailure, FailureReason, FailureScope, RevisionStatus, TraversalKind,
+    TraversalLimit,
+};
 mod canvas_background;
 mod embedded;
 pub(crate) mod image_values;
 mod logical_properties;
+mod prepare;
 #[cfg(test)]
 mod resource_tests;
 pub(crate) mod resource_url;
 mod scope;
+use prepare::parse_document;
 pub mod state;
 #[cfg(test)]
 mod tests;
@@ -62,6 +72,7 @@ pub struct Document {
     base_url: Option<url::Url>,
     /// An XML document (`image/svg+xml`, `crate::dom::xml`).
     xml: bool,
+    last_failure: Option<DocumentFailure>,
 }
 
 impl Document {
@@ -77,22 +88,29 @@ impl Document {
         xml: bool,
         media: Media,
         fonts: &crate::text::metrics::FontContext,
-    ) -> Self {
+    ) -> Result<Self, DocumentFailure> {
+        let key = base_url::key(html, theme_css, base_url.as_ref());
+        let input = crate::dom::input::Admitted::parse(html, xml).map_err(|mut failure| {
+            failure.report.revision = Some(key);
+            failure
+        })?;
         let effective_base = if xml {
             base_url.clone()
         } else {
-            base_url::document_base(html, base_url.as_ref())
+            base_url::document_base(&input.dom.document, base_url.as_ref())
         };
         let (state, nodes, root) =
-            parse_document(html, theme_css, effective_base.as_ref(), xml, media, fonts);
-        Document {
+            parse_document(&input, theme_css, effective_base.as_ref(), media, fonts);
+        state.traversal.retain(input);
+        Ok(Document {
             state,
             nodes,
             root,
-            key: base_url::key(html, theme_css, base_url.as_ref()),
+            key,
             base_url,
             xml,
-        }
+            last_failure: None,
+        })
     }
 
     /// Платформенная конфигурация для нового документа того же хоста.
@@ -104,29 +122,6 @@ impl Document {
     /// которого своего элемента нет.
     pub fn root_style(&self) -> &crate::style::computed::Computed {
         &self.root
-    }
-
-    /// Разобрать заново, только если разметка действительно изменилась.
-    ///
-    /// Для стриминга (текст дописывается по кусочку) это и есть главный
-    /// рубеж: пока пришедший кусок не изменил разметку, дерево остаётся тем
-    /// же, и кадр стоит ровно столько же, сколько нативный.
-    pub fn update(&mut self, html: &str, theme_css: &str) -> bool {
-        let key = base_url::key(html, theme_css, self.base_url.as_ref());
-        if key == self.key {
-            return false;
-        }
-        let media = self.state.media();
-        let fonts = self.state.metrics.font_context();
-        *self = Self::build(
-            html,
-            theme_css,
-            self.base_url.clone(),
-            self.xml,
-            media,
-            &fonts,
-        );
-        true
     }
 
     /// Документ разобран для печатного носителя (`DocumentBuilder::print`).
@@ -163,39 +158,4 @@ impl Document {
     pub fn top_level_blocks(&self) -> usize {
         self.nodes.len()
     }
-}
-
-/// Разбор в СВЕЖЕЕ состояние документа носителем `media`: шрифты и
-/// `@color-profile` из листов страницы (до разбора: иначе первый же замер
-/// ширины пойдёт по подстановке), разметка (XML — своим разборщиком,
-/// `dom::xml`), правка адресов от действующей базы.
-fn parse_document(
-    html: &str,
-    theme_css: &str,
-    base: Option<&url::Url>,
-    xml: bool,
-    media: Media,
-    fonts: &crate::text::metrics::FontContext,
-) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
-    let state = DocState::new(media);
-    state.images.borrow_mut().set_base(base.cloned());
-    let vcx = state.values();
-    fonts.install(vcx);
-    let mut sheets = vec![theme_css.to_string()];
-    sheets.extend(crate::dom::style_sources::collect(html, xml));
-    crate::text::fonts::load_faces_sheets(&sheets, base, vcx);
-    crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx);
-    let (mut nodes, root) = viewport::prepare(
-        if xml {
-            crate::dom::parse_current_xml(html, theme_css, media, &state)
-        } else {
-            crate::dom::parse_current(html, theme_css, media, &state)
-        },
-        vcx,
-    );
-    if let Some(base) = base {
-        base_url::resolve(&mut nodes, base, false);
-    }
-    state.masks.collect(&nodes, vcx);
-    (state, nodes, root)
 }

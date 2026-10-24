@@ -54,6 +54,7 @@ pub(crate) fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) 
         None,
         &Default::default(),
     )
+    .unwrap()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -66,7 +67,11 @@ pub(crate) fn parse_embedded_sized(
     scrolling: bool,
     scheme: Option<EmbeddingScheme>,
     fonts: &crate::text::metrics::FontContext,
-) -> Embedded {
+) -> Result<Embedded, super::DocumentFailure> {
+    let input = crate::dom::input::Admitted::parse(html, false).map_err(|mut failure| {
+        failure.scope = super::FailureScope::EmbeddedDocument;
+        failure
+    })?;
     let mut media = crate::style::css::Media {
         width: viewport.0,
         height: viewport.1,
@@ -77,15 +82,16 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let state = DocState::new(media);
+    state.traversal.set_embedded();
     let vcx = state.values();
     fonts.install(vcx);
     let mut sheets = vec![theme_css.to_string()];
-    sheets.extend(crate::dom::style_sources::collect(html, false));
+    sheets.extend(crate::dom::style_sources::collect(&input));
     for css in &sheets {
         crate::text::fonts::load_faces_additive(css, vcx);
     }
     crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx);
-    let parsed = crate::dom::parse_current(html, theme_css, media, &state);
+    let parsed = crate::dom::convert(&input, theme_css, media, &state);
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark), vcx);
     // HTML's embedding policy also applies when responsive sizing is declined.
@@ -100,7 +106,8 @@ pub(crate) fn parse_embedded_sized(
     // `<iframe>` потерял бы всё, что раньше работало.
     crate::animation::motion::settle(&mut nodes, vcx);
     state.masks.collect(&nodes, vcx);
-    Embedded { nodes, state }
+    state.traversal.retain(input);
+    Ok(Embedded { nodes, state })
 }
 
 /// Снять обёртки `<html>`/`<body>`, которые парсер добавляет всегда.

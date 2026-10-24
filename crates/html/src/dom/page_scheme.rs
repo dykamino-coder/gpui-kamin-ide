@@ -9,23 +9,22 @@
 use markup5ever_rcdom::{Handle, NodeData};
 
 pub(super) fn preference(node: &Handle, preferred: bool) -> Option<bool> {
-    if let NodeData::Element { name, attrs, .. } = &node.data
-        && &*name.local == "meta"
-        && &*name.ns == "http://www.w3.org/1999/xhtml"
-    {
-        let attrs = attrs.borrow();
-        let attr = |key: &str| attrs.iter().find(|a| &*a.name.local == key);
-        if attr("name").is_some_and(|a| a.value.eq_ignore_ascii_case("color-scheme"))
-            && let Some(content) = attr("content")
-            && let Some(dark) = supported(&content.value, preferred)
+    for node in super::source_walk::descendants(node, false) {
+        if let NodeData::Element { name, attrs, .. } = &node.data
+            && &*name.local == "meta"
+            && &*name.ns == "http://www.w3.org/1999/xhtml"
         {
-            return Some(dark);
+            let attrs = attrs.borrow();
+            let attr = |key: &str| attrs.iter().find(|a| &*a.name.local == key);
+            if attr("name").is_some_and(|a| a.value.eq_ignore_ascii_case("color-scheme"))
+                && let Some(content) = attr("content")
+                && let Some(dark) = supported(&content.value, preferred)
+            {
+                return Some(dark);
+            }
         }
     }
-    node.children
-        .borrow()
-        .iter()
-        .find_map(|n| preference(n, preferred))
+    None
 }
 
 fn supported(value: &str, preferred: bool) -> Option<bool> {

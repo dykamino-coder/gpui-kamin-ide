@@ -166,7 +166,7 @@ const DOC: &str = r##"
 <div class="card">
   <p class="title">Блок кода</p>
   <pre>fn main() {
-    let doc = Document::builder(html, theme).build();
+    let doc = Document::builder(html, theme).build()?;
     render_block(doc.nodes(), i, &amp;opts);
 }</pre>
 </div>
@@ -181,7 +181,7 @@ const DOC: &str = r##"
 
 struct Demo {
     /// Разобран ОДИН раз: на кадре только отрисовка.
-    doc: Rc<Document>,
+    doc: Result<Rc<Document>, kamin_html::DocumentFailure>,
     /// Состояние прокрутки живёт между кадрами — иначе оно сбрасывалось бы.
     scroll: ScrollHandle,
 }
@@ -197,7 +197,7 @@ impl Demo {
             ));
         }
         Demo {
-            doc: Rc::new(Document::builder(&html, "").build()),
+            doc: Document::builder(&html, "").build().map(Rc::new),
             scroll: ScrollHandle::new(),
         }
     }

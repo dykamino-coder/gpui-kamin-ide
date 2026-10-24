@@ -15,13 +15,14 @@ fn update_reloads_resources_and_matches_a_fresh_document() {
     let mut updated = Document::builder(old, "")
         .fonts(&fonts)
         .base_uri("file:///tests/page.html")
-        .build();
+        .build()
+        .unwrap();
     assert_eq!(
         fonts::alias("OldUpdate", updated.state.values()).as_deref(),
         Some("UpdateFont49")
     );
     let old_salt = updated.salt();
-    assert!(updated.update(new, "p {color: red}"));
+    assert!(updated.update(new, "p {color: red}").unwrap().changed());
     assert_ne!(old_salt, updated.salt());
     assert_eq!(fonts::alias("OldUpdate", updated.state.values()), None);
     assert_eq!(
@@ -31,7 +32,8 @@ fn update_reloads_resources_and_matches_a_fresh_document() {
     let fresh = Document::builder(new, "p {color: red}")
         .fonts(&fonts)
         .base_uri("file:///tests/page.html")
-        .build();
+        .build()
+        .unwrap();
     assert_eq!(updated.salt(), fresh.salt());
     assert_eq!(updated.node_count(), fresh.node_count());
     assert_eq!(
@@ -43,7 +45,7 @@ fn update_reloads_resources_and_matches_a_fresh_document() {
         format!("{:?}", fresh.root_style())
     );
     let nodes = updated.nodes().as_ptr();
-    assert!(!updated.update(new, "p {color: red}"));
+    assert!(!updated.update(new, "p {color: red}").unwrap().changed());
     assert_eq!(nodes, updated.nodes().as_ptr());
 }
 
@@ -51,11 +53,13 @@ fn update_reloads_resources_and_matches_a_fresh_document() {
 fn update_preserves_xml_parsing() {
     let mut doc = Document::builder("<svg xmlns='http://www.w3.org/2000/svg'><g/></svg>", "")
         .path(std::path::Path::new("update.svg"))
-        .build();
+        .build()
+        .unwrap();
     let new = "<svg xmlns='http://www.w3.org/2000/svg'><metadata/><g/></svg>";
-    assert!(doc.update(new, ""));
+    assert!(doc.update(new, "").unwrap().changed());
     let fresh = Document::builder(new, "")
         .path(std::path::Path::new("update.svg"))
-        .build();
+        .build()
+        .unwrap();
     assert_eq!(format!("{:?}", doc.nodes()), format!("{:?}", fresh.nodes()));
 }
