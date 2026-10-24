@@ -138,6 +138,7 @@ mod tests {
         old.content.insert(
             1,
             vec![ContentLine {
+                state: Default::default(),
                 paragraph: 0,
                 byte: 8,
                 top: 20.,
@@ -169,6 +170,7 @@ mod tests {
         new.content.insert(
             1,
             vec![ContentLine {
+                state: Default::default(),
                 paragraph: 0,
                 byte: 8,
                 top: 40.,
@@ -207,6 +209,7 @@ mod tests {
         old.content.insert(
             1,
             vec![ContentLine {
+                state: Default::default(),
                 paragraph: 0,
                 byte: 8,
                 top: 20.,

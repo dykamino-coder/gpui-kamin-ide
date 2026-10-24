@@ -1,4 +1,5 @@
 //! Продолжение при смене ограничений: новая мера и адрес содержимого каждого flex-потока.
+mod inline;
 use super::{PageStack, measure::measure, resume::Resume};
 use crate::layout::fragment::flow::blocks::Laid;
 use crate::layout::fragment::types::Kid;
@@ -19,6 +20,7 @@ pub(super) struct CopyGeometry {
     pub(super) from: f32,
     pub(super) offset: f32,
     pub(super) kid: Kid,
+    pub(super) inline: crate::layout::fragment::flow::inline::Geometry,
     pub(super) laid: Laid,
     pub(super) continued: bool,
 }
@@ -92,14 +94,15 @@ impl PageStack {
             });
         rec.clear_consumed(window);
         rec.resume_content(&old.laid, from);
+        let inline_addresses = inline::resume(&rec.flow, &old.inline.paragraphs, from);
         k.watched = Some(rec.clone());
         rebuild_copy(k, copy, &own);
-        let mut next = measure(k, self.axis, area, copy, window, cx);
+        let (mut next, mut next_inline) = measure(k, self.axis, area, copy, window, cx);
         let consumed = token.consumed(&k.regrow.as_ref()?.laid);
         if consumed.values().any(|v| v.0 > COORD_EPS || v.1) {
             rec.consume_flex_items(consumed, window);
             rebuild_copy(k, copy, &own);
-            next = measure(k, self.axis, area, copy, window, cx);
+            (next, next_inline) = measure(k, self.axis, area, copy, window, cx);
         }
         k.watched = Some(main);
         let fresh = std::mem::replace(&mut k.regrow.as_mut()?.laid, original);
@@ -107,7 +110,10 @@ impl PageStack {
         let offset = if from <= COORD_EPS {
             0.0
         } else {
-            token.offset(&fresh, next.h)
+            let root = inline::offset(&inline_addresses, &next_inline.paragraphs);
+            root.into_iter()
+                .chain(std::iter::once(token.offset(&fresh, next.h)))
+                .min_by(f32::total_cmp)?
         };
         own.laid = fresh.clone();
         own.space = fresh_space;
@@ -119,6 +125,7 @@ impl PageStack {
                 from,
                 offset,
                 kid: next.clone(),
+                inline: next_inline,
                 laid: fresh,
                 continued: true,
             },
@@ -178,6 +185,7 @@ mod tests {
                     from: 40.,
                     offset: 60.,
                     kid: Kid::default(),
+                    inline: Default::default(),
                     laid: Laid::default(),
                     continued: true,
                 };

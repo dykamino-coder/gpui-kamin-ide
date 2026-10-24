@@ -10,7 +10,7 @@ pub(super) fn measure(
     copy: usize,
     window: &mut Window,
     cx: &mut App,
-) -> Kid {
+) -> (Kid, crate::layout::fragment::flow::inline::Geometry) {
     let vertical = axis.is_vertical();
     // `aw` is the INLINE size of the page area; a vertical root
     // measures its block size along x (`page_stack/axis.rs`).
@@ -30,6 +30,13 @@ pub(super) fn measure(
         .watched
         .as_ref()
         .map(|w| w.flow.at(point(px(0.0), px(0.0)), laid, axis, window));
+    let mut inline = crate::layout::fragment::flow::inline::Geometry::default();
+    inline.paragraphs = measured_flow.as_ref().map_or_else(Vec::new, |flow| {
+        flow.inline
+            .iter()
+            .map(|p| p.translated(-k.inner_top))
+            .collect()
+    });
     let sz = laid;
     let sz = if vertical {
         size(sz.height, sz.width)
@@ -113,6 +120,8 @@ pub(super) fn measure(
                     r.space = w.space(window);
                 }
                 let m = w.breaks(origin, frame, h + lift, axis, window);
+                inline.barriers = m.barriers;
+                inline.keep = m.avoid_inside;
                 if flex || k.shape.is_none() {
                     avoid = m.avoid;
                     keep = m.keep;
@@ -127,34 +136,37 @@ pub(super) fn measure(
             None => flow.merge(&mut cuts, &mut solid),
         }
     }
-    Kid {
-        h,
-        mt: k.mt,
-        mb: k.mb,
-        monolith: k.monolith,
-        cuts,
-        force_before: k.renamed || k.measured_edge(false).0,
-        force_after: k.measured_edge(true).0,
-        avoid_before: k.measured_edge(false).1,
-        avoid_after: k.measured_edge(true).1,
-        forced,
-        solid,
-        avoid,
-        keep,
-        span: false,
-        // Страницы параллельный поток пока не берут: у них своё
-        // правило переполнения монолита (`fill_at`, ветка
-        // `paged && placed && cur > target`, crbug 1402540), и
-        // мешать их без отдельного замера печатного среза нельзя.
-        // `over == h` — поток выключен.
-        over: h,
-        // Страницы: `box-decoration-break` пока `slice` — весь
-        // кластер `clone` в колонках.
-        clone_dec: None,
-        // У страниц своё правило переполнения монолита (`fill_at`,
-        // ветка `paged && placed && cur > target`, crbug 1402540).
-        overflow_top: false,
-        repeat: k.repeat.as_ref().map_or_else(Default::default, |r| r.geom),
-        par: Par::default(),
-    }
+    (
+        Kid {
+            h,
+            mt: k.mt,
+            mb: k.mb,
+            monolith: k.monolith,
+            cuts,
+            force_before: k.renamed || k.measured_edge(false).0,
+            force_after: k.measured_edge(true).0,
+            avoid_before: k.measured_edge(false).1,
+            avoid_after: k.measured_edge(true).1,
+            forced,
+            solid,
+            avoid,
+            keep,
+            span: false,
+            // Страницы параллельный поток пока не берут: у них своё
+            // правило переполнения монолита (`fill_at`, ветка
+            // `paged && placed && cur > target`, crbug 1402540), и
+            // мешать их без отдельного замера печатного среза нельзя.
+            // `over == h` — поток выключен.
+            over: h,
+            // Страницы: `box-decoration-break` пока `slice` — весь
+            // кластер `clone` в колонках.
+            clone_dec: None,
+            // У страниц своё правило переполнения монолита (`fill_at`,
+            // ветка `paged && placed && cur > target`, crbug 1402540).
+            overflow_top: false,
+            repeat: k.repeat.as_ref().map_or_else(Default::default, |r| r.geom),
+            par: Par::default(),
+        },
+        inline,
+    )
 }

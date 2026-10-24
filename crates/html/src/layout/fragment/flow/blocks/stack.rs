@@ -65,7 +65,7 @@ pub(super) fn walk_kids(
             }
         }
         if k.monolith {
-            out.solid.push((kt, kb));
+            out.hold((kt, kb));
         } else if let Some(inner) = &k.inner {
             if b.flex_gap.is_some() {
                 let mut local = BlockBreaks::default();

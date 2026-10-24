@@ -9,6 +9,7 @@ pub(crate) mod blocks;
 pub(crate) mod box_children;
 mod continuation;
 mod coordinates;
+pub(crate) mod inline;
 mod line_growth;
 mod measurements;
 mod normalize;
@@ -42,6 +43,7 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlowGeometry {
+    pub(crate) inline: Vec<inline::Inline>,
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) solid: Vec<(f32, f32)>,
     /// Original float identities and boxes, never temporary LayoutIds.
@@ -73,6 +75,8 @@ impl FlowGeometry {
     }
 
     pub(crate) fn append(&mut self, other: &Self, offset: f32) {
+        self.inline
+            .extend(other.inline.iter().map(|flow| flow.translated(offset)));
         self.floats
             .extend(other.floats.iter().map(|g| FloatGeometry {
                 top: g.top + offset,

@@ -1,5 +1,4 @@
 //! Куски ребёнка по колонкам: цикл размещения фрагментов одного ребёнка (fill_pieces).
-
 use super::{cut_at, fill_clone_dec, forced_or_fits, place_cut};
 use crate::layout::fragment::plan::{Plan, skip_float};
 use crate::layout::fragment::types::{Frag, Kid};
@@ -23,17 +22,19 @@ pub(super) fn fill_pieces(
     mut copy: usize,
     flow: f32,
     rg: crate::layout::fragment::types::RepeatGeom,
-    remeasure: &mut super::Remeasure<'_>,
-) {
+    remeasure: &mut super::ResumeMeasure<'_>,
+) -> Result<(), crate::layout::fragment::token::Error> {
     let mut measured = None;
+    let mut tokens = super::cuts::InlineTokens::default();
     loop {
-        if let Some((next, offset)) = remeasure(super::MeasureRequest {
+        let measurement = remeasure(super::MeasureRequest {
             kid,
             copy,
             col: *col,
             from,
             block_size: target_at(*col),
-        }) {
+        });
+        if let Some((next, offset)) = measurement.copy {
             measured = Some(next);
             from = offset;
         }
@@ -43,14 +44,10 @@ pub(super) fn fill_pieces(
         let target = target_at(*col);
         let room = target - cur;
         // `box-decoration-break: clone` (css-break-4 §break-decoration):
-        // блочное украшение стоит в КАЖДОМ фрагменте, из остатка
-        // колонки оно вычитается каждый раз — высота коробки =
-        // содержимое + N · украшение (Blink
-        // `UpdateBorderPaddingForClonedBoxDecorations`). `from` здесь —
-        // по СОДЕРЖИМОМУ, `Frag.h` — готовая высота фрагмента:
-        // НЕпоследний тянется до низа колонки (§box-splitting: «its
-        // content box extends to fill any remaining fragmentainer extent» с
-        // местом для полей и украшения), последний — по остатку. Монолит сюда не заходит.
+        // украшения резервируются в каждом фрагменте (Blink
+        // `UpdateBorderPaddingForClonedBoxDecorations`). `from` — содержимое,
+        // `Frag.h` — готовая высота фрагмента:
+        // непоследний заполняет остаток (§box-splitting), последний — по содержимому.
         match fill_clone_dec(
             limit, col, y, not_top, placed, shortage, out, float_hold, kid, k, &mut cur, &mut from,
             &mut copy, target, room,
@@ -83,9 +80,8 @@ pub(super) fn fill_pieces(
                 0.0
             }
         };
-        // Принудительный разрыв ВНУТРИ коробки раньше края колонки — режем
-        // ровно там. Разрыв в самом её конце — перед коробкой нулевой высоты
-        // (`BlockBreaks::finish`): её содержимое начинает следующий фрагмент.
+        // Forced перед коробкой, включая нулевую в конце (`BlockBreaks::finish`),
+        // выигрывает у любого непринудительного кандидата.
         let forced = k
             .forced
             .iter()
@@ -197,9 +193,11 @@ pub(super) fn fill_pieces(
             edge,
             mono,
             at,
-            holds,
             overflow_to,
-        );
+            shortage,
+            &mut tokens,
+            &measurement.inline,
+        )?;
         // Недолаз: на сколько не хватило колонки до ближайшего
         // разреза (или до конца ребёнка).
         let next = k
@@ -241,6 +239,7 @@ pub(super) fn fill_pieces(
         *placed = *col < not_top;
         skip_float(float_hold, col, &mut cur, placed);
     }
+    Ok(())
 }
 
 /// Выход из шага цикла, вынесенного в функцию: `break` или `continue` вызывающего цикла.

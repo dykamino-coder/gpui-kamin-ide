@@ -61,6 +61,7 @@ fn store_walks_nested_tokens_parent_first() {
                 line_idx,
                 text_pos: 7,
                 past_first_line: true,
+                after_hard_break: false,
                 child: None,
             })))
             .unwrap()

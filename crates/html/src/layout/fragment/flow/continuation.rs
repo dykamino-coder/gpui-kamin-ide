@@ -1,20 +1,21 @@
 //! Адрес строки по содержимому сохраняется при смене ширины фрагментаинера.
 use super::FlowMeasure;
+use crate::layout::fragment::token::fc::InlineState;
 use crate::layout::fragment::types::StackAxis;
 use gpui::{Pixels, Point, Size, Window};
-use std::cell::Cell;
 use std::rc::Rc;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ContentLine {
     pub(crate) paragraph: usize,
     pub(crate) byte: usize,
+    pub(crate) state: InlineState,
     pub(crate) top: f32,
     pub(crate) bottom: f32,
 }
 
 impl FlowMeasure {
-    pub(super) fn paragraph_resume(&self, ordinal: usize) -> Rc<Cell<usize>> {
+    pub(super) fn paragraph_resume(&self, ordinal: usize) -> Rc<super::inline::Cursor> {
         let mut resumes = self.resumes.borrow_mut();
         let len = resumes.len().max(ordinal + 1);
         resumes.resize_with(len, Rc::default);
@@ -23,20 +24,24 @@ impl FlowMeasure {
 
     pub(crate) fn resume_lines(&self, lines: &[ContentLine], from: f32) {
         for cell in self.resumes.borrow().iter() {
-            cell.set(0);
+            cell.reset();
         }
-        let mut first = std::collections::HashMap::<usize, usize>::new();
+        let mut first = std::collections::HashMap::<usize, &ContentLine>::new();
         for line in lines
             .iter()
             .filter(|l| l.bottom > from + crate::tolerance::COORD_EPS)
         {
             first
                 .entry(line.paragraph)
-                .and_modify(|b| *b = (*b).min(line.byte))
-                .or_insert(line.byte);
+                .and_modify(|first| {
+                    if line.byte < first.byte {
+                        *first = line;
+                    }
+                })
+                .or_insert(line);
         }
-        for (paragraph, byte) in first {
-            self.paragraph_resume(paragraph).set(byte);
+        for (paragraph, line) in first {
+            self.paragraph_resume(paragraph).resume(line.state.clone());
         }
     }
 

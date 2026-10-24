@@ -53,13 +53,15 @@ pub(crate) struct BlockState {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct InlineState {
     /// Номер первой строки продолжения среди строк абзаца.
-    pub(crate) line_idx: u32,
+    pub(crate) line_idx: usize,
     /// Байтовое смещение начала строки в тексте абзаца (Blink `StartTextOffset`).
-    pub(crate) text_pos: u32,
+    pub(crate) text_pos: usize,
     /// Первая форматированная строка уже пройдена: `::first-line` и
     /// `text-indent` больше не применяются (Blink `IsPastFirstFormattedLine`).
     pub(crate) past_first_line: bool,
-    /// Блок внутри строки или атом, прерванный внутри себя.
+    /// Начало после обязательного текстового переноса (`text-indent: each-line`).
+    pub(crate) after_hard_break: bool,
+    /// Блок внутри inline; атомы, ruby и first-letter принадлежат целой строке.
     pub(crate) child: Option<TokenId>,
 }
 

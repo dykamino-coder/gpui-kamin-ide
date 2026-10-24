@@ -42,15 +42,19 @@ impl GridBox {
                 .as_deref()
                 .map_or((0, 0), |r| item_rows(r, t - it.mt, b + it.mb, it.span));
             let mark = out.solid.len();
+            let barrier_mark = out.barriers.len();
             if it.monolith {
-                out.solid.push((t, b));
+                out.hold((t, b));
             } else if let Some(inner) = &it.inner {
                 walk(inner, t, b, laid, out);
             }
             // Первое содержимое элемента не делится: разрыв перед ним
             // переносит ряд целиком (`MovePastBreakpoint` → breakpoint row).
             if let Some(row_top) = rows.as_deref().and_then(|r| r.get(r0)).map(|r| r.0) {
-                for s in &mut out.solid[mark..] {
+                for s in out.solid[mark..]
+                    .iter_mut()
+                    .chain(&mut out.barriers[barrier_mark..])
+                {
                     if s.0 <= t + COORD_EPS && row_top < s.0 {
                         s.0 = row_top;
                     }
@@ -83,7 +87,7 @@ impl GridBox {
             let (prev, next) = (rows[i - 1], rows[i]);
             if next.0 > prev.1 + COORD_EPS {
                 out.cuts.push((prev.1, next.0));
-                out.solid.push((prev.1, next.0 + 0.05));
+                out.hold((prev.1, next.0 + 0.05));
             }
             match between[i] {
                 Between::Forced => out.forced.push(next.0),

@@ -23,6 +23,8 @@ pub(crate) struct BlockBreaks {
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) forced: Vec<f32>,
     pub(crate) solid: Vec<(f32, f32)>,
+    /// Монолиты и декорации, независимо от группировки строк widows/orphans.
+    pub(crate) barriers: Vec<(f32, f32)>,
     /// Диапазоны, которым нужны все точки и монолиты (вместе со строками):
     /// в порядке обхода, вложенные раньше объемлющих.
     pub(super) pending: Vec<Pending>,
@@ -30,6 +32,7 @@ pub(crate) struct BlockBreaks {
     pub(crate) avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    pub(crate) avoid_inside: Vec<(f32, f32)>,
     /// Секции повтора, если корень стопки — таблица.
     pub(super) sections: Option<TableSections>,
 }
@@ -41,12 +44,15 @@ pub(crate) struct MeasuredBreaks {
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) forced: Vec<f32>,
     pub(crate) solid: Vec<(f32, f32)>,
+    /// Монолиты и декорации, независимо от группировки строк widows/orphans.
+    pub(crate) barriers: Vec<(f32, f32)>,
     /// Диапазоны под `break-*: avoid`, край фрагментаинера в которых сам
     /// разрыв не уводит: в начало диапазона уходит лишь разрыв, перенесённый
     /// к его концу монолитом (`Kid::avoid`).
     pub(crate) avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    pub(crate) avoid_inside: Vec<(f32, f32)>,
     /// Разложенные секции повтора таблицы-корня (css-tables-3
     /// §repeated-headers).
     pub(crate) sections: Option<TableSections>,
@@ -78,6 +84,13 @@ pub(super) enum Pending {
         bottom: f32,
         gapless: bool,
     },
+}
+
+impl BlockBreaks {
+    pub(super) fn hold(&mut self, range: (f32, f32)) {
+        self.solid.push(range);
+        self.barriers.push(range);
+    }
 }
 
 impl BlockBox {
@@ -144,6 +157,7 @@ impl BlockBox {
 pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut BlockBreaks) {
     if b.inside_avoid {
         out.keep.push((top, bottom));
+        out.avoid_inside.push((top, bottom));
     }
     walk_contents(b, top, bottom, laid, out);
 }
@@ -181,7 +195,7 @@ fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut Blo
         return;
     }
     if b.head > 0.0 {
-        out.solid.push((top, top + b.head));
+        out.hold((top, top + b.head));
     }
     let floor = top + b.head;
     let last = match (&b.grid, &b.flex) {
