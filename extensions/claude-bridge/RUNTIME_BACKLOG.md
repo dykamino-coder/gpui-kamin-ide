@@ -25,6 +25,27 @@ Private storage IDs INC-0030/0035/0036 не создают дополнител�
 обновлять затронутые строки этого обзора вместе с canonical карточкой; дата/база
 показывают предел актуальности. При расхождении сначала проверить merged PR и evidence.
 
+## Выборочная сверка INC-0075/0076 после 1.0.80 — 2026-10-25
+
+Source: public `origin/main` `03b72b295248ccc78bcf27c1a16c5838e4e4df0b`.
+Проверены merged #412/#413, опубликованный immutable `kaminide-v1.0.80`
+(релиз #425; server 6.3.157) и ancestry обоих fixes. Это обновление только
+двух карточек; даты, source baseline и численность остального обзора
+сохраняют исторический scope, полного переаудита нет.
+
+| INC | Текущее состояние | Следующий owner / artifact |
+| --- | --- | --- |
+| [INC-0075](runtime-issues/INC-2026-0075.md) | resolved; #412 merged `d2847fe7`, Windows gate accepted on `409aa306`; published 1.0.80 | none: update/uninstall сохраняют другую копию, relaunch принят; field observation не требуется. Maintainer только при новой регрессии с evidence на build с fix |
+| [INC-0076](runtime-issues/INC-2026-0076.md) | resolved; #413 merged `3e7c53de`, Windows gate accepted on `d6080462`; published 1.0.80 | none: overlap 24/21, card и auto/manual recovery приняты; field observation не требуется. Maintainer только при новой регрессии с evidence на build с fix |
+
+[#425 Verification](https://github.com/dykamino-coder/gpui-kamin-ide/pull/425#verification-and-limitations)
+сохраняет ссылки на task-specific acceptance; последующий
+[Runtime acceptance comment](https://github.com/dykamino-coder/gpui-kamin-ide/pull/425#issuecomment-6388631189)
+подтверждает update-over-1.0.79 и normal startup финального release candidate.
+Непроверенные in-app delivery и остатки общей installer-матрицы не объявлены
+пройденными. Повторная реализация или новый runtime run для исправления
+устаревшего статуса не требуются.
+
 ## Уточнение hook/permission handoff — 2026-10-23
 
 Source: `f819b57b`; это дополнение только к BR-07/10/11 и новому INC-0077,

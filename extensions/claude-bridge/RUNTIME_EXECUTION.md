@@ -46,6 +46,27 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
+## Выборочная сверка после 1.0.80 — 2026-10-25
+
+Scope: только INC-2026-0075/0076; source `origin/main`
+`03b72b295248ccc78bcf27c1a16c5838e4e4df0b`. Это docs coordination после
+merge/release, не новая runtime-пачка; прежние snapshot и gates сохраняются.
+
+| ID / merged PR | State / artifact | Приёмка и следующий результат |
+| --- | --- | --- |
+| [INC-0075](runtime-issues/INC-2026-0075.md) / #412 | done / none | Merge `d2847fe7`; Windows candidate `409aa306`: update/uninstall только выбранной установки, foreign copy survives, relaunch. Доставлен `kaminide-v1.0.80`; обязательных gates и field observation по карточке не осталось |
+| [INC-0076](runtime-issues/INC-2026-0076.md) / #413 | done / none | Merge `3e7c53de`; Windows candidate `d6080462`: normal start, overlap 24/21, recovery card, auto/manual relaunch. Доставлен `kaminide-v1.0.80`; обязательных gates и field observation по карточке не осталось |
+
+Принятые implementation gates перечислены в
+[#425 Verification](https://github.com/dykamino-coder/gpui-kamin-ide/pull/425#verification-and-limitations);
+[Runtime acceptance](https://github.com/dykamino-coder/gpui-kamin-ide/pull/425#issuecomment-6388631189)
+фиксирует smoke финального candidate `d4ca86b2` с деревом release commit выше.
+[Immutable release](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.80)
+проверен вместе с ancestry обоих merge SHA. Остатки общей installer-матрицы
+и in-app published-update delivery из #425 не объявлены пройденными; они не
+заменяют и не отменяют принятую task-specific приёмку. Следующий owner при
+новой регрессии — maintainer с evidence на версии, содержащей fix.
+
 ## Текущая пачка `RC-2026-10-20-COMPACT` — полный цикл двух source fixes
 
 **Status:** complete — both bounded source fixes accepted, one publication verified; field observation is not run and belongs to the deployment owner. **Snapshot:** public `origin/main` `9c965ea8c7403c8a1d526ef53884c0812c8f1fd6`.
