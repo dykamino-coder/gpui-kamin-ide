@@ -1798,6 +1798,7 @@ pub fn div() -> Div {
         prepaint_listener: None,
         image_cache: None,
         prepaint_order_fn: None,
+        layout_observer: None,
     }
 }
 
@@ -1808,9 +1809,26 @@ pub struct Div {
     prepaint_listener: Option<Box<dyn Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static>>,
     image_cache: Option<Box<dyn ImageCacheProvider>>,
     prepaint_order_fn: Option<Box<dyn Fn(&mut Window, &mut App) -> SmallVec<[usize; 8]>>>,
+    // KaminIDE patch: layout inputs must observe this node, not a wrapper box.
+    layout_observer: Option<Box<dyn LayoutObserver>>,
+}
+
+/// KaminIDE patch: observes a box's layout lifecycle without adding a node.
+/// The request phase records identity; prepaint sees the completed layout.
+pub trait LayoutObserver: 'static {
+    /// Capture the identity of the node in the active layout tree.
+    fn request_layout(&mut self, id: LayoutId, window: &Window);
+    /// Publish layout inputs before descendants are prepainted. Return false
+    /// after requesting a layout retry to defer this subtree until that retry.
+    fn prepaint(&mut self, window: &mut Window) -> bool;
 }
 
 impl Div {
+    /// Observe this box's own layout, including its resolved padding and gutters.
+    pub fn observe_layout(mut self, observer: impl LayoutObserver) -> Self {
+        self.layout_observer = Some(Box::new(observer));
+        self
+    }
     /// Add a listener to be called when the children of this `Div` are prepainted.
     /// This allows you to store the [`Bounds`] of the children for later use.
     pub fn on_children_prepainted(
@@ -1961,6 +1979,10 @@ impl Element for Div {
             )
         });
 
+        // KaminIDE patch: capture identity in the tree receiving this node.
+        if let Some(observer) = &mut self.layout_observer {
+            observer.request_layout(layout_id, window);
+        }
         (
             layout_id,
             DivFrameState {
@@ -1981,6 +2003,12 @@ impl Element for Div {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Hitbox> {
+        // KaminIDE patch: stale descendants cannot publish inputs in this pass.
+        if let Some(observer) = &mut self.layout_observer
+            && !observer.prepaint(window)
+        {
+            return None;
+        }
         let image_cache = self
             .image_cache
             .as_mut()

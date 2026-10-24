@@ -145,7 +145,7 @@ pub(super) fn subgrid_gap_slice(
 pub(crate) fn subgrid_inhibited(style: &Computed) -> bool {
     style.contain_layout == Some(true)
         || style.contain_paint == Some(true)
-        || style.container_size_query
+        || style.container_type.is_size_query()
         || matches!(
             style.position,
             Some(Position::Absolute) | Some(Position::Fixed)
