@@ -7,6 +7,7 @@
 mod ancestor_stack;
 mod document_mode;
 mod filtered_content;
+mod property_registry;
 mod shadow_selectors;
 mod state_identity;
 mod style_parsing;

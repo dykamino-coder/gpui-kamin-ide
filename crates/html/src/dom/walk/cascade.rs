@@ -102,11 +102,11 @@ pub(super) fn cascade_element(
     // подсказки и лист форм их не задают.
     let pre = CascadeMap::collect(&matched, &inline_decls);
     let cascaded =
-        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered, |s, v| {
+        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered.rules, |s, v| {
             syntax_accepts(s, v, vcx)
         });
     let own_vars =
-        crate::style::css::variable_values::compute(&cascaded, vars, &registered, |s, v| {
+        crate::style::css::variable_values::compute(&cascaded, vars, &registered.rules, |s, v| {
             syntax_accepts(s, v, vcx)
         });
     let vars = &own_vars;
