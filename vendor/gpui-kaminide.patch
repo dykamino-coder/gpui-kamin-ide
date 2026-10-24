@@ -10849,10 +10849,10 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +}
 diff --git a/vendor/gpui/src/taffy/final_geometry.rs b/vendor/gpui/src/taffy/final_geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..80c90c383a4a98d1960beb690678606568ee0b6e
+index 0000000000000000000000000000000000000000..1cbef3d5cfb6e96de71266c3bfd8991b886b2761
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/final_geometry.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,130 @@
 +//! Завершённая normal-flow геометрия, независимая от размещения при отрисовке.
 +//! Upstream proposal: https://github.com/zed-industries/zed/issues/66070.
 +use super::{AvailableSpace, LayoutId, TaffyLayoutEngine};
@@ -10983,7 +10983,6 @@ index 0000000000000000000000000000000000000000..80c90c383a4a98d1960beb6906786065
 +        })
 +    }
 +}
-+
 diff --git a/vendor/gpui/src/taffy/flex_layout.rs b/vendor/gpui/src/taffy/flex_layout.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..05349cb3ac50cf5c84a321c378ec89ff37f316c8
