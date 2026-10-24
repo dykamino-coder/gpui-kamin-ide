@@ -10,6 +10,7 @@ pub(crate) mod gradient_geometry;
 pub(crate) mod gradient_raster;
 mod presentation;
 pub(crate) mod raster;
+mod raster_keys;
 mod source_types;
 mod sources;
 use crate::document::state::ValueCx;

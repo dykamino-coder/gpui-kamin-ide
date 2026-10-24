@@ -15,7 +15,12 @@ pub(crate) fn at_url(text: &str) -> bool {
 /// Пока запись разбиралась как обычный текст, `url( { test )` открывал блок,
 /// и остаток таблицы съезжал (`uri-012`).
 pub(crate) fn skip_url(text: &str) -> usize {
-    let mut at = 4; // `url(`
+    4 + skip_url_body(&text[4..])
+}
+
+/// Длина тела URL вместе с закрывающей скобкой.
+pub(crate) fn skip_url_body(text: &str) -> usize {
+    let mut at = 0;
     while at < text.len() {
         let ch = text[at..].chars().next().unwrap_or('\u{0}');
         match ch {

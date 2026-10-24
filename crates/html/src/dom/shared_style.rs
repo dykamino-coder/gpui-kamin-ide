@@ -124,22 +124,17 @@ mod tests {
             &Rc::new(Computed::default()),
             vcx,
         );
-        fn find(nodes: &[crate::dom::Node]) -> Option<&crate::dom::Element> {
-            nodes.iter().find_map(|n| match n {
-                crate::dom::Node::Element(e) if e.tag == "div" => Some(e),
-                crate::dom::Node::Element(e) => find(&e.children),
-                _ => None,
-            })
-        }
-        let original = &find(&parsed.nodes).unwrap().style;
+        let original = &crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "div")
+            .unwrap()
+            .style;
         let mut copy = original.clone();
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
         copy.used_mut().width = Some(Len::Px(100.0));
         assert_eq!(original.used().width, Some(Len::Pct(0.5)));
         assert_eq!(copy.used().width, Some(Len::Px(100.0)));
-        // The computed stage is the materialized style, without the used value.
+        // Вычисленная стадия хранит материализованный стиль без used-значения.
         assert_eq!(copy.computed().width, Some(Len::Pct(0.5)));
-        // Neither the cascaded nor the materialized computed style changed.
+        // Каскадный и материализованный вычисленный стили не изменились.
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
         assert!(Rc::ptr_eq(
             &original.slot().any().unwrap(),

@@ -15,9 +15,14 @@ fn vars(css: &str) -> VarMap {
 
 #[test]
 fn variable_names_are_not_unescaped_twice() {
-    let raw = vars(r"--a\\31: green; --b: var(--a\\31)");
-    let values = compute(&raw, &HashMap::new(), &HashMap::new(), |_, _| true);
-    assert_eq!(values["--b"].trim(), "green");
+    for css in [
+        r"--a\\31: green; --b: var(--a\\31)",
+        r"--a\ b: green; --b: var(--a\ b)",
+        r"--a\ b: red; --b: var(--a b, green)",
+    ] {
+        let values = compute(&vars(css), &HashMap::new(), &HashMap::new(), |_, _| true);
+        assert_eq!(values["--b"].trim(), "green", "{css}");
+    }
 }
 
 #[test]

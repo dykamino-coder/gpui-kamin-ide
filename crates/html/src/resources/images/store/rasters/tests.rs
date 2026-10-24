@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::resources::images::store::{ImageServices, ResourcePolicy};
+use crate::resources::images::svg_links;
 use crate::resources::images::{cache::DecodedImageCache, fixtures, tests_support::TempDir};
 use crate::resources::loader::{LoadError, Loaded, ResourceLoader};
 use std::sync::{
@@ -151,6 +152,8 @@ fn external_bytes_are_cached_revalidated_and_checked_by_document_policy() {
     loader.revision.store(2, Ordering::Relaxed);
     let b = store.rasterize_svg(markup, req).unwrap();
     assert_eq!(b.pixel(0, 0), Some([255, 0, 0, 255]));
+    assert!(!Arc::ptr_eq(&a, &b));
+    assert!(Arc::ptr_eq(&b, &store.rasterize_svg(markup, req).unwrap()));
     let denied = ImageStore::new(services, None, ResourcePolicy::data_only());
     assert_eq!(
         denied.rasterize_svg(markup, req).unwrap().pixel(0, 0),

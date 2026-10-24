@@ -20,6 +20,7 @@ fn rule(css: &str, specificity_selector: &str) -> Rule {
 
 const ROOT: CascadeCx<'static> = CascadeCx {
     attrs: &[],
+    html_attrs: false,
     sibling: None,
     root: true,
 };

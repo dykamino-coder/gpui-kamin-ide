@@ -19,10 +19,11 @@ pub(crate) fn eligible(element: &Element) -> bool {
         style.display,
         Some(Display::Grid | Display::InlineGrid | Display::GridLanes)
     );
-    (grid || matches!(style.display, None | Some(Display::Block)))
-        && (grid || style.inline_display != Some(true))
+    (grid
+        || (matches!(style.display, None | Some(Display::Block))
+            && style.inline_display != Some(true)))
         && !matches!(style.position, Some(Position::Absolute | Position::Fixed))
-        && !style.float.is_some_and(|value| value != 0)
+        && style.float.is_none_or(|value| value == 0)
         && !style.intrinsic_wrapper_required
         && !style.contains_width() && !style.contains_height()
         && style.calc_size.iter().chain(style.calc_size_max.iter()).all(Option::is_none)

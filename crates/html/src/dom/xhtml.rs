@@ -1,23 +1,19 @@
 //! XHTML: самозакрывающиеся теги в HTML-разборе.
 
-use crate::dom::*;
-
-/// XHTML (`application/xhtml+xml`: `<?xml` или `xmlns` XHTML в шапке) у нас
-/// разбирает HTML-парсер, а тот на НЕ-void теге признак самозакрытия
+/// Для HTML-адаптера XHTML с xmlns на разобранном корне HTML-парсер
+/// на НЕ-void теге признак самозакрытия
 /// игнорирует: `<div class="a"/>` открывал элемент, и всё дальнейшее
 /// вкладывалось в него (css-flexbox `.xhtml`, семьи с
 /// `<div/>`-распорками). Такие теги разворачиваются в пару `<tag …></tag>`
 /// до разбора; void-элементы и содержимое `svg`/`math` (там парсер
 /// самозакрытие понимает) не трогаются.
 pub(super) fn expand_xhtml_self_closing(html: &str) -> std::borrow::Cow<'_, str> {
-    let xhtml = content::is_xhtml(html);
     // `<pre>`/`<listing>`/`<textarea>` в XHTML тоже требуют правки (см. ниже),
     // даже если самозакрытых тегов в документе нет.
     let lf_tags = ["<pre", "<listing", "<textarea"]
         .iter()
         .any(|t| html.contains(t));
-    if !xhtml || (!html.contains("/>") && !lf_tags && !html.contains("<!--") && !html.contains('&'))
-    {
+    if !html.contains("/>") && !lf_tags && !html.contains("<!--") && !html.contains('&') {
         return std::borrow::Cow::Borrowed(html);
     }
     const VOID: &[&str] = &[

@@ -9,19 +9,11 @@ use resvg::{
 };
 use std::sync::Arc;
 
-/// Все внешние байты получены владельцем документа; бэкенд ничего не читает.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct ExternalImage {
-    pub(crate) href: String,
-    pub(crate) revision: crate::resources::loader::Revision,
-    pub(crate) bytes: Option<Arc<Vec<u8>>>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct RasterRequest {
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) density: u32,
+    pub(crate) density: crate::cache::FloatKey,
     pub(crate) pad: u32,
     pub(crate) external_resources: bool,
 }
@@ -30,7 +22,7 @@ impl RasterRequest {
         Self {
             width: (w * density).round().max(1.0) as u32,
             height: (h * density).round().max(1.0) as u32,
-            density: density.to_bits(),
+            density: density.into(),
             pad: (pad.max(0.0) * density).round() as u32,
             external_resources: true,
         }
@@ -46,11 +38,12 @@ pub(crate) fn rasterize(
     markup: &str,
     request: RasterRequest,
     fonts: Arc<usvg::fontdb::Database>,
-    images: &[ExternalImage],
+    load: &(dyn Fn(&str) -> Option<Arc<Vec<u8>>> + Send + Sync),
     allow_data: bool,
 ) -> Option<Arc<CpuRaster>> {
     let options = usvg::Options {
         fontdb: fonts,
+        use_href_resolver: Some(usvg::UseHrefResolver(Box::new(load))),
         image_href_resolver: usvg::ImageHrefResolver {
             resolve_data: Box::new(move |mime, bytes, opts| {
                 allow_data
@@ -58,24 +51,7 @@ pub(crate) fn rasterize(
                     .flatten()
             }),
             resolve_string: Box::new(move |href, opts| {
-                if !request.external_resources {
-                    return None;
-                }
-                let bytes = images
-                    .iter()
-                    .find(|image| {
-                        // URI file: и абсолютный путь обозначают один ресурс;
-                        // декодер не должен повторно читать его по другому имени.
-                        let resource = |s: &str| {
-                            crate::resources::loader::ResourceUrl::resolve(s, None)
-                                .0
-                                .base_url()
-                        };
-                        image.href == href
-                            || resource(&image.href).is_some_and(|u| Some(u) == resource(href))
-                    })?
-                    .bytes
-                    .clone()?;
+                let bytes = load(href)?;
                 usvg::ImageHrefResolver::default_data_resolver()("text/plain", bytes, opts)
             }),
         },
@@ -129,4 +105,19 @@ pub(crate) fn rasterize(
         colour_space: ColourSpace::Srgb,
         bytes: bytes.into(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn requests_canonicalize_nan_density_and_signed_zero() {
+        for [a, b] in [[0.0, -0.0], [f32::NAN, f32::from_bits(0xff80_0001)]] {
+            let a = RasterRequest::new(10.0, 8.0, a, 0.0);
+            let b = RasterRequest::new(10.0, 8.0, b, -0.0);
+            assert_eq!(a, b);
+            assert_eq!(crate::cache::hint(a), crate::cache::hint(b));
+        }
+    }
 }

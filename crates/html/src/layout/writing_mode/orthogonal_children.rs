@@ -34,7 +34,7 @@ pub(crate) fn orthogonal_children(
             None | Some(Display::Block | Display::InlineBlock | Display::TableCell)
         ) && matches!(ch.style.used().height, None | Some(Len::Auto))
             && ch.style.used().align_self.is_none()
-            && !ch.style.used().float.is_some_and(|side| side != 0)
+            && ch.style.used().float.is_none_or(|side| side == 0)
         {
             // The child stands at the container's inline-start (§6.4).
             let from_bottom =

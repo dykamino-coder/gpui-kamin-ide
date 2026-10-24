@@ -102,11 +102,11 @@ pub(super) fn cascade_element(
     // подсказки и лист форм их не задают.
     let pre = CascadeMap::collect(&matched, &inline_decls);
     let cascaded =
-        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered, |s, v| {
+        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered.rules, |s, v| {
             syntax_accepts(s, v, vcx)
         });
     let own_vars =
-        crate::style::css::variable_values::compute(&cascaded, vars, &registered, |s, v| {
+        crate::style::css::variable_values::compute(&cascaded, vars, &registered.rules, |s, v| {
             syntax_accepts(s, v, vcx)
         });
     let vars = &own_vars;
@@ -115,6 +115,7 @@ pub(super) fn cascade_element(
     // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
     let element = CascadeCx {
         attrs,
+        html_attrs: me.html_attrs,
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
         root: path.is_empty(),
     };

@@ -96,6 +96,32 @@ fn attr_of(handle: &Handle, key: &str) -> Option<String> {
         .map(|a| a.value.to_string())
 }
 
+/// Наличие шаблона тени проверяется после нормализации имён HTML-парсером.
+/// Вложенные шаблоны также учитываются; XML не получает HTML-атрибуты.
+pub(super) fn has_declarative_shadow(root: &Handle) -> bool {
+    let mut pending = vec![root.clone()];
+    while let Some(node) = pending.pop() {
+        if let NodeData::Element {
+            attrs,
+            template_contents,
+            ..
+        } = &node.data
+            && let Some(contents) = template_contents.borrow().as_ref()
+        {
+            if attrs
+                .borrow()
+                .iter()
+                .any(|a| a.name.ns.is_empty() && &*a.name.local == "shadowrootmode")
+            {
+                return true;
+            }
+            pending.push(contents.clone());
+        }
+        pending.extend(node.children.borrow().iter().cloned());
+    }
+    false
+}
+
 /// Предпроход по теням в порядке дерева. На хосте: область стилей тени,
 /// отметки `:has` по тени, распределение слотов; дальше — в тень с цепочкой
 /// из одного безликого хоста (css-shadow-1 §3.1: «the selector match list is

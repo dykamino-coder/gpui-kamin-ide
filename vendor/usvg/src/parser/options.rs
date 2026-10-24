@@ -81,6 +81,9 @@ pub struct Options<'a> {
     /// Default: see type's documentation for details
     pub image_href_resolver: ImageHrefResolver<'a>,
 
+    /// KaminIDE patch: external use loading. `None` keeps standalone local-file loading.
+    pub use_href_resolver: Option<crate::UseHrefResolver<'a>>,
+
     /// Specifies how fonts should be resolved and loaded.
     #[cfg(feature = "text")]
     pub font_resolver: FontResolver<'a>,
@@ -114,6 +117,7 @@ impl Default for Options<'_> {
             image_rendering: ImageRendering::default(),
             default_size: Size::from_wh(100.0, 100.0).unwrap(),
             image_href_resolver: ImageHrefResolver::default(),
+            use_href_resolver: None,
             #[cfg(feature = "text")]
             font_resolver: FontResolver::default(),
             #[cfg(feature = "text")]

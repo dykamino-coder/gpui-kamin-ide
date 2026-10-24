@@ -39,14 +39,16 @@ pub(crate) fn snapshot_generated(
         .then(|| std::rc::Rc::new(std::cell::Cell::new(false)));
 }
 
-/// The parser's existing XHTML adapter recognizes declarations and root xmlns.
-pub(super) fn is_xhtml(html: &str) -> bool {
-    let mut cut = html.len().min(2048);
-    while !html.is_char_boundary(cut) {
-        cut -= 1;
-    }
-    let head = &html[..cut];
-    head.trim_start().starts_with("<?xml") || head.contains("http://www.w3.org/1999/xhtml")
+/// HTML-адаптер XHTML включается явным xmlns разобранного корня html.
+/// Настоящий XML задаёт язык хоста независимо от наличия пространства имён.
+pub(super) fn is_xhtml(document: &markup5ever_rcdom::Handle) -> bool {
+    document.children.borrow().iter().any(|node| {
+        matches!(&node.data, markup5ever_rcdom::NodeData::Element { name, attrs, .. }
+            if &*name.local == "html" && &*name.ns == "http://www.w3.org/1999/xhtml"
+                && attrs.borrow().iter().any(|a| a.name.ns.is_empty()
+                    && &*a.name.local == "xmlns"
+                    && &*a.value == "http://www.w3.org/1999/xhtml"))
+    })
 }
 
 pub(crate) fn html_attributes(namespace: &str, xhtml: bool) -> bool {
