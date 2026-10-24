@@ -6,7 +6,6 @@
 
 use crate::document::state::ValueCx;
 
-use crate::style::computed::top_level_comma;
 use crate::style::css::VarMap;
 use crate::style::values::value::{Color, Len};
 
@@ -18,20 +17,6 @@ use crate::style::values::value::{Color, Len};
 /// Потолок нужен от кольцевых ссылок.
 const VAR_DEPTH: usize = 8;
 
-/// Смещение скобки, парной той, что открыла запись.
-fn balanced_close(after_open: &str) -> Option<usize> {
-    let mut depth = 0i32;
-    for (i, ch) in after_open.char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' if depth == 0 => return Some(i),
-            ')' => depth -= 1,
-            _ => {}
-        }
-    }
-    None
-}
-
 /// The element whose style is being cascaded, as far as substitution
 /// functions need it: its attributes for typed `attr()` (css-values-5 §7.7)
 /// and its place among siblings for `sibling-index()`/`sibling-count()`
@@ -40,6 +25,7 @@ fn balanced_close(after_open: &str) -> Option<usize> {
 /// frames, pseudo-elements) use [`CascadeCx::NONE`] and take the fallback.
 #[derive(Clone, Copy)]
 pub struct CascadeCx<'a> {
+    pub html_attrs: bool,
     pub attrs: &'a [(String, String)],
     /// `(index, count)`, index from 1.
     pub sibling: Option<(usize, usize)>,
@@ -51,154 +37,15 @@ pub struct CascadeCx<'a> {
 impl CascadeCx<'_> {
     pub const NONE: CascadeCx<'static> = CascadeCx {
         attrs: &[],
+        html_attrs: false,
         sibling: None,
         root: false,
     };
 }
 
-/// `sibling-index()` / `sibling-count()` — целым числом (css-values-5
-/// §tree-counting: «sibling-index() … returns an <integer> … the index of the
-/// element among its inclusive siblings, starting at 1»). Без хозяина
-/// (вне каскада элемента) запись остаётся как есть и роняет объявление.
-pub(super) fn resolve_sibling(value: String, cx: CascadeCx) -> String {
-    if !value.contains("sibling-") {
-        return value;
-    }
-    match cx.sibling {
-        Some((i, n)) => value
-            .replace("sibling-index()", &i.to_string())
-            .replace("sibling-count()", &n.to_string()),
-        None => value,
-    }
-}
-
-/// Значение атрибута по имени из `attr()`.
-///
-/// Префикс пространства имён (`foo|bar`): у атрибутов HTML пространства нет,
-/// а реестра `@namespace` здесь не видно — атрибут считается отсутствующим, и
-/// берётся запасное значение (`attr-namespace-non-existing`). `|bar` — по
-/// локальному имени; `*|bar` сюда не доходит (`resolve_attrs`). Сравнение
-/// ASCII-регистронезависимое: HTML-парсер опускает в нижний регистр только
-/// ASCII, и запрос опускается так же, а не-ASCII знаки сравниваются как есть
-/// (`html-attr-case-insensitivity`).
-fn attr_value(name: &str, attrs: &[(String, String)]) -> Option<String> {
-    let local = match name.split_once('|') {
-        Some(("", local)) => local,
-        Some(_) => return None,
-        None => name,
-    };
-    attrs
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case(local))
-        .map(|(_, v)| v.clone())
-}
-
-/// Значение атрибута под типом `attr()`; `None` — не разбирается этим типом.
-fn attr_cast(value: &str, ty: &str, vcx: ValueCx<'_>) -> Option<String> {
-    let v = value.trim();
-    let ty: String = ty
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_ascii_lowercase();
-    // `<length>`: голое число длиной не бывает, кроме нуля (css-values-4
-    // §6.1); `Len::parse` принимает его точками — отсекаем здесь.
-    let length = |v: &str| match Len::parse(v, vcx) {
-        Some(Len::Px(n)) if v.parse::<f32>().is_ok() => (n == 0.0).then(|| v.to_string()),
-        Some(
-            Len::Pct(_)
-            | Len::Auto
-            | Len::MinContent
-            | Len::MaxContent
-            | Len::FitContent
-            | Len::Anchor(_),
-        )
-        | None => None,
-        Some(_) => Some(v.to_string()),
-    };
-    let percentage = |v: &str| {
-        v.strip_suffix('%')
-            .and_then(|n| n.trim().parse::<f32>().ok())
-            .map(|_| v.to_string())
-    };
-    match ty.as_str() {
-        // Любые токены; `url()` из атрибута запрещён (attr-tainted).
-        "type(*)" => {
-            (!v.is_empty() && !v.to_ascii_lowercase().contains("url(")).then(|| v.to_string())
-        }
-        "type(<length>)" => length(v),
-        "type(<percentage>)" => percentage(v),
-        "type(<length-percentage>)" => length(v).or_else(|| percentage(v)),
-        "type(<number>)" | "number" => v.parse::<f32>().ok().map(|_| v.to_string()),
-        "type(<integer>)" => v.parse::<i64>().ok().map(|_| v.to_string()),
-        "type(<color>)" => Color::parse(v, vcx).map(|_| v.to_string()),
-        // `attr(x px)` — число из атрибута с единицей из записи.
-        unit if !unit.is_empty()
-            && (unit == "%" || unit.chars().all(|c| c.is_ascii_alphabetic())) =>
-        {
-            v.parse::<f32>().ok().map(|_| format!("{v}{unit}"))
-        }
-        _ => None,
-    }
-}
-
-/// Типизированный `attr()` (css-values-5 §7.7): `attr(<имя> <тип>, <запас>?)`
-/// подставляется ДО разбора значения, как `var()`. Нетипизированная запись
-/// (`attr(x)` — строка) остаётся как есть: её разбирают `content` и счётчики.
-/// Негодный атрибут без запаса делает объявление недействительным на
-/// вычислении — значение становится `unset`.
-pub(super) fn resolve_attrs(key: &str, value: &str, cx: CascadeCx, vcx: ValueCx<'_>) -> String {
-    if key == "content"
-        || !value
-            .as_bytes()
-            .windows(5)
-            .any(|w| w.eq_ignore_ascii_case(b"attr("))
-    {
-        return value.to_string();
-    }
-    let mut out = String::with_capacity(value.len());
-    let mut rest = value;
-    // ASCII-опускание не сдвигает байтов: индекс годен и для `rest`.
-    while let Some(at) = rest.to_ascii_lowercase().find("attr(") {
-        let after = &rest[at + 5..];
-        let Some(close) = balanced_close(after) else {
-            break;
-        };
-        let inner = &after[..close];
-        let (head, fallback) = match top_level_comma(inner) {
-            Some(i) => (inner[..i].trim(), Some(inner[i + 1..].trim())),
-            None => (inner.trim(), None),
-        };
-        let (name, ty) = match head.split_once(char::is_whitespace) {
-            Some((n, t)) => (n.trim(), t.trim()),
-            None => (head, ""),
-        };
-        // `<attr-name>` — как `<wq-name>`, «but without the possibility of a
-        // wildcard prefix» (css-values-5 §attr-notation, Overview.bs:2057-2059):
-        // `attr(*|bar …)` негоден при разборе, запас не спасает
-        // (`attr-namespace-wildcard`). Выброс объявления здесь выражается
-        // `unset`, как у негодного атрибута без запаса.
-        if name.starts_with("*|") {
-            return "unset".to_string();
-        }
-        out.push_str(&rest[..at]);
-        if ty.is_empty() {
-            out.push_str(&rest[at..at + 5 + close + 1]);
-        } else {
-            match (
-                attr_value(name, cx.attrs).and_then(|v| attr_cast(&v, ty, vcx)),
-                fallback,
-            ) {
-                (Some(v), _) => out.push_str(&v),
-                (None, Some(f)) => out.push_str(f),
-                (None, None) => return "unset".to_string(),
-            }
-        }
-        rest = &after[close + 1..];
-    }
-    out.push_str(rest);
-    out
-}
+mod attr_cast;
+mod substitute;
+pub(super) use substitute::{resolve_attrs, resolve_sibling};
 
 pub(super) fn resolve_vars(value: &str, vars: &VarMap) -> String {
     let mut out = value.to_string();
@@ -222,3 +69,6 @@ pub(super) fn resolve_vars(value: &str, vars: &VarMap) -> String {
         out
     }
 }
+
+#[cfg(test)]
+mod tests;

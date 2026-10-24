@@ -97,3 +97,24 @@ fn xml_shadow_attributes_do_not_acquire_html_normalization() {
     let parsed = parse_xml(&xml, "");
     assert!(!parsed.doc.quirks());
 }
+
+#[test]
+fn typed_attr_uses_host_language_case_rules_in_the_style_walk() {
+    use crate::style::values::value::Len;
+    let css = "p { width: attr(DATA-X px, 7px) }";
+    for (source, xml, expected) in [
+        ("<p data-x='12'/>", false, 12.0),
+        ("<p data-x='12'/>", true, 7.0),
+        ("<p DATA-X='12'/>", true, 12.0),
+    ] {
+        let parsed = if xml {
+            parse_xml(source, css)
+        } else {
+            parse(source, css)
+        };
+        assert_eq!(
+            first_element(&parsed).style.cascaded().width,
+            Some(Len::Px(expected))
+        );
+    }
+}

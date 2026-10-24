@@ -62,7 +62,7 @@ fn expand(
         // that is not a <custom-property-name> yields the guaranteed-invalid
         // value, so the fallback (if any) is used.
         let value = custom_name(&call.name)
-            .then(|| lookup(&call.name))
+            .then(|| lookup(&super::super::unescape(&call.name)))
             .flatten();
         let replacement = match value {
             Some(value) => value,
@@ -77,57 +77,33 @@ fn expand(
     Some(result)
 }
 
-/// Names arrive with escapes already decoded, so only the dashed prefix is
-/// checked here; any other token sequence simply misses the lookup.
+/// Проверить сериализованный идентификатор до декодирования при поиске.
+/// Экранированный пробел допустим в имени, а отдельный токен пробела — нет.
 fn custom_name(name: &str) -> bool {
-    name.starts_with("--") && name != "--"
+    let decoded = super::super::unescape(name);
+    decoded.starts_with("--") && decoded != "--" && super::super::selector_tokens::ident(name)
 }
 
 fn calls(raw: &str) -> Vec<Call> {
-    use super::super::variable_tokens::{block_end, escape_end, string_end};
+    use super::super::variable_tokens::block_end;
     let mut found = Vec::new();
-    let mut at = 0;
-    while at < raw.len() {
-        let ch = raw[at..].chars().next().unwrap();
-        if matches!(ch, '\'' | '"') {
-            at = string_end(raw, at, ch).unwrap_or(raw.len());
+    let mut from = 0;
+    for function in crate::css_syntax::functions(raw) {
+        if function.start < from || !function.name.eq_ignore_ascii_case("var") {
             continue;
         }
-        if raw[at..].starts_with("/*") {
-            at += raw[at + 2..].find("*/").map_or(raw.len() - at, |n| n + 4);
-            continue;
-        }
-        let start = at;
-        if ch == '\\' || ch == '-' || ch == '_' || ch.is_alphanumeric() || ch >= '\u{80}' {
-            while at < raw.len() {
-                let c = raw[at..].chars().next().unwrap();
-                if c == '\\' {
-                    at = escape_end(raw, at);
-                } else if c.is_alphanumeric() || matches!(c, '-' | '_') || c >= '\u{80}' {
-                    at += c.len_utf8();
-                } else {
-                    break;
-                }
-            }
-            if raw[start..at].eq_ignore_ascii_case("var") && raw[at..].starts_with('(') {
-                let Some(end) = block_end(raw, at, '(') else {
-                    break;
-                };
-                let inner = super::super::strip_comments(&raw[at + 1..end]);
-                let args = super::super::split_top_level(&inner, ',');
-                found.push(Call {
-                    start,
-                    end: (end + 1).min(raw.len()),
-                    // parse_decls has already decoded identifier escapes.
-                    name: args[0].trim().to_string(),
-                    fallback: (args.len() > 1).then(|| args[1..].join(",")),
-                });
-                at = (end + 1).min(raw.len());
-            }
-        }
-        if at == start {
-            at += ch.len_utf8();
-        }
+        let Some(end) = block_end(raw, function.open, '(') else {
+            break;
+        };
+        let inner = super::super::strip_comments(&raw[function.open + 1..end]);
+        let args = super::super::split_top_level(&inner, ',');
+        from = (end + 1).min(raw.len());
+        found.push(Call {
+            start: function.start,
+            end: from,
+            name: args[0].trim().to_string(),
+            fallback: (args.len() > 1).then(|| args[1..].join(",")),
+        });
     }
     found
 }
