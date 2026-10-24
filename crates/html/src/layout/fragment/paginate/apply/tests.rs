@@ -8,6 +8,11 @@ fn carried_gap_excludes_fragment_growth_and_tracks_truncation() {
             "<div style='display:flex;flex-wrap:wrap;row-gap:10px'><div style='margin-top:3px;height:50px'></div></div>",
             "",
         );
+        crate::style::cascade::materialize::materialize(
+            &tree.nodes,
+            &std::rc::Rc::new(crate::style::computed::Computed::default()),
+            tree.values(),
+        );
         fn div(node: &mut Node) -> Option<&mut Element> {
             let Node::Element(e) = node else { return None };
             if e.tag == "div" {
@@ -32,7 +37,9 @@ fn carried_gap_excludes_fragment_growth_and_tracks_truncation() {
             panic!("item")
         };
         assert_eq!(item.marks.carried_row_gap, remaining, "growth {by}");
-        assert_eq!(item.style.computed().margin.top, Some(Len::Px(13.0 + by)));
-        assert_eq!(parent.style.computed().gap.unwrap().0, Some(Len::Px(0.0)));
+        assert_eq!(item.style.used().margin.top, Some(Len::Px(13.0 + by)));
+        assert_eq!(parent.style.used().gap.unwrap().0, Some(Len::Px(0.0)));
+        assert_eq!(item.style.computed().margin.top, Some(Len::Px(3.0)));
+        assert_eq!(parent.style.computed().gap.unwrap().0, Some(Len::Px(10.0)));
     }
 }

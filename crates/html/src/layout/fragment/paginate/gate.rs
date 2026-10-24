@@ -91,7 +91,7 @@ mod tests {
                 let tree = crate::dom::parse(&html, "");
                 fn flex(node: &Node) -> Option<&Element> {
                     let Node::Element(e) = node else { return None };
-                    if e.style.computed().display == Some(Display::Flex) {
+                    if e.style.used().display == Some(Display::Flex) {
                         return Some(e);
                     }
                     e.children.iter().find_map(flex)
