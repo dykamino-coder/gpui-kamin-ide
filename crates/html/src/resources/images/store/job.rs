@@ -94,6 +94,10 @@ impl ImageStore {
     }
 
     /// Службы, над которыми выполняются задания.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "Задания пока выполняются внутри хранилища")
+    )]
     pub(crate) fn services(&self) -> &ImageServices {
         &self.services
     }

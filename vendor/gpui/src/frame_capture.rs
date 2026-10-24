@@ -3,7 +3,7 @@
 //! The runner used to capture its window with `PrintWindow`, i.e. from the DWM
 //! compositor: an occluded or off-screen window gets its frames consumed rarely,
 //! the swap chain's latency gate then skips drawing, and captures came late or
-//! blank (2026-10-06: 11 instead of 70 pairs/min, 350 false blank pages). With
+//! blank. With
 //! capture enabled the renderer copies every drawn frame's back buffer to memory
 //! before presenting and no longer waits for the compositor, so the result does
 //! not depend on where the window is or what covers it.

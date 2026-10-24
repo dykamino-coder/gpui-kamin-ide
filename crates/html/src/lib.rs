@@ -60,13 +60,6 @@ pub(crate) mod document;
 pub(crate) mod interactive;
 pub(crate) mod layout;
 pub(crate) mod paint;
-// Сервис картинок вводится раньше потребителей: пока paint, layout и style не переведены
-// на него (план I-3..I-6), часть API живёт только в тестах. Ожидание снимается само —
-// компилятор потребует убрать атрибут, когда неиспользуемого кода не останется.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumers migrate to resources in I-3..I-6")
-)]
 pub(crate) mod resources;
 pub(crate) mod style;
 pub(crate) mod text;
