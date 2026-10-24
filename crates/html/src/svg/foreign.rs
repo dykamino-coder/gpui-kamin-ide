@@ -34,8 +34,9 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
             gpui::canvas(
                 move |_, window, cx| {
                     let mut tree = tree;
-                    let viewport =
-                        crate::dom::resource_facts::view_box_ratio(&tree).unwrap_or((w, h));
+                    let zoom = tree.style.used().zoom_eff.unwrap_or(1.0);
+                    let viewport = crate::dom::resource_facts::view_box_ratio(&tree)
+                        .unwrap_or((w / zoom, h / zoom));
                     let scale = (w / viewport.0).max(h / viewport.1);
                     let mut layers = Vec::new();
                     layer::prepare(

@@ -103,7 +103,6 @@ pub(super) fn finish_element(
     let inline = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
     style.block_tag = !inline;
     style.decor_box = node_id;
-    style.zoom_boundary = tag.eq_ignore_ascii_case("foreignObject");
     // Замена элемента (css-content-3 §content-property: «a single
     // <image>» на самом элементе): коробка становится замещаемой
     // картинкой, содержимое не рисуется. Уровень коробки остаётся от

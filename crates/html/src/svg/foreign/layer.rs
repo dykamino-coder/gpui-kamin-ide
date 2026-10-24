@@ -36,14 +36,25 @@ pub(super) fn prepare(
     let merged = box_style(inherited, &e.style, vcx);
     let scale = scale * super::geometry::scale(e);
     if e.tag.eq_ignore_ascii_case("foreignObject") {
-        let w = length(e.style.used().width, e.attr("width"), viewport.0, vcx);
-        let h = length(e.style.used().height, e.attr("height"), viewport.1, vcx);
+        let zoom = merged.zoom_eff.unwrap_or(1.0);
+        let w =
+            super::geometry::length(e.style.used().width, e.attr("width"), viewport.0, zoom, vcx);
+        let h = super::geometry::length(
+            e.style.used().height,
+            e.attr("height"),
+            viewport.1,
+            zoom,
+            vcx,
+        );
         if w <= 0.0 || h <= 0.0 {
             e.children.clear();
             return;
         }
-        let (origin, paint_size) = super::geometry::capture(&merged, (w, h), viewport);
-        let density = (super::super::DENSITY * scale).clamp(1.0, 8.0);
+        // HTML раскладывается в CSS-пикселях с действующим зумом. SVG 2
+        // задаёт содержащий блок в пользовательских единицах; при размещении
+        // снимка переход обратно снимает зум ровно один раз.
+        let (origin, paint_size) = super::geometry::capture(&merged, (w, h), viewport, zoom);
+        let density = (super::super::DENSITY * scale / zoom).clamp(1.0, 8.0);
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         format!("{e:?}{merged:?}").hash(&mut hasher);
         // Raster identity includes document content and the application text
@@ -62,8 +73,8 @@ pub(super) fn prepare(
             html.attrs.clear();
             html.marks = Default::default();
             html.style = crate::dom::SharedStyle::layout_made(merged);
-            html.style.used_mut().width = Some(Len::Px(w));
-            html.style.used_mut().height = Some(Len::Px(h));
+            html.style.used_mut().width = Some(Len::Px(w * zoom));
+            html.style.used_mut().height = Some(Len::Px(h * zoom));
             html.style.used_mut().display = Some(Display::Block);
             html.style.used_mut().position = Some(Position::Relative);
             html.style.used_mut().flow_root = Some(true);
@@ -96,8 +107,8 @@ pub(super) fn prepare(
             let mut element = crate::interactive::scroll_box::scrollable(&html, &root, opts)
                 .unwrap_or_else(|| opts.cx.contracts.build.element(&html, &root, opts));
             let size = gpui::size(
-                AvailableSpace::Definite(px(w)),
-                AvailableSpace::Definite(px(h)),
+                AvailableSpace::Definite(px(w * zoom)),
+                AvailableSpace::Definite(px(h * zoom)),
             );
             window.with_scene_capture_scale(density, |window| {
                 window.with_absolute_transformation(gpui::TransformationMatrix::unit(), |window| {
@@ -139,7 +150,7 @@ pub(super) fn prepare(
         }
         e.attrs.push(("preserveAspectRatio".into(), "none".into()));
         if origin != gpui::Point::default() {
-            super::geometry::expand(e, origin, paint_size);
+            super::geometry::expand(e, origin, paint_size, zoom);
         }
         return;
     }
@@ -152,15 +163,6 @@ pub(super) fn prepare(
         if let Node::Element(child) = child {
             prepare(child, &merged, opts, viewport, scale, window, cx, layers);
         }
-    }
-}
-
-fn length(style: Option<Len>, attr: Option<&str>, base: f32, vcx: ValueCx<'_>) -> f32 {
-    let value = style.or_else(|| attr.and_then(|s| Len::parse(s, vcx)));
-    match value {
-        Some(Len::Px(v)) => v,
-        Some(Len::Pct(v)) => base * v,
-        _ => 0.0,
     }
 }
 
