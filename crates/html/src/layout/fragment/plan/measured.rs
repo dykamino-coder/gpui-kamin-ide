@@ -2,6 +2,17 @@
 use super::{Plan, Space, fill_pieces, open_kid};
 use crate::layout::fragment::types::Kid;
 
+/// Ограничения и курсор содержимого перед мерой очередной копии. Полная высота
+/// фрагментаинера отличается от оставшегося места и от процентной базы.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MeasureRequest {
+    pub(crate) kid: usize,
+    pub(crate) copy: usize,
+    pub(crate) col: usize,
+    pub(crate) from: f32,
+    pub(crate) block_size: f32,
+}
+
 // Filling returns column geometry and continuation metadata together.
 #[allow(clippy::type_complexity)]
 pub(crate) fn fill_measured(

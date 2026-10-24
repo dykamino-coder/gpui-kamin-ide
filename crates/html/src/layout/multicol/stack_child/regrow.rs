@@ -107,6 +107,7 @@ impl Measured {
                 build: Rc::new(build),
                 opts: opts.clone(),
                 laid: Default::default(),
+                space: None,
                 laid_h: self.laid_h,
                 watched: self.watched.clone(),
             });

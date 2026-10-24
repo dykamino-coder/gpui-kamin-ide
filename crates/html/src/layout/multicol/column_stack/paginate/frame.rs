@@ -78,9 +78,9 @@ impl ColumnStack {
                 });
                 continue;
             }
-            let lid = p.watched.seen(id)?;
-            let o = window.layout_origin_unrounded(lid);
-            let s = window.layout_size_unrounded(lid);
+            let bounds = p.watched.normal(id, window)?;
+            let o = bounds.origin;
+            let s = bounds.size;
             geoms.push(Geom {
                 id,
                 cand,

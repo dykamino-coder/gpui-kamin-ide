@@ -1,8 +1,7 @@
 //! Куски ребёнка по колонкам: цикл размещения фрагментов одного ребёнка (fill_pieces).
 
 use super::{cut_at, fill_clone_dec, forced_or_fits, place_cut};
-use crate::layout::fragment::plan::Plan;
-use crate::layout::fragment::plan::skip_float;
+use crate::layout::fragment::plan::{Plan, skip_float};
 use crate::layout::fragment::types::{Frag, Kid};
 
 #[allow(clippy::too_many_arguments)]
@@ -28,8 +27,13 @@ pub(super) fn fill_pieces(
 ) {
     let mut measured = None;
     loop {
-        let current = measured.as_ref().unwrap_or(k);
-        if let Some((next, offset)) = remeasure(kid, copy, *col, current, from) {
+        if let Some((next, offset)) = remeasure(super::MeasureRequest {
+            kid,
+            copy,
+            col: *col,
+            from,
+            block_size: target_at(*col),
+        }) {
             measured = Some(next);
             from = offset;
         }
@@ -45,9 +49,8 @@ pub(super) fn fill_pieces(
         // `UpdateBorderPaddingForClonedBoxDecorations`). `from` здесь —
         // по СОДЕРЖИМОМУ, `Frag.h` — готовая высота фрагмента:
         // НЕпоследний тянется до низа колонки (§box-splitting: «its
-        // content box extends to fill any remaining fragmentainer
-        // extent (leaving room for any margins/borders/padding applied
-        // by clone)»), последний — по остатку. Монолит сюда не заходит.
+        // content box extends to fill any remaining fragmentainer extent» с
+        // местом для полей и украшения), последний — по остатку. Монолит сюда не заходит.
         match fill_clone_dec(
             limit, col, y, not_top, placed, shortage, out, float_hold, kid, k, &mut cur, &mut from,
             &mut copy, target, room,

@@ -32,7 +32,15 @@ impl PageStack {
                     self.measured.insert(
                         (index, 0),
                         super::continuation::CopyGeometry {
-                            width: area.0.max(1.0),
+                            inputs: super::continuation::Inputs {
+                                constraints: crate::layout::cx::FragmentConstraints {
+                                    area: (area.0.max(1.0), area.1.max(1.0)),
+                                    parent: r.opts.cx.constraints.clone(),
+                                },
+                                source: r.space,
+                            },
+                            from: 0.0,
+                            offset: 0.0,
                             kid: kids[index].clone(),
                             laid: r.laid.clone(),
                             continued: false,
@@ -53,23 +61,26 @@ impl PageStack {
                     pg.area.1.max(1.0)
                 }
             };
-            let (pages, _, plan) = plan::fill_measured(
-                &kids,
-                &heights,
-                Space::pages(limit),
-                &mut |kid, copy, col, k, from| {
+            let (pages, _, plan) =
+                plan::fill_measured(&kids, &heights, Space::pages(limit), &mut |request| {
+                    let plan::MeasureRequest {
+                        kid,
+                        copy,
+                        col,
+                        from,
+                        block_size,
+                    } = request;
                     let pg = geoms
                         .get(col)
                         .copied()
                         .unwrap_or_else(|| geom_for(col, &tail));
                     let area = if axis.is_vertical() {
-                        (pg.area.1, pg.area.0)
+                        (pg.area.1, block_size)
                     } else {
-                        pg.area
+                        (pg.area.0, block_size)
                     };
-                    self.remeasure_copy(kid, copy, area, k, from, window, cx)
-                },
-            );
+                    self.remeasure_copy(kid, copy, area, from, window, cx)
+                });
             let extents: Vec<_> = (0..pages).map(heights).collect();
             let state = State::new(&names, &geoms, &plan, &self.measured);
             if self.regrow_flex(&kids, &plan, &extents) {

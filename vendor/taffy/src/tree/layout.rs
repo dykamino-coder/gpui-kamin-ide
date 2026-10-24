@@ -647,6 +647,10 @@ pub struct Layout {
     pub order: u32,
     /// The top-left corner of the node
     pub location: Point<f32>,
+    /// KaminIDE patch: used physical relative-position displacement, separate from normal flow.
+    /// Normal location is `location - relative_offset`; alignment is already included in location.
+    /// Upstream proposal: <https://github.com/DioxusLabs/taffy/issues/1353>.
+    pub relative_offset: Point<f32>,
     /// The width and height of the node
     pub size: Size<f32>,
     #[cfg(feature = "content_size")]
@@ -691,6 +695,7 @@ impl Layout {
         Self {
             order: 0,
             location: Point::ZERO,
+            relative_offset: Point::ZERO,
             size: Size::zero(),
             #[cfg(feature = "content_size")]
             scrollable_overflow_rect: Rect::ZERO,
@@ -711,6 +716,7 @@ impl Layout {
             order,
             size: Size::zero(),
             location: Point::ZERO,
+            relative_offset: Point::ZERO,
             #[cfg(feature = "content_size")]
             scrollable_overflow_rect: Rect::ZERO,
             scrollbar_size: Size::zero(),

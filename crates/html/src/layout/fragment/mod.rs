@@ -4,6 +4,7 @@ pub mod breaks;
 pub mod clone;
 pub mod flex_lines;
 pub(crate) mod flow;
+pub(crate) mod geometry;
 pub mod grid_bands;
 pub mod line_shape;
 pub(crate) mod oof_reach;

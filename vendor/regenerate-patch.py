@@ -31,6 +31,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "gpui": [
+        "Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.",
         "Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.",
         "Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).",
         "Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.",
@@ -70,6 +71,7 @@ FIXES = {
         "Editor integration: root overlays and WebView hosting; expose a scrollbar policy hook so product geometry belongs to the application.",
     ],
     "taffy": [
+        "Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.",
         "Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).",
         "Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.",
         "CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.",
