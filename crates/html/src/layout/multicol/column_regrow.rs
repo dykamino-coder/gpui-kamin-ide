@@ -1,9 +1,6 @@
-//! Раскладка главной копии ребёнка стопки до укладки и распорки роста по ней: высоту
-//! ребёнка, чью высоту меряет раскладка (`StackChild::measure`), или точки разрыва его
-//! блочной стопки (`StackChild::breaks_w`) даёт разложенная копия; распорки роста ставятся
-//! по плану ЭТОЙ стопки (`grow_points`) перед коробкой, найденной в разложенной копии
-//! (`push::Regrow`), копии собираются заново и раскладываются, пока план не перестанет
-//! требовать роста (css-break-3 §box-splitting; Blink `FinishFragmentation`).
+//! Главная копия даёт измеренную высоту и разрывы стопки; её final geometry определяет
+//! распорки `push::Regrow`. Копии пересобираются до устойчивого плана роста этой стопки
+//! (css-break-3 §box-splitting; Blink `FinishFragmentation`).
 
 use crate::layout::fragment::types::{BreaksAt, StackChild};
 use crate::layout::multicol::column_stack::ColumnStack;
@@ -130,6 +127,7 @@ impl ColumnStack {
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
             r.laid = w.laid_axis(point(px(0.0), px(0.0)), measured_size, axis, window);
+            r.space = w.space(window);
             if !r.laid.flexes.is_empty()
                 && let Some(blocks) = w.blocks()
             {

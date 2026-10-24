@@ -249,6 +249,7 @@ fn compute_in_flow_root_layout(
     let layout = Layout {
         order: 0,
         location,
+        relative_offset: Point::ZERO,
         size: output.size,
         #[cfg(feature = "content_size")]
         scrollable_overflow_rect: output.scrollable_overflow_rect,

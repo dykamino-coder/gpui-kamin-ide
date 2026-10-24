@@ -110,6 +110,7 @@ pub(super) fn measure(
                 }
                 if let Some(r) = k.regrow.as_mut() {
                     r.laid = geometry;
+                    r.space = w.space(window);
                 }
                 let m = w.breaks(origin, frame, h + lift, axis, window);
                 if flex || k.shape.is_none() {

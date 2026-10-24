@@ -18,26 +18,17 @@ impl Watched {
             .seen
             .borrow()
             .iter()
-            .map(|(&id, &lid)| {
-                (
-                    id,
-                    projection.span(
-                        window.layout_origin_unrounded(lid),
-                        window.layout_size_unrounded(lid),
-                    ),
-                )
+            .filter_map(|(&id, &node)| {
+                let bounds = node.bounds(window)?;
+                Some((id, projection.span(bounds.origin, bounds.size)))
             })
             .collect();
-        let super::flex::FlexFrames {
-            flexes,
-            shifts,
-            table_shifts,
-            margins,
-        } = self.flex_frames(projection, window, &mut boxes);
-        let mut tables = self.table_frames(projection, window);
-        let mut grids = self.rows(projection, window);
-        let mut flows = self.item_geometry(projection, window);
-        let mut content: HashMap<_, _> = self
+        let super::flex_geometry::FlexFrames { flexes, margins } =
+            self.flex_frames(projection, window, &mut boxes);
+        let tables = self.table_frames(projection, window);
+        let grids = self.rows(projection, window);
+        let flows = self.item_geometry(projection, window);
+        let content: HashMap<_, _> = self
             .item_flows
             .iter()
             .map(|(&id, flow)| (id, flow.content_lines_axis(origin, size, axis, window)))
@@ -54,42 +45,6 @@ impl Watched {
                 .entry(blocks.id)
                 .or_default()
                 .extend(self.flow.line_pushes_axis(origin, size, axis, window));
-        }
-        for (id, delta) in shifts {
-            if let Some(lines) = content.get_mut(&id) {
-                for l in lines {
-                    l.top += delta;
-                    l.bottom += delta;
-                }
-            }
-            if let Some(lines) = lines.get_mut(&id) {
-                for p in lines {
-                    p.at += delta;
-                }
-            }
-            if let Some(rows) = grids.get_mut(&id) {
-                for (a, b) in rows {
-                    *a += delta;
-                    *b += delta;
-                }
-            }
-            if let Some(flow) = flows.get_mut(&id) {
-                let mut shifted = crate::layout::fragment::flow::FlowGeometry::default();
-                shifted.append(flow, delta);
-                *flow = shifted;
-            }
-        }
-        for (id, delta) in table_shifts {
-            if let Some(t) = tables.get_mut(&id) {
-                t.table.0 += delta;
-                t.table.1 += delta;
-                t.grid.0 += delta;
-                t.grid.1 += delta;
-                for (a, b) in &mut t.rows {
-                    *a += delta;
-                    *b += delta;
-                }
-            }
         }
         // Распорка роста стоит перед margin box элемента: поле после
         // принудительного разрыва остаётся при нём (css-break-3 §5.2).

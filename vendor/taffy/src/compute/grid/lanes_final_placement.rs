@@ -49,6 +49,11 @@ pub(super) fn position(
             &Layout {
                 order: order as u32,
                 location,
+                relative_offset: if rows {
+                    Point { x: p.stack_relative, y: p.grid_relative }
+                } else {
+                    Point { x: p.grid_relative, y: p.stack_relative }
+                },
                 size: p.size,
                 #[cfg(feature = "content_size")]
                 scrollable_overflow_rect: p.scrollable_overflow_rect,

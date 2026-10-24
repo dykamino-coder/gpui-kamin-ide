@@ -1,8 +1,8 @@
 //! Чтение измеренной геометрии разрывов до того, как временный движок layout будет освобождён.
 
 use super::FlowGeometry;
+use crate::layout::fragment::geometry::{Node, Records, Scope};
 use crate::layout::fragment::types::StackAxis;
-use crate::layout::probe::{Measure, MeasureScope};
 use gpui::{LayoutId, Pixels, Point, Size, Window};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -38,7 +38,7 @@ impl FlowNode {
         }
     }
 
-    pub(crate) fn record(&self, id: LayoutId) {
+    pub(crate) fn record(&self, id: LayoutId, window: &Window) {
         self.measurements.records.record(
             id,
             Record {
@@ -48,6 +48,7 @@ impl FlowNode {
                 starts: self.starts.clone(),
                 content: self.content.clone(),
             },
+            window,
         );
     }
 }
@@ -55,7 +56,7 @@ impl FlowNode {
 // Только числовая FlowGeometry переживает временный layout-движок.
 #[derive(Debug, Default)]
 pub(crate) struct FlowMeasure {
-    pub(super) records: Measure<Record>,
+    pub(super) records: Records<Record>,
     pub(super) resumes: RefCell<Vec<Rc<Cell<usize>>>>,
     pub(crate) lines: bool,
     paragraphs: Rc<RefCell<Vec<ParagraphGrowth>>>,
@@ -130,7 +131,7 @@ impl FlowMeasure {
         }
     }
 
-    pub(crate) fn enter(&self) -> MeasureScope<Record> {
+    pub(crate) fn enter(&self) -> Scope<Record> {
         self.records.enter()
     }
 
@@ -140,9 +141,10 @@ impl FlowMeasure {
         axis: StackAxis,
         window: &mut Window,
     ) -> FlowGeometry {
-        let origin = window.layout_origin_unrounded(root);
-        let size = window.layout_size_unrounded(root);
-        self.at(origin, size, axis, window)
+        let Some(bounds) = Node::capture(root, window).bounds(window) else {
+            return FlowGeometry::default();
+        };
+        self.at(bounds.origin, bounds.size, axis, window)
     }
 
     pub(crate) fn at(

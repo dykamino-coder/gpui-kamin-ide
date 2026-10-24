@@ -3702,6 +3702,11 @@ fn calculate_flex_item(
             scrollable_overflow_rect,
             scrollbar_size,
             location,
+            relative_offset: if direction.is_row() {
+                Point { x: if is_rtl_row { -main_relative_inset } else { main_relative_inset }, y: cross_relative_inset }
+            } else {
+                Point { x: cross_relative_inset, y: main_relative_inset }
+            },
             padding: item.padding,
             border: item.border,
             margin: item.margin,

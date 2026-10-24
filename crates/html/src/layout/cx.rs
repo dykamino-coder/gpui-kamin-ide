@@ -22,7 +22,7 @@ mod scroll;
 mod values;
 
 pub(crate) use clamp::ClampContext;
-pub(crate) use constraints::BoxConstraints;
+pub(crate) use constraints::{BoxConstraints, FragmentConstraints};
 pub(crate) use contracts::BuildContext;
 pub use deferred::DeferredPaintContext;
 pub(crate) use fragmentation::FragmentationContext;

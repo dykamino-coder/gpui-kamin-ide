@@ -6265,6 +6265,16 @@ impl Window {
         self.layout_engine.as_ref()?.parent_layout_id(child)
     }
 
+    /// KaminIDE patch: registration identity survives neither a frame clear nor a nested engine.
+    pub fn layout_tree_id(&self) -> crate::LayoutTreeId {
+        self.layout_engine.as_ref().expect("layout engine during registration").layout_tree_id()
+    }
+
+    /// KaminIDE patch: final normal geometry excludes element/paint/transform offsets.
+    pub fn final_layout(&self, id: LayoutId, tree: crate::LayoutTreeId) -> Option<crate::FinalLayout> {
+        self.layout_engine.as_ref()?.final_layout(id, tree, self.scale_factor())
+    }
+
     /// KaminIDE patch: реальные линии родителя-flex и начало его border box.
     pub fn parent_flex_layout(&mut self, child: LayoutId) -> Option<(Point<Pixels>, crate::FlexLayout)> {
         let scale = self.scale_factor();

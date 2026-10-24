@@ -123,6 +123,7 @@ pub(super) fn regrow(
         build: Rc::new(build),
         opts: opts.clone(),
         laid: Default::default(),
+        space: None,
         laid_h: true,
         watched: watched.clone(),
     })

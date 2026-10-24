@@ -1,16 +1,36 @@
-//! Продолжение при смене ширины: новая мера и адрес содержимого каждого flex-потока.
+//! Продолжение при смене ограничений: новая мера и адрес содержимого каждого flex-потока.
 use super::{PageStack, measure::measure, resume::Resume};
 use crate::layout::fragment::flow::blocks::Laid;
 use crate::layout::fragment::types::Kid;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, Window};
 
+/// Кэш привязан к породившему снимок проходу и всем входам поддерева.
+/// Рост/новая раскладка меняют source даже при прежней ширине.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Inputs {
+    pub(super) constraints: crate::layout::cx::FragmentConstraints,
+    pub(super) source: Option<gpui::LayoutSpace>,
+}
+
 #[derive(Clone)]
 pub(super) struct CopyGeometry {
-    pub(super) width: f32,
+    pub(super) inputs: Inputs,
+    pub(super) from: f32,
+    pub(super) offset: f32,
     pub(super) kid: Kid,
     pub(super) laid: Laid,
     pub(super) continued: bool,
+}
+
+impl CopyGeometry {
+    /// Нефрагментированный снимок можно резать в любом месте; продолжение
+    /// сохраняет только исходный адрес и его результат в новой геометрии.
+    fn reusable(&self, inputs: &Inputs, from: f32) -> bool {
+        inputs.source.is_some()
+            && self.inputs == *inputs
+            && (!self.continued || self.from == from || self.offset == from)
+    }
 }
 
 impl PageStack {
@@ -20,37 +40,47 @@ impl PageStack {
         index: usize,
         copy: usize,
         area: (f32, f32),
-        _current: &Kid,
         from: f32,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<(Kid, f32)> {
-        if self
-            .measured
-            .get(&(index, copy))
-            .is_some_and(|m| (m.width - area.0).abs() < COORD_EPS)
+        let base = self.kids[index].regrow.as_ref()?.clone();
+        let inputs = Inputs {
+            constraints: crate::layout::cx::FragmentConstraints {
+                area,
+                parent: base.opts.cx.constraints.clone(),
+            },
+            source: base.space,
+        };
+        if let Some(m) = self.measured.get(&(index, copy))
+            && m.reusable(&inputs, from)
         {
-            return None;
+            if !m.continued {
+                return None;
+            }
+            if m.from == from || m.offset == from {
+                return Some((m.kid.clone(), m.offset));
+            }
         }
         let old = self
             .measured
             .get(&(index, copy))
             .or_else(|| self.measured.get(&(index, copy.saturating_sub(1))))?
             .clone();
-        if (old.width - area.0).abs() < COORD_EPS && !old.continued {
+        if !old.continued && old.reusable(&inputs, from) {
             self.measured.entry((index, copy)).or_insert(old);
             return None;
         }
         let token = Resume::at(&old.laid, from);
         let k = &mut self.kids[index];
         let original = k.regrow.as_ref()?.laid.clone();
+        let original_space = k.regrow.as_ref()?.space;
         let main = k.watched.clone()?;
         let rec = if copy == 0 {
             main.clone()
         } else {
             main.continuation_recorder(copy)
         };
-        let base = k.regrow.as_ref()?.clone();
         let mut own = self
             .continuations
             .remove(&(index, copy))
@@ -73,17 +103,21 @@ impl PageStack {
         }
         k.watched = Some(main);
         let fresh = std::mem::replace(&mut k.regrow.as_mut()?.laid, original);
+        let fresh_space = std::mem::replace(&mut k.regrow.as_mut()?.space, original_space);
         let offset = if from <= COORD_EPS {
             0.0
         } else {
             token.offset(&fresh, next.h)
         };
         own.laid = fresh.clone();
+        own.space = fresh_space;
         self.continuations.insert((index, copy), own);
         self.measured.insert(
             (index, copy),
             CopyGeometry {
-                width: area.0,
+                inputs,
+                from,
+                offset,
                 kid: next.clone(),
                 laid: fresh,
                 continued: true,
@@ -103,5 +137,73 @@ fn rebuild_copy(k: &mut super::PageKid, copy: usize, r: &crate::layout::fragment
         } else if let Some(slot) = k.frags.get_mut(copy - 1) {
             *slot = element;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::cx::{BoxConstraints, FragmentConstraints};
+    use crate::layout::fragment::geometry::Node;
+    use gpui::{AvailableSpace, Style, point, px, size};
+
+    #[gpui::test]
+    fn cached_continuation_requires_the_complete_producing_inputs(cx: &mut gpui::TestAppContext) {
+        let cx = cx.add_empty_window();
+        cx.draw(
+            point(px(0.), px(0.)),
+            size(px(100.), px(100.)),
+            |window, app| {
+                let id = window.request_layout(Style::default(), [], app);
+                let node = Node::capture(id, window);
+                let available = size(
+                    AvailableSpace::Definite(px(100.)),
+                    AvailableSpace::MaxContent,
+                );
+                window.compute_layout(id, available, app);
+                let inputs = Inputs {
+                    constraints: FragmentConstraints {
+                        area: (100., 200.),
+                        parent: BoxConstraints {
+                            cb_width: Some(100.),
+                            avail_w: Some(100.),
+                            avail_h: Some(300.),
+                            cell_bfc: false,
+                        },
+                    },
+                    source: Some(node.read(window).unwrap().space),
+                };
+                let mut cached = CopyGeometry {
+                    inputs: inputs.clone(),
+                    from: 40.,
+                    offset: 60.,
+                    kid: Kid::default(),
+                    laid: Laid::default(),
+                    continued: true,
+                };
+                assert!(cached.reusable(&inputs, 40.));
+                assert!(cached.reusable(&inputs, 60.));
+                assert!(!cached.reusable(&inputs, 80.));
+                let mut changed = inputs.clone();
+                changed.constraints.area.1 = 180.;
+                assert!(!cached.reusable(&changed, 40.));
+                changed = inputs.clone();
+                changed.constraints.parent.avail_h = Some(400.);
+                assert!(!cached.reusable(&changed, 40.));
+                changed = inputs.clone();
+                changed.constraints.parent.cb_width = Some(120.);
+                assert!(!cached.reusable(&changed, 40.));
+                changed = inputs.clone();
+                changed.source = None;
+                assert!(!cached.reusable(&changed, 40.));
+                window.compute_layout(id, available, app);
+                changed.source = Some(node.read(window).unwrap().space);
+                assert!(!cached.reusable(&changed, 40.));
+                cached.continued = false;
+                assert!(cached.reusable(&inputs, 80.));
+                assert!(!cached.reusable(&changed, 80.));
+                gpui::div()
+            },
+        );
     }
 }

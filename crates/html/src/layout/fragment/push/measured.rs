@@ -58,6 +58,8 @@ pub(crate) struct Regrow {
     pub(crate) opts: RenderOpts,
     /// Разложенная геометрия стопки по последней раскладке главной копии.
     pub(crate) laid: Laid,
+    /// Проход, породивший числовой снимок; не LayoutId из освобождённого дерева.
+    pub(crate) space: Option<gpui::LayoutSpace>,
     /// Высота ребёнка в стопке — разложенный border box (а не мера формы):
     /// ложно, когда мера несёт дотяг внепоточных или коробка из одних флоатов
     /// обнулена (`multicol_stack_child`).
