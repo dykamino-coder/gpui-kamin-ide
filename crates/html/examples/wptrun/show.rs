@@ -4,9 +4,7 @@ use super::capture::{CaptureCursor, first_frame, offscreen};
 use super::capture_dump::Shot;
 use super::frame_metrics::flat;
 use super::page::Page;
-use super::reftest_meta::reftest_pages;
 use gpui::{AnyWindowHandle, AppContext as _, AsyncApp};
-use kamin_html::{BROWSER_CSS, Document};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -19,7 +17,8 @@ pub(super) struct Stage {
     /// Чем кончился опрос кадра у каждого показа пары: `s` — кадр
     /// сменился и устоялся, `b` — страница осталась равной разделителю,
     /// `o` — запас опроса вышел, кадр есть, `n` — окно за весь запас не
-    /// отдало НИ ОДНОГО кадра; `f` — первый GPU-кадр без ожидания покоя.
+    /// отдало НИ ОДНОГО кадра; `f` — первый GPU-кадр без ожидания покоя,
+    /// `r` — сигнал готовности подтверждён контрольным кадром.
     /// Без этого «пара идёт 27 секунд» и «пара пустая» — два разных
     /// наблюдения без связи между ними.
     pub(super) trace: Rc<RefCell<String>>,
@@ -68,30 +67,8 @@ impl Stage {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
         let mut captures = CaptureCursor::new();
         let first = first_frame();
-        let _ = cx.update_window(window, |view, window, cx| {
-            if let Ok(page) = view.downcast::<Page>() {
-                page.update(cx, |page, cx| {
-                    let fonts = page.doc.font_context();
-                    page.doc = Rc::new(match source {
-                        Some(path) => Document::builder(&html, BROWSER_CSS)
-                            .fonts(&fonts)
-                            .path(std::path::Path::new(path))
-                            .print(print)
-                            .build(),
-                        None => Document::builder(&html, BROWSER_CSS)
-                            .fonts(&fonts)
-                            .print(print)
-                            .build(),
-                    });
-                    page.select = reftest_pages(&html);
-                    cx.notify();
-                });
-            }
-            if first {
-                gpui::frame_capture::arm_first();
-            }
-            window.refresh();
-        });
+        self.prepare(cx, &html, source, print, first);
+        let mut timing = super::phase_timing::PageTiming::new(source);
         let lower = html.to_ascii_lowercase();
         let has_image = lower.contains("<img");
         // Страница с ДВИЖЕНИЕМ устаивается ложно: медленная анимация
@@ -101,6 +78,14 @@ impl Stage {
         // скачет между прогонами (`css-flexbox-height-animation-stretch`:
         // то 1.13 %, то 0.03 %).
         let has_anim = lower.contains("animation") || lower.contains("transition");
+        if !first
+            && super::ready::enabled(cx)
+            && let Some(shot) = self
+                .ready_frame(cx, &mut captures, &prev, want_flat, &mut timing)
+                .await
+        {
+            return Some(shot);
+        }
         let mut first_shot = None;
         let mut last: Option<(u32, u32, Vec<u8>)> = None;
         let mut same = 0u32;
@@ -111,6 +96,7 @@ impl Stage {
         // такие страницы обрезали, и одна и та же пара скакала между
         // прогонами на 15% расхождения.
         for step in 0..400u32 {
+            timing.steps += 1;
             cx.background_executor()
                 .timer(Duration::from_millis(16))
                 .await;
@@ -129,12 +115,15 @@ impl Stage {
                     window.refresh();
                 });
             }
+            let readback_started = std::time::Instant::now();
             let shot = if first && first_shot.is_none() {
                 gpui::frame_capture::take_first().map(|f| (f.width, f.height, f.bgra))
             } else {
                 captures.next(hwnd)
             };
+            timing.readback += readback_started.elapsed();
             let Some(now) = shot else { continue };
+            timing.first.get_or_insert_with(|| timing.started.elapsed());
             if first && first_shot.is_none() {
                 note.borrow_mut().push('f');
                 if has_anim || has_image {
@@ -215,24 +204,5 @@ impl Stage {
         note.borrow_mut()
             .push(if last.is_some() { 'o' } else { 'n' });
         self.checked(first_shot, last, source)
-    }
-
-    fn checked(
-        &self,
-        first: Option<Shot>,
-        settled: Option<Shot>,
-        source: Option<&str>,
-    ) -> Option<Shot> {
-        let Some(first) = first else { return settled };
-        let equal = settled
-            .as_ref()
-            .and_then(|last| super::pixel_compare::compare(&first, last))
-            .is_some_and(|difference| difference.pixels == 0);
-        if !equal && let Some(source) = source {
-            self.frame_errors.borrow_mut().push(source.to_owned());
-            let stem = format!("{}--first-frame", super::capture_name::stem(0, source));
-            super::capture_dump::pair(&stem, &[Some(first.clone()), settled], None);
-        }
-        Some(first)
     }
 }

@@ -11,6 +11,7 @@ pub struct Difference {
 }
 
 pub fn compare(a: &(u32, u32, Vec<u8>), b: &(u32, u32, Vec<u8>)) -> Option<Difference> {
+    let _timing = super::phase_timing::Phase::new(None, "compare");
     let expected = usize::try_from(a.0)
         .ok()?
         .checked_mul(usize::try_from(a.1).ok()?)?

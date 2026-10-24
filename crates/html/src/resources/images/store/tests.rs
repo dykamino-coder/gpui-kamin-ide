@@ -52,6 +52,8 @@ fn two_documents_resolve_one_url_by_their_own_base_and_policy() {
     let x = ask(&mut first, "img.png");
     let y = ask(&mut second, "img.png");
     let z = ask(&mut locked, "img.png");
+    assert!(first.has_pending());
+    assert!(!locked.has_pending());
     // Access is decided per document before any IO, whatever the cache holds.
     assert!(matches!(
         locked.snapshot().state(z),
@@ -59,6 +61,7 @@ fn two_documents_resolve_one_url_by_their_own_base_and_policy() {
     ));
     assert!(locked.take_jobs().is_empty());
     first.complete_pending();
+    assert!(!first.has_pending());
     second.complete_pending();
     assert_eq!(pixel(&raster(&first, x)), [255, 0, 0, 255]);
     assert_eq!(pixel(&raster(&second, y)), [0, 0, 255, 255]);
@@ -129,6 +132,7 @@ fn release_update_and_stale_completions_never_resurrect_requests() {
         "another consumer still holds it"
     );
     let jobs = doc.take_jobs();
+    assert!(doc.has_pending(), "выданное задание ещё не декодировано");
     doc.release(sub);
     assert!(
         doc.snapshot().state(id).is_none(),

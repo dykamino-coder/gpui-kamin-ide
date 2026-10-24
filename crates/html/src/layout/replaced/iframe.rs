@@ -213,6 +213,7 @@ pub(crate) fn build_embedded(
     opts: &RenderOpts,
     prepare: impl FnOnce(Vec<crate::dom::Node>) -> Vec<crate::dom::Node>,
 ) -> Vec<AnyElement> {
+    opts.cx.doc().observe_child(embedded.state.clone());
     let nodes = prepare(embedded.nodes);
     let mut sub = opts.clone();
     sub.viewport = viewport;

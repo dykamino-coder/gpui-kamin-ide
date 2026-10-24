@@ -54,8 +54,14 @@ mod page_box_values;
 mod paged;
 #[path = "wptrun/pair.rs"]
 mod pair;
+#[path = "wptrun/phase_timing.rs"]
+mod phase_timing;
 #[path = "wptrun/pixel_compare.rs"]
 mod pixel_compare;
+#[path = "wptrun/prepare.rs"]
+mod prepare;
+#[path = "wptrun/ready.rs"]
+mod ready;
 #[path = "wptrun/reference_result.rs"]
 mod reference_result;
 #[path = "wptrun/reftest_meta.rs"]

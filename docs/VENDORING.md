@@ -216,6 +216,8 @@ git apply --unidiff-zero vendor/gpui-kaminide.patch
 | Переменная | Потребитель и назначение |
 | --- | --- |
 | `WPT_FIRST_FRAME=1` | `crates/html/examples/wptrun`: снимок первого GPU-кадра документа без ожидания сходимости; диагностический режим, CI его не включает |
+| `WPT_READY=0` | `crates/html/examples/wptrun`: отключить сигнал готовности и использовать прежний протокол устойчивости; быстрый путь требует offscreen и фиксированного анимационного времени |
+| `WPT_PHASE_TIMING=1` | `crates/html/examples/wptrun`: микросекунды загрузки, разбора, первого кадра, устойчивости, readback и сравнения в stderr; отчёт вердиктов не меняется |
 | `KAMIN_FORCE_SCALE` | `crates/html/examples/wptrun.rs`: стабильный scale 1 для WPT; Windows display читает положительный scale |
 | `KAMIN_PREPAINT_PROF=1` | профилировщик GPUI и `crates/shell/src/web/diag*.rs`: время prepaint по типам элементов |
 | `KAMIN_DIAG_GPU_TIMING=1` | Windows batch-cost timestamps; `gpui::batch_cost::take_line()` читается диагностикой shell |

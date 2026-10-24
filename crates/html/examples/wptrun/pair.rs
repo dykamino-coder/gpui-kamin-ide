@@ -45,9 +45,11 @@ pub(super) async fn capture_sides(
         // листов с экранным документом.
         // `class="reftest-paged"` на корне — та же печатная пара (Gecko,
         // WPT print-reftests.md), см. `paged::is_paged`.
+        let load = super::phase_timing::Phase::new(Some(path), "load");
         let source = std::fs::read_to_string(path).unwrap_or_default();
         let print = test_paged || is_paged(path, &source);
         let html = resolve_links(&source, path);
+        drop(load);
         let mut shot = stage
             .show(cx, html.clone(), blank.clone(), false, Some(path), print)
             .await;
@@ -63,8 +65,8 @@ pub(super) async fn capture_sides(
                 .as_ref()
                 .is_some_and(|s| ink(&s.2, blank.as_ref()) >= INK_MIN);
             // Повтор нужен странице, которая НЕ УСПЕЛА, а не той,
-            // что устоялась пустой: `b` в следе означает 120 равных
-            // разделителю кадров подряд — рисовать там нечего, и
+            // что устоялась пустой: `b` означает сигнал готовности с
+            // контролем либо прежние 120 равных разделителю кадров — и
             // ещё два показа только жгут по две секунды каждый
             // (css-backgrounds: 23 с на пару вместо 0.6 с).
             let settled_blank = stage.trace.borrow().ends_with('b');

@@ -8,17 +8,21 @@
 //! before presenting and no longer waits for the compositor, so the result does
 //! not depend on where the window is or what covers it.
 
+use futures::channel::oneshot;
 use std::sync::Mutex;
+use std::time::Duration;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
+static READBACK_US: AtomicU64 = AtomicU64::new(0);
 static SEQ: AtomicU64 = AtomicU64::new(0);
-static FRAMES: Mutex<Frames> = Mutex::new(Frames { latest: None, first: None });
+static FRAMES: Mutex<Frames> = Mutex::new(Frames { latest: None, first: None, waiters: Vec::new() });
 
 struct Frames {
     latest: Option<CapturedFrame>,
     // Some(None) arms the next GPU readback; later frames cannot replace it.
     first: Option<Option<CapturedFrame>>,
+    waiters: Vec<oneshot::Sender<u64>>,
 }
 
 /// One captured frame: BGRA rows top to bottom, `width * 4` bytes each.
@@ -44,6 +48,31 @@ pub fn enabled() -> bool {
     ENABLED.load(Ordering::Acquire)
 }
 
+/// Номер последнего завершённого readback без копирования пикселей.
+pub fn sequence() -> u64 {
+    FRAMES.lock().ok().and_then(|frames| frames.latest.as_ref().map(|f| f.seq)).unwrap_or(0)
+}
+
+/// Событие завершения нового GPU-кадра. Проверка и подписка под одним замком:
+/// кадр, пришедший между запросом хоста и ожиданием, не теряется.
+pub fn after(seq: u64) -> oneshot::Receiver<u64> {
+    let (sender, receiver) = oneshot::channel();
+    if let Ok(mut frames) = FRAMES.lock() {
+        if let Some(frame) = &frames.latest && frame.seq > seq {
+            let _ = sender.send(frame.seq);
+        } else {
+            frames.waiters.retain(|waiter| !waiter.is_canceled());
+            frames.waiters.push(sender);
+        }
+    }
+    receiver
+}
+
+/// Суммарное время GPU copy/map и копирования строк на CPU.
+pub fn readback_time() -> Duration {
+    Duration::from_micros(READBACK_US.load(Ordering::Relaxed))
+}
+
 /// The most recently drawn frame, if any.
 pub fn latest() -> Option<CapturedFrame> {
     FRAMES.lock().ok()?.latest.clone()
@@ -67,6 +96,12 @@ pub fn take_first() -> Option<CapturedFrame> {
 
 #[doc(hidden)]
 pub fn store(width: u32, height: u32, bgra: Vec<u8>) {
+    store_timed(width, height, bgra, Duration::ZERO);
+}
+
+#[doc(hidden)]
+pub fn store_timed(width: u32, height: u32, bgra: Vec<u8>, readback: Duration) {
+    READBACK_US.fetch_add(readback.as_micros() as u64, Ordering::Relaxed);
     let seq = SEQ.fetch_add(1, Ordering::AcqRel) + 1;
     if let Ok(mut frames) = FRAMES.lock() {
         let frame = CapturedFrame { width, height, bgra, seq };
@@ -74,5 +109,8 @@ pub fn store(width: u32, height: u32, bgra: Vec<u8>) {
             *first = Some(frame.clone());
         }
         frames.latest = Some(frame);
+        for waiter in frames.waiters.drain(..) {
+            let _ = waiter.send(seq);
+        }
     }
 }

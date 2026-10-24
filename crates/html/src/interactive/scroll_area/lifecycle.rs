@@ -115,6 +115,7 @@ impl Element for ScrollArea {
         {
             // Invalidation during prepaint is ignored by GPUI. Rebuild after
             // this frame, once the native extent proxy has its measured size.
+            self.values.vcx().doc.defer_frame();
             let view = window.current_view_opt();
             window.on_next_frame(move |window, cx| {
                 if let Some(view) = view {
