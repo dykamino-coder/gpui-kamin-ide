@@ -58,7 +58,7 @@ pub(super) fn regrow(
     blocks.flexes(&mut flexes);
     let independent = match vertical {
         Some(rl) => crate::layout::fragment::flow::vertical_copy(dom, rl),
-        None => crate::layout::fragment::flow::independent_copy(dom),
+        None => crate::layout::fragment::flow::regrow_copy(dom),
     };
     if flexes.is_empty() && (blocks.table.is_some() || !independent) {
         return None;

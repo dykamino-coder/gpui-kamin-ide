@@ -208,7 +208,7 @@ pub(crate) use logical::transpose_tree;
 mod independent;
 pub(crate) use independent::{
     PagePercentages, column_percentages, independent_copy, logical_copy, page_percentages,
-    parallel_overflow, vertical_copy,
+    parallel_overflow, regrow_copy, vertical_copy,
 };
 mod copy_clearance;
 pub(crate) use copy_clearance::copy_clearance;

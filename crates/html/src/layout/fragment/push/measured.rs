@@ -156,11 +156,15 @@ pub(crate) fn measured_push(c: &Element, line_col_w: Option<f32>, col_vert: bool
 
 /// Поддерево, чью геометрию полностью записывает раскладка копии.
 pub(crate) fn measured_tree(c: &Element) -> bool {
+    // TRANSITIONAL(F2-6): Atomic inline лежит внутри строки, а measured_tree знает стопку блоков; удалить отказ в P20 после токена строки с конечным краем поверх P03.
+    recorded_tree(c) && !atomic_inline_flow(c)
+}
+
+/// Геометрия границ блоков доступна и при атомарном содержимом их строк.
+pub(crate) fn recorded_tree(c: &Element) -> bool {
     !c.marks.paginate
         && c.style.used().column_span != Some(true)
         && clone_dec(c).is_none()
-        // TRANSITIONAL(F2-6): Atomic inline лежит внутри строки, а measured_tree знает стопку блоков; удалить отказ в P20 после токена строки с конечным краем поверх P03.
-        && !atomic_inline_flow(c)
         && (stacked_tree(c) || table_tree(c) || grid_tree(c) || flex_tree(c))
 }
 

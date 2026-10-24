@@ -181,7 +181,8 @@ fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut Blo
             // `kBreakAppealViolatingOrphansAndWidows`).
             out.keep.push((top, bottom));
             for pair in inside.windows(2) {
-                out.cuts.push((pair[0].bottom, pair[1].top));
+                out.cuts
+                    .push((pair[0].bottom + pair[1].consumed_before, pair[1].top));
             }
             out.solid.extend(
                 inside

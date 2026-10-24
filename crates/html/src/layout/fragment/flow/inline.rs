@@ -130,7 +130,7 @@ impl Inline {
         let end = if count == 0 {
             origin
         } else {
-            lines[count - 1].bottom
+            lines[count - 1].bottom + lines.get(count).map_or(0.0, |line| line.consumed_before)
         };
         let shortage = (lines[fitting].bottom - origin - room).max(0.0);
         if count == lines.len() {

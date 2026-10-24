@@ -15,6 +15,7 @@ fn paragraph(count: usize, ordinal: usize, offset: f32) -> Inline {
                 state: line_state(&text, i, i, false).unwrap(),
                 top: offset + i as f32 * 10.0,
                 bottom: offset + (i + 1) as f32 * 10.0,
+                consumed_before: 0.0,
             })
             .collect(),
         orphans: 2,

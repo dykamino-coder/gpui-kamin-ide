@@ -44,6 +44,7 @@ fn row_resumes_same_byte_after_width_changes_line_height_and_membership() {
             byte: 8,
             top: 20.,
             bottom: 40.,
+            consumed_before: 0.0,
         }],
     );
     let token = Resume::at(&old, 20.);
@@ -76,6 +77,7 @@ fn row_resumes_same_byte_after_width_changes_line_height_and_membership() {
             byte: 8,
             top: 40.,
             bottom: 60.,
+            consumed_before: 0.0,
         }],
     );
     assert_eq!(
@@ -136,6 +138,7 @@ fn column_resumes_content_instead_of_old_y() {
             byte: 8,
             top: 20.,
             bottom: 40.,
+            consumed_before: 0.0,
         }],
     );
     let token = Resume::at(&old, 20.);
