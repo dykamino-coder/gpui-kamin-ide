@@ -13,7 +13,7 @@ use std::sync::Arc;
 pub(crate) struct RasterRequest {
     pub(crate) width: u32,
     pub(crate) height: u32,
-    pub(crate) density: u32,
+    pub(crate) density: crate::cache::FloatKey,
     pub(crate) pad: u32,
     pub(crate) external_resources: bool,
 }
@@ -22,7 +22,7 @@ impl RasterRequest {
         Self {
             width: (w * density).round().max(1.0) as u32,
             height: (h * density).round().max(1.0) as u32,
-            density: density.to_bits(),
+            density: density.into(),
             pad: (pad.max(0.0) * density).round() as u32,
             external_resources: true,
         }
@@ -105,4 +105,19 @@ pub(crate) fn rasterize(
         colour_space: ColourSpace::Srgb,
         bytes: bytes.into(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn requests_canonicalize_nan_density_and_signed_zero() {
+        for [a, b] in [[0.0, -0.0], [f32::NAN, f32::from_bits(0xff80_0001)]] {
+            let a = RasterRequest::new(10.0, 8.0, a, 0.0);
+            let b = RasterRequest::new(10.0, 8.0, b, -0.0);
+            assert_eq!(a, b);
+            assert_eq!(crate::cache::hint(a), crate::cache::hint(b));
+        }
+    }
 }
