@@ -1,8 +1,5 @@
-//! Постраничная отрисовка документа (css-page-3): вход — дерево DOM со стилями, выход —
-//! элемент `PageStack`. Здесь снятие обёрток `html`/`body` с переносом их фона на канвас,
-//! используемые имена страниц, группировка детей корня (строчное содержимое одним
-//! анонимным блоком, флоат с последующим содержимым), слои ICB и `position: fixed`
-//! по копии на лист и построитель марджин-боксов из объявлений `@page`.
+//! Постраничная отрисовка (css-page-3): DOM → PageStack с именованной геометрией.
+//! Снятие html/body, фон канваса, группы детей и слои ICB/fixed каждого листа.
 
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
@@ -75,7 +72,9 @@ pub fn render_paged_select(
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize(vcx);
     opts.cx.contracts.build.paint_resources(nodes, vcx);
-    let mut nodes: Vec<Node> = nodes.to_vec();
+    // CSS2 §10: сохраняем цепочку CB до снятия html/body и named wrappers.
+    let (mut nodes, percentages) =
+        crate::layout::fragment::flow::page_percentages(nodes, &root, opts);
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();
     resolve_root_page(
@@ -207,6 +206,7 @@ pub fn render_paged_select(
     page_kids_from_groups(
         &paged_opts,
         &root,
+        &percentages,
         left,
         right,
         top,
@@ -238,6 +238,7 @@ pub fn render_paged_select(
         fixed_copies,
         margin_for,
     )
+    .with_principal(root.wm())
     .with_select(select)
     .with_axis(root_axis(&root).unwrap_or(StackAxis::Horizontal))
     .with_canvas_layer(

@@ -1,14 +1,12 @@
-//! Paint-ресурс пустого блока: геометрия slice сохраняется, запас копий не строится.
+//! Края и paint-ресурс пустого блока: slice целой коробки либо декорации каждого clone.
 
 use crate::dom::{Element, Node};
 use crate::layout::fragment::flow::independent_copy;
 use crate::layout::options::RenderOpts;
+use crate::layout::page::page_stack::LeafPaint;
 use crate::style::computed::{BoxStyle, Display};
-use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
+use gpui::{IntoElement, ParentElement};
 use std::rc::Rc;
-
-pub(crate) type PaintLeaf = Rc<dyn Fn() -> AnyElement>;
 
 pub(super) fn paint_leaf(
     opts: &RenderOpts,
@@ -16,7 +14,8 @@ pub(super) fn paint_leaf(
     group: &[Node],
     padding: (f32, f32, f32),
     height: f32,
-) -> Option<PaintLeaf> {
+    percentages: &crate::layout::fragment::flow::PagePercentages,
+) -> Option<LeafPaint> {
     let [Node::Element(e)] = group else {
         return None;
     };
@@ -25,28 +24,49 @@ pub(super) fn paint_leaf(
     }
     let (mut opts, root, group) = (opts.clone(), root.clone(), group.to_vec());
     opts.frag.watch = None;
-    Some(Rc::new(move || {
-        // Это только paint slice уже измеренной leaf-геометрии (css-break-3 §5.4.1):
-        // ни дочернего дерева, ни нового прохода copy/remeasure здесь нет.
-        let mut frame = super::frame::wrap(padding, height, false, None);
-        if let [Node::Element(e)] = group.as_slice()
-            && matches!(e.tag.as_str(), "html" | "body")
-            && matches!(e.style.used().height, Some(Len::Pct(_)))
-        {
-            frame = frame.h(px(height));
-        }
-        frame
-            .children(opts.cx.contracts.build.blocks(&group, &root, &opts))
-            .into_any_element()
-    }))
+    let context = percentages.context(e.node_id);
+    let (geometry_context, geometry_opts) = (context.clone(), opts.clone());
+    Some(LeafPaint {
+        geometry: Rc::new(move |space| geometry_context.leaf(space, &geometry_opts).0),
+        build: Rc::new(move |space, f| {
+            // Только paint готовой leaf-геометрии: ни детей, ни copy/remeasure.
+            let frame = super::frame::wrap(padding, height, false, None);
+            let (leaf, style) = context.leaf(space, &opts);
+            let mut nodes = group.clone();
+            let [Node::Element(c)] = nodes.as_mut_slice() else {
+                unreachable!()
+            };
+            let used = c.style.used_mut();
+            used.height = style.height;
+            used.min_height = style.min_height;
+            used.max_height = style.max_height;
+            if leaf.edges.clone {
+                let edges = leaf
+                    .edges
+                    .fit_clone(f.h, (leaf.content_block - f.from).max(0.0));
+                *c = crate::layout::fragment::clone::clone_fragment(
+                    c,
+                    leaf.edges.start,
+                    leaf.edges.end,
+                    f.from,
+                    f.h,
+                    (f.h - edges.sum()).max(0.0),
+                );
+            }
+            frame
+                .children(opts.cx.contracts.build.blocks(&nodes, &root, &opts))
+                .into_any_element()
+        }),
+    })
 }
 
-fn eligible(e: &Element) -> bool {
+pub(super) fn eligible(e: &Element) -> bool {
     let c = e.style.used();
-    // У leaf нет дочерних геометрических зависимостей. Border/padding принадлежат
-    // отдельному алгоритму краёв, а IFC и прочие FC — своим child consumers.
+    let mut flow = e.clone();
+    flow.style.used_mut().bdb_clone = false;
+    // IFC и прочие FC принадлежат своим child consumers.
     if !e.children.is_empty()
-        || !independent_copy(e)
+        || !independent_copy(&flow)
         || !matches!(c.display, None | Some(Display::Block))
         || crate::layout::box_kind::replaced_tag(e)
         || c.aspect_ratio.is_some()
@@ -54,10 +74,7 @@ fn eligible(e: &Element) -> bool {
     {
         return false;
     }
-    let b = c.borders();
-    [b.top, b.bottom, c.padding.top, c.padding.bottom]
-        .iter()
-        .all(|l| matches!(l, None | Some(Len::Px(0.0))))
+    true
 }
 
 #[cfg(test)]
@@ -77,13 +94,18 @@ mod tests {
     }
 
     #[test]
-    fn empty_block_accepts_constraints_without_percentage_dependencies() {
+    fn empty_block_accepts_containing_block_constraints_and_decorations() {
         for css in [
             "height:2500px",
             "min-height:2500px",
             "max-height:20px",
             "height:2500px;margin-top:-20px",
             "height:2500px;padding-inline:5px",
+            "height:50%",
+            "min-height:50%",
+            "max-height:50%",
+            "height:2500px;padding:5px;border:2px solid;box-decoration-break:clone",
+            "height:2500px;padding:5px;border:2px solid;box-sizing:border-box",
         ] {
             assert!(accepts(&format!("<div style='{css}'></div>")), "{css}");
         }
@@ -96,17 +118,10 @@ mod tests {
             "<div><div></div></div>",
             "<div style='display:flex'></div>",
             "<div style='display:grid'></div>",
-            "<div style='padding-top:1px'></div>",
-            "<div style='border-bottom:1px solid'></div>",
             "<div style='float:left'></div>",
             "<div style='position:absolute'></div>",
             "<div style='writing-mode:vertical-rl'></div>",
-            "<div style='box-decoration-break:clone'></div>",
             "<div style='aspect-ratio:2'></div>",
-            // Процентный CB продолжения вводится в P04; MaxContent его не доказывает.
-            "<div style='height:50%'></div>",
-            "<div style='min-height:50%'></div>",
-            "<div style='max-height:50%'></div>",
         ] {
             assert!(!accepts(body), "{body}");
         }

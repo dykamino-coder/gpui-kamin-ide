@@ -12,11 +12,12 @@ fn leaf_finishes_beyond_the_copy_budget_in_varying_fragmentainers() {
     }];
     let (pages, _, plan) = fill_resumed(
         &kids,
-        &|p| if p % 2 == 0 { 100.0 } else { 80.0 },
+        &|p| page(if p % 2 == 0 { 100.0 } else { 80.0 }),
         Space::pages(1),
-        &|_| {
+        &|_, _| {
             Some(Leaf {
                 content_block: 2500.0,
+                ..Leaf::default()
             })
         },
         &mut |_| panic!("native leaf must not remeasure a copy"),
@@ -41,11 +42,12 @@ fn siblings_use_the_actual_end_of_the_resumed_leaf() {
     });
     let (_, _, plan) = fill_resumed(
         &kids,
-        &|_| 100.0,
+        &|_| page(100.0),
         Space::pages(12),
-        &|index| {
+        &|index, _| {
             (index == 1).then_some(Leaf {
                 content_block: 180.0,
+                ..Leaf::default()
             })
         },
         &mut |_| super::Measurement::default(),
@@ -75,10 +77,60 @@ fn stalled_leaf_is_an_error_instead_of_a_partial_plan() {
             h: 1.0,
             ..Kid::default()
         }],
-        &|_| 0.0,
+        &|_| page(0.0),
         Space::pages(12),
-        &|_| Some(Leaf { content_block: 1.0 }),
+        &|_, _| {
+            Some(Leaf {
+                content_block: 1.0,
+                ..Leaf::default()
+            })
+        },
         &mut |_| super::Measurement::default(),
     );
     assert!(matches!(result, Err(Error::NoProgress)));
+}
+
+#[test]
+fn forced_break_preserves_the_following_margin_unforced_break_discards_it() {
+    for forced in [false, true] {
+        let kids = [
+            Kid {
+                h: 90.0,
+                mb: 30.0,
+                ..Kid::default()
+            },
+            Kid {
+                h: 20.0,
+                mt: 15.0,
+                force_before: forced,
+                ..Kid::default()
+            },
+        ];
+        let (_, _, plan) = fill_resumed(
+            &kids,
+            &|_| page(100.0),
+            Space::pages(1),
+            &|index, _| {
+                Some(Leaf {
+                    content_block: kids[index].h,
+                    ..Leaf::default()
+                })
+            },
+            &mut |_| panic!("leaf does not remeasure"),
+        )
+        .unwrap();
+        let last = plan.last().unwrap();
+        // CSS Break 3 §5.2: before-break margin исчезает в обоих случаях.
+        assert_eq!(
+            (last.kid, last.col, last.y, last.h),
+            (1, 1, if forced { 15.0 } else { 0.0 }, 20.0)
+        );
+    }
+}
+
+fn page(height: f32) -> crate::layout::fragment::token::Space {
+    crate::layout::fragment::token::Space {
+        block_size: Some(height),
+        ..crate::layout::fragment::token::Space::pages()
+    }
 }

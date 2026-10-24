@@ -12,6 +12,7 @@ use gpui::{App, Window};
 pub(super) struct Inputs {
     pub(super) constraints: crate::layout::cx::FragmentConstraints,
     pub(super) source: Option<gpui::LayoutSpace>,
+    pub(super) page: Option<crate::layout::fragment::token::space::PageIdentity>,
 }
 
 #[derive(Clone)]
@@ -43,6 +44,7 @@ impl PageStack {
         copy: usize,
         area: (f32, f32),
         from: f32,
+        page: Option<crate::layout::fragment::token::space::PageIdentity>,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<(Kid, f32)> {
@@ -53,6 +55,7 @@ impl PageStack {
                 parent: base.opts.cx.constraints.clone(),
             },
             source: base.space,
+            page,
         };
         if let Some(m) = self.measured.get(&(index, copy))
             && m.reusable(&inputs, from)
@@ -92,6 +95,11 @@ impl PageStack {
                 r.watched = rec.clone();
                 r
             });
+        if let Some(percentages) = &k.percentages {
+            let mut space = crate::layout::fragment::token::Space::pages();
+            (space.inline_size, space.block_size, space.page) = (Some(area.0), Some(area.1), page);
+            percentages.refresh(&mut own.dom, space, &own.opts);
+        }
         rec.clear_consumed(window);
         rec.resume_content(&old.laid, from);
         let inline_addresses = inline::resume(&rec.flow, &old.inline.paragraphs, from);
@@ -148,70 +156,4 @@ fn rebuild_copy(k: &mut super::PageKid, copy: usize, r: &crate::layout::fragment
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::layout::cx::{BoxConstraints, FragmentConstraints};
-    use crate::layout::fragment::geometry::Node;
-    use gpui::{AvailableSpace, Style, point, px, size};
-
-    #[gpui::test]
-    fn cached_continuation_requires_the_complete_producing_inputs(cx: &mut gpui::TestAppContext) {
-        let cx = cx.add_empty_window();
-        cx.draw(
-            point(px(0.), px(0.)),
-            size(px(100.), px(100.)),
-            |window, app| {
-                let id = window.request_layout(Style::default(), [], app);
-                let node = Node::capture(id, window);
-                let available = size(
-                    AvailableSpace::Definite(px(100.)),
-                    AvailableSpace::MaxContent,
-                );
-                window.compute_layout(id, available, app);
-                let inputs = Inputs {
-                    constraints: FragmentConstraints {
-                        area: (100., 200.),
-                        parent: BoxConstraints {
-                            cb_width: Some(100.),
-                            avail_w: Some(100.),
-                            avail_h: Some(300.),
-                            cell_bfc: false,
-                        },
-                    },
-                    source: Some(node.read(window).unwrap().space),
-                };
-                let mut cached = CopyGeometry {
-                    inputs: inputs.clone(),
-                    from: 40.,
-                    offset: 60.,
-                    kid: Kid::default(),
-                    inline: Default::default(),
-                    laid: Laid::default(),
-                    continued: true,
-                };
-                assert!(cached.reusable(&inputs, 40.));
-                assert!(cached.reusable(&inputs, 60.));
-                assert!(!cached.reusable(&inputs, 80.));
-                let mut changed = inputs.clone();
-                changed.constraints.area.1 = 180.;
-                assert!(!cached.reusable(&changed, 40.));
-                changed = inputs.clone();
-                changed.constraints.parent.avail_h = Some(400.);
-                assert!(!cached.reusable(&changed, 40.));
-                changed = inputs.clone();
-                changed.constraints.parent.cb_width = Some(120.);
-                assert!(!cached.reusable(&changed, 40.));
-                changed = inputs.clone();
-                changed.source = None;
-                assert!(!cached.reusable(&changed, 40.));
-                window.compute_layout(id, available, app);
-                changed.source = Some(node.read(window).unwrap().space);
-                assert!(!cached.reusable(&changed, 40.));
-                cached.continued = false;
-                assert!(cached.reusable(&inputs, 80.));
-                assert!(!cached.reusable(&changed, 80.));
-                gpui::div()
-            },
-        );
-    }
-}
+mod tests;

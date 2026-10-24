@@ -3,14 +3,15 @@
 
 use crate::dom::Element;
 use crate::layout::fragment::clone::clone_dec;
-use crate::layout::fragment::shape_contents::strip_through_top;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_relative;
 use crate::style::computed::BoxStyle;
 mod finish;
 use finish::{finish_stack_child, nest_row_of};
 mod cuts;
-use cuts::{copy_cuts_and_height, stack_child_of};
+use cuts::stack_child_of;
+mod prepare;
+pub(in crate::layout::multicol) use prepare::{Prepared, prepare};
 mod breaks;
 mod build;
 mod fixed;
@@ -28,12 +29,9 @@ use frag_div::frag_box_div;
 pub(super) fn multicol_stack_child(
     ix: usize,
     c: Element,
-    h: f32,
+    prepared: Prepared,
     mt: f32,
     mb: f32,
-    cuts: Vec<(f32, f32)>,
-    forced: Vec<f32>,
-    solid: Vec<(f32, f32)>,
     e: &Element,
     merged: &BoxStyle,
     opts: &RenderOpts,
@@ -65,49 +63,17 @@ pub(super) fn multicol_stack_child(
     // СВОЕГО контейнера, а не от многоколоночника.
     let merged_k = kid_parent.get(ix).cloned().flatten();
     let merged: &BoxStyle = merged_k.as_ref().unwrap_or(&merged);
-    let mut copy = c;
-    // Поля кладёт укладка колонок, не коробка. В
-    // вертикальном письме блочные поля — левое и
-    // правое; схлопывание сквозь верх (`strip_through_top`)
-    // там не считается вовсе (мера повёрнутая).
-    if col_vert {
-        copy.style.used_mut().margin.left = None;
-        copy.style.used_mut().margin.right = None;
-    } else {
-        copy.style.used_mut().margin.top = None;
-        copy.style.used_mut().margin.bottom = None;
-        // И поле, схлопнутое СКВОЗЬ верх (`through` в
-        // `mt`): стопка уже положила его `lead`-ом,
-        // второй раз его вставил бы корень копии.
-        strip_through_top(&mut copy, 4);
-    }
-    let (empty_floats, float_zero) = floats::normalize(&mut copy, col_vert, col_rl, opts.cx.vcx());
-    // Независимая копия получает высоту, переполнение и разрывы в lay_out_main.
-    // TRANSITIONAL(F2-4): Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10.
-    let laid = measured_kids
-        .borrow()
-        .iter()
-        .any(|&(id, _)| id == copy.node_id)
-        && (if col_vert {
-            crate::layout::fragment::flow::vertical_copy(&copy, col_rl)
-        } else {
-            crate::layout::fragment::flow::independent_copy(&copy)
-                || empty_floats
-                || (copy.marks.paginate
-                    && crate::layout::multicol::measure::native_float::float_copy(
-                        &copy,
-                        opts.cx.vcx(),
-                    ))
-        });
-    let (cuts, forced, solid, h, over, no_reach) = if laid {
-        // Высоту, переполнение и разрывы заменяет lay_out_main до плана.
-        (cuts, forced, solid, h, h, true)
-    } else {
-        copy_cuts_and_height(
-            ix, h, cuts, forced, solid, opts, kid_par, col_vert, col_rl, line_col_w, fixed, merged,
-            &copy,
-        )
-    };
+    let Prepared {
+        mut copy,
+        empty_floats,
+        float_zero,
+        cuts,
+        forced,
+        solid,
+        h,
+        over,
+        no_reach,
+    } = prepared;
     // Относительный сдвиг — не коробке, а фрагменту
     // (css-break-3 §5.5): его кладёт `ColumnStack`
     // вместе со срезом.

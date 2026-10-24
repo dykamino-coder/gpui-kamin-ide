@@ -1,6 +1,5 @@
 //! Согласование имён листов, их размеров и роста фрагментируемого flex.
 use super::{PageGeom, PageStack};
-use crate::layout::fragment::flow::blocks::leaf::Leaf;
 use crate::layout::fragment::plan::{self, Plan, Space};
 use crate::layout::fragment::token::Error;
 use crate::layout::fragment::types::Kid;
@@ -38,10 +37,20 @@ impl PageStack {
         let (mut kids, mut inline, limit) =
             self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
         let kid_names: Vec<_> = self.kids.iter().map(|k| k.page.clone()).collect();
+        let mut interned = kid_names.clone();
+        interned.sort();
+        interned.dedup();
         let mut geoms = vec![g];
         let mut names = vec![first.clone()];
         let result = settle(|| {
-            let tail = names.last().cloned().unwrap_or_default();
+            let geom_for = self.geom_for.clone();
+            let pages = super::spaces::Pages {
+                names: &names,
+                interned: &interned,
+                geoms: &geoms,
+                geom_for: &geom_for,
+                principal: self.principal,
+            };
             self.measured.clear();
             for (index, kid) in self.kids.iter().enumerate() {
                 if let Some(r) = &kid.regrow {
@@ -54,6 +63,7 @@ impl PageStack {
                                     parent: r.opts.cx.constraints.clone(),
                                 },
                                 source: r.space,
+                                page: pages.at(0).page,
                             },
                             from: 0.0,
                             offset: 0.0,
@@ -65,30 +75,18 @@ impl PageStack {
                     );
                 }
             }
-            let geom_for = self.geom_for.clone();
             let axis = self.axis;
-            let heights = |col| {
-                let pg = geoms
-                    .get(col)
-                    .copied()
-                    .unwrap_or_else(|| geom_for(col, &tail));
-                if axis.is_vertical() {
-                    pg.area.0.max(1.0)
-                } else {
-                    pg.area.1.max(1.0)
-                }
-            };
+            let heights = |col| pages.at(col).block_size.unwrap();
             let leaves: Vec<_> = self
                 .kids
                 .iter()
-                .zip(&kids)
-                .map(|(p, k)| p.leaf.as_ref().map(|_| Leaf { content_block: k.h }))
+                .map(|p| p.leaf.as_ref().map(|l| l.geometry.clone()))
                 .collect();
             let planned = plan::fill_resumed(
                 &kids,
-                &heights,
+                &|col| pages.at(col),
                 Space::pages(limit),
-                &|index| leaves[index],
+                &|index, space| leaves[index].as_ref().map(|at| at(space)),
                 &mut |request| {
                     let plan::MeasureRequest {
                         kid,
@@ -96,17 +94,18 @@ impl PageStack {
                         col,
                         from,
                         block_size,
+                        page,
                     } = request;
-                    let pg = geoms
-                        .get(col)
-                        .copied()
-                        .unwrap_or_else(|| geom_for(col, &tail));
+                    let pg = geoms.get(col).copied().unwrap_or_else(|| {
+                        let name = names.last().map_or("", String::as_str);
+                        geom_for(col, name)
+                    });
                     let area = if axis.is_vertical() {
                         (pg.area.1, block_size)
                     } else {
                         (pg.area.0, block_size)
                     };
-                    let geometry = self.remeasure_copy(kid, copy, area, from, window, cx);
+                    let geometry = self.remeasure_copy(kid, copy, area, from, page, window, cx);
                     plan::Measurement {
                         copy: geometry,
                         inline: self
@@ -162,7 +161,7 @@ impl PageStack {
         .map_err(|Incomplete| Failure::Settlement)?
         .map_err(Failure::Continuation)?;
         for (index, kid) in self.kids.iter_mut().enumerate() {
-            if let Some(build) = &kid.leaf {
+            if let Some(leaf) = &kid.leaf {
                 let count = result
                     .1
                     .iter()
@@ -174,7 +173,20 @@ impl PageStack {
                 kid.frags
                     .try_reserve(count)
                     .map_err(|_| Failure::Continuation(Error::ResourceExhausted))?;
-                kid.frags.extend((0..count).map(|_| build()));
+                let pages = super::spaces::Pages {
+                    names: &names,
+                    interned: &interned,
+                    geoms: &geoms,
+                    geom_for: &self.geom_for,
+                    principal: self.principal,
+                };
+                for f in result.1.iter().filter(|f| f.kid == index) {
+                    if f.copy == 0 {
+                        kid.el = (leaf.build)(pages.at(f.col), *f);
+                    } else {
+                        kid.frags.push((leaf.build)(pages.at(f.col), *f));
+                    }
+                }
             }
         }
         for (pk, k) in self.kids.iter().zip(&kids) {

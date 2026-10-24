@@ -33,6 +33,7 @@ pub(super) fn fill_pieces(
             col: *col,
             from,
             block_size: target_at(*col),
+            page: None,
         });
         if let Some((next, offset)) = measurement.copy {
             measured = Some(next);

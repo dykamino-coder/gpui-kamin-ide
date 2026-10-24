@@ -27,6 +27,7 @@ use names::group_break_names;
 pub(super) fn page_kids_from_groups(
     opts: &RenderOpts,
     root: &BoxStyle,
+    percentages: &crate::layout::fragment::flow::PagePercentages,
     left: f32,
     right: f32,
     top: f32,
@@ -103,7 +104,7 @@ pub(super) fn page_kids_from_groups(
         let (fb, fa, monolith, renamed, start_name) =
             group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
         let leaf = (vertical.is_none() && prepared.is_some() && !monolith)
-            .then(|| leaf::paint_leaf(opts, root, group, (left, right, pad_top), ah))
+            .then(|| leaf::paint_leaf(opts, root, group, (left, right, pad_top), ah, percentages))
             .flatten();
         let paint = paint::Paint {
             opts,
@@ -187,6 +188,7 @@ pub(super) fn page_kids_from_groups(
                     }
                 })
                 .flatten(),
+            percentages: (vertical.is_none() && regrow.is_some()).then(|| percentages.clone()),
             regrow,
             leaf,
             watched: Some(watched),
