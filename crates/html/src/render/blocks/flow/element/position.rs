@@ -10,7 +10,8 @@ mod build;
 mod defer;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn position_element(
+pub(crate) async fn position_element(
+    stk: &mut reblessive::Stk,
     e: &crate::dom::Element,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -46,7 +47,7 @@ pub(crate) fn position_element(
     ) {
         return;
     }
-    let built = build::build(e, inherited, opts, frame, layer_ok, root_box);
+    let built = build::build(stk, e, inherited, opts, frame, layer_ok, root_box).await;
     // Абсолютный блок без заданных краёв стоит на СТАТИЧЕСКОЙ позиции —
     // там, где он оказался бы в потоке, а не в углу содержащего блока.
     // Пустышка нулевой высоты держит это место в потоке, элемент висит

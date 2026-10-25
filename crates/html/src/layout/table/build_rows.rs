@@ -11,7 +11,8 @@ use gpui::AnyElement;
 
 use super::context::{ColumnLayer, GroupEdge, RowCursor, RowsOut, TableGeom, TableLayers};
 
-pub(super) fn table_rows_with_bands(
+pub(super) async fn table_rows_with_bands(
+    stk: &mut reblessive::Stk,
     mut geom: TableGeom<'_>,
     rows: Vec<super::anon::TableRow<'_>>,
     out: &mut RowsOut,
@@ -75,7 +76,7 @@ pub(super) fn table_rows_with_bands(
         group_refs,
         group_bands: Default::default(),
     };
-    table_rows(&rows, &geom, &layers, &mut cursor, out, opts)
+    table_rows(stk, &rows, &geom, &layers, &mut cursor, out, opts).await
 }
 
 // Одна запись связывает элемент дорожки и его буфер проб.

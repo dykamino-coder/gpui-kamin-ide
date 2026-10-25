@@ -125,14 +125,19 @@ pub(super) fn defer(
         build_opts.cx.position.oof_computed = style
             .and_then(|s| s.element_style.clone())
             .map(|e| (own.anchor_key, e));
-        let child = super::build::build(
-            source,
-            &inherited,
-            &build_opts,
-            &frame,
-            layer_ok,
-            root_box.clone(),
-        );
+        let child = reblessive::Stack::new()
+            .enter(|stk| {
+                super::build::build(
+                    stk,
+                    source,
+                    &inherited,
+                    &build_opts,
+                    &frame,
+                    layer_ok,
+                    root_box.clone(),
+                )
+            })
+            .finish();
         let child = if !fixed && source.style.used().z_index.is_some_and(|z| z > 0) {
             crate::paint::stacking::layered(
                 child,

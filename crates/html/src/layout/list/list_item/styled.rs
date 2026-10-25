@@ -8,7 +8,8 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
-pub(crate) fn render_with_style(
+pub(crate) async fn render_with_style(
+    stk: &mut reblessive::Stk,
     li: &Element,
     inherited: &Computed,
     merged: &BoxStyle,
@@ -35,7 +36,13 @@ pub(crate) fn render_with_style(
         )
         .flex()
         .flex_col()
-        .children(opts.cx.contracts.build.blocks(&kids, merged, opts))
+        .children(
+            opts.cx
+                .contracts
+                .build
+                .blocks_stack(stk, &kids, merged, opts)
+                .await,
+        )
         .into_any_element();
     }
     let (marker, marker_style, image) = resolved
@@ -156,7 +163,13 @@ pub(crate) fn render_with_style(
             .w_full()
             .flex()
             .flex_col()
-            .children(opts.cx.contracts.build.blocks(&li.children, merged, opts))
+            .children(
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks_stack(stk, &li.children, merged, opts)
+                    .await,
+            )
             .children(strut),
     )
     .into_any_element()

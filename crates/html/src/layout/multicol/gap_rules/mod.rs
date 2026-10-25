@@ -11,7 +11,7 @@ mod spec;
 pub use items::{GapBuffer, MulticolGaps, gap_item_probe};
 pub use spec::{GapAxisRule, GapLayout, GapRuleSpec};
 pub type GapItems = std::rc::Rc<std::cell::RefCell<GapBuffer>>;
-pub(crate) use children::decorated_children;
+pub(crate) use children::{decorated_children, prepare_children};
 use layout_spec::gap_rule_layout;
 
 /// Пробельный текстовый узел: в подсчёте детей он не участвует.

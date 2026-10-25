@@ -45,7 +45,12 @@ use setup::{
 /// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
-pub(crate) fn table(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+pub(crate) async fn table_stack(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let vcx = opts.cx.vcx();
     let constraints = &opts.cx.constraints;
     let inherited_axes = axes::inherited(e, inherited, vcx);
@@ -242,9 +247,15 @@ pub(crate) fn table(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Any
         cells_over,
         ..Default::default()
     };
-    table_rows_with_bands(geom, rows, &mut out, opts)
+    table_rows_with_bands(stk, geom, rows, &mut out, opts).await
 }
 
 pub(super) fn is_cell(e: &Element) -> bool {
     table_roles::is_cell(e)
+}
+
+pub(crate) fn table(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+    reblessive::Stack::new()
+        .enter(|stk| table_stack(stk, e, inherited, opts))
+        .finish()
 }

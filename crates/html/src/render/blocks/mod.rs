@@ -36,7 +36,12 @@ pub(crate) use positioned::inset_holder_box;
 // (`text-emphasis-line-height-004a..d`, `text-emphasis-punctuation-1/2`).
 // Вернуть можно только вместе с настоящей надстрочной аннотацией (сдвиг
 // базовой линии без атома).
-pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
+pub(crate) async fn blocks_stack(
+    stk: &mut reblessive::Stk,
+    nodes: &[Node],
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
     // Only the cell's own content list is the BFC root's (see `BoxConstraints::cell_bfc`).
     let cell_bfc = opts.cx.constraints.cell_bfc;
@@ -206,6 +211,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) ->
     // складывают сюда содержимое, а забирается оно последними детьми.
     let nodes = collapsed.as_slice();
     blocks_flow(
+        stk,
         nodes,
         run_breaks,
         pending,
@@ -220,4 +226,11 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) ->
         below_run_start,
         below_zs,
     )
+    .await
+}
+
+pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
+    reblessive::Stack::new()
+        .enter(|stk| blocks_stack(stk, nodes, inherited, opts))
+        .finish()
 }

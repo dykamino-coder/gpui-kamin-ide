@@ -9,7 +9,8 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-pub(super) fn collect_captions(
+pub(super) async fn collect_captions(
+    stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -34,11 +35,17 @@ pub(super) fn collect_captions(
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
             // contains its floats (§10.6.7), like a cell (`BoxConstraints::cell_bfc`).
-            let inside = opts.cx.contracts.build.blocks(
-                &cap.children,
-                &cm,
-                &opts.inner(|cx| cx.constraints.cell_bfc = true),
-            );
+            let inside = opts
+                .cx
+                .contracts
+                .build
+                .blocks_stack(
+                    stk,
+                    &cap.children,
+                    &cm,
+                    &opts.inner(|cx| cx.constraints.cell_bfc = true),
+                )
+                .await;
             let built = opts
                 .cx
                 .contracts

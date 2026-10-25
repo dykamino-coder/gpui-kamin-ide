@@ -3842,6 +3842,7 @@ dependencies = [
  "markup5ever_rcdom 0.39.0+unofficial",
  "png 0.18.1",
  "raw-window-handle",
+ "reblessive",
  "resvg 0.48.1",
  "roxmltree 0.21.1",
  "ryu",
@@ -6095,6 +6096,12 @@ dependencies = [
  "font-types 0.12.6",
  "once_cell",
 ]
+
+[[package]]
+name = "reblessive"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbc4a4ea2a66a41a1152c4b3d86e8954dc087bdf33af35446e6e176db4e73c8c"
 
 [[package]]
 name = "reborrow"

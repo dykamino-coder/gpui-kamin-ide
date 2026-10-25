@@ -24,6 +24,8 @@ name = "wptrun"
 required-features = ["wpt-harness"]
 
 [dependencies]
+# Продолжения обхода боксов в куче, без роста нативного стека.
+reblessive = "0.4.3"
 url = "2"
 encoding_rs = "0.8.35"
 # XML source ranges preserve SVG markup when resolving URL fragments.

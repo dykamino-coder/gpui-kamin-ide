@@ -30,6 +30,14 @@ use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
 
 type BuildElement = fn(&Element, &BoxStyle, &RenderOpts) -> AnyElement;
+type BuildStackElement =
+    for<'a> fn(
+        &'a mut reblessive::Stk,
+        &'a Element,
+        &'a BoxStyle,
+        &'a RenderOpts,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = AnyElement> + 'a>>;
+
 type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
 
@@ -46,6 +54,7 @@ type BuildLayer = fn(Layer<'_>) -> AnyElement;
 pub(crate) struct ChildBuild {
     flow: FlowBuild,
     element: BuildElement,
+    element_stack: BuildStackElement,
     boxes: BoxBuild,
     replaced: BuildReplaced,
     svg: fn(&Element, &RenderOpts) -> Option<AnyElement>,
@@ -57,6 +66,7 @@ impl ChildBuild {
     pub(crate) const fn new(
         flow: FlowBuild,
         element: BuildElement,
+        element_stack: BuildStackElement,
         boxes: BoxBuild,
         replaced: BuildReplaced,
         svg: fn(&Element, &RenderOpts) -> Option<AnyElement>,
@@ -66,6 +76,7 @@ impl ChildBuild {
         Self {
             flow,
             element,
+            element_stack,
             boxes,
             replaced,
             svg,
@@ -84,6 +95,17 @@ impl ChildBuild {
         self.flow.blocks(nodes, inherited, opts)
     }
 
+    /// Продолжить блочный поток на явном стеке построителя.
+    pub(crate) async fn blocks_stack(
+        &self,
+        stk: &mut reblessive::Stk,
+        nodes: &[Node],
+        inherited: &BoxStyle,
+        opts: &RenderOpts,
+    ) -> Vec<AnyElement> {
+        self.flow.blocks_stack(stk, nodes, inherited, opts).await
+    }
+
     /// The box of one element.
     pub(crate) fn element(
         &self,
@@ -92,6 +114,18 @@ impl ChildBuild {
         opts: &RenderOpts,
     ) -> AnyElement {
         (self.element)(e, inherited, opts)
+    }
+
+    /// Продолжить обход на явном стеке построителя.
+    pub(crate) async fn element_stack(
+        &self,
+        stk: &mut reblessive::Stk,
+        e: &Element,
+        inherited: &BoxStyle,
+        opts: &RenderOpts,
+    ) -> AnyElement {
+        stk.run(|stk| (self.element_stack)(stk, e, inherited, opts))
+            .await
     }
 
     /// One inline formatting context over `nodes`.
