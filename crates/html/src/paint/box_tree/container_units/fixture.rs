@@ -71,7 +71,11 @@ pub(super) fn run_bounded(
     render_budget: usize,
     check: impl FnOnce(&Document, &Rc<Cell<f32>>, &Rc<Cell<usize>>, &mut gpui::VisualTestContext),
 ) {
-    let doc = Rc::new(Document::builder(html, "").build());
+    let doc = Rc::new(
+        Document::builder(html, "")
+            .build()
+            .expect("container-unit fixture must build"),
+    );
     let width = Rc::new(Cell::new(400.));
     let renders = Rc::new(Cell::new(0));
     let active = Rc::new(Cell::new(false));
