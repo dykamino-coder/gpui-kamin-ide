@@ -101,6 +101,7 @@ mod tests {
                     state: line_state("xxxxxxxx", i, i, false).unwrap(),
                     top: i as f32 * step,
                     bottom: (i + 1) as f32 * step,
+                    prefix: i as f32 * step,
                     consumed_before: 0.,
                 })
                 .collect(),
