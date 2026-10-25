@@ -84,13 +84,7 @@ pub(super) async fn build(
         .contracts
         .build
         .effects(child, Effect::OutlineScope(&opts.cx.deferred.paint));
-    let mut frame = gpui::div().flex().flex_col().child(child);
-    frame = if side == 1 {
-        frame.items_start()
-    } else {
-        frame.items_end()
-    };
-    frame.style().paint_atomic = Some(true);
+    let mut frame = frame(side, child);
     if e.marks.inflow_height {
         frame = frame.h(px(0.0));
     }
@@ -101,4 +95,72 @@ pub(super) async fn build(
         frame.into_any_element(),
         Effect::OutlineFlow(&opts.cx.deferred.paint),
     ))
+}
+
+fn frame(side: i8, child: AnyElement) -> gpui::Div {
+    let mut frame = gpui::div().flex().flex_col().child(child);
+    // Физические стороны Computed: -1 — left, +1 — right.
+    frame = if side < 0 {
+        frame.items_start()
+    } else {
+        frame.items_end()
+    };
+    frame.style().paint_atomic = Some(true);
+    frame
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hooks::{IntoHooked, Wrap};
+    use std::{cell::Cell, rc::Rc};
+
+    struct Capture {
+        child: AnyElement,
+        bounds: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+    }
+
+    impl Wrap for Capture {
+        fn child(&mut self) -> &mut AnyElement {
+            &mut self.child
+        }
+
+        fn prepaint(
+            &mut self,
+            bounds: gpui::Bounds<gpui::Pixels>,
+            window: &mut gpui::Window,
+            cx: &mut gpui::App,
+        ) {
+            self.bounds.set(Some(bounds));
+            self.child.prepaint(window, cx);
+        }
+    }
+
+    #[gpui::test]
+    fn isolated_float_uses_its_physical_side_without_shrinking(cx: &mut gpui::TestAppContext) {
+        for (side, expected_x) in [(-1, 0.), (1, 80.)] {
+            let bounds = Rc::new(Cell::new(None));
+            let child = Capture {
+                child: gpui::div()
+                    .w(px(20.))
+                    .h(px(30.))
+                    .flex_shrink_0()
+                    .into_any_element(),
+                bounds: bounds.clone(),
+            };
+            cx.add_empty_window().draw(
+                gpui::point(px(0.), px(0.)),
+                gpui::size(px(100.), px(100.)),
+                |_, _| frame(side, child.hooked()).w(px(100.)).h(px(0.)),
+            );
+            assert_eq!(
+                bounds.get().expect("float reached prepaint"),
+                gpui::Bounds::new(
+                    gpui::point(px(expected_x), px(0.)),
+                    gpui::size(px(20.), px(30.)),
+                ),
+                "float side {side}",
+            );
+        }
+    }
 }
