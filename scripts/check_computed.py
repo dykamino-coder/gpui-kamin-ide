@@ -129,12 +129,13 @@ def check(root, base, write=False):
     older = previous(root, revision)
     if older is None:
         older = base_sources
+    # Transfers require actual source removals, not a rebaseline allowance.
+    changes = owner_changes(current, base_sources)
     base_sources = approved_base(base_sources, revision)
     older = approved_base(older, revision)
     directory = root / INVENTORY
     paths = sorted(directory.glob('access-*.json'))
     ceiling = decode(p.read_text(encoding='utf-8') for p in paths) if paths else Counter()
-    changes = owner_changes(current, base_sources)
     errors, transfers = [], []
 
     def compare(counts, limits, label):

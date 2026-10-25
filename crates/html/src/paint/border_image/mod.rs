@@ -13,6 +13,7 @@
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
+use crate::resources::css_images::Source as CpuSource;
 mod gradient;
 mod grid;
 mod tiling;
@@ -148,7 +149,9 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
                                         (iw, ih),
                                         matches!(
                                             found,
-                                            crate::paint::background::Source::Raster(_)
+                                            crate::paint::background::Source::Image(
+                                                CpuSource::Raster(_)
+                                            )
                                         ),
                                         (sx, sy, sw, sh),
                                         cell,

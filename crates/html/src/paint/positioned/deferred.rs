@@ -1,33 +1,29 @@
 //! Исходный paint-слот позиционированного элемента, построенного у содержащего блока.
 
-use crate::hooks::{Hooks, IntoHooked};
+use crate::hooks::{IntoHooked, PaintOnly, Painter};
 use crate::layout::positioned::containing_block::DeferredPaint;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
 pub(crate) fn source(publication: DeferredPaint) -> AnyElement {
-    DeferredSource(publication).hooked()
+    PaintOnly(DeferredSource(publication)).hooked()
 }
 
 struct DeferredSource(DeferredPaint);
 
-impl Hooks for DeferredSource {
-    type Layout = ();
+impl Painter for DeferredSource {
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        let style = gpui::Style {
+    fn style(&self) -> gpui::Style {
+        gpui::Style {
             position: gpui::Position::Absolute,
             ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
+        }
     }
-
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut Window, _: &mut App) {}
 
     fn paint(
         &mut self,
         _: Bounds<Pixels>,
-        _: &mut (),
+        _: &mut LayoutId,
         _: &mut (),
         window: &mut Window,
         cx: &mut App,

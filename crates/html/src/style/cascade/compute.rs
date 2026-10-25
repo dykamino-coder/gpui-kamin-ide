@@ -104,7 +104,7 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     c.tab_size_len = match own.tab_size_len.and(c.tab_size_len) {
         Some(len) => Some(Len::Px(crate::style::font_metrics::spacing_px(
             Some(len),
-            &c.font_family.clone().unwrap_or_default(),
+            c.font_family.as_deref().unwrap_or_default(),
             own_px,
             vcx,
         ))),

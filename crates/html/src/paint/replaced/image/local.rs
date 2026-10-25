@@ -7,6 +7,7 @@ use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::replaced::image::{Picture, PictureSizing};
+use crate::resources::css_images::Source as CpuSource;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
@@ -47,7 +48,7 @@ pub(super) fn fit_local_image(
         image = image.size_full().object_fit(gpui::ObjectFit::Fill);
     }
     let image = position(image, &e.style.used(), vcx);
-    if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
+    if let Some(source @ crate::paint::background::Source::Image(CpuSource::Filtered { .. })) =
         crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.used(), vcx)
             .map(crate::paint::background::Source::from_cpu)
     {
@@ -125,7 +126,7 @@ pub(super) fn local_image_source<'a>(
             let size =
                 crate::paint::background::default_size(s.intrinsic(), DEFAULT_REPLACED_SIZE_PX);
             let raster = match &s {
-                crate::paint::background::Source::Vector { markup, .. } => {
+                crate::paint::background::Source::Image(CpuSource::Vector { markup, .. }) => {
                     crate::svg::raster::rasterize_image(
                         &crate::resources::images::viewport::with_viewport(markup, size),
                         size.0,

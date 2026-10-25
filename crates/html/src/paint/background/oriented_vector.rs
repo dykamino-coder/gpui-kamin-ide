@@ -4,6 +4,7 @@
 //! прежней ориентации. Масштаб, скос, произвольные углы и SVG-фильтры остаются на пути картинки.
 
 use crate::document::state::ValueCx;
+use crate::resources::css_images::Source as CpuSource;
 use gpui::{Bounds, Corners, Pixels, TransformationMatrix, Window, point, px, size};
 
 pub(super) fn paint(
@@ -13,7 +14,7 @@ pub(super) fn paint(
     source: &super::Source,
     vcx: ValueCx<'_>,
 ) -> bool {
-    let super::Source::Vector { markup, .. } = source else {
+    let super::Source::Image(CpuSource::Vector { markup, .. }) = source else {
         return false;
     };
     if corners != Corners::default() || markup.to_ascii_lowercase().contains("filter") {
