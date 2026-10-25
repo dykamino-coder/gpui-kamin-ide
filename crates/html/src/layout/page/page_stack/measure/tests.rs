@@ -12,6 +12,7 @@ fn anonymous_float_group_keeps_whole_floats_and_reserves_their_extent() {
             .enumerate()
             .map(|(id, &(top, bottom))| FloatGeometry {
                 id: id as u64,
+                anchor: top,
                 top,
                 bottom,
                 margins: [0.0; 2],
@@ -29,12 +30,14 @@ fn anonymous_float_group_keeps_whole_floats_and_reserves_their_extent() {
     inline
         .paragraphs
         .push(crate::layout::fragment::flow::inline::Inline {
+            scope: Vec::new(),
             lines: vec![crate::layout::fragment::flow::ContentLine {
                 paragraph: 0,
                 byte: 0,
                 state: crate::layout::fragment::line_shape::line_state("X", 0, 0, false).unwrap(),
                 top: 0.0,
                 bottom: 18.0,
+                prefix: 0.0,
                 consumed_before: 0.0,
             }],
             orphans: 2,
