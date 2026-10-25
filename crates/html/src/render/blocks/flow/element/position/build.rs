@@ -10,7 +10,8 @@ use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-pub(super) fn build(
+pub(super) async fn build(
+    stk: &mut reblessive::Stk,
     e: &crate::dom::Element,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -77,7 +78,12 @@ pub(super) fn build(
     let built = if let Some(block_axis) = holder_axis {
         inset_holder_box(e, block_axis, inherited, opts, &kw_len)
     } else {
-        crate::paint::effects::grouped::block_group(animated(e, inherited, opts), e, inherited, vcx)
+        crate::paint::effects::grouped::block_group(
+            animated(stk, e, inherited, opts).await,
+            e,
+            inherited,
+            vcx,
+        )
     };
     let built = match root_box {
         Some(area) if e.style.used().root_box && e.style.used().canvas_bg => {

@@ -59,7 +59,7 @@ pub(super) fn collect_scroll_markers(
                 other => kept.push(other),
             }
         }
-        e.children = kept;
+        e.children = kept.into();
         if !inside {
             purge_scroll_markers(&mut e.children);
             continue;

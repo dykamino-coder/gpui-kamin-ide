@@ -33,7 +33,7 @@ fn view_text(nodes: &[Node]) -> String {
 #[test]
 fn build_and_direct_entries_report_all_three_boundaries_without_dom_loss() {
     for xml in [false, true] {
-        for depth in [63, 64, 65] {
+        for depth in [2051, 2052, 2053] {
             let source = source(depth, xml);
             let mut builder = Document::builder(&source, "");
             if xml {
@@ -49,9 +49,9 @@ fn build_and_direct_entries_report_all_three_boundaries_without_dom_loss() {
             assert_eq!(source_text(&doc.source_dom()), "text");
             assert_eq!(source_text(&parsed.doc.source_dom().unwrap()), "text");
             assert_eq!(doc.traversal_limit(), parsed.doc.traversal_limit());
-            if depth == 65 {
+            if depth == 2053 {
                 let limit = doc.report().degradation.unwrap();
-                assert_eq!((limit.limit, limit.attempted), (64, 65));
+                assert_eq!((limit.limit, limit.attempted), (2052, 2053));
                 assert_eq!(limit.traversal, TraversalKind::BoxBuild);
                 assert_eq!(doc.report().status, RevisionStatus::Degraded);
                 assert_eq!(view_text(doc.nodes()), "");
@@ -73,7 +73,7 @@ fn build_and_direct_entries_report_all_three_boundaries_without_dom_loss() {
 fn deep_update_commits_whole_dom_and_preserves_following_siblings() {
     let mut doc = Document::builder("<p>old</p>", "").build().unwrap();
     let old = doc.salt();
-    let source = format!("{}<p>tail</p>", source(1000, false));
+    let source = format!("{}<p>tail</p>", source(2053, false));
     let report = doc.update(&source, "").unwrap();
     assert!(report.changed());
     assert_eq!(report.status, RevisionStatus::Degraded);
@@ -127,7 +127,7 @@ fn rejected_xml_update_preserves_state_nodes_dom_identity_and_options() {
 #[test]
 fn embedded_degradation_is_typed_scoped_and_retains_the_whole_dom() {
     let embedded = parse_embedded_sized(
-        &source(65, false),
+        &source(2053, false),
         "",
         (100., 100.),
         false,
@@ -154,32 +154,32 @@ fn deep_style_metadata_is_read_without_recursing_or_losing_the_tail() {
     let doc = Document::builder(&html, "div:has(p) {color:blue}")
         .build()
         .unwrap();
-    assert!(doc.traversal_limit().is_some());
+    assert!(doc.traversal_limit().is_none());
     assert!(source_text(&doc.source_dom()).ends_with("tail"));
     assert!(view_text(doc.nodes()).ends_with("tail"));
 }
 
 #[test]
-fn shadow_fallback_walks_cannot_reset_the_stack_guard() {
+fn shadow_fallback_walks_preserve_deep_content() {
     let nested = format!(
         "{}deep{}",
-        "<div><template shadowrootmode=open><slot>".repeat(70),
-        "</slot></template></div>".repeat(70)
+        "<div><template shadowrootmode=open><slot>".repeat(1026),
+        "</slot></template></div>".repeat(1026)
     );
     let html = format!("{nested}<p>tail</p>");
     let doc = Document::builder(&html, "").build().unwrap();
     assert!(doc.traversal_limit().is_some());
     assert_eq!(source_text(&doc.source_dom()), "deeptail");
     assert_eq!(view_text(doc.nodes()), "tail");
-    let inert = format!("<template>{}</template><p>tail</p>", source(1000, false));
+    let inert = format!("<template>{}</template><p>tail</p>", source(2053, false));
     let doc = Document::builder(&inert, "").build().unwrap();
     assert!(doc.traversal_limit().is_none());
     assert_eq!(source_text(&doc.source_dom()), "texttail");
 }
 
 #[test]
-fn assigned_slots_and_reversed_counter_prepasses_report_their_limits() {
-    let deep = source(1000, false);
+fn assigned_slots_and_reversed_counter_prepasses_preserve_source_at_box_limit() {
+    let deep = source(2053, false);
     let html = format!(
         "<div><template shadowrootmode=open><slot></slot></template>{deep}</div><p>tail</p>"
     );
@@ -191,7 +191,7 @@ fn assigned_slots_and_reversed_counter_prepasses_report_their_limits() {
     let doc = Document::builder(&html, "").build().unwrap();
     assert_eq!(
         doc.traversal_limit().unwrap().traversal,
-        TraversalKind::Counters
+        TraversalKind::BoxBuild
     );
     assert_eq!(source_text(&doc.source_dom()), "texttail");
     assert_eq!(view_text(doc.nodes()), "tail");

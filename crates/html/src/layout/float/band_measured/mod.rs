@@ -191,13 +191,19 @@ pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
 /// Есть ли у блока флоат среди потомков обычного потока (сквозь блоки, не
 /// заводящие своего контекста).
 fn has_flow_float(c: &Element) -> bool {
-    c.children.iter().any(|n| match n {
-        Node::Text(_) => false,
-        Node::Element(k) => {
-            k.style.used().float.is_some_and(|f| f != 0)
-                || (block_level_in_flow(k) && !own_context(k) && has_flow_float(k))
+    let mut pending = vec![&c.children];
+    while let Some(children) = pending.pop() {
+        for node in children {
+            let Node::Element(k) = node else { continue };
+            if k.style.used().float.is_some_and(|f| f != 0) {
+                return true;
+            }
+            if block_level_in_flow(k) && !own_context(k) {
+                pending.push(&k.children);
+            }
         }
-    })
+    }
+    false
 }
 
 #[cfg(test)]

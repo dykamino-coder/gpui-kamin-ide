@@ -66,7 +66,7 @@ fn steal_placed(owner: &mut Element, out: &mut Vec<Node>) {
         }
         kept.push(node);
     }
-    owner.children = kept;
+    owner.children = kept.into();
     owner.marks.lends_style |= lent;
 }
 

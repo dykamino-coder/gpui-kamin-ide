@@ -9,7 +9,6 @@ use gpui::{App, AvailableSpace, Window, point, px, size};
 
 /// Заходов роста до неподвижной точки (как у оценки `grow_pushed`).
 const PASSES: usize = 6;
-
 mod copies;
 mod extent;
 mod owners;

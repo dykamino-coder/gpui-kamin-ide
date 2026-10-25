@@ -23,6 +23,11 @@ pub(crate) fn band_host_nested(
     cb: crate::layout::float::FloatCb,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Element, usize)> {
+    // Без следующей коробки обычному блоку не нужен общий хост. Проверяем
+    // это до поиска флоатов: иначе цепочка одиночных блоков сканируется N² раз.
+    if !parent_bfc && nodes[i + 1..].iter().all(is_blank) {
+        return None;
+    }
     let wm = cb.wm;
     let Node::Element(c) = &nodes[i] else {
         return None;

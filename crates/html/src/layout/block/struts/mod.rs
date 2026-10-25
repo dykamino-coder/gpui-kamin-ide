@@ -8,6 +8,7 @@ use crate::layout::box_kind::{
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 mod through;
+pub(super) use through::ThroughCache;
 pub(super) use through::adjoin;
 pub(crate) use through::float_only_wrapper;
 pub(crate) use through::solve;
@@ -19,7 +20,7 @@ pub(super) use chains::leading_chain;
 pub(crate) use chains::margin_px;
 pub(super) use chains::pin_inherited_margins;
 pub(super) use chains::trailing_chain;
-pub(super) use chains::zero_at;
+pub(super) use chains::{ZeroPaths, zero_paths};
 
 /// Первый (по направлению итератора) IN-FLOW блочный ребёнок: плавающие,
 /// абсолютные и пустые строчные пропускаются, непробельный текст и строчный

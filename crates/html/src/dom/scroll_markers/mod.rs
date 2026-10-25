@@ -195,7 +195,7 @@ pub(super) fn scroll_marker_pass(
         hover: None,
         first_letter: None,
         first_line: None,
-        children: markers.into_iter().map(Node::Element).collect(),
+        children: (markers.into_iter().map(Node::Element).collect::<Vec<_>>()).into(),
         attrs: vec![],
     };
     if before {

@@ -21,11 +21,21 @@ impl Default for ChildBuild {
         ChildBuild::new(
             FlowBuild::new(
                 blocks,
+                |stk, nodes, inherited, opts| {
+                    Box::pin(crate::render::blocks::blocks_stack(
+                        stk, nodes, inherited, opts,
+                    ))
+                },
                 paragraph,
                 crate::render::generic_box::child_probes,
                 crate::render::first_line_descendants::route,
             ),
             element,
+            |stk, e, inherited, opts| {
+                Box::pin(crate::render::element::element_stack(
+                    stk, e, inherited, opts,
+                ))
+            },
             BoxBuild::new(
                 styled_div_with,
                 styled_div,

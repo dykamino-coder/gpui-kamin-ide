@@ -90,7 +90,7 @@ pub(super) fn mask_nodes(
                 s.text_shadow = None;
                 s.text_shadow_rest.clear();
                 s.text_shadow_raw = None;
-                e.children = mask_nodes(&e.children, &list, group, shadow, vcx);
+                e.children = mask_nodes(&e.children, &list, group, shadow, vcx).into();
                 Node::Element(e)
             }
         })

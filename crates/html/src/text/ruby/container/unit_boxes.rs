@@ -72,7 +72,7 @@ pub(super) fn spaced(nodes: &[Node], done: &mut bool) -> Vec<Node> {
             Node::Text(_) => Node::Text(String::new()),
             Node::Element(k) => {
                 let mut k = k.clone();
-                k.children = spaced(&k.children, done);
+                k.children = spaced(&k.children, done).into();
                 Node::Element(k)
             }
         })

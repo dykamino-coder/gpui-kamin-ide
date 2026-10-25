@@ -161,7 +161,8 @@ impl Recipe {
                 &self.merged,
                 Some(width),
                 &self.opts,
-            );
+            )
+            .into();
         }
         host
     }

@@ -1,53 +1,49 @@
-//! Обход детей узла с переписью братьев: вход в рекурсию `walk`.
-//!
-//! `walk_children` снимает перепись всех детей целиком до обхода
-//! (`census_of`): `:nth-last-child(… of S)` смотрит и на последующих, поэтому
-//! паспорта детей-элементов собираются заранее, а каждый узел получает своё
-//! место (`Spot`) и список братьев (`Sibs`) при входе в `walk`.
-
-use super::build_dom_node;
+//! Полная перепись братьев для итеративного обхода и :nth-last-child().
+use crate::document::state::ValueCx;
+use crate::dom::shadow::Scope;
 use crate::dom::tree_index::TreeIndex;
-use crate::dom::*;
-use crate::style::css::{Keyframes, Rule, VarMap};
-use crate::style::select::{Ancestor, Sibs, census_of};
+use crate::style::css::VarMap;
+use crate::style::select::{Ancestor, Sibs, Spot, census_of};
 use markup5ever_rcdom::Handle;
-use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Обойти детей узла, посчитав каждому его место среди соседей.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn walk_children(
-    handle: &Handle,
-    tree: &TreeIndex,
-    rules: &[Rule],
-    vars: &VarMap,
-    frames: &HashMap<String, Keyframes>,
-    counter: &mut u64,
-    counters: &mut crate::style::generated::counters::Counters,
-    path: &mut Vec<Ancestor>,
-    preserve: bool,
-    out: &mut Vec<Node>,
-    vcx: crate::document::state::ValueCx<'_>,
-) {
-    let children = handle.children.borrow();
-    // Перепись братьев ЦЕЛИКОМ до обхода: `:nth-last-child(… of S)` смотрит
-    // и на последующих, поэтому паспорта всех детей-элементов собираются
-    // заранее, а каждый узел получает свою позицию в общем списке.
-    let (spots, all) = census_of(&children, tree);
-    let all = Rc::new(all);
-    let mut pos = 0usize;
-    for (idx, (child, spot)) in children.iter().zip(&spots).enumerate() {
-        let is_elem = spot.index != 0;
-        let sibs = Sibs {
-            all: &all,
-            pos,
-            is_elem,
-            rc: Some(&all),
-        };
-        build_dom_node(
-            child, tree, rules, vars, frames, counter, counters, path, *spot, preserve, sibs,
-            &children, &spots, idx, out, vcx,
-        );
-        pos += usize::from(is_elem);
+pub(super) struct Survey {
+    pub nodes: Vec<Handle>,
+    pub spots: Vec<Spot>,
+    pub all: Rc<Vec<Ancestor>>,
+}
+impl Survey {
+    pub fn children(handle: &Handle, tree: &TreeIndex) -> Rc<Self> {
+        let nodes = handle.children.borrow().clone();
+        let (spots, all) = census_of(&nodes, tree);
+        Rc::new(Self {
+            nodes,
+            spots,
+            all: Rc::new(all),
+        })
+    }
+}
+#[derive(Clone)]
+pub(super) struct Visit<'a> {
+    pub survey: Rc<Survey>,
+    pub index: usize,
+    pub pos: usize,
+    pub scope: Rc<Scope>,
+    pub vars: Rc<VarMap>,
+    pub preserve: bool,
+    pub depth: usize,
+    pub vcx: ValueCx<'a>,
+}
+impl Visit<'_> {
+    pub fn handle(&self) -> &Handle {
+        &self.survey.nodes[self.index]
+    }
+    pub fn sibs(&self) -> Sibs<'_> {
+        Sibs {
+            all: &self.survey.all,
+            pos: self.pos,
+            is_elem: self.survey.spots[self.index].index != 0,
+            rc: Some(&self.survey.all),
+        }
     }
 }

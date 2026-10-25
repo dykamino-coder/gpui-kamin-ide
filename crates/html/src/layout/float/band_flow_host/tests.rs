@@ -48,7 +48,7 @@ fn invisible_inline_run_uses_the_paragraph_without_becoming_an_atom() {
     let mut span = Element::synthetic("span", Computed::default(), Default::default(), vec![]);
     span.inline = true;
     for children in [vec![], vec![Node::Text("\n  ".into())]] {
-        span.children = children;
+        span.children = children.into();
         assert_eq!(
             inline_run::classify(&[Node::Element(span.clone())]),
             (false, true)

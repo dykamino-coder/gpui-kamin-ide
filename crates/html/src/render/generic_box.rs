@@ -20,7 +20,8 @@ use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled, px};
 
-pub(super) fn generic_box(
+pub(super) async fn generic_box_stack(
+    stk: &mut reblessive::Stk,
     e: &Element,
     mut merged: BoxStyle,
     inherited: &BoxStyle,
@@ -236,5 +237,8 @@ pub(super) fn generic_box(
             return clamp_host::build(e, merged, inherited, opts, outer_row, d);
         }
     }
-    generic_children(e, d, merged, inherited, opts, overflow_plan)
+    generic_children(stk, e, d, merged, inherited, opts, overflow_plan).await
 }
+
+mod entry;
+pub(super) use entry::generic_box;

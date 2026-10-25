@@ -43,12 +43,12 @@ pub(super) fn split(mut nodes: Vec<Node>, preserve: bool) -> (Option<Vec<Node>>,
                 // CSS 2.1 section 9.5.1 rule 6: a break inside an inline
                 // ancestor completes the line before the float, too. Keep
                 // the ancestor's metrics on both sides of the probe split.
-                let (base, line) = split(c.children.clone(), preserve);
+                let (base, line) = split(c.children.to_vec(), preserve);
                 if let Some(base) = base {
                     let mut before = c.clone();
-                    before.children = base;
+                    before.children = base.into();
                     let mut after = c.clone();
-                    after.children = line;
+                    after.children = line.into();
                     let mut tail = nodes.split_off(i + 1);
                     nodes.truncate(i);
                     nodes.push(Node::Element(before));

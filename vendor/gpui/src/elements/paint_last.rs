@@ -157,6 +157,12 @@ pub(crate) fn hoist_atomic(
 ) {
     let (depth, prev) = open_frame();
     f(window, cx);
+    finish_atomic(depth, prev, window, cx);
+}
+
+// KaminIDE patch: снимки контекста не живут в рекурсивном кадре ребёнка.
+#[inline(never)]
+fn finish_atomic(depth: usize, prev: bool, window: &mut Window, cx: &mut App) {
     loop {
         let next = FRAMES.with(|f| f.borrow_mut().get_mut(depth)?.inline.pop_front());
         let Some(HoistedInline { mut el, ctx }) = next else {

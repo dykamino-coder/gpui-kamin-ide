@@ -82,7 +82,7 @@ pub(crate) fn multicol_box(
     let e = match hoist_spanners(&e.children, shape_cx, vcx) {
         Some(kids) => {
             let mut c = e.clone();
-            c.children = kids;
+            c.children = kids.into();
             hoisted = c;
             &hoisted
         }

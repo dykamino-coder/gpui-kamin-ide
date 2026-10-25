@@ -18,8 +18,8 @@ impl ComputedSlot {
         vcx: crate::document::state::ValueCx<'_>,
     ) -> std::rc::Rc<crate::style::computed::Computed> {
         let mut computed = super::super::compute::compute(parent, own, vcx);
-        computed.cq_size = self.1.get();
-        std::rc::Rc::new(computed)
+        std::rc::Rc::make_mut(&mut computed).cq_size = self.1.get();
+        computed
     }
 
     /// Публикуется только результат завершённого layout через оркестратор.

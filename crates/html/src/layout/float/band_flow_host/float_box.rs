@@ -4,11 +4,24 @@ use crate::dom::Element;
 use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::BoxStyle;
+use crate::style::computed::{BoxStyle, Display};
 use crate::text::clamp::{close_clamp_span, open_clamp_span};
 use gpui::{AnyElement, IntoElement, ParentElement};
 
 pub(super) fn float_box(
+    copy: &Element,
+    source: &Element,
+    cb: f32,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
+    reblessive::Stack::new()
+        .enter(|stk| float_box_stack(stk, copy, source, cb, inherited, opts))
+        .finish()
+}
+
+pub(super) async fn float_box_stack(
+    stk: &mut reblessive::Stk,
     copy: &Element,
     source: &Element,
     cb: f32,
@@ -23,11 +36,25 @@ pub(super) fn float_box(
     merged.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
     merged.resolve_viewport(opts.viewport, vcx);
-    let el = if copy.style.used().clamp_lines().is_some() || copy.style.used().clamp_by_height() {
+    let table = copy.tag == "table"
+        || matches!(
+            copy.style.used().display,
+            Some(Display::Table) | Some(Display::InlineTable)
+        );
+    let el = if table
+        || copy.style.used().clamp_lines().is_some()
+        || copy.style.used().clamp_by_height()
+    {
+        // Табличная сетка, border-spacing и подписи принадлежат построителю
+        // таблицы; обычный каркас с blocks(детей) теряет её внешние интервалы.
         // A float can own a clamp context as well as isolate its parent's
         // counter. The native box installs that context, its cut and probes;
         // inheriting the paragraph's line limit alone loses the root strut.
-        opts.cx.contracts.build.element(copy, inherited, opts)
+        opts.cx
+            .contracts
+            .build
+            .element_stack(stk, copy, inherited, opts)
+            .await
     } else if copy.tag == "img" {
         opts.cx.contracts.build.replaced(copy, None, &opts.cx)
     } else {
@@ -44,7 +71,8 @@ pub(super) fn float_box(
             .cx
             .contracts
             .build
-            .blocks(&copy.children, &merged, opts);
+            .blocks_stack(stk, &copy.children, &merged, opts)
+            .await;
         close_clamp_span(span.clone(), &opts.cx);
         if let Some(scope) = cb_scope {
             kids.extend(scope.finish());

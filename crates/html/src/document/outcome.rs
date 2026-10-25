@@ -25,6 +25,7 @@ pub enum FailureScope {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TraversalKind {
     BoxBuild,
+    Layout,
     Selectors,
     ShadowTree,
     Counters,

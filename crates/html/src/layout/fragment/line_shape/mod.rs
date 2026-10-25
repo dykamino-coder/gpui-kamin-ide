@@ -24,7 +24,7 @@ pub(crate) use nested::nested_box_w;
 pub(crate) use nested::nested_rows_box;
 pub(crate) use nested::nested_rows_shape;
 pub(crate) use nested_kid::layout_unit;
-pub(crate) use resolved_lengths::resolved_lengths;
+pub(crate) use resolved_lengths::{LengthFacts, resolved_lengths};
 mod inline_runs;
 pub(crate) use crate::layout::fragment::flow::transpose_tree;
 pub(crate) use inline_runs::group_inline_runs;

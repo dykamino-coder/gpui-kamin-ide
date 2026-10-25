@@ -241,7 +241,7 @@ pub fn first_page_name(nodes: &[Node]) -> String {
         if let Some(p) = &e.style.used().page {
             root_page = p.clone();
         }
-        nodes = (*e).clone().children;
+        nodes = (*e).clone().children.to_vec();
     }
     first_kid_page_name(&nodes, &root_page)
 }

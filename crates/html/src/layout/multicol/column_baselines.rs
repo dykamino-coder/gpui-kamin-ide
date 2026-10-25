@@ -3,16 +3,17 @@
 //! выход — первая и последняя базовые линии контейнера. Внутри колонки линия выбирается
 //! в порядке потока, а у режущего фрагмента — только из видимой в его маске части.
 
+use crate::layout::fragment::types::FragmentMeasurement;
 use crate::layout::fragment::types::{Frag, Kid, StackChild};
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{App, AvailableSpace, LayoutMeasurement, Pixels, Window, px, size};
+use gpui::{App, AvailableSpace, Pixels, Window, px, size};
 use std::collections::BTreeMap;
 
 #[path = "column_repeat_baselines.rs"]
 mod repeated;
 
 pub(super) struct Measurements {
-    children: Vec<Vec<LayoutMeasurement>>,
+    children: Vec<Vec<FragmentMeasurement>>,
     relative_y: Vec<f32>,
     repeated: Vec<repeated::RepeatedMeasurements>,
 }
@@ -27,9 +28,18 @@ impl Measurements {
         let children = children
             .iter_mut()
             .map(|child| {
+                if child.fragment_builders.len() == child.frags.len() + 1 {
+                    return child
+                        .fragment_builders
+                        .iter()
+                        .map(|handle| handle.measurement(window, cx))
+                        .collect();
+                }
                 std::iter::once(&mut child.el)
                     .chain(child.frags.iter_mut())
-                    .map(|element| element.snapshot_layout_measurement(window, cx))
+                    .map(|element| {
+                        FragmentMeasurement::ready(element.snapshot_layout_measurement(window, cx))
+                    })
                     .collect()
             })
             .collect();

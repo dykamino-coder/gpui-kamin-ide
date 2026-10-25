@@ -19,9 +19,10 @@ use std::rc::Rc;
 mod container_input;
 mod inherited;
 mod recompute;
-mod tree;
 mod used;
+mod walk;
 pub(crate) use recompute::{recompute_onto, rematerialize};
+use walk::walk;
 
 /// Место материализованного стиля при каскадном стиле элемента (`dom::SharedStyle`): копия
 /// элемента делит его с оригиналом, правка каскадного стиля через ручку его сбрасывает.
@@ -118,7 +119,7 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
     // Записи арен вычисленного стиля живут с документом, а не с кадром.
     let vcx = vcx.persistent();
     let generation = inputs(vcx);
-    tree::walk(nodes, parent, generation, &mut Vec::new(), vcx);
+    walk(nodes, parent, generation, &mut Vec::new(), vcx);
 }
 
 /// Стиль коробки элемента с каскадным стилем `own` под коробкой-родителем со стилем `parent`.
@@ -163,7 +164,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
             None => e.computed.clone(),
         },
         // Анонимная коробка наследует от своей коробки-родителя.
-        None => Rc::new(super::compute::compute(parent, cascaded, vcx)),
+        None => super::compute::compute(parent, cascaded, vcx),
     };
     let view = own.used();
     // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.

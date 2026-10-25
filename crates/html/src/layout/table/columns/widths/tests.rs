@@ -25,7 +25,7 @@ fn col(node_id: u64) -> Element {
         hover: None,
         first_letter: None,
         first_line: None,
-        children: Vec::new(),
+        children: (Vec::new()).into(),
         attrs: Vec::new(),
         inline: false,
     }

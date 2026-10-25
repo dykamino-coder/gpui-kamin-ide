@@ -55,11 +55,11 @@ impl RenderOpts {
 
     /// Забрать высоту ряда, адресованную этому элементу: она сама и
     /// настройки без неё для всего, что строится внутри.
-    pub(crate) fn take_outer_row(&self) -> (Option<(f32, f32)>, Option<RenderOpts>) {
+    pub(crate) fn take_outer_row(&self) -> (Option<(f32, f32)>, Option<Box<RenderOpts>>) {
         match self.frag.outer_row {
             None => (None, None),
             Some(row) => {
-                let mut inner = self.clone();
+                let mut inner = Box::new(self.clone());
                 inner.frag.outer_row = None;
                 (Some(row), Some(inner))
             }

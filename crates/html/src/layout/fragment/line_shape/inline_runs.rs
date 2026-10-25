@@ -96,7 +96,7 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
         }
     }
     let mut g = e.clone();
-    g.children = out;
+    g.children = out.into();
     Some(g)
 }
 

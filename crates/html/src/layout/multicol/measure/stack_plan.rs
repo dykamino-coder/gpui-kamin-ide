@@ -62,18 +62,20 @@ pub(crate) fn stack_plan(
     // §9.2.1.1); неизвестная ширина разрешается в deferred layout.
     let mut boxed = e.clone();
     boxed.children =
-        crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx());
+        crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx())
+            .into();
     if !col_vert {
         boxed.children = crate::layout::fragment::flow::column_percentages(
             &boxed.children,
             merged,
             line_col_w,
             opts,
-        );
+        )
+        .into();
     }
     let grouped_e = group_inline_runs(&boxed);
     let ge: &Element = grouped_e.as_ref().unwrap_or(&boxed);
-    let floats_blocked = block_floats(ge, positioned, line_col_w);
+    let floats_blocked = block_floats(ge, positioned, line_col_w, opts.cx.vcx());
     let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
     // Обёртка flex/сетки с ЕДИНСТВЕННЫМ элементом-`clone`
     // (`clone_wrapper_item`): по блочной оси такая обёртка

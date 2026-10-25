@@ -186,7 +186,7 @@ pub(super) fn pseudo_box_named(
                     hover: None,
                     first_letter: None,
                     first_line: None,
-                    children: vec![],
+                    children: (vec![]).into(),
                     attrs: vec![("src".into(), src)],
                     inline: true,
                 }));
@@ -222,7 +222,7 @@ pub(super) fn pseudo_box_named(
         hover: None,
         first_letter: None,
         first_line: None,
-        children,
+        children: children.into(),
         attrs: vec![],
     })
 }

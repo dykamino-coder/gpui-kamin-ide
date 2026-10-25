@@ -29,6 +29,7 @@ impl ColumnStack {
         for c in self.children.iter_mut().filter(|c| !c.span) {
             let Some(r) = c.regrow.as_ref() else { continue };
             while c.frags.len() + 1 < copies {
+                c.fragment_builders.clear();
                 c.frags.push((r.build)(&r.dom, c.frags.len() + 1, false));
             }
         }
@@ -42,6 +43,7 @@ mod tests;
 pub(super) fn rebuild(c: &mut crate::layout::fragment::types::StackChild) {
     let Some(r) = &c.regrow else { return };
     let (el, frags) = r.rebuild(c.frags.len());
+    c.fragment_builders.clear();
     c.el = el;
     c.frags = frags;
     if let Some(repeat) = &mut c.repeat {

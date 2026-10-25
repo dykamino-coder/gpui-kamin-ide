@@ -10,7 +10,7 @@ fn element(style: Computed, children: Vec<Node>) -> Element {
         node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         tag: "div".into(),
         style: style.into(),
-        children,
+        children: children.into(),
         attrs: Vec::new(),
         inline: false,
         list_item: None,

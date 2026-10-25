@@ -75,7 +75,7 @@ mod tests {
             marks: Default::default(),
             tag: tag.into(),
             style: Default::default(),
-            children: Vec::new(),
+            children: (Vec::new()).into(),
             attrs: Vec::new(),
             node_id: 0,
             inline: false,

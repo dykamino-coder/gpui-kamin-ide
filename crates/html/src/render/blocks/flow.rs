@@ -15,7 +15,8 @@ use crate::paint::effects::containment_paint;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn blocks_flow(
+pub(super) async fn blocks_flow(
+    stk: &mut reblessive::Stk,
     nodes: &[Node],
     run_breaks: Vec<usize>,
     mut pending: Vec<Node>,
@@ -132,6 +133,7 @@ pub(super) fn blocks_flow(
                 e
             };
             paint_element(
+                stk,
                 e,
                 nodes,
                 idx,
@@ -142,7 +144,8 @@ pub(super) fn blocks_flow(
                 &frame,
                 &mut out,
                 &mut below,
-            );
+            )
+            .await;
         }
     }
     if !pending.is_empty() {

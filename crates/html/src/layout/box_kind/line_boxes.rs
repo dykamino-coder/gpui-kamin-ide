@@ -14,54 +14,66 @@ use crate::style::computed::Display;
 /// замещаемый атом (`img` и родня) — нет; вне потока строки не рождает никто;
 /// `display: contents` своей коробки не даёт — смотреть надо в его детей.
 pub(crate) fn holds_line_box(children: &[Node]) -> bool {
-    children.iter().any(|n| match n {
-        Node::Text(t) => !blank_text(t),
-        Node::Element(ch) => {
-            if ch.style.used().display == Some(Display::None) {
-                return false;
-            }
-            if ch.style.used().display == Some(Display::Contents) {
-                return holds_line_box(&ch.children);
-            }
-            // Плавающий и абсолютный строчной коробки не рождают.
-            if ch.style.used().float.is_some_and(|f| f != 0)
-                || matches!(
-                    ch.style.used().position,
-                    Some(crate::style::computed::Position::Absolute)
-                        | Some(crate::style::computed::Position::Fixed)
-                )
-            {
-                return false;
-            }
-            // Атомарный строчный в потоке — своя строчная коробка. Проверять
-            // ДО `in_flow`: он их не различает и валит в одну корзину с
-            // плавающим.
-            if atomic_inline(&ch.style.used()) {
-                return true;
-            }
-            // `display: inline` делает строчным ЛЮБОЙ тег: своей коробки у
-            // него нет, а строчную рождает его содержимое. Без этой ветки
-            // `<div style="display:inline">` считался блочным ребёнком и
-            // строки «не рождал», хотя текст внутри него её рождает.
-            if ch.inline || ch.style.used().inline_display == Some(true) {
-                // Блочный псевдоэлемент — блочный ребёнок: строки родителю
-                // не рождает, его содержимое разбирает `through_strut`.
-                if inline_marked_block(ch) {
-                    return false;
+    let mut pending = vec![children];
+    while let Some(children) = pending.pop() {
+        for n in children {
+            match n {
+                Node::Text(t) => {
+                    if !blank_text(t) {
+                        return true;
+                    }
                 }
-                // Пустой строчный с ненулевым полем/отступом/рамкой по
-                // строчной оси — не фантом (css-inline-3
-                // §invisible-line-boxes): строка есть, схлопывание насквозь
-                // закрыто (`phantom-line-boxes-001…006`).
-                return replaced_inline(&ch.tag)
-                    || inline_axis_edges(&ch.style.used())
-                    || holds_line_box(&ch.children);
+                Node::Element(ch) => {
+                    if ch.style.used().display == Some(Display::None) {
+                        continue;
+                    }
+                    if ch.style.used().display == Some(Display::Contents) {
+                        pending.push(&ch.children);
+                        continue;
+                    }
+                    // Плавающий и абсолютный строчной коробки не рождают.
+                    if ch.style.used().float.is_some_and(|f| f != 0)
+                        || matches!(
+                            ch.style.used().position,
+                            Some(crate::style::computed::Position::Absolute)
+                                | Some(crate::style::computed::Position::Fixed)
+                        )
+                    {
+                        continue;
+                    }
+                    // Атомарный строчный в потоке — своя строчная коробка. Проверять
+                    // ДО `in_flow`: он их не различает и валит в одну корзину с
+                    // плавающим.
+                    if atomic_inline(&ch.style.used()) {
+                        return true;
+                    }
+                    // `display: inline` делает строчным ЛЮБОЙ тег: своей коробки у
+                    // него нет, а строчную рождает его содержимое. Без этой ветки
+                    // `<div style="display:inline">` считался блочным ребёнком и
+                    // строки «не рождал», хотя текст внутри него её рождает.
+                    if ch.inline || ch.style.used().inline_display == Some(true) {
+                        // Блочный псевдоэлемент — блочный ребёнок: строки родителю
+                        // не рождает, его содержимое разбирает `through_strut`.
+                        if inline_marked_block(ch) {
+                            continue;
+                        }
+                        // Пустой строчный с ненулевым полем/отступом/рамкой по
+                        // строчной оси — не фантом (css-inline-3
+                        // §invisible-line-boxes): строка есть, схлопывание насквозь
+                        // закрыто (`phantom-line-boxes-001…006`).
+                        if replaced_inline(&ch.tag) || inline_axis_edges(&ch.style.used()) {
+                            return true;
+                        }
+                        pending.push(&ch.children);
+                        continue;
+                    }
+                    // Блочный ребёнок строки не рождает: его содержимое разбирает
+                    // рекурсия `through_strut`.
+                }
             }
-            // Блочный ребёнок строки не рождает: его содержимое разбирает
-            // рекурсия `through_strut`.
-            false
         }
-    })
+    }
+    false
 }
 
 /// Пустой строчный элемент без краёв по строчной оси — фантом
