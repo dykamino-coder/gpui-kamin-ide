@@ -70,10 +70,9 @@ pub(super) fn group(
         flow.style.used_mut().float = None;
         crate::layout::fragment::clone::content_monolith_blockified(e) && independent_copy(&flow)
     } else {
-        independent_copy(e) || float_extent
+        independent_copy(e) || float_extent || super::leaf::eligible(e)
     };
-    // TRANSITIONAL(F2-1): Рост целой копии декорированного блока меняет рамку и координаты соседей; удалить отказ в P04 после краёв каждого печатного фрагмента.
-    if !eligible || decorated_lines(e) {
+    if !eligible {
         return None;
     }
     let e: Element = fragment_box(resolved_lengths(e, root, vcx), width, vcx);
@@ -94,26 +93,3 @@ pub(super) fn group(
 
 #[cfg(test)]
 mod tests;
-
-fn decorated_lines(e: &Element) -> bool {
-    use crate::style::values::value::Len;
-    fn text(e: &Element) -> bool {
-        e.children.iter().any(|n| match n {
-            Node::Text(t) => !t.trim().is_empty(),
-            Node::Element(k) => text(k),
-        })
-    }
-    let b = e.style.used().borders();
-    let decorated = [
-        b.top,
-        b.bottom,
-        e.style.used().padding.top,
-        e.style.used().padding.bottom,
-    ]
-    .iter()
-    .any(|l| !matches!(l, None | Some(Len::Px(0.0))));
-    (decorated && text(e))
-        || e.children
-            .iter()
-            .any(|n| matches!(n, Node::Element(k) if decorated_lines(k)))
-}

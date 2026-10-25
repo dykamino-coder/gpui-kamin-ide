@@ -18,6 +18,16 @@ impl PageStack {
     /// Paginate along the block axis `axis` of the root writing mode.
     pub fn with_axis(mut self, axis: StackAxis) -> Self {
         self.axis = axis;
+        if crate::layout::fragment::types::StackAxis::of(self.principal) != axis {
+            use crate::style::computed::{Computed, writing_mode::WritingModeKw};
+            let mut style = Computed::default();
+            style.writing_mode = Some(match axis {
+                StackAxis::Horizontal => WritingModeKw::HorizontalTb,
+                StackAxis::VerticalRl => WritingModeKw::VerticalRl,
+                StackAxis::VerticalLr => WritingModeKw::VerticalLr,
+            });
+            self.principal = style.wm();
+        }
         self
     }
 

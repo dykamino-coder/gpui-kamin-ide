@@ -47,25 +47,28 @@ fn next_fragmentainer_replaces_height_and_resume_coordinate_before_cutting() {
         ..Default::default()
     };
     let mut calls = Vec::new();
-    let (_, _, plan) = super::fill_measured(
-        &[kid],
-        &|_| 40.,
-        Space::pages(6),
-        &mut |_, copy, col, _, from| {
-            calls.push((copy, col, from));
-            (copy == 1).then(|| {
-                (
-                    Kid {
-                        h: 100.,
-                        over: 100.,
-                        cuts: vec![(20., 20.), (60., 60.)],
-                        ..Default::default()
-                    },
-                    20.,
-                )
-            })
-        },
-    );
+    let (_, _, plan) = super::fill_measured(&[kid], &|_| 40., Space::pages(6), &mut |request| {
+        let super::MeasureRequest {
+            copy,
+            col,
+            from,
+            block_size,
+            ..
+        } = request;
+        assert_eq!(block_size, 40.);
+        calls.push((copy, col, from));
+        (copy == 1).then(|| {
+            (
+                Kid {
+                    h: 100.,
+                    over: 100.,
+                    cuts: vec![(20., 20.), (60., 60.)],
+                    ..Default::default()
+                },
+                20.,
+            )
+        })
+    });
     assert_eq!(
         plan.iter()
             .map(|f| (f.col, f.from, f.h))

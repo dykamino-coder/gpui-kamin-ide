@@ -4,6 +4,20 @@
 
 use gpui::AnyElement;
 
+pub(crate) struct LeafPaint {
+    pub(crate) geometry: std::rc::Rc<
+        dyn Fn(
+            crate::layout::fragment::token::Space,
+        ) -> crate::layout::fragment::flow::blocks::leaf::Leaf,
+    >,
+    pub(crate) build: std::rc::Rc<
+        dyn Fn(
+            crate::layout::fragment::token::Space,
+            crate::layout::fragment::types::Frag,
+        ) -> AnyElement,
+    >,
+}
+
 impl PageKid {
     /// Break propagation follows measured flex line membership.
     pub(super) fn measured_edge(&self, last: bool) -> (bool, bool) {
@@ -83,12 +97,16 @@ pub struct PageKid {
     pub el: AnyElement,
     /// Повторная раскладка flex после роста независимого потока.
     pub(crate) regrow: Option<crate::layout::fragment::push::Regrow>,
+    /// Исходные CB продолжаемой коробки до снятия корневых обёрток.
+    pub(crate) percentages: Option<crate::layout::fragment::flow::PagePercentages>,
+    /// Paint slices первого token consumer; создаются только по готовому плану.
+    pub(crate) leaf: Option<LeafPaint>,
     /// Recorder of the main copy: measured lines and, for a group of one block
     /// box, its block stack (`paged::kids::breaks`).
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// A root float contributes its measured border box even outside normal flow.
     pub(crate) float_id: Option<u64>,
-    /// Пустые floats задают измеренную протяжённость за пределами normal flow.
+    /// Корневые floats задают измеренную протяжённость за пределами normal flow.
     pub(crate) float_extent: bool,
     /// Repeated table sections reserved by the common fragmentation planner.
     pub repeat: Option<crate::layout::fragment::types::Repeat>,

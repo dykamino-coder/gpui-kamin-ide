@@ -30,7 +30,7 @@ impl ColumnStack {
             let Some(r) = c.regrow.as_ref() else { continue };
             while c.frags.len() + 1 < copies {
                 c.fragment_builders.clear();
-                c.frags.push((r.build)(&r.dom, c.frags.len() + 1));
+                c.frags.push((r.build)(&r.dom, c.frags.len() + 1, false));
             }
         }
     }
@@ -38,3 +38,26 @@ impl ColumnStack {
 
 #[cfg(test)]
 mod tests;
+
+/// Геометрия полос и их содержимое используют одно дерево после роста.
+pub(super) fn rebuild(c: &mut crate::layout::fragment::types::StackChild) {
+    let Some(r) = &c.regrow else { return };
+    let (el, frags) = r.rebuild(c.frags.len());
+    c.fragment_builders.clear();
+    c.el = el;
+    c.frags = frags;
+    if let Some(repeat) = &mut c.repeat {
+        for (i, el) in repeat.head_els.iter_mut().enumerate() {
+            *el = (r.build)(&r.dom, i + 1, true);
+        }
+        for (i, el) in repeat.foot_els.iter_mut().enumerate() {
+            *el = (r.build)(&r.dom, i, true);
+        }
+    }
+    if let Some(w) = &c.watched {
+        w.reset();
+    }
+}
+
+#[cfg(test)]
+mod repeat_tests;

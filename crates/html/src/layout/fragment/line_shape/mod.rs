@@ -13,6 +13,8 @@ use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::{Align, Display};
 use crate::style::values::value::Len;
+mod continuation;
+pub(crate) use continuation::line_state;
 mod run;
 pub(super) use run::line_run_shape;
 mod nested;

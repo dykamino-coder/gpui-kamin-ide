@@ -2,8 +2,10 @@
 
 The baseline includes informational reads, test fixtures and style construction writes. Only
 non-style writes/mutable projections and escape calls have non-growing ceilings.
-Decreases need no regeneration. --write explicitly lowers ceilings; --base also
+Matched owner transfers preserve field/access totals. Decreases need no
+regeneration. --write lowers or redistributes ceilings; --base also
 prevents raising checked-in ceilings. First installation compares base sources.
+Record accepted owner transfers with --write before committing their source diff.
 """
 
 import argparse
@@ -17,7 +19,8 @@ import tarfile
 
 # Embedded Python distributions may omit the script directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from computed_access import PREFIX, aggregate, growth
+from computed_access import PREFIX, aggregate, guarded
+from computed_f2_rebaseline import approved_base
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = 'scripts/computed_manifest'
@@ -76,6 +79,49 @@ def previous(root, revision):
     return None
 
 
+def owner_changes(current, previous):
+    """Only production debt in this source diff can authorize a transfer."""
+    return {key: current[key] - previous[key] for key in current.keys() | previous.keys()
+            if guarded(key) and current[key] != previous[key]}
+
+
+def transferred_growth(current, previous, label, changes):
+    """Keep field/access budgets separate and match actual donor/recipient deltas.
+
+    A ceiling's historical slack cannot donate debt. Test fixtures and unrestricted
+    style construction cannot fund production writes. Sorting makes reports stable.
+    """
+    groups = {}
+    for key, count in sorted(current.items()):
+        if guarded(key) and count > previous[key]:
+            groups.setdefault((key[0], key[2]), []).append(key)
+    errors, transfers = [], []
+    for (field, kind), recipients in sorted(groups.items()):
+        donors = {key: min(previous[key] - current[key], -delta)
+                  for key, delta in sorted(changes.items())
+                  if key[0] == field and key[2] == kind and delta < 0
+                  and previous[key] > current[key]}
+        needed = sum(current[key] - previous[key] for key in recipients)
+        allowed = all(current[key] - previous[key] <= changes.get(key, 0)
+                      for key in recipients) and needed <= sum(donors.values())
+        if not allowed:
+            errors.extend(f'{label}: {"/".join(key)} grew {previous[key]} -> {current[key]}'
+                          for key in recipients)
+            continue
+        for key in recipients:
+            remaining = current[key] - previous[key]
+            for donor in donors:
+                amount = min(remaining, donors[donor])
+                if amount:
+                    transfers.append(f'{label}: transfer {field}/{kind}: '
+                                     f'{donor[1]} -> {key[1]} ({amount})')
+                    donors[donor] -= amount
+                    remaining -= amount
+                if not remaining:
+                    break
+    return errors, transfers
+
+
 def check(root, base, write=False):
     current = aggregate(sources(root))
     revision = git(root, 'merge-base', base, 'HEAD').decode().strip()
@@ -83,24 +129,37 @@ def check(root, base, write=False):
     older = previous(root, revision)
     if older is None:
         older = base_sources
+    # Transfers require actual source removals, not a rebaseline allowance.
+    changes = owner_changes(current, base_sources)
+    base_sources = approved_base(base_sources, revision)
+    older = approved_base(older, revision)
     directory = root / INVENTORY
     paths = sorted(directory.glob('access-*.json'))
     ceiling = decode(p.read_text(encoding='utf-8') for p in paths) if paths else Counter()
-    errors = growth(current, base_sources, 'base source counters')
-    errors += growth(current, older, 'base ceilings')
+    errors, transfers = [], []
+
+    def compare(counts, limits, label):
+        failures, moves = transferred_growth(counts, limits, label, changes)
+        errors.extend(failures)
+        transfers.extend(moves)
+
+    compare(current, base_sources, 'base source counters')
+    compare(current, older, 'base ceilings')
     if not write:
-        errors += growth(current, ceiling, 'checked ceilings')
-        errors += growth(ceiling, older, 'ceiling increase')
+        compare(current, ceiling, 'checked ceilings')
+        compare(ceiling, older, 'ceiling increase')
     if write and not errors:
-        # Never raise ceilings that have already been checked in this worktree.
+        # Only matched source transfers can redistribute existing ceilings.
         if paths:
-            errors += growth(current, ceiling, 'checked ceilings')
+            compare(current, ceiling, 'checked ceilings')
         if not errors:
             outputs = documents(current)
             if set(p.name for p in paths) - outputs.keys():
                 raise ValueError('shard count decreased; remove obsolete exact paths explicitly')
             for name, data in outputs.items():
                 (directory / name).write_text(data, encoding='utf-8', newline='\n')
+    for transfer in sorted(set(transfers)):
+        print(transfer)
     return errors, current
 
 
@@ -108,7 +167,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--base', default='origin/main')
-    parser.add_argument('--write', action='store_true', help='Explicitly lower existing ceilings')
+    parser.add_argument('--write', action='store_true', help='Lower ceilings or record matched owner transfers')
     args = parser.parse_args()
     try:
         errors, current = check(args.root.resolve(), args.base, args.write)

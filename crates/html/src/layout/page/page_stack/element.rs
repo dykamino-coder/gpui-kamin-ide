@@ -43,7 +43,14 @@ impl Hooks for PageStack {
         //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
         let area = self.area_logical(&g);
         self.complete.set(false);
-        let Ok((kids, mut geoms, names, pages, mut plan)) = self.fragment_plan(window, cx, g, area)
+        let Ok((kids, mut geoms, names, pages, mut plan)) = self
+            .fragment_plan(window, cx, g, area)
+            .inspect_err(|error| {
+                self.plan.borrow_mut().failure = match error {
+                    super::planning::Failure::Continuation(error) => Some(*error),
+                    super::planning::Failure::Settlement => None,
+                };
+            })
         else {
             self.plan.borrow_mut().clear();
             self.plan.borrow_mut().incomplete();
