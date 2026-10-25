@@ -121,7 +121,10 @@ pub struct Computed {
     /// §subgrid-listing). Отдельным полем, а НЕ через `contain_size`: голое
     /// `contain: size` подсетку не отменяет — это отдельно проверяют случаи
     /// 8 и 9 `independent-formatting-context.html`.
-    pub container_size_query: bool,
+    pub container_type: ContainerType,
+    /// Внутренний SVG использует SVG layout, без главной CSS-коробки.
+    /// Только внешний svg может быть size query container (css-contain-2 §2).
+    pub(crate) svg_no_css_box: bool,
     pub auto_repeat_cols: Option<AutoRepeat>,
     pub auto_repeat_rows: Option<AutoRepeat>,
     /// Тело авто-повтора ДОРОЖКА ЗА ДОРОЖКОЙ: `repeat(auto-fill, max-content
@@ -656,6 +659,8 @@ pub struct Computed {
     /// (или с неизвестным размером) — `None`, и единица берёт малое окно.
     /// Наследуется вниз: контейнер ищется ВВЕРХ по дереву.
     pub cq_box: (Option<f32>, Option<f32>),
+    /// Used content box этого контейнера: явный layout input следующего прохода стиля.
+    pub(crate) cq_size: (Option<f32>, Option<f32>),
     /// Nearest ancestor scrollport, including an indefinite nearest scroller.
     pub(crate) orthogonal_scrollport: Option<[orthogonal::AxisSizes; 2]>,
     /// Used inline measurement contract of an ordinary orthogonal block.

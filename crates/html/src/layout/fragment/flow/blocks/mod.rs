@@ -11,6 +11,7 @@ use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 
 mod collect;
+pub(crate) mod leaf;
 mod registry;
 use collect::{collect, frame, push_kids};
 mod column_avoid;

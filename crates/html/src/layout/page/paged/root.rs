@@ -8,7 +8,7 @@ use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 
 #[derive(PartialEq)]
-pub(super) enum Run {
+enum Run {
     None,
     Inline,
     Float,
@@ -102,8 +102,16 @@ pub(super) fn group_runs(
     inline_level: impl Fn(&Node) -> bool,
     floated: impl Fn(&Node) -> bool,
     groups: &mut Vec<Vec<Node>>,
-    mut run: Run,
+    vcx: ValueCx<'_>,
 ) {
+    let mut run = Run::None;
+    let mut previous_page = None;
+    let forced = |n: &Node, last| match n {
+        Node::Element(e) if floated(n) || crate::layout::fragment::flex_lines::class_a_box(e) => {
+            crate::layout::fragment::breaks::edge_break(e, last, vcx)
+        }
+        _ => false,
+    };
     for n in nodes.iter() {
         if is_blank(n) {
             // Пробел внутри строчного пробега — его часть, вне — пропуск.
@@ -115,14 +123,37 @@ pub(super) fn group_runs(
             continue;
         }
         let (fl, il) = (floated(n), inline_level(n));
-        let join = match run {
-            Run::None => false,
-            Run::Inline => il || fl,
-            Run::Float => true,
+        let names = match n {
+            Node::Element(e) if crate::layout::fragment::flex_lines::class_a_box(e) => {
+                Some(crate::layout::page::names::page_names(e, ""))
+            }
+            _ => None,
         };
+        // Имя флоата не меняет страницу; следующий обычный блок сравнивается
+        // с концом предыдущей коробки класса A даже через общий пробег.
+        let renamed = names
+            .as_ref()
+            .is_some_and(|(start, _)| previous_page.as_ref().is_some_and(|end| end != start));
+        // Принудительная граница заканчивает общий пробег обтекания:
+        // exclusions предыдущего листа не переносятся через page break.
+        let boundary = renamed
+            || forced(n, false)
+            || groups
+                .last()
+                .and_then(|g| g.iter().rfind(|n| !is_blank(n)))
+                .is_some_and(|n| forced(n, true));
+        let join = !boundary
+            && match run {
+                Run::None => false,
+                Run::Inline => il || fl,
+                Run::Float => true,
+            };
         match groups.last_mut() {
             Some(g) if join => g.push(n.clone()),
             _ => groups.push(vec![n.clone()]),
+        }
+        if !join {
+            run = Run::None;
         }
         run = if fl || (run == Run::Float && il) {
             Run::Float
@@ -131,8 +162,14 @@ pub(super) fn group_runs(
         } else {
             Run::None
         };
+        if let Some((_, end)) = names {
+            previous_page = Some(end);
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Block axis of the root writing mode (css-writing-modes-4 §3.1): the
 /// direction the page stack fragments in; `None` — horizontal.

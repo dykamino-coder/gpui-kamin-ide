@@ -24,6 +24,7 @@ fn atomic_inline_and_blockified_grid_items_keep_distinct_routes() {
         );
         let e = root(&tree);
         assert!(!measured_tree(e), "{display}");
+        assert!(crate::layout::fragment::flow::regrow_copy(e), "{display}");
         assert!(
             !crate::layout::fragment::flow::independent_copy(e),
             "{display}"

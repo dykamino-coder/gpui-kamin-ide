@@ -6,10 +6,12 @@ use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::Kid;
 mod at;
 mod fragment;
+mod inline;
 #[cfg(test)]
 mod tests;
 pub(super) use at::cut_at;
 use fragment::FragmentAt;
+pub(super) use inline::Tokens as InlineTokens;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn forced_or_fits(

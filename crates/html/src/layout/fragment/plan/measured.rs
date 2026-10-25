@@ -2,14 +2,61 @@
 use super::{Plan, Space, fill_pieces, open_kid};
 use crate::layout::fragment::types::Kid;
 
+/// Ограничения и курсор содержимого перед мерой очередной копии. Полная высота
+/// фрагментаинера отличается от оставшегося места и от процентной базы.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MeasureRequest {
+    pub(crate) kid: usize,
+    pub(crate) copy: usize,
+    pub(crate) col: usize,
+    pub(crate) from: f32,
+    pub(crate) block_size: f32,
+    pub(crate) page: Option<crate::layout::fragment::token::space::PageIdentity>,
+}
+
+/// IFC принадлежат снимку страничного consumer; общий Kid не хранит их адреса.
+#[derive(Default)]
+pub(crate) struct Measurement {
+    pub(crate) copy: Option<(Kid, f32)>,
+    pub(crate) inline: crate::layout::fragment::flow::inline::Geometry,
+}
+
 // Filling returns column geometry and continuation metadata together.
-#[allow(clippy::type_complexity)]
 pub(crate) fn fill_measured(
     kids: &[Kid],
     target_at: &dyn Fn(usize) -> f32,
     space: Space,
     remeasure: &mut super::Remeasure<'_>,
 ) -> (usize, f32, Plan) {
+    // Потребители копий сохраняют прежний контракт; token consumer ошибок не скрывает.
+    fill_resumed(
+        kids,
+        &|col| crate::layout::fragment::token::Space {
+            block_size: Some(target_at(col)),
+            ..space.space
+        },
+        space,
+        &|_, _| None,
+        &mut |request| Measurement {
+            copy: remeasure(request),
+            inline: Default::default(),
+        },
+    )
+    .expect("copy planner does not execute tokens")
+}
+
+#[allow(clippy::type_complexity)]
+pub(crate) fn fill_resumed(
+    kids: &[Kid],
+    space_at: &dyn Fn(usize) -> crate::layout::fragment::token::Space,
+    space: Space,
+    leaf_at: &dyn Fn(
+        usize,
+        crate::layout::fragment::token::Space,
+    ) -> Option<crate::layout::fragment::flow::blocks::leaf::Leaf>,
+    remeasure: &mut super::ResumeMeasure<'_>,
+) -> Result<(usize, f32, Plan), crate::layout::fragment::token::Error> {
+    let target_at = &|col| space_at(col).block_size.expect("definite fragmentainer");
     let limit = space.limit;
     let paged = space.space.is_paginated();
     let not_top = space.space.not_at_start;
@@ -19,10 +66,9 @@ pub(crate) fn fill_measured(
     let mut first = true;
     let mut placed = not_top > 0;
     let mut shortage = f32::MAX;
-    let mut out = Plan {
-        fragments: Vec::with_capacity(kids.len()),
-        ..Plan::default()
-    };
+    let mut out = Plan::default();
+    out.try_reserve(kids.len())
+        .map_err(|_| crate::layout::fragment::token::Error::ResourceExhausted)?;
     let mut force_next = false;
     // Группа параллельных строк (`Par`): место начала `(col, y, placed)` и
     // самый дальний конец строки `(col, y)`.
@@ -44,6 +90,26 @@ pub(crate) fn fill_measured(
             k,
         );
         let cur = y + lead;
+        if leaf_at(kid, space_at(col)).is_some() {
+            let fragments = crate::layout::fragment::flow::fragment_leaf(
+                &|space| leaf_at(kid, space).expect("leaf consumer is stable"),
+                kid,
+                col,
+                cur,
+                space_at,
+            )?;
+            if let Some(end) = fragments.last() {
+                col = end.col;
+                y = end.y + end.h;
+                placed = true;
+            }
+            out.try_reserve(fragments.len())
+                .map_err(|_| crate::layout::fragment::token::Error::ResourceExhausted)?;
+            out.extend(fragments);
+            prev_mb = k.mb;
+            first = false;
+            continue;
+        }
         let from = 0.0f32;
         let copy = 0usize;
         // Параллельный поток (css-break-3 §3 «parallel flows»):
@@ -86,8 +152,11 @@ pub(crate) fn fill_measured(
             copy,
             flow,
             rg,
-            remeasure,
-        );
+            &mut |mut request| {
+                request.page = space_at(request.col).page;
+                remeasure(request)
+            },
+        )?;
         // Флоат ушёл целиком в следующую колонку, а в текущей осталось
         // место: следующие коробки продолжают её (`Par::float`).
         if k.par.float && k.par.group == 0 && float_hold.is_none() {
@@ -144,5 +213,8 @@ pub(crate) fn fill_measured(
     // курсор. Без потока значение тождественно прежнему: курсор всегда
     // не меньше любого `f.col`.
     let last = out.iter().map(|f| f.col).fold(col, usize::max);
-    (last + 1, shortage, out)
+    let pages = last
+        .checked_add(1)
+        .ok_or(crate::layout::fragment::token::Error::ResourceExhausted)?;
+    Ok((pages, shortage, out))
 }

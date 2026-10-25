@@ -16,13 +16,16 @@ impl Watched {
         }
         let mut out = HashMap::new();
         for (grid, _) in grids {
-            let Some(lid) = self.seen(grid) else {
+            let Some(lid) = self.seen.borrow().get(&grid).copied() else {
                 continue;
             };
-            let Some((o, columns, rows)) = window.grid_tracks(lid) else {
+            let Some(normal) = lid.bounds(window) else {
                 continue;
             };
-            out.insert(grid, axis.tracks(o, columns, rows, false));
+            let Some((_, columns, rows)) = window.grid_tracks(lid.id) else {
+                continue;
+            };
+            out.insert(grid, axis.tracks(normal.origin, columns, rows, false));
         }
         out
     }

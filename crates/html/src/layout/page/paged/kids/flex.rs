@@ -58,7 +58,7 @@ pub(super) fn regrow(
     blocks.flexes(&mut flexes);
     let independent = match vertical {
         Some(rl) => crate::layout::fragment::flow::vertical_copy(dom, rl),
-        None => crate::layout::fragment::flow::independent_copy(dom),
+        None => crate::layout::fragment::flow::regrow_copy(dom),
     };
     if flexes.is_empty() && (blocks.table.is_some() || !independent) {
         return None;
@@ -75,7 +75,7 @@ pub(super) fn regrow(
         })
         .collect();
     let (base, root, rec) = (opts.clone(), root.clone(), watched.clone());
-    let build = move |dom: &crate::dom::Element, part: usize| {
+    let build = move |dom: &crate::dom::Element, part: usize, _band: bool| {
         let mut opts = base.clone();
         let paged = crate::layout::page::paged::PagedBuild::begin();
         opts.frag.paged = Some(paged.clone());
@@ -123,6 +123,7 @@ pub(super) fn regrow(
         build: Rc::new(build),
         opts: opts.clone(),
         laid: Default::default(),
+        space: None,
         laid_h: true,
         watched: watched.clone(),
     })

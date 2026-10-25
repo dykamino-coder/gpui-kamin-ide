@@ -68,7 +68,7 @@ impl TableBox {
                 }
             }
             match slot {
-                Slot::Caption(k) if k.monolith => out.solid.push((st, sb)),
+                Slot::Caption(k) if k.monolith => out.hold((st, sb)),
                 Slot::Caption(k) => {
                     if let Some(inner) = &k.inner {
                         walk(inner, st, sb, laid, out);
@@ -89,7 +89,7 @@ impl TableBox {
         let (table_top, table_bottom) = f.table;
         let (grid_top, grid_bottom) = f.grid;
         if grid_top > table_top + COORD_EPS {
-            out.solid.push((table_top, grid_top));
+            out.hold((table_top, grid_top));
         }
         // Конец предыдущего ряда (у первого — верх содержимого коробки).
         let mut y = grid_top;
@@ -123,21 +123,21 @@ impl TableBox {
                 && let Some((g, gs)) = group_open
                 && g == r.group
             {
-                out.solid.push((gs, y));
+                out.hold((gs, y));
                 group_open = Some((g, open));
             }
             if joined {
                 avoid_run.get_or_insert(prev_open);
             } else if let Some(s) = avoid_run.take() {
-                out.solid.push((s, y));
+                out.hold((s, y));
             }
             if r.avoid_inside {
-                out.solid.push((open, end));
+                out.hold((open, end));
             }
             if let Some((g, gs)) = group_open
                 && g != r.group
             {
-                out.solid.push((gs, y));
+                out.hold((gs, y));
                 group_open = None;
             }
             if r.group_avoid && group_open.is_none() {
@@ -152,10 +152,10 @@ impl TableBox {
             y = end;
         }
         if let Some(s) = avoid_run {
-            out.solid.push((s, y));
+            out.hold((s, y));
         }
         if let Some((_, gs)) = group_open {
-            out.solid.push((gs, y));
+            out.hold((gs, y));
         }
         // Первый ряд без зазора под верхней рамкой с отбивкой: разрыва между
         // ними нет (Blink кладёт первую секцию без разделения с началом

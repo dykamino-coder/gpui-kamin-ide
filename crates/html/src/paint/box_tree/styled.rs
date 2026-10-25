@@ -126,5 +126,5 @@ pub(crate) fn styled_div_with(
     for extra in decorations(c, empty, vcx, Some(cx)) {
         d = d.child(extra);
     }
-    d
+    super::container_units::observe(d, e, style)
 }

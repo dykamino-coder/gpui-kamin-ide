@@ -8,6 +8,8 @@ mod line_baselines;
 mod measured_content;
 mod measured_box;
 mod box_edges;
+mod final_geometry;
+pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
 pub use measured_content::MeasuredContent;
 pub use measurement::LayoutMeasurement;
@@ -60,6 +62,7 @@ struct NodeContext {
     layout_lines_x_from_right: bool,
 }
 pub struct TaffyLayoutEngine {
+    final_geometry: final_geometry::FinalGeometry,
     taffy: TaffyTree<NodeContext>,
     absolute_layout_bounds: FxHashMap<LayoutId, Bounds<Pixels>>,
     /// KaminIDE patch: абсолютная позиция узла в физических точках БЕЗ
@@ -88,6 +91,7 @@ impl TaffyLayoutEngine {
         // 5 физических точек против браузера (поймано сравнением с Chrome).
         taffy.disable_rounding();
         TaffyLayoutEngine {
+            final_geometry: final_geometry::FinalGeometry::default(),
             taffy,
             absolute_layout_bounds: FxHashMap::default(),
             absolute_unrounded: FxHashMap::default(),
@@ -99,6 +103,7 @@ impl TaffyLayoutEngine {
     }
 
     pub fn clear(&mut self) {
+        self.final_geometry = final_geometry::FinalGeometry::default();
         self.taffy.clear();
         self.absolute_unrounded.clear();
         self.absolute_layout_bounds.clear();
@@ -363,6 +368,8 @@ impl TaffyLayoutEngine {
             AvailableSpace::MinContent => AvailableSpace::MinContent,
             AvailableSpace::MaxContent => AvailableSpace::MaxContent,
         };
+        self.begin_geometry(id);
+        let logical_space = available_space;
         let available_space = size(
             transform(available_space.width),
             transform(available_space.height),
@@ -378,6 +385,7 @@ impl TaffyLayoutEngine {
                 },
             )
             .expect(EXPECT_MESSAGE);
+        self.finish_geometry(id, logical_space, scale_factor);
         crate::frame_perf::TAFFY_US.fetch_add(
             _taffy_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,

@@ -10,6 +10,7 @@
 //! кадрами (`table`: коробка таблицы, сетка и дорожки рядов).
 
 use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, MeasuredBreaks};
+use crate::layout::fragment::geometry::Node;
 use crate::layout::fragment::types::StackAxis;
 use gpui::{LayoutId, Pixels, Point, Size, Window};
 use std::cell::RefCell;
@@ -23,6 +24,7 @@ pub(crate) use hook::wrap;
 use hook::{Slot, Watch};
 mod flex;
 mod flex_flows;
+mod flex_geometry;
 mod geometry;
 mod grid;
 mod owner;
@@ -37,7 +39,7 @@ pub(crate) use table::{TablePart, table_part};
 pub(crate) struct Watched {
     pub(crate) flow: Rc<crate::layout::fragment::flow::FlowMeasure>,
     ids: Rc<HashSet<u64>>,
-    seen: Rc<RefCell<HashMap<u64, LayoutId>>>,
+    seen: Rc<RefCell<HashMap<u64, Node>>>,
     /// Block stack of the watched copy whose boundaries are read after layout.
     blocks: Option<BlockBox>,
     /// Keys of the tables of `blocks` (`layout::table::grid_rows::table_key`).
@@ -187,9 +189,18 @@ impl Watched {
         }
     }
 
+    pub(crate) fn space(&self, window: &Window) -> Option<gpui::LayoutSpace> {
+        let root = self.blocks.as_ref()?;
+        Some(self.seen.borrow().get(&root.id)?.read(window)?.space)
+    }
+
+    pub(crate) fn normal(&self, id: u64, window: &Window) -> Option<gpui::Bounds<Pixels>> {
+        self.seen.borrow().get(&id)?.bounds(window)
+    }
+
     /// Layout node recorded for `id` by the last layout.
-    pub(crate) fn seen(&self, id: u64) -> Option<LayoutId> {
-        self.seen.borrow().get(&id).copied()
+    pub(crate) fn seen(&self, id: u64, window: &Window) -> Option<LayoutId> {
+        self.seen.borrow().get(&id)?.id_in(window)
     }
 }
 
