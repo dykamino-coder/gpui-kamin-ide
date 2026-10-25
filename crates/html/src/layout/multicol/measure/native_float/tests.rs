@@ -96,9 +96,9 @@ fn empty_float_host_is_measured_without_a_height_estimate() {
 
 #[test]
 fn parallel_float_continuations_are_not_silently_replaced() {
-// P05 сохраняет normal box заданной высоты и отдельные child tokens
-// переполнения. Пустой монолитный float теперь принадлежит native-копии,
-// поэтому прежний отказ по высоте родителя здесь больше не нужен.
+    // P05 СЃРѕС…СЂР°РЅСЏРµС‚ normal box Р·Р°РґР°РЅРЅРѕР№ РІС‹СЃРѕС‚С‹ Рё РѕС‚РґРµР»СЊРЅС‹Рµ child tokens
+    // РїРµСЂРµРїРѕР»РЅРµРЅРёСЏ. РџСѓСЃС‚РѕР№ РјРѕРЅРѕР»РёС‚РЅС‹Р№ float С‚РµРїРµСЂСЊ РїСЂРёРЅР°РґР»РµР¶РёС‚ native-РєРѕРїРёРё,
+    // РїРѕСЌС‚РѕРјСѓ РїСЂРµР¶РЅРёР№ РѕС‚РєР°Р· РїРѕ РІС‹СЃРѕС‚Рµ СЂРѕРґРёС‚РµР»СЏ Р·РґРµСЃСЊ Р±РѕР»СЊС€Рµ РЅРµ РЅСѓР¶РµРЅ.
     let tree = crate::dom::parse(
         "<div><div><div style='height:100px'><div style='float:left;width:100%;height:100px;break-inside:avoid'></div></div></div></div>",
         "",
