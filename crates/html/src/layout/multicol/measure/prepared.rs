@@ -19,10 +19,12 @@ pub(crate) fn prepared(
     // §9.2.1.1); неизвестная ширина разрешается в deferred layout.
     let mut boxed = e.clone();
     boxed.children =
-        crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx()).into();
+        crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx())
+            .into();
     if !vertical {
         boxed.children =
-            crate::layout::fragment::flow::column_percentages(&boxed.children, merged, width, opts).into();
+            crate::layout::fragment::flow::column_percentages(&boxed.children, merged, width, opts)
+                .into();
     }
     let grouped_e = group_inline_runs(&boxed);
     let ge: &Element = grouped_e.as_ref().unwrap_or(&boxed);

@@ -213,7 +213,7 @@ fn rebuild_copy(k: &mut super::PageKid, copy: usize, r: &crate::layout::fragment
     r.watched.rewind_flows();
     r.watched.reset();
     {
-        let element = (r.build)(&r.dom, copy, false);
+        let element = (r.build)(&r.dom, copy, false, &r.opts);
         if copy == 0 {
             k.el = element;
         } else if let Some(slot) = k.frags.get_mut(copy - 1) {

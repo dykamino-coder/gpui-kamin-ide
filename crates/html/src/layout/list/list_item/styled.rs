@@ -160,19 +160,19 @@ pub(crate) async fn render_with_style(
     // (`marker-text-align-001-ref`).
     .child(
         anchor.content(
-        div()
-            .w_full()
-            .flex()
-            .flex_col()
-            .children(
-                opts.cx
-                    .contracts
-                    .build
-                    .blocks_stack(stk, &li.children, merged, opts)
-                    .await,
-            )
-            .children(strut)
-            .into_any_element(),
+            div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .children(
+                    opts.cx
+                        .contracts
+                        .build
+                        .blocks_stack(stk, &li.children, merged, opts)
+                        .await,
+                )
+                .children(strut)
+                .into_any_element(),
         ),
     )
     .into_any_element()
