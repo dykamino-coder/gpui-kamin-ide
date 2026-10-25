@@ -4,37 +4,6 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
-/// Обнулить поле по пути: наружу оно ушло одним полем родителя, и раскладка
-/// сложила бы его второй раз. `deep` — коробка схлопнулась насквозь: чистится
-/// она сама с обеих сторон.
-pub(crate) fn zero_at(
-    children: &mut [Node],
-    path: &[usize],
-    top: bool,
-    deep: bool,
-    vcx: crate::document::state::ValueCx<'_>,
-) {
-    let Some((&i, rest)) = path.split_first() else {
-        return;
-    };
-    let Some(Node::Element(ch)) = children.get_mut(i) else {
-        return;
-    };
-    if !rest.is_empty() {
-        zero_at(&mut ch.children, rest, top, deep, vcx);
-        return;
-    }
-    pin_inherited_margins(ch, top || deep, !top || deep, vcx);
-    if deep {
-        ch.style.used_mut().margin.top = Some(Len::Px(0.0));
-        ch.style.used_mut().margin.bottom = Some(Len::Px(0.0));
-    } else if top {
-        ch.style.used_mut().margin.top = Some(Len::Px(0.0));
-    } else {
-        ch.style.used_mut().margin.bottom = Some(Len::Px(0.0));
-    }
-}
-
 /// `margin: inherit` берёт ВЫЧИСЛЕННОЕ поле родителя (CSS 2.1 §6.2.1: «the
 /// property takes the same computed value as the property for the element's
 /// parent»). Схлопывание же переписывает поле родителя (обнуляет ушедшее
@@ -53,6 +22,23 @@ pub(crate) fn pin_inherited_margins(
     bottom: bool,
     vcx: crate::document::state::ValueCx<'_>,
 ) {
+    // Не отделять общий список детей, если закреплять нечего.
+    if !e.children.iter().any(|node| {
+        let Node::Element(child) = node else {
+            return false;
+        };
+        [(0, top), (2, bottom)].into_iter().any(|(side, wanted)| {
+            wanted
+                && child.style.cascaded().inherit_longhands.contains(
+                    crate::style::css::LonghandId::physical(
+                        crate::style::css::BoxGroup::Margin,
+                        side,
+                    ),
+                )
+        })
+    }) {
+        return;
+    }
     let own = e.style.used().margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
