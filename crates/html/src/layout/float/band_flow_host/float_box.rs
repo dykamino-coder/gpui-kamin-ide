@@ -4,7 +4,7 @@ use crate::dom::Element;
 use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::BoxStyle;
+use crate::style::computed::{BoxStyle, Display};
 use crate::text::clamp::{close_clamp_span, open_clamp_span};
 use gpui::{AnyElement, IntoElement, ParentElement};
 
@@ -36,7 +36,17 @@ pub(super) async fn float_box_stack(
     merged.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
     merged.resolve_viewport(opts.viewport, vcx);
-    let el = if copy.style.used().clamp_lines().is_some() || copy.style.used().clamp_by_height() {
+    let table = copy.tag == "table"
+        || matches!(
+            copy.style.used().display,
+            Some(Display::Table) | Some(Display::InlineTable)
+        );
+    let el = if table
+        || copy.style.used().clamp_lines().is_some()
+        || copy.style.used().clamp_by_height()
+    {
+        // Табличная сетка, border-spacing и подписи принадлежат построителю
+        // таблицы; обычный каркас с blocks(детей) теряет её внешние интервалы.
         // A float can own a clamp context as well as isolate its parent's
         // counter. The native box installs that context, its cut and probes;
         // inheriting the paragraph's line limit alone loses the root strut.

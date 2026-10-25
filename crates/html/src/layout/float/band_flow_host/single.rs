@@ -163,4 +163,55 @@ mod tests {
             );
         }
     }
+
+    #[gpui::test]
+    fn isolated_floating_table_keeps_its_border_spacing(cx: &mut gpui::TestAppContext) {
+        let document = crate::Document::builder(
+            "<table style='float:left;border-spacing:7px 9px'><tr>\
+             <td style='width:20px;height:30px;padding:0'></td></tr></table>",
+            "",
+        )
+        .build()
+        .unwrap();
+        let mut pending: Vec<_> = document.nodes().iter().collect();
+        let source = loop {
+            let Node::Element(node) = pending.pop().expect("table in document") else {
+                continue;
+            };
+            if node.tag == "table" {
+                break node;
+            }
+            pending.extend(node.children.iter());
+        };
+        let mut copy = source.clone();
+        copy.style.used_mut().float = None;
+        copy.style.used_mut().floated_box = true;
+        let opts = RenderOpts {
+            text: gpui::TextStyle::default(),
+            viewport: (100., 100.),
+            normal_line_height: 1.31,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        let bounds = Rc::new(Cell::new(None));
+        let child = Capture {
+            child: super::super::float_box::float_box(
+                &copy,
+                source,
+                100.,
+                &BoxStyle::default(),
+                &opts,
+            ),
+            bounds: bounds.clone(),
+        };
+        cx.add_empty_window().draw(
+            gpui::point(px(0.), px(0.)),
+            gpui::size(px(100.), px(100.)),
+            |_, _| frame(-1, child.hooked()).w(px(100.)).h(px(0.)),
+        );
+        assert_eq!(
+            bounds.get().expect("table reached prepaint").size.width,
+            px(34.),
+        );
+    }
 }
