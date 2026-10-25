@@ -6,6 +6,7 @@ use crate::layout::fragment::flow::FloatGeometry;
 fn float_balance_floor_preserves_independent_normal_breaks() {
     let float = FloatGeometry {
         id: 7,
+        anchor: 0.0,
         top: 40.0,
         bottom: 60.0,
         margins: [40.0, 40.0],

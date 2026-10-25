@@ -98,6 +98,7 @@ pub(super) fn place_float(
         .and_then(|f| f.float_resume.borrow().clone())
         .filter(|cursor| cursor.token.consumed > COORD_EPS);
     ceil += kid.pagination_offset;
+    ceil = kid.float_floor.map_or(ceil, |floor| ceil.max(floor));
     bands.set_flow_ceiling(ceil);
     // Посадка margin-box: правила 1–9 §9.5.1 и clear §9.5.2.
     let (fx, fy) = if letter {

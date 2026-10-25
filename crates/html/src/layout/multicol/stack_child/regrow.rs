@@ -108,6 +108,7 @@ impl Measured {
                 opts: opts.clone(),
                 laid: Default::default(),
                 floats: Vec::new(),
+                float_leads: Vec::new(),
                 space: None,
                 laid_h: self.laid_h,
                 watched: self.watched.clone(),

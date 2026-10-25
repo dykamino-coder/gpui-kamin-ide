@@ -127,6 +127,7 @@ pub(super) fn regrow(
         opts: opts.clone(),
         laid: Default::default(),
         floats: Vec::new(),
+        float_leads: Vec::new(),
         space: None,
         laid_h: true,
         watched: watched.clone(),

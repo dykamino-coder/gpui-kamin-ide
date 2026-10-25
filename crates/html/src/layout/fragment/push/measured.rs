@@ -59,6 +59,7 @@ pub(crate) struct Regrow {
     /// Разложенная геометрия стопки по последней раскладке главной копии.
     pub(crate) laid: Laid,
     pub(crate) floats: Vec<crate::layout::fragment::flow::FloatGeometry>,
+    pub(crate) float_leads: Vec<(u64, crate::layout::fragment::flow::LinePush)>,
     /// Проход, породивший числовой снимок; не LayoutId из освобождённого дерева.
     pub(crate) space: Option<gpui::LayoutSpace>,
     /// Высота ребёнка в стопке — разложенный border box (а не мера формы):
@@ -77,7 +78,8 @@ impl Regrow {
         }
         grows.sort_by(|a, b| b.at.total_cmp(&a.at));
         let mut unique: Vec<Growth> = Vec::new();
-        for growth in grows {
+        for mut growth in grows {
+            super::float_flow::retarget(&self.floats, &self.float_leads, &mut growth);
             if let Some(previous) = unique.iter_mut().find(|p| p.target == growth.target) {
                 previous.amount = previous.amount.max(growth.amount);
                 previous.forced |= growth.forced;
@@ -118,13 +120,12 @@ impl Regrow {
             );
         }
         match pushed {
-            Pushed::Float(id) => {
-                std::rc::Rc::make_mut(&mut self.opts.frag.float_struts)
-                    .entry(id)
-                    .or_default()
-                    .by += grow;
-                true
-            }
+            Pushed::Float(id) => super::float_flow::raise_floor(
+                &self.floats,
+                &mut self.opts.frag.float_floors,
+                id,
+                grow,
+            ),
             Pushed::Box(id) if forced => {
                 spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.vcx())
             }

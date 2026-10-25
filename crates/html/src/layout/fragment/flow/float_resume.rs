@@ -114,6 +114,7 @@ mod tests {
             scope: scope.to_vec(),
             bounds: FloatGeometry {
                 id: 1,
+                anchor: 10.,
                 top: 0.,
                 bottom: height,
                 margins: [-10., 20.],

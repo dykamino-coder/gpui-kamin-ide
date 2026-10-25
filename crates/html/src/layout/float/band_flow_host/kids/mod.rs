@@ -185,6 +185,7 @@ pub(crate) fn band_kids(
             kind,
             node_id: c.node_id,
             pagination_offset,
+            float_floor: opts.frag.float_floors.get(&c.node_id).copied(),
             monolithic: crate::layout::fragment::clone::monolith_box(c),
             clear,
             margin,
