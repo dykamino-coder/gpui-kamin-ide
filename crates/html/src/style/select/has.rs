@@ -7,13 +7,15 @@
 //! хоста по его дереву теней.
 
 mod collect;
+mod walk;
 pub(crate) use collect::collect_has_args;
 
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::Selector;
 use crate::style::select::matching::matches;
-use crate::style::select::{Ancestor, Sibs, census_of};
+use crate::style::select::{Ancestor, Sibs};
 use markup5ever_rcdom::Handle;
+use walk::Walk;
 
 /// Хеш одного аргумента `:has(...)` - ключ отметки.
 pub(super) fn has_id(arg: &str) -> u64 {
@@ -101,39 +103,17 @@ fn has_in_subtree(
     path: &mut Vec<Ancestor>,
     tree: &TreeIndex,
 ) -> bool {
-    if handle.children.borrow().is_empty() {
-        return false;
-    }
-    let Some(_guard) = tree
-        .doc
-        .traversal
-        .enter(crate::document::TraversalKind::Selectors)
-    else {
-        return false;
-    };
-    let children = handle.children.borrow();
-    let (spots, all) = census_of(&children, tree);
-    let mut pos = 0usize;
-    for (child, spot) in children.iter().zip(&spots) {
-        if spot.index == 0 {
-            continue;
-        }
+    let mut walk = Walk::new(handle, path);
+    while let Some((_, all, pos)) = walk.next(tree) {
         let sibs = Sibs {
             all: &all,
             pos,
             is_elem: true,
-            rc: None,
+            rc: Some(&all),
         };
-        if matches(sel, &all[pos], path, sibs) {
+        if matches(sel, &all[pos], &walk.path, sibs) {
             return true;
         }
-        path.push(all[pos].clone());
-        let hit = has_in_subtree(child, sel, path, tree);
-        path.pop();
-        if hit {
-            return true;
-        }
-        pos += 1;
     }
     false
 }
@@ -148,28 +128,14 @@ pub(crate) fn mark_has(
     path: &mut Vec<Ancestor>,
     tree: &mut TreeIndex,
 ) {
-    if handle.children.borrow().is_empty() {
-        return;
-    }
-    let doc = tree.doc.clone();
-    let Some(_guard) = doc
-        .traversal
-        .enter(crate::document::TraversalKind::Selectors)
-    else {
-        return;
-    };
-    let children = handle.children.borrow();
-    let (spots, all) = census_of(&children, tree);
-    let mut pos = 0usize;
-    for (child, spot) in children.iter().zip(&spots) {
-        if spot.index == 0 {
-            continue;
-        }
+    let mut walk = Walk::new(handle, path);
+    while let Some((child, all, pos)) = walk.next(tree) {
+        let path = &mut walk.path;
         let mut marks: Vec<u64> = vec![];
         for arg in args {
             let hit = arg.parts.iter().any(|(sibling, sel)| {
                 if *sibling {
-                    let mut peers = all.clone();
+                    let mut peers = all.as_ref().clone();
                     peers[pos] = with_sentinel(&all[pos]);
                     (pos + 1..peers.len()).any(|i| {
                         let sibs = Sibs {
@@ -182,7 +148,7 @@ pub(crate) fn mark_has(
                     })
                 } else {
                     path.push(with_sentinel(&all[pos]));
-                    let hit = has_in_subtree(child, sel, path, tree);
+                    let hit = has_in_subtree(&child, sel, path, tree);
                     path.pop();
                     hit
                 }
@@ -192,12 +158,8 @@ pub(crate) fn mark_has(
             }
         }
         if !marks.is_empty() {
-            tree.has_marks.insert(NodeKey::of(child), marks);
+            tree.has_marks.insert(NodeKey::of(&child), marks);
         }
-        path.push(all[pos].clone());
-        mark_has(child, args, path, tree);
-        path.pop();
-        pos += 1;
     }
 }
 

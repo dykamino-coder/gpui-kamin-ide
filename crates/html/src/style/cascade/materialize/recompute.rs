@@ -4,7 +4,6 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Node, SharedStyle};
 use crate::style::computed::{BoxStyle, Computed, ElementStyle};
-use std::rc::Rc;
 
 /// Материализовать заново элемент `e`, чей каскадный стиль правлен после материализации
 /// (кадр анимации — источник каскада), и его поддерево под тем же родителем-элементом, что и
@@ -46,9 +45,7 @@ pub(crate) fn recompute_onto(
         .as_ref()
         .and_then(|p| p.variant_for(&parent))
         .unwrap_or(&parent);
-    let computed = Rc::new(crate::style::cascade::compute::compute(
-        parent, &declared, vcx,
-    ));
+    let computed = crate::style::cascade::compute::compute(parent, &declared, vcx);
     let previous = c
         .element_style
         .as_ref()

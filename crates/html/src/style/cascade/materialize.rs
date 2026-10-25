@@ -17,7 +17,9 @@ use std::rc::Rc;
 mod inherited;
 mod recompute;
 mod used;
+mod walk;
 pub(crate) use recompute::{recompute_onto, rematerialize};
+use walk::walk;
 
 /// Место материализованного стиля при каскадном стиле элемента (`dom::SharedStyle`): копия
 /// элемента делит его с оригиналом, правка каскадного стиля через ручку его сбрасывает.
@@ -109,53 +111,6 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
     walk(nodes, parent, generation, &mut Vec::new(), vcx);
 }
 
-/// Проход `materialize`. Родитель-элемент — не обязательно узел над элементом в дереве
-/// коробок: анонимная обёртка (`Marks::anonymous_wrapper`) пропускает родителя насквозь,
-/// перенесённая коробка (`Marks::style_parent`) берёт стиль исходного родителя, который
-/// проход уже встретил раньше по порядку документа (`lent`).
-fn walk(
-    nodes: &[Node],
-    parent: &Rc<Computed>,
-    generation: Inputs,
-    lent: &mut Vec<(u64, Rc<Computed>)>,
-    vcx: ValueCx<'_>,
-) {
-    for node in nodes {
-        let Node::Element(e) = node else { continue };
-        let moved = e.marks.style_parent;
-        // Вне прохода по документу (`rematerialize`) родитель дан уже исходный.
-        let source = moved.and_then(|id| lent.iter().rev().find(|(k, _)| *k == id));
-        let parent = source
-            .map(|(_, c)| c.clone())
-            .unwrap_or_else(|| parent.clone());
-        let slot = e.style.slot();
-        let computed = slot
-            .get(e.style.cascaded(), &parent, generation)
-            .unwrap_or_else(|| Rc::new(super::compute::compute(&parent, e.style.cascaded(), vcx)));
-        // Равные входы позволяют разделить значение, но ссылка наследования
-        // должна указывать на текущего родителя, включая новый кадр каскада.
-        if !slot
-            .with_parent()
-            .is_some_and(|(old, p)| Rc::ptr_eq(&old, &computed) && Rc::ptr_eq(&p, &parent))
-        {
-            *slot.0.borrow_mut() = Some(Rc::new(Materialized {
-                parent: parent.clone(),
-                generation,
-                computed: computed.clone(),
-            }));
-        }
-        if e.marks.lends_style {
-            lent.push((e.node_id, computed.clone()));
-        }
-        let inside = if e.marks.anonymous_wrapper {
-            &parent
-        } else {
-            &computed
-        };
-        walk(&e.children, inside, generation, lent, vcx);
-    }
-}
-
 /// Стиль коробки элемента с каскадным стилем `own` под коробкой-родителем со стилем `parent`.
 pub fn box_style(parent: &BoxStyle, own: &SharedStyle, vcx: ValueCx<'_>) -> BoxStyle {
     styled(parent, own, true, vcx)
@@ -179,7 +134,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         let context = parent.element_style.as_ref();
         let computed = context
             .and_then(|p| p.variant_for(&element_parent))
-            .map(|p| Rc::new(super::compute::compute(p, cascaded, vcx)))
+            .map(|p| super::compute::compute(p, cascaded, vcx))
             .unwrap_or_else(|| original.clone());
         crate::style::computed::ElementStyle {
             original,
@@ -198,7 +153,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
             None => e.computed.clone(),
         },
         // Анонимная коробка наследует от своей коробки-родителя.
-        None => Rc::new(super::compute::compute(parent, cascaded, vcx)),
+        None => super::compute::compute(parent, cascaded, vcx),
     };
     let view = own.used();
     // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.

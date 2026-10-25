@@ -45,9 +45,9 @@ pub(crate) fn split_nodes(nodes: &[Node], at: usize) -> (Vec<Node>, Vec<Node>) {
                 } else {
                     let (head, tail) = split_nodes(&e.children, at - seen);
                     let mut a = e.clone();
-                    a.children = head;
+                    a.children = head.into();
                     let mut b = e.clone();
-                    b.children = tail;
+                    b.children = tail.into();
                     before.push(Node::Element(a));
                     after.push(Node::Element(b));
                 }

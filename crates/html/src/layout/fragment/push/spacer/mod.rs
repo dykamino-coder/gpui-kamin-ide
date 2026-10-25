@@ -116,7 +116,7 @@ fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_gr
                 hover: None,
                 first_letter: None,
                 first_line: None,
-                children: Vec::new(),
+                children: (Vec::new()).into(),
                 attrs: Vec::new(),
                 inline: false,
             }),

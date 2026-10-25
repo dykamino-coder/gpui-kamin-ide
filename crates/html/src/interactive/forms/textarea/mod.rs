@@ -51,7 +51,7 @@ pub(super) fn textarea(
             e.attr("placeholder").unwrap_or("").to_owned(),
         )]
     } else {
-        e.children.clone()
+        e.children.to_vec()
     };
     let measure = content::content_measure(nodes, style, opts, natural, gutter);
     crate::layout::replaced::natural_control_with(

@@ -17,6 +17,7 @@ mod readiness;
 mod scoped;
 mod synthetic_ids;
 mod traversal;
+pub(crate) use traversal::MAX_DEPTH;
 mod value_cx;
 
 use crate::style::css::{DeclBlock, Media, PageRule};

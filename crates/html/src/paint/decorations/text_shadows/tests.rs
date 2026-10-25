@@ -47,7 +47,7 @@ fn span(style: Computed, children: Vec<Node>) -> crate::dom::Element {
         hover: None,
         first_letter: None,
         first_line: None,
-        children,
+        children: children.into(),
         attrs: Vec::new(),
         inline: true,
     }

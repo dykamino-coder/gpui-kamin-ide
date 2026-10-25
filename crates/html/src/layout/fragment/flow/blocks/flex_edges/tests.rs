@@ -201,7 +201,7 @@ fn css_order_precedes_reverse_for_forced_and_avoid_propagation() {
         e.children.iter().find_map(div)
     }
     let parent = tree.iter().find_map(div).expect("flex root");
-    let ids: Vec<_> = crate::layout::block::reorder::reorder(parent.children.clone())
+    let ids: Vec<_> = crate::layout::block::reorder::reorder(parent.children.to_vec())
         .into_iter()
         .filter_map(|n| match n {
             Node::Element(e) => Some(e.node_id),

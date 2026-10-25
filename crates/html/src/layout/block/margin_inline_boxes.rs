@@ -54,7 +54,7 @@ pub(super) fn prepare(nodes: &mut [Node]) {
             matches!(node, Node::Element(child) if real_inline(child)
                 && !out_of_flow(&child.style.used()) && contains_block(&child.children))
         }) {
-            element.children = split_block_in_inline(&wrap_anon_tables(&element.children));
+            element.children = split_block_in_inline(&wrap_anon_tables(&element.children)).into();
         }
     }
 }

@@ -45,7 +45,7 @@ mod tests {
         inner.inline = true;
         let mut outer = inner.clone();
         outer.node_id = 11;
-        outer.children = vec![Node::Element(inner)];
+        outer.children = vec![Node::Element(inner)].into();
         let split = super::super::split_block_in_inline(&[Node::Element(outer)]);
         let block = split
             .iter()

@@ -85,6 +85,7 @@ fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
             Node::Element(k) => transpose(k, rl, recorded).map(Node::Element),
             other => Some(other.clone()),
         })
-        .collect::<Option<Vec<Node>>>()?;
+        .collect::<Option<Vec<Node>>>()?
+        .into();
     Some(t)
 }

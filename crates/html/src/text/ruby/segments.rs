@@ -115,7 +115,7 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 let units = if spanning {
                     // Одна анонимная аннотация из всего содержимого, без
                     // краевых пробелов (§2.2 п.4).
-                    let mut all: Vec<Node> = k.children.clone();
+                    let mut all: Vec<Node> = k.children.to_vec();
                     while matches!(all.first(), Some(Node::Text(t)) if blank_text(t)) {
                         all.remove(0);
                     }

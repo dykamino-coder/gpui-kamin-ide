@@ -34,7 +34,7 @@ pub(super) fn cascade_element(
     sibs: Sibs,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> (
-    Computed,
+    Box<Computed>,
     VarMap,
     crate::style::values::value::Scheme,
     Option<Rc<crate::dom::shadow::Shadow>>,
@@ -170,5 +170,5 @@ pub(super) fn cascade_element(
     });
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    (style, own_vars, vcx.scheme, shadow, important)
+    (Box::new(style), own_vars, vcx.scheme, shadow, important)
 }

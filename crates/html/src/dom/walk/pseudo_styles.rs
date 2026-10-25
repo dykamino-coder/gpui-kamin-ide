@@ -26,10 +26,10 @@ pub(super) fn pseudo_styles(
     sibs: Sibs,
     vcx: ValueCx<'_>,
 ) -> (
-    Option<Computed>,
-    Option<Computed>,
-    Option<Computed>,
-    Option<Computed>,
+    Option<Box<Computed>>,
+    Option<Box<Computed>>,
+    Option<Box<Computed>>,
+    Option<Box<Computed>>,
 ) {
     let hovered: Vec<&Rule> = rules
         .iter()
@@ -43,14 +43,14 @@ pub(super) fn pseudo_styles(
     let hover = (!hovered.is_empty()).then(|| {
         let mut merged = style.clone();
         merged.cascade_onto(&hovered, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
-        merged
+        Box::new(merged)
     });
     // Псевдоэлементы первой буквы и первой строки — тем же слоем
     // поверх базового стиля: они меняют начертание куска, а не блок.
     let layer =
         |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base, vcx);
-    let first_letter = layer("first-letter", Some(&style));
-    let first_line = layer("first-line", Some(&style));
+    let first_letter = layer("first-letter", Some(&style)).map(Box::new);
+    let first_line = layer("first-line", Some(&style)).map(Box::new);
     let first_line_own = layer("first-line", None).map(Box::new);
     style.first_letter_own = layer("first-letter", None).map(Box::new);
     style.first_line_own = first_line_own;
@@ -84,7 +84,7 @@ pub(super) fn pseudo_styles(
                 m.bidi_isolate = Some(true);
             }
             m.cascade_onto(&found, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
-            m
+            Box::new(m)
         })
     };
 

@@ -36,7 +36,7 @@ fn float_host_retains_a_preceding_invisible_inline_run() {
     let vcx = metric_doc.values();
     let mut span = Element::synthetic("span", Computed::default(), Default::default(), vec![]);
     span.inline = true;
-    span.children = vec![crate::dom::Node::Text("\n  ".into())];
+    span.children = vec![crate::dom::Node::Text("\n  ".into())].into();
     let tail = span.clone();
     let float = Element::synthetic(
         "div",

@@ -192,9 +192,8 @@ pub(crate) fn convert(
     walk_children(
         &dom.document,
         &tree,
-        &doc.rules,
+        &doc,
         &vars,
-        &doc.frames,
         &mut counter,
         &mut counters,
         &mut Vec::new(),

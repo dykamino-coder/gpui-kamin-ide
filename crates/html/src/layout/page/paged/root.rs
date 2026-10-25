@@ -93,7 +93,7 @@ pub(super) fn resolve_root_page(
             *root_page = p.clone();
         }
         *root = box_style(root, &e.style, vcx);
-        *nodes = e.children;
+        *nodes = e.children.to_vec();
     }
 }
 

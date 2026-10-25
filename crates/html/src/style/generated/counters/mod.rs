@@ -15,6 +15,7 @@
 
 use std::collections::HashMap;
 mod scope;
+pub(crate) use scope::Scope;
 
 /// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
 /// `::before` (css-lists-3 §marker-pseudo), поэтому его номер меньше.

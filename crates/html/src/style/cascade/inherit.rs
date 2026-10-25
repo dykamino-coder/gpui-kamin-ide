@@ -46,30 +46,14 @@ use paint::inherit_paint;
 // (`style::zoom::resolve`), а не через самую горячую функцию крейта.
 pub fn inherit(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(
-        parent,
-        own,
-        own,
-        std::rc::Rc::new(computed),
-        None,
-        true,
-        vcx,
-    )
+    box_stage(parent, own, own, computed, None, true, vcx)
 }
 
 /// Document preparation propagates style; Filter Effects 1 §5 applies colors
 /// only when the renderer builds the element, never while removing wrappers.
 pub(crate) fn inherit_unpainted(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(
-        parent,
-        own,
-        own,
-        std::rc::Rc::new(computed),
-        None,
-        false,
-        vcx,
-    )
+    box_stage(parent, own, own, computed, None, false, vcx)
 }
 
 /// Стиль коробки из вычисленного стиля `c` элемента под коробкой-родителем

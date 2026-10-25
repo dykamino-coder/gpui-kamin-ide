@@ -20,7 +20,7 @@ fn element(style: Computed, children: Vec<Element>) -> Element {
         hover: None,
         first_letter: None,
         first_line: None,
-        children: children.into_iter().map(Node::Element).collect(),
+        children: (children.into_iter().map(Node::Element).collect::<Vec<_>>()).into(),
         attrs: Vec::new(),
         inline: false,
     }
