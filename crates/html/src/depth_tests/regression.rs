@@ -43,6 +43,7 @@ fn frame(stage: &str) {
         gpui::size(gpui::px(100.), gpui::px(100.)),
         |_, _| FrameProbe(gpui::div().children(boxes).into_any_element(), stage.into()),
     );
+    assert!(document.traversal_limit().is_none());
 }
 
 #[test]

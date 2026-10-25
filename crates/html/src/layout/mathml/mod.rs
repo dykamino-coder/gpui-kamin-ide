@@ -106,10 +106,11 @@ async fn build_stack(
                 continue;
             }
             let core = operators::core(child, &style, opts);
+            let child_opts = opts.inner(|cx| cx.contracts.reflow_depth += 1);
             factories.push(core.filter(|op| op.flags & 1 != 0).map(|op| {
                 let child = child.clone();
                 let style = style.clone();
-                let opts = opts.clone();
+                let opts = child_opts.clone();
                 let factory: stretch::Factory = Box::new(move |target| {
                     build(&child, &style, &opts, Some(target))
                         .unwrap_or_else(|| opts.cx.contracts.build.element(&child, &style, &opts))
@@ -119,7 +120,7 @@ async fn build_stack(
             margins.push(margins_px(&box_style(&style, &child.style, vcx), opts));
             let forwarded = if core.is_some() { target } else { None };
             let built = stk
-                .run(|stk| build_stack(stk, child, &style, opts, forwarded))
+                .run(|stk| build_stack(stk, child, &style, &child_opts, forwarded))
                 .await;
             let built = match built {
                 Some(built) => built,
@@ -161,11 +162,12 @@ async fn build_stack(
         outer.style().flex_direction = Some(gpui::FlexDirection::Row);
         outer.style().justify_content = Some(gpui::JustifyContent::Center);
     }
-    Some(
+    Some(crate::layout::depth::wrap(
         outer
             .child(crate::hooks::IntoHooked::into_hooked(content))
             .into_any_element(),
-    )
+        opts,
+    ))
 }
 
 /// Core §3.1.2: child margins enlarge its box metrics and shift its border box.

@@ -6,6 +6,7 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::{Document, RenderOpts};
 use gpui::{IntoElement, ParentElement};
 
+mod limit;
 mod regression;
 mod special;
 
@@ -91,9 +92,10 @@ fn depth_probe() {
     }
 }
 
-#[gpui::test]
+#[test]
 #[ignore = "изолированный замер настоящих фаз GPUI"]
-fn depth_frame_probe(cx: &mut gpui::TestAppContext) {
+fn depth_frame_probe() {
+    let mut cx = gpui::TestAppContext::single();
     let n = depth();
     let stage = stage();
     eprintln!(

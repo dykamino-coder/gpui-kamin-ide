@@ -32,6 +32,8 @@ pub(crate) async fn element_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
+    let entered = opts.inner(|cx| cx.contracts.reflow_depth += 1);
+    let opts = &*entered;
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
     // не пишутся (`flow::flow_lines`).
     let nested = opts.frag.watch.as_ref().and_then(|w| {
@@ -42,11 +44,12 @@ pub(crate) async fn element_stack(
         inner.frag.watch = Some(watch);
         Some(inner)
     });
-    crate::layout::fragment::paginate::watch::wrap(
+    let built = crate::layout::fragment::paginate::watch::wrap(
         e.node_id,
         element_inner(stk, e, inherited, nested.as_deref().unwrap_or(opts)).await,
         opts,
-    )
+    );
+    crate::layout::depth::wrap(built, opts)
 }
 
 async fn element_inner(
