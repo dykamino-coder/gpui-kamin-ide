@@ -106,7 +106,7 @@ pub struct PageKid {
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// A root float contributes its measured border box even outside normal flow.
     pub(crate) float_id: Option<u64>,
-    /// Пустые floats задают измеренную протяжённость за пределами normal flow.
+    /// Корневые floats задают измеренную протяжённость за пределами normal flow.
     pub(crate) float_extent: bool,
     /// Repeated table sections reserved by the common fragmentation planner.
     pub repeat: Option<crate::layout::fragment::types::Repeat>,

@@ -196,7 +196,8 @@ pub(super) fn page_kids_from_groups(
                 Node::Element(e) if floated(n) => Some(e.node_id),
                 _ => None,
             },
-            float_extent: prepared.as_ref().is_some_and(|p| p.float_extent),
+            float_extent: prepared.as_ref().is_some_and(|p| p.float_extent)
+                || group.iter().any(&floated),
             reach,
             end: Default::default(),
             el,
