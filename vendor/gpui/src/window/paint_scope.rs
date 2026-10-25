@@ -88,13 +88,16 @@ impl Window {
         let pass = mem::replace(&mut self.paint_pass, PaintPassId(Rc::new(Cell::new(true))));
         let scope = mem::replace(&mut self.paint_scope, PaintScopeId(Rc::new(Cell::new(true))));
         let state = Box::new(self.snapshot_paint_state());
-        self.with_restore((pass, scope, state, self.refreshing), |window, previous| {
+        let inputs = (self.layout_retry, self.layout_inputs.clone());
+        self.with_restore((pass, scope, state, self.refreshing, inputs), |window, previous| {
             if std::thread::panicking() || !window.paint_pass.is_live() {
                 previous.2.restore(window);
                 window.next_frame.clear();
                 if let Some(layout) = window.layout_engine.as_mut() { layout.clear(); }
                 window.text_system().finish_frame();
                 window.refreshing = previous.3;
+                window.layout_retry = previous.4.0;
+                mem::swap(&mut window.layout_inputs, &mut previous.4.1);
                 window.invalidator.set_phase(DrawPhase::None);
             }
             window.paint_pass.0.set(false);

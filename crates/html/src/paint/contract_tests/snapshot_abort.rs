@@ -67,3 +67,51 @@ fn aborted_draw_closes_tokens_and_next_draw_has_clean_state() {
     assert!(saved.borrow().is_none());
     cx.quit();
 }
+
+#[test]
+fn aborted_prepaint_does_not_leave_layout_input_collection_open() {
+    struct Abort;
+    impl gpui::Render for Abort {
+        fn render(
+            &mut self,
+            _: &mut gpui::Window,
+            _: &mut gpui::Context<Self>,
+        ) -> impl gpui::IntoElement {
+            canvas(
+                |_, window, _| {
+                    assert!(window.update_layout_input(gpui::LayoutInputId::default(), || true));
+                    panic!("abort prepaint");
+                },
+                |_, (), _, _| {},
+            )
+        }
+    }
+    let mut cx = gpui::TestAppContext::single();
+    let mut visual = cx.add_empty_window().clone();
+    visual.update(|window, cx| {
+        window.replace_root(cx, |_, _| Abort);
+        // Keep the application's window lease outside the unwind boundary.
+        assert!(catch_unwind(AssertUnwindSafe(|| window.draw(cx))).is_err());
+    });
+    let called = Rc::new(std::cell::Cell::new(false));
+    let updater_called = called.clone();
+    visual.draw(
+        point(px(0.), px(0.)),
+        gpui::size(px(20.), px(20.)),
+        |_, _| {
+            canvas(
+                move |_, window, _| {
+                    assert!(
+                        !window.update_layout_input(gpui::LayoutInputId::default(), || {
+                            updater_called.set(true);
+                            true
+                        })
+                    );
+                },
+                |_, (), _, _| {},
+            )
+        },
+    );
+    assert!(!called.get());
+    cx.quit();
+}
