@@ -18,6 +18,7 @@ import tarfile
 # Embedded Python distributions may omit the script directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from computed_access import PREFIX, aggregate, growth
+from computed_f2_rebaseline import approved_base
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = 'scripts/computed_manifest'
@@ -83,6 +84,8 @@ def check(root, base, write=False):
     older = previous(root, revision)
     if older is None:
         older = base_sources
+    base_sources = approved_base(base_sources, revision)
+    older = approved_base(older, revision)
     directory = root / INVENTORY
     paths = sorted(directory.glob('access-*.json'))
     ceiling = decode(p.read_text(encoding='utf-8') for p in paths) if paths else Counter()

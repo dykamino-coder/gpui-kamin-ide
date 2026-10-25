@@ -1,4 +1,5 @@
 [
+{"field":"Computed.text_box_trim_end","owners":{"layout":{"read":16,"write":3},"layout:test":{"initialize":1,"read":3},"render":{"read":6},"style":{"initialize":1,"read":1},"style:test":{"read":4},"text":{"read":1}}},
 {"field":"Computed.text_box_trim_start","owners":{"layout":{"read":14,"write":2},"render":{"read":5},"style":{"initialize":1,"read":1},"style:test":{"read":4},"text":{"read":1}}},
 {"field":"Computed.text_clip_fill","owners":{"style":{"initialize":1,"read":5},"style:test":{"read":1},"text":{"read":1}}},
 {"field":"Computed.text_clip_raw","owners":{"style":{"initialize":1,"read":7}}},
@@ -146,6 +147,6 @@
 {"field":"InheritedStyle.word_space_char","owners":{"render":{"write":1},"style":{"initialize":1,"read":3,"write":3},"text":{"read":4,"write":3}}},
 {"field":"InheritedStyle.word_spacing","owners":{"render":{"read":3},"style":{"initialize":1,"mutable":3,"read":6,"write":3},"style:test":{"read":1},"text":{"read":13,"write":3},"text:test":{"write":2}}},
 {"field":"InheritedStyle.wrap_anywhere","owners":{"style":{"initialize":1,"read":3,"write":2},"style:test":{"read":2},"text":{"read":8}}},
-{"field":"InheritedStyle.writing_mode","owners":{"document":{"read":8,"write":3},"document:test":{"read":1},"dom:test":{"write":2},"layout":{"read":9,"write":4},"layout:test":{"read":1,"write":42},"paint":{"read":1},"paint:test":{"write":13},"render":{"read":7,"write":4},"render:test":{"write":3},"style":{"initialize":1,"read":10,"write":3},"style:test":{"read":1,"write":5}}},
+{"field":"InheritedStyle.writing_mode","owners":{"document":{"read":8,"write":3},"document:test":{"read":1},"dom:test":{"write":2},"layout":{"read":9,"write":5},"layout:test":{"read":1,"write":42},"paint":{"read":1},"paint:test":{"write":13},"render":{"read":7,"write":4},"render:test":{"write":3},"style":{"initialize":1,"read":10,"write":3},"style:test":{"read":1,"write":5}}},
 {"field":"InheritedStyle.zoom_eff","owners":{"layout":{"read":1},"paint":{"read":2},"style":{"initialize":1,"read":3,"write":2},"style:test":{"read":1},"svg":{"read":4}}}
 ]
