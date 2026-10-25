@@ -59,10 +59,6 @@ fn selected(family: &str, slope: u8, vcx: ValueCx<'_>) -> Overrides {
         .unwrap_or([None; 3])
 }
 
-pub(crate) fn features(family: &str, slope: u8, vcx: ValueCx<'_>) -> Vec<(String, u32)> {
-    vcx.doc.font_snapshot().metric_features(family, slope)
-}
-
 pub(crate) fn has_overrides(font: &gpui::Font) -> bool {
     font.features
         .tag_value_list()
@@ -131,11 +127,18 @@ mod tests {
             vcx,
         );
         let mut font = gpui::font("Ahem");
-        font.features = gpui::FontFeatures(std::sync::Arc::new(features("overridden", 0, vcx)));
+        font.features = gpui::FontFeatures(std::sync::Arc::new(
+            vcx.doc.font_snapshot().metric_features("overridden", 0),
+        ));
         assert_eq!(extents(&font, 40.0, (32.0, 8.0)), (40.0, 20.0));
         assert_eq!(normal_line("overridden", 1.0, vcx), 2.5);
         assert_eq!(normal_line("Ahem", 1.0, vcx), 1.0);
-        assert!(features("Ahem", 0, vcx).is_empty());
+        assert!(
+            vcx.doc
+                .font_snapshot()
+                .metric_features("Ahem", 0)
+                .is_empty()
+        );
         clear(vcx);
     }
     #[test]
