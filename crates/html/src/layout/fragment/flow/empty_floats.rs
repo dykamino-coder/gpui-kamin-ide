@@ -5,6 +5,9 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 
+mod parallel;
+pub(crate) use parallel::separate;
+
 pub(crate) fn empty_floats(e: &Element) -> bool {
     fn walk(e: &Element) -> Option<bool> {
         if !matches!(
@@ -49,7 +52,7 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
 mod tests {
     use super::*;
 
-    fn authored(nodes: &[Node]) -> &Element {
+    pub(super) fn authored(nodes: &[Node]) -> &Element {
         fn find(nodes: &[Node]) -> Option<&Element> {
             nodes.iter().find_map(|n| match n {
                 Node::Element(e) if e.tag == "div" => Some(e),

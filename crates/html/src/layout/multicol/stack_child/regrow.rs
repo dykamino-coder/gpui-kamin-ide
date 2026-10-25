@@ -59,9 +59,9 @@ impl Measured {
         child.paginate = self.paginate;
         if regrows {
             let watched = self.watched.clone();
-            let (opts_b, merged) = (opts.clone(), merged.clone());
+            let merged = merged.clone();
             let (h, over) = sizes;
-            let build = move |dom: &Element, part: usize| {
+            let build = move |dom: &Element, part: usize, opts_b: &RenderOpts| {
                 let vcx = opts_b.cx.vcx();
                 let mut inner = box_style(&merged, &dom.style, vcx);
                 inner.fragment_clip_ancestor = false;
@@ -107,6 +107,7 @@ impl Measured {
                 build: Rc::new(build),
                 opts: opts.clone(),
                 laid: Default::default(),
+                floats: Vec::new(),
                 space: None,
                 laid_h: self.laid_h,
                 watched: self.watched.clone(),

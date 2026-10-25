@@ -77,8 +77,8 @@ pub(super) fn regrow(
             (a, b)
         })
         .collect();
-    let (base, root, rec) = (opts.clone(), root.clone(), watched.clone());
-    let build = move |dom: &crate::dom::Element, part: usize| {
+    let (root, rec) = (root.clone(), watched.clone());
+    let build = move |dom: &crate::dom::Element, part: usize, base: &RenderOpts| {
         let mut opts = base.clone();
         let paged = crate::layout::page::paged::PagedBuild::begin();
         opts.frag.paged = Some(paged.clone());
@@ -126,6 +126,7 @@ pub(super) fn regrow(
         build: Rc::new(build),
         opts: opts.clone(),
         laid: Default::default(),
+        floats: Vec::new(),
         space: None,
         laid_h: true,
         watched: watched.clone(),

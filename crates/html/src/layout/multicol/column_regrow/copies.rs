@@ -29,7 +29,7 @@ impl ColumnStack {
         for c in self.children.iter_mut().filter(|c| !c.span) {
             let Some(r) = c.regrow.as_ref() else { continue };
             while c.frags.len() + 1 < copies {
-                c.frags.push((r.build)(&r.dom, c.frags.len() + 1));
+                c.frags.push((r.build)(&r.dom, c.frags.len() + 1, &r.opts));
             }
         }
     }

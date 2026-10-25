@@ -19,7 +19,7 @@ use gpui::AnyElement;
 
 /// Сборка копии ребёнка стопки из дерева: `part` 0 — главная (с рекордером),
 /// дальше — запасные.
-pub(crate) type BuildCopy = dyn Fn(&Element, usize) -> AnyElement;
+pub(crate) type BuildCopy = dyn Fn(&Element, usize, &RenderOpts) -> AnyElement;
 
 /// Получатель роста сохраняет идентичность даже у совпадающих границ строк.
 #[derive(Clone, Debug)]
@@ -58,6 +58,7 @@ pub(crate) struct Regrow {
     pub(crate) opts: RenderOpts,
     /// Разложенная геометрия стопки по последней раскладке главной копии.
     pub(crate) laid: Laid,
+    pub(crate) floats: Vec<crate::layout::fragment::flow::FloatGeometry>,
     /// Проход, породивший числовой снимок; не LayoutId из освобождённого дерева.
     pub(crate) space: Option<gpui::LayoutSpace>,
     /// Высота ребёнка в стопке — разложенный border box (а не мера формы):
@@ -117,6 +118,13 @@ impl Regrow {
             );
         }
         match pushed {
+            Pushed::Float(id) => {
+                std::rc::Rc::make_mut(&mut self.opts.frag.float_struts)
+                    .entry(id)
+                    .or_default()
+                    .by += grow;
+                true
+            }
             Pushed::Box(id) if forced => {
                 spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.vcx())
             }
@@ -131,8 +139,10 @@ impl Regrow {
     pub(crate) fn rebuild(&self, spare: usize) -> (AnyElement, Vec<AnyElement>) {
         self.watched.rewind_flows();
         (
-            (self.build)(&self.dom, 0),
-            (1..=spare).map(|i| (self.build)(&self.dom, i)).collect(),
+            (self.build)(&self.dom, 0, &self.opts),
+            (1..=spare)
+                .map(|i| (self.build)(&self.dom, i, &self.opts))
+                .collect(),
         )
     }
 }

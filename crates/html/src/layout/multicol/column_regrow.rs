@@ -174,13 +174,7 @@ impl ColumnStack {
                     continue;
                 };
                 let edge = f.from + height - f.y;
-                let local = crate::layout::fragment::push::flex_flow::growths(
-                    blocks,
-                    &r.laid,
-                    f.from,
-                    f.from + f.h,
-                    edge,
-                );
+                let local = r.fragment_growths(blocks, f.from, f.from + f.h, edge, height);
                 tagged[f.kid].extend(local.into_iter().map(|g| (f.copy, g)));
             }
             for &(kid, at, grow, forced) in &grows {
