@@ -54,14 +54,6 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.nowrap = own.nowrap.or(parent.nowrap);
     c.orphans = own.orphans.or(parent.orphans);
     c.widows = own.widows.or(parent.widows);
-    // Направление письма наследуется: `writing-mode` ставят на `body`, а ось
-    // потока обязана смениться у КАЖДОГО вложенного блока — иначе вертикально
-    // становится только сам `body`, а его дети снова текут вниз.
-    let wm = crate::style::computed::writing_mode::WritingProps::of(own).inherit(
-        crate::style::computed::writing_mode::WritingProps::of(parent),
-    );
-    (c.writing_mode, c.flat_mode, c.text_orientation) =
-        (wm.writing_mode, wm.flat_mode, wm.text_orientation);
     c.combine_upright = own.combine_upright.or(parent.combine_upright);
     c.wrap_anywhere = own.wrap_anywhere.or(parent.wrap_anywhere);
     c.word_space_char = own.word_space_char.or(parent.word_space_char);
@@ -107,6 +99,15 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
     c.line_break_loose = own.line_break_loose.or(parent.line_break_loose);
+}
+
+/// Письмо потребителя нужно до вычисления cqi/cqb, в том числе в кегле.
+pub(super) fn inherit_writing_mode(parent: &Computed, own: &Computed, c: &mut Computed) {
+    let wm = crate::style::computed::writing_mode::WritingProps::of(own).inherit(
+        crate::style::computed::writing_mode::WritingProps::of(parent),
+    );
+    (c.writing_mode, c.flat_mode, c.text_orientation) =
+        (wm.writing_mode, wm.flat_mode, wm.text_orientation);
 }
 
 /// `match-parent`: «the inherited value of start or end is interpreted against the parent's

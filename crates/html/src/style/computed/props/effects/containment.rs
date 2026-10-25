@@ -62,6 +62,16 @@ impl Computed {
                     return;
                 }
                 self.accept_declaration();
+                // Тип query container отделён от contain: size: последнее
+                // само по себе не отменяет subgrid (css-grid-2 §subgrid-listing)
+                // и не разрешает запросы размера по block-оси inline-size.
+                self.container_type = if size {
+                    ContainerType::Size
+                } else if inline {
+                    ContainerType::InlineSize
+                } else {
+                    ContainerType::Normal
+                };
                 // Только ВЗВОД: `container-type: normal` не имеет права снять
                 // обособление, объявленное в том же блоке через `contain`, —
                 // это разные свойства, и начальное значение одного ничего не
@@ -74,15 +84,6 @@ impl Computed {
                 }
                 if size || inline {
                     self.contain_style = Some(true);
-                    // css-conditional-5 §container-type: `size`/`inline-size`
-                    // делают элемент контейнером запросов размера. Такой
-                    // элемент обособлен, и css-grid-2 §subgrid-listing лишает
-                    // его подсеточности. Признак ОТДЕЛЬНЫЙ от `contain_size`,
-                    // потому что `contain: size` подсетку не отменяет; и
-                    // отдельный от `contain_layout`, который у нас делает
-                    // элемент содержащим блоком для абсолюта, а корпус требует
-                    // обратного (`no-layout-containment-abspos` и родня).
-                    self.container_size_query = true;
                 }
             }
             "content-visibility" => {

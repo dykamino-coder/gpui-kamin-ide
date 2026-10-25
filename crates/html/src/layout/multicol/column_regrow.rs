@@ -1,11 +1,8 @@
-//! Раскладка главной копии ребёнка стопки до укладки и распорки роста по ней: высоту
-//! ребёнка (`StackChild::measure`) или разрывы его блочной стопки (`StackChild::breaks_w`)
-//! даёт разложенная копия; распорки роста ставятся
-//! по плану ЭТОЙ стопки (`grow_points`) перед коробкой, найденной в разложенной копии
-//! (`push::Regrow`), копии собираются заново и раскладываются, пока план не перестанет
-//! требовать роста (css-break-3 §box-splitting; Blink `FinishFragmentation`).
+//! Главная копия даёт измеренную высоту и разрывы стопки; её final geometry определяет
+//! распорки `push::Regrow`. Копии пересобираются до устойчивого плана роста этой стопки
+//! (css-break-3 §box-splitting; Blink `FinishFragmentation`).
 
-use crate::layout::fragment::types::{BreaksAt, StackChild};
+use crate::layout::fragment::types::BreaksAt;
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, AvailableSpace, Window, point, px, size};
@@ -129,6 +126,7 @@ impl ColumnStack {
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
             r.laid = w.laid_axis(point(px(0.0), px(0.0)), measured_size, axis, window);
+            r.space = w.space(window);
             if !r.laid.flexes.is_empty()
                 && let Some(blocks) = w.blocks()
             {
@@ -227,24 +225,10 @@ impl ColumnStack {
                 break;
             }
             for (i, _) in dirty.iter().enumerate().filter(|d| *d.1) {
-                rebuild(&mut self.children[i]);
+                copies::rebuild(&mut self.children[i]);
                 self.lay_out_main(i, window, cx);
             }
             self.reserve_row_copies();
         }
-    }
-}
-
-/// Копии ребёнка из правленого дерева; рекордер забывает прежнюю раскладку.
-fn rebuild(c: &mut StackChild) {
-    let Some(r) = &c.regrow else {
-        return;
-    };
-    let (el, frags) = r.rebuild(c.frags.len());
-    c.fragment_builders.clear();
-    c.el = el;
-    c.frags = frags;
-    if let Some(w) = &c.watched {
-        w.reset();
     }
 }

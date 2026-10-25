@@ -62,16 +62,6 @@
   {
     "file": "crates/html/src/layout/fragment/flow/independent/continuation.rs",
     "task": "F2-1",
-    "reason": "MaxContent копии теряет исходный definite CB для процентов; удалить отказ в P04 после сохранения исходного CB в продолжении."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/flow/independent/continuation.rs",
-    "task": "F2-1",
-    "reason": "Один border box не хранит остаток min-height и overflow; удалить отказ в P04 после consumed block size и раздельных продолжений."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/flow/independent/continuation.rs",
-    "task": "F2-1",
     "reason": "Очистка детей теряет независимый прогресс normal flow, min-height и overflow; удалить gate в P05 после отдельных resume этих потоков."
   },
   {
@@ -200,11 +190,6 @@
     "reason": "Щуп баланса ограничивает копии числом 48; удалить предел в P11 после сходимости кандидатов по реальному прогрессу row tokens."
   },
   {
-    "file": "crates/html/src/layout/multicol/container/clone_plan.rs",
-    "task": "F2-1",
-    "reason": "Clone preplan повторно оценивает целую копию без consumed и slice/clone edges; удалить в P04 после child token и краёв каждого фрагмента."
-  },
-  {
     "file": "crates/html/src/layout/multicol/container/mod.rs",
     "task": "F2-3",
     "reason": "Начальный запас копий ограничен 48; удалить предел в P11 после выдачи требуемых фрагментов по actual row token progress."
@@ -305,7 +290,7 @@
     "reason": "Разрезы копии читаются через estimator; удалить в P21 после recorded cuts и child resume поверх P05/P08/P10."
   },
   {
-    "file": "crates/html/src/layout/multicol/stack_child/mod.rs",
+    "file": "crates/html/src/layout/multicol/stack_child/prepare.rs",
     "task": "F2-4",
     "reason": "Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10."
   },
@@ -313,11 +298,6 @@
     "file": "crates/html/src/layout/page/paged/kids/laid.rs",
     "task": "F2-1",
     "reason": "Float допускается только монолитом без строчного resume; удалить ограничение в P05 после отдельного продолжения его строк и полей."
-  },
-  {
-    "file": "crates/html/src/layout/page/paged/kids/laid.rs",
-    "task": "F2-1",
-    "reason": "Рост целой копии декорированного блока меняет рамку и координаты соседей; удалить отказ в P04 после краёв каждого печатного фрагмента."
   },
   {
     "file": "crates/html/src/layout/page/paged/kids/mod.rs",

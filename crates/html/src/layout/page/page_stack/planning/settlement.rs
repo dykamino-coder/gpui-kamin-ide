@@ -23,7 +23,7 @@ pub(super) struct State {
 #[derive(Hash, PartialEq, Eq)]
 struct CopyState {
     index: (usize, usize),
-    width: u32,
+    area: [u32; 2],
     boxes: Vec<(u64, [u32; 2])>,
 }
 
@@ -46,7 +46,10 @@ impl State {
                 boxes.sort_unstable_by_key(|b| b.0);
                 CopyState {
                     index,
-                    width: m.width.to_bits(),
+                    area: [
+                        m.inputs.constraints.area.0.to_bits(),
+                        m.inputs.constraints.area.1.to_bits(),
+                    ],
                     boxes,
                 }
             })
