@@ -26,7 +26,9 @@ impl FlexBox {
                     out.cuts.extend(flow.cuts);
                     out.forced.extend(flow.forced);
                     out.solid.extend(flow.solid);
+                    out.barriers.extend(flow.barriers);
                     out.keep.extend(flow.keep);
+                    out.avoid_inside.extend(flow.avoid_inside);
                     out.avoid.extend(flow.avoid);
                     out.pending.extend(flow.pending);
                 } else {
@@ -37,6 +39,11 @@ impl FlexBox {
                         .map_or(floor, |p| p.0);
                     out.solid
                         .extend(flow.solid.into_iter().filter(|s| s.0 <= first + COORD_EPS));
+                    out.barriers.extend(
+                        flow.barriers
+                            .into_iter()
+                            .filter(|s| s.0 <= first + COORD_EPS),
+                    );
                 }
             }
             return self
@@ -64,7 +71,7 @@ impl FlexBox {
                 };
                 out.cuts.push((prev.end, next));
                 if next > prev.end + COORD_EPS {
-                    out.solid.push((prev.end, next + COORD_EPS));
+                    out.hold((prev.end, next + COORD_EPS));
                 }
                 if force {
                     out.forced.push(line.start);
@@ -88,7 +95,7 @@ impl FlexBox {
                 };
                 let mut flow = BlockBreaks::default();
                 if item.monolith {
-                    flow.solid.push((top, bottom));
+                    flow.hold((top, bottom));
                 } else if let Some(inner) = &item.inner {
                     walk(inner, top, bottom, laid, &mut flow);
                 }
@@ -104,8 +111,15 @@ impl FlexBox {
                         .filter(|s| s.0 <= top + COORD_EPS)
                         .map(|s| if at_start { (line.start, s.1) } else { *s }),
                 );
+                out.barriers.extend(
+                    flow.barriers
+                        .iter()
+                        .filter(|s| s.0 <= top + COORD_EPS)
+                        .map(|s| if at_start { (line.start, s.1) } else { *s }),
+                );
                 out.cuts.extend(flow.cuts);
                 out.keep.extend(flow.keep);
+                out.avoid_inside.extend(flow.avoid_inside);
             }
         }
         frame.lines.last().map(|l| l.end)

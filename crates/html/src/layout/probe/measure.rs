@@ -20,18 +20,10 @@ impl<T> Measure<T> {
     pub(crate) fn record(&self, id: LayoutId, value: T) {
         self.0.push((id, value));
     }
-    pub(crate) fn reset(&self) {
-        self.0.take();
-    }
     pub(crate) fn enter(&self) -> MeasureScope<T> {
         MeasureScope {
             owner: self.clone(),
             saved: self.0.take(),
-        }
-    }
-    pub(crate) fn for_each(&self, window: &mut Window, mut read: impl FnMut(Bounds<Pixels>, &T)) {
-        for (id, value) in self.0.borrow().iter() {
-            read(bounds(*id, window), value);
         }
     }
     pub(crate) fn take(&self, window: &mut Window) -> Vec<(Bounds<Pixels>, T)> {

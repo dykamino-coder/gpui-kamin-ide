@@ -15,7 +15,7 @@ pub(super) fn group_break_names(
     n: &Node,
     vcx: ValueCx<'_>,
 ) -> (bool, bool, bool, bool, String) {
-    let (monolith, fb, fa, names) = match n {
+    let (monolith, fb, mut fa, names) = match n {
         Node::Element(e) if class_a_box(e) => (
             page_monolith(e),
             edge_break(e, false, vcx),
@@ -35,6 +35,13 @@ pub(super) fn group_break_names(
             Some((root_page.to_string(), root_page.to_string())),
         ),
     };
+    // Конец общего float/inline-пробега принадлежит последней коробке,
+    // даже если пробег начался строкой или другим флоатом (css-break-3 §3.1).
+    if let Some(last @ Node::Element(e)) = group.iter().rfind(|n| !is_blank(n))
+        && (class_a_box(e) || floated(last))
+    {
+        fa = edge_break(e, true, vcx);
+    }
     // Группа флоата: сам флоат имени не передаёт (§named pages п. 2), но
     // поточные коробки класса A в группе — передают конец — у последней (`page-name-000-print`: флоат, `clear`-блок
     // страницы `foo` и следом блок страницы `bar` — разрыв перед `bar`).
@@ -71,4 +78,34 @@ pub(super) fn group_break_names(
         *prev_end = Some(end.clone());
     }
     (fb, fa, monolith, renamed, start_name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn float_after_break_belongs_to_end_of_inline_group() {
+        let tree = crate::dom::parse(
+            "<div><br><div style='float:left;break-after:page'>one</div></div>",
+            "",
+        );
+        fn find(nodes: &[Node]) -> Option<&[Node]> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == "div" => Some(e.children.as_slice()),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        let group = find(&tree).expect("inline and float group");
+        let (_, after, _, _, _) = group_break_names(
+            "",
+            &mut None,
+            |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
+            group,
+            &group[0],
+            tree.values(),
+        );
+        assert!(after);
+    }
 }

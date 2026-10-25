@@ -23,7 +23,7 @@ impl Watched {
         window: &mut Window,
     ) {
         for (&id, &(amount, _)) in &values {
-            if let Some(lid) = self.seen(id) {
+            if let Some(lid) = self.seen(id, window) {
                 window.set_flex_item_fragmentation_consumed(lid, amount);
             }
         }
@@ -33,7 +33,7 @@ impl Watched {
     pub(crate) fn clear_consumed(&self, window: &mut Window) {
         let ids: Vec<_> = self.flex_consumed.borrow().keys().copied().collect();
         for id in ids {
-            if let Some(lid) = self.seen(id) {
+            if let Some(lid) = self.seen(id, window) {
                 window.set_flex_item_fragmentation_consumed(lid, 0.0);
             }
         }

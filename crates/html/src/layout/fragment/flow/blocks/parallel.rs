@@ -28,7 +28,11 @@ impl BlockBreaks {
             (b > a + COORD_EPS).then_some((a, b))
         };
         self.solid.extend(inner.solid.into_iter().filter_map(clip));
+        self.barriers
+            .extend(inner.barriers.into_iter().filter_map(clip));
         self.keep.extend(inner.keep.into_iter().filter_map(clip));
+        self.avoid_inside
+            .extend(inner.avoid_inside.into_iter().filter_map(clip));
         self.avoid.extend(inner.avoid.into_iter().filter_map(clip));
     }
 }

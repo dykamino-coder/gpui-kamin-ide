@@ -29,7 +29,11 @@ fn advance_accumulates_consumed_size_and_keeps_shared_state() {
         by_spanner: true,
         seen_all_children: true,
     };
-    let next = first.advance(80.0, block(3)).advance(-5.0, block(4));
+    let next = first
+        .advance(80.0, block(3))
+        .unwrap()
+        .advance(0.0, block(4))
+        .unwrap();
     assert_eq!((next.consumed, next.seq), (80.0, 3));
     assert_eq!(next.clamp, first.clamp);
     assert!(!next.at_block_end && next.monolithic_overflow == 0.0);
@@ -52,12 +56,15 @@ fn clamp_budget_runs_across_fragmentainers() {
 fn store_walks_nested_tokens_parent_first() {
     let mut store = TokenStore::default();
     let leaf = |store: &mut TokenStore, line_idx| {
-        store.push(Token::new(FcState::Inline(InlineState {
-            line_idx,
-            text_pos: 7,
-            past_first_line: true,
-            child: None,
-        })))
+        store
+            .push(Token::new(FcState::Inline(InlineState {
+                line_idx,
+                text_pos: 7,
+                past_first_line: true,
+                after_hard_break: false,
+                child: None,
+            })))
+            .unwrap()
     };
     let (a, b, c) = (
         leaf(&mut store, 1),
@@ -74,6 +81,7 @@ fn store_walks_nested_tokens_parent_first() {
         }],
         child: Some(a),
         parallel: vec![ChildToken { idx: 2, token: b }],
+        ..Default::default()
     }));
     root.oof.push(OofResume {
         idx: 0,
@@ -82,7 +90,7 @@ fn store_walks_nested_tokens_parent_first() {
         repeat_fixed: false,
         token: Some(c),
     });
-    let r = store.push(root);
+    let r = store.push(root).unwrap();
     assert_eq!(store.subtree(r), vec![r, a, b, c]);
     let Some(FcState::Block(state)) = store.get(r).map(|t| &t.fc) else {
         unreachable!("pushed a block token");
@@ -114,7 +122,9 @@ fn store_walks_nested_tokens_parent_first() {
 #[test]
 fn every_context_reports_its_child_tokens() {
     let mut store = TokenStore::default();
-    let t = store.push(Token::new(FcState::Block(BlockState::default())));
+    let t = store
+        .push(Token::new(FcState::Block(BlockState::default())))
+        .unwrap();
     let kids = vec![ChildToken { idx: 1, token: t }];
     let flex = FlexState {
         line: 2,
@@ -163,8 +173,13 @@ fn every_context_reports_its_child_tokens() {
             ..Default::default()
         }),
     ] {
-        assert_eq!(fc.child_tokens(), vec![t]);
+        assert_eq!(fc.child_tokens().collect::<Vec<_>>(), vec![t]);
     }
-    assert_eq!(FcState::Block(BlockState::default()).child_tokens(), vec![]);
+    assert_eq!(
+        FcState::Block(BlockState::default())
+            .child_tokens()
+            .collect::<Vec<_>>(),
+        vec![]
+    );
     assert_ne!(FloatSide::InlineStart, FloatSide::InlineEnd);
 }

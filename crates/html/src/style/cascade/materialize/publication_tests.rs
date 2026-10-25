@@ -103,3 +103,24 @@ fn inherited_explicit_and_environment_inputs_control_cache_misses() {
         Some(Len::Px(3.0))
     );
 }
+
+#[test]
+fn container_input_is_published_before_handle_and_legacy_are_shared() {
+    let parsed = crate::dom::parse("<p>x</p>", "");
+    let vcx = parsed.values();
+    let root = Rc::new(Computed::default());
+    materialize(&parsed.nodes, &root, vcx);
+    let p = element(&parsed.nodes, "p");
+    let held = p.style.published().unwrap();
+    let size = (Some(240.0), Some(120.0));
+    assert!(p.style.slot().set_container_size(size));
+    materialize(&parsed.nodes, &root, vcx);
+    let updated = p.style.published().unwrap();
+    let legacy = p.style.computed();
+    assert!(!held.ptr_eq(&updated));
+    assert_eq!(held.cq_size, (None, None));
+    assert_eq!(updated.cq_size, size);
+    assert!(std::ptr::eq::<Computed>(&*updated, &*legacy));
+    materialize(&parsed.nodes, &root, vcx);
+    assert!(updated.ptr_eq(&p.style.published().unwrap()));
+}

@@ -1,5 +1,5 @@
 //! Стадия коробки, контекст родителя-коробки: признаки руби, повёрнутой строки и ортогонального
-//! потока, контейнер запросов, сетка/flex родителя, предел строк `line-clamp`, строчные украшения
+//! потока, сетка/flex родителя, предел строк `line-clamp`, строчные украшения
 //! предка, подавление маркера, чернила тени текста.
 
 use super::*;
@@ -19,7 +19,6 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
     );
     set!(c.turned_line, own.turned_line || parent.turned_line);
     set!(c.ortho_limit, own.ortho_limit.or(parent.ortho_limit));
-    set!(c.cq_box, parent.container_box_for_children());
     set!(c.orthogonal_scrollport, parent.orthogonal_scrollport);
     // An absolutely positioned box sizes its inline axis against its own
     // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
