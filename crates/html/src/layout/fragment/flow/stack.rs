@@ -94,6 +94,7 @@ fn copy_breaks(
     };
     let flow = watched.flow.at(origin, size, axis, window);
     regrow.floats = super::empty_floats::separate(&flow);
+    regrow.float_leads = flow.float_leads.clone();
     watched
         .blocks()
         .map_or_else(Default::default, |blocks| {

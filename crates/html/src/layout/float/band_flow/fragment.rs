@@ -79,6 +79,7 @@ fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
         if matches!(kid.kind, super::Kind::Float { .. }) {
             let bounds = FloatGeometry {
                 id: kid.node_id,
+                anchor: slot.y - slot.float_margins[0],
                 top: slot.y,
                 bottom: slot.y + slot.b,
                 margins: slot.float_margins,
@@ -113,6 +114,16 @@ fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
             child.append(&slot.geometry, slot.y);
         }
         prefix(&mut child, kid.flow_key);
+        if matches!(kid.kind, super::Kind::Float { .. }) {
+            child.float_leads.extend(
+                child
+                    .line_pushes
+                    .iter()
+                    .filter(|p| (p.at - slot.y).abs() < crate::tolerance::COORD_EPS)
+                    .cloned()
+                    .map(|p| (kid.node_id, p)),
+            );
+        }
         geometry.append(&child, 0.0);
         geometry.cuts.push((start, start));
         geometry.cuts.push((end, end));
@@ -140,6 +151,7 @@ mod tests {
             flow_key: 0,
             node_id: 0,
             pagination_offset: 0.0,
+            float_floor: None,
             kind: Kind::Float {
                 side: -1,
                 clear: None,

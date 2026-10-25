@@ -24,6 +24,7 @@ mod tests {
             solid: vec![(0.0, 100.0)],
             floats: vec![FloatGeometry {
                 id: float.node_id,
+                anchor: 0.0,
                 top: 0.0,
                 bottom: 100.0,
                 margins: [0.0; 2],

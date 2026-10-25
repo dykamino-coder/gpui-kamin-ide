@@ -57,6 +57,7 @@ fn float_translation_preserves_unbreakable_margins() {
     let source = FlowGeometry {
         floats: vec![FloatGeometry {
             id: 7,
+            anchor: 0.0,
             top: 40.0,
             bottom: 60.0,
             margins: [40.0, 40.0],
@@ -69,6 +70,7 @@ fn float_translation_preserves_unbreakable_margins() {
     let g = geometry.floats[0];
     assert_eq!((g.id, g.top, g.bottom), (7, 55.0, 75.0));
     assert_eq!(g.first_break, Some(65.0));
+    assert_eq!(g.anchor, 0.0);
     assert_eq!(
         (g.top - g.margins[0], g.bottom + g.margins[1]),
         (15.0, 115.0)

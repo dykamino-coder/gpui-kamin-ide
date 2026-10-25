@@ -5,6 +5,43 @@ use crate::layout::fragment::flow::{
     blocks::{BlockBox, Pushed},
 };
 use crate::tolerance::COORD_EPS;
+use std::{collections::HashMap, rc::Rc};
+
+pub(super) fn raise_floor(
+    floats: &[FloatGeometry],
+    floors: &mut Rc<HashMap<u64, f32>>,
+    id: u64,
+    amount: f32,
+) -> bool {
+    let Some(float) = floats.iter().find(|f| f.id == id) else {
+        return false;
+    };
+    let floor = float.anchor + amount;
+    let previous = Rc::make_mut(floors).entry(id).or_insert(f32::NEG_INFINITY);
+    if floor <= *previous + COORD_EPS {
+        return false;
+    }
+    *previous = floor;
+    true
+}
+
+/// Разрыв перед первой строкой — разрыв перед float (css-break-3 §4.1).
+/// Обе заявки адресуют одну границу margin-box, а не два смещения.
+pub(super) fn retarget(
+    floats: &[FloatGeometry],
+    leads: &[(u64, crate::layout::fragment::flow::LinePush)],
+    growth: &mut Growth,
+) {
+    if let Pushed::Line(line) = &growth.target
+        && let Some((id, _)) = leads.iter().find(|(_, head)| head == line)
+        && let Some(float) = floats.iter().find(|f| f.id == *id)
+    {
+        let start = float.top - float.margins[0];
+        growth.amount += growth.at - start;
+        growth.at = start;
+        growth.target = Pushed::Float(*id);
+    }
+}
 
 impl Regrow {
     pub(crate) fn float_min(&self) -> f32 {
@@ -59,6 +96,7 @@ mod tests {
     fn tall_float_uses_its_first_internal_break_before_overflowing() {
         let mut float = FloatGeometry {
             id: 9,
+            anchor: 50.0,
             top: 50.0,
             bottom: 250.0,
             margins: [0.0; 2],
@@ -77,6 +115,7 @@ mod tests {
     fn float_moves_past_partial_fragment_without_growing_the_parent() {
         let mut float = FloatGeometry {
             id: 7,
+            anchor: 0.0,
             top: 0.0,
             bottom: 100.0,
             margins: [0.0; 2],
@@ -90,5 +129,40 @@ mod tests {
         float.bottom += grows[0].amount;
         assert!(float_growths(&[float], 0.0, 50.0, 100.0).is_empty());
         assert!(float_growths(&[float], 50.0, 150.0, 100.0).is_empty());
+    }
+
+    #[test]
+    fn float_and_first_line_share_a_boundary_after_upstream_growth() {
+        use crate::layout::fragment::flow::LinePush;
+        let float = FloatGeometry {
+            id: 7,
+            anchor: 50.,
+            top: 150.,
+            bottom: 220.,
+            margins: [0.; 2],
+            first_break: Some(220.),
+        };
+        let line = LinePush {
+            at: 150.,
+            line: 0,
+            growth: Default::default(),
+        };
+        let mut growth = Growth {
+            target: Pushed::Line(line.clone()),
+            at: 150.,
+            amount: 50.,
+            forced: false,
+        };
+        retarget(&[float], &[(7, line.clone())], &mut growth);
+        assert_eq!(growth.target, Pushed::Float(7));
+        assert!(line.growth.borrow().is_empty());
+        let mut floors = Rc::default();
+        assert!(raise_floor(&[float], &mut floors, 7, growth.amount));
+        assert_eq!(floors[&7], 100.);
+        // Нормальный поток уже поднял локальный потолок до 100: повторный
+        // перенос не должен добавить ещё 50 или увеличить высоту float.
+        assert_eq!(75_f32.max(floors[&7]), 100.);
+        assert_eq!(100_f32.max(floors[&7]), 100.);
+        assert!(!raise_floor(&[float], &mut floors, 7, 50.));
     }
 }

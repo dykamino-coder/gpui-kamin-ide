@@ -43,6 +43,8 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlowGeometry {
     pub(crate) line_pushes: Vec<LinePush>,
+    /// Строка у начала float переносит сам float, а не добавляет место внутри.
+    pub(crate) float_leads: Vec<(u64, LinePush)>,
     pub(crate) boxes: std::collections::HashMap<u64, (f32, f32)>,
     pub(crate) float_contexts: Vec<float_resume::Snapshot>,
     pub(crate) inline: Vec<inline::Inline>,
@@ -56,6 +58,8 @@ pub(crate) struct FlowGeometry {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FloatGeometry {
     pub(crate) id: u64,
+    /// Начало margin-box в BFC; перенос геометрии родителю его не меняет.
+    pub(crate) anchor: f32,
     pub(crate) top: f32,
     pub(crate) bottom: f32,
     pub(crate) margins: [f32; 2],
@@ -85,6 +89,16 @@ impl FlowGeometry {
     }
 
     pub(crate) fn append(&mut self, other: &Self, offset: f32) {
+        self.float_leads
+            .extend(other.float_leads.iter().map(|(id, p)| {
+                (
+                    *id,
+                    LinePush {
+                        at: p.at + offset,
+                        ..p.clone()
+                    },
+                )
+            }));
         self.boxes.extend(
             other
                 .boxes
