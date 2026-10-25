@@ -6,7 +6,8 @@ use crate::style::computed::BoxStyle;
 use crate::text::inline::Piece;
 use crate::text::inline::collect::CollectCx;
 
-pub(super) fn children(
+pub(super) async fn children(
+    stk: &mut reblessive::Stk,
     e: &Element,
     merged: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
@@ -24,8 +25,10 @@ pub(super) fn children(
         let mut nodes = Vec::with_capacity(e.children.len() + 1);
         nodes.push(marker);
         nodes.extend(e.children.iter().cloned());
-        super::super::collect_with_empty_metrics(&nodes, merged, atom, has_text, cx)
+        stk.run(|stk| super::super::collect_stack(stk, &nodes, merged, atom, has_text, cx))
+            .await
     } else {
-        super::super::collect_with_empty_metrics(&e.children, merged, atom, has_text, cx)
+        stk.run(|stk| super::super::collect_stack(stk, &e.children, merged, atom, has_text, cx))
+            .await
     }
 }

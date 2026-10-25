@@ -23,7 +23,8 @@ use crate::text::inline::collect::overlays::shift_overlays;
 use crate::text::inline::*;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn collect_element(
+pub(super) async fn collect_element(
+    stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
@@ -36,7 +37,10 @@ pub(super) fn collect_element(
     let st = e.style.used();
     let doc = cx.layout.doc().clone();
     let vcx = doc.frame_values();
-    if special_node(e, inherited, atom, has_text, cx, out) {
+    if stk
+        .run(|stk| special_node(stk, e, inherited, atom, has_text, cx, out))
+        .await
+    {
         return;
     }
     // Атому сообщают стиль ближайшего строчного предка и лежит ли он в
@@ -203,7 +207,9 @@ pub(super) fn collect_element(
         cx.inline_cb_depth += 1;
     }
     crate::text::inline::atom_parent::open(&mut cx.inline_parents, e, inherited, vcx);
-    let kids = list_item::children(e, &merged, atom, has_text, cx);
+    let kids = stk
+        .run(|stk| list_item::children(stk, e, &merged, atom, has_text, cx))
+        .await;
     cx.inline_parents.pop();
     let kids = if cb_here {
         cx.inline_cb_depth = cx.inline_cb_depth.saturating_sub(1);
