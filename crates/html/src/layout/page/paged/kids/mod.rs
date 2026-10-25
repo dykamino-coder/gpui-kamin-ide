@@ -62,7 +62,9 @@ pub(super) fn page_kids_from_groups(
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
         first = false;
-        let prepared = match vertical {
+        let (fb, fa, monolith, renamed, start_name) =
+            group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
+        let mut prepared = match vertical {
             Some(rl) => laid::vertical_group(
                 group,
                 root,
@@ -77,6 +79,11 @@ pub(super) fn page_kids_from_groups(
             ),
             None => laid::group(group, root, aw - left - right, pad_top, vcx),
         };
+        if group.len() > 1
+            && let Some(p) = &mut prepared
+        {
+            p.break_edges(fb, fa);
+        }
         let group = prepared
             .as_ref()
             .map_or(group.as_slice(), |p| p.nodes.as_slice());
@@ -101,8 +108,6 @@ pub(super) fn page_kids_from_groups(
             .blocks()
             .and_then(|b| b.table.as_ref())
             .map(|t| (t.head.is_some_and(|s| s.2), t.foot.is_some_and(|s| s.2)));
-        let (fb, fa, monolith, renamed, start_name) =
-            group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
         let leaf = (vertical.is_none() && prepared.is_some() && !monolith)
             .then(|| leaf::paint_leaf(opts, root, group, (left, right, pad_top), ah, percentages))
             .flatten();
