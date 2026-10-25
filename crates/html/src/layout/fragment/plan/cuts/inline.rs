@@ -75,10 +75,10 @@ pub(super) fn cut(
                 if placed {
                     return Ok(Some(None));
                 }
-                // Неделимая часть уже у начала пустого фрагмента.
-                let end = whole_end(geometry, point);
-                tokens.pending.clear();
-                return Ok(Some(Some((end, end))));
+                // Структурный монолит переполняет физические страницы срезами;
+                // его конец не является краем единственного фрагмента IFC.
+                // Переполнение неделимой строки обработано выше отдельно.
+                return Ok(None);
             }
             point = point.min(start);
         }
