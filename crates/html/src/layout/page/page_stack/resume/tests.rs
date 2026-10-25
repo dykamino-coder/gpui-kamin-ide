@@ -149,3 +149,38 @@ fn column_resumes_content_instead_of_old_y() {
     assert!(token.consumed(&new).is_empty());
     assert_eq!(token.offset(&new), Some(40.));
 }
+
+#[test]
+fn column_keeps_physical_offset_inside_a_monolith_before_future_text() {
+    let mut laid = Laid::of_boxes(&[(1, 0., 360.), (2, 0., 350.)]);
+    laid.descendants.insert(1, vec![2]);
+    laid.flexes.insert(
+        9,
+        FlexFrame {
+            column: true,
+            lines: vec![FlexLine {
+                items: vec![1],
+                ..Default::default()
+            }],
+        },
+    );
+    laid.content.insert(
+        1,
+        vec![ContentLine {
+            top: 350.,
+            bottom: 360.,
+            ..Default::default()
+        }],
+    );
+    for from in [100., 200., 300., 350.] {
+        assert_eq!(Resume::at(&laid, from).offset(&laid), Some(from));
+    }
+    let physical = Resume::at(&laid, 300.);
+    let text = Resume::at(&laid, 350.);
+    laid.boxes.insert(1, (0., 380.));
+    laid.boxes.insert(2, (0., 370.));
+    laid.content.get_mut(&1).unwrap()[0].top = 370.;
+    laid.content.get_mut(&1).unwrap()[0].bottom = 380.;
+    assert_eq!(physical.offset(&laid), Some(300.));
+    assert_eq!(text.offset(&laid), Some(370.));
+}

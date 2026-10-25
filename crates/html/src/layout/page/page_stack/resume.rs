@@ -33,7 +33,9 @@ impl Resume {
                     .get(&id)
                     .into_iter()
                     .flatten()
-                    .filter(|l| l.bottom > from + COORD_EPS)
+                    // Будущая строка не поглощает остаток монолитной коробки:
+                    // до её начала сохраняется физический consumed block-size.
+                    .filter(|l| l.top <= from + COORD_EPS && l.bottom > from + COORD_EPS)
                     .min_by(|a, b| a.top.total_cmp(&b.top))
                 {
                     Address::Line(line.paragraph, line.byte)
