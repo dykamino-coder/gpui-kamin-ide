@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::{fragment_box, fragment_margins};
-use crate::layout::fragment::flow::{empty_floats, independent_copy};
+use crate::layout::fragment::flow::{empty_floats, exports_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::BoxStyle;
 
@@ -39,7 +39,10 @@ pub(super) fn vertical_group(
     );
     let logical = logical_copy(&e, rl)?;
     let (mt, mb) = fragment_margins(&logical)?;
-    let float_extent = empty_floats(&logical);
+    let float_extent = logical
+        .children
+        .iter()
+        .any(|n| matches!(n, Node::Element(e) if exports_floats(e)));
     Some(Group {
         nodes: vec![Node::Element(e)],
         margins: if head > 0.0 {
@@ -63,11 +66,14 @@ pub(super) fn group(
         return None;
     };
     let floated = e.style.used().float.is_some_and(|f| f != 0);
-    let float_extent = empty_floats(e);
+    let float_extent = floated
+        || e.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(e) if exports_floats(e)));
     let eligible = if floated {
         crate::layout::fragment::flow::page_copy(e, false)
     } else {
-        independent_copy(e) || float_extent || super::leaf::eligible(e)
+        independent_copy(e) || empty_floats(e) || super::leaf::eligible(e)
     };
     if !eligible {
         return None;

@@ -6,7 +6,7 @@ use crate::tolerance::COORD_EPS;
 pub(super) enum Cursor {
     Parallel(Vec<Self>),
     Before(u64),
-    Line(usize, usize),
+    Line(Vec<usize>, usize, usize),
     Block(u64, f32),
 }
 
@@ -69,12 +69,12 @@ impl Cursor {
     }
 
     fn inside(id: u64, top: f32, inline: &[Inline], from: f32) -> Self {
-        if let Some(line) = inline
+        if let Some((scope, line)) = inline
             .iter()
-            .flat_map(|p| &p.lines)
-            .find(|l| l.top <= from + COORD_EPS && l.bottom > from + COORD_EPS)
+            .flat_map(|p| p.lines.iter().map(|l| (&p.scope, l)))
+            .find(|(_, l)| l.top <= from + COORD_EPS && l.bottom > from + COORD_EPS)
         {
-            Self::Line(line.paragraph, line.state.text_pos)
+            Self::Line(scope.clone(), line.paragraph, line.state.text_pos)
         } else {
             // Оставшаяся definite/min-height существует и после последней строки.
             Self::Block(id, (from - top).max(0.0))
@@ -88,8 +88,9 @@ impl Cursor {
                 .filter_map(|cursor| cursor.offset(new, inline))
                 .min_by(f32::total_cmp),
             Self::Before(id) => Some(new.at(*id)?.0),
-            Self::Line(paragraph, byte) => inline
+            Self::Line(scope, paragraph, byte) => inline
                 .iter()
+                .filter(|p| &p.scope == scope)
                 .flat_map(|p| &p.lines)
                 .find(|l| l.paragraph == *paragraph && l.state.text_pos == *byte)
                 .map(|l| l.top),

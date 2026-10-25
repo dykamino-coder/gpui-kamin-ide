@@ -194,20 +194,29 @@ fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
 }
 
 #[test]
-fn cross_copy_clearance_keeps_the_existing_f2_preplan() {
+fn cross_copy_clearance_shares_the_float_exclusion_context() {
     let tree = crate::dom::parse(
-        "<div><div><div style='float:left;width:15px;height:250px'></div></div><div style='clear:left'></div></div>",
+        "<div><div><div style='float:left;width:15px;height:250px'></div></div><div style='clear:left;margin-top:-20px'></div></div>",
         "",
     );
     let host = root(&tree);
     let merged = BoxStyle::default();
     let measured = RefCell::default();
-    assert!(children(host, &merged, tree.values(), 100.0, &measured).is_none());
-    assert!(pending(host, &merged, tree.values()).is_none());
-    assert!(
+    let kids = children(host, &merged, tree.values(), 100.0, &measured).unwrap();
+    assert_eq!(kids.len(), 1);
+    assert_eq!(kids[0].0.children.len(), 2);
+    assert_eq!(kids[0].1.margin_top, 0.0);
+    assert_eq!(pending(host, &merged, tree.values()).unwrap().len(), 1);
+    assert_eq!(
         super::super::native_float::children(host, &merged, tree.values(), 100.0, &measured)
-            .is_none()
+            .unwrap()
+            .len(),
+        1
     );
-    assert!(super::super::native_float::pending(host, &merged, tree.values()).is_none());
-    assert!(measured.borrow().is_empty());
+    assert_eq!(
+        super::super::native_float::pending(host, &merged, tree.values())
+            .unwrap()
+            .len(),
+        1
+    );
 }

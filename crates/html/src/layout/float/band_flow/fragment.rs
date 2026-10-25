@@ -2,17 +2,11 @@
 
 use super::{Kid, Plan, Slot};
 use crate::layout::fragment::flow::{FloatGeometry, FlowGeometry, FlowMeasure, FlowNode};
-use crate::layout::fragment::types::StackAxis;
 use std::rc::Rc;
 
 impl super::BandFlow {
-    pub(crate) fn fragment_flow(
-        mut self,
-        parent: Rc<FlowMeasure>,
-        probes: Rc<FlowMeasure>,
-        axis: StackAxis,
-    ) -> Self {
-        self.fragment = Some(FragmentFlow::new(parent, probes, axis));
+    pub(crate) fn fragment_flow(mut self, node: FlowNode, probes: Rc<FlowMeasure>) -> Self {
+        self.fragment = Some(FragmentFlow { node, probes });
         self
     }
 }
@@ -67,16 +61,10 @@ pub(super) struct FragmentFlow {
 }
 
 impl FragmentFlow {
-    pub(super) fn new(parent: Rc<FlowMeasure>, probes: Rc<FlowMeasure>, axis: StackAxis) -> Self {
-        Self {
-            node: FlowNode::new(parent, axis),
-            probes,
-        }
-    }
-
     pub(super) fn publish(&self, plan: &Plan, kids: &[Kid]) {
         let mut geometry = FlowGeometry::default();
         append(&mut geometry, kids, &plan.slots);
+        prefix(&mut geometry, self.node.ordinal + 1);
         geometry.normalize();
         *self.node.geometry.borrow_mut() = geometry;
     }
@@ -84,8 +72,9 @@ impl FragmentFlow {
 
 fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
     for (kid, slot) in kids.iter().zip(slots) {
+        let mut child = FlowGeometry::default();
         if matches!(kid.kind, super::Kind::Float { .. }) {
-            geometry.floats.push(FloatGeometry {
+            let bounds = FloatGeometry {
                 id: kid.node_id,
                 top: slot.y,
                 bottom: slot.y + slot.b,
@@ -93,7 +82,14 @@ fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
                 first_break: (!kid.monolithic)
                     .then(|| slot.geometry.cuts.first().map(|&(a, _)| slot.y + a))
                     .flatten(),
-            });
+            };
+            geometry.floats.push(bounds);
+            child
+                .float_contexts
+                .push(crate::layout::fragment::flow::float_resume::Snapshot {
+                    scope: Vec::new(),
+                    bounds,
+                });
         }
         let (start, end) = if kid.monolithic && matches!(kid.kind, super::Kind::Float { .. }) {
             // Float margins stay with an unbreakable box during balancing.
@@ -108,12 +104,23 @@ fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
             geometry.solid.push((start, end));
         } else if let Some(nest) = &kid.nest {
             // Nested slots already use the host's coordinates.
-            append(geometry, &nest.kids, &slot.kids);
+            append(&mut child, &nest.kids, &slot.kids);
         } else {
-            geometry.append(&slot.geometry, slot.y);
+            child.append(&slot.geometry, slot.y);
         }
+        prefix(&mut child, kid.flow_key);
+        geometry.append(&child, 0.0);
         geometry.cuts.push((start, start));
         geometry.cuts.push((end, end));
+    }
+}
+
+fn prefix(geometry: &mut FlowGeometry, key: usize) {
+    for p in &mut geometry.inline {
+        p.scope.insert(0, key);
+    }
+    for f in &mut geometry.float_contexts {
+        f.scope.insert(0, key);
     }
 }
 
@@ -125,6 +132,8 @@ mod tests {
     #[test]
     fn unused_block_size_is_fragmentable_unless_the_box_is_monolithic() {
         let mut kid = Kid {
+            flow: None,
+            flow_key: 0,
             node_id: 0,
             pagination_offset: 0.0,
             kind: Kind::Float {

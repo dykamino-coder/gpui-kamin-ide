@@ -8,7 +8,6 @@ mod parallel;
 pub(crate) use parallel::{Parallel, flow_end};
 mod percentages;
 use continuation::continuation;
-pub(crate) use continuation::parallel_overflow;
 pub(crate) use percentages::PagePercentages;
 pub(crate) use percentages::{column_percentages, page_percentages};
 
@@ -87,7 +86,6 @@ fn separate(e: &Element, vertical: bool) -> bool {
             || e.marks.host_trim_start
             || e.marks.host_trim_end
             || (!vertical && e.style.used().vertical_decl() == Some(true))
-            || e.style.used().float.is_some_and(|f| f != 0)
             || matches!(
                 e.style.used().position,
                 Some(Position::Absolute | Position::Fixed)

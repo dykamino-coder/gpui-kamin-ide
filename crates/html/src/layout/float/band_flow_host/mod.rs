@@ -25,6 +25,7 @@ pub(in crate::layout::float) use lift::flow_interior_plain;
 mod kids;
 pub(super) use kids::band_kids;
 mod build_kid;
+mod continuation;
 mod float_box;
 #[cfg(test)]
 mod tests;
@@ -144,11 +145,19 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &BoxStyle, opts: &RenderOpt
         inherited.width = Some(Len::Px(w));
     }
     let inherited = &inherited;
-    let parent = opts.frag.watch.as_ref().map(|w| w.flow.clone());
-    let watched = crate::layout::fragment::paginate::watch::Watched::for_lines();
+    let node = opts.frag.watch.as_ref().map(|w| {
+        crate::layout::fragment::flow::FlowNode::new(
+            w.flow.clone(),
+            crate::layout::fragment::types::StackAxis::of(inherited.wm()),
+        )
+    });
+    let watched = node.as_ref().map_or_else(
+        crate::layout::fragment::paginate::watch::Watched::for_lines,
+        |n| continuation::watched(n.measurements.context(n.ordinal + 1)),
+    );
     let probes = watched.flow.clone();
     let mut child_opts = opts.clone();
-    child_opts.frag.watch = parent.as_ref().map(|_| watched);
+    child_opts.frag.watch = node.as_ref().map(|_| watched);
     let kids = band_kids(
         &e.children,
         count,
@@ -168,12 +177,8 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &BoxStyle, opts: &RenderOpt
             .as_ref()
             .map(|_| opts.cx.position.state.clone()),
     );
-    let flow = match parent {
-        Some(parent) => flow.fragment_flow(
-            parent,
-            probes,
-            crate::layout::fragment::types::StackAxis::of(inherited.wm()),
-        ),
+    let flow = match node {
+        Some(node) => flow.fragment_flow(node, probes),
         None => flow,
     };
     // A formatting context is no stacking context: its outlines join the

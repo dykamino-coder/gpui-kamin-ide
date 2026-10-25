@@ -42,11 +42,11 @@ fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins() {
     )
     .expect("deferred native float");
     let kids = recipe.children(120.0);
-    assert_eq!(kids.len(), 2);
-    assert!(kids[0].paginate.is_some());
+    assert_eq!(kids.len(), 1);
+    assert!(kids[0].paginate.is_none());
     assert_eq!(kids[0].measure, Some(120.0));
     assert_eq!(kids[0].mt, 15.0);
-    assert!(kids[1].regrow.is_some());
+    assert!(kids[0].regrow.is_some());
     #[cfg(feature = "wpt-harness")]
     assert!(
         opts.frag
@@ -114,6 +114,14 @@ fn parallel_float_continuations_are_not_silently_replaced() {
         "<div style='float:left;width:100%;height:20px;margin:40px 0;contain:size'>float</div>",
         "<div style='float:left'><div>A</div><div>B</div></div>",
         "<div style='float:left;break-inside:avoid'><div>A</div><div>B</div></div>",
+    ] {
+        let tree = crate::dom::parse(&format!("<div><div>{special}</div></div>"), "");
+        assert!(
+            pending(host(&tree), &BoxStyle::default(), tree.values()).is_some(),
+            "{special}"
+        );
+    }
+    for special in [
         "<div style='float:left'>float</div><div style='box-decoration-break:clone'>x</div>",
         "<div style='float:left'>float</div><div style='text-box-trim:trim-both'>x</div>",
         "<div style='float:left'>float</div><div style='position:absolute'>x</div>",

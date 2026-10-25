@@ -90,15 +90,30 @@ pub(super) fn place_float(
             ceil += height_of(lead, bands, p);
         }
     }
-    // Fragmentation moves only the float, leaving preceding normal-flow lines
-    // in their fragmentainer (CSS Break 3 section 3, parallel flows).
-    bands.set_flow_ceiling(ceil + kid.pagination_offset);
-    // Посадка margin-box: правила 1-9 §9.5.1 и clear §9.5.2 — в
-    // `bands.add_float`.
+    // Разрыв сдвигает float отдельно от предшествующих строк обычного потока
+    // (CSS Break 3 §2.1, параллельные потоки).
+    let continuation = kid
+        .flow
+        .as_ref()
+        .and_then(|f| f.float_resume.borrow().clone())
+        .filter(|cursor| cursor.token.consumed > COORD_EPS);
+    ceil += kid.pagination_offset;
+    bands.set_flow_ceiling(ceil);
+    // Посадка margin-box: правила 1–9 §9.5.1 и clear §9.5.2.
     let (fx, fy) = if letter {
         bands.add_initial_letter(side, ml + bw + mr, mt + bh + mb, y)
     } else {
-        let at = bands.add_float(side, ml + bw + mr, mt + bh + mb, clear);
+        let at = if let Some(cursor) = continuation {
+            bands.resume_float(
+                side,
+                ml + bw + mr,
+                mt + bh + mb,
+                ceil + cursor.shift(&geometry, bh),
+                ceil + mt + cursor.boundary,
+            )
+        } else {
+            bands.add_float(side, ml + bw + mr, mt + bh + mb, clear)
+        };
         if let Some(shape) = kid.shape.as_ref() {
             bands.shape_last(shape(bw, bh, [mt, mr, mb, ml], cbw));
         }

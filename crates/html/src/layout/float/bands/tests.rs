@@ -4,6 +4,7 @@
 //! `floats-rule3-outside-left-002`, `floats-wrap-top-below-00[123]l`.
 
 use super::*;
+mod resume;
 use crate::layout::float::shapes::FloatShape;
 
 /// Правило 1: левый флоат встаёт вплотную к левому краю.

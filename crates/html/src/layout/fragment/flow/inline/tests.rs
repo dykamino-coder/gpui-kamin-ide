@@ -5,6 +5,7 @@ use crate::style::computed::writing_mode::WritingMode;
 
 fn paragraph(count: usize, orphans: usize, widows: usize) -> Inline {
     Inline {
+        scope: Vec::new(),
         lines: (0..count)
             .map(|i| super::super::ContentLine {
                 paragraph: 0,

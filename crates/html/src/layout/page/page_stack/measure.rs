@@ -37,6 +37,12 @@ pub(super) fn measure(
             .map(|p| p.translated(-k.inner_top))
             .collect()
     });
+    inline.floats = measured_flow.as_ref().map_or_else(Vec::new, |flow| {
+        flow.float_contexts
+            .iter()
+            .map(|f| f.translated(-k.inner_top))
+            .collect()
+    });
     let sz = laid;
     let sz = if vertical {
         size(sz.height, sz.width)

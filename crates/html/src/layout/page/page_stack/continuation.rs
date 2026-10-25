@@ -161,7 +161,7 @@ impl PageStack {
         }
         rec.clear_consumed(window);
         rec.resume_content(&old.laid, from);
-        let inline_addresses = inline::resume(&rec.flow, &old.inline.paragraphs, from);
+        let inline_addresses = inline::resume(&rec.flow, &old.inline, from);
         k.watched = Some(rec.clone());
         rebuild_copy(k, copy, &own);
         let (mut next, mut next_inline) = measure(k, self.axis, area, copy, window, cx);
