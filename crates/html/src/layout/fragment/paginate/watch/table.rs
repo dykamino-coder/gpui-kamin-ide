@@ -6,6 +6,7 @@
 use super::{Slot, Watch, Watched, axis::BlockAxis};
 use crate::hooks::IntoHooked;
 use crate::layout::fragment::flow::blocks::TableFrame;
+use crate::layout::fragment::geometry::Node;
 use crate::layout::options::RenderOpts;
 use gpui::{AnyElement, LayoutId, Window};
 use std::collections::HashMap;
@@ -24,9 +25,9 @@ pub(crate) enum TablePart {
 /// Узлы частей таблицы последней раскладки.
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct TableNodes {
-    table: Option<LayoutId>,
-    grid: Option<LayoutId>,
-    item: Option<LayoutId>,
+    table: Option<Node>,
+    grid: Option<Node>,
+    item: Option<Node>,
 }
 
 /// Обернуть часть `part` таблицы с ключом `key`, если рекордер сборки её
@@ -50,7 +51,8 @@ pub(crate) fn table_part(
 
 impl Watched {
     /// Узел части `part` таблицы `key` последней раскладки.
-    pub(super) fn record_part(&self, key: u64, part: TablePart, lid: LayoutId) {
+    pub(super) fn record_part(&self, key: u64, part: TablePart, lid: LayoutId, window: &Window) {
+        let lid = Node::capture(lid, window);
         let mut nodes = self.table_nodes.borrow_mut();
         let n = nodes.entry(key).or_default();
         match part {
@@ -71,17 +73,20 @@ impl Watched {
             let (Some(table), Some(grid)) = (nodes.table, nodes.grid) else {
                 continue;
             };
-            let mut span = |lid: LayoutId| {
-                axis.span(
-                    window.layout_origin_unrounded(lid),
-                    window.layout_size_unrounded(lid),
-                )
+            let (Some(table), Some(grid)) = (table.bounds(window), grid.bounds(window)) else {
+                continue;
             };
-            let (table, grid) = (span(table), span(grid));
+            let table = axis.span(table.origin, table.size);
+            let grid = axis.span(grid.origin, grid.size);
             let rows = nodes
                 .item
-                .and_then(|item| window.parent_grid_tracks(item))
-                .map(|(at, columns, rows)| axis.tracks(at, columns, rows, true))
+                .and_then(|item| {
+                    item.read(window)?;
+                    let parent = window.parent_layout_id(item.id)?;
+                    let normal = Node::capture(parent, window).bounds(window)?;
+                    let (_, columns, rows) = window.parent_grid_tracks(item.id)?;
+                    Some(axis.tracks(normal.origin, columns, rows, true))
+                })
                 .unwrap_or_default();
             out.insert(key, TableFrame { table, grid, rows });
         }

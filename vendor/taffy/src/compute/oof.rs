@@ -760,6 +760,7 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
         scrollable_overflow_rect: layout_output.scrollable_overflow_rect,
         scrollbar_size,
         location,
+        relative_offset: Point::ZERO,
         padding,
         border,
         margin: resolved_margin,

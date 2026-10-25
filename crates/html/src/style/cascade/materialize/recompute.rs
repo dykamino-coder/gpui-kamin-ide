@@ -45,7 +45,7 @@ pub(crate) fn recompute_onto(
         .as_ref()
         .and_then(|p| p.variant_for(&parent))
         .unwrap_or(&parent);
-    let computed = crate::style::cascade::compute::compute(parent, &declared, vcx);
+    let computed = own.slot().compute(parent, &declared, vcx);
     let previous = c
         .element_style
         .as_ref()
