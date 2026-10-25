@@ -6,7 +6,7 @@ use crate::layout::build_contracts::Styling;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
-use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) async fn render_with_style(
     stk: &mut reblessive::Stk,
@@ -64,6 +64,19 @@ pub(crate) async fn render_with_style(
         li.style.used().marker_layer.as_deref(),
     );
     let marker = inline::transform_case(&marker, &mark_style);
+    // Use the CSS inline formatter for both the marker and its empty-item
+    // strut. A raw GPUI text leaf inherits the UI's line-height, whereas the
+    // item's first line resolves `normal` from its font (CSS2 §10.8.1).
+    // Comparing those incompatible baselines moved the marker at empty/NBSP
+    // items and made their minimum heights depend on the UI text style.
+    mark_style.nowrap = Some(true);
+    let marker_nodes = match image {
+        Some(image) => vec![image, Node::Text("\u{a0}".into())],
+        None => vec![Node::Text(match marker.strip_suffix(' ') {
+            Some(head) => format!("{head}\u{a0}"),
+            None => marker,
+        })],
+    };
     // Without line boxes the outside marker is top-aligned to the item, and
     // the item's content height is at least the marker's (csswg-drafts#2417,
     // #2418; Blink `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). An
@@ -76,20 +89,11 @@ pub(crate) async fn render_with_style(
             .build
             .styled_div(Styling::Text(&mark_style), &opts.cx)
             .w_0()
-            .whitespace_nowrap()
-            .children(image.is_none().then(|| SharedString::from(marker.clone())))
             .children(
-                image
-                    .as_ref()
-                    .map(|image| {
-                        opts.cx.contracts.build.blocks(
-                            std::slice::from_ref(image),
-                            &mark_style,
-                            opts,
-                        )
-                    })
-                    .into_iter()
-                    .flatten(),
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&marker_nodes, &mark_style, opts),
             );
         d.style().visibility = Some(gpui::Visibility::Hidden);
         d
@@ -125,36 +129,14 @@ pub(crate) async fn render_with_style(
                 &li.style.used(),
                 merged,
             )
-            .whitespace_nowrap()
-            // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
-            // (обычный пробел после номера пункта). Авторская
-            // строка `list-style-type: "..."` идёт дословно:
-            // `trim_end` в Rust считает пробелом и U+00A0, а
-            // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
-            // Остаток `list-style-type-string-005a/b/-006` не здесь,
-            // но срезать значащий знак всё равно нельзя.
-            // Отбивка после номера (`1. `) — часть маркера: она и
-            // даёт зазор до содержимого. Пробел в конце строки
-            // свернулся бы, поэтому он неразрывный.
+            // Keep the generated suffix as NBSP without trimming author text:
+            // author-provided NBSP is significant (css-lists-3 §3.1.1).
             .children(
-                image
-                    .as_ref()
-                    .map(|image| {
-                        opts.cx.contracts.build.blocks(
-                            &[image.clone(), Node::Text("\u{a0}".into())],
-                            &mark_style,
-                            opts,
-                        )
-                    })
-                    .into_iter()
-                    .flatten(),
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&marker_nodes, &mark_style, opts),
             )
-            .children(image.is_none().then(|| {
-                SharedString::from(match marker.strip_suffix(' ') {
-                    Some(head) => format!("{head}\u{a0}"),
-                    None => marker.clone(),
-                })
-            }))
             .into_any_element(),
             merged.wm().vertical(),
         )
