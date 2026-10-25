@@ -56,7 +56,7 @@ impl MarginFacts {
             let style = e.style.used();
             let zero = |v| matches!(v, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
             !real_inline(e)
-                && !style.float.is_some_and(|f| f != 0)
+                && style.float.is_none_or(|f| f == 0)
                 && zero(style.margin.top)
                 && zero(style.margin.bottom)
                 && self.children[&e.children.identity()].1
