@@ -56,3 +56,35 @@ fn list_types_and_table_width() {
     let zero = presentational_legacy::hints("table", &attrs(&[("width", "0")]), &[], vcx);
     assert!(!zero.contains("width:"), "{zero}");
 }
+
+/// HTML Rendering §15.3.4: br[clear] — подсказка ниже авторских правил.
+/// https://html.spec.whatwg.org/multipage/rendering.html#phrasing-content-3
+#[test]
+fn br_clear_is_a_presentational_hint() {
+    fn clear(nodes: &[super::Node]) -> Option<i8> {
+        for node in nodes {
+            if let super::Node::Element(element) = node {
+                if element.tag == "br" {
+                    return element.style.cascaded().clear;
+                }
+                if let Some(value) = clear(&element.children) {
+                    return Some(value);
+                }
+            }
+        }
+        None
+    }
+    for (value, expected) in [
+        ("left", Some(-1)),
+        ("RIGHT", Some(1)),
+        ("aLl", Some(0)),
+        ("both", Some(0)),
+        (" all ", None),
+        ("none", None),
+    ] {
+        let nodes = super::parse(&format!("<br clear='{value}'>"), "");
+        assert_eq!(clear(&nodes), expected, "{value}");
+    }
+    let nodes = super::parse("<style>br { clear: right; }</style><br clear=all>", "");
+    assert_eq!(clear(&nodes), Some(1));
+}
