@@ -1,6 +1,7 @@
 //! Адаптер CPU-конусного градиента для канваса GPUI.
 use super::Source;
 use crate::document::state::ValueCx;
+use crate::resources::css_images::Source as CpuSource;
 use std::sync::Arc;
 pub(super) fn tile(
     source: &Source,
@@ -8,7 +9,7 @@ pub(super) fn tile(
     density: f32,
     vcx: ValueCx<'_>,
 ) -> Option<Arc<gpui::RenderImage>> {
-    if let Source::Gradient { image } = source
+    if let Source::Image(CpuSource::Gradient { image }) = source
         && let crate::style::computed::ImageSource::Conic(g) = image.as_ref()
     {
         return super::image_adapter::upload(&crate::resources::css_images::conic::rasterize(

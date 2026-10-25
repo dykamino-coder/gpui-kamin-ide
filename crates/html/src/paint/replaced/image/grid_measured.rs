@@ -7,6 +7,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::resources::css_images::Source as CpuSource;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Refineable, Styled, StyledImage, px, size};
 
@@ -69,20 +70,22 @@ pub(super) fn measured(
     // Decorated vectors still need concrete-size rasterization in the existing
     // holder pipeline: the measured leaf does not transfer their content-box
     // cross size separately from padding and borders.
-    if !matches!(source, crate::paint::background::Source::Raster(_))
-        && (!style.flex_item
-            || [
-                style.padding.left,
-                style.padding.right,
-                style.padding.top,
-                style.padding.bottom,
-                border.left,
-                border.right,
-                border.top,
-                border.bottom,
-            ]
-            .into_iter()
-            .any(|edge| !zero(edge)))
+    if !matches!(
+        source,
+        crate::paint::background::Source::Image(CpuSource::Raster(_))
+    ) && (!style.flex_item
+        || [
+            style.padding.left,
+            style.padding.right,
+            style.padding.top,
+            style.padding.bottom,
+            border.left,
+            border.right,
+            border.top,
+            border.bottom,
+        ]
+        .into_iter()
+        .any(|edge| !zero(edge)))
     {
         return None;
     }

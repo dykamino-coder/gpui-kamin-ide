@@ -32,3 +32,4 @@ pub(crate) mod viewport;
 pub(crate) mod fixtures;
 
 pub(crate) mod resample;
+pub(crate) mod sampling;
