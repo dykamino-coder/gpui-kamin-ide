@@ -100,10 +100,7 @@ pub(super) async fn collect_element(
         marker.word_space_char = None;
     }
     if atomic {
-        out.push(Piece::Text {
-            text: "\u{200b}".into(),
-            style: marker.clone(),
-        });
+        out.push(box_paint::atomic_marker(marker.clone()));
     }
     // Боковые поля, рамки и отступы СТРОЧНОЙ коробки: своей
     // коробки в раскладке у неё нет, поэтому место занимает
@@ -238,10 +235,7 @@ pub(super) async fn collect_element(
         });
     }
     if atomic {
-        out.push(Piece::Text {
-            text: "\u{200b}".into(),
-            style: marker,
-        });
+        out.push(box_paint::atomic_marker(marker));
     }
     // Зазор между последним знаком этого элемента и первым знаком
     // того, что идёт следом, лежит ВНУТРИ текущего узла — значит,
