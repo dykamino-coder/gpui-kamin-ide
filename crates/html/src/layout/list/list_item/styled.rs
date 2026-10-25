@@ -57,11 +57,10 @@ pub(crate) fn render_with_style(
         li.style.used().marker_layer.as_deref(),
     );
     let marker = inline::transform_case(&marker, &mark_style);
-    // Use the CSS inline formatter for both the marker and its empty-item
-    // strut. A raw GPUI text leaf inherits the UI's line-height, whereas the
-    // item's first line resolves `normal` from its font (CSS2 §10.8.1).
-    // Comparing those incompatible baselines moved the marker at empty/NBSP
-    // items and made their minimum heights depend on the UI text style.
+    let marker_opts = super::outside_flow::options(opts);
+    // Маркер и распорка пустого пункта используют CSS-метрики строки.
+    // Прямой текстовый лист GPUI наследует line-height интерфейса, тогда
+    // как `normal` первой строки зависит от шрифта пункта (CSS2 §10.8.1).
     mark_style.nowrap = Some(true);
     let marker_nodes = match image {
         Some(image) => vec![image, Node::Text("\u{a0}".into())],
@@ -70,10 +69,10 @@ pub(crate) fn render_with_style(
             None => marker,
         })],
     };
-    // Without line boxes the outside marker is top-aligned to the item, and
-    // the item's content height is at least the marker's (csswg-drafts#2417,
-    // #2418; Blink `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). An
-    // item with no content gets a hidden zero-width copy of the marker line.
+    // Без строк внешний маркер выровнен по верху пункта, высота которого
+    // не меньше маркера (csswg-drafts#2417, #2418; Blink
+    // `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). Скрытая строка
+    // резервирует эту высоту, сохраняя собственную baseline шрифта пункта.
     let empty = li.children.iter().all(crate::dom::whitespace::is_blank);
     let strut = (!no_marker && empty).then(|| {
         let mut d = opts
@@ -82,18 +81,32 @@ pub(crate) fn render_with_style(
             .build
             .styled_div(Styling::Text(&mark_style), &opts.cx)
             .w_0()
+            .flex()
+            .items_start()
+            // Заменяемый маркер увеличивает минимальную высоту, сохраняя
+            // baseline шрифта самого пункта (CSS2 §10.8.1).
+            .child(
+                div()
+                    .w_0()
+                    .flex_shrink_0()
+                    .children(opts.cx.contracts.build.blocks(
+                        &[Node::Text("\u{a0}".into())],
+                        &super::outside::content_style(None, merged, vcx),
+                        opts,
+                    )),
+            )
             .children(
                 opts.cx
                     .contracts
                     .build
-                    .blocks(&marker_nodes, &mark_style, opts),
+                    .blocks(&marker_nodes, &mark_style, &marker_opts),
             );
         d.style().visibility = Some(gpui::Visibility::Hidden);
         d
     });
     // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
     // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
-    // не двигает. Text transforms apply to its own text (§3.1.1).
+    // не двигает. Преобразования текста применяются к самому маркеру (§3.1.1).
     let anchor = super::placement::Anchor::default();
     shrink0(
         opts.cx.contracts.build.styled_box(li, merged, &opts.cx),
@@ -122,13 +135,13 @@ pub(crate) fn render_with_style(
                 &li.style.used(),
                 merged,
             )
-            // Keep the generated suffix as NBSP without trimming author text:
-            // author-provided NBSP is significant (css-lists-3 §3.1.1).
+            // Созданный суффикс — NBSP; авторский NBSP остаётся
+            // значимым содержимым (css-lists-3 §3.1.1).
             .children(
                 opts.cx
                     .contracts
                     .build
-                    .blocks(&marker_nodes, &mark_style, opts),
+                    .blocks(&marker_nodes, &mark_style, &marker_opts),
             )
             .into_any_element(),
             merged.wm().vertical(),
@@ -151,3 +164,6 @@ pub(crate) fn render_with_style(
     )
     .into_any_element()
 }
+
+#[cfg(test)]
+mod tests;
