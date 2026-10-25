@@ -25,8 +25,7 @@ pub(crate) fn skip_url_body(text: &str) -> usize {
         let ch = text[at..].chars().next().unwrap_or('\u{0}');
         match ch {
             '\\' => {
-                at += ch.len_utf8();
-                at += text[at..].chars().next().map_or(0, char::len_utf8);
+                at = escaped_codepoint_end(text, at);
                 continue;
             }
             '"' | '\'' => {
@@ -87,4 +86,11 @@ pub(crate) fn escape_end(raw: &str, at: usize) -> usize {
         }
     }
     end
+}
+
+/// Пропуск обратного слеша и одного знака для поиска разделителей.
+/// В отличие от escape_end не поглощает hex-последовательность и её пробел.
+pub(crate) fn escaped_codepoint_end(text: &str, at: usize) -> usize {
+    let body = at + 1;
+    body + text[body..].chars().next().map_or(0, char::len_utf8)
 }

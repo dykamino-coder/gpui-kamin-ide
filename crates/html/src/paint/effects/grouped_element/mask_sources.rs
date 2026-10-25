@@ -1,6 +1,7 @@
 //! Источники маски сохраняют ориентацию элемента при поиске кэшированных изображений.
 
 use super::Grouped;
+use crate::resources::css_images::Source as CpuSource;
 use crate::style::computed::ImageSource;
 
 #[derive(Clone)]
@@ -28,7 +29,7 @@ impl Grouped {
         if matches!(image, ImageSource::Invalid) {
             // CSS Masking 1 section 7.1: none is a transparent black layer.
             return crate::resources::images::pixels::bgra(1, 1, vec![0; 4])
-                .map(crate::paint::background::Source::Raster);
+                .map(|image| crate::paint::background::Source::from_cpu(CpuSource::Raster(image)));
         }
         crate::resources::css_images::computed_source(image, !self.mask_orient_none, vcx)
             .map(crate::paint::background::Source::from_cpu)
