@@ -4,6 +4,7 @@ use crate::document::state::ValueCx;
 use std::{collections::HashSet, rc::Rc, sync::Arc};
 
 type FontLoader = Rc<dyn Fn(Vec<u8>) -> Option<String>>;
+type FactsFactory = Rc<dyn Fn() -> Rc<dyn crate::font_facts::FontFactsProvider>>;
 
 /// Источник шрифтов для разбора документа и его вложенных документов.
 /// Копия разделяет платформенные ресурсы, но не щупы и кэши измерений.
@@ -12,6 +13,7 @@ pub struct FontContext {
     pub(super) system: Option<Arc<gpui::TextSystem>>,
     pub(super) loader: Option<FontLoader>,
     pub(super) installed: Rc<HashSet<String>>,
+    pub(super) facts_factory: Option<FactsFactory>,
 }
 
 impl FontContext {
@@ -49,6 +51,16 @@ impl FontContext {
         self
     }
 
+    /// Создать backend фактов отдельно для каждого документа, включая вложенные.
+    /// Factory не получает дерево, style или GPUI; запрос несёт явный snapshot.
+    pub fn with_facts_provider(
+        mut self,
+        factory: impl Fn() -> Rc<dyn crate::font_facts::FontFactsProvider> + 'static,
+    ) -> Self {
+        self.facts_factory = Some(Rc::new(factory));
+        self
+    }
+
     pub(crate) fn install(&self, vcx: ValueCx<'_>) {
         vcx.doc.metrics.platform.replace(self.clone());
         *vcx.doc.metrics.wrap.borrow_mut() = None;
@@ -59,6 +71,7 @@ impl FontContext {
         vcx.doc.metrics.cache.borrow_mut().clear();
         vcx.doc.metrics.vcache.borrow_mut().clear();
         vcx.doc.metrics.parts.borrow_mut().clear();
-        vcx.doc.metrics.invalidate();
+        vcx.doc
+            .install_font_facts(self.facts_factory.as_ref().map(|factory| factory()));
     }
 }

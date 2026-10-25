@@ -44,12 +44,5 @@
   {"file": "style/css/media/calc.rs", "path": "text::metrics::ch_ex_px", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
   {"file": "style/css/sheet/rules.rs", "path": "text::fonts::alternates::register", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
   {"file": "style/ua/forms.rs", "path": "text::metrics::normal_line", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/ua/forms.rs", "path": "text::metrics::normal_px", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/values/value/root_metrics.rs", "path": "text::metrics::ch_ex_px", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/values/value/root_metrics.rs", "path": "text::metrics::ic_px", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/values/value/root_metrics.rs", "path": "text::metrics::install_probe", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/values/value/root_metrics.rs", "path": "text::metrics::install_vprobe", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/values/value/root_metrics.rs", "path": "text::metrics::normal_line", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/values/value/root_metrics.rs", "path": "text::metrics::normal_px", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"},
-  {"file": "style/values/value/root_metrics.rs", "path": "text::metrics::vmetrics_px", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"}
+  {"file": "style/ua/forms.rs", "path": "text::metrics::normal_px", "count": 1, "owner": "P-11 (style/fonts)", "task": "P-11: expose neutral font facts and metrics to style; remove style-to-text calls"}
 ]

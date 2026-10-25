@@ -34,7 +34,7 @@ impl Metrics {
         self.generation.get()
     }
 
-    pub(super) fn invalidate(&self) {
+    pub(crate) fn invalidate(&self) {
         self.generation.set(self.generation.get() + 1);
     }
 }
