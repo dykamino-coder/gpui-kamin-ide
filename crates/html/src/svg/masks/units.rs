@@ -181,6 +181,6 @@ pub(super) fn filtered(e: &Element, keep: &dyn Fn(Unit) -> bool) -> Element {
             }
         }
     }
-    copy.children = kids;
+    copy.children = kids.into();
     copy
 }

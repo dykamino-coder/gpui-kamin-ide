@@ -6,10 +6,14 @@ mod split;
 pub(crate) use split::split_nodes;
 
 pub(crate) fn gather_text(nodes: &[Node], out: &mut String) {
-    for n in nodes {
-        match n {
-            Node::Text(t) => out.push_str(t),
-            Node::Element(e) => gather_text(&e.children, out),
+    let mut pending = vec![nodes.iter()];
+    while let Some(nodes) = pending.last_mut() {
+        match nodes.next() {
+            Some(Node::Text(t)) => out.push_str(t),
+            Some(Node::Element(e)) => pending.push(e.children.iter()),
+            None => {
+                pending.pop();
+            }
         }
     }
 }

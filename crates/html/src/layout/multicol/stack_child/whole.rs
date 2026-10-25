@@ -12,7 +12,7 @@ use crate::style::values::value::Len;
 
 pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) -> Vec<Node> {
     let kids: Vec<Node> = if first {
-        src.children.clone()
+        src.children.to_vec()
     } else {
         // Семя — только корень копии. Содержащий блок `fixed` на самой
         // коробке многоколоночника забирает слой контейнера
@@ -54,7 +54,7 @@ pub(super) fn copy_whole_box(
 ) -> Option<gpui::AnyElement> {
     if let Some(hh) = nest_row {
         let mut mc = copy.clone();
-        mc.children = std::mem::take(kids);
+        mc.children = std::mem::take(kids).into();
         // Своя метка узла на каждую копию: состояние,
         // ключённое по `node_id`, у копий одного узла
         // иначе сливается в одно (`multicol-breaking-002`).
@@ -97,7 +97,7 @@ pub(super) fn copy_whole_box(
     // не создаёт его анонимную коробку и выпускает нижнее поле ребёнка наружу.
     if whole || copy.list_item.is_some() || copy.tag == "fieldset" {
         let mut mc = copy.clone();
-        mc.children = std::mem::take(kids);
+        mc.children = std::mem::take(kids).into();
         if matches!(mc.style.used().width, None | Some(Len::Auto))
             && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
@@ -107,7 +107,7 @@ pub(super) fn copy_whole_box(
     }
     if table_box(copy) {
         let mut tc = copy.clone();
-        tc.children = std::mem::take(kids);
+        tc.children = std::mem::take(kids).into();
         // Содержащий блок таблицы в колонке — колонка (css-multicol-1 §2):
         // от её ширины и доли размеров содержимого, а не от многоколоночника.
         let col = line_col_w.map(|w| opts.inner(|cx| cx.constraints.avail_w = Some(w)));

@@ -7,6 +7,8 @@
 //! ничего не рисуют.
 
 mod anonymous;
+mod children;
+pub use children::Children;
 mod direction;
 mod shared_style;
 pub use shared_style::SharedStyle;
@@ -131,7 +133,7 @@ pub struct Element {
     pub first_letter: Option<SharedStyle>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<SharedStyle>,
-    pub children: Vec<Node>,
+    pub children: Children,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
     pub attrs: Vec<(String, String)>,
     /// Инлайн ли элемент по своей природе (`<span>`, `<code>`, `<a>`): от
@@ -154,7 +156,7 @@ impl Element {
             hover: None,
             first_letter: None,
             first_line: None,
-            children,
+            children: children.into(),
             attrs: Vec::new(),
             inline: false,
             marks,

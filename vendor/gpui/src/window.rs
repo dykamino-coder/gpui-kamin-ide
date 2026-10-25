@@ -4262,6 +4262,34 @@ impl Window {
         }
     }
 
+    /// Apply borrowed text and overflow context together during child drawing.
+    pub(crate) fn with_child_style<R>(
+        &mut self,
+        style: &Style,
+        bounds: Bounds<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+        let has_text = style.text_style().is_some();
+        if let Some(text) = style.text_style() {
+            self.push_text_style_ref(text);
+        }
+        let has_mask = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
+        let result = f(self);
+        if has_mask {
+            self.content_mask_stack.pop();
+        }
+        if has_text {
+            self.text_style_stack.pop();
+        }
+        result
+    }
+
+    #[inline(never)]
+    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
+        self.text_style_stack.push(style.clone());
+    }
+
     /// Updates the cursor style at the platform level. This method should only be called
     /// during the paint phase of element drawing.
     pub fn set_cursor_style(&mut self, style: CursorStyle, hitbox: &Hitbox) {
@@ -4306,6 +4334,17 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
+        let has_mask = self.push_content_mask(mask);
+        let result = f(self);
+        if has_mask {
+            self.content_mask_stack.pop();
+        }
+        result
+    }
+
+    // Prepare mask temporaries before entering the recursive child traversal.
+    #[inline(never)]
+    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> bool {
         if let Some(mask) = mask {
             // KaminIDE patch: под `with_transformation_masked` маска ребёнка
             // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -4318,11 +4357,9 @@ impl Window {
             }
             .intersect(&self.content_mask());
             self.content_mask_stack.push(mask);
-            let result = f(self);
-            self.content_mask_stack.pop();
-            result
+            true
         } else {
-            f(self)
+            false
         }
     }
 
@@ -6104,6 +6141,17 @@ impl Window {
     pub fn request_layout(
         &mut self,
         style: Style,
+        children: impl IntoIterator<Item = LayoutId>,
+        cx: &mut App,
+    ) -> LayoutId {
+        self.request_layout_ref(&style, children, cx)
+    }
+
+    /// KaminIDE patch: borrow the style so recursive elements need not move it on the stack.
+    #[must_use]
+    pub fn request_layout_ref(
+        &mut self,
+        style: &Style,
         children: impl IntoIterator<Item = LayoutId>,
         cx: &mut App,
     ) -> LayoutId {

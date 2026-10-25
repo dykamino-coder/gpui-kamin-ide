@@ -22,7 +22,8 @@ use cell::table_cell;
 use super::context::{RowCursor, RowState, RowsOut, TableGeom, TableLayers};
 use crate::style::cascade::materialize::box_style;
 
-pub(super) fn table_rows(
+pub(super) async fn table_rows(
+    stk: &mut reblessive::Stk,
     rows: &[super::anon::TableRow<'_>],
     geom: &TableGeom<'_>,
     layers: &TableLayers<'_>,
@@ -107,12 +108,12 @@ pub(super) fn table_rows(
             while cursor.col_ix < cursor.occupied.len() && cursor.occupied[cursor.col_ix] > 0 {
                 cursor.col_ix += 1;
             }
-            table_cell(geom, layers, cursor, out, opts, &row_state, cell);
+            table_cell(stk, geom, layers, cursor, out, opts, &row_state, cell).await;
         }
     }
 
     // Порядок слоёв сетки: полосы дорожек/рядов → фоны ячеек → сросшиеся
     // кромки → коробки ячеек с содержимым (см. `under`, `cell_bgs`). Прежде
     // слой кромок шёл ПОСЛЕДНИМ и накрывал всё содержимое ячеек.
-    table_finish(geom, layers, out, opts)
+    table_finish(stk, geom, layers, out, opts).await
 }

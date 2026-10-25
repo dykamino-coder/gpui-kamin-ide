@@ -593,14 +593,15 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     let LayoutInput { known_dimensions, parent_size, available_space, run_mode, .. } = inputs;
 
     // Define some general constants we will need for the remainder of the algorithm.
-    let mut constants = compute_constants(
+    // KaminIDE patch: per-container constants outlive child layout on the heap.
+    let mut constants = crate::util::sys::Box::new(compute_constants(
         tree,
         tree.get_flexbox_container_style(node),
         known_dimensions,
         inputs.known_dimensions_are_definite,
         parent_size,
         available_space,
-    );
+    ));
     constants.fragmentation_axis = tree.flex_fragmentation_axis(node);
     constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
     constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);

@@ -123,7 +123,7 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
         "<div><div style='float:left;width:100%;height:20px'>float</div></div>",
         "",
     );
-    let host = super::super::block_floats(root(&tree), |_| false, Some(100.0))
+    let host = super::super::block_floats(root(&tree), |_| false, Some(100.0), tree.values())
         .expect("full-width float is a block in the stack");
     let measured = RefCell::default();
     let kids = children(&host, &BoxStyle::default(), tree.values(), 100.0, &measured)

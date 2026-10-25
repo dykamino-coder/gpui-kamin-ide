@@ -26,6 +26,7 @@ mod kids;
 pub(super) use kids::band_kids;
 mod build_kid;
 mod float_box;
+mod single;
 #[cfg(test)]
 mod tests;
 use build_kid::build_band_kid;
@@ -88,10 +89,18 @@ pub(super) fn fit_own_layout(
 
 /// Есть ли в поддереве непустой текст.
 pub(super) fn subtree_has_text(e: &Element) -> bool {
-    e.children.iter().any(|n| match n {
-        Node::Text(t) => !t.trim().is_empty(),
-        Node::Element(c) => subtree_has_text(c),
-    })
+    let mut pending = vec![e.children.iter()];
+    while let Some(children) = pending.last_mut() {
+        match children.next() {
+            Some(Node::Text(t)) if !t.trim().is_empty() => return true,
+            Some(Node::Element(c)) => pending.push(c.children.iter()),
+            Some(_) => {}
+            None => {
+                pending.pop();
+            }
+        }
+    }
+    false
 }
 
 /// Блок обычного потока для измеряемого хоста (шаг F4): блочного уровня,
@@ -131,7 +140,15 @@ pub(super) fn band_flow_rest(
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
-pub(crate) fn band_flow_host(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+pub(crate) async fn band_flow_host(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
+    if let Some(el) = stk.run(|stk| single::build(stk, e, inherited, opts)).await {
+        return el;
+    }
     let host = e.marks.shape_flow.unwrap_or_default();
     let count = host.count;
     let em: f32 = host.em.unwrap_or(opts.base_size());

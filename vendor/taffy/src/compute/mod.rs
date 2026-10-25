@@ -292,12 +292,25 @@ where
     let computed_size_and_baselines = compute_uncached(tree, node, inputs);
 
     // Cache result
-    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
+    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
 
     debug_log!("RESULT", dbg:computed_size_and_baselines.size);
     debug_pop_node!();
 
     computed_size_and_baselines
+}
+
+// KaminIDE patch: cloning/moving the large output is a completion operation,
+// separate from the recursive cache-miss frame.
+/// Stores a completed layout result in the node cache.
+#[inline(never)]
+fn store_cached_layout<Tree: CacheTree + ?Sized>(
+    tree: &mut Tree,
+    node: NodeId,
+    inputs: &LayoutInput,
+    output: &LayoutOutput,
+) {
+    tree.cache_store(node, inputs, output.clone());
 }
 
 /// Rounds the calculated layout to exact pixel values

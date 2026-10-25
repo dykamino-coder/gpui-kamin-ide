@@ -10,11 +10,12 @@
 //! завершает область создателя (css-lists-3 §4.3, §4.4.2).
 
 mod values;
+mod walk;
 use crate::style::generated::counters_scan::values::{decl_has, decl_value};
 
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Rule, VarMap};
-use crate::style::select::{Ancestor, Sibs, Spot, ancestor_of, census_of};
+use crate::style::select::{Ancestor, Sibs, Spot, ancestor_of};
 use markup5ever_rcdom::{Handle, NodeData};
 mod style;
 use style::{pseudo_style, scan_style};
@@ -82,24 +83,24 @@ impl Scan<'_> {
         self.num = self.num.saturating_add(neg);
     }
 
-    fn node(&mut self, h: &Handle, me: &Ancestor, path: &[Ancestor], sibs: Sibs, root: bool) {
-        let doc = self.tree.doc.clone();
-        let Some(_guard) = doc
-            .traversal
-            .enter(crate::document::TraversalKind::Counters)
-        else {
-            return;
-        };
+    fn enter(
+        &mut self,
+        h: &Handle,
+        me: &Ancestor,
+        path: &[Ancestor],
+        sibs: Sibs,
+        root: bool,
+    ) -> Option<Ancestor> {
         let vcx = self.vcx;
         if self.done {
-            return;
+            return None;
         }
         let tag = tag_of(h);
         if crate::dom::DROP_TAGS.contains(&tag.as_str()) {
-            return;
+            return None;
         }
         let Some(style) = scan_style(h, me, path, sibs, self.rules, self.vars, vcx) else {
-            return;
+            return None;
         };
         let mut computed_me = me.clone();
         crate::dom::content::snapshot_generated(&mut computed_me, &style, path.last());
@@ -107,14 +108,14 @@ impl Scan<'_> {
         // Узел без коробки счётчиков не трогает (css-lists-3
         // §counters-without-boxes).
         if style.display == Some(Display::None) && style.col_role.is_none() {
-            return;
+            return None;
         }
         if !root && instantiates(&style, h, self.name) {
             // A sibling reset obscures this counter for all following siblings
             // (§4.3); a descendant reset only excludes its own subtree.
             // Blink core/css/counters_attachment_context.cc:159-169.
             self.done |= path.len() == self.scope_depth;
-            return;
+            return None;
         }
         // CSS Lists 3 §4.6: only a box with `display: list-item` increments
         // `list-item`; an `li` keeps that role only while no author display
@@ -125,39 +126,14 @@ impl Scan<'_> {
         // CSS Containment 2 §3.4: descendant increments create local counters;
         // they cannot contribute to an outer reversed counter's initial value.
         if style.contain_style == Some(true) && style.display != Some(Display::Contents) {
-            return;
+            return None;
         }
         // Порядок как в отрисовке: `::before`, дети, `::after`.
         if let Some(st) = pseudo_style(me, path, Sibs::EMPTY, "before", self.rules, self.vars, vcx)
         {
             self.step(&st, false);
         }
-        {
-            let children = h.children.borrow();
-            let (spots, all) = census_of(&children, self.tree);
-            let mut inner_path: Vec<Ancestor> = path.to_vec();
-            inner_path.push(me.clone());
-            let mut pos = 0usize;
-            for (child, spot) in children.iter().zip(&spots) {
-                if spot.index == 0 {
-                    continue;
-                }
-                let kid = Sibs {
-                    all: &all,
-                    pos,
-                    is_elem: true,
-                    rc: None,
-                };
-                self.node(child, &all[pos], &inner_path, kid, false);
-                pos += 1;
-                if self.done {
-                    break;
-                }
-            }
-        }
-        if let Some(st) = pseudo_style(me, path, Sibs::EMPTY, "after", self.rules, self.vars, vcx) {
-            self.step(&st, false);
-        }
+        Some(computed_me)
     }
 }
 

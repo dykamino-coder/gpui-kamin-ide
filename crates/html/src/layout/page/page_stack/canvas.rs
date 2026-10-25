@@ -59,7 +59,7 @@ pub(crate) fn builder(layers: Computed, root: BoxStyle, opts: RenderOpts) -> Can
             hover: None,
             first_letter: None,
             first_line: None,
-            children: vec![],
+            children: (vec![]).into(),
             attrs: vec![],
             anim: Default::default(),
             list_item: None,

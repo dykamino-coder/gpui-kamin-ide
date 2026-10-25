@@ -44,7 +44,7 @@ fn inline_splits_preserve_inherited_marker_images_and_explicit_overrides() {
                 if level == 0 && depth == 2 {
                     parent.style.used_mut().list_style_image = None;
                 }
-                parent.children = vec![node];
+                parent.children = vec![node].into();
                 node = Node::Element(parent);
             }
             let nodes = [node];

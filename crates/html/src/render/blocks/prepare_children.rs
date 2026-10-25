@@ -196,16 +196,20 @@ pub(crate) fn prepare_children(
             width: cb_w,
             height_def: cb_h_def,
         });
-        let mut out = collapse_margins(
-            nodes,
-            matches!(
-                inherited.position,
-                Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-            ),
-            opts.cx.constraints.cb_width,
-            vcx,
-        );
+        let mut out = if opts.cx.contracts.margins.borrow_mut().unchanged(nodes) {
+            nodes.to_vec()
+        } else {
+            collapse_margins(
+                nodes,
+                matches!(
+                    inherited.position,
+                    Some(crate::style::computed::Position::Absolute)
+                        | Some(crate::style::computed::Position::Fixed)
+                ),
+                opts.cx.constraints.cb_width,
+                vcx,
+            )
+        };
         margin_height::zero_float_blocks(&mut out, inherited, vcx);
         out
     };

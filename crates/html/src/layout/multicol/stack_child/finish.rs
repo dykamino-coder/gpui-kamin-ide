@@ -36,7 +36,7 @@ pub(super) fn finish_stack_child(
     rel: (f32, f32),
     nest_row: Option<f32>,
     whole: bool,
-    build: impl Fn(bool, usize, bool) -> gpui::AnyElement,
+    build: super::factory::Builder,
     measured_table: Option<(bool, bool)>,
     shape_cx: crate::layout::fragment::ShapeCx<'_>,
     vcx: ValueCx<'_>,

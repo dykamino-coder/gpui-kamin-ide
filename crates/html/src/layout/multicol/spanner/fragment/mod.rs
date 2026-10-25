@@ -54,7 +54,7 @@ pub(super) fn spanner_fragment(
     ix: usize,
 ) -> Element {
     let mut f = c.clone();
-    f.children = kids;
+    f.children = kids.into();
     if !first {
         f.style.used_mut().margin.top = None;
         f.style.used_mut().padding.top = None;

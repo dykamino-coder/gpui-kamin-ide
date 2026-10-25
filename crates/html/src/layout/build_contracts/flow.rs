@@ -10,6 +10,14 @@ use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
 
 type BuildNodes = fn(&[Node], &BoxStyle, &RenderOpts) -> Vec<AnyElement>;
+type BuildStackNodes =
+    for<'a> fn(
+        &'a mut reblessive::Stk,
+        &'a [Node],
+        &'a BoxStyle,
+        &'a RenderOpts,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<AnyElement>> + 'a>>;
+
 type BuildParagraph = fn(&[Node], &BoxStyle, &RenderOpts) -> AnyElement;
 type BuildProbes =
     fn(&Element, &BoxStyle, &RenderOpts, &mut Vec<AnyElement>, bool, bool, Option<ClampSpan>);
@@ -19,6 +27,7 @@ type FirstLineRoute = fn(Vec<Node>, &crate::style::computed::Computed) -> Vec<No
 #[derive(Clone, Copy)]
 pub(crate) struct FlowBuild {
     blocks: BuildNodes,
+    blocks_stack: BuildStackNodes,
     paragraph: BuildParagraph,
     probes: BuildProbes,
     first_line_route: FirstLineRoute,
@@ -27,12 +36,14 @@ pub(crate) struct FlowBuild {
 impl FlowBuild {
     pub(crate) const fn new(
         blocks: BuildNodes,
+        blocks_stack: BuildStackNodes,
         paragraph: BuildParagraph,
         probes: BuildProbes,
         first_line_route: FirstLineRoute,
     ) -> Self {
         Self {
             blocks,
+            blocks_stack,
             paragraph,
             probes,
             first_line_route,
@@ -46,6 +57,17 @@ impl FlowBuild {
         opts: &RenderOpts,
     ) -> Vec<AnyElement> {
         (self.blocks)(nodes, inherited, opts)
+    }
+
+    pub(super) async fn blocks_stack(
+        &self,
+        stk: &mut reblessive::Stk,
+        nodes: &[Node],
+        inherited: &BoxStyle,
+        opts: &RenderOpts,
+    ) -> Vec<AnyElement> {
+        stk.run(|stk| (self.blocks_stack)(stk, nodes, inherited, opts))
+            .await
     }
 
     pub(super) fn paragraph(

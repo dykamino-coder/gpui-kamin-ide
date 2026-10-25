@@ -40,31 +40,33 @@ pub(super) fn text(e: &Element) -> String {
 }
 pub(super) fn core(e: &Element, parent: &BoxStyle, opts: &RenderOpts) -> Option<Operator> {
     let vcx = opts.cx.vcx();
-    let style = crate::style::cascade::materialize::box_style(parent, &e.style, vcx);
-    if e.tag == "mo" {
-        return Some(operator(e, &style, opts));
-    }
-    let mut children = e.children.iter().filter_map(|n| {
-        if let Node::Element(e) = n {
-            Some(e)
-        } else {
-            None
+    let mut e = e;
+    let mut parent = parent.clone();
+    loop {
+        let style = crate::style::cascade::materialize::box_style(&parent, &e.style, vcx);
+        if e.tag == "mo" {
+            return Some(operator(e, &style, opts));
         }
-    });
-    let first = children.next()?;
-    if matches!(
-        e.tag.as_str(),
-        "msub" | "msup" | "msubsup" | "mmultiscripts" | "munder" | "mover" | "munderover"
-    ) || (matches!(
-        e.tag.as_str(),
-        "math" | "mrow" | "mstyle" | "mpadded" | "mphantom" | "semantics"
-    ) && children.next().is_none())
-    {
-        core(first, &style, opts)
-    } else {
-        None
+        let mut children = e.children.iter().filter_map(|n| match n {
+            Node::Element(child) => Some(child),
+            Node::Text(_) => None,
+        });
+        let first = children.next()?;
+        let embellished = matches!(
+            e.tag.as_str(),
+            "msub" | "msup" | "msubsup" | "mmultiscripts" | "munder" | "mover" | "munderover"
+        ) || (matches!(
+            e.tag.as_str(),
+            "math" | "mrow" | "mstyle" | "mpadded" | "mphantom" | "semantics"
+        ) && children.next().is_none());
+        if !embellished {
+            return None;
+        }
+        e = first;
+        parent = style;
     }
 }
+
 fn lookup(text: &str, form: u8) -> Option<Entry> {
     [
         data0::ENTRIES,

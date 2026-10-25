@@ -30,6 +30,9 @@
 #![forbid(unsafe_code)]
 
 #[cfg(test)]
+mod depth_tests;
+
+#[cfg(test)]
 pub mod coverage;
 pub(crate) mod defaults;
 pub(crate) mod hooks;

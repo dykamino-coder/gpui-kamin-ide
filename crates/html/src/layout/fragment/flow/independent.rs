@@ -10,7 +10,7 @@ pub(crate) use continuation::parallel_overflow;
 /// У копии нет отдельного плана фрагментов или параллельного потока.
 /// TRANSITIONAL(F2-7): Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21.
 pub(crate) fn independent_copy(c: &Element) -> bool {
-    !c.inline && measured_tree(c) && !separate(c, false) && !continuation(c)
+    !c.inline && !separate(c, false) && measured_tree(c) && !continuation(c)
 }
 
 /// Блоки, сетки и таблицы одного вертикального потока.

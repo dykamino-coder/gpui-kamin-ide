@@ -945,6 +945,18 @@ impl Style {
         cx: &mut App,
         continuation: impl FnOnce(&mut Window, &mut App),
     ) {
+        self.paint_box(bounds, window, cx);
+        continuation(window, cx);
+
+        #[cfg(debug_assertions)]
+        if self.debug_below {
+            cx.remove_global::<DebugBelow>();
+        }
+    }
+
+    // Finish shadows, background and border temporaries before painting children.
+    #[inline(never)]
+    fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         #[cfg(debug_assertions)]
         if self.debug_below {
             cx.set_global(DebugBelow)
@@ -1036,13 +1048,6 @@ impl Style {
         }
 
         border_snap::paint(self, bounds, corner_radii, rem_size, window);
-
-        continuation(window, cx);
-
-        #[cfg(debug_assertions)]
-        if self.debug_below {
-            cx.remove_global::<DebugBelow>();
-        }
     }
 
     fn is_border_visible(&self) -> bool {

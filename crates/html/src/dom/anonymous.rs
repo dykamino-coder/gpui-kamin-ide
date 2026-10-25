@@ -15,7 +15,7 @@ impl Element {
         Self {
             tag: tag.into(),
             style: style.into(),
-            children,
+            children: children.into(),
             inline,
             marks,
             list_item: None,

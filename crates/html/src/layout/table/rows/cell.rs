@@ -13,7 +13,9 @@ use crate::layout::table::context::{
     CellLayout, RowCursor, RowState, RowsOut, TableGeom, TableLayers,
 };
 
-pub(super) fn table_cell(
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn table_cell(
+    stk: &mut reblessive::Stk,
     geom: &TableGeom<'_>,
     layers: &TableLayers<'_>,
     cursor: &mut RowCursor,
@@ -76,6 +78,7 @@ pub(super) fn table_cell(
         &mut cell,
     );
     emit_cell(
+        stk,
         geom,
         layers,
         cursor,
@@ -91,5 +94,6 @@ pub(super) fn table_cell(
             clipped: spans.clipped,
             cell_edge,
         },
-    );
+    )
+    .await;
 }

@@ -49,6 +49,17 @@ pub(super) fn through_strut_inner(
     ignore_clear: bool,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Strut> {
+    ThroughCache::default().get(e, ignore_clear, vcx)
+}
+
+mod cache;
+pub(crate) use cache::ThroughCache;
+
+fn own_strut(
+    e: &Element,
+    ignore_clear: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Strut> {
     // Строчная пометка у блочной коробки (псевдоэлемент) — не строчный.
     if (e.inline && !inline_marked_block(e)) || !in_flow(&e.style.used()) || own_context(e) {
         return None;
@@ -97,7 +108,7 @@ pub(super) fn through_strut_inner(
     if holds_line_box(&e.children) {
         return None;
     }
-    let mut s = adjoin(
+    let s = adjoin(
         strut_of(margin_or_bail(
             e.style.used().margin.top,
             &e.style.used(),
@@ -109,37 +120,6 @@ pub(super) fn through_strut_inner(
             vcx,
         )?),
     );
-    // «all of its in-flow children's margins collapse» — рекурсия по блочным
-    // детям в потоке. Строчных здесь уже нет (проверка выше), вне потока —
-    // запрета не создают.
-    for c in &e.children {
-        let Node::Element(ch) = c else { continue };
-        // `clear` у ребёнка в потоке закрывает схлопывание насквозь (§8.3.1
-        // исключение 2) — проверять ДО отсечки строчных: псевдоэлемент
-        // помечается строчным независимо от своего `display`, и клирфикс
-        // `div::after { clear: both; display: block }` был отсюда не виден.
-        if in_flow(&ch.style.used()) && ch.style.used().clear.is_some() {
-            return None;
-        }
-        if (ch.inline && !inline_marked_block(ch))
-            || ch.style.used().display == Some(Display::None)
-            || ch.style.used().display == Some(Display::Contents)
-            || !in_flow(&ch.style.used())
-        {
-            continue;
-        }
-        let t = through_strut(ch, vcx)?;
-        // Поля детей контейнера с `margin-trim` обрезаны (css-box-4
-        // §margin-trim-block: «and any margins collapsed with it»): насквозь
-        // схлопнутый ребёнок примыкает ОБОИМИ краями, значит его поля
-        // обрезаются при любом бите. В струну родителя идут только свои поля
-        // контейнера. Обрезку на своём уровне сделает `collapse_margins`, но
-        // уровень выше считается РАНЬШЕ и успевал забрать поле 222
-        // (`block-container-block-end-self-collapsing-block-start-margin-nested`).
-        if e.style.used().margin_trim & 3 == 0 {
-            s = adjoin(s, t);
-        }
-    }
     Some(s)
 }
 

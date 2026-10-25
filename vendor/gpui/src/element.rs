@@ -424,108 +424,169 @@ impl<E: Element> Drawable<E> {
         }
     }
 
+    // KaminIDE patch: accessibility construction temporaries must not survive child traversal.
+    #[inline(never)]
+    fn begin_a11y_prepaint(
+        element: &mut E,
+        global_id: Option<&GlobalElementId>,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+    ) -> bool {
+        let mut pushed_a11y_node = false;
+        if window.a11y.is_active() {
+            if let Some(global_id) = global_id {
+                if let Some(role) = element.a11y_role() {
+                    let node_id = global_id.accesskit_node_id();
+                    let mut node = accesskit::Node::new(role);
+                    let scale = window.scale_factor();
+                    node.set_bounds(accesskit::Rect {
+                        x0: (bounds.origin.x.0 * scale) as f64,
+                        y0: (bounds.origin.y.0 * scale) as f64,
+                        x1: ((bounds.origin.x.0 + bounds.size.width.0) * scale) as f64,
+                        y1: ((bounds.origin.y.0 + bounds.size.height.0) * scale) as f64,
+                    });
+                    element.write_a11y_info(&mut node);
+                    window.a11y.node_bounds.insert(node_id, bounds);
+                    pushed_a11y_node = window.a11y.nodes.push(node_id, node);
+                    #[cfg(debug_assertions)]
+                    if pushed_a11y_node {
+                        let view = window
+                            .a11y
+                            .view_type_names
+                            .get(&window.current_view())
+                            .copied();
+                        let source_location = element.source_location();
+                        window.a11y.nodes.record_node_info(
+                            node_id,
+                            crate::window::a11y::debug::NodeDebugInfo {
+                                synthetic: false,
+                                view,
+                                element_id: global_id.0.last().map(|id| format!("{id:?}")),
+                                source_location,
+                            },
+                        );
+                    }
+                }
+            }
+        }
+        pushed_a11y_node
+    }
+
+    #[inline(never)]
+    fn end_a11y_prepaint(
+        element: &mut E,
+        global_id: Option<&GlobalElementId>,
+        prepaint: &mut E::PrepaintState,
+        window: &mut Window,
+    ) {
+        if let Some(global_id) = global_id {
+            #[cfg(debug_assertions)]
+            let creator = crate::window::a11y::debug::NodeCreator {
+                view: window
+                    .a11y
+                    .view_type_names
+                    .get(&window.current_view())
+                    .copied(),
+                element_id: global_id.0.last().map(|id| format!("{id:?}")),
+                source_location: element.source_location(),
+            };
+            let mut builder =
+                A11ySubtreeBuilder::new(global_id.accesskit_node_id(), &mut window.a11y.nodes);
+            #[cfg(debug_assertions)]
+            {
+                builder = builder.with_creator(creator);
+            }
+            element.a11y_synthetic_children(prepaint, &mut builder);
+        }
+        window.a11y.nodes.pop();
+    }
+
+    #[inline(never)]
+    fn push_element_id(element: &E, global_id: Option<&GlobalElementId>, window: &mut Window) {
+        if let Some(element_id) = element.id() {
+            window.element_id_stack.push(element_id);
+            debug_assert_eq!(&*global_id.unwrap().0, &*window.element_id_stack);
+        }
+    }
+
     pub(crate) fn prepaint(&mut self, window: &mut Window, cx: &mut App) {
         // KaminIDE patch (#76): self-time профиль prepaint по типам элементов.
         let _prof = prepaint_prof::enter(std::any::type_name::<E>());
-        match mem::take(&mut self.phase) {
+        match &mut self.phase {
             ElementDrawPhase::RequestLayout {
                 layout_id,
                 global_id,
                 inspector_id,
-                mut request_layout,
+                request_layout,
             }
             | ElementDrawPhase::LayoutComputed {
                 layout_id,
                 global_id,
                 inspector_id,
-                mut request_layout,
+                request_layout,
                 ..
             } => {
-                if let Some(element_id) = self.element.id() {
-                    window.element_id_stack.push(element_id);
-                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
-                }
+                Self::push_element_id(&self.element, global_id.as_ref(), window);
 
-                let bounds = window.layout_bounds(layout_id);
-                let mut pushed_a11y_node = false;
-                if window.a11y.is_active() {
-                    if let Some(global_id) = global_id.as_ref() {
-                        if let Some(role) = self.element.a11y_role() {
-                            let node_id = global_id.accesskit_node_id();
-                            let mut node = accesskit::Node::new(role);
-                            let scale = window.scale_factor();
-                            node.set_bounds(accesskit::Rect {
-                                x0: (bounds.origin.x.0 * scale) as f64,
-                                y0: (bounds.origin.y.0 * scale) as f64,
-                                x1: ((bounds.origin.x.0 + bounds.size.width.0) * scale) as f64,
-                                y1: ((bounds.origin.y.0 + bounds.size.height.0) * scale) as f64,
-                            });
-                            self.element.write_a11y_info(&mut node);
-                            window.a11y.node_bounds.insert(node_id, bounds);
-                            pushed_a11y_node = window.a11y.nodes.push(node_id, node);
-                            #[cfg(debug_assertions)]
-                            if pushed_a11y_node {
-                                let view = window
-                                    .a11y
-                                    .view_type_names
-                                    .get(&window.current_view())
-                                    .copied();
-                                let source_location = self.element.source_location();
-                                window.a11y.nodes.record_node_info(
-                                    node_id,
-                                    crate::window::a11y::debug::NodeDebugInfo {
-                                        synthetic: false,
-                                        view,
-                                        element_id: global_id.0.last().map(|id| format!("{id:?}")),
-                                        source_location,
-                                    },
-                                );
-                            }
-                        }
-                    }
-                }
+                let bounds = window.layout_bounds(*layout_id);
+                let pushed_a11y_node = Self::begin_a11y_prepaint(
+                    &mut self.element,
+                    global_id.as_ref(),
+                    bounds,
+                    window,
+                );
 
                 let node_id = window.next_frame.dispatch_tree.push_node();
                 let mut prepaint = self.element.prepaint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),
                     bounds,
-                    &mut request_layout,
+                    request_layout,
                     window,
                     cx,
                 );
                 window.next_frame.dispatch_tree.pop_node();
 
                 if pushed_a11y_node {
-                    if let Some(global_id) = global_id.as_ref() {
-                        #[cfg(debug_assertions)]
-                        let creator = crate::window::a11y::debug::NodeCreator {
-                            view: window
-                                .a11y
-                                .view_type_names
-                                .get(&window.current_view())
-                                .copied(),
-                            element_id: global_id.0.last().map(|id| format!("{id:?}")),
-                            source_location: self.element.source_location(),
-                        };
-                        let mut builder = A11ySubtreeBuilder::new(
-                            global_id.accesskit_node_id(),
-                            &mut window.a11y.nodes,
-                        );
-                        #[cfg(debug_assertions)]
-                        {
-                            builder = builder.with_creator(creator);
-                        }
-                        self.element
-                            .a11y_synthetic_children(&mut prepaint, &mut builder);
-                    }
-                    window.a11y.nodes.pop();
+                    Self::end_a11y_prepaint(
+                        &mut self.element,
+                        global_id.as_ref(),
+                        &mut prepaint,
+                        window,
+                    );
                 }
 
                 if global_id.is_some() {
                     window.element_id_stack.pop();
                 }
 
+                self.finish_prepaint(node_id, bounds, prepaint);
+            }
+            _ => panic!("must call request_layout before prepaint"),
+        }
+    }
+
+    // KaminIDE patch: move phase payloads only after recursive child prepaint returns.
+    #[inline(never)]
+    fn finish_prepaint(
+        &mut self,
+        node_id: DispatchNodeId,
+        bounds: Bounds<Pixels>,
+        prepaint: E::PrepaintState,
+    ) {
+        match mem::take(&mut self.phase) {
+            ElementDrawPhase::RequestLayout {
+                global_id,
+                inspector_id,
+                request_layout,
+                ..
+            }
+            | ElementDrawPhase::LayoutComputed {
+                global_id,
+                inspector_id,
+                request_layout,
+                ..
+            } => {
                 self.phase = ElementDrawPhase::Prepaint {
                     node_id,
                     global_id,
@@ -535,7 +596,7 @@ impl<E: Element> Drawable<E> {
                     prepaint,
                 };
             }
-            _ => panic!("must call request_layout before prepaint"),
+            _ => unreachable!("prepaint phase was checked before traversing children"),
         }
     }
 
@@ -544,28 +605,25 @@ impl<E: Element> Drawable<E> {
         window: &mut Window,
         cx: &mut App,
     ) -> (E::RequestLayoutState, E::PrepaintState) {
-        match mem::take(&mut self.phase) {
+        match &mut self.phase {
             ElementDrawPhase::Prepaint {
                 node_id,
                 global_id,
                 inspector_id,
                 bounds,
-                mut request_layout,
-                mut prepaint,
+                request_layout,
+                prepaint,
                 ..
             } => {
-                if let Some(element_id) = self.element.id() {
-                    window.element_id_stack.push(element_id);
-                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
-                }
+                Self::push_element_id(&self.element, global_id.as_ref(), window);
 
-                window.next_frame.dispatch_tree.set_active_node(node_id);
+                window.next_frame.dispatch_tree.set_active_node(*node_id);
                 self.element.paint(
                     global_id.as_ref(),
                     inspector_id.as_ref(),
-                    bounds,
-                    &mut request_layout,
-                    &mut prepaint,
+                    *bounds,
+                    request_layout,
+                    prepaint,
                     window,
                     cx,
                 );
@@ -574,10 +632,22 @@ impl<E: Element> Drawable<E> {
                     window.element_id_stack.pop();
                 }
 
-                self.phase = ElementDrawPhase::Painted;
-                (request_layout, prepaint)
+                self.finish_paint()
             }
             _ => panic!("must call prepaint before paint"),
+        }
+    }
+
+    // KaminIDE patch: release the recursive frame before moving phase payloads.
+    #[inline(never)]
+    fn finish_paint(&mut self) -> (E::RequestLayoutState, E::PrepaintState) {
+        match mem::replace(&mut self.phase, ElementDrawPhase::Painted) {
+            ElementDrawPhase::Prepaint {
+                request_layout,
+                prepaint,
+                ..
+            } => (request_layout, prepaint),
+            _ => unreachable!("paint phase was checked before traversing children"),
         }
     }
 

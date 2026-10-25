@@ -198,7 +198,7 @@ fn page_margin_boxes(
                 hover: None,
                 first_letter: None,
                 first_line: None,
-                children: children.clone(),
+                children: (children.clone()).into(),
                 attrs: vec![],
                 anim: Default::default(),
                 list_item: None,
@@ -206,7 +206,7 @@ fn page_margin_boxes(
             let outer = Element {
                 tag: "div".to_string(),
                 style: st.into(),
-                children: vec![Node::Element(inner.clone())],
+                children: (vec![Node::Element(inner.clone())]).into(),
                 ..inner
             };
             let mut els =

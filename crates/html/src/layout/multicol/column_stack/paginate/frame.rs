@@ -50,6 +50,7 @@ impl ColumnStack {
         let w = self.children[i].measure?;
         let (el, frags) = (p.rebuild)(struts, n)?;
         let c = &mut self.children[i];
+        c.fragment_builders.clear();
         c.el = el;
         c.frags = frags;
         p.watched.reset();

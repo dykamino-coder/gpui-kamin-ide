@@ -31,6 +31,17 @@ impl From<Computed> for SharedStyle {
     }
 }
 
+// Стиль приходит из каскада уже в куче: не переносить его через кадр обхода.
+impl From<Box<Computed>> for SharedStyle {
+    fn from(style: Box<Computed>) -> Self {
+        Self {
+            cascaded: Rc::from(style),
+            computed: ComputedSlot::default(),
+            used: None,
+        }
+    }
+}
+
 impl SharedStyle {
     /// The cascaded style (css-cascade-5 §4.2): input of the computed-value stage.
     pub(crate) fn cascaded(&self) -> &Computed {

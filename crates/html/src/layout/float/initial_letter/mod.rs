@@ -210,7 +210,7 @@ pub(crate) fn initial_letter_float(
             hover: None,
             first_letter: None,
             first_line: None,
-            children,
+            children: children.into(),
             attrs: vec![],
             inline,
         })

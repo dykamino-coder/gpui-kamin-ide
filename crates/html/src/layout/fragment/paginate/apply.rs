@@ -167,7 +167,7 @@ fn spacer_box(id: u64, h: f32) -> Element {
         hover: None,
         first_letter: None,
         first_line: None,
-        children: Vec::new(),
+        children: (Vec::new()).into(),
         attrs: Vec::new(),
         inline: false,
     }

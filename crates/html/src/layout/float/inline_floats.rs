@@ -89,7 +89,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
         return vec![node];
     }
     let style = box_style(parent, &e.style, vcx);
-    let children = lift(e.children.clone(), &style, vcx);
+    let children = lift(e.children.to_vec(), &style, vcx);
     if !children.iter().any(floated) {
         return vec![node];
     }
@@ -121,7 +121,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     });
     let fragment = |children: Vec<Node>| {
         let mut fragment = e.clone();
-        fragment.children = children;
+        fragment.children = children.into();
         Node::Element(fragment)
     };
     let mut output = Vec::new();

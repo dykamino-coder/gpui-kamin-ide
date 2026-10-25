@@ -80,5 +80,5 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &BoxStyle, opts: &Re
         drop(left);
         keep.push(child);
     }
-    e.children = keep;
+    e.children = keep.into();
 }

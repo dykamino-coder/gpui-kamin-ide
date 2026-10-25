@@ -5,6 +5,7 @@ pub(crate) mod block;
 pub(crate) mod box_kind;
 pub(crate) mod build_contracts;
 pub(crate) mod cx;
+pub(crate) mod depth;
 pub(crate) mod float;
 pub(crate) mod fragment;
 pub(crate) mod grid;

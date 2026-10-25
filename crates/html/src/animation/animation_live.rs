@@ -39,6 +39,24 @@ fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     )
 }
 
+async fn painted_stack(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
+    transformed(
+        opts.cx
+            .contracts
+            .build
+            .element_stack(stk, e, inherited, opts)
+            .await,
+        &e.style.used(),
+        inherited,
+        opts.cx.vcx(),
+    )
+}
+
 fn sample_live(
     source: &Element,
     frames: &[(f32, Computed)],
@@ -51,18 +69,23 @@ fn sample_live(
         .unwrap_or_else(|| source.clone())
 }
 
-pub(crate) fn animated(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+pub(crate) async fn animated(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let vcx = opts.cx.vcx();
     let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.used().animation.clone()) else {
-        return painted(e, inherited, opts);
+        return painted_stack(stk, e, inherited, opts).await;
     };
     if let Some(frozen) = bake_frozen(e, false, vcx) {
-        return painted(&frozen, inherited, opts);
+        return painted_stack(stk, &frozen, inherited, opts).await;
     }
     if spec.frozen() {
-        return painted(e, inherited, opts);
+        return painted_stack(stk, e, inherited, opts).await;
     }
-    let base = painted(e, inherited, opts);
+    let base = painted_stack(stk, e, inherited, opts).await;
     let id = e.state_id("html-animation", vcx);
     let source = e.clone();
     let inherited = inherited.clone();

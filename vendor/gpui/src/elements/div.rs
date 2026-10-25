@@ -1943,7 +1943,7 @@ impl Element for Div {
             .map(|provider| provider.provide(window, cx));
 
         let layout_id = window.with_image_cache(image_cache, |window| {
-            self.interactivity.request_layout(
+            self.interactivity.request_layout_boxed(
                 global_id,
                 inspector_id,
                 window,
@@ -1955,7 +1955,7 @@ impl Element for Div {
                             .iter_mut()
                             .map(|child| child.request_layout(window, cx))
                             .collect::<SmallVec<_>>();
-                        window.request_layout(style, child_layout_ids.iter().copied(), cx)
+                        window.request_layout_ref(&style, child_layout_ids.iter().copied(), cx)
                     })
                 },
             )
@@ -2299,6 +2299,20 @@ impl Interactivity {
         cx: &mut App,
         f: impl FnOnce(Style, &mut Window, &mut App) -> LayoutId,
     ) -> LayoutId {
+        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
+            f(*style, window, cx)
+        })
+    }
+
+    // KaminIDE patch: keep the live style off every ancestor's native stack frame.
+    fn request_layout_boxed(
+        &mut self,
+        global_id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
+    ) -> LayoutId {
         #[cfg(any(feature = "inspector", debug_assertions))]
         window.with_inspector_state(
             _inspector_id,
@@ -2376,7 +2390,7 @@ impl Interactivity {
                     );
                 }
 
-                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
+                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
                 let layout_id = f(style, window, cx);
                 (layout_id, element_state)
             },
@@ -2436,57 +2450,74 @@ impl Interactivity {
                     .set_active_descendant(global_id.accesskit_node_id());
             }
         }
-        window.with_optional_element_state::<InteractiveElementState, _>(
-            global_id,
-            |element_state, window| {
-                let mut element_state =
-                    element_state.map(|element_state| element_state.unwrap_or_default());
-                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
+        if let Some(global_id) = global_id {
+            self.prepaint_stateful(global_id, bounds, window, cx, f)
+        } else {
+            self.prepaint_with_state(None, bounds, window, cx, f)
+        }
+    }
 
-                if let Some(element_state) = element_state.as_mut() {
-                    if let Some(clicked_state) = element_state.clicked_state.as_ref() {
-                        let clicked_state = clicked_state.borrow();
-                        self.active = Some(clicked_state.element);
+    // KaminIDE patch: anonymous divs must not retain the owned-state branch.
+    #[inline(never)]
+    fn prepaint_stateful<R>(
+        &mut self,
+        global_id: &GlobalElementId,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut Window, &mut App) -> R,
+    ) -> R {
+        window.with_element_state::<InteractiveElementState, _>(global_id, |state, window| {
+            let mut state = state.unwrap_or_default();
+            let result = self.prepaint_with_state(Some(&mut state), bounds, window, cx, f);
+            (result, state)
+        })
+    }
+
+    fn prepaint_with_state<R>(
+        &mut self,
+        mut element_state: Option<&mut InteractiveElementState>,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut Window, &mut App) -> R,
+    ) -> R {
+        let style = self.compute_style_boxed(None, element_state.as_deref_mut(), window, cx);
+
+        if let Some(element_state) = element_state.as_deref_mut() {
+            if let Some(clicked_state) = element_state.clicked_state.as_ref() {
+                let clicked_state = clicked_state.borrow();
+                self.active = Some(clicked_state.element);
+            }
+            if self.hover_style.is_some() || self.group_hover_style.is_some() {
+                element_state
+                    .hover_state
+                    .get_or_insert_with(Default::default);
+            }
+            if let Some(active_tooltip) = element_state.active_tooltip.as_ref() {
+                if self.tooltip_builder.is_some() {
+                    self.tooltip_id = set_tooltip_on_window(active_tooltip, window);
+                } else {
+                    // If there is no longer a tooltip builder, remove the active tooltip.
+                    if let Some(long_press_tooltip_active) =
+                        element_state.long_press_tooltip_active.as_ref()
+                    {
+                        long_press_tooltip_active.set(false);
                     }
-                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
-                        element_state
-                            .hover_state
-                            .get_or_insert_with(Default::default);
-                    }
-                    if let Some(active_tooltip) = element_state.active_tooltip.as_ref() {
-                        if self.tooltip_builder.is_some() {
-                            self.tooltip_id = set_tooltip_on_window(active_tooltip, window);
-                        } else {
-                            // If there is no longer a tooltip builder, remove the active tooltip.
-                            if let Some(long_press_tooltip_active) =
-                                element_state.long_press_tooltip_active.as_ref()
-                            {
-                                long_press_tooltip_active.set(false);
-                            }
-                            element_state.active_tooltip.take();
-                        }
-                    }
+                    element_state.active_tooltip.take();
                 }
+            }
+        }
 
-                window.with_text_style(style.text_style().cloned(), |window| {
-                    window.with_content_mask(
-                        style.overflow_mask_snapped(bounds, window),
-                        |window| {
-                            let hitbox = if self.should_insert_hitbox(&style, window, cx) {
-                                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
-                            } else {
-                                None
-                            };
-
-                            let scroll_offset =
-                                self.clamp_scroll_position(bounds, &style, window, cx);
-                            let result = f(&style, scroll_offset, hitbox, window, cx);
-                            (result, element_state)
-                        },
-                    )
-                })
-            },
-        )
+        window.with_child_style(&style, bounds, |window| {
+            let hitbox = if self.should_insert_hitbox(&style, window, cx) {
+                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
+            } else {
+                None
+            };
+            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
+            f(&style, scroll_offset, hitbox, window, cx)
+        })
     }
 
     fn should_insert_hitbox(&self, style: &Style, window: &Window, cx: &App) -> bool {
@@ -2600,127 +2631,145 @@ impl Interactivity {
         f: impl FnOnce(&Style, &mut Window, &mut App),
     ) {
         self.hovered = hitbox.map(|hitbox| hitbox.is_hovered(window));
-        window.with_optional_element_state::<InteractiveElementState, _>(
-            global_id,
-            |element_state, window| {
-                let mut element_state =
-                    element_state.map(|element_state| element_state.unwrap_or_default());
+        if let Some(global_id) = global_id {
+            self.paint_stateful(global_id, _inspector_id, bounds, hitbox, window, cx, f);
+        } else {
+            self.paint_with_state(None, None, _inspector_id, bounds, hitbox, window, cx, f);
+        }
+    }
 
-                let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
+    // Keep owned state out of anonymous divs' recursive paint frames.
+    #[inline(never)]
+    fn paint_stateful(
+        &mut self,
+        global_id: &GlobalElementId,
+        inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        hitbox: Option<&Hitbox>,
+        window: &mut Window,
+        cx: &mut App,
+        f: impl FnOnce(&Style, &mut Window, &mut App),
+    ) {
+        window.with_element_state::<InteractiveElementState, _>(global_id, |state, window| {
+            let mut state = state.unwrap_or_default();
+            self.paint_with_state(
+                Some(&mut state),
+                Some(global_id),
+                inspector_id,
+                bounds,
+                hitbox,
+                window,
+                cx,
+                f,
+            );
+            ((), state)
+        });
+    }
 
-                #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
-                if let Some(debug_selector) = &self.debug_selector {
-                    window
-                        .next_frame
-                        .record_debug_bounds(debug_selector.clone(), bounds);
-                }
+    fn paint_with_state(
+        &mut self,
+        mut element_state: Option<&mut InteractiveElementState>,
+        global_id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        hitbox: Option<&Hitbox>,
+        window: &mut Window,
+        cx: &mut App,
+        f: impl FnOnce(&Style, &mut Window, &mut App),
+    ) {
+        let style = self.compute_style_boxed(hitbox, element_state.as_deref_mut(), window, cx);
 
-                self.paint_hover_group_handler(window, cx);
+        #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
+        if let Some(debug_selector) = &self.debug_selector {
+            window
+                .next_frame
+                .record_debug_bounds(debug_selector.clone(), bounds);
+        }
 
-                if style.visibility == Visibility::Hidden {
-                    return ((), element_state);
-                }
+        self.paint_hover_group_handler(window, cx);
 
-                let mut tab_group = None;
-                if self.tab_group {
-                    tab_group = self.tab_index;
-                }
+        if style.visibility == Visibility::Hidden {
+            return;
+        }
 
-                window.with_element_opacity(style.opacity, |window| {
-                    style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
-                        window.with_text_style(style.text_style().cloned(), |window| {
-                            window.with_content_mask(
-                                style.overflow_mask_snapped(bounds, window),
-                                |window| {
-                                    window.with_tab_group(tab_group, |window| {
-                                        // Register the container's own focus handle *inside* its
-                                        // tab group, so that focusing the container and then
-                                        // calling `focus_next` descends into this group's first
-                                        // item. Inserting it before `with_tab_group` would give the
-                                        // container a shallower tab path than its children; with
-                                        // sibling groups every container would then sort ahead of
-                                        // every item, and `focus_next` from a container would jump
-                                        // to the first item in the whole window instead of its own.
-                                        if let Some(focus_handle) = &self.tracked_focus_handle {
-                                            window.next_frame.tab_stops.insert(focus_handle);
-                                        }
-                                        if let Some(hitbox) = hitbox {
-                                            #[cfg(debug_assertions)]
-                                            self.paint_debug_info(
-                                                global_id, hitbox, &style, window, cx,
-                                            );
+        let mut tab_group = None;
+        if self.tab_group {
+            tab_group = self.tab_index;
+        }
 
-                                            if let Some(drag) = cx.active_drag.as_ref() {
-                                                if let Some(mouse_cursor) = drag.cursor_style {
-                                                    window.set_window_cursor_style(mouse_cursor);
-                                                }
-                                            } else {
-                                                if let Some(mouse_cursor) = style.mouse_cursor {
-                                                    window.set_cursor_style(mouse_cursor, hitbox);
-                                                }
-                                            }
+        window.with_element_opacity(style.opacity, |window| {
+            style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
+                window.with_child_style(&style, bounds, |window| {
+                    window.with_tab_group(tab_group, |window| {
+                        // Register the container's own focus handle *inside* its
+                        // tab group, so that focusing the container and then
+                        // calling `focus_next` descends into this group's first
+                        // item. Inserting it before `with_tab_group` would give the
+                        // container a shallower tab path than its children; with
+                        // sibling groups every container would then sort ahead of
+                        // every item, and `focus_next` from a container would jump
+                        // to the first item in the whole window instead of its own.
+                        if let Some(focus_handle) = &self.tracked_focus_handle {
+                            window.next_frame.tab_stops.insert(focus_handle);
+                        }
+                        if let Some(hitbox) = hitbox {
+                            #[cfg(debug_assertions)]
+                            self.paint_debug_info(global_id, hitbox, &style, window, cx);
 
-                                            if let Some(group) = self.group.clone() {
-                                                GroupHitboxes::push(group, hitbox.id, cx);
-                                            }
+                            if let Some(drag) = cx.active_drag.as_ref() {
+                                if let Some(mouse_cursor) = drag.cursor_style {
+                                    window.set_window_cursor_style(mouse_cursor);
+                                }
+                            } else {
+                                if let Some(mouse_cursor) = style.mouse_cursor {
+                                    window.set_cursor_style(mouse_cursor, hitbox);
+                                }
+                            }
 
-                                            if let Some(area) = self.window_control {
-                                                window.insert_window_control_hitbox(
-                                                    area,
-                                                    hitbox.clone(),
-                                                );
-                                            }
+                            if let Some(group) = self.group.clone() {
+                                GroupHitboxes::push(group, hitbox.id, cx);
+                            }
 
-                                            self.paint_mouse_listeners(
-                                                hitbox,
-                                                element_state.as_mut(),
-                                                window,
-                                                cx,
-                                            );
-                                            self.paint_scroll_listener(hitbox, &style, window, cx);
-                                        }
+                            if let Some(area) = self.window_control {
+                                window.insert_window_control_hitbox(area, hitbox.clone());
+                            }
 
-                                        self.paint_keyboard_listeners(window, cx);
-
-                                        if window.a11y.is_active() {
-                                            if let Some(global_id) = global_id {
-                                                if !self.a11y_action_listeners.is_empty() {
-                                                    let node_id = global_id.accesskit_node_id();
-                                                    for (action, listener) in
-                                                        self.a11y_action_listeners.drain(..)
-                                                    {
-                                                        window.on_a11y_action(
-                                                            node_id, action, listener,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        f(&style, window, cx);
-
-                                        if let Some(_hitbox) = hitbox {
-                                            #[cfg(any(feature = "inspector", debug_assertions))]
-                                            window.insert_inspector_hitbox(
-                                                _hitbox.id,
-                                                _inspector_id,
-                                                cx,
-                                            );
-
-                                            if let Some(group) = self.group.as_ref() {
-                                                GroupHitboxes::pop(group, cx);
-                                            }
-                                        }
-                                    })
-                                },
+                            self.paint_mouse_listeners(
+                                hitbox,
+                                element_state.as_deref_mut(),
+                                window,
+                                cx,
                             );
-                        });
-                    });
-                });
+                            self.paint_scroll_listener(hitbox, &style, window, cx);
+                        }
 
-                ((), element_state)
-            },
-        );
+                        self.paint_keyboard_listeners(window, cx);
+
+                        if window.a11y.is_active() {
+                            if let Some(global_id) = global_id {
+                                if !self.a11y_action_listeners.is_empty() {
+                                    let node_id = global_id.accesskit_node_id();
+                                    for (action, listener) in self.a11y_action_listeners.drain(..) {
+                                        window.on_a11y_action(node_id, action, listener);
+                                    }
+                                }
+                            }
+                        }
+
+                        f(&style, window, cx);
+
+                        if let Some(_hitbox) = hitbox {
+                            #[cfg(any(feature = "inspector", debug_assertions))]
+                            window.insert_inspector_hitbox(_hitbox.id, _inspector_id, cx);
+
+                            if let Some(group) = self.group.as_ref() {
+                                GroupHitboxes::pop(group, cx);
+                            }
+                        }
+                    })
+                });
+            });
+        });
     }
 
     #[cfg(debug_assertions)]
@@ -3485,6 +3534,19 @@ impl Interactivity {
             let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
             (style, element_state)
         })
+    }
+
+    // KaminIDE patch: construction must finish before descending into a child.
+    // Inlining would retain the large Style return slot in each recursive caller.
+    #[inline(never)]
+    fn compute_style_boxed(
+        &self,
+        hitbox: Option<&Hitbox>,
+        element_state: Option<&mut InteractiveElementState>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Box<Style> {
+        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
     }
 
     /// Called from internal methods that have already called with_element_state.

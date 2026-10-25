@@ -62,7 +62,7 @@ mod tests {
             hover: None,
             first_letter: None,
             first_line: None,
-            children,
+            children: children.into(),
             attrs: attrs
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))

@@ -1,6 +1,6 @@
 //! Раскладка главной копии ребёнка стопки до укладки и распорки роста по ней: высоту
-//! ребёнка, чью высоту меряет раскладка (`StackChild::measure`), или точки разрыва его
-//! блочной стопки (`StackChild::breaks_w`) даёт разложенная копия; распорки роста ставятся
+//! ребёнка (`StackChild::measure`) или разрывы его блочной стопки (`StackChild::breaks_w`)
+//! даёт разложенная копия; распорки роста ставятся
 //! по плану ЭТОЙ стопки (`grow_points`) перед коробкой, найденной в разложенной копии
 //! (`push::Regrow`), копии собираются заново и раскладываются, пока план не перестанет
 //! требовать роста (css-break-3 §box-splitting; Blink `FinishFragmentation`).
@@ -12,7 +12,6 @@ use gpui::{App, AvailableSpace, Window, point, px, size};
 
 /// Заходов роста до неподвижной точки (как у оценки `grow_pushed`).
 const PASSES: usize = 6;
-
 mod copies;
 mod extent;
 mod owners;
@@ -242,6 +241,7 @@ fn rebuild(c: &mut StackChild) {
         return;
     };
     let (el, frags) = r.rebuild(c.frags.len());
+    c.fragment_builders.clear();
     c.el = el;
     c.frags = frags;
     if let Some(w) = &c.watched {

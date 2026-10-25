@@ -13,7 +13,9 @@ use crate::layout::table::context::{
     CellLayout, RowCursor, RowState, RowsOut, TableGeom, TableLayers,
 };
 
-pub(super) fn emit_cell(
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn emit_cell(
+    stk: &mut reblessive::Stk,
     geom: &TableGeom<'_>,
     layers: &TableLayers<'_>,
     cursor: &mut RowCursor,
@@ -48,7 +50,7 @@ pub(super) fn emit_cell(
         cursor.occupied[c] = span_rows;
     }
     cursor.col_ix += span_cols as usize;
-    let (inside, d) = cell_contents(opts, geom.e, cm, spans_collapsed, clipped, cell, d);
+    let (inside, d) = cell_contents(stk, opts, geom.e, cm, spans_collapsed, clipped, cell, d).await;
     let d = if crate::layout::table::anon::row_collapsed(row_state.row, row_state.carry.group) {
         d
     } else {
