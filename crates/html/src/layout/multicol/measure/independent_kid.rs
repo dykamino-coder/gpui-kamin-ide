@@ -6,13 +6,18 @@ use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::Shape;
 use crate::layout::fragment::line_shape::resolved_lengths;
-use crate::style::computed::{BoxStyle, Position};
+use crate::style::computed::{BoxStyle, Display, Position};
 use std::cell::RefCell;
 
 fn multicol_wrapper(c: &Element) -> bool {
+    // Flex/grid/table проходят свои проверки: вложенные колонки не отменяют
+    // фрагментацию их форматирующего контекста (css-break-3 §2).
     // Сам многоколоночник требует специализированного пути с внешним
     // фрагментаинером; обычная обёртка сохраняет этот контекст в потомке.
-    !crate::layout::multicol::spanner::multicol_container(&c.style.used())
+    matches!(
+        c.style.used().display,
+        None | Some(Display::Block | Display::ListItem)
+    ) && !crate::layout::multicol::spanner::multicol_container(&c.style.used())
         && crate::layout::multicol::spanner::multicol_inside(c, 4)
 }
 
@@ -137,5 +142,93 @@ mod tests {
         assert_eq!((shape.margin_top, shape.margin_bottom), (12.0, 6.0));
         assert_eq!(shape.height, 0.0);
         assert_eq!(*registry.borrow(), vec![(c.node_id, 120.0)]);
+    }
+
+    #[test]
+    fn nested_columns_preserve_the_roots_fragmentation_dispatch() {
+        use crate::dom::Node;
+        use crate::layout::multicol::measure::measure_children;
+        use crate::layout::options::RenderOpts;
+
+        fn host(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => host(&e.children),
+                _ => None,
+            })
+        }
+        for (style, independent, paginate) in [
+            ("", true, false),
+            ("display:block", true, false),
+            ("display:list-item", true, false),
+            ("display:flex;flex-direction:column", false, false),
+            ("display:flex;flex-direction:row", false, false),
+            ("display:grid", false, false),
+            ("display:flex;flex-direction:column", false, true),
+            ("display:flex;flex-direction:row", false, true),
+        ] {
+            // Анонимный flex-элемент не входит в flex_tree; атомарные колонки
+            // внутри соседнего блока допускают DOM-пагинацию этого flex.
+            let (before, after, columns_display, tag) = if paginate {
+                ("anonymous<div>", "</div>", "display:inline-block;", "span")
+            } else {
+                ("", "", "", "div")
+            };
+            let html = format!(
+                "<div><div style='{style}'>{before}\
+                 <{tag} style='{columns_display}columns:2;column-gap:0'>\
+                 <div style='height:30px'></div><div style='height:50px'></div>\
+                 </{tag}>{after}</div></div>"
+            );
+            let tree = crate::dom::parse(&html, "");
+            let host = host(&tree).expect("authored host");
+            let Node::Element(root) = &host.children[0] else {
+                panic!("formatting root")
+            };
+            assert_eq!(gate(root, true, Some(80.0)), independent, "{style}");
+            assert_eq!(
+                own_layout_gate(root, true, Some(80.0)),
+                independent,
+                "{style}"
+            );
+            let opts = RenderOpts {
+                text: Default::default(),
+                viewport: (800.0, 600.0),
+                normal_line_height: 1.2,
+                cx: Default::default(),
+                frag: Default::default(),
+            };
+            let measured = RefCell::default();
+            let kids = measure_children(
+                host,
+                &BoxStyle::default(),
+                &opts,
+                None,
+                None,
+                None,
+                (Some(80.0), Some(80.0)),
+                &RefCell::default(),
+                false,
+                &RefCell::default(),
+                &measured,
+                false,
+                false,
+                true,
+                true,
+            )
+            .expect("supported fragmentation subtree");
+            assert_eq!(kids.len(), 1);
+            assert_eq!(kids[0].0.marks.paginate, paginate, "{style}");
+            if !independent && !paginate {
+                assert!(measured.borrow().is_empty(), "specialized shape planner");
+                assert!(
+                    kids[0].1.height > 0.0,
+                    "flex/grid retains fragmentation geometry"
+                );
+            } else {
+                assert_eq!(*measured.borrow(), vec![(root.node_id, 80.0)], "{style}");
+                assert_eq!(kids[0].1.height, 0.0, "height comes from layout");
+            }
+        }
     }
 }
