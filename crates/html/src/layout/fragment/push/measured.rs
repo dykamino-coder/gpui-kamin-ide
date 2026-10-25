@@ -18,8 +18,8 @@ use crate::layout::options::RenderOpts;
 use gpui::AnyElement;
 
 /// Сборка копии ребёнка стопки из дерева: `part` 0 — главная (с рекордером),
-/// дальше — запасные.
-pub(crate) type BuildCopy = dyn Fn(&Element, usize) -> AnyElement;
+/// дальше — запасные; `band` отделяет повторяемую секцию от содержимого.
+pub(crate) type BuildCopy = dyn Fn(&Element, usize, bool) -> AnyElement;
 
 /// Получатель роста сохраняет идентичность даже у совпадающих границ строк.
 #[derive(Clone, Debug)]
@@ -131,8 +131,10 @@ impl Regrow {
     pub(crate) fn rebuild(&self, spare: usize) -> (AnyElement, Vec<AnyElement>) {
         self.watched.rewind_flows();
         (
-            (self.build)(&self.dom, 0),
-            (1..=spare).map(|i| (self.build)(&self.dom, i)).collect(),
+            (self.build)(&self.dom, 0, false),
+            (1..=spare)
+                .map(|i| (self.build)(&self.dom, i, false))
+                .collect(),
         )
     }
 }
