@@ -5,7 +5,7 @@
 
 use crate::document::state::ValueCx;
 use crate::paint::background::*;
-use crate::style::computed::FontCx;
+use crate::resources::css_images::len_px;
 use crate::style::computed::{BgPos, BgSize, Tiling};
 use crate::style::values::value::Len;
 
@@ -50,13 +50,6 @@ pub(crate) fn tile_size(
             (None, None) => auto,
         },
     }
-}
-
-/// Длина плитки против базы `base` (сторона области); шрифтовые единицы
-/// в записи картинки уже решены в точки (`resolve_image_lengths`), остаток —
-/// запасным контекстом.
-pub(crate) fn len_px(l: Option<Len>, base: f32, vcx: ValueCx<'_>) -> Option<f32> {
-    l?.to_px(Some(base), FontCx::FALLBACK, vcx)
 }
 
 /// Смещение первой плитки: проценты считаются от свободного места, как в CSS.

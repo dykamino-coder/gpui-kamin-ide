@@ -11,7 +11,7 @@ pub use cell_bg::CellBgPainter;
 pub use clipped::CellsClipped;
 pub use edge_painter::EdgePainter;
 
-use crate::hooks::{Hooks, IntoHooked};
+use crate::hooks::{IntoHooked, PaintOnly, Painter};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
 /// Покраска слоя таблицы в `paint` того кадра, чьи пробы записали геометрию в `prepaint`.
@@ -22,29 +22,25 @@ pub(crate) trait LayerPaint: 'static {
 /// Элемент слоя: оверлей вне потока без детей — раскладку таблицы он не трогает, на
 /// подготовке ничего не делает и только красит.
 pub(crate) fn layer(paint: impl LayerPaint) -> AnyElement {
-    Layer(paint).hooked()
+    PaintOnly(Layer(paint)).hooked()
 }
 
 struct Layer<T>(T);
 
-impl<T: LayerPaint> Hooks for Layer<T> {
-    type Layout = ();
+impl<T: LayerPaint> Painter for Layer<T> {
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        let style = gpui::Style {
+    fn style(&self) -> gpui::Style {
+        gpui::Style {
             position: gpui::Position::Absolute,
             ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
+        }
     }
-
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut Window, _: &mut App) {}
 
     fn paint(
         &mut self,
         _: Bounds<Pixels>,
-        _: &mut (),
+        _: &mut LayoutId,
         _: &mut (),
         window: &mut Window,
         _: &mut App,

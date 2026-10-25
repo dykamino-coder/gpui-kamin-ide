@@ -6,6 +6,7 @@
 
 use crate::document::state::ValueCx;
 use crate::paint::background::Source;
+use crate::resources::css_images::Source as CpuSource;
 use gpui::{Bounds, Corners, Window, point, px, size};
 
 pub(super) fn paint(
@@ -16,7 +17,7 @@ pub(super) fn paint(
     (dx, dy, dw, dh): (f32, f32, f32, f32),
     vcx: ValueCx<'_>,
 ) -> bool {
-    let Source::Gradient { image: value } = source else {
+    let Source::Image(CpuSource::Gradient { image: value }) = source else {
         return false;
     };
     let Some((g, repeating)) = value.gradient() else {
