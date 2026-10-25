@@ -88,6 +88,27 @@ fn neighboring_ifcs_have_separate_orphan_counts() {
 }
 
 #[test]
+fn tall_line_reserves_physical_pages_before_the_next_paragraph() {
+    let mut first = paragraph(1, 0, 0.0);
+    first.lines[0].bottom = 350.0;
+    let mut k = kid(36);
+    k.cuts = vec![(350.0, 350.0), (360.0, 360.0)];
+    k.solid = vec![(0.0, 350.0)];
+    let plan = fill(k, vec![first, paragraph(1, 1, 350.0)], 100.0);
+    assert_eq!(
+        plan.iter()
+            .map(|f| (f.col, f.from, f.h))
+            .collect::<Vec<_>>(),
+        [
+            (0, 0.0, 100.0),
+            (1, 100.0, 100.0),
+            (2, 200.0, 100.0),
+            (3, 300.0, 60.0)
+        ]
+    );
+}
+
+#[test]
 fn committed_candidate_carries_the_token_through_changed_metrics() {
     use super::{Tokens, cut};
     use crate::layout::fragment::token::fc::FcState;
