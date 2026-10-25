@@ -1570,6 +1570,7 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
 }
 
 /// KaminIDE patch: снимок контекста краски окна (см. `Window::paint_ctx`).
+#[doc = include_str!("window/paint_contract.md")]
 #[derive(Clone)]
 pub struct PaintCtx {
     element_id_stack: SmallVec<[ElementId; 32]>,
@@ -4363,10 +4364,10 @@ impl Window {
         }
     }
 
-    /// KaminIDE patch: снимок контекста краски — всё, что `paint` предков
-    /// кладёт в окно вокруг ребёнка (маски, прозрачность, стиль текста,
-    /// преобразования, путь id). Перенесённый ребёнок (`PaintLast` в
-    /// собирателе) рисуется позже ровно в том окружении, где стоял.
+    /// KaminIDE patch: снимок общего окружения краски: маски, прозрачность,
+    /// стиль текста, преобразования, путь id и typed host contexts.
+    /// Растровая привязка текста хранится отдельно в `text_paint_ctx`.
+    /// Ограничения времени жизни и replay описаны в [`PaintCtx`].
     pub fn paint_ctx(&self) -> PaintCtx {
         PaintCtx {
             element_id_stack: self.element_id_stack.clone(),
@@ -4386,6 +4387,11 @@ impl Window {
 
     /// KaminIDE patch: выполнить `f` в снятом `paint_ctx` окружении и вернуть
     /// прежнее.
+    ///
+    /// Вызывающий сохраняет принадлежность тому же окну, кадру и открытой
+    /// композиционной группе. Сейчас это предусловие, а не проверка API.
+    /// Typed host contexts восстанавливаются и при unwind; остальные поля
+    /// восстанавливаются только при нормальном возврате (см. [`PaintCtx`]).
     pub fn with_paint_ctx<R>(
         &mut self,
         mut ctx: PaintCtx,
