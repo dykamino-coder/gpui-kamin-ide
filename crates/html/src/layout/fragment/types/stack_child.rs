@@ -228,6 +228,7 @@ impl StackChild {
             avoid_after: self.avoid_after,
             forced: self.forced.clone(),
             solid: self.solid.clone(),
+            float_min: self.regrow.as_ref().map_or(0.0, |r| r.float_min()),
             avoid: self.avoid.clone(),
             keep: self.keep.clone(),
             span: self.span,

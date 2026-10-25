@@ -92,8 +92,8 @@ fn copy_breaks(
     let Some(regrow) = regrow else {
         return watched.breaks(origin, size, end, axis, window);
     };
-    let mut flow = watched.flow.at(origin, size, axis, window);
-    regrow.floats = super::empty_floats::separate(&mut flow, &regrow.source);
+    let flow = watched.flow.at(origin, size, axis, window);
+    regrow.floats = super::empty_floats::separate(&flow);
     watched
         .blocks()
         .map_or_else(Default::default, |blocks| {

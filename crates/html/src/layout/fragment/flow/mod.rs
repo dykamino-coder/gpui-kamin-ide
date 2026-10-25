@@ -63,6 +63,14 @@ pub(crate) struct FloatGeometry {
     pub(crate) first_break: Option<f32>,
 }
 
+impl FloatGeometry {
+    /// Монолит сохраняет весь margin box; разрезаемый float задаёт свой первый кусок.
+    pub(crate) fn balance_min(&self) -> f32 {
+        let end = self.first_break.unwrap_or(self.bottom + self.margins[1]);
+        (end - self.top + self.margins[0]).max(0.0)
+    }
+}
+
 impl FlowGeometry {
     pub(crate) fn merge(self, cuts: &mut Vec<(f32, f32)>, solid: &mut Vec<(f32, f32)>) {
         if self.cuts.is_empty() {

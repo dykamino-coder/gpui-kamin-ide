@@ -103,7 +103,9 @@ fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
             (slot.y, slot.y + slot.b)
         };
         if kid.monolithic {
-            geometry.solid.push((start, end));
+            if !matches!(kid.kind, super::Kind::Float { .. }) {
+                geometry.solid.push((start, end));
+            }
         } else if let Some(nest) = &kid.nest {
             // Nested slots already use the host's coordinates.
             append(&mut child, &nest.kids, &slot.kids);
@@ -174,7 +176,7 @@ mod tests {
         kid.monolithic = true;
         let mut geometry = FlowGeometry::default();
         append(&mut geometry, std::slice::from_ref(&kid), &[slot]);
-        assert_eq!(geometry.solid, vec![(0., 200.)]);
+        assert!(geometry.solid.is_empty());
         let slot = Slot {
             y: 40.,
             b: 20.,
@@ -184,7 +186,8 @@ mod tests {
         let mut geometry = FlowGeometry::default();
         append(&mut geometry, std::slice::from_ref(&kid), &[slot]);
         geometry.normalize();
-        assert_eq!(geometry.solid, vec![(0., 100.)]);
+        assert!(geometry.solid.is_empty());
+        assert_eq!(geometry.floats[0].balance_min(), 100.);
         assert_eq!(geometry.cuts, vec![(100., 100.)]);
         assert_eq!(geometry.floats[0].first_break, None);
         kid.monolithic = false;

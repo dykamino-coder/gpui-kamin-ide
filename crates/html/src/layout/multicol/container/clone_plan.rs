@@ -44,6 +44,7 @@ pub(super) fn clone_plan_of(
                         avoid_after: edge_avoid(c, true, vcx),
                         forced: geometry.forced.clone(),
                         solid: geometry.solid.clone(),
+                        float_min: 0.0,
                         avoid: Vec::new(),
                         keep: Vec::new(),
                         span: c.style.used().column_span == Some(true) && !c.inline,

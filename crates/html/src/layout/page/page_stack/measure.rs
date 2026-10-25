@@ -165,6 +165,7 @@ pub(super) fn measure(
             keep,
             span: false,
             over: h.max(over),
+            float_min: 0.0,
             // Страницы: `box-decoration-break` пока `slice` — весь
             // кластер `clone` в колонках.
             clone_dec: None,

@@ -70,6 +70,7 @@ pub(crate) fn grow_pushed(
                 avoid_after: edge_avoid(c, true, vcx),
                 forced: s.forced.clone(),
                 solid: s.solid.clone(),
+                float_min: 0.0,
                 avoid: Vec::new(),
                 keep: Vec::new(),
                 span: c.style.used().column_span == Some(true) && !c.inline,
