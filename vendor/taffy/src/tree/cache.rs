@@ -214,6 +214,36 @@ pub(crate) struct CacheEntry<T> {
     content: T,
 }
 
+/// Size-only results retain the margin information required by their parent.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+struct Measurement {
+    size: Size<f32>,
+    top_margin: CollapsibleMarginSet,
+    bottom_margin: CollapsibleMarginSet,
+    margins_can_collapse_through: bool,
+}
+
+impl Measurement {
+    fn new(output: &LayoutOutput) -> Self {
+        Self {
+            size: output.size,
+            top_margin: output.top_margin,
+            bottom_margin: output.bottom_margin,
+            margins_can_collapse_through: output.margins_can_collapse_through,
+        }
+    }
+
+    fn output(&self) -> LayoutOutput {
+        LayoutOutput {
+            top_margin: self.top_margin,
+            bottom_margin: self.bottom_margin,
+            margins_can_collapse_through: self.margins_can_collapse_through,
+            ..LayoutOutput::from_outer_size(self.size)
+        }
+    }
+}
+
 /// A cache for caching the results of a sizing a Grid Item or Flexbox Item
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
@@ -221,7 +251,7 @@ pub struct Cache {
     /// The cache entry for the node's final layout
     final_layout_entry: Option<CacheEntry<LayoutOutput>>,
     /// The cache entries for the node's preliminary size measurements
-    measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
+    measure_entries: [Option<CacheEntry<Measurement>>; CACHE_SIZE],
     /// Tracks which measure entries have been used since the eviction cursor last passed them
     recently_used_entries: u16,
     /// The next measure entry to consider replacing
@@ -251,7 +281,7 @@ impl Cache {
     /// Create a new empty cache
     pub const fn new() -> Self {
         /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
-        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
+        const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
         Self {
             final_layout_entry: None,
             measure_entries: [NONE_MEASURE_ENTRY; CACHE_SIZE],
@@ -284,7 +314,7 @@ impl Cache {
                         && entry.key.size_is_valid_for(&key)
                     {
                         self.recently_used_entries |= 1 << index;
-                        return Some(LayoutOutput::from_outer_size(entry.content));
+                        return Some(entry.content.output());
                     }
                 }
 
@@ -315,21 +345,11 @@ impl Cache {
                 self.final_layout_entry = Some(CacheEntry { key, content: layout_output })
             }
             RunMode::ComputeSize => {
-                // Measure entries only store the size, and cache hits are reconstructed with
-                // `LayoutOutput::from_outer_size`, which resets the margin-collapse metadata
-                // (`top_margin`, `bottom_margin`, `margins_can_collapse_through`). Results that
-                // carry such metadata cannot be reconstructed from their size, so don't cache them.
-                if layout_output.margins_can_collapse_through
-                    || layout_output.top_margin != CollapsibleMarginSet::ZERO
-                    || layout_output.bottom_margin != CollapsibleMarginSet::ZERO
-                {
-                    return;
-                }
                 self.is_empty = false;
                 if let Some(index) =
                     self.measure_entries.iter().position(|entry| entry.as_ref().is_some_and(|entry| entry.key == key))
                 {
-                    self.measure_entries[index].as_mut().unwrap().content = layout_output.size;
+                    self.measure_entries[index].as_mut().unwrap().content = Measurement::new(&layout_output);
                     self.recently_used_entries |= 1 << index;
                     return;
                 }
@@ -341,7 +361,7 @@ impl Cache {
                     }
                 }
                 let entry_index = self.next_measure_entry as usize;
-                self.measure_entries[entry_index] = Some(CacheEntry { key, content: layout_output.size });
+                self.measure_entries[entry_index] = Some(CacheEntry { key, content: Measurement::new(&layout_output) });
                 self.recently_used_entries |= 1 << entry_index;
                 self.next_measure_entry += 1;
                 if self.next_measure_entry == CACHE_SIZE as u8 {
@@ -360,7 +380,7 @@ impl Cache {
         self.is_empty = true;
         self.final_layout_entry = None;
         /// Workaround for `Option<CacheEntry<_>>` not being `Copy` (required for array repeat expressions)
-        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
+        const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
         self.measure_entries = [NONE_MEASURE_ENTRY; CACHE_SIZE];
         self.recently_used_entries = 0;
         self.next_measure_entry = 0;
@@ -431,18 +451,21 @@ mod tests {
     }
 
     #[test]
-    fn measurements_with_margin_collapse_metadata_are_not_cached() {
+    fn measurements_preserve_and_update_margin_collapse_metadata() {
         let mut cache = Cache::new();
+        let mut through = output(1.0);
+        through.margins_can_collapse_through = true;
+        cache.store(&input(1.0), through.clone());
+        assert_eq!(cache.get(&input(1.0)), Some(through));
 
-        let mut collapse_through = output(1.0);
-        collapse_through.margins_can_collapse_through = true;
-        cache.store(&input(1.0), collapse_through);
-        assert_eq!(cache.get(&input(1.0)), None);
-
-        let mut carried_margin = output(2.0);
-        carried_margin.top_margin = CollapsibleMarginSet::from_margin(10.0);
-        cache.store(&input(2.0), carried_margin);
-        assert_eq!(cache.get(&input(2.0)), None);
+        let mut carried = output(2.0);
+        carried.top_margin = CollapsibleMarginSet::from_margin(10.0);
+        carried.bottom_margin = CollapsibleMarginSet::from_margin(-4.0);
+        cache.store(&input(2.0), carried.clone());
+        assert_eq!(cache.get(&input(2.0)), Some(carried));
+        cache.store(&input(1.0), output(3.0));
+        assert_eq!(cache.get(&input(1.0)), Some(output(3.0)));
+        assert_eq!(cache.measure_entries.iter().flatten().count(), 2);
     }
 
     #[test]
