@@ -15,6 +15,19 @@ pub(super) fn float_box(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
+    reblessive::Stack::new()
+        .enter(|stk| float_box_stack(stk, copy, source, cb, inherited, opts))
+        .finish()
+}
+
+pub(super) async fn float_box_stack(
+    stk: &mut reblessive::Stk,
+    copy: &Element,
+    source: &Element,
+    cb: f32,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &copy.style, vcx);
     merged.self_node = copy.node_id;
@@ -27,7 +40,11 @@ pub(super) fn float_box(
         // A float can own a clamp context as well as isolate its parent's
         // counter. The native box installs that context, its cut and probes;
         // inheriting the paragraph's line limit alone loses the root strut.
-        opts.cx.contracts.build.element(copy, inherited, opts)
+        opts.cx
+            .contracts
+            .build
+            .element_stack(stk, copy, inherited, opts)
+            .await
     } else if copy.tag == "img" {
         opts.cx.contracts.build.replaced(copy, None, &opts.cx)
     } else {
@@ -44,7 +61,8 @@ pub(super) fn float_box(
             .cx
             .contracts
             .build
-            .blocks(&copy.children, &merged, opts);
+            .blocks_stack(stk, &copy.children, &merged, opts)
+            .await;
         close_clamp_span(span.clone(), &opts.cx);
         if let Some(scope) = cb_scope {
             kids.extend(scope.finish());

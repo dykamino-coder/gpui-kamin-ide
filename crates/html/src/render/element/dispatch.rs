@@ -12,10 +12,8 @@ use crate::layout::replaced::image::pct_height_to_px;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::{replaced_used_style, svg_size};
-use crate::layout::table::anon::anon_element;
-use crate::layout::table::table_stack;
-use crate::paint::box_tree::styled::styled_div;
-use crate::paint::box_tree::styled::styled_div_with;
+use crate::layout::table::{anon::anon_element, table_stack};
+use crate::paint::box_tree::styled::{styled_div, styled_div_with};
 use crate::paint::replaced::image::{image, image_with};
 use crate::render::generic_box::generic_box_stack;
 use crate::style::computed::{BoxStyle, Display};
@@ -188,7 +186,9 @@ pub(crate) async fn dispatch_element(
             }
         }
         // Синтетический хост полос обтекания (см. wrap_floats).
-        _ if e.marks.shape_flow.is_some() => band_flow_host(e, &merged, opts),
+        _ if e.marks.shape_flow.is_some() => {
+            stk.run(|stk| band_flow_host(stk, e, &merged, opts)).await
+        }
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         // Лунки идут путём сетки taffy (`dom::lanes_as_grid`); сюда доходит

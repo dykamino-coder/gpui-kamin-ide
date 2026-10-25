@@ -123,7 +123,13 @@ async fn build_stack(
                 .await;
             let built = match built {
                 Some(built) => built,
-                None => opts.cx.contracts.build.element(child, &style, opts),
+                None => {
+                    opts.cx
+                        .contracts
+                        .build
+                        .element_stack(stk, child, &style, opts)
+                        .await
+                }
             };
             children.push(built);
         }
