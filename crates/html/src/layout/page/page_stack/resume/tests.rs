@@ -149,3 +149,38 @@ fn column_resumes_content_instead_of_old_y() {
     assert!(token.consumed(&new).is_empty());
     assert_eq!(token.offset(&new), Some(40.));
 }
+
+#[test]
+fn row_boundary_preserves_distance_to_the_first_content_line() {
+    let mut old = Laid::of_boxes(&[(1, 24., 240.)]);
+    old.flexes.insert(
+        9,
+        FlexFrame {
+            column: false,
+            lines: vec![FlexLine {
+                start: 24.,
+                end: 240.,
+                items: vec![1],
+                ..Default::default()
+            }],
+        },
+    );
+    old.content.insert(
+        1,
+        vec![ContentLine {
+            state: Default::default(),
+            paragraph: 0,
+            byte: 8,
+            top: 171.,
+            bottom: 189.,
+            consumed_before: 0.,
+        }],
+    );
+    let token = Resume::at(&old, 168.);
+    assert_eq!(token.consumed(&old), HashMap::from([(1, (144., false))]));
+    // Смена ширины сдвигает строку, сохраняя адрес разрыва перед её
+    // внутренней отбивкой; отбивка не становится потреблённой высотой.
+    let mut new = old.clone();
+    new.content.get_mut(&1).unwrap()[0].top = 195.;
+    assert_eq!(token.consumed(&new), HashMap::from([(1, (168., false))]));
+}

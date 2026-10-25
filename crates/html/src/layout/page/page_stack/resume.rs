@@ -7,7 +7,9 @@ use std::collections::HashMap;
 enum Address {
     Before,
     End,
-    Line(usize, usize),
+    // Адрес строки сохраняет расстояние от границы разрыва до её верха:
+    // внутренние отбивки ячейки не являются потреблённым содержимым.
+    Line(usize, usize, f32),
     Box(u64),
     BlockOffset(f32),
 }
@@ -36,7 +38,7 @@ impl Resume {
                     .filter(|l| l.bottom > from + COORD_EPS)
                     .min_by(|a, b| a.top.total_cmp(&b.top))
                 {
-                    Address::Line(line.paragraph, line.byte)
+                    Address::Line(line.paragraph, line.byte, from - line.top)
                 } else if let Some((&child, _)) = old
                     .descendants
                     .get(&id)
@@ -61,12 +63,13 @@ impl Resume {
         Some(match self.items.get(&id)? {
             Address::Before => top,
             Address::End => bottom,
-            Address::Line(paragraph, byte) => {
+            Address::Line(paragraph, byte, before) => {
                 new.content
                     .get(&id)?
                     .iter()
                     .find(|l| l.paragraph == *paragraph && l.byte == *byte)?
                     .top
+                    + before
             }
             Address::Box(child) => new.at(*child)?.0,
             Address::BlockOffset(consumed) => top + consumed.min((bottom - top).max(0.0)),
