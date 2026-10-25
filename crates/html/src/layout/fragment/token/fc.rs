@@ -35,7 +35,13 @@ pub(crate) struct FloatExclusion {
 /// `ChildBreakTokens`, Gecko `nsBlockFrame` overflow lines).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BlockState {
-    /// Первый ребёнок, ещё не уложенный целиком.
+    /// Размер normal content, относительно которого накоплен consumed у leaf.
+    /// При смене геометрии страницы сохраняется доля пройденного (css-break-3 §5.1).
+    pub(crate) content_block_size: Option<f32>,
+    /// Доли пройденных начального/концевого краёв slice; не входят в consumed.
+    pub(crate) sliced_edges: Option<(f32, f32)>,
+    /// Прерванный normal-flow ребёнок при `child=Some`, иначе первый ещё не начатый.
+    /// Более ранние независимые продолжения находятся только в `parallel`.
     pub(crate) child_idx: u32,
     /// Поля, схлопнутые до разрыва (CSS 2.1 §8.3.1): усекаются на
     /// непринудительном разрыве и сохраняются на принудительном (css-break-3 §5.2).
@@ -44,7 +50,7 @@ pub(crate) struct BlockState {
     /// Токен ребёнка `child_idx`, прерванного внутри себя.
     pub(crate) child: Option<TokenId>,
     /// Параллельные потоки: флоаты и переполнение коробок с заданной высотой
-    /// продолжаются сами по себе (Blink `IsInParallelFlow`).
+    /// продолжаются сами по себе (Blink `IsInParallelFlow`), по возрастанию `idx`.
     pub(crate) parallel: Vec<ChildToken>,
 }
 
@@ -52,13 +58,15 @@ pub(crate) struct BlockState {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct InlineState {
     /// Номер первой строки продолжения среди строк абзаца.
-    pub(crate) line_idx: u32,
+    pub(crate) line_idx: usize,
     /// Байтовое смещение начала строки в тексте абзаца (Blink `StartTextOffset`).
-    pub(crate) text_pos: u32,
+    pub(crate) text_pos: usize,
     /// Первая форматированная строка уже пройдена: `::first-line` и
     /// `text-indent` больше не применяются (Blink `IsPastFirstFormattedLine`).
     pub(crate) past_first_line: bool,
-    /// Блок внутри строки или атом, прерванный внутри себя.
+    /// Начало после обязательного текстового переноса (`text-indent: each-line`).
+    pub(crate) after_hard_break: bool,
+    /// Блок внутри inline; атомы, ruby и first-letter принадлежат целой строке.
     pub(crate) child: Option<TokenId>,
 }
 
@@ -136,15 +144,15 @@ pub(crate) enum FcState {
 
 impl FcState {
     /// Токены детей, на которые ссылается это состояние, в порядке обхода.
-    pub(crate) fn child_tokens(&self) -> Vec<TokenId> {
-        let kids = |v: &[ChildToken]| v.iter().map(|c| c.token).collect::<Vec<_>>();
-        match self {
-            FcState::Block(b) => b.child.into_iter().chain(kids(&b.parallel)).collect(),
-            FcState::Inline(i) => i.child.into_iter().collect(),
-            FcState::Flex(f) => kids(&f.items),
-            FcState::Grid(g) => kids(&g.items),
-            FcState::Table(t) => kids(&t.cells),
-            FcState::Multicol(m) => m.flow.into_iter().collect(),
-        }
+    pub(crate) fn child_tokens(&self) -> impl Iterator<Item = TokenId> + '_ {
+        let (one, kids): (_, &[ChildToken]) = match self {
+            FcState::Block(b) => (b.child, &b.parallel),
+            FcState::Inline(i) => (i.child, &[]),
+            FcState::Flex(f) => (None, &f.items),
+            FcState::Grid(g) => (None, &g.items),
+            FcState::Table(t) => (None, &t.cells),
+            FcState::Multicol(m) => (m.flow, &[]),
+        };
+        one.into_iter().chain(kids.iter().map(|c| c.token))
     }
 }

@@ -95,6 +95,7 @@ pub(in crate::layout::multicol) fn stack_children(
     kid_par: Vec<crate::layout::fragment::types::Par>,
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
     clone_plan: Vec<Vec<(f32, f32)>>,
+    prepared: Vec<crate::layout::multicol::stack_child::Prepared>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
     let vcx = opts.cx.vcx();
     let balanced_frag: Option<f32> =
@@ -138,32 +139,30 @@ pub(in crate::layout::multicol) fn stack_children(
     };
     let children: Vec<crate::layout::fragment::types::StackChild> = kids
         .into_iter()
+        .zip(prepared)
         .enumerate()
         .map(
             |(
                 ix,
                 (
-                    c,
-                    crate::layout::fragment::Shape {
-                        height: h,
-                        margin_top: mt,
-                        margin_bottom: mb,
-                        cuts,
-                        forced,
-                        solid,
-                    },
+                    (
+                        c,
+                        crate::layout::fragment::Shape {
+                            margin_top: mt,
+                            margin_bottom: mb,
+                            ..
+                        },
+                    ),
+                    prepared,
                 ),
             )| {
                 let kid_w = kid_layout_w(&c, line_col_w, layout_col_w);
                 multicol_stack_child(
                     ix,
                     c,
-                    h,
+                    prepared,
                     mt,
                     mb,
-                    cuts,
-                    forced,
-                    solid,
                     e,
                     merged,
                     opts,

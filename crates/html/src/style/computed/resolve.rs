@@ -5,6 +5,7 @@ use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
+mod container_lengths;
 mod container_units;
 mod decor_inset;
 mod derived;
@@ -12,6 +13,7 @@ mod em;
 mod font_size;
 mod len_cx;
 mod len_px;
+mod unit_lengths;
 mod viewport_lengths;
 pub use len_cx::{LenCx, ViewportCx};
 pub use len_px::FontCx;
@@ -72,54 +74,7 @@ impl Computed {
                 *l = Some(v.fold_viewport(vp, vcx));
             }
         };
-        let sides = |s: &mut Sides| {
-            for one in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
-                fix(one);
-            }
-        };
-        for l in [
-            &mut self.width,
-            &mut self.height,
-            &mut self.min_width,
-            &mut self.min_height,
-            &mut self.max_width,
-            &mut self.max_height,
-            &mut self.flex_basis,
-            &mut self.svg_path_length,
-        ] {
-            fix(l);
-        }
-        // Кегль — в общей группе наследуемых: правится, только если он в
-        // единицах окна.
-        if let Some(size) = self.font_size {
-            let folded = size.fold_viewport(vp, vcx);
-            if folded != size {
-                self.font_size = Some(folded);
-            }
-        }
-        sides(&mut self.padding);
-        sides(&mut self.snap.padding);
-        sides(&mut self.snap.margin);
-        sides(&mut self.margin);
-        // Толщина рамки в единицах окна (`border-bottom: 50vh solid`,
-        // `monolithic-overflow-021`): без перевода рамка выходила нулевой.
-        sides(&mut self.border_width);
-        sides(&mut self.inset);
-        self.resolve_radius_lengths(fix);
-        for gradient in [self.gradient.as_mut(), self.gradient_current.as_mut()]
-            .into_iter()
-            .flatten()
-        {
-            gradient.resolve_lengths(fix, vcx);
-        }
-        self.bg_lists.resolve_lengths(&fix, vcx);
-        for image in self.image_operands() {
-            image.resolve_lengths(&fix, vcx);
-        }
-        if let Some((row, col)) = self.gap.as_mut() {
-            fix(row);
-            fix(col);
-        }
+        self.resolve_unit_lengths(fix, vcx);
     }
 
     /// Во сколько раз ИСПОЛЬЗУЕМЫЙ кегль отличается от вычисленного.

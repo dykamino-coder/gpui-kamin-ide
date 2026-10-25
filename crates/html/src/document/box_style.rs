@@ -17,6 +17,7 @@ pub(super) fn has_box_style(c: &crate::style::computed::Computed) -> bool {
     // Page margin counters read the document's counter scope. Removing these
     // wrappers would erase the directives before render_paged sees the tree.
     c.counter_reset.is_some()
+        || c.container_type.is_size_query()
         || c.counter_increment.is_some()
         || c.counter_set.is_some()
         || c.width.is_some()

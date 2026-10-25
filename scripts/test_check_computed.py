@@ -8,6 +8,7 @@ import unittest
 from computed_access import DEFINITIONS, aggregate, growth
 from check_computed import check, decode, documents
 from test_check_transitional import commit, git
+from computed_f2_rebaseline import APPROVED, CENSUS_BASE, approved_base
 
 FIELDS = 'pub struct Computed {\n    pub width: f32,\n    pub height: f32,\n}\n'
 LAYOUT = 'crates/html/src/layout/block.rs'
@@ -88,6 +89,26 @@ class AggregateTests(unittest.TestCase):
 
 
 class GitRatchetTests(unittest.TestCase):
+    def test_f2_rebaseline_is_exact_bounded_and_expires_after_integration(self):
+        before = Counter({(f, o, a): old for f, o, a, old, new in APPROVED})
+        after = Counter({(f, o, a): new for f, o, a, old, new in APPROVED})
+        self.assertEqual(len(APPROVED), 19)
+        self.assertEqual(approved_base(before, CENSUS_BASE), after)
+        self.assertFalse(growth(after, approved_base(before, CENSUS_BASE), 'test'))
+        for key in after:
+            extra = after.copy()
+            extra[key] += 1
+            self.assertTrue(growth(extra, approved_base(before, CENSUS_BASE), 'test'))
+        extra = after + Counter({('Computed.width', 'layout', 'write'): 1})
+        self.assertTrue(growth(extra, approved_base(before, CENSUS_BASE), 'test'))
+        self.assertEqual(approved_base(before, 'later-main'), before)
+        with self.assertRaises(ValueError):
+            approved_base(after, CENSUS_BASE)
+        # Future bases use actual reduced counters, without this old allowance.
+        reduced = after.copy()
+        reduced['Computed.height', 'layout', 'write'] -= 1
+        self.assertTrue(growth(after, approved_base(reduced, 'later-main'), 'test'))
+
     def test_bootstrap_growth_budget_inflation_and_reduction_without_refresh(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

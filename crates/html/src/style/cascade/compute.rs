@@ -6,10 +6,10 @@
 //! порядке зависимостей (кегль и `em`/`ex`/`ch`/`lh`, функции цвета,
 //! `tab-size`, `math-depth`, `currentcolor` фона).
 //!
-//! Стадия читает у родителя только вычисленные значения — ни контекста
-//! коробки, ни used-значений (это `inherit::box_stage`); поэтому её итог
-//! материализуется один раз на элемент и годится, пока унаследованные
-//! данные родителя те же (`inherited_eq`).
+//! Для cq-единиц входом служит размер query container из завершённой
+//! раскладки, переданный отдельно через слот элемента. Изменение этого
+//! входа пересчитывает стиль потомков до paint. Контекст коробки остаётся
+//! в `inherit::box_stage`; критерий кеша учитывает контейнерные оси.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::box_predicates::resolve_bidi_inheritance;
@@ -29,6 +29,11 @@ pub(in crate::style::cascade) use text::{decor_family, resolve_decor_len};
 /// Вычисленный стиль элемента с каскадным стилем `own` под вычисленным
 /// стилем родителя `parent`.
 pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Published {
+    build(parent, own, vcx).finish()
+}
+
+/// Входы materialize добавляются в builder до публикации закрытого handle.
+pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> ComputedBuilder {
     // Зум — первым (css-viewport-1 §zoom-property): свои длины каскадного
     // стиля — в зуме элемента, до наследования и `em` ниже.
     let zoomed;
@@ -63,6 +68,7 @@ pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<
         &resolved
     };
     let mut c = ComputedBuilder::from_cascaded(own);
+    c.cq_box = parent.container_box_for_children();
     // Коробка раскладки своего зума не задаёт: она в зуме родителя.
     if !own.zoom_pending && c.zoom_eff.is_none() {
         let eff = zoom::parent_eff(parent);
@@ -71,6 +77,9 @@ pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<
     c.zoom_pending = false;
     crate::style::computed::scroll::inherit(parent, &mut c);
     resolve_bidi_inheritance(parent, &mut c);
+    fonts::inherit_writing_mode(parent, own, &mut c);
+    // Эти две длины нужны уже вычислению lh в compute_sizes.
+    c.resolve_container_font_lengths(vcx);
     sizes::compute_sizes(parent, own, &mut c, vcx);
     explicit::inherit_explicit(parent, own, &mut c);
     background::inherit_background(own, &mut c);
@@ -79,6 +88,7 @@ pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<
     text::inherit_text(parent, own, &mut c);
     c.resolve_gradient_current_color(vcx);
     text::inherit_ui(parent, own, &mut c);
+    c.resolve_container_units(vcx);
     // `em` считается от размера шрифта — а он известен только здесь, когда
     // наследование уже произошло. База `em` у собственного кегля —
     // ВЫЧИСЛЕННЫЙ кегль родителя: `font-size-adjust` «does not affect the
@@ -91,7 +101,7 @@ pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<
     // 10px — это 50px и у ребёнка с кеглем 20px, а не его собственные 5em
     // (`tab-size-inheritance-001`).
     let own_px = own_font_px(&c, parent_px);
-    c.tab_size_len = match own.tab_size_len {
+    c.tab_size_len = match own.tab_size_len.and(c.tab_size_len) {
         Some(len) => Some(Len::Px(crate::text::metrics::spacing_px(
             Some(len),
             &c.font_family.clone().unwrap_or_default(),
@@ -121,7 +131,7 @@ pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<
     if c.inh == parent.inh {
         c.inh = parent.inh.clone();
     }
-    c.finish()
+    c
 }
 
 /// Вычисленный кегль родителя — база `em` ребёнка (у подогнанного

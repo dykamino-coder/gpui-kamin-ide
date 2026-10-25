@@ -33,7 +33,7 @@ pub(super) fn walk(
         let slot = e.style.slot();
         let computed = slot
             .get(e.style.cascaded(), &parent, generation)
-            .unwrap_or_else(|| super::super::compute::compute(&parent, e.style.cascaded(), vcx));
+            .unwrap_or_else(|| slot.compute(&parent, e.style.cascaded(), vcx));
         // Равные входы позволяют разделить значение, но ссылка наследования
         // должна указывать на текущего родителя, включая новый кадр каскада.
         if !e

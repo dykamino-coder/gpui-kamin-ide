@@ -70,9 +70,12 @@ impl Hooks for Watch {
                 if let Some(consumed) = self.rec.flex_consumed.borrow().get(&id) {
                     window.set_flex_item_fragmentation_consumed(lid, consumed.0);
                 }
-                self.rec.seen.borrow_mut().insert(id, lid);
+                self.rec.seen.borrow_mut().insert(
+                    id,
+                    crate::layout::fragment::geometry::Node::capture(lid, window),
+                );
             }
-            Slot::Table(key, part) => self.rec.record_part(key, part, lid),
+            Slot::Table(key, part) => self.rec.record_part(key, part, lid, window),
         }
         (lid, ())
     }

@@ -676,8 +676,9 @@ pub(super) fn align_and_position_item(
     // KaminIDE patch: #1323 — baseline относится к нормальному положению.
     let normal_x = x;
     let normal_y = y;
-    let x = x + relative_offset(position, inset_horizontal, direction);
-    let y = y + relative_offset(position, inset_vertical, y_direction);
+    let relative = Point { x: relative_offset(position, inset_horizontal, direction), y: relative_offset(position, inset_vertical, y_direction) };
+    let x = x + relative.x;
+    let y = y + relative.y;
     let scrollbar_size = Size {
         width: if overflow.y == Overflow::Scroll { scrollbar_width } else { 0.0 },
         height: if overflow.x == Overflow::Scroll { scrollbar_width } else { 0.0 },
@@ -698,6 +699,7 @@ pub(super) fn align_and_position_item(
         &Layout {
             order,
             location: Point { x, y },
+            relative_offset: relative,
             size: Size { width, height },
             #[cfg(feature = "content_size")]
             scrollable_overflow_rect: layout_output.scrollable_overflow_rect,

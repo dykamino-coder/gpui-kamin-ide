@@ -1,88 +1,105 @@
-//! База единиц контейнера `cq*` для потомков: содержимое контейнера запросов размера
-//! (css-conditional-5 §container-lengths).
+//! Контекст единиц контейнера: только used content box, переданный оркестратором
+//! после завершённой раскладки (css-conditional-5 §container-lengths).
 
-use crate::style::computed::Computed;
-use crate::style::values::value::{Len, px_strict};
+use crate::document::state::ValueCx;
+use crate::style::computed::{Computed, ContainerType, Display};
+use crate::style::values::value::Len;
 
 impl Computed {
-    /// Что унаследуют потомки в `cq_box`. Сам контейнер своих единиц от себя
-    /// не берёт — только его потомки, поэтому база считается для детей.
-    ///
-    /// `container-type: size` даёт обе оси, `inline-size` — только строчную
-    /// (по письму контейнера). Размер известен лишь заданный в точках; без
-    /// него ось наследует базу внешнего контейнера, как будто этот не годится
-    /// («eligible query container» для оси).
-    pub fn container_box_for_children(&self) -> (Option<f32>, Option<f32>) {
-        if !self.container_size_query {
-            return self.cq_box;
+    /// Кегль и строка разрешаются раньше зависимых от них em/lh.
+    pub(crate) fn resolve_container_font_lengths(&mut self, vcx: ValueCx<'_>) {
+        let vp = self.viewport_cx(vcx.viewport);
+        if let Some(value) = self.font_size.filter(|l| l.needs_container_context(vcx)) {
+            self.font_size = Some(value.fold_container(vp, vcx));
         }
-        let px = px_strict;
-        let border_box = self.border_box == Some(true);
-        let inner = |size: Option<Len>, a: Option<Len>, b: Option<Len>, c, d| {
-            let v = px(size)?;
-            if !border_box {
-                return Some(v);
+        if let Some(value) = self.line_height.filter(|l| l.needs_container_context(vcx)) {
+            self.line_height = Some(value.fold_container(vp, vcx));
+        }
+    }
+
+    /// Свернуть единицы по завершённой раскладке ближайших подходящих предков.
+    pub(crate) fn resolve_container_units(&mut self, vcx: ValueCx<'_>) {
+        let vp = self.viewport_cx(vcx.viewport);
+        let fix = |length: &mut Option<Len>| {
+            if let Some(value) = *length {
+                *length = Some(value.fold_container(vp, vcx));
             }
-            let edges = [a, b, c, d]
-                .iter()
-                .map(|l| px(*l).unwrap_or(0.0))
-                .sum::<f32>();
-            Some((v - edges).max(0.0))
         };
-        let used = self.borders();
-        let w = inner(
-            self.width,
-            self.padding.left,
-            self.padding.right,
-            used.left,
-            used.right,
-        );
-        let h = inner(
-            self.height,
-            self.padding.top,
-            self.padding.bottom,
-            used.top,
-            used.bottom,
-        );
-        // Полосы прокрутки съедают содержимое контейнера (css-overflow-3
-        // §4.2): `100cqh` под горизонтальной полосой короче высоты.
-        // Классические полосы съедают содержимое контейнера (css-overflow-3
-        // §4.2). Модель полос (`scroll.used`) знает `overflow: scroll` и
-        // полосы прошлого кадра; жёлоб `scrollbar-gutter: stable` раскладка
-        // резервирует сверх неё, поэтому он добавляется, когда модель
-        // строчную полосу не учла.
-        let g = self.scroll.used;
-        let stable = self.scroll.gutter.is_some_and(|v| v != 0)
-            && !self.wm().vertical()
-            && matches!(
-                self.overflow_y,
-                Some(crate::style::computed::Overflow::Scroll)
-            )
-            && g[0] + g[2] == 0.0;
-        let sides = if self.scroll.gutter == Some(2) {
-            2.0
+        self.resolve_unit_lengths(fix, vcx);
+        self.resolve_container_other_lengths(vp, vcx);
+        for length in [
+            &mut self.column_width,
+            &mut self.column_height,
+            &mut self.column_gap,
+        ] {
+            fix(length);
+        }
+        // Без cq-слагаемых общую группу наследуемых копировать не нужно.
+        if [
+            self.letter_spacing,
+            self.word_spacing,
+            self.text_indent,
+            self.line_height,
+            self.tab_size_len,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|l| l.needs_container_context(vcx))
+        {
+            let inherited = &mut **self;
+            for length in [
+                &mut inherited.letter_spacing,
+                &mut inherited.word_spacing,
+                &mut inherited.text_indent,
+                &mut inherited.line_height,
+                &mut inherited.tab_size_len,
+            ] {
+                fix(length);
+            }
+        }
+        if let Some(outline) = self.outline.as_mut() {
+            fix(&mut outline.width);
+            fix(&mut outline.offset);
+        }
+        if let Some((row, column)) = self.border_spacing
+            && [row, column]
+                .into_iter()
+                .flatten()
+                .any(|l| l.needs_container_context(vcx))
+        {
+            let mut spacing = (row, column);
+            fix(&mut spacing.0);
+            fix(&mut spacing.1);
+            self.border_spacing = Some(spacing);
+        }
+        self.resolve_decor_inset_lengths(fix, vcx);
+    }
+
+    /// Поддерживаемые физические оси. Письмо здесь — контейнера, тогда как
+    /// cqi/cqb выбирают логическую ось по письму самого потребителя.
+    pub(crate) fn query_container_axes(&self) -> (bool, bool) {
+        if !self.container_type.is_size_query()
+            || matches!(self.display, Some(Display::None | Display::Contents))
+        {
+            return (false, false);
+        }
+        let block = self.container_type == ContainerType::Size;
+        if self.wm().vertical() {
+            (block && self.contains_width(), self.contains_height())
         } else {
-            1.0
-        };
-        let gutter = if stable {
-            self.scroll.thickness() * sides
-        } else {
-            0.0
-        };
-        let w = w.map(|v| (v - g[0] - g[2] - gutter).max(0.0));
-        let h = h.map(|v| (v - g[1] - g[3]).max(0.0));
-        let both = self.contain_size == Some(true);
-        let vertical = self.wm().vertical();
-        let take_w = both || !vertical;
-        let take_h = both || vertical;
+            (self.contains_width(), block && self.contains_height())
+        }
+    }
+
+    /// Ближайший контейнер выбирается отдельно для каждой оси. Неизвестный
+    /// layout input подходящего контейнера НЕ разрешает пропустить его:
+    /// промежуточный стиль будет пересчитан до paint после его раскладки.
+    pub fn container_box_for_children(&self) -> (Option<f32>, Option<f32>) {
+        let (width, height) = self.query_container_axes();
         (
-            if take_w {
-                w.or(self.cq_box.0)
-            } else {
-                self.cq_box.0
-            },
-            if take_h {
-                h.or(self.cq_box.1)
+            if width { self.cq_size.0 } else { self.cq_box.0 },
+            if height {
+                self.cq_size.1
             } else {
                 self.cq_box.1
             },

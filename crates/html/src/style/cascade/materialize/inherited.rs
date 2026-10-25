@@ -8,5 +8,7 @@ use crate::style::computed::Computed;
 
 /// Совпадают ли у `a` и `b` все поля, которые `compute::compute` берёт у родителя.
 pub(super) fn inherited_eq(a: &Computed, b: &Computed) -> bool {
-    a.inh == b.inh && a.scroll.colors == b.scroll.colors
+    a.inh == b.inh
+        && a.scroll.colors == b.scroll.colors
+        && a.container_box_for_children() == b.container_box_for_children()
 }
