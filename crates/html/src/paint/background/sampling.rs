@@ -6,6 +6,7 @@
 //! вне sRGB/Oklab квантуются в растр на сетке устройства; обрезка привязывается как края коробки.
 
 use crate::document::state::ValueCx;
+use crate::resources::css_images::Source as CpuSource;
 use crate::resources::css_images::{gradient_geometry::Geometry, gradient_raster::resolved_stops};
 use gpui::{Bounds, Corners, ImageSampling, Pixels, RenderImage, Window};
 use std::sync::Arc;
@@ -35,7 +36,7 @@ pub(super) fn paint_tile(
         window.current_transformation().rotation_scale,
         matches!(
             source_kind,
-            super::Source::Raster(_) | super::Source::Filtered { .. }
+            super::Source::Image(CpuSource::Raster(_) | CpuSource::Filtered { .. })
         ),
     );
     if sampling == ImageSampling::Nearest
@@ -49,7 +50,7 @@ pub(super) fn paint_tile(
     if pixelated
         && matches!(
             source_kind,
-            super::Source::Raster(_) | super::Source::Filtered { .. }
+            super::Source::Image(CpuSource::Raster(_) | CpuSource::Filtered { .. })
         )
     {
         let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit() {
@@ -75,9 +76,9 @@ pub(super) fn paint_tile(
         && window.current_transformation() == gpui::TransformationMatrix::unit()
         && matches!(
             source_kind,
-            super::Source::Vector { .. }
-                | super::Source::Raster(_)
-                | super::Source::Filtered { .. }
+            super::Source::Image(
+                CpuSource::Vector { .. } | CpuSource::Raster(_) | CpuSource::Filtered { .. }
+            )
         ) {
         // CSS Images 3 §image-rendering permits bilinear smooth scaling.
         // Filtering straight RGB darkens an opaque color beside transparent
@@ -102,7 +103,7 @@ pub(crate) fn paint_gradient(
     source: &super::Source,
     vcx: ValueCx<'_>,
 ) -> bool {
-    let super::Source::Gradient { image } = source else {
+    let super::Source::Image(CpuSource::Gradient { image }) = source else {
         return false;
     };
     let Some((value, repeating)) = image.gradient() else {

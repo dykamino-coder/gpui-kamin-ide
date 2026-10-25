@@ -79,22 +79,10 @@ fn sequence(raw: &str, fallback: bool, depth: usize) -> bool {
 }
 
 pub(super) fn string_end(raw: &str, start: usize, quote: char) -> Option<usize> {
-    let mut at = start + 1;
-    while at < raw.len() {
-        let c = raw[at..].chars().next()?;
-        if c == quote {
-            return Some(at + 1);
-        }
-        if matches!(c, '\n' | '\r' | '\u{c}') {
-            return None;
-        }
-        at = if c == '\\' {
-            escape_end(raw, at)
-        } else {
-            at + c.len_utf8()
-        };
-    }
-    Some(raw.len())
+    let body = start + 1;
+    crate::css_syntax::scan_string(&raw[body..], quote)
+        .ok()
+        .map(|end| body + end)
 }
 
 pub(crate) fn block_end(raw: &str, start: usize, open: char) -> Option<usize> {
@@ -142,6 +130,14 @@ pub(crate) fn block_end(raw: &str, start: usize, open: char) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::super::parse_decls;
+
+    #[test]
+    fn closing_quote_before_newline_is_not_a_bad_string() {
+        assert!(super::valid("var(--a, \"green\"\n)"));
+        assert!(!super::valid("var(--a, \"green\n)"));
+        assert!(!super::valid("var(--a, \"green\\\"\n)"));
+        assert!(super::valid("var(--a, \"green"));
+    }
 
     #[test]
     fn invalid_fallback_does_not_replace_a_previous_declaration() {

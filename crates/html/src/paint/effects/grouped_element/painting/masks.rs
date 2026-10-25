@@ -1,6 +1,7 @@
 //! Разрешение изображения маски группы и размещение её плитки.
 
 use crate::document::state::ValueCx;
+use crate::resources::css_images::Source as CpuSource;
 mod composite;
 pub(super) use composite::composite_mask;
 
@@ -90,7 +91,7 @@ pub(crate) fn resolve_mask(
         MaskInput::Scene(_) => None,
     }?;
     let (img, tw, th) = match &source {
-        crate::paint::background::Source::Raster(img) => {
+        crate::paint::background::Source::Image(CpuSource::Raster(img)) => {
             let (tw, th) = mask_size::tile(
                 source.intrinsic(),
                 group.mask_scale,
