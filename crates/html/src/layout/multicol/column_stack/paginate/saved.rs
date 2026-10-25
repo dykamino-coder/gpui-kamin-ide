@@ -4,6 +4,7 @@
 /// The stack record of a child before pagination (`paginate_one`).
 pub(super) struct Saved {
     el: gpui::AnyElement,
+    builders: Vec<crate::layout::fragment::types::FragmentHandle>,
     frags: Vec<gpui::AnyElement>,
     h: f32,
     over: f32,
@@ -19,6 +20,7 @@ impl Saved {
     pub(super) fn take(c: &mut crate::layout::fragment::types::StackChild) -> Self {
         use gpui::IntoElement;
         Saved {
+            builders: std::mem::take(&mut c.fragment_builders),
             el: std::mem::replace(&mut c.el, gpui::Empty.into_any_element()),
             frags: std::mem::take(&mut c.frags),
             h: c.h,
@@ -33,6 +35,7 @@ impl Saved {
     }
 
     pub(super) fn restore(self, c: &mut crate::layout::fragment::types::StackChild) {
+        c.fragment_builders = self.builders;
         c.el = self.el;
         c.frags = self.frags;
         c.h = self.h;

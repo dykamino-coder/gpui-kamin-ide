@@ -18,6 +18,8 @@ pub(crate) enum BreaksAt {
 /// (схлопываются между соседями по правилам потока).
 pub struct StackChild {
     pub el: AnyElement,
+    /// Рецепты ещё не востребованных копий; очищаются при замене дерева.
+    pub(crate) fragment_builders: Vec<super::FragmentHandle>,
     /// Первый замер сравнивается с оценкой до замены геометрии на измеренную.
     #[cfg(feature = "wpt-harness")]
     pub(crate) probe_pending: bool,
