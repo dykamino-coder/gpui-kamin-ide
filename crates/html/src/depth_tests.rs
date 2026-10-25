@@ -95,6 +95,13 @@ fn depth_probe() {
 fn depth_frame_probe(cx: &mut gpui::TestAppContext) {
     let n = depth();
     let stage = stage();
+    eprintln!(
+        "sizes Style={} DivLayout={} DivPrepaint={} DrawableDiv={}",
+        size_of::<gpui::Style>(),
+        size_of::<<gpui::Div as gpui::Element>::RequestLayoutState>(),
+        size_of::<<gpui::Div as gpui::Element>::PrepaintState>(),
+        size_of::<gpui::Drawable<gpui::Div>>(),
+    );
     let document;
     let boxes = if stage.ends_with("-direct") {
         let mut inner = gpui::div().into_any_element();

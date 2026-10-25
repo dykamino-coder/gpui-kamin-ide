@@ -46,19 +46,16 @@ fn frame(stage: &str) {
 }
 
 #[test]
-#[ignore = "известный overflow GPUI request_layout без stacker; изолированная проба"]
 fn layout_1026_levels_on_eight_mib() {
     on_eight_mib(|| frame("layout"));
 }
 
 #[test]
-#[ignore = "заблокировано overflow GPUI request_layout; изолированная проба"]
 fn prepaint_1026_levels_on_eight_mib() {
     on_eight_mib(|| frame("prepaint"));
 }
 
 #[test]
-#[ignore = "заблокировано overflow GPUI request_layout; изолированная проба"]
 fn paint_1026_levels_on_eight_mib() {
     on_eight_mib(|| frame("paint"));
 }

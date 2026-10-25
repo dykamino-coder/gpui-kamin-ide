@@ -6107,6 +6107,17 @@ impl Window {
         children: impl IntoIterator<Item = LayoutId>,
         cx: &mut App,
     ) -> LayoutId {
+        self.request_layout_ref(&style, children, cx)
+    }
+
+    /// KaminIDE patch: borrow the style so recursive elements need not move it on the stack.
+    #[must_use]
+    pub fn request_layout_ref(
+        &mut self,
+        style: &Style,
+        children: impl IntoIterator<Item = LayoutId>,
+        cx: &mut App,
+    ) -> LayoutId {
         self.invalidator.debug_assert_prepaint();
 
         cx.layout_id_buffer.clear();

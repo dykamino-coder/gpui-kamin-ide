@@ -1943,7 +1943,7 @@ impl Element for Div {
             .map(|provider| provider.provide(window, cx));
 
         let layout_id = window.with_image_cache(image_cache, |window| {
-            self.interactivity.request_layout(
+            self.interactivity.request_layout_boxed(
                 global_id,
                 inspector_id,
                 window,
@@ -1955,7 +1955,7 @@ impl Element for Div {
                             .iter_mut()
                             .map(|child| child.request_layout(window, cx))
                             .collect::<SmallVec<_>>();
-                        window.request_layout(style, child_layout_ids.iter().copied(), cx)
+                        window.request_layout_ref(&style, child_layout_ids.iter().copied(), cx)
                     })
                 },
             )
@@ -2299,6 +2299,20 @@ impl Interactivity {
         cx: &mut App,
         f: impl FnOnce(Style, &mut Window, &mut App) -> LayoutId,
     ) -> LayoutId {
+        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
+            f(*style, window, cx)
+        })
+    }
+
+    // KaminIDE patch: keep the live style off every ancestor's native stack frame.
+    fn request_layout_boxed(
+        &mut self,
+        global_id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
+    ) -> LayoutId {
         #[cfg(any(feature = "inspector", debug_assertions))]
         window.with_inspector_state(
             _inspector_id,
@@ -2376,7 +2390,7 @@ impl Interactivity {
                     );
                 }
 
-                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
+                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
                 let layout_id = f(style, window, cx);
                 (layout_id, element_state)
             },
@@ -2441,7 +2455,7 @@ impl Interactivity {
             |element_state, window| {
                 let mut element_state =
                     element_state.map(|element_state| element_state.unwrap_or_default());
-                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
+                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
 
                 if let Some(element_state) = element_state.as_mut() {
                     if let Some(clicked_state) = element_state.clicked_state.as_ref() {
@@ -2606,7 +2620,7 @@ impl Interactivity {
                 let mut element_state =
                     element_state.map(|element_state| element_state.unwrap_or_default());
 
-                let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
+                let style = self.compute_style_boxed(hitbox, element_state.as_mut(), window, cx);
 
                 #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
                 if let Some(debug_selector) = &self.debug_selector {
@@ -3485,6 +3499,19 @@ impl Interactivity {
             let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
             (style, element_state)
         })
+    }
+
+    // KaminIDE patch: construction must finish before descending into a child.
+    // Inlining would retain the large Style return slot in each recursive caller.
+    #[inline(never)]
+    fn compute_style_boxed(
+        &self,
+        hitbox: Option<&Hitbox>,
+        element_state: Option<&mut InteractiveElementState>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Box<Style> {
+        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
     }
 
     /// Called from internal methods that have already called with_element_state.
