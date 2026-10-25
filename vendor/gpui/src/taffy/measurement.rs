@@ -37,7 +37,8 @@ impl TaffyLayoutEngine {
     }
 }
 
-#[stacksafe::stacksafe]
+// KaminIDE patch: keep the optional stacker feature optional.
+#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
 fn copy_subtree(
     source: &TaffyTree<NodeContext>,
     target: &mut TaffyTree<NodeContext>,
