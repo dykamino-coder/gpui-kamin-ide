@@ -97,6 +97,7 @@ impl Paragraph {
             geometry
                 .inline
                 .push(crate::layout::fragment::flow::inline::Inline {
+                    scope: Vec::new(),
                     lines: node.content.borrow().clone(),
                     orphans: keep.0,
                     widows: keep.1,

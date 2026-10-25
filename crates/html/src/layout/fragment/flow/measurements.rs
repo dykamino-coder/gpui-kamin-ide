@@ -59,6 +59,8 @@ pub(crate) struct FlowMeasure {
     pub(super) records: Records<Record>,
     pub(super) resumes: RefCell<Vec<Rc<super::inline::Cursor>>>,
     pub(crate) lines: bool,
+    pub(super) contexts: RefCell<std::collections::BTreeMap<usize, Rc<FlowMeasure>>>,
+    pub(crate) float_resume: RefCell<Option<super::float_resume::Cursor>>,
     paragraphs: Rc<RefCell<Vec<ParagraphGrowth>>>,
     next: Cell<usize>,
 }
@@ -86,12 +88,22 @@ impl FlowMeasure {
     /// Повторная сборка потока сохраняет уже потреблённое место каждого абзаца.
     pub(crate) fn rewind(&self) {
         self.next.set(0);
+        for child in self.contexts.borrow().values() {
+            child.rewind();
+        }
     }
 
     pub(crate) fn constraints_only(&self) -> Self {
         Self {
             lines: self.lines,
             paragraphs: self.paragraphs.clone(),
+            contexts: RefCell::new(
+                self.contexts
+                    .borrow()
+                    .iter()
+                    .map(|(&key, child)| (key, Rc::new(child.constraints_only())))
+                    .collect(),
+            ),
             ..Self::default()
         }
     }
@@ -122,6 +134,9 @@ impl FlowMeasure {
 
     pub(crate) fn reset(&self) {
         self.records.reset();
+        for child in self.contexts.borrow().values() {
+            child.reset();
+        }
     }
 
     pub(crate) fn for_lines() -> Self {

@@ -16,7 +16,16 @@ pub(super) fn probe(
     shapes: Option<Shapes>,
     p: &mut Probe,
 ) -> (f32, f32) {
-    probe_of(kid.kind, &kid.build, cb, avail, shapes, p)
+    let old = p.fragment.as_ref().map(|f| f.probes.clone());
+    if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
+        flow.rewind();
+        fragment.probes = flow.clone();
+    }
+    let size = probe_of(kid.kind, &kid.build, cb, avail, shapes, p);
+    if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
+        fragment.probes = old;
+    }
+    size
 }
 
 /// `probe` для любого построителя: каркас по виду `kind`.
@@ -78,7 +87,16 @@ pub(super) fn unrounded(tap: &Rc<Cell<Option<LayoutId>>>, window: &mut Window) -
 
 /// Внутренние ширины ребёнка (min-content, max-content) border-box.
 pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
-    intrinsic_of(&kid.build, p)
+    let old = p.fragment.as_ref().map(|f| f.probes.clone());
+    if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
+        flow.rewind();
+        fragment.probes = flow.clone();
+    }
+    let size = intrinsic_of(&kid.build, p);
+    if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
+        fragment.probes = old;
+    }
+    size
 }
 
 /// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).

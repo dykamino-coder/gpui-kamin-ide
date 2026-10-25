@@ -40,11 +40,6 @@
     "reason": "Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17."
   },
   {
-    "file": "crates/html/src/layout/fragment/flow/copy_clearance.rs",
-    "task": "F2-1",
-    "reason": "Отдельная копия не видит float bands предыдущего соседа; удалить отказ в P06 после переноса состояния BFC между фрагментами."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/independent.rs",
     "task": "F2-3",
     "reason": "Vertical copy допускает только один поток без ортогонального resume; удалить ограничение в P10 после отдельных logical Space и child tokens."
@@ -216,26 +211,6 @@
   },
   {
     "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер children не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер pending не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер pending_vertical не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC в логических осях."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер vertical_children не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC в логических осях."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
     "task": "F2-2",
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
   },
@@ -243,21 +218,6 @@
     "file": "crates/html/src/layout/multicol/measure/native_dispatch_tests.rs",
     "task": "F2-1",
     "reason": "Clone и заданная высота с overflow ещё идут через preplan; удалить ожидание этого маршрута после краёв фрагментов P04 и раздельных normal-flow/overflow resume P05."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/native_float.rs",
-    "task": "F2-1",
-    "reason": "Замер float_copy не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/native_float.rs",
-    "task": "F2-1",
-    "reason": "Поля float требуют продолжения margin box без усечения как у блока; удалить отказ в P06 после собственного consumed/resume float."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/native_float.rs",
-    "task": "F2-1",
-    "reason": "Разрываемый float и обтекающий текст имеют разные consumed/resume; удалить monolith-only gate в P06 после независимого продолжения float и main flow."
   },
   {
     "file": "crates/html/src/layout/multicol/measure/tail.rs",

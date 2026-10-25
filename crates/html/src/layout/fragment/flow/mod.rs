@@ -7,8 +7,10 @@
 
 pub(crate) mod blocks;
 pub(crate) mod box_children;
+mod contexts;
 mod continuation;
 mod coordinates;
+pub(crate) mod float_resume;
 pub(crate) mod inline;
 mod line_growth;
 mod measurements;
@@ -40,6 +42,7 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlowGeometry {
+    pub(crate) float_contexts: Vec<float_resume::Snapshot>,
     pub(crate) inline: Vec<inline::Inline>,
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) solid: Vec<(f32, f32)>,
@@ -72,6 +75,8 @@ impl FlowGeometry {
     }
 
     pub(crate) fn append(&mut self, other: &Self, offset: f32) {
+        self.float_contexts
+            .extend(other.float_contexts.iter().map(|g| g.translated(offset)));
         self.inline
             .extend(other.inline.iter().map(|flow| flow.translated(offset)));
         self.floats
@@ -141,9 +146,10 @@ pub(crate) use logical::transpose_tree;
 mod independent;
 pub(crate) use independent::{
     PagePercentages, Parallel, column_percentages, flow_end, independent_copy, logical_copy,
-    page_copy, page_percentages, parallel_overflow, regrow_copy, vertical_copy,
+    page_copy, page_percentages, regrow_copy, vertical_copy,
 };
 mod copy_clearance;
-pub(crate) use copy_clearance::copy_clearance;
+pub(crate) use copy_clearance::copy_flow;
+pub(crate) use copy_clearance::reaches as exports_floats;
 mod empty_floats;
 pub(crate) use empty_floats::empty_floats;

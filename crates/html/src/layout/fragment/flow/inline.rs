@@ -9,6 +9,7 @@ use crate::tolerance::COORD_EPS;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Inline {
+    pub(crate) scope: Vec<usize>,
     pub(crate) lines: Vec<super::ContentLine>,
     pub(crate) orphans: usize,
     pub(crate) widows: usize,
@@ -17,6 +18,7 @@ pub(crate) struct Inline {
 /// Строки и структурные запреты одного измеренного снимка.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Geometry {
+    pub(crate) floats: Vec<super::float_resume::Snapshot>,
     pub(crate) paragraphs: Vec<Inline>,
     pub(crate) barriers: Vec<(f32, f32)>,
     pub(crate) keep: Vec<(f32, f32)>,

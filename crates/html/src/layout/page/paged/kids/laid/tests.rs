@@ -83,6 +83,21 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
 }
 
 #[test]
+fn nonempty_float_extent_stops_at_an_inner_bfc() {
+    for (context, expected) in [("", true), ("overflow:hidden", false)] {
+        let tree = crate::dom::parse(
+            &format!(
+                "<div><div style='{context}'><div style='float:left;width:20px;height:300px'>text</div></div></div>"
+            ),
+            "",
+        );
+        let nodes = [Node::Element(authored(&tree).clone())];
+        let p = group(&nodes, &BoxStyle::default(), 120., 0., tree.values()).unwrap();
+        assert_eq!(p.float_extent, expected);
+    }
+}
+
+#[test]
 fn vertical_empty_page_floats_keep_bandflow_extent_and_physical_tree() {
     for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
         let tree = crate::dom::parse(
