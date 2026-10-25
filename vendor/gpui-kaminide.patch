@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns.
+# 1. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns. Isolate accessibility-node construction and completion from recursive prepaint frames.
 # 2. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
 # 3. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
 # 4. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
@@ -5515,7 +5515,7 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        // KaminIDE patch: overlay geometry is already in device coordinates.
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/element.rs b/vendor/gpui/src/element.rs
-index d6556258e15f7cac891e14861a2cd323fa09f6cf..8dd9a6960d4284ccf37912991ba417a2c8059eb8
+index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5f0f67133
 --- a/vendor/gpui/src/element.rs
 +++ b/vendor/gpui/src/element.rs
 @@ -228,0 +229 @@
@@ -5602,10 +5602,156 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..8dd9a6960d4284ccf37912991ba417a2
 +        // `gpui::elements::div::Div` → `Div`; дженерики оставляем как есть.
 +        full.rsplit("::").next().unwrap_or(full).to_string()
 +    }
-@@ -346,0 +428,2 @@
+@@ -345,0 +427,80 @@
++    // KaminIDE patch: accessibility construction temporaries must not survive child traversal.
++    #[inline(never)]
++    fn begin_a11y_prepaint(
++        &mut self,
++        global_id: Option<&GlobalElementId>,
++        bounds: Bounds<Pixels>,
++        window: &mut Window,
++    ) -> bool {
++        let mut pushed_a11y_node = false;
++        if window.a11y.is_active() {
++            if let Some(global_id) = global_id {
++                if let Some(role) = self.element.a11y_role() {
++                    let node_id = global_id.accesskit_node_id();
++                    let mut node = accesskit::Node::new(role);
++                    let scale = window.scale_factor();
++                    node.set_bounds(accesskit::Rect {
++                        x0: (bounds.origin.x.0 * scale) as f64,
++                        y0: (bounds.origin.y.0 * scale) as f64,
++                        x1: ((bounds.origin.x.0 + bounds.size.width.0) * scale) as f64,
++                        y1: ((bounds.origin.y.0 + bounds.size.height.0) * scale) as f64,
++                    });
++                    self.element.write_a11y_info(&mut node);
++                    window.a11y.node_bounds.insert(node_id, bounds);
++                    pushed_a11y_node = window.a11y.nodes.push(node_id, node);
++                    #[cfg(debug_assertions)]
++                    if pushed_a11y_node {
++                        let view = window
++                            .a11y
++                            .view_type_names
++                            .get(&window.current_view())
++                            .copied();
++                        let source_location = self.element.source_location();
++                        window.a11y.nodes.record_node_info(
++                            node_id,
++                            crate::window::a11y::debug::NodeDebugInfo {
++                                synthetic: false,
++                                view,
++                                element_id: global_id.0.last().map(|id| format!("{id:?}")),
++                                source_location,
++                            },
++                        );
++                    }
++                }
++            }
++        }
++        pushed_a11y_node
++    }
++
++    #[inline(never)]
++    fn end_a11y_prepaint(
++        &mut self,
++        global_id: Option<&GlobalElementId>,
++        prepaint: &mut E::PrepaintState,
++        window: &mut Window,
++    ) {
++        if let Some(global_id) = global_id {
++            #[cfg(debug_assertions)]
++            let creator = crate::window::a11y::debug::NodeCreator {
++                view: window
++                    .a11y
++                    .view_type_names
++                    .get(&window.current_view())
++                    .copied(),
++                element_id: global_id.0.last().map(|id| format!("{id:?}")),
++                source_location: self.element.source_location(),
++            };
++            let mut builder = A11ySubtreeBuilder::new(
++                global_id.accesskit_node_id(),
++                &mut window.a11y.nodes,
++            );
++            #[cfg(debug_assertions)]
++            {
++                builder = builder.with_creator(creator);
++            }
++            self.element
++                .a11y_synthetic_children(prepaint, &mut builder);
++        }
++        window.a11y.nodes.pop();
++    }
++
+@@ -346,0 +508,2 @@
 +        // KaminIDE patch (#76): self-time профиль prepaint по типам элементов.
 +        let _prof = prepaint_prof::enter(std::any::type_name::<E>());
-@@ -558,0 +642,8 @@
+@@ -367,37 +530,2 @@
+-                let mut pushed_a11y_node = false;
+-                if window.a11y.is_active() {
+-                    if let Some(global_id) = global_id.as_ref() {
+-                        if let Some(role) = self.element.a11y_role() {
+-                            let node_id = global_id.accesskit_node_id();
+-                            let mut node = accesskit::Node::new(role);
+-                            let scale = window.scale_factor();
+-                            node.set_bounds(accesskit::Rect {
+-                                x0: (bounds.origin.x.0 * scale) as f64,
+-                                y0: (bounds.origin.y.0 * scale) as f64,
+-                                x1: ((bounds.origin.x.0 + bounds.size.width.0) * scale) as f64,
+-                                y1: ((bounds.origin.y.0 + bounds.size.height.0) * scale) as f64,
+-                            });
+-                            self.element.write_a11y_info(&mut node);
+-                            window.a11y.node_bounds.insert(node_id, bounds);
+-                            pushed_a11y_node = window.a11y.nodes.push(node_id, node);
+-                            #[cfg(debug_assertions)]
+-                            if pushed_a11y_node {
+-                                let view = window
+-                                    .a11y
+-                                    .view_type_names
+-                                    .get(&window.current_view())
+-                                    .copied();
+-                                let source_location = self.element.source_location();
+-                                window.a11y.nodes.record_node_info(
+-                                    node_id,
+-                                    crate::window::a11y::debug::NodeDebugInfo {
+-                                        synthetic: false,
+-                                        view,
+-                                        element_id: global_id.0.last().map(|id| format!("{id:?}")),
+-                                        source_location,
+-                                    },
+-                                );
+-                            }
+-                        }
+-                    }
+-                }
++                let pushed_a11y_node =
++                    self.begin_a11y_prepaint(global_id.as_ref(), bounds, window);
+@@ -417,23 +545 @@
+-                    if let Some(global_id) = global_id.as_ref() {
+-                        #[cfg(debug_assertions)]
+-                        let creator = crate::window::a11y::debug::NodeCreator {
+-                            view: window
+-                                .a11y
+-                                .view_type_names
+-                                .get(&window.current_view())
+-                                .copied(),
+-                            element_id: global_id.0.last().map(|id| format!("{id:?}")),
+-                            source_location: self.element.source_location(),
+-                        };
+-                        let mut builder = A11ySubtreeBuilder::new(
+-                            global_id.accesskit_node_id(),
+-                            &mut window.a11y.nodes,
+-                        );
+-                        #[cfg(debug_assertions)]
+-                        {
+-                            builder = builder.with_creator(creator);
+-                        }
+-                        self.element
+-                            .a11y_synthetic_children(&mut prepaint, &mut builder);
+-                    }
+-                    window.a11y.nodes.pop();
++                    self.end_a11y_prepaint(global_id.as_ref(), &mut prepaint, window);
+@@ -558,0 +665,8 @@
 +    fn root_layout_id(&self) -> Option<LayoutId> {
 +        match &self.phase {
 +            ElementDrawPhase::RequestLayout { layout_id, .. }
@@ -5614,7 +5760,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..8dd9a6960d4284ccf37912991ba417a2
 +        }
 +    }
 +
-@@ -629,0 +721,20 @@
+@@ -629,0 +744,20 @@
 +        // KaminIDE patch: собиратель `PaintLast` проходит насквозь только
 +        // обычные коробки и свои метки; любой другой элемент может рисовать
 +        // в особом контексте (фрагменты, подложка, преобразование) — его

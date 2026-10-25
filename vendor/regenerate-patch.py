@@ -31,7 +31,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "gpui": [
-        "Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns.",
+        "Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns. Isolate accessibility-node construction and completion from recursive prepaint frames.",
         "Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.",
         "Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.",
         "Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).",
