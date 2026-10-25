@@ -1,4 +1,4 @@
-"""ADR3 field/access inventory; --check verifies the checked-in snapshot.
+"""ADR3 on-demand, private field/access snapshot (not a CI baseline).
 
 This is a conservative *source* census, not type inference or runtime frequency.
 Every token matching a field is retained (including macros/initializers and
@@ -106,38 +106,23 @@ def census():
                 "field_source_sha256": hashlib.sha256(FIELDS.read_text(encoding="utf-8").encode()).hexdigest(),
                 "limitations": "Conservative token census; same-name false positives; whole-value writes in APIs; not runtime counts",
                 "files": {name: hashlib.sha256(data.encode()).hexdigest() for name, data in outputs.items()}}
-    outputs["identity.json"] = json.dumps({
-        "style": {"owner": "SharedStyle::computed / materialize::Materialized",
-                  "key": "Rc allocation identity plus font generation and viewport inputs",
-                  "inheritance": "element computed parent; marks.style_parent / anonymous_wrapper",
-                  "restyle": "replace slot; retain old Rc readers; never identify by used box"},
-        "box": {"owner": "BoxStyle and GPUI layout object",
-                "key": "self_node/cb_node/anchor_key and frame-local construction context",
-                "cardinality": "element may create several boxes; anonymous box has no element style"},
-        "fragment": {"owner": "layout/fragment types and GPUI request_layout/prepaint",
-                     "key": "F2 fragment/token/attempt context, not style allocation or DOM node",
-                     "cardinality": "one box may yield multiple fragments; used geometry belongs to attempt/result"},
-        "boundaries": ["style -> box context is not inheritance", "computed operands survive used resolution", "no identity or algorithms changed by A00"]
-    }, ensure_ascii=False, indent=2) + "\n"
+    outputs["identity.json"] = (OUT / "identity.json").read_text(encoding="utf-8")
     outputs["index.json"] = json.dumps(metadata, ensure_ascii=False, indent=2) + "\n"
     return outputs
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--snapshot", type=Path, required=True,
+                        help="New private directory outside the repository")
     args = parser.parse_args()
+    output = args.snapshot.resolve()
+    if output == ROOT or ROOT in output.parents:
+        parser.error("full snapshots belong outside the repository")
+    output.mkdir(parents=True, exist_ok=False)
     outputs = census()
-    if args.check:
-        stale = [name for name, data in outputs.items()
-                 if not (OUT / name).exists() or (OUT / name).read_text(encoding="utf-8") != data]
-        stale += sorted({p.name for p in OUT.iterdir()} - set(outputs))
-        if stale:
-            raise SystemExit("Stale computed manifest: " + ", ".join(stale))
-    else:
-        OUT.mkdir(exist_ok=True)
-        for name, data in outputs.items():
-            (OUT / name).write_text(data, encoding="utf-8", newline="\n")
+    for name, data in outputs.items():
+        (output / name).write_text(data, encoding="utf-8", newline="\n")
     print(outputs["index.json"], end="")
 
 
