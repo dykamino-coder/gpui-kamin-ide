@@ -69,3 +69,37 @@ fn published_probe_keeps_inline_and_positioned_paint_after_floats(cx: &mut gpui:
         );
     }
 }
+
+#[gpui::test]
+fn published_positioned_root_keeps_its_phase_without_collector(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
+    for wrappers in [1, 2] {
+        gpui::paint_collect_reset();
+        let log = Rc::new(RefCell::new(Vec::new()));
+        let trace = |phase| {
+            PaintOnly(Trace {
+                phase,
+                log: log.clone(),
+            })
+            .hooked()
+        };
+        let mut published = gpui::PaintLast::new(trace("positioned")).into_any_element();
+        for _ in 0..wrappers {
+            let (_, escaped) = Positioning::default().retain().isolate();
+            published = escaped.wrap(published);
+        }
+        // Закрытый собиратель у колонки: Div сам откладывает PaintLast.
+        // Публикация не должна превратить его в обычного раннего ребёнка.
+        let root = gpui::div().child(published).child(trace("normal"));
+        cx.draw(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(100.), gpui::px(100.)),
+            |_, _| root,
+        );
+        assert_eq!(
+            *log.borrow(),
+            ["normal", "positioned"],
+            "{wrappers} wrappers"
+        );
+    }
+}

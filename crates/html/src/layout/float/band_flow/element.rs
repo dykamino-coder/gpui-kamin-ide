@@ -165,7 +165,7 @@ impl Hooks for BandFlow {
             clamp.lift(id, measured);
         }
         if let Some(f) = &self.fragment {
-            f.node.record(id);
+            f.node.record(id, window);
         }
         (id, id)
     }

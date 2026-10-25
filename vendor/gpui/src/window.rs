@@ -75,6 +75,10 @@ mod css_fill_transform;
 mod plane3d;
 mod render_context;
 mod box_edges;
+// KaminIDE patch: settle layout-dependent style inputs before painting.
+mod layout_inputs;
+use layout_inputs::PrepaintRoots;
+pub use layout_inputs::LayoutInputId;
 pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
@@ -1280,6 +1284,9 @@ pub struct Window {
     long_press_timer: Option<Task<()>>,
     long_press_capture: Option<EntityId>,
     pub(crate) refreshing: bool,
+    // KaminIDE patch: a completed layout changed an input to style/layout.
+    layout_retry: bool,
+    layout_inputs: Option<FxHashSet<LayoutInputId>>,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
     /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
@@ -2224,6 +2231,8 @@ impl Window {
             long_press_timer: None,
             long_press_capture: None,
             refreshing: false,
+            layout_retry: false,
+            layout_inputs: None,
             activation_observers: SubscriberSet::new(),
             focus: None,
             // KaminIDE patch: см. `Window::focus_visible`
@@ -3784,9 +3793,6 @@ impl Window {
         self.tooltip_bounds.take();
 
         self.a11y.sync_active_flag();
-        if self.a11y.is_active() {
-            self.a11y.begin_frame();
-        }
 
         let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
         let root_size = {
@@ -3811,46 +3817,18 @@ impl Window {
         // fill the window when their size is `auto`.
         // KaminIDE patch: стоимость фаз кадра (`frame_perf`).
         let _phase_started = std::time::Instant::now();
-        let scale_factor = self.scale_factor();
-        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
-        let root_layout_id = root_element.request_layout(self, cx);
-        self.layout_engine
-            .as_mut()
-            .unwrap()
-            .stretch_auto_size_to_fill(root_layout_id, root_size, scale_factor);
-        root_element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
+        let PrepaintRoots {
+            mut root_element,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_element,
+            prompt_element,
+            active_drag_element,
+            tooltip_element,
+        } = self.prepaint_roots_with_layout_inputs(root_size, _inspector_width, cx);
         crate::frame_perf::PREPAINT_US.fetch_add(
             _phase_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
-
-        #[cfg(any(feature = "inspector", debug_assertions))]
-        let inspector_element = self.prepaint_inspector(_inspector_width, cx);
-
-        self.prepaint_deferred_draws(cx);
-
-        let mut prompt_element = None;
-        let mut active_drag_element = None;
-        let mut tooltip_element = None;
-        if let Some(prompt) = self.prompt.take() {
-            let mut element = prompt.view.any_view().into_any_element();
-            let prompt_layout_id = element.request_layout(self, cx);
-            self.layout_engine
-                .as_mut()
-                .unwrap()
-                .stretch_auto_size_to_fill(prompt_layout_id, root_size, scale_factor);
-            element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
-            prompt_element = Some(element);
-            self.prompt = Some(prompt);
-        } else if let Some(active_drag) = cx.active_drag.take() {
-            let mut element = active_drag.view.clone().into_any_element();
-            let offset = self.mouse_position() - active_drag.cursor_offset;
-            element.prepaint_as_root(offset, AvailableSpace::min_size(), self, cx);
-            active_drag_element = Some(element);
-            cx.active_drag = Some(active_drag);
-        } else {
-            tooltip_element = self.prepaint_tooltip(cx);
-        }
 
         let _hit_started = std::time::Instant::now();
         self.mouse_hit_test = self.next_frame.hit_test(self.mouse_position);
@@ -6311,6 +6289,16 @@ impl Window {
     /// KaminIDE patch: layout parent identity, independent of physical coordinates.
     pub fn parent_layout_id(&self, child: LayoutId) -> Option<LayoutId> {
         self.layout_engine.as_ref()?.parent_layout_id(child)
+    }
+
+    /// KaminIDE patch: registration identity survives neither a frame clear nor a nested engine.
+    pub fn layout_tree_id(&self) -> crate::LayoutTreeId {
+        self.layout_engine.as_ref().expect("layout engine during registration").layout_tree_id()
+    }
+
+    /// KaminIDE patch: final normal geometry excludes element/paint/transform offsets.
+    pub fn final_layout(&self, id: LayoutId, tree: crate::LayoutTreeId) -> Option<crate::FinalLayout> {
+        self.layout_engine.as_ref()?.final_layout(id, tree, self.scale_factor())
     }
 
     /// KaminIDE patch: реальные линии родителя-flex и начало его border box.

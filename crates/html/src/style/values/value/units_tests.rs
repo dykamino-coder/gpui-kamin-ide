@@ -134,15 +134,18 @@ fn container_units_resolve_against_the_container() {
 fn size_container_exposes_its_content_box() {
     use crate::style::computed::Computed;
     let mut c = Computed {
-        container_size_query: true,
+        container_type: crate::style::computed::ContainerType::Size,
         contain_size: Some(true),
         width: Some(Len::Px(400.0)),
         height: Some(Len::Px(300.0)),
+        cq_size: (Some(350.0), Some(250.0)),
         ..Computed::default()
     };
-    assert_eq!(c.container_box_for_children(), (Some(400.0), Some(300.0)));
+    assert_eq!(c.container_box_for_children(), (Some(350.0), Some(250.0)));
     c.contain_size = None;
-    assert_eq!(c.container_box_for_children(), (Some(400.0), None));
-    c.container_size_query = false;
+    c.container_type = crate::style::computed::ContainerType::InlineSize;
+    c.contain_inline_size = Some(true);
+    assert_eq!(c.container_box_for_children(), (Some(350.0), None));
+    c.container_type = crate::style::computed::ContainerType::Normal;
     assert_eq!(c.container_box_for_children(), (None, None));
 }

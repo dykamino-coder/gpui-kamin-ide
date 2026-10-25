@@ -466,12 +466,6 @@ impl Element for Img {
                     if data.frame_count() == 0 {
                         return;
                     }
-                    let new_bounds = image_style::position(
-                        self.style.object_fit.get_bounds(bounds, data.size(layout_state.frame_index)),
-                        bounds,
-                        self.style.object_position,
-                        window.rem_size(),
-                    );
                     let exact_bounds = layout_state.natural_bounds.map(|exact| {
                         image_style::position(
                             self.style
@@ -484,7 +478,7 @@ impl Element for Img {
                     });
                     sampling::paint(
                         window,
-                        new_bounds,
+                        bounds,
                         exact_bounds,
                         style,
                         data,

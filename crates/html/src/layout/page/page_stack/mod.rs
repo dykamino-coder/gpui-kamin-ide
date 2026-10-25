@@ -19,6 +19,7 @@ mod planning;
 mod regrow;
 mod resume;
 mod sheets;
+mod spaces;
 
 /// Лист страницы (css-page-3 §page-model): полный размер, поля, рамка и
 /// отступы (верх/право/низ/лево), фон листа, канвас документа и page area —
@@ -63,6 +64,7 @@ impl PageGeom {
 }
 
 mod kid;
+pub(crate) use kid::LeafPaint;
 pub use kid::PageKid;
 
 /// Геометрия листа по его номеру (с нуля) и имени страницы: каскад
@@ -132,6 +134,7 @@ pub struct PageStack {
     pub(crate) canvas_els: Vec<(usize, AnyElement)>,
     /// Block axis of the root writing mode (`page_stack/axis.rs`).
     pub(crate) axis: crate::layout::fragment::types::StackAxis,
+    principal: crate::style::computed::writing_mode::WritingMode,
 }
 
 impl PageStack {
@@ -163,6 +166,7 @@ impl PageStack {
             canvas_layer: None,
             canvas_els: Vec::new(),
             axis: crate::layout::fragment::types::StackAxis::Horizontal,
+            principal: Default::default(),
         }
     }
 
