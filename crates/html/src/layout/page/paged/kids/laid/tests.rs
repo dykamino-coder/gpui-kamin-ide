@@ -24,7 +24,7 @@ fn empty_page_grid_uses_native_group_without_estimated_shape() {
     assert!(blocks.grid.as_ref().unwrap().items.is_empty());
 }
 
-fn authored(nodes: &[Node]) -> &Element {
+pub(super) fn authored(nodes: &[Node]) -> &Element {
     fn find(nodes: &[Node]) -> Option<&Element> {
         nodes.iter().find_map(|n| match n {
             Node::Element(e) if e.tag == "div" => Some(e),

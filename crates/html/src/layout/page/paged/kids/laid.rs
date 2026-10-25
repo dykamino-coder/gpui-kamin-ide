@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::{fragment_box, fragment_margins};
-use crate::layout::fragment::flow::{empty_floats, exports_floats, independent_copy};
+use crate::layout::fragment::flow::{copy_flow, empty_floats, exports_floats, regrow_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::BoxStyle;
 
@@ -12,6 +12,17 @@ pub(super) struct Group {
     pub(super) margins: (f32, f32, f32),
     pub(super) blocks: bool,
     pub(super) float_extent: bool,
+}
+
+impl Group {
+    pub(super) fn break_edges(&mut self, before: bool, after: bool) {
+        let [Node::Element(root)] = self.nodes.as_mut_slice() else {
+            unreachable!("prepared group retains one measured root")
+        };
+        // Края общего пробега принадлежат исходным коробкам, включая float.
+        root.style.used_mut().break_before_force = before;
+        root.style.used_mut().break_after_force = after;
+    }
 }
 
 /// Вертикальная физическая копия; логическое дерево нужно только для полей
@@ -62,6 +73,14 @@ pub(super) fn group(
     top: f32,
     vcx: ValueCx<'_>,
 ) -> Option<Group> {
+    // Общий пробег обтекания — одна измеряемая копия, как у колонок.
+    // Одиночный float сохраняет собственный корень и независимый поток.
+    let flow = if nodes.len() > 1 {
+        copy_flow(nodes)
+    } else {
+        std::borrow::Cow::Borrowed(nodes)
+    };
+    let nodes = flow.as_ref();
     let [Node::Element(e)] = nodes else {
         return None;
     };
@@ -71,9 +90,9 @@ pub(super) fn group(
             .iter()
             .any(|n| matches!(n, Node::Element(e) if exports_floats(e)));
     let eligible = if floated {
-        crate::layout::fragment::flow::page_copy(e, false)
+        crate::layout::fragment::flow::page_copy(e, true)
     } else {
-        independent_copy(e) || empty_floats(e) || super::leaf::eligible(e)
+        regrow_copy(e) || empty_floats(e) || super::leaf::eligible(e)
     };
     if !eligible {
         return None;
@@ -95,5 +114,7 @@ pub(super) fn group(
     })
 }
 
+#[cfg(test)]
+mod float_runs;
 #[cfg(test)]
 mod tests;
