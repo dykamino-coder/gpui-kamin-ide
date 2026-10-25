@@ -7,6 +7,13 @@ use crate::layout::fragment::flow::{
 use crate::tolerance::COORD_EPS;
 
 impl Regrow {
+    pub(crate) fn float_min(&self) -> f32 {
+        self.floats
+            .iter()
+            .map(FloatGeometry::balance_min)
+            .fold(0.0, f32::max)
+    }
+
     pub(crate) fn fragment_growths(
         &self,
         blocks: &BlockBox,
