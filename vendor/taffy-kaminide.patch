@@ -392,7 +392,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..a71fe2ebe9c7abcf925e9793a21535e5
 +}
 diff --git a/vendor/taffy/src/compute/block_flow.rs b/vendor/taffy/src/compute/block_flow.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6cc40c2e633e0988ea86d03591bb2e3e9c033884
+index 0000000000000000000000000000000000000000..9616c4132c83698f862cd60dddcbf8cefb963738
 --- /dev/null
 +++ b/vendor/taffy/src/compute/block_flow.rs
 @@ -0,0 +1,59 @@
@@ -422,6 +422,8 @@ index 0000000000000000000000000000000000000000..6cc40c2e633e0988ea86d03591bb2e3e
 +    }
 +}
 +
++/// Whether `flow` and every child flow are the default horizontal LTR mapping, so the
++/// logical-axis adapter can be bypassed without changing results.
 +fn identity(tree: &impl LayoutBlockContainer, node: NodeId, flow: BlockFlow) -> bool {
 +    if flow != BlockFlow::default()
 +        || tree.get_core_container_style(node).direction() != crate::Direction::Ltr
@@ -431,9 +433,7 @@ index 0000000000000000000000000000000000000000..6cc40c2e633e0988ea86d03591bb2e3e
 +    tree.child_ids(node).all(|child| {
 +        let style = tree.get_core_container_style(child);
 +        style.direction() == crate::Direction::Ltr
-+            && style.block_flow().is_none_or(|child_flow| {
-+                !child_flow.vertical && !child_flow.block_reverse
-+            })
++            && style.block_flow().map_or(true, |child_flow| !child_flow.vertical && !child_flow.block_reverse)
 +    })
 +}
 +
@@ -14490,7 +14490,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..bac14691b8d09af16d07236505e057ff8add8d2a
+index 1366d8349f1668c19f04bd2d85e88422918b6604..87153dbc8146f989d58412b1877f0ddc50eec0a7
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -14751,11 +14751,12 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..bac14691b8d09af16d07236505e057ff
 @@ -355 +295 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +301,12 @@
+@@ -360,0 +301,13 @@
 +}
 +
 +// KaminIDE patch: cloning/moving the large output is a completion operation,
 +// separate from the recursive cache-miss frame.
++/// Stores a completed layout result in the node cache.
 +#[inline(never)]
 +fn store_cached_layout<Tree: CacheTree + ?Sized>(
 +    tree: &mut Tree,
@@ -17067,7 +17068,7 @@ index 0000000000000000000000000000000000000000..57982f945270c6761605269a2604a293
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/cache.rs b/vendor/taffy/src/tree/cache.rs
-index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7c887c2db
+index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..d3e461cd103398c818071325d92acbd1b4c07b80
 --- a/vendor/taffy/src/tree/cache.rs
 +++ b/vendor/taffy/src/tree/cache.rs
 @@ -139 +139,3 @@
@@ -17082,18 +17083,23 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7
 +        let intrinsic_size = matches!(input.sizing_mode, SizingMode::IntrinsicSize) as u8;
 @@ -173,0 +179 @@
 +                | (intrinsic_size * Self::INTRINSIC_SIZE_BIT)
-@@ -210,0 +217,30 @@
+@@ -210,0 +217,36 @@
 +/// Size-only results retain the margin information required by their parent.
 +#[derive(Debug, Clone, PartialEq)]
 +#[cfg_attr(feature = "serde", derive(Serialize))]
 +struct Measurement {
++    /// Border-box size of the measured node.
 +    size: Size<f32>,
++    /// Collapsible margins at the block-start edge.
 +    top_margin: CollapsibleMarginSet,
++    /// Collapsible margins at the block-end edge.
 +    bottom_margin: CollapsibleMarginSet,
++    /// Whether the node collapses through (empty for margin collapsing).
 +    margins_can_collapse_through: bool,
 +}
 +
 +impl Measurement {
++    /// Captures the size and margin facts of a layout output.
 +    fn new(output: &LayoutOutput) -> Self {
 +        Self {
 +            size: output.size,
@@ -17103,6 +17109,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7
 +        }
 +    }
 +
++    /// Rebuilds a size-only layout output from the stored facts.
 +    fn output(&self) -> LayoutOutput {
 +        LayoutOutput {
 +            top_margin: self.top_margin,
@@ -17113,10 +17120,10 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7
 +    }
 +}
 +
-@@ -218 +254 @@
+@@ -218 +260 @@
 -    measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
 +    measure_entries: [Option<CacheEntry<Measurement>>; CACHE_SIZE],
-@@ -237,0 +274,7 @@
+@@ -237,0 +280,7 @@
 +    /// The most recent full layout output, never an intrinsic size-only result.
 +    pub(crate) fn performed_layout_output(&self) -> Option<LayoutOutput> {
 +        self.final_layout_entry
@@ -17124,10 +17131,10 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7
 +            .map(|entry| entry.content.clone())
 +    }
 +
-@@ -241 +284 @@
+@@ -241 +290 @@
 -        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
 +        const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
-@@ -260,3 +303,5 @@
+@@ -260,3 +309,5 @@
 -            RunMode::PerformLayout => {
 -                self.final_layout_entry.as_ref().filter(|entry| entry.key == key).map(|e| e.content.clone())
 -            }
@@ -17136,10 +17143,10 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7
 +                .as_ref()
 +                .filter(|entry| entry.key == key)
 +                .map(|e| e.content.clone()),
-@@ -272 +317 @@
+@@ -272 +323 @@
 -                        return Some(LayoutOutput::from_outer_size(entry.content));
 +                        return Some(entry.content.output());
-@@ -303,10 +347,0 @@
+@@ -303,10 +353,0 @@
 -                // Measure entries only store the size, and cache hits are reconstructed with
 -                // `LayoutOutput::from_outer_size`, which resets the margin-collapse metadata
 -                // (`top_margin`, `bottom_margin`, `margins_can_collapse_through`). Results that
@@ -17150,16 +17157,16 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7
 -                {
 -                    return;
 -                }
-@@ -317 +352 @@
+@@ -317 +358 @@
 -                    self.measure_entries[index].as_mut().unwrap().content = layout_output.size;
 +                    self.measure_entries[index].as_mut().unwrap().content = Measurement::new(&layout_output);
-@@ -329 +364 @@
+@@ -329 +370 @@
 -                self.measure_entries[entry_index] = Some(CacheEntry { key, content: layout_output.size });
 +                self.measure_entries[entry_index] = Some(CacheEntry { key, content: Measurement::new(&layout_output) });
-@@ -348 +383 @@
+@@ -348 +389 @@
 -        const NONE_MEASURE_ENTRY: Option<CacheEntry<Size<f32>>> = None;
 +        const NONE_MEASURE_ENTRY: Option<CacheEntry<Measurement>> = None;
-@@ -419,12 +454,15 @@
+@@ -419,12 +460,15 @@
 -    fn measurements_with_margin_collapse_metadata_are_not_cached() {
 -        let mut cache = Cache::new();
 -
@@ -17187,7 +17194,7 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..4b76882fec9472b55d2ddfdccdea4bd7
 +        cache.store(&input(1.0), output(3.0));
 +        assert_eq!(cache.get(&input(1.0)), Some(output(3.0)));
 +        assert_eq!(cache.measure_entries.iter().flatten().count(), 2);
-@@ -555,0 +594,70 @@
+@@ -555,0 +600,70 @@
 +
 +#[cfg(test)]
 +mod kamin_cache_regressions {
@@ -24635,7 +24642,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b0ca5ed48
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..735b64d88fca0027c5da95acd4c148acb238dd0e
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,7 @@
@@ -24856,11 +24863,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 -
 -            output
 +            tree.finish_child_layout(node_id, inputs.run_mode, output)
-@@ -342,0 +519,18 @@
+@@ -342,0 +519,19 @@
 +    }
 +
 +    // KaminIDE patch: output adaptation and OOF temporaries must not live
 +    // in the native frame which waits for recursive container layout.
++    /// Adapts a child layout output and records it for the node.
 +    #[inline(never)]
 +    fn finish_child_layout(
 +        &mut self,
@@ -24875,12 +24883,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +595,2 @@
+@@ -401,2 +596,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +715,34 @@
+@@ -520,0 +716,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -24915,7 +24923,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].flex_fragmentation
 +    }
-@@ -546,0 +775,16 @@
+@@ -546,0 +776,16 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.clone()
 +    }
@@ -24932,7 +24940,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 +        }
 +    }
 +
-@@ -586,0 +831,25 @@
+@@ -586,0 +832,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -24958,7 +24966,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 +        })
 +    }
 +
-@@ -606 +875,18 @@
+@@ -606 +876,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -24978,13 +24986,13 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -666,0 +953,5 @@
+@@ -666,0 +954,5 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
 +            .unwrap_or_else(|error| error.into_inner())
 +            .clear();
-@@ -916,0 +1208,8 @@
+@@ -916,0 +1209,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -24993,7 +25001,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1276,6 @@
+@@ -977 +1277,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -25001,10 +25009,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..a1ab507029b8354f359c49e542a23b9b
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -988 +1292 @@
+@@ -988 +1293 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1307,3 @@
+@@ -1003 +1308,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)

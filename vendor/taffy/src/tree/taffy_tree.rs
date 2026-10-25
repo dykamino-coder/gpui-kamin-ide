@@ -520,6 +520,7 @@ where
 
     // KaminIDE patch: output adaptation and OOF temporaries must not live
     // in the native frame which waits for recursive container layout.
+    /// Adapts a child layout output and records it for the node.
     #[inline(never)]
     fn finish_child_layout(
         &mut self,

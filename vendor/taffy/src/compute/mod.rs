@@ -302,6 +302,7 @@ where
 
 // KaminIDE patch: cloning/moving the large output is a completion operation,
 // separate from the recursive cache-miss frame.
+/// Stores a completed layout result in the node cache.
 #[inline(never)]
 fn store_cached_layout<Tree: CacheTree + ?Sized>(
     tree: &mut Tree,

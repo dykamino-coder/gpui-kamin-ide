@@ -218,13 +218,18 @@ pub(crate) struct CacheEntry<T> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 struct Measurement {
+    /// Border-box size of the measured node.
     size: Size<f32>,
+    /// Collapsible margins at the block-start edge.
     top_margin: CollapsibleMarginSet,
+    /// Collapsible margins at the block-end edge.
     bottom_margin: CollapsibleMarginSet,
+    /// Whether the node collapses through (empty for margin collapsing).
     margins_can_collapse_through: bool,
 }
 
 impl Measurement {
+    /// Captures the size and margin facts of a layout output.
     fn new(output: &LayoutOutput) -> Self {
         Self {
             size: output.size,
@@ -234,6 +239,7 @@ impl Measurement {
         }
     }
 
+    /// Rebuilds a size-only layout output from the stored facts.
     fn output(&self) -> LayoutOutput {
         LayoutOutput {
             top_margin: self.top_margin,
