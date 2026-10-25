@@ -35,6 +35,27 @@ fn build(
     opts: &RenderOpts,
     target: Option<stretch::Target>,
 ) -> Option<AnyElement> {
+    reblessive::Stack::new()
+        .enter(|stk| build_stack(stk, e, inherited, opts, target))
+        .finish()
+}
+
+pub(crate) async fn element_stack(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> Option<AnyElement> {
+    build_stack(stk, e, inherited, opts, None).await
+}
+
+async fn build_stack(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+    target: Option<stretch::Target>,
+) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     if !e.style.used().mathml || e.style.used().math_layout.is_none() {
         return None;
@@ -76,40 +97,36 @@ fn build(
             },
         )
     } else {
-        let children =
-            e.children
-                .iter()
-                .filter_map(|node| match node {
-                    Node::Text(text) if text.trim().is_empty() => None,
-                    Node::Text(_) => None, // Core ignores direct text outside token elements.
-                    Node::Element(child)
-                        if child.style.used().display
-                            == Some(crate::style::computed::Display::None) =>
-                    {
-                        None
-                    }
-                    Node::Element(child) if child.tag == "mprescripts" => None,
-                    Node::Element(child) => {
-                        let core = operators::core(child, &style, opts);
-                        factories.push(core.filter(|op| op.flags & 1 != 0).map(|op| {
-                            let child = child.clone();
-                            let style = style.clone();
-                            let opts = opts.clone();
-                            let factory: stretch::Factory = Box::new(move |target| {
-                                build(&child, &style, &opts, Some(target)).unwrap_or_else(|| {
-                                    opts.cx.contracts.build.element(&child, &style, &opts)
-                                })
-                            });
-                            (op.flags, factory)
-                        }));
-                        margins.push(margins_px(&box_style(&style, &child.style, vcx), opts));
-                        let forwarded = if core.is_some() { target } else { None };
-                        Some(build(child, &style, opts, forwarded).unwrap_or_else(|| {
-                            opts.cx.contracts.build.element(child, &style, opts)
-                        }))
-                    }
-                })
-                .collect();
+        let mut children = Vec::new();
+        for node in &e.children {
+            let Node::Element(child) = node else { continue };
+            if child.style.used().display == Some(crate::style::computed::Display::None)
+                || child.tag == "mprescripts"
+            {
+                continue;
+            }
+            let core = operators::core(child, &style, opts);
+            factories.push(core.filter(|op| op.flags & 1 != 0).map(|op| {
+                let child = child.clone();
+                let style = style.clone();
+                let opts = opts.clone();
+                let factory: stretch::Factory = Box::new(move |target| {
+                    build(&child, &style, &opts, Some(target))
+                        .unwrap_or_else(|| opts.cx.contracts.build.element(&child, &style, &opts))
+                });
+                (op.flags, factory)
+            }));
+            margins.push(margins_px(&box_style(&style, &child.style, vcx), opts));
+            let forwarded = if core.is_some() { target } else { None };
+            let built = stk
+                .run(|stk| build_stack(stk, child, &style, opts, forwarded))
+                .await;
+            let built = match built {
+                Some(built) => built,
+                None => opts.cx.contracts.build.element(child, &style, opts),
+            };
+            children.push(built);
+        }
         (children, parameters::kind(e, &style, opts))
     };
     let content = Content {

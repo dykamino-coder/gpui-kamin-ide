@@ -34,7 +34,10 @@ pub(crate) async fn dispatch_element(
 ) -> AnyElement {
     let st = e.style.used();
     let vcx = opts.cx.vcx();
-    if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
+    if let Some(math) = stk
+        .run(|stk| crate::layout::mathml::element_stack(stk, e, inherited, opts))
+        .await
+    {
         return math;
     }
     // Вложенный документ имеет приоритет перед картинкой и запасным содержимым.
