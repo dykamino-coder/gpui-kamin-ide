@@ -144,7 +144,12 @@ pub(crate) fn band_kids(
             None
         };
         let mut nest: Option<Nest> = None;
-        let own_opts = super::continuation::child(opts, idx + 1);
+        let own_opts = super::continuation::child(
+            opts,
+            idx + 1,
+            c,
+            crate::layout::fragment::types::StackAxis::of(inherited.wm()),
+        );
         let own_flow = own_opts.frag.watch.as_ref().map(|w| w.flow.clone());
         let opts = &own_opts;
         let kind = match band_kid_kind(inherited, opts, em, wm, vert, n, c, float, &mut nest) {
@@ -181,6 +186,7 @@ pub(crate) fn band_kids(
             });
         kids.push(Kid {
             flow: own_flow,
+            watched: opts.frag.watch.clone(),
             flow_key: idx + 1,
             kind,
             node_id: c.node_id,

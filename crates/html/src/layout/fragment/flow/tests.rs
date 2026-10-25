@@ -2,6 +2,33 @@
 use super::*;
 
 #[test]
+fn clearance_does_not_consume_a_parallel_float() {
+    for (top, margins, resume) in [
+        (10., [0., 0.], 10.),
+        (40., [10., 0.], 30.),
+        (10., [-20., -20.], 10.),
+    ] {
+        let geometry = FlowGeometry {
+            cuts: vec![(10., 250.)],
+            floats: vec![FloatGeometry {
+                id: 1,
+                anchor: top - margins[0],
+                top,
+                bottom: 250.,
+                margins,
+                first_break: Some(top),
+            }],
+            ..Default::default()
+        };
+        let breaks = blocks::BlockBreaks::default().finish(geometry, 260.);
+        assert_eq!(breaks.cuts, vec![(10., resume)]);
+        // Float остаётся параллельным: его высота не запрещает разрыв
+        // обычного потока и не превращается в монолит.
+        assert!(breaks.solid.is_empty());
+    }
+}
+
+#[test]
 fn nested_probe_preserves_the_original_line_growth_address() {
     let growth = std::rc::Rc::new(std::cell::RefCell::new(vec![0.0; 3]));
     let source = FlowGeometry {

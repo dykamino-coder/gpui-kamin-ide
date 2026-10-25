@@ -95,7 +95,11 @@ pub(super) fn measure(
                 };
                 // Таблица: высота — её разложенная обёртка (ряды,
                 // подписи, заданная высота), а не оценка.
-                let geometry = w.laid_axis(origin, frame, axis, window);
+                let mut local_flow = crate::layout::fragment::flow::FlowGeometry::default();
+                local_flow.append(&flow, -lift);
+                let geometry = w
+                    .laid_axis(origin, frame, axis, window)
+                    .with_flow(&local_flow);
                 let flex = !geometry.flexes.is_empty();
                 let regrown = k.regrow.as_ref().is_some_and(|r| r.laid_h);
                 if let Some(root) = w
@@ -124,6 +128,8 @@ pub(super) fn measure(
                     k.reach = (reach > h + 0.01).then_some(reach);
                 }
                 if let Some(r) = k.regrow.as_mut() {
+                    r.floats = local_flow.floats;
+                    r.float_leads = local_flow.float_leads;
                     r.laid = geometry;
                     r.space = w.space(window);
                 }

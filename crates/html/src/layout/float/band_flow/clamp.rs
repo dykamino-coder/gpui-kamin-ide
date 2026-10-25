@@ -41,6 +41,6 @@ pub(super) fn nest(kid: &Kid, cb: f32, avail: f32, h: f32, p: &mut Probe) -> Mea
     let build = kid.build.clone();
     let build: super::Build =
         Rc::new(move |cb, avail, shapes, _, inline| build(cb, avail, shapes, Some(h), inline));
-    super::probe_of(kid.kind, &build, cb, avail, None, p);
+    super::probe_of(kid.kind, &build, cb, avail, None, None, p);
     p.last_clamp.clone()
 }

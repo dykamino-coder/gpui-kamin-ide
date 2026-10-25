@@ -6,6 +6,18 @@ use crate::tolerance::COORD_EPS;
 
 impl FlowGeometry {
     pub(crate) fn normalize(&mut self) {
+        // Clearance не расходует содержимое параллельного float (§2.1
+        // css-break-3). Пустой зазор можно отбросить лишь до его margin-box;
+        // отрицательное поле не делает border-box пустым.
+        for (need, resume) in &mut self.cuts {
+            for f in &self.floats {
+                let start = f.top.min(f.top - f.margins[0]);
+                let end = f.bottom.max(f.bottom + f.margins[1]);
+                if start < *resume - COORD_EPS && end > *need + COORD_EPS {
+                    *resume = resume.min(start.max(*need));
+                }
+            }
+        }
         self.cuts.retain(|&(a, _)| {
             a.is_finite()
                 && a > COORD_EPS

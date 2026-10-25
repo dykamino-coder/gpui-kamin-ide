@@ -22,10 +22,20 @@ impl PageStack {
                     let Some(m) = self.measured.get(&(index, f.copy)) else {
                         continue;
                     };
-                    let local = growths(blocks, &m.kid, &own.laid, f, heights[f.col]);
+                    let mut local = growths(blocks, &m.kid, &own.laid, f, heights[f.col]);
+                    local.extend(own.float_growths(
+                        f.from,
+                        f.from + heights[f.col] - f.y,
+                        heights[f.col],
+                    ));
                     dirty |= own.push_many(local);
                 } else if grows.is_empty() {
                     grows = growths(blocks, &kids[index], &r.laid, f, heights[f.col]);
+                    grows.extend(r.float_growths(
+                        f.from,
+                        f.from + heights[f.col] - f.y,
+                        heights[f.col],
+                    ));
                 }
             }
             if r.push_many(grows) {

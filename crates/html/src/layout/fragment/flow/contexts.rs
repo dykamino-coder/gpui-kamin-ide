@@ -8,11 +8,9 @@ impl FlowMeasure {
             .borrow_mut()
             .entry(key)
             .or_insert_with(|| {
-                Rc::new(if self.lines {
-                    Self::for_lines()
-                } else {
-                    Self::default()
-                })
+                // У независимого BFC свои строки и собственный resume token.
+                // Запрет экспорта строк родителя не отключает внутреннюю меру.
+                Rc::new(Self::for_lines())
             })
             .clone()
     }
