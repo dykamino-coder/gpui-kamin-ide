@@ -60,8 +60,12 @@ impl Regrow {
         height: f32,
     ) -> Vec<Growth> {
         let mut grows = super::flex_flow::growths(blocks, &self.laid, from, end, edge);
-        grows.extend(float_growths(&self.floats, from, edge, height));
+        grows.extend(self.float_growths(from, edge, height));
         grows
+    }
+
+    pub(crate) fn float_growths(&self, from: f32, edge: f32, height: f32) -> Vec<Growth> {
+        float_growths(&self.floats, from, edge, height)
     }
 }
 

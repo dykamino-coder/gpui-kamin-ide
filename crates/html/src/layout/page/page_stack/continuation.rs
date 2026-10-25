@@ -136,6 +136,8 @@ impl PageStack {
         let k = &mut self.kids[index];
         let original = k.regrow.as_ref()?.laid.clone();
         let original_space = k.regrow.as_ref()?.space;
+        let original_floats = k.regrow.as_ref()?.floats.clone();
+        let original_leads = k.regrow.as_ref()?.float_leads.clone();
         let main = k.watched.clone()?;
         let normal = main
             .blocks()
@@ -174,6 +176,8 @@ impl PageStack {
         k.watched = Some(main.clone());
         let fresh = std::mem::replace(&mut k.regrow.as_mut()?.laid, original);
         let fresh_space = std::mem::replace(&mut k.regrow.as_mut()?.space, original_space);
+        own.floats = std::mem::replace(&mut k.regrow.as_mut()?.floats, original_floats);
+        own.float_leads = std::mem::replace(&mut k.regrow.as_mut()?.float_leads, original_leads);
         let offset = if from <= COORD_EPS {
             0.0
         } else {

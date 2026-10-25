@@ -139,11 +139,13 @@ mod tests {
 
     #[test]
     fn nested_scopes_do_not_overwrite_another_float_paragraph_zero() {
-        let flow = FlowMeasure::for_lines();
+        let flow = FlowMeasure::default();
         let paragraphs = [paragraph(&[1, 2], 10.), paragraph(&[1, 3], 15.)];
         flow.resume_paragraphs(&paragraphs, 30.);
         let a = flow.context_path(&[1, 2]).unwrap();
         let b = flow.context_path(&[1, 3]).unwrap();
+        assert!(!flow.lines);
+        assert!(a.lines && b.lines);
         assert_eq!(a.paragraph_resume(0).get(), 3);
         assert_eq!(b.paragraph_resume(0).get(), 2);
         flow.rewind();

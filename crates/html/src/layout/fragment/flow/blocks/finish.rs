@@ -27,6 +27,7 @@ impl BlockBreaks {
         let mut g = FlowGeometry {
             cuts: self.cuts,
             solid: self.solid,
+            floats: lines.floats,
             ..Default::default()
         };
         g.cuts.extend(lines.cuts);

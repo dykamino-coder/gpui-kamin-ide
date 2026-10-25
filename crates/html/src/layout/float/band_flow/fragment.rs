@@ -148,6 +148,7 @@ mod tests {
     fn unused_block_size_is_fragmentable_unless_the_box_is_monolithic() {
         let mut kid = Kid {
             flow: None,
+            watched: None,
             flow_key: 0,
             node_id: 0,
             pagination_offset: 0.0,

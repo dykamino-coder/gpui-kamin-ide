@@ -75,7 +75,7 @@ pub(super) fn place_float(
         let walls = bands.set_walls(x0, x1);
         let shapes = bands.shapes(y);
         bands.set_walls(walls.0, walls.1);
-        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), p).1
+        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), None, p).1
     };
     // Строка флоата начинается под набранным до последнего
     // `<br>` (`floats-placement-vertical-004-ref`: «H<br>» и

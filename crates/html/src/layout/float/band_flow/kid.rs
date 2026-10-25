@@ -77,6 +77,7 @@ pub type GroupWrap = std::rc::Rc<dyn Fn(gpui::Div) -> gpui::AnyElement>;
 
 pub struct Kid {
     pub(crate) flow: Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasure>>,
+    pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     pub(crate) flow_key: usize,
     pub kind: Kind,
     /// Source identity for the canonical pagination recorder.
