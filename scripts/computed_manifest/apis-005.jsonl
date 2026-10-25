@@ -1,3 +1,5 @@
+["crates/html/src/interactive/forms/textarea/mod.rs",64,"fn natural(e: &Element, c: &Computed, vcx: ValueCx<'_>) -> [f32; 2] {"]
+["crates/html/src/interactive/forms/textarea/mod.rs",94,"fn gutters(c: &Computed) -> [f32; 2] {"]
 ["crates/html/src/interactive/forms.rs",28,"use crate::style::computed::{BoxStyle, Computed};"]
 ["crates/html/src/interactive/forms.rs",38,"fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {"]
 ["crates/html/src/interactive/forms.rs",45,"style: &BoxStyle,"]
@@ -196,5 +198,3 @@
 ["crates/html/src/interactive/scrollbars/interaction.rs",85,"window: &mut Window,"]
 ["crates/html/src/interactive/scrollbars/interaction.rs",92,"let mut state = self.0.borrow_mut();"]
 ["crates/html/src/interactive/scrollbars/interaction.rs",102,"let down = self.0.clone();"]
-["crates/html/src/interactive/scrollbars/interaction.rs",103,"let hitbars: Vec<_> = bars.iter().map(|b| (b.bar, b.hitbox.clone())).collect();"]
-["crates/html/src/interactive/scrollbars/interaction.rs",104,"let scroll = handle.clone();"]

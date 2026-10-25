@@ -12,4 +12,7 @@ pub mod select;
 pub mod values;
 pub mod zoom;
 
+mod publication;
+pub(crate) use publication::ComputedHandle;
+
 pub(crate) mod ua;

@@ -1,3 +1,5 @@
+["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",29,"vcx.doc.try_rules.borrow_mut().insert("]
+["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",33,"materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);"]
 ["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",36,"let base = box_style(&BoxStyle::default(), &div.style, vcx);"]
 ["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",37,"let options = super::super::Options::new(&base, &BoxStyle::default(), vcx);"]
 ["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",42,"let mut layout_copy = trial.clone();"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/positioned/containing_block/layers/probe_scope.rs",73,".borrow_mut()"]
 ["crates/html/src/layout/positioned/containing_block/layers/probe_scope.rs",79,"*self.positioning.pending.borrow_mut() = std::mem::take(&mut self.pending);"]
 ["crates/html/src/layout/positioned/containing_block/layers/retained/tests/paint.rs",20,"&mut self,"]
-["crates/html/src/layout/positioned/containing_block/layers/retained/tests/paint.rs",22,"_: &mut gpui::LayoutId,"]
-["crates/html/src/layout/positioned/containing_block/layers/retained/tests/paint.rs",23,"_: &mut (),"]

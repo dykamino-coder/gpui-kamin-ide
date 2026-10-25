@@ -1,3 +1,5 @@
+["crates/html/src/layout/multicol/column_baselines.rs",22,"pub(super) fn new(children: &mut [StackChild], window: &mut Window, cx: &mut App) -> Self {"]
+["crates/html/src/layout/multicol/column_baselines.rs",38,"std::iter::once(&mut child.el)"]
 ["crates/html/src/layout/multicol/column_baselines.rs",56,"&mut self,"]
 ["crates/html/src/layout/multicol/column_baselines.rs",63,"window: &mut Window,"]
 ["crates/html/src/layout/multicol/column_baselines.rs",64,"cx: &mut App,"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/multicol/container/parallel/tests.rs",61,"assert!(grow_positioned_descendants(&mut cb, 0.0, 100.0, 2, 4, vcx));"]
 ["crates/html/src/layout/multicol/container/parallel/tests.rs",80,"assert!(grow_positioned_descendants(&mut cb, 80.0, 100.0, 2, 4, vcx));"]
 ["crates/html/src/layout/multicol/container/parallel.rs",32,"c: &mut Element,"]
-["crates/html/src/layout/multicol/container/parallel.rs",62,"let original = c.style.clone();"]
-["crates/html/src/layout/multicol/container/parallel.rs",63,"let mut probe = c.clone();"]

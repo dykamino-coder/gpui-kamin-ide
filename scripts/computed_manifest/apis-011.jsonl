@@ -1,3 +1,5 @@
+["crates/html/src/layout/fragment/flow/blocks/flex_edges.rs",65,"inner.flexes(&mut flexes);"]
+["crates/html/src/layout/fragment/flow/blocks/flex_tests.rs",69,"let items = &mut b.flex.as_mut().unwrap().items;"]
 ["crates/html/src/layout/fragment/flow/blocks/flex_tests.rs",97,"let frame = laid.flexes.get_mut(&10).unwrap();"]
 ["crates/html/src/layout/fragment/flow/blocks/flex_tests.rs",101,"b.flex_flows(&laid, &mut flows);"]
 ["crates/html/src/layout/fragment/flow/blocks/flex_tests.rs",116,"let item = &mut b.flex.as_mut().unwrap().items[1];"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/fragment/line_shape/nested.rs",100,"mc.style.used_mut().width = Some(Len::Px(w));"]
 ["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",5,"use crate::style::computed::BoxStyle;"]
 ["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",15,"pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Element {"]
-["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",18,".is_some_and(|facts| facts.borrow_mut().unchanged(c))"]
-["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",20,"return c.clone();"]

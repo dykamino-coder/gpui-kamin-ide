@@ -1,3 +1,5 @@
+["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",18,".is_some_and(|facts| facts.borrow_mut().unchanged(c))"]
+["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",20,"return c.clone();"]
 ["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",24,"style: BoxStyle,"]
 ["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",28,"let enter = |source: &Element, parent: &BoxStyle| {"]
 ["crates/html/src/layout/fragment/line_shape/resolved_lengths.rs",30,"let mut output = source.clone();"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/fragment/plan/cuts/mod.rs",80,"from: &mut f32,"]
 ["crates/html/src/layout/fragment/plan/cuts/mod.rs",173,"col: &mut usize,"]
 ["crates/html/src/layout/fragment/plan/cuts/mod.rs",174,"cur: &mut f32,"]
-["crates/html/src/layout/fragment/plan/cuts/mod.rs",175,"placed: &mut bool,"]
-["crates/html/src/layout/fragment/plan/cuts/mod.rs",177,"float_hold: &mut Option<(usize, usize, f32)>,"]

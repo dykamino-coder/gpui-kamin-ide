@@ -1,3 +1,5 @@
+["crates/html/src/layout/multicol/container/parallel.rs",62,"let original = c.style.clone();"]
+["crates/html/src/layout/multicol/container/parallel.rs",63,"let mut probe = c.clone();"]
 ["crates/html/src/layout/multicol/container/parallel.rs",64,"probe.style.used_mut().position = Some(Position::Relative);"]
 ["crates/html/src/layout/multicol/container/parallel.rs",65,"probe.style.used_mut().inset.top = None;"]
 ["crates/html/src/layout/multicol/container/parallel.rs",66,"probe.style.used_mut().inset.bottom = None;"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/multicol/spanner/fragment/parts.rs",128,"other => body.push(other.clone()),"]
 ["crates/html/src/layout/multicol/spanner/hoist.rs",8,"use crate::style::computed::{Computed, Display};"]
 ["crates/html/src/layout/multicol/spanner/hoist.rs",59,"pub(crate) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {"]
-["crates/html/src/layout/multicol/spanner/hoist.rs",95,"pub(crate) fn multicol_container(c: &Computed) -> bool {"]
-["crates/html/src/layout/multicol/stack_child/breaks.rs",122,"pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::Computed) -> bool {"]

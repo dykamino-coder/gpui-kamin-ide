@@ -1,3 +1,5 @@
+["crates/html/src/layout/block/inline_splits.rs",205,"drop_inline_side(host.style.used_mut(), start);"]
+["crates/html/src/layout/block/inline_splits.rs",208,"drop_inline_side(host.style.used_mut(), end);"]
 ["crates/html/src/layout/block/margin_edges.rs",19,"e: &mut Element,"]
 ["crates/html/src/layout/block/margin_edges.rs",39,"leading_chain(&e.children, &mut eat, cb, vcx)"]
 ["crates/html/src/layout/block/margin_edges.rs",47,"e.style.used_mut().margin.top = Some(Len::Px(solve(adjoin(strut_of(own), s))));"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/build_contracts.rs",104,"inherited: &BoxStyle,"]
 ["crates/html/src/layout/build_contracts.rs",114,"inherited: &BoxStyle,"]
 ["crates/html/src/layout/build_contracts.rs",123,"stk: &mut reblessive::Stk,"]
-["crates/html/src/layout/build_contracts.rs",125,"inherited: &BoxStyle,"]
-["crates/html/src/layout/build_contracts.rs",136,"inherited: &BoxStyle,"]

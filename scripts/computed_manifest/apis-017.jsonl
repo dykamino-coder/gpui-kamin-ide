@@ -1,3 +1,5 @@
+["crates/html/src/layout/multicol/spanner/hoist.rs",95,"pub(crate) fn multicol_container(c: &Computed) -> bool {"]
+["crates/html/src/layout/multicol/stack_child/breaks.rs",122,"pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::Computed) -> bool {"]
 ["crates/html/src/layout/multicol/stack_child/build.rs",6,"use crate::layout::fragment::clone::clone_fragment;"]
 ["crates/html/src/layout/multicol/stack_child/build.rs",12,"use crate::style::computed::{BoxStyle, Display};"]
 ["crates/html/src/layout/multicol/stack_child/build.rs",33,"merged: &BoxStyle,"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/page/page_stack/continuation.rs",25,"window: &mut Window,"]
 ["crates/html/src/layout/page/page_stack/continuation.rs",26,"cx: &mut App,"]
 ["crates/html/src/layout/page/page_stack/continuation.rs",39,".clone();"]
-["crates/html/src/layout/page/page_stack/continuation.rs",45,"let k = &mut self.kids[index];"]
-["crates/html/src/layout/page/page_stack/continuation.rs",46,"let original = k.regrow.as_ref()?.laid.clone();"]

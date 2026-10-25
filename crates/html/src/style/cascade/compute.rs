@@ -14,8 +14,8 @@
 use crate::document::state::ValueCx;
 use crate::style::computed::box_predicates::resolve_bidi_inheritance;
 use crate::style::computed::{Computed, TextAlign};
+use crate::style::publication::{ComputedBuilder, Published};
 use crate::style::values::value::Len;
-use std::rc::Rc;
 
 mod background;
 mod explicit;
@@ -28,7 +28,7 @@ pub(in crate::style::cascade) use text::{decor_family, resolve_decor_len};
 
 /// Вычисленный стиль элемента с каскадным стилем `own` под вычисленным
 /// стилем родителя `parent`.
-pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc<Computed> {
+pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Published {
     // Зум — первым (css-viewport-1 §zoom-property): свои длины каскадного
     // стиля — в зуме элемента, до наследования и `em` ниже.
     let zoomed;
@@ -62,7 +62,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc
         resolved = copy;
         &resolved
     };
-    let mut c = own.clone();
+    let mut c = ComputedBuilder::from_cascaded(own);
     // Коробка раскладки своего зума не задаёт: она в зуме родителя.
     if !own.zoom_pending && c.zoom_eff.is_none() {
         let eff = zoom::parent_eff(parent);
@@ -121,7 +121,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc
     if c.inh == parent.inh {
         c.inh = parent.inh.clone();
     }
-    Rc::new(c)
+    c.finish()
 }
 
 /// Вычисленный кегль родителя — база `em` ребёнка (у подогнанного

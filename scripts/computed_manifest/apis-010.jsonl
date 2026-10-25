@@ -1,3 +1,5 @@
+["crates/html/src/layout/float/inline_floats.rs",13,"pub(super) fn lift(nodes: Vec<Node>, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {"]
+["crates/html/src/layout/float/inline_floats.rs",65,"fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {"]
 ["crates/html/src/layout/float/inline_floats.rs",73,"let mut bare = e.clone();"]
 ["crates/html/src/layout/float/inline_floats.rs",74,"bare.style.used_mut().margin = Default::default();"]
 ["crates/html/src/layout/float/inline_floats.rs",92,"let children = lift(e.children.to_vec(), &style, vcx);"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/fragment/flow/blocks/flex_edges/tests.rs",183,"laid.flexes.get_mut(&10).unwrap().lines[0]"]
 ["crates/html/src/layout/fragment/flow/blocks/flex_edges/tests.rs",204,"let ids: Vec<_> = crate::layout::block::reorder::reorder(parent.children.to_vec())"]
 ["crates/html/src/layout/fragment/flow/blocks/flex_edges/tests.rs",215,"let items = &mut root.flex.as_mut().unwrap().items;"]
-["crates/html/src/layout/fragment/flow/blocks/flex_edges.rs",65,"inner.flexes(&mut flexes);"]
-["crates/html/src/layout/fragment/flow/blocks/flex_tests.rs",69,"let items = &mut b.flex.as_mut().unwrap().items;"]

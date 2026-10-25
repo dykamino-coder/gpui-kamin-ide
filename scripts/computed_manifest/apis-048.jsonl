@@ -1,0 +1,1 @@
+["crates/html/src/text/vertical/vertical_text/prepaint.rs",71,"fn turn_frame(&self, bounds: Bounds<Pixels>, window: &mut Window) -> (Bounds<Pixels>, Pixels) {"]

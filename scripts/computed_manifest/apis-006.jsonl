@@ -1,3 +1,5 @@
+["crates/html/src/interactive/scrollbars/interaction.rs",103,"let hitbars: Vec<_> = bars.iter().map(|b| (b.bar, b.hitbox.clone())).collect();"]
+["crates/html/src/interactive/scrollbars/interaction.rs",104,"let scroll = handle.clone();"]
 ["crates/html/src/interactive/scrollbars/interaction.rs",120,"down.borrow_mut().drag = Some((*bar, coordinate, start));"]
 ["crates/html/src/interactive/scrollbars/interaction.rs",125,"let moving = self.0.clone();"]
 ["crates/html/src/interactive/scrollbars/interaction.rs",126,"let hitboxes: Vec<_> = bars.iter().map(|b| b.hitbox.clone()).collect();"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/block/inline_splits.rs",183,"piece.push(child.clone());"]
 ["crates/html/src/layout/block/inline_splits.rs",185,"flush(&mut piece, &mut out, &mut hosts, first, !first);"]
 ["crates/html/src/layout/block/inline_splits.rs",192,"let Some(Node::Element(anon)) = out.get_mut(at) else {"]
-["crates/html/src/layout/block/inline_splits.rs",205,"drop_inline_side(host.style.used_mut(), start);"]
-["crates/html/src/layout/block/inline_splits.rs",208,"drop_inline_side(host.style.used_mut(), end);"]

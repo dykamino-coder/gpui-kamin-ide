@@ -1,3 +1,5 @@
+["crates/html/src/layout/page/page_stack/continuation.rs",45,"let k = &mut self.kids[index];"]
+["crates/html/src/layout/page/page_stack/continuation.rs",46,"let original = k.regrow.as_ref()?.laid.clone();"]
 ["crates/html/src/layout/page/page_stack/continuation.rs",47,"let main = k.watched.clone()?;"]
 ["crates/html/src/layout/page/page_stack/continuation.rs",49,"main.clone()"]
 ["crates/html/src/layout/page/page_stack/continuation.rs",53,"let base = k.regrow.as_ref()?.clone();"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/page/paged/root.rs",19,"none: &mut bool,"]
 ["crates/html/src/layout/page/paged/root.rs",20,"canvas: &mut Option<gpui::Hsla>,"]
 ["crates/html/src/layout/page/paged/root.rs",21,"canvas_img: &mut Option<Computed>,"]
-["crates/html/src/layout/page/paged/root.rs",22,"root: &mut BoxStyle,"]
-["crates/html/src/layout/page/paged/root.rs",23,"nodes: &mut Vec<Node>,"]

@@ -1,3 +1,5 @@
+["crates/html/src/layout/float/band_flow_host/lift.rs",111,"..Computed::default()"]
+["crates/html/src/layout/float/band_flow_host/lift.rs",120,"let mut flush = |run: &mut Vec<Node>, out: &mut Vec<Node>, cont: bool, clear: Option<i8>| {"]
 ["crates/html/src/layout/float/band_flow_host/lift.rs",128,"Computed {"]
 ["crates/html/src/layout/float/band_flow_host/lift.rs",130,"..Computed::default()"]
 ["crates/html/src/layout/float/band_flow_host/lift.rs",138,"std::mem::take(run),"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/float/initial_letter/mod.rs",103,"let letter_family = first.font_family.clone().unwrap_or_else(|| family.clone());"]
 ["crates/html/src/layout/float/initial_letter/mod.rs",202,"let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {"]
 ["crates/html/src/layout/float/inline_floats.rs",11,"use crate::style::computed::BoxStyle;"]
-["crates/html/src/layout/float/inline_floats.rs",13,"pub(super) fn lift(nodes: Vec<Node>, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {"]
-["crates/html/src/layout/float/inline_floats.rs",65,"fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {"]

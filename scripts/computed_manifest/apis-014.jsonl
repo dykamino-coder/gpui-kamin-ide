@@ -1,3 +1,5 @@
+["crates/html/src/layout/fragment/table_bands/serial.rs",84,"block.style.used_mut().height = Some(Len::Px(100.0));"]
+["crates/html/src/layout/fragment/table_bands/serial.rs",85,"block.style.used_mut().contain_size = Some(true);"]
 ["crates/html/src/layout/fragment/table_bands/serial.rs",91,"table.style.used_mut().display = Some(Display::Table);"]
 ["crates/html/src/layout/fragment/table_bands/serial.rs",133,"grid.style.used_mut().display = Some(Display::Grid);"]
 ["crates/html/src/layout/fragment/table_bands/serial.rs",151,"table.style.used_mut().height = Some(Len::Px(200.0));"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/mod.rs",38,"fn walk<'a>(nodes: &'a [Node], out: &mut Vec<&'a Element>) {"]
 ["crates/html/src/layout/mod.rs",61,"walk(&tree, &mut all);"]
 ["crates/html/src/layout/mod.rs",90,"&crate::style::computed::BoxStyle::from((*e.style.cascaded()).clone())"]
-["crates/html/src/layout/multicol/column_baselines.rs",22,"pub(super) fn new(children: &mut [StackChild], window: &mut Window, cx: &mut App) -> Self {"]
-["crates/html/src/layout/multicol/column_baselines.rs",38,"std::iter::once(&mut child.el)"]

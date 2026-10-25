@@ -30,7 +30,7 @@ OWNERS = {
     "computed-and-used-font": "font_adjust_base font_size line_height",
 }
 API = re.compile(
-    r"\b(?:Computed|InheritedStyle|SharedStyle|BoxStyle|ElementStyle|ComputedSlot)\b"
+    r"\b(?:Computed|InheritedStyle|SharedStyle|BoxStyle|ElementStyle|ComputedSlot|ComputedHandle|ComputedBuilder|Published)\b"
     r"|\b(?:make_mut|unwrap_or_clone|used_mut|used_rc|layout_made|into_computed|lay_used)\b"
     r"|\b(?:clone|cloned|clone_from|clone_from_slice|to_owned|to_vec|get_mut|borrow_mut|deref_mut|take|replace|swap)\b"
     r"|&\s*mut\b|\bTRANSITIONAL\("
@@ -107,17 +107,17 @@ def census():
                 "limitations": "Conservative token census; same-name false positives; whole-value writes in APIs; not runtime counts",
                 "files": {name: hashlib.sha256(data.encode()).hexdigest() for name, data in outputs.items()}}
     outputs["identity.json"] = json.dumps({
-        "style": {"owner": "SharedStyle::computed / materialize::Materialized",
+        "style": {"owner": "ComputedSlot::published / publication::Published (legacy adapters retained)",
                   "key": "Rc allocation identity plus font generation and viewport inputs",
                   "inheritance": "element computed parent; marks.style_parent / anonymous_wrapper",
-                  "restyle": "replace slot; retain old Rc readers; never identify by used box"},
+                  "restyle": "replace slot; retain old closed handles; never identify by used box"},
         "box": {"owner": "BoxStyle and GPUI layout object",
                 "key": "self_node/cb_node/anchor_key and frame-local construction context",
                 "cardinality": "element may create several boxes; anonymous box has no element style"},
         "fragment": {"owner": "layout/fragment types and GPUI request_layout/prepaint",
                      "key": "F2 fragment/token/attempt context, not style allocation or DOM node",
                      "cardinality": "one box may yield multiple fragments; used geometry belongs to attempt/result"},
-        "boundaries": ["style -> box context is not inheritance", "computed operands survive used resolution", "no identity or algorithms changed by A00"]
+        "boundaries": ["style -> box context is not inheritance", "computed operands survive used resolution", "no identity or algorithms changed by A00/A01"]
     }, ensure_ascii=False, indent=2) + "\n"
     outputs["index.json"] = json.dumps(metadata, ensure_ascii=False, indent=2) + "\n"
     return outputs

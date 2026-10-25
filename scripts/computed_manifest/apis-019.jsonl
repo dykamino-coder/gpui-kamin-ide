@@ -1,3 +1,5 @@
+["crates/html/src/layout/page/paged/root.rs",22,"root: &mut BoxStyle,"]
+["crates/html/src/layout/page/paged/root.rs",23,"nodes: &mut Vec<Node>,"]
 ["crates/html/src/layout/page/paged/root.rs",24,"left: &mut f32,"]
 ["crates/html/src/layout/page/paged/root.rs",25,"right: &mut f32,"]
 ["crates/html/src/layout/page/paged/root.rs",26,"top: &mut f32,"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/positioned/anchor/tf_stack.rs",41,"vcx.doc.anchor_frame.tf.borrow_mut().push((id, m));"]
 ["crates/html/src/layout/positioned/anchor/tf_stack.rs",48,"s.borrow_mut().pop();"]
 ["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",6,"use crate::style::computed::Computed;"]
-["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",29,"vcx.doc.try_rules.borrow_mut().insert("]
-["crates/html/src/layout/positioned/anchor/trials/candidate_tests.rs",33,"materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);"]

@@ -1,3 +1,5 @@
+["crates/html/src/layout/fragment/plan/cuts/mod.rs",175,"placed: &mut bool,"]
+["crates/html/src/layout/fragment/plan/cuts/mod.rs",177,"float_hold: &mut Option<(usize, usize, f32)>,"]
 ["crates/html/src/layout/fragment/plan/cuts/tests.rs",70,"let (_, _, plan) = fill(&[kid(30.0), item.clone()], 100.0, Space::columns(4));"]
 ["crates/html/src/layout/fragment/plan/measured.rs",11,"remeasure: &mut super::Remeasure<'_>,"]
 ["crates/html/src/layout/fragment/plan/measured.rs",35,"&mut col,"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/fragment/table_bands/row_shape/mod.rs",71,"&mut avoid_run,"]
 ["crates/html/src/layout/fragment/table_bands/row_shape/mod.rs",75,"&mut spans,"]
 ["crates/html/src/layout/fragment/table_bands/row_shape/mod.rs",76,"&mut row_box,"]
-["crates/html/src/layout/fragment/table_bands/serial.rs",84,"block.style.used_mut().height = Some(Len::Px(100.0));"]
-["crates/html/src/layout/fragment/table_bands/serial.rs",85,"block.style.used_mut().contain_size = Some(true);"]

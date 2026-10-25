@@ -1,3 +1,5 @@
+["crates/html/src/dom/walk/animation_frames.rs",140,"let mut base = Computed::default();"]
+["crates/html/src/dom/walk/animation_frames.rs",149,"let tracks = HashMap::from([(\"a\".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);"]
 ["crates/html/src/dom/walk/cascade.rs",16,"use crate::style::computed::Computed;"]
 ["crates/html/src/dom/walk/cascade.rs",25,"me: &mut Ancestor,"]
 ["crates/html/src/dom/walk/cascade.rs",37,"Box<Computed>,"]
@@ -196,5 +198,3 @@
 ["crates/html/src/interactive/forms/textarea/mod.rs",38,"&mut crate::paint::apply::apply(div(), style, vcx)"]
 ["crates/html/src/interactive/forms/textarea/mod.rs",51,"e.attr(\"placeholder\").unwrap_or(\"\").to_owned(),"]
 ["crates/html/src/interactive/forms/textarea/mod.rs",54,"e.children.to_vec()"]
-["crates/html/src/interactive/forms/textarea/mod.rs",64,"fn natural(e: &Element, c: &Computed, vcx: ValueCx<'_>) -> [f32; 2] {"]
-["crates/html/src/interactive/forms/textarea/mod.rs",94,"fn gutters(c: &Computed) -> [f32; 2] {"]

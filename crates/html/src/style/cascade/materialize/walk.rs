@@ -36,9 +36,15 @@ pub(super) fn walk(
             .unwrap_or_else(|| super::super::compute::compute(&parent, e.style.cascaded(), vcx));
         // Равные входы позволяют разделить значение, но ссылка наследования
         // должна указывать на текущего родителя, включая новый кадр каскада.
-        if !slot
-            .with_parent()
-            .is_some_and(|(old, p)| Rc::ptr_eq(&old, &computed) && Rc::ptr_eq(&p, &parent))
+        if !e
+            .style
+            .published()
+            .is_some_and(|old| old.ptr_eq(&computed.handle))
+            || !slot
+                .0
+                .borrow()
+                .as_ref()
+                .is_some_and(|m| Rc::ptr_eq(&m.parent, &parent))
         {
             *slot.0.borrow_mut() = Some(Rc::new(Materialized {
                 parent: parent.clone(),
@@ -47,12 +53,12 @@ pub(super) fn walk(
             }));
         }
         if e.marks.lends_style {
-            lent.push((e.node_id, computed.clone()));
+            lent.push((e.node_id, computed.legacy.clone()));
         }
         let inside = if e.marks.anonymous_wrapper {
             parent
         } else {
-            computed
+            computed.legacy
         };
         pending.push((e.children.iter(), inside));
     }

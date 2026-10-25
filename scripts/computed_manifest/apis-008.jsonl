@@ -1,3 +1,5 @@
+["crates/html/src/layout/build_contracts.rs",125,"inherited: &BoxStyle,"]
+["crates/html/src/layout/build_contracts.rs",136,"inherited: &BoxStyle,"]
 ["crates/html/src/layout/build_contracts.rs",144,"pub(crate) fn styled_box(&self, e: &Element, style: &BoxStyle, cx: &LayoutCx) -> gpui::Div {"]
 ["crates/html/src/layout/build_contracts.rs",160,"style: &BoxStyle,"]
 ["crates/html/src/layout/build_contracts.rs",161,"item_style: &BoxStyle,"]
@@ -196,5 +198,3 @@
 ["crates/html/src/layout/float/band_flow_host/lift.rs",68,"pub(super) fn abs_pinned(c: &Computed) -> bool {"]
 ["crates/html/src/layout/float/band_flow_host/lift.rs",86,"mut lift: Option<&mut Vec<Node>>,"]
 ["crates/html/src/layout/float/band_flow_host/lift.rs",109,"Computed {"]
-["crates/html/src/layout/float/band_flow_host/lift.rs",111,"..Computed::default()"]
-["crates/html/src/layout/float/band_flow_host/lift.rs",120,"let mut flush = |run: &mut Vec<Node>, out: &mut Vec<Node>, cont: bool, clear: Option<i8>| {"]
