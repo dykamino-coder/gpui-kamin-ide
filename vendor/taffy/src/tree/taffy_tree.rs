@@ -514,20 +514,26 @@ where
                     (tree.measure_function)(inputs, node_id, node_context, style)
                 }
             };
-            let mut output =
-                super::kamin_output::adapt(output, &tree.taffy.nodes[node_id.into()].style);
-
-            // Lay out any out-of-flow candidates for which this node is the containing block.
-            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
-            // closure so that cached outputs already contain the processed candidate list.
-            // Only full layout passes run it: measure passes must not write hoisted box layouts
-            // (which would not be rewritten if the final layout pass is a cache hit).
-            if inputs.run_mode == RunMode::PerformLayout {
-                compute_oof_layout(tree, node_id, &mut output);
-            }
-
-            output
+            tree.finish_child_layout(node_id, inputs.run_mode, output)
         })
+    }
+
+    // KaminIDE patch: output adaptation and OOF temporaries must not live
+    // in the native frame which waits for recursive container layout.
+    #[inline(never)]
+    fn finish_child_layout(
+        &mut self,
+        node_id: NodeId,
+        run_mode: RunMode,
+        output: LayoutOutput,
+    ) -> LayoutOutput {
+        let mut output = super::kamin_output::adapt(output, &self.taffy.nodes[node_id.into()].style);
+        // Still inside the cache-miss closure, so cache entries include OOF placement.
+        // Measure passes must not commit hoisted box layouts.
+        if run_mode == RunMode::PerformLayout {
+            compute_oof_layout(self, node_id, &mut output);
+        }
+        output
     }
 }
 
