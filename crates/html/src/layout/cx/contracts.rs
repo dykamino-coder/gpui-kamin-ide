@@ -11,6 +11,8 @@ pub(crate) struct BuildContext {
     /// step-8 paint collector of the outer one.
     pub(crate) in_render: bool,
     /// Факты неизменяемых поддеревьев живут только в пределах одной сборки.
+    pub(crate) lengths:
+        std::rc::Rc<std::cell::RefCell<crate::layout::fragment::line_shape::LengthFacts>>,
     pub(crate) margins:
         std::rc::Rc<std::cell::RefCell<crate::layout::block::margins::facts::MarginFacts>>,
 }

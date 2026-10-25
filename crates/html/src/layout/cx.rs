@@ -96,6 +96,7 @@ impl LayoutCx {
             .0
             .frame_values()
             .with_lines(self.fragmentation.lines.as_ref())
+            .with_lengths(&self.contracts.lengths)
             .with_viewport(self.values.viewport)
             .with_paint(Some(&self.deferred.paint))
     }

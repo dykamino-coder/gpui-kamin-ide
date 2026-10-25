@@ -8,7 +8,7 @@
 //! выдал: чужая или устаревшая ручка — ошибка связи, а не чужое значение.
 
 use super::DocState;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 /// Документ значения и область записи его арен: разбор и каскад пишут в
 /// область документа, сборка кадра — в область кадра.
@@ -16,6 +16,7 @@ use std::rc::Rc;
 pub struct ValueCx<'a> {
     pub(crate) doc: &'a DocState,
     pub(crate) frame: bool,
+    pub(crate) lengths: Option<&'a Rc<RefCell<crate::layout::fragment::line_shape::LengthFacts>>>,
     pub(crate) viewport: (f32, f32),
     pub(crate) lines: Option<&'a Rc<crate::layout::fragment::LineCx>>,
     pub(crate) paint: Option<&'a Rc<crate::layout::cx::deferred::Deferred>>,
@@ -32,6 +33,7 @@ impl DocState {
             lines: None,
             paint: None,
             frame: false,
+            lengths: None,
             collapse: Default::default(),
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
@@ -45,6 +47,7 @@ impl DocState {
             lines: None,
             paint: None,
             frame: true,
+            lengths: None,
             collapse: Default::default(),
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
@@ -65,6 +68,7 @@ impl std::fmt::Debug for ValueCx<'_> {
 pub struct ValueDoc {
     doc: Rc<DocState>,
     frame: bool,
+    lengths: Option<Rc<RefCell<crate::layout::fragment::line_shape::LengthFacts>>>,
     viewport: (f32, f32),
     lines: Option<Rc<crate::layout::fragment::LineCx>>,
     paint: Option<Rc<crate::layout::cx::deferred::Deferred>>,
@@ -79,6 +83,7 @@ impl ValueDoc {
             lines: self.lines.as_ref(),
             paint: self.paint.as_ref(),
             frame: self.frame,
+            lengths: self.lengths.as_ref(),
             viewport: self.viewport,
             collapse: self.collapse,
             scheme: self.scheme,
@@ -87,6 +92,13 @@ impl ValueDoc {
 }
 
 impl<'a> ValueCx<'a> {
+    pub(crate) fn with_lengths(
+        mut self,
+        facts: &'a Rc<RefCell<crate::layout::fragment::line_shape::LengthFacts>>,
+    ) -> Self {
+        self.lengths = Some(facts);
+        self
+    }
     pub(crate) fn with_viewport(mut self, viewport: (f32, f32)) -> Self {
         self.viewport = viewport;
         self
@@ -139,6 +151,7 @@ impl<'a> ValueCx<'a> {
                 .upgrade()
                 .unwrap_or_else(|| DocState::new(crate::style::css::Media::default())),
             frame: self.frame,
+            lengths: self.lengths.cloned(),
             viewport: self.viewport,
             collapse: self.collapse,
             scheme: self.scheme,
