@@ -22,13 +22,16 @@ pub(super) fn flatten_slot(
 ) {
     enum Work {
         Expand(NodeKey),
-        Emit(Option<FlatCtx>),
+        Emit(Box<Option<FlatCtx>>),
+    }
+    fn emit(ctx: Option<FlatCtx>) -> Work {
+        Work::Emit(Box::new(ctx))
     }
     let mut work = vec![Work::Expand(key.clone())];
     while let Some(next) = work.pop() {
         let key = match next {
             Work::Emit(ctx) => {
-                out.push(ctx);
+                out.push(*ctx);
                 continue;
             }
             Work::Expand(key) => key,
@@ -42,7 +45,7 @@ pub(super) fn flatten_slot(
                 if is_slot(&s.node) && drafts.contains_key(&nested) {
                     work.push(Work::Expand(nested));
                 } else {
-                    work.push(Work::Emit(s.anc.clone().map(|anc| FlatCtx {
+                    work.push(emit(s.anc.clone().map(|anc| FlatCtx {
                         node: s.node.clone(),
                         anc,
                         path: info.host_path.clone(),
@@ -65,7 +68,7 @@ pub(super) fn flatten_slot(
                     if is_slot(kid) && drafts.contains_key(&nested) {
                         work.push(Work::Expand(nested));
                     } else {
-                        work.push(Work::Emit(Some(FlatCtx {
+                        work.push(emit(Some(FlatCtx {
                             node: kid.clone(),
                             anc: all[pos].clone(),
                             path: Rc::new(vec![]),
@@ -74,7 +77,7 @@ pub(super) fn flatten_slot(
                         })));
                     }
                 }
-                NodeData::Text { .. } => work.push(Work::Emit(None)),
+                NodeData::Text { .. } => work.push(emit(None)),
                 _ => {}
             }
         }

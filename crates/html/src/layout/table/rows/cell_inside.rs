@@ -75,6 +75,7 @@ pub(super) fn place_cell_in_grid(
     d
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn cell_contents(
     stk: &mut reblessive::Stk,
     opts: &RenderOpts,

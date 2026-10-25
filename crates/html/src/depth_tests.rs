@@ -8,10 +8,13 @@ use gpui::{IntoElement, ParentElement};
 
 mod regression;
 
+// Только изолированная тестовая проба; production engine не читает окружение.
+#[allow(clippy::disallowed_methods)]
 fn depth() -> usize {
     std::env::var("DEPTH_PROBE_N").unwrap().parse().unwrap()
 }
 
+#[allow(clippy::disallowed_methods)]
 fn stage() -> String {
     std::env::var("DEPTH_PROBE_STAGE").unwrap()
 }

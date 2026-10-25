@@ -53,7 +53,7 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
         hover: None,
         first_letter: None,
         first_line: None,
-        children: (cell.children.clone()).into(),
+        children: cell.children.clone(),
         attrs: Vec::new(),
         inline: false,
     };

@@ -15,6 +15,13 @@ use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
+type PseudoLayers = (
+    Option<Box<Computed>>,
+    Option<Box<Computed>>,
+    Option<Box<Computed>>,
+    Option<Box<Computed>>,
+);
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_styles(
     style: &mut Computed,
@@ -25,12 +32,7 @@ pub(super) fn pseudo_styles(
     path: &[Ancestor],
     sibs: Sibs,
     vcx: ValueCx<'_>,
-) -> (
-    Option<Box<Computed>>,
-    Option<Box<Computed>>,
-    Option<Box<Computed>>,
-    Option<Box<Computed>>,
-) {
+) -> PseudoLayers {
     let hovered: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.sel.pseudo.as_deref() == Some("hover"))

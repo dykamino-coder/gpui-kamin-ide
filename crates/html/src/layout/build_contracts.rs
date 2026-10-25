@@ -63,6 +63,7 @@ pub(crate) struct ChildBuild {
 }
 
 impl ChildBuild {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) const fn new(
         flow: FlowBuild,
         element: BuildElement,

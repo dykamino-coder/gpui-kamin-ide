@@ -13,6 +13,7 @@ use crate::layout::table::context::{
     CellLayout, RowCursor, RowState, RowsOut, TableGeom, TableLayers,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn table_cell(
     stk: &mut reblessive::Stk,
     geom: &TableGeom<'_>,

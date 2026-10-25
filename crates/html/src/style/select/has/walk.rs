@@ -8,7 +8,7 @@ use std::rc::Rc;
 enum Work {
     Level(Vec<Handle>),
     Visit(Handle, Rc<Vec<Ancestor>>, usize),
-    Descend(Handle, Ancestor),
+    Descend(Handle, Box<Ancestor>),
     Restore(usize),
 }
 
@@ -31,7 +31,7 @@ impl Walk {
                 Work::Restore(len) => self.path.truncate(len),
                 Work::Descend(handle, me) => {
                     self.work.push(Work::Restore(self.path.len()));
-                    self.path.push(me);
+                    self.path.push(*me);
                     self.work
                         .push(Work::Level(handle.children.borrow().clone()));
                 }
@@ -49,7 +49,7 @@ impl Walk {
                 }
                 Work::Visit(handle, all, pos) => {
                     self.work
-                        .push(Work::Descend(handle.clone(), all[pos].clone()));
+                        .push(Work::Descend(handle.clone(), Box::new(all[pos].clone())));
                     return Some((handle, all, pos));
                 }
             }
