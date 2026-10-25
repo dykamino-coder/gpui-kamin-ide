@@ -240,14 +240,5 @@ pub(super) async fn generic_box_stack(
     generic_children(stk, e, d, merged, inherited, opts, overflow_plan).await
 }
 
-pub(super) fn generic_box(
-    e: &Element,
-    merged: BoxStyle,
-    inherited: &BoxStyle,
-    opts: &RenderOpts,
-    outer_row: Option<(f32, f32)>,
-) -> AnyElement {
-    reblessive::Stack::new()
-        .enter(|stk| generic_box_stack(stk, e, merged, inherited, opts, outer_row))
-        .finish()
-}
+mod entry;
+pub(super) use entry::generic_box;
