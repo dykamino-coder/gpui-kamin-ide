@@ -53,7 +53,9 @@ impl FontFactsProvider for Fake {
 }
 
 fn unit(doc: &DocState, name: &str) -> f32 {
-    calc_pct_px(&format!("1r{name}"), doc.values()).unwrap().1
+    calc_pct_px(&format!("calc(1r{name})"), doc.values())
+        .unwrap()
+        .1
 }
 
 #[test]
