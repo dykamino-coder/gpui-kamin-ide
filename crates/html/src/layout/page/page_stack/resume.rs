@@ -35,9 +35,13 @@ impl Resume {
                     .get(&id)
                     .into_iter()
                     .flatten()
-                    // Будущая строка не поглощает остаток монолитной коробки:
-                    // до её начала сохраняется физический consumed block-size.
-                    .filter(|l| l.top <= from + COORD_EPS && l.bottom > from + COORD_EPS)
+                    // До будущей строки сохраняется её отступ, кроме разрыва
+                    // внутри предшествующей коробки: там consumed физический.
+                    .filter(|l| {
+                        l.bottom > from + COORD_EPS
+                            && (l.top <= from + COORD_EPS
+                                || !crosses_before_line(old, id, from, l.top))
+                    })
                     .min_by(|a, b| a.top.total_cmp(&b.top))
                 {
                     Address::Line(line.paragraph, line.byte, from - line.top)
@@ -128,6 +132,17 @@ impl Resume {
             })
             .min_by(f32::total_cmp)
     }
+}
+
+fn crosses_before_line(laid: &Laid, id: u64, from: f32, line_top: f32) -> bool {
+    laid.descendants
+        .get(&id)
+        .into_iter()
+        .flatten()
+        .filter_map(|&child| laid.at(child))
+        .any(|(top, bottom)| {
+            top < from - COORD_EPS && bottom > from + COORD_EPS && bottom <= line_top + COORD_EPS
+        })
 }
 
 #[cfg(test)]
