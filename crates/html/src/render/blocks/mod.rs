@@ -233,6 +233,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) ->
     let opts = &*opts.inner(|cx| {
         cx.contracts.margins = Default::default();
         cx.contracts.lengths = Default::default();
+        cx.contracts.subtrees = Default::default();
     });
     reblessive::Stack::new()
         .enter(|stk| blocks_stack(stk, nodes, inherited, opts))
