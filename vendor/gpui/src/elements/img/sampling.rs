@@ -28,21 +28,27 @@ pub(super) fn paint(
     frame: usize,
     image_style: &super::ImageStyle,
 ) -> anyhow::Result<()> {
+    let fitted = super::image_style::position(
+        image_style.object_fit.get_bounds(bounds, image.size(frame)),
+        bounds,
+        image_style.object_position,
+        window.rem_size(),
+    );
     let exact =
         exact.filter(|_| window.current_transformation() == crate::TransformationMatrix::unit());
     let corners = style
         .corner_radii
         .to_pixels(window.rem_size())
-        .clamp_radii_for_quad_size(bounds.size);
+        .clamp_radii_for_quad_size(bounds.intersect(&fitted).size);
     let sampling = mode(
         image_style.preserve_natural_pixels,
         image.size(frame),
-        exact.unwrap_or(bounds).size,
+        exact.unwrap_or(fitted).size,
         window.current_transformation().rotation_scale,
     );
     if sampling == ImageSampling::Nearest {
         return window.paint_natural_image(
-            exact.unwrap_or(bounds),
+            exact.unwrap_or(fitted),
             corners,
             image,
             frame,
@@ -56,8 +62,13 @@ pub(super) fn paint(
         true => ImageSampling::Nearest,
         false => sampling,
     };
+    // Default interpolation must retain object-fit's visible box and UV crop.
+    // The explicit sampling API accepts only a destination, not a clip box.
+    if sampling == ImageSampling::Linear {
+        return window.paint_image(bounds, fitted, corners, image, frame, image_style.grayscale);
+    }
     window.paint_image_with_sampling(
-        bounds,
+        fitted,
         corners,
         image,
         frame,

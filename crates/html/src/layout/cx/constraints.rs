@@ -1,6 +1,6 @@
 //! Доступные размеры и BFC: входы, которые родитель задаёт дочерней коробке.
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BoxConstraints {
     /// Containing-block width in px when the parent's style gives it. A
     /// replaced element without intrinsic size but with a ratio takes its
@@ -21,4 +21,12 @@ pub(crate) struct BoxConstraints {
     /// The block list being built is a table cell's (or caption's) own
     /// content: a BFC root whose floats it contains (§10.6.7).
     pub(crate) cell_bfc: bool,
+}
+
+/// Входы повторной меры. Размер страницы не заменяет процентную базу родителя:
+/// оба участвуют в зависимости снимка (CSS Sizing 3 §percentage-sizing).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FragmentConstraints {
+    pub(crate) area: (f32, f32),
+    pub(crate) parent: BoxConstraints,
 }

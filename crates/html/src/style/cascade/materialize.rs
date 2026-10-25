@@ -1,5 +1,5 @@
 //! Каскад: материализованный вычисленный стиль элемента (css-cascade-5 §7.1–7.3). Стадия
-//! вычисленных значений (`compute::compute`) идёт по дереву элементов один раз: вычисленный стиль
+//! вычисленных значений (`compute::compute`) идёт по дереву элементов: вычисленный стиль
 //! ребёнка считается от ВЫЧИСЛЕННОГО стиля родителя и своего каскадного стиля и запоминается при
 //! каскадном стиле элемента (`dom::SharedStyle`). Раскладка, краска и интерактив берут стиль коробки через
 //! `box_style`: материализованный стиль плюс контекст коробки-родителя (`inherit::box_stage`).
@@ -7,15 +7,18 @@
 //! Входы материализации сверяются только по дереву элементов. Копии коробок с другими
 //! used-значениями не меняют наследование (CSS 2 §6.2, css-display-3 §2.5). Новый источник
 //! каскада передаёт потомкам отдельные computed values, не правки коробки.
+//! Размер query container — отдельный вход от адаптера финальной геометрии.
+//! Его изменение инвалидирует материализацию и запускает стиль/layout до paint.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Node, SharedStyle};
 use crate::style::ComputedHandle;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::publication::Published;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+mod container_input;
 mod inherited;
 mod recompute;
 mod used;
@@ -26,7 +29,11 @@ use walk::walk;
 /// Место материализованного стиля при каскадном стиле элемента (`dom::SharedStyle`): копия
 /// элемента делит его с оригиналом, правка каскадного стиля через ручку его сбрасывает.
 #[derive(Default)]
-pub struct ComputedSlot(RefCell<Option<Rc<Materialized>>>);
+pub struct ComputedSlot(
+    RefCell<Option<Rc<Materialized>>>,
+    Rc<Cell<(Option<f32>, Option<f32>)>>,
+    gpui::LayoutInputId,
+);
 
 type Inputs = (u64, [u32; 2]);
 
@@ -47,7 +54,11 @@ struct Materialized {
 
 impl Clone for ComputedSlot {
     fn clone(&self) -> Self {
-        Self(RefCell::new(self.0.borrow().clone()))
+        Self(
+            RefCell::new(self.0.borrow().clone()),
+            self.1.clone(),
+            self.2,
+        )
     }
 }
 
@@ -90,7 +101,7 @@ impl ComputedSlot {
         self.0
             .borrow()
             .as_ref()
-            .filter(|m| m.fits(parent, generation, explicit))
+            .filter(|m| m.computed.cq_size == self.1.get() && m.fits(parent, generation, explicit))
             .map(|m| m.computed.clone())
     }
 
@@ -141,7 +152,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         let context = parent.element_style.as_ref();
         let computed = context
             .and_then(|p| p.variant_for(&element_parent))
-            .map(|p| super::compute::compute(p, cascaded, vcx).legacy)
+            .map(|p| own.slot().compute(p, cascaded, vcx).legacy)
             .unwrap_or_else(|| original.clone());
         crate::style::computed::ElementStyle {
             original,

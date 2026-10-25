@@ -89,17 +89,12 @@ impl Recipe {
         let vcx = opts.cx.vcx();
         let vertical = self.axis.is_vertical();
         let reverse = self.axis == crate::layout::fragment::types::StackAxis::VerticalRl;
+        let host = self.resolved_host(width);
         let kids = if vertical {
-            laid::vertical_children(&self.host, &self.merged, vcx, width, reverse, &measured)
+            laid::vertical_children(&host, &self.merged, vcx, width, reverse, &measured)
         } else {
-            laid::children(&self.host, &self.merged, vcx, width, &measured).or_else(|| {
-                super::measure::native_float::children(
-                    &self.host,
-                    &self.merged,
-                    vcx,
-                    width,
-                    &measured,
-                )
+            laid::children(&host, &self.merged, vcx, width, &measured).or_else(|| {
+                super::measure::native_float::children(&host, &self.merged, vcx, width, &measured)
             })
         };
         let kids = kids.expect("deferred recipe preserves the measured-tree contract");
@@ -116,8 +111,27 @@ impl Recipe {
             (Some(width), Some(width)),
             vcx,
         );
+        let prepared = kids
+            .iter()
+            .enumerate()
+            .map(|(ix, (c, s))| {
+                super::stack_child::prepare(
+                    ix,
+                    c,
+                    s,
+                    parents[ix].as_ref().unwrap_or(&self.merged),
+                    &opts,
+                    &parallel,
+                    vertical,
+                    reverse,
+                    Some(width),
+                    self.fixed,
+                    &measured,
+                )
+            })
+            .collect();
         stack_children(
-            &self.host,
+            &host,
             &self.merged,
             &opts,
             self.count,
@@ -134,7 +148,23 @@ impl Recipe {
             parallel,
             kids,
             Vec::new(),
+            prepared,
         )
+    }
+
+    /// После определения ширины используется тот же CB, что в stack_plan.
+    fn resolved_host(&self, width: f32) -> Element {
+        let mut host = self.host.clone();
+        if !self.axis.is_vertical() {
+            host.children = crate::layout::fragment::flow::column_percentages(
+                &host.children,
+                &self.merged,
+                Some(width),
+                &self.opts,
+            )
+            .into();
+        }
+        host
     }
 
     /// Один и тот же проход до баланса в измерительном callback и prepaint.
@@ -188,3 +218,6 @@ impl Recipe {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

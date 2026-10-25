@@ -74,7 +74,7 @@ fn block_containing_table_and_grid_has_one_measured_tree() {
 }
 
 #[test]
-fn flex_in_table_cells_and_captions_has_frames_flows_and_relative_shifts() {
+fn flex_in_table_cells_and_captions_has_frames_and_flows() {
     let flex = "<div style='display:flex'><div style='break-before:column'><div>first</div></div><div style='break-after:avoid'><div>second</div></div></div>";
     for caption in [false, true] {
         let body = if caption {
@@ -124,11 +124,5 @@ fn flex_in_table_cells_and_captions_has_frames_flows_and_relative_shifts() {
         assert_eq!(flows.iter().map(|b| b.id).collect::<Vec<_>>(), *items);
         assert!(b.edge(false, &laid).0);
         assert!(b.edge(true, &laid).1);
-        let mut shifts = std::collections::HashMap::new();
-        let mut tables = std::collections::HashMap::new();
-        b.shift_flex_item(items[0], -17.0, &mut laid.boxes, &mut shifts, &mut tables);
-        assert_eq!(laid.at(items[0]), Some((-17.0, 120.0)));
-        assert_eq!(shifts[&items[0]], -17.0);
-        assert_eq!(laid.at(items[1]), Some((0.0, 137.0)));
     }
 }

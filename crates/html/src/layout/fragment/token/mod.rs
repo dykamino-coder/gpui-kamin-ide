@@ -4,7 +4,10 @@
 //! рядов и печатного драйвера. Геометрию даёт реальная раскладка, токен — только состояние
 //! продолжения; вложенные токены живут в `TokenStore` и адресуются `TokenId`.
 
+pub(crate) mod cursor;
+mod error;
 pub(crate) mod fc;
+pub(crate) use error::Error;
 pub(crate) mod resume;
 pub(crate) mod space;
 
@@ -74,33 +77,61 @@ impl Token {
 
     /// Токен после ещё одного фрагмента блочного размера `fragment_block`
     /// с новым состоянием контекста: прочее состояние наследуется.
-    pub(crate) fn advance(&self, fragment_block: f32, fc: FcState) -> Self {
-        Token {
-            consumed: self.consumed + fragment_block.max(0.0),
-            seq: self.seq.saturating_add(1),
+    pub(crate) fn advance(&self, fragment_block: f32, fc: FcState) -> Result<Self, Error> {
+        if !fragment_block.is_finite()
+            || fragment_block < 0.0
+            || !self.consumed.is_finite()
+            || self.consumed < 0.0
+        {
+            return Err(Error::InvalidGeometry);
+        }
+        let consumed = self.consumed + fragment_block;
+        if !consumed.is_finite() {
+            return Err(Error::InvalidGeometry);
+        }
+        let seq = self.seq.checked_add(1).ok_or(Error::ResourceExhausted)?;
+        let mut oof = Vec::new();
+        oof.try_reserve(self.oof.len())
+            .map_err(|_| Error::ResourceExhausted)?;
+        oof.extend_from_slice(&self.oof);
+        Ok(Token {
+            consumed,
+            seq,
             fc,
-            oof: self.oof.clone(),
+            oof,
             clamp: self.clamp,
             at_block_end: false,
             monolithic_overflow: 0.0,
             flags: TokenFlags::default(),
-        }
+        })
     }
 }
 
 /// Хранилище токенов одного контекста фрагментации: вложенные токены
-/// ссылаются сюда, а не копируют поддерево (печать держит лишь токены
-/// текущей страницы).
+/// ссылаются сюда, а не копируют поддерево. Срок жизни arena задаёт драйвер
+/// раскладки; идентичности внутри неё не переиспользуются.
 #[derive(Debug, Default)]
 pub(crate) struct TokenStore {
     tokens: Vec<Token>,
 }
 
 impl TokenStore {
-    pub(crate) fn push(&mut self, token: Token) -> TokenId {
-        let id = u32::try_from(self.tokens.len()).unwrap_or(u32::MAX);
+    pub(crate) fn push(&mut self, token: Token) -> Result<TokenId, Error> {
+        let id = u32::try_from(self.tokens.len()).map_err(|_| Error::ResourceExhausted)?;
+        // Только уже сохранённые дети: граф продолжений не содержит циклов.
+        if token
+            .fc
+            .child_tokens()
+            .chain(token.oof.iter().filter_map(|o| o.token))
+            .any(|child| self.get(child).is_none())
+        {
+            return Err(Error::InvalidToken);
+        }
+        self.tokens
+            .try_reserve(1)
+            .map_err(|_| Error::ResourceExhausted)?;
         self.tokens.push(token);
-        TokenId(id)
+        Ok(TokenId(id))
     }
 
     pub(crate) fn get(&self, id: TokenId) -> Option<&Token> {

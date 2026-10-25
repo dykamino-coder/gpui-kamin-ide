@@ -9,6 +9,7 @@ pub(crate) mod blocks;
 pub(crate) mod box_children;
 mod continuation;
 mod coordinates;
+pub(crate) mod inline;
 mod line_growth;
 mod measurements;
 mod normalize;
@@ -16,6 +17,7 @@ pub(crate) use continuation::ContentLine;
 pub(crate) use line_growth::LinePush;
 mod stack;
 pub(crate) use measurements::{FlowMeasure, FlowNode};
+pub(crate) use stack::fragment_leaf;
 
 /// Whether the line boxes inside `e` are line boxes of the block flow that
 /// contains `e` (css-break-3 §4.3 class B): a block container in normal flow
@@ -41,6 +43,7 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlowGeometry {
+    pub(crate) inline: Vec<inline::Inline>,
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) solid: Vec<(f32, f32)>,
     /// Original float identities and boxes, never temporary LayoutIds.
@@ -72,6 +75,8 @@ impl FlowGeometry {
     }
 
     pub(crate) fn append(&mut self, other: &Self, offset: f32) {
+        self.inline
+            .extend(other.inline.iter().map(|flow| flow.translated(offset)));
         self.floats
             .extend(other.floats.iter().map(|g| FloatGeometry {
                 top: g.top + offset,
@@ -201,7 +206,10 @@ mod tests {
 mod logical;
 pub(crate) use logical::transpose_tree;
 mod independent;
-pub(crate) use independent::{independent_copy, logical_copy, parallel_overflow, vertical_copy};
+pub(crate) use independent::{
+    PagePercentages, column_percentages, independent_copy, logical_copy, page_percentages,
+    parallel_overflow, regrow_copy, vertical_copy,
+};
 mod copy_clearance;
 pub(crate) use copy_clearance::copy_clearance;
 mod empty_floats;

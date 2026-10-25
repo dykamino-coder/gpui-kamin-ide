@@ -200,11 +200,14 @@ impl LineWrapper {
                     }
                 };
 
-                // KaminIDE patch: prev_c коммитится ДО ветки переноса — иначе
+                // KaminIDE patch: для CSS prev_c коммитится ДО ветки переноса — иначе
                 // на строке-границе символ после переноса видит фантомный
                 // пробел и рождает ложный кандидат (слово ровно в ширину
                 // колонки рвалось как «x»+«xxxx»).
-                prev_c = new_prev_c;
+                // Редактор сохраняет upstream-контракт состояния после переноса.
+                if css {
+                    prev_c = new_prev_c;
+                }
                 width += item_width;
                 // KaminIDE patch: пробел за краем строки висит (css-text §3:
                 // trailing spaces hang) и сам перенос не вызывает — иначе он
@@ -289,6 +292,7 @@ impl LineWrapper {
 
                     return Some(Boundary::new(last_wrap_ix, next_indent));
                 }
+                prev_c = new_prev_c;
             }
 
             None

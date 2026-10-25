@@ -1,6 +1,5 @@
-//! Мера стопки колонок до сборки: строчный размер колонки, подготовка детей
-//! (анонимные строчные блоки, флоаты во всю ширину, обёртки `clone`), внепоточные
-//! прямые дети со статическим местом в потоке и замер детей, уходящих в стопку.
+//! Мера стопки до сборки: размер колонки, анонимные блоки, флоаты и clone.
+//! Прямые внепоточные дети сохраняют статическое место в потоке.
 
 use super::{block_floats, column_layout_width, column_measure_width, measure_children};
 use crate::dom::whitespace::is_blank;
@@ -10,7 +9,7 @@ use crate::layout::fragment::clone::clone_wrapper_item;
 use crate::layout::fragment::line_shape::group_inline_runs;
 use crate::layout::fragment::{Shape, with_lines};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::{BoxStyle, Computed, Position};
 use crate::style::values::value::Len;
 
 /// Итог меры стопки: всё, что сборка передаёт `multicol_column_stack`.
@@ -43,13 +42,8 @@ pub(crate) fn stack_plan(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
 ) -> StackPlan {
-    let positioned = |s: &Computed| {
-        matches!(
-            s.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        )
-    };
+    let positioned =
+        |s: &Computed| matches!(s.position, Some(Position::Absolute | Position::Fixed));
     let line_col_w = column_measure_width(
         e,
         inherited,
@@ -65,6 +59,15 @@ pub(crate) fn stack_plan(
     boxed.children =
         crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx())
             .into();
+    if !col_vert {
+        boxed.children = crate::layout::fragment::flow::column_percentages(
+            &boxed.children,
+            merged,
+            line_col_w,
+            opts,
+        )
+        .into();
+    }
     let grouped_e = group_inline_runs(&boxed);
     let ge: &Element = grouped_e.as_ref().unwrap_or(&boxed);
     let floats_blocked = block_floats(ge, positioned, line_col_w, opts.cx.vcx());

@@ -68,6 +68,14 @@ impl Computed {
                 *length = Some(v.fold_viewport(vp, vcx));
             }
         };
+        self.resolve_decor_inset_lengths(fix, vcx);
+    }
+
+    pub(super) fn resolve_decor_inset_lengths(
+        &mut self,
+        fix: impl Fn(&mut Option<Len>) + Copy,
+        vcx: ValueCx<'_>,
+    ) {
         if let Some(Some(pair)) = &mut self.td_inset {
             for value in pair {
                 *value = map_length(*value, fix, vcx);

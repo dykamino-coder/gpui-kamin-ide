@@ -18,8 +18,8 @@ use crate::layout::options::RenderOpts;
 use gpui::AnyElement;
 
 /// Сборка копии ребёнка стопки из дерева: `part` 0 — главная (с рекордером),
-/// дальше — запасные.
-pub(crate) type BuildCopy = dyn Fn(&Element, usize) -> AnyElement;
+/// дальше — запасные; `band` отделяет повторяемую секцию от содержимого.
+pub(crate) type BuildCopy = dyn Fn(&Element, usize, bool) -> AnyElement;
 
 /// Получатель роста сохраняет идентичность даже у совпадающих границ строк.
 #[derive(Clone, Debug)]
@@ -58,6 +58,8 @@ pub(crate) struct Regrow {
     pub(crate) opts: RenderOpts,
     /// Разложенная геометрия стопки по последней раскладке главной копии.
     pub(crate) laid: Laid,
+    /// Проход, породивший числовой снимок; не LayoutId из освобождённого дерева.
+    pub(crate) space: Option<gpui::LayoutSpace>,
     /// Высота ребёнка в стопке — разложенный border box (а не мера формы):
     /// ложно, когда мера несёт дотяг внепоточных или коробка из одних флоатов
     /// обнулена (`multicol_stack_child`).
@@ -129,8 +131,10 @@ impl Regrow {
     pub(crate) fn rebuild(&self, spare: usize) -> (AnyElement, Vec<AnyElement>) {
         self.watched.rewind_flows();
         (
-            (self.build)(&self.dom, 0),
-            (1..=spare).map(|i| (self.build)(&self.dom, i)).collect(),
+            (self.build)(&self.dom, 0, false),
+            (1..=spare)
+                .map(|i| (self.build)(&self.dom, i, false))
+                .collect(),
         )
     }
 }
@@ -154,11 +158,15 @@ pub(crate) fn measured_push(c: &Element, line_col_w: Option<f32>, col_vert: bool
 
 /// Поддерево, чью геометрию полностью записывает раскладка копии.
 pub(crate) fn measured_tree(c: &Element) -> bool {
+    // TRANSITIONAL(F2-6): Atomic inline лежит внутри строки, а measured_tree знает стопку блоков; удалить отказ в P20 после токена строки с конечным краем поверх P03.
+    recorded_tree(c) && !atomic_inline_flow(c)
+}
+
+/// Геометрия границ блоков доступна и при атомарном содержимом их строк.
+pub(crate) fn recorded_tree(c: &Element) -> bool {
     !c.marks.paginate
         && c.style.used().column_span != Some(true)
         && clone_dec(c).is_none()
-        // TRANSITIONAL(F2-6): Atomic inline лежит внутри строки, а measured_tree знает стопку блоков; удалить отказ в P20 после токена строки с конечным краем поверх P03.
-        && !atomic_inline_flow(c)
         && (stacked_tree(c) || table_tree(c) || grid_tree(c) || flex_tree(c))
 }
 

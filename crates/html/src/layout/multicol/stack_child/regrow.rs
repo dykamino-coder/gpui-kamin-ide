@@ -61,15 +61,17 @@ impl Measured {
             let watched = self.watched.clone();
             let (opts_b, merged) = (opts.clone(), merged.clone());
             let (h, over) = sizes;
-            let build = move |dom: &Element, part: usize| {
+            let build = move |dom: &Element, part: usize, band: bool| {
                 let vcx = opts_b.cx.vcx();
                 let mut inner = box_style(&merged, &dom.style, vcx);
                 inner.fragment_clip_ancestor = false;
                 let mut opts = opts_b.in_stack_copy();
-                opts.frag.watch = Some(if part == 0 {
-                    watched.clone()
-                } else {
-                    watched.for_part(part)
+                opts.frag.watch = (!band).then(|| {
+                    if part == 0 {
+                        watched.clone()
+                    } else {
+                        watched.for_part(part)
+                    }
                 });
                 let el = build_copy(
                     &opts,
@@ -86,9 +88,9 @@ impl Measured {
                     0.0,
                     &inner,
                     false,
-                    part == 0,
+                    part == 0 && !band,
                     part,
-                    false,
+                    band,
                 );
                 side_margin_wrap(el, dom, col_vert)
             };
@@ -107,6 +109,7 @@ impl Measured {
                 build: Rc::new(build),
                 opts: opts.clone(),
                 laid: Default::default(),
+                space: None,
                 laid_h: self.laid_h,
                 watched: self.watched.clone(),
             });
