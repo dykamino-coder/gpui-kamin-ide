@@ -5,6 +5,7 @@
 //! завершает только at-правило, незакрытый блок в конце закрывается неявно.
 
 use super::{Piece, at_url, skip_string, skip_url};
+use crate::css_syntax::escaped_codepoint_end;
 
 /// CSS Syntax §consume-stylesheet-contents discards CDO/CDC between top-level statements,
 /// while they remain ordinary input inside a rule or nested rule list.
@@ -48,8 +49,7 @@ pub(crate) fn next_piece(text: &str) -> Option<(Piece<'_>, &str)> {
         let ch = text[at..].chars().next().unwrap_or('\u{0}');
         match ch {
             '\\' => {
-                at += ch.len_utf8();
-                at += text[at..].chars().next().map_or(0, char::len_utf8);
+                at = escaped_codepoint_end(text, at);
                 continue;
             }
             '"' | '\'' => {
@@ -104,8 +104,7 @@ pub(super) fn find_matching(from_brace: &str) -> Option<usize> {
         let ch = from_brace[at..].chars().next().unwrap_or('\0');
         match ch {
             '\\' => {
-                at += ch.len_utf8();
-                at += from_brace[at..].chars().next().map_or(0, char::len_utf8);
+                at = escaped_codepoint_end(from_brace, at);
                 continue;
             }
             '"' | '\'' => {

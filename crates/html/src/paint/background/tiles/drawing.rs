@@ -3,6 +3,7 @@
 use super::{area_corners, origin, rounded, tile_size};
 use crate::document::state::ValueCx;
 use crate::paint::background::*;
+use crate::resources::css_images::Source as CpuSource;
 use crate::style::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::style::values::value::Len;
 use gpui::{Bounds, Pixels, px};
@@ -148,7 +149,10 @@ pub(crate) fn draw_tiles(
         ys = ys.into_iter().step_by(k).collect();
         tile = (tile.0 * k as f32, tile.1 * k as f32);
     }
-    let raster = if matches!(found, super::super::Source::Filtered { .. }) {
+    let raster = if matches!(
+        found,
+        super::super::Source::Image(CpuSource::Filtered { .. })
+    ) {
         found.sampled_raster(tile, c.image_pixelated == Some(true), vcx)
     } else {
         conic::tile(&found, tile, window.scale_factor(), vcx)

@@ -99,7 +99,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc
     c.tab_size_len = match own.tab_size_len.and(c.tab_size_len) {
         Some(len) => Some(Len::Px(crate::text::metrics::spacing_px(
             Some(len),
-            &c.font_family.clone().unwrap_or_default(),
+            c.font_family.as_deref().unwrap_or_default(),
             own_px,
             vcx,
         ))),

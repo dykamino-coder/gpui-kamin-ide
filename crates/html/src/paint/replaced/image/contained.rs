@@ -4,6 +4,7 @@
 use super::with::image_with;
 use crate::dom::Element;
 use crate::layout::replaced::image::contained_size::{ContainedSize, contained_size};
+use crate::resources::css_images::Source as CpuSource;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
@@ -31,7 +32,7 @@ pub(super) fn contained_image(
         let ready = crate::resources::css_images::element_source(src, &e.style.used(), vcx)
             .map(crate::paint::background::Source::from_cpu)
             .and_then(|s| match s {
-                crate::paint::background::Source::Vector { markup, .. } => {
+                crate::paint::background::Source::Image(CpuSource::Vector { markup, .. }) => {
                     let viewport =
                         crate::resources::images::viewport::with_viewport(&markup, (cw, ch));
                     crate::svg::raster::rasterize_image(&viewport, cw, ch, vcx)
