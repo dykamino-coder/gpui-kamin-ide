@@ -9,7 +9,7 @@ use crate::layout::fragment::clone::clone_wrapper_item;
 use crate::layout::fragment::line_shape::group_inline_runs;
 use crate::layout::fragment::{Shape, with_lines};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::{BoxStyle, Computed, Position};
 use crate::style::values::value::Len;
 
 /// Итог меры стопки: всё, что сборка передаёт `multicol_column_stack`.
@@ -42,13 +42,8 @@ pub(crate) fn stack_plan(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
 ) -> StackPlan {
-    let positioned = |s: &Computed| {
-        matches!(
-            s.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        )
-    };
+    let positioned =
+        |s: &Computed| matches!(s.position, Some(Position::Absolute | Position::Fixed));
     let line_col_w = column_measure_width(
         e,
         inherited,
