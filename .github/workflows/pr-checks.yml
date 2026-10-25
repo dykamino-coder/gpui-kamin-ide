@@ -344,6 +344,9 @@ jobs:
       - name: Test computed access aggregates and shrinking ceilings
         run: python3 -m unittest discover -s scripts -p test_check_computed.py -v
 
+      - name: Test exact lower-crate support scopes
+        run: python3 -m unittest discover -s scripts -p test_computed_test_support.py -v
+
       - name: Enforce shrinking used writes and mutable escapes
         env:
           BASE_SHA: ${{ needs.scope.outputs.base_sha }}
