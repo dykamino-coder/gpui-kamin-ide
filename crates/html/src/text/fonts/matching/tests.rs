@@ -23,6 +23,7 @@ fn chosen(faces: Vec<Face>, request: Computed) -> String {
         .faces
         .borrow_mut()
         .insert("selection-test".into(), faces);
+    vcx.doc.font_registry_changed();
     let selected = select("selection-test", &request, vcx).unwrap().family;
     vcx.doc
         .font_faces
@@ -178,6 +179,7 @@ fn regular_face_keeps_features_equal_across_synthesized_weight_runs() {
         "selection-test".into(),
         vec![face("regular", 100.0, 400.0, 0, 0.0)],
     );
+    vcx.doc.font_registry_changed();
     let regular = Computed::default();
     let bold = {
         let mut with_inherited = Computed {

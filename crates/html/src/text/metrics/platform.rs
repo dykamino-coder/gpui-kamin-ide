@@ -6,6 +6,9 @@ use std::{collections::HashSet, rc::Rc, sync::Arc};
 type FontLoader = Rc<dyn Fn(Vec<u8>) -> Option<String>>;
 type FactsFactory = Rc<dyn Fn() -> Rc<dyn crate::font_facts::FontFactsProvider>>;
 
+#[cfg(test)]
+mod tests;
+
 /// Источник шрифтов для разбора документа и его вложенных документов.
 /// Копия разделяет платформенные ресурсы, но не щупы и кэши измерений.
 #[derive(Clone, Default)]
@@ -17,6 +20,16 @@ pub struct FontContext {
 }
 
 impl FontContext {
+    pub(crate) fn native_face(&self, font: &gpui::Font) -> Option<(usize, u32)> {
+        let system = self.system.as_ref()?;
+        let id = system.resolve_font(font);
+        Some((id.0, system.units_per_em(id)))
+    }
+
+    pub(crate) fn installed_names(&self) -> Rc<HashSet<String>> {
+        self.installed.clone()
+    }
+
     /// Снять список семейств после регистрации встроенных шрифтов приложения.
     pub fn new(system: Arc<gpui::TextSystem>) -> Self {
         let installed = Rc::new(

@@ -13,3 +13,22 @@ pub(crate) struct FontFaces {
     pub(super) romn_by_src: RefCell<HashMap<String, Option<f32>>>,
     pub(super) romn: RefCell<HashMap<String, f32>>,
 }
+
+impl FontFaces {
+    pub(crate) fn snapshot(
+        &self,
+        installed: std::rc::Rc<std::collections::HashSet<String>>,
+        default_family: String,
+        alternates: crate::font_facts::FeatureDefinitions,
+    ) -> crate::font_facts::Registry {
+        crate::font_facts::Registry {
+            installed,
+            default_family,
+            aliases: self.aliases.borrow().clone(),
+            features: self.features.borrow().clone(),
+            faces: self.faces.borrow().clone(),
+            has_space: self.has_space.borrow().clone(),
+            alternates: std::sync::Arc::new(alternates),
+        }
+    }
+}

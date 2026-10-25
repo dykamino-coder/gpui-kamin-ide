@@ -44,10 +44,7 @@ impl Default for RootMetrics {
 impl RootMetrics {
     pub(crate) fn resolve_units(&mut self, vcx: ValueCx<'_>) {
         let Ok(facts) = vcx.doc.font_provider().metrics(
-            FontRequest {
-                family_list: &self.family,
-                size_px: self.font_px,
-            },
+            FontRequest::new(&self.family, self.font_px),
             &vcx.doc.font_snapshot(),
         ) else {
             return;
@@ -90,13 +87,7 @@ pub fn set_root_metrics(doc: &crate::document::state::DocState, font_px: f32, li
 pub fn root_normal_line_px(family: &str, font: f32, vcx: ValueCx<'_>) -> f32 {
     vcx.doc
         .font_provider()
-        .normal_line(
-            FontRequest {
-                family_list: family,
-                size_px: font,
-            },
-            &vcx.doc.font_snapshot(),
-        )
+        .normal_line(FontRequest::new(family, font), &vcx.doc.font_snapshot())
         .ok()
         .and_then(|facts| facts.height)
         .map_or(1.2 * font, |m| m.px)

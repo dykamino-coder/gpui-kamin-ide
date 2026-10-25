@@ -24,6 +24,10 @@ pub(crate) struct Metrics {
 }
 
 impl Metrics {
+    pub(crate) fn default_family(&self) -> String {
+        self.family.borrow().clone()
+    }
+
     pub(crate) fn font_context(&self) -> FontContext {
         self.platform.borrow().clone()
     }

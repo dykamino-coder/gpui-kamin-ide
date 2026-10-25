@@ -7,8 +7,7 @@ use crate::style::computed::Computed;
 
 pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
-    font.fallbacks =
-        crate::style::computed::font_family::fallbacks(c, font.fallbacks, opts.cx.vcx());
+    font.fallbacks = crate::text::fonts::fallbacks::fallbacks(c, font.fallbacks, opts.cx.vcx());
     if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
         font.family = crate::text::fonts::alias_for(family, c, opts.cx.vcx())
             .unwrap_or_else(|| family.clone())

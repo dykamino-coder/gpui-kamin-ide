@@ -126,7 +126,7 @@ fn two_live_documents_keep_facts_across_other_document_bootstrap_reset_and_updat
     set_root_metrics(&b.state, 20.0, 25.0);
     assert_eq!(unit(&b.state, "ch"), 30.0);
     // Разбор и повторный bootstrap сбрасывают только реестры/кэши своего документа.
-    crate::text::fonts::alternates::reset(b.state.values());
+    b.state.reset_font_alternates();
     FontContext::default().install(b.state.values());
     drop(b);
     let fresh = DocState::new(Default::default());
@@ -162,10 +162,7 @@ fn backend_rejects_foreign_stale_and_expired_document_snapshots() {
     let a = DocState::new(Default::default());
     let b = DocState::new(Default::default());
     let backend = a.font_provider();
-    let request = FontRequest {
-        family_list: "Face",
-        size_px: 20.0,
-    };
+    let request = FontRequest::new("Face", 20.0);
     assert_eq!(
         backend.metrics(request, &b.font_snapshot()),
         Err(FontFactsError::WrongEnvironment)
@@ -203,10 +200,7 @@ fn adapter_retains_exact_metrics_and_normal_rounding() {
     metrics::install_vprobe(|_, size| (size * 0.89, size * 0.22, size * 0.71), vcx);
     for family in ["Face", "", "Other, serif"] {
         for size in [0.0, 16.0, 19.3, 40.0] {
-            let request = FontRequest {
-                family_list: family,
-                size_px: size,
-            };
+            let request = FontRequest::new(family, size);
             let facts = doc
                 .font_provider()
                 .metrics(request, &doc.font_snapshot())

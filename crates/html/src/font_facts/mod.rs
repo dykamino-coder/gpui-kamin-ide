@@ -1,10 +1,19 @@
 //! Нейтральные запросы и факты шрифтов; модуль не владеет загрузкой или CSS-резолвером.
 //!
-//! Запрос описывает существующий consumer корневых единиц. Полный face matching
-//! требует отдельного контракта выбора лица: имя семейства не является face identity.
+//! Снимок принадлежит документу, ранжирование дескрипторов не зависит от backend.
 //! Provider не назначает CSS fallback отсутствующей метрике.
 
 use std::rc::Rc;
+
+/// Маркер CSS-подбора веса для адаптера платформы.
+pub const CSS_WEIGHT_TAG: (&str, u32) = ("cssw", 1);
+
+pub(crate) mod matching;
+mod registry;
+mod request;
+pub(crate) use registry::{FeatureDefinitions, Registry};
+pub use registry::{FontRegistrySnapshot, GENERIC_SANS, generic_family};
+pub use request::{FontOrientation, FontRequest, FontStyle};
 
 /// Identity окружения одного документа без процессного счётчика или реестра.
 #[derive(Clone, Debug)]
@@ -24,21 +33,33 @@ impl PartialEq for FontEnvironmentId {
 
 impl Eq for FontEnvironmentId {}
 
-/// Явная ревизия окружения. Старую ревизию backend обязан отвергнуть.
-/// Это stamp доступа, а не копия ещё не перенесённого реестра дескрипторов.
+/// Нативная identity выбранного лица в конкретной ревизии документа.
+/// Ключ выдаёт backend; строка семейства не может создать identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FontRegistrySnapshot {
-    pub environment: FontEnvironmentId,
-    pub generation: u64,
+pub struct FaceId {
+    pub(crate) environment: FontEnvironmentId,
+    pub(crate) generation: u64,
+    pub(crate) backend_key: usize,
 }
 
-/// Запрос существующих корневых метрик в CSS px.
-/// `family_list` сохраняет порядок и синтаксис текущего CSS-списка без перепарсинга.
-/// Размер передаётся без корректировки: разделение computed/adjusted — задача резолвера.
-#[derive(Clone, Copy, Debug)]
-pub struct FontRequest<'a> {
-    pub family_list: &'a str,
-    pub size_px: f32,
+/// Факты нативного выбора; не утверждают наличие конкретного глифа.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SelectedFaceFacts {
+    pub face: FaceId,
+    pub units_per_em: u32,
+    pub size_adjust: f32,
+    pub instance: FontInstanceFacts,
+}
+
+/// Backend пока не сообщает выбранные оси и фактический синтез.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FontInstanceFacts {
+    Absent,
+    Unsupported {
+        variations: bool,
+        optical_size: bool,
+        script: bool,
+    },
 }
 
 /// Достоверность факта не выводится из числового значения (ноль допустим).
@@ -88,11 +109,22 @@ pub enum FontFactsError {
     WrongEnvironment,
     StaleSnapshot,
     Unavailable,
+    UnsupportedRequest,
 }
 
 /// Backend вызывается с явной ревизией; style не загружает и не перечисляет шрифты.
 /// Смена ревизии не превращает старый запрос в запрос к новому реестру.
 pub trait FontFactsProvider {
+    /// Нативный выбор для уже разрешённого CSS-семейства. Не glyph fallback.
+    /// Backend без поддержки выбора сообщает отсутствие явно.
+    fn select(
+        &self,
+        _request: FontRequest<'_>,
+        _snapshot: &FontRegistrySnapshot,
+    ) -> Result<SelectedFaceFacts, FontFactsError> {
+        Err(FontFactsError::Unavailable)
+    }
+
     fn metrics(
         &self,
         request: FontRequest<'_>,

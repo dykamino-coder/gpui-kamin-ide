@@ -66,7 +66,7 @@ pub(crate) fn convert(
     doc: &Rc<crate::document::state::DocState>,
 ) -> Vec<Node> {
     let vcx = doc.values();
-    crate::text::fonts::alternates::reset(vcx);
+    vcx.doc.reset_font_alternates();
     let dom = &input.dom;
     let xhtml = input.xhtml;
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {

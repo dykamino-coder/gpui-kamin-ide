@@ -58,7 +58,7 @@ pub struct DocState {
     /// Shaped paragraphs and fit results shared only inside this document.
     pub(crate) paragraph_measures: Rc<crate::text::paragraph::MeasureCache>,
     /// Named font-feature definitions owned by this document.
-    pub(crate) font_alternates: RefCell<crate::text::fonts::alternates::Definitions>,
+    pub(crate) font_alternates: RefCell<crate::font_facts::FeatureDefinitions>,
     /// Rasterized foreignObject layers of this document, bounded by the painter.
     pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
     /// SVG mask/filter definitions retained by deferred groups of this document.

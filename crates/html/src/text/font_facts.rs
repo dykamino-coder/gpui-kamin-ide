@@ -9,6 +9,8 @@ use crate::font_facts::{
 };
 use std::rc::{Rc, Weak};
 
+mod selection;
+
 pub(crate) struct Backend {
     document: Weak<DocState>,
 }
@@ -32,6 +34,14 @@ impl Backend {
 }
 
 impl FontFactsProvider for Backend {
+    fn select(
+        &self,
+        request: FontRequest<'_>,
+        snapshot: &FontRegistrySnapshot,
+    ) -> Result<crate::font_facts::SelectedFaceFacts, FontFactsError> {
+        self.select_face(request, snapshot)
+    }
+
     fn metrics(
         &self,
         request: FontRequest<'_>,
