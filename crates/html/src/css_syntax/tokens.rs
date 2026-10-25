@@ -44,6 +44,13 @@ pub(crate) fn skip_url_body(text: &str) -> usize {
 /// Byte length of a string body, including its closing quote if present.
 /// Escapes hide delimiters; a bad string ends before its unescaped newline.
 pub(crate) fn skip_string(text: &str, quote: char) -> usize {
+    match scan_string(text, quote) {
+        Ok(end) | Err(end) => end,
+    }
+}
+
+/// Граница строки: Ok после кавычки/EOF, Err перед bad-string newline.
+pub(crate) fn scan_string(text: &str, quote: char) -> Result<usize, usize> {
     let mut at = 0;
     while at < text.len() {
         let ch = text[at..].chars().next().unwrap();
@@ -54,14 +61,14 @@ pub(crate) fn skip_string(text: &str, quote: char) -> usize {
             continue;
         }
         if ch == quote {
-            return at + ch.len_utf8();
+            return Ok(at + ch.len_utf8());
         }
         if matches!(ch, '\n' | '\r' | '\u{c}') {
-            return at;
+            return Err(at);
         }
         at += ch.len_utf8();
     }
-    text.len()
+    Ok(text.len())
 }
 
 pub(crate) fn escape_end(raw: &str, at: usize) -> usize {
