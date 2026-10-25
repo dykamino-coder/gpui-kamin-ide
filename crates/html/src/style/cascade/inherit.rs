@@ -31,6 +31,7 @@ mod containing;
 mod context;
 mod decorate;
 mod flow_align;
+mod fragment;
 mod marker;
 mod paint;
 mod quirks;
@@ -38,6 +39,7 @@ mod self_align;
 use containing::inherit_containing;
 use decorate::decorate;
 pub(crate) use flow_align::note as note_flow_align;
+pub(crate) use fragment::group as fragment_group_style;
 pub(crate) use marker::content as marker_content;
 use paint::inherit_paint;
 

@@ -64,7 +64,7 @@ pub(super) fn page_kids_from_groups(
         first = false;
         let (fb, fa, monolith, renamed, start_name) =
             group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
-        let mut prepared = match vertical {
+        let prepared = match vertical {
             Some(rl) => laid::vertical_group(
                 group,
                 root,
@@ -77,13 +77,8 @@ pub(super) fn page_kids_from_groups(
                 rl,
                 vcx,
             ),
-            None => laid::group(group, root, aw - left - right, pad_top, vcx),
+            None => laid::group(group, root, aw - left - right, pad_top, (fb, fa), vcx),
         };
-        if group.len() > 1
-            && let Some(p) = &mut prepared
-        {
-            p.break_edges(fb, fa);
-        }
         let group = prepared
             .as_ref()
             .map_or(group.as_slice(), |p| p.nodes.as_slice());

@@ -1,5 +1,5 @@
 [
-{"field":"@borrow_mut","owners":{"document":{"escape":11},"document:test":{"escape":3},"interactive":{"escape":7},"layout":{"escape":141},"layout:test":{"escape":37},"paint":{"escape":12},"render":{"escape":2},"resources":{"escape":1},"svg":{"escape":1},"text":{"escape":64},"text:test":{"escape":8}}},
+{"field":"@borrow_mut","owners":{"document":{"escape":11},"document:test":{"escape":3},"interactive":{"escape":7},"layout":{"escape":142},"layout:test":{"escape":37},"paint":{"escape":12},"render":{"escape":2},"resources":{"escape":1},"svg":{"escape":1},"text":{"escape":64},"text:test":{"escape":8}}},
 {"field":"@get_mut","owners":{"cache":{"escape":1},"dom":{"escape":3},"layout":{"escape":30},"layout:test":{"escape":11},"resources":{"escape":1},"text":{"escape":3}}},
 {"field":"@into_computed","owners":{"document":{"escape":4},"dom":{"escape":1},"layout":{"escape":2},"paint:test":{"escape":1},"render:test":{"escape":1},"style":{"escape":1},"style:test":{"escape":2}}},
 {"field":"@lay_used","owners":{"style":{"escape":2}}},

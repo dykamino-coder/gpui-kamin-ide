@@ -10,7 +10,15 @@ fn empty_page_grid_uses_native_group_without_estimated_shape() {
         "",
     );
     let nodes = [Node::Element(authored(&tree).clone())];
-    let p = group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).unwrap();
+    let p = group(
+        &nodes,
+        &BoxStyle::default(),
+        120.0,
+        0.0,
+        (false, false),
+        tree.values(),
+    )
+    .unwrap();
     assert!(p.blocks);
     let Node::Element(e) = &p.nodes[0] else {
         panic!("grid")
@@ -42,8 +50,15 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
         "",
     );
     let nodes = [Node::Element(authored(&tree).clone())];
-    let p = group(&nodes, &BoxStyle::default(), 120.0, 15.0, tree.values())
-        .expect("native monolithic float");
+    let p = group(
+        &nodes,
+        &BoxStyle::default(),
+        120.0,
+        15.0,
+        (false, false),
+        tree.values(),
+    )
+    .expect("native monolithic float");
     assert!(!p.blocks);
     assert_eq!(p.margins, (0.0, 0.0, 0.0));
     let Node::Element(e) = &p.nodes[0] else {
@@ -58,7 +73,15 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
 fn flowing_page_float_records_its_own_children_and_inline_continuation() {
     let tree = crate::dom::parse("<div style='float:left;width:20px'>flowing text</div>", "");
     let nodes = [Node::Element(authored(&tree).clone())];
-    let p = group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).unwrap();
+    let p = group(
+        &nodes,
+        &BoxStyle::default(),
+        120.0,
+        0.0,
+        (false, false),
+        tree.values(),
+    )
+    .unwrap();
     assert!(p.blocks);
     assert_eq!(p.margins, (0.0, 0.0, 0.0));
     let Node::Element(e) = &p.nodes[0] else {
@@ -74,7 +97,15 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
         "",
     );
     let nodes = [Node::Element(authored(&tree).clone())];
-    let p = group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).unwrap();
+    let p = group(
+        &nodes,
+        &BoxStyle::default(),
+        120.0,
+        0.0,
+        (false, false),
+        tree.values(),
+    )
+    .unwrap();
     assert!(p.blocks && p.float_extent);
     let Node::Element(e) = &p.nodes[0] else {
         panic!("float host")
@@ -92,7 +123,15 @@ fn nonempty_float_extent_stops_at_an_inner_bfc() {
             "",
         );
         let nodes = [Node::Element(authored(&tree).clone())];
-        let p = group(&nodes, &BoxStyle::default(), 120., 0., tree.values()).unwrap();
+        let p = group(
+            &nodes,
+            &BoxStyle::default(),
+            120.,
+            0.,
+            (false, false),
+            tree.values(),
+        )
+        .unwrap();
         assert_eq!(p.float_extent, expected);
     }
 }

@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 mod axis;
+mod construct;
 mod hook;
 mod monolithic;
 pub(crate) use hook::wrap;
@@ -67,41 +68,6 @@ pub(crate) struct Watched {
 }
 
 impl Watched {
-    pub(crate) fn new(ids: &[u64]) -> Rc<Self> {
-        Rc::new(Watched {
-            ids: Rc::new(ids.iter().copied().collect()),
-            seen: Rc::default(),
-            flow: Rc::default(),
-            ..Self::default()
-        })
-    }
-
-    /// Ось копии задаёт направление native flex growth и consumed-space clipping.
-    pub(crate) fn for_blocks_axis(blocks: BlockBox, axis: StackAxis, lines: bool) -> Rc<Self> {
-        let flow = if lines {
-            Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines())
-        } else {
-            Rc::default()
-        };
-        Rc::new(Watched {
-            // With the growth struts before them (`STRUT_ID`).
-            ids: Rc::new(
-                blocks
-                    .ids()
-                    .into_iter()
-                    .flat_map(|id| [id, id ^ crate::layout::fragment::flow::blocks::STRUT_ID])
-                    .collect(),
-            ),
-            seen: Rc::default(),
-            tables: Rc::new(blocks.table_keys().into_iter().collect()),
-            flow,
-            item_flows: Self::flex_item_flows(&blocks),
-            blocks: Some(blocks),
-            axis: Some(axis),
-            ..Self::default()
-        })
-    }
-
     pub(super) fn axis(&self) -> StackAxis {
         self.axis.unwrap_or(StackAxis::Horizontal)
     }
@@ -135,13 +101,6 @@ impl Watched {
     /// Block stack watched by the recorder (`for_blocks`).
     pub(crate) fn blocks(&self) -> Option<&BlockBox> {
         self.blocks.as_ref()
-    }
-
-    pub(crate) fn for_lines() -> Rc<Self> {
-        Rc::new(Self {
-            flow: Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines()),
-            ..Self::default()
-        })
     }
 
     /// Recorder for the inside of a box whose line boxes are not lines of

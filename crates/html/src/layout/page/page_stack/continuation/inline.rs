@@ -9,16 +9,7 @@ pub(super) fn resume(
     from: f32,
 ) -> Vec<(Vec<usize>, ContentLine)> {
     flow.resume_paragraphs(&old.paragraphs, from);
-    for snapshot in &old.floats {
-        if let Some(context) = flow.context_path(&snapshot.scope) {
-            *context.float_resume.borrow_mut() =
-                Some(crate::layout::fragment::flow::float_resume::Cursor::at(
-                    snapshot,
-                    &old.paragraphs,
-                    from,
-                ));
-        }
-    }
+    flow.resume_floats(&old.floats, &old.paragraphs, from);
     old.paragraphs
         .iter()
         .filter_map(|p| {

@@ -33,15 +33,19 @@ APPROVED = (
 
 
 P05_BASE = 'f5e5da85f641015a90e36e73eeee87821679b88c'
-# Reviewed: not a style escape. This COW map owns fragment float growth only
-# (layout/fragment/push/measured.rs), with no Computed reachable through it.
-P05_NON_STYLE = (('@make_mut', 'layout', 'escape', 1, 2),)
+# Reviewed: not a style escape. Float growth floors contain only u64/f32
+# (layout/fragment/push/float_flow.rs); context interning contains FlowMeasure
+# (layout/fragment/flow/contexts.rs). Neither map exposes a style operand.
+OVERFLOW_FLOAT_NON_STYLE = (
+    ('@make_mut', 'layout', 'escape', 1, 2),
+    ('@borrow_mut', 'layout', 'escape', 141, 142),
+)
 
 
 def approved_base(counts, revision):
     """Replace only the enumerated old counts at the exact census merge base."""
     result = Counter(counts)
-    approved = APPROVED if revision == CENSUS_BASE else P05_NON_STYLE if revision == P05_BASE else ()
+    approved = APPROVED if revision == CENSUS_BASE else OVERFLOW_FLOAT_NON_STYLE if revision == P05_BASE else ()
     if approved:
         for field, owner, access, old, new in approved:
             key = field, owner, access

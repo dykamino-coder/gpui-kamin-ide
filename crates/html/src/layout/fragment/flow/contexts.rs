@@ -42,9 +42,27 @@ impl FlowMeasure {
         }
     }
 
+    /// Восстанавливает токены float в принадлежащих им контекстах BFC.
+    pub(crate) fn resume_floats(
+        &self,
+        snapshots: &[super::float_resume::Snapshot],
+        paragraphs: &[Inline],
+        from: f32,
+    ) {
+        for snapshot in snapshots {
+            if let Some(context) = self.context_path(&snapshot.scope) {
+                context
+                    .float_resume
+                    .replace(Some(super::float_resume::Cursor::at(
+                        snapshot, paragraphs, from,
+                    )));
+            }
+        }
+    }
+
     fn clear_contexts(&self) {
         self.resume_lines(&[], 0.0);
-        *self.float_resume.borrow_mut() = None;
+        self.float_resume.take();
         for child in self.contexts.borrow().values() {
             child.clear_contexts();
         }

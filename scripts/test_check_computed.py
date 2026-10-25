@@ -8,7 +8,7 @@ import unittest
 from computed_access import DEFINITIONS, aggregate, growth
 from check_computed import check, decode, documents
 from test_check_transitional import commit, git
-from computed_f2_rebaseline import APPROVED, CENSUS_BASE, P05_BASE, P05_NON_STYLE, approved_base
+from computed_f2_rebaseline import APPROVED, CENSUS_BASE, P05_BASE, OVERFLOW_FLOAT_NON_STYLE, approved_base
 
 FIELDS = 'pub struct Computed {\n    pub width: f32,\n    pub height: f32,\n}\n'
 LAYOUT = 'crates/html/src/layout/block.rs'
@@ -89,12 +89,13 @@ class AggregateTests(unittest.TestCase):
 
 
 class GitRatchetTests(unittest.TestCase):
-    def test_p05_non_style_review_is_exact_and_expires(self):
-        before = Counter({(f, o, a): old for f, o, a, old, new in P05_NON_STYLE})
-        after = Counter({(f, o, a): new for f, o, a, old, new in P05_NON_STYLE})
+    def test_overflow_float_non_style_review_is_exact_and_expires(self):
+        before = Counter({(f, o, a): old for f, o, a, old, new in OVERFLOW_FLOAT_NON_STYLE})
+        after = Counter({(f, o, a): new for f, o, a, old, new in OVERFLOW_FLOAT_NON_STYLE})
         self.assertEqual(approved_base(before, P05_BASE), after)
         self.assertEqual(approved_base(before, 'later-main'), before)
-        for key in [('Computed.width', 'layout', 'write'), ('@make_mut', 'layout', 'escape')]:
+        self.assertEqual(len(OVERFLOW_FLOAT_NON_STYLE), 2)
+        for key in [*after, ('Computed.width', 'layout', 'write')]:
             self.assertTrue(growth(after + Counter({key: 1}), approved_base(before, P05_BASE), 'test'))
         with self.assertRaises(ValueError):
             approved_base(after, P05_BASE)
