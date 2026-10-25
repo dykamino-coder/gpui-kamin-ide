@@ -44,6 +44,7 @@ fn row_resumes_same_byte_after_width_changes_line_height_and_membership() {
             byte: 8,
             top: 20.,
             bottom: 40.,
+            prefix: 20.,
             consumed_before: 0.0,
         }],
     );
@@ -77,6 +78,7 @@ fn row_resumes_same_byte_after_width_changes_line_height_and_membership() {
             byte: 8,
             top: 40.,
             bottom: 60.,
+            prefix: 40.,
             consumed_before: 0.0,
         }],
     );
@@ -138,6 +140,7 @@ fn column_resumes_content_instead_of_old_y() {
             byte: 8,
             top: 20.,
             bottom: 40.,
+            prefix: 20.,
             consumed_before: 0.0,
         }],
     );
@@ -220,6 +223,7 @@ fn row_boundary_preserves_distance_to_the_first_content_line() {
             byte: 8,
             top: 171.,
             bottom: 189.,
+            prefix: 147.,
             consumed_before: 0.,
         }],
     );
