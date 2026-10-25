@@ -341,6 +341,14 @@ jobs:
           BASE_SHA: ${{ needs.scope.outputs.base_sha }}
         run: python3 scripts/check_transitional.py --base "$BASE_SHA"
 
+      - name: Test computed access aggregates and shrinking ceilings
+        run: python3 -m unittest discover -s scripts -p test_check_computed.py -v
+
+      - name: Enforce shrinking used writes and mutable escapes
+        env:
+          BASE_SHA: ${{ needs.scope.outputs.base_sha }}
+        run: python3 scripts/check_computed.py --base "$BASE_SHA"
+
   rust-windows:
     name: Windows Rust tests (no GUI acceptance)
     needs: scope
