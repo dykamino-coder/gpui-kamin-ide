@@ -3,7 +3,7 @@
 use super::super::SpotCell;
 use super::super::oof::{Destination, OofKid};
 use super::{ABS, CbLayer, FIX, Positioning};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub(crate) struct Retained {
@@ -140,52 +140,28 @@ impl Escaped {
     /// Измерительные деревья не публикуют выпавших потомков: только дерево,
     /// дошедшее до prepaint, присоединяет их к назначениям исходных предков.
     pub(crate) fn wrap(self, child: gpui::AnyElement) -> gpui::AnyElement {
-        use crate::hooks::IntoHooked;
-        Published {
+        use gpui::IntoElement;
+        let escaped = Cell::new(Some(self));
+        // ContextScope сохраняет фазу PaintLast даже без открытого собирателя.
+        // Произвольная Hooks-обёртка скрыла бы эту метку от родительского Div.
+        gpui::ContextScope::new(
+            Rc::new(move |phase| {
+                if phase == gpui::ScopePhase::Prepaint
+                    && let Some(escaped) = escaped.take()
+                {
+                    escaped.commit();
+                }
+                Box::new(())
+            }),
             child,
-            escaped: Some(self),
-        }
-        .hooked()
+        )
+        .into_any_element()
     }
 
     pub(crate) fn commit(self) {
         for (queue, destination) in self.0 {
             queue.commit_to(&destination);
         }
-    }
-}
-
-struct Published {
-    child: gpui::AnyElement,
-    escaped: Option<Escaped>,
-}
-
-impl crate::hooks::Wrap for Published {
-    fn child(&mut self) -> &mut gpui::AnyElement {
-        &mut self.child
-    }
-
-    fn prepaint(
-        &mut self,
-        _: gpui::Bounds<gpui::Pixels>,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) {
-        if let Some(escaped) = self.escaped.take() {
-            escaped.commit();
-        }
-        self.child.prepaint(window, cx);
-    }
-
-    fn paint(
-        &mut self,
-        _: gpui::Bounds<gpui::Pixels>,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) {
-        // Публикация не создаёт stacking context: сохраняем внешние фазы
-        // CSS 2.1 Appendix E для float, строк и позиционированных потомков.
-        gpui::paint_reopen(|| self.child.paint(window, cx));
     }
 }
 

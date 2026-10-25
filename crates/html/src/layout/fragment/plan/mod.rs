@@ -99,13 +99,15 @@ pub(crate) fn fill_at(
     target_at: &dyn Fn(usize) -> f32,
     space: Space,
 ) -> (usize, f32, Plan) {
-    fill_measured(kids, target_at, space, &mut |_, _, _, _, _| None)
+    fill_measured(kids, target_at, space, &mut |_| None)
 }
 
 mod measured;
-pub(crate) use measured::fill_measured;
-pub(super) type Remeasure<'a> =
-    dyn FnMut(usize, usize, usize, &Kid, f32) -> Option<(Kid, f32)> + 'a;
+pub(crate) use measured::{MeasureRequest, Measurement, fill_measured, fill_resumed};
+pub(super) type Remeasure<'a> = dyn FnMut(MeasureRequest) -> Option<(Kid, f32)> + 'a;
+pub(super) type ResumeMeasure<'a> = dyn FnMut(MeasureRequest) -> Measurement + 'a;
 
+#[cfg(test)]
+mod resumed_tests;
 #[cfg(test)]
 mod tests;

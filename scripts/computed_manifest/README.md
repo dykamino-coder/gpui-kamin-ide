@@ -16,6 +16,14 @@ it cannot bless new writes. A new field/owner/access starts with zero debt.
 Actual source counters are also compared with the merge base: unused ceiling
 headroom cannot reintroduce writes removed by an earlier PR.
 
+One lead-authorized F2 P01–P04 rebaseline is enumerated in
+`scripts/computed_f2_rebaseline.py`: exactly 19 pre-census fragment-copy counters,
+with explicit old/new ceilings. It applies only against census commit
+`f05aec7b98ecd67c407fc47dac5d5a65fb744f66`, and expires when the merge base
+advances. All other counters and any growth beyond those exact ceilings remain
+blocked. F2 P21/P22 removes the copies; ADR3 A08/A14 owns remaining mutable
+projection/escape cleanup. This is not a general ceiling-increase mechanism.
+
 This is a conservative lexical check, not Rust type inference or proof of deep
 immutability. Same-named fields and non-style generic mutable APIs are deliberately
 over-counted. Comments and literals are ignored. Explicit `#[cfg(test)]`/`#[test]`

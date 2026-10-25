@@ -8,13 +8,11 @@ pub(super) fn continuation(e: &Element) -> bool {
     if e.style.used().display == Some(Display::None) {
         return false;
     }
-    // TRANSITIONAL(F2-1): Один border box не хранит остаток min-height и overflow; удалить отказ в P04 после consumed block size и раздельных продолжений.
     parallel_overflow(e)
-        // TRANSITIONAL(F2-1): MaxContent копии теряет исходный definite CB для процентов; удалить отказ в P04 после сохранения исходного CB в продолжении.
-        || [e.style.used().height, e.style.used().min_height, e.style.used().max_height]
-            .iter().any(|l| matches!(l, Some(Len::Pct(_))))
         || inline_continuation(e)
-        || e.children.iter().any(|n| matches!(n, Node::Element(k) if continuation(k)))
+        || e.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(k) if continuation(k)))
 }
 
 pub(super) fn inline_continuation(e: &Element) -> bool {

@@ -33,7 +33,9 @@ impl Resume {
                     .get(&id)
                     .into_iter()
                     .flatten()
-                    .filter(|l| l.bottom > from + COORD_EPS)
+                    // Будущая строка не поглощает остаток монолитной коробки:
+                    // до её начала сохраняется физический consumed block-size.
+                    .filter(|l| l.top <= from + COORD_EPS && l.bottom > from + COORD_EPS)
                     .min_by(|a, b| a.top.total_cmp(&b.top))
                 {
                     Address::Line(line.paragraph, line.byte)
@@ -80,6 +82,11 @@ impl Resume {
             .flat_map(|f| &f.lines)
             .flat_map(|l| &l.items)
             .filter_map(|&id| {
+                // Непочатый item не имеет consumed block-size и не нуждается
+                // в ограничении оставшегося содержимого (css-break-3 §5.1).
+                if matches!(self.items.get(&id), Some(Address::Before)) {
+                    return None;
+                }
                 let (top, bottom) = new.at(id)?;
                 let at = self.position(id, new)?;
                 Some((
@@ -93,7 +100,7 @@ impl Resume {
             .collect()
     }
 
-    pub(super) fn offset(&self, new: &Laid, end: f32) -> f32 {
+    pub(super) fn offset(&self, new: &Laid) -> Option<f32> {
         new.flexes
             .values()
             .flat_map(|f| {
@@ -103,7 +110,13 @@ impl Resume {
                             return None;
                         }
                         if f.column {
-                            self.position(id, new)
+                            if matches!(self.items.get(&id), Some(Address::Before)) {
+                                // У колонки гасится gap перед новым item, но его
+                                // собственное поле остаётся (css-flexbox-1 §10).
+                                new.margin_box(id).map(|b| b.0)
+                            } else {
+                                self.position(id, new)
+                            }
                         } else {
                             Some(line.start)
                         }
@@ -111,114 +124,8 @@ impl Resume {
                 })
             })
             .min_by(f32::total_cmp)
-            .unwrap_or(end)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::layout::fragment::flow::ContentLine;
-    use crate::layout::fragment::flow::blocks::{FlexFrame, FlexLine};
-    #[test]
-    fn row_resumes_same_byte_after_width_changes_line_height_and_membership() {
-        let mut old = Laid::of_boxes(&[(1, 0., 60.), (2, 0., 20.)]);
-        old.flexes.insert(
-            9,
-            FlexFrame {
-                column: false,
-                lines: vec![FlexLine {
-                    start: 0.,
-                    end: 60.,
-                    items: vec![1, 2],
-                    ..Default::default()
-                }],
-            },
-        );
-        old.content.insert(
-            1,
-            vec![ContentLine {
-                paragraph: 0,
-                byte: 8,
-                top: 20.,
-                bottom: 40.,
-            }],
-        );
-        let token = Resume::at(&old, 20.);
-        let mut new = Laid::of_boxes(&[(1, 0., 100.), (2, 100., 120.)]);
-        new.flexes.insert(
-            9,
-            FlexFrame {
-                column: false,
-                lines: vec![
-                    FlexLine {
-                        start: 0.,
-                        end: 100.,
-                        items: vec![1],
-                        ..Default::default()
-                    },
-                    FlexLine {
-                        start: 100.,
-                        end: 120.,
-                        items: vec![2],
-                        ..Default::default()
-                    },
-                ],
-            },
-        );
-        new.content.insert(
-            1,
-            vec![ContentLine {
-                paragraph: 0,
-                byte: 8,
-                top: 40.,
-                bottom: 60.,
-            }],
-        );
-        assert_eq!(
-            token.consumed(&new),
-            HashMap::from([(1, (40., false)), (2, (20., true))])
-        );
-        assert_eq!(token.offset(&new, 120.), 0.);
-    }
-    #[test]
-    fn non_content_box_keeps_consumed_block_size_when_used_height_changes() {
-        let old = Laid::of_boxes(&[(1, 0., 60.)]);
-        let token = Resume {
-            items: HashMap::from([(1, Address::BlockOffset(20.))]),
-        };
-        let mut new = old;
-        new.boxes.insert(1, (0., 100.));
-        assert_eq!(token.position(1, &new), Some(20.));
-    }
-    #[test]
-    fn column_resumes_content_instead_of_old_y() {
-        let mut old = Laid::of_boxes(&[(1, 0., 60.), (2, 60., 80.)]);
-        old.flexes.insert(
-            9,
-            FlexFrame {
-                column: true,
-                lines: vec![FlexLine {
-                    items: vec![1, 2],
-                    ..Default::default()
-                }],
-            },
-        );
-        old.content.insert(
-            1,
-            vec![ContentLine {
-                paragraph: 0,
-                byte: 8,
-                top: 20.,
-                bottom: 40.,
-            }],
-        );
-        let token = Resume::at(&old, 20.);
-        let mut new = old.clone();
-        new.boxes.insert(1, (0., 100.));
-        new.boxes.insert(2, (100., 120.));
-        new.content.get_mut(&1).unwrap()[0].top = 40.;
-        assert!(token.consumed(&new).is_empty());
-        assert_eq!(token.offset(&new, 120.), 40.);
-    }
-}
+mod tests;

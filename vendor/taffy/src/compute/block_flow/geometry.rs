@@ -166,6 +166,11 @@ impl BlockFlow {
             },
             y: value.location.x,
         };
+        // KaminIDE patch: offsets are vectors, so block reversal changes their sign.
+        value.relative_offset = Point {
+            x: if self.block_reverse { -value.relative_offset.y } else { value.relative_offset.y },
+            y: value.relative_offset.x,
+        };
         value.size = self.size(value.size);
         value.scrollbar_size = self.size(value.scrollbar_size);
         value.border = self.physical_edges(value.border);

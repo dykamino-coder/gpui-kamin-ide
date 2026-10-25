@@ -14,6 +14,8 @@ pub(crate) enum Completion {
 pub(crate) struct Plan {
     pub(crate) fragments: Vec<Frag>,
     pub(crate) completion: Completion,
+    /// Причина отказа исполняющего consumer; incomplete не выдаётся за готовый план.
+    pub(crate) failure: Option<crate::layout::fragment::token::Error>,
 }
 
 impl Plan {

@@ -3,7 +3,8 @@
 //!
 //! Своего варианта `Len` у них нет: `Len` разбирается полусотней `match` по
 //! крейту, поэтому единица доживает слагаемым `Sum::ext` в арене `calc` и
-//! сворачивается там же, где `vw`/`vh` (`Computed::resolve_viewport`).
+//! сворачивается до наследования (`Computed::resolve_container_units`); единицы
+//! окна сохраняют стадию `Computed::resolve_viewport`.
 //!
 //! Малое, большое и динамическое окна у нас совпадают: интерфейса браузера,
 //! который прячется при прокрутке, нет, а спецификация в этом случае
@@ -71,6 +72,23 @@ pub(super) fn parse_unit(unit: &str) -> Option<u8> {
 }
 
 impl Sum {
+    /// Единицы контейнера вычисляются до наследования. Остальные относительные
+    /// слагаемые, включая проценты, сохраняют собственную стадию разрешения.
+    pub fn fold_container(&mut self, container: (f32, f32), vertical: bool) -> bool {
+        let start = Ext::Cqw as usize;
+        if self.ext[start..].iter().all(|v| *v == 0.0) {
+            return false;
+        }
+        let (w, h) = container;
+        let (inline, block) = if vertical { (h, w) } else { (w, h) };
+        let bases = [w, h, inline, block, w.min(h), w.max(h)];
+        for (term, basis) in self.ext[start..].iter_mut().zip(bases) {
+            self.px += *term * basis;
+            *term = 0.0;
+        }
+        true
+    }
+
     /// Коэффициенты всех природ по порядку номеров `nature`.
     pub(super) fn natures(&self) -> [f32; 10 + EXT_N] {
         let mut f = [0.0; 10 + EXT_N];
@@ -172,8 +190,14 @@ impl Sum {
 }
 
 impl Len {
-    /// Сумма с единицами окна или контейнера, которые свернёт только
-    /// `Computed::resolve_viewport`. Потребители на отрисовке (позиция и
+    /// Требуется ли размер query container на стадии вычисленных значений.
+    pub(crate) fn needs_container_context(self, vcx: ValueCx<'_>) -> bool {
+        matches!(self, Len::Calc(i) if super::calc_get(i, vcx).ext[Ext::Cqw as usize..]
+            .iter().any(|v| *v != 0.0))
+    }
+
+    /// Сумма с единицами окна или контейнера, требующая соответствующего
+    /// контекста computed-стадии. Потребители на отрисовке (позиция и
     /// радиусы градиента) базы не знают — для них такая длина как прежде
     /// не разобрана, а не молча равна нулю.
     pub fn needs_unit_context(self, vcx: ValueCx<'_>) -> bool {
