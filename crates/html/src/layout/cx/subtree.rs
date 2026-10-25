@@ -19,7 +19,7 @@ fn own(e: &Element) -> u8 {
         || style.break_after_force
         || style.break_before_avoid
         || style.break_after_avoid;
-    u8::from(breaks) * BREAK | u8::from(style.float.is_some_and(|f| f != 0)) * FLOAT
+    (u8::from(breaks) * BREAK) | (u8::from(style.float.is_some_and(|f| f != 0)) * FLOAT)
 }
 
 impl SubtreeFacts {
