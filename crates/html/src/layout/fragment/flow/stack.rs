@@ -97,7 +97,12 @@ fn copy_breaks(
     watched
         .blocks()
         .map_or_else(Default::default, |blocks| {
-            blocks.breaks(end, &watched.laid_axis(origin, size, axis, window))
+            blocks.breaks(
+                end,
+                &watched
+                    .laid_axis(origin, size, axis, window)
+                    .with_flow(&flow),
+            )
         })
         .finish(flow, end)
 }

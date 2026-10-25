@@ -141,6 +141,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 #[cfg(feature = "wpt-harness")]
 #[test]
 fn clone_uses_estimates_while_fixed_height_overflow_uses_measured_continuations() {
+    // Заданный normal extent не ограничивает отдельный overflow-поток.
     for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",
         "<div><div style='display:flex;height:50px'><div style='height:150px'></div></div></div>",
@@ -178,8 +179,9 @@ fn clone_uses_estimates_while_fixed_height_overflow_uses_measured_continuations(
                 )
                 .is_some()
             );
-            assert!(plan.stackable.is_some());
-            assert!(!plan.measured_kids.borrow().is_empty());
+            let kids = plan.stackable.expect("native overflow children");
+            assert!(kids.iter().all(|(_, shape)| shape.height == 0.0));
+            assert_eq!(plan.measured_kids.borrow().len(), kids.len());
             assert!(
                 opts.frag
                     .probe

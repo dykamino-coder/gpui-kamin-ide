@@ -215,11 +215,6 @@
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
   },
   {
-    "file": "crates/html/src/layout/multicol/measure/native_dispatch_tests.rs",
-    "task": "F2-1",
-    "reason": "Clone и заданная высота с overflow ещё идут через preplan; удалить ожидание этого маршрута после краёв фрагментов P04 и раздельных normal-flow/overflow resume P05."
-  },
-  {
     "file": "crates/html/src/layout/multicol/measure/tail.rs",
     "task": "F2-3",
     "reason": "Остаток внешнего ряда вычитается из оценок целых спаннеров; удалить в P10 после outer-row extent и spanner token."
