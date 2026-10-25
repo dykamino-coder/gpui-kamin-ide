@@ -52,3 +52,27 @@ fn forced_boundary_does_not_carry_float_run_into_next_page() {
     );
     assert_eq!(groups.len(), 3);
 }
+
+#[test]
+fn named_page_transition_closes_the_float_run_but_ignores_float_name() {
+    for next in ["a", "c"] {
+        let tree = crate::dom::parse(
+            &format!(
+                "<body><div style='page:a'>a</div><div style='page:b;float:left'>b</div><div style='page:{next}'>c</div></body>"
+            ),
+            "",
+        );
+        let mut groups = Vec::new();
+        group_runs(
+            body(&tree).children.clone(),
+            |_| false,
+            |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
+            &mut groups,
+            tree.values(),
+        );
+        assert_eq!(groups.len(), if next == "a" { 2 } else { 3 });
+        assert!(
+            matches!(&groups[1][0], Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0))
+        );
+    }
+}

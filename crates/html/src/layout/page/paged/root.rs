@@ -105,6 +105,7 @@ pub(super) fn group_runs(
     vcx: ValueCx<'_>,
 ) {
     let mut run = Run::None;
+    let mut previous_page = None;
     let forced = |n: &Node, last| match n {
         Node::Element(e) if floated(n) || crate::layout::fragment::flex_lines::class_a_box(e) => {
             crate::layout::fragment::breaks::edge_break(e, last, vcx)
@@ -122,9 +123,21 @@ pub(super) fn group_runs(
             continue;
         }
         let (fl, il) = (floated(n), inline_level(n));
+        let names = match n {
+            Node::Element(e) if crate::layout::fragment::flex_lines::class_a_box(e) => {
+                Some(crate::layout::page::names::page_names(e, ""))
+            }
+            _ => None,
+        };
+        // Имя флоата не меняет страницу; следующий обычный блок сравнивается
+        // с концом предыдущей коробки класса A даже через общий пробег.
+        let renamed = names
+            .as_ref()
+            .is_some_and(|(start, _)| previous_page.as_ref().is_some_and(|end| end != start));
         // Принудительная граница заканчивает общий пробег обтекания:
         // exclusions предыдущего листа не переносятся через page break.
-        let boundary = forced(n, false)
+        let boundary = renamed
+            || forced(n, false)
             || groups
                 .last()
                 .and_then(|g| g.iter().rfind(|n| !is_blank(n)))
@@ -149,6 +162,9 @@ pub(super) fn group_runs(
         } else {
             Run::None
         };
+        if let Some((_, end)) = names {
+            previous_page = Some(end);
+        }
     }
 }
 
