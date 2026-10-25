@@ -15,7 +15,7 @@ pub(crate) struct FlowNode {
     pub(crate) geometry: Rc<RefCell<FlowGeometry>>,
     pub(crate) axis: StackAxis,
     pub(crate) growth: ParagraphGrowth,
-    pub(crate) starts: Rc<RefCell<Vec<f32>>>,
+    pub(crate) starts: Rc<RefCell<Vec<(usize, f32)>>>,
     pub(crate) content: Rc<RefCell<Vec<super::ContentLine>>>,
     pub(crate) resume: Rc<super::inline::Cursor>,
     pub(crate) ordinal: usize,
@@ -70,7 +70,7 @@ pub(crate) struct Record {
     axis: StackAxis,
     geometry: Rc<RefCell<FlowGeometry>>,
     growth: ParagraphGrowth,
-    starts: Rc<RefCell<Vec<f32>>>,
+    starts: Rc<RefCell<Vec<(usize, f32)>>>,
     pub(super) content: Rc<RefCell<Vec<super::ContentLine>>>,
 }
 
@@ -121,13 +121,17 @@ impl FlowMeasure {
             let Some(offset) = record.offset(origin, size, axis, bounds) else {
                 return;
             };
-            pushes.extend(record.starts.borrow().iter().enumerate().map(|(line, at)| {
-                super::LinePush {
-                    at: offset + at,
-                    line,
-                    growth: record.growth.clone(),
-                }
-            }));
+            pushes.extend(
+                record
+                    .starts
+                    .borrow()
+                    .iter()
+                    .map(|&(line, at)| super::LinePush {
+                        at: offset + at,
+                        line,
+                        growth: record.growth.clone(),
+                    }),
+            );
         });
         pushes
     }
