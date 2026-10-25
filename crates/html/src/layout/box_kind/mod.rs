@@ -84,12 +84,23 @@ pub(crate) fn block_level_in_flow(e: &Element) -> bool {
 /// `display: contents` своей коробки не даёт — блок из-под него виден
 /// строчному хозяину как свой (css-display-3 §box-generation).
 pub(crate) fn contains_block(children: &[Node]) -> bool {
-    children.iter().any(|n| match n {
-        Node::Element(e) if real_inline(e) || e.style.used().display == Some(Display::Contents) => {
-            !out_of_flow(&e.style.used()) && contains_block(&e.children)
+    let mut pending = vec![children];
+    while let Some(children) = pending.pop() {
+        for node in children {
+            match node {
+                Node::Element(e)
+                    if real_inline(e) || e.style.used().display == Some(Display::Contents) =>
+                {
+                    if !out_of_flow(&e.style.used()) {
+                        pending.push(&e.children);
+                    }
+                }
+                other if breaks_inline(other) => return true,
+                _ => {}
+            }
         }
-        other => breaks_inline(other),
-    })
+    }
+    false
 }
 
 pub(crate) use crate::dom::whitespace::is_blank;

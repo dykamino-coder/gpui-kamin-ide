@@ -230,6 +230,7 @@ pub(crate) async fn blocks_stack(
 }
 
 pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
+    let opts = &*opts.inner(|cx| cx.contracts.margins = Default::default());
     reblessive::Stack::new()
         .enter(|stk| blocks_stack(stk, nodes, inherited, opts))
         .finish()

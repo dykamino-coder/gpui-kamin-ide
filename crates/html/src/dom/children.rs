@@ -9,6 +9,11 @@ use std::rc::Rc;
 pub struct Children(Rc<Vec<Node>>);
 
 impl Children {
+    /// Идентичность неизменяемого снимка: изменение списка отделяет его через COW.
+    pub(crate) fn identity(&self) -> usize {
+        Rc::as_ptr(&self.0) as usize
+    }
+
     pub fn into_vec(mut self) -> Vec<Node> {
         match Rc::try_unwrap(std::mem::take(&mut self.0)) {
             Ok(nodes) => nodes,

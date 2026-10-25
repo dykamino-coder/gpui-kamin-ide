@@ -18,8 +18,20 @@ use crate::style::computed::Display;
 /// Preparing descendants first lets the parent's leading/trailing chains
 /// see those boxes instead of an inline node that prematurely stops them.
 pub(super) fn prepare(nodes: &mut [Node]) {
-    for node in nodes {
-        let Node::Element(element) = node else {
+    if let Some(prepared) = reblessive::Stack::new()
+        .enter(|stk| prepare_stack(stk, nodes))
+        .finish()
+    {
+        nodes.clone_from_slice(&prepared);
+    }
+}
+
+// Проверка неизменяемая: пустой проход не отделяет COW-списки всего поддерева.
+// Изменённые ветви собираются снизу вверх; продолжения живут в heap.
+async fn prepare_stack(stk: &mut reblessive::Stk, nodes: &[Node]) -> Option<Vec<Node>> {
+    let mut out = None;
+    for (i, node) in nodes.iter().enumerate() {
+        let Node::Element(original) = node else {
             continue;
         };
         // The column stack plans each in-flow child of a multicol container
@@ -31,13 +43,19 @@ pub(super) fn prepare(nodes: &mut [Node]) {
         // Without floats the split is needed: margins of the hoisted block
         // adjoin the column break and are truncated there (css-break-3 §5.2,
         // margin-at-break-003…005).
-        if replaced_tag(element)
-            || (multicol_container(&element.style.used()) && floats_inside(&element.children))
+        if replaced_tag(original)
+            || (multicol_container(&original.style.used()) && floats_inside(&original.children))
         {
             continue;
         }
-        prepare(&mut element.children);
-        if real_inline(element)
+        let prepared = stk.run(|stk| prepare_stack(stk, &original.children)).await;
+        let mut changed = prepared.map(|children| {
+            let mut element = original.clone();
+            element.children = children.into();
+            element
+        });
+        let element = changed.as_ref().unwrap_or(original);
+        if !(real_inline(element)
             || matches!(
                 element.style.used().display,
                 Some(Display::Flex)
@@ -46,40 +64,53 @@ pub(super) fn prepare(nodes: &mut [Node]) {
                     | Some(Display::InlineGrid)
                     | Some(Display::GridLanes)
             )
-            || !eligible(&element.children)
-        {
-            continue;
-        }
-        if element.children.iter().any(|node| {
-            matches!(node, Node::Element(child) if real_inline(child)
+            || !eligible(&element.children))
+            && element.children.iter().any(|node| {
+                matches!(node, Node::Element(child) if real_inline(child)
                 && !out_of_flow(&child.style.used()) && contains_block(&child.children))
-        }) {
-            element.children = split_block_in_inline(&wrap_anon_tables(&element.children)).into();
+            })
+        {
+            let children = split_block_in_inline(&wrap_anon_tables(&element.children));
+            changed.get_or_insert_with(|| original.clone()).children = children.into();
+        }
+        if let Some(element) = changed {
+            out.get_or_insert_with(|| nodes.to_vec())[i] = Node::Element(element);
         }
     }
+    out
 }
 
 fn eligible(nodes: &[Node]) -> bool {
-    nodes.iter().all(|node| match node {
-        Node::Element(child)
+    let mut pending = vec![nodes];
+    while let Some(nodes) = pending.pop() {
+        for node in nodes {
+            let Node::Element(child) = node else { continue };
             if real_inline(child)
                 && !out_of_flow(&child.style.used())
-                && contains_block(&child.children) =>
-        {
-            // Decorations, positioning and bidi need their original inline
-            // ancestry until fragment painting; keep that established path.
-            inline_floats::transparent(child) && eligible(&child.children)
+                && contains_block(&child.children)
+            {
+                // Оформление и bidi требуют исходного inline-родства до краски.
+                if !inline_floats::transparent(child) {
+                    return false;
+                }
+                pending.push(&child.children);
+            }
         }
-        _ => true,
-    })
+    }
+    true
 }
 
 /// Whether any in-flow descendant of `nodes` is floated.
 fn floats_inside(nodes: &[Node]) -> bool {
-    nodes.iter().any(|node| match node {
-        Node::Element(e) => {
-            e.style.used().float.is_some_and(|f| f != 0) || floats_inside(&e.children)
+    let mut pending = vec![nodes];
+    while let Some(nodes) = pending.pop() {
+        for node in nodes {
+            let Node::Element(e) = node else { continue };
+            if e.style.used().float.is_some_and(|f| f != 0) {
+                return true;
+            }
+            pending.push(&e.children);
         }
-        Node::Text(_) => false,
-    })
+    }
+    false
 }

@@ -10,4 +10,7 @@ pub(crate) struct BuildContext {
     /// Built inside a `render` call: an inner `render` must not reset the
     /// step-8 paint collector of the outer one.
     pub(crate) in_render: bool,
+    /// Факты неизменяемых поддеревьев живут только в пределах одной сборки.
+    pub(crate) margins:
+        std::rc::Rc<std::cell::RefCell<crate::layout::block::margins::facts::MarginFacts>>,
 }
