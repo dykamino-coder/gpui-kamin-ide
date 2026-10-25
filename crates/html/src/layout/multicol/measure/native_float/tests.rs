@@ -1,3 +1,5 @@
+//! Native-копии floats: замер без оценки и сохранение parallel overflow P05.
+
 use super::*;
 use crate::layout::fragment::types::StackAxis;
 use crate::layout::multicol::deferred::Recipe;
