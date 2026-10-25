@@ -13,7 +13,7 @@ impl TaffyLayoutEngine {
     }
 }
 
-#[stacksafe::stacksafe]
+#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
 fn first(
     tree: &TaffyTree<NodeContext>,
     node: NodeId,

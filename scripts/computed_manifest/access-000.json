@@ -4,7 +4,7 @@
 {"field":"@into_computed","owners":{"document":{"escape":4},"dom":{"escape":1},"layout":{"escape":2},"paint:test":{"escape":1},"render:test":{"escape":1},"style":{"escape":1},"style:test":{"escape":2}}},
 {"field":"@lay_used","owners":{"style":{"escape":2}}},
 {"field":"@layout_made","owners":{"layout":{"escape":5},"svg":{"escape":1}}},
-{"field":"@make_mut","owners":{"document":{"escape":1},"dom":{"escape":5},"layout":{"escape":1},"text:test":{"escape":1}}},
+{"field":"@make_mut","owners":{"document":{"escape":1},"dom":{"escape":5},"layout":{"escape":2},"text:test":{"escape":1}}},
 {"field":"@mut-Computed","owners":{"animation":{"escape":2},"dom":{"escape":20},"layout":{"escape":21},"render":{"escape":2},"text":{"escape":3}}},
 {"field":"@used_mut","owners":{"animation":{"escape":3},"animation:test":{"escape":9},"dom:test":{"escape":3},"interactive":{"escape":10},"layout":{"escape":362},"layout:test":{"escape":131},"paint":{"escape":13},"render":{"escape":92},"render:test":{"escape":9},"style:test":{"escape":2},"svg":{"escape":24},"svg:test":{"escape":9},"text":{"escape":17}}},
 {"field":"@used_rc","owners":{"style":{"escape":1}}},

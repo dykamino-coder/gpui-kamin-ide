@@ -11656,7 +11656,7 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +}
 diff --git a/vendor/gpui/src/taffy/content_line.rs b/vendor/gpui/src/taffy/content_line.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..73ce56c6d9e99958e4a64b6fba0e00ceb8c61e17
+index 0000000000000000000000000000000000000000..89000146dbb60f38d82c29c3230d4f1bab306d3f
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/content_line.rs
 @@ -0,0 +1,49 @@
@@ -11675,7 +11675,7 @@ index 0000000000000000000000000000000000000000..73ce56c6d9e99958e4a64b6fba0e00ce
 +    }
 +}
 +
-+#[stacksafe::stacksafe]
++#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
 +fn first(
 +    tree: &TaffyTree<NodeContext>,
 +    node: NodeId,

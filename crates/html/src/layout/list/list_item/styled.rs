@@ -68,7 +68,6 @@ pub(crate) async fn render_with_style(
     // Маркер и распорка пустого пункта используют CSS-метрики строки.
     // Прямой текстовый лист GPUI наследует line-height интерфейса, тогда
     // как `normal` первой строки зависит от шрифта пункта (CSS2 §10.8.1).
-    mark_style.nowrap = Some(true);
     let marker_nodes = match image {
         Some(image) => vec![image, Node::Text("\u{a0}".into())],
         None => vec![Node::Text(match marker.strip_suffix(' ') {

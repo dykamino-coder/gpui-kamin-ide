@@ -72,9 +72,9 @@ impl PageStack {
             self.remeasure_geometry(index, copy, area, from, page, parallel.clone(), window, cx);
         // Неизменные constraints переиспользуют геометрию, но новый
         // фрагмент всё равно сохраняет собственные child tokens и sequence.
-        if let Some(measured) = self.measured.get_mut(&(index, copy)) {
-            measured.parallel = parallel;
-        }
+        self.measured
+            .entry((index, copy))
+            .and_modify(|measured| measured.parallel = parallel);
         Ok(geometry)
     }
 

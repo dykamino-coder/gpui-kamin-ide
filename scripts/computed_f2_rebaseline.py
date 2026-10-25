@@ -1,4 +1,4 @@
-"""One authorized F2 P01-P04 rebaseline against the pre-integration ADR3 census.
+"""Bounded lead-reviewed F2 adjustments at their exact integration merge bases.
 
 The lead approved only these existing fragment-copy counters. This adjustment
 expires automatically when the merge base advances beyond the census commit;
@@ -32,11 +32,18 @@ APPROVED = (
 )
 
 
+P05_BASE = 'f5e5da85f641015a90e36e73eeee87821679b88c'
+# Reviewed: not a style escape. This COW map owns fragment float growth only
+# (layout/fragment/push/measured.rs), with no Computed reachable through it.
+P05_NON_STYLE = (('@make_mut', 'layout', 'escape', 1, 2),)
+
+
 def approved_base(counts, revision):
     """Replace only the enumerated old counts at the exact census merge base."""
     result = Counter(counts)
-    if revision == CENSUS_BASE:
-        for field, owner, access, old, new in APPROVED:
+    approved = APPROVED if revision == CENSUS_BASE else P05_NON_STYLE if revision == P05_BASE else ()
+    if approved:
+        for field, owner, access, old, new in approved:
             key = field, owner, access
             if result[key] != old:
                 raise ValueError(f'F2 census base changed: {key}')

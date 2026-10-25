@@ -31,12 +31,14 @@ mod containing;
 mod context;
 mod decorate;
 mod flow_align;
+mod marker;
 mod paint;
 mod quirks;
 mod self_align;
 use containing::inherit_containing;
 use decorate::decorate;
 pub(crate) use flow_align::note as note_flow_align;
+pub(crate) use marker::content as marker_content;
 use paint::inherit_paint;
 
 // `zoom` (css-viewport-1) не делать домножением использованных длин здесь,
