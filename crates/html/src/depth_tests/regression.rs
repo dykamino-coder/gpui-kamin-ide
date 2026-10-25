@@ -2,7 +2,7 @@
 
 use super::*;
 
-fn on_eight_mib(body: impl FnOnce() + Send + 'static) {
+pub(super) fn on_eight_mib(body: impl FnOnce() + Send + 'static) {
     std::thread::Builder::new()
         .stack_size(8 * 1024 * 1024)
         .spawn(body)
@@ -43,6 +43,11 @@ fn frame(stage: &str) {
         gpui::size(gpui::px(100.), gpui::px(100.)),
         |_, _| FrameProbe(gpui::div().children(boxes).into_any_element(), stage.into()),
     );
+}
+
+#[test]
+fn request_layout_1026_levels_on_eight_mib() {
+    on_eight_mib(|| frame("request_layout"));
 }
 
 #[test]

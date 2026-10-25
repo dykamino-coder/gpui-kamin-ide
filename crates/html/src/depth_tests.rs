@@ -7,6 +7,7 @@ use crate::{Document, RenderOpts};
 use gpui::{IntoElement, ParentElement};
 
 mod regression;
+mod special;
 
 // Только изолированная тестовая проба; production engine не читает окружение.
 #[allow(clippy::disallowed_methods)]
@@ -109,6 +110,10 @@ fn depth_frame_probe(cx: &mut gpui::TestAppContext) {
             inner = gpui::div().child(inner).into_any_element();
         }
         vec![inner]
+    } else if stage.ends_with("-boxes") {
+        let boxes = crate::render::render(&tree(n), &options());
+        eprintln!("finished build {n}");
+        boxes
     } else {
         document = Document::builder(&markup(n), "").build().unwrap();
         eprintln!("finished cascade {n}");
@@ -122,7 +127,7 @@ fn depth_frame_probe(cx: &mut gpui::TestAppContext) {
         |_, _| {
             FrameProbe(
                 gpui::div().children(boxes).into_any_element(),
-                stage.replace("-direct", ""),
+                stage.replace("-direct", "").replace("-boxes", ""),
             )
         },
     );
@@ -156,6 +161,11 @@ impl gpui::Element for FrameProbe {
     ) -> (gpui::LayoutId, ()) {
         let id = self.0.request_layout(window, cx);
         eprintln!("finished request_layout");
+        let id = if self.1 == "request_layout" {
+            window.request_layout(gpui::Style::default(), [], cx)
+        } else {
+            id
+        };
         (id, ())
     }
     fn prepaint(
@@ -168,7 +178,7 @@ impl gpui::Element for FrameProbe {
         cx: &mut gpui::App,
     ) {
         eprintln!("finished layout");
-        if self.1 != "layout" {
+        if !matches!(self.1.as_str(), "layout" | "request_layout") {
             self.0.prepaint(window, cx);
             eprintln!("finished prepaint");
         }
