@@ -29,6 +29,7 @@ impl DocState {
                 self.metrics.font_context().installed_names(),
                 self.metrics.default_family(),
                 self.font_alternates.borrow().clone(),
+                self.font_metric_faces.borrow().clone(),
             )),
         };
         self.font_facts.snapshot.replace(Some(snapshot.clone()));
@@ -72,3 +73,6 @@ impl DocState {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod readers;

@@ -28,7 +28,7 @@ impl FontFactsProvider for Fake {
         };
         let size = request.size_px * self.scale;
         Ok(FontMetricFacts {
-            ascent: FontMetric::backend_resolved(size),
+            ascent: Some(FontMetric::backend_resolved(size)),
             cap_height: (!self.missing).then(|| FontMetric::backend_resolved(size * 0.75)),
             x_height: (!self.missing).then(|| FontMetric::backend_resolved(size * k * 0.8)),
             zero_advance: Some(FontMetric::backend_resolved(if self.missing {
@@ -37,6 +37,7 @@ impl FontFactsProvider for Fake {
                 size * k
             })),
             ideographic_advance: (!self.missing).then(|| FontMetric::backend_resolved(size * k)),
+            ..FontMetricFacts::default()
         })
     }
 
@@ -48,6 +49,7 @@ impl FontFactsProvider for Fake {
         Ok(NormalLineFacts {
             height: (!self.missing)
                 .then(|| FontMetric::backend_resolved(request.size_px * self.scale)),
+            ..NormalLineFacts::default()
         })
     }
 }

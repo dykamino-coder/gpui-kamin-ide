@@ -36,14 +36,7 @@ impl Computed {
         let line = match self.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k) | Len::Pct(k)) => k * font,
-            _ => {
-                let normal = crate::text::metrics::normal_line(family, vcx);
-                if normal > 0.0 {
-                    crate::text::metrics::normal_px(normal, font, vcx)
-                } else {
-                    1.2 * font
-                }
-            }
+            _ => crate::style::font_metrics::normal_height(family, font, vcx),
         };
         if let Some(Some(pair)) = &mut self.td_inset {
             for value in pair {

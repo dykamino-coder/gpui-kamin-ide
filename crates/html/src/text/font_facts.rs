@@ -4,8 +4,8 @@
 
 use crate::document::state::DocState;
 use crate::font_facts::{
-    FontFactsError, FontFactsProvider, FontMetric, FontMetricFacts, FontRegistrySnapshot,
-    FontRequest, NormalLineFacts,
+    FontFactsError, FontFactsProvider, FontMetric, FontMetricFacts, FontMetricQuery,
+    FontRegistrySnapshot, FontRequest, NormalLineFacts,
 };
 use std::rc::{Rc, Weak};
 
@@ -49,17 +49,40 @@ impl FontFactsProvider for Backend {
     ) -> Result<FontMetricFacts, FontFactsError> {
         let doc = self.document(snapshot)?;
         let vcx = doc.values();
-        let (ch, ex) = super::metrics::ch_ex_px(request.family_list, request.size_px, vcx);
-        let (ascent, _, cap) =
-            super::metrics::vmetrics_px(request.family_list, request.size_px, vcx);
-        let ic = super::metrics::ic_px(request.family_list, request.size_px, vcx);
-        Ok(FontMetricFacts {
-            ascent: FontMetric::backend_resolved(ascent),
-            cap_height: Some(FontMetric::backend_resolved(cap)),
-            x_height: Some(FontMetric::backend_resolved(ex)),
-            zero_advance: Some(FontMetric::backend_resolved(ch)),
-            ideographic_advance: Some(FontMetric::backend_resolved(ic)),
-        })
+        use FontMetricQuery::*;
+        let mut facts = FontMetricFacts::default();
+        let metric = |v| Some(FontMetric::backend_resolved(v));
+        if matches!(request.metric_query, All | Horizontal) {
+            let (ch, ex) = super::metrics::ch_ex_px(request.family_list, request.size_px, vcx);
+            facts.zero_advance = metric(ch);
+            facts.x_height = metric(ex);
+        }
+        if matches!(request.metric_query, All | Vertical) {
+            let (a, d, cap) =
+                super::metrics::vmetrics_px(request.family_list, request.size_px, vcx);
+            facts.ascent = metric(a);
+            facts.descent = metric(d);
+            facts.cap_height = metric(cap);
+        }
+        if matches!(request.metric_query, All | Ideographic) {
+            facts.ideographic_advance = metric(super::metrics::ic_px(
+                request.family_list,
+                request.size_px,
+                vcx,
+            ));
+        }
+        if request.metric_query == Math {
+            let actual = snapshot
+                .alias_for(request.family_list, request)
+                .unwrap_or_else(|| request.family_list.to_string());
+            facts.math_script_scale = super::fonts::math::for_family(&actual, vcx)
+                .map(|v| (v.script_scale, v.script_script_scale));
+        }
+        if request.metric_query == Alphabetic {
+            facts.alphabetic_baseline =
+                metric(super::fonts::alphabetic_em(request.family_list, vcx) * request.size_px);
+        }
+        Ok(facts)
     }
 
     fn normal_line(
@@ -71,13 +94,17 @@ impl FontFactsProvider for Backend {
         let vcx = doc.values();
         let fraction = super::metrics::normal_line(request.family_list, vcx);
         Ok(NormalLineFacts {
-            height: (fraction > 0.0).then(|| {
-                FontMetric::backend_resolved(super::metrics::normal_px(
-                    fraction,
-                    request.size_px,
-                    vcx,
-                ))
-            }),
+            fraction: Some(fraction),
+            height: Some(FontMetric::backend_resolved(super::metrics::normal_px(
+                fraction,
+                request.size_px,
+                vcx,
+            ))),
+            content_height: super::metrics::content_px(fraction, request.size_px, vcx)
+                .map(FontMetric::backend_resolved),
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

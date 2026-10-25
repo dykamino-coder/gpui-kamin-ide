@@ -195,22 +195,5 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
 /// лиц одного наклона вес и ширину мы не выбираем: расходятся их множители —
 /// 1.0 (`oblique-last-resort-weight-selection`: два oblique-лица, 100% и 50%).
 pub fn size_adjust(family: &str, want: u8, vcx: ValueCx<'_>) -> f32 {
-    {
-        let s = vcx.doc.font_faces.size_adjust.borrow();
-        let Some(faces) = s.get(&family.to_ascii_lowercase()) else {
-            return 1.0;
-        };
-        let order: [u8; 3] = match want {
-            1 => [1, 2, 0],
-            2 => [2, 0, 1],
-            _ => [0, 2, 1],
-        };
-        for slope in order {
-            let mut hit = faces.iter().filter(|(k, _)| *k == slope).map(|(_, a)| *a);
-            if let Some(first) = hit.next() {
-                return if hit.all(|a| a == first) { first } else { 1.0 };
-            }
-        }
-        1.0
-    }
+    vcx.doc.font_snapshot().size_adjust(family, want)
 }

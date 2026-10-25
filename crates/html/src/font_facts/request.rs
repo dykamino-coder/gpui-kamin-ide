@@ -17,6 +17,18 @@ pub enum FontOrientation {
     Sideways,
 }
 
+/// Область запроса позволяет не запускать посторонние замеры и сохраняет порядок кэша.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FontMetricQuery {
+    #[default]
+    All,
+    Horizontal,
+    Vertical,
+    Ideographic,
+    Math,
+    Alphabetic,
+}
+
 /// Полный вход matching. Размер — computed CSS px, без size-adjust.
 /// Список сохраняет авторский порядок и синтаксис; разбор CSS остаётся в style.
 #[derive(Clone, Copy, Debug)]
@@ -36,6 +48,7 @@ pub struct FontRequest<'a> {
     pub optical_size: Option<f32>,
     pub synthesis: (bool, bool, bool, bool),
     pub orientation: FontOrientation,
+    pub metric_query: FontMetricQuery,
 }
 
 impl<'a> FontRequest<'a> {
@@ -57,6 +70,7 @@ impl<'a> FontRequest<'a> {
             optical_size: None,
             synthesis: (true, true, true, true),
             orientation: FontOrientation::Horizontal,
+            metric_query: FontMetricQuery::All,
         }
     }
 }

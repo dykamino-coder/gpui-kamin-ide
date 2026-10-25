@@ -20,8 +20,11 @@ impl FontFaces {
         installed: std::rc::Rc<std::collections::HashSet<String>>,
         default_family: String,
         alternates: crate::font_facts::FeatureDefinitions,
+        metric_overrides: crate::font_facts::MetricFaces,
     ) -> crate::font_facts::Registry {
         crate::font_facts::Registry {
+            size_adjust: self.size_adjust.borrow().clone(),
+            metric_overrides,
             installed,
             default_family,
             aliases: self.aliases.borrow().clone(),

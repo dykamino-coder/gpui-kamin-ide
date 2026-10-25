@@ -174,21 +174,3 @@ pub fn ic_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> f32 {
 pub fn normal_line(family: &str, vcx: crate::document::state::ValueCx<'_>) -> f32 {
     crate::text::fonts::metric_overrides::normal_line(family, fractions(family, vcx).2, vcx)
 }
-
-/// Метрика шрифта в ДОЛЯХ КЕГЛЯ для `font-size-adjust` (css-fonts-5): 0 —
-/// `ex-height`, 1 — `cap-height`, 2 — `ch-width`, 3 — `ic-width`,
-/// 4 — `ic-height`.
-///
-/// Вертикального продвижения щуп не меряет. У полноширинного иероглифа оно
-/// равно горизонтальному, а без знака `水` обе метрики по css-values-4 §6.1.4
-/// считаются целым кеглем (`FALLBACK.3`).
-pub fn adjust_aspect(family: &str, metric: u8, vcx: ValueCx<'_>) -> Option<f32> {
-    let (ch, ex, _, ic) = fractions(family, vcx);
-    Some(match metric {
-        0 => ex,
-        1 => vmetrics_px(family, 1.0, vcx).2,
-        2 => ch,
-        3 | 4 => ic,
-        _ => return None,
-    })
-}

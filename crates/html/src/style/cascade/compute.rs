@@ -92,7 +92,7 @@ pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<
     // (`tab-size-inheritance-001`).
     let own_px = own_font_px(&c, parent_px);
     c.tab_size_len = match own.tab_size_len {
-        Some(len) => Some(Len::Px(crate::text::metrics::spacing_px(
+        Some(len) => Some(Len::Px(crate::style::font_metrics::spacing_px(
             Some(len),
             &c.font_family.clone().unwrap_or_default(),
             own_px,

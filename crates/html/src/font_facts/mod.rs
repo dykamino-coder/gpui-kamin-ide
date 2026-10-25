@@ -8,12 +8,14 @@ use std::rc::Rc;
 /// Маркер CSS-подбора веса для адаптера платформы.
 pub const CSS_WEIGHT_TAG: (&str, u32) = ("cssw", 1);
 
+mod descriptors;
 pub(crate) mod matching;
 mod registry;
 mod request;
+pub(crate) use descriptors::{MetricFaces, uniform_slope};
 pub(crate) use registry::{FeatureDefinitions, Registry};
 pub use registry::{FontRegistrySnapshot, GENERIC_SANS, generic_family};
-pub use request::{FontOrientation, FontRequest, FontStyle};
+pub use request::{FontMetricQuery, FontOrientation, FontRequest, FontStyle};
 
 /// Identity окружения одного документа без процессного счётчика или реестра.
 #[derive(Clone, Debug)]
@@ -85,23 +87,30 @@ impl FontMetric {
     }
 }
 
-/// Факты для `cap/ex/ch/ic` текущего корневого consumer.
+/// Эффективные метрики запрошенной области; незапрошенные факты отсутствуют.
 /// Продвижения относятся к U+0030/U+6C34; backend пока не сообщает face identity
 /// или ориентацию, поэтому эти факты нельзя выдавать за результат полного matching.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct FontMetricFacts {
     /// Ascent нужен CSS-резолверу как fallback отсутствующего cap-height.
-    pub ascent: FontMetric,
+    pub ascent: Option<FontMetric>,
+    pub descent: Option<FontMetric>,
     pub cap_height: Option<FontMetric>,
     pub x_height: Option<FontMetric>,
     pub zero_advance: Option<FontMetric>,
     pub ideographic_advance: Option<FontMetric>,
+    /// Доли MATH, не длины в px; отсутствие таблицы сохраняется явно.
+    pub math_script_scale: Option<(f32, f32)>,
+    pub alphabetic_baseline: Option<FontMetric>,
 }
 
 /// Теоретическая `normal`-строка шрифта, не высота строки с её inline-потомками.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct NormalLineFacts {
     pub height: Option<FontMetric>,
+    /// Исходная доля для прежнего условия `normal > 0` в CSS readers.
+    pub fraction: Option<f32>,
+    pub content_height: Option<FontMetric>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

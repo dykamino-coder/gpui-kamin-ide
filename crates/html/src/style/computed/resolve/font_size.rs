@@ -37,8 +37,8 @@ impl Computed {
         {
             return Some(*px);
         }
-        let metrics = || crate::text::metrics::ch_ex_px(family, parent_px, vcx);
-        let ic = || crate::text::metrics::ic_px(family, parent_px, vcx);
+        let metrics = || crate::style::font_metrics::horizontal(family, parent_px, vcx);
+        let ic = || crate::style::font_metrics::ideographic(family, parent_px, vcx);
         let size = self.font_size?;
         let size = if vcx.viewport.0 > 0.0 && vcx.viewport.1 > 0.0 {
             size.fold_viewport(self.viewport_cx(vcx.viewport), vcx)
@@ -59,7 +59,7 @@ impl Computed {
                 }
                 let (ch, ex) = metrics();
                 let cap = if s.cap != 0.0 {
-                    crate::text::metrics::vmetrics_px(family, parent_px, vcx).2
+                    crate::style::font_metrics::vertical(family, parent_px, vcx).2
                 } else {
                     0.0
                 };

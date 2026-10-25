@@ -4,15 +4,15 @@
 //! gpui; они не меняют ни шейпинг глифов, ни метрики системного шрифта.
 
 use crate::document::state::ValueCx;
-use std::collections::HashMap;
 
 const TAGS: [&str; 3] = ["kasc", "kdsc", "kgap"];
 type Overrides = [Option<f32>; 3];
 
-pub(crate) type MetricFaces = HashMap<String, Vec<(u8, Overrides)>>;
+pub(crate) use crate::font_facts::MetricFaces;
 
-pub(super) fn clear(vcx: ValueCx<'_>) {
+pub(crate) fn clear(vcx: ValueCx<'_>) {
     vcx.doc.font_metric_faces.borrow_mut().clear();
+    vcx.doc.font_registry_changed();
 }
 
 fn percentage(value: &str) -> Option<f32> {
@@ -20,7 +20,7 @@ fn percentage(value: &str) -> Option<f32> {
     (value.is_finite() && value >= 0.0).then_some(value / 100.0)
 }
 
-pub(super) fn register(family: &str, slope: u8, block: &str, vcx: ValueCx<'_>) {
+pub(crate) fn register(family: &str, slope: u8, block: &str, vcx: ValueCx<'_>) {
     let mut values = [None; 3];
     const NAMES: [&str; 3] = ["ascent-override", "descent-override", "line-gap-override"];
     for declaration in block.split(';') {
@@ -47,38 +47,20 @@ pub(super) fn register(family: &str, slope: u8, block: &str, vcx: ValueCx<'_>) {
             .or_default()
             .push((slope, values));
     }
+    vcx.doc.font_registry_changed();
 }
 
 fn selected(family: &str, slope: u8, vcx: ValueCx<'_>) -> Overrides {
-    {
-        let faces = vcx.doc.font_metric_faces.borrow();
-        let Some(faces) = faces.get(&family.to_ascii_lowercase()) else {
-            return [None; 3];
-        };
-        let order = match slope {
-            1 => [1, 2, 0],
-            2 => [2, 0, 1],
-            _ => [0, 2, 1],
-        };
-        for slope in order {
-            let mut found = faces.iter().filter(|(s, _)| *s == slope).map(|(_, v)| *v);
-            if let Some(first) = found.next() {
-                return if found.all(|v| v == first) {
-                    first
-                } else {
-                    [None; 3]
-                };
-            }
-        }
-        [None; 3]
-    }
+    vcx.doc
+        .font_metric_faces
+        .borrow()
+        .get(&family.to_ascii_lowercase())
+        .and_then(|faces| crate::font_facts::uniform_slope(faces, slope))
+        .unwrap_or([None; 3])
 }
 
 pub(crate) fn features(family: &str, slope: u8, vcx: ValueCx<'_>) -> Vec<(String, u32)> {
-    TAGS.into_iter()
-        .zip(selected(family, slope, vcx))
-        .filter_map(|(tag, value)| value.map(|v| (tag.to_string(), v.to_bits())))
-        .collect()
+    vcx.doc.font_snapshot().metric_features(family, slope)
 }
 
 pub(crate) fn has_overrides(font: &gpui::Font) -> bool {

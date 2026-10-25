@@ -50,7 +50,10 @@ impl RootMetrics {
             return;
         };
         self.units = [
-            facts.cap_height.unwrap_or(facts.ascent).px,
+            facts
+                .cap_height
+                .or(facts.ascent)
+                .map_or(0.7 * self.font_px, |m| m.px),
             facts.zero_advance.map_or(0.5 * self.font_px, |m| m.px),
             facts.x_height.map_or(0.5 * self.font_px, |m| m.px),
             facts.ideographic_advance.map_or(self.font_px, |m| m.px),
@@ -85,12 +88,7 @@ pub fn set_root_metrics(doc: &crate::document::state::DocState, font_px: f32, li
 /// Высота строки `line-height: normal` корня (`family` кеглем `font`) для
 /// `set_root_metrics`: метрика шрифта, без неё — `1.2 * font`.
 pub fn root_normal_line_px(family: &str, font: f32, vcx: ValueCx<'_>) -> f32 {
-    vcx.doc
-        .font_provider()
-        .normal_line(FontRequest::new(family, font), &vcx.doc.font_snapshot())
-        .ok()
-        .and_then(|facts| facts.height)
-        .map_or(1.2 * font, |m| m.px)
+    crate::style::font_metrics::normal_height(family, font, vcx)
 }
 
 pub fn root_font_px(vcx: ValueCx<'_>) -> f32 {

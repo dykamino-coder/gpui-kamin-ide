@@ -15,6 +15,8 @@ pub(crate) struct Registry {
     pub faces: HashMap<String, Vec<matching::Face>>,
     pub has_space: HashMap<String, bool>,
     pub alternates: Arc<FeatureDefinitions>,
+    pub size_adjust: HashMap<String, Vec<(u8, f32)>>,
+    pub metric_overrides: super::MetricFaces,
 }
 
 /// Данные удерживаются снимком; новая регистрация не меняет старый снимок.

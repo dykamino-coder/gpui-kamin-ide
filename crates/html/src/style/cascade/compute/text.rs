@@ -194,7 +194,10 @@ pub(in crate::style::cascade) fn decor_family(
 ) -> String {
     c.font_family.clone().unwrap_or_else(|| {
         if c.monospace == Some(true) {
-            crate::text::metrics::mono_family_for(c.lang.as_deref(), vcx).to_string()
+            vcx.doc
+                .font_snapshot()
+                .mono_family(c.lang.as_deref())
+                .to_string()
         } else {
             String::new()
         }

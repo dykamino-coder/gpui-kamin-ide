@@ -147,12 +147,12 @@ impl Computed {
             .font_snapshot()
             .matching_face(family, self.font_request(family, 0.0))
             .map_or_else(
-                || crate::text::fonts::size_adjust(family, slope, vcx),
+                || vcx.doc.font_snapshot().size_adjust(family, slope),
                 |f| f.adjust,
             );
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
-                match crate::text::metrics::adjust_aspect(family, metric, vcx) {
+                match crate::style::font_metrics::adjust_aspect(family, metric, vcx) {
                     Some(have) if have > 0.0 => want / have,
                     _ => size_adjust,
                 }
@@ -220,11 +220,11 @@ impl Computed {
         } else {
             0
         };
-        out.extend(crate::text::fonts::metric_overrides::features(
-            self.font_family.as_deref().unwrap_or(""),
-            slope,
-            vcx,
-        ));
+        out.extend(
+            vcx.doc
+                .font_snapshot()
+                .metric_features(self.font_family.as_deref().unwrap_or(""), slope),
+        );
         out
     }
 }
