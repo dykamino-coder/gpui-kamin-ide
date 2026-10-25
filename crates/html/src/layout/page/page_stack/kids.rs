@@ -57,19 +57,24 @@ impl PageStack {
         window: &mut Window,
         cx: &mut App,
         (aw, ah): (f32, f32),
-    ) -> (Vec<Kid>, usize) {
-        let kids = self
+    ) -> (
+        Vec<Kid>,
+        Vec<crate::layout::fragment::flow::inline::Geometry>,
+        usize,
+    ) {
+        let (kids, inline) = self
             .kids
             .iter_mut()
             .map(|k| measure(k, self.axis, (aw, ah), 0, window, cx))
-            .collect();
+            .unzip();
         let limit = self
             .kids
             .iter()
+            .filter(|k| k.leaf.is_none())
             .map(|k| k.frags.len() + 1)
             .min()
             .unwrap_or(1);
-        (kids, limit)
+        (kids, inline, limit)
     }
 }
 

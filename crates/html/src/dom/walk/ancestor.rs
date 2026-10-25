@@ -10,6 +10,30 @@ use crate::dom::tree_index::TreeIndex;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 
+/// SVG 2: CSS-коробка есть лишь у внешнего svg, включая svg непосредственно
+/// внутри foreignObject. Blink SVGElement::IsOutermostSVGSVGElement;
+/// внутренний SVG не поддерживает size containment (css-contain-2 §2).
+pub(super) fn svg_no_css_box(handle: &Handle) -> bool {
+    use markup5ever_rcdom::NodeData;
+    const SVG: &str = "http://www.w3.org/2000/svg";
+    let NodeData::Element { name, .. } = &handle.data else {
+        return false;
+    };
+    if &*name.ns != SVG {
+        return false;
+    }
+    if &*name.local != "svg" {
+        return true;
+    }
+    let parent = handle.parent.take();
+    let parent_node = parent.as_ref().and_then(|p| p.upgrade());
+    handle.parent.set(parent);
+    parent_node.is_some_and(|p| {
+        matches!(&p.data, NodeData::Element { name, .. }
+            if &*name.ns == SVG && &*name.local != "foreignObject")
+    })
+}
+
 pub(super) fn element_ancestor(
     handle: &Handle,
     tag: &str,

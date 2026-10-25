@@ -13,14 +13,26 @@ impl BlockBreaks {
     /// закрыть диапазоны, которым нужны все точки; всё — в пределах
     /// `[0, end)`.
     pub(crate) fn finish(self, lines: FlowGeometry, end: f32) -> MeasuredBreaks {
+        // BlockBreaks уже разделил группы OW на строки; для корневого IFC
+        // берём строки до keep_lines, чтобы декорация держала только крайний бокс.
+        let mut raw = self.solid.clone();
+        raw.extend(
+            lines
+                .inline
+                .iter()
+                .flat_map(|p| &p.lines)
+                .map(|l| (l.top, l.bottom)),
+        );
+        let mut barriers = self.barriers;
         let mut g = FlowGeometry {
             cuts: self.cuts,
             solid: self.solid,
-            floats: Vec::new(),
+            ..Default::default()
         };
         g.cuts.extend(lines.cuts);
         g.solid.extend(lines.solid);
         let mut keep = self.keep;
+        let mut avoid_inside = self.avoid_inside;
         for p in self.pending {
             match p {
                 Pending::Avoid {
@@ -41,6 +53,8 @@ impl BlockBreaks {
                         .fold(top, f32::max);
                     if open > floor + 0.01 {
                         g.solid.push((open, next + 0.05));
+                        barriers.push((open, next + 0.05));
+                        raw.push((open, next + 0.05));
                     }
                 }
                 Pending::Head { top, edge } => {
@@ -52,6 +66,15 @@ impl BlockBreaks {
                         .fold(None::<f32>, |m, e| Some(m.map_or(e, |x| x.max(e))));
                     if let Some(end) = end {
                         g.solid.push((top, end));
+                        if let Some(end) = raw
+                            .iter()
+                            .filter(|&&(a, _)| (a - edge).abs() < 0.01)
+                            .map(|p| p.1)
+                            .max_by(f32::total_cmp)
+                        {
+                            barriers.push((top, end));
+                            raw.push((top, end));
+                        }
                     }
                 }
                 Pending::Tail {
@@ -65,7 +88,7 @@ impl BlockBreaks {
                         // Без зазора у края содержимого нет точки класса C.
                         // Декорация продолжает мягкий запрет, но не превращает
                         // его в монолит: css-break-3 §4.4 допускает ослабление.
-                        for (_, end) in &mut keep {
+                        for (_, end) in keep.iter_mut().chain(&mut avoid_inside) {
                             if (*end - edge).abs() < COORD_EPS {
                                 *end = bottom;
                             }
@@ -81,6 +104,16 @@ impl BlockBreaks {
                         from
                     };
                     g.solid.push((glue, bottom));
+                    let glue = if gapless {
+                        raw.iter()
+                            .filter(|&&(a, e)| a > top + 0.01 && (e - edge).abs() < 0.01)
+                            .map(|p| p.0)
+                            .fold(from, f32::min)
+                    } else {
+                        from
+                    };
+                    barriers.push((glue, bottom));
+                    raw.push((glue, bottom));
                 }
             }
         }
@@ -97,14 +130,20 @@ impl BlockBreaks {
         for r in g.solid.iter_mut() {
             r.1 = r.1.min(end);
         }
+        barriers.retain(|&(a, _)| a < end - 0.01);
+        for r in &mut barriers {
+            r.1 = r.1.min(end);
+        }
         let mut avoid = self.avoid;
         avoid.retain(|&(a, _)| a < end - 0.01);
         MeasuredBreaks {
             cuts: g.cuts,
             forced,
             solid: g.solid,
+            barriers,
             avoid,
             keep,
+            avoid_inside,
             sections: self.sections,
         }
     }

@@ -6,10 +6,12 @@ import io
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from computed_access import DEFINITIONS, aggregate, growth
 from check_computed import check, decode, documents, owner_changes, transferred_growth
 from test_check_transitional import commit, git
+from computed_f2_rebaseline import APPROVED, CENSUS_BASE, approved_base
 
 FIELDS = 'pub struct Computed {\n    pub width: f32,\n    pub height: f32,\n}\n'
 LAYOUT = 'crates/html/src/layout/block.rs'
@@ -90,6 +92,59 @@ class AggregateTests(unittest.TestCase):
 
 
 class GitRatchetTests(unittest.TestCase):
+    def test_f2_rebaseline_is_exact_bounded_and_expires_after_integration(self):
+        before = Counter({(f, o, a): old for f, o, a, old, new in APPROVED})
+        after = Counter({(f, o, a): new for f, o, a, old, new in APPROVED})
+        self.assertEqual(len(APPROVED), 19)
+        self.assertEqual(approved_base(before, CENSUS_BASE), after)
+        self.assertFalse(growth(after, approved_base(before, CENSUS_BASE), 'test'))
+        for key in after:
+            extra = after.copy()
+            extra[key] += 1
+            self.assertTrue(growth(extra, approved_base(before, CENSUS_BASE), 'test'))
+        extra = after + Counter({('Computed.width', 'layout', 'write'): 1})
+        self.assertTrue(growth(extra, approved_base(before, CENSUS_BASE), 'test'))
+        self.assertEqual(approved_base(before, 'later-main'), before)
+        with self.assertRaises(ValueError):
+            approved_base(after, CENSUS_BASE)
+        # Future bases use actual reduced counters, without this old allowance.
+        reduced = after.copy()
+        reduced['Computed.height', 'layout', 'write'] -= 1
+        self.assertTrue(growth(after, approved_base(reduced, 'later-main'), 'test'))
+
+    def test_rebaseline_allowance_cannot_donate_but_actual_source_removal_can(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git(root, 'init', '-q')
+            for name, source in {DEFINITIONS: FIELDS, LAYOUT: 's.width = 1; s.width = 2;'}.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(source, encoding='utf-8')
+            directory = root / 'scripts/computed_manifest'
+            directory.mkdir(parents=True)
+            # Model a census source with a larger, explicitly approved ceiling.
+            for name, data in documents(scan('s.width = 1; s.width = 2; s.width = 3;')).items():
+                (directory / name).write_text(data, encoding='utf-8')
+            base = commit(root)
+            key = 'Computed.width', 'layout', 'write'
+
+            def allowance(counts, revision):
+                result = counts.copy()
+                result[key] = 3
+                return result
+
+            paint = root / 'crates/html/src/paint/a.rs'
+            paint.parent.mkdir(parents=True)
+            with patch('check_computed.approved_base', side_effect=allowance):
+                self.assertEqual(check(root, base)[0], [])
+                paint.write_text('s.width = 1;', encoding='utf-8')
+                original = {p.name: p.read_bytes() for p in directory.glob('access-*.json')}
+                self.assertTrue(check(root, base, write=True)[0])
+                self.assertEqual(original, {p.name: p.read_bytes()
+                                            for p in directory.glob('access-*.json')})
+                (root / LAYOUT).write_text('s.width = 1;', encoding='utf-8')
+                self.assertEqual(check(root, base, write=True)[0], [])
+
     def test_bootstrap_growth_budget_inflation_and_reduction_without_refresh(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -44,7 +44,14 @@ impl Paragraph {
         // здесь ведётся, начинает ли строка кусок и первый ли это кусок блока:
         // группы между жёсткими разрывами набираются и по отдельности
         // (выравнивание длин), и подряд в одном проходе.
-        let mut head_of_part = true;
+        let continuation = self
+            .fragment
+            .as_ref()
+            .and_then(|f| f.node.resume.state())
+            .filter(|state| state.text_pos == part.start);
+        let mut head_of_part = continuation
+            .as_ref()
+            .map_or(true, |state| state.after_hard_break);
         let mut first_part = part.start == 0;
         let mut last_fit: Option<usize> = None;
         let opportunities = self.part_opportunities(&part);

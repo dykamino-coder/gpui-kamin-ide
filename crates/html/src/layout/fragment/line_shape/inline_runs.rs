@@ -12,10 +12,9 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// пропадало, текст ложился от края колонки (`multicol-nested-002`). Обёртка-
 /// колонка делает копию обычным ребёнком: её поля и растяжение решает
 /// раскладка (CSS 2.1 §10.3.3). Только горизонтальная стопка и только при
-/// ненулевых полях в точках — иначе копия прежняя.
+/// полях, которым нужна раскладка относительно ширины колонки.
 pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
-    let nz = |l: &Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
-    if vertical || !(nz(&copy.style.used().margin.left) || nz(&copy.style.used().margin.right)) {
+    if vertical || !has_side_margins(copy) {
         return el;
     }
     div()
@@ -24,6 +23,13 @@ pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -
         .w_full()
         .child(el)
         .into_any_element()
+}
+
+fn has_side_margins(copy: &Element) -> bool {
+    let margin = &copy.style.used().margin;
+    [margin.left, margin.right]
+        .iter()
+        .any(|l| !matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))))
 }
 
 /// Строчные прогоны среди блочных детей многоколоночника — в анонимные блоки
@@ -92,4 +98,110 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     let mut g = e.clone();
     g.children = out.into();
     Some(g)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hooks::{Hooks, IntoHooked};
+    use crate::layout::fragment::geometry::Node as GeometryNode;
+    use gpui::{AvailableSpace, Edges, Length, Style, point, px, size};
+    use std::{cell::Cell, rc::Rc};
+
+    struct Child {
+        margin: Length,
+        geometry: Rc<Cell<Option<GeometryNode>>>,
+    }
+
+    impl Hooks for Child {
+        type Layout = ();
+        type Prepaint = ();
+        fn request_layout(
+            &mut self,
+            window: &mut gpui::Window,
+            cx: &mut gpui::App,
+        ) -> (gpui::LayoutId, ()) {
+            let id = window.request_layout(
+                Style {
+                    size: size(px(12.).into(), px(40.).into()),
+                    margin: Edges {
+                        left: self.margin,
+                        right: self.margin,
+                        ..Edges::all(px(0.).into())
+                    },
+                    ..Style::default()
+                },
+                [],
+                cx,
+            );
+            self.geometry.set(Some(GeometryNode::capture(id, window)));
+            (id, ())
+        }
+        fn prepaint(
+            &mut self,
+            _: gpui::Bounds<gpui::Pixels>,
+            _: &mut (),
+            _: &mut gpui::Window,
+            _: &mut gpui::App,
+        ) {
+        }
+        fn paint(
+            &mut self,
+            _: gpui::Bounds<gpui::Pixels>,
+            _: &mut (),
+            _: &mut (),
+            _: &mut gpui::Window,
+            _: &mut gpui::App,
+        ) {
+        }
+    }
+
+    #[gpui::test]
+    fn layout_root_keeps_auto_and_percentage_inline_margins(cx: &mut gpui::TestAppContext) {
+        let cx = cx.add_empty_window();
+        for (value, margin, x) in [
+            ("auto", Length::Auto, 94.),
+            ("10%", gpui::relative(0.1).into(), 20.),
+            ("-2px", px(-2.).into(), -2.),
+            ("0", px(0.).into(), 0.),
+        ] {
+            let tree = crate::dom::parse(&format!("<p style='margin:0 {value};width:0'></p>"), "");
+            fn find(nodes: &[Node]) -> Option<&Element> {
+                nodes.iter().find_map(|n| match n {
+                    Node::Element(e) if e.tag == "p" => Some(e),
+                    Node::Element(e) => find(&e.children),
+                    _ => None,
+                })
+            }
+            let geometry = Rc::new(Cell::new(None));
+            cx.draw(
+                point(px(0.), px(0.)),
+                size(px(200.), px(100.)),
+                |window, app| {
+                    let child = Child {
+                        margin,
+                        geometry: geometry.clone(),
+                    }
+                    .hooked();
+                    let mut el = side_margin_wrap(child, find(&tree).expect("paragraph"), false);
+                    el.layout_as_root(
+                        size(
+                            AvailableSpace::Definite(px(200.)),
+                            AvailableSpace::MaxContent,
+                        ),
+                        window,
+                        app,
+                    );
+                    let bounds = geometry
+                        .get()
+                        .expect("child node")
+                        .bounds(window)
+                        .expect("final geometry");
+                    assert_eq!(bounds.origin.x, px(x), "{value}");
+                    assert_eq!(bounds.size.width, px(12.), "{value}");
+                    gpui::div()
+                },
+            );
+        }
+    }
 }

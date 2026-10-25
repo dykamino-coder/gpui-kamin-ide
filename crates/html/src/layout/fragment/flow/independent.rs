@@ -4,13 +4,25 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::push::measured_tree;
 use crate::style::computed::{Display, Position};
 mod continuation;
+mod percentages;
 use continuation::continuation;
 pub(crate) use continuation::parallel_overflow;
+pub(crate) use percentages::PagePercentages;
+pub(crate) use percentages::{column_percentages, page_percentages};
 
 /// У копии нет отдельного плана фрагментов или параллельного потока.
 /// TRANSITIONAL(F2-7): Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21.
 pub(crate) fn independent_copy(c: &Element) -> bool {
-    !c.inline && !separate(c, false) && measured_tree(c) && !continuation(c)
+    regrow_copy(c) && measured_tree(c)
+}
+
+/// Рост по записанным границам не требует продолжения внутри атомарной строки.
+/// Ограничения отдельных потоков и собственных декораций остаются общими.
+pub(crate) fn regrow_copy(c: &Element) -> bool {
+    !c.inline
+        && crate::layout::fragment::push::recorded_tree(c)
+        && !separate(c, false)
+        && !continuation(c)
 }
 
 /// Блоки, сетки и таблицы одного вертикального потока.
