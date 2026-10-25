@@ -20,7 +20,11 @@ impl Context {
         }
     }
 
-    pub(super) fn enter<R>(&self, window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
+    pub(super) fn enter<R>(
+        &self,
+        window: &mut Window,
+        f: impl FnOnce(&mut Window) -> R,
+    ) -> Result<R, gpui::PaintError> {
         // The original host's id/text/render scopes must accompany geometry:
         // the completed element is painted back under that host's ancestors.
         let run = || window.with_paint_ctx(self.paint.clone(), f);

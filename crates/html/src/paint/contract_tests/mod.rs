@@ -4,6 +4,9 @@
 mod capture;
 mod order;
 mod scope;
+mod snapshot_abort;
+mod snapshot_scope;
+mod snapshot_unwind;
 mod state;
 
 use crate::hooks::{Hooks, IntoHooked};

@@ -43,7 +43,7 @@ FIXES = {
         "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
         "Host integration: frame capture with an opt-in first-frame latch, completion events and readback timing for WPT readiness/convergence diagnostics, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
-        "Paint contract: document host policy ownership, snapshot scope/state obligations and the current unwind/identity baseline without changing execution.",
+        "Paint contract: host policy ownership; checked window/pass/live-composition snapshots with one guarded replay, explicit exact raster placement, and unwind-safe geometry/isolated scene scopes. Existing consumers retain their field selection and ordering.",
         "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
         "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",

@@ -43,9 +43,7 @@ impl Window {
                 self.current_transformation(),
             ));
         }
-        let result = paint(self);
-        self.css_text_backgrounds.truncate(depth);
-        result
+        self.with_restore(depth, |window, depth| window.css_text_backgrounds.truncate(*depth), paint).0
     }
 
     /// A background does not inherit as a CSS property, but a transparent

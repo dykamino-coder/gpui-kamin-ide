@@ -12,8 +12,6 @@ impl Window {
     ) -> R {
         let current = self.current_transformation();
         let previous = self.css_fill_transform.replace((current, exact));
-        let result = paint(self);
-        self.css_fill_transform = previous;
-        result
+        self.with_restore(previous, |window, previous| window.css_fill_transform = *previous, paint).0
     }
 }

@@ -33,16 +33,27 @@ opacity, content masks и image caches. `text_paint_ctx` дополнитель�
 glyph offset, text backgrounds и exact text bounds. Обычный `PaintCtx` этих
 текстовых полей не содержит; это разные существующие consumers.
 
-При нормальном возврате `with_paint_ctx` восстанавливает окружение вызывающего,
-в том числе при вложенном replay. Typed host contexts имеют Drop-guard и
-восстанавливаются также при panic. Остальные поля обоих снимков, scene swaps
-и collector scopes пока восстанавливаются только при нормальном возврате.
-После abort consumer сбрасывает collector перед новым документом; продолжение
-частично нарисованного прохода не входит в текущую гарантию.
+`snapshot_paint_state` сохраняет все эти поля, включая generic `RasterFrame`,
+точную fill matrix, device scale и стек rem overrides. `with_raster_frame` принимает явные placement
+и unsnapped fill transforms, не выбирая подложку или CSS policy. Существующий
+общий consumer наследует raster state вызывающего; inline consumer сохраняет
+прежний набор glyph/background полей и наследует fill transform. Все три пути
+исполняются одним механизмом replay и не меняют layout/prepaint или paint order.
 
-Снимок пока не несёт identity окна, кадра или группы. Совпадение этих областей —
-предусловие вызывающего: публичный API ещё не отвергает неверный replay.
-Клонирование снимка сохраняет состояние, но не продлевает допустимый проход.
+Replay проверяет identity окна, прохода и живой композиционной области до
+изменения состояния и вызова closure. `PaintError` различает чужое окно/проход,
+завершённый проход, другую открытую и уже закрытую группу; fallback нет.
+`PaintPassId` и `PaintScopeId` не продлевают жизнь области при клонировании.
+Prepaint и paint одного draw разделяют pass; изолированные effect/plane/capture
+сцены имеют собственные scope. Transform/clip сохраняются в снимке, поэтому
+их лексическое закрытие само по себе не запрещает отложенный replay.
+
+Guards восстанавливают caller environment, typed contexts и raster state также
+при unwind; scopes геометрии и scene swaps используют тот же Drop-механизм.
+Unwind помечает проход недействительным: продолжать частично нарисованный кадр
+нельзя. Внешний draw при abort очищает незавершённый frame и возвращает внешнее
+окружение. Старый consumer по-прежнему сбрасывает collector перед следующим
+документом; уничтожение очередей без TLS относится к миграции хозяина.
 
 Текущий `frame_capture` использует process-wide sequence при одном хозяине.
 Sequence различает завершённые readback, но не идентифицирует окно, документ
@@ -51,8 +62,7 @@ Sequence различает завершённые readback, но не иден�
 
 ### Требования к общему scoped API
 
-Следующий механизм должен сделать эти предусловия проверяемыми, сохранив
-существующих consumers и единственную реализацию backend:
+Контракт механизма и последующей миграции consumers:
 
 - frame-local pass token идентифицирует окно и кадр; scope token дополнительно
   идентифицирует открытую композиционную область, включая offscreen capture;
@@ -69,6 +79,7 @@ Sequence различает завершённые readback, но не иден�
   однократное исполнение не требуют знания CSS внутри GPUI. Нельзя вводить
   повторный minimum scan или бесконечный drain при добавлении новых jobs.
 
-Это требования к миграции механизма, не утверждение о наличии новых token API
-у текущего `PaintCtx`. Проверки HTML baseline фиксируют существующие порядок,
-nested scopes, identity contexts, raster origin и восстановление после abort.
+Проверки HTML фиксируют порядок текущих consumers, nested scopes, identity
+contexts, raster origin, отклонение неверного replay и восстановление после abort.
+Очередь и text-background policy пока остаются в существующих адаптерах;
+новый snapshot не принимает решений хозяина.

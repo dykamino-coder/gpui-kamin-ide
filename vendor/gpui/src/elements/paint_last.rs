@@ -34,6 +34,7 @@ use crate::{
     LayoutId, Pixels, Style, Window,
     window::{PaintCtx, TextPaintCtx},
 };
+use gpui_util::ResultExt;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -133,10 +134,10 @@ fn close_frame(depth: usize, prev: bool, window: &mut Window, cx: &mut App) {
         });
         match next {
             Some(Next::Inline(HoistedInline { mut el, ctx })) => {
-                window.with_text_paint_ctx(ctx, |window| el.paint(window, cx));
+                window.with_text_paint_ctx(ctx, |window| el.paint(window, cx)).log_err();
             }
             Some(Next::Positioned(Hoisted { mut el, ctx, .. })) => {
-                window.with_paint_ctx(ctx, |window| el.paint(window, cx));
+                window.with_paint_ctx(ctx, |window| el.paint(window, cx)).log_err();
             }
             None => break,
         }
@@ -168,7 +169,7 @@ fn finish_atomic(depth: usize, prev: bool, window: &mut Window, cx: &mut App) {
         let Some(HoistedInline { mut el, ctx }) = next else {
             break;
         };
-        window.with_text_paint_ctx(ctx, |window| el.paint(window, cx));
+        window.with_text_paint_ctx(ctx, |window| el.paint(window, cx)).log_err();
     }
     let moved = FRAMES.with(|f| {
         let mut f = f.borrow_mut();
@@ -187,7 +188,7 @@ fn finish_atomic(depth: usize, prev: bool, window: &mut Window, cx: &mut App) {
     });
     OPEN.with(|o| o.set(prev));
     for Hoisted { mut el, ctx, .. } in moved {
-        window.with_paint_ctx(ctx, |window| el.paint(window, cx));
+        window.with_paint_ctx(ctx, |window| el.paint(window, cx)).log_err();
     }
 }
 
