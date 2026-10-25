@@ -24,6 +24,7 @@ pub(super) struct CopyGeometry {
     pub(super) kid: Kid,
     pub(super) inline: crate::layout::fragment::flow::inline::Geometry,
     pub(super) laid: Laid,
+    pub(super) parallel: Option<std::rc::Rc<crate::layout::fragment::flow::Parallel>>,
     pub(super) continued: bool,
 }
 
@@ -48,12 +49,52 @@ impl PageStack {
         page: Option<crate::layout::fragment::token::space::PageIdentity>,
         window: &mut Window,
         cx: &mut App,
+    ) -> Result<Option<(Kid, f32)>, crate::layout::fragment::token::Error> {
+        let parallel = self.kids[index]
+            .watched
+            .as_ref()
+            .and_then(|w| w.blocks())
+            .zip(self.measured.get_key_value(&(index, copy)).or_else(|| {
+                self.measured
+                    .get_key_value(&(index, copy.saturating_sub(1)))
+            }))
+            .map(|(b, ((_, old_copy), old))| {
+                crate::layout::fragment::flow::Parallel::at(
+                    b,
+                    &old.laid,
+                    from,
+                    old.parallel.as_deref().map(|p| (p, copy != *old_copy)),
+                )
+                .map(std::rc::Rc::new)
+            })
+            .transpose()?;
+        let geometry =
+            self.remeasure_geometry(index, copy, area, from, page, parallel.clone(), window, cx);
+        // Неизменные constraints переиспользуют геометрию, но новый
+        // фрагмент всё равно сохраняет собственные child tokens и sequence.
+        if let Some(measured) = self.measured.get_mut(&(index, copy)) {
+            measured.parallel = parallel;
+        }
+        Ok(geometry)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn remeasure_geometry(
+        &mut self,
+        index: usize,
+        copy: usize,
+        area: (f32, f32),
+        from: f32,
+        page: Option<crate::layout::fragment::token::space::PageIdentity>,
+        parallel: Option<std::rc::Rc<crate::layout::fragment::flow::Parallel>>,
+        window: &mut Window,
+        cx: &mut App,
     ) -> Option<(Kid, f32)> {
         let base = self.kids[index].regrow.as_ref()?.clone();
         // Рост границ блоков допустим без токена атомарной строки; смена
         // ограничений требует полного независимого продолжения её содержимого.
         if !self.axis.is_vertical()
-            && !crate::layout::fragment::flow::independent_copy(&base.source)
+            && !crate::layout::fragment::flow::page_copy(&base.source, false)
         {
             let mut flexes = Vec::new();
             if let Some(blocks) = base.watched.blocks() {
@@ -130,7 +171,7 @@ impl PageStack {
             rebuild_copy(k, copy, &own);
             (next, next_inline) = measure(k, self.axis, area, copy, window, cx);
         }
-        k.watched = Some(main);
+        k.watched = Some(main.clone());
         let fresh = std::mem::replace(&mut k.regrow.as_mut()?.laid, original);
         let fresh_space = std::mem::replace(&mut k.regrow.as_mut()?.space, original_space);
         let offset = if from <= COORD_EPS {
@@ -140,6 +181,11 @@ impl PageStack {
             root.into_iter()
                 .chain(normal.and_then(|cursor| cursor.offset(&fresh, &next_inline.paragraphs)))
                 .chain(token.offset(&fresh))
+                .chain(
+                    parallel
+                        .as_ref()
+                        .and_then(|p| main.blocks().and_then(|b| p.offset(b, &fresh))),
+                )
                 .min_by(f32::total_cmp)
                 .unwrap_or(next.h)
         };
@@ -155,6 +201,7 @@ impl PageStack {
                 kid: next.clone(),
                 inline: next_inline,
                 laid: fresh,
+                parallel,
                 continued: true,
             },
         );

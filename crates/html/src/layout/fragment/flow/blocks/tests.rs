@@ -37,6 +37,17 @@ fn finish(b: &BlockBox, end: f32, boxes: &Laid) -> Out {
 }
 
 #[test]
+fn root_decorations_end_at_normal_height_while_the_child_overflows() {
+    let (b, ids) =
+        tree("<div style='height:20px;border:10px solid'><div style='height:160px'></div></div>");
+    let laid = at(&[(b.id, 0., 40.), (ids[0], 10., 170.)]);
+    let (_, _, solid) = finish(&b, 170., &laid);
+    assert!(solid.contains(&(0., 10.)));
+    assert!(solid.contains(&(30., 40.)));
+    assert!(!solid.contains(&(160., 170.)));
+}
+
+#[test]
 fn sibling_boundary_truncates_both_margins() {
     // Margins 30 collapse between the boxes: the cut keeps the end of the
     // first border box and resumes at the top of the second (css-break-3 §5.2).

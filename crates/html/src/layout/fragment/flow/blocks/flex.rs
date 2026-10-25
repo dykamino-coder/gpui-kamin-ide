@@ -119,8 +119,13 @@ impl FlexBox {
             {
                 return Some(Pushed::Box(item.id));
             }
+            let end = item
+                .inner
+                .as_ref()
+                .and_then(|b| crate::layout::fragment::flow::flow_end(b, laid))
+                .unwrap_or(bottom);
             if top <= a
-                && a < bottom - COORD_EPS
+                && a < end - COORD_EPS
                 && let Some(found) = item.inner.as_ref().and_then(|b| b.pushed_at(a, laid))
             {
                 return Some(found);

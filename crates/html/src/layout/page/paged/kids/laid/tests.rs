@@ -55,10 +55,16 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
 }
 
 #[test]
-fn flowing_page_float_requires_its_own_continuation() {
+fn flowing_page_float_records_its_own_children_and_inline_continuation() {
     let tree = crate::dom::parse("<div style='float:left;width:20px'>flowing text</div>", "");
     let nodes = [Node::Element(authored(&tree).clone())];
-    assert!(group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).is_none());
+    let p = group(&nodes, &BoxStyle::default(), 120.0, 0.0, tree.values()).unwrap();
+    assert!(p.blocks);
+    assert_eq!(p.margins, (0.0, 0.0, 0.0));
+    let Node::Element(e) = &p.nodes[0] else {
+        panic!("float")
+    };
+    assert_eq!(e.style.used().float, Some(-1));
 }
 
 #[test]

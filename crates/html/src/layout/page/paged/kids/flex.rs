@@ -58,6 +58,9 @@ pub(super) fn regrow(
     blocks.flexes(&mut flexes);
     let independent = match vertical {
         Some(rl) => crate::layout::fragment::flow::vertical_copy(dom, rl),
+        None if dom.style.used().float.is_some_and(|f| f != 0) => {
+            crate::layout::fragment::flow::page_copy(dom, true)
+        }
         None => crate::layout::fragment::flow::regrow_copy(dom),
     };
     if flexes.is_empty() && (blocks.table.is_some() || !independent) {

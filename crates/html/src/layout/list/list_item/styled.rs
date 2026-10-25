@@ -97,6 +97,7 @@ pub(crate) async fn render_with_style(
     // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
     // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
     // не двигает. Text transforms apply to its own text (§3.1.1).
+    let anchor = super::placement::Anchor::default();
     shrink0(
         opts.cx.contracts.build.styled_box(li, merged, &opts.cx),
         li,
@@ -115,50 +116,55 @@ pub(crate) async fn render_with_style(
         // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
         // маркера объявлены на нём (css-lists-3
         // §marker-properties).
-        super::outside::position(
-            opts.cx
-                .contracts
-                .build
-                .styled_div(Styling::Text(&mark_style), &opts.cx),
-            &li.style.used(),
-            merged,
-        )
-        .whitespace_nowrap()
-        // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
-        // (обычный пробел после номера пункта). Авторская
-        // строка `list-style-type: "..."` идёт дословно:
-        // `trim_end` в Rust считает пробелом и U+00A0, а
-        // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
-        // Остаток `list-style-type-string-005a/b/-006` не здесь,
-        // но срезать значащий знак всё равно нельзя.
-        // Отбивка после номера (`1. `) — часть маркера: она и
-        // даёт зазор до содержимого. Пробел в конце строки
-        // свернулся бы, поэтому он неразрывный.
-        .children(
-            image
-                .as_ref()
-                .map(|image| {
-                    opts.cx.contracts.build.blocks(
-                        &[image.clone(), Node::Text("\u{a0}".into())],
-                        &mark_style,
-                        opts,
-                    )
+        anchor.marker(
+            super::outside::position(
+                opts.cx
+                    .contracts
+                    .build
+                    .styled_div(Styling::Text(&mark_style), &opts.cx),
+                &li.style.used(),
+                merged,
+            )
+            .whitespace_nowrap()
+            // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
+            // (обычный пробел после номера пункта). Авторская
+            // строка `list-style-type: "..."` идёт дословно:
+            // `trim_end` в Rust считает пробелом и U+00A0, а
+            // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
+            // Остаток `list-style-type-string-005a/b/-006` не здесь,
+            // но срезать значащий знак всё равно нельзя.
+            // Отбивка после номера (`1. `) — часть маркера: она и
+            // даёт зазор до содержимого. Пробел в конце строки
+            // свернулся бы, поэтому он неразрывный.
+            .children(
+                image
+                    .as_ref()
+                    .map(|image| {
+                        opts.cx.contracts.build.blocks(
+                            &[image.clone(), Node::Text("\u{a0}".into())],
+                            &mark_style,
+                            opts,
+                        )
+                    })
+                    .into_iter()
+                    .flatten(),
+            )
+            .children(image.is_none().then(|| {
+                SharedString::from(match marker.strip_suffix(' ') {
+                    Some(head) => format!("{head}\u{a0}"),
+                    None => marker.clone(),
                 })
-                .into_iter()
-                .flatten(),
+            }))
+            .into_any_element(),
+            merged.wm().vertical(),
         )
-        .children(image.is_none().then(|| {
-            SharedString::from(match marker.strip_suffix(' ') {
-                Some(head) => format!("{head}\u{a0}"),
-                None => marker.clone(),
-            })
-        }))
     }))
     // Содержимое — своей колонкой, как прежде: выключка пункта
     // (`text-align: end` у `<li>`) иначе становится выравниванием
     // его детей, и блок с `text-align: initial` уезжал к концу
     // (`marker-text-align-001-ref`).
     .child(
+        anchor.content(
         div()
             .w_full()
             .flex()
@@ -170,7 +176,9 @@ pub(crate) async fn render_with_style(
                     .blocks_stack(stk, &li.children, merged, opts)
                     .await,
             )
-            .children(strut),
+            .children(strut)
+            .into_any_element(),
+        ),
     )
     .into_any_element()
 }

@@ -18,6 +18,7 @@ mod column_avoid;
 mod finish;
 mod geometry;
 mod parallel;
+mod pushed;
 mod stack;
 pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
 mod laid;
