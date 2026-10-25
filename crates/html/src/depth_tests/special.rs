@@ -50,9 +50,9 @@ fn special_path_probe(cx: &mut gpui::TestAppContext) {
 }
 
 #[test]
-fn inline_grid_math_and_table_paint_at_browser_depth_on_eight_mib() {
+fn inline_grid_math_table_and_multicol_paint_at_browser_depth_on_eight_mib() {
     regression::on_eight_mib(|| {
-        for kind in ["inline", "grid", "math", "table"] {
+        for kind in ["inline", "grid", "math", "table", "multicol"] {
             let mut cx = gpui::TestAppContext::single();
             run(1026, kind, "paint", &mut cx);
         }
