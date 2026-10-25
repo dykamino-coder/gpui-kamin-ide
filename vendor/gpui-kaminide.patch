@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children.
+# 1. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns.
 # 2. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
 # 3. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
 # 4. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
@@ -6715,10 +6715,10 @@ index 8a2a1b70a7bf28464547009020efa9caff8f0cff..b0c786e6c81c637d82a0e7b0be4fb933
 +pub use paint_last::*;
 diff --git a/vendor/gpui/src/elements/paint_last.rs b/vendor/gpui/src/elements/paint_last.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d25a5b7be3118c5619298717154544eba1905e5e
+index 0000000000000000000000000000000000000000..0c9a2d610a4de734eda8aff2dfe68270dc0985d6
 --- /dev/null
 +++ b/vendor/gpui/src/elements/paint_last.rs
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,203 @@
 +//! KaminIDE patch: краска ребёнка ПОСЛЕ потока без смены раскладки.
 +//!
 +//! Позиционированный элемент с `z-index: auto | 0` рисуется на шаге 8
@@ -6878,6 +6878,12 @@ index 0000000000000000000000000000000000000000..d25a5b7be3118c5619298717154544eb
 +) {
 +    let (depth, prev) = open_frame();
 +    f(window, cx);
++    finish_atomic(depth, prev, window, cx);
++}
++
++// KaminIDE patch: снимки контекста не живут в рекурсивном кадре ребёнка.
++#[inline(never)]
++fn finish_atomic(depth: usize, prev: bool, window: &mut Window, cx: &mut App) {
 +    loop {
 +        let next = FRAMES.with(|f| f.borrow_mut().get_mut(depth)?.inline.pop_front());
 +        let Some(HoistedInline { mut el, ctx }) = next else {
