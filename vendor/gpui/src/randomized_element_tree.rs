@@ -1645,11 +1645,33 @@ mod tests {
             .expect("randomized tree window should remain open until the case completes");
     }
 
-    #[gpui::property_test(config = ProptestConfig {
+    #[proptest::property_test(config = gpui::apply_seed_to_proptest_config(ProptestConfig {
         cases: 4,
         ..Default::default()
-    })]
-    fn randomized_element_tree_matches_full_render(cx: &mut TestAppContext, seed: u64) {
+    }))]
+    fn randomized_element_tree_matches_full_render(
+        #[strategy = gpui::seed_strategy()] dispatcher_seed: u64,
+        seed: u64,
+    ) {
+        // Keep the GPUI property-test lifecycle explicit: its macro forwards a
+        // proptest_path option that the locked proptest macro does not support.
+        gpui::run_test_once(
+            dispatcher_seed,
+            Box::new(move |dispatcher| {
+                let mut cx = TestAppContext::build(
+                    dispatcher.clone(),
+                    Some("randomized_element_tree_matches_full_render"),
+                );
+                randomized_element_tree_property(&mut cx, seed);
+                dispatcher.run_until_parked();
+                cx.executor().forbid_parking();
+                cx.quit();
+                dispatcher.run_until_parked();
+            }),
+        );
+    }
+
+    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
         for topology in 0..4 {
             let topology_seed = (seed & !3) | topology;
             let config = RandomizedElementTreeConfig::new(topology_seed, ELEMENT_COUNT)
