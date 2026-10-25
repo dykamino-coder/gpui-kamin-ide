@@ -2,6 +2,30 @@
 use super::*;
 
 #[test]
+fn nested_probe_preserves_the_original_line_growth_address() {
+    let growth = std::rc::Rc::new(std::cell::RefCell::new(vec![0.0; 3]));
+    let source = FlowGeometry {
+        boxes: [(7, (10.0, 25.0))].into(),
+        line_pushes: vec![LinePush {
+            at: 20.0,
+            line: 2,
+            growth: growth.clone(),
+        }],
+        ..Default::default()
+    };
+    let mut geometry = FlowGeometry::default();
+    geometry.append(&source, 30.0);
+    drop(source);
+    assert_eq!(geometry.line_pushes[0].at, 50.0);
+    assert_eq!(
+        super::blocks::Laid::default().with_flow(&geometry).at(7),
+        Some((40.0, 55.0))
+    );
+    assert!(geometry.line_pushes[0].grow(10.0));
+    assert_eq!(*growth.borrow(), vec![0.0, 0.0, 10.0]);
+}
+
+#[test]
 fn parallel_lines_only_break_at_shared_edges() {
     let mut geometry = FlowGeometry::lines([10.0, 20.0]);
     geometry.append(&FlowGeometry::lines([15.0, 15.0]), 0.0);

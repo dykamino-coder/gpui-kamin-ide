@@ -126,7 +126,11 @@ impl ColumnStack {
             return;
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
-            r.laid = w.laid_axis(point(px(0.0), px(0.0)), measured_size, axis, window);
+            let origin = point(px(0.0), px(0.0));
+            let flow = w.flow.at(origin, measured_size, axis, window);
+            r.laid = w
+                .laid_axis(origin, measured_size, axis, window)
+                .with_flow(&flow);
             r.space = w.space(window);
             if !r.laid.flexes.is_empty()
                 && let Some(blocks) = w.blocks()

@@ -72,6 +72,9 @@ impl FragmentFlow {
 
 fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
     for (kid, slot) in kids.iter().zip(slots) {
+        geometry
+            .boxes
+            .insert(kid.node_id, (slot.y, slot.y + slot.b));
         let mut child = FlowGeometry::default();
         if matches!(kid.kind, super::Kind::Float { .. }) {
             let bounds = FloatGeometry {
@@ -80,8 +83,7 @@ fn append(geometry: &mut FlowGeometry, kids: &[Kid], slots: &[Slot]) {
                 bottom: slot.y + slot.b,
                 margins: slot.float_margins,
                 first_break: (!kid.monolithic)
-                    .then(|| slot.geometry.cuts.first().map(|&(a, _)| slot.y + a))
-                    .flatten(),
+                    .then(|| slot.y + slot.geometry.cuts.first().map_or(0.0, |&(a, _)| a)),
             };
             geometry.floats.push(bounds);
             child
@@ -168,6 +170,7 @@ mod tests {
         geometry.normalize();
         assert!(geometry.solid.is_empty());
         assert_eq!(geometry.cuts, vec![(200., 200.)]);
+        assert_eq!(geometry.floats[0].first_break, Some(0.));
         kid.monolithic = true;
         let mut geometry = FlowGeometry::default();
         append(&mut geometry, std::slice::from_ref(&kid), &[slot]);

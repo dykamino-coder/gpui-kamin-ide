@@ -141,7 +141,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 #[cfg(feature = "wpt-harness")]
 #[test]
 fn continuation_groups_keep_their_explicit_f2_routes() {
-    // TRANSITIONAL(F2-1): Clone и заданная высота с overflow ещё идут через preplan; удалить ожидание этого маршрута после краёв фрагментов P04 и раздельных normal-flow/overflow resume P05.
+    // Заданный normal extent не ограничивает отдельный overflow-поток.
     for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",
         "<div><div style='display:flex;height:50px'><div style='height:150px'></div></div></div>",
@@ -168,7 +168,7 @@ fn continuation_groups_keep_their_explicit_f2_routes() {
             let Node::Element(flex) = &root.children[0] else {
                 panic!("flex")
             };
-            assert!(!crate::layout::fragment::flow::independent_copy(flex));
+            assert!(crate::layout::fragment::flow::independent_copy(flex));
             assert!(
                 super::laid::children(
                     root,
@@ -177,9 +177,18 @@ fn continuation_groups_keep_their_explicit_f2_routes() {
                     120.0,
                     &Default::default()
                 )
-                .is_none()
+                .is_some()
             );
-            assert!(plan.stackable.is_some());
+            let kids = plan.stackable.expect("native overflow children");
+            assert!(kids.iter().all(|(_, shape)| shape.height == 0.0));
+            assert_eq!(plan.measured_kids.borrow().len(), kids.len());
+            assert!(
+                opts.frag
+                    .probe
+                    .take()
+                    .values()
+                    .all(|p| p.estimate_calls == 0)
+            );
         } else {
             assert!(
                 opts.frag

@@ -25,14 +25,14 @@ fn float_growths(floats: &[FloatGeometry], from: f32, edge: f32, height: f32) ->
     floats
         .iter()
         .filter_map(|f| {
-            let (start, end) = (f.top - f.margins[0], f.bottom + f.margins[1]);
+            let start = f.top - f.margins[0];
+            let end = f.first_break.unwrap_or(f.bottom + f.margins[1]);
             // В начале полного фрагмента avoid уже нельзя выполнить переносом.
             // У первого неполного фрагмента смещается только float, а не parent.
             let at_start = start <= from + COORD_EPS && edge - from >= height - COORD_EPS;
             (start >= from - COORD_EPS
                 && start < edge - COORD_EPS
                 && end > edge + COORD_EPS
-                && end - start <= height + COORD_EPS
                 && !at_start)
                 .then_some(Growth {
                     target: Pushed::Float(f.id),
@@ -47,6 +47,24 @@ fn float_growths(floats: &[FloatGeometry], from: f32, edge: f32, height: f32) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tall_float_uses_its_first_internal_break_before_overflowing() {
+        let mut float = FloatGeometry {
+            id: 9,
+            top: 50.0,
+            bottom: 250.0,
+            margins: [0.0; 2],
+            first_break: None,
+        };
+        assert_eq!(float_growths(&[float], 0.0, 100.0, 100.0)[0].amount, 50.0);
+        float.first_break = Some(90.0);
+        assert!(float_growths(&[float], 0.0, 100.0, 100.0).is_empty());
+        float.first_break = Some(120.0);
+        assert_eq!(float_growths(&[float], 0.0, 100.0, 100.0)[0].amount, 50.0);
+        float.top = 0.0;
+        assert!(float_growths(&[float], 0.0, 100.0, 100.0).is_empty());
+    }
 
     #[test]
     fn float_moves_past_partial_fragment_without_growing_the_parent() {

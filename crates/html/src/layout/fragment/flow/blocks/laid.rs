@@ -33,6 +33,14 @@ pub(crate) struct Laid {
 }
 
 impl Laid {
+    /// Границы детей BandFlow измерены до освобождения временных проб.
+    pub(crate) fn with_flow(mut self, flow: &super::super::FlowGeometry) -> Self {
+        for (&id, &bounds) in &flow.boxes {
+            self.boxes.entry(id).or_insert(bounds);
+        }
+        self
+    }
+
     /// Border box коробки `id`.
     pub(crate) fn at(&self, id: u64) -> Option<(f32, f32)> {
         self.boxes.get(&id).copied()

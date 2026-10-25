@@ -42,6 +42,8 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlowGeometry {
+    pub(crate) line_pushes: Vec<LinePush>,
+    pub(crate) boxes: std::collections::HashMap<u64, (f32, f32)>,
     pub(crate) float_contexts: Vec<float_resume::Snapshot>,
     pub(crate) inline: Vec<inline::Inline>,
     pub(crate) cuts: Vec<(f32, f32)>,
@@ -75,6 +77,17 @@ impl FlowGeometry {
     }
 
     pub(crate) fn append(&mut self, other: &Self, offset: f32) {
+        self.boxes.extend(
+            other
+                .boxes
+                .iter()
+                .map(|(&id, &(a, b))| (id, (a + offset, b + offset))),
+        );
+        self.line_pushes
+            .extend(other.line_pushes.iter().map(|p| LinePush {
+                at: p.at + offset,
+                ..p.clone()
+            }));
         self.float_contexts
             .extend(other.float_contexts.iter().map(|g| g.translated(offset)));
         self.inline

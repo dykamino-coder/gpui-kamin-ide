@@ -6,7 +6,9 @@ use crate::style::computed::Display;
 pub(crate) fn copy_flow(nodes: &[Node]) -> std::borrow::Cow<'_, [Node]> {
     let mut floats = false;
     for n in super::box_children::children(nodes) {
-        if floats && matches!(n, Node::Element(_)) {
+        let root_float =
+            matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0));
+        if root_float || (floats && matches!(n, Node::Element(_))) {
             // Обычная обёртка не заводит BFC: collapse и clear видят те же bands.
             return std::borrow::Cow::Owned(vec![Node::Element(
                 crate::layout::table::anon::anon_element("anon-block", nodes.to_vec()),
@@ -41,6 +43,11 @@ mod tests {
     #[test]
     fn exclusions_cross_siblings_only_within_the_same_bfc() {
         for (body, crosses) in [
+            (
+                "<div style='float:left;margin:40px 0;height:20px'></div>",
+                true,
+            ),
+            ("text<div style='float:left'>float</div>", true),
             (
                 "<div><div style='float:left;height:250px'></div></div><div style='clear:left'></div>",
                 true,

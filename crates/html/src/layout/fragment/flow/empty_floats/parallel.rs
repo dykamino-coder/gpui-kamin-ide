@@ -14,11 +14,9 @@ pub(crate) fn separate(flow: &mut FlowGeometry, source: &Element) -> Vec<FloatGe
             _ => false,
         })
     }
-    if !empty_floats(source) {
-        return Vec::new();
-    }
     let mut floats = Vec::new();
     for f in &flow.floats {
+        floats.push(*f);
         if !monolithic_float(source, f.id) {
             continue;
         }
@@ -31,7 +29,6 @@ pub(crate) fn separate(flow: &mut FlowGeometry, source: &Element) -> Vec<FloatGe
             .position(|p| (p.0 - range.0).abs() < COORD_EPS && (p.1 - range.1).abs() < COORD_EPS)
         {
             flow.solid.remove(i);
-            floats.push(*f);
         }
     }
     floats
