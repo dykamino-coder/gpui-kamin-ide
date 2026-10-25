@@ -1,4 +1,4 @@
-//! Çàäàííûé ðàçìåð ñîäåðæèìîãî ðÿäà êîëîíîê ìíîãîêîëîíî÷íèêà.
+//! Ð—Ð°Ð´Ð°Ð½Ð½Ñ‹Ð¹ Ñ€Ð°Ð·Ð¼ÐµÑ€ ÑÐ¾Ð´ÐµÑ€Ð¶Ð¸Ð¼Ð¾Ð³Ð¾ Ñ€ÑÐ´Ð° ÐºÐ¾Ð»Ð¾Ð½Ð¾Ðº Ð¼Ð½Ð¾Ð³Ð¾ÐºÐ¾Ð»Ð¾Ð½Ð¾Ñ‡Ð½Ð¸ÐºÐ°.
 
 use crate::layout::block::available_height::content_block_size;
 use crate::layout::cx::BoxConstraints;
@@ -21,11 +21,16 @@ pub(super) fn fixed_column_height(
     let (preferred, maximum, outer, inline) = if col_vert {
         (style.width, style.max_width, parent.avail_w, parent.avail_h)
     } else {
-        (style.height, style.max_height, parent.avail_h, parent.cb_width)
+        (
+            style.height,
+            style.max_height,
+            parent.avail_h,
+            parent.cb_width,
+        )
     };
-    // Ïðè auto ïîòîëîê êîëîíîê çàäà¸ò max-height (css-multicol-1
-    // §column-fill; Blink ConstrainColumnBlockSize). Îáà çíà÷åíèÿ èìåþò
-    // àâòîðñêèé box-sizing: fragmentainer çàíèìàåò òîëüêî content box.
+    // ÐŸÑ€Ð¸ auto Ð¿Ð¾Ñ‚Ð¾Ð»Ð¾Ðº ÐºÐ¾Ð»Ð¾Ð½Ð¾Ðº Ð·Ð°Ð´Ð°Ñ‘Ñ‚ max-height (css-multicol-1
+    // Â§column-fill; Blink ConstrainColumnBlockSize). ÐžÐ±Ð° Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð¸Ð¼ÐµÑŽÑ‚
+    // Ð°Ð²Ñ‚Ð¾Ñ€ÑÐºÐ¸Ð¹ box-sizing: fragmentainer Ð·Ð°Ð½Ð¸Ð¼Ð°ÐµÑ‚ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ content box.
     let preferred = match preferred {
         None | Some(Len::Auto) => maximum,
         value => value,

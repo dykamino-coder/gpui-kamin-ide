@@ -34,9 +34,9 @@ pub(crate) fn inner(
     content_block_size(st, false, st.height, outer, width)
 }
 
-/// Определённый размер содержимого по блочной оси: box-sizing и пределы
-/// CSS 2 §10.7 общие для содержащего блока и fragmentainer колонок.
-/// `preferred` позволяет передать потолок колонок при автоматическом размере.
+/// РћРїСЂРµРґРµР»С‘РЅРЅС‹Р№ СЂР°Р·РјРµСЂ СЃРѕРґРµСЂР¶РёРјРѕРіРѕ РїРѕ Р±Р»РѕС‡РЅРѕР№ РѕСЃРё: box-sizing Рё РїСЂРµРґРµР»С‹
+/// CSS 2 В§10.7 РѕР±С‰РёРµ РґР»СЏ СЃРѕРґРµСЂР¶Р°С‰РµРіРѕ Р±Р»РѕРєР° Рё fragmentainer РєРѕР»РѕРЅРѕРє.
+/// `preferred` РїРѕР·РІРѕР»СЏРµС‚ РїРµСЂРµРґР°С‚СЊ РїРѕС‚РѕР»РѕРє РєРѕР»РѕРЅРѕРє РїСЂРё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕРј СЂР°Р·РјРµСЂРµ.
 pub(crate) fn content_block_size(
     st: &Computed,
     vertical: bool,
@@ -68,12 +68,20 @@ pub(crate) fn content_block_size(
     };
     // Auto height stays indefinite even when min-height is definite.
     let height = (length(preferred)? - edges).max(0.0);
-    let minimum = length(if vertical { st.min_width } else { st.min_height })
-        .map(|v| (v - edges).max(0.0))
-        .unwrap_or(0.0);
-    let maximum = length(if vertical { st.max_width } else { st.max_height })
-        .map(|v| (v - edges).max(0.0))
-        .unwrap_or(f32::INFINITY);
+    let minimum = length(if vertical {
+        st.min_width
+    } else {
+        st.min_height
+    })
+    .map(|v| (v - edges).max(0.0))
+    .unwrap_or(0.0);
+    let maximum = length(if vertical {
+        st.max_width
+    } else {
+        st.max_height
+    })
+    .map(|v| (v - edges).max(0.0))
+    .unwrap_or(f32::INFINITY);
     Some(height.min(maximum).max(minimum))
 }
 
