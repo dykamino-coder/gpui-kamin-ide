@@ -5,6 +5,8 @@ pub use flex_layout::{FlexItemLayout, FlexLayout, FlexLineLayout};
 mod alignment_adapter;
 mod measurement;
 mod line_baselines;
+// KaminIDE patch: read the first actual content baseline from completed layout.
+mod content_line;
 mod measured_content;
 mod measured_box;
 mod box_edges;

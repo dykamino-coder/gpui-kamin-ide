@@ -30,7 +30,10 @@ impl Cursor {
             }
             return Some(Self::inside(child.id, top, inline, from));
         }
-        let (top, _) = old.at(blocks.id)?;
+        let (top, bottom) = old.at(blocks.id)?;
+        if bottom <= from + COORD_EPS {
+            return None;
+        }
         Some(Self::inside(blocks.id, top, inline, from))
     }
 

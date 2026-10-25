@@ -57,7 +57,7 @@ pub(super) fn growths(
     let forced = k.forced.iter().any(|v| (v - end).abs() < COORD_EPS);
     // Class B между строками тоже занимает неиспользованный остаток
     // фрагментаинера (css-break-3 §5.3): его сохраняет рекордер абзаца.
-    if end < k.h - COORD_EPS && edge > end + COORD_EPS {
+    if end < k.h.max(k.over) - COORD_EPS && edge > end + COORD_EPS {
         let at = k
             .cuts
             .iter()

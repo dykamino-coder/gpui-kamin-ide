@@ -4,12 +4,25 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
+/// Наличие заданного размера и детей; отдельный допуск float_copy использует
+/// это свойство до появления продолжения обтекаемого BFC в P06.
+pub(crate) fn parallel_overflow(e: &Element) -> bool {
+    crate::layout::page::paged::visible_overflow(&e.style.used())
+        && [
+            e.style.used().height,
+            e.style.used().min_height,
+            e.style.used().max_height,
+        ]
+        .iter()
+        .any(|l| !matches!(l, None | Some(Len::Auto)))
+        && e.children.iter().any(|n| matches!(n, Node::Element(_)))
+}
+
 pub(super) fn continuation(e: &Element) -> bool {
     if e.style.used().display == Some(Display::None) {
         return false;
     }
-    parallel_overflow(e)
-        || inline_continuation(e)
+    inline_continuation(e)
         || e.children
             .iter()
             .any(|n| matches!(n, Node::Element(k) if continuation(k)))
@@ -24,17 +37,4 @@ pub(super) fn inline_continuation(e: &Element) -> bool {
         || e.children
             .iter()
             .any(|n| matches!(n, Node::Element(k) if inline_continuation(k)))
-}
-
-/// TRANSITIONAL(F2-1): Очистка детей теряет независимый прогресс normal flow, min-height и overflow; удалить gate в P05 после отдельных resume этих потоков.
-pub(crate) fn parallel_overflow(e: &Element) -> bool {
-    crate::layout::page::paged::visible_overflow(&e.style.used())
-        && [
-            e.style.used().height,
-            e.style.used().min_height,
-            e.style.used().max_height,
-        ]
-        .iter()
-        .any(|l| !matches!(l, None | Some(Len::Auto)))
-        && e.children.iter().any(|n| matches!(n, Node::Element(_)))
 }

@@ -65,10 +65,7 @@ pub(super) fn group(
     let floated = e.style.used().float.is_some_and(|f| f != 0);
     let float_extent = empty_floats(e);
     let eligible = if floated {
-        // TRANSITIONAL(F2-1): Float допускается только монолитом без строчного resume; удалить ограничение в P05 после отдельного продолжения его строк и полей.
-        let mut flow = e.clone();
-        flow.style.used_mut().float = None;
-        crate::layout::fragment::clone::content_monolith_blockified(e) && independent_copy(&flow)
+        crate::layout::fragment::flow::page_copy(e, false)
     } else {
         independent_copy(e) || float_extent || super::leaf::eligible(e)
     };
@@ -77,9 +74,10 @@ pub(super) fn group(
     }
     let e: Element = fragment_box(resolved_lengths(e, root, vcx), width, vcx);
     let (mt, mb) = fragment_margins(&e)?;
+    let blocks = !floated || !crate::layout::fragment::clone::content_monolith_blockified(&e);
     Some(Group {
         nodes: vec![Node::Element(e)],
-        blocks: !floated,
+        blocks,
         float_extent,
         margins: if floated {
             (0.0, 0.0, 0.0)
