@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns. Isolate accessibility-node construction and completion from recursive prepaint frames.
+# 1. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
 # 2. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
 # 3. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
 # 4. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
@@ -5515,7 +5515,7 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        // KaminIDE patch: overlay geometry is already in device coordinates.
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/element.rs b/vendor/gpui/src/element.rs
-index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5f0f67133
+index d6556258e15f7cac891e14861a2cd323fa09f6cf..3209cbebc68abc7245731be160e93fe15a44adce
 --- a/vendor/gpui/src/element.rs
 +++ b/vendor/gpui/src/element.rs
 @@ -228,0 +229 @@
@@ -5602,11 +5602,11 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 +        // `gpui::elements::div::Div` → `Div`; дженерики оставляем как есть.
 +        full.rsplit("::").next().unwrap_or(full).to_string()
 +    }
-@@ -345,0 +427,80 @@
+@@ -345,0 +427,85 @@
 +    // KaminIDE patch: accessibility construction temporaries must not survive child traversal.
 +    #[inline(never)]
 +    fn begin_a11y_prepaint(
-+        &mut self,
++        element: &mut E,
 +        global_id: Option<&GlobalElementId>,
 +        bounds: Bounds<Pixels>,
 +        window: &mut Window,
@@ -5614,7 +5614,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 +        let mut pushed_a11y_node = false;
 +        if window.a11y.is_active() {
 +            if let Some(global_id) = global_id {
-+                if let Some(role) = self.element.a11y_role() {
++                if let Some(role) = element.a11y_role() {
 +                    let node_id = global_id.accesskit_node_id();
 +                    let mut node = accesskit::Node::new(role);
 +                    let scale = window.scale_factor();
@@ -5624,7 +5624,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 +                        x1: ((bounds.origin.x.0 + bounds.size.width.0) * scale) as f64,
 +                        y1: ((bounds.origin.y.0 + bounds.size.height.0) * scale) as f64,
 +                    });
-+                    self.element.write_a11y_info(&mut node);
++                    element.write_a11y_info(&mut node);
 +                    window.a11y.node_bounds.insert(node_id, bounds);
 +                    pushed_a11y_node = window.a11y.nodes.push(node_id, node);
 +                    #[cfg(debug_assertions)]
@@ -5634,7 +5634,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 +                            .view_type_names
 +                            .get(&window.current_view())
 +                            .copied();
-+                        let source_location = self.element.source_location();
++                        let source_location = element.source_location();
 +                        window.a11y.nodes.record_node_info(
 +                            node_id,
 +                            crate::window::a11y::debug::NodeDebugInfo {
@@ -5653,7 +5653,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 +
 +    #[inline(never)]
 +    fn end_a11y_prepaint(
-+        &mut self,
++        element: &mut E,
 +        global_id: Option<&GlobalElementId>,
 +        prepaint: &mut E::PrepaintState,
 +        window: &mut Window,
@@ -5667,26 +5667,45 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 +                    .get(&window.current_view())
 +                    .copied(),
 +                element_id: global_id.0.last().map(|id| format!("{id:?}")),
-+                source_location: self.element.source_location(),
++                source_location: element.source_location(),
 +            };
-+            let mut builder = A11ySubtreeBuilder::new(
-+                global_id.accesskit_node_id(),
-+                &mut window.a11y.nodes,
-+            );
++            let mut builder =
++                A11ySubtreeBuilder::new(global_id.accesskit_node_id(), &mut window.a11y.nodes);
 +            #[cfg(debug_assertions)]
 +            {
 +                builder = builder.with_creator(creator);
 +            }
-+            self.element
-+                .a11y_synthetic_children(prepaint, &mut builder);
++            element.a11y_synthetic_children(prepaint, &mut builder);
 +        }
 +        window.a11y.nodes.pop();
 +    }
 +
-@@ -346,0 +508,2 @@
++    #[inline(never)]
++    fn push_element_id(element: &E, global_id: Option<&GlobalElementId>, window: &mut Window) {
++        if let Some(element_id) = element.id() {
++            window.element_id_stack.push(element_id);
++            debug_assert_eq!(&*global_id.unwrap().0, &*window.element_id_stack);
++        }
++    }
++
+@@ -347 +513,3 @@
+-        match mem::take(&mut self.phase) {
 +        // KaminIDE patch (#76): self-time профиль prepaint по типам элементов.
 +        let _prof = prepaint_prof::enter(std::any::type_name::<E>());
-@@ -367,37 +530,2 @@
++        match &mut self.phase {
+@@ -352 +520 @@
+-                mut request_layout,
++                request_layout,
+@@ -358 +526 @@
+-                mut request_layout,
++                request_layout,
+@@ -361,43 +529,9 @@
+-                if let Some(element_id) = self.element.id() {
+-                    window.element_id_stack.push(element_id);
+-                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
+-                }
+-
+-                let bounds = window.layout_bounds(layout_id);
 -                let mut pushed_a11y_node = false;
 -                if window.a11y.is_active() {
 -                    if let Some(global_id) = global_id.as_ref() {
@@ -5724,9 +5743,19 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 -                        }
 -                    }
 -                }
-+                let pushed_a11y_node =
-+                    self.begin_a11y_prepaint(global_id.as_ref(), bounds, window);
-@@ -417,23 +545 @@
++                Self::push_element_id(&self.element, global_id.as_ref(), window);
++
++                let bounds = window.layout_bounds(*layout_id);
++                let pushed_a11y_node = Self::begin_a11y_prepaint(
++                    &mut self.element,
++                    global_id.as_ref(),
++                    bounds,
++                    window,
++                );
+@@ -410 +544 @@
+-                    &mut request_layout,
++                    request_layout,
+@@ -417,23 +551,6 @@
 -                    if let Some(global_id) = global_id.as_ref() {
 -                        #[cfg(debug_assertions)]
 -                        let creator = crate::window::a11y::debug::NodeCreator {
@@ -5750,8 +5779,87 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 -                            .a11y_synthetic_children(&mut prepaint, &mut builder);
 -                    }
 -                    window.a11y.nodes.pop();
-+                    self.end_a11y_prepaint(global_id.as_ref(), &mut prepaint, window);
-@@ -558,0 +665,8 @@
++                    Self::end_a11y_prepaint(
++                        &mut self.element,
++                        global_id.as_ref(),
++                        &mut prepaint,
++                        window,
++                    );
+@@ -445,0 +563,27 @@
++                self.finish_prepaint(node_id, bounds, prepaint);
++            }
++            _ => panic!("must call request_layout before prepaint"),
++        }
++    }
++
++    // KaminIDE patch: move phase payloads only after recursive child prepaint returns.
++    #[inline(never)]
++    fn finish_prepaint(
++        &mut self,
++        node_id: DispatchNodeId,
++        bounds: Bounds<Pixels>,
++        prepaint: E::PrepaintState,
++    ) {
++        match mem::take(&mut self.phase) {
++            ElementDrawPhase::RequestLayout {
++                global_id,
++                inspector_id,
++                request_layout,
++                ..
++            }
++            | ElementDrawPhase::LayoutComputed {
++                global_id,
++                inspector_id,
++                request_layout,
++                ..
++            } => {
+@@ -455 +599 @@
+-            _ => panic!("must call request_layout before prepaint"),
++            _ => unreachable!("prepaint phase was checked before traversing children"),
+@@ -464 +608 @@
+-        match mem::take(&mut self.phase) {
++        match &mut self.phase {
+@@ -470,2 +614,2 @@
+-                mut request_layout,
+-                mut prepaint,
++                request_layout,
++                prepaint,
+@@ -474,6 +618,3 @@
+-                if let Some(element_id) = self.element.id() {
+-                    window.element_id_stack.push(element_id);
+-                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
+-                }
+-
+-                window.next_frame.dispatch_tree.set_active_node(node_id);
++                Self::push_element_id(&self.element, global_id.as_ref(), window);
++
++                window.next_frame.dispatch_tree.set_active_node(*node_id);
+@@ -483,3 +624,3 @@
+-                    bounds,
+-                    &mut request_layout,
+-                    &mut prepaint,
++                    *bounds,
++                    request_layout,
++                    prepaint,
+@@ -494,2 +635 @@
+-                self.phase = ElementDrawPhase::Painted;
+-                (request_layout, prepaint)
++                self.finish_paint()
+@@ -497,0 +638,13 @@
++        }
++    }
++
++    // KaminIDE patch: release the recursive frame before moving phase payloads.
++    #[inline(never)]
++    fn finish_paint(&mut self) -> (E::RequestLayoutState, E::PrepaintState) {
++        match mem::replace(&mut self.phase, ElementDrawPhase::Painted) {
++            ElementDrawPhase::Prepaint {
++                request_layout,
++                prepaint,
++                ..
++            } => (request_layout, prepaint),
++            _ => unreachable!("paint phase was checked before traversing children"),
+@@ -558,0 +712,8 @@
 +    fn root_layout_id(&self) -> Option<LayoutId> {
 +        match &self.phase {
 +            ElementDrawPhase::RequestLayout { layout_id, .. }
@@ -5760,7 +5868,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..45cac2ec0b78b94055aeba658ec89ed5
 +        }
 +    }
 +
-@@ -629,0 +744,20 @@
+@@ -629,0 +791,20 @@
 +        // KaminIDE patch: собиратель `PaintLast` проходит насквозь только
 +        // обычные коробки и свои метки; любой другой элемент может рисовать
 +        // в особом контексте (фрагменты, подложка, преобразование) — его
@@ -6141,7 +6249,7 @@ index 0000000000000000000000000000000000000000..de700b19b49806f1d470cb55c81c7cb4
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7e97affbded1d717370ff876c792bd7d0d0fbd2d
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..1bee9f093020be666467de8622cc14a2757eec56
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -1854,0 +1855,4 @@
@@ -6286,19 +6394,384 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7e97affbded1d717370ff876c792bd7d
 @@ -2294 +2393 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-@@ -2359 +2458 @@
+@@ -2354,11 +2453,53 @@
+-        window.with_optional_element_state::<InteractiveElementState, _>(
+-            global_id,
+-            |element_state, window| {
+-                let mut element_state =
+-                    element_state.map(|element_state| element_state.unwrap_or_default());
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
-+                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-@@ -2388 +2487 @@
+-
+-                if let Some(element_state) = element_state.as_mut() {
+-                    if let Some(clicked_state) = element_state.clicked_state.as_ref() {
+-                        let clicked_state = clicked_state.borrow();
+-                        self.active = Some(clicked_state.element);
++        if let Some(global_id) = global_id {
++            self.prepaint_stateful(global_id, bounds, window, cx, f)
++        } else {
++            self.prepaint_with_state(None, bounds, window, cx, f)
++        }
++    }
++
++    // KaminIDE patch: anonymous divs must not retain the owned-state branch.
++    #[inline(never)]
++    fn prepaint_stateful<R>(
++        &mut self,
++        global_id: &GlobalElementId,
++        bounds: Bounds<Pixels>,
++        window: &mut Window,
++        cx: &mut App,
++        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut Window, &mut App) -> R,
++    ) -> R {
++        window.with_element_state::<InteractiveElementState, _>(global_id, |state, window| {
++            let mut state = state.unwrap_or_default();
++            let result = self.prepaint_with_state(Some(&mut state), bounds, window, cx, f);
++            (result, state)
++        })
++    }
++
++    fn prepaint_with_state<R>(
++        &mut self,
++        mut element_state: Option<&mut InteractiveElementState>,
++        bounds: Bounds<Pixels>,
++        window: &mut Window,
++        cx: &mut App,
++        f: impl FnOnce(&Style, Point<Pixels>, Option<Hitbox>, &mut Window, &mut App) -> R,
++    ) -> R {
++        let style = self.compute_style_boxed(None, element_state.as_deref_mut(), window, cx);
++
++        if let Some(element_state) = element_state.as_deref_mut() {
++            if let Some(clicked_state) = element_state.clicked_state.as_ref() {
++                let clicked_state = clicked_state.borrow();
++                self.active = Some(clicked_state.element);
++            }
++            if self.hover_style.is_some() || self.group_hover_style.is_some() {
++                element_state
++                    .hover_state
++                    .get_or_insert_with(Default::default);
++            }
++            if let Some(active_tooltip) = element_state.active_tooltip.as_ref() {
++                if self.tooltip_builder.is_some() {
++                    self.tooltip_id = set_tooltip_on_window(active_tooltip, window);
++                } else {
++                    // If there is no longer a tooltip builder, remove the active tooltip.
++                    if let Some(long_press_tooltip_active) =
++                        element_state.long_press_tooltip_active.as_ref()
++                    {
++                        long_press_tooltip_active.set(false);
+@@ -2366,18 +2507 @@
+-                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
+-                        element_state
+-                            .hover_state
+-                            .get_or_insert_with(Default::default);
+-                    }
+-                    if let Some(active_tooltip) = element_state.active_tooltip.as_ref() {
+-                        if self.tooltip_builder.is_some() {
+-                            self.tooltip_id = set_tooltip_on_window(active_tooltip, window);
+-                        } else {
+-                            // If there is no longer a tooltip builder, remove the active tooltip.
+-                            if let Some(long_press_tooltip_active) =
+-                                element_state.long_press_tooltip_active.as_ref()
+-                            {
+-                                long_press_tooltip_active.set(false);
+-                            }
+-                            element_state.active_tooltip.take();
+-                        }
+-                    }
++                    element_state.active_tooltip.take();
+@@ -2385,20 +2509,12 @@
+-
+-                window.with_text_style(style.text_style().cloned(), |window| {
+-                    window.with_content_mask(
 -                        style.overflow_mask(bounds, window.rem_size()),
-+                        style.overflow_mask_snapped(bounds, window),
-@@ -2524 +2623 @@
+-                        |window| {
+-                            let hitbox = if self.should_insert_hitbox(&style, window, cx) {
+-                                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
+-                            } else {
+-                                None
+-                            };
+-
+-                            let scroll_offset =
+-                                self.clamp_scroll_position(bounds, &style, window, cx);
+-                            let result = f(&style, scroll_offset, hitbox, window, cx);
+-                            (result, element_state)
+-                        },
+-                    )
+-                })
+-            },
+-        )
++            }
++        }
++
++        window.with_child_style(&style, bounds, |window| {
++            let hitbox = if self.should_insert_hitbox(&style, window, cx) {
++                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
++            } else {
++                None
++            };
++            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
++            f(&style, scroll_offset, hitbox, window, cx)
++        })
+@@ -2518,113 +2634,108 @@
+-        window.with_optional_element_state::<InteractiveElementState, _>(
+-            global_id,
+-            |element_state, window| {
+-                let mut element_state =
+-                    element_state.map(|element_state| element_state.unwrap_or_default());
+-
 -                let style = self.compute_style_internal(hitbox, element_state.as_mut(), window, cx);
-+                let style = self.compute_style_boxed(hitbox, element_state.as_mut(), window, cx);
-@@ -2548 +2647 @@
+-
+-                #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
+-                if let Some(debug_selector) = &self.debug_selector {
+-                    window
+-                        .next_frame
+-                        .record_debug_bounds(debug_selector.clone(), bounds);
+-                }
+-
+-                self.paint_hover_group_handler(window, cx);
+-
+-                if style.visibility == Visibility::Hidden {
+-                    return ((), element_state);
+-                }
+-
+-                let mut tab_group = None;
+-                if self.tab_group {
+-                    tab_group = self.tab_index;
+-                }
+-
+-                window.with_element_opacity(style.opacity, |window| {
+-                    style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
+-                        window.with_text_style(style.text_style().cloned(), |window| {
+-                            window.with_content_mask(
 -                                style.overflow_mask(bounds, window.rem_size()),
-+                                style.overflow_mask_snapped(bounds, window),
-@@ -3404,0 +3504,13 @@
+-                                |window| {
+-                                    window.with_tab_group(tab_group, |window| {
+-                                        // Register the container's own focus handle *inside* its
+-                                        // tab group, so that focusing the container and then
+-                                        // calling `focus_next` descends into this group's first
+-                                        // item. Inserting it before `with_tab_group` would give the
+-                                        // container a shallower tab path than its children; with
+-                                        // sibling groups every container would then sort ahead of
+-                                        // every item, and `focus_next` from a container would jump
+-                                        // to the first item in the whole window instead of its own.
+-                                        if let Some(focus_handle) = &self.tracked_focus_handle {
+-                                            window.next_frame.tab_stops.insert(focus_handle);
+-                                        }
+-                                        if let Some(hitbox) = hitbox {
+-                                            #[cfg(debug_assertions)]
+-                                            self.paint_debug_info(
+-                                                global_id, hitbox, &style, window, cx,
+-                                            );
+-
+-                                            if let Some(drag) = cx.active_drag.as_ref() {
+-                                                if let Some(mouse_cursor) = drag.cursor_style {
+-                                                    window.set_window_cursor_style(mouse_cursor);
+-                                                }
+-                                            } else {
+-                                                if let Some(mouse_cursor) = style.mouse_cursor {
+-                                                    window.set_cursor_style(mouse_cursor, hitbox);
+-                                                }
+-                                            }
+-
+-                                            if let Some(group) = self.group.clone() {
+-                                                GroupHitboxes::push(group, hitbox.id, cx);
+-                                            }
+-
+-                                            if let Some(area) = self.window_control {
+-                                                window.insert_window_control_hitbox(
+-                                                    area,
+-                                                    hitbox.clone(),
+-                                                );
+-                                            }
+-
+-                                            self.paint_mouse_listeners(
+-                                                hitbox,
+-                                                element_state.as_mut(),
+-                                                window,
+-                                                cx,
+-                                            );
+-                                            self.paint_scroll_listener(hitbox, &style, window, cx);
+-                                        }
+-
+-                                        self.paint_keyboard_listeners(window, cx);
+-
+-                                        if window.a11y.is_active() {
+-                                            if let Some(global_id) = global_id {
+-                                                if !self.a11y_action_listeners.is_empty() {
+-                                                    let node_id = global_id.accesskit_node_id();
+-                                                    for (action, listener) in
+-                                                        self.a11y_action_listeners.drain(..)
+-                                                    {
+-                                                        window.on_a11y_action(
+-                                                            node_id, action, listener,
+-                                                        );
+-                                                    }
+-                                                }
+-                                            }
+-                                        }
+-
+-                                        f(&style, window, cx);
+-
+-                                        if let Some(_hitbox) = hitbox {
+-                                            #[cfg(any(feature = "inspector", debug_assertions))]
+-                                            window.insert_inspector_hitbox(
+-                                                _hitbox.id,
+-                                                _inspector_id,
+-                                                cx,
+-                                            );
+-
+-                                            if let Some(group) = self.group.as_ref() {
+-                                                GroupHitboxes::pop(group, cx);
+-                                            }
+-                                        }
+-                                    })
+-                                },
++        if let Some(global_id) = global_id {
++            self.paint_stateful(global_id, _inspector_id, bounds, hitbox, window, cx, f);
++        } else {
++            self.paint_with_state(None, None, _inspector_id, bounds, hitbox, window, cx, f);
++        }
++    }
++
++    // Keep owned state out of anonymous divs' recursive paint frames.
++    #[inline(never)]
++    fn paint_stateful(
++        &mut self,
++        global_id: &GlobalElementId,
++        inspector_id: Option<&InspectorElementId>,
++        bounds: Bounds<Pixels>,
++        hitbox: Option<&Hitbox>,
++        window: &mut Window,
++        cx: &mut App,
++        f: impl FnOnce(&Style, &mut Window, &mut App),
++    ) {
++        window.with_element_state::<InteractiveElementState, _>(global_id, |state, window| {
++            let mut state = state.unwrap_or_default();
++            self.paint_with_state(
++                Some(&mut state),
++                Some(global_id),
++                inspector_id,
++                bounds,
++                hitbox,
++                window,
++                cx,
++                f,
++            );
++            ((), state)
++        });
++    }
++
++    fn paint_with_state(
++        &mut self,
++        mut element_state: Option<&mut InteractiveElementState>,
++        global_id: Option<&GlobalElementId>,
++        _inspector_id: Option<&InspectorElementId>,
++        bounds: Bounds<Pixels>,
++        hitbox: Option<&Hitbox>,
++        window: &mut Window,
++        cx: &mut App,
++        f: impl FnOnce(&Style, &mut Window, &mut App),
++    ) {
++        let style = self.compute_style_boxed(hitbox, element_state.as_deref_mut(), window, cx);
++
++        #[cfg(any(test, all(debug_assertions, feature = "test-support")))]
++        if let Some(debug_selector) = &self.debug_selector {
++            window
++                .next_frame
++                .record_debug_bounds(debug_selector.clone(), bounds);
++        }
++
++        self.paint_hover_group_handler(window, cx);
++
++        if style.visibility == Visibility::Hidden {
++            return;
++        }
++
++        let mut tab_group = None;
++        if self.tab_group {
++            tab_group = self.tab_index;
++        }
++
++        window.with_element_opacity(style.opacity, |window| {
++            style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
++                window.with_child_style(&style, bounds, |window| {
++                    window.with_tab_group(tab_group, |window| {
++                        // Register the container's own focus handle *inside* its
++                        // tab group, so that focusing the container and then
++                        // calling `focus_next` descends into this group's first
++                        // item. Inserting it before `with_tab_group` would give the
++                        // container a shallower tab path than its children; with
++                        // sibling groups every container would then sort ahead of
++                        // every item, and `focus_next` from a container would jump
++                        // to the first item in the whole window instead of its own.
++                        if let Some(focus_handle) = &self.tracked_focus_handle {
++                            window.next_frame.tab_stops.insert(focus_handle);
++                        }
++                        if let Some(hitbox) = hitbox {
++                            #[cfg(debug_assertions)]
++                            self.paint_debug_info(global_id, hitbox, &style, window, cx);
++
++                            if let Some(drag) = cx.active_drag.as_ref() {
++                                if let Some(mouse_cursor) = drag.cursor_style {
++                                    window.set_window_cursor_style(mouse_cursor);
++                                }
++                            } else {
++                                if let Some(mouse_cursor) = style.mouse_cursor {
++                                    window.set_cursor_style(mouse_cursor, hitbox);
++                                }
++                            }
++
++                            if let Some(group) = self.group.clone() {
++                                GroupHitboxes::push(group, hitbox.id, cx);
++                            }
++
++                            if let Some(area) = self.window_control {
++                                window.insert_window_control_hitbox(area, hitbox.clone());
++                            }
++
++                            self.paint_mouse_listeners(
++                                hitbox,
++                                element_state.as_deref_mut(),
++                                window,
++                                cx,
+@@ -2632,2 +2743,27 @@
+-                        });
+-                    });
++                            self.paint_scroll_listener(hitbox, &style, window, cx);
++                        }
++
++                        self.paint_keyboard_listeners(window, cx);
++
++                        if window.a11y.is_active() {
++                            if let Some(global_id) = global_id {
++                                if !self.a11y_action_listeners.is_empty() {
++                                    let node_id = global_id.accesskit_node_id();
++                                    for (action, listener) in self.a11y_action_listeners.drain(..) {
++                                        window.on_a11y_action(node_id, action, listener);
++                                    }
++                                }
++                            }
++                        }
++
++                        f(&style, window, cx);
++
++                        if let Some(_hitbox) = hitbox {
++                            #[cfg(any(feature = "inspector", debug_assertions))]
++                            window.insert_inspector_hitbox(_hitbox.id, _inspector_id, cx);
++
++                            if let Some(group) = self.group.as_ref() {
++                                GroupHitboxes::pop(group, cx);
++                            }
++                        }
++                    })
+@@ -2635,4 +2771,2 @@
+-
+-                ((), element_state)
+-            },
+-        );
++            });
++        });
+@@ -3404,0 +3539,13 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -6312,7 +6785,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7e97affbded1d717370ff876c792bd7d
 +        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
 +    }
 +
-@@ -3499 +3611,2 @@
+@@ -3499 +3646,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
@@ -8861,7 +9334,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..0a6e733f25b1c1a52bcec7c0d36a7e42
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
 diff --git a/vendor/gpui/src/style.rs b/vendor/gpui/src/style.rs
-index 9150fdded91b817305454f18beb0a0b7d6c5966a..748606fa14abfbce44d9015d7bdc33865bf3fe7d
+index 9150fdded91b817305454f18beb0a0b7d6c5966a..18ffaa1eac1f7da5ad9e01df36d784a18aa105d4
 --- a/vendor/gpui/src/style.rs
 +++ b/vendor/gpui/src/style.rs
 @@ -0,0 +1,5 @@
@@ -9160,7 +9633,20 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..748606fa14abfbce44d9015d7bdc3386
 +                point(at(b.right()), at(b.bottom())),
 +            ),
 +        })
-@@ -720 +973,7 @@
+@@ -694,0 +948,12 @@
++        self.paint_box(bounds, window, cx);
++        continuation(window, cx);
++
++        #[cfg(debug_assertions)]
++        if self.debug_below {
++            cx.remove_global::<DebugBelow>();
++        }
++    }
++
++    // Finish shadows, background and border temporaries before painting children.
++    #[inline(never)]
++    fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+@@ -720 +985,7 @@
 -
 +                    // KaminIDE patch: радиальный хранит цвета там же, где
 +                    // линейный, — берём первый стоп.
@@ -9169,13 +9655,33 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..748606fa14abfbce44d9015d7bdc3386
 +                        .first()
 +                        .map(|stop| stop.color)
 +                        .unwrap_or_default(),
-@@ -731 +990 @@
+@@ -731 +1002 @@
 -                bounds,
 +                transformed_box::bounds(self, bounds, window),
-@@ -739,0 +999,2 @@
+@@ -739,0 +1011,2 @@
 +        // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),
 +        // cast from the border box; HTML uses `inset_box_shadow` below.
-@@ -741,0 +1003,37 @@
+@@ -742,20 +1015,36 @@
+-        continuation(window, cx);
+-
+-        if self.is_border_visible() {
+-            let border_widths = self.border_widths.to_pixels(rem_size);
+-            let mut background = self.border_color.unwrap_or_default();
+-            background.a = 0.;
+-            window.paint_quad(quad(
+-                bounds,
+-                corner_radii,
+-                background,
+-                border_widths,
+-                self.border_color.unwrap_or_default(),
+-                self.border_style,
+-            ));
+-        }
+-
+-        #[cfg(debug_assertions)]
+-        if self.debug_below {
+-            cx.remove_global::<DebugBelow>();
+-        }
 +        // KaminIDE patch: внутренние тени рисуются ПОСЛЕ квада фона — они
 +        // лежат поверх заливки (css-backgrounds-3 §box-shadow: «inner
 +        // shadows … immediately above the background»). Прежде вызов стоял
@@ -9212,34 +9718,18 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..748606fa14abfbce44d9015d7bdc3386
 +        }
 +
 +        border_snap::paint(self, bounds, corner_radii, rem_size, window);
-+
-@@ -743,14 +1040,0 @@
--
--        if self.is_border_visible() {
--            let border_widths = self.border_widths.to_pixels(rem_size);
--            let mut background = self.border_color.unwrap_or_default();
--            background.a = 0.;
--            window.paint_quad(quad(
--                bounds,
--                corner_radii,
--                background,
--                border_widths,
--                self.border_color.unwrap_or_default(),
--                self.border_style,
--            ));
--        }
-@@ -773,0 +1058,2 @@
+@@ -773,0 +1063,2 @@
 +            safe_alignment: (false, false, false, false),
 +            safe_justify_alignment: (false, false),
-@@ -779,0 +1066 @@
+@@ -779,0 +1071 @@
 +            overflow_clip_offset: None,
-@@ -791,0 +1079,5 @@
+@@ -791,0 +1084,5 @@
 +            aspect_ratio_preferred_size: [None; 2],
 +            sizing_keywords: [None; 2],
 +            max_sizing_keywords: [None; 2],
 +            min_sizing_keywords: [None; 2],
 +            contained_intrinsic_size: [None; 2],
-@@ -797,0 +1090,8 @@
+@@ -797,0 +1095,8 @@
 +            // KaminIDE patch
 +            justify_items: None,
 +            justify_self: None,
@@ -9248,7 +9738,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..748606fa14abfbce44d9015d7bdc3386
 +            grid_auto_cols: None,
 +            grid_auto_cols_list: Vec::new(),
 +            grid_auto_rows_list: Vec::new(),
-@@ -800,0 +1101,23 @@
+@@ -800,0 +1106,23 @@
 +            flex_balance_lines: 0,
 +            flex_cross_reverse: false,
 +            block_baselines: false,
@@ -9272,32 +9762,32 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..748606fa14abfbce44d9015d7bdc3386
 +            block_flow: None,
 +            grid_subgrid: 0,
 +            grid_line_names: None,
-@@ -802,0 +1126,3 @@
+@@ -802,0 +1131,3 @@
 +            item_is_table: false,
 +            paint_atomic: false,
 +            paint_stacking: false,
-@@ -806,0 +1133,2 @@
+@@ -806,0 +1138,2 @@
 +            css_border_snap: false,
 +            css_synthetic_background: false,
-@@ -808,0 +1137 @@
+@@ -808,0 +1142 @@
 +            inset_box_shadow: Default::default(),
-@@ -813,0 +1143,4 @@
+@@ -813,0 +1148,4 @@
 +            grid_cols_min: None,
 +            grid_cols_fit: false,
 +            grid_template_cols: None,
 +            grid_template_rows: None,
-@@ -1059,0 +1393,3 @@
+@@ -1059,0 +1398,3 @@
 +    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
 +    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
 +    LastBaseline,
-@@ -1133,0 +1470,4 @@
+@@ -1133,0 +1475,4 @@
 +    /// KaminIDE patch: a block container that establishes a new block formatting context
 +    /// (`display: flow-root`, css-display-3 §2.2): its margins never collapse with its
 +    /// children's or through it (CSS 2.1 §8.3.1).
 +    FlowRoot,
-@@ -1258,0 +1599 @@
+@@ -1258,0 +1604 @@
 +            AlignItems::LastBaseline => Self::LAST_BASELINE,
-@@ -1282,0 +1624 @@
+@@ -1282,0 +1629 @@
 +            Display::FlowRoot => Self::FlowRoot,
 diff --git a/vendor/gpui/src/style/border_snap.rs b/vendor/gpui/src/style/border_snap.rs
 new file mode 100644
@@ -14388,7 +14878,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4aca2d48e36
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d08d1081df989dcca157d0e5b943c91300962972
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -14717,7 +15207,48 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        f(self)
 +    }
 +
-@@ -4036 +4310,10 @@
+@@ -3990,0 +4265,28 @@
++    /// Apply borrowed text and overflow context together during child drawing.
++    pub(crate) fn with_child_style<R>(
++        &mut self,
++        style: &Style,
++        bounds: Bounds<Pixels>,
++        f: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        self.invalidator.debug_assert_paint_or_prepaint();
++        let has_text = style.text_style().is_some();
++        if let Some(text) = style.text_style() {
++            self.push_text_style_ref(text);
++        }
++        let has_mask = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
++        let result = f(self);
++        if has_mask {
++            self.content_mask_stack.pop();
++        }
++        if has_text {
++            self.text_style_stack.pop();
++        }
++        result
++    }
++
++    #[inline(never)]
++    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
++        self.text_style_stack.push(style.clone());
++    }
++
+@@ -4034,0 +4337,11 @@
++        let has_mask = self.push_content_mask(mask);
++        let result = f(self);
++        if has_mask {
++            self.content_mask_stack.pop();
++        }
++        result
++    }
++
++    // Prepare mask temporaries before entering the recursive child traversal.
++    #[inline(never)]
++    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> bool {
+@@ -4036 +4349,10 @@
 -            let mask = mask.intersect(&self.content_mask());
 +            // KaminIDE patch: под `with_transformation_masked` маска ребёнка
 +            // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -14729,7 +15260,16 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +                None => self.scaled_mask(mask),
 +            }
 +            .intersect(&self.content_mask());
-@@ -4043,0 +4327,208 @@
+@@ -4038,3 +4360 @@
+-            let result = f(self);
+-            self.content_mask_stack.pop();
+-            result
++            true
+@@ -4042,2 +4362,210 @@
+-            f(self)
+-        }
++            false
++        }
 +    }
 +
 +    /// KaminIDE patch: снимок контекста краски — всё, что `paint` предков
@@ -14938,7 +15478,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        let result = f(self);
 +        self.mask_scale = prev;
 +        result
-@@ -4060,0 +4552,19 @@
+@@ -4060,0 +4589,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -14958,7 +15498,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        let result = self.with_absolute_element_offset(abs_offset, f);
 +        self.exact_element_offset_depth -= 1;
 +        result
-@@ -4147 +4657,10 @@
+@@ -4147 +4694,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -14970,7 +15510,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +4677,66 @@
+@@ -4157,0 +4714,66 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -15037,9 +15577,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        result
 +    }
 +
-@@ -4383,0 +4969 @@
+@@ -4383,0 +5006 @@
 +            render_contexts: self.render_contexts.snapshot(),
-@@ -4405,3 +4991,40 @@
+@@ -4405,3 +5028,40 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -15083,7 +15623,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +                };
 +            }
 +            self.next_frame.scene.push_layer(scaled);
-@@ -4415,0 +5039,48 @@
+@@ -4415,0 +5076,48 @@
 +        result
 +    }
 +
@@ -15132,7 +15672,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        if pushed {
 +            self.next_frame.scene.pop_depth_plane();
 +        }
-@@ -4554,2 +5225,8 @@
+@@ -4554,2 +5262,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -15143,24 +15683,24 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5234 @@
+@@ -4556,0 +5271 @@
 +            transformation,
-@@ -4558,2 +5236,2 @@
+@@ -4558,2 +5273,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5240,2 @@
+@@ -4562,2 +5277,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567 +5245,3 @@
+@@ -4567 +5282,3 @@
 -        if !quad.background.is_transparent() {
 +        // The strip split below restricts screen-space content masks, which
 +        // only matches the quad's own coordinates without a transformation.
 +        if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
-@@ -4678,0 +5359,9 @@
+@@ -4678,0 +5396,9 @@
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
 +    /// painted afterwards and return the previous one. Layout snaps a box's
 +    /// edges to device pixels, but text inside it belongs at the box's exact
@@ -15170,7 +15710,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        std::mem::replace(&mut self.glyph_offset, offset)
 +    }
 +
-@@ -4699,13 +5388,31 @@
+@@ -4699,13 +5425,31 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -15215,7 +15755,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +                },
 +            )
 +        };
-@@ -4738 +5445,6 @@
+@@ -4738 +5482,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -15223,13 +15763,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4748 +5460 @@
+@@ -4748 +5497 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4758 +5470 @@
+@@ -4758 +5507 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4798,0 +5511,14 @@
+@@ -4798,0 +5548,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -15244,11 +15784,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5529,2 @@
+@@ -4803 +5566,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,3 +5556,4 @@
+@@ -4829,3 +5593,4 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -15256,14 +15796,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +            let opacity = self.element_opacity() * alpha;
 +
 +            let transformation = self.current_transformation();
-@@ -4832,0 +5561 @@
+@@ -4832,0 +5598 @@
 +                transformation,
-@@ -5003,0 +5733,2 @@
+@@ -5003,0 +5770,2 @@
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
-@@ -5004,0 +5736 @@
+@@ -5004,0 +5773 @@
 +            transformation,
-@@ -5016,0 +5749,71 @@
+@@ -5016,0 +5786,71 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -15335,7 +15875,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        Ok(())
 +    }
 +
-@@ -5018,0 +5822,230 @@
+@@ -5018,0 +5859,230 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -15566,7 +16106,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        result
 +    }
 +
-@@ -5073,0 +6107,11 @@
+@@ -5073,0 +6144,11 @@
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
@@ -15578,7 +16118,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +    pub fn request_layout_ref(
 +        &mut self,
 +        style: &Style,
-@@ -5114,0 +6159,55 @@
+@@ -5114,0 +6196,55 @@
 +    /// То же, что `request_measured_layout`, но замер отдаёт ещё и первую
 +    /// базовую линию содержимого — от верха коробки содержимого вниз.
 +    ///
@@ -15634,7 +16174,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
 +    }
 +
-@@ -5116,0 +6216,152 @@
+@@ -5116,0 +6253,152 @@
 +    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
 +    ///
 +    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
@@ -15787,7 +16327,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
 +    }
 +
-@@ -5132,0 +6384,48 @@
+@@ -5132,0 +6421,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -15836,7 +16376,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6446,6 @@
+@@ -5147,2 +6483,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -15845,7 +16385,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5209,0 +6513,16 @@
+@@ -5209,0 +6550,16 @@
 +    }
 +
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
@@ -15862,7 +16402,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..82d0c58c45a2e291f6cb33260167c4ac
 +    pub(crate) fn asset_subscriber(&self) -> Option<EntityId> {
 +        self.current_view_opt()
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
-@@ -5792,0 +7112,5 @@
+@@ -5792,0 +7149,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
