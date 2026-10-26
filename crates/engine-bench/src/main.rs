@@ -7,23 +7,20 @@
     reason = "CLI owns environment configuration and machine-readable process output"
 )]
 
-#[path = "engine_bench/args.rs"]
 mod args;
 #[cfg(windows)]
-#[path = "engine_bench/host.rs"]
 mod host;
-#[path = "engine_bench/report.rs"]
 mod report;
-#[path = "engine_bench/resources.rs"]
 mod resources;
 #[cfg(windows)]
-#[path = "engine_bench/run.rs"]
 mod run;
-#[path = "engine_bench/stylesheet.rs"]
 mod stylesheet;
 #[cfg(windows)]
-#[path = "engine_bench/view.rs"]
 mod view;
+
+// Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
     if let Err(error) = entry() {
@@ -40,7 +37,7 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
     if cfg!(debug_assertions) {
         return Err("measurement requires --profile release (debug assertions are enabled)".into());
     }
-    if cfg!(feature = "wpt-harness") {
+    if kamin_html::BuildTimings::WPT_HARNESS_ENABLED {
         return Err("measure with engine-bench only; disable wpt-harness".into());
     }
     #[cfg(windows)]

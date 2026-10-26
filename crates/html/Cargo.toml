@@ -22,10 +22,6 @@ wpt-harness = []
 engine-bench = []
 
 [[example]]
-name = "engine_bench"
-required-features = ["engine-bench"]
-
-[[example]]
 name = "wptrun"
 required-features = ["wpt-harness"]
 

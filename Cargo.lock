@@ -1768,6 +1768,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
+name = "engine-bench"
+version = "1.0.80"
+dependencies = [
+ "futures",
+ "gpui-pre",
+ "gpui-pre-platform",
+ "html5ever 0.40.1",
+ "kamin-html",
+ "markup5ever_rcdom 0.39.0+unofficial",
+ "mimalloc",
+ "png 0.18.1",
+ "raw-window-handle",
+ "serde_json",
+ "url",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "enum-iterator"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

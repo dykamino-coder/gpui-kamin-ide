@@ -213,7 +213,7 @@ pub(super) async fn run(
         modes.insert(name.into(), report::mode(&samples));
     }
     let report = json!({"schema_version": 1, "input": args.path, "viewport_css_px": args.viewport,
-        "device_scale_factor": 1, "profile": "release", "wpt_harness": cfg!(feature = "wpt-harness"),
+        "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
         "runs_per_mode": args.runs, "modes": modes, "first_frame_bgr_fnv1a64": first_hash,

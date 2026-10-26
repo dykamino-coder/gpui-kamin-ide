@@ -11,6 +11,11 @@ pub struct BuildTimings {
     pub style: Duration,
 }
 
+impl BuildTimings {
+    /// Отражает features самого движка, включая объединение зависимостей Cargo.
+    pub const WPT_HARNESS_ENABLED: bool = cfg!(feature = "wpt-harness");
+}
+
 impl super::Document {
     /// Только последний успешный build; unchanged update не запускает проходы.
     pub fn build_timings(&self) -> BuildTimings {

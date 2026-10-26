@@ -3,16 +3,25 @@
 `engine_bench` measures one local document in one offscreen Windows GPUI window.
 It requires the independent `engine-bench` feature; it neither enables nor calls
 the `wpt-harness` runner, and refuses measurements if that feature is also enabled.
-It changes no engine algorithms. Like existing Cargo examples, it inherits the
-GPUI `test-support` dev-dependency feature. It uses the real Windows platform and
-scheduler, but GPUI retains test-support bookkeeping such as debug-bound records.
-This is not a production-identical GPUI feature set; record this build limitation
-when comparing results. It does not enable `kamin-html/wpt-harness`.
+It changes no engine algorithms. The standalone `crates/engine-bench` package
+has no dev-dependencies. Its normal `gpui` and `gpui-platform` dependencies inherit
+the same workspace defaults as `crates/shell`; the installer build does not add
+Cargo features. Resolved GPUI features are `default`, `font-kit`, `wayland`,
+`windows-manifest`, `x11`; platform features are `default`, and the Windows
+backend has no enabled features. Neither `gpui/test-support` nor GPUI
+`bench-support`/`profiler` is enabled. The engine enables only `engine-bench`,
+not `wpt-harness`. The global allocator is `mimalloc`, as in the application.
+
+Build only this package: building workspace tests/examples can unify test
+features and is not a measurement build. You can inspect the normal graph with
+`cargo tree -p engine-bench --edges normal,build --format "{p} FEATURES={f}"`.
+The binary also checks the engine's resolved WPT feature and refuses to measure
+if another selected package has enabled it.
 
 ```powershell
-cargo build -p kamin-html --example engine_bench --features engine-bench --profile release --target-dir target/bench
-target/bench/release/examples/engine_bench.exe C:/pages/heavy.html --viewport 800x600 --runs 100 --mode both
-target/bench/release/examples/engine_bench.exe C:/pages/heavy.html --runs 100 --json --snapshot C:/results/first.png
+cargo build -p engine-bench --bin engine_bench --profile release --target-dir target/bench
+target/bench/release/engine_bench.exe C:/pages/heavy.html --viewport 800x600 --runs 100 --mode both
+target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json --snapshot C:/results/first.png
 ```
 
 Use the release executable directly for repeated measurements. Debug builds
