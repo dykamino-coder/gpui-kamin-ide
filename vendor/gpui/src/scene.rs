@@ -1,6 +1,8 @@
 // todo("windows"): remove
 #![cfg_attr(windows, allow(dead_code))]
 
+mod record;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -161,6 +163,7 @@ struct DepthContext {
 impl Scene {
     /// KaminIDE patch: начать объёмный контекст.
     pub fn push_depth_context(&mut self) {
+        self.paint_operations.push(PaintOperation::StartDepthContext);
         let d = &mut self.depth;
         d.contexts.push(DepthContext {
             tags_start: d.tags.len(),
@@ -178,13 +181,16 @@ impl Scene {
         if d.contexts.is_empty() {
             return false;
         }
+        self.paint_operations.push(PaintOperation::StartDepthPlane(z));
         d.plane_stack.push(d.planes.len() as u32);
         d.planes.push(if z.is_finite() { z } else { 0.0 });
         true
     }
 
     pub fn pop_depth_plane(&mut self) {
-        self.depth.plane_stack.pop();
+        if self.depth.plane_stack.pop().is_some() {
+            self.paint_operations.push(PaintOperation::EndDepthPlane);
+        }
     }
 
     fn primitive_order_mut(&mut self, kind: u8, index: u32) -> Option<&mut DrawOrder> {
@@ -207,6 +213,7 @@ impl Scene {
         let Some(ctx) = self.depth.contexts.pop() else {
             return;
         };
+        self.paint_operations.push(PaintOperation::EndDepthContext);
         self.depth.plane_stack.truncate(ctx.plane_depth);
         let tags: Vec<(u8, u32, u32)> = self.depth.tags[ctx.tags_start..].to_vec();
         if !tags.is_empty() {
@@ -505,12 +512,20 @@ impl Scene {
 
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
         for operation in &prev_scene.paint_operations[range] {
-            match operation {
-                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
-                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
-                PaintOperation::StartBottomLayer => self.push_bottom_layer(),
-                PaintOperation::EndLayer => self.pop_layer(),
-            }
+            self.replay_operation(operation.clone());
+        }
+    }
+
+    fn replay_operation(&mut self, operation: PaintOperation) {
+        match operation {
+            PaintOperation::Primitive(primitive) => self.insert_primitive(primitive),
+            PaintOperation::StartLayer(bounds) => self.push_layer(bounds),
+            PaintOperation::StartBottomLayer => self.push_bottom_layer(),
+            PaintOperation::EndLayer => self.pop_layer(),
+            PaintOperation::StartDepthContext => self.push_depth_context(),
+            PaintOperation::EndDepthContext => self.pop_depth_context(),
+            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
+            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
         }
     }
 
@@ -577,12 +592,17 @@ pub(crate) enum PrimitiveKind {
     Surface,
 }
 
+#[derive(Clone)]
 pub(crate) enum PaintOperation {
     Primitive(Primitive),
     StartLayer(Bounds<ScaledPixels>),
     /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
     StartBottomLayer,
     EndLayer,
+    StartDepthContext,
+    EndDepthContext,
+    StartDepthPlane(f32),
+    EndDepthPlane,
 }
 
 #[derive(Clone)]

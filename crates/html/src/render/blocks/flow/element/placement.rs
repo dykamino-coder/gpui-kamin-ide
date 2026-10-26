@@ -109,7 +109,7 @@ pub(crate) fn place_element(
                 built
             };
             let built = if paint_last_ok(e, &nodes[idx + 1..], &opts.cx) {
-                gpui::PaintLast::new(built)
+                crate::paint::coordinator::PaintLast::new(built)
                     .key(paint_key)
                     .into_any_element()
             } else {

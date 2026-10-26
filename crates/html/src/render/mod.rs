@@ -63,24 +63,18 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // их края решает область просмотра (§10.1 п.4).
     let icb_layer =
         crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
-    // Шаг 8 приложения E: позиционированные `z-index: auto | 0` красятся
-    // после потока корневого контекста в порядке разметки — собиратель
-    // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
-    // и сбрасывает собиратели (пойманная паника кадра оставила бы их
-    // открытыми); вложенный документ (рамка) собирает своё внутри.
-    if !opts.cx.contracts.in_render {
-        gpui::paint_collect_reset();
-    }
+    // Шаг 8 приложения E: CSS collector принадлежит текущему paint pass,
+    // парные метки сохраняют прежние layout-узлы и границы документа.
     let opts = &*opts.inner(|cx| {
         cx.deferred.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes));
         cx.contracts.in_render = true;
     });
     let mut out = blocks(nodes, &root, opts);
     out.extend(icb_layer.finish());
-    let (open, close) = gpui::PaintCollect::pair();
+    let (open, close) = crate::paint::coordinator::PaintCollect::pair();
     out.insert(0, open.into_any_element());
     out.push(close.into_any_element());
-    out
+    crate::paint::coordinator::roots(out)
 }
 
 /// Один блок верхнего уровня — единица виртуализации.
@@ -89,6 +83,10 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
 /// не стоит ничего: ни раскладки, ни отрисовки. Это то же ухищрение, которым
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
+    render_block_inner(nodes, index, opts).map(crate::hooks::paint_root)
+}
+
+fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();

@@ -238,6 +238,8 @@ pub use element::prepaint_prof;
 #[cfg(feature = "profiler")]
 mod debug_overlay;
 mod element;
+mod paint_traversal;
+pub use paint_traversal::*;
 mod elements;
 mod executor;
 mod platform_scheduler;
@@ -406,6 +408,7 @@ macro_rules! bench_main {
 }
 pub use gpui_shared_string::*;
 pub use gpui_util::arc_cow::ArcCow;
+pub use gpui_util::ResultExt;
 pub use http_client;
 pub use input::*;
 pub use inspector::*;

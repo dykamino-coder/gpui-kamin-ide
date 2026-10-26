@@ -15,10 +15,10 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// CSS 2.1 — после фонов и рамок ВСЕХ блоков потока своего контекста
 /// наложения (шаг 4) и флоатов (шаг 5), в порядке дерева, но до
 /// позиционированных (шаг 8). Обёртка раскладку не меняет: при открытом
-/// собирателе краски (`gpui::PaintCollect`) абзац уходит в него, иначе
-/// рисуется на месте (`gpui::PaintInline`).
+/// собирателе краски (`crate::paint::coordinator::PaintCollect`) абзац уходит в него, иначе
+/// рисуется на месте (`crate::paint::coordinator::PaintInline`).
 pub(crate) fn paint_inline_step7(para: AnyElement) -> AnyElement {
-    gpui::PaintInline::new(para).into_any_element()
+    crate::paint::coordinator::PaintInline::new(para).into_any_element()
 }
 
 pub(crate) fn paragraph_probed(

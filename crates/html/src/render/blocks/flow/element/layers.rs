@@ -206,7 +206,9 @@ pub(crate) fn finish_element(
             && !matches!(e.tag.as_str(), "html" | "body")
             && paint_last_ok(e, &nodes[idx + 1..], &opts.cx));
     if step8 {
-        done = gpui::PaintLast::new(done).key(paint_key).into_any_element();
+        done = crate::paint::coordinator::PaintLast::new(done)
+            .key(paint_key)
+            .into_any_element();
     }
     out.push(done);
 }
