@@ -136,6 +136,10 @@ impl Recipe {
             self.prepare(stack, col_width, window, cx);
             let kids = stack.kid_geoms();
             let (height, lines, plan, spans) = stack.balance(&kids);
+            let height =
+                stack
+                    .row_extent
+                    .block_size(height, &lines, &spans, &plan, stack.count, &kids);
             let (first, last) = if self.axis.is_vertical() {
                 (None, None)
             } else {

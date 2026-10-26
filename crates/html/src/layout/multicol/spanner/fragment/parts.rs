@@ -1,11 +1,13 @@
 //! Части многоколоночника между охватчиками (spanner_parts).
 
+use super::super::parent::ParentResume;
 use super::super::{SpanPart, has_deep_spanner, passes_spanner, spanner_box, splits_for_spanner};
-use super::{spanner_frag_visible, spanner_fragment, spanner_height_share};
-use crate::document::state::ValueCx;
-use crate::dom::Node;
+use super::{spanner_frag_visible, spanner_fragment};
+use crate::dom::{Element, Node};
 use crate::layout::block::inline_splits::split_block_in_inline;
-use crate::layout::fragment::ShapeCx;
+use crate::layout::options::RenderOpts;
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 /// Разложить содержимое предка на чередование «кусок обычного потока» —
@@ -13,8 +15,10 @@ use crate::style::values::value::Len;
 /// всегда начинается и кончается куском потока (возможно пустым).
 pub(crate) fn spanner_parts(
     kids: &[Node],
-    shape_cx: ShapeCx<'_>,
-    vcx: ValueCx<'_>,
+    parent: &BoxStyle,
+    opts: &RenderOpts,
+    width: f32,
+    measure: &mut dyn FnMut(&Element, &BoxStyle, f32) -> super::super::SpannerMetrics,
 ) -> Vec<SpanPart> {
     // Спаннер под строчным предком: сперва разорвать строчные на анонимные
     // блоки (§9.2.1.1) — тогда спаннер виден на этом уровне и режет поток,
@@ -38,11 +42,14 @@ pub(crate) fn spanner_parts(
                 out.push(SpanPart::Span(n.clone()));
             }
             Node::Element(c) if passes_spanner(c) && has_deep_spanner(c) => {
-                let inner = spanner_parts(&c.children, shape_cx, vcx);
-                let bodies: Vec<Vec<Node>> = inner
+                let merged = box_style(parent, &c.style, opts.cx.vcx());
+                let metrics = measure(c, parent, width);
+                let child_width = metrics.content_width;
+                let inner = spanner_parts(&c.children, &merged, opts, child_width, measure);
+                let bodies: Vec<&Vec<Node>> = inner
                     .iter()
                     .filter_map(|p| match p {
-                        SpanPart::Body(b) => Some(b.clone()),
+                        SpanPart::Body(b) => Some(b),
                         SpanPart::Span(_) => None,
                     })
                     .collect();
@@ -52,27 +59,36 @@ pub(crate) fn spanner_parts(
                     .enumerate()
                     .filter(|(i, b)| spanner_frag_visible(c, b, *i == 0, *i + 1 == n_b))
                     .count();
-                // Доли заданной высоты предка (`spanner_height_share`); без
-                // них — прежнее правило `keep` ниже.
-                let share = spanner_height_share(c, &bodies, shape_cx, vcx);
+                let split_size = shown > 1
+                    || bodies[..n_b - 1]
+                        .iter()
+                        .all(|b| b.iter().all(crate::dom::whitespace::is_blank));
+                let mut continuation = ParentResume::new(metrics, c.style.used().bdb_clone);
                 let mut bi = 0usize;
                 for p in inner {
                     match p {
                         SpanPart::Body(b) => {
                             let first = bi == 0;
                             let last = bi + 1 == n_b;
-                            // Заданную высоту берёт только НЕ разошедшийся
-                            // предок (см. `spanner_fragment`); пустой
-                            // фрагмент без кромки и без такой высоты
-                            // показывать нечем — он просто исчезает.
-                            let own = share.as_ref().and_then(|s| s.get(bi).copied().flatten());
-                            let keep = share.is_none() && first && shown <= 1;
-                            if spanner_frag_visible(c, &b, first, last)
-                                || own.is_some_and(|v| v > 0.0)
-                                || (keep && c.style.used().height.is_some())
-                                || (keep && c.style.used().min_height.is_some())
+                            let visible = spanner_frag_visible(c, &b, first, last);
+                            let keep = !split_size && first && shown <= 1;
+                            let mut f = spanner_fragment(c, b, first, last, keep, bi);
+                            let own = if split_size {
+                                let block_size = if !last && visible {
+                                    measure(&f, parent, width).block_size
+                                } else {
+                                    0.
+                                };
+                                continuation.resume(block_size, first, last)
+                            } else {
+                                None
+                            };
+                            if visible
+                                || own.is_some_and(|v| v > 0.)
+                                || (keep
+                                    && (c.style.used().height.is_some()
+                                        || c.style.used().min_height.is_some()))
                             {
-                                let mut f = spanner_fragment(c, b, first, last, keep, bi);
                                 if let Some(v) = own {
                                     f.style.used_mut().height = Some(Len::Px(v));
                                     f.style.used_mut().min_height = None;

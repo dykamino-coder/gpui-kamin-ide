@@ -3,21 +3,22 @@
 use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::options::RenderOpts;
 use std::rc::Rc;
+mod spanners;
 mod stack;
 pub(super) use stack::stack_box;
 
 use crate::dom::{Element, Node};
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::multicol::container::multicol_spanner_segments;
-use crate::layout::multicol::measure::{RowPlan, row_plan, tail_rest_height};
-use crate::layout::multicol::spanner::{hoist_spanners, spanner_box};
+use crate::layout::multicol::measure::{RowPlan, row_plan};
+use crate::layout::multicol::spanner::{has_deep_spanner, spanner_box};
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn multicol_box(
-    mut d: gpui::Div,
+    d: gpui::Div,
     e: &Element,
     merged: BoxStyle,
     inherited: &Computed,
@@ -32,7 +33,48 @@ pub(crate) fn multicol_box(
     outer_space: Option<Rc<Nested>>,
     lone_span: bool,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
-    let vcx = opts.cx.vcx();
+    if has_deep_spanner(e) {
+        return Err(d
+            .child(spanners::deferred(e, &merged, inherited, opts, outer_space))
+            .into_any_element());
+    }
+    settled(
+        d,
+        e,
+        merged,
+        inherited,
+        opts,
+        column_width,
+        cols,
+        used_gap,
+        col_axis,
+        col_vert,
+        col_rl,
+        col_inline_size,
+        outer_space,
+        lone_span,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn settled(
+    mut d: gpui::Div,
+    e: &Element,
+    merged: BoxStyle,
+    inherited: &Computed,
+    opts: &RenderOpts,
+    column_width: Option<Len>,
+    cols: u16,
+    used_gap: f32,
+    col_axis: crate::layout::fragment::types::StackAxis,
+    col_vert: bool,
+    col_rl: bool,
+    col_inline_size: Option<Len>,
+    outer_space: Option<Rc<Nested>>,
+    lone_span: bool,
+    rest_h: Option<f32>,
+) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     // Сплошной текст режется на колонки по строкам, а не по детям:
     // один длинный абзац иначе оставался в первой колонке целиком.
     // `columns: auto <w>` без ширины коробки решается в замере —
@@ -48,54 +90,11 @@ pub(crate) fn multicol_box(
         nest_rows,
         outer_space,
     } = row_plan(e, &merged, opts, column_width, cols, col_vert, outer_space);
-    // Спаннер среди инлайнового потока: режем детей на сегменты,
-    // каждый сегмент — свой поток колонок, спаннер — блок между
-    // ними (css-multicol §6). С рядами (`column-wrap: wrap` +
-    // `column-height`) сегменты не годятся: у каждого свои ряды от
-    // нуля, а Blink ведёт ОДИН курсор по коробке
-    // (`column_layout_algorithm.cc` `intrinsic_block_size_`,
-    // `LayoutSpanner`: спаннер, не влезший в остаток ряда, — со
-    // следующего ряда; `column-height-006/013/017…020`). Такой
-    // многоколоночник идёт единой стопкой, спаннер — её ребёнком
-    // (`StackChild::span`). Внутри копии другой стопки — по-прежнему
-    // сегментами: перенос ряда во внешнюю колонку не написан
-    // (`column-height-029`).
-    // Спаннер бывает НЕ прямым ребёнком: css-multicol-1
-    // §column-span (`Overview.bs:1497-1499`) — «A spanning element
-    // may be lower than the first level of descendants as long as
-    // they are part of the same formatting context, and there is
-    // nothing between the spanning element and multicol container
-    // that establishes a containing block for fixed position
-    // descendants». Спаннер выносится ИЗ ПОТОКА и режет
-    // многоколоночник на «до», «спаннер во всю ширину» и «после»,
-    // а его предки внутри многоколоночника разрезаются вместе с
-    // ним. Поднимаем таких потомков к прямым детям ОДИН раз, до
-    // всех решений ниже: дальше и сегментный путь, и единая
-    // стопка, и текстовый `column_flow` видят спаннер прямым
-    // ребёнком. Blink ведёт для этого путь `ColumnSpannerPath`
-    // (`column_spanner_path.h`), у нас пути нет — предки режутся
-    // прямо в дереве (`hoist_spanners`).
-    // Сегментный путь ниже: метка родителя предыдущего спаннера,
-    // если между ними не легло ни одного ряда колонок, и выложен
-    // ли уже хоть один кусок (для сторожей полей).
+    // Путь спаннера подготовлен native-фазой при разрешённой ширине.
     let span_prev: Option<Option<u64>> = None;
     let seg_open = false;
-    let hoisted;
-    let shape_cx = crate::layout::fragment::ShapeCx::COLUMNS.observed(opts);
-    let e = match hoist_spanners(&e.children, shape_cx, vcx) {
-        Some(kids) => {
-            let mut c = e.clone();
-            c.children = kids;
-            hoisted = c;
-            &hoisted
-        }
-        None => e,
-    };
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
     let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
-    // Высота хвостового ряда после единственного спаннера
-    // (`tail_rest_height`, css-multicol-1 §column-fill).
-    let rest_h: Option<f32> = tail_rest_height(e, &merged, box_h, rows, shape_cx, vcx);
     if e.children.iter().any(&is_span) && !unified {
         return Err(multicol_spanner_segments(
             d, e, merged, opts, col_w_px, want, lone_span, rest_h, span_prev, seg_open, is_span,

@@ -44,7 +44,7 @@ pub(super) fn copy_whole_box(
     line_col_w: Option<f32>,
     merged: &BoxStyle,
     copy: &Element,
-    h: f32,
+    _h: f32,
     nest_row: Option<f32>,
     nest_phase_k: f32,
     inner: &BoxStyle,
@@ -73,17 +73,8 @@ pub(super) fn copy_whole_box(
                 crate::layout::fragment::line_shape::layout_unit(k * cw),
             ));
         }
-        // `height: auto` — высота из меры рядами
-        // (`nested_rows_shape`): стопка с рядами
-        // отдаёт полный последний ряд, а коробка
-        // кончается на сбалансированном хвосте.
-        if matches!(mc.style.used().height, None | Some(Len::Auto)) {
-            let b = mc.style.used().borders();
-            let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-            let bot = px(&mc.style.used().padding.bottom) + px(&b.bottom);
-            mc.style.used_mut().height = Some(Len::Px((h - bot).max(0.0)));
-            mc.style.used_mut().border_box = None;
-        }
+        // Автовысоту возвращает сама раскладка вложенных рядов. Подстановка
+        // оценки здесь замыкала меру на ещё не разложенную внешнюю коробку.
         return Some(
             opts.cx.contracts.build.element(
                 &mc,
