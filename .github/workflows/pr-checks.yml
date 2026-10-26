@@ -344,6 +344,11 @@ jobs:
       - name: Test computed access aggregates and shrinking ceilings
         run: python3 -m unittest discover -s scripts -p test_check_computed.py -v
 
+      - name: Test receiver types and checked-in Cargo dependency proofs
+        run: |
+          python3 -m unittest discover -s scripts -p test_computed_receiver_types.py -v
+          python3 -m unittest discover -s scripts -p test_computed_cargo_proofs.py -v
+
       - name: Test exact lower-crate support scopes
         run: python3 -m unittest discover -s scripts -p test_computed_test_support.py -v
 

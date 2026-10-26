@@ -21,6 +21,163 @@ def escapes(source, name='borrow_mut', extra=None):
 
 
 class ReceiverTests(unittest.TestCase):
+    def test_field_writes_use_the_declared_owner_not_the_field_spelling(self):
+        for body in ['plan.width = 1.;', 'plan.width += 1.;', 'consume(&mut plan.width);']:
+            source = 'struct Plan { width: f32, style: Computed } fn f(plan: &mut Plan) { '+body+' }'
+            result = counts(source)
+            self.assertEqual(0, result['Computed.width', 'dom', 'write'])
+            self.assertEqual(0, result['Computed.width', 'dom', 'mutable'])
+        for declaration, typ in [('struct Plan { width: f32 }', 'Plan'),
+                                 ('type Plan = Unknown;', 'Plan'),
+                                 ('type Plan = Computed;', 'Plan'),
+                                 ('use crate::style::computed::Computed as C;', 'C'),
+                                 ('', 'Computed'), ('', 'Unknown')]:
+            expected = 0 if declaration.startswith('struct') else 1
+            self.assertEqual(expected, counts(declaration+f' fn f(plan: &mut {typ}) {{ plan.width = 1.; }}')['Computed.width', 'dom', 'write'])
+
+    def test_field_write_projections_keep_module_and_alias_context(self):
+        extra = {PREFIX+'dom/model.rs': 'pub struct Plan { pub width: f32, pub style: Computed } pub struct Cx { pub plan: Plan }'}
+        source = 'use super::model::Cx; fn f(cx: &mut Cx) { cx.plan.width = 1.; cx.plan.style.width = 2.; }'
+        self.assertEqual(1, counts(source, extra)['Computed.width', 'dom', 'write'])
+        source = 'use super::model::Cx; fn f(cx: &mut Cx) { let plan = &mut cx.plan; plan.width = 1.; plan.style.width = 2.; }'
+        self.assertEqual(1, counts(source, extra)['Computed.width', 'dom', 'write'])
+
+    def test_field_write_unknown_shadow_and_expression_suffix_stay_guarded(self):
+        for body in ['let plan = source(); plan.width = 1.;',
+                     'unknown().plan.width = 1.;', 'xs[0].plan.width = 1.;',
+                     'match x { Some(plan) => plan.width = 1., _ => {} }']:
+            source = 'struct Plan { width: f32 } fn f(plan: Plan) { '+body+' }'
+            self.assertEqual(1, counts(source)['Computed.width', 'dom', 'write'])
+        self.assertEqual(1, escapes('fn f(cache: RefCell<u8>) { unknown().cache.borrow_mut(); }'))
+
+    def test_geometry_clones_and_enums_preserve_payload_guards(self):
+        for element, expected in [('u8', 0), ('Computed', 1), ('Unknown', 1)]:
+            extra = {PREFIX+'dom/model.rs': f'pub struct State {{ pub rows: Rc<std::cell::RefCell<Vec<{element}>>> }}'}
+            source = 'use super::model::State; impl State { fn f(&self) { let rows = self.rows.clone(); consume(move || rows.borrow_mut()); } }'
+            self.assertEqual(expected, escapes(source, extra=extra))
+            source = f'enum Shape {{ Empty, Tuple({element}), Named {{ value: Vec<{element}> }} }} fn f(x: RefCell<Shape>) {{ x.borrow_mut(); }}'
+            self.assertEqual(expected, escapes(source))
+
+    def test_local_generic_payloads_and_deref_targets(self):
+        for element, expected in [('u8', 0), ('Computed', 1), ('Unknown', 1)]:
+            source = f'struct Records<T> {{ values: Vec<T> }} fn f(x: RefCell<Records<{element}>>) {{ x.borrow_mut(); }}'
+            self.assertEqual(expected, escapes(source))
+            source = f'struct Plan {{ values: Vec<{element}> }} impl Deref for Plan {{ type Target = Vec<{element}>; }} fn f(x: RefCell<Plan>) {{ x.borrow_mut(); }}'
+            self.assertEqual(expected, escapes(source))
+
+    def test_derived_default_clone_and_separate_closures(self):
+        source = '#[derive(Default)] struct Plan { width: f32 } fn f() { let mut plan = Plan::default(); a.map(|v| v); b.map(|v| v); plan.width = 1.; }'
+        self.assertEqual(0, counts(source)['Computed.width', 'dom', 'write'])
+        source = '#[derive(Clone)] struct Plan { width: f32 } fn f(plan: &Plan) { let mut plan = plan.clone(); plan.width = 1.; }'
+        self.assertEqual(0, counts(source)['Computed.width', 'dom', 'write'])
+        source = '#[derive(Clone)] struct Plan { width: f32 } impl Plan { fn clone(&self) -> Computed { source() } } fn f(plan: &Plan) { let mut plan = plan.clone(); plan.width = 1.; }'
+        self.assertEqual(1, counts(source)['Computed.width', 'dom', 'write'])
+        source = '#[derive(Default)] struct Plan { width: f32 } impl Plan { fn default() -> Computed { source() } } fn f() { let mut plan = Plan::default(); plan.width = 1.; }'
+        self.assertEqual(1, counts(source)['Computed.width', 'dom', 'write'])
+
+    def test_precise_capture_is_not_an_import(self):
+        source = 'fn captured() -> impl Fn(Option<u8>) + use<> { source() } fn f(x: RefCell<Option<f32>>) { x.borrow_mut(); }'
+        self.assertEqual(0, escapes(source))
+
+    def test_globs_do_not_export_implicit_prelude_types(self):
+        extra = {PREFIX+'dom/a.rs': 'pub struct A;', PREFIX+'dom/b.rs': 'pub struct B;'}
+        source = 'use super::a::*; use super::b::*; fn f(x: RefCell<Option<f32>>) { x.borrow_mut(); }'
+        self.assertEqual(0, escapes(source, extra=extra))
+        source = 'fn f(x: RefCell<crate::dom::a::Option<f32>>) { x.borrow_mut(); }'
+        self.assertEqual(1, escapes(source, extra=extra))
+
+    def test_external_payloads_use_dependency_direction_and_keep_generic_arguments(self):
+        from unittest.mock import patch
+        with patch('computed_receiver_types.external_crates', return_value={'foreign_ui'}):
+            for payload, expected in [('foreign_ui::PaintCtx', 0),
+                                      ('foreign_ui::Wrapper<Computed>', 1),
+                                      ('foreign_ui::Wrapper<Unknown>', 1),
+                                      ('Vec<Local>', 1)]:
+                source = f'struct Local {{ style: Computed }} fn f(x: RefCell<{payload}>) {{ x.borrow_mut(); }}'
+                with self.subTest(payload=payload): self.assertEqual(expected, escapes(source))
+            self.assertEqual(0, escapes('use foreign_ui::{PaintCtx as Ctx}; struct State(RefCell<Ctx>); impl State { fn f(&self) { self.0.borrow_mut(); } }'))
+            self.assertEqual(1, escapes('mod foreign_ui {} fn f(x: RefCell<foreign_ui::PaintCtx>) { x.borrow_mut(); }'))
+        # The checked-in Cargo graph establishes gpui, rather than a type list.
+        from computed_cargo_proofs import external_crates
+        self.assertIn('gpui', external_crates())
+        self.assertEqual(0, escapes('use gpui::PaintCtx; fn f(x: RefCell<PaintCtx>) { x.borrow_mut(); }'))
+
+    def test_recursive_local_fields_and_unresolved_aliases(self):
+        for fields, expected in [('next: Option<Box<Node>>, bytes: Vec<u8>', 0),
+                                 ('next: Option<Box<Node>>, style: Computed', 1),
+                                 ('next: Option<Box<Node>>, other: Unknown', 1)]:
+            source = f'struct Node {{ {fields} }} struct State(RefCell<Node>); impl State {{ fn f(&self) {{ self.0.borrow_mut(); }} }}'
+            with self.subTest(fields=fields): self.assertEqual(expected, escapes(source))
+        for alias in ['type Payload = Unknown;', 'type Payload = Payload;', 'type Payload = Vec<Unknown>;']:
+            with self.subTest(alias=alias): self.assertEqual(1, escapes(alias+' fn f(x: RefCell<Payload>) { x.borrow_mut(); }'))
+        self.assertEqual(0, escapes('fn f(x: RefCell<Vec<(u64, f32)>>) { x.borrow_mut(); }'))
+        self.assertEqual(1, escapes('fn f(x: RefCell<Vec<(u64, Computed)>>) { x.borrow_mut(); }'))
+
+    def test_slice_autoderef_cannot_bypass_blanket_trait(self):
+        source = 'trait Styles { fn get_mut(&mut self, i: usize) -> &mut Computed { source() } } impl<T> Styles for T {} fn f(x: Vec<u8>) { x.get_mut(0); }'
+        self.assertEqual(1, escapes(source, 'get_mut'))
+
+    def test_local_imports_resolve_payload_definitions(self):
+        extra = {PREFIX+'dom/payload.rs': 'pub struct Frame { pub bytes: Vec<u8> }'}
+        source = 'use super::payload::Frame; struct State { frames: Vec<Frame> } struct Queue(RefCell<State>); impl Queue { fn f(&self) { self.0.borrow_mut(); } }'
+        self.assertEqual(0, escapes(source, extra=extra))
+        extra[PREFIX+'dom/payload.rs'] = 'pub struct Frame { pub style: Computed }'
+        self.assertEqual(1, escapes(source, extra=extra))
+
+    def test_cargo_graph_rejects_reverse_dependency_and_missing_nodes(self):
+        from computed_cargo_proofs import unrelated_crates
+        metadata = {'packages': [{'name': 'kamin-html', 'id': 'html'}], 'resolve': {'nodes': [
+            {'id': 'html', 'deps': [{'name': 'ui_alias', 'pkg': 'ui'}, {'name': 'back', 'pkg': 'back'}, {'name': 'incomplete', 'pkg': 'missing'}]},
+            {'id': 'ui', 'deps': [{'name': 'leaf', 'pkg': 'leaf'}]},
+            {'id': 'leaf', 'deps': []},
+            {'id': 'back', 'deps': [{'name': 'html', 'pkg': 'html'}]},
+        ]}}
+        self.assertEqual({'ui_alias'}, unrelated_crates(metadata))
+
+    def test_fn_once_callback_projects_declared_collection_field(self):
+        for element, expected in [('u8', 0), ('Computed', 1), ('External', 1)]:
+            source = f'''struct State {{ frames: Vec<{element}> }} struct Queue;
+                impl Queue {{
+                    fn update(&self, f: impl FnOnce(&mut State)) {{ source(); }}
+                    fn pop(&self) {{ self.update(|state| {{ state.frames.get_mut(0); }}); }}
+                }}'''
+            with self.subTest(element=element): self.assertEqual(expected, escapes(source, 'get_mut'))
+
+    def test_callback_unknown_signature_and_nested_shadow_stay_guarded(self):
+        for signature, body in [('External', 'state.frames.get_mut(0);'),
+                                ('impl FnOnce(&mut State)', 'let state = source(); state.frames.get_mut(0);'),
+                                ('impl FnOnce(&mut State)', 'match x { Some(state) => state.frames.get_mut(0), _ => {} };')]:
+            source = f'''struct State {{ frames: Vec<u8> }} struct Queue;
+                impl Queue {{ fn update(&self, f: {signature}) {{ source(); }}
+                fn pop(&self) {{ self.update(|state| {{ {body} }}); }} }}'''
+            with self.subTest(signature=signature, body=body): self.assertEqual(1, escapes(source, 'get_mut'))
+
+    def test_standard_collections_and_occupied_entry(self):
+        for payload, expected in [('u8', 0), ('Computed', 1), ('External', 1)]:
+            for collection in [f'Vec<{payload}>', f'VecDeque<{payload}>',
+                               f'BTreeMap<u64, {payload}>', f'HashMap<u64, {payload}>']:
+                with self.subTest(collection=collection):
+                    self.assertEqual(expected, escapes(f'fn f(x: {collection}) {{ x.get_mut(0); }}', 'get_mut'))
+            for api in ['first_entry', 'last_entry']:
+                source = f'''struct Queue {{ jobs: BTreeMap<u64, VecDeque<{payload}>> }}
+                    impl Queue {{ fn pop(&mut self) {{
+                        let mut entry = self.jobs.{api}()?; entry.get_mut();
+                    }} }}'''
+                with self.subTest(payload=payload, api=api): self.assertEqual(expected, escapes(source, 'get_mut'))
+
+    def test_entry_proof_requires_standard_provider_and_occupied_variant(self):
+        for declaration, initializer, suffix in [
+            ('struct BTreeMap<K,V>(K,V);', 'self.jobs.first_entry()?', ''),
+            ('use external::BTreeMap;', 'self.jobs.first_entry()?', ''),
+            ('', 'source()', ''), ('', 'self.jobs.first_entry()', ''),
+            ('', 'self.jobs.first_entry()?', 'let entry = source();'),
+            ('', 'self.jobs.first_entry()?', 'match x { Some(entry) => { entry.get_mut(); }, _ => {} };'),
+        ]:
+            source = f'''{declaration} struct Queue {{ jobs: BTreeMap<u64, VecDeque<u8>> }}
+                impl Queue {{ fn pop(&mut self) {{ let mut entry = {initializer}; {suffix} entry.get_mut(); }} }}'''
+            with self.subTest(source=source):
+                self.assertGreaterEqual(escapes(source, 'get_mut'), 1)
+
     def test_nominal_payloads_remain_guarded(self):
         for declaration in ('struct Payload { style: Computed }',
                             'struct Payload(Computed);',
@@ -102,9 +259,9 @@ class ReceiverTests(unittest.TestCase):
         self.assertEqual(0, escapes('struct State(Rc<Vec<u8>>); impl State { fn f(&mut self) { Rc::make_mut(&mut self.0); } }', 'make_mut'))
         self.assertEqual(1, escapes('struct State { style: RefCell<Computed> } impl State { fn f(&self) { self.style.borrow_mut(); } }'))
 
-    def test_ambiguous_same_name_field_is_guarded(self):
+    def test_same_name_type_in_other_module_does_not_hide_local_definition(self):
         extra = {PREFIX+'dom/other.rs': 'struct State { cache: RefCell<Computed> }'}
-        self.assertEqual(1, escapes('struct State { cache: RefCell<Vec<u8>> } impl State { fn f(&self) { self.cache.borrow_mut(); } }', extra=extra))
+        self.assertEqual(0, escapes('struct State { cache: RefCell<Vec<u8>> } impl State { fn f(&self) { self.cache.borrow_mut(); } }', extra=extra))
 
     def test_standard_imports_do_not_hide_proven_non_style_receivers(self):
         self.assertEqual(0, escapes('use std::cell::RefCell; struct Cache; fn f(x: RefCell<Cache>) { x.borrow_mut(); }'))

@@ -429,6 +429,7 @@ impl DirectXRendererDevices {
             dxgi_factory,
             device,
             device_context,
+            ..
         } = directx_devices;
         let dxgi_device = if disable_direct_composition {
             None
@@ -2057,7 +2058,7 @@ impl DirectXRenderer {
             0x10DE => nvidia::get_driver_version(),
             0x1002 => amd::get_driver_version(),
             // For Intel and other vendors, we use the DXGI API to get the driver version.
-            _ => dxgi::get_driver_version(&devices.adapter),
+            _ => crate::gpu_adapter::driver_version(&devices.adapter),
         }
         .context("Failed to get gpu driver info")
         .log_err()
@@ -3398,23 +3399,6 @@ mod amd {
     }
 }
 
-mod dxgi {
-    use windows::{
-        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
-        core::Interface,
-    };
-
-    pub(super) fn get_driver_version(adapter: &IDXGIAdapter1) -> anyhow::Result<String> {
-        let number = unsafe { adapter.CheckInterfaceSupport(&IDXGIDevice::IID as _) }?;
-        Ok(format!(
-            "{}.{}.{}.{}",
-            number >> 48,
-            (number >> 32) & 0xFFFF,
-            (number >> 16) & 0xFFFF,
-            number & 0xFFFF
-        ))
-    }
-}
 
 mod backdrop;
 mod recovery;

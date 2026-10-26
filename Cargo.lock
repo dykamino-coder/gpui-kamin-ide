@@ -1775,6 +1775,7 @@ dependencies = [
  "futures",
  "gpui-pre",
  "gpui-pre-platform",
+ "gpui-pre-windows",
  "html5ever 0.40.1",
  "kamin-html",
  "markup5ever_rcdom 0.39.0+unofficial",

@@ -1,7 +1,7 @@
 """Conservative lexical field/owner/access aggregates, independent of source lines.
 
-Not Rust type inference: same-named fields are deliberately over-counted. Owners
-are top-level HTML modules, so moving a file within a phase does not change debt.
+Unknown receivers are deliberately over-counted; declared unrelated field owners
+can exclude homonyms. Owners are top-level HTML modules, so moving a file within a phase does not change debt.
 Style construction may write operands; non-style writes/projections and mutable
 escape APIs are ratcheted. Whole-value mutation must also be reviewed manually.
 """
@@ -87,6 +87,8 @@ def aggregate(sources):
                 following == [':'] or (before in ('{', ',') and following in ([','], ['}']))))
             if word in fields and (before == '.' or initialized):
                 kind = access(words, index) if before == '.' else 'initialize'
+                if kind in ('write', 'mutable') and not receivers.may_write(path, words, index):
+                    continue
                 for field in fields[word]:
                     counts[field, context, kind] += 1
             # Calls only: declarations/imports do not create new escapes.

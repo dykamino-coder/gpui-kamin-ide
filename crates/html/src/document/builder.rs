@@ -16,6 +16,8 @@ pub struct DocumentBuilder<'a> {
     xml: bool,
     media: Media,
     fonts: crate::text::metrics::FontContext,
+    limits: crate::budget::DocumentLimits,
+    governor: crate::budget::ResourceGovernor,
 }
 
 impl<'a> DocumentBuilder<'a> {
@@ -27,12 +29,26 @@ impl<'a> DocumentBuilder<'a> {
             xml: false,
             media: Media::default(),
             fonts: Default::default(),
+            limits: Default::default(),
+            governor: Default::default(),
         }
     }
 
     /// Передать платформенные шрифты до разбора и измерения CSS.
     pub fn fonts(&mut self, fonts: &crate::text::metrics::FontContext) -> &mut Self {
         self.fonts = fonts.clone();
+        self
+    }
+
+    /// Immutable profile документа; host может только уменьшать defaults.
+    pub fn limits(&mut self, limits: crate::budget::DocumentLimits) -> &mut Self {
+        self.limits = limits;
+        self
+    }
+
+    /// Один экземпляр хоста разделяется всеми его документами и cache/pool.
+    pub fn governor(&mut self, governor: &crate::budget::ResourceGovernor) -> &mut Self {
+        self.governor = governor.clone();
         self
     }
 
@@ -63,8 +79,14 @@ impl<'a> DocumentBuilder<'a> {
     /// Разобрать документ с выбранными настройками в свежем состоянии.
     ///
     /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
-    /// Ошибка XML возвращает типизированный отказ. Бюджет парсера — отдельная задача.
+    /// Source admission предшествует разбору; parser allocations подключает B3.
     pub fn build(&self) -> Result<Document, super::DocumentFailure> {
+        let budget = crate::budget::DocumentBudget::new(self.limits.clone(), self.governor.clone())
+            .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
+        let revision = budget.revision();
+        revision
+            .source(self.html, self.theme_css)
+            .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
         Document::build(
             self.html,
             self.theme_css,
@@ -72,6 +94,7 @@ impl<'a> DocumentBuilder<'a> {
             self.xml,
             self.media,
             &self.fonts,
+            revision,
         )
     }
 }
