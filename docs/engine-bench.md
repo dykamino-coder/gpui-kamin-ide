@@ -73,8 +73,9 @@ The root adapter forwards the same element layout ID and introduces no layout
 node. The only engine hooks are `Instant` measurements at existing parse/style
 boundaries, with storage owned by `Document`. Their module, fields, arguments,
 clock reads and public API are all `#[cfg(feature = "engine-bench")]`; ordinary
-builds compile them out. The existing GPUI counters/capture are reused without
-changing vendor code.
+builds compile them out. Enabled timers and the root adapter have measurement
+overhead, which is not subtracted. The existing GPUI counters/capture are reused
+without changing vendor code.
 
 ## Cold, warm and statistics
 
@@ -94,9 +95,9 @@ The BGR FNV-1a fingerprint detects changing sample output; use saved PNGs and
 an exact RGB comparison for independent pixel validation.
 
 `peak_working_set_bytes` is Windows `PeakWorkingSetSize` for the whole process
-since launch, including startup, all samples and captures. It is resident memory,
-not private committed bytes, GPU allocation size or a per-document allocation
-peak. `startup_peak_working_set_bytes` reports the high-water mark after startup;
+since launch, queried after all samples, statistics and captures, before writing
+the final report. It is resident memory, not private committed bytes, GPU
+allocation size or a per-document allocation peak. `startup_peak_working_set_bytes` reports the high-water mark after startup;
 subtracting the two does not yield a document's peak memory. Restart the process
 to reset the high-water mark.
 
