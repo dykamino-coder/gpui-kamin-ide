@@ -49,7 +49,7 @@ impl Window {
         self.raster_frame.context()
     }
 
-    /// Scoped host data in the shared frame, retaining unrelated raster fields.
+    /// Область данных хозяина сохраняет остальные поля общего raster frame.
     pub fn with_raster_context<T: std::any::Any, R>(
         &mut self,
         value: Option<Rc<T>>,

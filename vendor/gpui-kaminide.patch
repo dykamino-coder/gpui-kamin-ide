@@ -18080,7 +18080,7 @@ index 0000000000000000000000000000000000000000..1c0673bba14c6ef83d9881d2cc40c9fc
 +}
 diff --git a/vendor/gpui/src/window/raster_frame.rs b/vendor/gpui/src/window/raster_frame.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8c24cb045cf6fd40389d4433a6bbba6b4f7a6475
+index 0000000000000000000000000000000000000000..bc58113f146f236fc2ec37947d0ece68c6309982
 --- /dev/null
 +++ b/vendor/gpui/src/window/raster_frame.rs
 @@ -0,0 +1,76 @@
@@ -18135,7 +18135,7 @@ index 0000000000000000000000000000000000000000..8c24cb045cf6fd40389d4433a6bbba6b
 +        self.raster_frame.context()
 +    }
 +
-+    /// Scoped host data in the shared frame, retaining unrelated raster fields.
++    /// Область данных хозяина сохраняет остальные поля общего raster frame.
 +    pub fn with_raster_context<T: std::any::Any, R>(
 +        &mut self,
 +        value: Option<Rc<T>>,

@@ -7,6 +7,7 @@ use crate::text::raster::{Background, ReplicatedBackground};
 use gpui::{ChildPaintContext, Fill, TransformationMatrix, Window, px};
 use std::rc::Rc;
 
+#[cfg(test)]
 pub(super) fn with_background<R>(
     context: &ChildPaintContext<'_>,
     window: &mut Window,
@@ -18,7 +19,10 @@ pub(super) fn with_background<R>(
     }
 }
 
-fn background(context: &ChildPaintContext<'_>, window: &Window) -> Option<Rc<Background>> {
+pub(super) fn background(
+    context: &ChildPaintContext<'_>,
+    window: &Window,
+) -> Option<Rc<Background>> {
     let style = context.style;
     let bounds = context.bounds;
     let opaque = style
