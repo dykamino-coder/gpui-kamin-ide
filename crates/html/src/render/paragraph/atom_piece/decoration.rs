@@ -34,7 +34,7 @@ pub(crate) fn decorate_atom(
             blend: e.style.used().blend,
             ..Default::default()
         };
-        grouped(el, &only, vcx)
+        grouped(el, &crate::style::computed::BoxStyle::new(only), vcx)
     } else {
         el
     };

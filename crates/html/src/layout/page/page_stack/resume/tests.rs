@@ -44,6 +44,7 @@ fn row_resumes_same_byte_after_width_changes_line_height_and_membership() {
             byte: 8,
             top: 20.,
             bottom: 40.,
+            prefix: 20.,
             consumed_before: 0.0,
         }],
     );
@@ -77,6 +78,7 @@ fn row_resumes_same_byte_after_width_changes_line_height_and_membership() {
             byte: 8,
             top: 40.,
             bottom: 60.,
+            prefix: 40.,
             consumed_before: 0.0,
         }],
     );
@@ -138,6 +140,7 @@ fn column_resumes_content_instead_of_old_y() {
             byte: 8,
             top: 20.,
             bottom: 40.,
+            prefix: 20.,
             consumed_before: 0.0,
         }],
     );
@@ -151,7 +154,7 @@ fn column_resumes_content_instead_of_old_y() {
 }
 
 #[test]
-fn column_keeps_physical_offset_inside_a_monolith_before_future_text() {
+fn row_and_column_keep_physical_offset_inside_a_monolith_before_future_text() {
     let mut laid = Laid::of_boxes(&[(1, 0., 360.), (2, 0., 350.)]);
     laid.descendants.insert(1, vec![2]);
     laid.flexes.insert(
@@ -183,4 +186,52 @@ fn column_keeps_physical_offset_inside_a_monolith_before_future_text() {
     laid.content.get_mut(&1).unwrap()[0].bottom = 380.;
     assert_eq!(physical.offset(&laid), Some(300.));
     assert_eq!(text.offset(&laid), Some(370.));
+    laid.flexes.get_mut(&9).unwrap().column = false;
+    let physical = Resume::at(&laid, 300.);
+    let text = Resume::at(&laid, 370.);
+    laid.boxes.insert(1, (0., 400.));
+    laid.boxes.insert(2, (0., 390.));
+    laid.content.get_mut(&1).unwrap()[0].top = 390.;
+    laid.content.get_mut(&1).unwrap()[0].bottom = 400.;
+    assert_eq!(
+        physical.consumed(&laid),
+        HashMap::from([(1, (300., false))])
+    );
+    assert_eq!(text.consumed(&laid), HashMap::from([(1, (390., false))]));
+}
+
+#[test]
+fn row_boundary_preserves_distance_to_the_first_content_line() {
+    let mut old = Laid::of_boxes(&[(1, 24., 240.)]);
+    old.flexes.insert(
+        9,
+        FlexFrame {
+            column: false,
+            lines: vec![FlexLine {
+                start: 24.,
+                end: 240.,
+                items: vec![1],
+                ..Default::default()
+            }],
+        },
+    );
+    old.content.insert(
+        1,
+        vec![ContentLine {
+            state: Default::default(),
+            paragraph: 0,
+            byte: 8,
+            top: 171.,
+            bottom: 189.,
+            prefix: 147.,
+            consumed_before: 0.,
+        }],
+    );
+    let token = Resume::at(&old, 168.);
+    assert_eq!(token.consumed(&old), HashMap::from([(1, (144., false))]));
+    // Смена ширины сдвигает строку, сохраняя адрес разрыва перед её
+    // внутренней отбивкой; отбивка не становится потреблённой высотой.
+    let mut new = old.clone();
+    new.content.get_mut(&1).unwrap()[0].top = 195.;
+    assert_eq!(token.consumed(&new), HashMap::from([(1, (168., false))]));
 }

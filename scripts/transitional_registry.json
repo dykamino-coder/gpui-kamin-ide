@@ -40,16 +40,6 @@
     "reason": "Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17."
   },
   {
-    "file": "crates/html/src/layout/fragment/flow/copy_clearance.rs",
-    "task": "F2-1",
-    "reason": "Отдельная копия не видит float bands предыдущего соседа; удалить отказ в P06 после переноса состояния BFC между фрагментами."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/flow/empty_floats.rs",
-    "task": "F2-1",
-    "reason": "Переполнение ограниченного блока требует собственного resume; удалить отказ в P05 после раздельного продолжения normal flow и overflow."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/independent.rs",
     "task": "F2-3",
     "reason": "Vertical copy допускает только один поток без ортогонального resume; удалить ограничение в P10 после отдельных logical Space и child tokens."
@@ -58,11 +48,6 @@
     "file": "crates/html/src/layout/fragment/flow/independent.rs",
     "task": "F2-7",
     "reason": "Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/flow/independent/continuation.rs",
-    "task": "F2-1",
-    "reason": "Очистка детей теряет независимый прогресс normal flow, min-height и overflow; удалить gate в P05 после отдельных resume этих потоков."
   },
   {
     "file": "crates/html/src/layout/fragment/flow/independent/continuation.rs",
@@ -170,11 +155,6 @@
     "reason": "FragCx несёт implicit in_stack_copy/outer_row вместо явного Space/resume; удалить эти поля в P22 после последних consumers P09/P10/P21."
   },
   {
-    "file": "crates/html/src/layout/list/list_item/outside.rs",
-    "task": "F2-1",
-    "reason": "Привязка внешнего маркера к block-start не хранит baseline первой строки и владельца продолжения; удалить в P05 после привязки к реальному продолжению строки."
-  },
-  {
     "file": "crates/html/src/layout/multicol/column_regrow/copies.rs",
     "task": "F2-3",
     "reason": "Запас копий рядов ограничен 48 вместо завершения row tokens; удалить предел в P11 после проверки реального прогресса продолжений."
@@ -231,48 +211,8 @@
   },
   {
     "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер children не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер pending не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер pending_vertical не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC в логических осях."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-1",
-    "reason": "Замер vertical_children не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC в логических осях."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
     "task": "F2-2",
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/native_dispatch_tests.rs",
-    "task": "F2-1",
-    "reason": "Clone и заданная высота с overflow ещё идут через preplan; удалить ожидание этого маршрута после краёв фрагментов P04 и раздельных normal-flow/overflow resume P05."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/native_float.rs",
-    "task": "F2-1",
-    "reason": "Замер float_copy не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/native_float.rs",
-    "task": "F2-1",
-    "reason": "Поля float требуют продолжения margin box без усечения как у блока; удалить отказ в P06 после собственного consumed/resume float."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/native_float.rs",
-    "task": "F2-1",
-    "reason": "Разрываемый float и обтекающий текст имеют разные consumed/resume; удалить monolith-only gate в P06 после независимого продолжения float и main flow."
   },
   {
     "file": "crates/html/src/layout/multicol/measure/tail.rs",
@@ -293,11 +233,6 @@
     "file": "crates/html/src/layout/multicol/stack_child/prepare.rs",
     "task": "F2-4",
     "reason": "Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/page/paged/kids/laid.rs",
-    "task": "F2-1",
-    "reason": "Float допускается только монолитом без строчного resume; удалить ограничение в P05 после отдельного продолжения его строк и полей."
   },
   {
     "file": "crates/html/src/layout/page/paged/kids/mod.rs",
@@ -342,10 +277,10 @@
   {
     "file": "crates/html/src/style/computed/box_style.rs",
     "task": "cascade-7b-R10",
-    "reason": "Контекст grid/flex/lanes и used values остаётся в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle."
+    "reason": "Used values остаются в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle."
   },
   {
-    "file": "crates/html/src/style/computed/box_style.rs",
+    "file": "crates/html/src/dom/shared_style.rs",
     "task": "cascade-7b-layout-made",
     "reason": "layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle."
   },

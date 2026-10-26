@@ -76,11 +76,16 @@ pub struct Nest {
 pub type GroupWrap = std::rc::Rc<dyn Fn(gpui::Div) -> gpui::AnyElement>;
 
 pub struct Kid {
+    pub(crate) flow: Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasure>>,
+    pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
+    pub(crate) flow_key: usize,
     pub kind: Kind,
     /// Source identity for the canonical pagination recorder.
     pub node_id: u64,
     /// Independent float displacement returned by the pagination solver.
     pub pagination_offset: f32,
+    /// Граница фрагмента для начала margin-box, в координатах BFC.
+    pub(crate) float_floor: Option<f32>,
     /// CSS Break 3 section 4.1: an indivisible box, independent of its height.
     pub monolithic: bool,
     /// `clear` куска или блока потока (шаг F6): верх его border-box не выше

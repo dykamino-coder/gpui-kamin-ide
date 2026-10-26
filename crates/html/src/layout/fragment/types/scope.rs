@@ -34,6 +34,9 @@ pub struct FragCx {
     pub(crate) watch: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// Numeric pagination displacements of floats in this rebuilt copy.
     pub(crate) float_struts: std::rc::Rc<crate::layout::fragment::paginate::Struts>,
+    /// Нижние границы начала float в логической оси его BFC: рост обычного
+    /// потока уже мог довести float до этой границы (css-break-3 §2.1).
+    pub(crate) float_floors: std::rc::Rc<std::collections::HashMap<u64, f32>>,
     /// Строятся дети стопки страниц (`PagedBuild`).
     pub(crate) paged: Option<std::rc::Rc<crate::layout::page::paged::PagedBuild>>,
 }

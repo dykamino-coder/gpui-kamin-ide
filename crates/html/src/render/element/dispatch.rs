@@ -8,7 +8,7 @@ use crate::layout::float::band_flow_host::band_flow_host;
 use crate::layout::list::{self, list_item};
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::iframe::object_is_document;
-use crate::layout::replaced::image::pct_height_to_px;
+use crate::layout::replaced::image::{inherit_item_metadata, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::{replaced_used_style, svg_size};
@@ -59,7 +59,7 @@ pub(crate) async fn dispatch_element(
         // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
         // блочная картинка под `body { image-orientation: none }` всё равно
         // разворачивалась по метке EXIF.
-        "canvas" if merged.parent_grid != 0 => {
+        "canvas" if merged.context.parent_grid != 0 => {
             match crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx) {
                 Some(canvas) => canvas,
                 None => generic_box_stack(stk, e, merged, inherited, opts, outer_row).await,
@@ -73,16 +73,15 @@ pub(crate) async fn dispatch_element(
             // (`c43-rpl-bbx-002`). CSS 2.1 §4.3.2: `em` — вычисленный кегль
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
+            let context = BoxStyle::shared(copy.style.used()).context;
             let used = copy.style.used_mut();
             if inline_level(e) {
                 replaced_used_style::inline_percentage_width(used, opts.cx.constraints.avail_w);
             }
             used.image_orient_none = merged.image_orient_none;
-            crate::layout::replaced::image::inherit_item_metadata(used, &merged, inherited);
-            // Признак определённого блока (§10.5) — от слитого стиля: держатель
-            // строится из сырого, и `apply` иначе выбрасывал `height: %`
-            // (см. строчный рукав `"img"` в `atom_element`; ячейка и лунки —
-            // свои пути).
+            let context = inherit_item_metadata(used, context, &merged, inherited);
+            // Определённость блока (§10.5) берётся от слитого стиля, иначе
+            // `apply` теряет `height: %`; ячейки и лунки ведут её сами.
             if !matches!(
                 inherited.display,
                 Some(Display::TableCell) | Some(Display::GridLanes)
@@ -91,6 +90,7 @@ pub(crate) async fn dispatch_element(
             }
             // Единицы окна — в точки, как у строчной картинки.
             used.resolve_viewport(opts.viewport, vcx);
+            copy.style.set_box_context(std::rc::Rc::new(context));
             crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
                 image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
             })

@@ -1,4 +1,4 @@
-"""One authorized F2 P01-P04 rebaseline against the pre-integration ADR3 census.
+"""Bounded lead-reviewed F2 adjustments at their exact integration merge bases.
 
 The lead approved only these existing fragment-copy counters. This adjustment
 expires automatically when the merge base advances beyond the census commit;
@@ -32,11 +32,22 @@ APPROVED = (
 )
 
 
+OVERFLOW_FLOAT_BASE = '948ed6dd2733e643908ccd6a444411811de5fcef'
+# Reviewed: not a style escape. Float growth floors contain only u64/f32
+# (layout/fragment/push/float_flow.rs); context interning contains FlowMeasure
+# (layout/fragment/flow/contexts.rs). Neither map exposes a style operand.
+OVERFLOW_FLOAT_NON_STYLE = (
+    ('@make_mut', 'layout', 'escape', 1, 2),
+    ('@borrow_mut', 'layout', 'escape', 141, 142),
+)
+
+
 def approved_base(counts, revision):
     """Replace only the enumerated old counts at the exact census merge base."""
     result = Counter(counts)
-    if revision == CENSUS_BASE:
-        for field, owner, access, old, new in APPROVED:
+    approved = APPROVED if revision == CENSUS_BASE else OVERFLOW_FLOAT_NON_STYLE if revision == OVERFLOW_FLOAT_BASE else ()
+    if approved:
+        for field, owner, access, old, new in approved:
             key = field, owner, access
             if result[key] != old:
                 raise ValueError(f'F2 census base changed: {key}')

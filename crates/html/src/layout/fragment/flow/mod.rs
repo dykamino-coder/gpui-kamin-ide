@@ -7,8 +7,10 @@
 
 pub(crate) mod blocks;
 pub(crate) mod box_children;
+mod contexts;
 mod continuation;
 mod coordinates;
+pub(crate) mod float_resume;
 pub(crate) mod inline;
 mod line_growth;
 mod measurements;
@@ -19,30 +21,32 @@ mod stack;
 pub(crate) use measurements::{FlowMeasure, FlowNode};
 pub(crate) use stack::fragment_leaf;
 
-/// Whether the line boxes inside `e` are line boxes of the block flow that
-/// contains `e` (css-break-3 §4.3 class B): a block container in normal flow
-/// or a float (BandFlow), or an inline box. Tables, flex and grid containers
-/// fragment by their own rows and lines (css-break-3 §4.3 class A/C between
-/// rows, items and tracks), multicol containers by their own columns;
-/// monolithic boxes (§4.1) and out-of-flow boxes take no part in it.
+/// Строки блочного контейнера дают разрывы класса B (css-break-3 §4.3).
+/// Подписи и ячейки таблицы сохраняют собственные неделимые строки внутри
+/// границ таблицы; flex/grid и multicol регистрируют свои независимые потоки.
+/// Монолитные и внепоточные коробки не передают строки родительскому потоку.
 pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
     use crate::style::computed::Display;
     matches!(
         e.style.used().display,
-        None | Some(Display::Block) | Some(Display::ListItem) | Some(Display::Contents)
+        None | Some(Display::Block | Display::ListItem | Display::Contents | Display::Table)
     ) && e.style.used().webkit_box != Some(true)
         && !matches!(
             e.tag.as_str(),
-            "table" | "caption" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th"
+            "caption" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th"
         )
         && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
-        && !crate::layout::fragment::table_bands::table_box(e)
         && !crate::layout::fragment::clone::monolith_box(e)
         && !crate::layout::box_kind::out_of_flow(&e.style.used())
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlowGeometry {
+    pub(crate) line_pushes: Vec<LinePush>,
+    /// Строка у начала float переносит сам float, а не добавляет место внутри.
+    pub(crate) float_leads: Vec<(u64, LinePush)>,
+    pub(crate) boxes: std::collections::HashMap<u64, (f32, f32)>,
+    pub(crate) float_contexts: Vec<float_resume::Snapshot>,
     pub(crate) inline: Vec<inline::Inline>,
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) solid: Vec<(f32, f32)>,
@@ -54,11 +58,21 @@ pub(crate) struct FlowGeometry {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FloatGeometry {
     pub(crate) id: u64,
+    /// Начало margin-box в BFC; перенос геометрии родителю его не меняет.
+    pub(crate) anchor: f32,
     pub(crate) top: f32,
     pub(crate) bottom: f32,
     pub(crate) margins: [f32; 2],
     /// First legal internal break of a non-monolithic float, in owner coordinates.
     pub(crate) first_break: Option<f32>,
+}
+
+impl FloatGeometry {
+    /// Монолит сохраняет весь margin box; разрезаемый float задаёт свой первый кусок.
+    pub(crate) fn balance_min(&self) -> f32 {
+        let end = self.first_break.unwrap_or(self.bottom + self.margins[1]);
+        (end - self.top + self.margins[0]).max(0.0)
+    }
 }
 
 impl FlowGeometry {
@@ -75,6 +89,29 @@ impl FlowGeometry {
     }
 
     pub(crate) fn append(&mut self, other: &Self, offset: f32) {
+        self.float_leads
+            .extend(other.float_leads.iter().map(|(id, p)| {
+                (
+                    *id,
+                    LinePush {
+                        at: p.at + offset,
+                        ..p.clone()
+                    },
+                )
+            }));
+        self.boxes.extend(
+            other
+                .boxes
+                .iter()
+                .map(|(&id, &(a, b))| (id, (a + offset, b + offset))),
+        );
+        self.line_pushes
+            .extend(other.line_pushes.iter().map(|p| LinePush {
+                at: p.at + offset,
+                ..p.clone()
+            }));
+        self.float_contexts
+            .extend(other.float_contexts.iter().map(|g| g.translated(offset)));
         self.inline
             .extend(other.inline.iter().map(|flow| flow.translated(offset)));
         self.floats
@@ -137,80 +174,17 @@ impl FlowGeometry {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parallel_lines_only_break_at_shared_edges() {
-        let mut geometry = FlowGeometry::lines([10.0, 20.0]);
-        geometry.append(&FlowGeometry::lines([15.0, 15.0]), 0.0);
-        geometry.normalize();
-        assert_eq!(geometry.cuts, vec![(30.0, 30.0)]);
-    }
-
-    #[test]
-    fn orphans_and_widows_keep_edge_lines_together() {
-        let mut geometry = FlowGeometry::lines([10.0; 5]);
-        geometry.keep_lines(2, 2);
-        assert_eq!(
-            geometry.solid,
-            vec![(0.0, 20.0), (20.0, 30.0), (30.0, 50.0)]
-        );
-        assert_eq!(
-            geometry.cuts,
-            vec![(20.0, 20.0), (30.0, 30.0), (50.0, 50.0)]
-        );
-        // Too few lines: the paragraph is one range, broken only around it.
-        let mut geometry = FlowGeometry::lines([10.0; 3]);
-        geometry.keep_lines(2, 2);
-        assert_eq!(geometry.solid, vec![(0.0, 30.0)]);
-        assert_eq!(geometry.cuts, vec![(30.0, 30.0)]);
-    }
-
-    #[test]
-    fn float_translation_preserves_unbreakable_margins() {
-        let source = FlowGeometry {
-            floats: vec![FloatGeometry {
-                id: 7,
-                top: 40.0,
-                bottom: 60.0,
-                margins: [40.0, 40.0],
-                first_break: Some(50.0),
-            }],
-            ..Default::default()
-        };
-        let mut geometry = FlowGeometry::default();
-        geometry.append(&source, 15.0);
-        let g = geometry.floats[0];
-        assert_eq!((g.id, g.top, g.bottom), (7, 55.0, 75.0));
-        assert_eq!(g.first_break, Some(65.0));
-        assert_eq!(
-            (g.top - g.margins[0], g.bottom + g.margins[1]),
-            (15.0, 115.0)
-        );
-    }
-
-    #[test]
-    fn translated_rows_include_inline_box_growth() {
-        let mut geometry = FlowGeometry::default();
-        geometry.append(&FlowGeometry::lines([10.0, 30.0, 10.0]), 5.0);
-        geometry.normalize();
-        assert_eq!(
-            geometry.cuts,
-            vec![(15.0, 15.0), (45.0, 45.0), (55.0, 55.0)]
-        );
-        assert_eq!(geometry.solid[1], (15.0, 45.0));
-    }
-}
+mod tests;
 
 mod logical;
 pub(crate) use logical::transpose_tree;
 mod independent;
 pub(crate) use independent::{
-    PagePercentages, column_percentages, independent_copy, logical_copy, page_percentages,
-    parallel_overflow, regrow_copy, vertical_copy,
+    PagePercentages, Parallel, column_percentages, flow_end, independent_copy, logical_copy,
+    page_copy, page_percentages, regrow_copy, vertical_copy,
 };
 mod copy_clearance;
-pub(crate) use copy_clearance::copy_clearance;
+pub(crate) use copy_clearance::copy_flow;
+pub(crate) use copy_clearance::reaches as exports_floats;
 mod empty_floats;
 pub(crate) use empty_floats::empty_floats;
