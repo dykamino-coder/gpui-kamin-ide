@@ -12,7 +12,7 @@ pub(crate) use block_group::{block_group, paint_group};
 pub(crate) use replaced::grouped_replaced;
 pub(crate) use wrapper::grouped_wrapper;
 
-use crate::style::computed::{Computed, FontCx};
+use crate::style::computed::{BoxStyle, Computed, FontCx};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -33,13 +33,13 @@ pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
 /// Таких случаев три: размытие поддерева (`filter: blur`), смешивание с
 /// кадром по формулам CSS (`mix-blend-mode`) и изоляция (`isolation`), где
 /// поддерево обязано сложиться отдельно, прежде чем попасть в кадр.
-pub(crate) fn grouped(el: AnyElement, c: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+pub(crate) fn grouped(el: AnyElement, c: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
     grouped_with(el, c, None, vcx)
 }
 
 pub(super) fn grouped_with(
     el: AnyElement,
-    c: &Computed,
+    c: &BoxStyle,
     ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
     vcx: ValueCx<'_>,
 ) -> AnyElement {

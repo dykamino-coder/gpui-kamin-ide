@@ -5,7 +5,7 @@ use super::*;
 use crate::document::state::ValueCx;
 use crate::style::values::value::px_lossy_zero;
 
-pub(super) fn layout_grid_gap(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(super) fn layout_grid_gap(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     // CSS Align §9.1 / Blink baseline_utils.h: baseline sharing and synthesis
     // are decided for each item in its physical alignment axis. Dropping the
@@ -23,7 +23,7 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div
     alignment_axes::project(
         d.style(),
         real_grid && c.wm().vertical(),
-        c.parent_grid >= 2,
+        c.context.parent_grid >= 2,
     );
     // Биты базовой по оси x для элемента сетки (css-align-3 §9.1; Blink
     // baseline_utils.h `DetermineBaselineWritingMode`/`DetermineBaselineGroup`):

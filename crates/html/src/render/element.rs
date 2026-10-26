@@ -6,8 +6,8 @@
 //! элемент уходит в формы, рамку (`iframe`/`<object>` с документом) или общий
 //! диспетчер по виду коробки (`dispatch_element`).
 
-use crate::dom::pseudo_line_layers;
 use crate::dom::text_content::gather_text;
+use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 mod orthogonal;

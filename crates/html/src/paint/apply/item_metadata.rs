@@ -3,13 +3,13 @@
 //! — ведь в контейнере родителя стоит она. Это флаги ориентации базовой линии
 //! (`baseline_x_flags`), `align-self`/`justify-self` с признаком `safe`,
 //! проекция на оси вертикального родителя и baseline содержимого сетки.
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
-fn grid_mode(c: &Computed) -> u8 {
-    if c.parent_grid != 0 {
-        c.parent_grid
-    } else if c.parent_lanes {
-        match (c.cb_wm.vertical(), c.cb_wm.block_rl()) {
+fn grid_mode(c: &BoxStyle) -> u8 {
+    if c.context.parent_grid != 0 {
+        c.context.parent_grid
+    } else if c.context.parent_lanes {
+        match (c.context.cb_wm.vertical(), c.context.cb_wm.block_rl()) {
             (false, _) => 1,
             (true, false) => 2,
             (true, true) => 3,
@@ -19,23 +19,25 @@ fn grid_mode(c: &Computed) -> u8 {
     }
 }
 
-pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
+pub(super) fn baseline_x_flags(c: &BoxStyle) -> Option<u8> {
     let parent = grid_mode(c);
     if parent == 0 {
-        if !c.parent_flex_grid {
+        if !c.context.parent_flex_grid {
             return None;
         }
-        let central = c.cb_wm.vertical() && !c.cb_wm.sideways() && !c.wm().text_sideways();
+        let central =
+            c.context.cb_wm.vertical() && !c.context.cb_wm.sideways() && !c.wm().text_sideways();
         if c.wm().vertical() {
             return Some(4 | u8::from(c.wm().block_rl()) | if central { 2 } else { 0 });
         }
         return c
+            .context
             .cb_wm
             .vertical()
-            .then(|| u8::from(c.cb_wm.block_rl()) | if central { 2 } else { 0 });
+            .then(|| u8::from(c.context.cb_wm.block_rl()) | if central { 2 } else { 0 });
     }
     let vertical = c.wm().vertical();
-    let rl = if c.parent_grid != 0
+    let rl = if c.context.parent_grid != 0
         && matches!(
             c.position,
             Some(
@@ -51,7 +53,7 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         parent == 3
     };
     let mut bits = u8::from(rl);
-    if parent >= 2 && !c.cb_wm.sideways() && !c.wm().text_sideways() {
+    if parent >= 2 && !c.context.cb_wm.sideways() && !c.wm().text_sideways() {
         bits |= 2;
     }
     if vertical {
@@ -62,7 +64,7 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
     Some(bits)
 }
 
-pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &Computed) {
+pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &BoxStyle) {
     style.baseline_x_flags = baseline_x_flags(c);
     if grid_mode(c) == 0 {
         return;
@@ -86,7 +88,7 @@ pub(crate) fn project_wrapper(style: &mut gpui::StyleRefinement, c: &Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::{Align, BoxStyle, Display};
+    use crate::style::computed::{Align, Computed, Display};
 
     #[test]
     fn own_vertical_flex_items_keep_the_parent_central_synthesis_policy() {
@@ -110,7 +112,7 @@ mod tests {
             };
             let effective = crate::style::cascade::inherit::inherit(
                 &BoxStyle::from(parent.clone()),
-                &Computed::default(),
+                &BoxStyle::default(),
                 vcx,
             );
             assert_eq!(baseline_x_flags(&effective), Some(flags));
@@ -192,7 +194,7 @@ mod tests {
         assert_eq!(
             baseline_x_flags(&crate::style::cascade::inherit::inherit(
                 &BoxStyle::from(parent),
-                &Computed::default(),
+                &BoxStyle::default(),
                 vcx
             )),
             None
@@ -228,13 +230,13 @@ mod tests {
 
     #[test]
     fn wrapper_self_alignment_and_safety_follow_vertical_parent_axes() {
-        let c = Computed {
-            parent_grid: 2,
+        let mut c = BoxStyle::new(Computed {
             align_self: Some(Align::Baseline),
             align_self_last: true,
             align_self_safe: true,
             ..Computed::default()
-        };
+        });
+        c.context.parent_grid = 2;
         let mut wrapper = gpui::StyleRefinement::default();
         project_wrapper(&mut wrapper, &c);
         assert_eq!(wrapper.justify_self, Some(gpui::AlignItems::LastBaseline));

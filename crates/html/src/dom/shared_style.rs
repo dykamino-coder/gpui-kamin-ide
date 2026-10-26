@@ -5,9 +5,12 @@
 //! общими для всех копий элемента (Blink: `LayoutObject::Style()` — неизменяемый вычисленный стиль;
 //! Servo: `Arc<ComputedValues>`).
 
+use crate::box_facts::BoxContext;
 use crate::style::ComputedHandle;
+use crate::style::box_input::BoxStyleInput;
 use crate::style::cascade::materialize::ComputedSlot;
-use crate::style::computed::Computed;
+use crate::style::computed::writing_mode::WritingMode;
+use crate::style::computed::{Align, Computed};
 use std::rc::Rc;
 
 /// The style of an element by value stage. Copies of an element share all
@@ -20,6 +23,8 @@ pub struct SharedStyle {
     computed: ComputedSlot,
     /// Layout's used values: a copy of the computed style that layout edited.
     used: Option<Rc<Computed>>,
+    /// Факты коробки в существующем layout-made мосте до A07.
+    box_context: Option<Rc<BoxContext<WritingMode, Align>>>,
 }
 
 impl From<Computed> for SharedStyle {
@@ -28,6 +33,7 @@ impl From<Computed> for SharedStyle {
             cascaded: Rc::new(style),
             computed: ComputedSlot::default(),
             used: None,
+            box_context: None,
         }
     }
 }
@@ -39,6 +45,7 @@ impl From<Box<Computed>> for SharedStyle {
             cascaded: Rc::from(style),
             computed: ComputedSlot::default(),
             used: None,
+            box_context: None,
         }
     }
 }
@@ -98,10 +105,31 @@ impl SharedStyle {
 
     /// The style layout reads (css-cascade-5 §4.5): the computed style with
     /// layout's used values (`used_mut`) laid over it.
-    pub fn used(&self) -> Rc<Computed> {
-        match &self.used {
+    pub fn used(&self) -> BoxStyleInput {
+        let style = match &self.used {
             Some(used) => used.clone(),
             None => self.base(),
+        };
+        BoxStyleInput::new(style, self.box_context.clone())
+    }
+
+    /// Сохраняет факты существующей синтетической коробки до A07.
+    pub(crate) fn set_box_context(&mut self, context: Rc<BoxContext<WritingMode, Align>>) {
+        self.box_context = Some(context);
+    }
+
+    /// The style of an element that layout made from a box style (a copy styled
+    /// for a fragment, a dissolved `display: contents` child): its values are
+    /// computed already and become its only stage.
+    ///
+    /// TRANSITIONAL(cascade-7b-layout-made): layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle.
+    pub(crate) fn layout_made(input: impl Into<BoxStyleInput>) -> Self {
+        let BoxStyleInput { style, context } = input.into();
+        Self {
+            cascaded: style,
+            computed: ComputedSlot::default(),
+            used: None,
+            box_context: context,
         }
     }
 

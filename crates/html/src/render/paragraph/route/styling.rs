@@ -75,7 +75,7 @@ pub(crate) fn style_pieces(
         .filter(|f| f.initial_letter.is_none())
     {
         // Слой — копия стиля блока плюс объявления `::first-letter`
-        // (`dom::pseudo_line_layers`): фон блока в нём чужой, букве его не красить —
+        // (`layout::box_tree::pseudo_line_layers`): фон блока в нём чужой, букве его не красить —
         // тот же отсев, что в `initial_letter_float`.
         let mut first = first.clone();
         if first.background == inherited.background {

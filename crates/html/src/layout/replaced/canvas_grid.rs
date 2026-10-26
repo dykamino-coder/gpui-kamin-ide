@@ -18,7 +18,7 @@ pub(crate) fn render(
 ) -> Option<AnyElement> {
     let c = merged;
     let border = c.borders();
-    if c.parent_grid == 0
+    if c.context.parent_grid == 0
         || c.position.is_some()
         || c.contains_width()
         || c.contains_height()
@@ -64,7 +64,8 @@ pub(crate) fn render(
     }
     let h = w / ratio;
     let mut computed = c.clone();
-    super::image::inherit_item_metadata(&mut computed, merged, parent);
+    let context = computed.context.clone();
+    computed.context = super::image::inherit_item_metadata(&mut computed, context, merged, parent);
     // Canvas attributes describe its bitmap, not author preferred dimensions.
     if computed.attr_sized.0 {
         computed.width = None;
@@ -84,7 +85,7 @@ pub(crate) fn render(
         computed.align_self.is_none() || computed.align_self_normal,
         computed.justify_self.is_none() || computed.justify_self_normal,
     );
-    if c.parent_grid >= 2 {
+    if c.context.parent_grid >= 2 {
         std::mem::swap(&mut align_start, &mut justify_start);
     }
     if align_start {
