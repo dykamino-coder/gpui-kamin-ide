@@ -14,6 +14,7 @@ mod continuation;
 mod element;
 mod kids;
 mod measure;
+mod oof;
 mod pages;
 mod planning;
 mod regrow;
@@ -124,6 +125,7 @@ pub struct PageStack {
     /// `IsMonolithic`: fixed при печати повторяется на каждой странице).
     pub(crate) fixed: Vec<Vec<AnyElement>>,
     pub(crate) plan: std::cell::RefCell<Plan>,
+    oof: oof::State,
     pub(crate) pages: std::cell::Cell<usize>,
     pub(crate) grid: std::cell::Cell<(usize, f32)>,
     /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
@@ -160,6 +162,7 @@ impl PageStack {
             icb_reach,
             fixed,
             plan: std::cell::RefCell::new(Plan::default()),
+            oof: Default::default(),
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
             select: None,

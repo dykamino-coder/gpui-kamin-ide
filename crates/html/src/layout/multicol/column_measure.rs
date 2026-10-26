@@ -146,6 +146,7 @@ impl ColumnStack {
                     intrinsic: None,
                     plan: std::cell::RefCell::new(Plan::default()),
                     static_places: Default::default(),
+                    oof: Default::default(),
                     col_w: std::cell::Cell::new(0.0),
                     lines_plan: std::cell::RefCell::new(Vec::new()),
                     spans_plan: std::cell::RefCell::new(Vec::new()),

@@ -8,6 +8,8 @@ use crate::layout::fragment::token::resume::oof::Child;
 use crate::layout::fragment::token::{Error, Space, Token, TokenId, TokenStore};
 use crate::layout::fragment::types::{Frag, Kid};
 
+pub(crate) mod stream;
+
 #[derive(Default)]
 pub(crate) struct Flow {
     inline: InlineTokens,

@@ -1,70 +1,16 @@
 //! Исходный normal layout при известной ширине; снимок отделён от живых LayoutId.
 
-use super::{Snapshot, record::Recorder};
 use crate::dom::Element;
 use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
-use gpui::{
-    AnyElement, App, AvailableSpace, IntoElement, LayoutId, ParentElement, Styled, Window, div, px,
-    size,
-};
+use gpui::{AnyElement, App, LayoutId, Window};
 use std::rc::Rc;
 
-fn contains_positioned(e: &Element) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
-        if crate::layout::box_kind::out_of_flow(&e.style.used()) {
-            return true;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            crate::dom::Node::Element(c) => Some(c),
-            _ => None,
-        }));
-    }
-    false
-}
+mod source;
+pub(crate) use source::{collect, collect_paged, contains_positioned};
 
-pub(crate) fn collect(
-    kids: &[Element],
-    parent: &BoxStyle,
-    width: f32,
-    opts: &RenderOpts,
-    window: &mut Window,
-    cx: &mut App,
-) -> Rc<Snapshot> {
-    if !kids.iter().any(contains_positioned) {
-        return Rc::default();
-    }
-    window.with_nested_layout(|window| {
-        let recorder = Rc::new(Recorder::default());
-        let mut opts = opts.clone();
-        opts.cx.position = Default::default();
-        opts.cx.deferred = Default::default();
-        opts.cx.position.geometry_record = Some(recorder.clone());
-        opts.cx.position.geometry = None;
-        opts.cx.constraints.avail_w = Some(width);
-        opts.frag = Default::default();
-        // Это первоначальная normal geometry, а не копия очередного fragmentainer.
-        let mut root = div()
-            .block()
-            .w(px(width))
-            .children(
-                kids.iter()
-                    .map(|c| opts.cx.contracts.build.element(c, parent, &opts)),
-            )
-            .into_any_element();
-        root.layout_as_root(
-            size(
-                AvailableSpace::Definite(px(width)),
-                AvailableSpace::MaxContent,
-            ),
-            window,
-            cx,
-        );
-        Rc::new(recorder.snapshot(window))
-    })
-}
+pub(crate) type PageSource = Rc<dyn Fn((f32, f32), &mut Window, &mut App) -> Rc<super::Snapshot>>;
 
 type Build = Box<dyn FnOnce(RenderOpts) -> AnyElement>;
 
@@ -127,6 +73,7 @@ impl Wrap for Original {
 mod tests {
     use super::*;
     use crate::layout::positioned::containing_block::LayerScope;
+    use gpui::{AvailableSpace, IntoElement, div, px, size};
     use std::cell::Cell;
 
     #[gpui::test]

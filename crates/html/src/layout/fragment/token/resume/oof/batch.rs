@@ -16,6 +16,7 @@ pub(crate) fn resume_all<T>(
     space: Space,
     normal_complete: bool,
     store: &mut TokenStore,
+    space_for: impl Fn(u32, Space) -> Space,
     mut child: impl FnMut(u32, f32, Option<TokenId>, Space, &mut TokenStore) -> Result<Child<T>, Error>,
 ) -> Result<Batch<T>, Error> {
     let mut fragments = Vec::new();
@@ -37,6 +38,7 @@ pub(crate) fn resume_all<T>(
             .enumerate()
             .filter(|(_, input)| input.repeat_fixed == repeated)
         {
+            let current = space_for(input.idx, current);
             let output = resume(input, current, store, |start, token, store| {
                 child(input.idx, start, token, current, store)
             })?;

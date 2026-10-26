@@ -17,6 +17,7 @@ use static_position::StaticPosition;
 pub(crate) struct Recorder {
     nodes: RefCell<HashMap<u64, Entry>>,
     spots: RefCell<HashMap<u64, StaticPosition>>,
+    pub(super) flows: super::fragmentation::Recording,
 }
 
 struct Entry {
@@ -40,6 +41,10 @@ impl Entry {
 }
 
 impl Recorder {
+    pub(super) fn normal(&self, id: u64, window: &Window) -> Option<Bounds<Pixels>> {
+        self.nodes.borrow().get(&id)?.node.bounds(window)
+    }
+
     pub(crate) fn spot(
         &self,
         id: u64,
@@ -144,6 +149,7 @@ pub(crate) fn wrap(id: u64, style: &BoxStyle, child: AnyElement, opts: &RenderOp
 /// Только метаданные записи переживают рекурсивную сборку детей, не весь BoxStyle.
 pub(crate) fn capture(id: u64, style: &BoxStyle, opts: &RenderOpts) -> Option<Box<Recording>> {
     let recorder = opts.cx.position.geometry_record.as_ref()?;
+    recorder.flows.policy(id, style);
     let b = style.borders();
     Some(Box::new(Recording {
         id,

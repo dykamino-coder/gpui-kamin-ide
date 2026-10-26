@@ -2,8 +2,9 @@
 use super::*;
 use crate::layout::fragment::types::StackAxis;
 use crate::style::values::value::Len;
+use std::cell::RefCell;
 
-fn section(nodes: &[Node]) -> &Element {
+pub(super) fn section(nodes: &[Node]) -> &Element {
     fn find(nodes: &[Node]) -> Option<&Element> {
         nodes.iter().find_map(|n| match n {
             Node::Element(e) if e.tag == "section" => Some(e),
@@ -123,7 +124,7 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract(
             gpui::point(gpui::px(0.), gpui::px(0.)),
             gpui::size(gpui::px(400.), gpui::px(400.)),
             |window, app| {
-                assert_eq!(recipe.children(width, window, app).len(), 3);
+                assert_eq!(recipe.recorded_children(width, window, app).0.len(), 3);
                 gpui::div()
             },
         );

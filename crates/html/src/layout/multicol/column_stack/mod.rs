@@ -11,6 +11,7 @@ mod axis;
 pub mod balance;
 pub mod element;
 mod gap_geometry;
+pub(crate) mod oof;
 mod paginate;
 
 pub struct ColumnStack {
@@ -52,6 +53,7 @@ pub struct ColumnStack {
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
     pub(crate) gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
     pub(crate) plan: std::cell::RefCell<Plan>,
+    pub(super) oof: oof::State,
     /// Reuse placement storage while mapping viewport static-position probes.
     pub(crate) static_places: Option<crate::layout::fragment::static_coordinates::Places>,
     pub(crate) col_w: std::cell::Cell<f32>,
@@ -116,6 +118,7 @@ impl ColumnStack {
             gap_items,
             intrinsic,
             plan: std::cell::RefCell::new(Plan::default()),
+            oof: oof::State::default(),
             static_places: Default::default(),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
@@ -181,11 +184,7 @@ impl ColumnStack {
             .max(0.0)
     }
 
-    /// Смещение начала рядов (`row_phase`).
-    /// Блочный размер содержимого коробки заданной высоты: линейки
-    /// единственной линии колонок тянутся до него (Blink `PaintColumnRules`:
-    /// «Paint column rules as tall as the entire multicol container, but only
-    /// when at the last row»).
+    /// Линейки единственной линии колонок до заданного блочного размера.
     pub fn with_rule_stretch(mut self, h: Option<f32>) -> Self {
         self.rule_to = h;
         self

@@ -33,6 +33,7 @@ fn delayed_absolute_extends_plan_and_fixed_finishes_on_its_last_page() {
             },
             true,
             &mut store,
+            |_, space| space,
             |idx, start, token, space, store| {
                 flows[idx as usize].resume(
                     &Kid {
@@ -89,6 +90,7 @@ fn fixed_alone_waits_for_normal_end_without_requesting_space() {
             },
             normal_complete,
             &mut store,
+            |_, space| space,
             |_, _, token, space, _| {
                 assert!(token.is_none());
                 assert_eq!(
