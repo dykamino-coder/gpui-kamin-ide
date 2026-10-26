@@ -14,6 +14,7 @@ use overflow_inset::box_overflow;
 pub(crate) use overflow_inset::static_shift;
 
 pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
+    let edges = crate::layout::block::sizing::BoxEdges::from_computed(c);
     contained_intrinsic::apply(&mut d, c);
     // `contain: size`: коробка меряется как пустая — рост от содержимого
     // подменяется `contain-intrinsic-size` (или нулём). Подмена касается
@@ -101,9 +102,9 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
         d = d.min_w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
     }
-    d = apply_sides(d, &c.padding, SideKind::Padding, vcx);
-    d = apply_sides(d, &c.margin, SideKind::Margin, vcx);
-    d = apply_sides(d, &c.borders(), SideKind::Border, vcx);
+    d = apply_sides(d, &edges.inner, SideKind::Padding, vcx);
+    d = apply_sides(d, &edges.outer, SideKind::Margin, vcx);
+    d = apply_sides(d, &edges.stroke, SideKind::Border, vcx);
     d = apply_radius(d, c, vcx);
     box_clip_position(d, c, vcx)
 }
