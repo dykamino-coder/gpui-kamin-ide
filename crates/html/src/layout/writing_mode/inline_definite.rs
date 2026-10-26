@@ -115,15 +115,9 @@ pub(crate) fn own(style: &Computed, parent: &BoxStyle, root: bool, icb_height: f
 /// physical height is definite (css-flexbox-1 §9.8 item 11, Blink
 /// `IsStretchedAlongBlockAxis`), and for a vertical item that is its inline size.
 fn stretched_flex_item(style: &Computed, parent: &Computed) -> Option<f32> {
-    use crate::style::computed::{Align, FlexDir};
-    let row = matches!(parent.display, Some(Display::Flex | Display::InlineFlex))
-        && matches!(
-            parent.flex_dir,
-            None | Some(FlexDir::Row | FlexDir::RowReverse)
-        )
-        && parent.flex_wrap != Some(true);
+    use crate::style::computed::Align;
     let stretch = |a: Option<Align>| matches!(a, None | Some(Align::Stretch));
-    if !row
+    if !crate::layout::box_kind::flex_row_nowrap(parent)
         || !stretch(style.align_self)
         || !stretch(parent.align_items)
         || parent.contains_height()

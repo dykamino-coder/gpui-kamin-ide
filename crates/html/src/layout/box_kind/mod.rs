@@ -7,6 +7,9 @@ pub(crate) use line_boxes::inline_level_box;
 pub(crate) use line_boxes::phantom_inline;
 pub(crate) use line_boxes::replaced_tag;
 
+mod flex;
+pub(crate) use flex::{flex_row, flex_row_nowrap};
+
 mod contexts;
 pub(crate) use contexts::{bfc_root, own_context};
 

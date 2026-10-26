@@ -113,12 +113,7 @@ pub(crate) fn item_sizing(
     {
         let px_of = px_lossy_zero;
         let bd = e.style.used().borders();
-        let row = matches!(
-            inherited.flex_dir,
-            None | Some(crate::style::computed::FlexDir::Row)
-                | Some(crate::style::computed::FlexDir::RowReverse)
-        );
-        let extra = if row {
+        let extra = if crate::layout::box_kind::flex_row(inherited) {
             px_of(e.style.used().padding.left)
                 + px_of(e.style.used().padding.right)
                 + px_of(bd.left)
