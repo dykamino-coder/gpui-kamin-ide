@@ -174,15 +174,15 @@ async fn element_inner(
     } else {
         None
     };
-    let geometry_style = merged.clone();
+    let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
+        e.node_id, &merged, opts,
+    );
     let built = dispatch_element(stk, e, merged, inherited, opts, outer_row, built_iframe).await;
     crate::interactive::scroll_extent::project(
-        crate::layout::positioned::containing_block::metrics::record::wrap(
-            e.node_id,
-            &geometry_style,
-            built,
-            opts,
-        ),
+        match geometry {
+            Some(geometry) => geometry.wrap(built),
+            None => built,
+        },
         scroll_projection,
     )
 }

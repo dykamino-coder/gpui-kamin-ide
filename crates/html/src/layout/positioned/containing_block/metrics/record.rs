@@ -135,27 +135,45 @@ fn margin_offset(style: &Computed, rtl: bool, vcx: ValueCx<'_>) -> gpui::Point<P
 
 /// Декоратор исходного CSS-бокса сохраняет его LayoutId, не добавляя коробок solver.
 pub(crate) fn wrap(id: u64, style: &BoxStyle, child: AnyElement, opts: &RenderOpts) -> AnyElement {
-    let Some(recorder) = &opts.cx.position.geometry_record else {
-        return child;
-    };
+    match capture(id, style, opts) {
+        Some(geometry) => geometry.wrap(child),
+        None => child,
+    }
+}
+
+/// Только метаданные записи переживают рекурсивную сборку детей, не весь BoxStyle.
+pub(crate) fn capture(id: u64, style: &BoxStyle, opts: &RenderOpts) -> Option<Box<Recording>> {
+    let recorder = opts.cx.position.geometry_record.as_ref()?;
     let b = style.borders();
-    Record {
+    Some(Box::new(Recording {
         id,
         cb: style.cb_node,
         positioned: style.position == Some(crate::style::computed::Position::Absolute),
         border: [b.top, b.right, b.bottom, b.left].map(px_lossy_zero),
         recorder: recorder.clone(),
-        child,
-    }
-    .hooked()
+    }))
 }
 
-struct Record {
+pub(crate) struct Recording {
     id: u64,
     cb: u64,
     positioned: bool,
     border: [f32; 4],
     recorder: Rc<Recorder>,
+}
+
+impl Recording {
+    pub(crate) fn wrap(self: Box<Self>, child: AnyElement) -> AnyElement {
+        Record {
+            geometry: self,
+            child,
+        }
+        .hooked()
+    }
+}
+
+struct Record {
+    geometry: Box<Recording>,
     child: AnyElement,
 }
 
@@ -165,13 +183,14 @@ impl Wrap for Record {
     }
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let id = self.child.request_layout(window, cx);
-        self.recorder.nodes.borrow_mut().insert(
-            self.id,
+        let geometry = &self.geometry;
+        geometry.recorder.nodes.borrow_mut().insert(
+            geometry.id,
             Entry {
                 node: Node::capture(id, window),
-                cb: self.cb,
-                positioned: self.positioned,
-                border: self.border,
+                cb: geometry.cb,
+                positioned: geometry.positioned,
+                border: geometry.border,
             },
         );
         id
