@@ -5,7 +5,12 @@ use super::*;
 use crate::document::state::ValueCx;
 use crate::style::values::value::px_lossy_zero;
 
-pub(super) fn layout_grid_gap(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
+pub(super) fn layout_grid_gap(
+    mut d: Div,
+    c: &BoxStyle,
+    sizes: &BoxDimensions,
+    vcx: ValueCx<'_>,
+) -> Div {
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     // CSS Align §9.1 / Blink baseline_utils.h: baseline sharing and synthesis
     // are decided for each item in its physical alignment axis. Dropping the
@@ -35,7 +40,7 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div
     d.style().baseline_x_flags = item_metadata::baseline_x_flags(c);
     grid_content_baseline::apply(d.style(), c);
     if let Some(r) = c.aspect_ratio
-        && !ratio_as_auto_min(c)
+        && !ratio_as_auto_min(c, sizes)
     {
         d.style().aspect_ratio = Some(r);
     }
