@@ -115,7 +115,7 @@ pub(super) async fn generic_box_stack(
             col_vert,
             col_rl,
             col_inline_size,
-            outer_space,
+            outer_space.clone(),
             lone_span,
         );
         (d, merged) = match result {
