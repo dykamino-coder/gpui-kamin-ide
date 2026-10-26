@@ -41,7 +41,7 @@ pub struct ColumnFlow {
 
 impl ColumnFlow {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(super) fn new(
         build: ColumnBuilder,
         text: SharedString,
         count: Option<usize>,
