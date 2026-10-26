@@ -72,13 +72,8 @@ pub(crate) fn ordered_element(
     // css-align-3 §6.1). Прежде доля решалась от высоты
     // строки (`stretch-requires-computed-auto-size`: красная
     // коробка в полвысоты соседа).
-    if matches!(
-        inherited.display,
-        Some(Display::Flex) | Some(Display::InlineFlex)
-    ) && matches!(
-        inherited.flex_dir,
-        None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
-    ) && !inherited.wm().vertical()
+    if crate::layout::box_kind::flex_row(inherited)
+        && !inherited.wm().vertical()
         && !e.style.cascaded().wm().vertical()
         && matches!(e.style.used().height, Some(Len::Pct(_)))
         && !matches!(

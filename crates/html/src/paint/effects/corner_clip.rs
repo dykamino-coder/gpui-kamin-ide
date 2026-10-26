@@ -49,13 +49,13 @@ pub(crate) fn insets(c: &Computed, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
     }))
 }
 
-pub(crate) fn new(c: &Computed, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<CornerClip> {
+pub(crate) fn new(c: &BoxStyle, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<CornerClip> {
     let insets = insets(c, vcx)?;
     let mask = mask?;
     if !mask.starts_with("shape:rrect(") {
         return None;
     }
-    let mut own = BoxStyle::new(c.clone());
+    let mut own = BoxStyle::shared(crate::style::box_input::BoxStyleInput::from(c));
     own.clip_margin = None;
     own.opacity = None;
     let b = c.borders();

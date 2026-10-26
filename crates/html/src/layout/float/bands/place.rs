@@ -21,7 +21,6 @@ impl FloatBands {
         // 150 встаёт на x=150 своего margin-box — его рамка на нуле
         // (`negative-margin-float-positioning`).
         let w_fit = w;
-        let (w, h) = (w.max(0.0), h.max(0.0));
         // Правила 4, 5, 6 и §9.5.2.
         let ceiling = self.clearance(clear, self.ceiling());
         // Правило 8: как можно выше — спуск начинается с потолка. Правила 3
@@ -43,6 +42,51 @@ impl FloatBands {
         } else {
             r.min(self.cb.1) - w_fit
         };
+        self.insert_float(side, x, y, w_fit, h);
+        // Правило 5: следующий флоат не выше этого.
+        self.ceil_floats = self.ceil_floats.max(y);
+        (x, y)
+    }
+
+    /// Продолжение уже начатого float: opportunity читается на границе
+    /// фрагмента, пройденная часть margin-box остаётся выше этой границы.
+    /// Clear относится к первому фрагменту, поэтому здесь не повторяется.
+    pub(crate) fn resume_float(
+        &mut self,
+        side: i8,
+        w: f32,
+        h: f32,
+        top: f32,
+        fragment_start: f32,
+    ) -> (f32, f32) {
+        if top + h.max(0.0) <= fragment_start {
+            let x = if side < 0 { self.cb.0 } else { self.cb.1 - w };
+            self.insert_float(side, x, top, w, h);
+            return (x, top);
+        }
+        // Правило 5 CSS2 §9.5.1 действует и между продолжениями: поздний
+        // узкий float не обгоняет ранний, отложенный занятой полосой.
+        let start = fragment_start.max(self.ceil_floats);
+        let mut i = self.idx_at(start);
+        while !self.fits(i, side, w) && self.bands[i + 1].top.is_finite() {
+            i += 1;
+        }
+        let delay = self.bands[i].top.max(start) - fragment_start;
+        let (l, r) = self.walls(i);
+        let x = if side < 0 {
+            l.max(self.cb.0)
+        } else {
+            r.min(self.cb.1) - w
+        };
+        let y = top + delay;
+        self.insert_float(side, x, y, w, h);
+        self.ceil_floats = self.ceil_floats.max(fragment_start + delay);
+        (x, y)
+    }
+
+    fn insert_float(&mut self, side: i8, x: f32, y: f32, w: f32, h: f32) {
+        let near = if side < 0 { x } else { x + w };
+        let (w, h) = (w.max(0.0), h.max(0.0));
         // Занятость: экстент — дальний от своей стороны край флоата.
         let edge = if side < 0 { x + w } else { x };
         let bot = y + h;
@@ -51,7 +95,7 @@ impl FloatBands {
             top: y,
             h,
             edge,
-            near: if side < 0 { x } else { x + w_fit },
+            near,
             shape: None,
         });
         let a = self.split_at(y);
@@ -75,9 +119,6 @@ impl FloatBands {
         } else {
             self.clear_r = self.clear_r.max(bot);
         }
-        // Правило 5: следующий флоат не выше этого.
-        self.ceil_floats = self.ceil_floats.max(y);
-        (x, y)
     }
 
     /// Give the float placed last its `shape-outside` line exclusion

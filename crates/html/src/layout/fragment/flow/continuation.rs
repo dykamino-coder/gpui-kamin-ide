@@ -12,6 +12,9 @@ pub(crate) struct ContentLine {
     pub(crate) state: InlineState,
     pub(crate) top: f32,
     pub(crate) bottom: f32,
+    /// Проекция уже потреблённого префикса относительно начала самого IFC.
+    /// Не переносится вместе с координатами владельца и не содержит clearance строки.
+    pub(crate) prefix: f32,
     /// Остаток предыдущего фрагментаинера перед этой строкой (css-break-3 §5.3).
     pub(crate) consumed_before: f32,
 }
@@ -43,7 +46,8 @@ impl FlowMeasure {
                 .or_insert(line);
         }
         for (paragraph, line) in first {
-            self.paragraph_resume(paragraph).resume(line.state.clone());
+            self.paragraph_resume(paragraph)
+                .resume_at(line.state.clone(), line.prefix);
         }
     }
 

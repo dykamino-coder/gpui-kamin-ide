@@ -72,7 +72,7 @@ impl Paragraph {
                 // CSS Overflow 3: truncate at the content edge; indentation
                 // changes the space available from the start of this line.
                 let room = limit - line.indent;
-                if line.width > room + px(0.5) && !line.ellipsis {
+                if line.width > room + px(crate::tolerance::LINE_FIT_EPS) && !line.ellipsis {
                     self.ellipsize(line, room, &segs, window);
                 }
             }

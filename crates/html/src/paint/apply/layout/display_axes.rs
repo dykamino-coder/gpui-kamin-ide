@@ -5,7 +5,7 @@ use super::*;
 
 pub(super) fn layout_flex_axes(
     mut d: Div,
-    c: &Computed,
+    c: &BoxStyle,
     dir: Option<FlexDir>,
     rtl_row: bool,
 ) -> Div {
@@ -140,7 +140,7 @@ pub(super) fn layout_flex_axes(
     d
 }
 
-pub(super) fn layout_display(mut d: Div, c: &Computed) -> Div {
+pub(super) fn layout_display(mut d: Div, c: &BoxStyle) -> Div {
     d.style().block_flow = Some(grid_flow_axes::block(c));
     match c.display {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
@@ -160,7 +160,10 @@ pub(super) fn layout_display(mut d: Div, c: &Computed) -> Div {
             // (`initial-letter-block-position-raise-over/under-ruby`).
             // Keep the inline-block boundary flag for non-visible overflow too:
             // native output adaptation then suppresses its content baseline.
-            if !c.parent_flex_grid && c.ruby_role.is_none() && c.inline_display != Some(true) {
+            if !c.context.parent_flex_grid
+                && c.ruby_role.is_none()
+                && c.inline_display != Some(true)
+            {
                 d.style().baseline_from_last = Some(true);
             }
         }

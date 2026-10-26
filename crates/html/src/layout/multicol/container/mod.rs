@@ -74,7 +74,7 @@ pub(crate) fn multicol_column_stack(
     // (css-multicol-1 §3.3, как прежде).
     // `column-fill: auto` заполняет колонку до БЛОЧНОГО
     // размера коробки — в вертикальном письме это ширина.
-    let fixed = fixed_column_height(e, col_vert, col_h, nest_rows);
+    let fixed = fixed_column_height(&merged, col_vert, col_h, nest_rows, &opts.cx.constraints);
     // Распорки монолитов и параллельные flex-строки — только при fixed auto-fill.
     // Балансировать по самой длинной группе нельзя: ломаются
     // `multi-line-row-flex-fragmentation-037/038` («красное видно»).

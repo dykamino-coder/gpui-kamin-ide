@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::{fragment_box, fragment_margins};
-use crate::layout::fragment::flow::{empty_floats, independent_copy};
+use crate::layout::fragment::flow::{copy_flow, empty_floats, exports_floats, regrow_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::BoxStyle;
 
@@ -39,7 +39,10 @@ pub(super) fn vertical_group(
     );
     let logical = logical_copy(&e, rl)?;
     let (mt, mb) = fragment_margins(&logical)?;
-    let float_extent = empty_floats(&logical);
+    let float_extent = logical
+        .children
+        .iter()
+        .any(|n| matches!(n, Node::Element(e) if exports_floats(e)));
     Some(Group {
         nodes: vec![Node::Element(e)],
         margins: if head > 0.0 {
@@ -57,29 +60,44 @@ pub(super) fn group(
     root: &BoxStyle,
     width: f32,
     top: f32,
+    breaks: (bool, bool),
     vcx: ValueCx<'_>,
 ) -> Option<Group> {
+    // Общий пробег обтекания — одна измеряемая копия, как у колонок.
+    // Одиночный float сохраняет собственный корень и независимый поток.
+    let mut flow = if nodes.len() > 1 {
+        copy_flow(nodes)
+    } else {
+        std::borrow::Cow::Borrowed(nodes)
+    };
+    if let std::borrow::Cow::Owned(nodes) = &mut flow
+        && let [Node::Element(root)] = nodes.as_mut_slice()
+    {
+        root.style = crate::style::cascade::inherit::fragment_group_style(breaks);
+    }
+    let nodes = flow.as_ref();
     let [Node::Element(e)] = nodes else {
         return None;
     };
     let floated = e.style.used().float.is_some_and(|f| f != 0);
-    let float_extent = empty_floats(e);
+    let float_extent = floated
+        || e.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(e) if exports_floats(e)));
     let eligible = if floated {
-        // TRANSITIONAL(F2-1): Float допускается только монолитом без строчного resume; удалить ограничение в P05 после отдельного продолжения его строк и полей.
-        let mut flow = e.clone();
-        flow.style.used_mut().float = None;
-        crate::layout::fragment::clone::content_monolith_blockified(e) && independent_copy(&flow)
+        crate::layout::fragment::flow::page_copy(e, true)
     } else {
-        independent_copy(e) || float_extent || super::leaf::eligible(e)
+        regrow_copy(e) || empty_floats(e) || super::leaf::eligible(e)
     };
     if !eligible {
         return None;
     }
     let e: Element = fragment_box(resolved_lengths(e, root, vcx), width, vcx);
     let (mt, mb) = fragment_margins(&e)?;
+    let blocks = !floated || !crate::layout::fragment::clone::content_monolith_blockified(&e);
     Some(Group {
         nodes: vec![Node::Element(e)],
-        blocks: !floated,
+        blocks,
         float_extent,
         margins: if floated {
             (0.0, 0.0, 0.0)
@@ -92,4 +110,9 @@ pub(super) fn group(
 }
 
 #[cfg(test)]
+mod float_runs;
+#[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod vertical_tests;

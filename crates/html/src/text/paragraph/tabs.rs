@@ -37,7 +37,7 @@ impl TabStops {
         }
         let stop = (position / step).floor() * step + step;
         // Допуск — от дробей `ch`: `7.5ch` до стопа `8ch` ровно на пороге.
-        if stop - position < self.min_gap - 1e-3 {
+        if stop - position < self.min_gap - crate::tolerance::TEXT_COORD_EPS {
             stop + step
         } else {
             stop

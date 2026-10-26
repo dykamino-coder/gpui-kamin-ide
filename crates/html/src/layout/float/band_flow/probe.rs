@@ -16,7 +16,27 @@ pub(super) fn probe(
     shapes: Option<Shapes>,
     p: &mut Probe,
 ) -> (f32, f32) {
-    probe_of(kid.kind, &kid.build, cb, avail, shapes, p)
+    let old = p.fragment.as_ref().map(|f| f.probes.clone());
+    if let Some(watched) = &kid.watched {
+        watched.reset();
+    }
+    if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
+        flow.rewind();
+        fragment.probes = flow.clone();
+    }
+    let size = probe_of(
+        kid.kind,
+        &kid.build,
+        cb,
+        avail,
+        shapes,
+        kid.watched.as_deref(),
+        p,
+    );
+    if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
+        fragment.probes = old;
+    }
+    size
 }
 
 /// `probe` для любого построителя: каркас по виду `kind`.
@@ -26,6 +46,7 @@ pub(super) fn probe_of(
     cb: f32,
     avail: f32,
     shapes: Option<Shapes>,
+    watched: Option<&crate::layout::fragment::paginate::watch::Watched>,
     p: &mut Probe,
 ) -> (f32, f32) {
     let positioning = p.positioning.clone();
@@ -56,6 +77,18 @@ pub(super) fn probe_of(
         (Some(f), Some(id)) => f.probes.relative(id, f.node.axis, p.window),
         _ => Default::default(),
     };
+    // LayoutId временной пробы нельзя читать после освобождения `el`.
+    // Сохраняем числа и для обычных блочных потомков без собственных строк.
+    if let (Some(watched), Some(f), Some(id)) = (watched, &p.fragment, tap.get())
+        && let Some(bounds) =
+            crate::layout::fragment::geometry::Node::capture(id, p.window).bounds(p.window)
+    {
+        p.last_geometry.boxes.extend(
+            watched
+                .laid_axis(bounds.origin, bounds.size, f.node.axis, p.window)
+                .boxes,
+        );
+    }
     p.last_clamp = match (clamp_scope, tap.get()) {
         (Some(scope), Some(id)) => scope.finish(id, p.window),
         _ => Default::default(),
@@ -78,7 +111,16 @@ pub(super) fn unrounded(tap: &Rc<Cell<Option<LayoutId>>>, window: &mut Window) -
 
 /// Внутренние ширины ребёнка (min-content, max-content) border-box.
 pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
-    intrinsic_of(&kid.build, p)
+    let old = p.fragment.as_ref().map(|f| f.probes.clone());
+    if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
+        flow.rewind();
+        fragment.probes = flow.clone();
+    }
+    let size = intrinsic_of(&kid.build, p);
+    if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
+        fragment.probes = old;
+    }
+    size
 }
 
 /// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).

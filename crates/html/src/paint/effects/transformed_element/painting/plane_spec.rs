@@ -57,12 +57,15 @@ fn snap(m: TransformationMatrix) -> TransformationMatrix {
         let r = v.round();
         if (v - r).abs() < eps { r } else { v }
     };
-    let lin = m.rotation_scale.map(|row| row.map(|v| near(v, 1e-5)));
+    let lin = m
+        .rotation_scale
+        .map(|row| row.map(|v| near(v, crate::tolerance::TRANSFORM_LINEAR_EPS)));
     let axis = lin.iter().flatten().all(|v| v.fract() == 0.0);
     TransformationMatrix {
         rotation_scale: lin,
         translation: if axis {
-            m.translation.map(|v| near(v, 1e-3))
+            m.translation
+                .map(|v| near(v, crate::tolerance::TRANSFORM_TRANSLATION_EPS))
         } else {
             m.translation
         },

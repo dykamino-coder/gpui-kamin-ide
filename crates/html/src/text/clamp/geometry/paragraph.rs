@@ -1,6 +1,7 @@
 //! Выбор последнего абзаца и подходящего бюджета строк для автоматического clamp.
 
 use super::ClampEntry;
+use crate::tolerance::LINE_FIT_EPS;
 
 // Знак обрыва в АВТО-режиме (`limit == None`). Рисует его НЕ этот
 // слой: сюда возвращается только БЮДЖЕТ строк — номер абзаца в
@@ -34,9 +35,9 @@ pub(super) fn automatic_para(
         // применённым бюджетом, иначе кадры зациклились бы:
         // обрезали → влезло → сняли → снова не влезло.
         let overflow = entries.iter().any(|e| e.clamped.is_some())
-            || entries
-                .iter()
-                .any(|e| f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height) > c + 0.5);
+            || entries.iter().any(|e| {
+                f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height) > c + LINE_FIT_EPS
+            });
         if !overflow {
             return None;
         }
@@ -63,7 +64,7 @@ pub(super) fn automatic_para(
                 // строки — полный низ этой строки ниже на `trim_end`.
                 let k = rows
                     .iter()
-                    .filter(|(_, b)| *b <= c + trim_end + 0.5)
+                    .filter(|(_, b)| *b <= c + trim_end + LINE_FIT_EPS)
                     .count();
                 (k >= 1).then(|| (rows[k - 1].1, seq, k))
             })
@@ -72,7 +73,7 @@ pub(super) fn automatic_para(
             // (`line-clamp-auto-043`: a line beside an earlier block's
             // overflow).
             .max_by(|a, b| {
-                if (a.0 - b.0).abs() <= 0.5 {
+                if (a.0 - b.0).abs() <= LINE_FIT_EPS {
                     a.1.cmp(&b.1)
                 } else {
                     a.0.total_cmp(&b.0)
@@ -94,9 +95,9 @@ pub(super) fn automatic_para(
                 }) || !empties.iter().any(|e| {
                     let y0 = f32::from(e.bounds.origin.y);
                     e.empty
-                        && f32::from(e.bounds.size.height) <= 0.5
-                        && y0 >= *bottom - 0.5
-                        && y0 <= c + 0.5
+                        && f32::from(e.bounds.size.height) <= LINE_FIT_EPS
+                        && y0 >= *bottom - LINE_FIT_EPS
+                        && y0 <= c + LINE_FIT_EPS
                 })
             })
             .and_then(|(_, seq, k)| seq.map(|s| (s, k)))

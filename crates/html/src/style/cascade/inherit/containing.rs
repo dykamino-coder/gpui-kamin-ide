@@ -116,9 +116,6 @@ pub(super) fn inherit_containing(
     {
         c.will_change |= crate::style::computed::wc::STACK;
     }
-    // Inside a turned paragraph the parent is the horizontal clone
-    // (`render/paragraph/vertical.rs`); its line mode is the vertical one.
-    set!(c.cb_wm, parent.wm().line());
     // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
     // с собой всё содержимое коробки). Куски вне потока его получали
     // (`shift_overlays`), а вложенные куски самой строки — нет: сдвиг
