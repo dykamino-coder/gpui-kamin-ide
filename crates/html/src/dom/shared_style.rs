@@ -5,6 +5,7 @@
 //! общими для всех копий элемента (Blink: `LayoutObject::Style()` — неизменяемый вычисленный стиль;
 //! Servo: `Arc<ComputedValues>`).
 
+use crate::style::ComputedHandle;
 use crate::style::cascade::materialize::ComputedSlot;
 use crate::style::computed::Computed;
 use std::rc::Rc;
@@ -79,6 +80,12 @@ impl SharedStyle {
     /// The materialization slot of the cascaded style.
     pub(crate) fn slot(&self) -> &ComputedSlot {
         &self.computed
+    }
+
+    /// Неизменяемая computed-стадия после материализации. Синтетика без
+    /// materialized slot возвращает None, а не каскад или used-копию.
+    pub(crate) fn published(&self) -> Option<ComputedHandle> {
+        self.computed.published()
     }
 
     /// The element's computed style (css-cascade-5 §4.4): the style materialized

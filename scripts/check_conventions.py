@@ -38,6 +38,7 @@ def tree_sources(revision):
 
 
 RULES = [
+    ("font facts layer: phase or platform dependency", r"^(?!\s*//).*(?:crate::(?:document|dom|style|layout|text|paint|svg|render)|\bgpui)::", r"^crates/html/src/font_facts/"),
     ("layout image layer: paint dependency", r"^(?!\s*//).*crate::paint::background::", r"^crates/html/src/layout/"),
     ("style image facts: painter or resolver dependency", r"^(?!\s*//).*crate::(?:paint|resources::(?:images|css_images))::", r"^crates/html/src/style/"),
     ("image CPU layer: reverse dependency", r"^(?!\s*//).*(?:crate::(?:style|layout|paint|render)|\bgpui)::", r"^crates/html/src/(resources/images|color|css_syntax)/"),

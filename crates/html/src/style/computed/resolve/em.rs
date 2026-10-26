@@ -17,7 +17,10 @@ impl Computed {
         // тому шрифту, которым текст в самом деле наберётся.
         let family = self.font_family.clone().unwrap_or_else(|| {
             if self.monospace == Some(true) {
-                crate::text::metrics::mono_family_for(self.lang.as_deref(), vcx).to_string()
+                vcx.doc
+                    .font_snapshot()
+                    .mono_family(self.lang.as_deref())
+                    .to_string()
             } else {
                 String::new()
             }
@@ -42,7 +45,7 @@ impl Computed {
             || self.text_shadow_raw.is_some()
         {
             let own_font = own_px;
-            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font, vcx);
+            let (ch, ex) = crate::style::font_metrics::horizontal(&family, own_font, vcx);
             if let Some(raw) = self.transform_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("transform", &px, vcx);
@@ -96,7 +99,7 @@ impl Computed {
             }
             self.font_size = Some(Len::Px(used.max(0.01)));
         }
-        let (mut ch, ex) = crate::text::metrics::ch_ex_px(&family, used, vcx);
+        let (mut ch, ex) = crate::style::font_metrics::horizontal(&family, used, vcx);
         // `ch` — продвижение нуля вдоль оси строки. При стоящих глифах в
         // вертикальном письме строка идёт сверху вниз, и продвижение равно
         // кеглю, а не ширине глифа (CSS Writing Modes §7.4).
@@ -104,11 +107,11 @@ impl Computed {
             ch = used;
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
-        let ic = crate::text::metrics::ic_px(&family, used, vcx);
+        let ic = crate::style::font_metrics::ideographic(&family, used, vcx);
         // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
         // вертикальных метрик её уже отдаёт третьим числом (по нему
         // `text-box-trim` считает срез `cap`), своего замера не нужно.
-        let cap = crate::text::metrics::vmetrics_px(&family, used, vcx).2;
+        let cap = crate::style::font_metrics::vertical(&family, used, vcx).2;
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),

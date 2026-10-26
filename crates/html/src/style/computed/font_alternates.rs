@@ -5,18 +5,15 @@
 //! снимок определений своего документа, чтобы разбор `<iframe>` не менял внешний документ.
 
 use crate::document::state::ValueCx;
-use std::collections::HashMap;
 use std::sync::Arc;
 
-type Key = (String, String, String);
-type Definition = (Vec<u32>, Vec<u32>);
-pub(crate) type Definitions = HashMap<Key, Definition>;
+use crate::font_facts::FeatureDefinitions;
 /// Inherited requests retain their document's definitions, so parsing an iframe
 /// cannot change the feature names of an already parsed outer document.
 #[derive(Clone, Debug)]
 pub struct Alternates {
     requests: Vec<(String, Vec<String>)>,
-    values: Arc<HashMap<Key, Definition>>,
+    values: Arc<FeatureDefinitions>,
 }
 
 impl PartialEq for Alternates {
@@ -29,16 +26,12 @@ impl PartialEq for Alternates {
 fn snapshot(requests: Vec<(String, Vec<String>)>, vcx: ValueCx<'_>) -> Alternates {
     Alternates {
         requests,
-        values: Arc::new(vcx.doc.font_alternates.borrow().clone()),
+        values: vcx.doc.font_snapshot().alternates(),
     }
 }
 
 pub(crate) fn normal(vcx: ValueCx<'_>) -> Alternates {
     snapshot(Vec::new(), vcx)
-}
-
-pub(crate) fn reset(vcx: ValueCx<'_>) {
-    vcx.doc.font_alternates.borrow_mut().clear();
 }
 
 fn ident(s: &str) -> bool {
@@ -117,6 +110,7 @@ pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>, vcx: ValueCx
                     }
                 }
             }
+            vcx.doc.font_registry_changed();
         }
     }
 }
@@ -215,7 +209,7 @@ mod tests {
         register("Example", "@styleset { named: 2; }", vec![], b.values());
         let first = parse("styleset(named)", false, a.values()).unwrap();
         let other = parse("styleset(named)", false, b.values()).unwrap();
-        reset(a.values());
+        a.reset_font_alternates();
         register("Example", "@styleset { named: 3; }", vec![], a.values());
         let later = parse("styleset(named)", false, a.values()).unwrap();
         assert_eq!(resolve("Example", Some(&first)), vec![("ss01".into(), 1)]);

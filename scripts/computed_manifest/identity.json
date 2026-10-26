@@ -1,9 +1,9 @@
 {
   "style": {
-    "owner": "SharedStyle::computed / materialize::Materialized",
+    "owner": "ComputedSlot::published / publication::Published (legacy adapters retained)",
     "key": "Rc allocation identity plus font generation and viewport inputs",
     "inheritance": "element computed parent; marks.style_parent / anonymous_wrapper",
-    "restyle": "replace slot; retain old Rc readers; never identify by used box"
+    "restyle": "replace slot; retain old closed handles; never identify by used box"
   },
   "box": {
     "owner": "BoxStyle and GPUI layout object",
@@ -18,6 +18,6 @@
   "boundaries": [
     "style -> box context is not inheritance",
     "computed operands survive used resolution",
-    "no identity or algorithms changed by A00"
+    "no identity or algorithms changed by A00/A01"
   ]
 }

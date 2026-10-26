@@ -45,7 +45,7 @@ impl Track {
         vcx: crate::document::state::ValueCx<'_>,
     ) {
         if let Track::Font(l) = *self {
-            *self = Track::Px(crate::text::metrics::spacing_px(
+            *self = Track::Px(crate::style::font_metrics::spacing_px(
                 Some(l),
                 family,
                 size_px,
