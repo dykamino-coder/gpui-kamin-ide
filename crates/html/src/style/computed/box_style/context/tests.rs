@@ -147,7 +147,7 @@ fn paint_input_copies_keep_the_context_and_shared_computed_allocation() {
 }
 
 #[test]
-fn quirks_height_uses_box_ancestors_without_changing_the_computed_percentage() {
+fn quirks_height_preserves_materialized_values_and_box_ancestor_inputs() {
     use crate::style::values::value::Len;
     let parsed = crate::dom::parse(
         r#"<div style="height:200px"><section style="height:auto;direction:rtl"><i style="display:block;height:50%">x</i></section></div>"#,
@@ -169,6 +169,7 @@ fn quirks_height_uses_box_ancestors_without_changing_the_computed_percentage() {
     assert_eq!(boxed.height, Some(Len::Px(100.0)));
     assert_eq!(boxed.context.cb_wm, parent.wm().line());
     assert!(boxed.context.applicability.rtl);
-    assert_eq!(identity.height, Some(Len::Pct(0.5)));
+    // Existing DOM quirks fixup resolves this percentage before materialization.
+    assert_eq!(identity.height, Some(Len::Px(100.0)));
     assert!(Rc::ptr_eq(&identity, &own.computed()));
 }
