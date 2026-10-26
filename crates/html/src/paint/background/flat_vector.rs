@@ -4,6 +4,7 @@
 //! `SVGShapePainter::FillShape` тоже красит геометрию прямоугольника напрямую.
 
 use crate::document::state::ValueCx;
+use crate::resources::css_images::Source as CpuSource;
 #[cfg(test)]
 use crate::style::values::value::Color;
 use gpui::{Bounds, Corners, Pixels, Window};
@@ -17,7 +18,7 @@ pub(super) fn paint(
     source: &super::Source,
     vcx: ValueCx<'_>,
 ) -> bool {
-    let super::Source::Vector { markup, .. } = source else {
+    let super::Source::Image(CpuSource::Vector { markup, .. }) = source else {
         return false;
     };
     if corners != Corners::default()

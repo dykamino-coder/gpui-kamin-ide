@@ -17,7 +17,7 @@ TOKEN = re.compile(
 IDENT = re.compile(r'[A-Za-z_][A-Za-z_0-9]*\Z')
 
 
-def tokens(source):
+def tokens(source, keep_literals=False):
     """Ignore comments and literals without losing diagnostic line numbers."""
     offset, line = 0, 1
     while match := TOKEN.search(source, offset):
@@ -36,6 +36,10 @@ def tokens(source):
             closing = '"' + match.group('hashes')
             stop = source.find(closing, end)
             end = len(source) if stop < 0 else stop + len(closing)
+            if keep_literals:
+                yield source[match.start():end], line
+        elif keep_literals and ('"' in word or (len(word) > 1 and word.endswith("'"))):
+            yield word, line
         elif not (word.startswith('//') or '"' in word or word.startswith("'" + '\\')):
             # A complete character literal contains its closing quote; lifetimes do not.
             if not (len(word) > 1 and word.endswith("'")):
