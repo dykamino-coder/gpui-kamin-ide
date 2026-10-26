@@ -199,7 +199,7 @@ fn dominant_shift(
         return dy;
     }
     let offset = own_central() - strut;
-    if offset.abs() < 0.001 {
+    if offset.abs() < crate::tolerance::TEXT_COORD_EPS {
         return dy;
     }
     Some(dy.unwrap_or(0.0) + offset)
