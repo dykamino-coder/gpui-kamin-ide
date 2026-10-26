@@ -12,7 +12,7 @@ pub(super) fn valid(value: &str) -> bool {
 }
 
 fn sequence(raw: &str, fallback: bool, depth: usize) -> bool {
-    if depth > 128 {
+    if depth > crate::budget::DocumentLimits::CSS_NESTING {
         return false;
     }
     let mut at = 0;

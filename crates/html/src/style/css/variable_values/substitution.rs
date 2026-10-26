@@ -3,8 +3,8 @@
 //! CSS Variables §3.3 разрешает считать чрезмерно длинное значение негодным.
 
 // Пределы в байтах UTF-8; бюджет принадлежит одному вычисляемому значению.
-const MAX_OUTPUT: usize = 1 << 20;
-const MAX_WORK: usize = 32 << 20;
+const MAX_OUTPUT: usize = crate::budget::DocumentLimits::VAR_OUTPUT_BYTES as usize;
+const MAX_WORK: usize = crate::budget::DocumentLimits::VAR_WORK_BYTES as usize;
 
 struct Budget {
     work: usize,
