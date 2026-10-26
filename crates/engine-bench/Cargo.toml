@@ -26,6 +26,7 @@ serde_json.workspace = true
 png = "0.18.1"
 
 [target.'cfg(windows)'.dependencies]
+gpui-windows = { package = "gpui-pre-windows", version = "=0.3.8", default-features = false }
 raw-window-handle = "0.6"
 windows = { version = "0.62", features = [
   "Win32_Foundation",

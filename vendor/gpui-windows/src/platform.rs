@@ -60,6 +60,8 @@ pub struct WindowsPlatform {
     // The below members will never change throughout the entire lifecycle of the app.
     /// Created with `headless()`: never windowed, and without a real text system.
     headless: bool,
+    // KaminIDE patch: instance-owned device creation policy, never environment state.
+    gpu_adapter_preference: GpuAdapterPreference,
     icon: HICON,
     background_executor: BackgroundExecutor,
     foreground_executor: ForegroundExecutor,
@@ -178,6 +180,11 @@ impl Drop for PowerRequest {
 
 impl WindowsPlatform {
     pub fn new(headless: bool) -> Result<Self> {
+        Self::with_gpu_adapter(headless, GpuAdapterPreference::Default)
+    }
+
+    /// KaminIDE patch: choose a GPU for this platform and subsequent device recovery.
+    pub fn with_gpu_adapter(headless: bool, preference: GpuAdapterPreference) -> Result<Self> {
         unsafe {
             OleInitialize(None).context("unable to initialize Windows OLE")?;
         }
@@ -268,6 +275,7 @@ impl WindowsPlatform {
             initial_windowing: RefCell::new(None),
             vsync_stop: RefCell::new(None),
             headless,
+            gpu_adapter_preference: preference,
             icon,
             background_executor,
             foreground_executor,
@@ -281,6 +289,12 @@ impl WindowsPlatform {
             app_identity: RefCell::new(None),
             system_notifications: RefCell::new(SystemNotificationState::new()),
         })
+    }
+
+    /// KaminIDE patch: identity of the live renderer adapter; unavailable until the platform attaches its GPU.
+    pub fn gpu_adapter_info(&self) -> Result<GpuAdapterInfo> {
+        let devices = self.inner.state.directx_devices.borrow();
+        GpuAdapterInfo::read(&devices.as_ref().context("GPU has not been attached")?.adapter)
     }
 
     pub(crate) fn window_from_hwnd(&self, hwnd: HWND) -> Option<Rc<WindowsWindowInner>> {
@@ -408,7 +422,7 @@ impl WindowsPlatform {
 
     /// Creates the DirectX devices that windows draw with, and starts vsync.
     fn attach_gpu(&self) -> Result<()> {
-        let devices = DirectXDevices::new().context("Creating DirectX devices")?;
+        let devices = DirectXDevices::new(self.gpu_adapter_preference.clone()).context("Creating DirectX devices")?;
         if let Some(text_system) = &self.direct_write_text_system {
             text_system.handle_gpu_lost(&devices)?;
         }
@@ -1688,8 +1702,9 @@ fn handle_gpu_device_lost(
     // If we don't wait, the final drawing result will be blank.
     std::thread::sleep(std::time::Duration::from_millis(350));
 
+    let preference = directx_devices.adapter_preference.clone();
     *directx_devices = try_to_recover_from_device_lost(|| {
-        DirectXDevices::new().context("Failed to recreate new DirectX devices after device lost")
+        DirectXDevices::new(preference.clone()).context("Failed to recreate new DirectX devices after device lost")
     })?;
     log::info!("DirectX devices successfully recreated.");
 

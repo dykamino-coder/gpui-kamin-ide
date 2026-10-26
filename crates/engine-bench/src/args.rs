@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR]\n\
+    [--gpu default|high-performance|minimum-power|NAME] [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR]\n\
+    engine_bench --list-gpus\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -13,8 +14,27 @@ pub(super) enum Mode {
     Both,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::Args;
+
+    #[test]
+    fn rejects_missing_and_empty_gpu_before_opening_the_input() {
+        for options in [
+            vec!["missing.html", "--gpu"],
+            vec!["missing.html", "--gpu", " "],
+        ] {
+            let error = Args::parse(options.into_iter().map(str::to_owned))
+                .err()
+                .unwrap();
+            assert!(error.to_string().contains("value") || error.to_string().contains("empty"));
+        }
+    }
+}
+
 pub(super) struct Args {
     pub(super) path: PathBuf,
+    pub(super) gpu: String,
     pub(super) viewport: (u32, u32),
     pub(super) runs: usize,
     pub(super) mode: Mode,
@@ -36,6 +56,7 @@ impl Args {
         }
         let mut out = Self {
             path: path.into(),
+            gpu: "default".into(),
             viewport: (800, 600),
             runs: 30,
             mode: Mode::Both,
@@ -73,6 +94,8 @@ impl Args {
                         _ => return Err("mode must be cold, warm or both".into()),
                     };
                 }
+                "--gpu" if !value.trim().is_empty() => out.gpu = value,
+                "--gpu" => return Err("GPU selector must not be empty".into()),
                 "--snapshot" => out.snapshot = Some(value.into()),
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 _ => return Err(format!("unknown option: {flag}").into()),
