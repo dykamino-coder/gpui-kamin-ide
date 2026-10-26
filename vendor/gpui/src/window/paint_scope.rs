@@ -47,6 +47,18 @@ impl Identity {
     }
 
     pub(super) fn check(&self, window: &Window) -> Result<(), PaintError> {
+        self.check_pass(window)?;
+        if !self.scope.0.get() {
+            return Err(PaintError::ExpiredScope);
+        }
+        if !Rc::ptr_eq(&self.scope.0, &window.paint_scope.0) {
+            return Err(PaintError::WrongScope);
+        }
+        Ok(())
+    }
+
+    // Commands retain draw resources, not permission to restore an old scope.
+    pub(super) fn check_pass(&self, window: &Window) -> Result<(), PaintError> {
         if !Rc::ptr_eq(&self.window, &window.paint_window) {
             return Err(PaintError::WrongWindow);
         }
@@ -55,12 +67,6 @@ impl Identity {
         }
         if !Rc::ptr_eq(&self.pass.0, &window.paint_pass.0) {
             return Err(PaintError::WrongPass);
-        }
-        if !self.scope.0.get() {
-            return Err(PaintError::ExpiredScope);
-        }
-        if !Rc::ptr_eq(&self.scope.0, &window.paint_scope.0) {
-            return Err(PaintError::WrongScope);
         }
         Ok(())
     }

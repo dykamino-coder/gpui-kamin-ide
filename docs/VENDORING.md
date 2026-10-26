@@ -238,3 +238,14 @@ git apply --unidiff-zero vendor/gpui-kaminide.patch
 потребителей и удалены. `GPUI_NATIVE_TREE` (печать дерева Taffy в
 stderr) удалён по той же причине. Новая диагностическая переменная требует реального
 потребителя и записи в этой таблице.
+
+## Immutable paint command mechanism
+
+GPUI exposes `record_paint` and `paint_plan` alongside checked live snapshots.
+Records reuse the canonical Scene journal and compositor within their original
+window/draw/raster scale; source element phases run once. The HTML coordinator
+finishes its queue through the generic recording lifecycle. Explicit clip/group
+descriptors and source/destination placement carry host-selected geometry;
+CSS order and fragment ownership remain in HTML. The command contract is in
+`vendor/gpui/src/window/paint_contract.md`, with HTML contract probes covering
+record identity, placement, effects and lifecycle. No second backend is added.

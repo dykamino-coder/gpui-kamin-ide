@@ -5,6 +5,7 @@ mod children;
 mod collector;
 mod deferred;
 mod queue;
+mod recording;
 mod root;
 mod state;
 
@@ -14,6 +15,7 @@ pub(crate) use deferred::{PaintInline, PaintLast};
 pub(crate) use root::roots;
 
 use gpui::{PaintPassId, Window};
+use recording::recording;
 use state::PaintJobQueue;
 use std::{
     cell::Cell,

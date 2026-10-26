@@ -5,6 +5,17 @@ use std::{any::Any, rc::Rc};
 
 type ChildrenCallback = dyn Fn(&Style, &mut dyn Iterator<Item = &mut AnyElement>, &mut Window, &mut App);
 type BoundaryCallback = dyn Fn(&mut Window) -> Box<dyn Any>;
+type FinishRecording = dyn Fn(&mut dyn Any, &mut Window, &mut App);
+
+/// Host-owned work that must finish inside a source command recording scope.
+/// GPUI only pairs entry, completion and guard destruction; it owns no queue.
+#[derive(Clone)]
+pub struct PaintRecording {
+    /// Open the host collector after entering the fresh recording scope.
+    pub begin: Rc<BoundaryCallback>,
+    /// Finish deferred host work before that scope and its resources close.
+    pub finish: Rc<FinishRecording>,
+}
 
 /// KaminIDE patch: visits children exactly at the normal child-paint location inside a box.
 /// The callback must paint each child at most once and must not repeat prepaint.
@@ -18,4 +29,6 @@ pub struct PaintTraversal {
     pub enter_boundary: Rc<BoundaryCallback>,
     /// Default child visitor for boxes without a local override.
     pub children: ChildPainter,
+    /// Optional lifecycle for source recording; playback never invokes it.
+    pub recording: Option<PaintRecording>,
 }

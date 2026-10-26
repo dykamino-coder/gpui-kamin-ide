@@ -257,7 +257,7 @@ impl Window {
             // its place in the BSP order (byte-identical to painting it
             // directly; a buffer would requantize glyph coverage).
             if rec.projection.is_none() && pieces[i] == 1 && polygon.is_empty() {
-                inline[i] = Some(self.adopt_plane_scene(rec.scene));
+                inline[i] = Some(self.adopt_scene(rec.scene));
                 continue;
             }
             let fragments = if pieces[i] > 1 {
@@ -350,7 +350,7 @@ impl Window {
 
     /// Prepare a plane scene for replay into the current one: its nested
     /// groups join the frame's list (ids shifted), hoisted backdrops go first.
-    fn adopt_plane_scene(&mut self, mut inner: Scene) -> Scene {
+    pub(super) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
         let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
         let mut nested = std::mem::take(&mut inner.groups);
         let base = self.next_frame.scene.groups.len() as u32;
