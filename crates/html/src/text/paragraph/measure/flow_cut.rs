@@ -11,7 +11,7 @@ impl Paragraph {
         if self.flow.0.is_empty() && self.flow.1.is_empty() {
             return (0.0, 0.0);
         }
-        let pads = self.padding_for(&self.lines);
+        let pads = self.line_padding();
         let lh = f32::from(self.line_height);
         let y0: f32 = pads.iter().take(line_no).map(|(a, b)| lh + a + b).sum();
         let (a, b) = pads.get(line_no).copied().unwrap_or((0., 0.));
@@ -19,7 +19,10 @@ impl Paragraph {
             .lines
             .get(line_no)
             .map_or(0., |l| f32::from(l.clearance));
-        self.cut_band(y0 + clearance, y0 + lh + a + b)
+        self.cut_band(
+            y0 + self.fragment_leading(line_no) + clearance,
+            y0 + lh + a + b,
+        )
     }
 
     /// Query the candidate's real line box before choosing its break.
@@ -43,11 +46,14 @@ impl Paragraph {
             hyphen: false,
             indent: gpui::px(0.),
         });
-        let pads = self.padding_for(&lines);
+        let pads = self.fragment_padding(self.padding_for(&lines));
         let lh = f32::from(self.line_height);
         let y0: f32 = pads[..before.len()].iter().map(|(a, b)| lh + a + b).sum();
         let (a, b) = pads[before.len()];
-        self.cut_band(y0 + f32::from(clearance), y0 + lh + a + b)
+        self.cut_band(
+            y0 + self.fragment_leading(before.len()) + f32::from(clearance),
+            y0 + lh + a + b,
+        )
     }
 
     fn cut_band(&self, y0: f32, y1: f32) -> (f32, f32) {

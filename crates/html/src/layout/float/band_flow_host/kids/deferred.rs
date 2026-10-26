@@ -21,6 +21,9 @@ pub(super) fn deferred(
     }
     let opts = opts.clone();
     Rc::new(move |cb, avail, shapes, height, inline_measure| {
+        if let Some(watched) = &opts.frag.watch {
+            watched.flow.rewind();
+        }
         let (positioning, escaped) = retained.isolate();
         let probe = opts.inner(|cx| {
             cx.position.state = positioning;

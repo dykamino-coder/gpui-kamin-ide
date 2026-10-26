@@ -93,3 +93,40 @@ fn local_marker_content_and_suppression_are_not_inherited() {
         "inherited "
     );
 }
+
+#[test]
+fn only_outside_generated_symbols_discard_text_spacing() {
+    use crate::style::values::value::Len;
+    let doc = DocState::new(Default::default());
+    let vcx = doc.values();
+    for (css, symbol) in [
+        ("list-style:disc outside", true),
+        ("list-style:square outside", true),
+        ("list-style:disc inside", false),
+        ("list-style:decimal outside", false),
+        ("list-style-type:'word '", false),
+    ] {
+        let item = Element::synthetic(
+            "li",
+            style(
+                &format!("display:list-item;letter-spacing:4px;word-spacing:160px;{css}"),
+                vcx,
+            ),
+            Default::default(),
+            vec![],
+        );
+        let merged = inherit(&BoxStyle::default(), &item.style.used(), vcx);
+        let marker = resolve(&item, &merged, &merged, vcx).unwrap();
+        let used = marker.style.as_ref().unwrap_or(&merged);
+        assert_eq!(
+            used.letter_spacing,
+            Some(Len::Px(if symbol { 0. } else { 4. })),
+            "{css}"
+        );
+        assert_eq!(
+            used.word_spacing,
+            Some(Len::Px(if symbol { 0. } else { 160. })),
+            "{css}"
+        );
+    }
+}

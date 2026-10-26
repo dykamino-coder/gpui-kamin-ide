@@ -26,7 +26,6 @@ pub(crate) fn own_context_style(c: &Computed) -> bool {
     ) || c.float.is_some()
         || c.contain_paint == Some(true)
         || c.contain_layout == Some(true)
-        || c.contain_size == Some(true)
         || c.flow_root == Some(true)
         // css-align-3 §align-block: не-`normal` `align-content` на блочном
         // контейнере — тот же `display: flow-root`, что пишет эталон
@@ -41,4 +40,28 @@ pub(crate) fn own_context_style(c: &Computed) -> bool {
         // и вне многоколоночника тоже. Поля детей спаннера с его полями не
         // схлопываются (`multicol-span-all-margin-nested-firstchild-001`).
         || c.column_span == Some(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn size_containment_keeps_the_surrounding_formatting_context() {
+        let size = Computed {
+            contain_size: Some(true),
+            ..Default::default()
+        };
+        assert!(!own_context_style(&size));
+        let layout = Computed {
+            contain_layout: Some(true),
+            ..size.clone()
+        };
+        assert!(own_context_style(&layout));
+        let paint = Computed {
+            contain_paint: Some(true),
+            ..size
+        };
+        assert!(own_context_style(&paint));
+    }
 }

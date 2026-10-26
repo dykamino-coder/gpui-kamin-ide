@@ -19,7 +19,16 @@ impl Cursor {
     pub(crate) fn reset(&self) {
         *self.0.borrow_mut() = None;
     }
+    pub(crate) fn consumed(&self) -> f32 {
+        self.0.borrow().as_ref().map_or(0.0, |t| t.consumed)
+    }
+    #[cfg(test)]
     pub(crate) fn resume(&self, state: InlineState) {
-        *self.0.borrow_mut() = Some(Token::new(FcState::Inline(state)));
+        self.resume_at(state, 0.0);
+    }
+    pub(crate) fn resume_at(&self, state: InlineState, consumed: f32) {
+        let mut token = Token::new(FcState::Inline(state));
+        token.consumed = consumed;
+        *self.0.borrow_mut() = Some(token);
     }
 }
