@@ -72,6 +72,9 @@ pub(crate) mod text;
 
 pub use style::ua::BROWSER_CSS;
 
+#[cfg(feature = "engine-bench")]
+pub use document::BuildTimings;
+
 #[cfg(feature = "wpt-harness")]
 pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
 

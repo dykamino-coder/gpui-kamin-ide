@@ -108,7 +108,7 @@
 {"field":"InheritedStyle.orphans","owners":{"layout":{"read":4},"layout:test":{"write":4},"render":{"read":1},"style":{"initialize":1,"read":3,"write":3}}},
 {"field":"InheritedStyle.pointer_events_none","owners":{"interactive":{"read":1},"paint":{"read":2},"render":{"read":2},"style":{"initialize":1,"read":3,"write":3}}},
 {"field":"InheritedStyle.preserve_newlines","owners":{"dom":{"read":1,"write":1},"layout":{"read":11},"layout:test":{"write":1},"render":{"read":9},"style":{"initialize":1,"read":3,"write":3},"style:test":{"read":1},"text":{"read":3}}},
-{"field":"InheritedStyle.rtl","owners":{"document":{"read":8,"write":3},"document:test":{"read":1},"dom":{"read":5,"write":3},"interactive":{"read":1},"interactive:test":{"write":2},"layout":{"read":56,"write":3},"layout:test":{"write":5},"paint":{"read":14},"paint:test":{"write":2},"render":{"read":22,"write":1},"style":{"initialize":2,"read":23,"write":3},"style:test":{"read":5,"write":1},"text":{"read":45}}},
+{"field":"InheritedStyle.rtl","owners":{"document":{"read":8,"write":3},"document:test":{"read":1},"dom":{"read":5,"write":3},"interactive":{"read":1},"interactive:test":{"write":2},"layout":{"read":57,"write":3},"layout:test":{"write":5},"paint":{"read":14},"paint:test":{"write":2},"render":{"read":22,"write":1},"render:test":{"write":2},"style":{"initialize":2,"read":23,"write":3},"style:test":{"read":5,"write":1},"text":{"read":45}}},
 {"field":"InheritedStyle.ruby_align","owners":{"style":{"initialize":1,"read":3,"write":3},"text":{"read":2}}},
 {"field":"InheritedStyle.ruby_justify","owners":{"render":{"read":2},"style":{"initialize":1,"read":2,"write":3},"text":{"read":7,"write":2}}},
 {"field":"InheritedStyle.ruby_merge","owners":{"style":{"initialize":1,"read":4,"write":4},"text":{"read":1}}},
@@ -118,8 +118,8 @@
 {"field":"InheritedStyle.skip_spaces","owners":{"style":{"initialize":1,"read":3,"write":3},"text":{"read":3}}},
 {"field":"InheritedStyle.tab_size","owners":{"layout":{"read":1},"style":{"initialize":1,"read":7,"write":1},"style:test":{"read":4},"text":{"read":1},"text:test":{"read":1,"write":6}}},
 {"field":"InheritedStyle.tab_size_len","owners":{"layout":{"read":1},"style":{"initialize":1,"mutable":3,"read":9,"write":1},"style:test":{"read":3},"text":{"read":1},"text:test":{"read":1,"write":1}}},
-{"field":"InheritedStyle.text_align","owners":{"layout":{"read":2},"paint":{"read":3},"render":{"read":2,"write":1},"style":{"initialize":1,"read":8,"write":7},"style:test":{"read":3},"text":{"read":1,"write":3},"text:test":{"read":1}}},
-{"field":"InheritedStyle.text_align_last","owners":{"render":{"read":1},"style":{"initialize":1,"read":5,"write":6},"style:test":{"read":3},"text":{"write":1}}},
+{"field":"InheritedStyle.text_align","owners":{"layout":{"read":2},"paint":{"read":3},"render":{"read":2,"write":1},"render:test":{"read":2,"write":1},"style":{"initialize":1,"read":8,"write":7},"style:test":{"read":3},"text":{"read":1,"write":3},"text:test":{"read":1}}},
+{"field":"InheritedStyle.text_align_last","owners":{"render":{"read":1},"render:test":{"read":2,"write":1},"style":{"initialize":1,"read":5,"write":6},"style:test":{"read":3},"text":{"write":1}}},
 {"field":"InheritedStyle.text_box_edge_set","owners":{"style":{"initialize":1,"read":2,"write":3},"style:test":{"read":1}}},
 {"field":"InheritedStyle.text_box_over","owners":{"document:test":{"write":1},"style":{"initialize":1,"read":2,"write":1},"style:test":{"read":1},"text":{"read":1}}},
 {"field":"InheritedStyle.text_box_under","owners":{"document:test":{"write":1},"layout":{"read":1},"style":{"initialize":1,"read":2,"write":1},"style:test":{"read":1},"text":{"read":1}}},
@@ -142,6 +142,6 @@
 {"field":"InheritedStyle.word_space_char","owners":{"render":{"write":1},"style":{"initialize":1,"read":3,"write":3},"text":{"read":4,"write":3}}},
 {"field":"InheritedStyle.word_spacing","owners":{"layout:test":{"read":1},"render":{"read":3},"style":{"initialize":1,"mutable":4,"read":7,"write":4},"style:test":{"read":1},"text":{"read":13,"write":3},"text:test":{"write":2}}},
 {"field":"InheritedStyle.wrap_anywhere","owners":{"style":{"initialize":1,"read":3,"write":2},"style:test":{"read":2},"text":{"read":8}}},
-{"field":"InheritedStyle.writing_mode","owners":{"document":{"read":8,"write":3},"document:test":{"read":1},"dom:test":{"write":2},"layout":{"read":9,"write":5},"layout:test":{"read":1,"write":43},"paint":{"read":1},"paint:test":{"write":13},"render":{"read":7,"write":4},"render:test":{"write":3},"style":{"initialize":1,"read":10,"write":3},"style:test":{"read":1,"write":5}}},
+{"field":"InheritedStyle.writing_mode","owners":{"document":{"read":8,"write":3},"document:test":{"read":1},"dom:test":{"write":2},"layout":{"read":9,"write":5},"layout:test":{"read":1,"write":43},"paint":{"read":1},"paint:test":{"write":13},"render":{"read":7,"write":4},"render:test":{"write":4},"style":{"initialize":1,"read":10,"write":3},"style:test":{"read":1,"write":5}}},
 {"field":"InheritedStyle.zoom_eff","owners":{"layout":{"read":1},"paint":{"read":3},"style":{"initialize":1,"read":3,"write":2},"style:test":{"read":1},"svg":{"read":4}}}
 ]

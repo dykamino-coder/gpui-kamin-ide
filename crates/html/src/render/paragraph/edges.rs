@@ -20,11 +20,8 @@ pub(crate) fn has_flow_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(e) => {
-            !matches!(
-                e.style.used().position,
-                Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-            ) && has_flow_text(&e.children)
+            !crate::style::flow::absolutely_positioned(e.style.used().position)
+                && has_flow_text(&e.children)
         }
     })
 }
@@ -60,12 +57,7 @@ pub(crate) fn edge_pieces(
             Some(Align::End) => Some(false),
             _ => None,
         };
-        let out_of_flow = style.float.is_some_and(|f| f != 0)
-            || matches!(
-                style.position,
-                Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-            );
+        let out_of_flow = crate::style::flow::out_of_flow(style);
         if let Some(top) = top
             && style.vertical_align != inherited.vertical_align
             && !out_of_flow

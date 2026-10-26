@@ -13,6 +13,7 @@ pub(super) fn parse_document(
     media: Media,
     fonts: &crate::text::metrics::FontContext,
     revision: crate::budget::RevisionBudget,
+    #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
     let state = DocState::new(media);
     state.budget.replace(Some(revision));
@@ -23,8 +24,14 @@ pub(super) fn parse_document(
     sheets.extend(crate::dom::style_sources::collect(input));
     crate::text::fonts::load_faces_sheets(&sheets, base, vcx);
     crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx);
-    let (mut nodes, root) =
-        viewport::prepare(crate::dom::convert(input, theme_css, media, &state), vcx);
+    #[cfg(feature = "engine-bench")]
+    let style_started = std::time::Instant::now();
+    let styled = crate::dom::convert(input, theme_css, media, &state);
+    #[cfg(feature = "engine-bench")]
+    {
+        timings.style = style_started.elapsed();
+    }
+    let (mut nodes, root) = viewport::prepare(styled, vcx);
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false);
     }
