@@ -97,13 +97,17 @@ impl Computed {
         } else {
             0
         };
-        let size_adjust = crate::text::fonts::matching::select(family, self, vcx).map_or_else(
-            || crate::text::fonts::size_adjust(family, slope, vcx),
-            |f| f.adjust,
-        );
+        let size_adjust = vcx
+            .doc
+            .font_snapshot()
+            .matching_face(family, self.font_request(family, 0.0))
+            .map_or_else(
+                || vcx.doc.font_snapshot().size_adjust(family, slope),
+                |f| f.adjust,
+            );
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
-                match crate::text::metrics::adjust_aspect(family, metric, vcx) {
+                match crate::style::font_metrics::adjust_aspect(family, metric, vcx) {
                     Some(have) if have > 0.0 => want / have,
                     _ => size_adjust,
                 }
@@ -120,11 +124,13 @@ impl Computed {
     /// (`font-features-across-space-3`).
     pub fn used_features(&self, vcx: crate::document::state::ValueCx<'_>) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
-        let mut all: Vec<(String, u32)> =
-            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self, vcx);
+        let mut all: Vec<(String, u32)> = vcx.doc.font_snapshot().face_features(
+            self.font_family.as_deref().unwrap_or(""),
+            self.font_request(self.font_family.as_deref().unwrap_or(""), 0.0),
+        );
         // Подбор веса грани по CSS (css-fonts-4 §5.2 шаг 4), а не по
         // расстоянию DirectWrite: свой тег, его читает подбор грани в gpui.
-        let (tag, on) = crate::text::fonts::CSS_WEIGHT_TAG;
+        let (tag, on) = crate::font_facts::CSS_WEIGHT_TAG;
         all.insert(0, (tag.to_string(), on));
         all.extend(self.font_features.iter().cloned());
         // Запрет подмены начертания (`font-synthesis-weight/-style: none`,
@@ -135,7 +141,7 @@ impl Computed {
                 all.push((tag.to_string(), 1));
             }
         }
-        all.extend(crate::text::fonts::alternates::resolve(
+        all.extend(crate::style::computed::font_alternates::resolve(
             self.font_family.as_deref().unwrap_or(""),
             self.font_alternates.as_ref(),
         ));
@@ -169,11 +175,11 @@ impl Computed {
         } else {
             0
         };
-        out.extend(crate::text::fonts::metric_overrides::features(
-            self.font_family.as_deref().unwrap_or(""),
-            slope,
-            vcx,
-        ));
+        out.extend(
+            vcx.doc
+                .font_snapshot()
+                .metric_features(self.font_family.as_deref().unwrap_or(""), slope),
+        );
         out
     }
 }

@@ -56,9 +56,10 @@ pub(crate) fn math_metrics(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f
 /// Вызывается для документа после регистрации шрифтов приложения:
 /// до неё `Ahem` ещё не найден и замер вернул бы метрики подмены.
 pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>, vcx: ValueCx<'_>) {
-    let loader = vcx.doc.metrics.platform.borrow().loader.clone();
+    let previous = vcx.doc.metrics.platform.borrow().clone();
     let mut platform = super::FontContext::new(text_system);
-    platform.loader = loader;
+    platform.loader = previous.loader;
+    platform.facts_factory = previous.facts_factory;
     platform.install(vcx);
 }
 

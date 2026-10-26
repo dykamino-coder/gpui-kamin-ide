@@ -12,7 +12,9 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Node, SharedStyle};
+use crate::style::ComputedHandle;
 use crate::style::computed::{BoxStyle, Computed};
+use crate::style::publication::Published;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -47,7 +49,7 @@ struct Materialized {
     parent: Rc<Computed>,
     /// Поколение шрифтовых входов и размеры viewport для относительных единиц.
     generation: Inputs,
-    computed: Rc<Computed>,
+    computed: Published,
 }
 
 impl Clone for ComputedSlot {
@@ -88,8 +90,13 @@ impl Materialized {
 }
 
 impl ComputedSlot {
+    /// Только опубликованная computed-стадия: отсутствие не подменяется каскадом.
+    pub(crate) fn published(&self) -> Option<ComputedHandle> {
+        self.0.borrow().as_ref().map(|m| m.computed.handle.clone())
+    }
+
     /// Материализованный стиль каскадного `own`, годный под родителем `parent`.
-    fn get(&self, own: &Computed, parent: &Computed, generation: Inputs) -> Option<Rc<Computed>> {
+    fn get(&self, own: &Computed, parent: &Computed, generation: Inputs) -> Option<Published> {
         let explicit = !own.explicit_inherit.is_empty() || !own.inherit_longhands.is_empty();
         self.0
             .borrow()
@@ -103,12 +110,12 @@ impl ComputedSlot {
         self.0
             .borrow()
             .as_ref()
-            .map(|m| (m.computed.clone(), m.parent.clone()))
+            .map(|m| (m.computed.legacy.clone(), m.parent.clone()))
     }
 
     /// Материализованный стиль под родителем-элементом, годен ли он под другим родителем или нет.
     pub(crate) fn any(&self) -> Option<Rc<Computed>> {
-        self.0.borrow().as_ref().map(|m| m.computed.clone())
+        self.0.borrow().as_ref().map(|m| m.computed.legacy.clone())
     }
 }
 
@@ -145,7 +152,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         let context = parent.element_style.as_ref();
         let computed = context
             .and_then(|p| p.variant_for(&element_parent))
-            .map(|p| own.slot().compute(p, cascaded, vcx))
+            .map(|p| own.slot().compute(p, cascaded, vcx).legacy)
             .unwrap_or_else(|| original.clone());
         crate::style::computed::ElementStyle {
             original,
@@ -164,7 +171,7 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
             None => e.computed.clone(),
         },
         // Анонимная коробка наследует от своей коробки-родителя.
-        None => super::compute::compute(parent, cascaded, vcx),
+        None => super::compute::compute(parent, cascaded, vcx).legacy,
     };
     let view = own.used();
     // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.
@@ -192,3 +199,6 @@ mod tests;
 mod tree_tests;
 #[cfg(test)]
 mod zoom_tests;
+
+#[cfg(test)]
+mod publication_tests;

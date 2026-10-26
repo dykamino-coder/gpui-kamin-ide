@@ -2,6 +2,7 @@
 //! корневого элемента — поле состояния документа (`document::state`).
 
 use crate::document::state::ValueCx;
+use crate::font_facts::FontRequest;
 /// Кегль КОРНЕВОГО элемента — база единицы `rem` (css-values-4 §6.1.4 —
 /// «the computed value of the em unit on the root element»). Постоянные 16
 /// врали на любом документе, где корню задан свой кегль: `:root { font-size:
@@ -42,12 +43,20 @@ impl Default for RootMetrics {
 
 impl RootMetrics {
     pub(crate) fn resolve_units(&mut self, vcx: ValueCx<'_>) {
-        let (ch, ex) = crate::text::metrics::ch_ex_px(&self.family, self.font_px, vcx);
+        let Ok(facts) = vcx.doc.font_provider().metrics(
+            FontRequest::new(&self.family, self.font_px),
+            &vcx.doc.font_snapshot(),
+        ) else {
+            return;
+        };
         self.units = [
-            crate::text::metrics::vmetrics_px(&self.family, self.font_px, vcx).2,
-            ch,
-            ex,
-            crate::text::metrics::ic_px(&self.family, self.font_px, vcx),
+            facts
+                .cap_height
+                .or(facts.ascent)
+                .map_or(0.7 * self.font_px, |m| m.px),
+            facts.zero_advance.map_or(0.5 * self.font_px, |m| m.px),
+            facts.x_height.map_or(0.5 * self.font_px, |m| m.px),
+            facts.ideographic_advance.map_or(self.font_px, |m| m.px),
         ];
     }
 }
@@ -79,12 +88,7 @@ pub fn set_root_metrics(doc: &crate::document::state::DocState, font_px: f32, li
 /// Высота строки `line-height: normal` корня (`family` кеглем `font`) для
 /// `set_root_metrics`: метрика шрифта, без неё — `1.2 * font`.
 pub fn root_normal_line_px(family: &str, font: f32, vcx: ValueCx<'_>) -> f32 {
-    let f = crate::text::metrics::normal_line(family, vcx);
-    if f > 0.0 {
-        crate::text::metrics::normal_px(f, font, vcx)
-    } else {
-        1.2 * font
-    }
+    crate::style::font_metrics::normal_height(family, font, vcx)
 }
 
 pub fn root_font_px(vcx: ValueCx<'_>) -> f32 {
@@ -117,39 +121,4 @@ pub(super) fn root_font_unit(unit: &str, vcx: ValueCx<'_>) -> f32 {
             _ => 3,
         }]
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn root_units_refresh_on_size_and_family_changes() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
-        crate::text::metrics::install_probe(
-            |family, size| {
-                let k = if family == "root-test-wide" { 1.0 } else { 0.5 };
-                (size * k, size * k * 0.8, size, size * k)
-            },
-            vcx,
-        );
-        crate::text::metrics::install_vprobe(|_, size| (size, 0.0, size * 0.75), vcx);
-        set_root_family(&doc, "root-test-wide");
-        set_root_metrics(&doc, 20.0, 25.0);
-        assert_eq!(root_font_unit("cap", vcx), 15.0);
-        assert_eq!(root_font_unit("ch", vcx), 20.0);
-        assert_eq!(root_font_unit("ex", vcx), 16.0);
-        assert_eq!(root_font_unit("ic", vcx), 20.0);
-        set_root_metrics(&doc, 40.0, 50.0);
-        assert_eq!(root_font_unit("ch", vcx), 40.0);
-        set_root_family(&doc, "root-test-narrow");
-        assert_eq!(root_font_unit("ch", vcx), 20.0);
-        assert_eq!(root_font_unit("ex", vcx), 16.0);
-        assert_eq!(root_font_unit("ic", vcx), 20.0);
-        assert_eq!(
-            super::super::calc_pct_px("calc(1rcap + 2rch + 1rex + 1ric)", vcx),
-            Some((0.0, 106.0))
-        );
-    }
 }

@@ -26,7 +26,9 @@ impl Computed {
             }
             FontVariantAlternates if inherit => self.font_alternates = None,
             FontVariantAlternates => {
-                if let Some(alternates) = crate::text::fonts::alternates::parse(v, false, vcx) {
+                if let Some(alternates) =
+                    crate::style::computed::font_alternates::parse(v, false, vcx)
+                {
                     self.font_alternates = accept_parsed!(self, Some(alternates));
                 }
             }

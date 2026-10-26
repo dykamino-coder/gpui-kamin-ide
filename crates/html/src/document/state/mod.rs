@@ -12,6 +12,7 @@
 //! Арены `calc()`/`anchor()` документа и их ручки — `arena`.
 
 mod arena;
+mod font_facts;
 mod property_registry;
 mod readiness;
 mod scoped;
@@ -36,6 +37,7 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    pub(crate) font_facts: font_facts::DocumentFonts,
     pub(crate) traversal: traversal::TraversalState,
     /// Первый отказ вложенного документа этой revision; не теряется при повторном кадре.
     pub(crate) embedded_failure: Cell<Option<crate::document::DocumentFailure>>,
@@ -56,7 +58,7 @@ pub struct DocState {
     /// Shaped paragraphs and fit results shared only inside this document.
     pub(crate) paragraph_measures: Rc<crate::text::paragraph::MeasureCache>,
     /// Named font-feature definitions owned by this document.
-    pub(crate) font_alternates: RefCell<crate::text::fonts::alternates::Definitions>,
+    pub(crate) font_alternates: RefCell<crate::font_facts::FeatureDefinitions>,
     /// Rasterized foreignObject layers of this document, bounded by the painter.
     pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
     /// SVG mask/filter definitions retained by deferred groups of this document.
@@ -112,6 +114,7 @@ impl DocState {
             frame_owner: Cell::new(arena::new_owner()),
             ..Self::default()
         });
+        doc.install_font_facts(None);
         doc.root.borrow_mut().resolve_units(doc.values());
         doc
     }

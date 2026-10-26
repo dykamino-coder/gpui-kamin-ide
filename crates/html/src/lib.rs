@@ -39,6 +39,7 @@ pub(crate) mod hooks;
 pub mod tolerance;
 pub use style::css;
 pub mod dom;
+pub mod font_facts;
 pub use dom::encoding;
 /// Внешний путь геометрии страниц (`kamin_html::flow::PageGeom`).
 pub mod flow {

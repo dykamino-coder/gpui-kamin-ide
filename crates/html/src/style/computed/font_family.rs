@@ -1,6 +1,6 @@
 //! Вычисленный стиль: разбор `font-family`. Выбирается первое ДОСТУПНОЕ
 //! семейство списка (css-fonts-4 §first-available-font: установленное или
-//! подменённое `@font-face`, с глифом U+0020) — от него считаются метрики; при
+//! подменённое `@font-face`, с U+0020 в unicode-range) — от него считаются метрики; при
 //! его отсутствии подставляется родовое или шрифт документа (пустое имя). Весь
 //! авторский список сохраняется (`font_families`) для подбора недостающих
 //! глифов (CSS Fonts 4 §5.2). Имена проверяются и нормализуются по CSS2 §15.3.
@@ -81,7 +81,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     // WOFF2 держался на случайном совпадении подмен.
     // Мало ИМЕТЬ шрифт: «первым доступным» (css-fonts-4
     // §first-available-font) семейство становится, только если в
-    // нём есть знак U+0020 — от первого доступного считаются
+    // его unicode-range включает U+0020 — от первого доступного считаются
     // метрики строки, `line-height: normal`, `ch` и `ex`.
     // Правило `@font-face` с `unicode-range` без пробела обязано
     // быть ПРОПУЩЕНО: `font-family: 'A-no-space', 'B'` меряется
@@ -89,19 +89,15 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     // такого правила проходила как доступная, и при замере по
     // настоящему имени доли кегля брались с ЧУЖОГО
     // файла — `first-available-font-002/007`, `ex-unit-004`.
-    let available = |f: &str| {
-        (crate::text::metrics::font_installed(f, vcx)
-            || crate::text::fonts::alias(f, vcx).is_some())
-            && crate::text::fonts::covers_space(f, vcx)
-    };
-    let installed = v
+    let registry = vcx.doc.font_snapshot();
+    let named: Vec<_> = v
         .split(',')
         .map(str::trim)
         .filter(|raw| usable(raw))
         .map(family_name)
-        .find(|f| available(f));
-    if let Some(found) = installed {
-        style.font_family = Some(found);
+        .collect();
+    if let Some(found) = registry.first_available_named(named.iter().map(String::as_str)) {
+        style.font_family = Some(found.to_string());
         return;
     }
     // Ни одно имя не доступно. Первое родовое имя списка — его
@@ -116,7 +112,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     // не наследует, `-017`), а меряется и набирается как `None`.
     // Пока список установленных не снят (`fonts_known`), о
     // доступности судить нечем — ниже прежняя ветка.
-    if crate::text::metrics::fonts_known(vcx) && lower.trim() != "inherit" {
+    if registry.fonts_known() && lower.trim() != "inherit" {
         style.font_family = match first_generic.as_deref() {
             Some("monospace" | "ui-monospace") => None,
             Some(_) => generic.map(str::to_string),
@@ -154,7 +150,7 @@ fn families(value: &str, vcx: crate::document::state::ValueCx<'_>) -> Vec<String
             if !name.starts_with(['\'', '"']) {
                 let lower = name.to_ascii_lowercase();
                 if matches!(lower.as_str(), "monospace" | "ui-monospace") {
-                    return crate::text::metrics::mono_family_for(None, vcx).to_string();
+                    return vcx.doc.font_snapshot().mono_family(None).to_string();
                 }
                 if let Some(family) = generic_family(&lower) {
                     return family.to_string();
@@ -184,30 +180,4 @@ pub(crate) fn inherit(target: &mut Computed, own: &Computed, parent: &Computed) 
         .font_families
         .clone()
         .or_else(|| parent.font_families.clone());
-}
-
-pub(crate) fn fallbacks(
-    style: &Computed,
-    base: Option<gpui::FontFallbacks>,
-    vcx: crate::document::state::ValueCx<'_>,
-) -> Option<gpui::FontFallbacks> {
-    let Some(families) = &style.font_families else {
-        return base.or_else(crate::text::fonts::document_fallbacks);
-    };
-    // CSS Fonts 4 section 5.2: missing glyphs continue through the authored
-    // family list before system fallback. Metrics still use the first available
-    // font; DirectWrite maps only characters absent from that primary font.
-    let mut list: Vec<String> = families
-        .iter()
-        .filter(|name| Some(name.as_str()) != style.font_family.as_deref())
-        .filter(|name| {
-            crate::text::metrics::font_installed(name, vcx)
-                || crate::text::fonts::alias(name, vcx).is_some()
-        })
-        .map(|name| crate::text::fonts::alias_for(name, style, vcx).unwrap_or_else(|| name.clone()))
-        .collect();
-    if let Some(document) = crate::text::fonts::document_fallbacks() {
-        list.extend(document.fallback_list().iter().cloned());
-    }
-    (!list.is_empty()).then(|| gpui::FontFallbacks::from_fonts(list))
 }

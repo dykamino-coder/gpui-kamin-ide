@@ -30,7 +30,7 @@ OWNERS = {
     "computed-and-used-font": "font_adjust_base font_size line_height",
 }
 API = re.compile(
-    r"\b(?:Computed|InheritedStyle|SharedStyle|BoxStyle|ElementStyle|ComputedSlot)\b"
+    r"\b(?:Computed|InheritedStyle|SharedStyle|BoxStyle|ElementStyle|ComputedSlot|ComputedHandle|ComputedBuilder|Published)\b"
     r"|\b(?:make_mut|unwrap_or_clone|used_mut|used_rc|layout_made|into_computed|lay_used)\b"
     r"|\b(?:clone|cloned|clone_from|clone_from_slice|to_owned|to_vec|get_mut|borrow_mut|deref_mut|take|replace|swap)\b"
     r"|&\s*mut\b|\bTRANSITIONAL\("
