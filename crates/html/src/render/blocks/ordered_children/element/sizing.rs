@@ -11,11 +11,7 @@ pub(crate) fn item_sizing(
     inherited: &Computed,
     _opts: &RenderOpts,
 ) -> Node {
-    let positioned_out = matches!(
-        e.style.used().position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
-    );
+    let positioned_out = crate::style::flow::absolutely_positioned(e.style.used().position);
     // `<canvas>` в сетке: атрибуты `width/height` — природный
     // размер и соотношение сторон, а не CSS-размер (HTML
     // §4.12.5, §15.3.10). Ось, растянутая выравниванием

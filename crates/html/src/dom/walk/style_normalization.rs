@@ -9,7 +9,7 @@
 use super::presentational_hints;
 use crate::document::state::ValueCx;
 use crate::dom::*;
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::Computed;
 use crate::style::select::Ancestor;
 
 #[allow(clippy::too_many_arguments)]
@@ -102,11 +102,7 @@ pub(super) fn normalize_style(
     // окна); замещаемые и вынесенные из потока — атомарны. Вид коробки
     // известен только здесь, после `finish_inline_display`.
     if style.will_change & crate::style::computed::wc::BOX != 0 {
-        let out_of_flow = style.float.is_some_and(|f| f != 0)
-            || matches!(
-                style.position,
-                Some(Position::Absolute) | Some(Position::Fixed)
-            );
+        let out_of_flow = crate::style::flow::out_of_flow(style);
         let replaced = matches!(
             tag,
             "img"
@@ -137,11 +133,7 @@ pub(super) fn normalize_style(
     // 3D context, stacking context or containing block
     // (`preserve-3d-flat-grouping-properties-containing-block-inline`).
     if style.preserve_3d == Some(true) {
-        let out_of_flow = style.float.is_some_and(|f| f != 0)
-            || matches!(
-                style.position,
-                Some(Position::Absolute) | Some(Position::Fixed)
-            );
+        let out_of_flow = crate::style::flow::out_of_flow(style);
         let inline_tag = INLINE_TAGS.contains(&tag) || !BLOCK_TAGS.contains(&tag);
         let replaced = matches!(
             tag,

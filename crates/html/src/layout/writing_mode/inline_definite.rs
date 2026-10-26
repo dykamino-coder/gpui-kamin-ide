@@ -9,7 +9,7 @@
 //! taffy разрешает эти проценты относительно ФИЗИЧЕСКОЙ ширины и считает растянутую высоту
 //! неопределённой, поэтому они разрешаются здесь, когда известен inline-размер содержимого
 //! родителя.
-use crate::style::computed::{BoxStyle, Computed, Display, Overflow, Position, Sides};
+use crate::style::computed::{BoxStyle, Computed, Display, Overflow, Sides};
 use crate::style::values::value::Len;
 
 fn px(value: Option<Len>) -> Option<f32> {
@@ -20,16 +20,12 @@ fn px(value: Option<Len>) -> Option<f32> {
     }
 }
 
-fn out_of_flow(style: &Computed) -> bool {
-    matches!(style.position, Some(Position::Absolute | Position::Fixed))
-}
-
 /// Resolve the box's own inline-axis percentages against its vertical containing block.
 pub(crate) fn resolve_percentages(style: &mut Computed, parent: &BoxStyle) {
     let Some(cb) = parent.inline_definite else {
         return;
     };
-    if !parent.wm().vertical() || out_of_flow(style) {
+    if !parent.wm().vertical() || crate::style::flow::absolutely_positioned(style.position) {
         return;
     }
     // A float-band piece (`band_flow_host::build_kid`) is laid out in a frame as large as its
@@ -91,8 +87,7 @@ pub(crate) fn own(style: &Computed, parent: &BoxStyle, root: bool, icb_height: f
     // An automatic inline size fills the parent's content inline size only for an in-flow
     // block-level box of the same (parallel) flow; floats, atomic inlines and out-of-flow
     // boxes shrink to fit instead.
-    if out_of_flow(style)
-        || style.float.is_some_and(|side| side != 0)
+    if crate::style::flow::out_of_flow(style)
         || !matches!(
             style.display,
             None | Some(Display::Block | Display::ListItem)
@@ -139,6 +134,7 @@ fn stretched_flex_item(style: &Computed, parent: &Computed) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Position;
 
     fn vertical() -> BoxStyle {
         let mut style = BoxStyle::default();
