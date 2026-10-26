@@ -117,6 +117,16 @@ Use saved first-frame PNGs and an independent exact RGB comparison for validatio
 Repeated-frame differences in a static document are an engine determinism finding
 to investigate separately; this harness records them without claiming a cause.
 
+Known platform limitation: Intel Iris Xe with driver 32.0.101.7085 can produce
+rare single-pixel changes on the native D3D11 hardware backend, setting
+`frame_pixels_changed` on an unchanged document (roughly one per 1,000–5,000
+frames, with workload-dependent frequency). An independent minimal C++ D3D11
+program without engine code also reproduced a missing pixel; WARP and
+D3D11On12 controls showed no differences. This identifies a driver/hardware
+defect rather than an engine cache defect. The first measured frame was
+unaffected in these runs and matched wptrun exactly. Exact RGB comparison and
+retention of all timing samples remain unchanged.
+
 `peak_working_set_bytes` is Windows `PeakWorkingSetSize` for the whole process
 since launch, queried after all samples, statistics and captures, before writing
 the final report. It is resident memory, not private committed bytes, GPU
