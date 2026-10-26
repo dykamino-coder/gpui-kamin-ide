@@ -27,6 +27,8 @@ use gpui::AnyElement;
 
 /// Блочный элемент.
 pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+    let own = crate::layout::positioned::containing_block::metrics::fragmentation::options(e, opts);
+    let opts = own.as_deref().unwrap_or(opts);
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
     // не пишутся (`flow::flow_lines`).
     let nested = opts.frag.watch.as_ref().and_then(|w| {

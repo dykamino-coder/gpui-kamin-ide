@@ -143,6 +143,7 @@ pub(super) fn column_stack_div(
             opts.cx.deferred.paint.clone(),
         )
         .with_deferred(deferred)
+        .with_oof(opts.cx.position.geometry.clone(), merged.wm())
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
         .with_fill_shrink(

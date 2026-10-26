@@ -44,6 +44,7 @@ impl Hooks for ColumnStack {
         plan.check_copies(|kid| self.children[kid].frags.len() + 1);
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
+        self.plan_oof(&plan, bounds);
         let step = col_w + self.gap;
         self.assign_flex_owners(&plan);
         self.prepaint_frags(window, cx, bounds, col_w, &plan, step);

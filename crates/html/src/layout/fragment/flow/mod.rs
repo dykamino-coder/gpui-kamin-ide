@@ -9,7 +9,7 @@ pub(crate) mod blocks;
 pub(crate) mod box_children;
 mod contexts;
 mod continuation;
-mod coordinates;
+pub(crate) mod coordinates;
 pub(crate) mod float_resume;
 pub(crate) mod inline;
 mod line_growth;

@@ -21,17 +21,25 @@ pub(super) struct Pages<'a> {
 }
 
 impl Pages<'_> {
+    pub(super) fn geometry(&self, index: usize) -> PageGeom {
+        let name = self
+            .names
+            .get(index)
+            .or_else(|| self.names.last())
+            .map_or("", String::as_str);
+        self.geoms
+            .get(index)
+            .copied()
+            .unwrap_or_else(|| (self.geom_for)(index, name))
+    }
+
     pub(super) fn at(&self, index: usize) -> Space {
         let name = self
             .names
             .get(index)
             .or_else(|| self.names.last())
             .map_or("", String::as_str);
-        let geom = self
-            .geoms
-            .get(index)
-            .copied()
-            .unwrap_or_else(|| (self.geom_for)(index, name));
+        let geom = self.geometry(index);
         let (inline, block) = if self.principal.vertical() {
             (geom.area.1, geom.area.0)
         } else {

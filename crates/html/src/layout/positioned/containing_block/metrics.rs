@@ -5,6 +5,7 @@ use crate::layout::fragment::geometry::Node;
 use gpui::{Bounds, LayoutSpace, Pixels, Point};
 use std::collections::HashMap;
 
+pub(crate) mod fragmentation;
 pub(crate) mod layout;
 pub(crate) mod record;
 pub(crate) mod static_rect;
@@ -46,6 +47,7 @@ impl PositionedMetrics {
 pub(crate) struct Snapshot {
     pub(crate) positioned: HashMap<u64, PositionedMetrics>,
     pub(crate) containing_blocks: HashMap<u64, (Node, LayoutSpace)>,
+    pub(crate) flows: Vec<fragmentation::Source>,
 }
 
 impl Snapshot {
