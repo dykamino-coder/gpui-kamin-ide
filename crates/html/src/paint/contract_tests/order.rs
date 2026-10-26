@@ -2,14 +2,14 @@
 
 use super::{Events, assert_phases, collect, draw, probe};
 use crate::hooks::{IntoHooked, Wrap};
-use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Styled, Window, div};
+use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Window, div};
 
 fn inline(name: &'static str, events: &Events) -> AnyElement {
-    gpui::PaintInline::new(probe(name, events)).into_any_element()
+    crate::paint::coordinator::PaintInline::new(probe(name, events)).into_any_element()
 }
 
 fn positioned(name: &'static str, key: u64, events: &Events) -> AnyElement {
-    gpui::PaintLast::new(probe(name, events))
+    crate::paint::coordinator::PaintLast::new(probe(name, events))
         .key(key)
         .into_any_element()
 }
@@ -59,7 +59,7 @@ fn inline_created_while_draining_precedes_the_next_positioned_job() {
             .child(inline("new-inline", &events))
             .child(probe("positioned-body", &events));
         collect(vec![
-            gpui::PaintLast::new(first.into_any_element())
+            crate::paint::coordinator::PaintLast::new(first.into_any_element())
                 .key(1)
                 .into_any_element(),
             positioned("next", 2, &events),
@@ -80,7 +80,7 @@ fn atomic_box_drains_inline_but_exports_positioned_descendants() {
             .child(positioned("exported", 20, &events))
             .child(inline("atomic-inline", &events))
             .child(probe("atomic-flow", &events));
-        atomic.style().paint_atomic = Some(true);
+        atomic = crate::paint::coordinator::atomic(atomic);
         collect(vec![
             atomic.into_any_element(),
             probe("outer-flow", &events),
@@ -114,7 +114,7 @@ fn stacking_box_finishes_its_collector_before_outer_flow() {
             .child(positioned("inner-positioned", 99, &events))
             .child(inline("inner-inline", &events))
             .child(probe("inner-flow", &events));
-        stacking.style().paint_stacking = Some(true);
+        stacking = crate::paint::coordinator::box_policy(stacking, false, true);
         collect(vec![
             positioned("outer-positioned", 1, &events),
             stacking.into_any_element(),

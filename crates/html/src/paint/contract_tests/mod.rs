@@ -1,7 +1,9 @@
 //! Пробы границы paint policy движка: порядок, однократность фаз и снимки GPUI.
-//! Проверяют существующие consumers без переноса CSS-правил в новый механизм.
+//! Проверяют CSS coordinator и общий механизм снимков без повторной раскладки.
 
+mod admission;
 mod capture;
+mod interaction;
 mod order;
 mod scope;
 mod snapshot_abort;
@@ -11,7 +13,8 @@ mod state;
 
 use crate::hooks::{Hooks, IntoHooked};
 use gpui::{
-    AnyElement, App, Bounds, LayoutId, ParentElement, Pixels, Window, div, point, px, size,
+    AnyElement, App, Bounds, LayoutId, ParentElement, Pixels, Window, div, point, px,
+    size,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -49,7 +52,7 @@ fn probe(name: &'static str, events: &Events) -> AnyElement {
 }
 
 fn collect(children: Vec<AnyElement>) -> gpui::Div {
-    let (open, close) = gpui::PaintCollect::pair();
+    let (open, close) = crate::paint::coordinator::PaintCollect::pair();
     // Контент входит в Div уже после открытия collector: его fallback late pass
     // не должен пересекать закрывающий marker внешнего контейнера.
     div()
@@ -59,15 +62,13 @@ fn collect(children: Vec<AnyElement>) -> gpui::Div {
 }
 
 fn draw<E: gpui::Element>(make: impl FnOnce() -> E) {
-    gpui::paint_collect_reset();
     let mut cx = gpui::TestAppContext::single();
     cx.add_empty_window()
         .draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
             // AnyElement должен создаваться внутри app-specific arena этого draw,
             // иначе fallback arena потока удерживает дерево до завершения потока.
-            make()
+            crate::hooks::paint_root(make().into_any_element())
         });
-    gpui::paint_collect_reset();
     cx.quit();
 }
 

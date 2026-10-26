@@ -192,7 +192,7 @@ impl Hooks for BandFlow {
         // block backgrounds of the enclosing context paint before the
         // inline foreground of its runs. Paint groups keep their own
         // boundary (`holders`); the outline phase wraps the host (`Effect::OutlineFlow`).
-        gpui::paint_reopen(|| {
+        crate::hooks::paint_reopen(window, |window| {
             for el in self.built.iter_mut() {
                 el.paint(window, cx);
             }

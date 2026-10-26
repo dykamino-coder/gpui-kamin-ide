@@ -222,7 +222,7 @@ impl Window {
         let (result, ctx) = self.with_restore(None, |window, ctx| {
             *ctx = window.plane_contexts.pop();
         }, |window| window.with_paint_scope(|window| {
-            crate::elements::paint_last::hoist_boundary(|| f(window))
+            f(window)
         }));
         let Some(ctx) = ctx else { return result };
         let records: Vec<PlaneRecord> = ctx.pending.into_iter().flatten().collect();

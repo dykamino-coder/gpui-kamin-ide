@@ -66,11 +66,21 @@ impl Identity {
     }
 }
 
+impl PartialEq for PaintPassId {
+    fn eq(&self, other: &Self) -> bool { Rc::ptr_eq(&self.0, &other.0) }
+}
+impl Eq for PaintPassId {}
+
 impl PaintPassId {
     /// Whether the original draw is still open and has not unwound.
     pub fn is_live(&self) -> bool { self.0.get() }
     pub(super) fn invalidate(&self) { self.0.set(false); }
 }
+
+impl PartialEq for PaintScopeId {
+    fn eq(&self, other: &Self) -> bool { Rc::ptr_eq(&self.0, &other.0) }
+}
+impl Eq for PaintScopeId {}
 
 impl PaintScopeId {
     /// Whether the original composition scope remains open.

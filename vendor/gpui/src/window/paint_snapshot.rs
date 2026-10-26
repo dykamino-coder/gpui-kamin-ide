@@ -31,10 +31,17 @@ pub struct PaintState {
     rem_size_overrides: SmallVec<[Pixels; 8]>,
 }
 
-/// Existing inline consumer: glyph placement and host text environment.
-pub(crate) struct TextPaintCtx {
+/// Paint environment retaining raster placement at the current device scale.
+pub struct RasterPaintCtx {
     base: PaintCtx,
     raster: RasterState,
+}
+
+impl RasterPaintCtx {
+    /// Select fill placement independently of the retained glyph placement.
+    pub fn set_fill_transform(&mut self, transform: Option<(TransformationMatrix, TransformationMatrix)>) {
+        self.raster.frame.fill_transform = transform;
+    }
 }
 
 // Host text-background selection remains in its existing adapter. The full
@@ -140,18 +147,17 @@ impl Window {
         self.replay_paint(self.paint_state(ctx, RasterState::capture(self)), f)
     }
 
-    pub(crate) fn text_paint_ctx(&self) -> TextPaintCtx {
-        TextPaintCtx { base: self.paint_ctx(), raster: RasterState::capture(self) }
+    /// Capture environment and raster placement without a scale override.
+    pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
+        RasterPaintCtx { base: self.paint_ctx(), raster: RasterState::capture(self) }
     }
 
-    pub(crate) fn with_text_paint_ctx<R>(
+    /// Replay captured raster placement in the original live scope.
+    pub fn with_raster_paint_ctx<R>(
         &mut self,
-        mut ctx: TextPaintCtx,
+        ctx: RasterPaintCtx,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, PaintError> {
-        // Inline replay historically inherits fill placement, while retaining
-        // glyph/background placement. Keep that consumer's field selection.
-        ctx.raster.frame.fill_transform = self.css_fill_transform;
         self.replay_paint(self.paint_state(ctx.base, ctx.raster), f)
     }
 

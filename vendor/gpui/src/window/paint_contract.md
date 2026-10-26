@@ -29,9 +29,10 @@ GPUI исполняет упорядоченные команды рисован
 
 `paint_ctx` сохраняет element/entity ids, text style, typed host contexts,
 element offsets и глубину exact offsets, transformation stack, mask scale/map,
-opacity, content masks и image caches. `text_paint_ctx` дополнительно сохраняет
+opacity, content masks и image caches. `raster_paint_ctx` дополнительно сохраняет
 glyph offset, text backgrounds и exact text bounds. Обычный `PaintCtx` этих
-текстовых полей не содержит; это разные существующие consumers.
+текстовых полей не содержит; это разные consumers. `RasterPaintCtx` позволяет
+вызывающему явно выбрать fill transform перед replay.
 
 `snapshot_paint_state` сохраняет все эти поля, включая generic `RasterFrame`,
 точную fill matrix, device scale и стек rem overrides. `with_raster_frame` принимает явные placement
@@ -52,8 +53,8 @@ Guards восстанавливают caller environment, typed contexts и rast
 при unwind; scopes геометрии и scene swaps используют тот же Drop-механизм.
 Unwind помечает проход недействительным: продолжать частично нарисованный кадр
 нельзя. Внешний draw при abort очищает незавершённый frame и возвращает внешнее
-окружение. Старый consumer по-прежнему сбрасывает collector перед следующим
-документом; уничтожение очередей без TLS относится к миграции хозяина.
+окружение. HTML coordinator владеет очередями прохода и освобождает их через Drop,
+в том числе при пойманном unwind. Глобального reset нет.
 
 Текущий `frame_capture` использует process-wide sequence при одном хозяине.
 Sequence различает завершённые readback, но не идентифицирует окно, документ
@@ -81,5 +82,7 @@ Sequence различает завершённые readback, но не иден�
 
 Проверки HTML фиксируют порядок текущих consumers, nested scopes, identity
 contexts, raster origin, отклонение неверного replay и восстановление после abort.
-Очередь и text-background policy пока остаются в существующих адаптерах;
-новый snapshot не принимает решений хозяина.
+CSS очередь живёт в HTML coordinator, который задаёт порядок child visitor
+внутри прежних scopes GPUI. Opaque boundary guard и метаданные прозрачных
+holders являются общими hooks; GPUI их не интерпретирует. Text-background
+policy пока остаётся в прежнем адаптере; snapshot не принимает решений хозяина.

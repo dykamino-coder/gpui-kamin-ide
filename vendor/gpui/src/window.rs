@@ -74,8 +74,7 @@ mod paint_snapshot;
 mod raster_frame;
 mod scoped;
 pub use paint_scope::{PaintError, PaintPassId, PaintScopeId};
-pub use paint_snapshot::{PaintCtx, PaintState};
-pub(crate) use paint_snapshot::TextPaintCtx;
+pub use paint_snapshot::{PaintCtx, PaintState, RasterPaintCtx};
 pub use raster_frame::RasterFrame;
 mod line_baselines;
 mod css_text_background;
@@ -4953,12 +4952,12 @@ impl Window {
         self.next_frame.scene.push_depth_context();
         // Everything of the context is painted before it is sorted: a
         // boundary recorded here keeps a pass-through placeholder inside
-        // (`paint_reopen`) from reopening an OUTER `PaintLast` collector,
+        // from replaying an outer host job into a different composition scope,
         // which painted a hoisted abspos of a `preserve-3d` box after the
         // sorted planes (`3d-rendering-context-and-abspos`).
         self.with_restore((), |window, _| window.next_frame.scene.pop_depth_context(),
             |window| window.with_paint_scope(|window| {
-                crate::elements::paint_last::hoist_boundary(|| f(window))
+                f(window)
             })).0
     }
 

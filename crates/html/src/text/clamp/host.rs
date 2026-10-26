@@ -142,7 +142,7 @@ impl Hooks for ClampHost {
     ) {
         self.children
             .outline_flow(&self.paint, window, cx, &mut |window, cx| {
-                gpui::paint_reopen(|| {
+                crate::hooks::paint_reopen(window, |window| {
                     if let Some(el) = &mut self.built {
                         el.paint(window, cx);
                     }

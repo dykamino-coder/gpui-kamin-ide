@@ -1799,11 +1799,13 @@ pub fn div() -> Div {
         image_cache: None,
         prepaint_order_fn: None,
         layout_observer: None,
+        child_painter: None,
     }
 }
 
 /// A [`Div`] element, the all-in-one element for building complex UIs in GPUI
 pub struct Div {
+    child_painter: Option<crate::ChildPainter>,
     interactivity: Interactivity,
     children: SmallVec<[StackSafe<AnyElement>; 2]>,
     prepaint_listener: Option<Box<dyn Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static>>,
@@ -1824,6 +1826,13 @@ pub trait LayoutObserver: 'static {
 }
 
 impl Div {
+    /// KaminIDE patch: delegate child painting inside this box's existing effect and clip scopes.
+    /// Layout, prepaint and event registration keep their original order.
+    pub fn paint_children_with(mut self, painter: crate::ChildPainter) -> Self {
+        self.child_painter = Some(painter);
+        self
+    }
+
     /// Observe this box's own layout, including its resolved padding and gutters.
     pub fn observe_layout(mut self, observer: impl LayoutObserver) -> Self {
         self.layout_observer = Some(Box::new(observer));
@@ -1913,6 +1922,8 @@ impl ParentElement for Div {
 }
 
 impl Element for Div {
+    fn paint_boundary(&self) -> bool { false }
+
     type RequestLayoutState = DivFrameState;
     type PrepaintState = Option<Hitbox>;
 
@@ -2155,49 +2166,18 @@ impl Element for Div {
                             return;
                         }
 
-                        // KaminIDE patch: обёртки `PaintLast` рисуются вторым
-                        // проходом (CSS 2.1 прил. E, шаг 8 — позиционированные
-                        // поверх потока), раскладка их не меняется.
-                        // При открытом собирателе (`paint_last`) обёртки сами
-                        // уходят в него; коробка с прозрачностью < 1 — свой
-                        // контекст наложения и сама собирает поддерево.
-                        if super::paint_last::hoist_open() {
-                            let children = &mut self.children;
-                            let stacking =
-                                style.paint_stacking || style.opacity.is_some_and(|o| o < 1.0);
-                            if style.paint_atomic && !stacking {
-                                super::paint_last::hoist_atomic(window, cx, |window, cx| {
-                                    for child in children.iter_mut() {
-                                        child.paint(window, cx);
-                                    }
-                                });
-                            } else if stacking {
-                                super::paint_last::hoist_collect(window, cx, |window, cx| {
-                                    for child in children.iter_mut() {
-                                        child.paint(window, cx);
-                                    }
-                                });
-                            } else {
-                                for child in children.iter_mut() {
-                                    child.paint(window, cx);
-                                }
-                            }
-                            return;
-                        }
-                        let mut late = false;
-                        for child in &mut self.children {
-                            if super::context_scope::is_paint_last(child) {
-                                late = true;
-                                continue;
-                            }
-                            child.paint(window, cx);
-                        }
-                        if late {
-                            for child in &mut self.children {
-                                if super::context_scope::is_paint_last(child) {
-                                    child.paint(window, cx);
-                                }
-                            }
+                        let painter = self.child_painter.clone().or_else(|| {
+                            window.render_context::<crate::PaintTraversal>()
+                                .map(|traversal| traversal.children.clone())
+                        });
+                        let mut children = self.children.iter_mut().map(|child| {
+                            #[cfg(feature = "stacker")] { &mut **child }
+                            #[cfg(not(feature = "stacker"))] { child }
+                        });
+                        if let Some(painter) = painter {
+                            (painter.0)(style, &mut children, window, cx);
+                        } else {
+                            for child in children { child.paint(window, cx); }
                         }
                     });
                 },
@@ -4275,6 +4255,9 @@ where
 {
     type RequestLayoutState = E::RequestLayoutState;
     type PrepaintState = E::PrepaintState;
+
+    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
+    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 
     fn id(&self) -> Option<ElementId> {
         self.element.id()

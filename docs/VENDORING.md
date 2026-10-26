@@ -53,8 +53,12 @@ Windows-изменения DirectWrite/DirectX не являются перен�
 `PaintCtx` из `vendor/gpui/src/window/paint_contract.md`. Он различает текущие
 гарантии snapshot/replay, live identity прохода/группы и восстановление
 окружения при unwind. Общий `PaintState` и прежние consumers используют один
-проверяемый replay; выбор CSS policy остаётся в текущих адаптерах до переноса
-в HTML. Пробы текущих HTML consumers находятся в `crates/html/src/paint/contract_tests/`.
+проверяемый replay. CSS collector, atomic/stacking policy и fallback-порядок
+принадлежат `html::paint::coordinator`; GPUI предоставляет общий child visitor,
+opaque boundary guard и непрочитанные метаданные прозрачных holders. Очереди
+прохода не используют TLS или глобальный reset. Выбор text background/fill policy
+пока остаётся в прежних адаптерах. Пробы HTML consumers находятся в
+`crates/html/src/paint/contract_tests/`.
 
 1. Исправления общего назначения сначала предлагать upstream. В локальном
    патче записывать причину и ссылку на upstream issue/PR, когда она есть.

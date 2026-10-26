@@ -11,10 +11,12 @@ use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 /// CSS 2.1 Appendix E step 8: `el` goes to the collector of its stacking
-/// context (`gpui::PaintCollect`) under the paint key `key`, and is painted
+/// context (`crate::paint::coordinator::PaintCollect`) under the paint key `key`, and is painted
 /// after the inline content of step 7 in the order of the keys.
 pub(crate) fn paint_last(el: AnyElement, key: u64) -> AnyElement {
-    gpui::PaintLast::new(el).key(key).into_any_element()
+    crate::paint::coordinator::PaintLast::new(el)
+        .key(key)
+        .into_any_element()
 }
 
 pub(crate) use crate::style::computed::stacking::{
