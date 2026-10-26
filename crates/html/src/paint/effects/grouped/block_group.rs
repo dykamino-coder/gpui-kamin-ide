@@ -42,7 +42,7 @@ pub(crate) fn block_group(
         && e.style.used().isolate != Some(true)
         && crate::paint::stacking::blends_inside(&e.children, 0)
     {
-        let mut iso = style.clone();
+        let mut iso = style;
         iso.isolate = Some(true);
         return super::grouped(el, &iso, vcx);
     }

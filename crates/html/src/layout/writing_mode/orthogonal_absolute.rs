@@ -48,7 +48,7 @@ mod tests {
         assert_eq!(c.used(120.0, 120.0), 120.0);
         assert_eq!(c.used(700.0, 700.0), 700.0);
         assert_eq!(c.used(30.0, 1000.0), 600.0);
-        let mut static_style = style.clone();
+        let mut static_style = style;
         static_style.position = None;
         static_style.abs_static = true;
         assert!(constraint(&static_style, 600.0).is_some());
