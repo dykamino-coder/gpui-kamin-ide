@@ -68,6 +68,7 @@ impl Space {
 /// содержимое после него продолжается там, где кончилось переполнение,
 /// а не с верха следующей страницы — `monolithic-overflow-001`, текст
 /// «в середине второй страницы»). В колонках правило не действует.
+#[cfg(test)]
 pub(crate) fn fill(kids: &[Kid], target: f32, space: Space) -> (usize, f32, Plan) {
     fill_at(kids, &|_| target, space)
 }
