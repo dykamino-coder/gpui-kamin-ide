@@ -5,10 +5,12 @@ use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
+use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn non_inline_columns(
@@ -20,6 +22,7 @@ pub(super) fn non_inline_columns(
     whole: bool,
     stretch: Option<f32>,
     all_inline: bool,
+    outer: Option<Rc<Nested>>,
 ) -> Option<Option<AnyElement>> {
     let vcx = opts.cx.vcx();
     if !all_inline {
@@ -43,7 +46,7 @@ pub(super) fn non_inline_columns(
         }
         // Вложенный многоколоночник с заданной высотой — не «тот же поток»: его
         // строки идут СВОИМИ колонками, рядами во внешних (`nested_rows_box`,
-        // `FragCx::outer_row`), а текстовый путь разложил бы их по внешним
+        // `Nested`), а текстовый путь разложил бы их по внешним
         // колонкам (`multicol-breaking-000…006`).
         if nested_rows_box(only) {
             return Some(None);
@@ -57,6 +60,7 @@ pub(super) fn non_inline_columns(
             col_w,
             whole || size_monolith(only),
             stretch,
+            outer,
         ));
     }
     None

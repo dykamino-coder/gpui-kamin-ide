@@ -72,7 +72,7 @@ pub(crate) fn multicol_spanner_segments(
             let flow = if lone_span {
                 None
             } else {
-                column_flow(&seg, &merged, opts, want, col_w_px)
+                column_flow(&seg, &merged, opts, want, col_w_px, None)
             };
             if let Some(el) = flow {
                 d = d.child(el);

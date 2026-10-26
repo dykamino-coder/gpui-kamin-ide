@@ -1,9 +1,11 @@
 //! Размеры рядов и ограничения вложенного многоколоночного потока.
 
 use crate::dom::Element;
+use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn row_plan(
@@ -13,7 +15,7 @@ pub(crate) fn row_plan(
     column_width: Option<Len>,
     cols: u16,
     col_vert: bool,
-    outer_row: Option<(f32, f32)>,
+    outer_space: Option<Rc<Nested>>,
 ) -> RowPlan {
     let col_w_px = match column_width {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
@@ -89,17 +91,22 @@ pub(crate) fn row_plan(
             _ => None,
         }
     });
-    // Вложенный многоколоночник во внешней колонке (`FragCx::outer_row`):
+    // Вложенный многоколоночник во внешней колонке (`FragCx::outer_space`):
     // ряды высотой во внешний фрагментаинер без зазора — граница
     // ряда совпадает с границей внешней колонки (css-break-4 §2.1;
     // Blink `ConstrainColumnBlockSize`, `LayoutLine` :1009-1026
     // «wrap … if we're participating in an outer fragmentation
     // context»). Последний ряд балансируется (css-multicol-1 §7.1
     // «only the last fragment is balanced»).
-    let nest_phase = outer_row.map_or(0.0, |r| r.1);
-    let nest_rows = outer_row
-        .map(|r| r.0)
+    let outer_space = outer_space
         .filter(|_| col_h.is_none() && e.style.used().column_wrap.is_none() && !col_vert);
+    let nest_phase = outer_space.as_ref().map_or(0., |r| r.offset);
+    let nest_rows = outer_space.as_ref().map(|r| {
+        r.outer_at(0)
+            .expect("validated outer Space")
+            .block_size
+            .unwrap()
+    });
     let rows = match nest_rows {
         Some(hh) => Some(crate::layout::fragment::types::Rows {
             h: Some(hh),
@@ -129,6 +136,7 @@ pub(crate) fn row_plan(
         rows,
         nest_phase,
         nest_rows,
+        outer_space,
     }
 }
 
@@ -139,6 +147,76 @@ pub(crate) struct RowPlan {
     pub(crate) box_h: Option<f32>,
     pub(crate) row_gap: f32,
     pub(crate) rows: Option<crate::layout::fragment::types::Rows>,
+    pub(crate) outer_space: Option<Rc<Nested>>,
     pub(crate) nest_phase: f32,
     pub(crate) nest_rows: Option<f32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::row_plan;
+    use crate::dom::{Element, Node};
+    use crate::layout::fragment::token::{Space, space::sequence::Sequence};
+    use crate::layout::options::RenderOpts;
+    use crate::style::computed::Computed;
+    use crate::style::values::value::Len;
+
+    fn host(nodes: &[Node]) -> &Element {
+        fn find(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|node| match node {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        find(nodes).expect("host")
+    }
+
+    #[test]
+    fn addressed_budget_keeps_first_remainder_and_later_constraints() {
+        let tree = crate::dom::parse("<div style='height:500px; min-height:600px'></div>", "");
+        let e = host(&tree);
+        let opts = RenderOpts {
+            text: Default::default(),
+            viewport: (800., 600.),
+            normal_line_height: 1.2,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        let sequence = Sequence::new(|index| {
+            Ok(Space {
+                block_size: Some(if index == 0 { 100. } else { 40. }),
+                ..Space::pages()
+            })
+        })
+        .nested(0, 75.)
+        .unwrap();
+        let plan = row_plan(
+            e,
+            &Computed::default(),
+            &opts,
+            None,
+            2,
+            false,
+            Some(sequence.clone()),
+        );
+        let outer = plan.outer_space.unwrap();
+        assert_eq!(outer.at(0).unwrap().block_size, Some(25.));
+        assert_eq!(outer.at(1).unwrap().block_size, Some(40.));
+        assert_eq!((plan.nest_rows, plan.nest_phase), (Some(100.), 75.));
+        assert_eq!(e.style.used().min_height, Some(Len::Px(600.)));
+        for property in ["column-height:30px", "column-wrap:nowrap"] {
+            let tree = crate::dom::parse(&format!("<div style='{property}'></div>"), "");
+            let plan = row_plan(
+                host(&tree),
+                &Computed::default(),
+                &opts,
+                None,
+                2,
+                false,
+                Some(sequence.clone()),
+            );
+            assert!(plan.outer_space.is_none());
+        }
+    }
 }

@@ -152,7 +152,7 @@
   {
     "file": "crates/html/src/layout/fragment/types/scope.rs",
     "task": "F2-7",
-    "reason": "FragCx несёт implicit in_stack_copy/outer_row вместо явного Space/resume; удалить эти поля в P22 после последних consumers P09/P10/P21."
+    "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."
   },
   {
     "file": "crates/html/src/layout/multicol/column_regrow/copies.rs",

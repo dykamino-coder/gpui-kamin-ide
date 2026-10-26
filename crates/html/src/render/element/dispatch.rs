@@ -5,6 +5,7 @@ use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level;
 use crate::layout::float::band_flow_host::band_flow_host;
+use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::list::{self, list_item};
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::iframe::object_is_document;
@@ -21,6 +22,7 @@ use crate::render::generic_box::generic_box;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dispatch_element(
@@ -28,7 +30,7 @@ pub(crate) fn dispatch_element(
     merged: BoxStyle,
     inherited: &BoxStyle,
     opts: &RenderOpts,
-    outer_row: Option<(f32, f32)>,
+    outer_space: Option<Rc<Nested>>,
     built_iframe: Option<AnyElement>,
 ) -> AnyElement {
     let st = e.style.used();
@@ -59,7 +61,7 @@ pub(crate) fn dispatch_element(
         // разворачивалась по метке EXIF.
         "canvas" if merged.parent_grid != 0 => {
             crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx)
-                .unwrap_or_else(|| generic_box(e, merged, inherited, opts, outer_row))
+                .unwrap_or_else(|| generic_box(e, merged, inherited, opts, outer_space))
         }
         "img" => {
             // Единицы шрифта в размерах БЛОЧНОЙ картинки разрешаются так же,
@@ -238,6 +240,6 @@ pub(crate) fn dispatch_element(
         // переносится, хотя абзац — нет. Отдельный рисователь преформата
         // правил куска не знает, поэтому такой случай уходит в обычную
         // строчную раскладку (`white-space-pre-031`).
-        _ => generic_box(e, merged, inherited, opts, outer_row),
+        _ => generic_box(e, merged, inherited, opts, outer_space),
     }
 }

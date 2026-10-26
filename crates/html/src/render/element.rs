@@ -65,8 +65,8 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
         vcx,
     );
     let e = media_sized.as_ref().unwrap_or(e);
-    // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_row`).
-    let (outer_row, inner_opts) = opts.take_outer_row();
+    // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_space`).
+    let (outer_space, inner_opts) = opts.take_outer_space();
     let opts = inner_opts.as_ref().unwrap_or(opts);
     let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
@@ -171,7 +171,7 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
     let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
         e.node_id, &merged, opts,
     );
-    let built = dispatch_element(e, merged, inherited, opts, outer_row, built_iframe);
+    let built = dispatch_element(e, merged, inherited, opts, outer_space, built_iframe);
     crate::interactive::scroll_extent::project(
         match geometry {
             Some(geometry) => geometry.wrap(built),

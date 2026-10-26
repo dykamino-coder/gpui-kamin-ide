@@ -84,11 +84,24 @@ pub(super) fn copy_whole_box(
             mc.style.used_mut().height = Some(Len::Px((h - bot).max(0.0)));
             mc.style.used_mut().border_box = None;
         }
-        return Some(opts.cx.contracts.build.element(
-            &mc,
-            merged,
-            &opts.with_outer_row((hh, nest_phase_k)),
-        ));
+        return Some(
+            opts.cx.contracts.build.element(
+                &mc,
+                merged,
+                &opts.with_outer_space(
+                    crate::layout::fragment::token::space::sequence::Sequence::columns(
+                        crate::layout::fragment::token::Space {
+                            wm: merged.wm(),
+                            inline_size: line_col_w,
+                            block_size: Some(hh),
+                            ..crate::layout::fragment::token::Space::columns()
+                        },
+                    )
+                    .nested(0, nest_phase_k)
+                    .expect("resolved outer column constraints"),
+                ),
+            ),
+        );
     }
     // css-lists-3 §3: маркер принадлежит коробке пункта. Сборка через
     // blocks + styled_div теряет его и меняет высоту строки у summary.
