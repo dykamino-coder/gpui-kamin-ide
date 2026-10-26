@@ -14,7 +14,7 @@
 
 use super::stack::walk_kids;
 use super::table::TableSections;
-use super::{BlockBox, Laid, Pushed};
+use super::{BlockBox, Laid};
 use crate::tolerance::COORD_EPS;
 
 /// Точки разрыва стопки до слияния со строками.
@@ -99,57 +99,13 @@ impl BlockBox {
     /// Корень без записи стоит с нуля.
     pub(crate) fn breaks(&self, bottom: f32, laid: &Laid) -> BlockBreaks {
         let mut out = BlockBreaks::default();
-        let top = laid.at(self.id).map_or(0.0, |b| b.0);
+        let (top, bottom) = laid.at(self.id).unwrap_or((0.0, bottom));
         // Собственный avoid учитывает Kid::monolith: с пустого листа
         // он ослабляется (css-break-4 §4.4). Повторный keep от border box
         // после отбивки ошибочно создавал бы разрыв перед содержимым.
         walk_contents(self, top, bottom, laid, &mut out);
         out.sections = self.table.as_ref().and_then(|t| t.sections(laid));
         out
-    }
-
-    /// Самая внешняя коробка стопки, чей разложенный border box начинается
-    /// ровно в `a` (`laid` — разложенная копия в координатах потока): перед ней
-    /// встаёт распорка роста. Коробка, накрывающая `a`, — спуск в её стопку;
-    /// монолит и коробка без своей стопки спуска не дают. В сетке — ряд,
-    /// начинающийся в `a` (`GridBox::pushed_at`).
-    pub(crate) fn pushed_at(&self, a: f32, laid: &Laid) -> Option<Pushed> {
-        if let Some(t) = &self.table {
-            return t.pushed_at(a, laid);
-        }
-        if let Some(g) = &self.grid {
-            return g.pushed_at(self.id, a, laid);
-        }
-        if let Some(f) = &self.flex {
-            return f.pushed_at(self.id, a, laid);
-        }
-        for k in &self.kids {
-            let Some((top, bottom)) = laid.at(k.id) else {
-                continue;
-            };
-            // Элемент потока flex-колонки сдвигается вместе со своим полем:
-            // граница перед ним — начало его margin box (`walk_kids`).
-            let start = if self.flex_gap.is_some() {
-                laid.margin_box(k.id).map_or(top, |m| m.0)
-            } else {
-                top
-            };
-            if (top - a).abs() < COORD_EPS || (start - a).abs() < COORD_EPS {
-                return Some(Pushed::Box(k.id));
-            }
-            if top < a
-                && a < bottom - COORD_EPS
-                && let Some(found) = k.inner.as_ref().and_then(|b| b.pushed_at(a, laid))
-            {
-                return Some(found);
-            }
-        }
-        laid.lines
-            .get(&self.id)?
-            .iter()
-            .find(|p| (p.at - a).abs() < COORD_EPS)
-            .cloned()
-            .map(Pushed::Line)
     }
 }
 
@@ -210,6 +166,14 @@ fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut Blo
         && bottom > lb + COORD_EPS
     {
         out.cuts.push((lb, bottom));
+    }
+    if b.head > 0.0 {
+        // Вложенные декорации связываются раньше объемлющей: без зазора
+        // между декорацией и содержимым нет точки класса C (css-break-3 §4.1).
+        out.pending.push(Pending::Head {
+            top,
+            edge: top + b.head,
+        });
     }
     if b.tail > 0.0 {
         let edge = bottom - b.tail;
