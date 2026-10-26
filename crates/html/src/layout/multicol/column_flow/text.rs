@@ -77,6 +77,7 @@ pub(super) fn build_text_columns(
     cuts: &[usize],
     used: usize,
     width: gpui::Pixels,
+    rows: &[super::rows::Row],
 ) -> AnyElement {
     // Куски текста по местам разрезов: каждый — своя колонка.
     let mut parts: Vec<Vec<Node>> = vec![];
@@ -110,9 +111,53 @@ pub(super) fn build_text_columns(
             }
         }
     }
+    if rows.is_empty() {
+        return build_row(
+            stretch,
+            gap,
+            rule_owned,
+            parts,
+            inherited_owned,
+            opts_owned,
+            used,
+            width,
+        );
+    }
+    let height = rows.last().map_or(0., |r| r.y + r.block);
+    let mut container = div().relative().w(width).h(px(height));
+    let mut parts = parts.into_iter();
+    for row in rows {
+        let columns = parts.by_ref().take(row.end - row.start).collect();
+        container = container.child(div().absolute().left_0().top(px(row.y)).w(width).child(
+            build_row(
+                Some(row.block),
+                gap,
+                rule_owned,
+                columns,
+                inherited_owned,
+                opts_owned,
+                used,
+                width,
+            ),
+        ));
+    }
+    container.into_any_element()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_row(
+    stretch: Option<f32>,
+    gap: f32,
+    rule_owned: Option<(f32, crate::style::values::value::Color)>,
+    parts: Vec<Vec<Node>>,
+    inherited_owned: &BoxStyle,
+    opts_owned: &RenderOpts,
+    used: usize,
+    width: gpui::Pixels,
+) -> AnyElement {
     // Ширина колонки и линейки — от used count: контента может быть
     // меньше, чем колонок (rule-001: две колонки, две строки).
-    let n_cols = used.max(cuts.len() + 1);
+    let n_cols = used.max(parts.len());
     // §3.4 (11): `max(0, …)` — при промежутках шире коробки колонка нулевой
     // ширины, а не отрицательной (`multicol-gap-large-001`: 4 × 80 в 220).
     // Переполняющие колонки (`column-fill: auto`, разрезов больше, чем

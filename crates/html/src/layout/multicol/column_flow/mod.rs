@@ -17,14 +17,16 @@ use text::{build_text_columns, css_ws, gather_cols, normalized_text};
 mod blocks;
 use blocks::non_inline_columns;
 mod element;
+mod layout;
 pub(crate) use element::ColumnFlow;
+mod balance;
+mod intrinsic;
 mod measure;
+mod rows;
+mod rule;
+use crate::layout::fragment::token::space::sequence::Nested;
+use std::rc::Rc;
 
-// Не переносить через рекурсию `column_flow` `column-gap`/`column-fill`,
-// зазор и высоту заливки из `inherited`: перенос зазора ломает внепоточные
-// и отрицательный зазор (`out-of-flow-in-multicolumn-052`,
-// `block-max-height-004`, `multicol-gap-negative-001`,
-// `multicol-height-001`). Вернуть можно только с разбором этой причины.
 /// Многоколоночный поток из сплошного текста.
 ///
 /// Годится, когда всё содержимое — строчное: тогда режется сам текст. Если
@@ -35,6 +37,7 @@ pub(crate) fn column_flow(
     opts: &RenderOpts,
     count: Option<usize>,
     col_w: Option<f32>,
+    outer: Option<Rc<Nested>>,
 ) -> Option<AnyElement> {
     // Линейки последней (единственной) линии колонок тянутся до низа
     // содержимого коробки заданной высоты (Blink `PaintColumnRules`: «Paint
@@ -65,7 +68,7 @@ pub(crate) fn column_flow(
         _ => None,
     }
     .filter(|h| *h > 0.0);
-    column_flow_in(e, inherited, opts, count, col_w, false, stretch)
+    column_flow_in(e, inherited, opts, count, col_w, false, stretch, outer)
 }
 
 /// `whole` — текст пришёл рекурсией из единственного ребёнка-МОНОЛИТА
@@ -73,8 +76,8 @@ pub(crate) fn column_flow(
 /// are monolithic», Blink `layout_box.cc:3564-3575` `IsMonolithic`). Строки
 /// монолита между колонками не расходятся; в узкой колонке `measure_columns`
 /// держит для него прежний сторож «без разрезов» (`contain-size-breaks-001`).
-// The column builder closes over all metrics needed to rebuild a fragment.
-#[allow(clippy::type_complexity)]
+// Сборщик колонки сохраняет все метрики для построения фрагмента.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn column_flow_in(
     e: &Element,
     inherited: &BoxStyle,
@@ -83,6 +86,7 @@ fn column_flow_in(
     col_w: Option<f32>,
     whole: bool,
     stretch: Option<f32>,
+    outer: Option<Rc<Nested>>,
 ) -> Option<AnyElement> {
     // Позиционированный строчный ребёнок: его содержащий блок — не колонка,
     // а предок (css-position-3 §containing-block; Blink кладёт OOF во
@@ -101,9 +105,17 @@ fn column_flow_in(
         Node::Text(_) => true,
         Node::Element(child) => child.inline && child.style.used().display.is_none(),
     });
-    if let Some(value) =
-        non_inline_columns(e, inherited, opts, count, col_w, whole, stretch, all_inline)
-    {
+    if let Some(value) = non_inline_columns(
+        e,
+        inherited,
+        opts,
+        count,
+        col_w,
+        whole,
+        stretch,
+        all_inline,
+        outer.clone(),
+    ) {
         return value;
     }
     let mut raw_plain = String::new();
@@ -148,45 +160,30 @@ fn column_flow_in(
         Some(Len::Px(v)) if v >= 0.0 => v,
         _ => size,
     };
-    // Линейка колонок: видима при заданном стиле; цвет — currentColor.
-    let rule_px = |w: &Option<Len>, size: f32| match w {
-        Some(Len::Px(v)) => *v,
-        Some(Len::Em(k)) => k * size,
-        _ => 3.0,
-    };
-    let rule_owned: Option<(f32, crate::style::values::value::Color)> =
-        if e.style.used().column_rule_visible == Some(true) {
-            Some((
-                rule_px(&e.style.used().column_rule_width, size),
-                e.style.used().column_rule_color.resolve(
-                    inherited
-                        .color
-                        .unwrap_or(crate::style::values::value::Color::BLACK),
-                ),
-            ))
-        } else {
-            None
-        };
+    let rule_owned = rule::column_rule(e, inherited, size);
     let nodes = e.children.clone();
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
-    let build: std::rc::Rc<dyn Fn(&[usize], usize, gpui::Pixels) -> AnyElement> =
-        std::rc::Rc::new(move |cuts: &[usize], used: usize, width: gpui::Pixels| {
-            build_text_columns(
-                stretch,
-                &norm_to_raw,
-                lead,
-                raw_len,
-                gap,
-                rule_owned,
-                &nodes,
-                &inherited_owned,
-                &opts_owned,
-                cuts,
-                used,
-                width,
-            )
-        });
+    let build: std::rc::Rc<dyn Fn(&[usize], usize, gpui::Pixels, &[rows::Row]) -> AnyElement> =
+        std::rc::Rc::new(
+            move |cuts: &[usize], used: usize, width: gpui::Pixels, rows: &[rows::Row]| {
+                build_text_columns(
+                    stretch,
+                    &norm_to_raw,
+                    lead,
+                    raw_len,
+                    gap,
+                    rule_owned,
+                    &nodes,
+                    &inherited_owned,
+                    &opts_owned,
+                    cuts,
+                    used,
+                    width,
+                    rows,
+                )
+            },
+        );
     Some(
         ColumnFlow::new(
             build,
@@ -218,6 +215,7 @@ fn column_flow_in(
             },
             whole,
         )
+        .in_outer(outer)
         // `orphans`/`widows` наследуются (css-break-3 §4.4), начальное — 2.
         .line_breaks(
             inherited.orphans.unwrap_or(2) as usize,

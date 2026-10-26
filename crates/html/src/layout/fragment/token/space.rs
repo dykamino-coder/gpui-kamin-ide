@@ -34,40 +34,9 @@ pub(crate) enum Kind {
     NestedRow(NestedRow),
 }
 
-/// Ряд вложенного многоколоночника (css-break-4 §2.1: «when a multi-column
-/// container breaks across pages, it generates a new row of columns on the
-/// next page»; Blink `column_layout_algorithm.cc` `ConstrainColumnBlockSize`).
-/// Сегодня то же несёт `FragCx::outer_row` как `(высота, фаза)`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct NestedRow {
-    /// Блочный размер внешнего фрагментаинера — высота полного ряда.
-    pub(crate) outer_block: f32,
-    /// Где во внешнем фрагментаинере начат вложенный контейнер (Blink
-    /// `FragmentainerOffset`): первый ряд получает остаток `outer_block − offset`.
-    pub(crate) offset: f32,
-    /// Внешний контекст — страницы (печать), а не колонки.
-    pub(crate) outer_paged: bool,
-}
-
-impl NestedRow {
-    /// Из пары `FragCx::outer_row` `(высота ряда, фаза)`.
-    pub(crate) fn from_outer_row((outer_block, offset): (f32, f32), outer_paged: bool) -> Self {
-        NestedRow {
-            outer_block,
-            offset: offset.max(0.0),
-            outer_paged,
-        }
-    }
-
-    /// Блочный размер ряда `row`: первый — остаток внешнего фрагментаинера.
-    pub(crate) fn row_block(self, row: usize) -> f32 {
-        if row == 0 {
-            (self.outer_block - self.offset).max(0.0)
-        } else {
-            self.outer_block
-        }
-    }
-}
+mod nested;
+pub(crate) use nested::NestedRow;
+pub(crate) mod sequence;
 
 /// Повторяемое содержимое (Blink `ShouldRepeat`/`IsInsideRepeatableContent`,
 /// `constraint_space.h`): шапка/подвал таблицы (css-tables-3 §6.2 repeat),
@@ -174,7 +143,7 @@ impl Space {
 
     pub(crate) fn nested_row(row: NestedRow) -> Self {
         Space {
-            block_size: Some(row.row_block(0)),
+            block_size: Some(row.remaining()),
             not_at_start: usize::from(row.offset > 0.0),
             ..Self::of_kind(Kind::NestedRow(row))
         }
@@ -218,16 +187,13 @@ impl Space {
     /// Пространство вложенного многоколоночника, начатого на `offset` этого
     /// фрагментаинера; `None`, пока блочный размер неизвестен.
     pub(crate) fn nest_at(self, offset: f32) -> Option<Space> {
-        let outer_block = self.block_size?;
-        let outer_paged = match self.kind {
-            Kind::Pages => true,
-            Kind::Columns => false,
-            Kind::NestedRow(row) => row.outer_paged,
-        };
-        let row = NestedRow::from_outer_row((outer_block, offset), outer_paged);
+        let row = NestedRow::from_space(self, offset)?;
         Some(Space {
             wm: self.wm,
             inline_size: self.inline_size,
+            min_appeal: self.min_appeal,
+            repeat: self.repeat,
+            not_at_start: usize::from(offset > 0. || !self.at_start(0)),
             ..Space::nested_row(row)
         })
     }

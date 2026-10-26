@@ -1,6 +1,8 @@
 //! Выбор многоколоночного маршрута с сохранением ранних возвратов и состояния коробки.
 
+use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::options::RenderOpts;
+use std::rc::Rc;
 mod stack;
 pub(super) use stack::stack_box;
 
@@ -27,7 +29,7 @@ pub(crate) fn multicol_box(
     col_vert: bool,
     col_rl: bool,
     col_inline_size: Option<Len>,
-    outer_row: Option<(f32, f32)>,
+    outer_space: Option<Rc<Nested>>,
     lone_span: bool,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     let vcx = opts.cx.vcx();
@@ -44,7 +46,8 @@ pub(crate) fn multicol_box(
         rows,
         nest_phase,
         nest_rows,
-    } = row_plan(e, &merged, opts, column_width, cols, col_vert, outer_row);
+        outer_space,
+    } = row_plan(e, &merged, opts, column_width, cols, col_vert, outer_space);
     // Спаннер среди инлайнового потока: режем детей на сегменты,
     // каждый сегмент — свой поток колонок, спаннер — блок между
     // ними (css-multicol §6). С рядами (`column-wrap: wrap` +
@@ -103,7 +106,7 @@ pub(crate) fn multicol_box(
     // со строками (`line_run_shape`; `text-box-trim-multicol-009/010`).
     let trim_host = merged.text_box_trim_start || merged.text_box_trim_end;
     if let Some(el) =
-        column_flow(e, &merged, opts, want, col_w_px).filter(|_| nest_rows.is_none() && !trim_host)
+        column_flow(e, &merged, opts, want, col_w_px, outer_space).filter(|_| !trim_host)
     {
         // Коробка элемента остаётся своей: отступы и фон
         // принадлежат ей, поток живёт внутри.

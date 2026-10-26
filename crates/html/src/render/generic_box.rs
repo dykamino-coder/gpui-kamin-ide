@@ -1,6 +1,8 @@
 //! Общий рукав `element()`: блочная коробка без особого тега.
+use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::options::RenderOpts;
 use crate::paint::box_tree::styled::styled_div_with;
+use std::rc::Rc;
 mod clamp_host;
 mod columns;
 pub(super) use columns::ColumnPlan;
@@ -26,7 +28,7 @@ pub(super) async fn generic_box_stack(
     mut merged: BoxStyle,
     inherited: &BoxStyle,
     opts: &RenderOpts,
-    outer_row: Option<(f32, f32)>,
+    outer_space: Option<Rc<Nested>>,
 ) -> AnyElement {
     // css-writing-modes-4 §4.3 / css-align-3 §9.1: an orthogonal flow exports no
     // baseline to a horizontal block container (Blink skips such children).
@@ -113,7 +115,7 @@ pub(super) async fn generic_box_stack(
             col_vert,
             col_rl,
             col_inline_size,
-            outer_row,
+            outer_space,
             lone_span,
         );
         (d, merged) = match result {
@@ -234,7 +236,7 @@ pub(super) async fn generic_box_stack(
             let _ = key;
             clamp_host::frame(&mut d, width);
         } else {
-            return clamp_host::build(e, merged, inherited, opts, outer_row, d);
+            return clamp_host::build(e, merged, inherited, opts, outer_space, d);
         }
     }
     generic_children(stk, e, d, merged, inherited, opts, overflow_plan).await

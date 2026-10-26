@@ -1,14 +1,14 @@
 //! ColumnFlow как элемент gpui: структура и раскладка колонок.
 
-use super::measure::{intrinsic_column_width, measure_columns};
+use super::measure::measure_columns;
 use crate::hooks::Hooks;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Font, LayoutId, Pixels, SharedString, Style, Window,
-    point, px, size,
+    AnyElement, App, AvailableSpace, Bounds, Font, LayoutId, Pixels, SharedString, Window, point,
+    px, size,
 };
 use std::rc::Rc;
 
-type ColumnBuilder = Rc<dyn Fn(&[usize], usize, Pixels) -> AnyElement>;
+type ColumnBuilder = Rc<dyn Fn(&[usize], usize, Pixels, &[super::rows::Row]) -> AnyElement>;
 
 /// Многоколоночный поток: текст режется на колонки по строкам.
 ///
@@ -19,6 +19,8 @@ type ColumnBuilder = Rc<dyn Fn(&[usize], usize, Pixels) -> AnyElement>;
 /// колонки: значит, снова замер.
 pub struct ColumnFlow {
     pub(super) build: ColumnBuilder,
+    pub(super) outer: Option<Rc<crate::layout::fragment::token::space::sequence::Nested>>,
+    pub(super) rows: Rc<std::cell::RefCell<Vec<super::rows::Row>>>,
     pub(super) text: SharedString,
     pub(super) count: Option<usize>,
     pub(super) col_w: Option<f32>,
@@ -53,6 +55,8 @@ impl ColumnFlow {
     ) -> Self {
         ColumnFlow {
             build,
+            outer: None,
+            rows: Default::default(),
             text,
             count,
             col_w,
@@ -65,6 +69,14 @@ impl ColumnFlow {
             line_breaks: (1, 1),
             cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.), 1))),
         }
+    }
+
+    pub(crate) fn in_outer(
+        mut self,
+        outer: Option<Rc<crate::layout::fragment::token::space::sequence::Nested>>,
+    ) -> Self {
+        self.outer = outer;
+        self
     }
 
     /// `orphans`/`widows` строк потока (css-break-3 §4.4): сколько строк блока
@@ -80,72 +92,7 @@ impl Hooks for ColumnFlow {
     type Prepaint = AnyElement;
 
     fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
-        let text = self.text.clone();
-        let count = self.count;
-        let col_w = self.col_w;
-        let gap = self.gap;
-        let font = self.font.clone();
-        let font_size = self.font_size;
-        let line_height = self.line_height;
-        let cuts = self.cuts.clone();
-        let fill_height = self.fill_height;
-        let whole = self.whole;
-        let line_breaks = self.line_breaks;
-        // css-multicol-1 §Overflow: заданная блочная высота ограничивает высоту
-        // КОЛОНКИ, а не всей стопки — с ней рождаются переполняющие колонки.
-        let layout_id = window.request_measured_layout_with_baselines(
-            Style::default(),
-            move |known, available, window, _cx| {
-                // Под `min-content`/`max-content` доступного места НЕТ, и
-                // «ширина окна» здесь была выдумкой: `width: min-content` у
-                // многоколоночника не значил ничего, и коробка растягивалась
-                // на весь кадр (`multicol-width-004/005` — все четыре
-                // `<article>` во всю ширину). Считаем внутренний размер по
-                // css-sizing-4 §multicol-intrinsic, как Blink
-                // `column_layout_algorithm.cc:433`.
-                let width = known.width.unwrap_or(match available.width {
-                    AvailableSpace::Definite(w) => w,
-                    other => intrinsic_column_width(
-                        &text,
-                        count,
-                        col_w,
-                        gap,
-                        &font,
-                        font_size,
-                        matches!(other, AvailableSpace::MinContent),
-                        window,
-                    ),
-                });
-                let (at, used, height, first_col_lines) = measure_columns(
-                    &text,
-                    count,
-                    col_w,
-                    gap,
-                    &font,
-                    font_size,
-                    line_height,
-                    fill_height,
-                    whole,
-                    line_breaks,
-                    width,
-                    window,
-                );
-                *cuts.borrow_mut() = (at, width, used);
-                // css-align-3 §baseline-export, multi-column containers: первый
-                // набор базовых линий — у колонки с самой ВЕРХНЕЙ линией (все
-                // колонки начинаются сверху: первая строка), последний — у
-                // колонки с самой НИЖНЕЙ, то есть последняя строка первой,
-                // самой длинной колонки. Прежде текстовый поток базовой линии
-                // не отдавал вовсе, и строчная коробка-многоколоночник
-                // выравнивалась нижним краем (`baseline-008`).
-                let id = window.text_system().resolve_font(&font);
-                let ascent = window.text_system().ascent(id, px(font_size));
-                let descent = window.text_system().descent(id, px(font_size));
-                let first = (px(line_height) - (ascent + descent.abs())) / 2.0 + ascent;
-                let last = first + px(line_height * first_col_lines.saturating_sub(1) as f32);
-                (size(width, height), Some(first), Some(last))
-            },
-        );
+        let layout_id = self.measure_layout(window);
         (layout_id, layout_id)
     }
 
@@ -170,15 +117,18 @@ impl Hooks for ColumnFlow {
                 self.whole,
                 self.line_breaks,
                 bounds.size.width,
+                self.outer.as_deref(),
+                &mut self.rows.borrow_mut(),
                 window,
-            );
+            )
+            .expect("resolved outer fragmentainer sequence");
             *self.cuts.borrow_mut() = (at, bounds.size.width, used);
         }
         let (cuts, used) = {
             let b = self.cuts.borrow();
             (b.0.clone(), b.2)
         };
-        let mut child = (self.build)(&cuts, used, bounds.size.width);
+        let mut child = (self.build)(&cuts, used, bounds.size.width, &self.rows.borrow());
         // The columns are a separate layout tree rooted at the host's EXACT
         // origin: rooting them at the device-rounded bounds dropped the
         // fractional part of the host's position, so content after a
