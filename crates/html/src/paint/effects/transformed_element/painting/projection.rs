@@ -90,7 +90,10 @@ pub(crate) fn paint_3d(
         let (x1, y1) = (x0 + w * sf, y0 + h * sf);
         let front: Vec<(f32, f32)> = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
             .into_iter()
-            .filter(|(x, y)| full[3][0] * x + full[3][1] * y + full[3][3] > 1e-3)
+            .filter(|(x, y)| {
+                full[3][0] * x + full[3][1] * y + full[3][3]
+                    > crate::tolerance::HOMOGENEOUS_CLIP_MIN
+            })
             .collect();
         if front.is_empty() || front.len() == 4 {
             return None;

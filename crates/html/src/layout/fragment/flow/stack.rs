@@ -20,7 +20,7 @@ impl StackChild {
     ) -> Option<TableSections> {
         let watched = self.watched.as_ref()?;
         let end = self.h.max(self.over);
-        let m = watched.breaks(point(px(0.0), px(0.0)), size, end, axis, window);
+        let m = copy_breaks(watched, self.regrow.as_mut(), size, end, axis, window);
         self.cuts.extend(m.cuts);
         self.forced.extend(m.forced);
         self.solid.extend(m.solid);
@@ -43,7 +43,7 @@ impl StackChild {
     ) -> Option<TableSections> {
         let watched = self.watched.as_ref()?;
         let end = self.h.max(self.over);
-        let m = watched.breaks(point(px(0.0), px(0.0)), size, end, axis, window);
+        let m = copy_breaks(watched, self.regrow.as_mut(), size, end, axis, window);
         #[cfg(feature = "wpt-harness")]
         if self.probe_pending {
             self.probe.breaks("columns.breaks", &self.cuts, &m.cuts);
@@ -78,4 +78,32 @@ impl StackChild {
             None => self.repeat = None,
         }
     }
+}
+
+fn copy_breaks(
+    watched: &crate::layout::fragment::paginate::watch::Watched,
+    regrow: Option<&mut crate::layout::fragment::push::Regrow>,
+    size: Size<Pixels>,
+    end: f32,
+    axis: StackAxis,
+    window: &mut Window,
+) -> super::blocks::MeasuredBreaks {
+    let origin = point(px(0.0), px(0.0));
+    let Some(regrow) = regrow else {
+        return watched.breaks(origin, size, end, axis, window);
+    };
+    let flow = watched.flow.at(origin, size, axis, window);
+    regrow.floats = super::empty_floats::separate(&flow);
+    regrow.float_leads = flow.float_leads.clone();
+    watched
+        .blocks()
+        .map_or_else(Default::default, |blocks| {
+            blocks.breaks(
+                end,
+                &watched
+                    .laid_axis(origin, size, axis, window)
+                    .with_flow(&flow),
+            )
+        })
+        .finish(flow, end)
 }

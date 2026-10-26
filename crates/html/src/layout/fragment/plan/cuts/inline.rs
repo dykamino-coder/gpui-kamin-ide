@@ -4,12 +4,14 @@ use crate::layout::fragment::token::fc::FcState;
 use crate::layout::fragment::token::{Space, Token, TokenStore};
 use crate::tolerance::COORD_EPS;
 
+type Address = (Vec<usize>, usize);
+
 /// Арена живёт до завершения ребёнка; новый снимок строк сохраняет адрес токена.
 #[derive(Default)]
 pub(crate) struct Tokens {
     store: TokenStore,
-    next: std::collections::HashMap<usize, crate::layout::fragment::token::TokenId>,
-    pending: Vec<(usize, crate::layout::fragment::token::TokenId, f32)>,
+    next: std::collections::HashMap<Address, crate::layout::fragment::token::TokenId>,
+    pending: Vec<(Address, crate::layout::fragment::token::TokenId, f32)>,
 }
 impl Tokens {
     pub(super) fn commit(&mut self, point: f32) {
@@ -127,7 +129,8 @@ fn paragraph_cut(
         return Ok(None);
     };
     let first = &paragraph.lines[start];
-    let previous = tokens.next.get(&first.paragraph).copied().filter(|id| {
+    let key = (paragraph.scope.clone(), first.paragraph);
+    let previous = tokens.next.get(&key).copied().filter(|id| {
         tokens.store.get(*id).is_some_and(|t| {
             matches!(&t.fc,
             FcState::Inline(state) if state.text_pos == first.state.text_pos)
@@ -158,7 +161,7 @@ fn paragraph_cut(
         return Ok((first.top > from + COORD_EPS).then_some((first.top, first.top)));
     }
     if let Some(id) = candidate.next {
-        tokens.pending.push((first.paragraph, id, candidate.end));
+        tokens.pending.push((key, id, candidate.end));
     }
     Ok(Some((candidate.end, candidate.end)))
 }

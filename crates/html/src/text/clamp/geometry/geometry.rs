@@ -1,6 +1,7 @@
 //! Чистая геометрия clamp по опросам боксов и абзацев текущего кадра.
 
 use super::{ClampBox, ClampEntry, fit, paragraph};
+use crate::tolerance::LINE_FIT_EPS;
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -32,7 +33,7 @@ impl ClampGeometry {
                         entries.iter().any(|e| {
                             e.seq.is_some_and(|s| (a..z).contains(&s))
                                 && f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height)
-                                    > end + 0.5
+                                    > end + LINE_FIT_EPS
                         })
                     })
             })
@@ -47,7 +48,8 @@ impl ClampGeometry {
             let h = f32::from(e.bounds.size.height);
             if let Some(r) = e.seq.and_then(|s| para_rows.get(&s))
                 && !r.is_empty()
-                && r.iter().all(|(a, b)| *a >= y0 - 0.5 && *b <= y0 + h + 0.5)
+                && r.iter()
+                    .all(|(a, b)| *a >= y0 - LINE_FIT_EPS && *b <= y0 + h + LINE_FIT_EPS)
             {
                 return r.clone();
             }
@@ -113,7 +115,9 @@ impl ClampGeometry {
                 entries
                     .iter()
                     .filter(|e| {
-                        !e.skip_count && e.line > 0.0 && f32::from(e.bounds.origin.y) >= c - 0.5
+                        !e.skip_count
+                            && e.line > 0.0
+                            && f32::from(e.bounds.origin.y) >= c - LINE_FIT_EPS
                     })
                     .filter_map(|e| e.seq)
                     .min()

@@ -26,36 +26,62 @@ pub(crate) fn inner(
         return None;
     }
     let outer = if st.root_box { Some(viewport) } else { outer };
-    let length = |value| match value {
-        Some(Len::Px(v)) => Some(v),
-        Some(Len::Pct(k)) => outer.map(|v| k * v),
-        _ => None,
-    };
     if matches!(st.height, Some(Len::Pct(_)))
         && matches!(st.position, Some(Position::Absolute | Position::Fixed))
     {
         return None;
     }
+    content_block_size(st, false, st.height, outer, width)
+}
+
+/// Определённый размер содержимого по блочной оси: box-sizing и пределы
+/// CSS 2 §10.7 общие для содержащего блока и fragmentainer колонок.
+/// `preferred` позволяет передать потолок колонок при автоматическом размере.
+pub(crate) fn content_block_size(
+    st: &Computed,
+    vertical: bool,
+    preferred: Option<Len>,
+    outer: Option<f32>,
+    inline: Option<f32>,
+) -> Option<f32> {
+    let length = |value| match value {
+        Some(Len::Px(v)) => Some(v),
+        Some(Len::Pct(k)) => outer.map(|v| k * v),
+        _ => None,
+    };
     let edges = if st.border_box == Some(true) {
         let side = |value| match value {
             None | Some(Len::Auto) => Some(0.0),
             Some(Len::Px(v)) => Some(v),
-            Some(Len::Pct(k)) => width.map(|v| k * v),
+            Some(Len::Pct(k)) => inline.map(|v| k * v),
             _ => None,
         };
         let b = st.borders();
-        side(st.padding.top)? + side(st.padding.bottom)? + side(b.top)? + side(b.bottom)?
+        let (a, z, ba, bz) = if vertical {
+            (st.padding.left, st.padding.right, b.left, b.right)
+        } else {
+            (st.padding.top, st.padding.bottom, b.top, b.bottom)
+        };
+        side(a)? + side(z)? + side(ba)? + side(bz)?
     } else {
         0.0
     };
     // Auto height stays indefinite even when min-height is definite.
-    let height = (length(st.height)? - edges).max(0.0);
-    let minimum = length(st.min_height)
-        .map(|v| (v - edges).max(0.0))
-        .unwrap_or(0.0);
-    let maximum = length(st.max_height)
-        .map(|v| (v - edges).max(0.0))
-        .unwrap_or(f32::INFINITY);
+    let height = (length(preferred)? - edges).max(0.0);
+    let minimum = length(if vertical {
+        st.min_width
+    } else {
+        st.min_height
+    })
+    .map(|v| (v - edges).max(0.0))
+    .unwrap_or(0.0);
+    let maximum = length(if vertical {
+        st.max_width
+    } else {
+        st.max_height
+    })
+    .map(|v| (v - edges).max(0.0))
+    .unwrap_or(f32::INFINITY);
     Some(height.min(maximum).max(minimum))
 }
 

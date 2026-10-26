@@ -39,6 +39,7 @@ fn cached_continuation_requires_the_complete_producing_inputs(cx: &mut gpui::Tes
                 kid: Kid::default(),
                 inline: Default::default(),
                 laid: Laid::default(),
+                parallel: None,
                 continued: true,
             };
             assert!(cached.reusable(&inputs, 40.));

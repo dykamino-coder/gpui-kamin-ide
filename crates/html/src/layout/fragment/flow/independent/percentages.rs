@@ -3,7 +3,7 @@
 use crate::dom::{Element, Node};
 use crate::layout::block::{available_height, available_width};
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{BoxStyle, Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display, Position};
 use crate::style::values::value::Len;
 mod pages;
 pub(crate) use pages::PagePercentages;
@@ -18,7 +18,12 @@ pub(crate) fn page_percentages(
     let nodes = nodes
         .iter()
         .map(|n| match n {
-            Node::Element(e) if !crate::layout::box_kind::out_of_flow(&e.style.used()) => {
+            Node::Element(e)
+                if !matches!(
+                    e.style.used().position,
+                    Some(Position::Absolute | Position::Fixed)
+                ) =>
+            {
                 Node::Element(block_percentages(e, parent, opts))
             }
             other => other.clone(),
@@ -101,13 +106,28 @@ fn resolve(
     } else {
         height
     };
+    // CSS2 §10.1: обычный inline не образует CB для процентной высоты.
+    // Наследование стиля проходит через него, геометрическая база — нет.
+    if transparent(e) {
+        element.children = e
+            .children
+            .iter()
+            .map(|n| match n {
+                Node::Element(k) if percentage_child(k) => {
+                    Node::Element(resolve(k, &used, height, width, opts))
+                }
+                other => other.clone(),
+            })
+            .collect();
+        return element;
+    }
     freeze(element.style.used_mut(), base);
     freeze(&mut used, base);
     // Flex/grid/table вычисляют определённость размеров своих items собственным
     // алгоритмом; CSS2 §10.5 относится здесь к детям блочного содержащего блока.
     if matches!(
         used.display,
-        None | Some(Display::Block | Display::ListItem | Display::Contents)
+        None | Some(Display::Block | Display::ListItem | Display::Contents | Display::InlineBlock)
     ) && !used.wm().vertical()
         && used.column_count.is_none()
         && used.column_width.is_none()
@@ -118,9 +138,7 @@ fn resolve(
             .children
             .iter()
             .map(|n| match n {
-                Node::Element(k)
-                    if !k.inline && !crate::layout::box_kind::out_of_flow(&k.style.used()) =>
-                {
+                Node::Element(k) if percentage_child(k) => {
                     Node::Element(resolve(k, &used, next_height, next_width, opts))
                 }
                 other => other.clone(),
@@ -128,6 +146,20 @@ fn resolve(
             .collect();
     }
     element
+}
+
+// CSS2 §9.2.1.1: анонимная копия не меняет процентный CB float.
+// Positioned-коробки разрешают проценты своим алгоритмом, float — обычным CB.
+fn percentage_child(e: &Element) -> bool {
+    !matches!(
+        e.style.used().position,
+        Some(Position::Absolute | Position::Fixed)
+    )
+}
+
+fn transparent(e: &Element) -> bool {
+    crate::layout::box_kind::real_inline(e)
+        && !crate::layout::box_kind::out_of_flow(&e.style.used())
 }
 
 fn freeze(style: &mut Computed, base: Option<f32>) {

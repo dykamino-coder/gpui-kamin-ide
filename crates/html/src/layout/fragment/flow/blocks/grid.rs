@@ -156,6 +156,8 @@ pub(crate) struct RowPush {
 /// Куда встаёт распорка роста в разложенной стопке.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Pushed {
+    /// Независимое смещение float, не меняющее нормальную высоту родителя.
+    Float(u64),
     /// Строка абзаца в независимом потоке flex-item.
     Line(super::super::LinePush),
     /// Коробка, начинающаяся в точке (распорка перед ней).

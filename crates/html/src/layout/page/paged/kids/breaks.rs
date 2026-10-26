@@ -75,6 +75,29 @@ mod tests {
     }
 
     #[test]
+    fn nested_atomic_inline_keeps_the_enclosing_block_recorder() {
+        let tree = crate::dom::parse(
+            "<div><div style='height:100px;clear:both'><div style='float:left;height:100px'></div><span>X<span style='display:inline-block;height:100%'></span><br>Y</span></div></div>",
+            "",
+        );
+        let e = authored(&tree);
+        assert!(stacked_tree(e));
+        assert!(crate::layout::fragment::flow::regrow_copy(e));
+        assert!(!crate::layout::fragment::push::measured_tree(e));
+        let group = [Node::Element(e.clone())];
+        let watched = recorder(
+            &group,
+            &group[0],
+            None,
+            false,
+            false,
+            ShapeCx::COLUMNS,
+            tree.values(),
+        );
+        assert_eq!(watched.blocks().unwrap().kids.len(), 1);
+    }
+
+    #[test]
     fn atomic_inline_content_does_not_hide_forced_break_between_block_parents() {
         let tree = crate::dom::parse(
             "<div><div><span style='display:inline-block'>one</span></div><div style='break-before:page'><span style='display:inline-block'>two</span></div></div>",

@@ -8,7 +8,7 @@
 //! ребёнка flex/grid `float` и `clear` вычисляются в `none`.
 
 use crate::dom::*;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{Computed, Display};
 
 /// Вбегание `display: run-in` (CSS 2.1 §9.2.3): элемент без блочного
 /// содержимого, за которым (сквозь пробельный текст) идёт обычная блочная
@@ -30,21 +30,14 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
             let own = e.style.clone();
             fold_run_ins(&mut e.children, Some(own.cascaded()));
         }
-        // Вне потока элемент вбеганию не мешает и сам не вбегает.
-        fn out_of_flow(e: &Element) -> bool {
-            e.style.cascaded().float.is_some()
-                || matches!(
-                    e.style.cascaded().position,
-                    Some(crate::style::computed::Position::Absolute)
-                        | Some(crate::style::computed::Position::Fixed)
-                )
-        }
         // Блочная коробка В ПОТОКЕ где угодно внутри (в том числе за
         // строчными обёртками) запрещает вбегание.
         fn holds_block(nodes: &[Node]) -> bool {
             nodes.iter().any(|c| match c {
                 Node::Element(ch) => {
-                    if out_of_flow(ch) || ch.style.cascaded().display == Some(Display::None) {
+                    if crate::style::flow::has_float_or_absolute_position(ch.style.cascaded())
+                        || ch.style.cascaded().display == Some(Display::None)
+                    {
                         return false;
                     }
                     if ch.inline
@@ -66,7 +59,7 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         let runs_in = match &nodes[i] {
             Node::Element(e) => {
                 e.style.cascaded().run_in == Some(true)
-                    && !out_of_flow(e)
+                    && !crate::style::flow::has_float_or_absolute_position(e.style.cascaded())
                     && !holds_block(&e.children)
             }
             _ => false,
@@ -79,7 +72,7 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         // run-in, не строчный. Плавающие и позиционированные соседи
         // ПРОЗРАЧНЫ: они вне потока и вбеганию не мешают (§9.2.3).
         let Some(j) = (i + 1..nodes.len()).find(|&j| {
-            !is_blank(&nodes[j]) && !matches!(&nodes[j], Node::Element(t) if out_of_flow(t))
+            !is_blank(&nodes[j]) && !matches!(&nodes[j], Node::Element(t) if crate::style::flow::has_float_or_absolute_position(t.style.cascaded()))
         }) else {
             i += 1;
             continue;
@@ -141,10 +134,7 @@ pub(crate) fn flex_items_lose_float(nodes: &mut [Node]) {
             let Node::Element(child) = child else {
                 continue;
             };
-            if matches!(
-                child.style.cascaded().position,
-                Some(Position::Absolute) | Some(Position::Fixed)
-            ) {
+            if crate::style::flow::absolutely_positioned(child.style.cascaded().position) {
                 continue;
             }
             child.style.cascaded_mut().float = None;

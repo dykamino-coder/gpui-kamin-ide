@@ -69,7 +69,7 @@ impl Paragraph {
                 let want =
                     self.x_at(segs, gap.end, Edge::Start) - self.x_at(segs, gap.start, Edge::Start);
                 let n = gap_text.chars().count().max(1) as f32;
-                if (want - gap_shaped.width).abs() > px(0.5) {
+                if (want - gap_shaped.width).abs() > px(crate::tolerance::SHAPED_ADVANCE_EPS) {
                     gap_shaped = window
                         .text_system()
                         .with_ligature_breaking(false)
