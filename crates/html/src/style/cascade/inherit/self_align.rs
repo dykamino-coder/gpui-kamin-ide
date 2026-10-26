@@ -40,7 +40,9 @@ pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut BoxStyle
     // элемента в rtl-колонке — тоже rtl, и зеркалить нечего (поперечную ось
     // rtl-колонки разворачивает сама раскладка, `paint/apply/`:
     // `flex_cross_reverse` / `flip`).
-    if c.parent_grid == 0 && own.align_self_own_axis && c.rtl.unwrap_or(false) != parent.wm().rtl()
+    if c.context.parent_grid == 0
+        && own.align_self_own_axis
+        && c.rtl.unwrap_or(false) != parent.wm().rtl()
     {
         set!(c.align_self, flip(c.align_self));
     }

@@ -70,6 +70,7 @@ pub(crate) fn box_stage(
 ) -> BoxStyle {
     let mut c = BoxStyle::shared(computed);
     c.element_style = element;
+    c.set_parent_context(parent);
     context::inherit_context(parent, own, &mut c);
     inherit_containing(parent, own, &mut c, vcx);
     quirks::percentage_height(parent, own, &mut c, vcx);

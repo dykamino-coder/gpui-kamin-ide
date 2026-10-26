@@ -3,9 +3,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
-use std::rc::Rc;
 
 /// The box's own style, with mask image lengths and colors taken from its
 /// inherited computed value; the wrapper keeps the box's own positioning
@@ -14,15 +13,14 @@ pub(crate) fn group_style(
     own: &crate::dom::SharedStyle,
     inherited: &BoxStyle,
     vcx: ValueCx<'_>,
-) -> Rc<Computed> {
-    let style = own.used();
+) -> BoxStyle {
+    let mut style = BoxStyle::shared(own.used());
     if style.mask_image.is_none() {
         return style;
     }
     let computed = crate::style::cascade::materialize::box_style(inherited, own, vcx);
-    let mut style = (*style).clone();
     style.mask_image = computed.mask_image.clone();
-    Rc::new(style)
+    style
 }
 
 /// `grouped` around the built box `el` of block `e`.
@@ -44,7 +42,7 @@ pub(crate) fn block_group(
         && e.style.used().isolate != Some(true)
         && crate::paint::stacking::blends_inside(&e.children, 0)
     {
-        let mut iso = (*style).clone();
+        let mut iso = style.clone();
         iso.isolate = Some(true);
         return super::grouped(el, &iso, vcx);
     }

@@ -41,7 +41,7 @@ pub(crate) fn nested_context(parent: &BoxStyle) -> bool {
     parent.sc_ancestor
         || (!parent.root_box
             && (stacking_context(parent)
-                || (parent.z_index.is_some() && parent.parent_flex_grid)
+                || (parent.z_index.is_some() && parent.context.parent_flex_grid)
                 || matches!(
                     parent.position,
                     Some(crate::style::computed::Position::Fixed)
