@@ -46,9 +46,8 @@ pub(super) fn partition(
             row = row.checked_add(1).ok_or(Error::ResourceExhausted)?;
             continue;
         }
-        if cap == 0. {
-            return Err(Error::NoProgress);
-        }
+        // В начале даже нулевого фрагментаинера неделимая строка обеспечивает
+        // продвижение с переполнением, а не повторный разрыв сверху (§4.4).
         let per = per.max(1);
         let remaining = lines - used;
         let balanced = if balance && remaining.div_ceil(count) <= per {
@@ -178,9 +177,12 @@ mod tests {
 
     #[test]
     fn indivisible_line_overflows_a_short_fragmentainer() {
-        let plan = partition(2, 2, 10., &outer(&[5.], 0.), true, (2, 2)).unwrap();
-        assert_eq!(plan.ends, [1, 2]);
-        assert_eq!(plan.height, 10.);
+        for blocks in [&[0.][..], &[5.][..]] {
+            let plan = partition(2, 2, 10., &outer(blocks, 0.), true, (2, 2));
+            let plan = plan.unwrap();
+            assert_eq!(plan.ends, [1, 2]);
+            assert_eq!(plan.height, 10.);
+        }
     }
 
     #[test]
