@@ -2,8 +2,8 @@
 //! слитый стиль ячейки и её охваты (colspan/rowspan, схлопнутые колонки).
 
 use crate::document::state::ValueCx;
-use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
+use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::build_contracts::Layer;
 use crate::layout::cx::LayoutCx;
 use crate::layout::table::anon::html_cell;

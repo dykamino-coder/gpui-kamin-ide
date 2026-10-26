@@ -8,6 +8,7 @@ use crate::style::computed::*;
 use std::rc::Rc;
 
 mod context;
+mod inputs;
 use crate::box_facts::BoxContext;
 use crate::style::box_input::BoxStyleInput;
 

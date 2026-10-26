@@ -3,6 +3,7 @@
 pub(crate) mod atom;
 pub(crate) mod block;
 pub(crate) mod box_kind;
+pub(crate) mod box_tree;
 pub(crate) mod build_contracts;
 pub(crate) mod cx;
 pub(crate) mod depth;

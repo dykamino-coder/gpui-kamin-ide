@@ -67,6 +67,69 @@ fn layout_made_bridge_transports_the_same_context_without_computed_fields() {
 }
 
 #[test]
+fn contents_keeps_element_inheritance_while_the_box_uses_the_flex_parent() {
+    let parsed = crate::dom::parse(
+        r#"<!doctype html><div style="display:flex;flex-wrap:wrap-reverse;direction:rtl;font-size:10px"><section style="display:contents;font-size:20px"><i style="align-self:normal">x</i></section></div>"#,
+        "",
+    );
+    materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        parsed.values(),
+    );
+    let find =
+        |tag: &str| crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == tag).unwrap();
+    let parent = box_style(&BoxStyle::default(), &find("div").style, parsed.values());
+    let own = &find("i").style;
+    let boxed = box_style(&parent, own, parsed.values());
+    assert!(boxed.context.applicability.flex);
+    assert!(boxed.context.applicability.rtl);
+    assert!(boxed.context.applicability.wrap_reverse);
+    assert_eq!(boxed.font_size, find("section").style.computed().font_size);
+    let mut bridge = crate::dom::SharedStyle::layout_made(boxed);
+    bridge.used_mut().width = Some(crate::style::values::value::Len::Px(50.0));
+    assert!(BoxStyle::shared(bridge.used()).context.applicability.flex);
+    assert!(own.computed().width.is_none());
+}
+
+#[test]
+fn anonymous_wrappers_replace_parent_facts_without_rewriting_the_element() {
+    let parsed = crate::dom::parse(
+        r#"<!doctype html><div style="display:grid;font-size:20px"><span>x</span></div>"#,
+        "",
+    );
+    materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        parsed.values(),
+    );
+    let parent = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "div").unwrap();
+    let child = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "span").unwrap();
+    let parent = box_style(&BoxStyle::default(), &parent.style, parsed.values());
+    let identity = child.style.computed();
+    for (display, ruby_role) in [
+        (Some(D::Table), None),
+        (None, Some(crate::style::computed::RubyRole::BaseContainer)),
+    ] {
+        let anonymous = crate::style::cascade::inherit::inherit(
+            &parent,
+            &Computed {
+                display,
+                ruby_role,
+                ..Computed::default()
+            },
+            parsed.values(),
+        );
+        assert!(anonymous.context.parent_flex_grid);
+        let boxed = box_style(&anonymous, &child.style, parsed.values());
+        assert!(!boxed.context.parent_flex_grid);
+        assert_eq!(boxed.context.parent_grid, 0);
+        assert_eq!(boxed.font_size, identity.font_size);
+        assert!(Rc::ptr_eq(&child.style.computed(), &identity));
+    }
+}
+
+#[test]
 fn paint_input_copies_keep_the_context_and_shared_computed_allocation() {
     let mut boxed = BoxStyle::default();
     boxed.context.parent_flex_grid = true;
@@ -81,4 +144,31 @@ fn paint_input_copies_keep_the_context_and_shared_computed_allocation() {
     assert!(restored.context.parent_flex_grid);
     assert_eq!(restored.context.parent_grid, 3);
     assert_eq!(boxed.opacity, None);
+}
+
+#[test]
+fn quirks_height_uses_box_ancestors_without_changing_the_computed_percentage() {
+    use crate::style::values::value::Len;
+    let parsed = crate::dom::parse(
+        r#"<div style="height:200px"><section style="height:auto;direction:rtl"><i style="display:block;height:50%">x</i></section></div>"#,
+        "",
+    );
+    materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        parsed.values(),
+    );
+    let find =
+        |tag: &str| crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == tag).unwrap();
+    let outer = box_style(&BoxStyle::default(), &find("div").style, parsed.values());
+    let parent = box_style(&outer, &find("section").style, parsed.values());
+    let own = &find("i").style;
+    let identity = own.computed();
+    let boxed = box_style(&parent, own, parsed.values());
+    assert_eq!(parent.quirk_pct_base, Some(200.0));
+    assert_eq!(boxed.height, Some(Len::Px(100.0)));
+    assert_eq!(boxed.context.cb_wm, parent.wm().line());
+    assert!(boxed.context.applicability.rtl);
+    assert_eq!(identity.height, Some(Len::Pct(0.5)));
+    assert!(Rc::ptr_eq(&identity, &own.computed()));
 }

@@ -9,6 +9,7 @@ pub(crate) struct BoxContext<W, A> {
     pub(crate) parent_flex_grid: bool,
     pub(crate) parent_lanes: bool,
     pub(crate) cb_wm: W,
+    pub(crate) applicability: ApplicabilityInputs,
 }
 
 impl<W: Default, A> Default for BoxContext<W, A> {
@@ -19,6 +20,20 @@ impl<W: Default, A> Default for BoxContext<W, A> {
             parent_flex_grid: false,
             parent_lanes: false,
             cb_wm: W::default(),
+            applicability: ApplicabilityInputs::default(),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ApplicabilityInputs {
+    pub(crate) flex: bool,
+    pub(crate) rtl: bool,
+    pub(crate) wrap_reverse: bool,
+}
+
+pub(crate) struct DecorationInputs<'a, D> {
+    pub(crate) inherited: &'a [D],
+    pub(crate) block: bool,
+    pub(crate) generates_box: bool,
 }

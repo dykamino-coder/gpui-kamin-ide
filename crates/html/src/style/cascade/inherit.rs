@@ -14,7 +14,6 @@ use crate::document::state::ValueCx;
 
 use crate::style::computed::box_predicates::{backdrop_root, establishes_cb};
 use crate::style::computed::{BoxStyle, Computed};
-use crate::style::values::value::Color;
 
 /// Запись стадии коробки в общий вычисленный стиль — только изменившегося
 /// значения: равное не копирует стиль коробки (P-18, копия при записи).
@@ -74,11 +73,13 @@ pub(crate) fn box_stage(
     context::inherit_context(parent, own, &mut c);
     inherit_containing(parent, own, &mut c, vcx);
     quirks::percentage_height(parent, own, &mut c, vcx);
-    self_align::self_alignment(parent, own, &mut c);
+    let applicability = c.context.applicability;
+    self_align::self_alignment(applicability, own, &mut c);
     flow_align::resolve(parent, &mut c);
     inherit_paint(parent, declared, own, &mut c, paint_filter, vcx);
     let parent_px = super::compute::parent_font_px(parent);
     let own_px = super::compute::own_font_px(&c, parent_px);
-    decorate(parent, own, &mut c, own_px, vcx);
+    let decoration = parent.decoration_inputs(own);
+    decorate(decoration, own, &mut c, own_px, vcx);
     c
 }

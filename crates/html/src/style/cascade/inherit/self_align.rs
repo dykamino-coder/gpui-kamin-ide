@@ -2,7 +2,7 @@
 //! самого элемента, концы письма под `wrap-reverse` родителя (css-align-3 §6.1–6.2).
 
 use super::*;
-use crate::style::computed::{Align, BoxStyle, Display as D};
+use crate::style::computed::{Align, BoxStyle};
 
 fn flip(a: Option<Align>) -> Option<Align> {
     match a {
@@ -12,8 +12,12 @@ fn flip(a: Option<Align>) -> Option<Align> {
     }
 }
 
-pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut BoxStyle) {
-    let flex_parent = matches!(parent.display, Some(D::Flex) | Some(D::InlineFlex));
+pub(super) fn self_alignment(
+    parent: crate::box_facts::ApplicabilityInputs,
+    own: &Computed,
+    c: &mut BoxStyle,
+) {
+    let flex_parent = parent.flex;
     // Не снимать `align-self` у коробки, чей родитель не гибкий контейнер и
     // не сетка (css-align-3 §6.2 «does not apply to block-level boxes»): наш
     // блок собран колонкой flex, и на `align_self` держатся приёмы сборки —
@@ -40,9 +44,7 @@ pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut BoxStyle
     // элемента в rtl-колонке — тоже rtl, и зеркалить нечего (поперечную ось
     // rtl-колонки разворачивает сама раскладка, `paint/apply/`:
     // `flex_cross_reverse` / `flip`).
-    if c.context.parent_grid == 0
-        && own.align_self_own_axis
-        && c.rtl.unwrap_or(false) != parent.wm().rtl()
+    if c.context.parent_grid == 0 && own.align_self_own_axis && c.rtl.unwrap_or(false) != parent.rtl
     {
         set!(c.align_self, flip(c.align_self));
     }
@@ -53,7 +55,7 @@ pub(super) fn self_alignment(parent: &Computed, own: &Computed, c: &mut BoxStyle
     // развернёт их обратно. Переворот поперёк письма (`paint/apply/`: `flip`
     // через тот же `WrapReverse`) здесь не участвует — он виден раскладке и
     // для `flex-*`, и для `start` одинаково (`self-align-start-end-flex-001`).
-    if !own.align_self_flex_kw && parent.flex_wrap_reverse == Some(true) && flex_parent {
+    if !own.align_self_flex_kw && parent.wrap_reverse && flex_parent {
         set!(c.align_self, flip(c.align_self));
     }
 }
