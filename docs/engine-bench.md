@@ -119,7 +119,8 @@ timer resolution and unstable scopes explicitly; never discard slow samples
 to satisfy a threshold. Save raw JSON, build revision, environment and optional
 first-frame PNG outside the checkout. Compare that PNG against the same document
 rendered by `wptrun` at the same viewport, scale and font configuration, using
-GPU first-frame capture and exact RGB equality.
+GPU first-frame capture and exact RGB equality. Use one fresh process per
+fixture in each host so their prior document/cache histories match.
 
 ## Relation to existing profiler designs
 
