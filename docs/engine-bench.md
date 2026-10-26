@@ -118,9 +118,13 @@ scope samples, but specifies arithmetic even medians and p90 explicitly.
 Blink emits nested tracing events in categories such as `blink,blink_style`;
 `StyleEngine::UpdateStyleAndLayoutTree` records `Document::recalcStyle` and
 `Document::rebuildLayoutTree` in `third_party/blink/renderer/core/css/style_engine.cc`.
-Trace consumers, including Lighthouse, group trace events to attribute main-thread
-work. Category labels alone do not imply disjoint phases or pure GPU time.
-This harness publishes nested intervals directly and documents their boundaries.
+Lighthouse's [task groups](https://github.com/GoogleChrome/lighthouse/blob/main/core/lib/tracehouse/task-groups.js)
+map `ParseHTML`/`ParseAuthorStyleSheet`, `UpdateLayoutTree`/`Layout`, and
+`PrePaint`/`Paint`/`RasterTask` into broader reporting groups. Its
+[main-thread task processor](https://github.com/GoogleChrome/lighthouse/blob/main/core/lib/tracehouse/main-thread-tasks.js)
+reconstructs nesting and computes self time by subtracting child durations.
+This harness reports inclusive scopes directly; it does not reconstruct a trace
+or compute exclusive self times. Category labels do not imply pure GPU time.
 
 Gecko places profiler labels/markers at style, layout and paint boundaries, for
 example `Styles` in `layout/style/RestyleManager.cpp`, `LAYOUT_StyleComputation`
