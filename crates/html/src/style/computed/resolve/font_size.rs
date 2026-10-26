@@ -13,8 +13,7 @@ use crate::style::values::value::calc_get;
 const KEYWORD_PX: [f32; 8] = [9.0, 10.0, 13.0, 16.0, 18.0, 24.0, 32.0, 48.0];
 
 impl Computed {
-    /// Вычисленный кегль в точках при кегле родителя `parent_px`; `family` —
-    /// семейство для замера `ch`/`ex`/`ic`/`cap`. `None` — кегль не задан
+    /// Вычисленный кегль из computed размера и used метрик родителя `font`. `None` — кегль не задан
     /// (наследуется) или зависит от недоступной метрики (`lh` в `calc()`
     /// либо единицы окна до появления размеров viewport).
     ///
@@ -22,12 +21,9 @@ impl Computed {
     /// (css-values-4 §6.1.1: «when used in the value of the font-size
     /// property … they resolve against the computed metrics of the parent
     /// element»); процент — доля кегля родителя (css-fonts-4).
-    pub(crate) fn computed_font_px(
-        &self,
-        family: &str,
-        parent_px: f32,
-        vcx: ValueCx<'_>,
-    ) -> Option<f32> {
+    pub(crate) fn computed_font_px(&self, font: FontCx<'_>, vcx: ValueCx<'_>) -> Option<f32> {
+        let parent_px = font.font_px;
+        let family = font.family;
         // `larger`/`smaller` шагают по таблице, если кегль родителя в ней
         // стоит (§15.7); иначе работает запасной множитель `Len::Em`.
         if self.font_size_step != 0
@@ -37,8 +33,18 @@ impl Computed {
         {
             return Some(*px);
         }
-        let metrics = || crate::style::font_metrics::horizontal(family, parent_px, vcx);
-        let ic = || crate::style::font_metrics::ideographic(family, parent_px, vcx);
+        let metrics = || {
+            font.units.map_or_else(
+                || crate::style::font_metrics::horizontal(family, font.metric_px, vcx),
+                |units| (units[1], units[2]),
+            )
+        };
+        let ic = || {
+            font.units.map_or_else(
+                || crate::style::font_metrics::ideographic(family, font.metric_px, vcx),
+                |units| units[3],
+            )
+        };
         let size = self.font_size?;
         let size = if vcx.viewport.0 > 0.0 && vcx.viewport.1 > 0.0 {
             size.fold_viewport(self.viewport_cx(vcx.viewport), vcx)
@@ -59,7 +65,10 @@ impl Computed {
                 }
                 let (ch, ex) = metrics();
                 let cap = if s.cap != 0.0 {
-                    crate::style::font_metrics::vertical(family, parent_px, vcx).2
+                    font.units.map_or_else(
+                        || crate::style::font_metrics::vertical(family, font.metric_px, vcx).2,
+                        |units| units[0],
+                    )
                 } else {
                     0.0
                 };
@@ -104,15 +113,18 @@ mod tests {
             let (c, doc) = computed(value);
             let parent = if value == "larger" { 18.0 } else { 20.0 };
             assert_eq!(
-                c.computed_font_px("", parent, doc.values()),
+                c.computed_font_px(FontCx::new("", parent), doc.values()),
                 expected,
                 "{value}"
             );
         }
         let (c, doc) = computed("calc(1rem + 1em)");
-        assert_eq!(c.computed_font_px("", 16.0, doc.values()), Some(32.0));
         assert_eq!(
-            Computed::default().computed_font_px("", 16.0, doc.values()),
+            c.computed_font_px(FontCx::FALLBACK, doc.values()),
+            Some(32.0)
+        );
+        assert_eq!(
+            Computed::default().computed_font_px(FontCx::FALLBACK, doc.values()),
             None
         );
     }

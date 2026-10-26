@@ -35,16 +35,10 @@ pub(crate) fn flow_metrics(
         if in_edge(edges, &r) {
             continue;
         }
-        let size = match style.font_size {
-            Some(Len::Px(v)) => v,
-            Some(Len::Em(k)) => k * em_base,
-            _ => strut,
-        };
-        let own = match style.line_height {
-            Some(Len::Px(v)) => v,
-            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-            _ => crate::text::metrics::normal_px(fraction, size, opts.cx.vcx()),
-        };
+        let size = style.used_font(em_base, opts.cx.vcx()).size_px;
+        let own = style
+            .numeric_line_px(em_base)
+            .unwrap_or_else(|| crate::text::metrics::normal_px(fraction, size, opts.cx.vcx()));
         size_max = size_max.max(size);
         lh_max = lh_max.max(own);
     }
@@ -82,7 +76,7 @@ pub(crate) fn line_box_spans(
     let own = own_size(inherited, opts);
     let strut = match inherited.line_height {
         Some(Len::Px(v)) => v,
-        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * own,
+        Some(Len::Pct(_)) | Some(Len::Em(_)) => inherited.numeric_line_px(opts.base_size())?,
         None | Some(Len::Auto) => {
             crate::text::metrics::normal_px(normal_fraction(inherited, opts), own, opts.cx.vcx())
         }
@@ -100,15 +94,10 @@ pub(crate) fn line_box_spans(
         if text.is_empty() || in_edge(edges, &r) {
             continue;
         }
-        let size = match style.font_size {
-            Some(Len::Px(v)) => v,
-            Some(Len::Em(k)) => k * opts.base_size(),
-            None => own,
-            _ => return None,
-        };
+        let size = style.used_font(opts.base_size(), opts.cx.vcx()).size_px;
         let lh = match style.line_height {
             Some(Len::Px(v)) => v,
-            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+            Some(Len::Pct(_)) | Some(Len::Em(_)) => style.numeric_line_px(opts.base_size())?,
             None | Some(Len::Auto) => {
                 crate::text::metrics::normal_px(normal_fraction(style, opts), size, opts.cx.vcx())
             }

@@ -11,7 +11,6 @@ use crate::text::{
     text_box::normal_fraction,
 };
 use gpui::{AnyElement, IntoElement, SharedString};
-
 #[allow(clippy::too_many_arguments)]
 // Paragraph construction consumes the span geometry records used by the probes.
 #[allow(clippy::type_complexity)]
@@ -38,15 +37,16 @@ pub(crate) fn native_paragraph(
     // Edge-aligned pieces protrude from the block strut (CSS 2.1 §10.8.1).
     // Their size must not enlarge the central inline content's strut.
     // Per-run boxes below retain that strut alongside the legacy fallback.
-    let (flow_biggest, flow_lh) = if edges.is_empty() {
+    let (_, flow_lh) = if edges.is_empty() {
         (biggest, 0.0)
     } else {
         flow_metrics(&pieces, &edges, inherited, opts)
     };
     let line = match inherited.line_height {
         Some(Len::Px(v)) => gpui::px(v),
-        Some(Len::Pct(k)) => gpui::px(k * flow_biggest),
-        Some(Len::Em(k)) => gpui::px(k * flow_biggest),
+        Some(Len::Pct(_) | Len::Em(_)) => {
+            gpui::px(inherited.numeric_line_px(opts.base_size()).unwrap_or(0.0))
+        }
         _ if !edges.is_empty() => gpui::px(flow_lh),
         // Своей `line-height` у блока нет — её задают КУСКИ: у куска
         // со своей высотой строки она и берётся, у остальных доля от

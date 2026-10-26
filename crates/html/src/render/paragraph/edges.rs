@@ -3,7 +3,6 @@
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 use crate::text::inline;
 use crate::text::text_box::normal_fraction;
 
@@ -71,20 +70,10 @@ pub(crate) fn edge_pieces(
             && !out_of_flow
             && !text.is_empty()
         {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * opts.base_size(),
-                _ => own_size(inherited, opts),
-            };
-            let h = match style.line_height {
-                Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => crate::text::metrics::normal_px(
-                    normal_fraction(style, opts),
-                    size,
-                    opts.cx.vcx(),
-                ),
-            };
+            let size = style.used_font(opts.base_size(), opts.cx.vcx()).size_px;
+            let h = style.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
+                crate::text::metrics::normal_px(normal_fraction(style, opts), size, opts.cx.vcx())
+            });
             match out.last_mut() {
                 // Соседние куски одного края — одна коробка (`<span>` с
                 // вложенными кусками).

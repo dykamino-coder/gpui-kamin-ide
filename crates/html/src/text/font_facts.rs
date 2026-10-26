@@ -48,6 +48,13 @@ impl FontFactsProvider for Backend {
         snapshot: &FontRegistrySnapshot,
     ) -> Result<FontMetricFacts, FontFactsError> {
         let doc = self.document(snapshot)?;
+        if request.metric_query == FontMetricQuery::Adjustment {
+            return doc
+                .metrics
+                .font_context()
+                .native_metrics(&selection::font(request, snapshot), request.size_px)
+                .ok_or(FontFactsError::Unavailable);
+        }
         let vcx = doc.values();
         use FontMetricQuery::*;
         let mut facts = FontMetricFacts::default();

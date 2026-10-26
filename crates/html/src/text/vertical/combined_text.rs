@@ -42,10 +42,7 @@ pub(crate) fn piece(
     merged.inline_format = Some(crate::style::computed::InlineFormat::Combined);
     // An explicit zero overrides inherited spacing in nested inline descendants.
     merged.letter_spacing = Some(Len::Px(0.0));
-    let em = match merged.font_size {
-        Some(Len::Px(value)) => value,
-        _ => opts.base_size(),
-    };
+    let em = crate::layout::options::own_size(&merged, opts);
     merged.line_height = Some(Len::Px(em));
     let feature = match text.graphemes(true).count() {
         2 => Some("hwid"),

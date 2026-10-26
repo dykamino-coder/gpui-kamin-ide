@@ -69,12 +69,14 @@ pub(crate) fn has_overrides(font: &gpui::Font) -> bool {
 /// Override ascent/descent in used pixels. Line gap belongs to line-height,
 /// not to either extent: half-leading distributes it around the baseline.
 pub(crate) fn extents(font: &gpui::Font, size: f32, native: (f32, f32)) -> (f32, f32) {
-    let mut result = [native.0, native.1];
+    let mut overrides = [None; 3];
     for (tag, value) in font.features.tag_value_list() {
         if let Some(index) = TAGS[..2].iter().position(|t| *t == tag) {
-            result[index] = f32::from_bits(*value) * size;
+            overrides[index] = Some(f32::from_bits(*value));
         }
     }
+    let result =
+        crate::font_facts::UsedFont::override_metrics(size, [native.0, native.1, 0.0], overrides);
     (result[0], result[1])
 }
 
@@ -84,7 +86,13 @@ pub(crate) fn normal_line(family: &str, native: f32, vcx: ValueCx<'_>) -> f32 {
         return native;
     }
     let (a, d, _) = crate::text::metrics::vmetrics_px(family, 1.0, vcx);
-    ascent.unwrap_or(a) + descent.unwrap_or(d) + gap.unwrap_or((native - a - d).max(0.0))
+    crate::font_facts::UsedFont::override_metrics(
+        1.0,
+        [a, d, (native - a - d).max(0.0)],
+        [ascent, descent, gap],
+    )
+    .into_iter()
+    .sum()
 }
 
 #[cfg(test)]
