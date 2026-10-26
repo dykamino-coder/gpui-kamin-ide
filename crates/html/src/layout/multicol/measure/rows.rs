@@ -2,6 +2,7 @@
 
 use crate::dom::Element;
 use crate::layout::fragment::token::space::sequence::Nested;
+use crate::layout::multicol::dimensions::MulticolDimensions;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -16,6 +17,27 @@ pub(crate) fn row_plan(
     cols: u16,
     col_vert: bool,
     outer_space: Option<Rc<Nested>>,
+) -> RowPlan {
+    row_plan_in(
+        e,
+        opts,
+        column_width,
+        cols,
+        col_vert,
+        outer_space,
+        MulticolDimensions::css(&e.style.used()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn row_plan_in(
+    e: &Element,
+    opts: &RenderOpts,
+    column_width: Option<Len>,
+    cols: u16,
+    col_vert: bool,
+    outer_space: Option<Rc<Nested>>,
+    dimensions: MulticolDimensions,
 ) -> RowPlan {
     let col_w_px = match column_width {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
@@ -34,9 +56,9 @@ pub(crate) fn row_plan(
     };
     // Блочный размер коробки: в вертикальном письме — ширина.
     let box_h = match if col_vert {
-        e.style.used().width
+        dimensions.preferred[0]
     } else {
-        e.style.used().height
+        dimensions.preferred[1]
     } {
         Some(Len::Px(h)) if h > 0.0 => Some(h),
         _ => None,
@@ -76,9 +98,9 @@ pub(crate) fn row_plan(
     // точках (доля, `em`) — потолка нет, как до P5: ниже используемой
     // высоты резать нельзя, а её здесь не знаем.
     let (max_block, min_block) = if col_vert {
-        (e.style.used().max_width, e.style.used().min_width)
+        (dimensions.maximum[0], dimensions.minimum[0])
     } else {
-        (e.style.used().max_height, e.style.used().min_height)
+        (dimensions.maximum[1], dimensions.minimum[1])
     };
     let cap_h = box_h.and_then(|h| {
         let h = match max_block {
@@ -153,70 +175,4 @@ pub(crate) struct RowPlan {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::row_plan;
-    use crate::dom::{Element, Node};
-    use crate::layout::fragment::token::{Space, space::sequence::Sequence};
-    use crate::layout::options::RenderOpts;
-    use crate::style::computed::Computed;
-    use crate::style::values::value::Len;
-
-    fn host(nodes: &[Node]) -> &Element {
-        fn find(nodes: &[Node]) -> Option<&Element> {
-            nodes.iter().find_map(|node| match node {
-                Node::Element(e) if e.tag == "div" => Some(e),
-                Node::Element(e) => find(&e.children),
-                _ => None,
-            })
-        }
-        find(nodes).expect("host")
-    }
-
-    #[test]
-    fn addressed_budget_keeps_first_remainder_and_later_constraints() {
-        let tree = crate::dom::parse("<div style='height:500px; min-height:600px'></div>", "");
-        let e = host(&tree);
-        let opts = RenderOpts {
-            text: Default::default(),
-            viewport: (800., 600.),
-            normal_line_height: 1.2,
-            cx: Default::default(),
-            frag: Default::default(),
-        };
-        let sequence = Sequence::new(|index| {
-            Ok(Space {
-                block_size: Some(if index == 0 { 100. } else { 40. }),
-                ..Space::pages()
-            })
-        })
-        .nested(0, 75.)
-        .unwrap();
-        let plan = row_plan(
-            e,
-            &Computed::default(),
-            &opts,
-            None,
-            2,
-            false,
-            Some(sequence.clone()),
-        );
-        let outer = plan.outer_space.unwrap();
-        assert_eq!(outer.at(0).unwrap().block_size, Some(25.));
-        assert_eq!(outer.at(1).unwrap().block_size, Some(40.));
-        assert_eq!((plan.nest_rows, plan.nest_phase), (Some(100.), 75.));
-        assert_eq!(e.style.used().min_height, Some(Len::Px(600.)));
-        for property in ["column-height:30px", "column-wrap:nowrap"] {
-            let tree = crate::dom::parse(&format!("<div style='{property}'></div>"), "");
-            let plan = row_plan(
-                host(&tree),
-                &Computed::default(),
-                &opts,
-                None,
-                2,
-                false,
-                Some(sequence.clone()),
-            );
-            assert!(plan.outer_space.is_none());
-        }
-    }
-}
+mod tests;

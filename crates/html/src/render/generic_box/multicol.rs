@@ -1,6 +1,7 @@
 //! Выбор многоколоночного маршрута с сохранением ранних возвратов и состояния коробки.
 
 use crate::layout::fragment::token::space::sequence::Nested;
+use crate::layout::multicol::dimensions::MulticolDimensions;
 use crate::layout::options::RenderOpts;
 use std::rc::Rc;
 mod spanners;
@@ -8,9 +9,9 @@ mod stack;
 pub(super) use stack::stack_box;
 
 use crate::dom::{Element, Node};
-use crate::layout::multicol::column_flow::column_flow;
+use crate::layout::multicol::column_flow::{column_flow, column_flow_with_dimensions};
 use crate::layout::multicol::container::multicol_spanner_segments;
-use crate::layout::multicol::measure::{RowPlan, row_plan};
+use crate::layout::multicol::measure::{RowPlan, row_plan, row_plan_in};
 use crate::layout::multicol::spanner::{has_deep_spanner, spanner_box};
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
@@ -54,6 +55,7 @@ pub(crate) fn multicol_box(
         outer_space,
         lone_span,
         None,
+        None,
     )
 }
 
@@ -74,6 +76,7 @@ fn settled(
     outer_space: Option<Rc<Nested>>,
     lone_span: bool,
     rest_h: Option<f32>,
+    dimensions: Option<(MulticolDimensions, MulticolDimensions)>,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     // Сплошной текст режется на колонки по строкам, а не по детям:
     // один длинный абзац иначе оставался в первой колонке целиком.
@@ -89,7 +92,10 @@ fn settled(
         nest_phase,
         nest_rows,
         outer_space,
-    } = row_plan(e, &merged, opts, column_width, cols, col_vert, outer_space);
+    } = match dimensions {
+        Some((_, own)) => row_plan_in(e, opts, column_width, cols, col_vert, outer_space, own),
+        None => row_plan(e, &merged, opts, column_width, cols, col_vert, outer_space),
+    };
     // Путь спаннера подготовлен native-фазой при разрешённой ширине.
     let span_prev: Option<Option<u64>> = None;
     let seg_open = false;
@@ -104,9 +110,13 @@ fn settled(
     // первой/последней строки) — такой многоколоночник идёт стопкой
     // со строками (`line_run_shape`; `text-box-trim-multicol-009/010`).
     let trim_host = merged.text_box_trim_start || merged.text_box_trim_end;
-    if let Some(el) =
-        column_flow(e, &merged, opts, want, col_w_px, outer_space).filter(|_| !trim_host)
-    {
+    let flow = match dimensions {
+        Some((dimensions, _)) => {
+            column_flow_with_dimensions(e, &merged, opts, want, col_w_px, outer_space, dimensions)
+        }
+        None => column_flow(e, &merged, opts, want, col_w_px, outer_space),
+    };
+    if let Some(el) = flow.filter(|_| !trim_host) {
         // Коробка элемента остаётся своей: отступы и фон
         // принадлежат ей, поток живёт внутри.
         return Err(d.child(el).into_any_element());

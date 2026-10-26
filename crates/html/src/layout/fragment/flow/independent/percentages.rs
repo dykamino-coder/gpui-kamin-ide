@@ -71,6 +71,16 @@ pub(crate) fn column_percentages(
         opts.cx.constraints.avail_w,
         opts.viewport.1,
     );
+    column_percentages_in(nodes, parent, height, width, opts)
+}
+
+pub(crate) fn column_percentages_in(
+    nodes: &[Node],
+    parent: &BoxStyle,
+    height: Option<f32>,
+    width: Option<f32>,
+    opts: &RenderOpts,
+) -> Vec<Node> {
     nodes
         .iter()
         .map(|n| match n {

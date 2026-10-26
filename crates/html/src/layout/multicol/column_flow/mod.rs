@@ -6,6 +6,7 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
+use crate::layout::multicol::dimensions::MulticolDimensions;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
@@ -27,49 +28,8 @@ mod rule;
 use crate::layout::fragment::token::space::sequence::Nested;
 use std::rc::Rc;
 
-/// Многоколоночный поток из сплошного текста.
-///
-/// Годится, когда всё содержимое — строчное: тогда режется сам текст. Если
-/// внутри блоки, колонки набираются из них сеткой, как и раньше.
-pub(crate) fn column_flow(
-    e: &Element,
-    inherited: &BoxStyle,
-    opts: &RenderOpts,
-    count: Option<usize>,
-    col_w: Option<f32>,
-    outer: Option<Rc<Nested>>,
-) -> Option<AnyElement> {
-    // Линейки последней (единственной) линии колонок тянутся до низа
-    // содержимого коробки заданной высоты (Blink `PaintColumnRules`: «Paint
-    // column rules as tall as the entire multicol container, but only when at
-    // the last row»; `multicol-rule-004`: две строки в коробке 5em — линейка
-    // на все 5em). Высота содержимого — заданная `height` в точках.
-    let px = |l: &Option<Len>| match l {
-        None => Some(0.0),
-        Some(Len::Px(v)) => Some(*v),
-        _ => None,
-    };
-    let stretch = match inherited.height.or(e.style.used().height) {
-        Some(Len::Px(h)) if h > 0.0 => {
-            if e.style.used().border_box == Some(true) {
-                let b = e.style.used().borders();
-                (|| {
-                    Some(
-                        h - px(&e.style.used().padding.top)?
-                            - px(&e.style.used().padding.bottom)?
-                            - px(&b.top)?
-                            - px(&b.bottom)?,
-                    )
-                })()
-            } else {
-                Some(h)
-            }
-        }
-        _ => None,
-    }
-    .filter(|h| *h > 0.0);
-    column_flow_in(e, inherited, opts, count, col_w, false, stretch, outer)
-}
+mod sizing;
+pub(crate) use sizing::{column_flow, column_flow_with_dimensions};
 
 /// `whole` — текст пришёл рекурсией из единственного ребёнка-МОНОЛИТА
 /// (`size_monolith`; css-contain-2 §containment-size: «Size containment boxes
@@ -87,6 +47,7 @@ fn column_flow_in(
     whole: bool,
     stretch: Option<f32>,
     outer: Option<Rc<Nested>>,
+    dimensions: MulticolDimensions,
 ) -> Option<AnyElement> {
     // Позиционированный строчный ребёнок: его содержащий блок — не колонка,
     // а предок (css-position-3 §containing-block; Blink кладёт OOF во
@@ -198,8 +159,8 @@ fn column_flow_in(
             // подряд до неё (css-multicol-1 §3.3).
             match (
                 e.style.used().column_fill_auto,
-                inherited.height.or(e.style.used().height),
-                inherited.max_height,
+                dimensions.preferred[1],
+                dimensions.maximum[1],
             ) {
                 (Some(true), Some(Len::Px(h)), _) if h > 0.0 => Some(h),
                 // Высота авто, но задан `max-height`: колонки заполняются подряд до

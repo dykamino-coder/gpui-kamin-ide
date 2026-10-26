@@ -1,13 +1,14 @@
 //! Адаптер spanner path: native-геометрия при разрешённой ширине и расход
 //! внешнего ряда. Временные LayoutId не переживают вложенный layout.
 
-use super::super::columns::column_plan;
+use super::super::columns::column_plan_in;
 use super::settled;
+use crate::layout::multicol::dimensions::MulticolDimensions;
 mod intrinsic;
 mod probe;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::token::space::sequence::Nested;
-use crate::layout::multicol::measure::{SpannerRow, row_plan, tail_rest_height};
+use crate::layout::multicol::measure::{SpannerRow, row_plan_in, tail_rest_height};
 use crate::layout::multicol::spanner::{SpannerFlow, SpannerPass, hoist_spanners, spanner_box};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
@@ -33,23 +34,29 @@ pub(super) fn deferred(
             };
             let width = f32::from(width);
             let mut host = e.clone();
-            host.style.used_mut().width = Some(Len::Px(width));
-            host.style.used_mut().border_box = None;
-            let mut style = merged.clone();
-            style.width = Some(Len::Px(width));
-            style.border_box = None;
-            if let AvailableSpace::Definite(h) = available.height {
-                host.style.used_mut().height = Some(Len::Px(f32::from(h)));
-                style.height = Some(Len::Px(f32::from(h)));
-            }
-            host.children = crate::layout::fragment::flow::column_percentages(
+            let style = merged.clone();
+            let height = match available.height {
+                AvailableSpace::Definite(h) => Some(f32::from(h)),
+                _ => None,
+            };
+            let dimensions = MulticolDimensions::measured(&style, width, height);
+            // План рядов читает собственные ограничения; стадия коробки
+            // может разрешить процентную высоту иначе (quirks mode).
+            let own = MulticolDimensions::measured(&host.style.used(), width, height);
+            host.children = crate::layout::fragment::flow::column_percentages_in(
                 &host.children,
                 &style,
+                dimensions.percentage_height(
+                    &style,
+                    opts.cx.constraints.avail_h,
+                    opts.cx.constraints.avail_w,
+                    opts.viewport.1,
+                ),
                 Some(width),
                 &opts,
             )
             .into();
-            let plan = column_plan(&host, &style, &opts);
+            let plan = column_plan_in(&host, &style, &opts, dimensions, own);
             let count = plan.used_count.unwrap_or(1).max(1);
             let column_width = ((width + plan.used_gap) / f32::from(count) - plan.used_gap).max(0.);
             let mut probe_opts = opts.clone();
@@ -84,14 +91,14 @@ pub(super) fn deferred(
             {
                 host.children = kids.into();
             }
-            let rows = row_plan(
+            let rows = row_plan_in(
                 &host,
-                &style,
                 &opts,
                 plan.column_width,
                 count,
                 plan.col_vert,
                 outer.clone(),
+                own,
             );
             let rest = match (
                 rows.box_h,
@@ -101,12 +108,17 @@ pub(super) fn deferred(
                 (Some(total), true, Some(last)) => {
                     let mut prefix = host.clone();
                     prefix.children.truncate(last + 1);
-                    prefix.style.used_mut().height = None;
-                    let mut prefix_style = style.clone();
-                    prefix_style.height = None;
+                    let prefix_style = style.clone();
                     let used = window.with_nested_layout(|window| {
-                        let mut el =
-                            build(&prefix, prefix_style, &inherited, &probe_opts, None, None);
+                        let mut el = build(
+                            &prefix,
+                            prefix_style,
+                            &inherited,
+                            &probe_opts,
+                            None,
+                            None,
+                            (dimensions.prefix(), own.prefix()),
+                        );
                         f32::from(
                             el.layout_as_root_unrounded(
                                 size(
@@ -131,7 +143,15 @@ pub(super) fn deferred(
                 probe_opts.clone()
             };
             final_opts.cx.position.geometry = probe_opts.cx.position.geometry;
-            build(&host, style, &inherited, &final_opts, outer.clone(), rest)
+            build(
+                &host,
+                style,
+                &inherited,
+                &final_opts,
+                outer.clone(),
+                rest,
+                (dimensions, own),
+            )
         },
         move |available, window, cx| {
             intrinsic::measure(
@@ -150,6 +170,7 @@ fn is_span(n: &Node) -> bool {
     matches!(n, Node::Element(e) if spanner_box(e))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build(
     host: &Element,
     style: BoxStyle,
@@ -157,14 +178,15 @@ fn build(
     opts: &RenderOpts,
     outer: Option<Rc<Nested>>,
     rest: Option<f32>,
+    (dimensions, own): (MulticolDimensions, MulticolDimensions),
 ) -> AnyElement {
-    let p = column_plan(host, &style, opts);
+    let p = column_plan_in(host, &style, opts, dimensions, own);
     let mut d = div();
     let vertical = style.wm().vertical();
     let axes = style.wm().reversed_axes();
     d.style().block_flow = Some([vertical, vertical && axes[0], axes[usize::from(vertical)]]);
     // Размер анонимного потока задаёт CSS-хост; декорации остаются снаружи.
-    if let Some(Len::Px(h)) = style.height {
+    if let Some(Len::Px(h)) = dimensions.preferred[1] {
         d = d.h(px(h));
     }
     match settled(
@@ -183,6 +205,7 @@ fn build(
         outer,
         p.lone_span,
         rest,
+        Some((dimensions, own)),
     ) {
         Ok((d, _)) => d.into_any_element(),
         Err(el) => el,

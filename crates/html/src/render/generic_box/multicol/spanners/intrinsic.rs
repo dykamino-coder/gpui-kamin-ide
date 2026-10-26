@@ -1,9 +1,10 @@
 //! Внутренний размер spanner path с исходным процентным содержащим блоком.
 
-use super::{column_plan, is_span, probe};
+use super::{is_span, probe};
 use crate::dom::{Element, Node};
 use crate::layout::multicol::spanner::hoist_spanners;
 use crate::layout::options::RenderOpts;
+use crate::render::generic_box::columns::column_plan;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{App, AvailableSpace, IntoElement, ParentElement, Window, div};

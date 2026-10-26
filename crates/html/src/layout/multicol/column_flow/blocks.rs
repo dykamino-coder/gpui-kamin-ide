@@ -61,6 +61,12 @@ pub(super) fn non_inline_columns(
             whole || size_monolith(only),
             stretch,
             outer,
+            {
+                let mut dimensions =
+                    crate::layout::multicol::dimensions::MulticolDimensions::css(&inside);
+                dimensions.preferred[1] = inside.height.or(only.style.used().height);
+                dimensions
+            },
         ));
     }
     None
