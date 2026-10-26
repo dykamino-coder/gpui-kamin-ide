@@ -12,6 +12,8 @@ mod accounting;
 mod args;
 #[cfg(windows)]
 mod host;
+#[cfg(windows)]
+mod pixels;
 mod report;
 mod resources;
 #[cfg(windows)]

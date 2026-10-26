@@ -3,7 +3,7 @@
 use super::{
     accounting::{self, Input, Measured},
     args::{Args, Mode},
-    host, report, resources,
+    host, pixels, report, resources,
     view::{Phases, View},
 };
 use gpui::{AsyncApp, WindowHandle, frame_capture, frame_perf};
@@ -49,29 +49,6 @@ async fn wait(cx: &AsyncApp, sequence: u64) -> Result<u64> {
         Either::Left((Ok(seq), _)) => Ok(seq),
         _ => Err("no completed GPU readback within 60 seconds".into()),
     }
-}
-
-fn save(frame: &frame_capture::CapturedFrame, path: &std::path::Path) -> Result<()> {
-    let mut rgba = frame.bgra.clone();
-    for pixel in rgba.chunks_exact_mut(4) {
-        pixel.swap(0, 2);
-    }
-    let mut encoder = png::Encoder::new(std::fs::File::create(path)?, frame.width, frame.height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.write_header()?.write_image_data(&rgba)?;
-    Ok(())
-}
-
-fn fingerprint(frame: &frame_capture::CapturedFrame) -> String {
-    let hash = frame
-        .bgra
-        .chunks_exact(4)
-        .flat_map(|p| &p[..3])
-        .fold(0xcbf29ce484222325u64, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
-        });
-    format!("{hash:016x}")
 }
 
 async fn sample(
@@ -173,7 +150,7 @@ pub(super) async fn run(
     let gpu = window.update(cx, |_, window, _| window.gpu_specs())?;
     let baseline_memory = host::peak_memory()?;
     let mut modes = serde_json::Map::new();
-    let mut first_hash = None;
+    let mut pixels = pixels::Recorder::new(args.frame_diff_dir.as_deref())?;
     let mut snapshot_pending = args.snapshot.as_deref();
     if args.mode == Mode::Warm {
         sample(cx, window, fonts, args, true).await?;
@@ -184,18 +161,12 @@ pub(super) async fn run(
         }
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
-        for _ in 0..args.runs {
+        for index in 1..=args.runs {
             let (sample, frame) = sample(cx, window, fonts, args, cold).await?;
-            let hash = fingerprint(&frame);
-            if first_hash.as_ref().is_some_and(|first| *first != hash) {
-                return Err(
-                    "pixels changed between runs; use a static deterministic document".into(),
-                );
-            }
-            first_hash = Some(hash);
             if let Some(path) = snapshot_pending.take() {
-                save(&frame, path)?;
+                pixels::save(&frame, path)?;
             }
+            pixels.observe(frame, name, index)?;
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
@@ -203,14 +174,19 @@ pub(super) async fn run(
         mode["diagnostic_scopes"] = report::mode(&diagnostics);
         modes.insert(name.into(), mode);
     }
-    let report = json!({"schema_version": 2, "input": args.path, "viewport_css_px": args.viewport,
+    let mut report = json!({"schema_version": 2, "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
-        "runs_per_mode": args.runs, "modes": modes, "first_frame_bgr_fnv1a64": first_hash,
+        "runs_per_mode": args.runs, "modes": modes,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
         "intervals_overlap": false, "diagnostic_intervals_overlap": true});
+    if let Some(fields) = pixels.report().as_object() {
+        for (key, value) in fields {
+            report[key] = value.clone();
+        }
+    }
     report::print(&report, args.json)?;
     Ok(())
 }

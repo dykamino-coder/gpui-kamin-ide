@@ -24,6 +24,7 @@ if another selected package has enabled it.
 cargo build -p engine-bench --bin engine_bench --features engine-bench --profile release --target-dir target/bench
 target/bench/release/engine_bench.exe C:/pages/heavy.html --viewport 800x600 --runs 100 --mode both
 target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json --snapshot C:/results/first.png
+target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json --frame-diff-dir C:/results/frame-diffs
 ```
 
 Use the release executable directly for repeated measurements. Debug builds
@@ -31,8 +32,9 @@ refuse to measure. Defaults: 800x600 CSS pixels, device scale factor 1, 30 sampl
 per mode, both modes. `--mode cold|warm|both` selects the samples. `--snapshot`
 writes the first measured frame after timing; its directory must already exist.
 Errors produce a nonzero exit status. A run is rejected if its capture has the
-wrong dimensions, document traversal degrades, pixels change between samples,
-or more than one frame crosses the sample boundary.
+wrong dimensions, document traversal degrades, or more than one frame crosses
+the sample boundary. Changing pixels are reported without rejecting the series
+or excluding any timing samples.
 
 ## What is measured
 
@@ -91,8 +93,29 @@ Host resource, parse/style and document scopes are `null` for warm samples, rath
 Samples are not trimmed, rescaled or filtered. The median averages the two
 middle values for even sample counts. p90 uses nearest rank `ceil(0.9*N)`.
 JSON includes count, minimum, maximum, median, p90 and the individual samples.
-The BGR FNV-1a fingerprint detects changing sample output; use saved PNGs and
-an exact RGB comparison for independent pixel validation.
+`first_frame_bgr_fnv1a64` fingerprints the first measured frame. Each subsequent
+measured frame is compared exactly against that frame's RGB bytes (alpha is
+ignored). `frame_pixels_changed` is true when any comparison differs;
+`frame_pixel_differences` records every differing frame's one-based `frame_index`
+across modes in execution order (cold, then warm), `mode`, one-based
+`sample_index` within that mode, capture sequence, changed RGB pixel count and
+`bounds_xywh` in device pixels. The rectangle bounds all changes; it is not a
+list of connected components. The warm-only preparation frame is unreported and
+does not participate in these indices. A frame that returns to baseline has no
+difference entry. All timing samples remain in the statistics.
+
+`--frame-diff-dir DIR` creates the directory and writes `frame-000001.png`, the
+first differing `frame-NNNNNN.png`, and `diff-NNNNNN.png` (absolute RGB channel
+difference, opaque alpha, unchanged pixels black). Paths accompany that frame's
+JSON entry. Only this first differing frame gets PNG artifacts; all differing
+frames get metadata. Use a fresh directory for each invocation to preserve evidence.
+Without this option, metadata is still reported. Baseline retention, exact RGB
+comparison and optional PNG encoding happen after each sample's timing ends.
+Their memory and cache effects remain part of the process environment and peak
+working set; at 800x600 the retained BGRA baseline occupies 1,920,000 bytes.
+Use saved first-frame PNGs and an independent exact RGB comparison for validation.
+Repeated-frame differences in a static document are an engine determinism finding
+to investigate separately; this harness records them without claiming a cause.
 
 `peak_working_set_bytes` is Windows `PeakWorkingSetSize` for the whole process
 since launch, queried after all samples, statistics and captures, before writing

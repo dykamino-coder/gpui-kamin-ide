@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--mode cold|warm|both] [--json] [--snapshot first.png]\n\
+    [--mode cold|warm|both] [--json] [--snapshot first.png] [--frame-diff-dir DIR]\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -20,6 +20,7 @@ pub(super) struct Args {
     pub(super) mode: Mode,
     pub(super) json: bool,
     pub(super) snapshot: Option<PathBuf>,
+    pub(super) frame_diff_dir: Option<PathBuf>,
 }
 
 impl Args {
@@ -40,6 +41,7 @@ impl Args {
             mode: Mode::Both,
             json: false,
             snapshot: None,
+            frame_diff_dir: None,
         };
         while let Some(flag) = args.next() {
             if flag == "--json" {
@@ -72,6 +74,7 @@ impl Args {
                     };
                 }
                 "--snapshot" => out.snapshot = Some(value.into()),
+                "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 _ => return Err(format!("unknown option: {flag}").into()),
             }
         }

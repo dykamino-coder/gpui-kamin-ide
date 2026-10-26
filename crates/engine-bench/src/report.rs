@@ -69,6 +69,19 @@ pub(super) fn print(report: &Value, json_output: bool) -> Result<(), serde_json:
             "Process peak working set: {} bytes",
             report["peak_working_set_bytes"]
         );
+        println!("frame_pixels_changed: {}", report["frame_pixels_changed"]);
+        if let Some(changes) = report["frame_pixel_differences"].as_array() {
+            for change in changes {
+                println!(
+                    "Frame {} ({} sample {}): {} changed RGB pixels vs frame 1, bounds_xywh={}",
+                    change["frame_index"],
+                    change["mode"],
+                    change["sample_index"],
+                    change["different_rgb_pixels"],
+                    change["bounds_xywh"]
+                );
+            }
+        }
     }
     Ok(())
 }
