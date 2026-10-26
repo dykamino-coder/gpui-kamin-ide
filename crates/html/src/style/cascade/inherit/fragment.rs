@@ -25,7 +25,7 @@ mod tests {
             let mut expected = Computed::default();
             expected.break_before_force = facts.0;
             expected.break_after_force = facts.1;
-            assert_eq!(*style.used(), expected);
+            assert_eq!(**style.used(), expected);
         }
     }
 }
