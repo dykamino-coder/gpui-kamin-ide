@@ -13,6 +13,8 @@
 #[cfg(test)]
 mod admission_tests;
 mod base_url;
+#[cfg(test)]
+mod budget_tests;
 mod builder;
 #[cfg(feature = "engine-bench")]
 mod timing;
@@ -94,6 +96,7 @@ impl Document {
         xml: bool,
         media: Media,
         fonts: &crate::text::metrics::FontContext,
+        revision: crate::budget::RevisionBudget,
     ) -> Result<Self, DocumentFailure> {
         let key = base_url::key(html, theme_css, base_url.as_ref());
         #[cfg(feature = "engine-bench")]
@@ -118,6 +121,7 @@ impl Document {
             effective_base.as_ref(),
             media,
             fonts,
+            revision,
             #[cfg(feature = "engine-bench")]
             &mut timings,
         );

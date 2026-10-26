@@ -32,6 +32,7 @@
 #[cfg(test)]
 mod depth_tests;
 
+pub mod budget;
 #[cfg(test)]
 pub mod coverage;
 pub(crate) mod defaults;
