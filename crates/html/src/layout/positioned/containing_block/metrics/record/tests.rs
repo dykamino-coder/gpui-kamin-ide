@@ -69,12 +69,13 @@ fn padding_cb_bottom_and_relative_offset_are_recorded_before_growth(cx: &mut gpu
 }
 
 #[gpui::test]
-// Нулевой кегль исключает фиктивный advance U+FEFF тестового шейпера GPUI.
-// Ширину гипотетического предшественника задаёт только inline-block.
+// NoopTextSystem даёт обычному знаку advance 0.6em: при 50px это 30px.
+// Текстовый предшественник не использует U+FEFF-носитель строчного атома,
+// которому этот шейпер ошибочно даёт advance (нативный шейпер — нет).
 fn static_position_uses_the_middle_of_the_actual_line(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-        let (snapshot, id) = sample("<section style='position:relative;font-size:0;top:70px;width:160px;height:100px;padding:8px;border:4px solid'><span style='display:inline-block;width:30px;height:20px'></span><span style='position:absolute;top:10px;width:10px;height:10px'></span></section>", 200., window, app);
+        let (snapshot, id) = sample("<section style='position:relative;font-size:50px;line-height:20px;top:70px;width:160px;height:100px;padding:8px;border:4px solid'>a<span style='position:absolute;top:10px;width:10px;height:10px'></span></section>", 200., window, app);
         let metrics = snapshot.get(id).expect("static dependency completed");
         assert_eq!(metrics.normal_offset, point(px(38.), px(10.)));
         assert_eq!(metrics.static_rect.unwrap().origin.x - metrics.original_cb_rect.origin.x, px(38.));
@@ -113,7 +114,8 @@ fn all_auto_inline_overlay_records_its_actual_static_point(cx: &mut gpui::TestAp
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
         for (direction, expected, bias) in [("ltr", 38., 0.), ("rtl", 128., 10.)] {
-            let html = format!("<section style='position:relative;font-size:0;direction:{direction};width:160px;height:100px;padding:8px;border:4px solid'><span style='display:inline-block;width:30px;height:20px'></span><span style='position:absolute;width:10px;height:10px'></span></section>");
+            let text = if direction == "rtl" { "א" } else { "a" };
+            let html = format!("<section style='position:relative;font-size:50px;line-height:20px;direction:{direction};width:160px;height:100px;padding:8px;border:4px solid'>{text}<span style='position:absolute;width:10px;height:10px'></span></section>");
             let (snapshot, id) = sample(&html, 200., window, app);
             let metrics = snapshot.get(id).expect("all-auto static dependency completed");
             assert_eq!(metrics.normal_offset.x, px(expected));
@@ -130,7 +132,8 @@ fn static_margin_edge_uses_the_parent_direction(cx: &mut gpui::TestAppContext) {
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
         for top in ["", "top:10px;"] {
             for (direction, expected) in [("ltr", 41.), ("rtl", 121.)] {
-                let html = format!("<section style='position:relative;font-size:0;direction:{direction};width:160px;height:100px;padding:8px;border:4px solid'><span style='display:inline-block;width:30px;height:20px'></span><span style='position:absolute;{top}width:10px;height:10px;margin-left:3px;margin-right:7px;margin-top:5px'></span></section>");
+                let text = if direction == "rtl" { "א" } else { "a" };
+                let html = format!("<section style='position:relative;font-size:50px;line-height:20px;direction:{direction};width:160px;height:100px;padding:8px;border:4px solid'>{text}<span style='position:absolute;{top}width:10px;height:10px;margin-left:3px;margin-right:7px;margin-top:5px'></span></section>");
                 let (snapshot, id) = sample(&html, 200., window, app);
                 let metrics = snapshot.get(id).expect("margin-edge static dependency completed");
                 assert_eq!(metrics.normal_offset.x, px(expected), "{direction} {top}");
