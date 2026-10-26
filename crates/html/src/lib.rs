@@ -37,6 +37,7 @@ pub mod budget;
 pub mod coverage;
 pub(crate) mod defaults;
 pub(crate) mod hooks;
+pub mod host;
 pub mod tolerance;
 pub use style::css;
 pub(crate) mod box_facts;

@@ -43,6 +43,7 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
         backdrop: None,
         skip_draws: false,
         gpu_timer: Default::default(),
+        capture: None,
         timing_main: false,
     }
 }

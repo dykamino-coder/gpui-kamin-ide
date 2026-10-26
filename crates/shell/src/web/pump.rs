@@ -81,8 +81,10 @@ pub fn start_pump(cx: &mut gpui::App) {
         let bg = cx.update(|cx| cx.background_executor().clone());
         loop {
             bg.timer(std::time::Duration::from_millis(1000)).await;
-            super::diag::report();
-            super::diag_why::report();
+            cx.update(|cx| {
+                super::diag::report(cx.instrumentation());
+                super::diag_why::report(cx.instrumentation());
+            });
             // Сначала усыпить ушедшее с экрана, потом выгружать: скрытое вью
             // перестаёт рисовать сразу, а renderer теряет только через TTL.
             super::visibility::sleep_hidden();

@@ -940,14 +940,14 @@ impl Style {
 
     // Finish shadows, background and border temporaries before painting children.
     #[inline(never)]
-    fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) {
         #[cfg(debug_assertions)]
         if self.debug_below {
-            cx.set_global(DebugBelow)
+            _cx.set_global(DebugBelow)
         }
 
         #[cfg(debug_assertions)]
-        if self.debug || cx.has_global::<DebugBelow>() {
+        if self.debug || _cx.has_global::<DebugBelow>() {
             window.paint_quad(crate::outline(bounds, crate::red(), BorderStyle::default()));
         }
 

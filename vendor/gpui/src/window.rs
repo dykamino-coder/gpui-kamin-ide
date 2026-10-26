@@ -69,6 +69,7 @@ mod image_sampling;
 mod natural_image;
 mod absolute_transformation;
 mod scene_capture;
+mod frame_capture;
 mod paint_scope;
 mod paint_record;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan,
@@ -1580,6 +1581,7 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
 }
 
 impl Window {
+
     pub(crate) fn new(
         handle: AnyWindowHandle,
         options: WindowOptions,
@@ -2275,6 +2277,7 @@ impl ContentMask<Pixels> {
 }
 
 impl Window {
+
     fn mark_view_dirty(&mut self, view_id: EntityId) {
         // Mark ancestor views as dirty. If already in the `dirty_views` set, then all its ancestors
         // should already be dirty.

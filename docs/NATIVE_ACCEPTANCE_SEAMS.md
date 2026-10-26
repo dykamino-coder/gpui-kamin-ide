@@ -23,7 +23,7 @@ WARP и device loss включаются **внутри debug-сборки**, б
 `EnumWarpAdapter`), `-DeviceLoss` → `KAMIN_DEBUG_D3D_DEVICE=d3d11on12` (GPUI
 создаёт D3D11On12-устройство поверх собственного D3D12-устройства первого
 аппаратного адаптера). Оба seam находятся в
-`vendor/gpui-windows/src/debug_device.rs`; release не читает переменную, CI
+`crates/html/src/host/instrumentation/debug_device.rs`; release не читает переменную, CI
 компилирует файл с `debug-assertions=no` и `yes`. Launcher не отключает GPU,
 не меняет системные animation settings и не вызывает TDR. Окно показывается
 без активации (`KAMIN_DEBUG_NO_ACTIVATE=1` → `WindowOptions.focus=false`),
