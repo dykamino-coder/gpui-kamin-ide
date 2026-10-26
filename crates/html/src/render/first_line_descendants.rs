@@ -94,7 +94,7 @@ mod tests {
                 &child.style,
                 doc.values(),
             );
-            crate::dom::pseudo_line_layers::install(child, &mut merged, doc.values());
+            crate::layout::box_tree::pseudo_line_layers::install(child, &mut merged, doc.values());
             assert_eq!(
                 merged.first_line.as_ref().unwrap().font_size,
                 Some(Len::Px(32.))
