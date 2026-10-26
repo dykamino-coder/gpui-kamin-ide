@@ -1,4 +1,4 @@
-//! Конечный поиск высоты: shortage сужает нижнюю границу, успешная проба — верхнюю.
+//! Конечный поиск высоты: shortage предлагает пробу, проверенный результат сужает границы.
 //! Границы сходятся до 1/64 точки; CSS-потолок сохраняется точно.
 
 use crate::layout::fragment::token::Error;
@@ -75,17 +75,14 @@ pub(crate) fn search<T>(
         } else {
             low = at;
             if let Some(shortage) = result.shortage.filter(|s| s.is_finite() && *s > 0.) {
-                // Между at и at+shortage нет следующей допустимой границы.
-                // Округлившееся сложение всё равно проходит одну layout unit.
+                // Недолаз относится к текущему разрыву. Изменение высоты
+                // может сдвинуть предыдущие разрывы и OOF-якорь, поэтому
+                // пропущенные высоты ещё не доказаны неосуществимыми.
                 let next = ceil_unit(at + shortage).max(after(at)).min(high);
-                if next == high
-                    && let Some(value) = best.take()
-                {
-                    return Ok((high, value));
+                if best.is_none() || next < high {
+                    at = next;
+                    continue;
                 }
-                low = before(next);
-                at = next;
-                continue;
             }
         }
         if best.is_some() && after(low) >= high {
@@ -125,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn positive_shortage_skips_only_proven_infeasible_heights() {
+    fn positive_shortage_proposes_a_trial_without_discarding_unchecked_heights() {
         let mut heights = Vec::new();
         let (height, _) = search(25., 500., false, |height| {
             heights.push(height);
@@ -137,7 +134,19 @@ mod tests {
         })
         .unwrap();
         assert_eq!(height, 100.);
-        assert_eq!(heights, [25., 100.]);
+        assert_eq!(&heights[..2], &[25., 100.]);
+        assert!(heights[2..].iter().all(|h| *h > 25. && *h < 100.));
+    }
+
+    #[test]
+    fn local_shortage_does_not_prove_the_global_height_interval_infeasible() {
+        let (height, _) = search(65., 150., false, |height| Trial {
+            fits: height >= 75.,
+            shortage: Some(20.),
+            value: (),
+        })
+        .unwrap();
+        assert_eq!(height, 75.);
     }
 
     #[test]
