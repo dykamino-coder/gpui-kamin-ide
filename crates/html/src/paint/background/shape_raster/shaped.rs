@@ -12,6 +12,7 @@ use crate::paint::background::{MaskLayer, compose_mask_layers};
 use crate::style::values::value::Color;
 use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::*;
+use crate::tolerance::CORNER_CURVATURE_EPS;
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -23,7 +24,7 @@ fn shaped(args: &str, bw: f32, bh: f32) -> Option<(Shaped, Rrect)> {
         .corners
         .iter()
         .zip(r.k)
-        .any(|(&(rx, ry), k)| rx > 0.0 && ry > 0.0 && (k - 1.0).abs() > 1e-3);
+        .any(|(&(rx, ry), k)| rx > 0.0 && ry > 0.0 && (k - 1.0).abs() > CORNER_CURVATURE_EPS);
     if !shaped || linear_corners::contour(&r, bw, bh, [0.0; 4]).is_some() {
         return None;
     }
@@ -47,7 +48,7 @@ pub fn contour_offset(args: &str, bw: f32, bh: f32, insets: [f32; 4]) -> Option<
         .corners
         .iter()
         .zip(r.k)
-        .any(|(&(rx, ry), k)| rx > 0.0 && ry > 0.0 && (k - 1.0).abs() > 1e-3);
+        .any(|(&(rx, ry), k)| rx > 0.0 && ry > 0.0 && (k - 1.0).abs() > CORNER_CURVATURE_EPS);
     let s = Shaped {
         rect: (0.0, 0.0, bw, bh),
         radii: r.corners,

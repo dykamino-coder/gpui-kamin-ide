@@ -23,7 +23,7 @@ pub(super) fn corners(
         r(c.radius.br),
         r(c.radius.bl),
     ];
-    let near = |a: f32, b: f32| (a - b).abs() < 0.5;
+    let near = |a: f32, b: f32| (a - b).abs() < crate::tolerance::PAINT_EDGE_EPS;
     let (pl, pt) = (f32::from(clip.origin.x), f32::from(clip.origin.y));
     let (pr, pb) = (
         pl + f32::from(clip.size.width),

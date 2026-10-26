@@ -17,7 +17,7 @@ pub(super) use crate::dom::fixup_tree::ruby_boxes::ruby_box_role;
 pub(super) use crate::dom::fixup_tree::ruby_boxes::wrap_misparented_ruby;
 
 use crate::dom::*;
-use crate::style::computed::{Display, Position};
+use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 /// Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме quirks
@@ -47,10 +47,7 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         let st = e.style.cascaded_mut();
-        let out_of_flow = matches!(
-            st.position,
-            Some(Position::Absolute) | Some(Position::Fixed)
-        );
+        let out_of_flow = crate::style::flow::absolutely_positioned(st.position);
         let blockish = matches!(
             st.display,
             None | Some(Display::Block) | Some(Display::InlineBlock) | Some(Display::ListItem)
