@@ -18,6 +18,12 @@ edition.workspace = true
 # capture dev-dependencies and observational fragmentation probes. The paged-media API the
 # runner calls (`render::render_paged*`, `flow::PageGeom`) is public engine API.
 wpt-harness = []
+# Observational document timers for the standalone phase benchmark.
+engine-bench = []
+
+[[example]]
+name = "engine_bench"
+required-features = ["engine-bench"]
 
 [[example]]
 name = "wptrun"
