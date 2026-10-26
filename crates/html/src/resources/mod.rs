@@ -8,3 +8,4 @@
 pub(crate) mod css_images;
 pub(crate) mod images;
 pub(crate) mod loader;
+pub(crate) mod svg_document;

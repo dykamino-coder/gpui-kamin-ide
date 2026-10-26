@@ -3,7 +3,7 @@
 mod origin;
 
 use crate::dom::Element;
-use crate::svg::clip::reference_box;
+use crate::resources::svg_document::clip::reference_box;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, bool) {

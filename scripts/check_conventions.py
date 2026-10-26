@@ -44,7 +44,7 @@ RULES = [
     ("CSS image layer: reverse dependency", r"^(?!\s*//).*(?:crate::(?:layout|paint|render)|\bgpui)::", r"^crates/html/src/resources/css_images/"),
     ("1 explicit state: new thread_local!", r"\bthread_local!\s*\{", r"^crates/html/src/"),
     ("1 explicit state: new static Mutex/RwLock", r"\bstatic\s+\w+\s*:\s*[^=]*\b(Mutex|RwLock|OnceLock<\s*Mutex)", r"^crates/html/src/"),
-    ("3 side channel: kamin-* attribute/tag", r'"kamin-[a-z-]+"', r"^crates/html/src/(?!.*tests?\.rs)(?!svg/clip/ids\.rs)"),
+    ("3 side channel: kamin-* attribute/tag", r'"kamin-[a-z-]+"', r"^crates/html/src/(?!.*tests?\.rs)(?!resources/svg_document/clip/ids\.rs)"),
     ("4 multi-frame layout: window.refresh()", r"\bwindow\.refresh\(\)", r"^crates/html/src/(layout|render)/"),
     ("4 multi-frame layout: request_animation_frame", r"\brequest_animation_frame\s*\(", r"^crates/html/src/(layout|text|paint)/"),
     ("5 journal in comment", r"//.*(ЗАМЕРЕН|ОТКАЧЕН|ОТКАТИЛ|ПРОБОВАЛИ|\bv\d{2,3}\b|scout-|\(\d\d\.\d\d)", r"\.rs$"),
