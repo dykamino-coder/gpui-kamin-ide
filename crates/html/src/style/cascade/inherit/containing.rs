@@ -4,6 +4,7 @@
 use super::*;
 use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Display as D, Overflow};
+mod identity;
 
 pub(super) fn inherit_containing(
     parent: &BoxStyle,
@@ -57,11 +58,7 @@ pub(super) fn inherit_containing(
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
     // содержащий блок, окно.
-    c.cb_node = if establishes_cb(parent) {
-        parent.self_node
-    } else {
-        parent.cb_node
-    };
+    identity::inherit(parent, c);
     // Барьер содержащего блока для `position: fixed` — не только трансформ.
     // css-contain-1 §containment-layout п.1: обособление раскладки делает
     // элемент содержащим блоком для потомков и с `absolute`, И С `fixed`;

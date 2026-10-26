@@ -1,5 +1,6 @@
 //! Выбор содержащего блока и слоя для позиционированной коробки.
 
+use crate::layout::fragment::token::resume::oof::FixedPolicy;
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
 use crate::paint::stacking::{fixed_cb_layer_box, stacking_context};
 use crate::style::computed::BoxStyle;
@@ -22,11 +23,12 @@ pub(crate) fn layer_route(
     // предок ему не содержащий блок, и заданной оси от него не
     // требуется — незаданная сторона держит статическое место. Пока он
     // шёл общим путём, коробка висела от края родителя.
-    let fixed =
-        e.style.used().position == Some(crate::style::computed::Position::Fixed) && !under_tf;
+    let is_fixed = e.style.used().position == Some(crate::style::computed::Position::Fixed);
+    let fixed_policy = FixedPolicy::for_box(is_fixed, under_tf);
+    let fixed = fixed_policy == FixedPolicy::RepeatPages;
     // `fixed` под трансформом — абсолют относительно этого предка.
     let abs_like = e.style.used().position == Some(crate::style::computed::Position::Absolute)
-        || (e.style.used().position == Some(crate::style::computed::Position::Fixed) && under_tf);
+        || (is_fixed && fixed_policy == FixedPolicy::Fragment);
     // В стопке страниц абсолют корня уходит в слой и без заданных
     // сторон: на месте его резала бы маска фрагмента кида
     // (`monolithic-overflow-013`); статическую позицию копии 0 даёт
@@ -58,8 +60,7 @@ pub(crate) fn layer_route(
     // css-contain-2 §3.2), а позиционированные между ними — нет
     // (`out-of-flow-in-multicolumn-029`: `fixed` внутри абсолюта
     // внутри трансформа). Родитель-трансформ держит его на месте.
-    let tf_fixed =
-        e.style.used().position == Some(crate::style::computed::Position::Fixed) && under_tf;
+    let tf_fixed = is_fixed && fixed_policy == FixedPolicy::Fragment;
     // Без заданных сторон — тоже: на месте раскладка разрешила бы
     // проценты размеров от РОДИТЕЛЯ (`width: 100%` у абсолютного
     // родителя нулевой ширины, `out-of-flow-in-multicolumn-044`), а

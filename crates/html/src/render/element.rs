@@ -31,7 +31,9 @@ pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> A
     // не пишутся (`flow::flow_lines`).
     let nested = opts.frag.watch.as_ref().and_then(|w| {
         let watch = w.for_flex_item(e.node_id).or_else(|| {
-            (w.takes_lines() && !crate::layout::fragment::flow::flow_lines(e)).then(|| w.nested())
+            (w.takes_lines()
+                && !crate::layout::fragment::flow::flow_lines_in(e, w.blocks().map(|b| b.id)))
+            .then(|| w.nested())
         })?;
         let mut inner = opts.clone();
         inner.frag.watch = Some(watch);
@@ -43,6 +45,9 @@ pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> A
         opts,
     )
 }
+
+#[cfg(test)]
+mod lines_tests;
 
 fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
