@@ -264,6 +264,13 @@ impl CharRefTokenizer {
             return Status::Stuck;
         };
         tokenizer.discard_char(input);
+        if !tokenizer.admit(
+            tokenizer
+                .sink
+                .before_buffer(self.name_buf_mut(), c.len_utf8()),
+        ) {
+            return Status::Stuck;
+        }
         self.name_buf_mut().push_char(c);
         match data::NAMED_ENTITIES.get(&self.name_buf()[..]) {
             // We have either a full match or a prefix of one.
@@ -316,6 +323,9 @@ impl CharRefTokenizer {
 
                     _ => (),
                 }
+                if tokenizer.is_aborted() {
+                    return Status::Stuck;
+                }
                 self.unconsume_name(input);
                 Status::Done(CharRef::EMPTY)
             },
@@ -363,6 +373,9 @@ impl CharRefTokenizer {
                     },
                 };
 
+                if tokenizer.is_aborted() {
+                    return Status::Stuck;
+                }
                 if unconsume_all {
                     self.unconsume_name(input);
                     Status::Done(CharRef::EMPTY)
@@ -389,11 +402,21 @@ impl CharRefTokenizer {
             return Status::Stuck;
         };
         tokenizer.discard_char(input);
+        if !tokenizer.admit(
+            tokenizer
+                .sink
+                .before_buffer(self.name_buf_mut(), c.len_utf8()),
+        ) {
+            return Status::Stuck;
+        }
         self.name_buf_mut().push_char(c);
         match c {
             _ if c.is_ascii_alphanumeric() => return Status::Progress,
             ';' => self.emit_name_error(tokenizer),
             _ => (),
+        }
+        if tokenizer.is_aborted() {
+            return Status::Stuck;
         }
         self.unconsume_name(input);
         Status::Done(CharRef::EMPTY)
@@ -405,6 +428,9 @@ impl CharRefTokenizer {
         input: &BufferQueue,
     ) -> CharRef {
         loop {
+            if tokenizer.is_aborted() {
+                return CharRef::EMPTY;
+            }
             let status = match self.state {
                 State::Begin => Status::Done(CharRef::EMPTY),
                 State::Numeric(_) if !self.seen_digit => self.unconsume_numeric(tokenizer, input),

@@ -45,13 +45,37 @@ impl<H> Buf32<H> {
         Buf32 { ptr, len: 0, cap }
     }
 
+    // KaminIDE patch: drop the header/lease after releasing its physical buffer.
     #[inline]
     pub unsafe fn destroy(self) {
+        let header = ptr::read(self.ptr);
         mem::drop(Vec::from_raw_parts(
             self.ptr,
-            1,
+            0,
             bytes_to_vec_capacity::<H>(self.cap),
         ));
+        mem::drop(header);
+    }
+
+    pub fn allocation_size(cap: u32) -> Option<usize> {
+        let header = mem::size_of::<H>();
+        let bytes = (cap.max(MIN_CAP) as usize).checked_add(header)?;
+        let count = bytes.checked_add(header.checked_sub(1)?)? / header;
+        count.checked_mul(header)
+    }
+
+    /// KaminIDE patch: same layout as with_capacity, without allocator panic.
+    pub unsafe fn try_with_capacity(
+        cap: u32,
+        h: H,
+    ) -> Result<Buf32<H>, std::collections::TryReserveError> {
+        let cap = cap.max(MIN_CAP);
+        let mut vec = Vec::<H>::new();
+        vec.try_reserve_exact(bytes_to_vec_capacity::<H>(cap))?;
+        let ptr = vec.as_mut_ptr();
+        mem::forget(vec);
+        ptr::write(ptr, h);
+        Ok(Buf32 { ptr, len: 0, cap })
     }
 
     #[inline(always)]

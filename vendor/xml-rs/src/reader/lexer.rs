@@ -20,7 +20,7 @@ pub(crate) enum Token {
     ProcessingInstructionStart,
     /// `?>`
     ProcessingInstructionEnd,
-    /// `<!DOCTYPE…`
+    /// `<!DOCTYPEвЂ¦`
     DoctypeStart,
     /// `<`
     OpeningTagStart,
@@ -288,40 +288,71 @@ impl Lexer {
     /// * `Err(reason) where reason: reader::Error` - when an error occurs;
     /// * `Ok(Token::Eof)` - upon end of stream is reached;
     /// * `Ok(token) where token: Token` - in case a complete-token has been read from the stream.
+    #[cfg(test)]
     pub fn next_token<B: Read>(&mut self, b: &mut B) -> Result<Token> {
-        // Already reached end of buffer
-        if self.eof_handled {
-            return Ok(Token::Eof);
-        }
+        self.next_token_with_admission(b, &mut |_| true)
+            .expect("unbounded admission cannot abort")
+    }
 
+    pub(super) fn next_token_with_admission<B: Read>(
+        &mut self,
+        b: &mut B,
+        check: &mut impl FnMut(super::admission::Operation) -> bool,
+    ) -> Option<Result<Token>> {
+        use super::admission::Operation;
+        if !check(Operation::LexerStep) {
+            return None;
+        }
+        if self.eof_handled {
+            return Some(Ok(Token::Eof));
+        }
         if !self.inside_token {
             self.pos = self.head_pos;
             self.inside_token = true;
         }
-
-        // Check if we have saved a char or two for ourselves
-        while let Some(c) = self.char_queue.pop_front() {
-            if let Some(t) = self.dispatch_char(c)? {
-                self.inside_token = false;
-                return Ok(t);
+        // Entity expansion is work even when it does not read source bytes.
+        while !self.char_queue.is_empty() {
+            if !check(Operation::LexerStep) {
+                return None;
+            }
+            let c = self
+                .char_queue
+                .pop_front()
+                .expect("nonempty character queue");
+            match self.dispatch_char(c) {
+                Ok(Some(token)) => {
+                    self.inside_token = false;
+                    return Some(Ok(token));
+                },
+                Ok(None) => {},
+                Err(error) => return Some(Err(error)),
             }
         }
-        // if char_queue is empty, all circular reparsing is done
         self.reparse_depth = 0;
-        while let Some(c) = self.reader.next_char_from(b)? {
+        loop {
+            if !check(Operation::LexerStep) {
+                return None;
+            }
+            let c = match self.reader.next_char_from(b) {
+                Ok(Some(c)) => c,
+                Ok(None) => break,
+                Err(error) => return Some(Err(error.into())),
+            };
             if c == '\n' {
                 self.head_pos.new_line();
             } else {
                 self.head_pos.advance(1);
             }
-
-            if let Some(t) = self.dispatch_char(c)? {
-                self.inside_token = false;
-                return Ok(t);
+            match self.dispatch_char(c) {
+                Ok(Some(token)) => {
+                    self.inside_token = false;
+                    return Some(Ok(token));
+                },
+                Ok(None) => {},
+                Err(error) => return Some(Err(error)),
             }
         }
-
-        self.end_of_stream()
+        Some(self.end_of_stream())
     }
 
     #[inline(never)]
@@ -534,16 +565,22 @@ impl Lexer {
         )
     }
 
-    /// Encountered '<!…' that isn't DOCTYPE or CDATA
+    /// Encountered '<!вЂ¦' that isn't DOCTYPE or CDATA
     fn markup_declaration(&mut self, c: char) -> Result {
         match c {
-            '<'                        => self.handle_error("<!", c),
-            '>'                        => Ok(Some(self.move_to_with(self.normal_state, Token::TagEnd))),
-            '&'                        => Ok(Some(Token::ReferenceStart)),
-            ';'                        => Ok(Some(Token::ReferenceEnd)),
-            '"'                        => Ok(Some(self.move_to_with(State::InsideMarkupDeclarationQuotedString(QuoteStyle::Double), Token::DoubleQuote))),
-            '\''                       => Ok(Some(self.move_to_with(State::InsideMarkupDeclarationQuotedString(QuoteStyle::Single), Token::SingleQuote))),
-            _                          => Ok(Some(Token::Character(c))),
+            '<' => self.handle_error("<!", c),
+            '>' => Ok(Some(self.move_to_with(self.normal_state, Token::TagEnd))),
+            '&' => Ok(Some(Token::ReferenceStart)),
+            ';' => Ok(Some(Token::ReferenceEnd)),
+            '"' => Ok(Some(self.move_to_with(
+                State::InsideMarkupDeclarationQuotedString(QuoteStyle::Double),
+                Token::DoubleQuote,
+            ))),
+            '\'' => Ok(Some(self.move_to_with(
+                State::InsideMarkupDeclarationQuotedString(QuoteStyle::Single),
+                Token::SingleQuote,
+            ))),
+            _ => Ok(Some(Token::Character(c))),
         }
     }
 

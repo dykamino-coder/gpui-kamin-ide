@@ -10,6 +10,7 @@ use crate::reader::events::XmlEvent;
 use crate::reader::indexset::AttributesSet;
 use crate::reader::lexer::{Lexer, Token};
 use super::{Error, ErrorKind};
+use super::admission::Operation;
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -324,12 +325,25 @@ impl PullParser {
     /// This method should be always called with the same buffer. If you call it
     /// providing different buffers each time, the result will be undefined.
     pub fn next<R: Read>(&mut self, r: &mut R) -> Result {
+        self.next_with_admission(r, &mut |_| true)
+            .expect("unbounded admission cannot abort")
+    }
+
+    pub(super) fn next_with_admission<R: Read>(
+        &mut self,
+        r: &mut R,
+        check: &mut impl FnMut(Operation) -> bool,
+    ) -> Option<Result> {
         if let Some(ref ev) = self.final_result {
-            return ev.clone();
+            return Some(ev.clone());
+        }
+
+        if !check(Operation::ParserStep) {
+            return None;
         }
 
         if let Some(ev) = self.next_event.take() {
-            return ev;
+            return Some(ev);
         }
 
         if self.pop_namespace {
@@ -343,26 +357,31 @@ impl PullParser {
 
             // While lexer gives us Ok(maybe_token) -- we loop.
             // Upon having a complete XML-event -- we return from the whole function.
-            match self.lexer.next_token(r) {
+            match self.lexer.next_token_with_admission(r, check)? {
                 Ok(Token::Eof) => {
                     // Forward pos to the lexer head
                     self.next_pos();
-                    return self.handle_eof();
+                    return Some(self.handle_eof());
                 },
-                Ok(token) => match self.dispatch_token(token) {
-                    None => continue,
-                    Some(Ok(xml_event)) => {
-                        self.next_pos();
-                        return Ok(xml_event);
-                    },
-                    Some(Err(xml_error)) => {
-                        self.next_pos();
-                        return self.set_final_result(Err(xml_error));
-                    },
+                Ok(token) => {
+                    if !check(Operation::ParserStep) {
+                        return None;
+                    }
+                    match self.dispatch_token(token) {
+                        None => continue,
+                        Some(Ok(xml_event)) => {
+                            self.next_pos();
+                            return Some(Ok(xml_event));
+                        },
+                        Some(Err(xml_error)) => {
+                            self.next_pos();
+                            return Some(self.set_final_result(Err(xml_error)));
+                        },
+                    }
                 },
                 Err(lexer_error) => {
                     self.next_pos();
-                    return self.set_final_result(Err(lexer_error));
+                    return Some(self.set_final_result(Err(lexer_error)));
                 },
             }
         }

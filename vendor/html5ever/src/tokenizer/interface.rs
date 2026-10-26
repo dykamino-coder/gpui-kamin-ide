@@ -109,6 +109,8 @@ pub enum Token {
 #[derive(Debug, PartialEq)]
 #[must_use]
 pub enum TokenSinkResult<Handle> {
+    /// Terminal admission failure. No further token or EOF callback is allowed.
+    Abort,
     /// The tokenizer can continue parsing the input as usual.
     Continue,
     /// The token sink has completed parsing a `<script>` tag, blocking the tokenizer
@@ -133,6 +135,28 @@ pub enum TokenSinkResult<Handle> {
 pub trait TokenSink {
     /// The type of a DOM node.
     type Handle;
+
+    /// Admission before another tokenizer step, including EOF repair.
+    fn before_step(&self) -> bool {
+        true
+    }
+
+    /// Sticky terminal state; the driver retrieves the policy's typed error.
+    fn is_aborted(&self) -> bool {
+        false
+    }
+
+    /// Runs before a token buffer grows or an attribute name is interned.
+    fn before_buffer(&self, _: &mut StrTendril, _: usize) -> bool {
+        true
+    }
+    fn before_attribute(&self, _: &str, _: usize) -> bool {
+        true
+    }
+    fn reserve<T>(&self, values: &mut Vec<T>, additional: usize) -> bool {
+        values.reserve(additional);
+        true
+    }
 
     /// Process a token.
     fn process_token(&self, token: Token, line_number: u64) -> TokenSinkResult<Self::Handle>;

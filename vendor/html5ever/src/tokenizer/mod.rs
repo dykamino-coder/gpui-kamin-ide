@@ -114,6 +114,9 @@ pub struct Tokenizer<Sink> {
     /// Options controlling the behavior of the tokenizer.
     opts: TokenizerOpts,
 
+    /// Terminal rejection is latched even for a standalone token sink.
+    aborted: Cell<bool>,
+
     /// Destination for tokens we emit.
     pub sink: Sink,
 
@@ -202,6 +205,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         let discard_bom = opts.discard_bom;
         Tokenizer {
             opts,
+            aborted: Cell::new(false),
             sink,
             state: Cell::new(state),
             char_ref_tokenizer: RefCell::new(None),
@@ -232,7 +236,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
     /// Feed an input string into the tokenizer.
     pub fn feed(&self, input: &BufferQueue) -> TokenizerResult<Sink::Handle> {
-        if input.is_empty() {
+        if self.is_aborted() || input.is_empty() {
             return TokenizerResult::Done;
         }
 
@@ -249,24 +253,42 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         self.run(input)
     }
 
+    fn is_aborted(&self) -> bool {
+        self.aborted.get() || self.sink.is_aborted()
+    }
+
+    fn admit(&self, accepted: bool) -> bool {
+        if !accepted {
+            self.aborted.set(true);
+        }
+        accepted && !self.is_aborted()
+    }
+
     pub fn set_plaintext_state(&self) {
         self.state.set(states::Plaintext);
     }
 
     fn process_token(&self, token: Token) -> TokenSinkResult<Sink::Handle> {
-        if self.opts.profile {
+        if self.is_aborted() {
+            return TokenSinkResult::Abort;
+        }
+        let result = if self.opts.profile {
             let (ret, dt) = time!(self.sink.process_token(token, self.current_line.get()));
             self.time_in_sink.set(self.time_in_sink.get() + dt);
             ret
         } else {
             self.sink.process_token(token, self.current_line.get())
+        };
+        if matches!(result, TokenSinkResult::Abort) {
+            self.aborted.set(true);
         }
+        result
     }
 
     fn process_token_and_continue(&self, token: Token) {
         assert!(matches!(
             self.process_token(token),
-            TokenSinkResult::Continue
+            TokenSinkResult::Continue | TokenSinkResult::Abort
         ));
     }
 
@@ -309,6 +331,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     //§ tokenization
     // Get the next input character, if one is available.
     fn get_char(&self, input: &BufferQueue) -> Option<char> {
+        if self.is_aborted() {
+            return None;
+        }
         if self.reconsume.get() {
             self.reconsume.set(false);
             Some(self.current_char.get())
@@ -320,6 +345,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     }
 
     fn pop_except_from(&self, input: &BufferQueue, set: SmallCharSet) -> Option<SetResult> {
+        if self.is_aborted() {
+            return None;
+        }
         // Bail to the slow path for various corner cases.
         // This means that `FromSet` can contain characters not in the set!
         // It shouldn't matter because the fallback `FromSet` case should
@@ -345,6 +373,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     //
     // NB: this doesn't set the current input character.
     fn eat(&self, input: &BufferQueue, pat: &str, eq: fn(&u8, &u8) -> bool) -> Option<bool> {
+        if self.is_aborted() {
+            return None;
+        }
         if self.ignore_lf.get() {
             self.ignore_lf.set(false);
             if self.peek(input) == Some('\n') {
@@ -357,7 +388,10 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             None if self.at_eof.get() => Some(false),
             None => {
                 while let Some(data) = input.next() {
-                    self.temp_buf.borrow_mut().push_char(data);
+                    self.push_buffer_char(&self.temp_buf, data);
+                    if self.is_aborted() {
+                        return None;
+                    }
                 }
                 None
             },
@@ -369,6 +403,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     fn run(&self, input: &BufferQueue) -> TokenizerResult<Sink::Handle> {
         if self.opts.profile {
             loop {
+                if !self.admit(self.sink.before_step()) {
+                    break;
+                }
                 let state = self.state.get();
                 let old_sink = self.time_in_sink.get();
                 let (run, mut dt) = time!(self.step(input));
@@ -395,6 +432,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             }
         } else {
             loop {
+                if !self.admit(self.sink.before_step()) {
+                    break;
+                }
                 match self.step(input) {
                     ProcessResult::Continue => (),
                     ProcessResult::Suspend => break,
@@ -454,6 +494,15 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
     fn emit_current_tag(&self) -> ProcessResult<Sink::Handle> {
         self.finish_attribute();
+        if self.is_aborted() {
+            return ProcessResult::Suspend;
+        }
+        if !self.admit(
+            self.sink
+                .before_attribute(&self.current_tag_name.borrow(), 0),
+        ) {
+            return ProcessResult::Suspend;
+        }
 
         let name = LocalName::from(&**self.current_tag_name.borrow());
         self.current_tag_name.borrow_mut().clear();
@@ -466,12 +515,15 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 if !self.current_tag_attrs.borrow().is_empty() {
                     self.emit_error(Borrowed("Attributes on an end tag"));
                 }
-                if self.current_tag_self_closing.get() {
+                if !self.is_aborted() && self.current_tag_self_closing.get() {
                     self.emit_error(Borrowed("Self-closing end tag"));
                 }
             },
         }
 
+        if self.is_aborted() {
+            return ProcessResult::Suspend;
+        }
         let token = TagToken(Tag {
             kind: self.current_tag_kind.get(),
             name,
@@ -481,6 +533,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         });
 
         match self.process_token(token) {
+            TokenSinkResult::Abort => ProcessResult::Suspend,
             TokenSinkResult::Continue => ProcessResult::Continue,
             TokenSinkResult::Plaintext => {
                 self.state.set(states::Plaintext);
@@ -577,7 +630,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
     fn create_tag(&self, kind: TagKind, c: char) {
         self.discard_tag();
-        self.current_tag_name.borrow_mut().push_char(c);
+        self.push_buffer_char(&self.current_tag_name, c);
         self.current_tag_kind.set(kind);
     }
 
@@ -593,12 +646,20 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
     fn create_attribute(&self, c: char) {
         self.finish_attribute();
-
-        self.current_attr_name.borrow_mut().push_char(c);
+        if self.is_aborted() {
+            return;
+        }
+        self.push_buffer_char(&self.current_attr_name, c);
     }
 
     fn finish_attribute(&self) {
         if self.current_attr_name.borrow().is_empty() {
+            return;
+        }
+        if !self.admit(self.sink.before_attribute(
+            &self.current_attr_name.borrow(),
+            self.current_tag_attrs.borrow().len(),
+        )) {
             return;
         }
         let name = LocalName::from(&**self.current_attr_name.borrow());
@@ -617,7 +678,11 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             self.current_tag_had_duplicate_attributes.set(true);
             self.current_attr_value.borrow_mut().clear();
         } else {
-            self.current_tag_attrs.borrow_mut().push(Attribute {
+            let mut attrs = self.current_tag_attrs.borrow_mut();
+            if !self.admit(self.sink.reserve(&mut attrs, 1)) {
+                return;
+            }
+            attrs.push(Attribute {
                 // The tree builder will adjust the namespace if necessary.
                 // This only happens in foreign elements.
                 name: QualName::new(None, ns!(), name),
@@ -662,6 +727,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     }
 
     fn peek(&self, input: &BufferQueue) -> Option<char> {
+        if self.is_aborted() {
+            return None;
+        }
         if self.reconsume.get() {
             Some(self.current_char.get())
         } else {
@@ -670,6 +738,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
     }
 
     fn discard_char(&self, input: &BufferQueue) {
+        if self.is_aborted() {
+            return;
+        }
         // peek() deals in un-processed characters (no newline normalization), while get_char()
         // does.
         //
@@ -682,6 +753,27 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         }
     }
 
+    fn push_buffer_char(&self, buffer: &RefCell<StrTendril>, c: char) {
+        let mut buffer = buffer.borrow_mut();
+        if !self.is_aborted() && self.admit(self.sink.before_buffer(&mut buffer, c.len_utf8())) {
+            buffer.push_char(c);
+        }
+    }
+
+    fn push_buffer_str(&self, buffer: &RefCell<StrTendril>, text: &str) {
+        let mut buffer = buffer.borrow_mut();
+        if !self.is_aborted() && self.admit(self.sink.before_buffer(&mut buffer, text.len())) {
+            buffer.push_slice(text);
+        }
+    }
+
+    fn push_option(&self, buffer: &mut Option<StrTendril>, c: char) {
+        let target = buffer.get_or_insert_with(StrTendril::new);
+        if !self.is_aborted() && self.admit(self.sink.before_buffer(target, c.len_utf8())) {
+            option_push(buffer, c);
+        }
+    }
+
     fn emit_error(&self, error: Cow<'static, str>) {
         self.process_token_and_continue(ParseError(error));
     }
@@ -691,32 +783,32 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 // Shorthand for common state machine behaviors.
 macro_rules! shorthand (
     ( $me:ident : create_tag $kind:ident $c:expr   ) => ( $me.create_tag($kind, $c)                           );
-    ( $me:ident : push_tag $c:expr                 ) => ( $me.current_tag_name.borrow_mut().push_char($c)     );
+    ( $me:ident : push_tag $c:expr                 ) => ( $me.push_buffer_char(&$me.current_tag_name, $c)     );
     ( $me:ident : discard_tag                      ) => ( $me.discard_tag()                                   );
     ( $me:ident : discard_char $input:expr         ) => ( $me.discard_char($input)                            );
-    ( $me:ident : push_temp $c:expr                ) => ( $me.temp_buf.borrow_mut().push_char($c)             );
+    ( $me:ident : push_temp $c:expr                ) => ( $me.push_buffer_char(&$me.temp_buf, $c)             );
     ( $me:ident : clear_temp                       ) => ( $me.clear_temp_buf()                                );
     ( $me:ident : create_attr $c:expr              ) => ( $me.create_attribute($c)                            );
-    ( $me:ident : push_name $c:expr                ) => ( $me.current_attr_name.borrow_mut().push_char($c)    );
-    ( $me:ident : push_value $c:expr               ) => ( $me.current_attr_value.borrow_mut().push_char($c)   );
-    ( $me:ident : append_value $c:expr             ) => ( $me.current_attr_value.borrow_mut().push_tendril($c));
-    ( $me:ident : push_comment $c:expr             ) => ( $me.current_comment.borrow_mut().push_char($c)      );
-    ( $me:ident : append_comment $c:expr           ) => ( $me.current_comment.borrow_mut().push_slice($c)     );
+    ( $me:ident : push_name $c:expr                ) => ( $me.push_buffer_char(&$me.current_attr_name, $c)    );
+    ( $me:ident : push_value $c:expr               ) => ( $me.push_buffer_char(&$me.current_attr_value, $c)   );
+    ( $me:ident : append_value $c:expr             ) => ( $me.push_buffer_str(&$me.current_attr_value, $c));
+    ( $me:ident : push_comment $c:expr             ) => ( $me.push_buffer_char(&$me.current_comment, $c)      );
+    ( $me:ident : append_comment $c:expr           ) => ( $me.push_buffer_str(&$me.current_comment, $c)     );
     ( $me:ident : emit_comment                     ) => ( $me.emit_current_comment()                          );
     ( $me:ident : clear_pi                         ) => ({ $me.current_pi_target.borrow_mut().clear();
                                                            $me.current_pi_data.borrow_mut().clear();
                                                            $me.current_pi_raw.borrow_mut().clear();
-                                                           $me.current_pi_raw.borrow_mut().push_char('?');    });
-    ( $me:ident : push_pi_target $c:expr           ) => ({ $me.current_pi_target.borrow_mut().push_char($c);
-                                                           $me.current_pi_raw.borrow_mut().push_char($c);     });
-    ( $me:ident : push_pi_raw $c:expr              ) => ( $me.current_pi_raw.borrow_mut().push_char($c)   );
-    ( $me:ident : push_pi_data $c:expr             ) => ({ $me.current_pi_data.borrow_mut().push_char($c);
-                                                           $me.current_pi_raw.borrow_mut().push_char($c);     });
+                                                           $me.push_buffer_char(&$me.current_pi_raw, '?');    });
+    ( $me:ident : push_pi_target $c:expr           ) => ({ $me.push_buffer_char(&$me.current_pi_target, $c);
+                                                           $me.push_buffer_char(&$me.current_pi_raw, $c);     });
+    ( $me:ident : push_pi_raw $c:expr              ) => ( $me.push_buffer_char(&$me.current_pi_raw, $c)   );
+    ( $me:ident : push_pi_data $c:expr             ) => ({ $me.push_buffer_char(&$me.current_pi_data, $c);
+                                                           $me.push_buffer_char(&$me.current_pi_raw, $c);     });
     ( $me:ident : emit_pi                          ) => ( $me.emit_current_pi()                               );
     ( $me:ident : clear_comment                    ) => ( $me.current_comment.borrow_mut().clear()            );
     ( $me:ident : create_doctype                   ) => ( *$me.current_doctype.borrow_mut() = Doctype::default() );
-    ( $me:ident : push_doctype_name $c:expr        ) => ( option_push(&mut $me.current_doctype.borrow_mut().name, $c) );
-    ( $me:ident : push_doctype_id $k:ident $c:expr ) => ( option_push(&mut $me.doctype_id($k), $c)            );
+    ( $me:ident : push_doctype_name $c:expr        ) => ( $me.push_option(&mut $me.current_doctype.borrow_mut().name, $c) );
+    ( $me:ident : push_doctype_id $k:ident $c:expr ) => ( $me.push_option(&mut $me.doctype_id($k), $c)            );
     ( $me:ident : clear_doctype_id $k:ident        ) => ( $me.clear_doctype_id($k)                            );
     ( $me:ident : force_quirks                     ) => ( $me.current_doctype.borrow_mut().force_quirks = true);
     ( $me:ident : emit_doctype                     ) => ( $me.emit_current_doctype()                          );
@@ -726,12 +818,16 @@ macro_rules! shorthand (
 // so it's behind a cfg flag.
 #[cfg(feature = "trace_tokenizer")]
 macro_rules! sh_trace ( ( $me:ident : $($cmds:tt)* ) => ({
+    if !$me.is_aborted() {
     trace!("  {:?}", stringify!($($cmds)*));
     shorthand!($me : $($cmds)*);
+    }
 }));
 
 #[cfg(not(feature = "trace_tokenizer"))]
-macro_rules! sh_trace ( ( $me:ident : $($cmds:tt)* ) => ( shorthand!($me: $($cmds)*) ) );
+macro_rules! sh_trace ( ( $me:ident : $($cmds:tt)* ) => ({
+    if !$me.is_aborted() { shorthand!($me: $($cmds)*); }
+}) );
 
 // A little DSL for sequencing shorthand actions.
 macro_rules! go (
@@ -796,6 +892,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         match self.state.get() {
             // https://html.spec.whatwg.org/#data-state
             states::Data => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Step 1. Consume the next input character:
                 let set = small_char_set!('\r' '\0' '&' '<' '\n');
 
@@ -873,6 +972,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#rcdata-state
             states::RawData(Rcdata) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) =
                     self.pop_except_from(input, small_char_set!('\r' '\0' '&' '<' '\n'))
@@ -904,6 +1006,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#rawtext-state
             states::RawData(Rawtext) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) =
                     self.pop_except_from(input, small_char_set!('\r' '\0' '<' '\n'))
@@ -933,6 +1038,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-state
             states::RawData(ScriptData) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) =
                     self.pop_except_from(input, small_char_set!('\r' '\0' '<' '\n'))
@@ -962,6 +1070,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#plaintext-state
             states::Plaintext => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) = self.pop_except_from(input, small_char_set!('\r' '\0' '\n'))
                 else {
@@ -985,6 +1096,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#tag-open-state
             states::TagOpen => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0021 EXCLAMATION MARK (!)
@@ -1027,6 +1141,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#end-tag-open-state
             states::EndTagOpen => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ ASCII alpha
@@ -1058,6 +1175,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#tag-name-state
             states::TagName => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -1100,6 +1220,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-escaped-less-than-sign-state
             states::RawLessThanSign(ScriptDataEscaped(Escaped)) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002F SOLIDUS (/)
@@ -1130,6 +1253,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-double-escaped-less-than-sign-state
             states::RawLessThanSign(ScriptDataEscaped(DoubleEscaped)) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002F SOLIDUS (/)
@@ -1153,6 +1279,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#script-data-less-than-sign-state
             // https://html.spec.whatwg.org/#rawtext-less-than-sign-state
             states::RawLessThanSign(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002F SOLIDUS (/)
@@ -1184,6 +1313,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#script-data-end-tag-open-state
             // https://html.spec.whatwg.org/#script-data-escaped-end-tag-open-state
             states::RawEndTagOpen(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let character = get_char!(self, input);
 
@@ -1211,6 +1343,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#script-data-end-tag-name-state
             // https://html.spec.whatwg.org/#script-data-escaped-end-tag-name-state
             states::RawEndTagName(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 let character = get_char!(self, input);
 
                 // NOTE: The first three match arms in the specification are treated as "anything else" if the current
@@ -1266,6 +1401,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-double-escape-start-state
             states::ScriptDataEscapeStart(DoubleEscaped) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -1307,6 +1445,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-double-escaped-state
             states::RawData(ScriptDataEscaped(DoubleEscaped)) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) =
                     self.pop_except_from(input, small_char_set!('\r' '\0' '-' '<' '\n'))
@@ -1345,6 +1486,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-escape-start-state
             states::ScriptDataEscapeStart(Escaped) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -1364,6 +1508,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-escape-start-dash-state
             states::ScriptDataEscapeStartDash => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -1383,6 +1530,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-escaped-state
             states::RawData(ScriptDataEscaped(Escaped)) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) =
                     self.pop_except_from(input, small_char_set!('\r' '\0' '-' '<' '\n'))
@@ -1420,6 +1570,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#script-data-escaped-dash-state
             // https://html.spec.whatwg.org/#script-data-double-escaped-dash-state
             states::ScriptDataEscapedDash(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -1459,6 +1612,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#script-data-escaped-dash-dash-state
             // https://html.spec.whatwg.org/#script-data-double-escaped-dash-dash-state
             states::ScriptDataEscapedDashDash(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -1502,6 +1658,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#script-data-double-escape-end-state
             states::ScriptDataDoubleEscapeEnd => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -1545,6 +1704,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#before-attribute-name-state
             states::BeforeAttributeName => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
                     // ↪ U+000A LINE FEED (LF)
@@ -1590,6 +1752,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#attribute-name-state
             states::AttributeName => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -1654,6 +1819,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#after-attribute-name-state
             states::AfterAttributeName => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -1704,6 +1872,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // Use peek so we can handle the first attr character along with the rest,
             // hopefully in the same zero-copy buffer.
             states::BeforeAttributeValue => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match peek!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -1743,6 +1914,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#attribute-value-(double-quoted)-state
             states::AttributeValue(DoubleQuoted) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) =
                     self.pop_except_from(input, small_char_set!('\r' '"' '&' '\0' '\n'))
@@ -1778,6 +1952,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#attribute-value-(single-quoted)-state
             states::AttributeValue(SingleQuoted) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) =
                     self.pop_except_from(input, small_char_set!('\r' '\'' '&' '\0' '\n'))
@@ -1813,6 +1990,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#attribute-value-(unquoted)-state
             states::AttributeValue(Unquoted) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 let Some(set_result) = self.pop_except_from(
                     input,
@@ -1874,6 +2054,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#after-attribute-value-(quoted)-state
             states::AfterAttributeValueQuoted => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -1906,6 +2089,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#self-closing-start-tag-state
             states::SelfClosingStartTag => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+003E GREATER-THAN SIGN (>)
@@ -1927,6 +2113,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             //§ bogus-comment-state
             states::BogusComment => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+003E GREATER-THAN SIGN (>)
@@ -1951,6 +2140,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // KaminIDE patch: имя инструкции обработки — до пробела или `>`.
             states::PiTarget => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 match get_char!(self, input) {
                     '>' => go!(self: emit_pi; to Data),
                     '\0' => go!(self: push_pi_target '\u{fffd}'),
@@ -1965,6 +2157,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // KaminIDE patch: пробелы между именем и данными не значимы.
             states::PiDataStart => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 match get_char!(self, input) {
                     '>' => go!(self: emit_pi; to Data),
                     c if c.is_ascii_whitespace() => go!(self: push_pi_raw c),
@@ -1974,6 +2169,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // KaminIDE patch: данные инструкции обработки — до `>`.
             states::PiData => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 match get_char!(self, input) {
                     '>' => go!(self: emit_pi; to Data),
                     '\0' => go!(self: push_pi_data '\u{fffd}'),
@@ -1983,6 +2181,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#markup-declaration-open-state
             states::MarkupDeclarationOpen => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // If the next few characters are:
                 // ↪ Two U+002D HYPHEN-MINUS characters (-)
                 if eat_exact!(self, input, "--") {
@@ -2018,6 +2219,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-start-state
             states::CommentStart => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -2046,6 +2250,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-start-dash-state
             states::CommentStartDash => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -2076,6 +2283,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-state
             states::Comment => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+003C LESS-THAN SIGN (<)
@@ -2106,6 +2316,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-less-than-sign-state
             states::CommentLessThanSign => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0021 EXCLAMATION MARK (!)
@@ -2129,6 +2342,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-less-than-sign-bang-state
             states::CommentLessThanSignBang => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -2146,6 +2362,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-less-than-sign-bang-dash-state
             states::CommentLessThanSignBangDash => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -2163,6 +2382,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-less-than-sign-bang-dash-dash-state
             states::CommentLessThanSignBangDashDash => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 match get_char!(self, input) {
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
@@ -2181,6 +2403,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-end-dash-state
             states::CommentEndDash => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -2202,6 +2427,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-end-state
             states::CommentEnd => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+003E GREATER-THAN SIGN (>)
@@ -2231,6 +2459,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#comment-end-bang-state
             states::CommentEndBang => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+002D HYPHEN-MINUS (-)
@@ -2254,6 +2485,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#doctype-state
             states::Doctype => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -2281,6 +2515,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#before-doctype-name-state
             states::BeforeDoctypeName => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -2324,6 +2561,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#doctype-name-state
             states::DoctypeName => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -2358,6 +2598,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#after-doctype-name-state
             states::AfterDoctypeName => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // NOTE: We move some steps out of the "anything else" case to the front for convenience.
 
                 // If the six characters starting from the current input character are an
@@ -2401,6 +2644,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#after-doctype-public-keyword-state
             // https://html.spec.whatwg.org/#after-doctype-system-keyword-state
             states::AfterDoctypeKeyword(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
                     // ↪ U+000A LINE FEED (LF)
@@ -2451,6 +2697,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#before-doctype-public-identifier-state
             // https://html.spec.whatwg.org/#before-doctype-system-identifier-state
             states::BeforeDoctypeIdentifier(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -2497,6 +2746,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#doctype-public-identifier-(double-quoted)-state
             // https://html.spec.whatwg.org/#doctype-system-identifier-(double-quoted)-state
             states::DoctypeIdentifierDoubleQuoted(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0022 QUOTATION MARK (")
@@ -2529,6 +2781,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             // https://html.spec.whatwg.org/#doctype-public-identifier-(single-quoted)-state
             // https://html.spec.whatwg.org/#doctype-system-identifier-(single-quoted)-state
             states::DoctypeIdentifierSingleQuoted(kind) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0027 APOSTROPHE (')
@@ -2564,6 +2819,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#after-doctype-public-identifier-state
             states::AfterDoctypeIdentifier(Public) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -2608,6 +2866,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#between-doctype-public-and-system-identifiers-state
             states::BetweenDoctypePublicAndSystemIdentifiers => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -2647,6 +2908,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#after-doctype-system-identifier-state
             states::AfterDoctypeIdentifier(System) => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+0009 CHARACTER TABULATION (tab)
@@ -2673,6 +2937,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#bogus-doctype-state
             states::BogusDoctype => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+003E GREATER-THAN SIGN (>)
@@ -2696,6 +2963,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#cdata-section-state
             states::CdataSection => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // ↪ U+005D RIGHT SQUARE BRACKET (])
@@ -2735,6 +3005,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
             // https://html.spec.whatwg.org/#cdata-section-end-state
             states::CdataSectionEnd => loop {
+                if self.is_aborted() {
+                    return ProcessResult::Suspend;
+                }
                 // Consume the next input character:
                 match get_char!(self, input) {
                     // U+005D RIGHT SQUARE BRACKET (])
@@ -2805,6 +3078,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
 
     /// Indicate that we have reached the end of the input.
     pub fn end(&self) {
+        if self.is_aborted() {
+            return;
+        }
         // Handle EOF in the char ref sub-tokenizer, if there is one.
         // Do this first because it might un-consume stuff.
         let input = BufferQueue::default();
@@ -2819,9 +3095,15 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         // If we're waiting for lookahead, we're not gonna get it.
         self.at_eof.set(true);
         assert!(matches!(self.run(&input), TokenizerResult::Done));
+        if self.is_aborted() {
+            return;
+        }
         assert!(input.is_empty());
 
         loop {
+            if !self.admit(self.sink.before_step()) {
+                return;
+            }
             match self.eof_step() {
                 ProcessResult::Continue => (),
                 ProcessResult::Suspend => break,
@@ -2829,7 +3111,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             }
         }
 
-        self.sink.end();
+        if !self.is_aborted() {
+            self.sink.end();
+        }
 
         if self.opts.profile {
             self.dump_profile();

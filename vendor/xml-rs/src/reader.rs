@@ -21,6 +21,7 @@ mod events;
 mod indexset;
 mod lexer;
 mod parser;
+pub mod admission;
 
 /// A result type yielded by `XmlReader`.
 pub type Result<T, E = Error> = result::Result<T, E>;
