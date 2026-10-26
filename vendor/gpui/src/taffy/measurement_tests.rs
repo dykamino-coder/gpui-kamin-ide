@@ -58,7 +58,8 @@ fn copied_subtree_keeps_actual_callback_alive_after_source_clear() {
                 None,
                 None,
                 None,
-            ).into()
+            )
+                .into()
         })))),
         layout_lines: None,
         layout_lines_x: None,

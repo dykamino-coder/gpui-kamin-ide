@@ -14,17 +14,6 @@ pub(super) struct Group {
     pub(super) float_extent: bool,
 }
 
-impl Group {
-    pub(super) fn break_edges(&mut self, before: bool, after: bool) {
-        let [Node::Element(root)] = self.nodes.as_mut_slice() else {
-            unreachable!("prepared group retains one measured root")
-        };
-        // Края общего пробега принадлежат исходным коробкам, включая float.
-        root.style.used_mut().break_before_force = before;
-        root.style.used_mut().break_after_force = after;
-    }
-}
-
 /// Вертикальная физическая копия; логическое дерево нужно только для полей
 /// и рекордера, но не заменяет настоящее дерево в native layout.
 pub(super) fn vertical_group(
@@ -71,15 +60,21 @@ pub(super) fn group(
     root: &BoxStyle,
     width: f32,
     top: f32,
+    breaks: (bool, bool),
     vcx: ValueCx<'_>,
 ) -> Option<Group> {
     // Общий пробег обтекания — одна измеряемая копия, как у колонок.
     // Одиночный float сохраняет собственный корень и независимый поток.
-    let flow = if nodes.len() > 1 {
+    let mut flow = if nodes.len() > 1 {
         copy_flow(nodes)
     } else {
         std::borrow::Cow::Borrowed(nodes)
     };
+    if let std::borrow::Cow::Owned(nodes) = &mut flow
+        && let [Node::Element(root)] = nodes.as_mut_slice()
+    {
+        root.style = crate::style::cascade::inherit::fragment_group_style(breaks);
+    }
     let nodes = flow.as_ref();
     let [Node::Element(e)] = nodes else {
         return None;
@@ -118,3 +113,6 @@ pub(super) fn group(
 mod float_runs;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod vertical_tests;

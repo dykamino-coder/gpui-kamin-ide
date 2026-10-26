@@ -72,9 +72,9 @@ impl PageStack {
             self.remeasure_geometry(index, copy, area, from, page, parallel.clone(), window, cx);
         // Неизменные constraints переиспользуют геометрию, но новый
         // фрагмент всё равно сохраняет собственные child tokens и sequence.
-        if let Some(measured) = self.measured.get_mut(&(index, copy)) {
-            measured.parallel = parallel;
-        }
+        self.measured
+            .entry((index, copy))
+            .and_modify(|measured| measured.parallel = parallel);
         Ok(geometry)
     }
 
@@ -183,6 +183,7 @@ impl PageStack {
         } else {
             let root = inline::offset(&inline_addresses, &next_inline.paragraphs);
             root.into_iter()
+                .chain(inline::float_offset(&old.inline, &next_inline, from))
                 .chain(normal.and_then(|cursor| cursor.offset(&fresh, &next_inline.paragraphs)))
                 .chain(token.offset(&fresh))
                 .chain(
@@ -217,7 +218,7 @@ fn rebuild_copy(k: &mut super::PageKid, copy: usize, r: &crate::layout::fragment
     r.watched.rewind_flows();
     r.watched.reset();
     {
-        let element = (r.build)(&r.dom, copy, &r.opts);
+        let element = (r.build)(&r.dom, copy, false, &r.opts);
         if copy == 0 {
             k.el = element;
         } else if let Some(slot) = k.frags.get_mut(copy - 1) {

@@ -7,6 +7,8 @@
 //! ничего не рисуют.
 
 mod anonymous;
+mod children;
+pub use children::Children;
 mod direction;
 mod shared_style;
 pub use shared_style::SharedStyle;
@@ -19,20 +21,21 @@ mod mathml_routing;
 mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
-pub(crate) mod pseudo_line_layers;
+pub(crate) mod source_walk;
 pub(crate) mod style_sources;
 pub(crate) mod text_content;
 pub(crate) mod tree_index;
 #[cfg(test)]
 mod visited_tests;
 pub(crate) mod xml;
-pub(crate) use xml::parse_current_xml;
-pub use xml::parse_xml;
+
 #[cfg(test)]
 mod presentational_hint_tests;
 #[cfg(test)]
 mod presentational_tests;
 mod quirks_color;
+#[cfg(test)]
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;
 mod ua_style;
@@ -40,9 +43,18 @@ mod ua_style;
 mod white_space_tests;
 use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
-pub use crate::dom::parse_document::parse;
-pub(crate) use crate::dom::parse_document::parse_current;
-pub use crate::dom::parse_document::parse_media;
+pub(crate) use parse_document::convert;
+pub use parse_document::{try_parse, try_parse_media};
+
+/// XML-вход без HTML-восстановления.
+pub fn try_parse_xml(markup: &str, css: &str) -> Result<Parsed, crate::document::DocumentFailure> {
+    parse_document::parse_mode(markup, css, crate::style::css::Media::default(), true)
+}
+
+#[cfg(test)]
+mod fixture_parse;
+#[cfg(test)]
+pub(crate) use fixture_parse::{parse, parse_current, parse_xml};
 mod parsed;
 use crate::dom::style_sources::collect_style_tags;
 use crate::dom::ua_style::BLOCK_TAGS;
@@ -120,7 +132,7 @@ pub struct Element {
     pub first_letter: Option<SharedStyle>,
     /// Стиль первой строки абзаца (`::first-line`).
     pub first_line: Option<SharedStyle>,
-    pub children: Vec<Node>,
+    pub children: Children,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
     pub attrs: Vec<(String, String)>,
     /// Инлайн ли элемент по своей природе (`<span>`, `<code>`, `<a>`): от
@@ -143,7 +155,7 @@ impl Element {
             hover: None,
             first_letter: None,
             first_line: None,
-            children,
+            children: children.into(),
             attrs: Vec::new(),
             inline: false,
             marks,

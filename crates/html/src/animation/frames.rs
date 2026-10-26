@@ -30,6 +30,7 @@ pub(crate) fn transitioned(
     let id = e.state_id("html-transition", opts.cx.vcx());
     let node = e.clone();
     let inherited = inherited.clone();
+    let doc = opts.cx.doc().clone();
     let opts = opts.clone();
     let build = std::rc::Rc::new(move |k: f32| {
         let mut mixed = node.clone();
@@ -40,7 +41,7 @@ pub(crate) fn transitioned(
         mixed.style.used_mut().transition = None;
         opts.cx.contracts.build.element(&mixed, &inherited, &opts)
     });
-    Some(crate::animation::transition::Transition::new(id, seconds, build).into_any_element())
+    Some(crate::animation::transition::Transition::new(id, seconds, build, doc).into_any_element())
 }
 
 /// Интерполяция стиля между кадрами анимации.

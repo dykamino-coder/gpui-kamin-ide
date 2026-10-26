@@ -3,13 +3,14 @@
 //! пробел как точка переноса (HTML §4.5.28), `display: contents` — только дети с наследованием
 //! (css-display-3 §2.5; на `<br>`/`<wbr>` — как `none`, §B). Возвращает, обработан ли узел.
 
-use super::collect_with_empty_metrics;
+use super::super::collect_stack;
 use crate::dom::Element;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 use crate::text::inline::*;
 
-pub(super) fn special_node(
+pub(super) async fn special_node(
+    stk: &mut reblessive::Stk,
     e: &Element,
     inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
@@ -66,13 +67,10 @@ pub(super) fn special_node(
     // (`display-contents-inline-001` «красное видно»).
     if e.style.used().display == Some(crate::style::computed::Display::Contents) {
         let merged = box_style(inherited, &e.style, vcx);
-        out.extend(collect_with_empty_metrics(
-            &e.children,
-            &merged,
-            atom,
-            has_text,
-            cx,
-        ));
+        out.extend(
+            stk.run(|stk| collect_stack(stk, &e.children, &merged, atom, has_text, cx))
+                .await,
+        );
         return true;
     }
     false

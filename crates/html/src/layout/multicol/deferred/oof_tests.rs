@@ -45,7 +45,7 @@ fn absolute_continuation_and_balance_preserve_the_normal_neighbour(cx: &mut gpui
         );
         assert_eq!(children.len(), 2);
         assert_eq!(geometry.flows.len(), 1);
-        let mut stack = ColumnStack::new(children, 2, 10., Some(70.), None, None, None, None, Default::default()).with_oof(Some(geometry), merged.wm());
+        let mut stack = ColumnStack::new(children, 2, 10., Some(70.), None, None, None, Default::default()).with_oof(Some(geometry), merged.wm());
         stack.col_w.set(100.);
         for i in 0..stack.children.len() { stack.lay_out_main(i, window, app); }
         *stack.lines_plan.borrow_mut() = vec![(0., 70.)];

@@ -10,7 +10,6 @@ fn stack(axis: StackAxis, wrap: bool) -> ColumnStack {
         2,
         10.,
         None,
-        None,
         wrap.then_some(Rows {
             h: None,
             gap: 13.,

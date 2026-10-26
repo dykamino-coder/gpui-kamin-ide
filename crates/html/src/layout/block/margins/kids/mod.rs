@@ -4,7 +4,8 @@ use crate::dom::Node;
 use crate::layout::block::containing::with_inner_cb;
 use crate::layout::block::inline_splits::split_block_in_inline;
 use crate::layout::block::struts::{
-    first_in_flow, leading_chain, margin_px, pin_inherited_margins, trailing_chain, zero_at,
+    ZeroPaths, first_in_flow, leading_chain, margin_px, pin_inherited_margins, trailing_chain,
+    zero_paths,
 };
 use crate::layout::block::{margin_edges, margin_height};
 use crate::layout::box_kind::{inline_level_box, own_context};
@@ -58,24 +59,18 @@ pub(super) fn collapse_kid_margins(
                     | Some(Display::GridLanes)
             )
         {
-            e.children = split_block_in_inline(&wrap_anon_tables(&e.children));
+            e.children = split_block_in_inline(&wrap_anon_tables(&e.children)).into();
         }
         if e.style.used().margin_trim & 1 != 0 {
-            let mut path: Vec<usize> = vec![];
-            let mut eat: Vec<(Vec<usize>, bool)> = vec![];
-            if leading_chain(&e.children, &mut path, &mut eat, cb, vcx).is_some() {
-                for (p, deep) in &eat {
-                    zero_at(&mut e.children, p, true, *deep, vcx);
-                }
+            let mut eat = ZeroPaths::default();
+            if leading_chain(&e.children, &mut eat, cb, vcx).is_some() {
+                zero_paths(&mut e.children, &eat, true, vcx);
             }
         }
         if e.style.used().margin_trim & 2 != 0 {
-            let mut path: Vec<usize> = vec![];
-            let mut eat: Vec<(Vec<usize>, bool)> = vec![];
-            if trailing_chain(&e.children, &mut path, &mut eat, vcx).is_some() {
-                for (p, deep) in &eat {
-                    zero_at(&mut e.children, p, false, *deep, vcx);
-                }
+            let mut eat = ZeroPaths::default();
+            if trailing_chain(&e.children, &mut eat, vcx).is_some() {
+                zero_paths(&mut e.children, &eat, false, vcx);
             }
         }
         // Root margins do not collapse with their children (CSS 2.1 §8.3.1).

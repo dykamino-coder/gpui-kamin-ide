@@ -6,7 +6,7 @@ use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::measure;
 use crate::layout::fragment::grid_bands::grid_stack;
-use crate::layout::fragment::line_shape::{side_margin_wrap, slack_fill, transpose_tree};
+use crate::layout::fragment::line_shape::{slack_fill, transpose_tree};
 use crate::layout::fragment::probe::{plain_block_tree, stacked_flex_tree};
 use crate::layout::fragment::table_bands::{repeat_bands, table_box};
 use crate::layout::fragment::{ShapeCx, with_lines};
@@ -97,14 +97,9 @@ pub(super) fn line_cuts(
     let (over, cuts, forced, solid) = match measured
         .map(|m| m.shape)
         .filter(|_| {
-            // Сетка-стопка с обычными блочными элементами
-            // меряется так же точно, как блок (`grid_stack`:
-            // ряд = элемент), а `overflow-x: clip` блочное
-            // переполнение не прячет (css-overflow-3:
-            // `clip` парой к `visible` не делает коробку
-            // прокручиваемой). `grid-container-
-            // fragmentation-006`: сетка 200 с содержимым
-            // 400 в четырёх колонках.
+            // Сетка-стопка меряется как блок: ряд = элемент. `overflow-x: clip`
+            // с `visible` не создаёт прокрутку (css-overflow-3):
+            // grid-container-fragmentation-006, сетка 200 с содержимым 400.
             let plain = plain_block_tree(copy, 4)
                 || stacked_flex_tree(copy, 4)
                 || (grid_stack(copy)
@@ -148,7 +143,7 @@ pub(super) fn stack_child_of(
     h: f32,
     over: f32,
     rel: (f32, f32),
-    build: impl Fn(bool, usize, bool) -> gpui::AnyElement,
+    build: super::factory::Builder,
     measure: Option<f32>,
     monolith: bool,
     span: bool,
@@ -158,6 +153,12 @@ pub(super) fn stack_child_of(
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     let repeat = repeat_bands(copy, fixed, rows, measured_table, shape_cx, vcx);
+    let (el, frags, fragment_builders) = super::factory::fragments(
+        build.clone(),
+        copy,
+        col_vert,
+        if span { 1 } else { kid_copies },
+    );
     crate::layout::fragment::types::StackChild {
         #[cfg(feature = "wpt-harness")]
         probe_pending: measure.is_none(),
@@ -168,14 +169,9 @@ pub(super) fn stack_child_of(
         breaks_w: None,
         regrow: None,
         measure,
-        el: side_margin_wrap(build(true, 0, false), copy, col_vert),
-        frags: if span {
-            Vec::new()
-        } else {
-            (1..kid_copies)
-                .map(|i| side_margin_wrap(build(false, i, false), copy, col_vert))
-                .collect()
-        },
+        el,
+        frags,
+        fragment_builders,
         monolith,
         fit_whole: false,
         cuts,

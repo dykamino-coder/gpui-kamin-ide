@@ -17,7 +17,13 @@ impl Anchor {
         .hooked()
     }
 
-    pub(super) fn marker(&self, child: AnyElement, vertical: bool) -> AnyElement {
+    pub(super) fn marker(
+        &self,
+        child: AnyElement,
+        vertical: bool,
+        has_lines: bool,
+        image: bool,
+    ) -> AnyElement {
         Marker {
             child,
             content: self.0.clone(),
@@ -28,6 +34,8 @@ impl Anchor {
                 Axis::Vertical
             },
             owns: true,
+            has_lines,
+            image,
         }
         .hooked()
     }
@@ -56,6 +64,24 @@ struct Marker {
     id: Option<LayoutId>,
     axis: Axis,
     owns: bool,
+    has_lines: bool,
+    image: bool,
+}
+
+impl Marker {
+    fn baseline(&self, window: &mut Window) -> Option<Pixels> {
+        // Распорка пустого пункта задаёт высоту, но не создаёт строку
+        // содержимого: текстовый маркер выровнен по верху (css-lists-3 §3.5).
+        // Изображение сохраняет baseline нижнего края (CSS2 §10.8.1),
+        // совмещённую с базовой шрифта пункта даже без его содержимого.
+        self.content
+            .get()
+            .filter(|_| self.has_lines || self.image)
+            .and_then(|id| {
+                let baseline = window.first_content_baseline(id, self.axis)?;
+                Some(window.layout_origin_unrounded(id).along(self.axis) + baseline)
+            })
+    }
 }
 
 impl Wrap for Marker {
@@ -71,10 +97,7 @@ impl Wrap for Marker {
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let mut delta = point(px(0.), px(0.));
-        let anchor = self.content.get().and_then(|id| {
-            let baseline = window.first_content_baseline(id, self.axis)?;
-            Some(window.layout_origin_unrounded(id).along(self.axis) + baseline)
-        });
+        let anchor = self.baseline(window);
         if let Some(anchor) = anchor {
             let own = self
                 .id
@@ -99,5 +122,89 @@ impl Wrap for Marker {
         if self.owns {
             self.child.paint(window, cx);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{AvailableSpace, IntoElement, ParentElement, Styled, div, size};
+
+    #[gpui::test]
+    fn empty_marker_regression_ignores_the_height_strut_baseline(cx: &mut gpui::TestAppContext) {
+        cx.add_empty_window().draw(
+            point(px(0.), px(0.)),
+            size(px(100.), px(100.)),
+            |window, app| {
+                let mut strut = div().text_size(px(16.)).child("\u{a0}").into_any_element();
+                let id = strut.request_layout(window, app);
+                window.compute_layout(
+                    id,
+                    size(
+                        AvailableSpace::Definite(px(100.)),
+                        AvailableSpace::MaxContent,
+                    ),
+                    app,
+                );
+                assert!(window.first_content_baseline(id, Axis::Vertical).is_some());
+                let mut marker = Marker {
+                    child: div().into_any_element(),
+                    content: Rc::new(Cell::new(Some(id))),
+                    id: None,
+                    axis: Axis::Vertical,
+                    owns: true,
+                    has_lines: false,
+                    image: false,
+                };
+                assert_eq!(marker.baseline(window), None);
+                marker.has_lines = true;
+                assert!(marker.baseline(window).is_some());
+                div()
+            },
+        );
+    }
+
+    #[gpui::test]
+    fn empty_image_marker_aligns_to_the_item_font_baseline(cx: &mut gpui::TestAppContext) {
+        cx.add_empty_window().draw(
+            point(px(0.), px(0.)),
+            size(px(100.), px(100.)),
+            |window, app| {
+                for font_size in [16., 40.] {
+                    let mut line = div()
+                        .text_size(px(font_size))
+                        .child("\u{a0}")
+                        .into_any_element();
+                    let id = line.request_layout(window, app);
+                    window.compute_layout(
+                        id,
+                        size(
+                            AvailableSpace::Definite(px(100.)),
+                            AvailableSpace::MaxContent,
+                        ),
+                        app,
+                    );
+                    let baseline = window.first_content_baseline(id, Axis::Vertical).unwrap()
+                        + window.layout_origin_unrounded(id).y;
+                    let mut marker = Marker {
+                        child: div().into_any_element(),
+                        content: Rc::new(Cell::new(Some(id))),
+                        id: None,
+                        axis: Axis::Vertical,
+                        owns: true,
+                        has_lines: false,
+                        image: true,
+                    };
+                    // Пустой пункт и пункт с NBSP дают изображению одну baseline.
+                    assert_eq!(marker.baseline(window), Some(baseline));
+                    marker.has_lines = true;
+                    assert_eq!(marker.baseline(window), Some(baseline));
+                    marker.image = false;
+                    marker.has_lines = false;
+                    assert_eq!(marker.baseline(window), None);
+                }
+                div()
+            },
+        );
     }
 }

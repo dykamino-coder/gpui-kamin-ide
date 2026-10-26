@@ -19,7 +19,7 @@ const DECODER_REVISION: u32 = 1;
 /// Результат декодирования, разделяемый документами.
 pub(crate) type Decoded = Result<(DecodedImage, ImageMetadata), ImageError>;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 struct DecodeKey {
     bytes: Arc<[u8]>,
     options: DecodeOptions,

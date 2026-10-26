@@ -20,7 +20,7 @@ fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
 }
 
 fn styled(html: &str, id: &str) -> Computed {
-    let doc = crate::document::Document::builder(html, "").build();
+    let doc = crate::Document::builder(html, "").build().unwrap();
     Computed::clone(find(doc.nodes(), id).expect("element").style.cascaded())
 }
 

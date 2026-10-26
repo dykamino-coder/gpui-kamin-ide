@@ -41,6 +41,9 @@ impl PageStack {
             if r.push_many(grows) {
                 (kid.el, kid.frags) = r.rebuild(kid.frags.len());
                 w.reset();
+                // Продолжения наследуют ограничения главной копии. После
+                // роста её float floors старые копии имеют другую геометрию.
+                self.continuations.retain(|&(owner, _), _| owner != index);
                 dirty = true;
             }
         }
@@ -93,53 +96,4 @@ pub(super) fn growths(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::layout::fragment::flow::{LinePush, blocks::Pushed};
-    use std::{cell::RefCell, rc::Rc};
-
-    #[test]
-    fn unforced_line_break_consumes_unused_fragment_extent_once() {
-        let blocks = BlockBox {
-            id: 1,
-            ..Default::default()
-        };
-        let growth = Rc::new(RefCell::new(Vec::new()));
-        let mut laid = Laid::default();
-        laid.lines.insert(
-            1,
-            vec![LinePush {
-                at: 80.0,
-                line: 2,
-                growth: growth.clone(),
-            }],
-        );
-        let kid = Kid {
-            h: 160.0,
-            cuts: vec![(80.0, 80.0)],
-            ..Default::default()
-        };
-        let mut frag = Frag {
-            kid: 0,
-            copy: 0,
-            col: 0,
-            y: 0.0,
-            from: 0.0,
-            h: 80.0,
-            head: 0.0,
-            foot: 0.0,
-        };
-        let grows = growths(&blocks, &kid, &laid, &frag, 100.0);
-        assert_eq!(grows.len(), 1);
-        assert_eq!(grows[0].amount, 20.0);
-        assert!(!grows[0].forced);
-        let Pushed::Line(line) = &grows[0].target else {
-            panic!("line boundary")
-        };
-        assert!(line.grow(grows[0].amount));
-        assert_eq!(*growth.borrow(), vec![0.0, 0.0, 20.0]);
-        // После публикации занятого места новый разрыв стоит у края.
-        frag.h = 100.0;
-        assert!(growths(&blocks, &kid, &laid, &frag, 100.0).is_empty());
-    }
-}
+mod tests;

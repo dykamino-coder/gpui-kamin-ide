@@ -34,7 +34,7 @@ pub(super) fn cascade_element(
     sibs: Sibs,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> (
-    Computed,
+    Box<Computed>,
     VarMap,
     crate::style::values::value::Scheme,
     Option<Rc<crate::dom::shadow::Shadow>>,
@@ -102,11 +102,11 @@ pub(super) fn cascade_element(
     // подсказки и лист форм их не задают.
     let pre = CascadeMap::collect(&matched, &inline_decls);
     let cascaded =
-        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered, |s, v| {
+        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered.rules, |s, v| {
             syntax_accepts(s, v, vcx)
         });
     let own_vars =
-        crate::style::css::variable_values::compute(&cascaded, vars, &registered, |s, v| {
+        crate::style::css::variable_values::compute(&cascaded, vars, &registered.rules, |s, v| {
             syntax_accepts(s, v, vcx)
         });
     let vars = &own_vars;
@@ -115,6 +115,7 @@ pub(super) fn cascade_element(
     // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
     let element = CascadeCx {
         attrs,
+        html_attrs: me.html_attrs,
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
         root: path.is_empty(),
     };
@@ -144,6 +145,7 @@ pub(super) fn cascade_element(
         .as_deref()
         .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
     style.mathml = crate::dom::mathml::is_mathml(handle);
+    style.svg_no_css_box = super::ancestor::svg_no_css_box(handle);
     if crate::dom::mathml_routing::enabled(handle) {
         if let Some(display) = style.math_layout {
             style.display = Some(display);
@@ -169,5 +171,5 @@ pub(super) fn cascade_element(
     });
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    (style, own_vars, vcx.scheme, shadow, important)
+    (Box::new(style), own_vars, vcx.scheme, shadow, important)
 }

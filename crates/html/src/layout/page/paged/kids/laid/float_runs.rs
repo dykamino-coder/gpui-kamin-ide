@@ -9,8 +9,15 @@ fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
         "",
     );
     let source = &super::tests::authored(&tree).children;
-    let p = group(source, &BoxStyle::default(), 384., 0., tree.values())
-        .expect("shared measured float run");
+    let p = group(
+        source,
+        &BoxStyle::default(),
+        384.,
+        0.,
+        (false, false),
+        tree.values(),
+    )
+    .expect("shared measured float run");
     assert!(p.blocks && p.float_extent);
     let Node::Element(root) = &p.nodes[0] else {
         panic!("shared flow root")
@@ -40,7 +47,17 @@ fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
 fn unrelated_inline_run_does_not_acquire_a_block_copy() {
     let tree = crate::dom::parse("<div><span>one</span><span>two</span></div>", "");
     let source = &super::tests::authored(&tree).children;
-    assert!(group(source, &BoxStyle::default(), 384., 0., tree.values()).is_none());
+    assert!(
+        group(
+            source,
+            &BoxStyle::default(),
+            384.,
+            0.,
+            (false, false),
+            tree.values()
+        )
+        .is_none()
+    );
 }
 
 #[test]
@@ -67,7 +84,6 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
         _ => panic!("float box"),
     };
     assert_eq!(height(&source[1]), Some(Len::Px(115.200005)));
-    let mut p = group(&source[..2], &BoxStyle::default(), 384., 0., tree.values()).unwrap();
     let (_, after, _, _, _) = super::super::names::group_break_names(
         "",
         &mut None,
@@ -76,7 +92,15 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
         &source[0],
         tree.values(),
     );
-    p.break_edges(false, after);
+    let p = group(
+        &source[..2],
+        &BoxStyle::default(),
+        384.,
+        0.,
+        (false, after),
+        tree.values(),
+    )
+    .unwrap();
     let Node::Element(root) = &p.nodes[0] else {
         panic!("measured root")
     };

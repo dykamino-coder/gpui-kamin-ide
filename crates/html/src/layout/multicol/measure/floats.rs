@@ -10,7 +10,14 @@ pub(crate) fn block_floats(
     ge: &Element,
     positioned: impl Fn(&Computed) -> bool,
     col_w: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Element> {
+    if vcx
+        .subtrees
+        .is_some_and(|facts| facts.borrow_mut().floats_absent(ge))
+    {
+        return None;
+    }
     floats_in(ge, &positioned, col_w)
 }
 

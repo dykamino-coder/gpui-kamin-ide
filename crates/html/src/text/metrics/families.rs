@@ -92,13 +92,12 @@ pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) 
 /// Есть ли такое семейство в системе шрифтов. До `use_text_system` список пуст,
 /// и ответ отрицательный для всех — разбор тогда работает как раньше.
 pub fn font_installed(name: &str, vcx: ValueCx<'_>) -> bool {
-    let lower = name.to_ascii_lowercase();
-    vcx.doc.metrics.platform.borrow().installed.contains(&lower)
+    vcx.doc.font_snapshot().installed(name)
 }
 
 /// Снят ли список установленных семейств (`use_text_system`). До него
 /// `font_installed` отрицателен для всех, и судить о «недоступности» имени
 /// нельзя.
 pub fn fonts_known(vcx: ValueCx<'_>) -> bool {
-    !vcx.doc.metrics.platform.borrow().installed.is_empty()
+    vcx.doc.font_snapshot().fonts_known()
 }

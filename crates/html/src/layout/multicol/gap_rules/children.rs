@@ -16,6 +16,17 @@ pub(crate) fn decorated_children(
     opts: &RenderOpts,
     children: impl FnOnce(&RenderOpts) -> Vec<AnyElement>,
 ) -> Vec<AnyElement> {
+    let (mut layers, child_opts) = prepare_children(e, merged, opts);
+    layers.extend(children(&child_opts));
+    layers
+}
+
+/// Контекст линеек живёт до завершения построения детей.
+pub(crate) fn prepare_children(
+    e: &Element,
+    merged: &Computed,
+    opts: &RenderOpts,
+) -> (Vec<AnyElement>, Box<RenderOpts>) {
     let spec = super::gap_rule_spec(e, merged, opts);
     let context = spec.as_ref().map(|_| GapItems::default());
     let child_opts = opts.inner(|cx| {
@@ -32,6 +43,5 @@ pub(crate) fn decorated_children(
                 .layer(Layer::gap_rules(buffer, spec, &opts.cx)),
         );
     }
-    layers.extend(children(&child_opts));
-    layers
+    (layers, child_opts)
 }

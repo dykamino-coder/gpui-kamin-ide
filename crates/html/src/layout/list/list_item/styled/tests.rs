@@ -25,8 +25,11 @@ fn empty_item_keeps_its_font_baseline_beside_a_taller_marker(cx: &mut gpui::Test
             let merged = BoxStyle::from(style.clone());
             let mut item = Element::synthetic("li", style, Default::default(), vec![]);
             item.list_item = Some(1);
+            let inherited = Computed::default();
             let mut baseline = |item: &Element| {
-                let mut el = render_with_style(item, &Computed::default(), &merged, &opts);
+                let mut el = reblessive::Stack::new()
+                    .enter(|stk| render_with_style(stk, item, &inherited, &merged, &opts))
+                    .finish();
                 let id = el.request_layout(window, app);
                 window.compute_layout(
                     id,

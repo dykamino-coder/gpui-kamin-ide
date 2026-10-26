@@ -100,7 +100,7 @@ pub(super) fn wrap(
         hover: None,
         first_letter: None,
         first_line: None,
-        children: slot,
+        children: (slot).into(),
         attrs: vec![],
         inline: false,
     }));

@@ -1,4 +1,4 @@
-//! План клонов (box-decoration-break: clone) по колонкам и правило колонок (column-rule).
+//! План клонов (box-decoration-break: clone) по колонкам.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
@@ -8,8 +8,6 @@ use crate::layout::fragment::clone::{clone_dec, solid_box};
 use crate::layout::fragment::table_bands::repeat_leads;
 use crate::layout::multicol::spanner::parallel_items_inside;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 
 // The clone plan preserves each child's measured shape and painting callback.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -71,32 +69,4 @@ pub(super) fn clone_plan_of(
             Vec::new()
         };
     clone_plan
-}
-
-pub(super) fn column_rule_of(
-    e: &Element,
-    merged: &Computed,
-    opts: &RenderOpts,
-) -> Option<(f32, gpui::Hsla)> {
-    if e.style.used().column_rule_visible == Some(true) {
-        Some((
-            match e.style.used().column_rule_width {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => {
-                    k * match e.style.used().font_size {
-                        Some(Len::Px(fs)) => fs,
-                        _ => opts.base_size(),
-                    }
-                }
-                _ => 3.0,
-            },
-            e.style
-                .used()
-                .column_rule_color
-                .resolve(merged.current_color())
-                .to_hsla(),
-        ))
-    } else {
-        None
-    }
 }

@@ -82,11 +82,10 @@ pub(super) fn shadow_scope(
 /// `template_contents`, а не в `children`, поэтому сюда не попадают; светлые
 /// дети вложенных хостов — попадают, они в этом же дереве.
 pub(super) fn collect_slots(handle: &Handle, out: &mut Vec<Handle>) {
-    for child in handle.children.borrow().iter() {
-        if is_slot(child) {
-            out.push(child.clone());
+    for child in crate::dom::source_walk::descendants(handle, false).skip(1) {
+        if is_slot(&child) {
+            out.push(child);
         }
-        collect_slots(child, out);
     }
 }
 

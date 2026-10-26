@@ -99,7 +99,7 @@ mod tests {
     use super::PageBorder;
 
     fn longhands(b: &mut PageBorder, decls: &[(&str, &str)]) {
-        let doc = kamin_html::Document::builder("", "").build();
+        let doc = kamin_html::Document::builder("", "").build().unwrap();
         for (k, v) in decls {
             assert!(b.apply(
                 k,
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn radius_and_image_are_not_sides() {
         let mut b = PageBorder::new();
-        let doc = kamin_html::Document::builder("", "").build();
+        let doc = kamin_html::Document::builder("", "").build().unwrap();
         assert!(!b.apply(
             "border-top-left-radius",
             "4px",

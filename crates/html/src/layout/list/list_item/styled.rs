@@ -8,7 +8,8 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-pub(crate) fn render_with_style(
+pub(crate) async fn render_with_style(
+    stk: &mut reblessive::Stk,
     li: &Element,
     inherited: &Computed,
     merged: &BoxStyle,
@@ -35,7 +36,13 @@ pub(crate) fn render_with_style(
         )
         .flex()
         .flex_col()
-        .children(opts.cx.contracts.build.blocks(&kids, merged, opts))
+        .children(
+            opts.cx
+                .contracts
+                .build
+                .blocks_stack(stk, &kids, merged, opts)
+                .await,
+        )
         .into_any_element();
     }
     let (marker, marker_style, image) = resolved
@@ -57,11 +64,11 @@ pub(crate) fn render_with_style(
         li.style.used().marker_layer.as_deref(),
     );
     let marker = inline::transform_case(&marker, &mark_style);
-    let marker_opts = super::outside_flow::options(opts);
+    let marker_opts = super::outside_flow::options(opts, merged.wm().used_direction().rtl());
     // Маркер и распорка пустого пункта используют CSS-метрики строки.
     // Прямой текстовый лист GPUI наследует line-height интерфейса, тогда
     // как `normal` первой строки зависит от шрифта пункта (CSS2 §10.8.1).
-    mark_style.nowrap = Some(true);
+    let image_marker = image.is_some();
     let marker_nodes = match image {
         Some(image) => vec![image, Node::Text("\u{a0}".into())],
         None => vec![Node::Text(match marker.strip_suffix(' ') {
@@ -145,6 +152,8 @@ pub(crate) fn render_with_style(
             )
             .into_any_element(),
             merged.wm().vertical(),
+            !empty,
+            image_marker,
         )
     }))
     // Содержимое — своей колонкой, как прежде: выключка пункта
@@ -157,7 +166,13 @@ pub(crate) fn render_with_style(
                 .w_full()
                 .flex()
                 .flex_col()
-                .children(opts.cx.contracts.build.blocks(&li.children, merged, opts))
+                .children(
+                    opts.cx
+                        .contracts
+                        .build
+                        .blocks_stack(stk, &li.children, merged, opts)
+                        .await,
+                )
                 .children(strut)
                 .into_any_element(),
         ),

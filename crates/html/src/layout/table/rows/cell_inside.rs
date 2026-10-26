@@ -75,7 +75,9 @@ pub(super) fn place_cell_in_grid(
     d
 }
 
-pub(super) fn cell_contents(
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn cell_contents(
+    stk: &mut reblessive::Stk,
     opts: &RenderOpts,
     e: &Element,
     cm: BoxStyle,
@@ -93,11 +95,17 @@ pub(super) fn cell_contents(
     // Многоколоночная ячейка режет содержимое на колонки
     // (`cell_columns::column_flow_children`, css-multicol-1 §2).
     let flow = super::cell_columns::column_flow_children(cell);
-    let inside = opts.cx.contracts.build.blocks(
-        flow.as_deref().unwrap_or(&cell.children),
-        &cm,
-        &opts.inner(|cx| cx.constraints.cell_bfc = true),
-    );
+    let inside = opts
+        .cx
+        .contracts
+        .build
+        .blocks_stack(
+            stk,
+            flow.as_deref().unwrap_or(&cell.children),
+            &cm,
+            &opts.inner(|cx| cx.constraints.cell_bfc = true),
+        )
+        .await;
     let inside = super::cell_alignment::subject(&cm, inside);
     // Обрезанная ячейка не расталкивает колонки: её минимальный
     // вклад в дорожки НУЛЕВОЙ (css-sizing: automatic minimum при

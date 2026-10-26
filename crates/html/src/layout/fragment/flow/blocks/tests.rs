@@ -229,4 +229,5 @@ fn root_avoid_after_page_padding_does_not_create_a_blank_fragment() {
     assert_eq!((plan[1].col, plan[1].from, plan[1].h), (1, 104.0, 192.0));
 }
 
+mod decorations;
 mod resume;

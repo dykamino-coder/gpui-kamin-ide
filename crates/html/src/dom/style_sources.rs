@@ -3,16 +3,8 @@
 
 use markup5ever_rcdom::{Handle, NodeData};
 
-pub(crate) fn collect(markup: &str, xml: bool) -> Vec<String> {
-    let dom = if xml {
-        super::xml::xml_dom(markup)
-    } else {
-        super::input::html(markup)
-    };
-    #[expect(
-        clippy::redundant_clone,
-        reason = "keep the root alive: Node::drop drains descendant children"
-    )]
+pub(crate) fn collect(input: &super::input::Admitted) -> Vec<String> {
+    let dom = &input.dom;
     let mut pending = vec![dom.document.clone()];
     let mut sheets = Vec::new();
     let mut active_templates = std::collections::HashSet::new();
@@ -54,36 +46,31 @@ pub(crate) fn collect(markup: &str, xml: bool) -> Vec<String> {
 }
 
 /// Содержимое `<style>`-тегов документа, каждый — отдельной таблицей;
-/// html5ever кладёт его текстом внутрь.
-/// Ссылки на знаки (`&gt;`, `&amp;`) в `<style>` XHTML-документа остаются
-/// нераскрытыми: построитель HTML держит `<style>` сырым текстом, хотя по
-/// разбору XML их следует раскрыть. Известное ограничение: раскрытые правила
-/// вскрывают ошибки раскладки ниже (`text-indent-intrinsic-001/003`), а
-/// раскрытая `&quot;` закрывает строку CSS раньше времени (`content-177`).
+/// HTML сохраняет сырой текст, а XHTML раскрывает ссылки на знаки
+/// на стадии XML-разбора, до передачи дерева этому сборщику.
 pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
-    if let NodeData::Element { name, .. } = &handle.data
-        && &*name.local == "style"
-    {
-        let mut sheet = String::new();
-        for child in handle.children.borrow().iter() {
-            if let NodeData::Text { contents } = &child.data {
-                // Обёртка `<![CDATA[ … ]]>` встречается в эталонах XHTML: там
-                // она прячет стиль от разбора XML. Разбору CSS она мусор, и
-                // правила до первой закрывающей скобки пропадали вместе с ней.
-                let text = contents.borrow();
-                let trimmed = text.trim();
-                let body = trimmed
-                    .strip_prefix("<![CDATA[")
-                    .and_then(|rest| rest.strip_suffix("]]>"))
-                    .unwrap_or(&text);
-                // Preserve child text content: an invented LF makes EOF strings invalid.
-                sheet.push_str(body);
+    for handle in super::source_walk::descendants(handle, false) {
+        if let NodeData::Element { name, .. } = &handle.data
+            && &*name.local == "style"
+        {
+            let mut sheet = String::new();
+            for child in handle.children.borrow().iter() {
+                if let NodeData::Text { contents } = &child.data {
+                    // Обёртка `<![CDATA[ … ]]>` встречается в эталонах XHTML: там
+                    // она прячет стиль от разбора XML. Разбору CSS она мусор, и
+                    // правила до первой закрывающей скобки пропадали вместе с ней.
+                    let text = contents.borrow();
+                    let trimmed = text.trim();
+                    let body = trimmed
+                        .strip_prefix("<![CDATA[")
+                        .and_then(|rest| rest.strip_suffix("]]>"))
+                        .unwrap_or(&text);
+                    // Сохраняем текст детей: добавленный LF меняет строки CSS на EOF.
+                    sheet.push_str(body);
+                }
             }
+            out.push(sheet);
         }
-        out.push(sheet);
-    }
-    for child in handle.children.borrow().iter() {
-        collect_style_tags(child, out);
     }
 }
 
@@ -98,13 +85,19 @@ mod tests {
             <template><style>inert</style></template>\
             <div><template shadowrootmode='OPEN'><style>shadow</style></template>\
             <template shadowrootmode='open'><style>second-inert</style></template></div>";
-        assert_eq!(collect(html, false), ["document", "shadow"]);
+        assert_eq!(
+            collect(&super::super::input::Admitted::parse(html, false).unwrap()),
+            ["document", "shadow"]
+        );
     }
 
     #[test]
     fn xml_style_content_uses_the_xml_parser() {
         let xml = "<svg xmlns='http://www.w3.org/2000/svg'>\
             <style><![CDATA[p { content: '<&>'; }]]></style></svg>";
-        assert_eq!(collect(xml, true), ["p { content: '<&>'; }"]);
+        assert_eq!(
+            collect(&super::super::input::Admitted::parse(xml, true).unwrap()),
+            ["p { content: '<&>'; }"]
+        );
     }
 }

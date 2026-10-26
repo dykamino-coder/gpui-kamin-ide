@@ -238,7 +238,7 @@ pub(super) fn atom_element_raw(
             opts.cx.contracts.build.effects(
                 el,
                 Effect::GroupReplaced {
-                    style: &e.style.used(),
+                    style: e.style.used(),
                     vcx,
                 },
             )

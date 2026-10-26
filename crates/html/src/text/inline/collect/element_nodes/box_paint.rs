@@ -12,6 +12,13 @@ use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Color, Len, px_lossy_zero};
 use crate::text::inline::*;
 
+pub(super) fn atomic_marker(style: BoxStyle) -> Piece {
+    Piece::Text {
+        text: "\u{200b}".into(),
+        style,
+    }
+}
+
 pub(super) fn element_style(
     e: &Element,
     inherited: &BoxStyle,

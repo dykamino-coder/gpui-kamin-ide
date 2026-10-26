@@ -1,13 +1,14 @@
 [target.x86_64-pc-windows-msvc]
-# 64MB стека main-треду: рекурсивный рендер глубоко вложенных документов
-# (element -> blocks -> element) с раздутыми кадрами переполнял штатный 1MB
-# (first-line-with-out-of-flow после cc4f9e1). Настоящая бесконечная
-# рекурсия всё равно упрётся и упадёт.
-rustflags = ["-C", "link-args=/STACK:67108864"]
+# 8 МиБ: поддерживаемая глубина reflow 1026 и построения боксов 2052.
+# Обходы DOM и сборка боксов используют heap, большие временные значения
+# фаз GPUI не удерживаются при обходе детей. Проверено depth_tests на 8 МиБ.
+rustflags = ["-C", "link-args=/STACK:8388608"]
 
 [env]
-# Тестовые потоки libtest получают штатные 2MB, а не /STACK main-треда выше:
-# отладочный рендер с раздутыми кадрами `Computed` переполнял их уже на
-# крошечных документах (has_relational_pseudo после поля own_margin). Тесты
-# должны жить в том же стеке, что и приложение.
-RUST_MIN_STACK = "67108864"
+# Потоки libtest используют тот же предел стека, что и приложение.
+RUST_MIN_STACK = "8388608"
+
+[alias]
+# Изолированный профиль агента; dev/release и installer не меняются.
+html-build = ["build", "-p", "kamin-html", "--lib", "--profile", "agent", "--config", "target.x86_64-pc-windows-msvc.linker=\"rust-lld\""]
+html-test = ["test", "-p", "kamin-html", "--lib", "--profile", "agent", "--config", "target.x86_64-pc-windows-msvc.linker=\"rust-lld\""]

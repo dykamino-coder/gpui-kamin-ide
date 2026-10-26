@@ -61,23 +61,12 @@ pub(crate) fn font_lengths_to_px(v: &str, em: f32, rem: f32, ex: f32, ch: f32) -
 /// `monospace` в таблицу не входит: за него отвечает признак `monospace`, и
 /// семейство под него выбирается позже — из тех, что на машине есть
 /// (см. `metrics::mono_family`). Здесь он только не считается именем шрифта.
-pub fn generic_family(lower: &str) -> Option<&'static str> {
-    match lower {
-        "system-ui" | "sans-serif" | "ui-sans-serif" | "ui-rounded" => Some(GENERIC_SANS),
-        "serif" | "ui-serif" => Some("Times New Roman"),
-        "cursive" => Some("Comic Sans MS"),
-        "fantasy" => Some("Impact"),
-        _ => None,
-    }
-}
+pub use crate::font_facts::{GENERIC_SANS, generic_family};
 
 /// Родовое имя семейства — разряд шрифта, а не шрифт.
 pub(crate) fn is_generic(lower: &str) -> bool {
     generic_family(lower).is_some() || matches!(lower, "monospace" | "ui-monospace")
 }
-
-/// Семейство за родовое `sans-serif`; оно же — умолчание документа.
-pub const GENERIC_SANS: &str = "Segoe UI";
 
 /// Список `font-feature-settings` (css-fonts-4 §7.1): `normal` — пустой,
 /// иначе `<opentype-tag> [ <integer [0,∞]> | on | off ]?` через запятую.

@@ -41,8 +41,6 @@ pub struct ColumnStack {
     /// (Blink `ConstrainColumnBlockSize`; `columnfill-auto-max-height-003`).
     /// Ставится `with_fill_shrink`.
     pub(crate) fill_shrink: bool,
-    /// Линейка между колонками: ширина и цвет.
-    pub(crate) rule: Option<(f32, gpui::Hsla)>,
     pub(crate) rule_to: Option<f32>,
     /// Ряды колонок; `None` — одна линия, как в css-multicol-1.
     pub(crate) rows: Option<Rows>,
@@ -77,7 +75,6 @@ impl ColumnStack {
         count: usize,
         gap: f32,
         fixed_height: Option<f32>,
-        rule: Option<(f32, gpui::Hsla)>,
         rows: Option<Rows>,
         gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
         intrinsic: Option<Intrinsic>,
@@ -116,7 +113,6 @@ impl ColumnStack {
             forced_h: None,
             balance_failure: None,
             fill_shrink: false,
-            rule,
             rule_to: None,
             rows,
             axis: StackAxis::Horizontal,

@@ -6,6 +6,7 @@ use crate::layout::fragment::types::{Frag, axis_box};
 use crate::layout::multicol::gap_rules::MulticolGaps;
 use crate::tolerance::COORD_EPS;
 use gpui::{Bounds, Pixels};
+
 impl ColumnStack {
     pub(super) fn collect_gap_geometry(
         &self,
@@ -50,5 +51,77 @@ impl ColumnStack {
                 .push(box_at(0.0, inline, y, self.children[kid].h));
         }
         buffer.borrow_mut().multicol = Some(geometry);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::fragment::types::StackAxis;
+    use gpui::{point, px, size};
+
+    #[test]
+    fn column_rules_keep_fractional_geometry_and_terminal_extent_in_all_axes() {
+        for axis in [
+            StackAxis::Horizontal,
+            StackAxis::VerticalLr,
+            StackAxis::VerticalRl,
+        ] {
+            let buffer = Default::default();
+            let mut stack = ColumnStack::new(
+                vec![],
+                3,
+                12.5,
+                Some(60.5),
+                None,
+                Some(buffer),
+                None,
+                Default::default(),
+            )
+            .with_axis(axis)
+            .with_rule_stretch(Some(60.5));
+            *stack.lines_plan.borrow_mut() = vec![(0.0, 40.0)];
+            let bounds = Bounds {
+                origin: point(px(20.25), px(20.25)),
+                size: if axis.is_vertical() {
+                    size(px(60.5), px(300.5))
+                } else {
+                    size(px(300.5), px(60.5))
+                },
+            };
+            let fragment = |col, h| Frag {
+                kid: 0,
+                copy: col,
+                col,
+                y: 0.0,
+                from: 0.0,
+                h,
+                head: 0.0,
+                foot: 0.0,
+            };
+            // Нулевой щуп третьей колонки не создаёт занятую колонку.
+            let plan = [fragment(0, 40.0), fragment(1, 40.0), fragment(2, 0.0)];
+            let col_w = (300.5 - 25.0) / 3.0;
+            stack.collect_gap_geometry(bounds, col_w, &plan, &[]);
+            let data = stack.gap_items.take().expect("geometry buffer");
+            let data = data.borrow();
+            let data = data.multicol.as_ref().expect("multicol geometry");
+            assert_eq!(data.rows, vec![(bounds, 2)]);
+            assert_eq!(data.columns.len(), 3);
+            for (column, actual) in data.columns.iter().enumerate() {
+                assert_eq!(
+                    *actual,
+                    axis_box(
+                        axis,
+                        bounds.origin,
+                        60.5,
+                        column as f32 * (col_w + 12.5),
+                        col_w,
+                        0.0,
+                        60.5,
+                    )
+                );
+            }
+        }
     }
 }

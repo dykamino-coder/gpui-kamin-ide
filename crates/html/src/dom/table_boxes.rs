@@ -64,7 +64,7 @@ pub(crate) fn inline_anon_tables(nodes: &mut [Node]) {
             && e.inline
             && e.children.iter().any(|c| anon_role(c).is_some())
         {
-            e.children = wrap_anon_tables_as(&e.children, Display::InlineTable);
+            e.children = wrap_anon_tables_as(&e.children, Display::InlineTable).into();
         }
     }
 }
@@ -129,7 +129,7 @@ pub(crate) fn anon_element(tag: &str, children: Vec<Node>) -> Element {
         hover: None,
         first_letter: None,
         first_line: None,
-        children,
+        children: children.into(),
         attrs: Vec::new(),
         inline: false,
     }

@@ -15,7 +15,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "1.0.79"
+version = "1.0.80"
 edition = "2024"
 
 # Keep fallible results visible at every workspace boundary.
@@ -37,7 +37,7 @@ style = { level = "allow", priority = -1 }
 
 [workspace.dependencies]
 # Пакет на crates.io — `gpui-pre` (снимок zed@279fe07), библиотека — `gpui`.
-# GPUI measure использует обычный стек, без stacker/stacksafe (#430).
+# Обход построителя хранит продолжения на куче; GPUI проверяется на обычном стеке.
 gpui = { package = "gpui-pre", version = "=0.3.8" }
 # Платформа (Windows-бэкенд) вынесена из ядра: `gpui_platform::application()`.
 gpui-platform = { package = "gpui-pre-platform", version = "=0.3.8" }
@@ -88,6 +88,22 @@ opt-level = 2
 # квадратов. Отладочная информация остаётся — под отладчиком код читается.
 [profile.dev]
 opt-level = 2
+
+# Быстрые проверки агентов: артефакты отдельно в target/agent.
+# Отладочная информация не нужна при автоматических проверках.
+[profile.agent]
+inherits = "dev"
+opt-level = 0
+debug = 0
+incremental = true
+codegen-units = 256
+
+# Wildcard Cargo относится только к зависимостям вне workspace.
+# GPUI и декодеры сохраняют оптимизацию; их код меняется редко.
+[profile.agent.package."*"]
+opt-level = 2
+debug = "line-tables-only"
+codegen-units = 16
 
 [patch.crates-io]
 # Vendored gpui (gpui-pre 0.3.8 + патчи KaminIDE: рендер CSS, текст, раскладка,

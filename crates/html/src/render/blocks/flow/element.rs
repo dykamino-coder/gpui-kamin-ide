@@ -3,7 +3,7 @@
 use crate::layout::box_kind::replaced_tag;
 use crate::layout::intrinsic_wrap::content_sized_wraps;
 use crate::layout::options::RenderOpts;
-use crate::render::blocks::blocks;
+use crate::render::blocks::blocks_stack;
 use crate::render::blocks::canvas::canvas_layer;
 mod layers;
 pub(crate) use layers::finish_element;
@@ -27,7 +27,8 @@ use crate::style::values::value::Len;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn paint_element(
+pub(crate) async fn paint_element(
+    stk: &mut reblessive::Stk,
     e: &crate::dom::Element,
     nodes: &[Node],
     idx: usize,
@@ -87,7 +88,10 @@ pub(crate) fn paint_element(
         if merged.perspective_frame.is_none() {
             merged.perspective_frame = inherited.perspective_frame.clone();
         }
-        out.extend(blocks(&e.children, &merged, opts));
+        out.extend(
+            stk.run(|stk| blocks_stack(stk, &e.children, &merged, opts))
+                .await,
+        );
         return;
     }
     // Ключевое слово содержимого в `min-width`/`max-width` при
@@ -127,7 +131,7 @@ pub(crate) fn paint_element(
     // уходил бы в её неявный ряд. Прежде обёртка без размещения
     // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
     // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
-    let placement = crate::paint::apply::grid_item_placement(&e.style.used());
+    let placement = crate::paint::apply::grid_item_placement(e.style.used());
     let hoist_place = content_sized_wraps(e)
         && !replaced_tag(e)
         && (placement.0.is_some() || placement.1.is_some());
@@ -203,6 +207,7 @@ pub(crate) fn paint_element(
     // без краёв и полей (`div-{min,max,fit}-content-block-size`,
     // `div-*-auto-margin-*`).
     position_element(
+        stk,
         e,
         inherited,
         opts,
@@ -221,4 +226,5 @@ pub(crate) fn paint_element(
         record_root,
         root_box,
     )
+    .await
 }

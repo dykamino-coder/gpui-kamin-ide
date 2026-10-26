@@ -62,8 +62,15 @@ fn lifted_inline_runs_keep_paragraph_continuation() {
     let vcx = metric_doc.values();
     let tree = parse(r#"<div id="source">first<br>next</div>"#, "");
     let nodes = find(&tree, "source").expect("source").children.clone();
-    let runs = band_flow_rest_lift(nodes, 16.0, None, WritingMode::default(), None, vcx)
-        .expect("inline runs");
+    let runs = band_flow_rest_lift(
+        nodes.to_vec(),
+        16.0,
+        None,
+        WritingMode::default(),
+        None,
+        vcx,
+    )
+    .expect("inline runs");
     assert_eq!(runs.len(), 2);
     let marks: Vec<_> = runs
         .iter()

@@ -14,6 +14,11 @@ pub(crate) fn row_break_edge(
     avoid: bool,
     vcx: ValueCx<'_>,
 ) -> Option<bool> {
+    // Кадр строк нужен только многострочному flex-ряду. В остальных коробках
+    // collect_lines всё равно отказывает; клонирование пути предков было лишним.
+    if !super::geometry::row_container(c) {
+        return None;
+    }
     let lines = crate::layout::fragment::LineCx::child(c, vcx);
     let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
     let lines = collect_lines(c, main_size(c, vcx)?, 4)?;

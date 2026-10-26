@@ -115,6 +115,20 @@ pub(super) fn collect_with_empty_metrics(
     has_text: bool,
     cx: &mut CollectCx,
 ) -> Vec<Piece> {
+    reblessive::Stack::new()
+        .enter(|stk| collect_stack(stk, children, inherited, atom, has_text, cx))
+        .finish()
+}
+
+// Продолжения строчных предков хранятся в heap, как у блочного построителя.
+async fn collect_stack(
+    stk: &mut reblessive::Stk,
+    children: &[Node],
+    inherited: &BoxStyle,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
+    has_text: bool,
+    cx: &mut CollectCx,
+) -> Vec<Piece> {
     let mut out = vec![];
     // Место последней распорки зазора за коробкой (см. ниже).
     let mut gap_at: Option<usize> = None;
@@ -127,16 +141,20 @@ pub(super) fn collect_with_empty_metrics(
                 collect_text(t, inherited, &mut cx.case, &mut out);
             }
             Node::Element(e) => {
-                collect_element(
-                    e,
-                    inherited,
-                    atom,
-                    has_text,
-                    cx,
-                    &mut out,
-                    &mut gap_at,
-                    from,
-                );
+                stk.run(|stk| {
+                    collect_element(
+                        stk,
+                        e,
+                        inherited,
+                        atom,
+                        has_text,
+                        cx,
+                        &mut out,
+                        &mut gap_at,
+                        from,
+                    )
+                })
+                .await;
             }
         }
     }

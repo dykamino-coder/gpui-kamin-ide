@@ -41,18 +41,18 @@ impl ViewportCx {
     /// её контейнер запросов размера (недостающая ось — окно). Полосы
     /// прокрутки не вычитаются: размер уже окончательный.
     pub fn for_box(size: (f32, f32), style: &Computed) -> Self {
-        // `zoom` multiplies every length of the box, viewport units included
-        // (css-viewport-1 §zoom-property): `1vw` under `zoom: 2` is twice `1vw`
-        // of the page, like `10px` becomes 20px. Container sizes are layout
-        // sizes already in the box's coordinates.
+        // `zoom` масштабирует длины коробки, включая единицы окна
+        // (css-viewport-1 §zoom-property). Вход контейнера — размер в CSS px
+        // без его зума (Blink AdjustForAbsoluteZoom); здесь применяется зум
+        // потребителя, как для остальных его длин.
         let zoom = style.zoom_eff.unwrap_or(1.0);
         let size = (size.0 * zoom, size.1 * zoom);
         ViewportCx {
             size,
             vertical: style.wm().vertical(),
             container: Some((
-                style.cq_box.0.unwrap_or(size.0),
-                style.cq_box.1.unwrap_or(size.1),
+                style.cq_box.0.map_or(size.0, |v| v * zoom),
+                style.cq_box.1.map_or(size.1, |v| v * zoom),
             )),
         }
     }
@@ -132,9 +132,9 @@ fn font_px(l: Len, font: FontCx<'_>, vcx: ValueCx<'_>) -> f32 {
     match l {
         Len::Em(k) => k * font.font_px,
         Len::EmPx(k, add) => k * font.font_px + add,
-        Len::Ch(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).0,
-        Len::Ex(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).1,
-        Len::Ic(k) => k * crate::text::metrics::ic_px(font.family, font.font_px, vcx),
+        Len::Ch(k) => k * crate::style::font_metrics::horizontal(font.family, font.font_px, vcx).0,
+        Len::Ex(k) => k * crate::style::font_metrics::horizontal(font.family, font.font_px, vcx).1,
+        Len::Ic(k) => k * crate::style::font_metrics::ideographic(font.family, font.font_px, vcx),
         Len::Lh(k) => k * lh(),
         Len::LhPx(k, add) => k * lh() + add,
         _ => 0.0,
@@ -142,6 +142,17 @@ fn font_px(l: Len, font: FontCx<'_>, vcx: ValueCx<'_>) -> f32 {
 }
 
 impl Len {
+    /// Единицы контейнера становятся абсолютными длинами до наследования.
+    pub(crate) fn fold_container(self, vp: ViewportCx, vcx: ValueCx<'_>) -> Len {
+        if let Len::Calc(i) = self {
+            let mut sum = calc_get(i, vcx);
+            if sum.fold_container(vp.container.unwrap_or(vp.size), vp.vertical) {
+                return sum.collapse_mixed(vcx).unwrap_or(self);
+            }
+        }
+        self
+    }
+
     /// Шаг каскада «решить единицы окна»: `vw`/`vh` — в точки, `calc` с
     /// единицами окна или контейнера — свёрнутая сумма (смесь с долей
     /// доживает индексом арены). Без слагаемых окна длина не меняется: арена

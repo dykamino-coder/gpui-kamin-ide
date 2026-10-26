@@ -5,7 +5,7 @@
 use super::*;
 use crate::layout::fragment::types::{Frag, StackChild};
 use crate::tolerance::COORD_EPS;
-use gpui::{App, Window, px};
+use gpui::{App, LayoutMeasurement, Window, px};
 
 #[derive(Default)]
 pub(super) struct RepeatedMeasurements {

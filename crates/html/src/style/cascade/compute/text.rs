@@ -175,9 +175,15 @@ pub(super) fn inherit_decoration_values(
     own_px: f32,
     vcx: crate::document::state::ValueCx<'_>,
 ) {
+    use crate::style::computed::DecorLen;
     let family = decor_family(c, vcx);
+    let vp = c.viewport_cx(vcx.viewport);
     c.underline_offset = own
         .underline_offset
+        .map(|l| match l {
+            DecorLen::Raw(raw) => DecorLen::Raw(raw.fold_container(vp, vcx)),
+            other => other,
+        })
         .map(|l| resolve_decor_len(l, &family, own_px, vcx))
         .or(parent.underline_offset);
     c.underline_pos = own.underline_pos.or(parent.underline_pos);
@@ -194,7 +200,10 @@ pub(in crate::style::cascade) fn decor_family(
 ) -> String {
     c.font_family.clone().unwrap_or_else(|| {
         if c.monospace == Some(true) {
-            crate::text::metrics::mono_family_for(c.lang.as_deref(), vcx).to_string()
+            vcx.doc
+                .font_snapshot()
+                .mono_family(c.lang.as_deref())
+                .to_string()
         } else {
             String::new()
         }

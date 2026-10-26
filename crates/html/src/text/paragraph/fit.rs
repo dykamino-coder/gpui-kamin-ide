@@ -121,7 +121,7 @@ impl Paragraph {
         if !k.is_finite() || (k > 1.0 && !f.grow) || (k < 1.0 && !f.shrink) {
             return;
         }
-        if (k - 1.0).abs() < 0.001 {
+        if (k - 1.0).abs() < crate::tolerance::TEXT_FIT_SCALE_EPS {
             return;
         }
         self.measures.remember_fit(self.fit_key(), k);

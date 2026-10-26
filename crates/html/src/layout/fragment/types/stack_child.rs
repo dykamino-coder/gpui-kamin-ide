@@ -19,6 +19,8 @@ pub struct StackChild {
     pub el: AnyElement,
     /// Исходный normal-владелец OOF, независимо от вида рекордера.
     pub(crate) source: Option<u64>,
+    /// Рецепты ещё не востребованных копий; очищаются при замене дерева.
+    pub(crate) fragment_builders: Vec<super::FragmentHandle>,
     /// Первый замер сравнивается с оценкой до замены геометрии на измеренную.
     #[cfg(feature = "wpt-harness")]
     pub(crate) probe_pending: bool,

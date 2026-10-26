@@ -32,7 +32,7 @@ fn element(style: Computed, children: Vec<Node>) -> Element {
         hover: None,
         first_letter: None,
         first_line: None,
-        children,
+        children: children.into(),
         attrs: Vec::new(),
         inline: false,
     }

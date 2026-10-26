@@ -2,7 +2,7 @@
 //! распорки `push::Regrow`. Копии пересобираются до устойчивого плана роста этой стопки
 //! (css-break-3 §box-splitting; Blink `FinishFragmentation`).
 
-use crate::layout::fragment::types::{BreaksAt, StackChild};
+use crate::layout::fragment::types::BreaksAt;
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, AvailableSpace, Window, point, px, size};
@@ -12,6 +12,7 @@ mod extent;
 mod owners;
 mod progress;
 mod trial;
+use copies::rebuild;
 
 impl ColumnStack {
     /// Раскладка главной копии ребёнка `i` в колонку до укладки.
@@ -221,18 +222,5 @@ impl ColumnStack {
         }
         self.reserve_row_copies();
         true
-    }
-}
-
-/// Копии ребёнка из правленого дерева; рекордер забывает прежнюю раскладку.
-fn rebuild(c: &mut StackChild) {
-    let Some(r) = &c.regrow else {
-        return;
-    };
-    let (el, frags) = r.rebuild(c.frags.len());
-    c.el = el;
-    c.frags = frags;
-    if let Some(w) = &c.watched {
-        w.reset();
     }
 }

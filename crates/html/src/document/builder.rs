@@ -16,6 +16,8 @@ pub struct DocumentBuilder<'a> {
     xml: bool,
     media: Media,
     fonts: crate::text::metrics::FontContext,
+    limits: crate::budget::DocumentLimits,
+    governor: crate::budget::ResourceGovernor,
 }
 
 impl<'a> DocumentBuilder<'a> {
@@ -27,12 +29,26 @@ impl<'a> DocumentBuilder<'a> {
             xml: false,
             media: Media::default(),
             fonts: Default::default(),
+            limits: Default::default(),
+            governor: Default::default(),
         }
     }
 
     /// Передать платформенные шрифты до разбора и измерения CSS.
     pub fn fonts(&mut self, fonts: &crate::text::metrics::FontContext) -> &mut Self {
         self.fonts = fonts.clone();
+        self
+    }
+
+    /// Immutable profile документа; host может только уменьшать defaults.
+    pub fn limits(&mut self, limits: crate::budget::DocumentLimits) -> &mut Self {
+        self.limits = limits;
+        self
+    }
+
+    /// Один экземпляр хоста разделяется всеми его документами и cache/pool.
+    pub fn governor(&mut self, governor: &crate::budget::ResourceGovernor) -> &mut Self {
+        self.governor = governor.clone();
         self
     }
 
@@ -61,7 +77,16 @@ impl<'a> DocumentBuilder<'a> {
     }
 
     /// Разобрать документ с выбранными настройками в свежем состоянии.
-    pub fn build(&self) -> Document {
+    ///
+    /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
+    /// Source admission предшествует разбору; parser allocations подключает B3.
+    pub fn build(&self) -> Result<Document, super::DocumentFailure> {
+        let budget = crate::budget::DocumentBudget::new(self.limits.clone(), self.governor.clone())
+            .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
+        let revision = budget.revision();
+        revision
+            .source(self.html, self.theme_css)
+            .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
         Document::build(
             self.html,
             self.theme_css,
@@ -69,6 +94,7 @@ impl<'a> DocumentBuilder<'a> {
             self.xml,
             self.media,
             &self.fonts,
+            revision,
         )
     }
 }
@@ -93,12 +119,16 @@ mod tests {
     #[test]
     fn builder_selects_source_format_and_medium() {
         let html = "<p>x</p>";
-        let screen = Document::builder(html, "").build();
+        let screen = Document::builder(html, "").build().unwrap();
         assert!(screen.base_url.is_none());
         assert!(!screen.xml && !screen.is_print());
         for print in [false, true] {
             for path in [Path::new("source.html"), Path::new("source.SVG")] {
-                let doc = Document::builder(html, "").path(path).print(print).build();
+                let doc = Document::builder(html, "")
+                    .path(path)
+                    .print(print)
+                    .build()
+                    .unwrap();
                 assert_eq!(doc.is_print(), print);
                 assert_eq!(doc.xml, path.extension().unwrap() == "SVG");
                 assert_eq!(
@@ -109,10 +139,14 @@ mod tests {
         }
         let base = Document::builder(html, "")
             .base_uri("file:///tests/source.html")
-            .build();
+            .build()
+            .unwrap();
         assert_eq!(base.base_url, Url::parse("file:///tests/source.html").ok());
         assert!(!base.xml && !base.is_print());
-        let invalid = Document::builder(html, "").base_uri("invalid url").build();
+        let invalid = Document::builder(html, "")
+            .base_uri("invalid url")
+            .build()
+            .unwrap();
         assert!(invalid.base_url.is_none());
         assert!(!invalid.xml && !invalid.is_print());
     }
@@ -122,22 +156,23 @@ mod tests {
         let html = "<svg xmlns='http://www.w3.org/2000/svg'><g/></svg>";
         let mut builder = Document::builder(html, "");
         builder.path(Path::new("source.SVG")).print(true);
-        let mut a = builder.build();
-        let b = builder.build();
+        let mut a = builder.build().unwrap();
+        let b = builder.build().unwrap();
         same(&a, &b);
         assert!(!Rc::ptr_eq(&a.state, &b.state));
         assert!(a.xml && a.is_print());
         let new = "<svg xmlns='http://www.w3.org/2000/svg'><metadata/></svg>";
-        assert!(a.update(new, ""));
+        assert!(a.update(new, "").unwrap().changed());
         same(
             &a,
             &Document::builder(new, "")
                 .path(Path::new("source.SVG"))
                 .print(true)
-                .build(),
+                .build()
+                .unwrap(),
         );
         builder.base_uri("invalid url");
-        let html_doc = builder.build();
+        let html_doc = builder.build().unwrap();
         assert!(!html_doc.xml);
         assert!(html_doc.base_url.is_none());
         assert!(html_doc.is_print());

@@ -18,7 +18,8 @@ use captions::{collect_captions, wrap_with_captions};
 
 use super::context::{RowsOut, TableGeom, TableLayers};
 
-pub(super) fn table_finish(
+pub(super) async fn table_finish(
+    stk: &mut reblessive::Stk,
     geom: &TableGeom<'_>,
     layers: &TableLayers<'_>,
     out: &mut RowsOut,
@@ -54,7 +55,15 @@ pub(super) fn table_finish(
     // таблицы его не трогают; `caption-side: bottom` ставит его под сетку.
     let mut caps_top: Vec<AnyElement> = Vec::new();
     let mut caps_bot: Vec<AnyElement> = Vec::new();
-    collect_captions(geom.e, geom.inherited, opts, &mut caps_top, &mut caps_bot);
+    collect_captions(
+        stk,
+        geom.e,
+        geom.inherited,
+        opts,
+        &mut caps_top,
+        &mut caps_bot,
+    )
+    .await;
 
     // Оси таблицы ЛОГИЧЕСКИЕ, как и у сетки: колонки идут вдоль строки. При
     // вертикальном письме строка идёт сверху вниз, и дорожки колонок

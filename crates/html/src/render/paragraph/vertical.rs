@@ -221,17 +221,17 @@ pub(crate) fn vertical_paragraph(
 /// axis when its length is known: the box continues its parent's writing mode, its
 /// inline size is authored, or a single-line flex/grid container decides it (the
 /// turned line then wraps at the length prepaint lays it out with).
-fn turned_atom_line(nodes: &[Node], style: &Computed) -> bool {
+fn turned_atom_line(nodes: &[Node], style: &BoxStyle) -> bool {
     let atoms = nodes
         .iter()
         .filter(|n| matches!(n, Node::Element(_)))
         .count();
-    let wm = style.cb_wm;
+    let wm = style.context.cb_wm;
     let parallel = !style.wm().is_orthogonal_to(wm);
     atoms >= 2
         && (parallel
             || style_definite_inline(style)
-            || ((style.flex_item || style.parent_flex_grid) && !style.flex_line_wraps))
+            || ((style.flex_item || style.context.parent_flex_grid) && !style.flex_line_wraps))
 }
 
 fn style_definite_inline(style: &Computed) -> bool {

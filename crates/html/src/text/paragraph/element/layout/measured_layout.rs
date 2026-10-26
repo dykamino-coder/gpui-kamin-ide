@@ -9,21 +9,18 @@
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, Window, px, size};
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn measured_layout(
     mut probe: Paragraph,
     atom_fit: std::rc::Rc<std::cell::RefCell<crate::text::paragraph::atom_fit::AtomFit>>,
     known: gpui::Size<Option<Pixels>>,
     available: gpui::Size<gpui::AvailableSpace>,
-    vertical: bool,
-    vertical_inline: bool,
-    ortho_limit: Option<Pixels>,
-    line_height: Pixels,
-    ruby_base_sink: &Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>,
     normal_static: &super::normal_static::NormalStatic,
     window: &mut Window,
     _cx: &mut App,
 ) -> gpui::MeasuredContent {
+    let vertical = probe.vertical;
+    let vertical_inline = probe.vertical_inline.is_some();
+    let line_height = probe.line_height;
     // Ширина атома «по содержимому» — от содержащего блока, то
     // есть от ширины самого абзаца (CSS 2.1 §10.3.9), см. `atom_fit`.
     if !vertical && !atom_fit.borrow().is_empty() {
@@ -44,7 +41,7 @@ pub(crate) fn measured_layout(
     } else {
         (known.width, available.width)
     };
-    let limit = probe.measured_inline_limit(known_along, space_along, ortho_limit, window);
+    let limit = probe.measured_inline_limit(known_along, space_along, probe.ortho_limit, window);
     // Кегль подбирается ДО замера: коробка считается уже по
     // подобранному, иначе её высота не сойдётся с отрисовкой.
     // Подбирать есть смысл только под ЗАДАННЫЙ размер строки:
@@ -108,7 +105,7 @@ pub(crate) fn measured_layout(
         .fold(px(0.), |a: Pixels, b| if b > a { b } else { a });
     // A ruby base unit (nowrap) reports its content width for the
     // annotation overhang (`lay_atoms`).
-    if let Some(sink) = &ruby_base_sink {
+    if let Some(sink) = &probe.ruby_base_sink {
         sink.set(Some(f32::from(content)));
     }
     // При отрицательном отступе min-content может превышать max-content

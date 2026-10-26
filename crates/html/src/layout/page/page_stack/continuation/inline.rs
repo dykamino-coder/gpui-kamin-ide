@@ -9,16 +9,7 @@ pub(super) fn resume(
     from: f32,
 ) -> Vec<(Vec<usize>, ContentLine)> {
     flow.resume_paragraphs(&old.paragraphs, from);
-    for snapshot in &old.floats {
-        if let Some(context) = flow.context_path(&snapshot.scope) {
-            *context.float_resume.borrow_mut() =
-                Some(crate::layout::fragment::flow::float_resume::Cursor::at(
-                    snapshot,
-                    &old.paragraphs,
-                    from,
-                ));
-        }
-    }
+    flow.resume_floats(&old.floats, &old.paragraphs, from);
     old.paragraphs
         .iter()
         .filter_map(|p| {
@@ -42,6 +33,21 @@ pub(super) fn offset(addresses: &[(Vec<usize>, ContentLine)], fresh: &[Inline]) 
                     l.paragraph == address.paragraph && l.state.text_pos == address.state.text_pos
                 })
                 .map(|l| l.top)
+        })
+        .min_by(f32::total_cmp)
+}
+
+pub(super) fn float_offset(
+    old: &crate::layout::fragment::flow::inline::Geometry,
+    fresh: &crate::layout::fragment::flow::inline::Geometry,
+    from: f32,
+) -> Option<f32> {
+    old.floats
+        .iter()
+        .filter_map(|snapshot| {
+            let next = fresh.floats.iter().find(|f| f.scope == snapshot.scope)?;
+            crate::layout::fragment::flow::float_resume::Cursor::at(snapshot, &old.paragraphs, from)
+                .offset(next, &fresh.paragraphs)
         })
         .min_by(f32::total_cmp)
 }

@@ -6,6 +6,7 @@ use crate::layout::fragment::clone::clone_dec;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_relative;
 use crate::style::computed::BoxStyle;
+mod factory;
 mod finish;
 use finish::{finish_stack_child, nest_row_of};
 mod cuts;
@@ -126,37 +127,23 @@ pub(super) fn multicol_stack_child(
         empty_floats,
     );
     let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
-    let build = |first: bool, part: usize, band: bool| {
-        let mut opts = opts.in_stack_copy();
-        // Копии фрагментов flex тоже наблюдаются: элемент рисует только
-        // копия его фрагментов (`Watched::set_flex_owners`).
-        opts.frag.watch = if first && !band {
-            Some(watched.clone())
-        } else if !band && watched.blocks().is_some_and(|b| b.has_flex()) {
-            Some(watched.for_part(part))
-        } else {
-            None
-        };
-        build::build_copy(
-            &opts,
-            col_vert,
-            col_rl,
-            kid_w,
-            &frag_geom,
-            dec,
-            merged,
-            &copy,
-            h,
-            over,
-            nest_row,
-            nest_phase_k,
-            &inner,
-            whole,
-            first,
-            part,
-            band,
-        )
-    };
+    let build = factory::new(
+        opts,
+        col_vert,
+        col_rl,
+        kid_w,
+        frag_geom,
+        dec,
+        merged,
+        &copy,
+        h,
+        over,
+        nest_row,
+        nest_phase_k,
+        inner,
+        whole,
+        watched.clone(),
+    );
     // CSS Break 3 section 4.1: scroll containers, replaced and atomic boxes
     // are monolithic. Measured line edges provide breaks for ordinary flow.
     let paginate = paginate::paginate_of(opts, col_vert, col_rl, line_col_w, merged, &copy);

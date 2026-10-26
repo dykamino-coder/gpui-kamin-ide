@@ -19,17 +19,7 @@ fn float_balance_floor_preserves_independent_normal_breaks() {
         float_min: float.balance_min(),
         ..Default::default()
     };
-    let stack = ColumnStack::new(
-        vec![],
-        2,
-        0.0,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Default::default(),
-    );
+    let stack = ColumnStack::new(vec![], 2, 0.0, None, None, None, None, Default::default());
     let (height, _) = stack.balance_line(std::slice::from_ref(&kid), 8, None);
     assert_eq!(height, 100.0);
     let (cols, _, plan) = plan::fill_at(&[kid], &|_| 20.0, Space::columns(8));
@@ -49,17 +39,7 @@ fn forced_groups_can_require_more_than_forty_eight_columns() {
             ..Default::default()
         })
         .collect();
-    let mut stack = ColumnStack::new(
-        vec![],
-        2,
-        0.,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Default::default(),
-    );
+    let mut stack = ColumnStack::new(vec![], 2, 0., None, None, None, None, Default::default());
     let (height, plan) = stack.balance_line(&kids, 2, None);
     assert_eq!(height, 20.);
     assert_eq!(plan.completion, plan::Completion::Complete);

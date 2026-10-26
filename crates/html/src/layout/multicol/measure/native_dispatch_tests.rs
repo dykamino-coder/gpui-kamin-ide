@@ -140,7 +140,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 
 #[cfg(feature = "wpt-harness")]
 #[test]
-fn continuation_groups_keep_their_explicit_f2_routes() {
+fn clone_uses_estimates_while_fixed_height_overflow_uses_measured_continuations() {
     // Заданный normal extent не ограничивает отдельный overflow-поток.
     for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",

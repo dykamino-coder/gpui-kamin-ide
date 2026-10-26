@@ -11,7 +11,7 @@ mod spec;
 pub use items::{GapBuffer, MulticolGaps, gap_item_probe};
 pub use spec::{GapAxisRule, GapLayout, GapRuleSpec};
 pub type GapItems = std::rc::Rc<std::cell::RefCell<GapBuffer>>;
-pub(crate) use children::decorated_children;
+pub(crate) use children::{decorated_children, prepare_children};
 use layout_spec::gap_rule_layout;
 
 /// Пробельный текстовый узел: в подсчёте детей он не участвует.
@@ -124,7 +124,7 @@ pub(crate) fn gap_rule_spec(
     gap_rule_layout(merged, size, s, Some(col), Some(row))
 }
 
-/// Линейки промежутков многоколоночника с рядами (css-gaps-1 §gap-multicol:
+/// Линейки промежутков многоколоночника (css-gaps-1 §gap-multicol:
 /// «A column gap is the gutter between adjacent column boxes … A row gap is
 /// the gutter between the rows of column boxes established by
 /// column-height»; «column gaps in multicol containers do not overlap row
@@ -163,4 +163,54 @@ pub(super) fn multicol_gap_rule_spec(
     spec.gap_x = Some(if vertical { row_gap } else { column_gap });
     spec.gap_y = Some(if vertical { column_gap } else { row_gap });
     Some(spec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::Node;
+
+    fn host(nodes: &[Node]) -> &Element {
+        fn find(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|node| match node {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        find(nodes).expect("authored multicol")
+    }
+
+    #[test]
+    fn multicol_basic_rules_preserve_styles_in_every_writing_mode() {
+        let opts = RenderOpts {
+            text: Default::default(),
+            viewport: (800.0, 600.0),
+            normal_line_height: 1.2,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        for mode in ["horizontal-tb", "vertical-rl", "vertical-lr"] {
+            for (style, kind) in [("solid", 0), ("dashed", 1), ("dotted", 2), ("double", 3)] {
+                for brk in ["", "column-rule-break:intersection"] {
+                    let nodes = crate::dom::parse(
+                        &format!(
+                            "<div style='writing-mode:{mode};columns:3;column-rule:6px {style} red;{brk}'></div>"
+                        ),
+                        "",
+                    );
+                    let e = host(&nodes);
+                    let spec = multicol_gap_rule_spec(e, &e.style.used(), &opts, 12.5, 0.0)
+                        .expect("visible basic decoration");
+                    assert_eq!(spec.kind, GapLayout::Multicol);
+                    assert_eq!(spec.vertical, mode != "horizontal-tb");
+                    let col = spec.col.expect("column rule");
+                    assert_eq!(col.kinds.at(0, 2), Some(kind));
+                    assert_eq!(col.widths.at(0, 2), Some(6.0));
+                    assert_eq!(col.brk, 2);
+                    assert_eq!(col.styles.at(0, 2), Some(true));
+                }
+            }
+        }
+    }
 }

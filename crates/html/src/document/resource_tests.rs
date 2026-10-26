@@ -20,7 +20,8 @@ fn font_loading_resolves_the_first_html_base_before_parsing() {
     let doc = Document::builder(html, "")
         .fonts(&fonts)
         .base_uri(source.as_str())
-        .build();
+        .build()
+        .unwrap();
     assert_eq!(
         fonts::alias("BaseTest", doc.state.values()).as_deref(),
         Some("BaseFont49")
@@ -34,7 +35,13 @@ fn font_loading_resolves_the_first_html_base_before_parsing() {
 #[test]
 fn absolute_html_base_works_without_a_source_url() {
     let base = super::base_url::document_base(
-        "<base href='file:///tests/assets/'><base href='file:///ignored/'>",
+        &crate::dom::input::Admitted::parse(
+            "<base href='file:///tests/assets/'><base href='file:///ignored/'>",
+            false,
+        )
+        .unwrap()
+        .dom
+        .document,
         None,
     );
     assert_eq!(
@@ -54,7 +61,10 @@ fn resources_come_from_stylesheets_instead_of_markup_substrings() {
         <template><style>{fake}</style></template><style>{face}</style>"
     );
     let theme = face.replace("RealResource", "ThemeResource");
-    let doc = Document::builder(&html, &theme).fonts(&fonts).build();
+    let doc = Document::builder(&html, &theme)
+        .fonts(&fonts)
+        .build()
+        .unwrap();
     assert_eq!(
         fonts::alias("RealResource", doc.state.values()).as_deref(),
         Some("ParsedResourceFont")
@@ -78,10 +88,12 @@ fn interleaved_documents_keep_their_font_face_descriptors() {
     };
     let first = Document::builder(&page("AAEAADE=", 150, "U+41"), "")
         .fonts(&fonts)
-        .build();
+        .build()
+        .unwrap();
     let second = Document::builder(&page("AAEAADI=", 75, "U+20-7F"), "")
         .fonts(&fonts)
-        .build();
+        .build()
+        .unwrap();
     let a = first.state.values();
     let b = second.state.values();
     assert_eq!(fonts::alias("Shared", a).as_deref(), Some("Face49"));

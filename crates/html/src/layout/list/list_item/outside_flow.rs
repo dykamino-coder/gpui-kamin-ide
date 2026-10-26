@@ -2,12 +2,13 @@
 
 use crate::layout::options::RenderOpts;
 
-pub(super) fn options(opts: &RenderOpts) -> RenderOpts {
+pub(super) fn options(opts: &RenderOpts, item_rtl: bool) -> RenderOpts {
     let mut marker = opts.clone();
     // css-lists-3 §3.5: outside находится вне principal block box.
     // Метрики его строки задают позицию маркера, но не удерживают основное
     // содержимое во фрагментаинере и не потребляют его inline-продолжение.
     marker.frag.watch = None;
+    marker.cx.inline.outside_marker_rtl = Some(item_rtl);
     marker
 }
 
@@ -31,10 +32,12 @@ mod tests {
                 ..Default::default()
             },
         };
-        let marker = options(&opts);
+        let marker = options(&opts, true);
         assert!(marker.frag.watch.is_none());
         assert!(Rc::ptr_eq(opts.frag.watch.as_ref().unwrap(), &watch));
         assert!(marker.frag.in_stack_copy);
         assert_eq!(marker.viewport, opts.viewport);
+        assert_eq!(marker.cx.inline.outside_marker_rtl, Some(true));
+        assert_eq!(opts.cx.inline.outside_marker_rtl, None);
     }
 }

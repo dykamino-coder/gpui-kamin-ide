@@ -21,11 +21,21 @@ impl Default for ChildBuild {
         ChildBuild::new(
             FlowBuild::new(
                 blocks,
+                |stk, nodes, inherited, opts| {
+                    Box::pin(crate::render::blocks::blocks_stack(
+                        stk, nodes, inherited, opts,
+                    ))
+                },
                 paragraph,
                 crate::render::generic_box::child_probes,
                 crate::render::first_line_descendants::route,
             ),
             element,
+            |stk, e, inherited, opts| {
+                Box::pin(crate::render::element::element_stack(
+                    stk, e, inherited, opts,
+                ))
+            },
             BoxBuild::new(
                 styled_div_with,
                 styled_div,
@@ -70,8 +80,10 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
     match effect {
         Effect::OutlineScope(owner) => outline_phase::scope(child, Some(owner)),
         Effect::OutlineFlow(owner) => outline_phase::flow_phase(child, Some(owner)),
-        Effect::Group { style, vcx } => grouped::grouped(child, style, vcx),
-        Effect::GroupReplaced { style, vcx } => grouped::grouped_replaced(child, style, vcx),
+        Effect::Group { style, vcx } => grouped::grouped(child, &BoxStyle::shared(style), vcx),
+        Effect::GroupReplaced { style, vcx } => {
+            grouped::grouped_replaced(child, &BoxStyle::shared(style), vcx)
+        }
         Effect::Transform {
             style,
             parent,

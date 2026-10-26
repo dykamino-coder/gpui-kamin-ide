@@ -1,98 +1,121 @@
-//! XML-документы (`image/svg+xml`): дерево строит XML-парсер, а не HTML.
-//!
-//! DOM §"XML documents" / HTML §16.? "Parsing XHTML documents": XML-документ строит
-//! XML-парсер — без неявных `html`/`body`, без выхода из foreign content (`<meta>`
-//! внутри `<svg>` остаётся потомком `<svg>`), пространства имён и префиксы берутся
-//! из разметки. Дерево передаётся в тот же `RcDom`, что заполняет HTML-парсер,
-//! поэтому каскад и обход ниже общие (Blink `XMLDocumentParser` так же строит
-//! обычный DOM). У не well-formed документа дерева нет: Blink/Gecko показывают
-//! страницу ошибки разбора, мы отрисовываем пустой документ.
+//! Потоковый XML-вход: полное дерево RcDom без рекурсии по глубине документа.
 
 use html5ever::interface::{ElementFlags, NodeOrText, TreeSink};
 use html5ever::tendril::StrTendril;
 use html5ever::{Attribute, LocalName, Namespace, Prefix, QualName};
-use markup5ever_rcdom::{Handle, RcDom};
+use markup5ever_rcdom::RcDom;
+use xml::common::Position;
+use xml::name::OwnedName;
+use xml::reader::{ParserConfig, XmlEvent};
 
-/// Parse `markup` as an XML document with the full cascade of `parse`.
-pub fn parse_xml(markup: &str, extra_css: &str) -> super::Parsed {
-    let media = crate::style::css::Media::default();
-    let doc = crate::document::state::DocState::new(media);
-    let nodes = parse_current_xml(markup, extra_css, media, &doc);
-    super::Parsed { nodes, doc }
-}
-
-/// The same as XML into the fresh state of the current document (`Document`).
-pub(crate) fn parse_current_xml(
-    markup: &str,
-    extra_css: &str,
-    media: crate::style::css::Media,
-    doc: &std::rc::Rc<crate::document::state::DocState>,
-) -> Vec<super::Node> {
-    super::parse_document::parse_input(markup, extra_css, media, doc, true)
-}
-
-/// Build the DOM of an XML document.
-pub(crate) fn xml_dom(markup: &str) -> RcDom {
+/// Невалидный XML не заменяет прошлую ревизию; глубина сама по себе допустима.
+pub(crate) fn xml_dom(markup: &str) -> Result<RcDom, crate::document::DocumentFailure> {
     let dom = RcDom::default();
-    let opts = roxmltree::ParsingOptions {
-        allow_dtd: true,
-        ..Default::default()
-    };
-    if let Ok(doc) = roxmltree::Document::parse_with_options(markup, opts) {
-        let root = dom.get_document();
-        for child in doc.root().children() {
-            append_node(&dom, &root, child, 1);
+    // Строка уже декодирована загрузчиком. Объявление кодировки не должно
+    // повторно интерпретировать её UTF-8 байты. Entity expansion остаётся bounded
+    // настройками парсера; ограничение глубины элементов здесь отсутствует.
+    let reader = ParserConfig::new()
+        .ignore_comments(false)
+        .override_encoding(Some(xml::Encoding::Utf8))
+        .ignore_invalid_encoding_declarations(true)
+        .allow_multiple_root_elements(false)
+        .create_reader(markup.as_bytes());
+    let mut parents = vec![dom.get_document()];
+    for event in reader {
+        let event = event.map_err(|error| {
+            let pos = error.position();
+            crate::document::DocumentFailure::new(crate::document::FailureReason::XmlSyntax {
+                row: (pos.row + 1).min(u32::MAX as u64) as u32,
+                column: (pos.column + 1).min(u32::MAX as u64) as u32,
+            })
+        })?;
+        match event {
+            XmlEvent::StartElement {
+                name, attributes, ..
+            } => {
+                let attrs = attributes
+                    .into_iter()
+                    .map(|a| Attribute {
+                        name: qual(a.name),
+                        value: StrTendril::from(a.value),
+                    })
+                    .collect();
+                let element = dom.create_element(qual(name), attrs, ElementFlags::default());
+                dom.append(
+                    parents.last().unwrap(),
+                    NodeOrText::AppendNode(element.clone()),
+                );
+                parents.push(element);
+            }
+            XmlEvent::EndElement { .. } => {
+                parents.pop();
+            }
+            XmlEvent::Characters(text) | XmlEvent::Whitespace(text) | XmlEvent::CData(text) => {
+                dom.append(parents.last().unwrap(), NodeOrText::AppendText(text.into()));
+            }
+            XmlEvent::Comment(text) => {
+                let comment = dom.create_comment(text.into());
+                dom.append(parents.last().unwrap(), NodeOrText::AppendNode(comment));
+            }
+            _ => {}
         }
     }
-    dom
+    Ok(dom)
 }
 
-fn qual(prefix: Option<&str>, ns: Option<&str>, local: &str) -> QualName {
+fn qual(name: OwnedName) -> QualName {
     QualName::new(
-        prefix.filter(|p| !p.is_empty()).map(Prefix::from),
-        Namespace::from(ns.unwrap_or("")),
-        LocalName::from(local),
+        name.prefix.map(Prefix::from),
+        Namespace::from(name.namespace.unwrap_or_default()),
+        LocalName::from(name.local_name),
     )
 }
 
-fn append_node(dom: &RcDom, parent: &Handle, node: roxmltree::Node, depth: usize) {
-    if depth > super::input::MAX_DEPTH {
-        return;
+#[cfg(test)]
+mod tests {
+    //! Пространства имён, XML-текст и атомарный отказ потокового входа.
+
+    use super::*;
+    use markup5ever_rcdom::NodeData;
+
+    #[test]
+    fn namespaces_entities_cdata_and_comments_survive() {
+        let dom = xml_dom(
+            "<!DOCTYPE r [<!ENTITY word 'hello'>]><r xmlns='urn:r' xmlns:p='urn:p' \
+             p:attr='&word;'><!--comment--><![CDATA[<]]>&word;&#x41;</r>",
+        )
+        .unwrap();
+        let root = &dom.document.children.borrow()[0];
+        let NodeData::Element { name, attrs, .. } = &root.data else {
+            panic!("expected XML root");
+        };
+        assert_eq!(&*name.ns, "urn:r");
+        assert_eq!(&*attrs.borrow()[0].name.ns, "urn:p");
+        assert_eq!(attrs.borrow()[0].name.prefix.as_deref(), Some("p"));
+        assert_eq!(&*attrs.borrow()[0].value, "hello");
+        let children = root.children.borrow();
+        assert!(
+            matches!(&children[0].data, NodeData::Comment { contents } if &**contents == "comment")
+        );
+        assert!(
+            matches!(&children[1].data, NodeData::Text { contents } if &**contents.borrow() == "<helloA")
+        );
     }
-    match node.node_type() {
-        roxmltree::NodeType::Element => {
-            let tag = node.tag_name();
-            let name = qual(
-                tag.namespace().and_then(|ns| node.lookup_prefix(ns)),
-                tag.namespace(),
-                tag.name(),
-            );
-            let attrs = node
-                .attributes()
-                .map(|a| Attribute {
-                    name: qual(
-                        a.namespace().and_then(|ns| node.lookup_prefix(ns)),
-                        a.namespace(),
-                        a.name(),
-                    ),
-                    value: StrTendril::from(a.value()),
-                })
-                .collect();
-            let el = dom.create_element(name, attrs, ElementFlags::default());
-            for child in node.children() {
-                append_node(dom, &el, child, depth + 1);
-            }
-            dom.append(parent, NodeOrText::AppendNode(el));
+
+    #[test]
+    fn malformed_documents_return_typed_syntax_failure() {
+        for markup in ["", "<a/><b/>", "<a><b></a>", "<a>", "<a p:x='v'/>"] {
+            let error = xml_dom(markup).err().expect(markup);
+            assert_eq!(error.code(), "KAMINIDE_XML_SYNTAX");
         }
-        roxmltree::NodeType::Text => {
-            if let Some(t) = node.text() {
-                dom.append(parent, NodeOrText::AppendText(StrTendril::from(t)));
-            }
-        }
-        roxmltree::NodeType::Comment => {
-            let c = dom.create_comment(StrTendril::from(node.text().unwrap_or("")));
-            dom.append(parent, NodeOrText::AppendNode(c));
-        }
-        _ => {}
+    }
+
+    #[test]
+    fn already_decoded_unicode_ignores_encoding_declaration() {
+        let dom = xml_dom("<?xml version='1.0' encoding='iso-8859-1'?><r>текст</r>").unwrap();
+        let root = &dom.document.children.borrow()[0];
+        assert!(
+            matches!(&root.children.borrow()[0].data, NodeData::Text { contents } if &**contents.borrow() == "текст")
+        );
     }
 }

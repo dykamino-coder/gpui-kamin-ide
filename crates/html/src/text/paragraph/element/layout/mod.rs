@@ -129,7 +129,8 @@ impl Paragraph {
                     line_height,
                     align,
                     wrap,
-                );
+                )
+                .ortho_limit(ortho_limit);
                 probe.clamp_rows = clamp_rows.clone();
                 probe.clamp_tag = clamp_tag;
                 probe.measures = measures.clone();
@@ -140,6 +141,7 @@ impl Paragraph {
                 probe.vertical_central_baseline = vertical_central_baseline;
                 probe.vertical_ccw = vertical_ccw;
                 probe.vertical_inline = vertical_inline;
+                probe.ruby_base_sink = ruby_base_sink.clone();
                 probe.spans = spans.clone();
                 probe.word_spans = word_spans.clone();
                 probe.letter_spans = letter_spans.clone();
@@ -176,11 +178,6 @@ impl Paragraph {
                     atom_fit.clone(),
                     known,
                     available,
-                    vertical,
-                    vertical_inline.is_some(),
-                    ortho_limit,
-                    line_height,
-                    &ruby_base_sink,
                     &normal_static,
                     window,
                     _cx,

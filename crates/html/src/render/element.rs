@@ -6,8 +6,8 @@
 //! элемент уходит в формы, рамку (`iframe`/`<object>` с документом) или общий
 //! диспетчер по виду коробки (`dispatch_element`).
 
-use crate::dom::pseudo_line_layers;
 use crate::dom::text_content::gather_text;
+use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 mod orthogonal;
@@ -26,7 +26,14 @@ use crate::style::cascade::materialize::box_style;
 use gpui::AnyElement;
 
 /// Блочный элемент.
-pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+pub(crate) async fn element_stack(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
+    let entered = opts.inner(|cx| cx.contracts.reflow_depth += 1);
+    let opts = &*entered;
     let own = crate::layout::positioned::containing_block::metrics::fragmentation::options(e, opts);
     let opts = own.as_deref().unwrap_or(opts);
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
@@ -37,21 +44,27 @@ pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> A
                 && !crate::layout::fragment::flow::flow_lines_in(e, w.blocks().map(|b| b.id)))
             .then(|| w.nested())
         })?;
-        let mut inner = opts.clone();
+        let mut inner = Box::new(opts.clone());
         inner.frag.watch = Some(watch);
         Some(inner)
     });
-    crate::layout::fragment::paginate::watch::wrap(
+    let built = crate::layout::fragment::paginate::watch::wrap(
         e.node_id,
-        element_inner(e, inherited, nested.as_ref().unwrap_or(opts)),
+        element_inner(stk, e, inherited, nested.as_deref().unwrap_or(opts)).await,
         opts,
-    )
+    );
+    crate::layout::depth::wrap(built, opts)
 }
 
 #[cfg(test)]
 mod lines_tests;
 
-fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+async fn element_inner(
+    stk: &mut reblessive::Stk,
+    e: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
@@ -67,7 +80,7 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
     let e = media_sized.as_ref().unwrap_or(e);
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_space`).
     let (outer_space, inner_opts) = opts.take_outer_space();
-    let opts = inner_opts.as_ref().unwrap_or(opts);
+    let opts = inner_opts.as_deref().unwrap_or(opts);
     let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
     // Ключи реестров и размеры из опубликованной геометрии текущего кадра.
@@ -171,7 +184,7 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
     let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
         e.node_id, &merged, opts,
     );
-    let built = dispatch_element(e, merged, inherited, opts, outer_space, built_iframe);
+    let built = dispatch_element(stk, e, merged, inherited, opts, outer_space, built_iframe).await;
     crate::interactive::scroll_extent::project(
         match geometry {
             Some(geometry) => geometry.wrap(built),
@@ -179,4 +192,15 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
         },
         scroll_projection,
     )
+}
+
+pub(crate) fn element(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+    let opts = &*opts.inner(|cx| {
+        cx.contracts.margins = Default::default();
+        cx.contracts.lengths = Default::default();
+        cx.contracts.subtrees = Default::default();
+    });
+    reblessive::Stack::new()
+        .enter(|stk| element_stack(stk, e, inherited, opts))
+        .finish()
 }

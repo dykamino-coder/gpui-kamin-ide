@@ -12,11 +12,16 @@
 //! Арены `calc()`/`anchor()` документа и их ручки — `arena`.
 
 mod arena;
+mod font_facts;
+mod property_registry;
+mod readiness;
 mod scoped;
 mod synthetic_ids;
+mod traversal;
+pub(crate) use traversal::MAX_DEPTH;
 mod value_cx;
 
-use crate::style::css::{DeclBlock, Media, PageRule, Registered};
+use crate::style::css::{DeclBlock, Media, PageRule};
 use crate::style::generated::counter_style_rules::CounterStyles;
 use crate::style::values::value::{AnchorFn, RootMetrics, Sum};
 use std::cell::{Cell, RefCell};
@@ -32,6 +37,12 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Ревизия и её document owner живут с отложенными ValueDoc/кадрами.
+    pub(crate) budget: RefCell<Option<crate::budget::RevisionBudget>>,
+    pub(crate) font_facts: font_facts::DocumentFonts,
+    pub(crate) traversal: traversal::TraversalState,
+    /// Первый отказ вложенного документа этой revision; не теряется при повторном кадре.
+    pub(crate) embedded_failure: Cell<Option<crate::document::DocumentFailure>>,
     /// Следующий ключ синтетической коробки, независимо от авторских node_id.
     synthetic_id: RefCell<Vec<u8>>,
     /// Anchor geometry and fallback selection belonging to this document.
@@ -49,7 +60,7 @@ pub struct DocState {
     /// Shaped paragraphs and fit results shared only inside this document.
     pub(crate) paragraph_measures: Rc<crate::text::paragraph::MeasureCache>,
     /// Named font-feature definitions owned by this document.
-    pub(crate) font_alternates: RefCell<crate::text::fonts::alternates::Definitions>,
+    pub(crate) font_alternates: RefCell<crate::font_facts::FeatureDefinitions>,
     /// Rasterized foreignObject layers of this document, bounded by the painter.
     pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
     /// SVG mask/filter definitions retained by deferred groups of this document.
@@ -70,7 +81,7 @@ pub struct DocState {
     /// `@position-try <dashed-ident>` (css-anchor-position-1 §fallback-rule).
     pub(crate) try_rules: RefCell<HashMap<String, DeclBlock>>,
     /// `@property` (css-properties-values-api-1 §3).
-    pub(crate) property_rules: RefCell<HashMap<String, Registered>>,
+    pub(crate) property_rules: RefCell<property_registry::PropertyRegistry>,
     /// `@counter-style` (css-counter-styles-3 §3).
     pub(crate) counter_styles: RefCell<CounterStyles>,
     /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile).
@@ -90,6 +101,8 @@ pub struct DocState {
     frame_owner: Cell<u32>,
     /// Документ красился после последнего сброса области кадра.
     painted: Cell<bool>,
+    /// Наблюдение за незавершённой работой кадра; не управляет раскладкой.
+    readiness: readiness::FrameState,
     this: Weak<DocState>,
 }
 
@@ -103,6 +116,7 @@ impl DocState {
             frame_owner: Cell::new(arena::new_owner()),
             ..Self::default()
         });
+        doc.install_font_facts(None);
         doc.root.borrow_mut().resolve_units(doc.values());
         doc
     }
@@ -110,6 +124,7 @@ impl DocState {
     /// Начало сборки кадра хостом: область кадра прошлого, уже покрашенного
     /// кадра больше никто не читает — сбросить.
     pub(crate) fn begin_frame(&self) {
+        self.readiness.begin();
         self.images.borrow_mut().revalidate();
         self.vertical_measures.begin_frame();
         if self.painted.replace(false) {
@@ -129,9 +144,9 @@ impl DocState {
         self.try_rules.borrow().get(name).cloned()
     }
 
-    /// Копия реестра `@property` — его читает сборка переменных узла.
-    pub(crate) fn property_rules(&self) -> HashMap<String, Registered> {
-        self.property_rules.borrow().clone()
+    /// Неизменяемая ревизия реестра @property документа, общая для его узлов.
+    pub(crate) fn property_rules(&self) -> Rc<property_registry::PropertySnapshot> {
+        self.property_rules.borrow().snapshot()
     }
 
     /// Правила `@page` документа (копией — их читает хост на каждом кадре).

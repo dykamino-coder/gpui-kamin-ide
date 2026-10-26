@@ -7,6 +7,11 @@
 use crate::style::computed::*;
 use std::rc::Rc;
 
+mod context;
+mod inputs;
+use crate::box_facts::BoxContext;
+use crate::style::box_input::BoxStyleInput;
+
 mod inline_format;
 pub(crate) use inline_format::InlineFormat;
 
@@ -42,6 +47,8 @@ impl ElementStyle {
 /// Стиль одной коробки.
 #[derive(Clone, Debug, Default)]
 pub struct BoxStyle {
+    /// Факты коробки-родителя отдельно от вычисленных значений элемента.
+    pub(crate) context: BoxContext<super::writing_mode::WritingMode, super::Align>,
     /// Физическая реализация текущего строчного контекста, отдельно от CSS элемента.
     pub(crate) inline_format: Option<InlineFormat>,
     /// Вычисленный стиль (с used-значениями раскладки); общий для коробок элемента.
@@ -95,16 +102,22 @@ pub struct BoxStyle {
 }
 
 impl BoxStyle {
+    pub(crate) fn set_parent_context(&mut self, parent: &Self) {
+        self.context = context::child_of(parent);
+    }
+
     /// Коробка со стилем `style` и пустым контекстом.
     pub fn new(style: Computed) -> Self {
         Self::shared(Rc::new(style))
     }
 
-    /// Коробка с общим вычисленным стилем `style` и пустым контекстом.
-    pub fn shared(style: Rc<Computed>) -> Self {
+    /// Коробка с общим вычисленным стилем и переданными фактами родителя.
+    pub fn shared(input: impl Into<BoxStyleInput>) -> Self {
+        let BoxStyleInput { style, context } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
         Self {
+            context: context.as_deref().cloned().unwrap_or_default(),
             cb_height_def: style.cb_height_def_hint,
             quirk_pct_base: style.quirk_pct_base_hint,
             style,
@@ -155,14 +168,19 @@ impl BoxStyle {
     }
 }
 
-impl crate::dom::SharedStyle {
-    /// The style of an element that layout made from a box style (a copy styled
-    /// for a fragment, a dissolved `display: contents` child): its values are
-    /// computed already and become its only stage.
-    ///
-    /// TRANSITIONAL(cascade-7b-layout-made): layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle.
-    pub(crate) fn layout_made(style: BoxStyle) -> Self {
-        style.into_computed().into()
+impl From<&BoxStyle> for BoxStyleInput {
+    fn from(style: &BoxStyle) -> Self {
+        Self::new(
+            Rc::clone(style.style_rc()),
+            Some(Rc::new(style.context.clone())),
+        )
+    }
+}
+
+impl From<BoxStyle> for BoxStyleInput {
+    fn from(style: BoxStyle) -> Self {
+        let context = Rc::new(style.context.clone());
+        Self::new(Rc::new(style.into_computed()), Some(context))
     }
 }
 
@@ -180,7 +198,7 @@ impl std::ops::Deref for BoxStyle {
     }
 }
 
-/// TRANSITIONAL(cascade-7b-R10): Контекст grid/flex/lanes и used values остаётся в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle.
+/// TRANSITIONAL(cascade-7b-R10): Used values остаются в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle.
 impl std::ops::DerefMut for BoxStyle {
     fn deref_mut(&mut self) -> &mut Computed {
         Rc::make_mut(&mut self.style)

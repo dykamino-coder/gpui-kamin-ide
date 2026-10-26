@@ -32,7 +32,8 @@ fn stronger_declaration_wins_between_logical_and_physical_sizes() {
         <div id="hp" class="vl"></div><div id="hl" class="vp"></div></body>"#,
         "",
     )
-    .build();
+    .build()
+    .unwrap();
     for (id, w, h) in [
         ("vp", 10.0, 100.0),
         ("vl", 10.0, 100.0),
@@ -62,7 +63,8 @@ fn author_physical_side_beats_user_agent_logical_side() {
         <p id="b"></p><p id="c" style="margin-inline-start: 3px"></p></body>"#,
         "",
     )
-    .build();
+    .build()
+    .unwrap();
     let a = find(doc.nodes(), "a").expect("a");
     assert_eq!(a.style.cascaded().padding.top, Some(Len::Px(0.0)));
     let b = find(doc.nodes(), "b").expect("b");
@@ -81,7 +83,8 @@ fn wide_keywords_and_substitution_in_box_longhands() {
         </style><body><div id="p"><div id="a"></div><div id="b"></div></div></body>"#,
         "",
     )
-    .build();
+    .build()
+    .unwrap();
     let a = find(doc.nodes(), "a").expect("a");
     assert!(
         a.style

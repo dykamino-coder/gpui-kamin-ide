@@ -1,25 +1,10 @@
 //! Внешний маркер: логическое начало строки и отступ за рамку главного бокса.
 
-use crate::document::state::ValueCx;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{BoxStyle, Computed, writing_mode::Side};
+use crate::style::computed::{Computed, writing_mode::Side};
 use crate::style::values::value::Len;
 use gpui::{Div, Styled, px, relative};
 
-pub(super) fn content_style(
-    marker: Option<BoxStyle>,
-    item: &BoxStyle,
-    vcx: ValueCx<'_>,
-) -> BoxStyle {
-    let mut style = marker.unwrap_or_else(|| inherit(item, &Computed::default(), vcx));
-    // Анонимный маркер наследует текст, но не размеры главного бокса.
-    // Его строчная мера — содержимое, в том числе у вертикального абзаца.
-    style.hug_inline = true;
-    // Внешний маркер вне потока: фиксированная мера строки пункта
-    // не должна растянуть его абзац перед привязкой к inline-start.
-    style.orthogonal_inline = None;
-    style
-}
+pub(super) use crate::style::cascade::inherit::marker_content as content_style;
 
 pub(super) fn position(m: Div, item: &Computed, merged: &Computed) -> Div {
     let wm = merged.wm().used_direction();
@@ -62,6 +47,8 @@ pub(super) fn position(m: Div, item: &Computed, merged: &Computed) -> Div {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::cascade::inherit::inherit;
+    use crate::style::computed::BoxStyle;
     use crate::style::computed::{Sides, writing_mode::WritingModeKw};
 
     #[test]
@@ -76,6 +63,9 @@ mod tests {
             };
             item.writing_mode = Some(WritingModeKw::VerticalLr);
             item.font_size = Some(Len::Px(20.));
+            item.text_indent = Some(Len::Px(-100.));
+            item.text_indent_each_line = Some(true);
+            item.text_indent_hanging = Some(true);
             item.list_style_type = kind;
             let li = crate::dom::Element::synthetic("li", item, Default::default(), vec![]);
             let mut parent = inherit(&BoxStyle::default(), &li.style.used(), vcx);
@@ -90,6 +80,10 @@ mod tests {
             assert_eq!(style.width, None);
             assert_eq!(style.height, None);
             assert_eq!(style.font_size, Some(Len::Px(20.)));
+            assert_eq!(style.nowrap, Some(true));
+            assert_eq!(style.text_indent, None);
+            assert_eq!(style.text_indent_each_line, None);
+            assert_eq!(style.text_indent_hanging, None);
             assert_eq!(style.wm(), parent.wm());
             let constraint = crate::layout::writing_mode::native_vertical::constraint(&style, 600.)
                 .expect("intrinsic marker inline size");

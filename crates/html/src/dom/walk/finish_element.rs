@@ -13,16 +13,16 @@ use crate::style::computed::{Computed, Display};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_element(
-    mut style: Computed,
+    mut style: Box<Computed>,
     mut children: Vec<Node>,
     tag: String,
     attrs: Vec<(String, String)>,
     anim: Option<Vec<(f32, Computed)>>,
     list_item: Option<i64>,
     node_id: u64,
-    hover: Option<Computed>,
-    first_letter: Option<Computed>,
-    first_line: Option<Computed>,
+    hover: Option<Box<Computed>>,
+    first_letter: Option<Box<Computed>>,
+    first_line: Option<Box<Computed>>,
     scroll_pseudos: ScrollPseudos,
     out: &mut Vec<Node>,
     _vcx: ValueCx<'_>,
@@ -133,7 +133,7 @@ pub(super) fn finish_element(
         hover: hover.map(Into::into),
         first_letter: first_letter.map(Into::into),
         first_line: first_line.map(Into::into),
-        children,
+        children: children.into(),
         attrs,
     }));
     out.extend(sp.buttons.into_iter().map(Node::Element));

@@ -113,6 +113,8 @@ pub(crate) struct WindowsWindowInner {
     pub(crate) main_receiver: PriorityQueueReceiver<RunnableVariant>,
     pub(crate) platform_window_handle: HWND,
     pub(crate) parent_hwnd: Option<HWND>,
+    // Последнее поле: renderer и остальные ресурсы освобождаются до счётчика.
+    _lifetime: crate::platform::WindowLifetime,
 }
 
 impl WindowsWindowState {
@@ -292,6 +294,7 @@ impl WindowsWindowInner {
         Ok(Rc::new(Self {
             hwnd,
             dialog_owner: crate::dialog::DialogOwner::new(hwnd),
+            _lifetime: crate::platform::WindowLifetime::new(context.live_windows.clone()),
             drop_target_helper: context.drop_target_helper.clone(),
             state,
             handle: context.handle,
@@ -426,6 +429,7 @@ struct WindowCreateContext {
     is_minimizable: bool,
     min_size: Option<Size<Pixels>>,
     executor: ForegroundExecutor,
+    live_windows: Rc<Cell<usize>>,
     current_cursor: Option<HCURSOR>,
     cursor_visible: Arc<AtomicBool>,
     drop_target_helper: IDropTargetHelper,
@@ -455,6 +459,7 @@ impl WindowsWindow {
         let WindowCreationInfo {
             icon,
             executor,
+            live_windows,
             current_cursor,
             cursor_visible,
             drop_target_helper,
@@ -545,6 +550,7 @@ impl WindowsWindow {
             is_minimizable: params.is_minimizable,
             min_size: params.window_min_size,
             executor,
+            live_windows,
             current_cursor,
             cursor_visible,
             drop_target_helper,

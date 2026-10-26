@@ -200,11 +200,14 @@ impl LineWrapper {
                     }
                 };
 
-                // KaminIDE patch: prev_c коммитится ДО ветки переноса — иначе
+                // KaminIDE patch: для CSS prev_c коммитится ДО ветки переноса — иначе
                 // на строке-границе символ после переноса видит фантомный
                 // пробел и рождает ложный кандидат (слово ровно в ширину
                 // колонки рвалось как «x»+«xxxx»).
-                prev_c = new_prev_c;
+                // Редактор сохраняет upstream-контракт состояния после переноса.
+                if css {
+                    prev_c = new_prev_c;
+                }
                 width += item_width;
                 // KaminIDE patch: пробел за краем строки висит (css-text §3:
                 // trailing spaces hang) и сам перенос не вызывает — иначе он
@@ -218,9 +221,7 @@ impl LineWrapper {
                 // вылезти за край, как в браузере. `line-breaking-atomic-001`:
                 // кусок `AB&nbsp;` шириной 150 в коробке 100 рвался на `AB` и
                 // `&nbsp;`, становился вдвое выше `line-height`, и атом уезжал
-                // на вторую строку ряда — на 100 точек вместо 50 (снимок
-                // `target/wpt-shots/line-breaking-atomic-001.png`: зелёное 50,
-                // красное 50, зелёное 50). Законный кандидат
+                // на вторую строку ряда. Законный кандидат
                 // (`last_candidate_ix > 0`) по-прежнему сильнее: там переносим
                 // как раньше.
                 let glue_ahead = css
@@ -291,6 +292,7 @@ impl LineWrapper {
 
                     return Some(Boundary::new(last_wrap_ix, next_indent));
                 }
+                prev_c = new_prev_c;
             }
 
             None

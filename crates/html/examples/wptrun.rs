@@ -54,8 +54,14 @@ mod page_box_values;
 mod paged;
 #[path = "wptrun/pair.rs"]
 mod pair;
+#[path = "wptrun/phase_timing.rs"]
+mod phase_timing;
 #[path = "wptrun/pixel_compare.rs"]
 mod pixel_compare;
+#[path = "wptrun/prepare.rs"]
+mod prepare;
+#[path = "wptrun/ready.rs"]
+mod ready;
 #[path = "wptrun/reference_result.rs"]
 mod reference_result;
 #[path = "wptrun/reftest_meta.rs"]
@@ -159,7 +165,12 @@ fn main() {
         // Щуп метрик ставится ПОСЛЕ регистрации: до неё `Ahem` ещё не найден,
         // и `ch` мерился бы по шрифту-подмене.
         let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
-        let empty = Rc::new(Document::builder("", BROWSER_CSS).fonts(&fonts).build());
+        let empty = Rc::new(
+            Document::builder("", BROWSER_CSS)
+                .fonts(&fonts)
+                .build()
+                .expect("static empty runner document"),
+        );
         if capture::offscreen() || capture::first_frame() {
             gpui::frame_capture::enable();
         }

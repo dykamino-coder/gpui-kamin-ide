@@ -1,9 +1,9 @@
 //! Стадия коробки, контекст родителя-коробки: признаки руби, повёрнутой строки и ортогонального
-//! потока, контейнер запросов, сетка/flex родителя, предел строк `line-clamp`, строчные украшения
+//! потока, сетка/flex родителя, предел строк `line-clamp`, строчные украшения
 //! предка, подавление маркера, чернила тени текста.
 
 use super::*;
-use crate::style::computed::{BoxStyle, Display as D};
+use crate::style::computed::BoxStyle;
 
 /// TRANSITIONAL(cascade-7b-R10): Запись box context ребёнка копирует общий Computed через BoxStyle::DerefMut; удалить после переноса этих полей в BoxStyle и перевода paint/layout-made readers.
 pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyle) {
@@ -19,7 +19,6 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
     );
     set!(c.turned_line, own.turned_line || parent.turned_line);
     set!(c.ortho_limit, own.ortho_limit.or(parent.ortho_limit));
-    set!(c.cq_box, parent.container_box_for_children());
     set!(c.orthogonal_scrollport, parent.orthogonal_scrollport);
     // An absolutely positioned box sizes its inline axis against its own
     // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
@@ -35,38 +34,6 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
         } else {
             parent.orthogonal_inline
         }
-    );
-    // Сетка-родитель и её письмо: у вертикальной сетки оси выравнивания
-    // элемента переставляются (`paint/apply/`), а по оси x идут группы базовых.
-    set!(
-        c.parent_grid,
-        match parent.display {
-            Some(D::Grid) | Some(D::InlineGrid) => {
-                match (parent.wm().vertical(), parent.wm().block_rl()) {
-                    (false, _) => 1,
-                    (true, false) => 2,
-                    (true, true) => 3,
-                }
-            }
-            _ => 0,
-        }
-    );
-    set!(c.parent_lanes, parent.display == Some(D::GridLanes));
-    set!(c.parent_grid_align_items, parent.align_items);
-    set!(
-        c.parent_subgrid,
-        c.parent_grid != 0 && (parent.subgrid_cols || parent.subgrid_rows)
-    );
-    set!(
-        c.parent_flex_grid,
-        matches!(
-            parent.display,
-            Some(D::Flex)
-                | Some(D::InlineFlex)
-                | Some(D::Grid)
-                | Some(D::InlineGrid)
-                | Some(D::GridLanes)
-        )
     );
     // A `-webkit-box` that is not a block container (no vertical orient)
     // is no line-clamp container and hands no clamp to its contents

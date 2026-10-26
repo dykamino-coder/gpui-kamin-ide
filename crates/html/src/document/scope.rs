@@ -7,6 +7,13 @@ use super::state::Scoped;
 use crate::document::state::ValueCx;
 
 impl Document {
+    /// Документ завершил работу текущего кадра. Читать после завершения кадра
+    /// хостом, включая deferred paint; анимационное время хост фиксирует сам.
+    /// Это не подтверждение презентации GPU и не разрешение пропустить её.
+    pub fn frame_ready(&self) -> bool {
+        self.state.frame_ready()
+    }
+
     /// Начать кадр и вернуть опции сборки с этим документом: с ними хост
     /// вызывает `render::*` по `nodes()` (стопка страниц) сам.
     pub fn frame_opts(&self, opts: &crate::RenderOpts) -> crate::RenderOpts {

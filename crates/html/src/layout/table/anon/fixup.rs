@@ -93,7 +93,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
     walk(&row.children, &mut cells, &mut run, vcx);
     table_roles::flush_inline(&mut cells, &mut run);
     let mut fixed = row.clone();
-    fixed.children = cells;
+    fixed.children = cells.into();
     vec![Node::Element(fixed)]
 }
 
@@ -152,7 +152,7 @@ fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<No
                     // содержимое встречаются и там.
                     flush(&mut stray, &mut out);
                     let mut copy = el.clone();
-                    copy.children = fixup_children(&el.children, true, vcx);
+                    copy.children = fixup_children(&el.children, true, vcx).into();
                     out.push(Node::Element(copy));
                 } else if is_cap && !in_group {
                     flush(&mut stray, &mut out);

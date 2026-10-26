@@ -8,16 +8,17 @@
 //! лунки, подсетки, подъёмы, run-in, флоаты.
 
 use super::Parsed;
+use super::input::Admitted;
 use super::style_sources::collect_style_tags;
 use super::{Node, user_agent_css};
-use super::{content, float_tail, grid_static_position, subgrid_used};
+use super::{float_tail, grid_static_position, subgrid_used};
+use crate::document::DocumentFailure;
 use crate::dom::display_inheritance::resolve_display_inherit;
 use crate::dom::fixup_grid::*;
 use crate::dom::fixup_tree::*;
 use crate::dom::shadow::*;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::walk::*;
-use crate::dom::xhtml::*;
 use crate::style::css::{
     LayerRegistry, Media, Rule, VarMap, parse_document_sheet, parse_keyframes,
 };
@@ -30,67 +31,52 @@ use std::rc::Rc;
 ///
 /// `extra_css` — таблица уровня приложения (тема чата), применяется до
 /// `<style>` документа и до `style=""`.
-pub fn parse(html: &str, extra_css: &str) -> Parsed {
-    parse_media(html, extra_css, Media::default())
+/// Глубина ограничивает только представление; исходный DOM сохраняется целиком.
+pub fn try_parse(html: &str, extra_css: &str) -> Result<Parsed, DocumentFailure> {
+    try_parse_media(html, extra_css, Media::default())
 }
 
-/// То же, но с известными условиями окружения для `@media`.
-///
-/// Разбор без `Document` (тесты, инструменты): правила, метрики и арены
-/// значений ложатся в свежий документ, который возвращается вместе с узлами.
-pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Parsed {
-    let doc = crate::document::state::DocState::new(media);
-    let nodes = parse_current(html, extra_css, media, &doc);
-    Parsed { nodes, doc }
-}
-
-/// Разобрать в СВЕЖЕЕ состояние текущего документа: область открыта
-/// вызывающим (`Document`, вложенный документ рамки).
-pub(crate) fn parse_current(
+/// Разбор без Document, с полным DOM и тем же отчётом DocState.
+pub fn try_parse_media(
     html: &str,
     extra_css: &str,
     media: Media,
-    doc: &Rc<crate::document::state::DocState>,
-) -> Vec<Node> {
-    parse_input(html, extra_css, media, doc, false)
+) -> Result<Parsed, DocumentFailure> {
+    parse_mode(html, extra_css, media, false)
 }
 
-/// Parse one input with its parser mode and document-local host-language rules.
-pub(super) fn parse_input(
+pub(super) fn parse_mode(
     html: &str,
+    extra_css: &str,
+    media: Media,
+    xml: bool,
+) -> Result<Parsed, DocumentFailure> {
+    let input = Admitted::parse(html, xml)?;
+    let doc = crate::document::state::DocState::new(media);
+    let nodes = convert(&input, extra_css, media, &doc);
+    doc.traversal.retain(input);
+    Ok(Parsed { nodes, doc })
+}
+
+/// Конвертация единственного исходного дерева в свежее состояние документа.
+pub(crate) fn convert(
+    input: &Admitted,
     extra_css: &str,
     mut media: Media,
     doc: &Rc<crate::document::state::DocState>,
-    xml: bool,
 ) -> Vec<Node> {
     let vcx = doc.values();
-    let xhtml = content::is_xhtml(html);
-    // `@font-feature-values` — от прошлого разбора (слои `@layer` — свои у
-    // разбора, `LayerRegistry` ниже).
-    crate::text::fonts::alternates::reset(vcx);
-    // XML document (`super::xml`): XML parser, no HTML tree-builder fixups.
-    let html = if xml {
-        std::borrow::Cow::Borrowed(html)
-    } else {
-        expand_xhtml_self_closing(html)
-    };
-    let dom = if xml {
-        super::xml::xml_dom(&html)
-    } else {
-        super::input::html(&html)
-    };
+    vcx.doc.reset_font_alternates();
+    let dom = &input.dom;
+    let xhtml = input.xhtml;
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
         media.dark = dark;
     }
     let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
-    // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
-    // documents … always in no-quirks mode»), а мы разбираем и его HTML-
-    // разборщиком, поэтому пространство имён корня его исключает.
-    doc.quirks.set(
-        dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks
-            && !html.contains("http://www.w3.org/1999/xhtml"),
-    );
+    // DOCTYPE). XML и HTML-адаптер XHTML всегда работают без quirks.
+    doc.quirks
+        .set(dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks && !xhtml);
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
@@ -175,7 +161,7 @@ pub(super) fn parse_input(
     // индексом по узлу. Документ без теней предпроход не платит.
     let mut tree = TreeIndex::new(doc.clone(), xhtml);
     let doc = Rc::new(Scope { rules, frames });
-    if html.contains("shadowrootmode") {
+    if has_declarative_shadow(&dom.document) {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
         let prepared = prepare(
@@ -206,9 +192,8 @@ pub(super) fn parse_input(
     walk_children(
         &dom.document,
         &tree,
-        &doc.rules,
+        &doc,
         &vars,
-        &doc.frames,
         &mut counter,
         &mut counters,
         &mut Vec::new(),

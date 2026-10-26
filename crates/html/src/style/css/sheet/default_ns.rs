@@ -77,6 +77,7 @@ mod tests {
                 "",
             )
             .build()
+            .unwrap()
             .nodes()
             .len()
         });

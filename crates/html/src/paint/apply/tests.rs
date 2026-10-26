@@ -119,8 +119,9 @@ fn vertical_grid_axes_preserve_last_baseline_keywords() {
         &parse_decls("align-self: last baseline; justify-self: center"),
         vcx,
     );
-    c.parent_grid = 2;
-    let mut child = apply(gpui::div(), &BoxStyle::from(c.clone()), vcx);
+    let mut c = BoxStyle::from(c);
+    c.context.parent_grid = 2;
+    let mut child = apply(gpui::div(), &c, vcx);
     assert_eq!(child.style().align_self, Some(gpui::AlignItems::Center));
     assert_eq!(
         child.style().justify_self,
@@ -168,8 +169,9 @@ fn grid_safety_moves_with_container_and_parent_axes() {
         &parse_decls("align-self: unsafe end; justify-self: safe center"),
         vcx,
     );
-    c.parent_grid = 2;
-    let mut child = apply(gpui::div(), &BoxStyle::from(c.clone()), vcx);
+    let mut c = BoxStyle::from(c);
+    c.context.parent_grid = 2;
+    let mut child = apply(gpui::div(), &c, vcx);
     assert_eq!(
         child.style().safe_alignment,
         Some((false, true, false, false))

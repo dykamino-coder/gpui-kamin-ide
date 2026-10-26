@@ -7,6 +7,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::resources::css_images::Source as CpuSource;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Refineable, Styled, StyledImage, px, size};
 
@@ -18,11 +19,11 @@ pub(super) fn measured(
     holder: &mut gpui::Div,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
-    let style = &element.style.used();
+    let style = &crate::style::computed::BoxStyle::shared(element.style.used());
     // Keep the existing growing-image path: exposing its natural ratio on a
     // measured leaf also changes Taffy's cross-size calculation after flexing.
     // This adapter handles intrinsic contributions and shrinking items only.
-    if (style.parent_grid == 0 && !style.flex_item)
+    if (style.context.parent_grid == 0 && !style.flex_item)
         || (style.flex_item && style.flex_grow.is_some_and(|grow| grow > 0.0))
         || style.position.is_some()
         || style.gradient.is_some()
@@ -69,20 +70,22 @@ pub(super) fn measured(
     // Decorated vectors still need concrete-size rasterization in the existing
     // holder pipeline: the measured leaf does not transfer their content-box
     // cross size separately from padding and borders.
-    if !matches!(source, crate::paint::background::Source::Raster(_))
-        && (!style.flex_item
-            || [
-                style.padding.left,
-                style.padding.right,
-                style.padding.top,
-                style.padding.bottom,
-                border.left,
-                border.right,
-                border.top,
-                border.bottom,
-            ]
-            .into_iter()
-            .any(|edge| !zero(edge)))
+    if !matches!(
+        source,
+        crate::paint::background::Source::Image(CpuSource::Raster(_))
+    ) && (!style.flex_item
+        || [
+            style.padding.left,
+            style.padding.right,
+            style.padding.top,
+            style.padding.bottom,
+            border.left,
+            border.right,
+            border.top,
+            border.bottom,
+        ]
+        .into_iter()
+        .any(|edge| !zero(edge)))
     {
         return None;
     }
@@ -116,13 +119,13 @@ pub(super) fn measured(
         style.align_self.is_none() || style.align_self_normal,
         style.justify_self.is_none() || style.justify_self_normal,
     );
-    if style.parent_grid >= 2 {
+    if style.context.parent_grid >= 2 {
         std::mem::swap(&mut align_start, &mut justify_start);
     }
-    if style.parent_grid != 0 && align_start {
+    if style.context.parent_grid != 0 && align_start {
         native.align_self = Some(gpui::AlignSelf::Start);
     }
-    if style.parent_grid != 0 && justify_start {
+    if style.context.parent_grid != 0 && justify_start {
         native.justify_self = Some(gpui::AlignSelf::Start);
     }
     image.style().margin = Default::default();

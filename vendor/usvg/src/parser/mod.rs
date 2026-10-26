@@ -9,6 +9,7 @@ mod image;
 mod marker;
 mod mask;
 mod options;
+mod use_href;
 mod paint_server;
 mod shapes;
 mod style;
@@ -23,6 +24,7 @@ mod text;
 pub(crate) use converter::Cache;
 pub use image::{ImageHrefDataResolverFn, ImageHrefResolver, ImageHrefStringResolverFn};
 pub use options::Options;
+pub use use_href::UseHrefResolver;
 // KaminIDE patch: share SVG path simplification with typed geometry callers.
 pub use shapes::parse_path;
 #[cfg(feature = "writer")]
@@ -140,6 +142,14 @@ impl crate::Tree {
                 // External images should be ignored.
                 resolve_string: Box::new(|_, _| None),
             },
+            // KaminIDE patch: nested SVG images use secure static processing too.
+            use_href_resolver: Some(UseHrefResolver(Box::new(|href| {
+                if href.starts_with("data:") {
+                    opt.use_href_resolver.as_ref().and_then(|resolver| (resolver.0)(href))
+                } else {
+                    None
+                }
+            }))),
             // In the referenced SVG, we start with the unmodified user-provided
             // fontdb, not the one from the cache.
             #[cfg(feature = "text")]

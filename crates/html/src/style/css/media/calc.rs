@@ -178,7 +178,7 @@ impl Parser<'_> {
             self.at += 1;
         }
         let unit = std::str::from_utf8(&self.s[u0..self.at]).ok()?;
-        let (ch, ex) = crate::text::metrics::ch_ex_px("", 16.0, self.vcx);
+        let (ch, ex) = crate::style::font_metrics::horizontal("", 16.0, self.vcx);
         Some(match unit {
             "" => (n, Kind::Num),
             "px" => (n, Kind::Px),

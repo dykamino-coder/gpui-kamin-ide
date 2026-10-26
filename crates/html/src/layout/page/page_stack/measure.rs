@@ -110,17 +110,16 @@ pub(super) fn measure(
                 {
                     h = bottom;
                 }
+                // Поля обёртки уже вынесены в Kid.mt/mb. Переполнение
+                // отсчитывается от уточнённого border box (css-break-3 §5.2).
+                over = h;
                 let visible = w.blocks().is_some_and(|b| !b.clips_block);
                 if visible && let Some(root) = w.blocks() {
                     over = crate::layout::fragment::flow::flow_end(root, &geometry).unwrap_or(h);
                     over = flow.solid.iter().map(|p| p.1 - lift).fold(over, f32::max);
                 }
                 if visible && k.float_extent {
-                    over = flow
-                        .floats
-                        .iter()
-                        .map(|g| g.bottom + g.margins[1] - lift)
-                        .fold(over, f32::max);
+                    over = float_extent(&flow, lift, over);
                 }
                 if k.shape.is_none() && k.regrow.is_some() {
                     // Реальное переполнение копии резервирует последующие листы.
@@ -151,7 +150,14 @@ pub(super) fn measure(
                 (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
                 k.refresh_repeat(m.sections, ah);
             }
-            None => flow.merge(&mut cuts, &mut solid),
+            None => {
+                // Анонимная группа сохраняет общий IFC и обтекание, но её
+                // нормальная высота не включает нижние края флоатов.
+                if k.float_extent {
+                    h = float_extent(&flow, k.inner_top, h);
+                }
+                anonymous_breaks(flow, &mut cuts, &mut solid, &mut inline);
+            }
         }
     }
     (
@@ -184,3 +190,23 @@ pub(super) fn measure(
         inline,
     )
 }
+
+fn float_extent(flow: &crate::layout::fragment::flow::FlowGeometry, lift: f32, h: f32) -> f32 {
+    flow.floats
+        .iter()
+        .map(|g| g.bottom + g.margins[1] - lift)
+        .fold(h, f32::max)
+}
+
+fn anonymous_breaks(
+    flow: crate::layout::fragment::flow::FlowGeometry,
+    cuts: &mut Vec<(f32, f32)>,
+    solid: &mut Vec<(f32, f32)>,
+    inline: &mut crate::layout::fragment::flow::inline::Geometry,
+) {
+    inline.barriers.clone_from(&flow.solid);
+    flow.merge(cuts, solid);
+}
+
+#[cfg(test)]
+mod tests;

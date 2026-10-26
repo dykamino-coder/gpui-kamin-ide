@@ -51,7 +51,12 @@ fn tabular_marker(style: &mut Computed, item: &Computed, layer: Option<&Computed
     style.font_features = features;
 }
 
-pub(super) fn render(li: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
+pub(super) async fn render(
+    stk: &mut reblessive::Stk,
+    li: &Element,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &li.style, vcx);
     if matches!(
@@ -60,7 +65,7 @@ pub(super) fn render(li: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> A
     ) || (li.style.used().display == Some(Display::InlineBlock)
         && li.style.used().inline_display != Some(true))
     {
-        crate::dom::pseudo_line_layers::install(li, &mut merged, vcx);
+        crate::layout::box_tree::pseudo_line_layers::install(li, &mut merged, vcx);
     }
-    render_with_style(li, inherited, &merged, opts)
+    render_with_style(stk, li, inherited, &merged, opts).await
 }

@@ -1,0 +1,23 @@
+{
+  "style": {
+    "owner": "ComputedSlot::published / publication::Published (legacy adapters retained)",
+    "key": "Rc allocation identity plus font generation and viewport inputs",
+    "inheritance": "element computed parent; marks.style_parent / anonymous_wrapper",
+    "restyle": "replace slot; retain old closed handles; never identify by used box"
+  },
+  "box": {
+    "owner": "BoxStyle and GPUI layout object",
+    "key": "self_node/cb_node/anchor_key and frame-local construction context",
+    "cardinality": "element may create several boxes; anonymous box has no element style"
+  },
+  "fragment": {
+    "owner": "layout/fragment types and GPUI request_layout/prepaint",
+    "key": "F2 fragment/token/attempt context, not style allocation or DOM node",
+    "cardinality": "one box may yield multiple fragments; used geometry belongs to attempt/result"
+  },
+  "boundaries": [
+    "style -> box context is not inheritance",
+    "computed operands survive used resolution",
+    "no identity or algorithms changed by A00/A01"
+  ]
+}

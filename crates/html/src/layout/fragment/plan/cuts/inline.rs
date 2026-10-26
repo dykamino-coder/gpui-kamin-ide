@@ -58,11 +58,10 @@ pub(super) fn cut(
                 return Ok(Some(None));
             };
             if end > edge + COORD_EPS {
-                // Ни один общий край не помещается: неделимые перекрывающиеся
-                // строки переполняют пустой фрагмент до первого общего края.
-                let end = whole_end(geometry, end);
+                // Высокая строка занимает несколько физических страниц;
+                // адрес IFC не продвигается до последнего среза строки.
                 tokens.pending.clear();
-                return Ok(Some(Some((end, end))));
+                return Ok(None);
             }
             point = point.min(end);
         }
@@ -77,10 +76,10 @@ pub(super) fn cut(
                 if placed {
                     return Ok(Some(None));
                 }
-                // Неделимая часть уже у начала пустого фрагмента.
-                let end = whole_end(geometry, point);
-                tokens.pending.clear();
-                return Ok(Some(Some((end, end))));
+                // Структурный монолит переполняет физические страницы срезами;
+                // его конец не является краем единственного фрагмента IFC.
+                // Переполнение неделимой строки обработано выше отдельно.
+                return Ok(None);
             }
             point = point.min(start);
         }
@@ -109,30 +108,6 @@ pub(super) fn cut(
         if edge <= from + COORD_EPS {
             return Ok(Some(None));
         }
-    }
-}
-
-/// Замыкание перекрывающихся неделимых коробок до общего края.
-fn whole_end(geometry: &Geometry, mut end: f32) -> f32 {
-    loop {
-        let next = geometry
-            .barriers
-            .iter()
-            .copied()
-            .chain(
-                geometry
-                    .paragraphs
-                    .iter()
-                    .flat_map(|p| &p.lines)
-                    .map(|l| (l.top, l.bottom)),
-            )
-            .filter(|&(a, b)| a < end - COORD_EPS && end < b - COORD_EPS)
-            .map(|p| p.1)
-            .fold(end, f32::max);
-        if next <= end + COORD_EPS {
-            return end;
-        }
-        end = next;
     }
 }
 

@@ -63,7 +63,7 @@ impl Computed {
         let family = match self.font_family.as_deref() {
             Some(f) => f,
             None if self.monospace == Some(true) => {
-                crate::text::metrics::mono_family_for(self.lang.as_deref(), vcx)
+                vcx.doc.font_snapshot().mono_family(self.lang.as_deref())
             }
             None => "",
         };

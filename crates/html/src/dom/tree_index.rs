@@ -95,7 +95,9 @@ mod tests {
 
     #[test]
     fn keys_compare_node_identity_not_content() {
-        let dom = crate::dom::input::html("<p></p><p></p>");
+        let dom = crate::dom::input::Admitted::parse("<p></p><p></p>", false)
+            .unwrap()
+            .dom;
         let body = |h: &Handle| -> Vec<Handle> { h.children.borrow().clone() };
         let html = body(&dom.document).pop().unwrap();
         let ps = body(&body(&html)[1]);

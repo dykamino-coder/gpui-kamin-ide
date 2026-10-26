@@ -1,6 +1,6 @@
 //! Диспетчер специальных тегов; сохраняет порядок ветвей element.
 
-use super::element;
+use super::element_stack;
 use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level;
@@ -9,23 +9,22 @@ use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::list::{self, list_item};
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::iframe::object_is_document;
-use crate::layout::replaced::image::pct_height_to_px;
+use crate::layout::replaced::image::{inherit_item_metadata, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::{replaced_used_style, svg_size};
-use crate::layout::table::anon::anon_element;
-use crate::layout::table::table;
-use crate::paint::box_tree::styled::styled_div;
-use crate::paint::box_tree::styled::styled_div_with;
+use crate::layout::table::{anon::anon_element, table_stack};
+use crate::paint::box_tree::styled::{styled_div, styled_div_with};
 use crate::paint::replaced::image::{image, image_with};
-use crate::render::generic_box::generic_box;
+use crate::render::generic_box::generic_box_stack;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn dispatch_element(
+pub(crate) async fn dispatch_element(
+    stk: &mut reblessive::Stk,
     e: &Element,
     merged: BoxStyle,
     inherited: &BoxStyle,
@@ -35,7 +34,10 @@ pub(crate) fn dispatch_element(
 ) -> AnyElement {
     let st = e.style.used();
     let vcx = opts.cx.vcx();
-    if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
+    if let Some(math) = stk
+        .run(|stk| crate::layout::mathml::element_stack(stk, e, inherited, opts))
+        .await
+    {
         return math;
     }
     // Вложенный документ имеет приоритет перед картинкой и запасным содержимым.
@@ -53,15 +55,17 @@ pub(crate) fn dispatch_element(
                 "img" | "svg" | "embed" | "object" | "video" | "canvas" | "iframe"
             ) =>
         {
-            list_item::render_with_style(e, inherited, &merged, opts)
+            list_item::render_with_style(stk, e, inherited, &merged, opts).await
         }
         // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4): слитый стиль
         // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
         // блочная картинка под `body { image-orientation: none }` всё равно
         // разворачивалась по метке EXIF.
-        "canvas" if merged.parent_grid != 0 => {
-            crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx)
-                .unwrap_or_else(|| generic_box(e, merged, inherited, opts, outer_space))
+        "canvas" if merged.context.parent_grid != 0 => {
+            match crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx) {
+                Some(canvas) => canvas,
+                None => generic_box_stack(stk, e, merged, inherited, opts, outer_space).await,
+            }
         }
         "img" => {
             // Единицы шрифта в размерах БЛОЧНОЙ картинки разрешаются так же,
@@ -71,16 +75,15 @@ pub(crate) fn dispatch_element(
             // (`c43-rpl-bbx-002`). CSS 2.1 §4.3.2: `em` — вычисленный кегль
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
+            let context = BoxStyle::shared(copy.style.used()).context;
             let used = copy.style.used_mut();
             if inline_level(e) {
                 replaced_used_style::inline_percentage_width(used, opts.cx.constraints.avail_w);
             }
             used.image_orient_none = merged.image_orient_none;
-            crate::layout::replaced::image::inherit_item_metadata(used, &merged, inherited);
-            // Признак определённого блока (§10.5) — от слитого стиля: держатель
-            // строится из сырого, и `apply` иначе выбрасывал `height: %`
-            // (см. строчный рукав `"img"` в `atom_element`; ячейка и лунки —
-            // свои пути).
+            let context = inherit_item_metadata(used, context, &merged, inherited);
+            // Определённость блока (§10.5) берётся от слитого стиля, иначе
+            // `apply` теряет `height: %`; ячейки и лунки ведут её сами.
             if !matches!(
                 inherited.display,
                 Some(Display::TableCell) | Some(Display::GridLanes)
@@ -89,6 +92,7 @@ pub(crate) fn dispatch_element(
             }
             // Единицы окна — в точки, как у строчной картинки.
             used.resolve_viewport(opts.viewport, vcx);
+            copy.style.set_box_context(std::rc::Rc::new(context));
             crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
                 image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
             })
@@ -184,7 +188,9 @@ pub(crate) fn dispatch_element(
             }
         }
         // Синтетический хост полос обтекания (см. wrap_floats).
-        _ if e.marks.shape_flow.is_some() => band_flow_host(e, &merged, opts),
+        _ if e.marks.shape_flow.is_some() => {
+            stk.run(|stk| band_flow_host(stk, e, &merged, opts)).await
+        }
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         // Лунки идут путём сетки taffy (`dom::lanes_as_grid`); сюда доходит
@@ -194,7 +200,8 @@ pub(crate) fn dispatch_element(
         _ if merged.display == Some(Display::GridLanes) => {
             let mut copy = e.clone();
             crate::dom::lanes_to_grid(copy.style.used_mut());
-            element(&copy, inherited, opts)
+            stk.run(|stk| element_stack(stk, &copy, inherited, opts))
+                .await
         }
         // Таблица — независимый контекст форматирования: её строки в бюджет
         // `line-clamp` не входят (css-overflow-4 §5.3, `webkit-line-clamp-013`).
@@ -206,7 +213,7 @@ pub(crate) fn dispatch_element(
         ) =>
         {
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
-            table(e, &merged, opts)
+            table_stack(stk, e, &merged, opts).await
         }
         // Ряд, группа рядов или ячейка ВНЕ таблицы получают анонимную
         // таблицу-обёртку (css-tables-3 §3.1): иначе ячейки складывались
@@ -218,15 +225,15 @@ pub(crate) fn dispatch_element(
         {
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             let wrapper = anon_element("table", vec![Node::Element(e.clone())]);
-            table(&wrapper, &merged, opts)
+            table_stack(stk, &wrapper, &merged, opts).await
         }
         "table" => {
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
-            table(e, &merged, opts)
+            table_stack(stk, e, &merged, opts).await
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if st.display.is_none() => list::render(e, &merged, opts),
+        "ul" | "ol" if st.display.is_none() => list::render(stk, e, &merged, opts).await,
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.
@@ -240,6 +247,6 @@ pub(crate) fn dispatch_element(
         // переносится, хотя абзац — нет. Отдельный рисователь преформата
         // правил куска не знает, поэтому такой случай уходит в обычную
         // строчную раскладку (`white-space-pre-031`).
-        _ => generic_box(e, merged, inherited, opts, outer_space),
+        _ => generic_box_stack(stk, e, merged, inherited, opts, outer_space).await,
     }
 }

@@ -138,7 +138,7 @@ pub(crate) fn clone_fragment(
         hover: None,
         first_letter: None,
         first_line: None,
-        children: vec![Node::Element(body)],
+        children: (vec![Node::Element(body)]).into(),
         attrs: Vec::new(),
         inline: false,
     };
@@ -156,7 +156,7 @@ pub(crate) fn clone_fragment(
     deco.style.used_mut().column_height = None;
     deco.first_letter = None;
     deco.first_line = None;
-    deco.children = vec![Node::Element(clip_box)];
+    deco.children = vec![Node::Element(clip_box)].into();
     deco
 }
 

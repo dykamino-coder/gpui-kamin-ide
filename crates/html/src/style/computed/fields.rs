@@ -121,7 +121,10 @@ pub struct Computed {
     /// §subgrid-listing). Отдельным полем, а НЕ через `contain_size`: голое
     /// `contain: size` подсетку не отменяет — это отдельно проверяют случаи
     /// 8 и 9 `independent-formatting-context.html`.
-    pub container_size_query: bool,
+    pub container_type: ContainerType,
+    /// Внутренний SVG использует SVG layout, без главной CSS-коробки.
+    /// Только внешний svg может быть size query container (css-contain-2 §2).
+    pub(crate) svg_no_css_box: bool,
     pub auto_repeat_cols: Option<AutoRepeat>,
     pub auto_repeat_rows: Option<AutoRepeat>,
     /// Тело авто-повтора ДОРОЖКА ЗА ДОРОЖКОЙ: `repeat(auto-fill, max-content
@@ -656,6 +659,8 @@ pub struct Computed {
     /// (или с неизвестным размером) — `None`, и единица берёт малое окно.
     /// Наследуется вниз: контейнер ищется ВВЕРХ по дереву.
     pub cq_box: (Option<f32>, Option<f32>),
+    /// Used content box этого контейнера: явный layout input следующего прохода стиля.
+    pub(crate) cq_size: (Option<f32>, Option<f32>),
     /// Nearest ancestor scrollport, including an indefinite nearest scroller.
     pub(crate) orthogonal_scrollport: Option<[orthogonal::AxisSizes; 2]>,
     /// Used inline measurement contract of an ordinary orthogonal block.
@@ -713,20 +718,6 @@ pub struct Computed {
     /// `rel_shift` на элементе, чьи подложка и рамка (`inline_bg`,
     /// `inline_border`) у куска: коробка предка едет только его сдвигом.
     pub box_shift: Option<(f32, f32)>,
-    /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
-    /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
-    /// переставляются оси выравнивания вертикальной сетки и пишутся биты
-    /// базовой по оси x (`paint/apply/`).
-    pub(crate) parent_grid: u8,
-    /// Grid content baseline alignment requires a coordinated self alignment.
-    pub(crate) parent_grid_align_items: Option<Align>,
-    /// Родитель — гибкий контейнер, сетка или лунки: элемент блокифицирован
-    /// (css-display-3 §2.7), хотя `display` в стиле остаётся строчным.
-    pub(crate) parent_flex_grid: bool,
-    /// Родитель — лунки (`display: grid-lanes`).
-    pub(crate) parent_lanes: bool,
-    /// Родитель — подсетка (`grid-template-*: subgrid`).
-    pub(crate) parent_subgrid: bool,
     /// Абзац вертикального письма набирается САМ, по оси строки решённой
     /// раскладкой (`lines::Paragraph::vertical`): `Some(rl)`. Ставится только
     /// на копию стиля внутри `render::paragraph`.
@@ -1249,10 +1240,6 @@ pub struct Computed {
     /// Rotation model: inside the horizontal clone of a turned vertical paragraph
     /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
     pub(crate) turned_line: bool,
-    /// The writing mode of the containing block (the parent's line mode: a turned
-    /// paragraph counts as vertical). Set at inheritance; the overflowing inset and
-    /// alignment edges follow it (css-writing-modes-4 §7.1, CSS 2.1 §9.4.3).
-    pub(crate) cb_wm: super::writing_mode::WritingMode,
     /// Computed image alpha source for shape-outside; basic shapes use shape_outside.
     pub(crate) shape_image: Option<super::ImageSource>,
     /// The style of the initial containing block (`RenderOpts::root_style`),
@@ -1508,7 +1495,7 @@ pub struct InheritedStyle {
     pub font_settings: Option<Vec<(String, u32)>>,
     /// Font-specific names stay unresolved until the used family is known
     /// (CSS Fonts 4 §font-variant-alternates-prop).
-    pub font_alternates: Option<crate::text::fonts::alternates::Alternates>,
+    pub font_alternates: Option<crate::style::computed::font_alternates::Alternates>,
     /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
     /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
     pub font_synth: (Option<bool>, Option<bool>, Option<bool>),

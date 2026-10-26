@@ -9,6 +9,7 @@ use crate::dom::Node;
 use crate::layout::block::margin_inline_boxes;
 use crate::layout::block::struts::{Strut, solve, through_strut_no_clear};
 use crate::style::values::value::Len;
+pub(crate) mod facts;
 mod inputs;
 pub(crate) use inputs::CollapseInputs;
 mod flow;

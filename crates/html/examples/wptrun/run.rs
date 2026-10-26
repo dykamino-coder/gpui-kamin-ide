@@ -9,7 +9,6 @@ use super::{
 };
 use gpui::{AnyWindowHandle, AppContext as _, AsyncApp};
 use std::rc::Rc;
-use std::time::Duration;
 
 /// Что и как прогонять.
 pub(super) struct RunConfig {
@@ -50,21 +49,23 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
         }
     }
     // Первый кадр окна: до него снимок пустой.
-    cx.background_executor()
-        .timer(Duration::from_millis(900))
-        .await;
+    super::ready::startup(cx).await;
     // Указатель окна нужен снимку: рисует его система, а не мы.
     let hwnd = hwnd_of(cx, window);
     // Свой файл отчёта на шард: параллельные прогоны не бьются за один путь.
     let report_path =
         std::env::var("WPT_REPORT").unwrap_or_else(|_| "target/wpt-report.txt".into());
     let mut report = String::new();
+    let mut engine_report = String::new();
+    let _ = std::fs::write(format!("{report_path}.engine"), &engine_report);
     let trace = Rc::new(std::cell::RefCell::new(String::new()));
     let stage = Stage {
         window,
         hwnd,
         trace: trace.clone(),
         frame_errors: Default::default(),
+        document_failure: Default::default(),
+        degradation: Default::default(),
     };
     // Время на пару: страница, у которой один кадр считается
     // секундами, выглядит на экране долгой пустотой и неотличима от
@@ -152,8 +153,22 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
                 }
             });
         }
+        if let Some(report) = stage.degradation.take() {
+            let limit = report.degradation.expect("recorded degraded report");
+            let line = format!("{test}|{reference}|{} {report:?}\n", limit.code());
+            eprint!("{line}");
+            engine_report.push_str(&line);
+            let _ = std::fs::write(format!("{report_path}.engine"), &engine_report);
+        }
         let errors = stage.frame_errors.take();
-        let verdict = if errors.is_empty() {
+        let verdict = if let Some(failure) = stage.document_failure.take() {
+            format!(
+                "ERROR engine {} {:?} {:?}",
+                failure.code(),
+                failure.reason,
+                failure.report
+            )
+        } else if errors.is_empty() {
             first_failure.unwrap_or(final_verdict)
         } else {
             format!("ERROR first-frame != settled: {}", errors.join(", "))

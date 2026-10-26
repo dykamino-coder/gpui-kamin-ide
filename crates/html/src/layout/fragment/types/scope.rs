@@ -60,11 +60,11 @@ impl RenderOpts {
 
     /// Забрать внешнюю последовательность, адресованную этому элементу: она и
     /// настройки без неё для всего, что строится внутри.
-    pub(crate) fn take_outer_space(&self) -> (Option<Rc<Nested>>, Option<RenderOpts>) {
+    pub(crate) fn take_outer_space(&self) -> (Option<Rc<Nested>>, Option<Box<RenderOpts>>) {
         match self.frag.outer_space.clone() {
             None => (None, None),
             Some(row) => {
-                let mut inner = self.clone();
+                let mut inner = Box::new(self.clone());
                 inner.frag.outer_space = None;
                 (Some(row), Some(inner))
             }

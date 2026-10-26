@@ -46,7 +46,7 @@ pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
 fn ordinary(style: &Computed) -> bool {
     matches!(style.display, None | Some(Display::Block))
         && !matches!(style.position, Some(Position::Absolute | Position::Fixed))
-        && !style.float.is_some_and(|v| v != 0)
+        && style.float.is_none_or(|v| v == 0)
         && !style.ortho_col
 }
 

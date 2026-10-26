@@ -144,7 +144,6 @@ impl ColumnStack {
                     forced_h,
                     balance_failure,
                     fill_shrink,
-                    rule: None,
                     rule_to: None,
                     rows,
                     copies,

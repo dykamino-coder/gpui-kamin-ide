@@ -1,77 +1,10 @@
 //! Предраскладка фрагментов колонок и линеек промежутков.
 
-use crate::layout::fragment::fragment_mask;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
-use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
-    pub(super) fn paint_column_rules(&mut self, window: &mut Window, bounds: Bounds<Pixels>) {
-        if let Some((rw, color)) = self.rule {
-            let col_w = self.col_w.get();
-            let rows = self.lines_plan.borrow().clone();
-            // css-multicol-1 §4 (`column-rule`): «Column rules are only drawn
-            // between two columns that both have content». Занятость — по
-            // плану укладки: наибольшая колонка линии с НЕнулевым куском
-            // (щуп статической позиции абсолюта — кусок нулевой высоты).
-            // `grid-container-fragmentation-007/008`: 3 колонки из 5, лишние
-            // линейки в 3-м и 4-м промежутках — 0.83 %. Без рядов (и при
-            // `nowrap`) все колонки — одна линия, переполняющие тоже в ней.
-            let wrap = matches!(self.rows, Some(r) if r.wrap);
-            let used: Vec<usize> = {
-                let plan = self.plan.borrow();
-                (0..rows.len())
-                    .map(|l| {
-                        plan.iter()
-                            .filter(|f| {
-                                f.h > COORD_EPS && (if wrap { f.col / self.count } else { 0 }) == l
-                            })
-                            .map(|f| if wrap { f.col % self.count } else { f.col } + 1)
-                            .max()
-                            .unwrap_or(0)
-                    })
-                    .collect()
-            };
-            let last = rows.len().saturating_sub(1);
-            for (l, &(ry, rh)) in rows.iter().enumerate() {
-                let rh = match self.rule_to {
-                    Some(to) if l == last && self.rows.is_none_or(|r| r.cap) => rh.max(to - ry),
-                    _ => rh,
-                };
-                for i in 1..used.get(l).copied().unwrap_or(0).min(self.count) {
-                    let cx_ = i as f32 * (col_w + self.gap) - self.gap * 0.5;
-                    window.paint_quad(gpui::fill(
-                        fragment_mask::snap(
-                            Bounds {
-                                origin: point(
-                                    bounds.origin.x + px(cx_ - rw * 0.5),
-                                    bounds.origin.y + px(ry),
-                                ),
-                                size: size(px(rw), px(rh)),
-                            },
-                            window.scale_factor(),
-                        )
-                        .bounds,
-                        color,
-                    ));
-                }
-            }
-        }
-    }
-
-    pub(super) fn prepaint_gap_items(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        col_w: f32,
-        plan: &[Frag],
-        spans: &[(usize, f32)],
-        step: f32,
-    ) {
-        let _ = step;
-        self.collect_gap_geometry(bounds, col_w, plan, spans);
-    }
-
     pub(super) fn prepaint_frags(
         &mut self,
         window: &mut Window,

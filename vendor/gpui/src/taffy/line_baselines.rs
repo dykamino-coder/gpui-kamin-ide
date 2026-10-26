@@ -21,7 +21,9 @@ impl TaffyLayoutEngine {
         ) + 'static,
     ) -> LayoutId {
         self.request_measured_layout_with_physical_baselines(
-            style, rem_size, scale_factor,
+            style,
+            rem_size,
+            scale_factor,
             move |known, available, window, cx| measure(known, available, window, cx).into(),
         )
     }
@@ -33,11 +35,17 @@ impl TaffyLayoutEngine {
         rem_size: Pixels,
         scale_factor: f32,
         mut measure: impl FnMut(
-            Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App,
-        ) -> MeasuredContent + 'static,
+            Size<Option<Pixels>>,
+            Size<AvailableSpace>,
+            &mut Window,
+            &mut App,
+        ) -> MeasuredContent
+        + 'static,
     ) -> LayoutId {
         self.request_measured_layout_with_box(
-            style, rem_size, scale_factor,
+            style,
+            rem_size,
+            scale_factor,
             move |known, available, _, window, cx| measure(known, available, window, cx),
         )
     }
@@ -49,8 +57,13 @@ impl TaffyLayoutEngine {
         rem_size: Pixels,
         scale_factor: f32,
         measure: impl FnMut(
-            Size<Option<Pixels>>, Size<AvailableSpace>, MeasuredBox, &mut Window, &mut App,
-        ) -> MeasuredContent + 'static,
+            Size<Option<Pixels>>,
+            Size<AvailableSpace>,
+            MeasuredBox,
+            &mut Window,
+            &mut App,
+        ) -> MeasuredContent
+        + 'static,
     ) -> LayoutId {
         // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
         let taffy_style = {

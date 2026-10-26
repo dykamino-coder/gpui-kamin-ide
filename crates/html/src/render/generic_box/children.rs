@@ -1,7 +1,7 @@
 //! Сборка детей общей коробки: ортогональные оси, clamp и контексты окраски.
 
 use crate::layout::options::RenderOpts;
-use crate::render::blocks::blocks;
+use crate::render::blocks::blocks_stack;
 mod formatting_context;
 mod probes;
 pub(crate) use probes::child_probes;
@@ -11,7 +11,7 @@ use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline
 use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
 use crate::layout::grid::place_named_areas;
-use crate::layout::multicol::gap_rules::decorated_children;
+use crate::layout::multicol::gap_rules::prepare_children;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::replaced::limits::auto_clamp_limit;
@@ -23,7 +23,8 @@ use gpui::{AnyElement, IntoElement, ParentElement};
 use std::borrow::Cow;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn generic_children(
+pub(crate) async fn generic_children(
+    stk: &mut reblessive::Stk,
     e: &Element,
     d: gpui::Div,
     merged: BoxStyle,
@@ -37,8 +38,8 @@ pub(crate) fn generic_children(
         Cow::Borrowed(children)
     } else {
         let children = match &e.style.used().grid_areas {
-            Some(areas) => place_named_areas(areas, e.children.clone()),
-            None => e.children.clone(),
+            Some(areas) => place_named_areas(areas, e.children.to_vec()),
+            None => e.children.to_vec(),
         };
         // Resolve physical margins before preparing the vertical formatting context.
         let children = if merged.wm().vertical() {
@@ -168,7 +169,9 @@ pub(crate) fn generic_children(
     let viewport = e.tag == "html-viewport";
     let viewport_scope = viewport
         .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state));
-    kids.extend(decorated_children(e, &merged, opts, |opts| {
+    let (mut decorated, decorated_opts) = prepare_children(e, &merged, opts);
+    {
+        let opts = &decorated_opts;
         // A clamp container establishes an independent formatting context
         // (CSS Overflow 4 section continue; Blink LineClampData). blocks()
         // receives only Computed, whose inherited clamp value cannot identify
@@ -179,8 +182,11 @@ pub(crate) fn generic_children(
             formatting.flow_root = Some(true);
             formatting
         });
-        blocks(&children, formatting.as_ref().unwrap_or(&merged), opts)
-    }));
+        decorated.extend(
+            blocks_stack(stk, &children, formatting.as_ref().unwrap_or(&merged), opts).await,
+        );
+    }
+    kids.extend(decorated);
     if let Some(scope) = viewport_scope {
         kids.extend(scope.finish());
     }

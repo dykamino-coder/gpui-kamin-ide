@@ -3,8 +3,6 @@
 //! пробела ASCII (css-values-4 §6.1.4, css-text-3 §tab-size: ноль вместо `1ic` ронял
 //! `tab-size: 1ic` в запасные восемь пробелов).
 
-use super::{ch_ex_px, ic_px};
-
 /// Межбуквенный и межсловный интервал в точках.
 ///
 /// Единицы шрифта (`ch`, `ex`) сюда входят наравне с `em`: пока они молча
@@ -17,16 +15,7 @@ pub fn spacing_px(
     size_px: f32,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> f32 {
-    use crate::style::values::value::Len;
-    let (ch, ex) = ch_ex_px(family, size_px, vcx);
-    match len {
-        Some(Len::Px(v)) => v,
-        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size_px,
-        Some(Len::Ch(k)) => k * ch,
-        Some(Len::Ex(k)) => k * ex,
-        Some(Len::Ic(k)) => k * ic_px(family, size_px, vcx),
-        _ => 0.0,
-    }
+    crate::style::font_metrics::spacing_px(len, family, size_px, vcx)
 }
 
 #[cfg(test)]

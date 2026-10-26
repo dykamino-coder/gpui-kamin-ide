@@ -76,8 +76,11 @@ impl CssWide {
 /// откладывается до вычисления (css-variables-1 §3, css-values-5 §7.7).
 pub fn has_substitution(value: &str) -> bool {
     crate::style::css::variable_values::has_var(value)
-        || value.contains("attr(")
-        || value.contains("sibling-")
+        || crate::css_syntax::functions(value).any(|f| {
+            ["attr", "sibling-index", "sibling-count"]
+                .iter()
+                .any(|name| f.name.eq_ignore_ascii_case(name))
+        })
 }
 
 /// Заданное значение объявления в блоке (css-cascade-5 §4: «declared

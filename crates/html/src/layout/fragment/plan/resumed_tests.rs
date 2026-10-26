@@ -134,3 +134,54 @@ fn page(height: f32) -> crate::layout::fragment::token::Space {
         ..crate::layout::fragment::token::Space::pages()
     }
 }
+
+#[test]
+fn structural_overflow_before_a_paragraph_reserves_every_physical_page() {
+    use crate::layout::fragment::flow::{ContentLine, inline};
+    let geometry = inline::Geometry {
+        barriers: vec![(0.0, 350.0)],
+        paragraphs: vec![inline::Inline {
+            scope: Vec::new(),
+            lines: vec![ContentLine {
+                paragraph: 0,
+                byte: 0,
+                state: crate::layout::fragment::line_shape::line_state("x", 0, 0, false).unwrap(),
+                top: 350.0,
+                bottom: 360.0,
+                prefix: 0.0,
+                consumed_before: 0.0,
+            }],
+            orphans: 2,
+            widows: 2,
+        }],
+        ..Default::default()
+    };
+    let (pages, _, plan) = fill_resumed(
+        &[Kid {
+            h: 360.0,
+            solid: geometry.barriers.clone(),
+            cuts: vec![(350.0, 350.0), (360.0, 360.0)],
+            ..Default::default()
+        }],
+        &|_| page(100.0),
+        Space::pages(8),
+        &|_, _| None,
+        &mut |_| super::Measurement {
+            inline: geometry.clone(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(pages, 4);
+    assert_eq!(
+        plan.iter()
+            .map(|f| (f.col, f.from, f.h))
+            .collect::<Vec<_>>(),
+        [
+            (0, 0.0, 100.0),
+            (1, 100.0, 100.0),
+            (2, 200.0, 100.0),
+            (3, 300.0, 60.0)
+        ]
+    );
+}

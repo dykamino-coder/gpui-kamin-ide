@@ -47,7 +47,7 @@ pub(crate) fn flush_inline(
                 host.style.used_mut().marker_text = None;
                 host.style.used_mut().marker_layer = None;
             }
-            host.children = Vec::new();
+            host.children = Vec::new().into();
             super::drop_inline_side(host.style.used_mut(), drop);
             hosts.push(out.len());
             out.push(Node::Element(anon_element(
@@ -64,7 +64,7 @@ pub(crate) fn flush_inline(
         host.style.used_mut().marker_text = None;
         host.style.used_mut().marker_layer = None;
     }
-    host.children = std::mem::take(piece);
+    host.children = std::mem::take(piece).into();
     hosts.push(out.len());
     out.push(Node::Element(anon_element(
         "anon-block",

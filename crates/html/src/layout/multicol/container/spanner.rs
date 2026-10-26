@@ -57,7 +57,7 @@ pub(crate) fn multicol_spanner_segments(
             span_prev = None;
             seg_open = true;
             let mut seg = e.clone();
-            seg.children = body.to_vec();
+            seg.children = body.to_vec().into();
             seg.style.used_mut().column_span = None;
             // Одна колонка со спаннером (`lone_span`) — ряд рисуется
             // обычным блоком: `column_flow` спускается в

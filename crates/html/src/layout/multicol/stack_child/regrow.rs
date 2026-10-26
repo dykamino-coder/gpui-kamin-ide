@@ -60,7 +60,7 @@ impl Measured {
         if regrows {
             let merged = merged.clone();
             let (h, over) = sizes;
-            let build = move |dom: &Element, part: usize, opts_b: &RenderOpts| {
+            let build = move |dom: &Element, part: usize, band: bool, opts_b: &RenderOpts| {
                 let vcx = opts_b.cx.vcx();
                 let mut inner = box_style(&merged, &dom.style, vcx);
                 inner.fragment_clip_ancestor = false;
@@ -70,10 +70,12 @@ impl Measured {
                     .watch
                     .as_ref()
                     .expect("regrow records its watch");
-                opts.frag.watch = Some(if part == 0 {
-                    watched.clone()
-                } else {
-                    watched.for_part(part)
+                opts.frag.watch = (!band).then(|| {
+                    if part == 0 {
+                        watched.clone()
+                    } else {
+                        watched.for_part(part)
+                    }
                 });
                 let el = build_copy(
                     &opts,
@@ -90,9 +92,9 @@ impl Measured {
                     0.0,
                     &inner,
                     false,
-                    part == 0,
+                    part == 0 && !band,
                     part,
-                    false,
+                    band,
                 );
                 side_margin_wrap(el, dom, col_vert)
             };

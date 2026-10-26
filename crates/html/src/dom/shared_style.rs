@@ -5,8 +5,12 @@
 //! общими для всех копий элемента (Blink: `LayoutObject::Style()` — неизменяемый вычисленный стиль;
 //! Servo: `Arc<ComputedValues>`).
 
+use crate::box_facts::BoxContext;
+use crate::style::ComputedHandle;
+use crate::style::box_input::BoxStyleInput;
 use crate::style::cascade::materialize::ComputedSlot;
-use crate::style::computed::Computed;
+use crate::style::computed::writing_mode::WritingMode;
+use crate::style::computed::{Align, Computed};
 use std::rc::Rc;
 
 /// The style of an element by value stage. Copies of an element share all
@@ -19,6 +23,8 @@ pub struct SharedStyle {
     computed: ComputedSlot,
     /// Layout's used values: a copy of the computed style that layout edited.
     used: Option<Rc<Computed>>,
+    /// Факты коробки в существующем layout-made мосте до A07.
+    box_context: Option<Rc<BoxContext<WritingMode, Align>>>,
 }
 
 impl From<Computed> for SharedStyle {
@@ -27,6 +33,19 @@ impl From<Computed> for SharedStyle {
             cascaded: Rc::new(style),
             computed: ComputedSlot::default(),
             used: None,
+            box_context: None,
+        }
+    }
+}
+
+// Стиль приходит из каскада уже в куче: не переносить его через кадр обхода.
+impl From<Box<Computed>> for SharedStyle {
+    fn from(style: Box<Computed>) -> Self {
+        Self {
+            cascaded: Rc::from(style),
+            computed: ComputedSlot::default(),
+            used: None,
+            box_context: None,
         }
     }
 }
@@ -57,9 +76,10 @@ impl SharedStyle {
     }
 
     /// Edit the cascaded style (cascade and document preparation, before
-    /// materialization): drops the computed style and layout's values.
+    /// materialization): drops computed/used values, retaining the element's
+    /// completed container-size input across render-time style copies.
     pub(crate) fn cascaded_mut(&mut self) -> &mut Computed {
-        self.computed = ComputedSlot::default();
+        self.computed.invalidate();
         self.used = None;
         Rc::make_mut(&mut self.cascaded)
     }
@@ -67,6 +87,12 @@ impl SharedStyle {
     /// The materialization slot of the cascaded style.
     pub(crate) fn slot(&self) -> &ComputedSlot {
         &self.computed
+    }
+
+    /// Неизменяемая computed-стадия после материализации. Синтетика без
+    /// materialized slot возвращает None, а не каскад или used-копию.
+    pub(crate) fn published(&self) -> Option<ComputedHandle> {
+        self.computed.published()
     }
 
     /// The element's computed style (css-cascade-5 §4.4): the style materialized
@@ -79,10 +105,31 @@ impl SharedStyle {
 
     /// The style layout reads (css-cascade-5 §4.5): the computed style with
     /// layout's used values (`used_mut`) laid over it.
-    pub fn used(&self) -> Rc<Computed> {
-        match &self.used {
+    pub fn used(&self) -> BoxStyleInput {
+        let style = match &self.used {
             Some(used) => used.clone(),
             None => self.base(),
+        };
+        BoxStyleInput::new(style, self.box_context.clone())
+    }
+
+    /// Сохраняет факты существующей синтетической коробки до A07.
+    pub(crate) fn set_box_context(&mut self, context: Rc<BoxContext<WritingMode, Align>>) {
+        self.box_context = Some(context);
+    }
+
+    /// The style of an element that layout made from a box style (a copy styled
+    /// for a fragment, a dissolved `display: contents` child): its values are
+    /// computed already and become its only stage.
+    ///
+    /// TRANSITIONAL(cascade-7b-layout-made): layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle.
+    pub(crate) fn layout_made(input: impl Into<BoxStyleInput>) -> Self {
+        let BoxStyleInput { style, context } = input.into();
+        Self {
+            cascaded: style,
+            computed: ComputedSlot::default(),
+            used: None,
+            box_context: context,
         }
     }
 
@@ -124,22 +171,17 @@ mod tests {
             &Rc::new(Computed::default()),
             vcx,
         );
-        fn find(nodes: &[crate::dom::Node]) -> Option<&crate::dom::Element> {
-            nodes.iter().find_map(|n| match n {
-                crate::dom::Node::Element(e) if e.tag == "div" => Some(e),
-                crate::dom::Node::Element(e) => find(&e.children),
-                _ => None,
-            })
-        }
-        let original = &find(&parsed.nodes).unwrap().style;
+        let original = &crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "div")
+            .unwrap()
+            .style;
         let mut copy = original.clone();
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
         copy.used_mut().width = Some(Len::Px(100.0));
         assert_eq!(original.used().width, Some(Len::Pct(0.5)));
         assert_eq!(copy.used().width, Some(Len::Px(100.0)));
-        // The computed stage is the materialized style, without the used value.
+        // Вычисленная стадия хранит материализованный стиль без used-значения.
         assert_eq!(copy.computed().width, Some(Len::Pct(0.5)));
-        // Neither the cascaded nor the materialized computed style changed.
+        // Каскадный и материализованный вычисленный стили не изменились.
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
         assert!(Rc::ptr_eq(
             &original.slot().any().unwrap(),

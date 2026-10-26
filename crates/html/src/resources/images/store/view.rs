@@ -10,6 +10,16 @@ pub(crate) struct ImageReadView<'a> {
 }
 
 impl ImageStore {
+    /// Есть запросы, ещё не загруженные или не декодированные оркестратором.
+    pub(crate) fn has_pending(&self) -> bool {
+        !self.queue.is_empty()
+            || self
+                .slots
+                .iter()
+                .filter_map(|slot| slot.entry.as_ref())
+                .any(|entry| matches!(entry.state, ImageState::Pending))
+    }
+
     /// Согласованное чтение состояния на один проход.
     pub(crate) fn snapshot(&self) -> ImageReadView<'_> {
         ImageReadView { store: self }

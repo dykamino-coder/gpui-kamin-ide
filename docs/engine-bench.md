@@ -1,0 +1,283 @@
+# Engine phase benchmark
+
+`engine_bench` measures one local document in one offscreen Windows GPUI window.
+It requires the independent `engine-bench` feature; it neither enables nor calls
+the `wpt-harness` runner, and refuses measurements if that feature is also enabled.
+It changes no engine algorithms. The standalone `crates/engine-bench` package
+has no dev-dependencies. Its binary requires the explicit package feature
+`engine-bench`; the engine dependency is optional, so ordinary workspace builds
+do not activate the timers. Its normal `gpui` and `gpui-platform` dependencies inherit
+the same workspace defaults as `crates/shell`; the installer build does not add
+Cargo features. Resolved GPUI features are `default`, `font-kit`, `wayland`,
+`windows-manifest`, `x11`; platform features are `default`, and the Windows
+backend has no enabled features. Neither `gpui/test-support` nor GPUI
+`bench-support`/`profiler` is enabled. The engine enables only `engine-bench`,
+not `wpt-harness`. The global allocator is `mimalloc`, as in the application.
+
+Build only this package: building workspace tests/examples can unify test
+features and is not a measurement build. You can inspect the normal graph with
+`cargo tree -p engine-bench --features engine-bench --edges normal,build --format "{p} FEATURES={f}"`.
+The binary also checks the engine's resolved WPT feature and refuses to measure
+if another selected package has enabled it.
+
+```powershell
+cargo build -p engine-bench --bin engine_bench --features engine-bench --profile release --target-dir target/bench
+target/bench/release/engine_bench.exe C:/pages/heavy.html --viewport 800x600 --runs 100 --mode both
+target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json --snapshot C:/results/first.png
+target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json --frame-diff-dir C:/results/frame-diffs
+```
+
+Use the release executable directly for repeated measurements. Debug builds
+refuse to measure. Defaults: 800x600 CSS pixels, device scale factor 1, 30 samples
+per mode, both modes. `--mode cold|warm|both` selects the samples. `--snapshot`
+writes the first measured frame after timing; its directory must already exist.
+Errors produce a nonzero exit status. A run is rejected if its capture has the
+wrong dimensions, document traversal degrades, or more than one frame crosses
+the sample boundary. Changing pixels are reported without rejecting the series
+or excluding any timing samples.
+
+## What is measured
+
+All durations are wall time in milliseconds, including work or waiting within
+that boundary. Schema version 2 reports a **non-overlapping partition of each
+sample's total** (`intervals_overlap: false`). The parse/style children are subtracted from
+document construction before conversion to floating-point milliseconds. All subtraction uses checked
+integer `Duration` arithmetic; inconsistent nesting fails the entire invocation,
+without clamping negative values or dropping samples. Individual medians or p90s
+need not sum to the total's median or p90.
+
+| JSON phase | Boundary and interpretation |
+| --- | --- |
+| `host_resources` | Read/decode HTML, host resource discovery, linked CSS and imports, URL rebasing and optional serialization. Includes a separate host HTML parse; it is not the engine's `parse`. Cold only. |
+| `parse` | Existing `Document::build` HTML/XML admission into the engine DOM. Cold only. |
+| `style` | Existing `dom::convert`: stylesheet processing, cascade/computed values and normalized styled box-tree construction. This includes more than selector matching. Cold only. |
+| `document_other` | Complete `Document::build` minus parse and style: key/base URL handling, resource/font preparation and viewport preparation. Cold only. |
+| `build_elements` | Root `Render::render`, including `Document::render` and GPUI element-tree construction. Engine layout preparation can occur here. |
+| `layout_request` | Root element's `request_layout`, including descendants. |
+| `layout` | Wall interval from completion of root `request_layout` to entry into root `prepaint`. GPUI computes root layout between these boundaries (`Drawable::layout_as_root`); this includes its ancestor/wrapper transitions. Nested computations during this interval count once. Custom/nested layout performed during building or prepaint stays in that calling phase, rather than being counted again. |
+| `prepaint` | Root element's `prepaint`, including descendants and any layout work deferred into this callback. |
+| `paint` | Root element's `paint`: CPU scene-command generation, including descendants. This is not GPU raster time. |
+| `raster_gpu_readback` | Existing GPUI `PRESENT_US` delta: complete `window.present`, including GPU submission/raster, synchronous readback and platform present/commit. A combined wall-time scope, **not an isolated GPU timestamp measurement**. |
+| `pipeline_other` | Total minus the disjoint phases above: frame scheduling, previous-document disposal, GPUI work outside root callbacks (including deferred work), orchestration and counter quantization. Kept explicitly so time outside measured boundaries is never silently lost or attributed to an engine algorithm. |
+| `first_frame_total` | Budget total, not an additional phase: from host loading (cold) or unchanged-frame request (warm), through completed first GPU readback and return to the async task. Excludes application/window startup, statistics, fingerprinting and PNG encoding. |
+
+`modes.<mode>.diagnostic_scopes` retains inclusive `document_build_total`,
+`cpu_draw_total`, `gpu_readback` and `taffy_inclusive`, with raw samples and
+statistics. The existing `TAFFY_US` counter includes nested layout calls and may
+count the same wall interval more than once; it is diagnostic only, never used
+to derive the additive layout phase. Its resolution is one microsecond per
+increment. These diagnostics **do overlap**
+(`diagnostic_intervals_overlap: true`) and must not be added to the phase budget.
+Readback is contained in `raster_gpu_readback`; draw contains the root lifecycle.
+No GPU timestamp or pure style/layout algorithm time is inferred from these labels.
+
+The root adapter forwards the same element layout ID and introduces no layout
+node. The only engine hooks are `Instant` measurements at existing parse/style
+boundaries, with storage owned by `Document`. Their module, fields, arguments,
+clock reads and public API are all `#[cfg(feature = "engine-bench")]`; ordinary
+builds compile them out. Enabled timers and the root adapter have measurement
+overhead, which is not subtracted. The existing GPUI counters/capture are reused
+without changing their measurement boundaries.
+
+## Cold, warm and statistics
+
+The application, font system and GPU are initialized using an empty frame.
+**Cold means a fresh document, not a fresh process or empty machine caches.**
+Each cold sample rereads resources and builds a new document. The OS file cache,
+process image/font caches, allocator and GPU remain shared across samples.
+In `both` mode, warm samples redraw the last cold document with no mutations.
+Warm-only mode prepares that document with one unreported cold frame first.
+An explicit redraw executes the lifecycle; it does not measure an idle window.
+Host resource, parse/style and document scopes are `null` for warm samples, rather than fictitious zeroes.
+
+Samples are not trimmed, rescaled or filtered. The median averages the two
+middle values for even sample counts. p90 uses nearest rank `ceil(0.9*N)`.
+JSON includes count, minimum, maximum, median, p90 and the individual samples.
+`first_frame_bgr_fnv1a64` fingerprints the first measured frame. Each subsequent
+measured frame is compared exactly against that frame's RGB bytes (alpha is
+ignored). `frame_pixels_changed` is true when any comparison differs;
+`frame_pixel_differences` records every differing frame's one-based `frame_index`
+across modes in execution order (cold, then warm), `mode`, one-based
+`sample_index` within that mode, capture sequence, changed RGB pixel count and
+`bounds_xywh` in device pixels. The rectangle bounds all changes; it is not a
+list of connected components. The warm-only preparation frame is unreported and
+does not participate in these indices. A frame that returns to baseline has no
+difference entry. All timing samples remain in the statistics.
+
+`--frame-diff-dir DIR` creates the directory and writes `frame-000001.png`, the
+first differing `frame-NNNNNN.png`, and `diff-NNNNNN.png` (absolute RGB channel
+difference, opaque alpha, unchanged pixels black). Paths accompany that frame's
+JSON entry. Only this first differing frame gets PNG artifacts; all differing
+frames get metadata. Use a fresh directory for each invocation to preserve evidence.
+Without this option, metadata is still reported. Baseline retention, exact RGB
+comparison and optional PNG encoding happen after each sample's timing ends.
+Their memory and cache effects remain part of the process environment and peak
+working set; at 800x600 the retained BGRA baseline occupies 1,920,000 bytes.
+Use saved first-frame PNGs and an independent exact RGB comparison for validation.
+Repeated-frame differences in a static document are an engine determinism finding
+to investigate separately; this harness records them without claiming a cause.
+
+Known platform limitation: Intel Iris Xe with driver 32.0.101.7085 can produce
+rare single-pixel changes on the native D3D11 hardware backend, setting
+`frame_pixels_changed` on an unchanged document (roughly one per 1,000–5,000
+frames, with workload-dependent frequency). An independent minimal C++ D3D11
+program without engine code also reproduced a missing pixel; WARP and
+D3D11On12 controls showed no differences. This identifies a driver/hardware
+defect rather than an engine cache defect. The first measured frame was
+unaffected in these runs and matched wptrun exactly. Exact RGB comparison and
+retention of all timing samples remain unchanged.
+
+`peak_working_set_bytes` is Windows `PeakWorkingSetSize` for the whole process
+since launch, queried after all samples, statistics and captures, before writing
+the final report. It is resident memory, not private committed bytes, GPU
+allocation size or a per-document allocation peak. `startup_peak_working_set_bytes` reports the high-water mark after startup;
+subtracting the two does not yield a document's peak memory. Restart the process
+to reset the high-water mark.
+
+## Inputs and limits
+
+The host supports `.html`/`.htm`, local stylesheet links, ordinary CSS imports
+(including media qualifiers), local CSS `url()` resources, images and the
+engine's local font loading. Relative stylesheet URLs keep their original base.
+Host resource preparation is reported separately. Inline CSS is otherwise left
+to the engine. Linked CSS is inserted at the link's DOM position, so discovery
+can serialize the input; this can affect selectors targeting `link`/`style` and
+is a limitation of this host. Prefer inline styles for strict cross-runner
+pixel checks. CSS import `layer`/`supports` qualifiers, escaped function names,
+network resources and nested documents are unsupported. Missing discovered
+resources fail the run. Resources referenced only by unsupported engine features
+may still be ignored by the engine. JavaScript is not executed.
+
+The host uses a white viewport, grayscale text, Times New Roman at 16px and
+normal line-height 1.31 as inherited defaults; document CSS can override text
+styles. It freezes scrollbar interaction/animation for deterministic static
+capture, matching wptrun's static rendering policy. Scrollbar painting remains;
+interactive hitboxes, hover/fade updates and input handling are not benchmarked.
+
+This is an offscreen **rendered window**, not a headless browser navigation.
+It uses Windows graphics APIs and the selected adapter, reported from the live
+D3D device as described below. Record power plan, temperature,
+display configuration and competing load beside results. There is one window,
+one document and one tab-equivalent; there is no browser UI, multi-tab contention,
+network stack timing or compositor isolation. Readback and CPU capture copies
+have measurable overhead. The total also includes refresh scheduling and may
+track display cadence. There are no shader GPU timestamps or subphase claims
+for otherwise inseparable scopes. Reuse the same fonts, viewport and build.
+
+For stability acceptance, use **N=100 samples per mode and at least three fresh
+processes per fixture** on a quiet machine, with other agents/builds stopped.
+Compare each mode/phase's process medians using `(max - min) / min`; the target is
+below 10%. Report small intervals near timer resolution explicitly. Never discard
+slow samples to satisfy a threshold. A contended-machine series is an example
+under load, not stability acceptance; repeat it in a quiet window before review.
+
+Record CPU load **beside each executable invocation**, together with its timestamp,
+build revision, power plan and raw JSON. For example, collect the OS CPU estimate
+immediately before and after each fresh process, outside its timed intervals:
+
+```powershell
+$cpuBefore = Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average
+$startedUtc = [DateTime]::UtcNow.ToString("o")
+& target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json > C:/results/run-1.json
+$benchExit = $LASTEXITCODE
+$cpuAfter = Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average
+@{ started_utc = $startedUtc; cpu_before_percent = $cpuBefore.Average;
+   cpu_after_percent = $cpuAfter.Average; exit_code = $benchExit } |
+    ConvertTo-Json > C:/results/run-1.environment.json
+```
+
+These CPU readings are OS load estimates near the run, not per-phase utilization.
+Save evidence outside the checkout. Compare the first-frame PNG against the same
+document rendered by `wptrun` at the same viewport, scale and fonts, using GPU
+first-frame capture and **exact RGB equality**. Use one fresh process per fixture
+in each host so their prior document/cache histories match.
+
+## GPU adapter selection
+
+`--gpu default|high-performance|minimum-power|NAME` selects a DXGI adapter for
+this benchmark process only. `NAME` is a case-insensitive name substring and
+must match exactly one adapter; missing or ambiguous matches fail. Omission and
+`default` keep GPUI's original `EnumAdapters` device-creation path. On the review
+machine this selects Intel Iris Xe. The application and WPT runner still create
+the default platform and do not opt into this policy.
+
+```powershell
+target/bench/release/engine_bench.exe --list-gpus
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "Iris" --json
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "RTX 4080" --json
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu high-performance --json
+```
+
+Power policies use `IDXGIFactory6::EnumAdapterByGpuPreference`; enumeration
+failure falls back to `EnumAdapters` order, with a warning. A policy is a
+preference, so inspect the actual identity before assigning a result to a GPU.
+Explicit name/LUID selections and device-creation failures never silently switch
+to another adapter. GPUI stores the typed policy on the platform/device instance
+and retains it during device recovery, without environment switches or global
+selection state. `--list-gpus` inventories hardware adapters in each policy's
+order without creating a D3D device; it does not claim a successful render.
+
+Schema version 2 adds `gpu.requested`, `gpu.luid` (`high_part`, `low_part`, `hex`),
+`gpu.vendor_id` and `gpu.device_id`. `gpu.device_name` and `gpu.driver_version`
+come from the **actual created adapter** (`GetDesc1`, `CheckInterfaceSupport`),
+alongside GPUI's existing GPU fields. The driver version uses four numeric DXGI
+components. A change of device identity during the series rejects the report.
+LUIDs identify adapters on this Windows session and should be re-enumerated after
+a reboot. Intel first-frame acceptance remains exact RGB equality with the
+default WPT runner. Save and report NVIDIA's changed-pixel count against that
+Intel reference; a cross-adapter raster difference is not a WPT verdict change.
+
+The review browser harness at `refs/browsers/harness/compare.cjs` accepts the same
+`--gpu` argument and `--gpu-probe PATH` pointing to this executable. For explicit
+selection it resolves the target through `--list-gpus`. Chrome/Edge receive
+`--use-angle=d3d11`, `--enable-gpu` and `--use-adapter-luid=HIGH,LOW` (decimal);
+`high-performance` also supplies `--force-high-performance-gpu`. After capture,
+CDP `SystemInfo.getInfo` must confirm a unique matching active vendor/device and
+an enabled hardware compositor. Unverified runs fail and retain diagnostics;
+passing a command-line flag alone is not proof of adapter selection. With
+`default`, the harness preserves the original browser flags and records GPU
+diagnostics without promising hardware acceleration.
+
+| Browser backend | Explicit adapter selection / NVIDIA comparison |
+| --- | --- |
+| Chrome, Edge | Browser flags, followed by actual GPU/compositor verification. |
+| Firefox | **Not measured: does not support adapter selection without a system setting.** `DeviceManagerDx::GetDXGIAdapterLocked` uses `EnumAdapters1(0)`. The harness reports `unsupported`, never substitutes Intel measurements into the NVIDIA column. |
+| Playwright WebKit, Servo | No supported adapter flag in these installed harness backends; `unsupported`. |
+| Blitz | This harness uses CPU offscreen raster; no GPU measurement. |
+
+Firefox's fresh temporary profile contains its own `user.js` for existing DPI
+and startup preferences; those preferences cannot select a DXGI adapter. Firefox
+selection requires Windows Graphics settings. The harness does not change those
+settings, the registry, browser installations or the owner's profiles. Browser
+milestones still differ from the engine's phase boundaries and are not a ranking.
+
+## Relation to existing profiler designs
+
+Servo's servoshell `--profile` configures a time-profiler channel. Category and
+document metadata accompany duration events; its time-profiler thread aggregates
+per-category samples and can emit tabular data or an HTML trace. See
+`ports/servoshell/prefs.rs`, `components/shared/profile/time.rs` and
+`components/profile/time.rs` in Servo. This harness similarly preserves raw
+scope samples, but specifies arithmetic even medians and p90 explicitly.
+
+Blink emits nested tracing events in categories such as `blink,blink_style`;
+`StyleEngine::UpdateStyleAndLayoutTree` records `Document::recalcStyle` and
+`Document::rebuildLayoutTree` in `third_party/blink/renderer/core/css/style_engine.cc`.
+Lighthouse's [task groups](https://github.com/GoogleChrome/lighthouse/blob/main/core/lib/tracehouse/task-groups.js)
+map `ParseHTML`/`ParseAuthorStyleSheet`, `UpdateLayoutTree`/`Layout`, and
+`PrePaint`/`Paint`/`RasterTask` into broader reporting groups. Its
+[main-thread task processor](https://github.com/GoogleChrome/lighthouse/blob/main/core/lib/tracehouse/main-thread-tasks.js)
+reconstructs nesting and computes self time by subtracting child durations.
+This harness subtracts only children with known boundaries (document parse/style),
+retaining inclusive counters separately. It does not reconstruct a general tracing timeline. Category labels do not imply pure GPU time.
+
+Gecko places profiler labels/markers at style, layout and paint boundaries, for
+example `Styles` in `layout/style/RestyleManager.cpp`, `LAYOUT_StyleComputation`
+in `layout/style/ServoStyleSet.cpp`, and paint scopes in
+`layout/base/nsLayoutUtils.cpp` and `layout/painting/nsDisplayList.cpp`. Those
+markers contextualize profiler timelines; they are not interchangeable with an
+offscreen first-frame stopwatch. This harness uses existing engine boundaries
+and capture completion rather than inventing matching category names.
+
+These are comparisons of instrumentation mechanisms, not performance results
+or claims of equivalent browser workloads.

@@ -75,6 +75,10 @@ mod css_fill_transform;
 mod plane3d;
 mod render_context;
 mod box_edges;
+// KaminIDE patch: settle layout-dependent style inputs before painting.
+mod layout_inputs;
+use layout_inputs::PrepaintRoots;
+pub use layout_inputs::LayoutInputId;
 pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
@@ -1280,6 +1284,9 @@ pub struct Window {
     long_press_timer: Option<Task<()>>,
     long_press_capture: Option<EntityId>,
     pub(crate) refreshing: bool,
+    // KaminIDE patch: a completed layout changed an input to style/layout.
+    layout_retry: bool,
+    layout_inputs: Option<FxHashSet<LayoutInputId>>,
     pub(crate) activation_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) focus: Option<FocusId>,
     /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
@@ -1570,6 +1577,7 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
 }
 
 /// KaminIDE patch: снимок контекста краски окна (см. `Window::paint_ctx`).
+#[doc = include_str!("window/paint_contract.md")]
 #[derive(Clone)]
 pub struct PaintCtx {
     element_id_stack: SmallVec<[ElementId; 32]>,
@@ -2224,6 +2232,8 @@ impl Window {
             long_press_timer: None,
             long_press_capture: None,
             refreshing: false,
+            layout_retry: false,
+            layout_inputs: None,
             activation_observers: SubscriberSet::new(),
             focus: None,
             // KaminIDE patch: см. `Window::focus_visible`
@@ -3784,9 +3794,6 @@ impl Window {
         self.tooltip_bounds.take();
 
         self.a11y.sync_active_flag();
-        if self.a11y.is_active() {
-            self.a11y.begin_frame();
-        }
 
         let _inspector_width: Pixels = rems(30.0).to_pixels(self.rem_size());
         let root_size = {
@@ -3811,46 +3818,18 @@ impl Window {
         // fill the window when their size is `auto`.
         // KaminIDE patch: стоимость фаз кадра (`frame_perf`).
         let _phase_started = std::time::Instant::now();
-        let scale_factor = self.scale_factor();
-        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
-        let root_layout_id = root_element.request_layout(self, cx);
-        self.layout_engine
-            .as_mut()
-            .unwrap()
-            .stretch_auto_size_to_fill(root_layout_id, root_size, scale_factor);
-        root_element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
+        let PrepaintRoots {
+            mut root_element,
+            #[cfg(any(feature = "inspector", debug_assertions))]
+            inspector_element,
+            prompt_element,
+            active_drag_element,
+            tooltip_element,
+        } = self.prepaint_roots_with_layout_inputs(root_size, _inspector_width, cx);
         crate::frame_perf::PREPAINT_US.fetch_add(
             _phase_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
-
-        #[cfg(any(feature = "inspector", debug_assertions))]
-        let inspector_element = self.prepaint_inspector(_inspector_width, cx);
-
-        self.prepaint_deferred_draws(cx);
-
-        let mut prompt_element = None;
-        let mut active_drag_element = None;
-        let mut tooltip_element = None;
-        if let Some(prompt) = self.prompt.take() {
-            let mut element = prompt.view.any_view().into_any_element();
-            let prompt_layout_id = element.request_layout(self, cx);
-            self.layout_engine
-                .as_mut()
-                .unwrap()
-                .stretch_auto_size_to_fill(prompt_layout_id, root_size, scale_factor);
-            element.prepaint_as_root(Point::default(), root_size.into(), self, cx);
-            prompt_element = Some(element);
-            self.prompt = Some(prompt);
-        } else if let Some(active_drag) = cx.active_drag.take() {
-            let mut element = active_drag.view.clone().into_any_element();
-            let offset = self.mouse_position() - active_drag.cursor_offset;
-            element.prepaint_as_root(offset, AvailableSpace::min_size(), self, cx);
-            active_drag_element = Some(element);
-            cx.active_drag = Some(active_drag);
-        } else {
-            tooltip_element = self.prepaint_tooltip(cx);
-        }
 
         let _hit_started = std::time::Instant::now();
         self.mouse_hit_test = self.next_frame.hit_test(self.mouse_position);
@@ -4262,6 +4241,34 @@ impl Window {
         }
     }
 
+    /// Apply borrowed text and overflow context together during child drawing.
+    pub(crate) fn with_child_style<R>(
+        &mut self,
+        style: &Style,
+        bounds: Bounds<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+        let has_text = style.text_style().is_some();
+        if let Some(text) = style.text_style() {
+            self.push_text_style_ref(text);
+        }
+        let has_mask = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
+        let result = f(self);
+        if has_mask {
+            self.content_mask_stack.pop();
+        }
+        if has_text {
+            self.text_style_stack.pop();
+        }
+        result
+    }
+
+    #[inline(never)]
+    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
+        self.text_style_stack.push(style.clone());
+    }
+
     /// Updates the cursor style at the platform level. This method should only be called
     /// during the paint phase of element drawing.
     pub fn set_cursor_style(&mut self, style: CursorStyle, hitbox: &Hitbox) {
@@ -4306,6 +4313,17 @@ impl Window {
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
+        let has_mask = self.push_content_mask(mask);
+        let result = f(self);
+        if has_mask {
+            self.content_mask_stack.pop();
+        }
+        result
+    }
+
+    // Prepare mask temporaries before entering the recursive child traversal.
+    #[inline(never)]
+    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> bool {
         if let Some(mask) = mask {
             // KaminIDE patch: под `with_transformation_masked` маска ребёнка
             // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -4318,18 +4336,16 @@ impl Window {
             }
             .intersect(&self.content_mask());
             self.content_mask_stack.push(mask);
-            let result = f(self);
-            self.content_mask_stack.pop();
-            result
+            true
         } else {
-            f(self)
+            false
         }
     }
 
-    /// KaminIDE patch: снимок контекста краски — всё, что `paint` предков
-    /// кладёт в окно вокруг ребёнка (маски, прозрачность, стиль текста,
-    /// преобразования, путь id). Перенесённый ребёнок (`PaintLast` в
-    /// собирателе) рисуется позже ровно в том окружении, где стоял.
+    /// KaminIDE patch: снимок общего окружения краски: маски, прозрачность,
+    /// стиль текста, преобразования, путь id и typed host contexts.
+    /// Растровая привязка текста хранится отдельно в `text_paint_ctx`.
+    /// Ограничения времени жизни и replay описаны в [`PaintCtx`].
     pub fn paint_ctx(&self) -> PaintCtx {
         PaintCtx {
             element_id_stack: self.element_id_stack.clone(),
@@ -4349,6 +4365,11 @@ impl Window {
 
     /// KaminIDE patch: выполнить `f` в снятом `paint_ctx` окружении и вернуть
     /// прежнее.
+    ///
+    /// Вызывающий сохраняет принадлежность тому же окну, кадру и открытой
+    /// композиционной группе. Сейчас это предусловие, а не проверка API.
+    /// Typed host contexts восстанавливаются и при unwind; остальные поля
+    /// восстанавливаются только при нормальном возврате (см. [`PaintCtx`]).
     pub fn with_paint_ctx<R>(
         &mut self,
         mut ctx: PaintCtx,
@@ -6104,6 +6125,17 @@ impl Window {
     pub fn request_layout(
         &mut self,
         style: Style,
+        children: impl IntoIterator<Item = LayoutId>,
+        cx: &mut App,
+    ) -> LayoutId {
+        self.request_layout_ref(&style, children, cx)
+    }
+
+    /// KaminIDE patch: borrow the style so recursive elements need not move it on the stack.
+    #[must_use]
+    pub fn request_layout_ref(
+        &mut self,
+        style: &Style,
         children: impl IntoIterator<Item = LayoutId>,
         cx: &mut App,
     ) -> LayoutId {
