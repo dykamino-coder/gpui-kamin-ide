@@ -1,6 +1,6 @@
 //! Точность raster consumers: подложки, явная геометрия и выбор полей replay.
 
-use super::draw;
+use super::draw_at_scale;
 use crate::text::raster::{Background, ReplicatedBackground, background_offset};
 use gpui::{
     Bounds, ChildPaintContext, RasterFrame, Style, TransformationMatrix, canvas, point, px, size,
@@ -12,7 +12,7 @@ use std::{
 
 #[test]
 fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
-    draw(|| {
+    draw_at_scale(Some(1.0), || {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
@@ -88,7 +88,7 @@ fn raster_replay_retains_host_identity_while_general_replay_inherits_caller() {
 
 #[test]
 fn replicated_table_fill_and_transparent_child_retain_containing_text_frame() {
-    draw(|| {
+    draw_at_scale(Some(1.0), || {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
@@ -153,7 +153,7 @@ fn replicated_table_fill_and_transparent_child_retain_containing_text_frame() {
 
 #[test]
 fn fill_consumer_uses_matching_unsnapped_transform_at_fractional_edges() {
-    draw(|| {
+    draw_at_scale(Some(1.0), || {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {

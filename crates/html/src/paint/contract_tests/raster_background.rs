@@ -1,12 +1,12 @@
 //! Выбор ближайшей содержащей подложки в совпадающей системе координат.
 
-use super::draw;
+use super::draw_at_scale;
 use crate::text::raster::background_offset;
 use gpui::{Bounds, ChildPaintContext, Style, TransformationMatrix, canvas, point, px, size};
 
 #[test]
 fn text_frame_search_skips_outside_bounds_and_different_transforms() {
-    draw(|| {
+    draw_at_scale(Some(1.0), || {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
@@ -84,7 +84,7 @@ fn box_child_callback_selects_background_inside_existing_opacity_scope() {
     {
         let painted = Rc::new(Cell::new(false));
         let observed = painted.clone();
-        draw(|| {
+        draw_at_scale(Some(1.0), || {
             let child = canvas(
                 |_, _, _| (),
                 move |_, (), window, _| {
@@ -117,7 +117,7 @@ fn background_scope_unwind_restores_outer_raster_identity() {
         rc::Rc,
     };
 
-    draw(|| {
+    draw_at_scale(Some(1.0), || {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
