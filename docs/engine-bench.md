@@ -77,7 +77,7 @@ boundaries, with storage owned by `Document`. Their module, fields, arguments,
 clock reads and public API are all `#[cfg(feature = "engine-bench")]`; ordinary
 builds compile them out. Enabled timers and the root adapter have measurement
 overhead, which is not subtracted. The existing GPUI counters/capture are reused
-without changing vendor code.
+without changing their measurement boundaries.
 
 ## Cold, warm and statistics
 
@@ -155,9 +155,8 @@ capture, matching wptrun's static rendering policy. Scrollbar painting remains;
 interactive hitboxes, hover/fade updates and input handling are not benchmarked.
 
 This is an offscreen **rendered window**, not a headless browser navigation.
-It uses Windows graphics APIs and the currently selected adapter. On the review
-machine that is an Intel iGPU: JSON includes adapter/driver data when GPUI can
-provide it (otherwise `gpu` is null). Record power plan, temperature,
+It uses Windows graphics APIs and the selected adapter, reported from the live
+D3D device as described below. Record power plan, temperature,
 display configuration and competing load beside results. There is one window,
 one document and one tab-equivalent; there is no browser UI, multi-tab contention,
 network stack timing or compositor isolation. Readback and CPU capture copies
@@ -192,6 +191,65 @@ Save evidence outside the checkout. Compare the first-frame PNG against the same
 document rendered by `wptrun` at the same viewport, scale and fonts, using GPU
 first-frame capture and **exact RGB equality**. Use one fresh process per fixture
 in each host so their prior document/cache histories match.
+
+## GPU adapter selection
+
+`--gpu default|high-performance|minimum-power|NAME` selects a DXGI adapter for
+this benchmark process only. `NAME` is a case-insensitive name substring and
+must match exactly one adapter; missing or ambiguous matches fail. Omission and
+`default` keep GPUI's original `EnumAdapters` device-creation path. On the review
+machine this selects Intel Iris Xe. The application and WPT runner still create
+the default platform and do not opt into this policy.
+
+```powershell
+target/bench/release/engine_bench.exe --list-gpus
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "Iris" --json
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu "RTX 4080" --json
+target/bench/release/engine_bench.exe C:/pages/heavy.html --gpu high-performance --json
+```
+
+Power policies use `IDXGIFactory6::EnumAdapterByGpuPreference`; enumeration
+failure falls back to `EnumAdapters` order, with a warning. A policy is a
+preference, so inspect the actual identity before assigning a result to a GPU.
+Explicit name/LUID selections and device-creation failures never silently switch
+to another adapter. GPUI stores the typed policy on the platform/device instance
+and retains it during device recovery, without environment switches or global
+selection state. `--list-gpus` inventories hardware adapters in each policy's
+order without creating a D3D device; it does not claim a successful render.
+
+Schema version 2 adds `gpu.requested`, `gpu.luid` (`high_part`, `low_part`, `hex`),
+`gpu.vendor_id` and `gpu.device_id`. `gpu.device_name` and `gpu.driver_version`
+come from the **actual created adapter** (`GetDesc1`, `CheckInterfaceSupport`),
+alongside GPUI's existing GPU fields. The driver version uses four numeric DXGI
+components. A change of device identity during the series rejects the report.
+LUIDs identify adapters on this Windows session and should be re-enumerated after
+a reboot. Intel first-frame acceptance remains exact RGB equality with the
+default WPT runner. Save and report NVIDIA's changed-pixel count against that
+Intel reference; a cross-adapter raster difference is not a WPT verdict change.
+
+The review browser harness at `refs/browsers/harness/compare.cjs` accepts the same
+`--gpu` argument and `--gpu-probe PATH` pointing to this executable. For explicit
+selection it resolves the target through `--list-gpus`. Chrome/Edge receive
+`--use-angle=d3d11`, `--enable-gpu` and `--use-adapter-luid=HIGH,LOW` (decimal);
+`high-performance` also supplies `--force-high-performance-gpu`. After capture,
+CDP `SystemInfo.getInfo` must confirm a unique matching active vendor/device and
+an enabled hardware compositor. Unverified runs fail and retain diagnostics;
+passing a command-line flag alone is not proof of adapter selection. With
+`default`, the harness preserves the original browser flags and records GPU
+diagnostics without promising hardware acceleration.
+
+| Browser backend | Explicit adapter selection / NVIDIA comparison |
+| --- | --- |
+| Chrome, Edge | Browser flags, followed by actual GPU/compositor verification. |
+| Firefox | **Not measured: does not support adapter selection without a system setting.** `DeviceManagerDx::GetDXGIAdapterLocked` uses `EnumAdapters1(0)`. The harness reports `unsupported`, never substitutes Intel measurements into the NVIDIA column. |
+| Playwright WebKit, Servo | No supported adapter flag in these installed harness backends; `unsupported`. |
+| Blitz | This harness uses CPU offscreen raster; no GPU measurement. |
+
+Firefox's fresh temporary profile contains its own `user.js` for existing DPI
+and startup preferences; those preferences cannot select a DXGI adapter. Firefox
+selection requires Windows Graphics settings. The harness does not change those
+settings, the registry, browser installations or the owner's profiles. Browser
+milestones still differ from the engine's phase boundaries and are not a ranking.
 
 ## Relation to existing profiler designs
 

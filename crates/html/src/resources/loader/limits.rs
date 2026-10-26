@@ -4,9 +4,9 @@ use std::io::Read;
 
 // Это предел ресурса до декодирования изображения/шрифта, не бюджет raster-кэша.
 // Большие шрифты и изображения не должны упираться в лимит внешнего use (16 МиБ).
-pub(super) const RESOURCE_BYTES: usize = 256 * 1024 * 1024;
+pub(super) const RESOURCE_BYTES: usize = crate::budget::DocumentLimits::RESOURCE_BYTES as usize;
 // Процентное кодирование расширяет каждый байт втрое; заголовок учитывается отдельно.
-pub(super) const DATA_URL_BYTES: usize = 3 * RESOURCE_BYTES + 4096;
+pub(super) const DATA_URL_BYTES: usize = crate::budget::DocumentLimits::DATA_URL_BYTES as usize;
 
 pub(super) fn read(mut reader: impl Read, limit: usize) -> Result<Vec<u8>, LoadError> {
     let mut bytes = Vec::new();
