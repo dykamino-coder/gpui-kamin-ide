@@ -42,7 +42,7 @@ pub(crate) fn canvas_layer(
     .flatten()
     .map(|image| Computed {
         bg_image: Some(image),
-        ..(*st).clone()
+        ..(**st).clone()
     });
     if let Some(g) = st
         .gradient
@@ -232,7 +232,7 @@ pub(crate) fn canvas_layer(
                 .bottom_0()
                 .child(layer)
                 .into_any_element(),
-            &clip,
+            &crate::style::computed::BoxStyle::new(clip),
             vcx,
         );
     }
