@@ -100,7 +100,7 @@ fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &m
         plan.completion,
         crate::layout::fragment::plan::Completion::Complete
     );
-    assert_eq!(plan.last().unwrap().col, 61);
+    assert_eq!(plan.iter().map(|f| f.col).max(), Some(61));
     #[cfg(feature = "wpt-harness")]
     assert!(
         opts.frag
