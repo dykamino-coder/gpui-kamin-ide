@@ -12,9 +12,11 @@ pub(super) fn parse_document(
     base: Option<&url::Url>,
     media: Media,
     fonts: &crate::text::metrics::FontContext,
+    revision: crate::budget::RevisionBudget,
     #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
     let state = DocState::new(media);
+    state.budget.replace(Some(revision));
     state.images.borrow_mut().set_base(base.cloned());
     let vcx = state.values();
     fonts.install(vcx);

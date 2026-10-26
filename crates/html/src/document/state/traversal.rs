@@ -8,7 +8,7 @@ use std::cell::{Cell, RefCell};
 
 /// Предел построения коробок: 2 × 1026, как nsCSSFrameConstructor Gecko.
 /// Исходный DOM этим пределом не ограничен.
-pub(crate) const MAX_DEPTH: usize = 2052;
+pub(crate) const MAX_DEPTH: usize = crate::budget::DocumentLimits::BOX_DEPTH;
 
 #[derive(Default)]
 pub(crate) struct TraversalState {

@@ -142,12 +142,21 @@ pub(super) async fn run(
     window: WindowHandle<View>,
     fonts: &FontContext,
     args: &Args,
+    platform: &gpui_windows::WindowsPlatform,
 ) -> Result<()> {
     // Пустой стартовый кадр и инициализация GPU не входят в document-cold.
     let seq = frame_capture::sequence();
     window.update(cx, |_, window, _| window.refresh())?;
     wait(cx, seq).await?;
-    let gpu = window.update(cx, |_, window, _| window.gpu_specs())?;
+    let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
+    let identity = platform.gpu_adapter_info()?;
+    gpu["requested"] = json!(args.gpu);
+    gpu["device_name"] = json!(identity.device_name);
+    gpu["driver_version"] = json!(identity.driver_version);
+    gpu["luid"] = json!({"high_part": identity.luid_high_part, "low_part": identity.luid_low_part,
+        "hex": format!("{:08X}:{:08X}", identity.luid_high_part as u32, identity.luid_low_part)});
+    gpu["vendor_id"] = json!(identity.vendor_id);
+    gpu["device_id"] = json!(identity.device_id);
     let baseline_memory = host::peak_memory()?;
     let mut modes = serde_json::Map::new();
     let mut pixels = pixels::Recorder::new(args.frame_diff_dir.as_deref())?;
@@ -173,6 +182,11 @@ pub(super) async fn run(
         let mut mode = report::mode(&samples);
         mode["diagnostic_scopes"] = report::mode(&diagnostics);
         modes.insert(name.into(), mode);
+    }
+    if platform.gpu_adapter_info()? != identity {
+        return Err(
+            "GPU identity changed during measurement; refusing a mixed-adapter report".into(),
+        );
     }
     let mut report = json!({"schema_version": 2, "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
