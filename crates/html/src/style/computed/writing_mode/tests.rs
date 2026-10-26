@@ -85,7 +85,8 @@ fn laid_flat_clone_keeps_block_flow_but_is_not_vertical() {
         );
         with_inherited
     };
-    assert!(child.wm().is_orthogonal_to(child.cb_wm));
+    let child = crate::style::computed::BoxStyle::new(child);
+    assert!(child.wm().is_orthogonal_to(child.context.cb_wm));
 }
 
 #[test]

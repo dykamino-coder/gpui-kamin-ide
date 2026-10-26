@@ -85,6 +85,8 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         ..Default::default()
     };
     Some(crate::paint::effects::grouped::grouped(
-        element, &style, vcx,
+        element,
+        &crate::style::computed::BoxStyle::new(style),
+        vcx,
     ))
 }

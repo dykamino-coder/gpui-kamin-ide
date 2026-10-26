@@ -36,6 +36,9 @@ use windows::{
     core::*,
 };
 
+mod shutdown;
+pub(crate) use shutdown::WindowLifetime;
+
 use crate::*;
 use gpui::*;
 
@@ -57,9 +60,13 @@ pub struct WindowsPlatform {
     initial_windowing: RefCell<Option<WindowingRequest>>,
     /// Set to stop the current `VSyncProvider` thread, which runs while windowed.
     vsync_stop: RefCell<Option<Arc<AtomicBool>>>,
+    vsync_threads: RefCell<Vec<std::thread::JoinHandle<()>>>,
+    live_windows: Rc<Cell<usize>>,
     // The below members will never change throughout the entire lifecycle of the app.
     /// Created with `headless()`: never windowed, and without a real text system.
     headless: bool,
+    // KaminIDE patch: instance-owned device creation policy, never environment state.
+    gpu_adapter_preference: GpuAdapterPreference,
     icon: HICON,
     background_executor: BackgroundExecutor,
     foreground_executor: ForegroundExecutor,
@@ -178,6 +185,11 @@ impl Drop for PowerRequest {
 
 impl WindowsPlatform {
     pub fn new(headless: bool) -> Result<Self> {
+        Self::with_gpu_adapter(headless, GpuAdapterPreference::Default)
+    }
+
+    /// KaminIDE patch: choose a GPU for this platform and subsequent device recovery.
+    pub fn with_gpu_adapter(headless: bool, preference: GpuAdapterPreference) -> Result<Self> {
         unsafe {
             OleInitialize(None).context("unable to initialize Windows OLE")?;
         }
@@ -267,7 +279,10 @@ impl WindowsPlatform {
             raw_window_handles,
             initial_windowing: RefCell::new(None),
             vsync_stop: RefCell::new(None),
+            vsync_threads: RefCell::new(Vec::new()),
+            live_windows: Rc::new(Cell::new(0)),
             headless,
+            gpu_adapter_preference: preference,
             icon,
             background_executor,
             foreground_executor,
@@ -281,6 +296,12 @@ impl WindowsPlatform {
             app_identity: RefCell::new(None),
             system_notifications: RefCell::new(SystemNotificationState::new()),
         })
+    }
+
+    /// KaminIDE patch: identity of the live renderer adapter; unavailable until the platform attaches its GPU.
+    pub fn gpu_adapter_info(&self) -> Result<GpuAdapterInfo> {
+        let devices = self.inner.state.directx_devices.borrow();
+        GpuAdapterInfo::read(&devices.as_ref().context("GPU has not been attached")?.adapter)
     }
 
     pub(crate) fn window_from_hwnd(&self, hwnd: HWND) -> Option<Rc<WindowsWindowInner>> {
@@ -305,6 +326,7 @@ impl WindowsPlatform {
         WindowCreationInfo {
             icon: self.icon,
             executor: self.foreground_executor.clone(),
+            live_windows: self.live_windows.clone(),
             current_cursor: self.inner.state.current_cursor.get(),
             cursor_visible: self.inner.state.cursor_visible.clone(),
             drop_target_helper: self.drop_target_helper.clone().unwrap(),
@@ -408,7 +430,7 @@ impl WindowsPlatform {
 
     /// Creates the DirectX devices that windows draw with, and starts vsync.
     fn attach_gpu(&self) -> Result<()> {
-        let devices = DirectXDevices::new().context("Creating DirectX devices")?;
+        let devices = DirectXDevices::new(self.gpu_adapter_preference.clone()).context("Creating DirectX devices")?;
         if let Some(text_system) = &self.direct_write_text_system {
             text_system.handle_gpu_lost(&devices)?;
         }
@@ -446,7 +468,7 @@ impl WindowsPlatform {
         let text_system = Arc::downgrade(direct_write_text_system);
         let invalidate_devices = self.invalidate_devices.clone();
 
-        std::thread::Builder::new()
+        let thread = std::thread::Builder::new()
             .name("VSyncProvider".to_owned())
             .spawn(move || {
                 let vsync_provider = VSyncProvider::new();
@@ -492,6 +514,9 @@ impl WindowsPlatform {
                 }
             })
             .unwrap();
+        let mut threads = self.vsync_threads.borrow_mut();
+        threads.retain(|thread| !shutdown::thread_has_exited(thread));
+        threads.push(thread);
     }
 }
 
@@ -599,28 +624,20 @@ impl Platform for WindowsPlatform {
         let mut msg = MSG::default();
         unsafe {
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                // KaminIDE patch: окна gpui — toplevel; WS_CHILD-окно в нашем
-                // потоке — чужое (composition input window WebView2/CEF). Ему
-                // нельзя слать WM_GPUI_KEYDOWN: чужой wndproc вернёт 0 из
-                // DefWindowProc, `translate_accelerator` сочтёт клавишу
-                // обработанной и она не дойдёт ни до TranslateMessage, ни до
-                // DispatchMessage. Чужим окнам — обычная пара Translate+Dispatch.
-                let foreign_child = (get_window_long(msg.hwnd, GWL_STYLE) as u32
-                    & WS_CHILD.0)
-                    != 0;
-                if foreign_child || translate_accelerator(&msg).is_none() {
-                    _ = TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
-                }
+                shutdown::dispatch_message(&msg);
             }
         }
 
+        let mut did_shutdown = false;
         self.inner.with_callback(
             |callbacks| &callbacks.quit,
             |callback| {
-                callback();
+                did_shutdown = callback();
             },
         );
+        if did_shutdown {
+            self.finish_shutdown().log_err();
+        }
     }
 
     fn quit(&self) {
@@ -1393,6 +1410,7 @@ impl Drop for WindowsPlatform {
 pub(crate) struct WindowCreationInfo {
     pub(crate) icon: HICON,
     pub(crate) executor: ForegroundExecutor,
+    pub(crate) live_windows: Rc<Cell<usize>>,
     pub(crate) current_cursor: Option<HCURSOR>,
     pub(crate) cursor_visible: Arc<AtomicBool>,
     pub(crate) drop_target_helper: IDropTargetHelper,
@@ -1688,8 +1706,9 @@ fn handle_gpu_device_lost(
     // If we don't wait, the final drawing result will be blank.
     std::thread::sleep(std::time::Duration::from_millis(350));
 
+    let preference = directx_devices.adapter_preference.clone();
     *directx_devices = try_to_recover_from_device_lost(|| {
-        DirectXDevices::new().context("Failed to recreate new DirectX devices after device lost")
+        DirectXDevices::new(preference.clone()).context("Failed to recreate new DirectX devices after device lost")
     })?;
     log::info!("DirectX devices successfully recreated.");
 

@@ -43,7 +43,10 @@ pub(crate) fn has_in_flow_block_children(children: &[crate::dom::Node]) -> bool 
     })
 }
 
-pub(crate) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstraint> {
+pub(crate) fn constraint(
+    style: &crate::style::computed::BoxStyle,
+    fallback: f32,
+) -> Option<InlineConstraint> {
     crate::layout::writing_mode::vertical_intrinsic::constraint(style, fallback)
         .map(|(_, value)| value)
         .or_else(|| {
@@ -100,6 +103,13 @@ pub(crate) fn keyword(style: &Computed) -> Option<InlineKeyword> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstraint> {
+        super::constraint(
+            &crate::style::computed::BoxStyle::new(style.clone()),
+            fallback,
+        )
+    }
 
     #[test]
     fn float_claim_follows_own_writing_mode_and_preserves_definite_inline_sizes() {

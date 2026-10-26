@@ -7,7 +7,7 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Style, Window};
 use std::rc::Rc;
 
 /// Отдельно от предела построения боксов 2052, как MAX_REFLOW_DEPTH Gecko.
-pub(crate) const MAX_REFLOW_DEPTH: usize = 1026;
+pub(crate) const MAX_REFLOW_DEPTH: usize = crate::budget::DocumentLimits::LAYOUT_DEPTH;
 // Корни документа и viewport не уменьшают допустимую авторскую вложенность.
 const ROOT_FRAMES: usize = 4;
 

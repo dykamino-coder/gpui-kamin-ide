@@ -37,6 +37,12 @@ pub(super) fn measure(
             .map(|p| p.translated(-k.inner_top))
             .collect()
     });
+    inline.floats = measured_flow.as_ref().map_or_else(Vec::new, |flow| {
+        flow.float_contexts
+            .iter()
+            .map(|f| f.translated(-k.inner_top))
+            .collect()
+    });
     let sz = laid;
     let sz = if vertical {
         size(sz.height, sz.width)
@@ -57,6 +63,7 @@ pub(super) fn measure(
         Some((h, cuts, forced, solid)) => (*h, cuts.clone(), forced.clone(), solid.clone()),
         None => (f32::from(sz.height), Vec::new(), Vec::new(), Vec::new()),
     };
+    let mut over = h;
     if let Some(flow) = measured_flow {
         // CSS Break 3 section 3.1: root floats participate in page
         // fragmentation. Their anonymous normal-flow wrapper can
@@ -88,7 +95,11 @@ pub(super) fn measure(
                 };
                 // Таблица: высота — её разложенная обёртка (ряды,
                 // подписи, заданная высота), а не оценка.
-                let geometry = w.laid_axis(origin, frame, axis, window);
+                let mut local_flow = crate::layout::fragment::flow::FlowGeometry::default();
+                local_flow.append(&flow, -lift);
+                let geometry = w
+                    .laid_axis(origin, frame, axis, window)
+                    .with_flow(&local_flow);
                 let flex = !geometry.flexes.is_empty();
                 let regrown = k.regrow.as_ref().is_some_and(|r| r.laid_h);
                 if let Some(root) = w
@@ -99,8 +110,16 @@ pub(super) fn measure(
                 {
                     h = bottom;
                 }
-                if k.float_extent {
-                    h = float_extent(&flow, lift, h);
+                // Поля обёртки уже вынесены в Kid.mt/mb. Переполнение
+                // отсчитывается от уточнённого border box (css-break-3 §5.2).
+                over = h;
+                let visible = w.blocks().is_some_and(|b| !b.clips_block);
+                if visible && let Some(root) = w.blocks() {
+                    over = crate::layout::fragment::flow::flow_end(root, &geometry).unwrap_or(h);
+                    over = flow.solid.iter().map(|p| p.1 - lift).fold(over, f32::max);
+                }
+                if visible && k.float_extent {
+                    over = float_extent(&flow, lift, over);
                 }
                 if k.shape.is_none() && k.regrow.is_some() {
                     // Реальное переполнение копии резервирует последующие листы.
@@ -112,10 +131,12 @@ pub(super) fn measure(
                     k.reach = (reach > h + 0.01).then_some(reach);
                 }
                 if let Some(r) = k.regrow.as_mut() {
+                    r.floats = local_flow.floats;
+                    r.float_leads = local_flow.float_leads;
                     r.laid = geometry;
                     r.space = w.space(window);
                 }
-                let m = w.breaks(origin, frame, h + lift, axis, window);
+                let m = w.breaks(origin, frame, h.max(over) + lift, axis, window);
                 inline.barriers = m.barriers;
                 inline.keep = m.avoid_inside;
                 if flex || k.shape.is_none() {
@@ -155,12 +176,8 @@ pub(super) fn measure(
             avoid,
             keep,
             span: false,
-            // Страницы параллельный поток пока не берут: у них своё
-            // правило переполнения монолита (`fill_at`, ветка
-            // `paged && placed && cur > target`, crbug 1402540), и
-            // мешать их без отдельного замера печатного среза нельзя.
-            // `over == h` — поток выключен.
-            over: h,
+            over: h.max(over),
+            float_min: 0.0,
             // Страницы: `box-decoration-break` пока `slice` — весь
             // кластер `clone` в колонках.
             clone_dec: None,

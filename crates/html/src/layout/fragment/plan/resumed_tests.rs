@@ -141,12 +141,14 @@ fn structural_overflow_before_a_paragraph_reserves_every_physical_page() {
     let geometry = inline::Geometry {
         barriers: vec![(0.0, 350.0)],
         paragraphs: vec![inline::Inline {
+            scope: Vec::new(),
             lines: vec![ContentLine {
                 paragraph: 0,
                 byte: 0,
                 state: crate::layout::fragment::line_shape::line_state("x", 0, 0, false).unwrap(),
                 top: 350.0,
                 bottom: 360.0,
+                prefix: 0.0,
                 consumed_before: 0.0,
             }],
             orphans: 2,

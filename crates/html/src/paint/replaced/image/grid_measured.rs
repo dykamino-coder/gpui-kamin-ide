@@ -19,11 +19,11 @@ pub(super) fn measured(
     holder: &mut gpui::Div,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
-    let style = &element.style.used();
+    let style = &crate::style::computed::BoxStyle::shared(element.style.used());
     // Keep the existing growing-image path: exposing its natural ratio on a
     // measured leaf also changes Taffy's cross-size calculation after flexing.
     // This adapter handles intrinsic contributions and shrinking items only.
-    if (style.parent_grid == 0 && !style.flex_item)
+    if (style.context.parent_grid == 0 && !style.flex_item)
         || (style.flex_item && style.flex_grow.is_some_and(|grow| grow > 0.0))
         || style.position.is_some()
         || style.gradient.is_some()
@@ -119,13 +119,13 @@ pub(super) fn measured(
         style.align_self.is_none() || style.align_self_normal,
         style.justify_self.is_none() || style.justify_self_normal,
     );
-    if style.parent_grid >= 2 {
+    if style.context.parent_grid >= 2 {
         std::mem::swap(&mut align_start, &mut justify_start);
     }
-    if style.parent_grid != 0 && align_start {
+    if style.context.parent_grid != 0 && align_start {
         native.align_self = Some(gpui::AlignSelf::Start);
     }
-    if style.parent_grid != 0 && justify_start {
+    if style.context.parent_grid != 0 && justify_start {
         native.justify_self = Some(gpui::AlignSelf::Start);
     }
     image.style().margin = Default::default();

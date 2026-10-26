@@ -100,6 +100,7 @@ pub(super) fn inherit(style: &mut Computed, mut parent: InlineConstraint) -> Inl
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
 
     fn parent(size: f32) -> InlineConstraint {
         InlineConstraint {
@@ -195,7 +196,8 @@ mod tests {
             with_inherited
         };
         resolve(&mut child, &container, (800.0, 600.0), false);
-        let contribution = native_vertical::constraint(&child, 160.0).unwrap();
+        let contribution =
+            native_vertical::constraint(&BoxStyle::new(child.clone()), 160.0).unwrap();
         assert_eq!(contribution.fixed, Some(120.0));
         assert_eq!(contribution.used(40.0, 140.0), 120.0);
         container.height = None;
@@ -231,7 +233,7 @@ mod tests {
             with_inherited
         };
         resolve(&mut child, &cell, (800.0, 600.0), false);
-        let constraint = native_vertical::constraint(&child, 180.0).unwrap();
+        let constraint = native_vertical::constraint(&BoxStyle::new(child.clone()), 180.0).unwrap();
         // A shorter line still occupies the containing cell's content inline
         // size, with both borders deducted once rather than shrinking its box.
         assert_eq!(constraint.used(60.0, 120.0), 140.0);

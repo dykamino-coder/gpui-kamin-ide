@@ -70,6 +70,7 @@ impl PageStack {
                             kid: kids[index].clone(),
                             inline: inline[index].clone(),
                             laid: r.laid.clone(),
+                            parallel: None,
                             continued: false,
                         },
                     );
@@ -82,6 +83,7 @@ impl PageStack {
                 .iter()
                 .map(|p| p.leaf.as_ref().map(|l| l.geometry.clone()))
                 .collect();
+            let mut continuation_error = None;
             let planned = plan::fill_resumed(
                 &kids,
                 &|col| pages.at(col),
@@ -105,7 +107,14 @@ impl PageStack {
                     } else {
                         (pg.area.0, block_size)
                     };
-                    let geometry = self.remeasure_copy(kid, copy, area, from, page, window, cx);
+                    let geometry =
+                        match self.remeasure_copy(kid, copy, area, from, page, window, cx) {
+                            Ok(geometry) => geometry,
+                            Err(error) => {
+                                continuation_error = Some(error);
+                                None
+                            }
+                        };
                     plan::Measurement {
                         copy: geometry,
                         inline: self
@@ -115,6 +124,13 @@ impl PageStack {
                     }
                 },
             );
+            if let Some(error) = continuation_error {
+                return (
+                    true,
+                    State::new(&names, &geoms, &[], &self.measured),
+                    Err(error),
+                );
+            }
             let (pages, _, plan) = match planned {
                 Ok(plan) => plan,
                 Err(error) => {

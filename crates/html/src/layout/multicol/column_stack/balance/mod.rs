@@ -8,6 +8,8 @@ use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
+#[cfg(test)]
+mod float_tests;
 mod growth;
 mod line;
 

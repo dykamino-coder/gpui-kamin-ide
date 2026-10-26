@@ -1,7 +1,7 @@
 """Conservative lexical field/owner/access aggregates, independent of source lines.
 
-Not Rust type inference: same-named fields are deliberately over-counted. Owners
-are top-level HTML modules, so moving a file within a phase does not change debt.
+Unknown receivers are deliberately over-counted; declared unrelated field owners
+can exclude homonyms. Owners are top-level HTML modules, so moving a file within a phase does not change debt.
 Style construction may write operands; non-style writes/projections and mutable
 escape APIs are ratcheted. Whole-value mutation must also be reviewed manually.
 """
@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 import re
 
 from computed_test_scopes import scopes as test_scopes
+from computed_receiver_types import ReceiverTypes
 
 PREFIX = 'crates/html/src/'
 DEFINITIONS = PREFIX + 'style/computed/fields.rs'
@@ -68,7 +69,9 @@ def access(words, index):
 def aggregate(sources):
     fields = definitions(sources[DEFINITIONS])
     counts = Counter()
-    for path, (words, test_file, ranges) in sorted(test_scopes(sources).items()):
+    streams = test_scopes(sources)
+    receivers = ReceiverTypes({path: words for path, (words, _, _) in streams.items()})
+    for path, (words, test_file, ranges) in sorted(streams.items()):
         owner = path.removeprefix(PREFIX).split('/')[0].removesuffix('.rs')
         scopes = []
         for index, word in enumerate(words):
@@ -84,11 +87,13 @@ def aggregate(sources):
                 following == [':'] or (before in ('{', ',') and following in ([','], ['}']))))
             if word in fields and (before == '.' or initialized):
                 kind = access(words, index) if before == '.' else 'initialize'
+                if kind in ('write', 'mutable') and not receivers.may_write(path, words, index):
+                    continue
                 for field in fields[word]:
                     counts[field, context, kind] += 1
             # Calls only: declarations/imports do not create new escapes.
             called = words[index + 1:index + 2] == ['('] and before in ('.', '::')
-            if called and (word in USED or (owner != 'style' and word in MUTABLE)):
+            if called and (word in USED or (owner != 'style' and word in MUTABLE and (word not in {'make_mut', 'get_mut', 'borrow_mut'} or receivers.may_escape(path, words, index)))):
                 counts['@' + word, context, 'escape'] += 1
             if owner != 'style' and words[index:index + 3] == ['&', 'mut', 'Computed']:
                 counts['@mut-Computed', context, 'escape'] += 1

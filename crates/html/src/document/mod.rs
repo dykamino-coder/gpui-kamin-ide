@@ -13,7 +13,13 @@
 #[cfg(test)]
 mod admission_tests;
 mod base_url;
+#[cfg(test)]
+mod budget_tests;
 mod builder;
+#[cfg(feature = "engine-bench")]
+mod timing;
+#[cfg(feature = "engine-bench")]
+pub use timing::BuildTimings;
 mod revision;
 pub use crate::dom::outcome::{
     BuildReport, DocumentFailure, FailureReason, FailureScope, RevisionStatus, TraversalKind,
@@ -72,6 +78,8 @@ pub struct Document {
     /// An XML document (`image/svg+xml`, `crate::dom::xml`).
     xml: bool,
     last_failure: Option<DocumentFailure>,
+    #[cfg(feature = "engine-bench")]
+    timings: BuildTimings,
 }
 
 impl Document {
@@ -87,19 +95,35 @@ impl Document {
         xml: bool,
         media: Media,
         fonts: &crate::text::metrics::FontContext,
+        revision: crate::budget::RevisionBudget,
     ) -> Result<Self, DocumentFailure> {
         let key = base_url::key(html, theme_css, base_url.as_ref());
+        #[cfg(feature = "engine-bench")]
+        let parse_started = std::time::Instant::now();
         let input = crate::dom::input::Admitted::parse(html, xml).map_err(|mut failure| {
             failure.report.revision = Some(key);
             failure
         })?;
+        #[cfg(feature = "engine-bench")]
+        let mut timings = BuildTimings {
+            parse: parse_started.elapsed(),
+            ..Default::default()
+        };
         let effective_base = if xml {
             base_url.clone()
         } else {
             base_url::document_base(&input.dom.document, base_url.as_ref())
         };
-        let (state, nodes, root) =
-            parse_document(&input, theme_css, effective_base.as_ref(), media, fonts);
+        let (state, nodes, root) = parse_document(
+            &input,
+            theme_css,
+            effective_base.as_ref(),
+            media,
+            fonts,
+            revision,
+            #[cfg(feature = "engine-bench")]
+            &mut timings,
+        );
         state.traversal.retain(input);
         Ok(Document {
             state,
@@ -109,6 +133,8 @@ impl Document {
             base_url,
             xml,
             last_failure: None,
+            #[cfg(feature = "engine-bench")]
+            timings,
         })
     }
 

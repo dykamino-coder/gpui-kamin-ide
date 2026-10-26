@@ -4,6 +4,7 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FailureReason {
     XmlSyntax { row: u32, column: u32 },
+    Budget(crate::budget::BudgetError),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,6 +92,10 @@ impl DocumentFailure {
     pub fn code(&self) -> &'static str {
         match self.reason {
             FailureReason::XmlSyntax { .. } => "KAMINIDE_XML_SYNTAX",
+            FailureReason::Budget(crate::budget::BudgetError::Exceeded(_)) => {
+                "KAMINIDE_BUDGET_EXCEEDED"
+            }
+            FailureReason::Budget(_) => "KAMINIDE_BUDGET_INVARIANT",
         }
     }
 }
@@ -108,6 +113,7 @@ impl std::fmt::Display for DocumentFailure {
             FailureReason::XmlSyntax { row, column } => {
                 write!(f, "{subject}: ошибка XML ({row}:{column})")
             }
+            FailureReason::Budget(error) => write!(f, "{subject}: {error}"),
         }
     }
 }

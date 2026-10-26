@@ -27,6 +27,7 @@ impl BlockBreaks {
         let mut g = FlowGeometry {
             cuts: self.cuts,
             solid: self.solid,
+            floats: lines.floats,
             ..Default::default()
         };
         g.cuts.extend(lines.cuts);
@@ -58,22 +59,11 @@ impl BlockBreaks {
                     }
                 }
                 Pending::Head { top, edge } => {
-                    let end = g
-                        .solid
-                        .iter()
-                        .filter(|&&(a, _)| (a - edge).abs() < 0.01)
-                        .map(|&(_, e)| e)
-                        .fold(None::<f32>, |m, e| Some(m.map_or(e, |x| x.max(e))));
-                    if let Some(end) = end {
-                        g.solid.push((top, end));
-                        if let Some(end) = raw
-                            .iter()
-                            .filter(|&&(a, _)| (a - edge).abs() < 0.01)
-                            .map(|p| p.1)
-                            .max_by(f32::total_cmp)
-                        {
-                            barriers.push((top, end));
-                            raw.push((top, end));
+                    // Начало содержимого не остаётся запасной точкой разрыва
+                    // внутри склеенного диапазона, даже при переполнении.
+                    for (start, _) in g.solid.iter_mut().chain(&mut raw).chain(&mut barriers) {
+                        if (*start - edge).abs() < 0.01 {
+                            *start = top;
                         }
                     }
                 }

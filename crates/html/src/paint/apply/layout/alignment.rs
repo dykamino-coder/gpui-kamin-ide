@@ -5,12 +5,14 @@ use crate::document::state::ValueCx;
 
 pub(super) fn layout_alignment(
     mut d: Div,
-    c: &Computed,
+    c: &BoxStyle,
     dir: Option<FlexDir>,
     rtl_row: bool,
     vcx: ValueCx<'_>,
 ) -> Div {
-    match c.align_items {
+    // Прежняя нормализация legacy-box применяется как контекст, не правит Computed.
+    let block = legacy_block(c);
+    match c.align_items.filter(|_| !block) {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
@@ -19,7 +21,9 @@ pub(super) fn layout_alignment(
         // лунки целиком (`row-grid-lanes-item-baseline-001/003`,
         // `column-fill-reverse-justify-items-002`).
         Some(Align::Baseline)
-            if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes =>
+            if c.align_items_last
+                && c.display != Some(Display::GridLanes)
+                && !c.context.parent_lanes =>
         {
             d.style().align_items = Some(gpui::AlignItems::LastBaseline);
         }
@@ -59,7 +63,7 @@ pub(super) fn layout_alignment(
     if let Some(b) = c.flex_basis.filter(|b| *b != Len::Auto) {
         d = d.flex_basis(len_to_gpui(b, vcx));
     }
-    if let Some(j) = c.justify_content {
+    if let Some(j) = c.justify_content.filter(|_| !block) {
         // `left`/`right` (css-align-3 §5.2): вдоль строчной оси — как
         // `start`/`end` письма (в ряду); «if the property's axis is not
         // parallel with the inline axis, this value behaves as start» —

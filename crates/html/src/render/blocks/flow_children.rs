@@ -65,11 +65,7 @@ pub(crate) fn flow_children(
                                     | Some(Display::Grid)
                                     | Some(Display::Table)
                             ))
-                        && !matches!(
-                            e.style.used().position,
-                            Some(crate::style::computed::Position::Absolute)
-                                | Some(crate::style::computed::Position::Fixed)
-                        )
+                        && !crate::style::flow::absolutely_positioned(e.style.used().position)
                     {
                         e.style.used_mut().align_self = Some(Align::End);
                     }
@@ -97,11 +93,7 @@ pub(crate) fn flow_children(
                         && e.style.used().align_self.is_none()
                         && !e.inline
                         && matches!(e.style.used().display, None | Some(Display::Block))
-                        && !matches!(
-                            e.style.used().position,
-                            Some(crate::style::computed::Position::Absolute)
-                                | Some(crate::style::computed::Position::Fixed)
-                        )
+                        && !crate::style::flow::absolutely_positioned(e.style.used().position)
                     {
                         e.style.used_mut().align_self = Some(Align::End);
                     }
@@ -114,11 +106,8 @@ pub(crate) fn flow_children(
                     // (`block-aspect-ratio-002/006/…`).
                     // Нулевое и бесконечное отношение — как `auto`
                     // (css-sizing-4 §5.1; `zero-or-infinity-002`).
-                    let positioned_out = matches!(
-                        e.style.used().position,
-                        Some(crate::style::computed::Position::Absolute)
-                            | Some(crate::style::computed::Position::Fixed)
-                    );
+                    let positioned_out =
+                        crate::style::flow::absolutely_positioned(e.style.used().position);
                     let ratio_ok = e
                         .style
                         .used()

@@ -118,7 +118,7 @@ pub(super) fn band_nest(
         merged.height = Some(Len::Px(height));
     }
     let opts = &*opts.inner(|cx| cx.constraints.avail_h = height);
-    crate::dom::pseudo_line_layers::install(c, &mut merged, vcx);
+    crate::layout::box_tree::pseudo_line_layers::install(c, &mut merged, vcx);
     // The first formatted line may belong to a nested in-flow block;
     // floats and positioned children cannot consume its pseudo layer.
     let children = opts

@@ -32,6 +32,7 @@ PACKAGE_REVISIONS = {
 FIXES = {
     "gpui": [
         "Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.",
+        "Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.",
         "Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.",
         "Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.",
         "Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.",
@@ -53,9 +54,11 @@ FIXES = {
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
     ],
     "gpui-windows": [
+        "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
         "DirectX: CSS primitives, images, filters, masks, gradients and frame capture with CPU copy/map timing for WPT phase measurements.",
         "Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.",
+        "Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.",
         "Diagnostics: GPU batch measurements consumed by the application's diagnostic panel.",
         "Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.",
         "Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state,"
@@ -78,7 +81,7 @@ FIXES = {
     ],
     "taffy": [
         "Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.",
-        "Native stack depth: keep per-container flex constants on the heap and skip the logical-axis adapter when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.",
+        "Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.",
         "Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).",
         "Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.",
         "CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.",

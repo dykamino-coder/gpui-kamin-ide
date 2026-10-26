@@ -81,8 +81,10 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
     match effect {
         Effect::OutlineScope(owner) => outline_phase::scope(child, Some(owner)),
         Effect::OutlineFlow(owner) => outline_phase::flow_phase(child, Some(owner)),
-        Effect::Group { style, vcx } => grouped::grouped(child, style, vcx),
-        Effect::GroupReplaced { style, vcx } => grouped::grouped_replaced(child, style, vcx),
+        Effect::Group { style, vcx } => grouped::grouped(child, &BoxStyle::shared(style), vcx),
+        Effect::GroupReplaced { style, vcx } => {
+            grouped::grouped_replaced(child, &BoxStyle::shared(style), vcx)
+        }
         Effect::Transform {
             style,
             parent,

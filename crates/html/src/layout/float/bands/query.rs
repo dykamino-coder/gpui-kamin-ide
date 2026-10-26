@@ -67,6 +67,14 @@ impl FloatBands {
     /// устанавливающей НОВЫЙ контекст: обычный блок в потоке флоатами не
     /// растёт — они из него вываливаются.
     pub fn bottom(&self, side: Option<i8>) -> f32 {
+        self.bottom_edge(side).max(0.0)
+    }
+
+    pub(crate) fn clearance_including_initial_letter(&self, clear: Option<i8>, y: f32) -> f32 {
+        clear.map_or(y, |side| y.max(self.bottom_edge(Some(side))))
+    }
+
+    fn bottom_edge(&self, side: Option<i8>) -> f32 {
         match side {
             Some(-1) => self.clear_l.max(self.letter.0),
             Some(1) => self.clear_r.max(self.letter.1),

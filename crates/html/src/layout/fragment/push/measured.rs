@@ -19,7 +19,7 @@ use gpui::AnyElement;
 
 /// Сборка копии ребёнка стопки из дерева: `part` 0 — главная (с рекордером),
 /// дальше — запасные; `band` отделяет повторяемую секцию от содержимого.
-pub(crate) type BuildCopy = dyn Fn(&Element, usize, bool) -> AnyElement;
+pub(crate) type BuildCopy = dyn Fn(&Element, usize, bool, &RenderOpts) -> AnyElement;
 
 /// Получатель роста сохраняет идентичность даже у совпадающих границ строк.
 #[derive(Clone, Debug)]
@@ -58,6 +58,8 @@ pub(crate) struct Regrow {
     pub(crate) opts: RenderOpts,
     /// Разложенная геометрия стопки по последней раскладке главной копии.
     pub(crate) laid: Laid,
+    pub(crate) floats: Vec<crate::layout::fragment::flow::FloatGeometry>,
+    pub(crate) float_leads: Vec<(u64, crate::layout::fragment::flow::LinePush)>,
     /// Проход, породивший числовой снимок; не LayoutId из освобождённого дерева.
     pub(crate) space: Option<gpui::LayoutSpace>,
     /// Высота ребёнка в стопке — разложенный border box (а не мера формы):
@@ -76,7 +78,8 @@ impl Regrow {
         }
         grows.sort_by(|a, b| b.at.total_cmp(&a.at));
         let mut unique: Vec<Growth> = Vec::new();
-        for growth in grows {
+        for mut growth in grows {
+            super::float_flow::retarget(&self.floats, &self.float_leads, &mut growth);
             if let Some(previous) = unique.iter_mut().find(|p| p.target == growth.target) {
                 previous.amount = previous.amount.max(growth.amount);
                 previous.forced |= growth.forced;
@@ -117,6 +120,12 @@ impl Regrow {
             );
         }
         match pushed {
+            Pushed::Float(id) => super::float_flow::raise_floor(
+                &self.floats,
+                &mut self.opts.frag.float_floors,
+                id,
+                grow,
+            ),
             Pushed::Box(id) if forced => {
                 spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.vcx())
             }
@@ -131,9 +140,9 @@ impl Regrow {
     pub(crate) fn rebuild(&self, spare: usize) -> (AnyElement, Vec<AnyElement>) {
         self.watched.rewind_flows();
         (
-            (self.build)(&self.dom, 0, false),
+            (self.build)(&self.dom, 0, false, &self.opts),
             (1..=spare)
-                .map(|i| (self.build)(&self.dom, i, false))
+                .map(|i| (self.build)(&self.dom, i, false, &self.opts))
                 .collect(),
         )
     }

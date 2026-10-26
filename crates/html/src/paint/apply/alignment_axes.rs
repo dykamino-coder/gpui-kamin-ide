@@ -7,7 +7,7 @@
 
 pub(super) fn abspos_normal(
     style: &mut gpui::StyleRefinement,
-    c: &crate::style::computed::Computed,
+    c: &crate::style::computed::BoxStyle,
 ) {
     use crate::style::computed::Position;
     if !matches!(c.position, Some(Position::Absolute | Position::Fixed)) {
@@ -28,10 +28,10 @@ pub(super) fn abspos_normal(
     // align it in the containing block instead. Leave that axis unaligned.
     // Horizontal writing only: vertical static positions keep their
     // previous placement (`align-self-static-position-004`).
-    if c.parent_grid == 0
-        && !c.parent_flex_grid
+    if c.context.parent_grid == 0
+        && !c.context.parent_flex_grid
         && !c.wm().vertical()
-        && !c.cb_wm.vertical()
+        && !c.context.cb_wm.vertical()
         && !c.wm().turned()
     {
         let auto = |l: Option<crate::style::values::value::Len>| {
@@ -70,12 +70,12 @@ pub(super) fn project(style: &mut gpui::StyleRefinement, container: bool, parent
 
 /// CSS Align 3 positional-values: self-relative edges follow the subject;
 /// left/right follow line-left/line-right rather than the container's direction.
-pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::style::computed::Computed) {
-    if c.parent_grid == 0 {
+pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::style::computed::BoxStyle) {
+    if c.context.parent_grid == 0 {
         return;
     }
-    let vertical = c.parent_grid >= 2;
-    let parent_x_end = c.parent_grid == 3 || (!vertical && c.cb_wm.rtl());
+    let vertical = c.context.parent_grid >= 2;
+    let parent_x_end = c.context.parent_grid == 3 || (!vertical && c.context.cb_wm.rtl());
     let own = super::grid_flow_axes::reversed(c);
     let (align_axis, justify_axis) = if vertical { (0, 1) } else { (1, 0) };
     let mirror = |value: &mut Option<gpui::AlignSelf>, flip: bool| {
@@ -104,7 +104,7 @@ pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::style::com
     }
     if let Some(right) = c.justify_self_physical {
         let end = if vertical {
-            right != c.cb_wm.sideways_lr()
+            right != c.context.cb_wm.sideways_lr()
         } else {
             right != parent_x_end
         };
