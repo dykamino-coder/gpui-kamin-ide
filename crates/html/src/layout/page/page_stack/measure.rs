@@ -110,6 +110,9 @@ pub(super) fn measure(
                 {
                     h = bottom;
                 }
+                // Поля обёртки уже вынесены в Kid.mt/mb. Переполнение
+                // отсчитывается от уточнённого border box (css-break-3 §5.2).
+                over = h;
                 let visible = w.blocks().is_some_and(|b| !b.clips_block);
                 if visible && let Some(root) = w.blocks() {
                     over = crate::layout::fragment::flow::flow_end(root, &geometry).unwrap_or(h);

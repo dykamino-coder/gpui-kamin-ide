@@ -151,6 +151,7 @@ pub(crate) async fn render_with_style(
             )
             .into_any_element(),
             merged.wm().vertical(),
+            !empty,
         )
     }))
     // Содержимое — своей колонкой, как прежде: выключка пункта
