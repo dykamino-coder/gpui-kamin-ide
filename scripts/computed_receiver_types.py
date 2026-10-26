@@ -15,6 +15,8 @@ STANDARD_PATHS = {('std', module, name): name for module, group in (
     ('boxed', 'Box'), ('pin', 'Pin'), ('vec', 'Vec'), ('option', 'Option'),
     ('result', 'Result'), ('string', 'String'), ('collections', 'VecDeque HashMap HashSet BTreeMap BTreeSet'),
 ) for name in group.split()}
+STANDARD_PATHS['std', 'rc', 'Weak'] = '@rc-weak'
+STANDARD_PATHS['std', 'sync', 'Weak'] = '@arc-weak'
 
 
 class DeclaredType(tuple):
@@ -270,6 +272,7 @@ class ReceiverTypes:
             self._closure_proofs(path, words)
             self._local_proofs(path, words)
             self._entry_proofs(path, words)
+            self._weak_proofs(path, words)
 
     def _parameter_proofs(self, path, words):
         for i, word in enumerate(words):
@@ -397,8 +400,44 @@ class ReceiverTypes:
             for value in values:
                 self.proofs[path, words[at]].append((end + 1, scope_end, DeclaredType(value, path)))
 
+    def _weak_proofs(self, path, words):
+        """Unwrap only std Weak::upgrade through an unshadowed Some pattern."""
+        if ('Some' in self.nominal or self.import_paths[path, 'Some']
+                or self.glob_paths[path] or 'Some' in self.local_aliases[path]): return
+        for i, word in enumerate(words):
+            if word != 'let' or words[i + 1:i + 3] != ['Some', '(']: continue
+            at = i + 3 + (words[i + 3:i + 4] == ['mut'])
+            if not words[at].isidentifier() or words[at + 1:at + 3] != [')', '=']: continue
+            end = until(words, at + 3, {'else', '{', ';'})
+            expression = words[at + 3:end]
+            if expression[-4:] != ['.', 'upgrade', '(', ')']: continue
+            values = self.receiver(path, expression[:-4], i)
+            upgraded = [self._weak_upgrade(value, path) for value in values]
+            if not upgraded or any(value is None for value in upgraded): continue
+            if words[i - 1:i] == ['if'] and words[end:end + 1] == ['{']:
+                start, stop = end + 1, closing(words, end)
+            elif words[i - 1:i] != ['while'] and words[end:end + 2] == ['else', '{']:
+                start = closing(words, end + 1) + 1
+                if words[start:start + 1] != [';']: continue
+                braces = [j for j in range(i) if words[j] == '{' and closing(words, j) > start]
+                if not braces: continue
+                start, stop = start + 1, closing(words, braces[-1])
+            else: continue
+            for value in upgraded:
+                self.proofs[path, words[at]].append((start, stop, value))
+
+    def _weak_upgrade(self, value, path):
+        source = getattr(value, 'path', path)
+        # A generic or shadowed receiver cannot establish the standard provider.
+        if 'upgrade' in self.trait_methods or self.kind(value, source) is None: return None
+        standard = self._standard(value, source)
+        if standard is None or standard[:1] not in (['@rc-weak'], ['@arc-weak']): return None
+        if standard[1:2] != ['<'] or closing(standard, 1) != len(standard) - 1: return None
+        module, strong = ('rc', 'Rc') if standard[0] == '@rc-weak' else ('sync', 'Arc')
+        return DeclaredType(['std', '::', module, '::', strong, *standard[1:]], source)
+
     @staticmethod
-    def _bindings(words):
+    def _bindings(words, completed_locals=False):
         result = defaultdict(list)
         closure_end = -1
         for i, word in enumerate(words):
@@ -424,6 +463,12 @@ class ReceiverTypes:
                 while start < len(words) and words[start] in ('mut', 'ref'): start += 1
                 end = until(words, start, {'=', ';'})
                 pattern = words[start:end]
+                # A local does not shadow its predecessor inside its own initializer.
+                # if/while-let patterns instead introduce bindings in their bodies.
+                if (completed_locals and words[i - 1:i] not in (['if'], ['while'])
+                        and (not i or words[i - 1] in ('{', ';', '}'))
+                        and words[end:end + 1] == ['=']
+                        and until(words, end + 1, {';'}) == len(words)): continue
                 if len(pattern) >= 2 and pattern[1] == ':': continue
                 # Untyped bindings, including destructuring, shadow prior facts.
                 for name in names(pattern): result[name].append(())
@@ -643,7 +688,7 @@ class ReceiverTypes:
             if proofs:
                 start = max(start for start, _ in proofs)
                 # A nested binding/pattern must never inherit an outer proof.
-                if expression[0] in self._bindings(self.streams[path][start:index]):
+                if expression[0] in self._bindings(self.streams[path][start:index], completed_locals=True):
                     return [()]
                 values = [value for position, value in proofs if position == start]
         if not values: return [()]
