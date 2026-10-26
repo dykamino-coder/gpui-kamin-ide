@@ -57,7 +57,11 @@ Windows-изменения DirectWrite/DirectX не являются перен�
 принадлежат `html::paint::coordinator`; GPUI предоставляет общий child visitor,
 opaque boundary guard и непрочитанные метаданные прозрачных holders. Очереди
 прохода не используют TLS или глобальный reset. Выбор text background/fill policy
-пока остаётся в прежних адаптерах. Пробы HTML consumers находятся в
+принадлежит `html::paint::raster`, поиск подложки текста — `html::text::raster`.
+Общий `RasterFrame` хранит точные bounds, glyph offset, actual/exact fill transforms
+и непрозрачные typed host data с идентичностью Rc. GPUI передаёт геометрию и
+метаданные бокса в child visitor и вызывает host callback выбора fill bounds
+в прежней точке рисования quad. Пробы HTML consumers находятся в
 `crates/html/src/paint/contract_tests/`.
 
 1. Исправления общего назначения сначала предлагать upstream. В локальном

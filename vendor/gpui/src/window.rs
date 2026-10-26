@@ -80,8 +80,6 @@ pub use paint_scope::{PaintError, PaintPassId, PaintScopeId};
 pub use paint_snapshot::{PaintCtx, PaintState, RasterPaintCtx};
 pub use raster_frame::RasterFrame;
 mod line_baselines;
-mod css_text_background;
-mod css_fill_transform;
 mod plane3d;
 mod render_context;
 mod box_edges;
@@ -1223,16 +1221,8 @@ pub struct Window {
     /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
     /// while non-zero, `layout_bounds` adds the element offset unsnapped.
     pub(crate) exact_element_offset_depth: u32,
-    /// KaminIDE patch: sub-pixel offset added to glyph origins (see
-    /// `Window::replace_glyph_offset`).
-    pub(crate) glyph_offset: Point<Pixels>,
-    /// Paint frames of opaque CSS fills; only HTML text queries this stack.
-    css_text_backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
-    /// KaminIDE patch: (snapped, unrounded) bounds of the `Div` whose style
-    /// is being painted, for device-pixel snapping of its CSS border edges
-    /// from the exact geometry (`style::border_snap`).
-    pub(crate) css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
-    pub(crate) css_fill_transform: Option<(TransformationMatrix, TransformationMatrix)>,
+    /// Явная raster-геометрия и непрозрачные данные хозяина.
+    pub(crate) raster_frame: RasterFrame,
     /// KaminIDE patch: стек преобразований (`transform` в CSS).
     ///
     /// Матрица действует на всё, что рисуется внутри: на подложку, рамку,
@@ -2169,10 +2159,7 @@ impl Window {
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             exact_element_offset_depth: 0,
-            glyph_offset: Point::default(),
-            css_text_backgrounds: Vec::new(),
-            css_exact_bounds: None,
-            css_fill_transform: None,
+            raster_frame: RasterFrame::default(),
             transformation_stack: Vec::new(),
             mask_scale: None,
             mask_map: None,
@@ -4648,10 +4635,9 @@ impl Window {
             .unwrap_or_default()
     }
 
-    /// Obtain the current element opacity. This method should only be called during the
-    /// prepaint phase of element drawing.
+    /// Текущая накопленная непрозрачность элемента в фазе prepaint или paint.
     #[inline]
-    pub(crate) fn element_opacity(&self) -> f32 {
+    pub fn element_opacity(&self) -> f32 {
         self.invalidator.debug_assert_paint_or_prepaint();
         self.element_opacity
     }
@@ -5253,7 +5239,7 @@ impl Window {
     /// (unsnapped) position: an HTML paragraph passes the difference here so
     /// its glyphs keep the fractional position while its boxes stay snapped.
     pub fn replace_glyph_offset(&mut self, offset: Point<Pixels>) -> Point<Pixels> {
-        std::mem::replace(&mut self.glyph_offset, offset)
+        std::mem::replace(&mut self.raster_frame.glyph_offset, offset)
     }
 
     /// Paints a monochrome (non-emoji) glyph into the scene for the next frame at the current z-index.
@@ -5280,7 +5266,7 @@ impl Window {
         // (CSS 2.1 section 10.8.1). The offset is scoped by the HTML paragraph;
         // other GPUI elements keep their default zero offset.
         let pixel_exact = self.text_system().pixel_exact_glyphs(font_id);
-        let glyph_origin = (origin + self.glyph_offset).scale(scale_factor);
+        let glyph_origin = (origin + self.raster_frame.glyph_offset).scale(scale_factor);
 
         // KaminIDE patch: a pixel-exact font (Ahem) keeps its sub-pixel
         // position on BOTH axes, quantized on one grid so that `pixel origin +

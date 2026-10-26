@@ -13,6 +13,7 @@ pub mod decorations;
 pub mod effects;
 pub mod gap_rules;
 pub(crate) mod positioned;
+mod raster;
 pub(crate) mod replaced;
 pub mod stacking;
 pub mod table;

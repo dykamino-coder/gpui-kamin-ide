@@ -121,7 +121,7 @@ fn capture_unwind_restores_caller_and_invalidates_reusable_commands() {
                     .record_paint(extent, cx, |window, _| quad(window, rect(1., 2., 10., 10.)))
                     .unwrap();
                 let mask = window.content_mask();
-                let frame = window.raster_frame();
+                let frame = window.raster_frame().clone();
                 let scope = window.paint_scope_id();
                 let host = Rc::new(7u32);
                 window.with_render_context(Some(host.clone()), |window| {
@@ -149,7 +149,7 @@ fn capture_unwind_restores_caller_and_invalidates_reusable_commands() {
                     assert!(Rc::ptr_eq(&window.render_context::<u32>().unwrap(), &host));
                 });
                 assert_eq!(window.content_mask(), mask);
-                assert_eq!(window.raster_frame(), frame);
+                assert_eq!(window.raster_frame().clone(), frame);
                 assert_eq!(
                     window.current_transformation(),
                     TransformationMatrix::unit()

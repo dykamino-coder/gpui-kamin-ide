@@ -11,6 +11,39 @@ type Values = HashMap<TypeId, Rc<dyn Any>>;
 #[derive(Clone, Default)]
 pub(super) struct Snapshot(Values);
 
+impl Snapshot {
+    pub(super) fn get<T: Any>(&self) -> Option<Rc<T>> {
+        self.0.get(&TypeId::of::<T>()).cloned()?.downcast().ok()
+    }
+
+    pub(super) fn set<T: Any>(&mut self, value: Option<Rc<T>>) {
+        let id = TypeId::of::<T>();
+        match value {
+            Some(value) => {
+                self.0.insert(id, value);
+            }
+            None => {
+                self.0.remove(&id);
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for Snapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(self.0.keys()).finish()
+    }
+}
+
+impl PartialEq for Snapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.len() == other.0.len()
+            && self.0.iter().all(|(id, value)| {
+                other.0.get(id).is_some_and(|other| Rc::ptr_eq(value, other))
+            })
+    }
+}
+
 #[derive(Default)]
 pub(super) struct RenderContexts(Rc<RefCell<Values>>);
 

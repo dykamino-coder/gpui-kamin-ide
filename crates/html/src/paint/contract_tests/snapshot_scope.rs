@@ -19,10 +19,10 @@ fn group<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
 }
 
 fn rejected(window: &mut Window, snapshot: PaintState, error: PaintError) {
-    let before = window.raster_frame();
+    let before = window.raster_frame().clone();
     let result = window.with_paint_state(snapshot, |_| panic!("invalid replay ran"));
     assert_eq!(result, Err::<(), _>(error));
-    assert_eq!(window.raster_frame(), before);
+    assert_eq!(window.raster_frame().clone(), before);
 }
 
 #[test]

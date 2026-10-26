@@ -5,6 +5,8 @@ mod admission;
 mod capture;
 mod interaction;
 mod order;
+mod raster;
+mod raster_background;
 mod record;
 mod scope;
 mod snapshot_abort;

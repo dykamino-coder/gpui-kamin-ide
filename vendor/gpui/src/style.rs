@@ -1,5 +1,4 @@
 pub(crate) mod border_snap;
-pub(crate) mod transformed_box;
 mod sizing_keyword;
 pub use sizing_keyword::CssSizingKeyword;
 
@@ -391,12 +390,8 @@ pub struct Style {
     /// The border style of this element
     pub border_style: BorderStyle,
 
-    /// Snap axis-aligned square CSS borders to device pixels; HTML opt-in.
-    pub css_border_snap: bool,
-    /// A table row/group fill replicated onto a cell is not the cell's own
-    /// CSS background (CSS 2.1 section 17.5.1). Keep its text layout frame.
-    pub css_synthetic_background: bool,
-
+    /// Явная привязка прямоугольных границ к пикселям устройства.
+    pub snap_to_device_pixels: bool,
     /// The radius of the corners of this element
     #[refineable]
     pub corner_radii: Corners<AbsoluteLength>,
@@ -889,7 +884,7 @@ impl Style {
         }
     }
 
-    /// KaminIDE patch: `overflow_mask` of an HTML box (`css_border_snap`)
+    /// KaminIDE patch: `overflow_mask` of an HTML box (`snap_to_device_pixels`)
     /// computed from its unrounded geometry, each edge snapped to the device
     /// pixel grid like its border edges (`border_snap`): Blink clips to the
     /// pixel-snapped clip rect, so a clip edge and a border edge at the same
@@ -901,12 +896,12 @@ impl Style {
         window: &Window,
     ) -> Option<ContentMask<Pixels>> {
         let exact = window
-            .css_exact_bounds
+            .raster_frame.exact_bounds
             .filter(|(snapped, _)| *snapped == bounds)
             .map(|(_, exact)| exact);
         let exact = match exact {
             Some(exact)
-                if self.css_border_snap
+                if self.snap_to_device_pixels
                     && window.current_transformation()
                         == crate::TransformationMatrix::unit() =>
             {
@@ -988,7 +983,8 @@ impl Style {
             };
             border_color.a = 0.;
             window.paint_quad(quad(
-                transformed_box::bounds(self, bounds, window),
+                window.render_context::<crate::PaintTraversal>()
+                    .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window)),
                 corner_radii,
                 background_color.unwrap_or_default(),
                 Edges::default(),
@@ -1122,8 +1118,7 @@ impl Default for Style {
             background: None,
             border_color: None,
             border_style: BorderStyle::default(),
-            css_border_snap: false,
-            css_synthetic_background: false,
+            snap_to_device_pixels: false,
             corner_radii: Corners::default(),
             box_shadow: Default::default(),
             inset_box_shadow: Default::default(),

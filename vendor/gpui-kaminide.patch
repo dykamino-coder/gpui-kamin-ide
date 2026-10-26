@@ -8,7 +8,7 @@
 # 6. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
 # 7. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
 # 8. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
-# 9. Host painting: generic child visitors, opaque boundary guards and uninterpreted holder metadata let the host coordinate paint order inside existing clip/effect scopes; no CSS collector, flags or TLS. Transforms, clipping, gradients and compositing preserve explicit paint environments.
+# 9. Host painting: generic child visitors forward box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
 # 10. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
 # 11. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
 # 12. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
@@ -16,7 +16,7 @@
 # 14. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
 # 15. Host integration: frame capture with an opt-in first-frame latch, completion events and readback timing for WPT readiness/convergence diagnostics, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.
 # 16. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
-# 17. Paint contract: host policy ownership; checked window/pass/live-composition snapshots with one guarded replay, explicit exact raster placement, and unwind-safe geometry/isolated scene scopes. Existing consumers retain their field selection and ordering.
+# 17. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
 # 18. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
 # 19. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
 # 20. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
@@ -6288,18 +6288,20 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d8143bfe2c85
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..22194ede0c8659b1fd6563c83865b55cafcb69b8
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
-@@ -1800,0 +1801,2 @@
+@@ -1800,0 +1801,3 @@
 +        layout_observer: None,
 +        child_painter: None,
-@@ -1805,0 +1808 @@
++        paint_metadata: None,
+@@ -1805,0 +1809,2 @@
 +    child_painter: Option<crate::ChildPainter>,
-@@ -1810,0 +1814,2 @@
++    paint_metadata: Option<std::rc::Rc<dyn std::any::Any>>,
+@@ -1810,0 +1816,2 @@
 +    // KaminIDE patch: layout inputs must observe this node, not a wrapper box.
 +    layout_observer: Option<Box<dyn LayoutObserver>>,
-@@ -1812,0 +1818,10 @@
+@@ -1812,0 +1820,10 @@
 +/// KaminIDE patch: observes a box's layout lifecycle without adding a node.
 +/// The request phase records identity; prepaint sees the completed layout.
 +pub trait LayoutObserver: 'static {
@@ -6310,7 +6312,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +    fn prepaint(&mut self, window: &mut Window) -> bool;
 +}
 +
-@@ -1813,0 +1829,12 @@
+@@ -1813,0 +1831,18 @@
++    /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
++    pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
++        self.paint_metadata = Some(std::rc::Rc::new(metadata));
++        self
++    }
++
 +    /// KaminIDE patch: delegate child painting inside this box's existing effect and clip scopes.
 +    /// Layout, prepaint and event registration keep their original order.
 +    pub fn paint_children_with(mut self, painter: crate::ChildPainter) -> Self {
@@ -6323,21 +6331,21 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +        self.layout_observer = Some(Box::new(observer));
 +        self
 +    }
-@@ -1854,0 +1882,4 @@
+@@ -1854,0 +1890,4 @@
 +    /// KaminIDE patch: this node's layout id and its unrounded window
 +    /// bounds (set in prepaint) for device-pixel snapping of CSS borders.
 +    layout_id: Option<LayoutId>,
 +    exact_bounds: Option<Bounds<Pixels>>,
-@@ -1893,0 +1925,2 @@
+@@ -1893,0 +1933,2 @@
 +    fn paint_boundary(&self) -> bool { false }
 +
-@@ -1942 +1975 @@
+@@ -1942 +1983 @@
 -            self.interactivity.request_layout(
 +            self.interactivity.request_layout_boxed(
-@@ -1954 +1987 @@
+@@ -1954 +1995 @@
 -                        window.request_layout(style, child_layout_ids.iter().copied(), cx)
 +                        window.request_layout_ref(&style, child_layout_ids.iter().copied(), cx)
-@@ -1960 +1993,12 @@
+@@ -1960 +2001,12 @@
 -        (layout_id, DivFrameState { child_layout_ids })
 +        // KaminIDE patch: capture identity in the tree receiving this node.
 +        if let Some(observer) = &mut self.layout_observer {
@@ -6351,14 +6359,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +                exact_bounds: None,
 +            },
 +        )
-@@ -1972,0 +2017,6 @@
+@@ -1972,0 +2025,6 @@
 +        // KaminIDE patch: stale descendants cannot publish inputs in this pass.
 +        if let Some(observer) = &mut self.layout_observer
 +            && !observer.prepaint(window)
 +        {
 +            return None;
 +        }
-@@ -2019 +2069,21 @@
+@@ -2019 +2077,21 @@
 -        self.interactivity.prepaint(
 +        // KaminIDE patch: unrounded bounds of this node, only when they lie
 +        // within half a device pixel of the snapped ones (a node moved by
@@ -6376,61 +6384,59 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +            .then_some(exact)
 +        });
 +        let outer_exact = std::mem::replace(
-+            &mut window.css_exact_bounds,
++            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
 +
 +        let hitbox = self.interactivity.prepaint(
-@@ -2026,0 +2097,2 @@
+@@ -2026,0 +2105,2 @@
 +                // Children bring their own exact bounds.
-+                window.css_exact_bounds = None;
-@@ -2055 +2127,3 @@
++                window.raster_frame.exact_bounds = None;
+@@ -2055 +2135,3 @@
 -        )
 +        );
-+        window.css_exact_bounds = outer_exact;
++        window.raster_frame.exact_bounds = outer_exact;
 +        hitbox
-@@ -2064 +2138 @@
+@@ -2064 +2146 @@
 -        _request_layout: &mut Self::RequestLayoutState,
 +        request_layout: &mut Self::RequestLayoutState,
-@@ -2073,0 +2148,4 @@
+@@ -2073,0 +2156,4 @@
 +        let outer_exact = std::mem::replace(
-+            &mut window.css_exact_bounds,
++            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
-@@ -2083,8 +2161,22 @@
--                    // skip children
--                    if style.display == Display::None {
--                        return;
--                    }
--
+@@ -2082,0 +2169,3 @@
++                    let exact_bounds = window.raster_frame.exact_bounds;
++                    // Own borders are painted; children bring their own bounds.
++                    window.raster_frame.exact_bounds = None;
+@@ -2088,2 +2177,22 @@
 -                    for child in &mut self.children {
 -                        child.paint(window, cx);
--                    }
-+                    window.with_css_text_background(style, bounds, |window| {
-+                        // Own borders are painted; children bring their own bounds.
-+                        window.css_exact_bounds = None;
-+                        // skip children
-+                        if style.display == Display::None {
-+                            return;
-+                        }
-+
-+                        let painter = self.child_painter.clone().or_else(|| {
-+                            window.render_context::<crate::PaintTraversal>()
-+                                .map(|traversal| traversal.children.clone())
-+                        });
-+                        let mut children = self.children.iter_mut().map(|child| {
-+                            #[cfg(feature = "stacker")] { &mut **child }
-+                            #[cfg(not(feature = "stacker"))] { child }
-+                        });
-+                        if let Some(painter) = painter {
-+                            (painter.0)(style, &mut children, window, cx);
-+                        } else {
-+                            for child in children { child.paint(window, cx); }
-+                        }
++                    let painter = self.child_painter.clone().or_else(|| {
++                        window.render_context::<crate::PaintTraversal>()
++                            .map(|traversal| traversal.children.clone())
 +                    });
-@@ -2093,0 +2186 @@
-+        window.css_exact_bounds = outer_exact;
-@@ -2216,0 +2310,14 @@
++                    let mut children = self.children.iter_mut().map(|child| {
++                        #[cfg(feature = "stacker")] { &mut **child }
++                        #[cfg(not(feature = "stacker"))] { child }
++                    });
++                    if let Some(painter) = painter {
++                        (painter.0)(
++                            crate::ChildPaintContext {
++                                style,
++                                bounds,
++                                exact_bounds,
++                                metadata: self.paint_metadata.as_deref(),
++                            },
++                            &mut children,
++                            window,
++                            cx,
++                        );
++                    } else {
++                        for child in children { child.paint(window, cx); }
+@@ -2093,0 +2203 @@
++        window.raster_frame.exact_bounds = outer_exact;
+@@ -2216,0 +2327,14 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
 +            f(*style, window, cx)
 +        })
@@ -6445,10 +6451,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +        cx: &mut App,
 +        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
-@@ -2294 +2401 @@
+@@ -2294 +2418 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-@@ -2354,11 +2461,53 @@
+@@ -2354,11 +2478,53 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -6513,7 +6519,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2515 @@
+@@ -2366,18 +2532 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -6533,7 +6539,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2517,12 @@
+@@ -2385,20 +2534,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -6566,7 +6572,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2518,113 +2642,108 @@
+@@ -2518,113 +2659,108 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -6788,7 +6794,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2751,27 @@
+@@ -2632,2 +2768,27 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -6818,14 +6824,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2779,2 @@
+@@ -2635,4 +2796,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -3404,0 +3547,13 @@
+@@ -3404,0 +3564,13 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -6839,11 +6845,11 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..7ccde043bf51d953e288752abf28d814
 +        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
 +    }
 +
-@@ -3499 +3654,2 @@
+@@ -3499 +3671,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -4101,0 +4258,3 @@
+@@ -4101,0 +4275,3 @@
 +
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
@@ -8108,17 +8114,36 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..e541099619c263c2e092b932ac201985
 +pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent};
 diff --git a/vendor/gpui/src/paint_traversal.rs b/vendor/gpui/src/paint_traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1171a7ccbf5d8a689f668b56aa133d5444147ff9
+index 0000000000000000000000000000000000000000..1cdb2dc7661ee7395441b1ee51ea0aaa0ab75c96
 --- /dev/null
 +++ b/vendor/gpui/src/paint_traversal.rs
-@@ -0,0 +1,34 @@
-+//! Общие callbacks обхода: порядок и семантика метаданных принадлежат хозяину.
+@@ -0,0 +1,53 @@
++//! Общие callbacks: геометрия и метаданные явные, правила принадлежат хозяину.
 +
-+use crate::{AnyElement, App, Style, Window};
++use crate::{AnyElement, App, Bounds, Pixels, Style, Window};
 +use std::{any::Any, rc::Rc};
 +
-+type ChildrenCallback = dyn Fn(&Style, &mut dyn Iterator<Item = &mut AnyElement>, &mut Window, &mut App);
++/// Геометрия и непрозрачные метаданные в обычной точке рисования детей бокса.
++pub struct ChildPaintContext<'a> {
++    /// Итоговый стиль рисуемого бокса.
++    pub style: &'a Style,
++    /// Границы размещения бокса.
++    pub bounds: Bounds<Pixels>,
++    /// Округлённые и точные границы перед входом в потомков.
++    pub exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
++    /// Непрозрачные метаданные хозяина, прикреплённые к боксу.
++    pub metadata: Option<&'a dyn Any>,
++}
++
++type ChildrenCallback = dyn Fn(
++    ChildPaintContext<'_>,
++    &mut dyn Iterator<Item = &mut AnyElement>,
++    &mut Window,
++    &mut App,
++);
 +type BoundaryCallback = dyn Fn(&mut Window) -> Box<dyn Any>;
++type FillBoundsCallback = dyn Fn(&Style, Bounds<Pixels>, &Window) -> Bounds<Pixels>;
++
 +type FinishRecording = dyn Fn(&mut dyn Any, &mut Window, &mut App);
 +
 +/// Host-owned work that must finish inside a source command recording scope.
@@ -8131,18 +8156,18 @@ index 0000000000000000000000000000000000000000..1171a7ccbf5d8a689f668b56aa133d54
 +    pub finish: Rc<FinishRecording>,
 +}
 +
-+/// KaminIDE patch: visits children exactly at the normal child-paint location inside a box.
-+/// The callback must paint each child at most once and must not repeat prepaint.
++/// Обход детей в обычной точке paint, не более раза, без повторного prepaint.
 +#[derive(Clone)]
 +pub struct ChildPainter(pub Rc<ChildrenCallback>);
 +
-+/// Optional host traversal, installed with `Window::with_render_context`.
-+/// The boundary guard restores the host scope even if an element unwinds.
++/// Правила хозяина, установленные через `Window::with_render_context`.
 +pub struct PaintTraversal {
-+    /// Enter an opaque element; GPUI never interprets the returned guard.
++    /// Вход в непрозрачный элемент; GPUI не интерпретирует возвращаемый guard.
 +    pub enter_boundary: Rc<BoundaryCallback>,
-+    /// Default child visitor for boxes without a local override.
++    /// Обычный обход детей для боксов без локальной замены.
 +    pub children: ChildPainter,
++    /// Выбор явной геометрии заливки перед выдачей существующего quad.
++    pub fill_bounds: Rc<FillBoundsCallback>,
 +    /// Optional lifecycle for source recording; playback never invokes it.
 +    pub recording: Option<PaintRecording>,
 +}
@@ -9147,21 +9172,20 @@ index 0000000000000000000000000000000000000000..c3df4a723de996362a102485c7f7c8a9
 +     m[6], m[7], m[8] - m[6] * x - m[7] * y]
 +}
 diff --git a/vendor/gpui/src/style.rs b/vendor/gpui/src/style.rs
-index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e6264542c9f
+index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0ce463a41
 --- a/vendor/gpui/src/style.rs
 +++ b/vendor/gpui/src/style.rs
-@@ -0,0 +1,5 @@
+@@ -0,0 +1,4 @@
 +pub(crate) mod border_snap;
-+pub(crate) mod transformed_box;
 +mod sizing_keyword;
 +pub use sizing_keyword::CssSizingKeyword;
 +
-@@ -10 +15,3 @@
+@@ -10 +14,3 @@
 -    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridLocation, Hsla, Length, Pixels, Point,
 +    FontFallbacks, FontFeatures, FontStyle, FontWeight, GridAutoFlow, GridLocation, GridTrack,
 +    Hsla, Length,
 +    Pixels, Point,
-@@ -134 +141,7 @@
+@@ -134 +140,7 @@
 -                origin: bounds.origin,
 +                // KaminIDE patch: CSS `object-fit: none` кладёт рисунок по
 +                // `object-position`, чей дефолт 50% 50% — ЦЕНТР коробки, а не
@@ -9170,12 +9194,12 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +                    bounds.origin.x + (bounds.size.width - image_size.width) / 2.0,
 +                    bounds.origin.y + (bounds.size.height - image_size.height) / 2.0,
 +                ),
-@@ -190,0 +204,4 @@
+@@ -190,0 +203,4 @@
 +    /// KaminIDE patch: сдвиг края обрезки от padding-box наружу по сторонам
 +    /// (`overflow-clip-margin`, css-overflow-3 §5): верх/право/низ/лево в
 +    /// логических точках. Отрицательный — внутрь (отсчёт от content-box).
 +    pub overflow_clip_offset: Option<[f32; 4]>,
-@@ -240,0 +258,11 @@
+@@ -240,0 +257,11 @@
 +    /// Preferred border-box size transferred through an authored aspect ratio.
 +    pub aspect_ratio_preferred_size: [Option<f32>; 2],
 +    /// Intrinsic width and height passed directly to the native layout.
@@ -9187,13 +9211,13 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +    pub min_sizing_keywords: [Option<CssSizingKeyword>; 2],
 +    /// Content-box intrinsic sizes for contained physical axes, in logical pixels.
 +    pub contained_intrinsic_size: [Option<f32>; 2],
-@@ -261,0 +290,5 @@
+@@ -261,0 +289,5 @@
 +    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4) —
 +    /// `align_items`, `align_self`, `align_content`, `justify_content`.
 +    pub safe_alignment: (bool, bool, bool, bool),
 +    /// Safety of inline-axis item/self alignment, projected with grid axes.
 +    pub safe_justify_alignment: (bool, bool),
-@@ -270,0 +304,74 @@
+@@ -270,0 +303,74 @@
 +    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
 +    /// балансировка строк с минимумом N строк (`flex-line-count`).
 +    pub flex_balance_lines: u16,
@@ -9268,14 +9292,10 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +    /// min-content его содержимого (css-tables-3 §3.9: GRIDMIN сильнее
 +    /// `min-width`/`max-width`/`flex-shrink`).
 +    pub item_is_table: bool,
-@@ -286,0 +394,6 @@
-+    /// Snap axis-aligned square CSS borders to device pixels; HTML opt-in.
-+    pub css_border_snap: bool,
-+    /// A table row/group fill replicated onto a cell is not the cell's own
-+    /// CSS background (CSS 2.1 section 17.5.1). Keep its text layout frame.
-+    pub css_synthetic_background: bool,
-+
-@@ -293,0 +407,7 @@
+@@ -286,0 +393,2 @@
++    /// Явная привязка прямоугольных границ к пикселям устройства.
++    pub snap_to_device_pixels: bool,
+@@ -293,0 +402,7 @@
 +    /// KaminIDE patch: внутренние тени (`box-shadow: inset`).
 +    ///
 +    /// Отдельным списком, а не признаком у `BoxShadow`: сама структура
@@ -9283,7 +9303,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +    /// сломало бы его сгенерированный код.
 +    pub inset_box_shadow: Vec<BoxShadow>,
 +
-@@ -307,0 +428,8 @@
+@@ -307,0 +423,8 @@
 +    /// Minimal track width for `grid-template-columns:
 +    /// repeat(auto-fill, minmax(<min>, 1fr))`.
 +    /// Takes precedence over `grid_cols` when set.
@@ -9292,7 +9312,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +    /// остаток делят непустые (css-grid-2 §auto-repeat).
 +    pub grid_cols_fit: bool,
 +
-@@ -310,0 +439,36 @@
+@@ -310,0 +434,36 @@
 +
 +    /// KaminIDE patch: произвольный список дорожек колонок.
 +    ///
@@ -9329,7 +9349,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +
 +    /// KaminIDE patch: то же для неявных РЯДОВ (`grid-auto-rows: A B C`).
 +    pub grid_auto_rows_list: Vec<GridTrack>,
-@@ -432,0 +597,7 @@
+@@ -432,0 +592,7 @@
 +
 +    /// KaminIDE patch: выключка по ширине (`text-align: justify`).
 +    ///
@@ -9337,26 +9357,26 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +    /// так и делает браузер. Прежде значение сводилось к прижиму влево, и
 +    /// правый край колонки оставался рваным.
 +    Justify,
-@@ -462,0 +634,3 @@
+@@ -462,0 +629,3 @@
 +    /// KaminIDE patch: ширина начертания (`font-stretch`).
 +    pub font_stretch: crate::FontStretch,
 +
-@@ -470,0 +645,5 @@
+@@ -470,0 +640,5 @@
 +
 +    /// KaminIDE patch: трекинг (`letter-spacing`), пиксели. 0 = как было.
 +    /// Доходит до глифов только у ОДНОСТРОЧНОГО текста без переноса —
 +    /// см. `layout_wrapped_line_spaced` (план 99).
 +    pub letter_spacing: Pixels,
-@@ -487,0 +667 @@
+@@ -487,0 +662 @@
 +            font_stretch: crate::FontStretch::default(),
-@@ -497,0 +678 @@
+@@ -497,0 +673 @@
 +            letter_spacing: crate::px(0.),
-@@ -549,0 +731,2 @@
+@@ -549,0 +726,2 @@
 +            // KaminIDE patch: ширина начертания живёт в стиле текста.
 +            stretch: self.font_stretch,
-@@ -567,0 +751 @@
+@@ -567,0 +746 @@
 +                stretch: self.font_stretch,
-@@ -570,0 +755,9 @@
+@@ -570,0 +750,9 @@
 +            // KaminIDE patch: кегль прогона задаёт разметка; у стиля он один
 +            // на блок, поэтому здесь его нет.
 +            font_size: None,
@@ -9366,14 +9386,14 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +            background_radius: Default::default(),
 +            background_line_gap: false,
 +            background_border: None,
-@@ -652,3 +845,3 @@
+@@ -652,3 +840,3 @@
 -                if self
 -                    .border_color
 -                    .is_some_and(|color| !color.is_transparent())
 +                // KaminIDE patch: край обрезки — padding-box ВСЕГДА
 +                // (css-overflow-3 §3, overflow clip edge): рамка вычитается и
 +                // прозрачная — прозрачность цвета не двигает край.
-@@ -660,0 +854,8 @@
+@@ -660,0 +849,8 @@
 +                // KaminIDE patch: край обрезки отодвигается наружу на
 +                // заданное поле (внутрь — при отсчёте от content-box).
 +                if let Some([top, right, bottom, left]) = self.overflow_clip_offset {
@@ -9382,25 +9402,25 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +                    min.y -= crate::px(top);
 +                    max.y += crate::px(bottom);
 +                }
-@@ -667,0 +869,4 @@
+@@ -667,0 +864,4 @@
 +                    // KaminIDE patch: оси были ПЕРЕПУТАНЫ — при «x видима,
 +                    // y прячется» маска резала X по коробке и отпускала Y.
 +                    // Свободная ось не ограничивается вовсе (широкий запас):
 +                    // однокоординатная обрезка режет только свою ось.
-@@ -670,2 +875,2 @@
+@@ -670,2 +870,2 @@
 -                        point(min.x, bounds.origin.y),
 -                        point(max.x, bounds.bottom_right().y),
 +                        point(crate::px(-1_000_000.0), min.y),
 +                        point(crate::px(1_000_000.0), max.y),
-@@ -675,2 +880,2 @@
+@@ -675,2 +875,2 @@
 -                        point(bounds.origin.x, min.y),
 -                        point(bounds.bottom_right().x, max.y),
 +                        point(min.x, crate::px(-1_000_000.0)),
 +                        point(max.x, crate::px(1_000_000.0)),
-@@ -684,0 +890,37 @@
+@@ -684,0 +885,37 @@
 +    }
 +
-+    /// KaminIDE patch: `overflow_mask` of an HTML box (`css_border_snap`)
++    /// KaminIDE patch: `overflow_mask` of an HTML box (`snap_to_device_pixels`)
 +    /// computed from its unrounded geometry, each edge snapped to the device
 +    /// pixel grid like its border edges (`border_snap`): Blink clips to the
 +    /// pixel-snapped clip rect, so a clip edge and a border edge at the same
@@ -9412,12 +9432,12 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +        window: &Window,
 +    ) -> Option<ContentMask<Pixels>> {
 +        let exact = window
-+            .css_exact_bounds
++            .raster_frame.exact_bounds
 +            .filter(|(snapped, _)| *snapped == bounds)
 +            .map(|(_, exact)| exact);
 +        let exact = match exact {
 +            Some(exact)
-+                if self.css_border_snap
++                if self.snap_to_device_pixels
 +                    && window.current_transformation()
 +                        == crate::TransformationMatrix::unit() =>
 +            {
@@ -9435,7 +9455,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +                point(at(b.right()), at(b.bottom())),
 +            ),
 +        })
-@@ -694,0 +937,12 @@
+@@ -694,0 +932,12 @@
 +        self.paint_box(bounds, window, cx);
 +        continuation(window, cx);
 +
@@ -9448,7 +9468,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +    // Finish shadows, background and border temporaries before painting children.
 +    #[inline(never)]
 +    fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-@@ -720 +974,7 @@
+@@ -720 +969,7 @@
 -
 +                    // KaminIDE patch: радиальный хранит цвета там же, где
 +                    // линейный, — берём первый стоп.
@@ -9457,13 +9477,14 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +                        .first()
 +                        .map(|stop| stop.color)
 +                        .unwrap_or_default(),
-@@ -731 +991 @@
+@@ -731 +986,2 @@
 -                bounds,
-+                transformed_box::bounds(self, bounds, window),
-@@ -739,0 +1000,2 @@
++                window.render_context::<crate::PaintTraversal>()
++                    .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window)),
+@@ -739,0 +996,2 @@
 +        // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),
 +        // cast from the border box; HTML uses `inset_box_shadow` below.
-@@ -742,20 +1004,36 @@
+@@ -742,20 +1000,36 @@
 -        continuation(window, cx);
 -
 -        if self.is_border_visible() {
@@ -9520,18 +9541,18 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +        }
 +
 +        border_snap::paint(self, bounds, corner_radii, rem_size, window);
-@@ -773,0 +1052,2 @@
+@@ -773,0 +1048,2 @@
 +            safe_alignment: (false, false, false, false),
 +            safe_justify_alignment: (false, false),
-@@ -779,0 +1060 @@
+@@ -779,0 +1056 @@
 +            overflow_clip_offset: None,
-@@ -791,0 +1073,5 @@
+@@ -791,0 +1069,5 @@
 +            aspect_ratio_preferred_size: [None; 2],
 +            sizing_keywords: [None; 2],
 +            max_sizing_keywords: [None; 2],
 +            min_sizing_keywords: [None; 2],
 +            contained_intrinsic_size: [None; 2],
-@@ -797,0 +1084,8 @@
+@@ -797,0 +1080,8 @@
 +            // KaminIDE patch
 +            justify_items: None,
 +            justify_self: None,
@@ -9540,7 +9561,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +            grid_auto_cols: None,
 +            grid_auto_cols_list: Vec::new(),
 +            grid_auto_rows_list: Vec::new(),
-@@ -800,0 +1095,23 @@
+@@ -800,0 +1091,23 @@
 +            flex_balance_lines: 0,
 +            flex_cross_reverse: false,
 +            block_baselines: false,
@@ -9564,34 +9585,33 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..d9468c805ec3d58822bead3687b56e62
 +            block_flow: None,
 +            grid_subgrid: 0,
 +            grid_line_names: None,
-@@ -802,0 +1120 @@
+@@ -802,0 +1116 @@
 +            item_is_table: false,
-@@ -806,0 +1125,2 @@
-+            css_border_snap: false,
-+            css_synthetic_background: false,
-@@ -808,0 +1129 @@
+@@ -806,0 +1121 @@
++            snap_to_device_pixels: false,
+@@ -808,0 +1124 @@
 +            inset_box_shadow: Default::default(),
-@@ -813,0 +1135,4 @@
+@@ -813,0 +1130,4 @@
 +            grid_cols_min: None,
 +            grid_cols_fit: false,
 +            grid_template_cols: None,
 +            grid_template_rows: None,
-@@ -1059,0 +1385,3 @@
+@@ -1059,0 +1380,3 @@
 +    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
 +    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
 +    LastBaseline,
-@@ -1133,0 +1462,4 @@
+@@ -1133,0 +1457,4 @@
 +    /// KaminIDE patch: a block container that establishes a new block formatting context
 +    /// (`display: flow-root`, css-display-3 §2.2): its margins never collapse with its
 +    /// children's or through it (CSS 2.1 §8.3.1).
 +    FlowRoot,
-@@ -1258,0 +1591 @@
+@@ -1258,0 +1586 @@
 +            AlignItems::LastBaseline => Self::LAST_BASELINE,
-@@ -1282,0 +1616 @@
+@@ -1282,0 +1611 @@
 +            Display::FlowRoot => Self::FlowRoot,
 diff --git a/vendor/gpui/src/style/border_snap.rs b/vendor/gpui/src/style/border_snap.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0dfc93ae943080a4c20680b2fcbf768b4fc7cd74
+index 0000000000000000000000000000000000000000..6b5933cc15f32246cefe50346ccfd05693364ac8
 --- /dev/null
 +++ b/vendor/gpui/src/style/border_snap.rs
 @@ -0,0 +1,160 @@
@@ -9656,7 +9676,7 @@ index 0000000000000000000000000000000000000000..0dfc93ae943080a4c20680b2fcbf768b
 +) {
 +    if style.is_border_visible() {
 +        let border_widths = style.border_widths.to_pixels(rem_size);
-+        let (bounds, border_widths) = if style.css_border_snap
++        let (bounds, border_widths) = if style.snap_to_device_pixels
 +            && corner_radii.max() == Pixels::ZERO
 +            && style.border_style == BorderStyle::Solid
 +            && translation_only(window.current_transformation()).is_some()
@@ -9667,7 +9687,7 @@ index 0000000000000000000000000000000000000000..0dfc93ae943080a4c20680b2fcbf768b
 +            // by a device pixel off a clip or box edge at the same exact
 +            // position (`overflow-clip-margin-013`).
 +            let exact = window
-+                .css_exact_bounds
++                .raster_frame.exact_bounds
 +                .filter(|(snapped, _)| *snapped == bounds)
 +                .map(|(_, exact)| exact);
 +            let shift = translation_only(window.current_transformation()).unwrap_or([0.0; 2]);
@@ -9793,82 +9813,6 @@ index 0000000000000000000000000000000000000000..a168f4b78114183a95769ae83a001244
 +            Self::Stretch => taffy::Dimension::stretch(),
 +        }
 +    }
-+}
-diff --git a/vendor/gpui/src/style/transformed_box.rs b/vendor/gpui/src/style/transformed_box.rs
-new file mode 100644
-index 0000000000000000000000000000000000000000..671cf864ac307d419aeeef246ec88a6790d2f5fe
---- /dev/null
-+++ b/vendor/gpui/src/style/transformed_box.rs
-@@ -0,0 +1,70 @@
-+//! Resolve axis-preserving CSS transforms before snapping a box fill to device edges.
-+
-+use crate::{Bounds, Pixels, Style, Window, point, px};
-+
-+pub(crate) fn bounds(style: &Style, bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pixels> {
-+    if !style.css_border_snap
-+        || style.border_widths.any(|l| !l.is_zero())
-+        || style.corner_radii.to_pixels(window.rem_size()).max() != Pixels::ZERO
-+    {
-+        return bounds;
-+    }
-+    let paint = window.current_transformation();
-+    let exact_transform = window
-+        .css_fill_transform
-+        .filter(|(current, _)| *current == paint);
-+    let m = exact_transform.map_or(paint, |(_, exact)| exact);
-+    let [[a, b], [c, d]] = m.rotation_scale;
-+    let diagonal = b.abs() <= 1e-5
-+        && c.abs() <= 1e-5
-+        && a.abs() > 1e-5
-+        && d.abs() > 1e-5
-+        && ((a - 1.0).abs() >= 1e-5 || (d - 1.0).abs() >= 1e-5 || m.translation == [0.0, 0.0]);
-+    // CSS solid fills snap their final device edges, including boxes moved
-+    // after layout (anchor positioning). Snapping before that relocation
-+    // leaves fractional device edges even when the transform is identity.
-+    // Diagonal reflections, including flattened 3D planes, preserve axes.
-+    // Signed axis permutations also preserve rectangles. They must snap both
-+    // transformed edges, rather than move an already-rounded local box.
-+    if !diagonal && exact_transform.is_none() {
-+        return bounds;
-+    }
-+    let det = a * d - b * c;
-+    if !det.is_finite() || det.abs() <= 1e-5 {
-+        return bounds;
-+    }
-+    let Some((_, exact)) = window
-+        .css_exact_bounds
-+        .filter(|(snapped, _)| *snapped == bounds)
-+    else {
-+        return bounds;
-+    };
-+    // CSS Transforms 1 section 3 maps the CSS reference box before rasterization.
-+    // Undo the actual renderer map after snapping the desired device edges.
-+    let sf = window.scale_factor();
-+    let [[pa, pb], [pc, pd]] = paint.rotation_scale;
-+    let pdet = pa * pd - pb * pc;
-+    let edge = |x: Pixels, y: Pixels| {
-+        let (x, y) = (f32::from(x) * sf, f32::from(y) * sf);
-+        // Round half up on a 1/64 grid first: f32 noise of a long transform
-+        // chain (offset-path ray) put an exact half pixel at 197.4999 and
-+        // rounded it down while the equivalent plain `rotate()` rounded up
-+        // (`offset-path-ray-007/020/021`); the quarter-turn path in
-+        // `crates/html` snaps the same way. The grid truncates like Blink's
-+        // `LayoutUnit(float)` (the guard absorbs only that f32 noise): a
-+        // `1mm` box ending at 53.498 stays below the half pixel instead of
-+        // rounding to 53.5 and growing a row past an image or border edge at
-+        // the same position (`max-height-047` at device scale 1).
-+        let snap = |v: f32| ((v * 64.0 + 0.05).floor() / 64.0 + 0.5).floor();
-+        let dx = snap(a * x + b * y + m.translation[0]) - paint.translation[0];
-+        let dy = snap(c * x + d * y + m.translation[1]) - paint.translation[1];
-+        point(
-+            px((pd * dx - pb * dy) / (pdet * sf)),
-+            px((-pc * dx + pa * dy) / (pdet * sf)),
-+        )
-+    };
-+    Bounds::from_corners(
-+        edge(exact.left(), exact.top()),
-+        edge(exact.right(), exact.bottom()),
-+    )
 +}
 diff --git a/vendor/gpui/src/styled.rs b/vendor/gpui/src/styled.rs
 index a24982a6acb6071701d2258e47a5f25a86d1ee89..9955d520420f9df65b0f4e988d297c1ed1155992
@@ -14834,13 +14778,13 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488a4d9fabc
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..96fc94f45129c097da8afc44521d21aa091b7127
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
 -    EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
 +    EntityId, EventEmitter, ExternalTexture, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
-@@ -67,0 +68,26 @@
+@@ -67,0 +68,24 @@
 +mod image_sampling;
 +mod natural_image;
 +mod absolute_transformation;
@@ -14856,8 +14800,6 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +pub use paint_snapshot::{PaintCtx, PaintState, RasterPaintCtx};
 +pub use raster_frame::RasterFrame;
 +mod line_baselines;
-+mod css_text_background;
-+mod css_fill_transform;
 +mod plane3d;
 +mod render_context;
 +mod box_edges;
@@ -14867,29 +14809,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +pub use layout_inputs::LayoutInputId;
 +pub use plane3d::PlaneSpec;
 +pub use image_sampling::ImageSampling;
-@@ -978,0 +1005,2 @@
+@@ -978,0 +1003,2 @@
 +    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
 +    render_contexts: render_context::Snapshot,
-@@ -1187,0 +1216,5 @@
+@@ -1187,0 +1214,5 @@
 +    // KaminIDE patch: typed host context belongs to this window and traversal.
 +    render_contexts: render_context::RenderContexts,
 +    paint_window: Rc<()>,
 +    paint_pass: PaintPassId,
 +    paint_scope: PaintScopeId,
-@@ -1189,0 +1223,31 @@
+@@ -1189,0 +1221,23 @@
 +    /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
 +    /// while non-zero, `layout_bounds` adds the element offset unsnapped.
 +    pub(crate) exact_element_offset_depth: u32,
-+    /// KaminIDE patch: sub-pixel offset added to glyph origins (see
-+    /// `Window::replace_glyph_offset`).
-+    pub(crate) glyph_offset: Point<Pixels>,
-+    /// Paint frames of opaque CSS fills; only HTML text queries this stack.
-+    css_text_backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
-+    /// KaminIDE patch: (snapped, unrounded) bounds of the `Div` whose style
-+    /// is being painted, for device-pixel snapping of its CSS border edges
-+    /// from the exact geometry (`style::border_snap`).
-+    pub(crate) css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
-+    pub(crate) css_fill_transform: Option<(TransformationMatrix, TransformationMatrix)>,
++    /// Явная raster-геометрия и непрозрачные данные хозяина.
++    pub(crate) raster_frame: RasterFrame,
 +    /// KaminIDE patch: стек преобразований (`transform` в CSS).
 +    ///
 +    /// Матрица действует на всё, что рисуется внутри: на подложку, рамку,
@@ -14908,21 +14842,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +    mask_map: Option<TransformationMatrix>,
 +    /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
 +    pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
-@@ -1235,0 +1300,3 @@
+@@ -1235,0 +1290,3 @@
 +    // KaminIDE patch: a completed layout changed an input to style/layout.
 +    layout_retry: bool,
 +    layout_inputs: Option<FxHashSet<LayoutInputId>>,
-@@ -1237,0 +1305,3 @@
+@@ -1237,0 +1295,3 @@
 +    /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
 +    /// Поднимается на Tab-переходах, гаснет на любом mouse-down.
 +    pub(crate) focus_visible: bool,
-@@ -1837,0 +1908,3 @@
+@@ -1837,0 +1898,3 @@
 +                                // KaminIDE patch: стоимость кадра — в счётчики
 +                                // `frame_perf`, приложение печатает сводку.
 +                                let t0 = std::time::Instant::now();
-@@ -1843,0 +1917 @@
+@@ -1843,0 +1907 @@
 +                                let t1 = std::time::Instant::now();
-@@ -1844,0 +1919,8 @@
+@@ -1844,0 +1909,8 @@
 +                                {
 +                                    use crate::frame_perf::*;
 +                                    use std::sync::atomic::Ordering::Relaxed;
@@ -14931,53 +14865,50 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +                                    FRAMES.fetch_add(1, Relaxed);
 +                                }
 +                                // drop the arena elements after present to reduce latency
-@@ -2082,0 +2165,4 @@
+@@ -2082,0 +2155,4 @@
 +            render_contexts: Default::default(),
 +            paint_window: Rc::new(()),
 +            paint_pass: PaintPassId::default(),
 +            paint_scope: PaintScopeId::default(),
-@@ -2084,0 +2171,9 @@
+@@ -2084,0 +2161,6 @@
 +            exact_element_offset_depth: 0,
-+            glyph_offset: Point::default(),
-+            css_text_backgrounds: Vec::new(),
-+            css_exact_bounds: None,
-+            css_fill_transform: None,
++            raster_frame: RasterFrame::default(),
 +            transformation_stack: Vec::new(),
 +            mask_scale: None,
 +            mask_map: None,
 +            plane_contexts: Vec::new(),
-@@ -2127,0 +2223,2 @@
+@@ -2127,0 +2210,2 @@
 +            layout_retry: false,
 +            layout_inputs: None,
-@@ -2129,0 +2227,2 @@
+@@ -2129,0 +2214,2 @@
 +            // KaminIDE patch: см. `Window::focus_visible`
 +            focus_visible: false,
-@@ -2315,0 +2415,2 @@
+@@ -2315,0 +2402,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2317,0 +2419 @@
+@@ -2317,0 +2406 @@
 +            crate::dirty_sources::note("refresh", std::panic::Location::caller());
-@@ -2378,0 +2481,5 @@
+@@ -2378,0 +2468,5 @@
 +    /// KaminIDE patch: фокус получен клавиатурой — рисуем `:focus-visible`.
 +    pub fn focus_visible(&self) -> bool {
 +        self.focus_visible
 +    }
 +
-@@ -2385,0 +2493,2 @@
+@@ -2385,0 +2480,2 @@
 +            // KaminIDE patch: Tab — клавиатурная модальность
 +            self.focus_visible = true;
-@@ -2396,0 +2506,2 @@
+@@ -2396,0 +2493,2 @@
 +            // KaminIDE patch: Shift+Tab — тоже клавиатура
 +            self.focus_visible = true;
-@@ -2649,0 +2761,2 @@
+@@ -2649,0 +2748,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2650,0 +2764 @@
+@@ -2650,0 +2751 @@
 +        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
-@@ -2669,0 +2784,2 @@
+@@ -2669,0 +2771,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2884,2 +3000,52 @@
+@@ -2884,2 +2987,52 @@
 -    /// Handle window movement for Linux and macOS.
 -    /// Tells the compositor to take control of window movement (Wayland and X11)
 +    /// KaminIDE patch: raw ID3D11Device окна — по нему открывается общий
@@ -15032,7 +14963,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +
 +    /// KaminIDE patch: нарисовать чужую текстуру как обычный спрайт — с теми
 +    /// же скруглением и маской, что у картинок.
-@@ -2887 +3053,71 @@
+@@ -2887 +3040,71 @@
 -    /// Events may not be received during a move operation.
 +    /// Зовётся в фазе отрисовки элемента.
 +    pub fn paint_external_texture(
@@ -15105,41 +15036,41 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +    }
 +
 +    /// Start moving the window (drag) via the platform.
-@@ -3019,0 +3256 @@
+@@ -3019,0 +3243 @@
 +        let depth = self.element_id_stack.len();
-@@ -3021,3 +3258 @@
+@@ -3021,3 +3245 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -3038,0 +3274 @@
+@@ -3038,0 +3261 @@
 +            let depth = self.rem_size_override_stack.len();
-@@ -3040,3 +3276 @@
+@@ -3040,3 +3263 @@
 -            let result = f(self);
 -            self.rem_size_override_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.rem_size_override_stack.truncate(*depth), f).0
-@@ -3189,5 +3422,0 @@
+@@ -3189,5 +3409,0 @@
 -    #[inline]
 -    fn snap_border_widths(&self, edges: Edges<Pixels>) -> Edges<ScaledPixels> {
 -        edges.map(|e| self.snap_stroke(*e))
 -    }
 -
-@@ -3305,0 +3535,4 @@
+@@ -3305,0 +3522,4 @@
 +        self.with_paint_pass(|window| window.draw_frame(cx))
 +    }
 +
 +    fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {
-@@ -3354,0 +3588,4 @@
+@@ -3354,0 +3575,4 @@
 +        }
 +        // A caught unwind still aborts this pass; never publish its partial scene.
 +        if !self.paint_pass.is_live() {
 +            return arena_scope.exit(&cx.element_arena);
-@@ -3554,3 +3790,0 @@
+@@ -3554,3 +3777,0 @@
 -        if self.a11y.is_active() {
 -            self.a11y.begin_frame();
 -        }
-@@ -3579,37 +3813,16 @@
+@@ -3579,37 +3800,16 @@
 -        let scale_factor = self.scale_factor();
 -        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
 -        let root_layout_id = root_element.request_layout(self, cx);
@@ -15193,28 +15124,28 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        );
 +
 +        let _hit_started = std::time::Instant::now();
-@@ -3616,0 +3830,4 @@
+@@ -3616,0 +3817,4 @@
 +        crate::frame_perf::HITTEST_US.fetch_add(
 +            _hit_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3619,0 +3837 @@
+@@ -3619,0 +3824 @@
 +        let _paint_started = std::time::Instant::now();
-@@ -3620,0 +3839,4 @@
+@@ -3620,0 +3826,4 @@
 +        crate::frame_perf::PAINT_US.fetch_add(
 +            _paint_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3763,0 +3986,3 @@
+@@ -3763,0 +3973,3 @@
 +                let _render_scope = self.render_contexts.enter_snapshot(
 +                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
 +                );
-@@ -3817,0 +4043,2 @@
+@@ -3817,0 +4030,2 @@
 +            let _render_scope = self.render_contexts
 +                .enter_snapshot(deferred_draw.render_contexts.clone());
-@@ -3901,0 +4129 @@
+@@ -3901,0 +4116 @@
 +                    render_contexts: deferred_draw.render_contexts.clone(),
-@@ -3972,0 +4201,19 @@
+@@ -3972,0 +4188,19 @@
 +    /// KaminIDE patch: read the host context of type `T` for this traversal.
 +    /// Values belong to this window; callers retain ownership through `Rc`.
 +    pub fn render_context<T: 'static>(&self) -> Option<Rc<T>> {
@@ -15234,14 +15165,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        self.with_restore(scope, |_, _| {}, f).0
 +    }
 +
-@@ -3981,0 +4229 @@
+@@ -3981,0 +4216 @@
 +            let depth = self.text_style_stack.len();
-@@ -3983,3 +4231 @@
+@@ -3983,3 +4218 @@
 -            let result = f(self);
 -            self.text_style_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.text_style_stack.truncate(*depth), f).0
-@@ -3988,0 +4235,24 @@
+@@ -3988,0 +4222,24 @@
 +    }
 +
 +    /// Apply borrowed text and overflow context together during child drawing.
@@ -15266,7 +15197,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +    #[inline(never)]
 +    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
 +        self.text_style_stack.push(style.clone());
-@@ -4034,0 +4305,8 @@
+@@ -4034,0 +4292,8 @@
 +        let depth = self.content_mask_stack.len();
 +        self.push_content_mask(mask);
 +        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -15275,7 +15206,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +    // Prepare mask temporaries before entering the recursive child traversal.
 +    #[inline(never)]
 +    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> bool {
-@@ -4036 +4314,10 @@
+@@ -4036 +4301,10 @@
 -            let mask = mask.intersect(&self.content_mask());
 +            // KaminIDE patch: под `with_transformation_masked` маска ребёнка
 +            // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -15287,12 +15218,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +                None => self.scaled_mask(mask),
 +            }
 +            .intersect(&self.content_mask());
-@@ -4038,3 +4325 @@
+@@ -4038,3 +4312 @@
 -            let result = f(self);
 -            self.content_mask_stack.pop();
 -            result
 +            true
-@@ -4042,2 +4327,119 @@
+@@ -4042,2 +4314,119 @@
 -            f(self)
 -        }
 +            false
@@ -15414,7 +15345,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +    ) -> R {
 +        let prev = self.mask_scale.replace((origin, scale));
 +        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f).0
-@@ -4060,0 +4463,19 @@
+@@ -4060,0 +4450,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -15434,19 +15365,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        let abs_offset = self.element_offset() + offset;
 +        self.with_restore(depth, |window, depth| window.exact_element_offset_depth = *depth,
 +            |window| window.with_absolute_element_offset(abs_offset, f)).0
-@@ -4071,0 +4493 @@
+@@ -4071,0 +4480 @@
 +        let depth = self.element_offset_stack.len();
-@@ -4073,3 +4495 @@
+@@ -4073,3 +4482 @@
 -        let result = f(self);
 -        self.element_offset_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_offset_stack.truncate(*depth), f).0
-@@ -4091,3 +4511 @@
+@@ -4091,3 +4498 @@
 -        let result = f(self);
 -        self.element_opacity = previous_opacity;
 -        result
 +        self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
-@@ -4147 +4565,10 @@
+@@ -4147 +4552,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -15458,7 +15389,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +4585,56 @@
+@@ -4157,0 +4572,56 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -15515,16 +15446,23 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        self.with_transform_frame(combined, keeps_axes.then_some(combined), f)
 +    }
 +
-@@ -4196,0 +4680 @@
+@@ -4168,2 +4638 @@
+-    /// Obtain the current element opacity. This method should only be called during the
+-    /// prepaint phase of element drawing.
++    /// Текущая накопленная непрозрачность элемента в фазе prepaint или paint.
+@@ -4171 +4640 @@
+-    pub(crate) fn element_opacity(&self) -> f32 {
++    pub fn element_opacity(&self) -> f32 {
+@@ -4196,0 +4666 @@
 +        let depth = self.element_id_stack.len();
-@@ -4198,3 +4682 @@
+@@ -4198,3 +4668 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -4383,0 +4866 @@
+@@ -4383,0 +4852 @@
 +            render_contexts: self.render_contexts.snapshot(),
-@@ -4405,12 +4888,91 @@
+@@ -4405,12 +4874,91 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -15628,7 +15566,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        }, |window| {
 +            if pushed { window.with_paint_scope(f) } else { f(window) }
 +        }).0
-@@ -4554,2 +5116,8 @@
+@@ -4554,2 +5102,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -15639,34 +15577,34 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5125 @@
+@@ -4556,0 +5111 @@
 +            transformation,
-@@ -4558,2 +5127,2 @@
+@@ -4558,2 +5113,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5131,2 @@
+@@ -4562,2 +5117,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567 +5136,3 @@
+@@ -4567 +5122,3 @@
 -        if !quad.background.is_transparent() {
 +        // The strip split below restricts screen-space content masks, which
 +        // only matches the quad's own coordinates without a transformation.
 +        if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
-@@ -4678,0 +5250,9 @@
+@@ -4678,0 +5236,9 @@
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
 +    /// painted afterwards and return the previous one. Layout snaps a box's
 +    /// edges to device pixels, but text inside it belongs at the box's exact
 +    /// (unsnapped) position: an HTML paragraph passes the difference here so
 +    /// its glyphs keep the fractional position while its boxes stay snapped.
 +    pub fn replace_glyph_offset(&mut self, offset: Point<Pixels>) -> Point<Pixels> {
-+        std::mem::replace(&mut self.glyph_offset, offset)
++        std::mem::replace(&mut self.raster_frame.glyph_offset, offset)
 +    }
 +
-@@ -4699,13 +5279,31 @@
+@@ -4699,13 +5265,31 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -15684,7 +15622,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        // (CSS 2.1 section 10.8.1). The offset is scoped by the HTML paragraph;
 +        // other GPUI elements keep their default zero offset.
 +        let pixel_exact = self.text_system().pixel_exact_glyphs(font_id);
-+        let glyph_origin = (origin + self.glyph_offset).scale(scale_factor);
++        let glyph_origin = (origin + self.raster_frame.glyph_offset).scale(scale_factor);
 +
 +        // KaminIDE patch: a pixel-exact font (Ahem) keeps its sub-pixel
 +        // position on BOTH axes, quantized on one grid so that `pixel origin +
@@ -15711,7 +15649,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +                },
 +            )
 +        };
-@@ -4738 +5336,6 @@
+@@ -4738 +5322,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -15719,13 +15657,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4748 +5351 @@
+@@ -4748 +5337 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4758 +5361 @@
+@@ -4758 +5347 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4798,0 +5402,14 @@
+@@ -4798,0 +5388,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -15740,11 +15678,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5420,2 @@
+@@ -4803 +5406,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,3 +5447,4 @@
+@@ -4829,3 +5433,4 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -15752,14 +15690,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +            let opacity = self.element_opacity() * alpha;
 +
 +            let transformation = self.current_transformation();
-@@ -4832,0 +5452 @@
+@@ -4832,0 +5438 @@
 +                transformation,
-@@ -5003,0 +5624,2 @@
+@@ -5003,0 +5610,2 @@
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
-@@ -5004,0 +5627 @@
+@@ -5004,0 +5613 @@
 +            transformation,
-@@ -5016,0 +5640,71 @@
+@@ -5016,0 +5626,71 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -15831,7 +15769,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        Ok(())
 +    }
 +
-@@ -5018,0 +5713,224 @@
+@@ -5018,0 +5699,224 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -16056,7 +15994,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        result
 +    }
 +
-@@ -5073,0 +5992,11 @@
+@@ -5073,0 +5978,11 @@
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
@@ -16068,7 +16006,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +    pub fn request_layout_ref(
 +        &mut self,
 +        style: &Style,
-@@ -5114,0 +6044,55 @@
+@@ -5114,0 +6030,55 @@
 +    /// То же, что `request_measured_layout`, но замер отдаёт ещё и первую
 +    /// базовую линию содержимого — от верха коробки содержимого вниз.
 +    ///
@@ -16124,7 +16062,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
 +    }
 +
-@@ -5116,0 +6101,162 @@
+@@ -5116,0 +6087,162 @@
 +    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
 +    ///
 +    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
@@ -16287,7 +16225,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
 +    }
 +
-@@ -5132,0 +6279,48 @@
+@@ -5132,0 +6265,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -16336,7 +16274,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6341,6 @@
+@@ -5147,2 +6327,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -16345,7 +16283,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5211,0 +6410,16 @@
+@@ -5211,0 +6396,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -16362,21 +16300,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ea512090e6ee77edc63f08a9f3d00488
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6438 @@
+@@ -5223,0 +6424 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6440 @@
+@@ -5225,3 +6426 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6449 @@
+@@ -5235,0 +6435 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6451 @@
+@@ -5237,3 +6437 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5792,0 +7005,5 @@
+@@ -5792,0 +6991,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
@@ -16435,96 +16373,6 @@ index 0000000000000000000000000000000000000000..eab14cedb09668834019fc7323ca7798
 +            .as_ref()
 +            .unwrap()
 +            .parent_box_edges(child, self.scale_factor())
-+    }
-+}
-diff --git a/vendor/gpui/src/window/css_fill_transform.rs b/vendor/gpui/src/window/css_fill_transform.rs
-new file mode 100644
-index 0000000000000000000000000000000000000000..5a907bf5885f689838a9de0af22f91dd556d0704
---- /dev/null
-+++ b/vendor/gpui/src/window/css_fill_transform.rs
-@@ -0,0 +1,17 @@
-+//! Keep the CSS fill matrix before glyph-oriented quarter-turn placement snapping.
-+
-+use crate::{TransformationMatrix, Window};
-+
-+impl Window {
-+    /// Paint CSS box fills from the unrounded matrix while other primitives
-+    /// retain their existing placement. A nested transformation has its own map.
-+    pub fn with_css_fill_transform<R>(
-+        &mut self,
-+        exact: TransformationMatrix,
-+        paint: impl FnOnce(&mut Self) -> R,
-+    ) -> R {
-+        let current = self.current_transformation();
-+        let previous = self.css_fill_transform.replace((current, exact));
-+        self.with_restore(previous, |window, previous| window.css_fill_transform = *previous, paint).0
-+    }
-+}
-diff --git a/vendor/gpui/src/window/css_text_background.rs b/vendor/gpui/src/window/css_text_background.rs
-new file mode 100644
-index 0000000000000000000000000000000000000000..9b7044707b61573b3ce279e787d8457007799666
---- /dev/null
-+++ b/vendor/gpui/src/window/css_text_background.rs
-@@ -0,0 +1,61 @@
-+//! Retain an opaque CSS fill's device frame for text painted by its descendants.
-+
-+use super::*;
-+use crate::Fill;
-+
-+impl Window {
-+    pub(crate) fn with_css_text_background<R>(
-+        &mut self,
-+        style: &Style,
-+        bounds: Bounds<Pixels>,
-+        paint: impl FnOnce(&mut Self) -> R,
-+    ) -> R {
-+        let depth = self.css_text_backgrounds.len();
-+        // Host/UI fills do not establish a CSS text frame. Rounded and
-+        // translucent fills need their own coverage, so keep the existing
-+        // local paragraph policy for those paths.
-+        let opaque = style
-+            .background
-+            .as_ref()
-+            .and_then(Fill::color)
-+            .is_some_and(|fill| {
-+                fill.tag == crate::color::BackgroundTag::Solid && fill.solid.a == 1.0
-+            });
-+        if style.css_border_snap
-+            && !style.css_synthetic_background
-+            && opaque
-+            && self.element_opacity() == 1.0
-+            && style.corner_radii == Default::default()
-+            && bounds.size.width > px(0.0)
-+            && bounds.size.height > px(0.0)
-+        {
-+            let exact = self.css_exact_bounds.map_or(bounds, |(_, exact)| exact);
-+            // Opaque text uses the final fill device frame, including boxes
-+            // placed after layout. Preserve the existing transformed policy.
-+            let fill_bounds = if self.current_transformation() == TransformationMatrix::unit() {
-+                crate::style::transformed_box::bounds(style, bounds, self)
-+            } else {
-+                bounds
-+            };
-+            self.css_text_backgrounds.push((
-+                exact,
-+                exact.origin - fill_bounds.origin,
-+                self.current_transformation(),
-+            ));
-+        }
-+        self.with_restore(depth, |window, depth| window.css_text_backgrounds.truncate(*depth), paint).0
-+    }
-+
-+    /// A background does not inherit as a CSS property, but a transparent
-+    /// child sees it. Use the containing fill's frame only in the same paint
-+    /// coordinates; positioned text outside it keeps its layout origin.
-+    pub fn css_text_background_offset(&self, baseline: Point<Pixels>) -> Option<Point<Pixels>> {
-+        let transform = self.current_transformation();
-+        self.css_text_backgrounds
-+            .iter()
-+            .rev()
-+            .find_map(|(bounds, offset, frame)| {
-+                (*frame == transform && bounds.contains(&baseline)).then_some(*offset)
-+            })
 +    }
 +}
 diff --git a/vendor/gpui/src/window/image_sampling.rs b/vendor/gpui/src/window/image_sampling.rs
@@ -16958,10 +16806,10 @@ index 0000000000000000000000000000000000000000..cd15e6d8f7197306d93d93f11635f50a
 +}
 diff --git a/vendor/gpui/src/window/paint_contract.md b/vendor/gpui/src/window/paint_contract.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..4c785e65191db2a3210330af0554a78e24b785c2
+index 0000000000000000000000000000000000000000..1d8e019fe8039e664a7ab9af777e5f43ef275d4c
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_contract.md
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,114 @@
 +
 +## Граница механизма и политики хозяина
 +
@@ -16994,8 +16842,9 @@ index 0000000000000000000000000000000000000000..4c785e65191db2a3210330af0554a78e
 +`paint_ctx` сохраняет element/entity ids, text style, typed host contexts,
 +element offsets и глубину exact offsets, transformation stack, mask scale/map,
 +opacity, content masks и image caches. `raster_paint_ctx` дополнительно сохраняет
-+glyph offset, text backgrounds и exact text bounds. Обычный `PaintCtx` этих
-+текстовых полей не содержит; это разные consumers. `RasterPaintCtx` позволяет
++весь `RasterFrame`: glyph offset, actual/exact fill transforms, rounded/exact
++bounds и непрозрачные typed host raster data. Обычный `PaintCtx` этих полей
++не содержит; общий replay наследует frame вызывающего. `RasterPaintCtx` позволяет
 +вызывающему явно выбрать fill transform перед replay.
 +
 +`snapshot_paint_state` сохраняет все эти поля, включая generic `RasterFrame`,
@@ -17049,7 +16898,8 @@ index 0000000000000000000000000000000000000000..4c785e65191db2a3210330af0554a78e
 +CSS очередь живёт в HTML coordinator, который задаёт порядок child visitor
 +внутри прежних scopes GPUI. Opaque boundary guard и метаданные прозрачных
 +holders являются общими hooks; GPUI их не интерпретирует. Text-background
-+policy пока остаётся в прежнем адаптере; snapshot не принимает решений хозяина.
++и fill policy принадлежат HTML. GPUI передаёт host callback геометрию и
++непрозрачные метаданные без интерпретации; snapshot не принимает решений хозяина.
 +
 +### Immutable command records
 +
@@ -17636,10 +17486,10 @@ index 0000000000000000000000000000000000000000..8e1c160ccc8549c9e5778e680c0f791a
 +}
 diff --git a/vendor/gpui/src/window/paint_snapshot.rs b/vendor/gpui/src/window/paint_snapshot.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7209ad905dbb8a63278c0155fdc2d786d9f42135
+index 0000000000000000000000000000000000000000..75c5e32c342bd3eb9caf63709c63f4d2b5e4d870
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_snapshot.rs
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,150 @@
 +//! Снимок окружения и единый проверяемый replay с восстановлением через guard.
 +
 +use super::*;
@@ -17668,7 +17518,7 @@ index 0000000000000000000000000000000000000000..7209ad905dbb8a63278c0155fdc2d786
 +#[derive(Clone)]
 +pub struct PaintState {
 +    base: PaintCtx,
-+    raster: RasterState,
++    raster: RasterFrame,
 +    scale_factor: f32,
 +    rem_size_overrides: SmallVec<[Pixels; 8]>,
 +}
@@ -17676,46 +17526,20 @@ index 0000000000000000000000000000000000000000..7209ad905dbb8a63278c0155fdc2d786
 +/// Paint environment retaining raster placement at the current device scale.
 +pub struct RasterPaintCtx {
 +    base: PaintCtx,
-+    raster: RasterState,
++    raster: RasterFrame,
 +}
 +
 +impl RasterPaintCtx {
 +    /// Select fill placement independently of the retained glyph placement.
 +    pub fn set_fill_transform(&mut self, transform: Option<(TransformationMatrix, TransformationMatrix)>) {
-+        self.raster.frame.fill_transform = transform;
-+    }
-+}
-+
-+// Host text-background selection remains in its existing adapter. The full
-+// snapshot retains these values without making a selection of its own.
-+#[derive(Clone)]
-+struct RasterState {
-+    frame: RasterFrame,
-+    backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
-+    exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
-+}
-+
-+impl RasterState {
-+    fn capture(window: &Window) -> Self {
-+        Self {
-+            frame: window.raster_frame(),
-+            backgrounds: window.css_text_backgrounds.clone(),
-+            exact_bounds: window.css_exact_bounds,
-+        }
-+    }
-+
-+    fn swap(&mut self, window: &mut Window) {
-+        mem::swap(&mut window.glyph_offset, &mut self.frame.glyph_offset);
-+        mem::swap(&mut window.css_fill_transform, &mut self.frame.fill_transform);
-+        mem::swap(&mut window.css_text_backgrounds, &mut self.backgrounds);
-+        mem::swap(&mut window.css_exact_bounds, &mut self.exact_bounds);
++        self.raster.fill_transform = transform;
 +    }
 +}
 +
 +impl PaintState {
 +    pub(super) fn restore(&mut self, window: &mut Window) {
 +        self.base.swap(window);
-+        self.raster.swap(window);
++        mem::swap(&mut self.raster, &mut window.raster_frame);
 +        mem::swap(&mut window.scale_factor, &mut self.scale_factor);
 +        mem::swap(&mut window.rem_size_override_stack, &mut self.rem_size_overrides);
 +    }
@@ -17759,10 +17583,10 @@ index 0000000000000000000000000000000000000000..7209ad905dbb8a63278c0155fdc2d786
 +
 +    /// Capture all paint and raster state in the current live composition scope.
 +    pub fn snapshot_paint_state(&self) -> PaintState {
-+        self.paint_state(self.paint_ctx(), RasterState::capture(self))
++        self.paint_state(self.paint_ctx(), self.raster_frame().clone())
 +    }
 +
-+    fn paint_state(&self, base: PaintCtx, raster: RasterState) -> PaintState {
++    fn paint_state(&self, base: PaintCtx, raster: RasterFrame) -> PaintState {
 +        PaintState {
 +            base,
 +            raster,
@@ -17786,12 +17610,12 @@ index 0000000000000000000000000000000000000000..7209ad905dbb8a63278c0155fdc2d786
 +        ctx: PaintCtx,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> Result<R, PaintError> {
-+        self.replay_paint(self.paint_state(ctx, RasterState::capture(self)), f)
++        self.replay_paint(self.paint_state(ctx, self.raster_frame().clone()), f)
 +    }
 +
 +    /// Capture environment and raster placement without a scale override.
 +    pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
-+        RasterPaintCtx { base: self.paint_ctx(), raster: RasterState::capture(self) }
++        RasterPaintCtx { base: self.paint_ctx(), raster: self.raster_frame().clone() }
 +    }
 +
 +    /// Replay captured raster placement in the original live scope.
@@ -18250,42 +18074,69 @@ index 0000000000000000000000000000000000000000..1c0673bba14c6ef83d9881d2cc40c9fc
 +}
 diff --git a/vendor/gpui/src/window/raster_frame.rs b/vendor/gpui/src/window/raster_frame.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3b8e177110b02b59338f0662f20d25c52a38c191
+index 0000000000000000000000000000000000000000..28d98bd84785fb780a89724fb41a151fc9af53f4
 --- /dev/null
 +++ b/vendor/gpui/src/window/raster_frame.rs
-@@ -0,0 +1,37 @@
-+//! Точная растровая привязка без выбора подложки или порядка хозяина.
+@@ -0,0 +1,64 @@
++//! Точная геометрия и непрозрачные данные raster consumers без правил хозяина.
 +
 +use super::*;
 +
-+/// Device placement for glyphs and fills, without additional rounding.
-+#[derive(Clone, Copy, Debug, PartialEq)]
++/// Явная raster-геометрия и данные хозяина без выбора подложки или заливки.
++#[derive(Clone, Debug, Default, PartialEq)]
 +pub struct RasterFrame {
-+    /// Logical displacement applied before glyphs are scaled to device pixels.
++    /// Логическое смещение глифов перед масштабированием в пиксели устройства.
 +    pub glyph_offset: Point<Pixels>,
-+    /// The placement transform and its unsnapped fill counterpart.
-+    /// The exact transform applies only while the placement transform matches.
++    /// Матрица размещения и соответствующая точная матрица заливки.
 +    pub fill_transform: Option<(TransformationMatrix, TransformationMatrix)>,
++    /// Округлённые и точные границы рисуемого бокса.
++    pub exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
++    pub(super) contexts: render_context::Snapshot,
 +}
 +
-+impl Window {
-+    /// Read the current device placement without interpreting host policy.
-+    pub fn raster_frame(&self) -> RasterFrame {
-+        RasterFrame {
-+            glyph_offset: self.glyph_offset,
-+            fill_transform: self.css_fill_transform,
++impl RasterFrame {
++    /// Создание геометрии без точного бокса и данных хозяина.
++    pub fn new(
++        glyph_offset: Point<Pixels>,
++        fill_transform: Option<(TransformationMatrix, TransformationMatrix)>,
++    ) -> Self {
++        Self {
++            glyph_offset,
++            fill_transform,
++            ..Self::default()
 +        }
 +    }
 +
-+    /// Apply explicit raster placement, restoring the caller also on unwind.
++    /// Чтение непрозрачных raster-данных с сохранением идентичности Rc.
++    pub fn context<T: std::any::Any>(&self) -> Option<Rc<T>> {
++        self.contexts.get()
++    }
++
++    /// Установка данных хозяина; клоны frame сохраняют тот же Rc.
++    pub fn set_context<T: std::any::Any>(&mut self, value: Option<Rc<T>>) {
++        self.contexts.set(value);
++    }
++}
++
++impl Window {
++    /// Чтение raster-геометрии и данных без интерпретации правил хозяина.
++    pub fn raster_frame(&self) -> &RasterFrame {
++        &self.raster_frame
++    }
++
++    /// Чтение текущего контекста хозяина без клонирования всего frame.
++    pub fn raster_context<T: std::any::Any>(&self) -> Option<Rc<T>> {
++        self.raster_frame.context()
++    }
++
++    /// Применение raster-данных с восстановлением вызывающего при unwind.
 +    pub fn with_raster_frame<R>(
 +        &mut self,
 +        mut frame: RasterFrame,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> R {
 +        fn swap(window: &mut Window, frame: &mut RasterFrame) {
-+            mem::swap(&mut window.glyph_offset, &mut frame.glyph_offset);
-+            mem::swap(&mut window.css_fill_transform, &mut frame.fill_transform);
++            mem::swap(&mut window.raster_frame, frame);
 +        }
 +        swap(self, &mut frame);
 +        self.with_restore(frame, swap, f).0
@@ -18293,10 +18144,10 @@ index 0000000000000000000000000000000000000000..3b8e177110b02b59338f0662f20d25c5
 +}
 diff --git a/vendor/gpui/src/window/render_context.rs b/vendor/gpui/src/window/render_context.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..26507c9e4a2531276c42af2858fb2bbebfb5e81e
+index 0000000000000000000000000000000000000000..4124dd72682ed775fe93693d9ee54dbc88337b76
 --- /dev/null
 +++ b/vendor/gpui/src/window/render_context.rs
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,225 @@
 +//! Window-owned typed traversal scopes and snapshots for deferred drawing.
 +// KaminIDE patch: pass host paint/prepaint context through GPUI without thread-local state.
 +
@@ -18309,6 +18160,39 @@ index 0000000000000000000000000000000000000000..26507c9e4a2531276c42af2858fb2bbe
 +
 +#[derive(Clone, Default)]
 +pub(super) struct Snapshot(Values);
++
++impl Snapshot {
++    pub(super) fn get<T: Any>(&self) -> Option<Rc<T>> {
++        self.0.get(&TypeId::of::<T>()).cloned()?.downcast().ok()
++    }
++
++    pub(super) fn set<T: Any>(&mut self, value: Option<Rc<T>>) {
++        let id = TypeId::of::<T>();
++        match value {
++            Some(value) => {
++                self.0.insert(id, value);
++            }
++            None => {
++                self.0.remove(&id);
++            }
++        }
++    }
++}
++
++impl std::fmt::Debug for Snapshot {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_set().entries(self.0.keys()).finish()
++    }
++}
++
++impl PartialEq for Snapshot {
++    fn eq(&self, other: &Self) -> bool {
++        self.0.len() == other.0.len()
++            && self.0.iter().all(|(id, value)| {
++                other.0.get(id).is_some_and(|other| Rc::ptr_eq(value, other))
++            })
++    }
++}
 +
 +#[derive(Default)]
 +pub(super) struct RenderContexts(Rc<RefCell<Values>>);

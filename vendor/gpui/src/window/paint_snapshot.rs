@@ -26,7 +26,7 @@ pub struct PaintCtx {
 #[derive(Clone)]
 pub struct PaintState {
     base: PaintCtx,
-    raster: RasterState,
+    raster: RasterFrame,
     scale_factor: f32,
     rem_size_overrides: SmallVec<[Pixels; 8]>,
 }
@@ -34,46 +34,20 @@ pub struct PaintState {
 /// Paint environment retaining raster placement at the current device scale.
 pub struct RasterPaintCtx {
     base: PaintCtx,
-    raster: RasterState,
+    raster: RasterFrame,
 }
 
 impl RasterPaintCtx {
     /// Select fill placement independently of the retained glyph placement.
     pub fn set_fill_transform(&mut self, transform: Option<(TransformationMatrix, TransformationMatrix)>) {
-        self.raster.frame.fill_transform = transform;
-    }
-}
-
-// Host text-background selection remains in its existing adapter. The full
-// snapshot retains these values without making a selection of its own.
-#[derive(Clone)]
-struct RasterState {
-    frame: RasterFrame,
-    backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
-    exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
-}
-
-impl RasterState {
-    fn capture(window: &Window) -> Self {
-        Self {
-            frame: window.raster_frame(),
-            backgrounds: window.css_text_backgrounds.clone(),
-            exact_bounds: window.css_exact_bounds,
-        }
-    }
-
-    fn swap(&mut self, window: &mut Window) {
-        mem::swap(&mut window.glyph_offset, &mut self.frame.glyph_offset);
-        mem::swap(&mut window.css_fill_transform, &mut self.frame.fill_transform);
-        mem::swap(&mut window.css_text_backgrounds, &mut self.backgrounds);
-        mem::swap(&mut window.css_exact_bounds, &mut self.exact_bounds);
+        self.raster.fill_transform = transform;
     }
 }
 
 impl PaintState {
     pub(super) fn restore(&mut self, window: &mut Window) {
         self.base.swap(window);
-        self.raster.swap(window);
+        mem::swap(&mut self.raster, &mut window.raster_frame);
         mem::swap(&mut window.scale_factor, &mut self.scale_factor);
         mem::swap(&mut window.rem_size_override_stack, &mut self.rem_size_overrides);
     }
@@ -117,10 +91,10 @@ impl Window {
 
     /// Capture all paint and raster state in the current live composition scope.
     pub fn snapshot_paint_state(&self) -> PaintState {
-        self.paint_state(self.paint_ctx(), RasterState::capture(self))
+        self.paint_state(self.paint_ctx(), self.raster_frame().clone())
     }
 
-    fn paint_state(&self, base: PaintCtx, raster: RasterState) -> PaintState {
+    fn paint_state(&self, base: PaintCtx, raster: RasterFrame) -> PaintState {
         PaintState {
             base,
             raster,
@@ -144,12 +118,12 @@ impl Window {
         ctx: PaintCtx,
         f: impl FnOnce(&mut Self) -> R,
     ) -> Result<R, PaintError> {
-        self.replay_paint(self.paint_state(ctx, RasterState::capture(self)), f)
+        self.replay_paint(self.paint_state(ctx, self.raster_frame().clone()), f)
     }
 
     /// Capture environment and raster placement without a scale override.
     pub fn raster_paint_ctx(&self) -> RasterPaintCtx {
-        RasterPaintCtx { base: self.paint_ctx(), raster: RasterState::capture(self) }
+        RasterPaintCtx { base: self.paint_ctx(), raster: self.raster_frame().clone() }
     }
 
     /// Replay captured raster placement in the original live scope.

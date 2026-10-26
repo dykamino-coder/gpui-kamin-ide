@@ -21,7 +21,7 @@ pub(crate) fn apply_opacity(d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
 }
 
 pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
-    d.style().css_border_snap = Some(true);
+    d.style().snap_to_device_pixels = Some(true);
     // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
     // for floats; css-flexbox-1 §5.4 and css-grid-1 §9: flex and grid items
     // "paint exactly the same as inline blocks"): the box's own line content

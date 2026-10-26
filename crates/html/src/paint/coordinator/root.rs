@@ -57,6 +57,7 @@ impl Wrap for Root {
         let traversal = Rc::new(PaintTraversal {
             enter_boundary: Rc::new(boundary),
             children: children::default_painter(),
+            fill_bounds: Rc::new(crate::paint::raster::fill_bounds),
             recording: Some(super::recording()),
         });
         window.with_render_context(Some(context), |window| {

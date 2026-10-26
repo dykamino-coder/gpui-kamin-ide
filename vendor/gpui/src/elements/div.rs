@@ -1800,12 +1800,14 @@ pub fn div() -> Div {
         prepaint_order_fn: None,
         layout_observer: None,
         child_painter: None,
+        paint_metadata: None,
     }
 }
 
 /// A [`Div`] element, the all-in-one element for building complex UIs in GPUI
 pub struct Div {
     child_painter: Option<crate::ChildPainter>,
+    paint_metadata: Option<std::rc::Rc<dyn std::any::Any>>,
     interactivity: Interactivity,
     children: SmallVec<[StackSafe<AnyElement>; 2]>,
     prepaint_listener: Option<Box<dyn Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static>>,
@@ -1826,6 +1828,12 @@ pub trait LayoutObserver: 'static {
 }
 
 impl Div {
+    /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
+    pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
+        self.paint_metadata = Some(std::rc::Rc::new(metadata));
+        self
+    }
+
     /// KaminIDE patch: delegate child painting inside this box's existing effect and clip scopes.
     /// Layout, prepaint and event registration keep their original order.
     pub fn paint_children_with(mut self, painter: crate::ChildPainter) -> Self {
@@ -2082,7 +2090,7 @@ impl Element for Div {
             .then_some(exact)
         });
         let outer_exact = std::mem::replace(
-            &mut window.css_exact_bounds,
+            &mut window.raster_frame.exact_bounds,
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
 
@@ -2095,7 +2103,7 @@ impl Element for Div {
             cx,
             |style, scroll_offset, hitbox, window, cx| {
                 // Children bring their own exact bounds.
-                window.css_exact_bounds = None;
+                window.raster_frame.exact_bounds = None;
                 // skip children
                 if style.display == Display::None {
                     return hitbox;
@@ -2125,7 +2133,7 @@ impl Element for Div {
                 hitbox
             },
         );
-        window.css_exact_bounds = outer_exact;
+        window.raster_frame.exact_bounds = outer_exact;
         hitbox
     }
 
@@ -2146,7 +2154,7 @@ impl Element for Div {
             .map(|provider| provider.provide(window, cx));
 
         let outer_exact = std::mem::replace(
-            &mut window.css_exact_bounds,
+            &mut window.raster_frame.exact_bounds,
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
         window.with_image_cache(image_cache, |window| {
@@ -2158,32 +2166,41 @@ impl Element for Div {
                 window,
                 cx,
                 |style, window, cx| {
-                    window.with_css_text_background(style, bounds, |window| {
-                        // Own borders are painted; children bring their own bounds.
-                        window.css_exact_bounds = None;
-                        // skip children
-                        if style.display == Display::None {
-                            return;
-                        }
+                    let exact_bounds = window.raster_frame.exact_bounds;
+                    // Own borders are painted; children bring their own bounds.
+                    window.raster_frame.exact_bounds = None;
+                    // skip children
+                    if style.display == Display::None {
+                        return;
+                    }
 
-                        let painter = self.child_painter.clone().or_else(|| {
-                            window.render_context::<crate::PaintTraversal>()
-                                .map(|traversal| traversal.children.clone())
-                        });
-                        let mut children = self.children.iter_mut().map(|child| {
-                            #[cfg(feature = "stacker")] { &mut **child }
-                            #[cfg(not(feature = "stacker"))] { child }
-                        });
-                        if let Some(painter) = painter {
-                            (painter.0)(style, &mut children, window, cx);
-                        } else {
-                            for child in children { child.paint(window, cx); }
-                        }
+                    let painter = self.child_painter.clone().or_else(|| {
+                        window.render_context::<crate::PaintTraversal>()
+                            .map(|traversal| traversal.children.clone())
                     });
+                    let mut children = self.children.iter_mut().map(|child| {
+                        #[cfg(feature = "stacker")] { &mut **child }
+                        #[cfg(not(feature = "stacker"))] { child }
+                    });
+                    if let Some(painter) = painter {
+                        (painter.0)(
+                            crate::ChildPaintContext {
+                                style,
+                                bounds,
+                                exact_bounds,
+                                metadata: self.paint_metadata.as_deref(),
+                            },
+                            &mut children,
+                            window,
+                            cx,
+                        );
+                    } else {
+                        for child in children { child.paint(window, cx); }
+                    }
                 },
             )
         });
-        window.css_exact_bounds = outer_exact;
+        window.raster_frame.exact_bounds = outer_exact;
     }
 }
 

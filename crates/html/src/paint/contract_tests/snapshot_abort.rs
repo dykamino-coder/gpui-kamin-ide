@@ -22,7 +22,7 @@ fn aborted_draw_closes_tokens_and_next_draw_has_clean_state() {
             _: &mut gpui::Context<Self>,
         ) -> impl gpui::IntoElement {
             let saved = self.saved.clone();
-            let initial = self.initial;
+            let initial = self.initial.clone();
             let abort = std::mem::replace(&mut self.abort, false);
             canvas(
                 |_, _, _| (),
@@ -40,7 +40,7 @@ fn aborted_draw_closes_tokens_and_next_draw_has_clean_state() {
                         assert!(!pass.is_live());
                         assert!(!scope.is_live());
                         assert!(window.paint_pass_id().is_live());
-                        assert_eq!(window.raster_frame(), initial);
+                        assert_eq!(window.raster_frame().clone(), initial);
                         assert_eq!(
                             window.with_paint_state(snapshot, |_| panic!("stale replay")),
                             Err::<(), _>(gpui::PaintError::ExpiredPass)
@@ -54,7 +54,7 @@ fn aborted_draw_closes_tokens_and_next_draw_has_clean_state() {
     let mut visual = cx.add_empty_window().clone();
     let saved = Rc::new(std::cell::RefCell::new(None));
     visual.update(|window, cx| {
-        let initial = window.raster_frame();
+        let initial = window.raster_frame().clone();
         window.replace_root(cx, |_, _| Probe {
             saved: saved.clone(),
             initial,

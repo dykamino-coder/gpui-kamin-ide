@@ -12,19 +12,19 @@ fn full_snapshot_replays_fractional_raster_and_restores_nested_caller() {
     draw(|| {
         canvas(
             |_, window, _| {
-                let frame = RasterFrame {
-                    glyph_offset: point(px(0.125), px(0.375)),
-                    fill_transform: Some((
+                let frame = RasterFrame::new(
+                    point(px(0.125), px(0.375)),
+                    Some((
                         TransformationMatrix::unit(),
                         TransformationMatrix {
                             translation: [0.25, 0.75],
                             ..TransformationMatrix::unit()
                         },
                     )),
-                };
+                );
                 let host = Rc::new(7u32);
                 let snapshot = window.with_render_context(Some(host.clone()), |window| {
-                    window.with_raster_frame(frame, |window| {
+                    window.with_raster_frame(frame.clone(), |window| {
                         window.with_scene_capture_scale(1.5, |window| {
                             window.with_rem_size(Some(px(23.5)), |window| {
                                 (window.snapshot_paint_state(), window.scale_factor())
@@ -35,28 +35,28 @@ fn full_snapshot_replays_fractional_raster_and_restores_nested_caller() {
                 (snapshot, frame, host)
             },
             |_, ((snapshot, scale), frame, host), window, _| {
-                let caller = window.raster_frame();
+                let caller = window.raster_frame().clone();
                 let caller_scale = window.scale_factor();
                 let caller_rem = window.rem_size();
                 let outer = window.snapshot_paint_state();
                 window
                     .with_paint_state(snapshot, |window| {
-                        assert_eq!(window.raster_frame(), frame);
+                        assert_eq!(window.raster_frame().clone(), frame);
                         assert_eq!(window.scale_factor(), scale);
                         assert_eq!(window.rem_size(), px(23.5));
                         assert!(Rc::ptr_eq(&window.render_context::<u32>().unwrap(), &host));
                         window
                             .with_paint_state(outer, |window| {
-                                assert_eq!(window.raster_frame(), caller);
+                                assert_eq!(window.raster_frame().clone(), caller);
                                 assert_eq!(window.scale_factor(), caller_scale);
                                 assert_eq!(window.rem_size(), caller_rem);
                                 assert!(window.render_context::<u32>().is_none());
                             })
                             .unwrap();
-                        assert_eq!(window.raster_frame(), frame);
+                        assert_eq!(window.raster_frame().clone(), frame);
                     })
                     .unwrap();
-                assert_eq!(window.raster_frame(), caller);
+                assert_eq!(window.raster_frame().clone(), caller);
                 assert_eq!(window.scale_factor(), caller_scale);
                 assert_eq!(window.rem_size(), caller_rem);
                 assert!(window.render_context::<u32>().is_none());
@@ -81,7 +81,7 @@ fn replay_unwind_restores_state_and_invalidates_pass() {
                 })
             },
             |_, (snapshot, _), window, _| {
-                let caller_frame = window.raster_frame();
+                let caller_frame = window.raster_frame().clone();
                 let caller_transform = window.current_transformation();
                 let caller_mask = window.content_mask();
                 let caller_scale = window.scale_factor();
@@ -114,7 +114,7 @@ fn replay_unwind_restores_state_and_invalidates_pass() {
                     }));
                     assert!(failed.is_err());
                     assert!(!pass.is_live());
-                    assert_eq!(window.raster_frame(), caller_frame);
+                    assert_eq!(window.raster_frame().clone(), caller_frame);
                     assert_eq!(window.current_transformation(), caller_transform);
                     assert_eq!(window.content_mask(), caller_mask);
                     assert_eq!(window.scale_factor(), caller_scale);
@@ -134,7 +134,7 @@ fn offscreen_unwind_restores_scene_scope_and_capture_environment() {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
-                let frame = window.raster_frame();
+                let frame = window.raster_frame().clone();
                 let transform = window.current_transformation();
                 let mask = window.content_mask();
                 let scale = window.scale_factor();
@@ -155,7 +155,7 @@ fn offscreen_unwind_restores_scene_scope_and_capture_environment() {
                 assert!(failed.is_err());
                 assert!(!inner_scope.unwrap().is_live());
                 assert!(outer_scope.is_live());
-                assert_eq!(window.raster_frame(), frame);
+                assert_eq!(window.raster_frame().clone(), frame);
                 assert_eq!(window.current_transformation(), transform);
                 assert_eq!(window.content_mask(), mask);
                 assert_eq!(window.scale_factor(), scale);
