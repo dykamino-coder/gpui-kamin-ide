@@ -88,7 +88,7 @@ impl PageStack {
                 source.metrics.normal_rect().origin.x - source.metrics.original_cb_rect.origin.x
             }),
             repeat_fixed,
-            fixed: source.fixed,
+            fixed_content: source.fixed || source.inside_fixed,
         })
     }
 

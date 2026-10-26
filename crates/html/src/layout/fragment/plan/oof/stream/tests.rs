@@ -14,7 +14,7 @@ fn input(first: usize, start: f32, h: f32, fixed: bool) -> Input {
         block_start: start,
         inline_start: 7.,
         repeat_fixed: fixed,
-        fixed,
+        fixed_content: fixed,
     }
 }
 
@@ -80,7 +80,7 @@ fn skipping_a_fragmentainer_is_an_invalid_resume() {
 #[test]
 fn fixed_in_a_transformed_cb_overflows_without_paginating_or_repeating() {
     let mut contained = input(0, 95., 150., false);
-    contained.fixed = true;
+    contained.fixed_content = true;
     let mut streams = Streams::new(vec![contained]).unwrap();
     let batch = streams.resume(0, page(60.), true).unwrap();
     assert_eq!(batch.fragments.len(), 1);

@@ -20,13 +20,16 @@ pub(crate) struct Source {
     pub(crate) metrics: PositionedMetrics,
     pub(crate) kid: Kid,
     pub(crate) inline: Geometry,
+    /// Повтор предка переносится на всё его содержимое; исходный CB хранится в metrics.
     pub(crate) policy: FixedPolicy,
     pub(crate) fixed: bool,
+    pub(crate) inside_fixed: bool,
     pub(crate) static_block: bool,
 }
 
 struct Flow {
     id: u64,
+    parent: Option<usize>,
     owner: u64,
     watch: Rc<Watched>,
     monolith: bool,
@@ -90,12 +93,14 @@ impl Recorder {
                     } else {
                         e.node_id
                     },
+                    None,
                 )
             })
             .collect();
         pending.reverse();
-        while let Some((e, owner)) = pending.pop() {
-            if positioned(e.style.used().position) {
+        while let Some((e, owner, mut parent)) = pending.pop() {
+            let is_positioned = positioned(e.style.used().position);
+            if is_positioned {
                 let blocks = BlockBox::collect(
                     e,
                     ShapeCx {
@@ -105,8 +110,10 @@ impl Recorder {
                     },
                     opts.cx.vcx(),
                 );
+                let index = flows.len();
                 flows.push(Flow {
                     id: e.node_id,
+                    parent,
                     owner,
                     watch: Watched::for_blocks_axis(blocks, axis, true),
                     monolith: crate::layout::fragment::clone::content_monolith_blockified(e),
@@ -115,9 +122,10 @@ impl Recorder {
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
                 });
+                parent = Some(index);
             }
             pending.extend(e.children.iter().rev().filter_map(|n| match n {
-                Node::Element(c) => Some((c, owner)),
+                Node::Element(c) => Some((c, owner, parent)),
                 _ => None,
             }));
         }
@@ -128,7 +136,14 @@ impl Recorder {
 
     pub(super) fn fragment_snapshot(&self, snapshot: &mut Snapshot, window: &mut Window) {
         let axis = self.flows.axis;
+        let mut contexts = Vec::with_capacity(self.flows.flows.len());
         for flow in &self.flows.flows {
+            let (parent_repeat, parent_fixed) = flow
+                .parent
+                .map_or((false, false), |parent| contexts[parent]);
+            let repeated = parent_repeat || flow.policy.get() == FixedPolicy::RepeatPages;
+            let fixed_content = parent_fixed || flow.fixed.get();
+            contexts.push((repeated, fixed_content));
             let Some(&metrics) = snapshot.get(flow.id) else {
                 continue;
             };
@@ -178,8 +193,13 @@ impl Recorder {
                     barriers: breaks.barriers,
                     keep: breaks.avoid_inside,
                 },
-                policy: flow.policy.get(),
+                policy: if repeated {
+                    FixedPolicy::RepeatPages
+                } else {
+                    FixedPolicy::Fragment
+                },
                 fixed: flow.fixed.get(),
+                inside_fixed: parent_fixed,
                 static_block: flow.static_block.get(),
             });
         }

@@ -15,7 +15,7 @@ pub(crate) struct Input {
     pub(crate) block_start: f32,
     pub(crate) inline_start: f32,
     pub(crate) repeat_fixed: bool,
-    pub(crate) fixed: bool,
+    pub(crate) fixed_content: bool,
 }
 
 /// Все тяжёлые значения находятся в векторах, а не в рекурсивных кадрах сборки.
@@ -110,7 +110,10 @@ impl Streams {
             normal_complete,
             &mut self.store,
             |idx, space| {
-                if inputs[idx as usize].fixed && space.is_paginated() && space.may_break_inside() {
+                if inputs[idx as usize].fixed_content
+                    && space.is_paginated()
+                    && space.may_break_inside()
+                {
                     Space {
                         repeat: crate::layout::fragment::token::space::RepeatState::Inside,
                         ..space
