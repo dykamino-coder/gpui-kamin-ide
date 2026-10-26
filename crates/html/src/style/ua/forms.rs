@@ -30,8 +30,9 @@ pub(crate) fn text_style(style: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
         _ => 16.,
     };
     let family = c.font_family.as_deref().unwrap_or("");
-    let normal =
-        crate::text::metrics::normal_px(crate::text::metrics::normal_line(family, vcx), font, vcx);
+    let normal = crate::style::font_metrics::normal(family, font, vcx)
+        .height
+        .map_or(1.2 * font, |m| m.px);
     let line = c
         .line_height
         .and_then(|l| l.to_px(None, FontCx::new(family, font), vcx))

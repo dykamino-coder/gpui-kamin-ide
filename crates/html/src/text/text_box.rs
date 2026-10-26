@@ -134,7 +134,7 @@ pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &Render
     };
     let vcx = opts.cx.vcx();
     let family = line_style.font_family.clone().unwrap_or_default();
-    let extents = crate::text::metrics::vmetrics_px(&family, size, vcx);
+    let extents = crate::style::font_metrics::vertical(&family, size, vcx);
     let (ascent, descent, _) = extents;
     let line = match line_style.line_height {
         Some(Len::Px(v)) => v,
@@ -173,13 +173,15 @@ pub(crate) fn edge_inset(
     if start {
         match s.text_box_over {
             TextEdge::Cap => ascent - cap,
-            TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(family, size, vcx).1,
+            TextEdge::Ex => ascent - crate::style::font_metrics::horizontal(family, size, vcx).1,
             TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(ascent),
             TextEdge::Text | TextEdge::Alphabetic => 0.0,
         }
     } else {
         match s.text_box_under {
-            TextEdge::Alphabetic => descent + crate::text::fonts::alphabetic_em(family, vcx) * size,
+            TextEdge::Alphabetic => {
+                descent + crate::style::font_metrics::alphabetic(family, size, vcx)
+            }
             TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(descent),
             TextEdge::Text | TextEdge::Cap | TextEdge::Ex => 0.0,
         }
@@ -232,7 +234,9 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
                 opts.text.font_family.to_string()
             }
         });
-    let measured = crate::text::metrics::normal_line(&family, opts.cx.vcx());
+    let measured = crate::style::font_metrics::normal(&family, 1.0, opts.cx.vcx())
+        .fraction
+        .unwrap_or(opts.normal_line_height);
     if measured > 0.0 {
         measured
     } else {

@@ -15,7 +15,9 @@ pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {
         FontStyle => font_style(v).is_some(),
         FontVariantLigatures | FontVariantCaps | FontVariantNumeric | FontVariantEastAsian
         | FontVariantPosition => variant_tags(id, v).is_some(),
-        FontVariantAlternates => crate::text::fonts::alternates::parse(v, false, vcx).is_some(),
+        FontVariantAlternates => {
+            crate::style::computed::font_alternates::parse(v, false, vcx).is_some()
+        }
         FontVariantEmoji => emoji(v).is_some(),
         FontWeight => font_weight(v, vcx).is_some(),
         FontWidth => font_width(v, vcx).is_some(),
@@ -44,7 +46,7 @@ pub(crate) fn font_style(v: &str) -> Option<(bool, bool, Option<f32>)> {
     let mut parts = v.split_whitespace();
     let kind = parts.next()?;
     let angle = match parts.next() {
-        Some(a) if kind == "oblique" => Some(crate::text::fonts::matching::angle(a)?),
+        Some(a) if kind == "oblique" => Some(crate::font_facts::matching::angle(a)?),
         Some(_) => return None,
         None => None,
     };

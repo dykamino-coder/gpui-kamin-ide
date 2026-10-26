@@ -12,4 +12,8 @@ pub mod select;
 pub mod values;
 pub mod zoom;
 
+pub(crate) mod font_metrics;
+mod publication;
+pub(crate) use publication::ComputedHandle;
+
 pub(crate) mod ua;

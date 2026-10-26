@@ -21,9 +21,9 @@ fn a_moved_grid_descendant_inherits_from_its_parent_element() {
             .any(|n| matches!(n, Node::Element(e) if e.tag == "i"))
     );
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let section = element(&parsed.nodes, "section").style.computed();
+    let section = element(&parsed.nodes, "section").style.published().unwrap();
     let i = find(&parsed.nodes, "i").unwrap();
-    let computed = i.style.computed();
+    let computed = i.style.published().unwrap();
     assert_eq!(computed.font_size, section.font_size);
     assert_eq!(computed.color, section.color);
     assert_eq!(computed.padding.left, Some(Len::Px(7.0)));
@@ -50,7 +50,10 @@ fn an_anonymous_table_passes_its_parent_element_through() {
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     let b = find(&parsed.nodes, "b").unwrap();
     // `inherit` takes the value of the parent element, not of the anonymous table.
-    assert_eq!(b.style.computed().padding.left, Some(Len::Px(5.0)));
+    let held = b.style.published().unwrap();
+    assert_eq!(held.padding.left, Some(Len::Px(5.0)));
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    assert!(b.style.published().unwrap().ptr_eq(&held));
 }
 
 #[test]

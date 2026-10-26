@@ -1,6 +1,7 @@
 //! Вычисленные MathML style/depth и математическая шкала размеров из CSS Fonts.
 use super::Computed;
-use crate::{style::values::value::Len, text::fonts};
+use crate::font_facts::FontMetricQuery;
+use crate::style::values::value::Len;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Depth {
     Absolute(i32),
@@ -34,15 +35,15 @@ pub(crate) fn inherit(
     };
     if c.math_font_size {
         let family = parent.font_family.as_deref().unwrap_or("");
-        let actual = fonts::alias_for(family, parent, vcx).unwrap_or_else(|| family.to_string());
-        let constants = fonts::math::for_family(&actual, vcx);
-        let factor = scale(
-            parent.math_level,
-            c.math_level,
-            constants
-                .as_ref()
-                .map(|v| (v.script_scale, v.script_script_scale)),
-        );
+        let mut request = parent.font_request(family, 0.0);
+        request.metric_query = FontMetricQuery::Math;
+        let constants = vcx
+            .doc
+            .font_provider()
+            .metrics(request, &vcx.doc.font_snapshot())
+            .ok()
+            .and_then(|f| f.math_script_scale);
+        let factor = scale(parent.math_level, c.math_level, constants);
         let size = if let Some(Len::Px(v)) = parent.font_size {
             v
         } else {
