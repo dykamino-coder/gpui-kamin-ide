@@ -15,3 +15,6 @@ pub(crate) mod positioned;
 pub(crate) mod replaced;
 pub mod stacking;
 pub mod table;
+
+#[cfg(test)]
+mod contract_tests;
