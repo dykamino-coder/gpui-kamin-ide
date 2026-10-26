@@ -18,9 +18,9 @@ fn independent_steps_match_normal_plan_with_forced_breaks() {
         forced: vec![35., 120.],
         ..slice(185.)
     };
-    let (_, _, expected) = crate::layout::fragment::plan::fill(
+    let (_, _, expected) = crate::layout::fragment::plan::fill_at(
         std::slice::from_ref(&kid),
-        70.,
+        &|_| 70.,
         super::super::Space::pages(10),
     );
     let mut flow = Flow::default();

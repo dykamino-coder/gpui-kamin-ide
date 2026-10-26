@@ -75,9 +75,9 @@ fn column_overflow_does_not_constrain_the_following_item() {
         solid: measured.solid,
         ..Default::default()
     };
-    let (_, _, plan) = crate::layout::fragment::plan::fill(
+    let (_, _, plan) = crate::layout::fragment::plan::fill_at(
         &[kid],
-        100.0,
+        &|_| 100.0,
         crate::layout::fragment::plan::Space::columns(4),
     );
     assert_eq!(

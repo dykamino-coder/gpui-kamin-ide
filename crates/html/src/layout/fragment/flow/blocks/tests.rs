@@ -219,9 +219,9 @@ fn root_avoid_after_page_padding_does_not_create_a_blank_fragment() {
         keep: m.keep,
         ..Default::default()
     };
-    let (_, _, plan) = crate::layout::fragment::plan::fill(
+    let (_, _, plan) = crate::layout::fragment::plan::fill_at(
         &[k],
-        192.0,
+        &|_| 192.0,
         crate::layout::fragment::plan::Space::pages(4),
     );
     assert_eq!(plan.len(), 2);
