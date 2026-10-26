@@ -22,7 +22,7 @@ fn float_balance_floor_preserves_independent_normal_breaks() {
     let stack = ColumnStack::new(vec![], 2, 0.0, None, None, None, None, Default::default());
     let (height, _) = stack.balance_line(std::slice::from_ref(&kid), 8, None);
     assert_eq!(height, 100.0);
-    let (cols, _, plan) = plan::fill(&[kid], 20.0, Space::columns(8));
+    let (cols, _, plan) = plan::fill_at(&[kid], &|_| 20.0, Space::columns(8));
     assert_eq!(cols, 6);
     assert_eq!(plan[0].h, 20.0);
     assert_eq!(plan[1].from, 20.0);

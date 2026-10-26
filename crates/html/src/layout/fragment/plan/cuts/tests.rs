@@ -1,6 +1,6 @@
 //! Геометрия фрагментов при обычном и принудительном разрезании колонок.
 
-use crate::layout::fragment::plan::{Space, fill};
+use crate::layout::fragment::plan::{Space, fill_at};
 use crate::layout::fragment::types::Kid;
 use crate::layout::multicol::column_stack::ColumnStack;
 
@@ -14,7 +14,7 @@ fn kid(h: f32) -> Kid {
 
 #[test]
 fn slice_continues_content_in_successive_columns() {
-    let (_, _, plan) = fill(&[kid(250.0)], 100.0, Space::columns(3));
+    let (_, _, plan) = fill_at(&[kid(250.0)], &|_| 100.0, Space::columns(3));
     let geometry: Vec<_> = plan
         .iter()
         .map(|f| (f.kid, f.copy, f.col, f.y, f.from, f.h, f.head, f.foot))
@@ -35,7 +35,7 @@ fn forced_break_skips_margin_and_growth_uses_the_same_plan() {
     k.forced = vec![40.0];
     k.cuts = vec![(40.0, 50.0)];
     let kids = [k];
-    let (_, _, plan) = fill(&kids, 100.0, Space::columns(2));
+    let (_, _, plan) = fill_at(&kids, &|_| 100.0, Space::columns(2));
     assert_eq!(plan.len(), 2);
     assert_eq!((plan[0].from, plan[0].h), (0.0, 40.0));
     assert_eq!((plan[1].from, plan[1].h), (50.0, 70.0));
@@ -53,7 +53,7 @@ fn forced_break_skips_margin_and_growth_uses_the_same_plan() {
 fn monolith_moves_to_empty_column_without_leaking_previous_cursor() {
     let mut block = kid(80.0);
     block.monolith = true;
-    let (_, _, plan) = fill(&[kid(40.0), block], 100.0, Space::columns(2));
+    let (_, _, plan) = fill_at(&[kid(40.0), block], &|_| 100.0, Space::columns(2));
     assert_eq!(plan.len(), 2);
     let f = plan[1];
     assert_eq!(
@@ -67,11 +67,11 @@ fn flex_inside_avoid_moves_then_relaxes_and_keeps_forced_breaks() {
     let mut item = kid(120.0);
     item.keep = vec![(0.0, 120.0)];
     item.cuts = vec![(40.0, 40.0), (80.0, 80.0)];
-    let (_, _, plan) = fill(&[kid(30.0), item.clone()], 100.0, Space::columns(4));
+    let (_, _, plan) = fill_at(&[kid(30.0), item.clone()], &|_| 100.0, Space::columns(4));
     assert_eq!((plan[1].col, plan[1].y, plan[1].from), (1, 0.0, 0.0));
     assert_eq!(plan[1].h, 100.0);
     item.forced = vec![40.0];
-    let (_, _, plan) = fill(&[item], 100.0, Space::columns(4));
+    let (_, _, plan) = fill_at(&[item], &|_| 100.0, Space::columns(4));
     assert_eq!((plan[0].col, plan[0].h), (0, 40.0));
     assert_eq!((plan[1].col, plan[1].from), (1, 40.0));
 }

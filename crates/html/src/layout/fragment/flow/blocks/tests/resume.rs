@@ -3,7 +3,7 @@
 
 use super::{at, tree};
 use crate::layout::fragment::flow::FlowGeometry;
-use crate::layout::fragment::plan::{Space, fill};
+use crate::layout::fragment::plan::{Space, fill_at};
 use crate::layout::fragment::types::Kid;
 
 #[test]
@@ -29,7 +29,7 @@ fn inline_end_preserves_block_resume_after_fragment_growth() {
                 solid: m.solid,
                 ..Default::default()
             };
-            let (_, _, plan) = fill(&[k], 2.0 * h, Space::columns(2));
+            let (_, _, plan) = fill_at(&[k], &|_| 2.0 * h, Space::columns(2));
             assert_eq!(plan.len(), 2);
             assert_eq!((plan[0].from, plan[0].h), (0.0, h));
             assert_eq!((plan[1].from, plan[1].h), (2.0 * h, h));
@@ -54,6 +54,6 @@ fn parallel_content_prevents_skipping_a_shared_break_gap() {
         forced: vec![32.0],
         ..Default::default()
     };
-    let (_, _, plan) = fill(&[k], 64.0, Space::columns(2));
+    let (_, _, plan) = fill_at(&[k], &|_| 64.0, Space::columns(2));
     assert_eq!((plan[1].from, plan[1].h), (32.0, 64.0));
 }
