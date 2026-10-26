@@ -167,6 +167,14 @@ fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut Blo
     {
         out.cuts.push((lb, bottom));
     }
+    if b.head > 0.0 {
+        // Вложенные декорации связываются раньше объемлющей: без зазора
+        // между декорацией и содержимым нет точки класса C (css-break-3 §4.1).
+        out.pending.push(Pending::Head {
+            top,
+            edge: top + b.head,
+        });
+    }
     if b.tail > 0.0 {
         let edge = bottom - b.tail;
         out.pending.push(Pending::Tail {

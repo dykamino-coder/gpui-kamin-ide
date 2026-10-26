@@ -63,6 +63,9 @@ mod tests {
             };
             item.writing_mode = Some(WritingModeKw::VerticalLr);
             item.font_size = Some(Len::Px(20.));
+            item.text_indent = Some(Len::Px(-100.));
+            item.text_indent_each_line = Some(true);
+            item.text_indent_hanging = Some(true);
             item.list_style_type = kind;
             let li = crate::dom::Element::synthetic("li", item, Default::default(), vec![]);
             let mut parent = inherit(&BoxStyle::default(), &li.style.used(), vcx);
@@ -78,6 +81,9 @@ mod tests {
             assert_eq!(style.height, None);
             assert_eq!(style.font_size, Some(Len::Px(20.)));
             assert_eq!(style.nowrap, Some(true));
+            assert_eq!(style.text_indent, None);
+            assert_eq!(style.text_indent_each_line, None);
+            assert_eq!(style.text_indent_hanging, None);
             assert_eq!(style.wm(), parent.wm());
             let constraint = crate::layout::writing_mode::native_vertical::constraint(&style, 600.)
                 .expect("intrinsic marker inline size");

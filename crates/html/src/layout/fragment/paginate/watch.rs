@@ -93,7 +93,10 @@ impl Watched {
     ) -> MeasuredBreaks {
         let lines = self.flow.at(origin, size, axis, window);
         let blocks = self.blocks.as_ref().map_or_else(BlockBreaks::default, |b| {
-            b.breaks(end, &self.laid_axis(origin, size, axis, window))
+            b.breaks(
+                end,
+                &self.laid_axis(origin, size, axis, window).with_flow(&lines),
+            )
         });
         blocks.finish(lines, end)
     }

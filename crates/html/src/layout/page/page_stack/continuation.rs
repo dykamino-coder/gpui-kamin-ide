@@ -183,6 +183,7 @@ impl PageStack {
         } else {
             let root = inline::offset(&inline_addresses, &next_inline.paragraphs);
             root.into_iter()
+                .chain(inline::float_offset(&old.inline, &next_inline, from))
                 .chain(normal.and_then(|cursor| cursor.offset(&fresh, &next_inline.paragraphs)))
                 .chain(token.offset(&fresh))
                 .chain(

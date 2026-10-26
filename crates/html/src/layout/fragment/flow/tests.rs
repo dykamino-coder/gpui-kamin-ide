@@ -53,6 +53,38 @@ fn nested_probe_preserves_the_original_line_growth_address() {
 }
 
 #[test]
+fn positioned_band_slots_replace_probe_coordinates_before_break_collection() {
+    let laid = blocks::Laid::of_boxes(&[(1, 0., 576.), (2, 483., 915.), (3, 915., 1059.)]);
+    let geometry = FlowGeometry {
+        boxes: [(2, (0., 432.)), (3, (432., 576.))].into(),
+        ..Default::default()
+    };
+    let laid = laid.with_flow(&geometry);
+    let root = blocks::BlockBox {
+        id: 1,
+        kids: vec![
+            blocks::BlockKid {
+                id: 2,
+                monolith: true,
+                ..Default::default()
+            },
+            blocks::BlockKid {
+                id: 3,
+                adjoins: true,
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    assert_eq!(flow_end(&root, &laid), Some(576.));
+    let breaks = root
+        .breaks(576., &laid)
+        .finish(FlowGeometry::default(), 576.);
+    assert_eq!(breaks.cuts, [(432., 432.)]);
+    assert_eq!(breaks.barriers, [(0., 432.)]);
+}
+
+#[test]
 fn parallel_lines_only_break_at_shared_edges() {
     let mut geometry = FlowGeometry::lines([10.0, 20.0]);
     geometry.append(&FlowGeometry::lines([15.0, 15.0]), 0.0);

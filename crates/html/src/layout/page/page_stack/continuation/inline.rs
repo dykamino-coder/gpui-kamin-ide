@@ -36,3 +36,18 @@ pub(super) fn offset(addresses: &[(Vec<usize>, ContentLine)], fresh: &[Inline]) 
         })
         .min_by(f32::total_cmp)
 }
+
+pub(super) fn float_offset(
+    old: &crate::layout::fragment::flow::inline::Geometry,
+    fresh: &crate::layout::fragment::flow::inline::Geometry,
+    from: f32,
+) -> Option<f32> {
+    old.floats
+        .iter()
+        .filter_map(|snapshot| {
+            let next = fresh.floats.iter().find(|f| f.scope == snapshot.scope)?;
+            crate::layout::fragment::flow::float_resume::Cursor::at(snapshot, &old.paragraphs, from)
+                .offset(next, &fresh.paragraphs)
+        })
+        .min_by(f32::total_cmp)
+}

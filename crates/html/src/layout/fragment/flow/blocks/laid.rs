@@ -34,9 +34,11 @@ pub(crate) struct Laid {
 
 impl Laid {
     /// Границы детей BandFlow измерены до освобождения временных проб.
+    /// Они имеют окончательные смещения слотов; наблюдаемый узел ребёнка
+    /// ещё может хранить локальные координаты последней пробы.
     pub(crate) fn with_flow(mut self, flow: &super::super::FlowGeometry) -> Self {
         for (&id, &bounds) in &flow.boxes {
-            self.boxes.entry(id).or_insert(bounds);
+            self.boxes.insert(id, bounds);
         }
         self
     }

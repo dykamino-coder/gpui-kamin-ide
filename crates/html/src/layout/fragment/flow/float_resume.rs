@@ -1,4 +1,5 @@
 //! Независимый адрес float и его проекция в новый логический exclusion space.
+mod project;
 use super::{FloatGeometry, FlowGeometry};
 use crate::layout::fragment::token::{
     Token,
@@ -68,20 +69,23 @@ impl Cursor {
             return self.token.consumed - height;
         }
         let mapped = self
-            .addresses
+            .mapped(&fresh.inline, &[])
+            .unwrap_or(self.token.consumed.min(height));
+        self.token.consumed - mapped
+    }
+
+    fn mapped(&self, paragraphs: &[super::inline::Inline], prefix: &[usize]) -> Option<f32> {
+        self.addresses
             .iter()
             .filter_map(|(scope, paragraph, byte, delta)| {
-                fresh
-                    .inline
+                paragraphs
                     .iter()
-                    .filter(|p| &p.scope == scope)
+                    .filter(|p| p.scope.strip_prefix(prefix) == Some(scope.as_slice()))
                     .flat_map(|p| &p.lines)
                     .find(|l| l.paragraph == *paragraph && l.state.text_pos == *byte)
                     .map(|l| l.top - delta)
             })
             .min_by(f32::total_cmp)
-            .unwrap_or(self.token.consumed.min(height));
-        self.token.consumed - mapped
     }
 }
 
@@ -91,7 +95,7 @@ mod tests {
     use crate::layout::fragment::flow::{ContentLine, FlowMeasure, inline::Inline};
     use crate::layout::fragment::line_shape::line_state;
 
-    fn paragraph(scope: &[usize], step: f32) -> Inline {
+    pub(super) fn paragraph(scope: &[usize], step: f32) -> Inline {
         Inline {
             scope: scope.to_vec(),
             lines: (0..8)
@@ -109,7 +113,7 @@ mod tests {
             widows: 1,
         }
     }
-    fn snapshot(scope: &[usize], height: f32) -> Snapshot {
+    pub(super) fn snapshot(scope: &[usize], height: f32) -> Snapshot {
         Snapshot {
             scope: scope.to_vec(),
             bounds: FloatGeometry {

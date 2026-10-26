@@ -41,6 +41,7 @@ use decorate::decorate;
 pub(crate) use flow_align::note as note_flow_align;
 pub(crate) use fragment::group as fragment_group_style;
 pub(crate) use marker::content as marker_content;
+pub(crate) use marker::symbol as marker_symbol;
 use paint::inherit_paint;
 
 // `zoom` (css-viewport-1) не делать домножением использованных длин здесь,
