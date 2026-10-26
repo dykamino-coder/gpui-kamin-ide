@@ -5,6 +5,9 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 
+mod parallel;
+pub(crate) use parallel::separate;
+
 pub(crate) fn empty_floats(e: &Element) -> bool {
     fn walk(e: &Element) -> Option<bool> {
         if !matches!(
@@ -12,10 +15,6 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
             None | Some(Display::Block | Display::ListItem)
         ) || !crate::layout::page::paged::visible_overflow(&e.style.used())
         {
-            return None;
-        }
-        // TRANSITIONAL(F2-1): Переполнение ограниченного блока требует собственного resume; удалить отказ в P05 после раздельного продолжения normal flow и overflow.
-        if super::parallel_overflow(e) {
             return None;
         }
         let mut root = e.clone();
@@ -53,7 +52,7 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
 mod tests {
     use super::*;
 
-    fn authored(nodes: &[Node]) -> &Element {
+    pub(super) fn authored(nodes: &[Node]) -> &Element {
         fn find(nodes: &[Node]) -> Option<&Element> {
             nodes.iter().find_map(|n| match n {
                 Node::Element(e) if e.tag == "div" => Some(e),
@@ -74,9 +73,17 @@ mod tests {
     }
 
     #[test]
+    fn fixed_height_parent_keeps_an_independent_empty_float_overflow() {
+        let tree = crate::dom::parse(
+            "<div style='height:10px'><div style='float:left;height:80px'></div></div>",
+            "",
+        );
+        assert!(empty_floats(authored(&tree)));
+    }
+
+    #[test]
     fn text_and_separate_contexts_are_not_hidden_by_empty_float_dispatch() {
         for body in [
-            "<div style='height:100px'><div style='float:left;width:100%;height:100px;break-inside:avoid'></div></div>",
             "<div style='float:left'>flowing text</div>",
             "<div style='float:left;height:30px'></div>wrapping text",
             "<div style='overflow:hidden'><div style='float:left'></div></div>",

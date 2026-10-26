@@ -12,6 +12,10 @@ pub(crate) fn own_context(e: &Element) -> bool {
     // its children's margins stay inside it
     // (`margin-collapsing-in-table-caption-002`).
     own_context_style(&e.style.used())
+        // Полноширинный float в стопке представлен блочной коробкой, но
+        // сохраняет собственный BFC: поля его детей через край не выходят
+        // (CSS2 §9.4.1, §8.3.1). Снятие float относится лишь к размещению.
+        || e.marks.float_block
         // HTML §15.3.13: анонимная коробка fieldset — независимый BFC;
         // её дочерние поля не переходят в поля fieldset до измерения копии.
         || (e.tag == "fieldset"
@@ -34,6 +38,37 @@ pub(crate) fn own_context(e: &Element) -> bool {
         // слитый несёт `line_clamp` потомкам для текста.
         || ((e.style.used().clamp_lines().is_some() || e.style.used().clamp_by_height())
             && !multicol_container(&e.style.used()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::Node;
+
+    #[test]
+    fn block_representation_preserves_the_float_formatting_context() {
+        fn find(nodes: &mut [Node]) -> Option<&mut Element> {
+            nodes.iter_mut().find_map(|node| match node {
+                Node::Element(e) => {
+                    if e.tag == "div" {
+                        Some(e)
+                    } else {
+                        find(&mut e.children)
+                    }
+                }
+                _ => None,
+            })
+        }
+        let mut tree = crate::dom::parse("<div style='float:left'></div>", "");
+        let float = find(&mut tree).unwrap();
+        assert!(own_context(float));
+        float.style.used_mut().float = None;
+        float.marks.float_block = true;
+        assert!(own_context(float));
+        assert!(bfc_root(float));
+        float.marks.float_block = false;
+        assert!(!own_context(float));
+    }
 }
 
 /// Блочный контейнер — корень своего блочного контекста: поля детей через

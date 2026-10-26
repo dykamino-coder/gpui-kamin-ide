@@ -4,6 +4,8 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub(crate) struct InlineContext {
+    /// Внешний маркер выравнивает строки к пункту, независимо от CSS text-align.
+    pub(crate) outside_marker_rtl: Option<bool>,
     /// Build a physical row of atoms without turning its enclosing text line.
     pub(crate) pure_atom_paragraph: bool,
     /// Intrinsic inline-size measurement offered to this build only.

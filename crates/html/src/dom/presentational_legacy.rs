@@ -1,5 +1,5 @@
 //! HTML rendering §15: представленческие подсказки таблиц, списков, `br` и
-//! вложенного содержимого (§15.3.8 таблицы, §15.3.7 списки, §15.3.10 `br`,
+//! вложенного содержимого (§15.3.8 таблицы, §15.3.7 списки, §15.3.4 `br`,
 //! §15.4.3 атрибуты вложений и картинок).
 //!
 //! Servo выражает селекторную часть листом `presentational-hints.css`; здесь
@@ -42,9 +42,7 @@ fn image_border(attrs: &[(String, String)], css: &mut String) {
 // Not mapped yet (narrowed after measurement, see the commit): `table border`
 // (§15.3.8 widths + outset table / inset cell edges) — its cell edges expose a
 // one-row background offset in bordered vertical-lr tables
-// (`table-cell-valign-001/002/003`); `br clear` (§15.3.10) — clearance in a
-// float row of grid containers and past a float fragmented across columns
-// (`grid-template-rows-fit-content-001`, `floats-clear-multicol-001`).
+// (`table-cell-valign-001/002/003`).
 
 fn table(attrs: &[(String, String)], css: &mut String, vcx: ValueCx<'_>) {
     match lower(attrs, "align").as_deref() {
@@ -165,6 +163,12 @@ pub(super) fn hints(
         text_align(tag, attrs, &mut css);
     }
     match tag {
+        "br" => match attr(attrs, "clear").map(str::to_ascii_lowercase).as_deref() {
+            Some("left") => css.push_str("clear: left;"),
+            Some("right") => css.push_str("clear: right;"),
+            Some("all" | "both") => css.push_str("clear: both;"),
+            _ => {}
+        },
         "table" => table(attrs, &mut css, vcx),
         "td" | "th" => {
             // §15.3.8: cell `width` ignores zero, cell and row `height` do not.

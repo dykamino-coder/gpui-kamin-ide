@@ -8,6 +8,7 @@ use crate::layout::fragment::types::Kid;
 fn paragraph(count: usize, ordinal: usize, offset: f32) -> Inline {
     let text = "x".repeat(count);
     Inline {
+        scope: Vec::new(),
         lines: (0..count)
             .map(|i| ContentLine {
                 paragraph: ordinal,
@@ -15,6 +16,7 @@ fn paragraph(count: usize, ordinal: usize, offset: f32) -> Inline {
                 state: line_state(&text, i, i, false).unwrap(),
                 top: offset + i as f32 * 10.0,
                 bottom: offset + (i + 1) as f32 * 10.0,
+                prefix: i as f32 * 10.0,
                 consumed_before: 0.0,
             })
             .collect(),
@@ -129,7 +131,7 @@ fn committed_candidate_carries_the_token_through_changed_metrics() {
     );
     assert!(tokens.next.is_empty());
     tokens.commit(30.0);
-    let first = tokens.store.get(tokens.next[&0]).unwrap();
+    let first = tokens.store.get(tokens.next[&(Vec::new(), 0)]).unwrap();
     assert_eq!((first.seq, first.consumed), (1, 30.0));
     for line in &mut p.lines {
         line.top *= 2.0;
@@ -148,7 +150,7 @@ fn committed_candidate_carries_the_token_through_changed_metrics() {
         Some(Some((100.0, 100.0)))
     );
     tokens.commit(100.0);
-    let t = tokens.store.get(tokens.next[&0]).unwrap();
+    let t = tokens.store.get(tokens.next[&(Vec::new(), 0)]).unwrap();
     assert_eq!((t.seq, t.consumed), (2, 70.0));
     assert!(matches!(&t.fc, FcState::Inline(s) if s.text_pos == 5));
 }
@@ -168,6 +170,38 @@ fn parallel_ifcs_only_cut_at_a_shared_line_boundary() {
     let plan = fill(kid(12), vec![a, b], 45.0);
     assert_eq!(plan[0].h, 30.0);
     assert_eq!(plan[1].from, 30.0);
+}
+
+#[test]
+fn float_ifcs_with_equal_ordinals_keep_distinct_tokens() {
+    use super::{Tokens, cut};
+    use crate::layout::fragment::token::fc::FcState;
+    let mut a = paragraph(12, 0, 0.);
+    let mut b = paragraph(8, 0, 0.);
+    a.scope = vec![1, 2];
+    b.scope = vec![1, 3];
+    a.orphans = 1;
+    b.orphans = 1;
+    for line in &mut b.lines {
+        line.top *= 1.5;
+        line.bottom *= 1.5;
+    }
+    let mut tokens = Tokens::default();
+    let mut shortage = f32::MAX;
+    cut(
+        &mut tokens,
+        &geometry(vec![a, b]),
+        0.,
+        45.,
+        false,
+        &mut shortage,
+    )
+    .unwrap();
+    tokens.commit(30.);
+    for (scope, byte) in [(vec![1, 2], 3), (vec![1, 3], 2)] {
+        let token = tokens.store.get(tokens.next[&(scope, 0)]).unwrap();
+        assert!(matches!(&token.fc, FcState::Inline(s) if s.text_pos == byte));
+    }
 }
 #[test]
 fn structural_barrier_rolls_back_and_rechecks_line_boundaries() {
@@ -206,7 +240,7 @@ fn avoid_rollback_rechecks_crossing_and_previously_finished_ifcs() {
             Some(Some((20.0, 20.0)))
         );
         tokens.commit(20.0);
-        let t = tokens.store.get(tokens.next[&0]).unwrap();
+        let t = tokens.store.get(tokens.next[&(Vec::new(), 0)]).unwrap();
         assert_eq!((t.seq, t.consumed), (1, 20.0));
         assert!(matches!(&t.fc, FcState::Inline(state) if state.text_pos == 2));
     }

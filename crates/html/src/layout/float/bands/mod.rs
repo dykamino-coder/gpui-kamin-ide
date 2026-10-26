@@ -79,6 +79,7 @@ pub struct FloatBands {
     ceil_flow: f32,
     /// Нижний край margin-box самого нижнего ЛЕВОГО флоата: позиция для
     /// `clear: left` (§9.5.2) и вклад в высоту корня контекста (§10.6.7).
+    /// Отсутствие — −∞: ноль был бы ложным препятствием отрицательному margin.
     clear_l: f32,
     /// То же для правых.
     clear_r: f32,
@@ -110,9 +111,9 @@ impl FloatBands {
             cb: (0.0, cb_w.max(0.0)),
             ceil_floats: 0.0,
             ceil_flow: 0.0,
-            clear_l: 0.0,
-            clear_r: 0.0,
-            letter: (0.0, 0.0),
+            clear_l: f32::NEG_INFINITY,
+            clear_r: f32::NEG_INFINITY,
+            letter: (f32::NEG_INFINITY, f32::NEG_INFINITY),
             exclusions: Vec::new(),
         }
     }

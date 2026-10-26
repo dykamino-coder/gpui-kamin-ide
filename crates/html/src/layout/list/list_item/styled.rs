@@ -6,7 +6,7 @@ use crate::layout::build_contracts::Styling;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
-use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) async fn render_with_style(
     stk: &mut reblessive::Stk,
@@ -64,10 +64,22 @@ pub(crate) async fn render_with_style(
         li.style.used().marker_layer.as_deref(),
     );
     let marker = inline::transform_case(&marker, &mark_style);
-    // Without line boxes the outside marker is top-aligned to the item, and
-    // the item's content height is at least the marker's (csswg-drafts#2417,
-    // #2418; Blink `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). An
-    // item with no content gets a hidden zero-width copy of the marker line.
+    let marker_opts = super::outside_flow::options(opts, merged.wm().used_direction().rtl());
+    // Маркер и распорка пустого пункта используют CSS-метрики строки.
+    // Прямой текстовый лист GPUI наследует line-height интерфейса, тогда
+    // как `normal` первой строки зависит от шрифта пункта (CSS2 §10.8.1).
+    let image_marker = image.is_some();
+    let marker_nodes = match image {
+        Some(image) => vec![image, Node::Text("\u{a0}".into())],
+        None => vec![Node::Text(match marker.strip_suffix(' ') {
+            Some(head) => format!("{head}\u{a0}"),
+            None => marker,
+        })],
+    };
+    // Без строк внешний маркер выровнен по верху пункта, высота которого
+    // не меньше маркера (csswg-drafts#2417, #2418; Blink
+    // `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). Скрытая строка
+    // резервирует эту высоту, сохраняя собственную baseline шрифта пункта.
     let empty = li.children.iter().all(crate::dom::whitespace::is_blank);
     let strut = (!no_marker && empty).then(|| {
         let mut d = opts
@@ -76,27 +88,33 @@ pub(crate) async fn render_with_style(
             .build
             .styled_div(Styling::Text(&mark_style), &opts.cx)
             .w_0()
-            .whitespace_nowrap()
-            .children(image.is_none().then(|| SharedString::from(marker.clone())))
+            .flex()
+            .items_start()
+            // Заменяемый маркер увеличивает минимальную высоту, сохраняя
+            // baseline шрифта самого пункта (CSS2 §10.8.1).
+            .child(
+                div()
+                    .w_0()
+                    .flex_shrink_0()
+                    .children(opts.cx.contracts.build.blocks(
+                        &[Node::Text("\u{a0}".into())],
+                        &super::outside::content_style(None, merged, vcx),
+                        opts,
+                    )),
+            )
             .children(
-                image
-                    .as_ref()
-                    .map(|image| {
-                        opts.cx.contracts.build.blocks(
-                            std::slice::from_ref(image),
-                            &mark_style,
-                            opts,
-                        )
-                    })
-                    .into_iter()
-                    .flatten(),
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&marker_nodes, &mark_style, &marker_opts),
             );
         d.style().visibility = Some(gpui::Visibility::Hidden);
         d
     });
     // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
     // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
-    // не двигает. Text transforms apply to its own text (§3.1.1).
+    // не двигает. Преобразования текста применяются к самому маркеру (§3.1.1).
+    let anchor = super::placement::Anchor::default();
     shrink0(
         opts.cx.contracts.build.styled_box(li, merged, &opts.cx),
         li,
@@ -115,62 +133,52 @@ pub(crate) async fn render_with_style(
         // стилем слоя: разрядка, межсловный пробел, шрифт и цвет
         // маркера объявлены на нём (css-lists-3
         // §marker-properties).
-        super::outside::position(
-            opts.cx
-                .contracts
-                .build
-                .styled_div(Styling::Text(&mark_style), &opts.cx),
-            &li.style.used(),
-            merged,
+        anchor.marker(
+            super::outside::position(
+                opts.cx
+                    .contracts
+                    .build
+                    .styled_div(Styling::Text(&mark_style), &opts.cx),
+                &li.style.used(),
+                merged,
+            )
+            // Созданный суффикс — NBSP; авторский NBSP остаётся
+            // значимым содержимым (css-lists-3 §3.1.1).
+            .children(
+                opts.cx
+                    .contracts
+                    .build
+                    .blocks(&marker_nodes, &mark_style, &marker_opts),
+            )
+            .into_any_element(),
+            merged.wm().vertical(),
+            !empty,
+            image_marker,
         )
-        .whitespace_nowrap()
-        // Хвост срезается только у СОБСТВЕННЫХ отбивок движка
-        // (обычный пробел после номера пункта). Авторская
-        // строка `list-style-type: "..."` идёт дословно:
-        // `trim_end` в Rust считает пробелом и U+00A0, а
-        // неразрывный пробел в такой строке — ЗНАЧАЩИЙ.
-        // Остаток `list-style-type-string-005a/b/-006` не здесь,
-        // но срезать значащий знак всё равно нельзя.
-        // Отбивка после номера (`1. `) — часть маркера: она и
-        // даёт зазор до содержимого. Пробел в конце строки
-        // свернулся бы, поэтому он неразрывный.
-        .children(
-            image
-                .as_ref()
-                .map(|image| {
-                    opts.cx.contracts.build.blocks(
-                        &[image.clone(), Node::Text("\u{a0}".into())],
-                        &mark_style,
-                        opts,
-                    )
-                })
-                .into_iter()
-                .flatten(),
-        )
-        .children(image.is_none().then(|| {
-            SharedString::from(match marker.strip_suffix(' ') {
-                Some(head) => format!("{head}\u{a0}"),
-                None => marker.clone(),
-            })
-        }))
     }))
     // Содержимое — своей колонкой, как прежде: выключка пункта
     // (`text-align: end` у `<li>`) иначе становится выравниванием
     // его детей, и блок с `text-align: initial` уезжал к концу
     // (`marker-text-align-001-ref`).
     .child(
-        div()
-            .w_full()
-            .flex()
-            .flex_col()
-            .children(
-                opts.cx
-                    .contracts
-                    .build
-                    .blocks_stack(stk, &li.children, merged, opts)
-                    .await,
-            )
-            .children(strut),
+        anchor.content(
+            div()
+                .w_full()
+                .flex()
+                .flex_col()
+                .children(
+                    opts.cx
+                        .contracts
+                        .build
+                        .blocks_stack(stk, &li.children, merged, opts)
+                        .await,
+                )
+                .children(strut)
+                .into_any_element(),
+        ),
     )
     .into_any_element()
 }
+
+#[cfg(test)]
+mod tests;

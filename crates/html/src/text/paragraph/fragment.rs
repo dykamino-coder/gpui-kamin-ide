@@ -16,12 +16,37 @@ pub(crate) struct LineFlow {
 impl Paragraph {
     /// Consumed fragmentainer space belongs above the continued line box.
     pub(super) fn fragment_padding(&self, mut pads: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
-        if let Some(fragment) = &self.fragment {
-            for ((above, _), growth) in pads.iter_mut().zip(fragment.node.growth.borrow().iter()) {
-                *above += growth;
+        if self.fragment.is_some() {
+            for (index, (above, _)) in pads.iter_mut().enumerate() {
+                *above += self.fragment_leading(index);
             }
         }
         pads
+    }
+
+    pub(super) fn fragment_line_index(&self) -> usize {
+        self.fragment
+            .as_ref()
+            .and_then(|f| f.node.resume.state())
+            .map_or(0, |state| state.line_idx)
+    }
+
+    /// Префикс — только перевод координат; он не создаёт line boxes (§4.4).
+    pub(super) fn fragment_leading(&self, index: usize) -> f32 {
+        self.fragment.as_ref().map_or(0.0, |f| {
+            let prefix = if index == 0 {
+                f.node.resume.consumed()
+            } else {
+                0.0
+            };
+            prefix
+                + f.node
+                    .growth
+                    .borrow()
+                    .get(self.fragment_line_index() + index)
+                    .copied()
+                    .unwrap_or(0.0)
+        })
     }
 
     pub(crate) fn fragment_flow(
@@ -45,20 +70,21 @@ impl Paragraph {
             // CSS 2.1 section 9.5: avoidance is free space before a real
             // line, so a fragment cut may lie at the end of that space.
             let growth = node.growth.borrow();
+            let first = self.fragment_line_index();
             let mut starts = node.starts.borrow_mut();
             starts.clear();
             for (index, (solid, line)) in geometry.solid.iter_mut().zip(&self.lines).enumerate() {
-                let consumed = growth.get(index).copied().unwrap_or(0.0);
+                let consumed = growth.get(first + index).copied().unwrap_or(0.0);
                 // Остаток принадлежит предыдущему фрагменту, а не line box.
                 // Его прежний конец больше не является точкой разрыва.
                 if index > 0 && consumed > 0.0 {
                     geometry.cuts[index - 1].0 += consumed;
                     geometry.cuts[index - 1].1 += consumed;
                 }
-                starts.push(solid.0 + consumed);
-                solid.0 += consumed;
+                solid.0 += self.fragment_leading(index);
+                starts.push((first + index, solid.0));
                 solid.0 += f32::from(line.clearance);
-                if line.clearance > gpui::px(0.) || (index == 0 && consumed > 0.0) {
+                if line.clearance > gpui::px(0.) || (index == 0 && solid.0 > 0.0) {
                     geometry.cuts.push((solid.0, solid.0));
                 }
             }
@@ -79,7 +105,7 @@ impl Paragraph {
                         byte: line.range.start,
                         state: crate::layout::fragment::line_shape::line_state(
                             &self.text,
-                            index,
+                            first + index,
                             line.range.start,
                             hard.contains(
                                 &self.text[..line.range.start]
@@ -90,13 +116,15 @@ impl Paragraph {
                         .expect("invalid shaped line address"),
                         top,
                         bottom,
-                        consumed_before: growth.get(index).copied().unwrap_or(0.0),
+                        prefix: starts[index].1 - growth.get(first + index).copied().unwrap_or(0.0),
+                        consumed_before: growth.get(first + index).copied().unwrap_or(0.0),
                     },
                 )
                 .collect();
             geometry
                 .inline
                 .push(crate::layout::fragment::flow::inline::Inline {
+                    scope: Vec::new(),
                     lines: node.content.borrow().clone(),
                     orphans: keep.0,
                     widows: keep.1,
@@ -125,8 +153,11 @@ impl super::Paragraph {
         {
             return None;
         }
-        let mut lines = self.lay_in(0..resume, limit, segs);
-        lines.extend(self.lay_in(resume..self.text.len(), limit, segs));
-        Some(lines)
+        // CSS Break 3 §5.1: продолжается содержимое после прежнего break point.
+        // Потреблённый текст не участвует в новом выборе строк и exclusions.
+        Some(self.lay_in(resume..self.text.len(), limit, segs))
     }
 }
+
+#[cfg(test)]
+mod continuation_tests;

@@ -7,7 +7,9 @@ use std::collections::HashMap;
 enum Address {
     Before,
     End,
-    Line(usize, usize),
+    // Адрес строки сохраняет расстояние от границы разрыва до её верха:
+    // внутренние отбивки ячейки не являются потреблённым содержимым.
+    Line(usize, usize, f32),
     Box(u64),
     BlockOffset(f32),
 }
@@ -33,12 +35,16 @@ impl Resume {
                     .get(&id)
                     .into_iter()
                     .flatten()
-                    // Будущая строка не поглощает остаток монолитной коробки:
-                    // до её начала сохраняется физический consumed block-size.
-                    .filter(|l| l.top <= from + COORD_EPS && l.bottom > from + COORD_EPS)
+                    // До будущей строки сохраняется её отступ, кроме разрыва
+                    // внутри предшествующей коробки: там consumed физический.
+                    .filter(|l| {
+                        l.bottom > from + COORD_EPS
+                            && (l.top <= from + COORD_EPS
+                                || !crosses_before_line(old, id, from, l.top))
+                    })
                     .min_by(|a, b| a.top.total_cmp(&b.top))
                 {
-                    Address::Line(line.paragraph, line.byte)
+                    Address::Line(line.paragraph, line.byte, from - line.top)
                 } else if let Some((&child, _)) = old
                     .descendants
                     .get(&id)
@@ -63,12 +69,13 @@ impl Resume {
         Some(match self.items.get(&id)? {
             Address::Before => top,
             Address::End => bottom,
-            Address::Line(paragraph, byte) => {
+            Address::Line(paragraph, byte, before) => {
                 new.content
                     .get(&id)?
                     .iter()
                     .find(|l| l.paragraph == *paragraph && l.byte == *byte)?
                     .top
+                    + before
             }
             Address::Box(child) => new.at(*child)?.0,
             Address::BlockOffset(consumed) => top + consumed.min((bottom - top).max(0.0)),
@@ -125,6 +132,17 @@ impl Resume {
             })
             .min_by(f32::total_cmp)
     }
+}
+
+fn crosses_before_line(laid: &Laid, id: u64, from: f32, line_top: f32) -> bool {
+    laid.descendants
+        .get(&id)
+        .into_iter()
+        .flatten()
+        .filter_map(|&child| laid.at(child))
+        .any(|(top, bottom)| {
+            top < from - COORD_EPS && bottom > from + COORD_EPS && bottom <= line_top + COORD_EPS
+        })
 }
 
 #[cfg(test)]

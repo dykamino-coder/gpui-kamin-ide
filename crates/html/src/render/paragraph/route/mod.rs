@@ -13,6 +13,7 @@ use crate::text::inline::Piece;
 use gpui::AnyElement;
 use std::cell::Cell;
 
+mod alignment;
 mod choose;
 mod collect;
 mod native;

@@ -33,5 +33,13 @@ pub(super) fn measure(
             .iter()
             .map(|g| g.bottom + g.margins[1])
             .fold(c.over, f32::max);
+        if let Some(blocks) = w.blocks() {
+            let laid = w
+                .laid_axis(point(px(0.0), px(0.0)), size, axis, window)
+                .with_flow(&flow);
+            if let Some(end) = crate::layout::fragment::flow::flow_end(blocks, &laid) {
+                c.over = c.over.max(end);
+            }
+        }
     }
 }

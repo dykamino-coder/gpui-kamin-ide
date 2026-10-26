@@ -111,7 +111,7 @@ mod tests {
         for position in ["static", "relative", "absolute", "fixed", "sticky"] {
             for clip in ["border-box", "padding-box", "content-box"] {
                 for filter in ["invert(1)", "blur(2px)", "url(#filter)"] {
-                    let mut c = Computed::default();
+                    let mut c = crate::style::computed::BoxStyle::default();
                     c.apply_one("position", position, vcx);
                     c.apply_one("background", &format!("#fff8 {clip}"), vcx);
                     c.apply_one("backdrop-filter", filter, vcx);
@@ -121,7 +121,7 @@ mod tests {
                 }
             }
         }
-        let mut ordinary = Computed::default();
+        let mut ordinary = crate::style::computed::BoxStyle::default();
         ordinary.apply_one("background", "#fff8", vcx);
         ordinary.apply_one("backdrop-filter", "none", vcx);
         let mut d = crate::paint::apply::apply_paint(gpui::div(), &ordinary, vcx);
@@ -145,11 +145,11 @@ mod tests {
             Display::InlineGrid,
         ] {
             for clip in ["padding-box", "content-box"] {
-                let mut c = Computed::default();
+                let mut c = crate::style::computed::BoxStyle::default();
                 c.display = Some(display);
                 c.apply_one("background", &format!("blue {clip}"), vcx);
                 assert!(color_layer(&c, vcx).is_some(), "{display:?}: {clip}");
-                c.parent_flex_grid = true;
+                c.context.parent_flex_grid = true;
                 assert!(color_layer(&c, vcx).is_some());
             }
         }
@@ -159,7 +159,7 @@ mod tests {
     fn content_edge_subtracts_both_border_and_padding_from_each_radius_axis() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = Computed::default();
+        let mut c = crate::style::computed::BoxStyle::default();
         c.apply_one("border", "10px solid transparent", vcx);
         c.apply_one("padding", "5px 20px", vcx);
         c.apply_one("border-radius", "40px / 30px", vcx);
@@ -191,7 +191,7 @@ mod tests {
     fn bottom_layer_clip_controls_color_independently_of_top_image() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = Computed::default();
+        let mut c = crate::style::computed::BoxStyle::default();
         c.apply_one("background", "url(a) border-box, blue content-box", vcx);
         assert!(color_layer(&c, vcx).is_some());
         c.apply_one("background", "url(a) content-box, blue border-box", vcx);

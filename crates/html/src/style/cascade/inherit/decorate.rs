@@ -11,14 +11,12 @@ use crate::style::computed::BoxStyle;
 /// абсолюты); цвет, рисунок, толщина и метрики — от украшающей коробки.
 /// `display: contents` коробки не даёт и своих линий не кладёт.
 pub(super) fn decorate(
-    parent: &Computed,
+    input: crate::box_facts::DecorationInputs<'_, crate::style::computed::Decor>,
     own: &Computed,
     c: &mut BoxStyle,
     own_px: f32,
     vcx: ValueCx<'_>,
 ) {
-    use crate::style::computed::Display as D;
-    use crate::style::computed::Position as P;
     use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};
     let over_lang = c.lang.as_deref().is_some_and(|l| {
         let l = l.to_ascii_lowercase();
@@ -26,38 +24,9 @@ pub(super) fn decorate(
             .iter()
             .any(|p| l == *p || l.starts_with(&format!("{p}-")))
     });
-    // Ребёнок flex/grid/lanes-контейнера блокифицирован (css-display-3
-    // §2.7): `inline-block` там уже не атомарная строчная коробка, и линии
-    // идут дальше (Blink `StopPropagateTextDecorations` смотрит display ПОСЛЕ
-    // `AdjustStyleForDisplay`; эталоны `grid-lanes/baseline/*-ref`).
-    let blockified = matches!(
-        parent.display,
-        Some(D::Flex | D::InlineFlex | D::Grid | D::InlineGrid | D::GridLanes)
-    );
-    let blocked = matches!(own.position, Some(P::Absolute) | Some(P::Fixed))
-        || own.float.is_some_and(|f| f != 0)
-        || (!blockified
-            && matches!(
-                own.display,
-                Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
-            ));
-    set!(
-        c.decors,
-        if blocked {
-            Vec::new()
-        } else {
-            parent.decors.clone()
-        }
-    );
-    // Линии, пришедшие в блок, рисуются на его анонимной строчной коробке
-    // (css-text-decor-3 §2.1, пример 1): метрики и положение — от шрифта
-    // этого блока (`text-decoration-subelements-004`).
-    let block = match own.display {
-        None => own.block_tag && own.inline_display != Some(true),
-        Some(D::Contents) => false,
-        Some(_) => true,
-    };
-    if block {
+    set!(c.decors, input.inherited.to_vec());
+    // Линии, пришедшие в блок, используют метрики его анонимной строчной коробки.
+    if input.block {
         let font = DecorFont {
             family: c.font_family.clone(),
             monospace: c.monospace,
@@ -79,7 +48,7 @@ pub(super) fn decorate(
         }
     }
     if let Some(lines) = c.td_lines.filter(|l| *l != 0)
-        && own.display != Some(D::Contents)
+        && input.generates_box
     {
         let family = crate::style::cascade::compute::decor_family(c, vcx);
         let resolve =
