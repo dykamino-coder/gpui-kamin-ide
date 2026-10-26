@@ -45,6 +45,7 @@ pub(super) fn place_oof_statics(
             #[cfg(feature = "wpt-harness")]
             probe: opts.frag.probe.clone(),
             fragment_builders: Vec::new(),
+            source: None,
             watched: None,
             breaks_w: None,
             regrow: None,

@@ -164,6 +164,7 @@ pub(super) fn stack_child_of(
         probe_pending: measure.is_none(),
         #[cfg(feature = "wpt-harness")]
         probe: Default::default(),
+        source: Some(copy.node_id),
         watched: None,
         breaks_w: None,
         regrow: None,

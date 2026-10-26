@@ -88,23 +88,19 @@ fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &m
     stack.children[1].h = 20.0;
     stack.children[1].over = 20.0;
     stack.reserve_row_copies();
-    assert_eq!(stack.copies, 11);
-    assert!(
-        stack
-            .children
-            .iter()
-            .all(|c| c.frags.len() + 1 == stack.copies)
-    );
+    assert_eq!(stack.copies, 8);
+    assert_eq!(stack.children[0].frags.len() + 1, 8);
     // Поздний рост перестраивает виды из актуального DOM того же ребёнка.
-    stack.children[0].over = 1101.0;
+    stack.children[0].over = 6101.0;
     stack.reserve_row_copies();
-    assert_eq!(stack.copies, 15);
-    assert!(
-        stack
-            .children
-            .iter()
-            .all(|c| c.frags.len() + 1 == stack.copies)
+    assert_eq!(stack.copies, 62);
+    assert_eq!(stack.children[0].frags.len() + 1, 62);
+    let (_, _, plan, _) = stack.balance(&stack.kid_geoms());
+    assert_eq!(
+        plan.completion,
+        crate::layout::fragment::plan::Completion::Complete
     );
+    assert_eq!(plan.last().unwrap().col, 61);
     #[cfg(feature = "wpt-harness")]
     assert!(
         opts.frag

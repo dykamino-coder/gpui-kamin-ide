@@ -6,9 +6,7 @@ use crate::layout::fragment::types::Frag;
 use gpui::{Bounds, point, px, size};
 
 #[gpui::test]
-fn absolute_continues_after_normal_flow_without_moving_its_neighbour(
-    cx: &mut gpui::TestAppContext,
-) {
+fn absolute_continuation_and_balance_preserve_the_normal_neighbour(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
         let tree = crate::dom::parse("<section style='column-count:2;column-fill:auto;width:210px;height:70px'><div style='position:relative;height:20px'><div style='position:absolute;top:65px;width:80px;height:85px'></div></div><p style='height:20px;margin:0'></p></section>", "");
@@ -63,6 +61,30 @@ fn absolute_continues_after_normal_flow_without_moving_its_neighbour(
         assert_eq!(normal[1].y, 20.);
         assert_eq!(normal.len(), 2);
         assert_eq!(stack.children[0].h, 20.);
+        drop(plan);
+        stack.fixed_height = None;
+        // Normal-владелец не зависит от наличия block recorder.
+        stack.children[0].watched = None;
+        let kids = stack.kid_geoms();
+        for _ in 0..2 {
+            let (height, _, normal, _) = stack.balance(&kids);
+            assert_eq!(height, 75.);
+            assert_eq!(normal.completion, Completion::Complete);
+            assert_eq!(normal.failure, None);
+            assert_eq!(stack.children[0].h, 20.);
+            assert_eq!(stack.children[1].h, 20.);
+        }
+        let source = &mut std::rc::Rc::make_mut(&mut stack.oof.geometry).flows[0];
+        source.kid.h = 80.;
+        source.kid.over = 80.;
+        source.kid.monolith = true;
+        source.metrics.normal_offset.y = px(20.);
+        for _ in 0..2 {
+            let (height, _, plan, _) = stack.balance(&kids);
+            assert_eq!(height, 80.);
+            assert_eq!(plan.completion, Completion::Complete);
+            assert_eq!(plan.failure, None);
+        }
         gpui::div()
     });
 }
