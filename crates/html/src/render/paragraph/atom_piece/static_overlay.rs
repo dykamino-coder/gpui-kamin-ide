@@ -114,19 +114,7 @@ pub(crate) fn static_overlay(
     );
     let normal_probe = opts.cx.position.geometry_record.as_ref().map(|recorder| {
         let slot = crate::layout::positioned::containing_block::LineBoxSlot::default();
-        recorder.inline_spot(
-            e.node_id,
-            slot.clone(),
-            inherited.wm().rtl(),
-            gpui::point(
-                gpui::px(crate::style::values::value::px_lossy_zero(
-                    merged.margin.left,
-                )),
-                gpui::px(crate::style::values::value::px_lossy_zero(
-                    merged.margin.top,
-                )),
-            ),
-        );
+        recorder.inline_spot(e.node_id, slot.clone(), inherited.wm().rtl(), &merged, vcx);
         slot
     });
     let inner = anchor::place::place_in_context(inner, &positioned, inherited, &opts.cx);

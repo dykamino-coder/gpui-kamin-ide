@@ -81,7 +81,13 @@ pub(crate) fn place_element(
             ..Default::default()
         });
         if let Some(recorder) = &opts.cx.position.geometry_record {
-            recorder.spot(e.node_id, &spot, opts.cx.position.line_box.clone());
+            recorder.spot(
+                e.node_id,
+                &spot,
+                opts.cx.position.line_box.clone(),
+                &e.style.used(),
+                opts.cx.vcx(),
+            );
         }
         let mut source_paint = None;
         let paged = opts.paged_build().filter(|_| to_icb && fixed);

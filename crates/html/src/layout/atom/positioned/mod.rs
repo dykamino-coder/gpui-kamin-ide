@@ -120,7 +120,13 @@ pub(super) fn absolute_atom(
             ..Default::default()
         });
         if let Some(recorder) = &opts.cx.position.geometry_record {
-            recorder.spot(e.node_id, &spot, opts.cx.position.line_box.clone());
+            recorder.spot(
+                e.node_id,
+                &spot,
+                opts.cx.position.line_box.clone(),
+                &e.style.used(),
+                opts.cx.vcx(),
+            );
         }
         let probe = crate::layout::positioned::containing_block::spot_probe(
             spot.clone(),
