@@ -1,10 +1,23 @@
 //! Actual content baselines on both physical axes, before native scaling and insets.
 
-use crate::{Pixels, Size};
+use crate::{Bounds, Pixels, Size};
+
+/// KaminIDE patch: static-position geometry supplied by a measured content host.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeasuredStaticPosition {
+    /// Host-local identity of the out-of-flow placeholder.
+    pub key: usize,
+    /// Static-position rectangle in unscaled content coordinates.
+    pub rect: Bounds<Pixels>,
+    /// Actual line box in the same coordinates.
+    pub line: Bounds<Pixels>,
+}
 
 /// Measured content geometry in logical pixels; baseline order follows content order.
 #[derive(Clone, Debug)]
 pub struct MeasuredContent {
+    /// KaminIDE patch: metadata belonging only to the matching performed layout.
+    pub static_positions: Vec<MeasuredStaticPosition>,
     /// Content size before border and padding.
     pub size: Size<Pixels>,
     /// First horizontal-text baseline from the content top.
@@ -27,7 +40,7 @@ impl MeasuredContent {
     /// Content size with no baseline information, for ordinary size callbacks.
     pub fn new(size: Size<Pixels>) -> Self {
         Self {
-            size, first_y: None, last_y: None, first_x: None, last_x: None,
+            static_positions: Vec::new(), size, first_y: None, last_y: None, first_x: None, last_x: None,
             x_from_right: false, lines_y: None, lines_x: None,
         }
     }

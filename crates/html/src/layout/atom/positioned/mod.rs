@@ -72,17 +72,17 @@ pub(super) fn absolute_atom(
     }
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
-    let inner = anchor::place::place_in_context(
-        opts.cx
-            .contracts
-            .build
-            .styled_box(e, &merged, &opts.cx)
-            .children(children::children(e, &merged, opts))
-            .into_any_element(),
-        &merged,
-        inherited,
-        &opts.cx,
+    let inner = opts
+        .cx
+        .contracts
+        .build
+        .styled_box(e, &merged, &opts.cx)
+        .children(children::children(e, &merged, opts))
+        .into_any_element();
+    let inner = crate::layout::positioned::containing_block::metrics::record::wrap(
+        e.node_id, &merged, inner, opts,
     );
+    let inner = anchor::place::place_in_context(inner, &merged, inherited, &opts.cx);
     if anchor::trials::inline::is_root(e, opts) {
         return Some(inner);
     }
@@ -119,6 +119,9 @@ pub(super) fn absolute_atom(
             own_vertical: e.style.cascaded().wm().vertical(),
             ..Default::default()
         });
+        if let Some(recorder) = &opts.cx.position.geometry_record {
+            recorder.spot(e.node_id, &spot, opts.cx.position.line_box.clone());
+        }
         let probe = crate::layout::positioned::containing_block::spot_probe(
             spot.clone(),
             false,

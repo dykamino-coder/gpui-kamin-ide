@@ -430,7 +430,7 @@ pub use svg_renderer::*;
 pub use text_system::FontStretch;
 pub(crate) use tab_stop::*;
 use taffy::TaffyLayoutEngine;
-pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent};
+pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent, MeasuredStaticPosition};
 #[cfg(any(test, feature = "test-support"))]
 pub use test::*;
 pub use text_system::*;

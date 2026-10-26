@@ -71,8 +71,11 @@ fn deferred_children_resolve_percentages_from_original_content_box() {
     assert_eq!(original.style.used().height, Some(Len::Pct(0.5)));
 }
 
-#[test]
-fn deferred_width_preserves_the_full_width_float_measurement_contract() {
+#[gpui::test]
+fn deferred_width_preserves_the_full_width_float_measurement_contract(
+    cx: &mut gpui::TestAppContext,
+) {
+    let cx = cx.add_empty_window();
     let tree = crate::dom::parse(
         "<!doctype html><section style='column-count:2;height:150px'><div style='height:100px'></div><div style='float:left;break-inside:avoid;width:100%;height:100px'><div style='height:60px'></div></div><div style='float:left;width:100%;height:0'><div style='height:40px;margin-top:-40px'></div></div></section>",
         "",
@@ -116,7 +119,14 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract() {
         assert!(float.marks.float_block);
         assert_eq!(float.style.used().float, None);
         assert_eq!(float.style.used().height, Some(Len::Px(100.0)));
-        assert_eq!(recipe.children(width).len(), 3);
+        cx.draw(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(400.), gpui::px(400.)),
+            |window, app| {
+                assert_eq!(recipe.children(width, window, app).len(), 3);
+                gpui::div()
+            },
+        );
     }
     let Node::Element(original) = &host.children[1] else {
         panic!("original float")

@@ -80,6 +80,9 @@ pub(crate) fn place_element(
             self_align: crate::layout::positioned::static_position::static_self_align(e, inherited),
             ..Default::default()
         });
+        if let Some(recorder) = &opts.cx.position.geometry_record {
+            recorder.spot(e.node_id, &spot, opts.cx.position.line_box.clone());
+        }
         let mut source_paint = None;
         let paged = opts.paged_build().filter(|_| to_icb && fixed);
         let sent = if let Some(paged) = paged {

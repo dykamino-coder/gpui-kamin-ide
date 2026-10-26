@@ -106,6 +106,29 @@ pub(crate) fn static_overlay(
     // `GetStaticPositionInsetBias` переводит его в `InsetBias::kEnd`.
     // Сторону задаёт направление СОДЕРЖАЩЕГО блока, а не собственное
     // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
+    let inner = crate::layout::positioned::containing_block::metrics::record::wrap(
+        e.node_id,
+        &positioned,
+        inner,
+        opts,
+    );
+    let normal_probe = opts.cx.position.geometry_record.as_ref().map(|recorder| {
+        let slot = crate::layout::positioned::containing_block::LineBoxSlot::default();
+        recorder.inline_spot(
+            e.node_id,
+            slot.clone(),
+            inherited.wm().rtl(),
+            gpui::point(
+                gpui::px(crate::style::values::value::px_lossy_zero(
+                    merged.margin.left,
+                )),
+                gpui::px(crate::style::values::value::px_lossy_zero(
+                    merged.margin.top,
+                )),
+            ),
+        );
+        slot
+    });
     let inner = anchor::place::place_in_context(inner, &positioned, inherited, &opts.cx);
     let rotated_rtl = inherited.wm().rtl() && inherited.wm().turned();
     let inner = if inherited.wm().rtl() && !rot_block && !rotated_rtl {
@@ -133,6 +156,7 @@ pub(crate) fn static_overlay(
     Some(inline::Piece::Overlay(
         inner,
         inline::OverlayAt {
+            normal_probe,
             next_line: rot_block
                 || (inherited.band_kid
                     && !crate::layout::positioned::static_position::hypothetical_inline_level(e)),
