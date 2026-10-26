@@ -12,6 +12,8 @@ mod directx_renderer;
 mod dispatcher;
 mod display;
 mod events;
+// KaminIDE patch: typed per-platform DXGI policy and adapter identity.
+mod gpu_adapter;
 mod keyboard;
 #[cfg(test)]
 mod ligature_tests;
@@ -42,5 +44,6 @@ pub(crate) use window::*;
 pub(crate) use wrapper::*;
 
 pub use platform::WindowsPlatform;
+pub use gpu_adapter::{GpuAdapterInfo, GpuAdapterPreference, gpu_adapters};
 
 pub(crate) use windows::Win32::Foundation::HWND;
