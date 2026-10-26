@@ -51,10 +51,13 @@ pub(super) fn replaced_abs_atom(
         .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        opts.cx
-            .contracts
-            .build
-            .effects(holder, Effect::GroupReplaced { style: merged, vcx })
+        opts.cx.contracts.build.effects(
+            holder,
+            Effect::GroupReplaced {
+                style: merged.into(),
+                vcx,
+            },
+        )
     } else {
         holder
     };

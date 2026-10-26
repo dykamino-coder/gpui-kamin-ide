@@ -5,6 +5,7 @@ use crate::style::computed::writing_mode::WritingMode;
 
 fn paragraph(count: usize, orphans: usize, widows: usize) -> Inline {
     Inline {
+        scope: Vec::new(),
         lines: (0..count)
             .map(|i| super::super::ContentLine {
                 paragraph: 0,
@@ -12,6 +13,7 @@ fn paragraph(count: usize, orphans: usize, widows: usize) -> Inline {
                 state: line_state(&"x".repeat(count), i, i, false).unwrap(),
                 top: i as f32 * 10.0,
                 bottom: (i + 1) as f32 * 10.0,
+                prefix: i as f32 * 10.0,
                 consumed_before: 0.0,
             })
             .collect(),

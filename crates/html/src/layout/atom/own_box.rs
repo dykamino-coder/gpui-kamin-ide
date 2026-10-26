@@ -1,7 +1,7 @@
 //! Строчный кусок со своей коробкой (фон, рамка, отступы) или своим письмом.
 
-use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
+use crate::layout::box_tree::pseudo_line_layers;
 use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;

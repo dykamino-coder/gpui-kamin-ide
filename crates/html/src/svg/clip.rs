@@ -141,7 +141,7 @@ pub(super) fn synth_clip(
     // `apply_one`, что и CSS-объявление.
     let parsed: crate::style::computed::Computed;
     let own = e.style.used();
-    let (c, view_box) = if has(&own) {
+    let (c, view_box): (&crate::style::computed::Computed, bool) = if has(&own) {
         (&*own, false)
     } else {
         let raw = e

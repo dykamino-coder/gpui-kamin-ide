@@ -3,6 +3,11 @@
 use super::*;
 
 impl Window {
+    /// KaminIDE patch: первая baseline содержимого завершённого border box, без замера.
+    pub fn first_content_baseline(&self, layout: LayoutId, axis: crate::Axis) -> Option<Pixels> {
+        self.layout_engine.as_ref()?.first_content_baseline(layout, axis, self.scale_factor())
+    }
+
     /// Measure content with the actual containing block and native resolved padding/border.
     /// The callback returns content size; native layout adds the supplied edges exactly once.
     pub fn request_measured_layout_with_box(

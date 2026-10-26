@@ -5,7 +5,7 @@ use crate::document::state::ValueCx;
 
 pub(super) fn layout_alignment(
     mut d: Div,
-    c: &Computed,
+    c: &BoxStyle,
     dir: Option<FlexDir>,
     rtl_row: bool,
     vcx: ValueCx<'_>,
@@ -19,7 +19,9 @@ pub(super) fn layout_alignment(
         // лунки целиком (`row-grid-lanes-item-baseline-001/003`,
         // `column-fill-reverse-justify-items-002`).
         Some(Align::Baseline)
-            if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes =>
+            if c.align_items_last
+                && c.display != Some(Display::GridLanes)
+                && !c.context.parent_lanes =>
         {
             d.style().align_items = Some(gpui::AlignItems::LastBaseline);
         }

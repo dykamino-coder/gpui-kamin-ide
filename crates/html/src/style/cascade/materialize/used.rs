@@ -79,8 +79,7 @@ lay_used! {
     clear_inherit, bg_fixed, clear, ortho_limit, cq_box, cq_size, orthogonal_scrollport,
     orthogonal_inline, ortho_col, upright_stack, lines_reversed, spacer_edge, vertical_shift,
     vertical_shift_pct, vertical_shift_px, vertical_shift_len, vertical_align_text,
-    vertical_align_base, rel_shift, box_shift, parent_grid, parent_grid_align_items,
-    parent_flex_grid, parent_lanes, parent_subgrid, para_vertical, logical, width_from_inline,
+    vertical_align_base, rel_shift, box_shift, para_vertical, logical, width_from_inline,
     user_select, no_select, frame_sizing_height, first_letter, first_letter_excluded,
     first_letter_own, first_line, first_line_own, initial_letter, inline_bg, inline_border,
     inline_pad, inline_radius, text_clip_fill, text_clip_raw, bg_clip, border_image, bg_origin,
@@ -111,8 +110,8 @@ lay_used! {
     td_color, td_thickness, td_inset, block_tag, decors, ruby_role, appearance,
     dark_color_scheme, embedding_dark_scheme, color_initial, decor_box, flex_line_wraps,
     align_content_unsafe, inline_control, band_kid, mathml, math_layout,
-    math_depth, math_font_size, svg_geometry, declaration_parse, turned_line, cb_wm,
-    shape_image, icb, calc_size_basis, calc_size_max, svg_path_length, css_wide_value,
+    math_depth, math_font_size, svg_geometry, declaration_parse, turned_line, shape_image, icb,
+    calc_size_basis, calc_size_max, svg_path_length, css_wide_value,
     color_function, mask_border, mask_border_luminance, font_variant_set, clamp_continue, inh,
 }
 

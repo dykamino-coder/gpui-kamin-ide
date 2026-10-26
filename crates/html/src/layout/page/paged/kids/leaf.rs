@@ -67,6 +67,7 @@ pub(super) fn eligible(e: &Element) -> bool {
     // IFC и прочие FC принадлежат своим child consumers.
     if !e.children.is_empty()
         || !independent_copy(&flow)
+        || c.float.is_some_and(|side| side != 0)
         || !matches!(c.display, None | Some(Display::Block))
         || crate::layout::box_kind::replaced_tag(e)
         || c.aspect_ratio.is_some()

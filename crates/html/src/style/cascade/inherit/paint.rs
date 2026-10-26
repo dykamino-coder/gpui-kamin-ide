@@ -99,47 +99,15 @@ pub(super) fn inherit_paint(
     if paint_filter {
         crate::style::computed::flat_background::collapse_flat_stack(c, vcx, &images);
     }
-    let black = Color {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    };
-    let out_of_flow = matches!(
-        own.position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
+    let colors = super::super::color_inputs::text_clip_colors(
+        parent,
+        declared,
+        own,
+        c,
+        c.element_style.is_some(),
+        &images,
     );
-    if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, &images) {
-        let foreground = c.text_clip_raw.or(c.color);
-        set!(c.text_clip_raw, foreground);
-        set!(c.text_clip_fill, Some(fill));
-        set!(
-            c.color,
-            Some(crate::style::values::composite::over(
-                foreground.unwrap_or(black),
-                fill,
-            ))
-        );
-    } else if parent.text_clip_fill.is_some() && out_of_flow {
-        set!(c.text_clip_fill, None);
-        set!(c.text_clip_raw, None);
-        if c.element_style.is_none() && !declared.declares_color() {
-            set!(c.color, parent.text_clip_raw);
-        }
-    } else if let Some(fill) = parent.text_clip_fill {
-        set!(c.text_clip_fill, Some(fill));
-        if c.element_style.is_some() || declared.declares_color() {
-            set!(c.text_clip_raw, c.color);
-            set!(
-                c.color,
-                Some(crate::style::values::composite::over(
-                    c.color.unwrap_or(black),
-                    fill,
-                ))
-            );
-        } else {
-            set!(c.text_clip_raw, parent.text_clip_raw);
-        }
-    }
+    set!(c.color, colors.color);
+    set!(c.text_clip_raw, colors.raw);
+    set!(c.text_clip_fill, colors.fill);
 }

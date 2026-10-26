@@ -59,7 +59,7 @@ pub(crate) fn for_element(
 pub(crate) fn content_sized(
     el: AnyElement,
     c: &Computed,
-    item_style: &Computed,
+    item_style: &BoxStyle,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     vcx: crate::document::state::ValueCx<'_>,
 ) -> AnyElement {

@@ -108,7 +108,7 @@ fn zoom_scales_viewport_units_and_the_absolute_part_of_calc() {
     );
     let vcx = parsed.values();
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
-    let mut div = (*element(&parsed.nodes, "div").style.used()).clone();
+    let mut div = (**element(&parsed.nodes, "div").style.used()).clone();
     div.resolve_viewport((1000.0, 800.0), vcx);
     // 1vw of a 1000px window is 10px, 20px under `zoom: 2`, like `10px` is.
     assert_eq!(div.width, Some(Len::Px(20.0)));
