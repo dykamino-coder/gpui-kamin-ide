@@ -1002,23 +1002,25 @@ impl VisualTestContext {
         E: Element,
     {
         self.update(|window, cx| {
-            let arena_scope = ElementArenaScope::enter(&cx.element_arena);
+            window.with_paint_pass(|window| {
+                let arena_scope = ElementArenaScope::enter(&cx.element_arena);
 
-            window.invalidator.set_phase(DrawPhase::Prepaint);
-            let mut element = Drawable::new(f(window, cx));
-            element.layout_as_root(space.into(), window, cx);
-            window.with_absolute_element_offset(origin, |window| element.prepaint(window, cx));
+                window.invalidator.set_phase(DrawPhase::Prepaint);
+                let mut element = Drawable::new(f(window, cx));
+                element.layout_as_root(space.into(), window, cx);
+                window.with_absolute_element_offset(origin, |window| element.prepaint(window, cx));
 
-            window.invalidator.set_phase(DrawPhase::Paint);
-            let (request_layout_state, prepaint_state) = element.paint(window, cx);
+                window.invalidator.set_phase(DrawPhase::Paint);
+                let (request_layout_state, prepaint_state) = element.paint(window, cx);
 
-            window.invalidator.set_phase(DrawPhase::None);
-            window.refresh();
+                window.invalidator.set_phase(DrawPhase::None);
+                window.refresh();
 
-            drop(element);
-            arena_scope.exit(&cx.element_arena).clear(cx);
+                drop(element);
+                arena_scope.exit(&cx.element_arena).clear(cx);
 
-            (request_layout_state, prepaint_state)
+                (request_layout_state, prepaint_state)
+            })
         })
     }
 

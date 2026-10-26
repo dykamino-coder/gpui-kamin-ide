@@ -1,4 +1,4 @@
-//! Replay переносит typed context по идентичности; сброс после abort освобождает jobs.
+//! Replay переносит typed context по идентичности; unwind после abort освобождает jobs.
 
 use super::{Events, assert_phases, collect, draw, probe};
 use crate::hooks::{IntoHooked, Wrap};
@@ -23,7 +23,7 @@ impl Wrap for Host {
         window.with_render_context(Some(self.value.clone()), |window| {
             let previous = window.replace_glyph_offset(point(px(0.25), px(0.75)));
             // Явный прозрачный адаптер существующего consumer, без собственной группы.
-            gpui::paint_reopen(|| self.child.paint(window, cx));
+            crate::hooks::paint_reopen(window, |window| self.child.paint(window, cx));
             window.replace_glyph_offset(previous);
         });
         self.value.set(2);
@@ -59,12 +59,12 @@ fn queued_jobs_keep_host_identity_and_inline_raster_origin() {
             .into_any_element()
         };
         let inline = Host {
-            child: gpui::PaintInline::new(leaf(true)).into_any_element(),
+            child: crate::paint::coordinator::PaintInline::new(leaf(true)).into_any_element(),
             value: value.clone(),
         }
         .hooked();
         let positioned = Host {
-            child: gpui::PaintLast::new(leaf(false)).into_any_element(),
+            child: crate::paint::coordinator::PaintLast::new(leaf(false)).into_any_element(),
             value: value.clone(),
         }
         .hooked();
@@ -77,8 +77,27 @@ fn queued_jobs_keep_host_identity_and_inline_raster_origin() {
     );
 }
 
+// Единственный сильный владелец transient context после host — queued snapshot.
+struct Payload {
+    child: AnyElement,
+    abandoned: Rc<std::cell::RefCell<std::rc::Weak<()>>>,
+}
+impl Wrap for Payload {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
+    }
+    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let payload = Rc::new(());
+        *self.abandoned.borrow_mut() = Rc::downgrade(&payload);
+        window.with_render_context(Some(payload), |window| {
+            crate::hooks::paint_reopen(window, |window| self.child.paint(window, cx));
+        });
+    }
+}
+
 struct Abort {
     child: AnyElement,
+    abandoned: Rc<std::cell::RefCell<std::rc::Weak<()>>>,
 }
 
 impl Wrap for Abort {
@@ -88,9 +107,10 @@ impl Wrap for Abort {
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         assert!(catch_unwind(AssertUnwindSafe(|| self.child.paint(window, cx))).is_err());
-        // Текущий consumer начинает следующий документ с явного reset. Это
-        // baseline abort, а не обещание unwind-безопасности collector scopes.
-        gpui::paint_collect_reset();
+        assert!(
+            self.abandoned.borrow().upgrade().is_none(),
+            "queued payload drops during unwind"
+        );
     }
 }
 
@@ -99,8 +119,9 @@ fn aborted_collector_releases_jobs_before_a_fresh_document() {
     let value = Rc::new(Cell::new(1u32));
     let weak = Rc::downgrade(&value);
     draw(move || {
+        let abandoned = Rc::default();
         let queued = Host {
-            child: gpui::PaintLast::new(
+            child: crate::paint::coordinator::PaintLast::new(
                 canvas(
                     |_, _, _| (),
                     |_, (), _, _| {
@@ -113,20 +134,26 @@ fn aborted_collector_releases_jobs_before_a_fresh_document() {
             value,
         }
         .hooked();
+        let queued = Payload {
+            child: queued,
+            abandoned: Rc::clone(&abandoned),
+        }
+        .hooked();
         let fail = canvas(|_, _, _| (), |_, (), _, _| panic!("aborted traversal"));
         Abort {
             child: collect(vec![queued, fail.into_any_element()]).into_any_element(),
+            abandoned,
         }
         .into_hooked()
     });
     assert!(
         weak.upgrade().is_none(),
-        "reset drops the abandoned snapshot"
+        "unwind drops the abandoned snapshot"
     );
     let events = Events::default();
     draw(|| {
         collect(vec![
-            gpui::PaintLast::new(probe("fresh", &events)).into_any_element(),
+            crate::paint::coordinator::PaintLast::new(probe("fresh", &events)).into_any_element(),
         ])
     });
     assert_phases(&events, &["fresh"], &["fresh"]);

@@ -31,7 +31,7 @@ impl Painter for DeferredSource {
         self.0.with_child(|child, mask| {
             // Исходная маска дополняет clip фрагмента, установленный paint.
             window.with_content_mask(Some(mask), |window| {
-                gpui::paint_reopen(|| child.paint(window, cx));
+                crate::hooks::paint_reopen(window, |window| child.paint(window, cx));
             });
         });
     }

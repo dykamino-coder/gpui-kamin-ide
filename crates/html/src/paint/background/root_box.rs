@@ -91,6 +91,6 @@ impl Hooks for RootBox {
     ) {
         // Measuring the root box does not create a stacking context (CSS2
         // Appendix E.2). Keep its inline foreground in the enclosing phases.
-        gpui::paint_reopen(|| self.child.paint(window, cx));
+        crate::hooks::paint_reopen(window, |window| self.child.paint(window, cx));
     }
 }

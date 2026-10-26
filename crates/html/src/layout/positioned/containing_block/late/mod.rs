@@ -49,7 +49,7 @@ impl Hooks for LatePlace {
         window: &mut Window,
         cx: &mut App,
     ) {
-        gpui::paint_reopen(|| self.child.paint(window, cx));
+        crate::hooks::paint_reopen(window, |window| self.child.paint(window, cx));
     }
 }
 

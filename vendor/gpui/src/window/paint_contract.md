@@ -29,20 +29,39 @@ GPUI исполняет упорядоченные команды рисован
 
 `paint_ctx` сохраняет element/entity ids, text style, typed host contexts,
 element offsets и глубину exact offsets, transformation stack, mask scale/map,
-opacity, content masks и image caches. `text_paint_ctx` дополнительно сохраняет
-glyph offset, text backgrounds и exact text bounds. Обычный `PaintCtx` этих
-текстовых полей не содержит; это разные существующие consumers.
+opacity, content masks и image caches. `raster_paint_ctx` дополнительно сохраняет
+весь `RasterFrame`: glyph offset, actual/exact fill transforms, rounded/exact
+bounds и непрозрачные typed host raster data. Обычный `PaintCtx` этих полей
+не содержит; общий replay наследует frame вызывающего. `RasterPaintCtx` позволяет
+вызывающему явно выбрать fill transform перед replay.
 
-При нормальном возврате `with_paint_ctx` восстанавливает окружение вызывающего,
-в том числе при вложенном replay. Typed host contexts имеют Drop-guard и
-восстанавливаются также при panic. Остальные поля обоих снимков, scene swaps
-и collector scopes пока восстанавливаются только при нормальном возврате.
-После abort consumer сбрасывает collector перед новым документом; продолжение
-частично нарисованного прохода не входит в текущую гарантию.
+`snapshot_paint_state` сохраняет все эти поля, включая generic `RasterFrame`,
+точную fill matrix, device scale и стек rem overrides. `with_raster_frame` принимает явные placement
+и unsnapped fill transforms, не выбирая подложку или CSS policy. Существующий
+общий consumer наследует raster state вызывающего; inline consumer сохраняет
+прежний набор glyph/background полей и наследует fill transform. Все три пути
+исполняются одним механизмом replay и не меняют layout/prepaint или paint order.
 
-Снимок пока не несёт identity окна, кадра или группы. Совпадение этих областей —
-предусловие вызывающего: публичный API ещё не отвергает неверный replay.
-Клонирование снимка сохраняет состояние, но не продлевает допустимый проход.
+`with_raster_context` временно заменяет только один типизированный слот этого
+же frame и восстанавливает его через общий guard, включая unwind. Остальные
+host values и raster-геометрия сохраняются без клонирования всей карты.
+`ChildPaintContext` заимствуется только на время callback; хозяин завершает
+выбор геометрии перед рекурсивным рисованием детей.
+
+Replay проверяет identity окна, прохода и живой композиционной области до
+изменения состояния и вызова closure. `PaintError` различает чужое окно/проход,
+завершённый проход, другую открытую и уже закрытую группу; fallback нет.
+`PaintPassId` и `PaintScopeId` не продлевают жизнь области при клонировании.
+Prepaint и paint одного draw разделяют pass; изолированные effect/plane/capture
+сцены имеют собственные scope. Transform/clip сохраняются в снимке, поэтому
+их лексическое закрытие само по себе не запрещает отложенный replay.
+
+Guards восстанавливают caller environment, typed contexts и raster state также
+при unwind; scopes геометрии и scene swaps используют тот же Drop-механизм.
+Unwind помечает проход недействительным: продолжать частично нарисованный кадр
+нельзя. Внешний draw при abort очищает незавершённый frame и возвращает внешнее
+окружение. HTML coordinator владеет очередями прохода и освобождает их через Drop,
+в том числе при пойманном unwind. Глобального reset нет.
 
 Текущий `frame_capture` использует process-wide sequence при одном хозяине.
 Sequence различает завершённые readback, но не идентифицирует окно, документ
@@ -51,8 +70,7 @@ Sequence различает завершённые readback, но не иден�
 
 ### Требования к общему scoped API
 
-Следующий механизм должен сделать эти предусловия проверяемыми, сохранив
-существующих consumers и единственную реализацию backend:
+Контракт механизма и последующей миграции consumers:
 
 - frame-local pass token идентифицирует окно и кадр; scope token дополнительно
   идентифицирует открытую композиционную область, включая offscreen capture;
@@ -69,6 +87,34 @@ Sequence различает завершённые readback, но не иден�
   однократное исполнение не требуют знания CSS внутри GPUI. Нельзя вводить
   повторный minimum scan или бесконечный drain при добавлении новых jobs.
 
-Это требования к миграции механизма, не утверждение о наличии новых token API
-у текущего `PaintCtx`. Проверки HTML baseline фиксируют существующие порядок,
-nested scopes, identity contexts, raster origin и восстановление после abort.
+Проверки HTML фиксируют порядок текущих consumers, nested scopes, identity
+contexts, raster origin, отклонение неверного replay и восстановление после abort.
+CSS очередь живёт в HTML coordinator, который задаёт порядок child visitor
+внутри прежних scopes GPUI. Opaque boundary guard и метаданные прозрачных
+holders являются общими hooks; GPUI их не интерпретирует. Text-background
+и fill policy принадлежат HTML. GPUI передаёт host callback геометрию и
+непрозрачные метаданные без интерпретации; snapshot не принимает решений хозяина.
+
+### Immutable command records
+
+`Window::record_paint(source_clip, cx, paint)` consumes source painting once.
+The explicit source clip replaces the ambient fragment clip before culling.
+An optional host `PaintRecording` lifecycle opens and finishes its own deferred
+work inside capture; guard destruction restores or aborts host state.
+No element or callback is retained by `PaintRecord` or `PaintPlan`.
+
+A record shares immutable canonical Scene commands and frame-local resources.
+It outlives its capture scope, but only in the same live window/draw and raster
+scale. This does not relax snapshot checks: PaintState/PaintCtx still require
+their original live composition scope. Stale identity or invalid placement is
+a typed error before destination writes.
+
+The host composes ordered records and explicit Clip/Group descriptors, including
+shared effect ancestors. GPUI does not choose CSS order, source identity,
+fragment scheduling, layout generation or hit geometry. Plan playback accepts
+no App and invokes no element/host callback. Each invocation adopts fresh group
+ids through the existing compositor. Source transforms/raster positions remain
+resolved; an explicit source-to-destination translation moves commands once.
+The final destination clip follows effects, preserving off-clip filter inputs.
+Pending plane contexts, raster state and host contexts are restored on return
+or unwind; an abort invalidates the draw rather than granting replay rights.

@@ -121,7 +121,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
         // pixels like the box's own border edges (`apply::apply_paint`;
         // `box-shadow-outset-without-border-radius-001` draws its reference
         // with borders).
-        ring.style().css_border_snap = Some(true);
+        ring.style().snap_to_device_pixels = Some(true);
         out.push(ring.into_any_element());
     }
 }
@@ -195,7 +195,7 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
             .border_l(px(widths[3]))
             .border_color(colour.to_hsla());
         // Snapped like the box's border edges (see the outer shadow ring).
-        ring.style().css_border_snap = Some(true);
+        ring.style().snap_to_device_pixels = Some(true);
         // Внешний край кольца — padding-box: скругление «радиус − рамка»
         // (§5.4, как у `clip_layer`).
         if !c.radius_masked(vcx) && c.border_shape.is_none() {

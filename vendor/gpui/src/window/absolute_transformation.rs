@@ -10,11 +10,21 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        self.with_transform_frame(transformation, None, f)
+    }
+
+    pub(super) fn with_transform_frame<R>(
+        &mut self,
+        transformation: TransformationMatrix,
+        mask_map: Option<TransformationMatrix>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let depth = self.transformation_stack.len();
         self.transformation_stack.push(transformation);
-        let previous_map = self.mask_map.take();
-        let result = f(self);
-        self.mask_map = previous_map;
-        self.transformation_stack.pop();
-        result
+        let previous_map = mem::replace(&mut self.mask_map, mask_map);
+        self.with_restore((depth, previous_map), |window, previous| {
+            window.transformation_stack.truncate(previous.0);
+            window.mask_map = previous.1;
+        }, f).0
     }
 }

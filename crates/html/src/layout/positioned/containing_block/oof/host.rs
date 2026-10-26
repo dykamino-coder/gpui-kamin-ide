@@ -127,7 +127,7 @@ impl Hooks for OofHost {
         window: &mut Window,
         cx: &mut App,
     ) {
-        gpui::paint_reopen(|| {
+        crate::hooks::paint_reopen(window, |window| {
             for child in built.borrow_mut().iter_mut() {
                 child.paint(window, cx);
             }
