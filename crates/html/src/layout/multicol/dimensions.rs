@@ -24,7 +24,7 @@ impl MulticolDimensions {
 
     /// Доступный размер native-фазы уже относится к содержимому хоста.
     pub(crate) fn measured(style: &Computed, width: f32, height: Option<f32>) -> Self {
-        let mut input = Self::css(style);
+        let mut input: MulticolDimensions = Self::css(style);
         input.preferred[0] = Some(Len::Px(width));
         if let Some(height) = height {
             input.preferred[1] = Some(Len::Px(height));

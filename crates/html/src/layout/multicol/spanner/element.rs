@@ -46,7 +46,7 @@ impl Hooks for SpannerFlow {
         let build = self.build.clone();
         let intrinsic = self.intrinsic.clone();
         let definite_height = self.definite_height.clone();
-        let mut style = gpui::Style::default();
+        let mut style: gpui::Style = gpui::Style::default();
         // Анонимный поток сохраняет определённую высоту своего CSS-хоста;
         // при auto-высоте циклический процент остаётся неопределённым.
         style.size.height = gpui::relative(1.).into();

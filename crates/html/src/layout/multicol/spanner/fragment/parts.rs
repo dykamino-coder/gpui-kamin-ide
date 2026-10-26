@@ -91,7 +91,6 @@ pub(crate) fn spanner_parts(
                             {
                                 if let Some(v) = own {
                                     f.style.used_mut().height = Some(Len::Px(v));
-                                    f.style.used_mut().min_height = None;
                                 }
                                 body.push(Node::Element(f));
                             }
@@ -146,4 +145,76 @@ pub(crate) fn spanner_parts(
     }
     out.push(SpanPart::Body(body));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::multicol::spanner::SpannerMetrics;
+
+    #[test]
+    fn owned_parent_remainder_is_not_clamped_again_by_original_constraints() {
+        fn host(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|node| match node {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => host(&e.children),
+                _ => None,
+            })
+        }
+        for clone in [false, true] {
+            let tree = crate::dom::parse(
+                &format!(
+                    "<div style='height:100px; min-height:150px; max-height:180px; box-sizing:border-box; box-decoration-break:{}'><p>before</p><h2 style='column-span:all'>span</h2><p>after</p></div>",
+                    if clone { "clone" } else { "slice" }
+                ),
+                "",
+            );
+            let e = host(&tree).expect("spanner parent");
+            let opts = RenderOpts {
+                text: Default::default(),
+                viewport: (800., 600.),
+                normal_line_height: 1.2,
+                cx: Default::default(),
+                frag: Default::default(),
+            };
+            let parts = spanner_parts(
+                &[Node::Element(e.clone())],
+                &BoxStyle::default(),
+                &opts,
+                200.,
+                &mut |c, _, _| SpannerMetrics {
+                    block_size: if has_deep_spanner(c) { 115. } else { 30. },
+                    content_width: 200.,
+                    content_size: Some(100.),
+                    start_edge: 10.,
+                    end_edge: 5.,
+                },
+            );
+            let fragments: Vec<&Element> = parts
+                .iter()
+                .filter_map(|part| match part {
+                    SpanPart::Body(nodes) => nodes.iter().find_map(|node| match node {
+                        Node::Element(e) if e.tag == "div" => Some(e),
+                        _ => None,
+                    }),
+                    SpanPart::Span(_) => None,
+                })
+                .collect();
+            assert_eq!(fragments.len(), 2);
+            assert_eq!(fragments[0].style.used().height, None);
+            assert_eq!(
+                fragments[1].style.used().height,
+                Some(Len::Px(if clone { 85. } else { 80. }))
+            );
+            for f in fragments {
+                assert_eq!(f.style.used().min_height, None);
+                assert_eq!(f.style.used().max_height, None);
+                assert_eq!(f.style.used().border_box, None);
+            }
+            assert_eq!(e.style.used().height, Some(Len::Px(100.)));
+            assert_eq!(e.style.used().min_height, Some(Len::Px(150.)));
+            assert_eq!(e.style.used().max_height, Some(Len::Px(180.)));
+            assert_eq!(e.style.used().border_box, Some(true));
+        }
+    }
 }

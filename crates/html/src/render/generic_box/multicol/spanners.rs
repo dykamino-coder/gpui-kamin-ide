@@ -137,7 +137,7 @@ pub(super) fn deferred(
                 }
                 _ => None,
             };
-            let mut final_opts = if pass == SpannerPass::Final {
+            let mut final_opts: RenderOpts = if pass == SpannerPass::Final {
                 opts.clone()
             } else {
                 probe_opts.clone()

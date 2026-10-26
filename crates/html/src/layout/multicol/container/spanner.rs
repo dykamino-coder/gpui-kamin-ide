@@ -7,8 +7,9 @@ use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Display};
-use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
+
+mod row;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn multicol_spanner_segments(
@@ -56,66 +57,11 @@ pub(crate) fn multicol_spanner_segments(
             // не-блок, насквозь его поле не проходит.
             span_prev = None;
             seg_open = true;
-            let mut seg = e.clone();
-            seg.children = body.to_vec().into();
-            seg.style.used_mut().column_span = None;
-            // Одна колонка со спаннером (`lone_span`) — ряд рисуется
-            // обычным блоком: `column_flow` спускается в
-            // единственного блочного ребёнка и рисует только его
-            // текст, теряя коробку (фон, рамку, высоту фрагмента
-            // `container` в `multicol-span-all-children-height-005/
-            // 008`). Клон `sub` с одной колонкой спаннеров не несёт,
-            // и гейт `lone_span` его снова не пускает.
-            let mut sub = seg.clone();
-            sub.style.used_mut().background = None;
-            // Всё, что многоколоночник рисует и сдвигает КОРОБКОЙ,
-            // уже стоит на хосте `d` (`styled_div_with(e, ..)`);
-            // клон ряда повторял это на каждом ряду: контур и
-            // тень вокруг каждого ряда, двойная прозрачность,
-            // фильтр и трансформ, двойной сдвиг `relative`, а у
-            // `position: absolute` ряды выпадали из потока и
-            // ложились друг на друга (`multicol-span-all-
-            // fieldset-002/003`, `-button-002/003`). Обрезку
-            // переполнения делает хост: по css-multicol-1
-            // §overflow режет коробка многоколоночника, а не ряд.
-            // Ряд остаётся содержащим блоком (`relative`), как
-            // прежде.
-            sub.style.used_mut().gradient = None;
-            sub.style.used_mut().bg_image = None;
-            sub.style.used_mut().border_image = None;
-            sub.style.used_mut().shadows = Vec::new();
-            sub.style.used_mut().inset_shadows = Vec::new();
-            sub.style.used_mut().outline = None;
-            sub.style.used_mut().opacity = None;
-            sub.style.used_mut().transform = None;
-            sub.style.used_mut().filter = None;
-            sub.style.used_mut().mask_image = None;
-            sub.style.used_mut().backdrop_blur = None;
-            if matches!(
-                sub.style.used().position,
-                Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-            ) {
-                sub.style.used_mut().position = Some(crate::style::computed::Position::Relative);
-            }
-            sub.style.used_mut().inset = Default::default();
-            sub.style.used_mut().z_index = None;
-            sub.style.used_mut().overflow_x = None;
-            sub.style.used_mut().overflow_y = None;
-            sub.style.used_mut().margin = Default::default();
-            sub.style.used_mut().padding = Default::default();
-            sub.style.used_mut().border_width = Default::default();
-            sub.style.used_mut().width = None;
-            sub.style.used_mut().height = None;
-            sub.style.used_mut().min_height = None;
-            sub.style.used_mut().max_height = None;
-            sub.style.used_mut().border_box = None;
-            // Хвост ограничен фактическим consumed завершённой фазы.
-            if span.is_none()
-                && let Some(rest) = rest_h
-            {
-                sub.style.used_mut().height = Some(Len::Px(rest));
-            }
+            // Ряд получает собственный остаток, декорации остаются на хосте.
+            let sub = row::segment(e, body, if span.is_none() { rest_h } else { None });
+            // Одна колонка со спаннером идёт обычным блоком: column_flow
+            // спускается в единственного ребёнка и теряет коробку фрагмента
+            // (multicol-span-all-children-height-005/008).
             let row_style = box_style(&merged, &sub.style, vcx);
             let flow = (!lone_span)
                 .then(|| column_flow(&sub, &row_style, opts, want, col_w_px, None))
