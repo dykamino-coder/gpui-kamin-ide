@@ -7,6 +7,7 @@ mod interaction;
 mod order;
 mod raster;
 mod raster_background;
+mod raster_depth;
 mod record;
 mod scope;
 mod snapshot_abort;

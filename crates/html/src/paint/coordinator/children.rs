@@ -27,7 +27,7 @@ pub(super) fn default_painter() -> ChildPainter {
 
 fn painter(policy: Policy) -> ChildPainter {
     ChildPainter(Rc::new(move |context, children, window, cx| {
-        crate::paint::raster::with_background(&context, window, |window| {
+        crate::paint::raster::with_background(context, window, |window| {
             paint(policy, context.style, children, window, cx);
         });
     }))

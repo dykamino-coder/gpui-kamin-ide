@@ -8,7 +8,7 @@
 # 6. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
 # 7. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
 # 8. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
-# 9. Host painting: generic child visitors forward box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
+# 9. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
 # 10. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
 # 11. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
 # 12. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
@@ -16,7 +16,7 @@
 # 14. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
 # 15. Host integration: frame capture with an opt-in first-frame latch, completion events and readback timing for WPT readiness/convergence diagnostics, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.
 # 16. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
-# 17. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
+# 17. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
 # 18. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
 # 19. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
 # 20. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
@@ -6288,7 +6288,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..22194ede0c8659b1fd6563c83865b55cafcb69b8
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a1819c55d65e
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -1800,0 +1801,3 @@
@@ -6422,7 +6422,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..22194ede0c8659b1fd6563c83865b55c
 +                    });
 +                    if let Some(painter) = painter {
 +                        (painter.0)(
-+                            crate::ChildPaintContext {
++                            &crate::ChildPaintContext {
 +                                style,
 +                                bounds,
 +                                exact_bounds,
@@ -8114,7 +8114,7 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..e541099619c263c2e092b932ac201985
 +pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent};
 diff --git a/vendor/gpui/src/paint_traversal.rs b/vendor/gpui/src/paint_traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1cdb2dc7661ee7395441b1ee51ea0aaa0ab75c96
+index 0000000000000000000000000000000000000000..fc1ac1970efa3951011cedee1a1dd3dfb4193898
 --- /dev/null
 +++ b/vendor/gpui/src/paint_traversal.rs
 @@ -0,0 +1,53 @@
@@ -8136,7 +8136,7 @@ index 0000000000000000000000000000000000000000..1cdb2dc7661ee7395441b1ee51ea0aaa
 +}
 +
 +type ChildrenCallback = dyn Fn(
-+    ChildPaintContext<'_>,
++    &ChildPaintContext<'_>,
 +    &mut dyn Iterator<Item = &mut AnyElement>,
 +    &mut Window,
 +    &mut App,
@@ -16806,10 +16806,10 @@ index 0000000000000000000000000000000000000000..cd15e6d8f7197306d93d93f11635f50a
 +}
 diff --git a/vendor/gpui/src/window/paint_contract.md b/vendor/gpui/src/window/paint_contract.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..1d8e019fe8039e664a7ab9af777e5f43ef275d4c
+index 0000000000000000000000000000000000000000..8006828a7c2bdf3bceaf09bc9bccdbf24c4cf049
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_contract.md
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,120 @@
 +
 +## Граница механизма и политики хозяина
 +
@@ -16853,6 +16853,12 @@ index 0000000000000000000000000000000000000000..1d8e019fe8039e664a7ab9af777e5f43
 +общий consumer наследует raster state вызывающего; inline consumer сохраняет
 +прежний набор glyph/background полей и наследует fill transform. Все три пути
 +исполняются одним механизмом replay и не меняют layout/prepaint или paint order.
++
++`with_raster_context` временно заменяет только один типизированный слот этого
++же frame и восстанавливает его через общий guard, включая unwind. Остальные
++host values и raster-геометрия сохраняются без клонирования всей карты.
++`ChildPaintContext` заимствуется только на время callback; хозяин завершает
++выбор геометрии перед рекурсивным рисованием детей.
 +
 +Replay проверяет identity окна, прохода и живой композиционной области до
 +изменения состояния и вызова closure. `PaintError` различает чужое окно/проход,
@@ -18074,10 +18080,10 @@ index 0000000000000000000000000000000000000000..1c0673bba14c6ef83d9881d2cc40c9fc
 +}
 diff --git a/vendor/gpui/src/window/raster_frame.rs b/vendor/gpui/src/window/raster_frame.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..28d98bd84785fb780a89724fb41a151fc9af53f4
+index 0000000000000000000000000000000000000000..8c24cb045cf6fd40389d4433a6bbba6b4f7a6475
 --- /dev/null
 +++ b/vendor/gpui/src/window/raster_frame.rs
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,76 @@
 +//! Точная геометрия и непрозрачные данные raster consumers без правил хозяина.
 +
 +use super::*;
@@ -18129,6 +18135,18 @@ index 0000000000000000000000000000000000000000..28d98bd84785fb780a89724fb41a151f
 +        self.raster_frame.context()
 +    }
 +
++    /// Scoped host data in the shared frame, retaining unrelated raster fields.
++    pub fn with_raster_context<T: std::any::Any, R>(
++        &mut self,
++        value: Option<Rc<T>>,
++        f: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        let previous = self.raster_frame.contexts.replace(value);
++        self.with_restore(previous, |window, previous| {
++            window.raster_frame.contexts.set(previous.take());
++        }, f).0
++    }
++
 +    /// Применение raster-данных с восстановлением вызывающего при unwind.
 +    pub fn with_raster_frame<R>(
 +        &mut self,
@@ -18144,10 +18162,10 @@ index 0000000000000000000000000000000000000000..28d98bd84785fb780a89724fb41a151f
 +}
 diff --git a/vendor/gpui/src/window/render_context.rs b/vendor/gpui/src/window/render_context.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4124dd72682ed775fe93693d9ee54dbc88337b76
+index 0000000000000000000000000000000000000000..5f6e8811e42744b7908f49d72c07782d694adf34
 --- /dev/null
 +++ b/vendor/gpui/src/window/render_context.rs
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,226 @@
 +//! Window-owned typed traversal scopes and snapshots for deferred drawing.
 +// KaminIDE patch: pass host paint/prepaint context through GPUI without thread-local state.
 +
@@ -18167,15 +18185,16 @@ index 0000000000000000000000000000000000000000..4124dd72682ed775fe93693d9ee54dbc
 +    }
 +
 +    pub(super) fn set<T: Any>(&mut self, value: Option<Rc<T>>) {
++        self.replace(value);
++    }
++
++    pub(super) fn replace<T: Any>(&mut self, value: Option<Rc<T>>) -> Option<Rc<T>> {
 +        let id = TypeId::of::<T>();
-+        match value {
-+            Some(value) => {
-+                self.0.insert(id, value);
-+            }
-+            None => {
-+                self.0.remove(&id);
-+            }
-+        }
++        let previous = match value {
++            Some(value) => self.0.insert(id, value),
++            None => self.0.remove(&id),
++        };
++        previous?.downcast().ok()
 +    }
 +}
 +

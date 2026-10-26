@@ -2184,7 +2184,7 @@ impl Element for Div {
                     });
                     if let Some(painter) = painter {
                         (painter.0)(
-                            crate::ChildPaintContext {
+                            &crate::ChildPaintContext {
                                 style,
                                 bounds,
                                 exact_bounds,

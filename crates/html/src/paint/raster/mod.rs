@@ -12,6 +12,13 @@ pub(super) fn with_background<R>(
     window: &mut Window,
     paint: impl FnOnce(&mut Window) -> R,
 ) -> R {
+    match background(context, window) {
+        Some(background) => window.with_raster_context(Some(background), paint),
+        None => paint(window),
+    }
+}
+
+fn background(context: &ChildPaintContext<'_>, window: &Window) -> Option<Rc<Background>> {
     let style = context.style;
     let bounds = context.bounds;
     let opaque = style
@@ -30,7 +37,7 @@ pub(super) fn with_background<R>(
         && bounds.size.width > px(0.0)
         && bounds.size.height > px(0.0);
     if !eligible {
-        return paint(window);
+        return None;
     }
     let exact = context.exact_bounds.map_or(bounds, |(_, exact)| exact);
     let fill_bounds = if window.current_transformation() == TransformationMatrix::unit() {
@@ -38,13 +45,10 @@ pub(super) fn with_background<R>(
     } else {
         bounds
     };
-    let mut frame = window.raster_frame().clone();
-    let background = Rc::new(Background {
+    Some(Rc::new(Background {
         bounds: exact,
         offset: exact.origin - fill_bounds.origin,
         transform: window.current_transformation(),
-        parent: frame.context(),
-    });
-    frame.set_context(Some(background));
-    window.with_raster_frame(frame, paint)
+        parent: window.raster_context(),
+    }))
 }

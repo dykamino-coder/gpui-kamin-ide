@@ -49,6 +49,18 @@ impl Window {
         self.raster_frame.context()
     }
 
+    /// Scoped host data in the shared frame, retaining unrelated raster fields.
+    pub fn with_raster_context<T: std::any::Any, R>(
+        &mut self,
+        value: Option<Rc<T>>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let previous = self.raster_frame.contexts.replace(value);
+        self.with_restore(previous, |window, previous| {
+            window.raster_frame.contexts.set(previous.take());
+        }, f).0
+    }
+
     /// Применение raster-данных с восстановлением вызывающего при unwind.
     pub fn with_raster_frame<R>(
         &mut self,

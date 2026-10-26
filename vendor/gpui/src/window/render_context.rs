@@ -17,15 +17,16 @@ impl Snapshot {
     }
 
     pub(super) fn set<T: Any>(&mut self, value: Option<Rc<T>>) {
+        self.replace(value);
+    }
+
+    pub(super) fn replace<T: Any>(&mut self, value: Option<Rc<T>>) -> Option<Rc<T>> {
         let id = TypeId::of::<T>();
-        match value {
-            Some(value) => {
-                self.0.insert(id, value);
-            }
-            None => {
-                self.0.remove(&id);
-            }
-        }
+        let previous = match value {
+            Some(value) => self.0.insert(id, value),
+            None => self.0.remove(&id),
+        };
+        previous?.downcast().ok()
     }
 }
 

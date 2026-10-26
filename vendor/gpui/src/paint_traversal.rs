@@ -16,7 +16,7 @@ pub struct ChildPaintContext<'a> {
 }
 
 type ChildrenCallback = dyn Fn(
-    ChildPaintContext<'_>,
+    &ChildPaintContext<'_>,
     &mut dyn Iterator<Item = &mut AnyElement>,
     &mut Window,
     &mut App,
