@@ -193,6 +193,8 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../text/ruby/segment_state.rs"),
     include_str!("../../text/text_box.rs"),
     include_str!("../../animation/frames.rs"),
+    include_str!("../../style/animation/interpolation.rs"),
+    include_str!("../../style/animation/sampling.rs"),
     include_str!("../../animation/frames/frozen.rs"),
     include_str!("../../interactive/scroll_box.rs"),
     include_str!("../../interactive/scroll_box/hoisting.rs"),
