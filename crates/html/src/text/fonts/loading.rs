@@ -7,23 +7,10 @@
 use super::{declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc};
 use crate::document::state::ValueCx;
 
-/// Есть ли в семействе знак пробела (U+0020).
-///
-/// Вопрос не праздный: «первым доступным» шрифтом (css-fonts-4
-/// §first-available-font) семейство становится, только если пробел в нём
-/// есть, — от первого доступного считаются метрики строки, `line-height:
-/// normal`, `ch` и `ex`. Ответ «нет» бывает единственно у правила
-/// `@font-face` с дескриптором `unicode-range`, где пробел не назван. Про
-/// все прочие имена ответ утвердительный: дескриптора у них нет, а его
-/// умолчание — весь набор знаков.
+/// Покрытие U+0020 объединёнными unicode-range семейства, без проверки глифа.
+/// Имена без зарегистрированного дескриптора покрывают весь набор знаков.
 pub fn covers_space(family: &str, vcx: ValueCx<'_>) -> bool {
-    vcx.doc
-        .font_faces
-        .has_space
-        .borrow()
-        .get(&family.to_ascii_lowercase())
-        .copied()
-        .unwrap_or(true)
+    vcx.doc.font_snapshot().covers_space(family)
 }
 
 /// Покрывает ли дескриптор `unicode-range` знак U+0020.
@@ -196,6 +183,7 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
             vcx.doc.font_faces.aliases.borrow_mut().insert(name, real);
         }
     }
+    vcx.doc.font_registry_changed();
 }
 
 /// Множитель `size-adjust` лица, которое подбор по наклону (css-fonts-4
@@ -207,22 +195,5 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
 /// лиц одного наклона вес и ширину мы не выбираем: расходятся их множители —
 /// 1.0 (`oblique-last-resort-weight-selection`: два oblique-лица, 100% и 50%).
 pub fn size_adjust(family: &str, want: u8, vcx: ValueCx<'_>) -> f32 {
-    {
-        let s = vcx.doc.font_faces.size_adjust.borrow();
-        let Some(faces) = s.get(&family.to_ascii_lowercase()) else {
-            return 1.0;
-        };
-        let order: [u8; 3] = match want {
-            1 => [1, 2, 0],
-            2 => [2, 0, 1],
-            _ => [0, 2, 1],
-        };
-        for slope in order {
-            let mut hit = faces.iter().filter(|(k, _)| *k == slope).map(|(_, a)| *a);
-            if let Some(first) = hit.next() {
-                return if hit.all(|a| a == first) { first } else { 1.0 };
-            }
-        }
-        1.0
-    }
+    vcx.doc.font_snapshot().size_adjust(family, want)
 }

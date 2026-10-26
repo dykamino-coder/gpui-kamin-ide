@@ -132,9 +132,9 @@ fn font_px(l: Len, font: FontCx<'_>, vcx: ValueCx<'_>) -> f32 {
     match l {
         Len::Em(k) => k * font.font_px,
         Len::EmPx(k, add) => k * font.font_px + add,
-        Len::Ch(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).0,
-        Len::Ex(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).1,
-        Len::Ic(k) => k * crate::text::metrics::ic_px(font.family, font.font_px, vcx),
+        Len::Ch(k) => k * crate::style::font_metrics::horizontal(font.family, font.font_px, vcx).0,
+        Len::Ex(k) => k * crate::style::font_metrics::horizontal(font.family, font.font_px, vcx).1,
+        Len::Ic(k) => k * crate::style::font_metrics::ideographic(font.family, font.font_px, vcx),
         Len::Lh(k) => k * lh(),
         Len::LhPx(k, add) => k * lh() + add,
         _ => 0.0,

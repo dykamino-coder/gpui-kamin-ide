@@ -32,7 +32,7 @@ APPROVED = (
 )
 
 
-OVERFLOW_FLOAT_BASE = '2b1bf588f70cf46ddcbc4d20a91c15e9273db059'
+OVERFLOW_FLOAT_BASE = '42d54e9ba3f3c4797681c25cffe14be568c9b44b'
 # Reviewed: not a style escape. Float growth floors contain only u64/f32
 # (layout/fragment/push/float_flow.rs); context interning contains FlowMeasure
 # (layout/fragment/flow/contexts.rs). Neither map exposes a style operand.

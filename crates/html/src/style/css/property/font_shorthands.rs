@@ -136,7 +136,7 @@ pub(super) fn font(value: &str, vcx: Option<ValueCx<'_>>) -> Option<Vec<String>>
                 // `oblique <angle>` — угол сразу за словом (§font-style-prop).
                 if lower == "oblique"
                     && let Some(a) = word(i + 1)
-                    && crate::text::fonts::matching::angle(&a.to_ascii_lowercase()).is_some()
+                    && crate::font_facts::matching::angle(&a.to_ascii_lowercase()).is_some()
                 {
                     parts[0] = format!("oblique {a}");
                     i += 1;

@@ -14,8 +14,8 @@
 use crate::document::state::ValueCx;
 use crate::style::computed::box_predicates::resolve_bidi_inheritance;
 use crate::style::computed::{Computed, TextAlign};
+use crate::style::publication::{ComputedBuilder, Published};
 use crate::style::values::value::Len;
-use std::rc::Rc;
 
 mod background;
 mod explicit;
@@ -28,7 +28,12 @@ pub(in crate::style::cascade) use text::{decor_family, resolve_decor_len};
 
 /// Вычисленный стиль элемента с каскадным стилем `own` под вычисленным
 /// стилем родителя `parent`.
-pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc<Computed> {
+pub(in crate::style) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Published {
+    build(parent, own, vcx).finish()
+}
+
+/// Входы materialize добавляются в builder до публикации закрытого handle.
+pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> ComputedBuilder {
     // Зум — первым (css-viewport-1 §zoom-property): свои длины каскадного
     // стиля — в зуме элемента, до наследования и `em` ниже.
     let zoomed;
@@ -62,7 +67,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc
         resolved = copy;
         &resolved
     };
-    let mut c = own.clone();
+    let mut c = ComputedBuilder::from_cascaded(own);
     c.cq_box = parent.container_box_for_children();
     // Коробка раскладки своего зума не задаёт: она в зуме родителя.
     if !own.zoom_pending && c.zoom_eff.is_none() {
@@ -97,7 +102,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc
     // (`tab-size-inheritance-001`).
     let own_px = own_font_px(&c, parent_px);
     c.tab_size_len = match own.tab_size_len.and(c.tab_size_len) {
-        Some(len) => Some(Len::Px(crate::text::metrics::spacing_px(
+        Some(len) => Some(Len::Px(crate::style::font_metrics::spacing_px(
             Some(len),
             c.font_family.as_deref().unwrap_or_default(),
             own_px,
@@ -126,7 +131,7 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Rc
     if c.inh == parent.inh {
         c.inh = parent.inh.clone();
     }
-    Rc::new(c)
+    c
 }
 
 /// Вычисленный кегль родителя — база `em` ребёнка (у подогнанного

@@ -136,7 +136,7 @@ pub(super) fn run_for(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TextRun {
     let mut font = base.font();
-    font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks, vcx);
+    font.fallbacks = crate::text::fonts::fallbacks::fallbacks(style, font.fallbacks, vcx);
     // Названное семейство сильнее родового: подстановкой занимается система.
     // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
     if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {
