@@ -150,7 +150,7 @@ async fn element_inner(
     let opts = projected_opts.as_deref().unwrap_or(opts);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
-    if let Some(el) = crate::interactive::forms::element(e, &merged, opts) {
+    if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
         return crate::interactive::scroll_extent::project(
             transformed(el, &merged, inherited, vcx),
             scroll_projection,

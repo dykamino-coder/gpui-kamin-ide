@@ -41,7 +41,7 @@ pub(super) fn textarea(
     );
     // The editor owns scroll state; an anonymous viewport would become the
     // flex item and lose the host's growth, basis and intrinsic constraints.
-    paint = crate::interactive::scroll_target::attach(paint, e, style, &opts.cx);
+    paint = crate::paint::box_tree::scroll::attach(paint, e, style, &opts.cx);
     let keywords = crate::paint::apply::intrinsic_size::keywords(style)
         .map(|keyword| keyword.filter(|v| !matches!(v, gpui::CssSizingKeyword::Stretch)));
     paint.style().sizing_keywords = Some(keywords);

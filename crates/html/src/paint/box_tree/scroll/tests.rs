@@ -1,7 +1,10 @@
 //! Тесты: нативные цели прокрутки сохраняют CSS-размеры и явную изоляцию владельцев.
 use super::*;
+use crate::interactive::scroll_target::Target;
+use crate::style::computed::Sides;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
+use gpui::ScrollHandle;
 use gpui::{CssSizingKeyword, Overflow, div, px};
 
 #[test]
