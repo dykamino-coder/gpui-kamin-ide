@@ -114,7 +114,7 @@ pub(super) fn generic_box(
             col_vert,
             col_rl,
             col_inline_size,
-            outer_space,
+            outer_space.clone(),
             lone_span,
         );
         (d, merged) = match result {
