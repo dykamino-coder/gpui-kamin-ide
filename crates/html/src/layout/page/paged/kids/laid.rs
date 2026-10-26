@@ -113,3 +113,6 @@ pub(super) fn group(
 mod float_runs;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod vertical_tests;
