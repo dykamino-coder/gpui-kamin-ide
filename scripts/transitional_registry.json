@@ -151,18 +151,8 @@
   },
   {
     "file": "crates/html/src/layout/multicol/column_regrow/copies.rs",
-    "task": "F2-3",
-    "reason": "Запас копий рядов ограничен 48 вместо завершения row tokens; удалить предел в P11 после проверки реального прогресса продолжений."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/column_regrow/copies.rs",
     "task": "F2-4",
     "reason": "Смешанный clone/nested/OOF preplan исключён из роста копий; удалить общий gate в P21 после recorded child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/container/mod.rs",
-    "task": "F2-3",
-    "reason": "Начальный запас копий ограничен 48; удалить предел в P11 после выдачи требуемых фрагментов по actual row token progress."
   },
   {
     "file": "crates/html/src/layout/multicol/container/parallel.rs",

@@ -32,9 +32,10 @@ pub struct ColumnStack {
     pub(crate) row_extent: super::measure::RowExtent,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
-    /// Balanced column height chosen by the pagination of a child laid out
-    /// against the fragmentainer grid (`paginate`); `None` — ordinary balance.
+    /// Высота выбранной пробы: regrow и paginate раскладывают ребёнка
+    /// относительно этой сетки; `None` запускает поиск баланса.
     pub(crate) forced_h: Option<f32>,
+    pub(crate) balance_failure: Option<crate::layout::fragment::token::Error>,
     /// `fixed_height` пришёл из `max-height` при авто-высоте: колонки
     /// заполняются до него, а коробка — по самой высокой занятой колонке
     /// (Blink `ConstrainColumnBlockSize`; `columnfill-auto-max-height-003`).
@@ -113,6 +114,7 @@ impl ColumnStack {
             gap,
             fixed_height,
             forced_h: None,
+            balance_failure: None,
             fill_shrink: false,
             rule,
             rule_to: None,

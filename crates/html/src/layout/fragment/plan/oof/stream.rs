@@ -61,6 +61,14 @@ impl Streams {
             || self.waiting.iter().any(|(_, p)| !p.repeat_fixed)
     }
 
+    /// Минимальный реальный недолаз текущих независимых потоков.
+    pub(crate) fn shortage(&self) -> Option<f32> {
+        self.flows
+            .iter()
+            .filter_map(|flow| flow.shortage)
+            .min_by(f32::total_cmp)
+    }
+
     /// Повтор fixed заново раскладывается в CB своей страницы; abspos не меняется.
     pub(crate) fn refresh_fixed(&mut self, index: usize, input: Input) -> Result<(), Error> {
         let old = self.inputs.get_mut(index).ok_or(Error::InvalidToken)?;
@@ -101,6 +109,9 @@ impl Streams {
         }
         self.waiting = waiting;
         self.pending.sort_by_key(|p| p.idx);
+        for flow in &mut self.flows {
+            flow.shortage = None;
+        }
         let normal_complete = normal_complete && !self.waiting.iter().any(|(_, p)| !p.repeat_fixed);
         let inputs = &self.inputs;
         let flows = &mut self.flows;

@@ -52,12 +52,11 @@ pub(crate) fn multicol_column_stack(
     measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
 ) -> AnyElement {
     let fixed = fixed_column_height(&merged, col_vert, col_h, nest_rows, &opts.cx.constraints);
-    let source =
-        if !col_vert && rows.is_none() && fixed.is_some_and(|h| h > crate::tolerance::COORD_EPS) {
-            kids.iter().map(|(c, _)| c.clone()).collect()
-        } else {
-            Vec::new()
-        };
+    let source = if !col_vert && rows.is_none() {
+        kids.iter().map(|(c, _)| c.clone()).collect()
+    } else {
+        Vec::new()
+    };
     let (e, inherited, opts) = (e.clone(), inherited.clone(), opts.clone());
     crate::layout::positioned::containing_block::metrics::layout::defer(
         source,
@@ -76,8 +75,7 @@ pub(crate) fn multicol_column_stack(
                         .map(|(_, s)| (s.height / per).ceil() as usize)
                         .max()
                         .unwrap_or(0);
-                    // TRANSITIONAL(F2-3): Начальный запас копий ограничен 48; удалить предел в P11 после выдачи требуемых фрагментов по actual row token progress.
-                    (span + cols as usize + 1).min(48)
+                    span.saturating_add(cols as usize).saturating_add(1)
                 }
                 None => cols.max(1) as usize,
             };

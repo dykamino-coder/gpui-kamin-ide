@@ -60,7 +60,7 @@ impl ColumnStack {
             }
             work
         };
-        'outer: for _ in 0..kids.len().min(8) {
+        'outer: loop {
             let Some(bad) =
                 Self::avoid_violation_where(kids, &best.2, &|i| stuck.contains(&flow_of(i)))
             else {
@@ -90,7 +90,6 @@ impl ColumnStack {
                             && n < pk.h - COORD_EPS
                             && !pk.forced.iter().any(|&f| (f - n).abs() < COORD_EPS)
                     })
-                    .take(4)
                     .collect();
                 for at in cands {
                     let mut e2 = early.clone();
@@ -121,6 +120,5 @@ impl ColumnStack {
             marks.push((flow, next));
             best = plan::fill_at(&build(&marks, &early), target_at, space);
         }
-        best
     }
 }

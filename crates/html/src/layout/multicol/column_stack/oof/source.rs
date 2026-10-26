@@ -14,11 +14,18 @@ impl ColumnStack {
                 continue;
             }
             // CB/static anchor принадлежит исходному normal layout, а не копии.
-            let Some(owner) = self.children.iter().position(|c| {
-                c.watched
-                    .as_ref()
-                    .and_then(|w| w.blocks())
-                    .is_some_and(|b| b.id == source.owner)
+            let actual = self
+                .children
+                .iter()
+                .enumerate()
+                .find(|(_, c)| c.source == Some(source.owner))
+                .map(|(index, c)| (index, c.h));
+            let Some((owner, owner_height)) = actual.or_else(|| {
+                self.oof
+                    .owners
+                    .iter()
+                    .find(|(id, _, _)| *id == source.owner)
+                    .map(|&(_, index, h)| (index, h))
             }) else {
                 return Err(Error::InvalidGeometry);
             };
@@ -35,7 +42,7 @@ impl ColumnStack {
             let Some(anchor) = normal
                 .iter()
                 .filter(|f| f.kid == owner)
-                .find(|f| cb_start < f.from + f.h || f.from + f.h >= self.children[owner].h)
+                .find(|f| cb_start < f.from + f.h || f.from + f.h >= owner_height)
             else {
                 return Err(Error::InvalidGeometry);
             };

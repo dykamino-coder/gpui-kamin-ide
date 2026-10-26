@@ -7,6 +7,8 @@ use crate::layout::multicol::measure::laid;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, App, Pixels, Window};
+#[cfg(test)]
+mod balance_tests;
 mod children;
 mod geometry;
 #[cfg(test)]
@@ -104,6 +106,9 @@ impl Recipe {
         window: &mut Window,
         cx: &mut App,
     ) {
+        stack.forced_h = None;
+        stack.balance_failure = None;
+        stack.col_w.set(width);
         let (children, geometry) = self.recorded_children(width, window, cx);
         stack.children = children;
         stack.oof.geometry = geometry;

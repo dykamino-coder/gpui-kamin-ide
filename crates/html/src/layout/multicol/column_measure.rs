@@ -34,6 +34,8 @@ impl ColumnStack {
         let row_phase = self.row_phase;
         let row_extent = self.row_extent;
         let forced_h = self.forced_h;
+        let balance_failure = self.balance_failure;
+        let oof = self.oof_for_measurement();
         // Внутренние размеры многоколоночного контейнера. Спека их не
         // определяет (css-multicol-1 §3.4: «This specification does not
         // define how U is calculated»), единственное письменное определение —
@@ -140,6 +142,7 @@ impl ColumnStack {
                     row_extent,
                     fixed_height: fixed,
                     forced_h,
+                    balance_failure,
                     fill_shrink,
                     rule: None,
                     rule_to: None,
@@ -149,7 +152,7 @@ impl ColumnStack {
                     intrinsic: None,
                     plan: std::cell::RefCell::new(Plan::default()),
                     static_places: Default::default(),
-                    oof: Default::default(),
+                    oof: oof.fresh(),
                     col_w: std::cell::Cell::new(0.0),
                     lines_plan: std::cell::RefCell::new(Vec::new()),
                     spans_plan: std::cell::RefCell::new(Vec::new()),
@@ -166,6 +169,9 @@ impl ColumnStack {
                             _ => None,
                         })
                         .unwrap_or(0.0);
+                    probe
+                        .col_w
+                        .set(((inline - gap * (count as f32 - 1.)) / count as f32).max(1.));
                     let block = if let Some(recipe) = &deferred {
                         recipe.measure(&mut probe, inline, window, cx).0
                     } else {
@@ -186,6 +192,9 @@ impl ColumnStack {
                     let (height, first, last) = recipe.measure(&mut probe, w, window, cx);
                     return (size(px(w), px(height)), first, last);
                 }
+                probe
+                    .col_w
+                    .set(((w - gap * (count as f32 - 1.)) / count as f32).max(1.));
                 let (height, lines, plan, spans) = probe.balance(&heights);
                 let height = row_extent.block_size(height, &lines, &spans, &plan, count, &heights);
                 let (first, last) = baselines.as_mut().map_or((None, None), |baselines| {

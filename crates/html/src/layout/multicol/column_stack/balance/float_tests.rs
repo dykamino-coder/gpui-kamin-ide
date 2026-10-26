@@ -37,3 +37,35 @@ fn float_balance_floor_preserves_independent_normal_breaks() {
     assert_eq!(plan[0].h, 20.0);
     assert_eq!(plan[1].from, 20.0);
 }
+
+#[test]
+fn forced_groups_can_require_more_than_forty_eight_columns() {
+    let kids: Vec<_> = (0..65)
+        .map(|i| Kid {
+            h: 20.,
+            over: 20.,
+            monolith: true,
+            force_before: i > 0,
+            ..Default::default()
+        })
+        .collect();
+    let mut stack = ColumnStack::new(
+        vec![],
+        2,
+        0.,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Default::default(),
+    );
+    let (height, plan) = stack.balance_line(&kids, 2, None);
+    assert_eq!(height, 20.);
+    assert_eq!(plan.completion, plan::Completion::Complete);
+    assert_eq!(plan.last().unwrap().col, 64);
+    stack.forced_h = Some(height);
+    let replay = stack.balance_line(&kids, 2, None).1;
+    assert_eq!(replay.len(), 65);
+    assert_eq!(replay.last().unwrap().col, 64);
+}
