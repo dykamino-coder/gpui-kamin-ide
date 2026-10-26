@@ -71,6 +71,11 @@ pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Erro
 }
 
 pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    let preference = gpui_windows::GpuAdapterPreference::parse(&args.gpu)?;
+    // Ошибки имени возвращаем до входа в событийный цикл платформы.
+    if matches!(preference, gpui_windows::GpuAdapterPreference::ByName(_)) {
+        gpui_windows::gpu_adapters(&preference)?;
+    }
     // До запуска GPUI потоки приложения ещё не созданы; масштаб фиксирует геометрию снимка.
     unsafe {
         std::env::set_var("GPUI_NO_ERROR_DIALOG", "1");
@@ -78,7 +83,10 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     }
     let outcome = Rc::new(RefCell::new(None));
     let result = outcome.clone();
-    gpui_platform::application().run(move |cx| {
+    let platform = Rc::new(gpui_windows::WindowsPlatform::with_gpu_adapter(
+        false, preference,
+    )?);
+    gpui::Application::with_platform(platform.clone()).run(move |cx| {
         let mut setup = || -> Result<_, Box<dyn std::error::Error>> {
             cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
             let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
@@ -114,7 +122,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         match setup() {
             Ok((window, fonts)) => {
                 cx.spawn(async move |cx| {
-                    let value = run::run(cx, window, &fonts, &args)
+                    let value = run::run(cx, window, &fonts, &args, &platform)
                         .await
                         .map_err(|e| e.to_string());
                     *result.borrow_mut() = Some(value);

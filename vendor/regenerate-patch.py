@@ -54,6 +54,7 @@ FIXES = {
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
     ],
     "gpui-windows": [
+        "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
         "DirectX: CSS primitives, images, filters, masks, gradients and frame capture with CPU copy/map timing for WPT phase measurements.",
         "Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.",

@@ -37,6 +37,8 @@ pub(crate) fn try_to_recover_from_device_lost<T>(mut f: impl FnMut() -> Result<T
 
 #[derive(Clone)]
 pub(crate) struct DirectXDevices {
+    // KaminIDE patch: keep the policy through device-lost recovery.
+    pub(crate) adapter_preference: crate::GpuAdapterPreference,
     pub(crate) adapter: IDXGIAdapter1,
     pub(crate) dxgi_factory: IDXGIFactory6,
     pub(crate) device: ID3D11Device,
@@ -44,12 +46,12 @@ pub(crate) struct DirectXDevices {
 }
 
 impl DirectXDevices {
-    pub(crate) fn new() -> Result<Self> {
+    pub(crate) fn new(adapter_preference: crate::GpuAdapterPreference) -> Result<Self> {
         let debug_layer_available = check_debug_layer_available();
         let dxgi_factory =
             get_dxgi_factory(debug_layer_available).context("Creating DXGI factory")?;
         let (adapter, device, device_context, feature_level) =
-            get_adapter(&dxgi_factory, debug_layer_available).context("Getting DXGI adapter")?;
+            get_adapter(&dxgi_factory, debug_layer_available, &adapter_preference).context("Getting DXGI adapter")?;
         match feature_level {
             D3D_FEATURE_LEVEL_11_1 => {
                 log::info!("Created device with Direct3D 11.1 feature level.")
@@ -64,6 +66,7 @@ impl DirectXDevices {
         }
 
         Ok(Self {
+            adapter_preference,
             adapter,
             dxgi_factory,
             device,
@@ -106,12 +109,22 @@ fn get_dxgi_factory(debug_layer_available: bool) -> Result<IDXGIFactory6> {
 fn get_adapter(
     dxgi_factory: &IDXGIFactory6,
     debug_layer_available: bool,
+    preference: &crate::GpuAdapterPreference,
 ) -> Result<(
     IDXGIAdapter1,
     ID3D11Device,
     ID3D11DeviceContext,
     D3D_FEATURE_LEVEL,
 )> {
+    // KaminIDE patch: leave the entire default creation path unchanged.
+    if *preference != crate::GpuAdapterPreference::Default {
+        let adapter = crate::gpu_adapter::selected_adapter(dxgi_factory, preference)?;
+        let mut context = None;
+        let mut feature_level = D3D_FEATURE_LEVEL::default();
+        let device = get_device(&adapter, Some(&mut context), Some(&mut feature_level),
+            debug_layer_available).context("Creating device on the requested GPU")?;
+        return Ok((adapter, device, context.context("Missing D3D device context")?, feature_level));
+    }
     match crate::debug_device::DeviceOverride::from_env() {
         crate::debug_device::DeviceOverride::None => {}
         crate::debug_device::DeviceOverride::Warp => {

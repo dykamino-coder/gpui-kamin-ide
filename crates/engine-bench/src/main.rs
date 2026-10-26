@@ -11,6 +11,8 @@
 mod accounting;
 mod args;
 #[cfg(windows)]
+mod gpu;
+#[cfg(windows)]
 mod host;
 #[cfg(windows)]
 mod pixels;
@@ -34,6 +36,10 @@ fn main() {
 }
 
 fn entry() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(windows)]
+    if std::env::args().skip(1).eq(["--list-gpus"]) {
+        return gpu::catalog();
+    }
     let Some(args) = args::Args::parse(std::env::args().skip(1))? else {
         println!("{}", args::USAGE);
         return Ok(());
