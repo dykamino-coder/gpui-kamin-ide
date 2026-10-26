@@ -26,6 +26,11 @@ pub(crate) use stack::fragment_leaf;
 /// границ таблицы; flex/grid и multicol регистрируют свои независимые потоки.
 /// Монолитные и внепоточные коробки не передают строки родительскому потоку.
 pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
+    flow_lines_in(e, None)
+}
+
+/// Собственный OOF-контекст принимает свои строки; родительский поток — нет.
+pub(crate) fn flow_lines_in(e: &crate::dom::Element, owner: Option<u64>) -> bool {
     use crate::style::computed::Display;
     matches!(
         e.style.used().display,
@@ -37,7 +42,7 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
         )
         && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
         && !crate::layout::fragment::clone::monolith_box(e)
-        && !crate::layout::box_kind::out_of_flow(&e.style.used())
+        && (owner == Some(e.node_id) || !crate::layout::box_kind::out_of_flow(&e.style.used()))
 }
 
 #[derive(Clone, Debug, Default)]

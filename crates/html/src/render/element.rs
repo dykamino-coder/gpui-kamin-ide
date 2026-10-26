@@ -38,7 +38,9 @@ pub(crate) async fn element_stack(
     // не пишутся (`flow::flow_lines`).
     let nested = opts.frag.watch.as_ref().and_then(|w| {
         let watch = w.for_flex_item(e.node_id).or_else(|| {
-            (w.takes_lines() && !crate::layout::fragment::flow::flow_lines(e)).then(|| w.nested())
+            (w.takes_lines()
+                && !crate::layout::fragment::flow::flow_lines_in(e, w.blocks().map(|b| b.id)))
+            .then(|| w.nested())
         })?;
         let mut inner = Box::new(opts.clone());
         inner.frag.watch = Some(watch);
@@ -51,6 +53,9 @@ pub(crate) async fn element_stack(
     );
     crate::layout::depth::wrap(built, opts)
 }
+
+#[cfg(test)]
+mod lines_tests;
 
 async fn element_inner(
     stk: &mut reblessive::Stk,

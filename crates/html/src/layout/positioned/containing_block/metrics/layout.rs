@@ -14,7 +14,7 @@ use std::rc::Rc;
 fn contains_positioned(e: &Element) -> bool {
     let mut pending = vec![e];
     while let Some(e) = pending.pop() {
-        if e.style.used().position == Some(crate::style::computed::Position::Absolute) {
+        if crate::layout::box_kind::out_of_flow(&e.style.used()) {
             return true;
         }
         pending.extend(e.children.iter().filter_map(|n| match n {

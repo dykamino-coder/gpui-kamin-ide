@@ -26,18 +26,17 @@ fn sample(html: &str, width: f32, window: &mut Window, app: &mut App) -> (Rc<Sna
         })
     }
     let cb = section(&tree).unwrap();
-    let id = cb
-        .children
-        .iter()
-        .find_map(|n| match n {
-            crate::dom::Node::Element(e)
-                if crate::layout::box_kind::out_of_flow(&e.style.used()) =>
-            {
-                Some(e.node_id)
-            }
+    let mut pending = vec![cb];
+    let id = loop {
+        let e = pending.pop().expect("OOF descendant");
+        if crate::layout::box_kind::out_of_flow(&e.style.used()) {
+            break e.node_id;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            crate::dom::Node::Element(e) => Some(e),
             _ => None,
-        })
-        .unwrap();
+        }));
+    };
     (
         super::super::layout::collect(
             std::slice::from_ref(cb),
@@ -64,6 +63,20 @@ fn padding_cb_bottom_and_relative_offset_are_recorded_before_growth(cx: &mut gpu
         assert!(first.static_rect.is_none());
         let _ = sample("<section style='position:relative;height:250px'><div style='position:absolute;bottom:0;width:10px;height:10px'></div></section>", 180., window, app);
         assert_eq!(snapshot.get(id).unwrap().normal_rect(), first.normal_rect());
+        gpui::div()
+    });
+}
+
+#[gpui::test]
+fn fixed_uses_transform_cb_through_an_intermediate_relative(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
+    cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
+        let (snapshot, id) = sample("<section style='transform:translateX(0);width:120px;height:100px;padding:8px;border:4px solid'><div style='position:relative;width:60px;height:40px'><div style='position:fixed;right:6px;bottom:7px;width:20px;height:30px'></div></div></section>", 200., window, app);
+        let metrics = snapshot.get(id).expect("nearest fixed CB captured");
+        assert_eq!(metrics.original_cb_rect.origin, point(px(4.), px(4.)));
+        assert_eq!(metrics.original_cb_rect.size, size(px(136.), px(116.)));
+        assert_eq!(metrics.normal_offset, point(px(110.), px(79.)));
+        assert_eq!(metrics.normal_size, size(px(20.), px(30.)));
         gpui::div()
     });
 }

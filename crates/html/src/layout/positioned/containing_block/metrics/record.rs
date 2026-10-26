@@ -147,8 +147,12 @@ pub(crate) fn capture(id: u64, style: &BoxStyle, opts: &RenderOpts) -> Option<Bo
     let b = style.borders();
     Some(Box::new(Recording {
         id,
-        cb: style.cb_node,
-        positioned: style.position == Some(crate::style::computed::Position::Absolute),
+        cb: if style.position == Some(crate::style::computed::Position::Fixed) {
+            style.fixed_cb_node
+        } else {
+            style.cb_node
+        },
+        positioned: crate::layout::box_kind::out_of_flow(style),
         border: [b.top, b.right, b.bottom, b.left].map(px_lossy_zero),
         recorder: recorder.clone(),
     }))
