@@ -49,6 +49,11 @@ Windows-изменения DirectWrite/DirectX не являются перен�
 
 ## Политика изменений
 
+Контракт границы paint policy хозяина и механизмов GPUI включён в rustdoc
+`PaintCtx` из `vendor/gpui/src/window/paint_contract.md`. Он различает текущие
+гарантии snapshot/replay и требования к общему scoped API. Baseline-пробы
+текущих HTML consumers находятся в `crates/html/src/paint/contract_tests/`.
+
 1. Исправления общего назначения сначала предлагать upstream. В локальном
    патче записывать причину и ссылку на upstream issue/PR, когда она есть.
    При обновлении удалять локальный патч, уже принятый upstream.
