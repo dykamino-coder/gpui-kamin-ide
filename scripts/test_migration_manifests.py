@@ -69,8 +69,19 @@ class ManifestTests(unittest.TestCase):
             'path': '../html-paint', 'features': ['engine-test-support']})
         self.assertEqual(upper['example'][0]['name'], 'wptrun')
         self.assertEqual(set(upper['dev-dependencies']) & {
-            'kamin-style', 'kamin-layout', 'kamin-paint'},
-            {'kamin-style', 'kamin-layout', 'kamin-paint'})
+            'kamin-font-facts', 'kamin-style', 'kamin-layout', 'kamin-paint'},
+            {'kamin-font-facts', 'kamin-style', 'kamin-layout', 'kamin-paint'})
+
+    def test_font_contract_has_no_upper_dependencies(self):
+        manifests = generate(ORIGINAL, {
+            'kamin-font-facts': ['pub trait Provider {}'],
+            'kamin-style': ['use kamin_font_facts::Provider;']}, {
+                ('kamin-style', 'kamin-font-facts'): []})
+        fonts = tomllib.loads(manifests['crates/font-facts/Cargo.toml'])
+        style = tomllib.loads(manifests['crates/html-style/Cargo.toml'])
+        self.assertEqual(fonts['dependencies'], {})
+        self.assertEqual(fonts['dev-dependencies'], {})
+        self.assertEqual(style['dependencies'], {'kamin-font-facts': {'path': '../font-facts'}})
 
     def test_support_feature_never_uses_normal_forwarding(self):
         manifests = self.build()
@@ -151,6 +162,7 @@ class ManifestTests(unittest.TestCase):
                         '[features]\nwpt-harness = []\n[dependencies]\n[dev-dependencies]\n'
                         'taffy = {path = "../../vendor/taffy"}\n[lints]\nworkspace = true\n')
             sources = {
+                'kamin-font-facts': ['#![deny(warnings)]\n'],
                 'kamin-style': ['#![deny(warnings)]\npub struct Style(pub u32);\n'],
                 'kamin-layout': ['#![deny(warnings)]\n'
                     'pub fn identity(s: kamin_style::Style) -> kamin_style::Style { s }\n'

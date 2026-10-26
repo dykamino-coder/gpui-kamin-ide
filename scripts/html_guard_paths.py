@@ -9,7 +9,7 @@ from html_source_inventory import PACKAGES, logical_name
 from rust_layer_paths import TOKEN, use_tree
 
 
-NAMESPACES = {'kamin_html', 'kamin_style', 'kamin_layout', 'kamin_paint'}
+NAMESPACES = {'kamin_html', 'kamin_style', 'kamin_layout', 'kamin_paint', 'kamin_font_facts'}
 PATH_KEYWORDS = {'use', 'return', 'break', 'as', 'impl', 'for', 'type', 'dyn', 'where', 'in'}
 
 

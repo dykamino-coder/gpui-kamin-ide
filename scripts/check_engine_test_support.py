@@ -13,7 +13,7 @@ import tomllib
 
 
 FEATURE = 'engine-test-support'
-LOWER = {'kamin-style', 'kamin-layout', 'kamin-paint'}
+LOWER = {'kamin-font-facts', 'kamin-style', 'kamin-layout', 'kamin-paint'}
 ROOT = Path(__file__).resolve().parents[1]
 
 

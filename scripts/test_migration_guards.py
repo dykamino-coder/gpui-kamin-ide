@@ -25,6 +25,12 @@ class GuardPlanTests(unittest.TestCase):
                 self.assertTrue(text.endswith(MARKER))
         self.assertIn('transferred_growth', result['check_computed.py'])
         self.assertIn('installation', result['check_transitional.py'])
+        layer_ast = ast.parse(result['check_layer_imports.py'])
+        stage = next(ast.literal_eval(node.value) for node in layer_ast.body
+                     if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == 'STAGE'
+                             for target in node.targets))
+        self.assertEqual(stage['font_facts'], 0)
 
     def test_transform_is_exactly_idempotent(self):
         after=transform(self.inputs)

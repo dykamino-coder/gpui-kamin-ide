@@ -6,7 +6,8 @@ import re
 from rewrite_paths import lexemes
 
 PACKAGE_DIRS = {'kamin-html': 'html', 'kamin-style': 'html-style',
-                'kamin-layout': 'html-layout', 'kamin-paint': 'html-paint'}
+                'kamin-layout': 'html-layout', 'kamin-paint': 'html-paint',
+                'kamin-font-facts': 'font-facts'}
 
 
 def normalized(path):

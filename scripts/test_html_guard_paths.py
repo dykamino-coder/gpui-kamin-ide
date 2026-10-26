@@ -28,6 +28,8 @@ class GuardPaths(unittest.TestCase):
     def test_global_and_raw_namespaces(self):
         self.assertEqual(normalize('use ::kamin_layout::layout::A; r#kamin_paint::paint::go();'),
                          'use crate::layout::A; crate::paint::go();')
+        self.assertEqual(normalize('use ::kamin_font_facts::font_facts::Provider;'),
+                         'use crate::font_facts::Provider;')
 
     def test_member_namespace_is_not_a_crate_root(self):
         source = 'other::kamin_layout::A; foo.kamin_paint; kamin_html_other::render::A;'
@@ -35,7 +37,8 @@ class GuardPaths(unittest.TestCase):
 
     def test_whole_crate_alias_cannot_hide_an_engine_dependency(self):
         for source in ('use kamin_paint as p;', 'use {kamin_layout as l, std::fmt};',
-                       'use ::kamin_style;', 'extern crate kamin_paint as p;'):
+                       'use ::kamin_style;', 'extern crate kamin_paint as p;',
+                       'use kamin_font_facts as facts;'):
             with self.subTest(source=source), self.assertRaises(ValueError):
                 normalize(source)
         source = 'use other::{kamin_paint as p}; let kamin_paint = 1;'

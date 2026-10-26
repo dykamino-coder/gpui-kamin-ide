@@ -40,7 +40,7 @@ class MigrationPlanTests(unittest.TestCase):
         result = plan(sources, {'crates/html/src/' + p for p in sources})
         roots = [change.after for change in result.changes
                  if change.new.endswith('/src/lib.rs') and '/html/' not in change.new]
-        self.assertEqual(len(roots), 3)
+        self.assertEqual(len(roots), 4)
         for source in roots:
             self.assertIn(attributes, source)
             self.assertEqual(source.count('#![forbid(unsafe_code)]'), 1)
@@ -124,6 +124,35 @@ class MigrationPlanTests(unittest.TestCase):
         result = plan(sources, {'crates/html/src/' + p for p in sources})
         self.assertEqual(result.blockers, [dict(source='kamin-style', target='kamin-layout',
                                                sites=[('box_facts.rs', 5)])])
+
+    def test_font_contract_stays_below_style_and_its_upper_backend(self):
+        sources = self.sources()
+        sources['lib.rs'] += 'pub(crate) mod font_facts;\n'
+        sources['font_facts.rs'] = 'pub trait Provider { fn height(&self) -> f32; }\n'
+        sources['style/mod.rs'] += (
+            'pub fn height(provider: &dyn crate::font_facts::Provider) -> f32 { '
+            'provider.height() }\n')
+        sources['layout/mod.rs'] += (
+            'pub struct Backend;\n'
+            'impl crate::font_facts::Provider for Backend { fn height(&self) -> f32 { 1.0 } }\n')
+        result = plan(sources, {'crates/html/src/' + p for p in sources})
+        self.assertFalse(result.blockers)
+        moved = {change.new: change.after for change in result.changes}
+        self.assertIn('crates/font-facts/src/font_facts.rs', moved)
+        self.assertIn('kamin_font_facts::font_facts::Provider',
+                      moved['crates/html-style/src/style/mod.rs'])
+        self.assertIn('impl kamin_font_facts::font_facts::Provider for Backend',
+                      moved['crates/html-layout/src/layout/mod.rs'])
+        self.assertNotIn(('kamin-style', 'kamin-layout'), result.edges)
+
+    def test_font_contract_cannot_import_its_upper_backend(self):
+        sources = self.sources()
+        sources['lib.rs'] += 'pub(crate) mod font_facts;\n'
+        sources['layout/mod.rs'] += 'pub struct Backend;\n'
+        sources['font_facts.rs'] = 'pub fn backwards(_: crate::layout::Backend) {}\n'
+        result = plan(sources, {'crates/html/src/' + p for p in sources})
+        self.assertEqual(result.blockers, [dict(source='kamin-font-facts', target='kamin-layout',
+                                               sites=[('font_facts.rs', 1)])])
 
     def test_plan_preserves_exact_input_bytes_but_emits_lf(self):
         sources = {name: text.replace('\n', '\r\n') for name, text in self.sources().items()}

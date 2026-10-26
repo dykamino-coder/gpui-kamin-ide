@@ -18,11 +18,13 @@ from migration_test_support import widen
 ROOT_OWNERS = {
     **dict.fromkeys(['defaults', 'cache', 'color', 'css_syntax', 'dom', 'style',
                     'resources', 'tolerance', 'box_facts'], 'kamin-style'),
+    'font_facts': 'kamin-font-facts',
     **dict.fromkeys(['layout', 'text', 'interactive', 'hooks'], 'kamin-layout'),
     **dict.fromkeys(['paint', 'svg'], 'kamin-paint'),
     **dict.fromkeys(['animation', 'document', 'render', 'depth_tests', 'coverage'], 'kamin-html'),
 }
-RANK = {'kamin-style': 0, 'kamin-layout': 1, 'kamin-paint': 2, 'kamin-html': 3}
+RANK = {'kamin-font-facts': 0, 'kamin-style': 1, 'kamin-layout': 2,
+        'kamin-paint': 3, 'kamin-html': 4}
 
 
 @dataclass(frozen=True)

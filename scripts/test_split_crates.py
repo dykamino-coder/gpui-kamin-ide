@@ -161,7 +161,7 @@ class EntryPointTests(unittest.TestCase):
         cargo('check', '--workspace', '--lib', '--locked', '-j', '1')
         self.assertEqual(inventory(), before)
         result = cargo('test', '--workspace', '--lib', '--locked', '-j', '1')
-        self.assertEqual(result.stdout.count('test result: ok.'), 4)
+        self.assertEqual(result.stdout.count('test result: ok.'), 5)
         self.assertEqual(self.run_cli('--check'), 0)
 
 
