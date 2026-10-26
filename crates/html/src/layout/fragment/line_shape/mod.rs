@@ -22,7 +22,6 @@ mod nested_kid;
 mod resolved_lengths;
 pub(crate) use nested::nested_box_w;
 pub(crate) use nested::nested_rows_box;
-pub(crate) use nested::nested_rows_shape;
 pub(crate) use nested_kid::layout_unit;
 pub(crate) use resolved_lengths::{LengthFacts, resolved_lengths};
 mod inline_runs;

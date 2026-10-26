@@ -2,9 +2,9 @@
 
 use super::fragment::spanner_parts;
 use super::{SpanPart, has_deep_spanner, passes_spanner, splits_for_spanner};
-use crate::document::state::ValueCx;
-use crate::dom::Node;
-use crate::layout::fragment::ShapeCx;
+use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -25,8 +25,10 @@ use crate::style::values::value::Len;
 /// делается в дереве до неё.
 pub(crate) fn hoist_spanners(
     kids: &[Node],
-    shape_cx: ShapeCx<'_>,
-    vcx: ValueCx<'_>,
+    parent: &BoxStyle,
+    opts: &RenderOpts,
+    width: f32,
+    measure: &mut dyn FnMut(&Element, &BoxStyle, f32) -> super::SpannerMetrics,
 ) -> Option<Vec<Node>> {
     if !kids.iter().any(|n| {
         matches!(n, Node::Element(c)
@@ -35,7 +37,7 @@ pub(crate) fn hoist_spanners(
         return None;
     }
     let mut out: Vec<Node> = Vec::with_capacity(kids.len() + 2);
-    for p in spanner_parts(kids, shape_cx, vcx) {
+    for p in spanner_parts(kids, parent, opts, width, measure) {
         match p {
             SpanPart::Body(b) => out.extend(b),
             SpanPart::Span(s) => out.push(s),

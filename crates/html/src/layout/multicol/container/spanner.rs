@@ -1,11 +1,8 @@
-//! TRANSITIONAL(F2-3): Внешний план рядов и спаннеров строится до вложенного Space; удалить в P10 после row cursor и отдельного продолжения спаннера.
 //! Сегменты многоколоночника между охватывающими элементами (column-span: all).
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
-use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
@@ -69,79 +66,63 @@ pub(crate) fn multicol_spanner_segments(
             // `container` в `multicol-span-all-children-height-005/
             // 008`). Клон `sub` с одной колонкой спаннеров не несёт,
             // и гейт `lone_span` его снова не пускает.
-            let flow = if lone_span {
-                None
-            } else {
-                column_flow(&seg, &merged, opts, want, col_w_px, None)
-            };
+            let mut sub = seg.clone();
+            sub.style.used_mut().background = None;
+            // Всё, что многоколоночник рисует и сдвигает КОРОБКОЙ,
+            // уже стоит на хосте `d` (`styled_div_with(e, ..)`);
+            // клон ряда повторял это на каждом ряду: контур и
+            // тень вокруг каждого ряда, двойная прозрачность,
+            // фильтр и трансформ, двойной сдвиг `relative`, а у
+            // `position: absolute` ряды выпадали из потока и
+            // ложились друг на друга (`multicol-span-all-
+            // fieldset-002/003`, `-button-002/003`). Обрезку
+            // переполнения делает хост: по css-multicol-1
+            // §overflow режет коробка многоколоночника, а не ряд.
+            // Ряд остаётся содержащим блоком (`relative`), как
+            // прежде.
+            sub.style.used_mut().gradient = None;
+            sub.style.used_mut().bg_image = None;
+            sub.style.used_mut().border_image = None;
+            sub.style.used_mut().shadows = Vec::new();
+            sub.style.used_mut().inset_shadows = Vec::new();
+            sub.style.used_mut().outline = None;
+            sub.style.used_mut().opacity = None;
+            sub.style.used_mut().transform = None;
+            sub.style.used_mut().filter = None;
+            sub.style.used_mut().mask_image = None;
+            sub.style.used_mut().backdrop_blur = None;
+            if matches!(
+                sub.style.used().position,
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
+            ) {
+                sub.style.used_mut().position = Some(crate::style::computed::Position::Relative);
+            }
+            sub.style.used_mut().inset = Default::default();
+            sub.style.used_mut().z_index = None;
+            sub.style.used_mut().overflow_x = None;
+            sub.style.used_mut().overflow_y = None;
+            sub.style.used_mut().margin = Default::default();
+            sub.style.used_mut().padding = Default::default();
+            sub.style.used_mut().border_width = Default::default();
+            sub.style.used_mut().width = None;
+            sub.style.used_mut().height = None;
+            sub.style.used_mut().min_height = None;
+            sub.style.used_mut().max_height = None;
+            sub.style.used_mut().border_box = None;
+            // Хвост ограничен фактическим consumed завершённой фазы.
+            if span.is_none()
+                && let Some(rest) = rest_h
+            {
+                sub.style.used_mut().height = Some(Len::Px(rest));
+            }
+            let row_style = box_style(&merged, &sub.style, vcx);
+            let flow = (!lone_span)
+                .then(|| column_flow(&sub, &row_style, opts, want, col_w_px, None))
+                .flatten();
             if let Some(el) = flow {
                 d = d.child(el);
             } else {
-                // Блочный сегмент: рекурсия в общий рендер —
-                // он сам выберет укладку колонок; коробка
-                // (фон/рамки/поля) остаётся на хосте.
-                let mut sub = seg.clone();
-                sub.style.used_mut().background = None;
-                // Всё, что многоколоночник рисует и сдвигает КОРОБКОЙ,
-                // уже стоит на хосте `d` (`styled_div_with(e, ..)`);
-                // клон ряда повторял это на каждом ряду: контур и
-                // тень вокруг каждого ряда, двойная прозрачность,
-                // фильтр и трансформ, двойной сдвиг `relative`, а у
-                // `position: absolute` ряды выпадали из потока и
-                // ложились друг на друга (`multicol-span-all-
-                // fieldset-002/003`, `-button-002/003`). Обрезку
-                // переполнения делает хост: по css-multicol-1
-                // §overflow режет коробка многоколоночника, а не ряд.
-                // Ряд остаётся содержащим блоком (`relative`), как
-                // прежде.
-                sub.style.used_mut().gradient = None;
-                sub.style.used_mut().bg_image = None;
-                sub.style.used_mut().border_image = None;
-                sub.style.used_mut().shadows = Vec::new();
-                sub.style.used_mut().inset_shadows = Vec::new();
-                sub.style.used_mut().outline = None;
-                sub.style.used_mut().opacity = None;
-                sub.style.used_mut().transform = None;
-                sub.style.used_mut().filter = None;
-                sub.style.used_mut().mask_image = None;
-                sub.style.used_mut().backdrop_blur = None;
-                if matches!(
-                    sub.style.used().position,
-                    Some(crate::style::computed::Position::Absolute)
-                        | Some(crate::style::computed::Position::Fixed)
-                ) {
-                    sub.style.used_mut().position =
-                        Some(crate::style::computed::Position::Relative);
-                }
-                sub.style.used_mut().inset = Default::default();
-                sub.style.used_mut().z_index = None;
-                sub.style.used_mut().overflow_x = None;
-                sub.style.used_mut().overflow_y = None;
-                sub.style.used_mut().margin = Default::default();
-                sub.style.used_mut().padding = Default::default();
-                sub.style.used_mut().border_width = Default::default();
-                sub.style.used_mut().width = None;
-                sub.style.used_mut().height = None;
-                // Хвост после спаннера при `column-fill: auto` —
-                // остаток коробки (`rest_h`): укладка заполняет
-                // колонки подряд, а не балансирует. Только
-                // измеримым блокам: неизмеримый ряд уходит в
-                // запасную сетку, где заданная высота растянула бы
-                // дорожки `auto`.
-                if span.is_none()
-                    && body.iter().all(|n| {
-                        is_blank(n)
-                            || matches!(n, Node::Element(k)
-                                if !k.inline
-                                    && (crate::layout::fragment::flow::independent_copy(k)
-                                        || crate::layout::fragment::flow::empty_floats(k)
-                                        // TRANSITIONAL(F2-3): Допуск хвоста проверяется через shape_full без consumed внешнего ряда; удалить в P10 после типизированного результата NestedRow resume.
-                                        || shape_full(k, 4, ShapeCx::COLUMNS.observed(opts), vcx).is_some()))
-                    })
-                    && let Some(rest) = rest_h
-                {
-                    sub.style.used_mut().height = Some(Len::Px(rest));
-                }
                 d = d.child(div().children(opts.cx.contracts.build.blocks(
                     &[Node::Element(sub)],
                     &merged,

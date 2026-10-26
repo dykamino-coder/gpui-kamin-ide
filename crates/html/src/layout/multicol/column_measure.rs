@@ -32,6 +32,7 @@ impl ColumnStack {
         let copies = self.copies;
         let axis = self.axis;
         let row_phase = self.row_phase;
+        let row_extent = self.row_extent;
         let forced_h = self.forced_h;
         // Внутренние размеры многоколоночного контейнера. Спека их не
         // определяет (css-multicol-1 §3.4: «This specification does not
@@ -136,6 +137,7 @@ impl ColumnStack {
                     gap,
                     axis,
                     row_phase,
+                    row_extent,
                     fixed_height: fixed,
                     forced_h,
                     fill_shrink,
@@ -184,6 +186,7 @@ impl ColumnStack {
                     return (size(px(w), px(height)), first, last);
                 }
                 let (height, lines, plan, spans) = probe.balance(&heights);
+                let height = row_extent.block_size(height, &lines, &spans, &plan, count, &heights);
                 let (first, last) = baselines.as_mut().map_or((None, None), |baselines| {
                     baselines.measure(&probe, &heights, w, &lines, &plan, &spans, window, cx)
                 });

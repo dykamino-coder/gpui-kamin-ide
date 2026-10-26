@@ -142,6 +142,11 @@ pub(super) fn column_stack_div(
             opts.cx.deferred.paint.clone(),
         )
         .with_deferred(deferred)
+        .with_row_extent(if nest_rows.is_some() {
+            crate::layout::multicol::measure::RowExtent::Content
+        } else {
+            crate::layout::multicol::measure::RowExtent::ColumnHeight
+        })
         .with_oof(opts.cx.position.geometry.clone(), merged.wm())
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
