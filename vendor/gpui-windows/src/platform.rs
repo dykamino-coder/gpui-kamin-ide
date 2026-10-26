@@ -36,6 +36,9 @@ use windows::{
     core::*,
 };
 
+mod shutdown;
+pub(crate) use shutdown::WindowLifetime;
+
 use crate::*;
 use gpui::*;
 
@@ -57,6 +60,8 @@ pub struct WindowsPlatform {
     initial_windowing: RefCell<Option<WindowingRequest>>,
     /// Set to stop the current `VSyncProvider` thread, which runs while windowed.
     vsync_stop: RefCell<Option<Arc<AtomicBool>>>,
+    vsync_threads: RefCell<Vec<std::thread::JoinHandle<()>>>,
+    live_windows: Rc<Cell<usize>>,
     // The below members will never change throughout the entire lifecycle of the app.
     /// Created with `headless()`: never windowed, and without a real text system.
     headless: bool,
@@ -267,6 +272,8 @@ impl WindowsPlatform {
             raw_window_handles,
             initial_windowing: RefCell::new(None),
             vsync_stop: RefCell::new(None),
+            vsync_threads: RefCell::new(Vec::new()),
+            live_windows: Rc::new(Cell::new(0)),
             headless,
             icon,
             background_executor,
@@ -305,6 +312,7 @@ impl WindowsPlatform {
         WindowCreationInfo {
             icon: self.icon,
             executor: self.foreground_executor.clone(),
+            live_windows: self.live_windows.clone(),
             current_cursor: self.inner.state.current_cursor.get(),
             cursor_visible: self.inner.state.cursor_visible.clone(),
             drop_target_helper: self.drop_target_helper.clone().unwrap(),
@@ -446,7 +454,7 @@ impl WindowsPlatform {
         let text_system = Arc::downgrade(direct_write_text_system);
         let invalidate_devices = self.invalidate_devices.clone();
 
-        std::thread::Builder::new()
+        let thread = std::thread::Builder::new()
             .name("VSyncProvider".to_owned())
             .spawn(move || {
                 let vsync_provider = VSyncProvider::new();
@@ -492,6 +500,9 @@ impl WindowsPlatform {
                 }
             })
             .unwrap();
+        let mut threads = self.vsync_threads.borrow_mut();
+        threads.retain(|thread| !shutdown::thread_has_exited(thread));
+        threads.push(thread);
     }
 }
 
@@ -599,28 +610,20 @@ impl Platform for WindowsPlatform {
         let mut msg = MSG::default();
         unsafe {
             while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                // KaminIDE patch: окна gpui — toplevel; WS_CHILD-окно в нашем
-                // потоке — чужое (composition input window WebView2/CEF). Ему
-                // нельзя слать WM_GPUI_KEYDOWN: чужой wndproc вернёт 0 из
-                // DefWindowProc, `translate_accelerator` сочтёт клавишу
-                // обработанной и она не дойдёт ни до TranslateMessage, ни до
-                // DispatchMessage. Чужим окнам — обычная пара Translate+Dispatch.
-                let foreign_child = (get_window_long(msg.hwnd, GWL_STYLE) as u32
-                    & WS_CHILD.0)
-                    != 0;
-                if foreign_child || translate_accelerator(&msg).is_none() {
-                    _ = TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
-                }
+                shutdown::dispatch_message(&msg);
             }
         }
 
+        let mut did_shutdown = false;
         self.inner.with_callback(
             |callbacks| &callbacks.quit,
             |callback| {
-                callback();
+                did_shutdown = callback();
             },
         );
+        if did_shutdown {
+            self.finish_shutdown().log_err();
+        }
     }
 
     fn quit(&self) {
@@ -1393,6 +1396,7 @@ impl Drop for WindowsPlatform {
 pub(crate) struct WindowCreationInfo {
     pub(crate) icon: HICON,
     pub(crate) executor: ForegroundExecutor,
+    pub(crate) live_windows: Rc<Cell<usize>>,
     pub(crate) current_cursor: Option<HCURSOR>,
     pub(crate) cursor_visible: Arc<AtomicBool>,
     pub(crate) drop_target_helper: IDropTargetHelper,
