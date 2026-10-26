@@ -102,7 +102,10 @@ pub(crate) fn layer_route(
         && geometry_layer_ok
         && (fixed || orphan_abs)
         && (e.style.used().z_index.unwrap_or(0) >= 0 || below_icb)
-        && (!stays_positioned(&nodes[idx + 1..])
+        // Исходная геометрия записывается без paint: порядок соседних слоёв
+        // не меняет CSS containing block и базу процентов вынесенной коробки.
+        && (cx.position.geometry_record.is_some()
+            || !stays_positioned(&nodes[idx + 1..])
             || cx.position.state.icb_active() && !(fixed && paged));
     // В гибком контейнере и сетке слой содержащего блока закрыт: там
     // нет щупа статической позиции. Но при ОБЕИХ заданных осях щуп и не
