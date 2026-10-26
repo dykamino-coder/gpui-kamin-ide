@@ -22,7 +22,8 @@ pub(super) fn measure(
     opts.cx.deferred = Default::default();
     let opts = &opts;
     let mut e = e.clone();
-    e.children = crate::layout::fragment::flow::column_percentages(&e.children, style, None, opts);
+    e.children =
+        crate::layout::fragment::flow::column_percentages(&e.children, style, None, opts).into();
     let mut root = div()
         .children(opts.cx.contracts.build.blocks(&e.children, style, opts))
         .into_any_element();
@@ -31,7 +32,7 @@ pub(super) fn measure(
         probe::measure(child, parent, width, opts, window, cx)
     };
     if let Some(kids) = hoist_spanners(&e.children, style, opts, width, &mut measure) {
-        e.children = kids;
+        e.children = kids.into();
     }
     let p = column_plan(&e, style, opts);
     let mut body = 0f32;

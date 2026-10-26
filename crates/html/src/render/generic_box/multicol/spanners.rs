@@ -47,7 +47,8 @@ pub(super) fn deferred(
                 &style,
                 Some(width),
                 &opts,
-            );
+            )
+            .into();
             let plan = column_plan(&host, &style, &opts);
             let count = plan.used_count.unwrap_or(1).max(1);
             let column_width = ((width + plan.used_gap) / f32::from(count) - plan.used_gap).max(0.);
@@ -81,7 +82,7 @@ pub(super) fn deferred(
             if let Some(kids) =
                 hoist_spanners(&host.children, &style, &opts, column_width, &mut measure)
             {
-                host.children = kids;
+                host.children = kids.into();
             }
             let rows = row_plan(
                 &host,
