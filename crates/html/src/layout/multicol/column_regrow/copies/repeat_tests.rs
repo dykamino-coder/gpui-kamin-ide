@@ -57,7 +57,9 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source() {
     let capture = seen.clone();
     let regrow = child.regrow.as_mut().expect("measured table growth");
     regrow.dom.style.used_mut().height = Some(Len::Px(370.0));
-    regrow.build = Rc::new(move |dom, part, band| {
+    regrow.opts.viewport = (321.0, 123.0);
+    regrow.build = Rc::new(move |dom, part, band, opts| {
+        assert_eq!(opts.viewport, (321.0, 123.0));
         capture
             .borrow_mut()
             .push((dom.style.used().height, part, band));

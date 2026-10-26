@@ -4,16 +4,29 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::push::measured_tree;
 use crate::style::computed::{Display, Position};
 mod continuation;
+mod parallel;
+pub(crate) use parallel::{Parallel, flow_end};
 mod percentages;
 use continuation::continuation;
-pub(crate) use continuation::parallel_overflow;
 pub(crate) use percentages::PagePercentages;
 pub(crate) use percentages::{column_percentages, page_percentages};
 
-/// У копии нет отдельного плана фрагментов или параллельного потока.
+/// Normal и overflow потоки копии доступны общему рекордеру.
 /// TRANSITIONAL(F2-7): Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21.
 pub(crate) fn independent_copy(c: &Element) -> bool {
     regrow_copy(c) && measured_tree(c)
+}
+
+/// Корневой page float сохраняет native float layout, но его собственный
+/// поток допускается как blockified-копия. Вложенные float проверяются отдельно.
+pub(crate) fn page_copy(c: &Element, growth: bool) -> bool {
+    let mut root = c.clone();
+    root.style.used_mut().float = None;
+    if growth {
+        regrow_copy(&root)
+    } else {
+        independent_copy(&root)
+    }
 }
 
 /// Рост по записанным границам не требует продолжения внутри атомарной строки.
@@ -73,7 +86,6 @@ fn separate(e: &Element, vertical: bool) -> bool {
             || e.marks.host_trim_start
             || e.marks.host_trim_end
             || (!vertical && e.style.used().vertical_decl() == Some(true))
-            || e.style.used().float.is_some_and(|f| f != 0)
             || matches!(
                 e.style.used().position,
                 Some(Position::Absolute | Position::Fixed)
@@ -108,14 +120,14 @@ mod tests {
     }
 
     #[test]
-    fn independent_copy_requires_a_single_consumed_flow() {
+    fn definite_normal_size_does_not_exclude_overflow_continuations() {
         for body in [
             "<div style='height:50px'><div style='height:150px'></div></div>",
             "<div style='max-height:0'><div style='height:150px'></div></div>",
             "<div style='min-height:200px'><div style='height:160px'></div></div>",
         ] {
             let tree = crate::dom::parse(body, "");
-            assert!(!independent_copy(authored(&tree)), "{body}");
+            assert!(independent_copy(authored(&tree)), "{body}");
         }
         for body in [
             "<div style='display:flex'><div></div></div>",

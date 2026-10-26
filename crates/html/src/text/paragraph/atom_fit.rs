@@ -53,7 +53,11 @@ impl AtomFit {
     /// Atom geometry when the containing block is `avail` wide (`f32::INFINITY`
     /// for max-content, 0 for min-content).
     pub(super) fn fit(&mut self, avail: f32, window: &mut Window, cx: &mut App) -> Fitted {
-        if let Some((_, f)) = self.cache.iter().find(|(a, _)| (a - avail).abs() < 1e-3) {
+        if let Some((_, f)) = self
+            .cache
+            .iter()
+            .find(|(a, _)| (a - avail).abs() < crate::tolerance::TEXT_COORD_EPS)
+        {
             return f.clone();
         }
         let mut out = Vec::new();

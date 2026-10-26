@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 import re
 
 from computed_test_scopes import scopes as test_scopes
+from computed_receiver_types import ReceiverTypes
 
 PREFIX = 'crates/html/src/'
 DEFINITIONS = PREFIX + 'style/computed/fields.rs'
@@ -68,7 +69,9 @@ def access(words, index):
 def aggregate(sources):
     fields = definitions(sources[DEFINITIONS])
     counts = Counter()
-    for path, (words, test_file, ranges) in sorted(test_scopes(sources).items()):
+    streams = test_scopes(sources)
+    receivers = ReceiverTypes({path: words for path, (words, _, _) in streams.items()})
+    for path, (words, test_file, ranges) in sorted(streams.items()):
         owner = path.removeprefix(PREFIX).split('/')[0].removesuffix('.rs')
         scopes = []
         for index, word in enumerate(words):
@@ -88,7 +91,7 @@ def aggregate(sources):
                     counts[field, context, kind] += 1
             # Calls only: declarations/imports do not create new escapes.
             called = words[index + 1:index + 2] == ['('] and before in ('.', '::')
-            if called and (word in USED or (owner != 'style' and word in MUTABLE)):
+            if called and (word in USED or (owner != 'style' and word in MUTABLE and (word not in {'make_mut', 'get_mut', 'borrow_mut'} or receivers.may_escape(path, words, index)))):
                 counts['@' + word, context, 'escape'] += 1
             if owner != 'style' and words[index:index + 3] == ['&', 'mut', 'Computed']:
                 counts['@mut-Computed', context, 'escape'] += 1

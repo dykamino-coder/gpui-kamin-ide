@@ -11,7 +11,7 @@ from unittest.mock import patch
 from computed_access import DEFINITIONS, aggregate, growth
 from check_computed import check, decode, documents, owner_changes, transferred_growth
 from test_check_transitional import commit, git
-from computed_f2_rebaseline import APPROVED, CENSUS_BASE, approved_base
+from computed_f2_rebaseline import APPROVED, CENSUS_BASE, OVERFLOW_FLOAT_BASE, OVERFLOW_FLOAT_NON_STYLE, approved_base
 
 FIELDS = 'pub struct Computed {\n    pub width: f32,\n    pub height: f32,\n}\n'
 LAYOUT = 'crates/html/src/layout/block.rs'
@@ -92,6 +92,17 @@ class AggregateTests(unittest.TestCase):
 
 
 class GitRatchetTests(unittest.TestCase):
+    def test_overflow_float_non_style_review_is_exact_and_expires(self):
+        before = Counter({(f, o, a): old for f, o, a, old, new in OVERFLOW_FLOAT_NON_STYLE})
+        after = Counter({(f, o, a): new for f, o, a, old, new in OVERFLOW_FLOAT_NON_STYLE})
+        self.assertEqual(approved_base(before, OVERFLOW_FLOAT_BASE), after)
+        self.assertEqual(approved_base(before, 'later-main'), before)
+        self.assertEqual(len(OVERFLOW_FLOAT_NON_STYLE), 2)
+        for key in [*after, ('Computed.width', 'layout', 'write')]:
+            self.assertTrue(growth(after + Counter({key: 1}), approved_base(before, OVERFLOW_FLOAT_BASE), 'test'))
+        with self.assertRaises(ValueError):
+            approved_base(after, OVERFLOW_FLOAT_BASE)
+
     def test_f2_rebaseline_is_exact_bounded_and_expires_after_integration(self):
         before = Counter({(f, o, a): old for f, o, a, old, new in APPROVED})
         after = Counter({(f, o, a): new for f, o, a, old, new in APPROVED})

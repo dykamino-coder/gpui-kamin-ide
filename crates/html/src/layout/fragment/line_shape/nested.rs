@@ -139,6 +139,7 @@ pub(crate) fn nested_rows_shape(
                             avoid_after: edge_avoid(&k, true, vcx),
                             forced: sh.forced,
                             solid: sh.solid,
+                            float_min: 0.0,
                             avoid: Vec::new(),
                             keep: Vec::new(),
                             span: false,

@@ -5,6 +5,7 @@
 //! срезается на `text-box-trim`, пустая пересечённая коробка ставит точку перед собой.
 
 use super::geometry::ClampGeometry;
+use crate::tolerance::LINE_FIT_EPS;
 
 impl ClampGeometry {
     pub(crate) fn automatic_cut(
@@ -31,7 +32,7 @@ impl ClampGeometry {
             for b in blocks {
                 let monolithic = b.fixed && c2 < b.y1;
                 let too_tall = b.min_end > 0.0
-                    && b.y0 + b.min_end > c2 + 0.5
+                    && b.y0 + b.min_end > c2 + LINE_FIT_EPS
                     && !b.inside_fitting_fixed(blocks, c2);
                 if b.y0 < c2 && (monolithic || too_tall) {
                     c2 = b.y0;
@@ -62,7 +63,7 @@ impl ClampGeometry {
             // `max-height: 285px` при строке 100 и срезе 25 — три строки
             // (3·100 − 25 = 275), а не две (`line-clamp-auto-001/002`).
             for (y0, y1, _) in rows {
-                if *y0 < c2 && c2 < *y1 - trim_end - 0.5 {
+                if *y0 < c2 && c2 < *y1 - trim_end - LINE_FIT_EPS {
                     c2 = *y0;
                 }
             }
@@ -71,11 +72,11 @@ impl ClampGeometry {
             // когда строки идут дальше точки (иначе обрыва нет и срез уже
             // сделал хвост `blocks()`).
             if trim_end > 0.0
-                && (self.limit.is_some() || rows.iter().any(|r| r.1 > c2 + 0.5))
+                && (self.limit.is_some() || rows.iter().any(|r| r.1 > c2 + LINE_FIT_EPS))
                 && let Some(b) = rows
                     .iter()
                     .map(|r| r.1)
-                    .filter(|y1| *y1 - trim_end <= c2 + 0.5)
+                    .filter(|y1| *y1 - trim_end <= c2 + LINE_FIT_EPS)
                     .max_by(|a, b| a.total_cmp(b))
             {
                 c2 = c2.min(b - trim_end);
@@ -90,7 +91,7 @@ impl ClampGeometry {
             // не считалась бы, и срез уходил бы к верху её коробки.
             let holds = |y0: f32| {
                 rows.iter().any(|(r0, r1, countable)| {
-                    *countable && *r0 >= y0 - 0.5 && *r1 - trim_end <= c2 + 0.5
+                    *countable && *r0 >= y0 - LINE_FIT_EPS && *r1 - trim_end <= c2 + LINE_FIT_EPS
                 })
             };
             match crossed

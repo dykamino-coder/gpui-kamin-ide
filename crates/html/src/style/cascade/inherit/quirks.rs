@@ -24,9 +24,8 @@ pub(super) fn percentage_height(
         return;
     }
     use crate::style::computed::Display as D;
-    use crate::style::computed::Position as P;
     use crate::style::values::value::Len as L;
-    let out_of_flow = matches!(own.position, Some(P::Absolute) | Some(P::Fixed));
+    let out_of_flow = crate::style::flow::absolutely_positioned(own.position);
     let tabular = matches!(
         own.display,
         Some(D::Table | D::InlineTable | D::TableCell | D::TableRow | D::TableRowGroup)

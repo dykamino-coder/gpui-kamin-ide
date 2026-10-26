@@ -8,6 +8,7 @@ pub mod box_input;
 pub mod cascade;
 pub mod computed;
 pub mod css;
+pub(crate) mod flow;
 pub mod generated;
 pub mod select;
 pub mod values;

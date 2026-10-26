@@ -5,6 +5,7 @@
 //! переполнение остаётся видимым.
 
 use super::ClampEntry;
+use crate::tolerance::LINE_FIT_EPS;
 
 /// Block-axis spans of boxes with a definite height (incl. zero height).
 pub(super) fn fixed_blocks(entries: &[ClampEntry]) -> Vec<(f32, f32, (u32, u32))> {
@@ -36,7 +37,7 @@ pub(super) fn park_overflow(
     // The fixed box is an ancestor of the paragraph in box-tree order.
     let Some(end) = fixed
         .iter()
-        .filter(|(_, y1, (a, b))| (*a..*b).contains(&seq) && ey1 > y1 + 0.5)
+        .filter(|(_, y1, (a, b))| (*a..*b).contains(&seq) && ey1 > y1 + LINE_FIT_EPS)
         .map(|(_, y1, _)| *y1)
         .reduce(f32::min)
     else {

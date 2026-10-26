@@ -36,24 +36,25 @@ impl Recipe {
         axis: crate::layout::fragment::types::StackAxis,
         rows: Option<crate::layout::fragment::types::Rows>,
     ) -> Option<std::rc::Rc<Self>> {
-        let host = crate::layout::fragment::line_shape::group_inline_runs(host)
-            .unwrap_or_else(|| host.clone());
+        let prepared = super::measure::prepared(host, merged, opts, axis.is_vertical(), None);
         if axis.is_vertical() {
             laid::pending_vertical(
-                &host,
+                &prepared,
                 merged,
                 opts.cx.vcx(),
                 axis == crate::layout::fragment::types::StackAxis::VerticalRl,
             )?;
         } else {
-            laid::pending(&host, merged, opts.cx.vcx()).or_else(|| {
+            laid::pending(&prepared, merged, opts.cx.vcx()).or_else(|| {
                 (!opts.frag.in_stack_copy && rows.is_none_or(|r| r.cap))
-                    .then(|| super::measure::native_float::pending(&host, merged, opts.cx.vcx()))
+                    .then(|| {
+                        super::measure::native_float::pending(&prepared, merged, opts.cx.vcx())
+                    })
                     .flatten()
             })?;
         }
         Some(std::rc::Rc::new(Self {
-            host,
+            host: host.clone(),
             merged: merged.clone(),
             opts: opts.clone(),
             count,
@@ -154,17 +155,13 @@ impl Recipe {
 
     /// После определения ширины используется тот же CB, что в stack_plan.
     fn resolved_host(&self, width: f32) -> Element {
-        let mut host = self.host.clone();
-        if !self.axis.is_vertical() {
-            host.children = crate::layout::fragment::flow::column_percentages(
-                &host.children,
-                &self.merged,
-                Some(width),
-                &self.opts,
-            )
-            .into();
-        }
-        host
+        super::measure::prepared(
+            &self.host,
+            &self.merged,
+            &self.opts,
+            self.axis.is_vertical(),
+            Some(width),
+        )
     }
 
     /// Один и тот же проход до баланса в измерительном callback и prepaint.

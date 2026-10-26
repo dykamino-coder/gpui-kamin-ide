@@ -6,6 +6,7 @@
 
 use super::ClampEntry;
 use super::geometry::ClampGeometry;
+use crate::tolerance::LINE_FIT_EPS;
 
 impl ClampGeometry {
     pub(crate) fn counted_cut(
@@ -33,14 +34,14 @@ impl ClampGeometry {
             }
             marks.sort_by(|a, b| a.0.total_cmp(&b.0));
             match marks.get(limit as usize - 1).copied() {
-                Some((_, bottom, seq, k)) if cut.is_none_or(|c| bottom <= c + 0.5) => {
+                Some((_, bottom, seq, k)) if cut.is_none_or(|c| bottom <= c + LINE_FIT_EPS) => {
                     // Остаток СВОЕГО абзаца — знак нужен, потолок нет: абзац
                     // укоротит бюджет.
                     let own_rest = entries.iter().any(|e| {
                         e.line > 0.0
                             && e.seq == Some(seq)
                             && f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height)
-                                > bottom + 0.5
+                                > bottom + LINE_FIT_EPS
                     });
                     // Другое содержимое за точкой: чужой абзац, выходящий за
                     // неё (в том числе несчитаемый), или коробка, начатая после.
@@ -49,9 +50,9 @@ impl ClampGeometry {
                         let h = f32::from(e.bounds.size.height);
                         h > 0.0
                             && if e.line > 0.0 {
-                                e.seq != Some(seq) && y0 + h > bottom + 0.5
+                                e.seq != Some(seq) && y0 + h > bottom + LINE_FIT_EPS
                             } else {
-                                y0 >= bottom - 0.5
+                                y0 >= bottom - LINE_FIT_EPS
                             }
                     });
                     if own_rest || follows || entries.iter().any(|e| e.clamped.is_some()) {

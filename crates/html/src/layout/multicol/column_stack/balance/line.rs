@@ -68,7 +68,7 @@ impl ColumnStack {
             .iter()
             .enumerate()
             .map(|(i, k)| {
-                if k.monolith {
+                let normal = if k.monolith {
                     k.h + if i == 0 && k.par.group == 0 {
                         k.mt.max(0.0)
                     } else {
@@ -76,7 +76,8 @@ impl ColumnStack {
                     }
                 } else {
                     k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
-                }
+                };
+                normal.max(k.float_min)
             })
             .fold(0.0f32, f32::max);
         let clamp = |t: f32| cap.map_or(t, |c| t.min(c));
