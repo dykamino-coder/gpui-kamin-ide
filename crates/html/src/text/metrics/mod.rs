@@ -57,10 +57,6 @@ const PROBE_SIZE: f32 = 100.0;
 // спецификация для шрифта, в котором знака `水` нет (CSS Values §6.1.4).
 const FALLBACK: (f32, f32, f32, f32) = (0.5, 0.5, FALLBACK_NORMAL_LINE_HEIGHT, 1.0);
 
-/// Моноширинные семейства в порядке предпочтения: своё встроенное, затем то,
-/// что подставляет за `font-family: monospace` браузер на этой системе.
-const MONO_FAMILIES: [&str; 3] = ["JetBrains Mono", "Consolas", "Courier New"];
-
 mod normal_px;
 pub use normal_px::{content_px, normal_px};
 
@@ -134,10 +130,7 @@ pub fn vmetrics_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> (f32, f32, f
 /// пропорциональный шрифт, и всё, что держится на равной ширине знака,
 /// разъезжается. Поэтому семейство выбирается из НАЛИЧНЫХ.
 pub fn mono_family(vcx: ValueCx<'_>) -> &'static str {
-    MONO_FAMILIES
-        .into_iter()
-        .find(|name| font_installed(name, vcx))
-        .unwrap_or(MONO_FAMILIES[0])
+    vcx.doc.font_snapshot().mono_family(None)
 }
 
 /// Семейство за родовое `monospace` с учётом языка текста. Хром на Windows
@@ -148,14 +141,7 @@ pub fn mono_family(vcx: ValueCx<'_>) -> &'static str {
 /// (`hanging-punctuation-block-bound-001`: пять знаков в строке вместо
 /// четырёх).
 pub fn mono_family_for(lang: Option<&str>, vcx: ValueCx<'_>) -> &'static str {
-    let ja = lang.is_some_and(|l| {
-        let l = l.trim().to_ascii_lowercase();
-        l == "ja" || l.starts_with("ja-")
-    });
-    if ja && font_installed("MS Gothic", vcx) {
-        return "MS Gothic";
-    }
-    mono_family(vcx)
+    vcx.doc.font_snapshot().mono_family(lang)
 }
 
 /// Override this document's measurements and invalidate its horizontal cache.
@@ -187,22 +173,4 @@ pub fn ic_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> f32 {
 /// Высота строки при `line-height: normal` — доля кегля по метрикам шрифта.
 pub fn normal_line(family: &str, vcx: crate::document::state::ValueCx<'_>) -> f32 {
     crate::text::fonts::metric_overrides::normal_line(family, fractions(family, vcx).2, vcx)
-}
-
-/// Метрика шрифта в ДОЛЯХ КЕГЛЯ для `font-size-adjust` (css-fonts-5): 0 —
-/// `ex-height`, 1 — `cap-height`, 2 — `ch-width`, 3 — `ic-width`,
-/// 4 — `ic-height`.
-///
-/// Вертикального продвижения щуп не меряет. У полноширинного иероглифа оно
-/// равно горизонтальному, а без знака `水` обе метрики по css-values-4 §6.1.4
-/// считаются целым кеглем (`FALLBACK.3`).
-pub fn adjust_aspect(family: &str, metric: u8, vcx: ValueCx<'_>) -> Option<f32> {
-    let (ch, ex, _, ic) = fractions(family, vcx);
-    Some(match metric {
-        0 => ex,
-        1 => vmetrics_px(family, 1.0, vcx).2,
-        2 => ch,
-        3 | 4 => ic,
-        _ => return None,
-    })
 }

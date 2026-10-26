@@ -1513,7 +1513,7 @@ pub struct InheritedStyle {
     pub font_settings: Option<Vec<(String, u32)>>,
     /// Font-specific names stay unresolved until the used family is known
     /// (CSS Fonts 4 §font-variant-alternates-prop).
-    pub font_alternates: Option<crate::text::fonts::alternates::Alternates>,
+    pub font_alternates: Option<crate::style::computed::font_alternates::Alternates>,
     /// `font-synthesis-weight|style|small-caps: none` — подмена начертания
     /// запрещена (css-fonts-4 §6.5). Ложь = `none`, пусто = `auto`.
     pub font_synth: (Option<bool>, Option<bool>, Option<bool>),

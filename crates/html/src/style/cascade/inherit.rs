@@ -45,14 +45,14 @@ use paint::inherit_paint;
 // таблицы, абсолюты). Только отдельным проходом после каскада
 // (`style::zoom::resolve`), а не через самую горячую функцию крейта.
 pub fn inherit(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
-    let computed = super::compute::compute(parent, own, vcx);
+    let computed = super::compute::compute(parent, own, vcx).legacy;
     box_stage(parent, own, own, computed, None, true, vcx)
 }
 
 /// Document preparation propagates style; Filter Effects 1 §5 applies colors
 /// only when the renderer builds the element, never while removing wrappers.
 pub(crate) fn inherit_unpainted(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
-    let computed = super::compute::compute(parent, own, vcx);
+    let computed = super::compute::compute(parent, own, vcx).legacy;
     box_stage(parent, own, own, computed, None, false, vcx)
 }
 

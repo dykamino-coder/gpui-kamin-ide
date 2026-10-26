@@ -16,6 +16,7 @@
 //! второй сверх того перестроены глифы. Распаковку делает крейт `wuff`.
 
 mod face_rules;
+pub(crate) mod fallbacks;
 mod font_faces;
 mod loading;
 pub(crate) mod matching;
@@ -114,8 +115,6 @@ pub use crate::text::fonts::stretch::alias_stretch;
 use crate::text::fonts::stretch::stretch_desc;
 use crate::text::fonts::windows_names::ensure_windows_names;
 
-pub mod alternates;
-
 mod state;
 use crate::document::state::ValueCx;
 pub(crate) use state::FontFaces;
@@ -123,7 +122,7 @@ pub(crate) use state::FontFaces;
 /// Тег `cssw`: текст документа просит у gpui подбор веса грани по CSS
 /// (css-fonts-4 §5.2 шаг 4; `gpui-windows` `direct_write/css_weight.rs`).
 /// Шрифты интерфейса IDE его не несут и подбираются как раньше.
-pub const CSS_WEIGHT_TAG: (&str, u32) = ("cssw", 1);
+pub use crate::font_facts::CSS_WEIGHT_TAG;
 
 /// Те же возможности шрифта с тегом [`CSS_WEIGHT_TAG`] — для шрифтов замера,
 /// собранных мимо `used_features`.
@@ -145,12 +144,7 @@ pub fn install_loader(loader: impl Fn(Vec<u8>) -> Option<String> + 'static, vcx:
 
 /// Настоящее имя семейства за именем из разметки.
 pub fn alias(family: &str, vcx: ValueCx<'_>) -> Option<String> {
-    vcx.doc
-        .font_faces
-        .aliases
-        .borrow()
-        .get(&family.to_ascii_lowercase())
-        .cloned()
+    vcx.doc.font_snapshot().alias(family)
 }
 
 /// Возможности из дескриптора `font-feature-settings` правила `@font-face`.
@@ -159,16 +153,9 @@ pub fn face_features(
     request: &crate::style::computed::Computed,
     vcx: ValueCx<'_>,
 ) -> Vec<(String, u32)> {
-    if let Some(features) = matching::features(family, request, vcx) {
-        return features;
-    }
     vcx.doc
-        .font_faces
-        .features
-        .borrow()
-        .get(&family.to_ascii_lowercase())
-        .cloned()
-        .unwrap_or_default()
+        .font_snapshot()
+        .face_features(family, request.font_request(family, 0.0))
 }
 
 /// Алфавитная базовая линия семейства в долях em над нулём глифа: у
