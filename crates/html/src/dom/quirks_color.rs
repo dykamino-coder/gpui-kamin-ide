@@ -7,7 +7,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
-use crate::style::computed::BoxStyle;
+use crate::style::cascade::preparation::colors;
+use crate::style::computed::Computed;
 use crate::style::values::value::Color;
 
 pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
@@ -17,25 +18,19 @@ pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
     if root.tag != "html" {
         return;
     }
-    let parent = crate::style::cascade::materialize::box_style_unpainted(
-        &BoxStyle::default(),
-        &root.style,
-        vcx,
-    );
+    let parent = colors(&Computed::default(), &root.style, vcx);
     let Some(body) = root.children.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
     }) else {
         return;
     };
-    let color = crate::style::cascade::materialize::box_style_unpainted(&parent, &body.style, vcx)
-        .color
-        .unwrap_or(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
+    let color = colors(&parent, &body.style, vcx).color.unwrap_or(Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    });
     apply(nodes, color);
 }
 
@@ -62,11 +57,7 @@ mod tests {
     ) -> Option<Color> {
         nodes.iter().find_map(|node| {
             let Node::Element(e) = node else { return None };
-            let computed = crate::style::cascade::inherit::inherit_unpainted(
-                &BoxStyle::from(parent.clone()),
-                e.style.cascaded(),
-                vcx,
-            );
+            let computed = colors(parent, &e.style, vcx);
             if e.tag == tag {
                 computed.color
             } else {

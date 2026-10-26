@@ -277,10 +277,10 @@
   {
     "file": "crates/html/src/style/computed/box_style.rs",
     "task": "cascade-7b-R10",
-    "reason": "Контекст grid/flex/lanes и used values остаётся в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle."
+    "reason": "Used values остаются в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle."
   },
   {
-    "file": "crates/html/src/style/computed/box_style.rs",
+    "file": "crates/html/src/dom/shared_style.rs",
     "task": "cascade-7b-layout-made",
     "reason": "layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle."
   },

@@ -4,7 +4,7 @@ use super::rounded_rect_clip;
 use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
 use crate::paint::effects::mask::mask_geometry;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::AnyElement;
 
@@ -16,7 +16,7 @@ pub(crate) fn grouped_wrapper(
     mask: Option<crate::paint::effects::grouped_element::GroupMask>,
     clip_rect: Option<[Option<f32>; 4]>,
     clip_inset: Option<[Len; 4]>,
-    c: &Computed,
+    c: &BoxStyle,
     el: AnyElement,
     bare_round: Option<Len>,
     ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,

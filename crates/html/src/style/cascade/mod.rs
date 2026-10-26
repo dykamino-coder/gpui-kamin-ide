@@ -7,6 +7,7 @@ use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, res
 use crate::style::computed::{Computed, ParseResult, css_wide_keyword};
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 
+mod color_inputs;
 pub(crate) mod compute;
 mod compute_cx;
 pub mod defaults;
@@ -17,6 +18,7 @@ pub(crate) mod map;
 pub mod materialize;
 mod pass;
 mod phase;
+pub(crate) mod preparation;
 pub mod vars;
 use map::CascadeMap;
 

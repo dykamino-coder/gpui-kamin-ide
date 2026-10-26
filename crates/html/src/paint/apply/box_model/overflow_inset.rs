@@ -33,14 +33,14 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     let vertical_cb = matches!(
         c.position,
         Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Relative)
-    ) && c.cb_wm.vertical();
+    ) && c.context.cb_wm.vertical();
     let drop_left = over
         && set(c.inset.left)
         && set(c.inset.right)
         && if vertical_cb {
-            c.cb_wm.block_rl()
+            c.context.cb_wm.block_rl()
         } else {
-            c.cb_wm.rtl()
+            c.context.cb_wm.rtl()
         };
     // У относительного сдвига переопределение от размера не зависит (`over`
     // для него всегда истинно) — только у абсолюта нужен `height`.
@@ -48,7 +48,7 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         && (c.position == Some(Position::Relative) || set(c.height))
         && set(c.inset.top)
         && set(c.inset.bottom)
-        && c.cb_wm.rtl() != c.cb_wm.sideways_lr();
+        && c.context.cb_wm.rtl() != c.context.cb_wm.sideways_lr();
     for (val, f) in [
         (if drop_top { None } else { c.inset.top }, 0u8),
         (c.inset.right, 1),
