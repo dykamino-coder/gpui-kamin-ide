@@ -97,7 +97,7 @@ class ReceiverTests(unittest.TestCase):
                 with self.subTest(payload=payload): self.assertEqual(expected, escapes(source))
             self.assertEqual(0, escapes('use foreign_ui::{PaintCtx as Ctx}; struct State(RefCell<Ctx>); impl State { fn f(&self) { self.0.borrow_mut(); } }'))
             self.assertEqual(1, escapes('mod foreign_ui {} fn f(x: RefCell<foreign_ui::PaintCtx>) { x.borrow_mut(); }'))
-        # The real metadata graph establishes gpui, rather than a special type list.
+        # The checked-in Cargo graph establishes gpui, rather than a type list.
         from computed_cargo_proofs import external_crates
         self.assertIn('gpui', external_crates())
         self.assertEqual(0, escapes('use gpui::PaintCtx; fn f(x: RefCell<PaintCtx>) { x.borrow_mut(); }'))
