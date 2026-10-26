@@ -31,11 +31,11 @@ pub(super) fn peak_memory() -> Result<u64, Box<dyn std::error::Error>> {
 
 pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Error>> {
     use windows::Win32::{
-        Foundation::HWND,
+        Foundation::{HWND, RECT},
         UI::WindowsAndMessaging::{
-            GWL_EXSTYLE, GetWindowLongPtrW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED,
-            SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-            WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+            GWL_EXSTYLE, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect, SM_XVIRTUALSCREEN,
+            SW_HIDE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+            SetWindowLongPtrW, SetWindowPos, ShowWindow, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
         },
     };
     let raw = HasWindowHandle::window_handle(window)
@@ -47,6 +47,9 @@ pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Erro
     // Живой HWND этого окна; размеры и вид окна сохраняются при переносе.
     unsafe {
         let _ = ShowWindow(hwnd, SW_HIDE);
+        let mut rect = RECT::default();
+        GetWindowRect(hwnd, &mut rect)?;
+        let x = GetSystemMetrics(SM_XVIRTUALSCREEN) - (rect.right - rect.left) - 64;
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         SetWindowLongPtrW(
             hwnd,
@@ -56,7 +59,7 @@ pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Erro
         SetWindowPos(
             hwnd,
             None,
-            -4000,
+            x,
             60,
             0,
             0,
