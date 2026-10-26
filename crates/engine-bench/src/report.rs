@@ -48,7 +48,7 @@ pub(super) fn print(report: &Value, json_output: bool) -> Result<(), serde_json:
             "engine_bench: {} ({}x{}, DPR 1)",
             report["input"], report["viewport_css_px"][0], report["viewport_css_px"][1]
         );
-        println!("Intervals may overlap; see docs/engine-bench.md. All times: ms.");
+        println!("Phases partition each sample total; medians need not add up. All times: ms.");
         if let Some(modes) = report["modes"].as_object() {
             for (name, mode) in modes {
                 println!("{name:>5}  {:>28} {:>12} {:>12}", "scope", "median", "p90");

@@ -1,10 +1,9 @@
 //! Один замер на один завершённый кадр; ошибки и лишние кадры не скрываются.
 
 use super::{
+    accounting::{self, Input, Measured},
     args::{Args, Mode},
-    host,
-    report::{self, Sample, ms},
-    resources,
+    host, report, resources,
     view::{Phases, View},
 };
 use gpui::{AsyncApp, WindowHandle, frame_capture, frame_perf};
@@ -37,8 +36,8 @@ impl Counters {
             readback: frame_capture::readback_time(),
         }
     }
-    fn delta_ms(current: u32, previous: u32) -> f64 {
-        f64::from(current.wrapping_sub(previous)) / 1000.
+    fn delta(current: u32, previous: u32) -> Duration {
+        Duration::from_micros(u64::from(current.wrapping_sub(previous)))
     }
 }
 
@@ -81,7 +80,7 @@ async fn sample(
     fonts: &FontContext,
     args: &Args,
     cold: bool,
-) -> Result<(Sample, frame_capture::CapturedFrame)> {
+) -> Result<(Measured, frame_capture::CapturedFrame)> {
     let (started, before, seq, resources_time, build_time, timings, phases) =
         window.update(cx, |view, window, cx| -> Result<_> {
             let started = Instant::now();
@@ -142,34 +141,22 @@ async fn sample(
     if let Some(limit) = degradation {
         return Err(format!("degraded frame: {limit}").into());
     }
-    let phase = phases.borrow();
-    let out = Sample::from([
-        ("host_resources", resources_time.map(ms)),
-        ("parse", timings.map(|t| ms(t.parse))),
-        ("style", timings.map(|t| ms(t.style))),
-        ("document_build_total", build_time.map(ms)),
-        ("build_elements", Some(ms(phase.build))),
-        ("layout_request", Some(ms(phase.request_layout))),
-        (
-            "layout",
-            Some(Counters::delta_ms(after.layout, before.layout)),
-        ),
-        ("prepaint", Some(ms(phase.prepaint))),
-        ("paint", Some(ms(phase.paint))),
-        (
-            "cpu_draw_total",
-            Some(Counters::delta_ms(after.draw, before.draw)),
-        ),
-        (
-            "raster_gpu_readback",
-            Some(Counters::delta_ms(after.present, before.present)),
-        ),
-        (
-            "gpu_readback",
-            Some(ms(after.readback.saturating_sub(before.readback))),
-        ),
-        ("first_frame_total", Some(ms(total))),
-    ]);
+    let out = accounting::partition(
+        Input {
+            resources: resources_time,
+            document: build_time,
+            timings,
+            layout: Counters::delta(after.layout, before.layout),
+            draw: Counters::delta(after.draw, before.draw),
+            present: Counters::delta(after.present, before.present),
+            readback: after
+                .readback
+                .checked_sub(before.readback)
+                .ok_or("readback counter regressed")?,
+            total,
+        },
+        &phases.borrow(),
+    )?;
     Ok((out, frame))
 }
 
@@ -196,6 +183,7 @@ pub(super) async fn run(
             continue;
         }
         let mut samples = Vec::with_capacity(args.runs);
+        let mut diagnostics = Vec::with_capacity(args.runs);
         for _ in 0..args.runs {
             let (sample, frame) = sample(cx, window, fonts, args, cold).await?;
             let hash = fingerprint(&frame);
@@ -208,18 +196,21 @@ pub(super) async fn run(
             if let Some(path) = snapshot_pending.take() {
                 save(&frame, path)?;
             }
-            samples.push(sample);
+            samples.push(sample.phases);
+            diagnostics.push(sample.diagnostics);
         }
-        modes.insert(name.into(), report::mode(&samples));
+        let mut mode = report::mode(&samples);
+        mode["diagnostic_scopes"] = report::mode(&diagnostics);
+        modes.insert(name.into(), mode);
     }
-    let report = json!({"schema_version": 1, "input": args.path, "viewport_css_px": args.viewport,
+    let report = json!({"schema_version": 2, "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
         "runs_per_mode": args.runs, "modes": modes, "first_frame_bgr_fnv1a64": first_hash,
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
-        "intervals_overlap": true});
+        "intervals_overlap": false, "diagnostic_intervals_overlap": true});
     report::print(&report, args.json)?;
     Ok(())
 }

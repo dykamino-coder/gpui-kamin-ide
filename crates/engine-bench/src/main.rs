@@ -7,6 +7,8 @@
     reason = "CLI owns environment configuration and machine-readable process output"
 )]
 
+#[cfg(windows)]
+mod accounting;
 mod args;
 #[cfg(windows)]
 mod host;

@@ -36,26 +36,35 @@ or more than one frame crosses the sample boundary.
 
 ## What is measured
 
-All durations are wall time in milliseconds on the calling thread, including
-any work or waiting within the stated boundary. These are **nested scopes, not
-an additive breakdown**. JSON sets `intervals_overlap: true` and retains every
-raw sample. Do not derive an unexplained remainder by subtracting these scopes.
+All durations are wall time in milliseconds, including work or waiting within
+that boundary. Schema version 2 reports a **non-overlapping partition of each
+sample's total** (`intervals_overlap: false`). Known child durations are subtracted
+before conversion to floating-point milliseconds. All subtraction uses checked
+integer `Duration` arithmetic; inconsistent nesting fails the entire invocation,
+without clamping negative values or dropping samples. Individual medians or p90s
+need not sum to the total's median or p90.
 
-| JSON field | Boundary and interpretation |
+| JSON phase | Boundary and interpretation |
 | --- | --- |
 | `host_resources` | Read/decode HTML, host resource discovery, linked CSS and imports, URL rebasing and optional serialization. Includes a separate host HTML parse; it is not the engine's `parse`. Cold only. |
 | `parse` | Existing `Document::build` HTML/XML admission into the engine DOM. Cold only. |
 | `style` | Existing `dom::convert`: stylesheet processing, cascade/computed values and normalized styled box-tree construction. This includes more than selector matching. Cold only. |
-| `document_build_total` | Complete `Document::build`, including parse/style and preparation of viewport/resources. Excludes host loading and replacement/drop of the previous document. Cold only. |
-| `build_elements` | Root `Render::render`, including `Document::render` and GPUI element-tree construction. Engine layout preparation can occur here. |
-| `layout_request` | Root element's `request_layout`, including descendant requests and their work. |
-| `layout` | Delta of the existing GPUI `TAFFY_US` counter: calls to Taffy layout computation/geometry completion, including text measurement. Not all engine layout work lives here; nested calls may overlap the other scopes. Resolution is one microsecond per counter increment. |
-| `prepaint` | Root element's `prepaint`, including descendants. Work deferred outside that root is covered by `cpu_draw_total`. |
-| `paint` | Root element's `paint`: CPU scene-command generation, including descendants. Deferred draws outside the root are covered by `cpu_draw_total`. This is not GPU raster time. |
-| `cpu_draw_total` | Existing GPUI `DRAW_US` delta for the complete window draw, including lifecycle overhead and deferred work. One-microsecond counter resolution. |
-| `raster_gpu_readback` | Existing GPUI `PRESENT_US` delta: complete `window.present`, including GPU submission/raster, synchronous readback and platform present/commit. This is a combined wall-time scope, **not an isolated GPU timestamp measurement**. |
-| `gpu_readback` | Existing capture counter delta for texture copy/map and CPU row copy; nested inside `raster_gpu_readback`. |
-| `first_frame_total` | From the start of host loading (cold) or unchanged-frame request (warm), through a completed first GPU readback and return to the async task. Includes frame scheduling, previous-document disposal and orchestration. Excludes application/window startup, statistics, fingerprinting and PNG encoding. |
+| `document_other` | Complete `Document::build` minus parse and style: key/base URL handling, resource/font preparation and viewport preparation. Cold only. |
+| `build_elements` | Root `Render::render`, including `Document::render` and GPUI element-tree construction, minus nested Taffy counter time. Engine layout preparation can occur here. |
+| `layout_request` | Root element's `request_layout`, including descendants, minus nested Taffy counter time. |
+| `layout` | Existing GPUI `TAFFY_US` delta: Taffy computation/geometry completion, including text measurement. Counter snapshots around each root callback remove this time from its parent. Not all engine layout work lives here: copied-subtree probes and custom geometry remain in their calling lifecycle phase. Resolution is one microsecond per counter increment. |
+| `prepaint` | Root element's `prepaint`, including descendants, minus nested Taffy counter time. |
+| `paint` | Root element's `paint`: CPU scene-command generation, including descendants, minus nested Taffy counter time. This is not GPU raster time. |
+| `raster_gpu_readback` | Existing GPUI `PRESENT_US` delta: complete `window.present`, including GPU submission/raster, synchronous readback and platform present/commit. A combined wall-time scope, **not an isolated GPU timestamp measurement**. |
+| `pipeline_other` | Total minus the disjoint phases above: frame scheduling, previous-document disposal, GPUI work outside root callbacks (including deferred work), orchestration and counter quantization. Kept explicitly so time outside measured boundaries is never silently lost or attributed to an engine algorithm. |
+| `first_frame_total` | Budget total, not an additional phase: from host loading (cold) or unchanged-frame request (warm), through completed first GPU readback and return to the async task. Excludes application/window startup, statistics, fingerprinting and PNG encoding. |
+
+`modes.<mode>.diagnostic_scopes` retains inclusive `document_build_total`,
+`cpu_draw_total`, `gpu_readback` and the four root callback intervals, with raw
+samples and statistics. These diagnostics **do overlap**
+(`diagnostic_intervals_overlap: true`) and must not be added to the phase budget.
+Readback is contained in `raster_gpu_readback`; draw contains the root lifecycle.
+No GPU timestamp or pure style/layout algorithm time is inferred from these labels.
 
 The root adapter forwards the same element layout ID and introduces no layout
 node. The only engine hooks are `Instant` measurements at existing parse/style
@@ -73,7 +82,7 @@ process image/font caches, allocator and GPU remain shared across samples.
 In `both` mode, warm samples redraw the last cold document with no mutations.
 Warm-only mode prepares that document with one unreported cold frame first.
 An explicit redraw executes the lifecycle; it does not measure an idle window.
-Parse/style/build scopes are `null` for warm samples, rather than fictitious zeroes.
+Host resource, parse/style and document scopes are `null` for warm samples, rather than fictitious zeroes.
 
 Samples are not trimmed, rescaled or filtered. The median averages the two
 middle values for even sample counts. p90 uses nearest rank `ceil(0.9*N)`.
@@ -113,14 +122,33 @@ have measurable overhead. The total also includes refresh scheduling and may
 track display cadence. There are no shader GPU timestamps or subphase claims
 for otherwise inseparable scopes. Reuse the same fonts, viewport and build.
 
-For repeatability, run several fresh processes on an idle machine and compare
-each mode/scope's medians using `(max - min) / min`. Report small intervals near
-timer resolution and unstable scopes explicitly; never discard slow samples
-to satisfy a threshold. Save raw JSON, build revision, environment and optional
-first-frame PNG outside the checkout. Compare that PNG against the same document
-rendered by `wptrun` at the same viewport, scale and font configuration, using
-GPU first-frame capture and exact RGB equality. Use one fresh process per
-fixture in each host so their prior document/cache histories match.
+For stability acceptance, use **N=100 samples per mode and at least three fresh
+processes per fixture** on a quiet machine, with other agents/builds stopped.
+Compare each mode/phase's process medians using `(max - min) / min`; the target is
+below 10%. Report small intervals near timer resolution explicitly. Never discard
+slow samples to satisfy a threshold. A contended-machine series is an example
+under load, not stability acceptance; repeat it in a quiet window before review.
+
+Record CPU load **beside each executable invocation**, together with its timestamp,
+build revision, power plan and raw JSON. For example, collect the OS CPU estimate
+immediately before and after each fresh process, outside its timed intervals:
+
+```powershell
+$cpuBefore = Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average
+$startedUtc = [DateTime]::UtcNow.ToString("o")
+& target/bench/release/engine_bench.exe C:/pages/heavy.html --runs 100 --json > C:/results/run-1.json
+$benchExit = $LASTEXITCODE
+$cpuAfter = Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average
+@{ started_utc = $startedUtc; cpu_before_percent = $cpuBefore.Average;
+   cpu_after_percent = $cpuAfter.Average; exit_code = $benchExit } |
+    ConvertTo-Json > C:/results/run-1.environment.json
+```
+
+These CPU readings are OS load estimates near the run, not per-phase utilization.
+Save evidence outside the checkout. Compare the first-frame PNG against the same
+document rendered by `wptrun` at the same viewport, scale and fonts, using GPU
+first-frame capture and **exact RGB equality**. Use one fresh process per fixture
+in each host so their prior document/cache histories match.
 
 ## Relation to existing profiler designs
 
@@ -139,8 +167,9 @@ map `ParseHTML`/`ParseAuthorStyleSheet`, `UpdateLayoutTree`/`Layout`, and
 `PrePaint`/`Paint`/`RasterTask` into broader reporting groups. Its
 [main-thread task processor](https://github.com/GoogleChrome/lighthouse/blob/main/core/lib/tracehouse/main-thread-tasks.js)
 reconstructs nesting and computes self time by subtracting child durations.
-This harness reports inclusive scopes directly; it does not reconstruct a trace
-or compute exclusive self times. Category labels do not imply pure GPU time.
+This harness subtracts only children with known boundaries (document parse/style
+and callback-local Taffy counters), retaining inclusive scopes separately. It does
+not reconstruct a general tracing timeline. Category labels do not imply pure GPU time.
 
 Gecko places profiler labels/markers at style, layout and paint boundaries, for
 example `Styles` in `layout/style/RestyleManager.cpp`, `LAYOUT_StyleComputation`
