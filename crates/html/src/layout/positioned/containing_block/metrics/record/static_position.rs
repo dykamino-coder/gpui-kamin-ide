@@ -4,7 +4,7 @@ use crate::layout::positioned::containing_block::{LineBoxSlot, Spot, SpotCell, p
 use gpui::{Bounds, LayoutSpace, Pixels, Point, Window, point, px};
 
 pub(super) enum StaticPosition {
-    Probe(SpotCell, Option<LineBoxSlot>),
+    Probe(SpotCell, Option<LineBoxSlot>, Point<Pixels>),
     Inline {
         line: LineBoxSlot,
         rtl: bool,
@@ -17,7 +17,7 @@ type Resolved = (Bounds<Pixels>, Option<Bounds<Pixels>>, Option<LayoutSpace>);
 impl StaticPosition {
     pub(super) fn resolve(&self, bounds: Bounds<Pixels>, window: &Window) -> Option<Resolved> {
         match self {
-            Self::Probe(cell, line) => {
+            Self::Probe(cell, line, margin) => {
                 let spot = cell.get();
                 if spot.fixed_axes == (true, true) {
                     return Some((bounds, None, None));
@@ -31,6 +31,7 @@ impl StaticPosition {
                 if spot.rtl && !spot.vertical && !spot.rotated && !spot.fixed_axes.0 {
                     spot.block_strut = true;
                 }
+                spot.free_margin = (f32::from(margin.x), f32::from(margin.y));
                 Some((placed_bounds(bounds, spot), spot.hole, Some(space)))
             }
             Self::Inline { line, rtl, margin } => {

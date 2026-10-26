@@ -1,11 +1,12 @@
 //! Адаптер LayoutId → исходная геометрия CB/OOF; prepaint и visual offset не читаются.
 
 use super::{Dependencies, PositionedMetrics, Snapshot};
+use crate::document::state::ValueCx;
 use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::fragment::geometry::Node;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::containing_block::SpotCell;
-use crate::style::computed::BoxStyle;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px, size};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -39,10 +40,20 @@ impl Entry {
 }
 
 impl Recorder {
-    pub(crate) fn spot(&self, id: u64, spot: &SpotCell, line: Option<super::super::LineBoxSlot>) {
-        self.spots
-            .borrow_mut()
-            .insert(id, StaticPosition::Probe(spot.clone(), line));
+    pub(crate) fn spot(
+        &self,
+        id: u64,
+        spot: &SpotCell,
+        line: Option<super::super::LineBoxSlot>,
+        style: &Computed,
+        vcx: ValueCx<'_>,
+    ) {
+        let now = spot.get();
+        let rtl = now.rtl && !now.vertical && !now.rotated;
+        self.spots.borrow_mut().insert(
+            id,
+            StaticPosition::Probe(spot.clone(), line, margin_offset(style, rtl, vcx)),
+        );
     }
 
     pub(crate) fn inline_spot(
@@ -50,8 +61,10 @@ impl Recorder {
         id: u64,
         line: super::super::LineBoxSlot,
         rtl: bool,
-        margin: gpui::Point<Pixels>,
+        style: &Computed,
+        vcx: ValueCx<'_>,
     ) {
+        let margin = margin_offset(style, rtl, vcx);
         self.spots
             .borrow_mut()
             .insert(id, StaticPosition::Inline { line, rtl, margin });
@@ -104,6 +117,20 @@ impl Recorder {
         }
         snapshot
     }
+}
+
+fn margin_offset(style: &Computed, rtl: bool, vcx: ValueCx<'_>) -> gpui::Point<Pixels> {
+    use crate::layout::block::struts::margin_px;
+    // CSS2 §10.3.7: static right задаёт правый margin edge, не левый border edge.
+    let x = if rtl {
+        style.margin.right
+    } else {
+        style.margin.left
+    };
+    point(
+        px(margin_px(x, style, vcx).unwrap_or(0.) * if rtl { -1. } else { 1. }),
+        px(margin_px(style.margin.top, style, vcx).unwrap_or(0.)),
+    )
 }
 
 /// Декоратор исходного CSS-бокса сохраняет его LayoutId, не добавляя коробок solver.
