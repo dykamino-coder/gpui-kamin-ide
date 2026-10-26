@@ -114,6 +114,12 @@ network resources and nested documents are unsupported. Missing discovered
 resources fail the run. Resources referenced only by unsupported engine features
 may still be ignored by the engine. JavaScript is not executed.
 
+The host uses a white viewport, grayscale text, Times New Roman at 16px and
+normal line-height 1.31 as inherited defaults; document CSS can override text
+styles. It freezes scrollbar interaction/animation for deterministic static
+capture, matching wptrun's static rendering policy. Scrollbar painting remains;
+interactive hitboxes, hover/fade updates and input handling are not benchmarked.
+
 This is an offscreen **rendered window**, not a headless browser navigation.
 It uses Windows graphics APIs and the currently selected adapter. On the review
 machine that is an Intel iGPU: JSON includes adapter/driver data when GPUI can
