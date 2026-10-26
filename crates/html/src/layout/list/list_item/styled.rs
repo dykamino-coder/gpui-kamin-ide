@@ -64,7 +64,7 @@ pub(crate) async fn render_with_style(
         li.style.used().marker_layer.as_deref(),
     );
     let marker = inline::transform_case(&marker, &mark_style);
-    let marker_opts = super::outside_flow::options(opts);
+    let marker_opts = super::outside_flow::options(opts, merged.wm().used_direction().rtl());
     // Маркер и распорка пустого пункта используют CSS-метрики строки.
     // Прямой текстовый лист GPUI наследует line-height интерфейса, тогда
     // как `normal` первой строки зависит от шрифта пункта (CSS2 §10.8.1).
