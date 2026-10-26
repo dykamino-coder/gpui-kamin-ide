@@ -57,10 +57,8 @@ pub(crate) async fn dispatch_element(
         {
             list_item::render_with_style(stk, e, inherited, &merged, opts).await
         }
-        // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4): слитый стиль
-        // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
-        // блочная картинка под `body { image-orientation: none }` всё равно
-        // разворачивалась по метке EXIF.
+        // `image-orientation` наследуется (css-images-3 §5.4): замещаемая коробка
+        // получает его из слитого стиля, включая запрет поворота по EXIF.
         "canvas" if merged.context.parent_grid != 0 => {
             match crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx) {
                 Some(canvas) => canvas,
