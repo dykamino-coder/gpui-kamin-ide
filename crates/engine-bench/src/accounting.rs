@@ -40,11 +40,11 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         _ => return Err("document timing and parse/style availability disagree"),
     };
     intervals.insert("document_other", document_other);
-    let mut nested_layout = Duration::ZERO;
-    let mut diagnostics = Sample::from([
+    let diagnostics = Sample::from([
         ("document_build_total", input.document.map(ms)),
         ("cpu_draw_total", Some(ms(input.draw))),
         ("gpu_readback", Some(ms(input.readback))),
+        ("taffy_inclusive", Some(ms(input.layout))),
     ]);
     for (name, scope) in [
         ("build_elements", &phases.build),
@@ -52,14 +52,17 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         ("prepaint", &phases.prepaint),
         ("paint", &phases.paint),
     ] {
-        intervals.insert(name, Some(subtract(scope.wall, scope.layout)?));
-        nested_layout += scope.layout;
-        diagnostics.insert(name, Some(ms(scope.wall)));
+        intervals.insert(name, Some(*scope));
     }
-    // Счётчик вне корневых callback также относится к layout, но не вычитается дважды.
-    subtract(input.layout, nested_layout)?;
     subtract(input.present, input.readback)?;
-    intervals.insert("layout", Some(input.layout));
+    intervals.insert(
+        "layout",
+        Some(
+            phases
+                .layout
+                .ok_or("missing root request/prepaint boundary")?,
+        ),
+    );
     intervals.insert("raster_gpu_readback", Some(input.present));
     let measured: Duration = intervals.values().flatten().copied().sum();
     intervals.insert("pipeline_other", Some(subtract(input.total, measured)?));
@@ -73,7 +76,6 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::Scope;
 
     fn us(n: u64) -> Duration {
         Duration::from_micros(n)
@@ -87,7 +89,7 @@ mod tests {
                 parse: us(3),
                 style: us(5),
             }),
-            layout: us(8),
+            layout: us(100),
             draw: us(30),
             present: us(10),
             readback: us(4),
@@ -96,14 +98,12 @@ mod tests {
     }
 
     #[test]
-    fn nested_layout_and_document_scopes_partition_the_complete_frame() {
+    fn nested_layout_is_diagnostic_and_document_scopes_partition_the_complete_frame() {
         let mut phases = Phases::default();
-        phases.prepaint = Scope {
-            wall: us(20),
-            layout: us(6),
-        };
+        phases.layout = Some(us(6));
+        phases.prepaint = us(20);
         let result = partition(input(), &phases).expect("valid nesting");
-        assert_eq!(result.phases["prepaint"], Some(0.014));
+        assert_eq!(result.phases["prepaint"], Some(0.020));
         assert_eq!(result.phases["document_other"], Some(0.002));
         let sum: f64 = result
             .phases
@@ -112,29 +112,21 @@ mod tests {
             .filter_map(|(_, v)| *v)
             .sum();
         assert!((sum - result.phases["first_frame_total"].expect("total")).abs() < 1e-15);
-        assert_eq!(result.diagnostics["prepaint"], Some(0.020));
+        assert_eq!(result.diagnostics["taffy_inclusive"], Some(0.100));
         assert_eq!(result.diagnostics["gpu_readback"], Some(0.004));
     }
 
     #[test]
     fn inconsistent_nesting_is_an_error_instead_of_clamping_or_dropping_samples() {
+        assert!(partition(input(), &Phases::default()).is_err());
         let mut phases = Phases::default();
-        phases.paint = Scope {
-            wall: us(3),
-            layout: us(4),
-        };
-        assert!(partition(input(), &phases).is_err());
-        phases.paint = Scope {
-            wall: us(12),
-            layout: us(9),
-        };
-        assert!(partition(input(), &phases).is_err());
+        phases.layout = Some(us(6));
         let mut short = input();
         short.total = us(1);
-        assert!(partition(short, &Phases::default()).is_err());
+        assert!(partition(short, &phases).is_err());
         let mut document = input();
         document.document = Some(us(4));
-        assert!(partition(document, &Phases::default()).is_err());
+        assert!(partition(document, &phases).is_err());
     }
 
     #[test]
@@ -143,7 +135,9 @@ mod tests {
         input.resources = None;
         input.document = None;
         input.timings = None;
-        let result = partition(input, &Phases::default()).expect("warm frame");
+        let mut phases = Phases::default();
+        phases.layout = Some(us(6));
+        let result = partition(input, &phases).expect("warm frame");
         assert_eq!(result.phases["parse"], None);
         assert_eq!(result.phases["document_other"], None);
     }

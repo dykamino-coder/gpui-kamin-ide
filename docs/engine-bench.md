@@ -38,8 +38,8 @@ or more than one frame crosses the sample boundary.
 
 All durations are wall time in milliseconds, including work or waiting within
 that boundary. Schema version 2 reports a **non-overlapping partition of each
-sample's total** (`intervals_overlap: false`). Known child durations are subtracted
-before conversion to floating-point milliseconds. All subtraction uses checked
+sample's total** (`intervals_overlap: false`). The parse/style children are subtracted from
+document construction before conversion to floating-point milliseconds. All subtraction uses checked
 integer `Duration` arithmetic; inconsistent nesting fails the entire invocation,
 without clamping negative values or dropping samples. Individual medians or p90s
 need not sum to the total's median or p90.
@@ -50,18 +50,21 @@ need not sum to the total's median or p90.
 | `parse` | Existing `Document::build` HTML/XML admission into the engine DOM. Cold only. |
 | `style` | Existing `dom::convert`: stylesheet processing, cascade/computed values and normalized styled box-tree construction. This includes more than selector matching. Cold only. |
 | `document_other` | Complete `Document::build` minus parse and style: key/base URL handling, resource/font preparation and viewport preparation. Cold only. |
-| `build_elements` | Root `Render::render`, including `Document::render` and GPUI element-tree construction, minus nested Taffy counter time. Engine layout preparation can occur here. |
-| `layout_request` | Root element's `request_layout`, including descendants, minus nested Taffy counter time. |
-| `layout` | Existing GPUI `TAFFY_US` delta: Taffy computation/geometry completion, including text measurement. Counter snapshots around each root callback remove this time from its parent. Not all engine layout work lives here: copied-subtree probes and custom geometry remain in their calling lifecycle phase. Resolution is one microsecond per counter increment. |
-| `prepaint` | Root element's `prepaint`, including descendants, minus nested Taffy counter time. |
-| `paint` | Root element's `paint`: CPU scene-command generation, including descendants, minus nested Taffy counter time. This is not GPU raster time. |
+| `build_elements` | Root `Render::render`, including `Document::render` and GPUI element-tree construction. Engine layout preparation can occur here. |
+| `layout_request` | Root element's `request_layout`, including descendants. |
+| `layout` | Wall interval from completion of root `request_layout` to entry into root `prepaint`. GPUI computes root layout between these boundaries (`Drawable::layout_as_root`); this includes its ancestor/wrapper transitions. Nested computations during this interval count once. Custom/nested layout performed during building or prepaint stays in that calling phase, rather than being counted again. |
+| `prepaint` | Root element's `prepaint`, including descendants and any layout work deferred into this callback. |
+| `paint` | Root element's `paint`: CPU scene-command generation, including descendants. This is not GPU raster time. |
 | `raster_gpu_readback` | Existing GPUI `PRESENT_US` delta: complete `window.present`, including GPU submission/raster, synchronous readback and platform present/commit. A combined wall-time scope, **not an isolated GPU timestamp measurement**. |
 | `pipeline_other` | Total minus the disjoint phases above: frame scheduling, previous-document disposal, GPUI work outside root callbacks (including deferred work), orchestration and counter quantization. Kept explicitly so time outside measured boundaries is never silently lost or attributed to an engine algorithm. |
 | `first_frame_total` | Budget total, not an additional phase: from host loading (cold) or unchanged-frame request (warm), through completed first GPU readback and return to the async task. Excludes application/window startup, statistics, fingerprinting and PNG encoding. |
 
 `modes.<mode>.diagnostic_scopes` retains inclusive `document_build_total`,
-`cpu_draw_total`, `gpu_readback` and the four root callback intervals, with raw
-samples and statistics. These diagnostics **do overlap**
+`cpu_draw_total`, `gpu_readback` and `taffy_inclusive`, with raw samples and
+statistics. The existing `TAFFY_US` counter includes nested layout calls and may
+count the same wall interval more than once; it is diagnostic only, never used
+to derive the additive layout phase. Its resolution is one microsecond per
+increment. These diagnostics **do overlap**
 (`diagnostic_intervals_overlap: true`) and must not be added to the phase budget.
 Readback is contained in `raster_gpu_readback`; draw contains the root lifecycle.
 No GPU timestamp or pure style/layout algorithm time is inferred from these labels.
@@ -167,9 +170,8 @@ map `ParseHTML`/`ParseAuthorStyleSheet`, `UpdateLayoutTree`/`Layout`, and
 `PrePaint`/`Paint`/`RasterTask` into broader reporting groups. Its
 [main-thread task processor](https://github.com/GoogleChrome/lighthouse/blob/main/core/lib/tracehouse/main-thread-tasks.js)
 reconstructs nesting and computes self time by subtracting child durations.
-This harness subtracts only children with known boundaries (document parse/style
-and callback-local Taffy counters), retaining inclusive scopes separately. It does
-not reconstruct a general tracing timeline. Category labels do not imply pure GPU time.
+This harness subtracts only children with known boundaries (document parse/style),
+retaining inclusive counters separately. It does not reconstruct a general tracing timeline. Category labels do not imply pure GPU time.
 
 Gecko places profiler labels/markers at style, layout and paint boundaries, for
 example `Styles` in `layout/style/RestyleManager.cpp`, `LAYOUT_StyleComputation`

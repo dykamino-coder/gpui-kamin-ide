@@ -2,42 +2,24 @@
 
 use gpui::{
     AnyElement, App, Bounds, Context, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, ParentElement, Pixels, Render, Styled, Window, div, frame_perf, px, rgb,
+    IntoElement, LayoutId, ParentElement, Pixels, Render, Styled, Window, div, px, rgb,
 };
 use kamin_html::{Document, RenderOpts};
 use std::{
     cell::RefCell,
     rc::Rc,
-    sync::atomic::Ordering::Relaxed,
     time::{Duration, Instant},
 };
 
 #[derive(Default)]
-pub(super) struct Scope {
-    pub(super) wall: Duration,
-    pub(super) layout: Duration,
-}
-
-impl Scope {
-    fn start() -> (Instant, u32) {
-        (Instant::now(), frame_perf::TAFFY_US.load(Relaxed))
-    }
-
-    fn finish(&mut self, (started, before): (Instant, u32)) {
-        self.layout += Duration::from_micros(u64::from(
-            frame_perf::TAFFY_US.load(Relaxed).wrapping_sub(before),
-        ));
-        self.wall += started.elapsed();
-    }
-}
-
-#[derive(Default)]
 pub(super) struct Phases {
-    pub(super) build: Scope,
-    pub(super) request_layout: Scope,
-    pub(super) prepaint: Scope,
-    pub(super) paint: Scope,
+    pub(super) build: Duration,
+    pub(super) request_layout: Duration,
+    pub(super) layout: Option<Duration>,
+    pub(super) prepaint: Duration,
+    pub(super) paint: Duration,
     pub(super) renders: usize,
+    request_finished: Option<Instant>,
 }
 
 pub(super) struct View {
@@ -47,7 +29,7 @@ pub(super) struct View {
 
 impl Render for View {
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let started = Scope::start();
+        let started = Instant::now();
         let mut text = window.text_style();
         text.color = rgb(0).into();
         text.font_family = "Times New Roman".into();
@@ -72,7 +54,7 @@ impl Render for View {
             .children(self.doc.render(&opts))
             .into_any_element();
         let mut phases = self.phases.borrow_mut();
-        phases.build.finish(started);
+        phases.build += started.elapsed();
         phases.renders += 1;
         Timed {
             root,
@@ -110,9 +92,11 @@ impl Element for Timed {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let started = Scope::start();
+        let started = Instant::now();
         let id = self.root.request_layout(window, cx);
-        self.phases.borrow_mut().request_layout.finish(started);
+        let mut phases = self.phases.borrow_mut();
+        phases.request_layout += started.elapsed();
+        phases.request_finished = Some(Instant::now());
         (id, ())
     }
 
@@ -125,9 +109,18 @@ impl Element for Timed {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let started = Scope::start();
+        let started = Instant::now();
+        {
+            let mut phases = self.phases.borrow_mut();
+            // Между callback выполняются root layout и обвязка GPUI; вложенные
+            // layout внутри prepaint остаются в prepaint, не считаясь повторно.
+            phases.layout = phases
+                .request_finished
+                .take()
+                .map(|end| started.duration_since(end));
+        }
         self.root.prepaint(window, cx);
-        self.phases.borrow_mut().prepaint.finish(started);
+        self.phases.borrow_mut().prepaint += started.elapsed();
     }
 
     fn paint(
@@ -140,8 +133,8 @@ impl Element for Timed {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let started = Scope::start();
+        let started = Instant::now();
         self.root.paint(window, cx);
-        self.phases.borrow_mut().paint.finish(started);
+        self.phases.borrow_mut().paint += started.elapsed();
     }
 }
