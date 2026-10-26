@@ -211,7 +211,9 @@ pub(crate) fn measured_layout(
     gpui::MeasuredContent {
         static_positions: normal_static.measure(
             &probe,
-            size(known.width.unwrap_or(width), known.height.unwrap_or(across)),
+            // PerformLayout передаёт решённую ширину через available, а не known.
+            // Static rect относится к этой строке, не к intrinsic ширине текста.
+            size(limit.unwrap_or(width), known.height.unwrap_or(across)),
             window,
         ),
         first_y: baseline,
