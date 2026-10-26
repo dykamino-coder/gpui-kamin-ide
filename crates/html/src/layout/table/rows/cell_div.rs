@@ -114,7 +114,7 @@ pub(super) fn cell_box_div(
                 // A row/group background is replicated here only for
                 // painting (CSS 2.1 section 17.5.1); it must not snap
                 // each cell's text into an independent fill frame.
-                d.style().css_synthetic_background = Some(true);
+                d = d.with_paint_metadata(crate::text::raster::ReplicatedBackground);
             }
         }
     }

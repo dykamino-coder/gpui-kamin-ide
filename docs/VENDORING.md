@@ -57,8 +57,18 @@ Windows-изменения DirectWrite/DirectX не являются перен�
 
 Контракт границы paint policy хозяина и механизмов GPUI включён в rustdoc
 `PaintCtx` из `vendor/gpui/src/window/paint_contract.md`. Он различает текущие
-гарантии snapshot/replay и требования к общему scoped API. Baseline-пробы
-текущих HTML consumers находятся в `crates/html/src/paint/contract_tests/`.
+гарантии snapshot/replay, live identity прохода/группы и восстановление
+окружения при unwind. Общий `PaintState` и прежние consumers используют один
+проверяемый replay. CSS collector, atomic/stacking policy и fallback-порядок
+принадлежат `html::paint::coordinator`; GPUI предоставляет общий child visitor,
+opaque boundary guard и непрочитанные метаданные прозрачных holders. Очереди
+прохода не используют TLS или глобальный reset. Выбор text background/fill policy
+принадлежит `html::paint::raster`, поиск подложки текста — `html::text::raster`.
+Общий `RasterFrame` хранит точные bounds, glyph offset, actual/exact fill transforms
+и непрозрачные typed host data с идентичностью Rc. GPUI передаёт геометрию и
+метаданные бокса в child visitor и вызывает host callback выбора fill bounds
+в прежней точке рисования quad. Пробы HTML consumers находятся в
+`crates/html/src/paint/contract_tests/`.
 
 1. Исправления общего назначения сначала предлагать upstream. В локальном
    патче записывать причину и ссылку на upstream issue/PR, когда она есть.
@@ -238,3 +248,14 @@ git apply --unidiff-zero vendor/gpui-kaminide.patch
 потребителей и удалены. `GPUI_NATIVE_TREE` (печать дерева Taffy в
 stderr) удалён по той же причине. Новая диагностическая переменная требует реального
 потребителя и записи в этой таблице.
+
+## Immutable paint command mechanism
+
+GPUI exposes `record_paint` and `paint_plan` alongside checked live snapshots.
+Records reuse the canonical Scene journal and compositor within their original
+window/draw/raster scale; source element phases run once. The HTML coordinator
+finishes its queue through the generic recording lifecycle. Explicit clip/group
+descriptors and source/destination placement carry host-selected geometry;
+CSS order and fragment ownership remain in HTML. The command contract is in
+`vendor/gpui/src/window/paint_contract.md`, with HTML contract probes covering
+record identity, placement, effects and lifecycle. No second backend is added.
