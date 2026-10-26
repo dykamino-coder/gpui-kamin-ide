@@ -70,17 +70,24 @@ fn aborted_draw_closes_tokens_and_next_draw_has_clean_state() {
 
 #[test]
 fn aborted_prepaint_does_not_leave_layout_input_collection_open() {
-    struct Abort;
+    struct Abort(Rc<std::cell::Cell<usize>>);
     impl gpui::Render for Abort {
         fn render(
             &mut self,
             _: &mut gpui::Window,
             _: &mut gpui::Context<Self>,
         ) -> impl gpui::IntoElement {
+            let attempts = self.0.clone();
             canvas(
-                |_, window, _| {
-                    assert!(window.update_layout_input(gpui::LayoutInputId::default(), || true));
-                    panic!("abort prepaint");
+                move |_, window, _| {
+                    let attempt = attempts.get();
+                    attempts.set(attempt + 1);
+                    if attempt == 0 {
+                        assert!(
+                            window.update_layout_input(gpui::LayoutInputId::default(), || true)
+                        );
+                        panic!("abort prepaint");
+                    }
                 },
                 |_, (), _, _| {},
             )
@@ -88,8 +95,9 @@ fn aborted_prepaint_does_not_leave_layout_input_collection_open() {
     }
     let mut cx = gpui::TestAppContext::single();
     let mut visual = cx.add_empty_window().clone();
+    let attempts = Rc::new(std::cell::Cell::new(0));
     visual.update(|window, cx| {
-        window.replace_root(cx, |_, _| Abort);
+        window.replace_root(cx, |_, _| Abort(attempts.clone()));
         // Keep the application's window lease outside the unwind boundary.
         assert!(catch_unwind(AssertUnwindSafe(|| window.draw(cx))).is_err());
     });
@@ -101,6 +109,8 @@ fn aborted_prepaint_does_not_leave_layout_input_collection_open() {
         |_, _| {
             canvas(
                 move |_, window, _| {
+                    // No production redraw may reset the state before this observation.
+                    assert_eq!(attempts.get(), 1);
                     assert!(
                         !window.update_layout_input(gpui::LayoutInputId::default(), || {
                             updater_called.set(true);
