@@ -100,9 +100,7 @@ deferred!(
             child,
             context: window.paint_ctx(),
         };
-        if let Some(frame) = pass.state.borrow_mut().frames.last_mut() {
-            frame.push(job);
-        }
+        pass.jobs.admit(job);
     }
 );
 deferred!(
@@ -113,8 +111,6 @@ deferred!(
             child,
             context: window.raster_paint_ctx(),
         };
-        if let Some(frame) = pass.state.borrow_mut().frames.last_mut() {
-            frame.inline.push_back(job);
-        }
+        pass.jobs.admit_inline(job);
     }
 );

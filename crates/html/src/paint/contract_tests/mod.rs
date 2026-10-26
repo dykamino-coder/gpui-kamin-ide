@@ -13,8 +13,7 @@ mod state;
 
 use crate::hooks::{Hooks, IntoHooked};
 use gpui::{
-    AnyElement, App, Bounds, LayoutId, ParentElement, Pixels, Window, div, point, px,
-    size,
+    AnyElement, App, Bounds, LayoutId, ParentElement, Pixels, Window, div, point, px, size,
 };
 use std::{cell::RefCell, rc::Rc};
 

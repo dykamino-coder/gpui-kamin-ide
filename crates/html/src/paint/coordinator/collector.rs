@@ -6,7 +6,7 @@ use gpui::{App, Bounds, IntoElement, LayoutId, Pixels, Position, Style};
 
 pub(crate) struct PaintCollect {
     open: bool,
-    state: Rc<RefCell<Option<FrameGuard>>>,
+    state: Rc<Cell<Option<FrameGuard>>>,
 }
 
 impl PaintCollect {
@@ -53,9 +53,9 @@ impl Hooks for PaintCollect {
     ) {
         if self.open {
             if let Some(pass) = current(window) {
-                *self.state.borrow_mut() = Some(pass.open(window));
+                self.state.set(Some(pass.open(window)));
             }
-        } else if let Some(guard) = self.state.borrow_mut().take() {
+        } else if let Some(guard) = self.state.take() {
             guard.pass.drain(guard.depth, window, cx);
         }
     }

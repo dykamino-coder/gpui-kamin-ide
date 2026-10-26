@@ -1,7 +1,7 @@
 //! Очереди конечных CSS-заданий: FIFO строк и стабильные ключи документа.
 
 use super::*;
-use gpui::{AnyElement, App, PaintCtx, RasterPaintCtx};
+use gpui::{AnyElement, App, PaintCtx, PaintScopeId, RasterPaintCtx};
 use std::collections::{BTreeMap, VecDeque};
 
 pub(super) struct Positioned {
@@ -37,7 +37,7 @@ impl Frame {
         self.positioned.entry(job.key).or_default().push_back(job);
     }
 
-    fn next(&mut self) -> Option<Positioned> {
+    pub(super) fn next(&mut self) -> Option<Positioned> {
         let mut entry = self.positioned.first_entry()?;
         let next = entry.get_mut().pop_front();
         if entry.get().is_empty() {
@@ -50,12 +50,7 @@ impl Frame {
 impl CssPaintPass {
     pub(super) fn drain_inline(&self, depth: usize, window: &mut Window, cx: &mut App) {
         loop {
-            let next = self
-                .state
-                .borrow_mut()
-                .frames
-                .get_mut(depth)
-                .and_then(|f| f.inline.pop_front());
+            let next = self.jobs.pop_inline(depth);
             let Some(Inline {
                 mut child,
                 mut context,
@@ -75,12 +70,7 @@ impl CssPaintPass {
     pub(super) fn drain(&self, depth: usize, window: &mut Window, cx: &mut App) {
         loop {
             self.drain_inline(depth, window, cx);
-            let next = self
-                .state
-                .borrow_mut()
-                .frames
-                .get_mut(depth)
-                .and_then(Frame::next);
+            let next = self.jobs.pop_min(depth);
             let Some(Positioned {
                 mut child, context, ..
             }) = next
@@ -96,10 +86,6 @@ impl CssPaintPass {
     pub(super) fn finish_atomic(&self, depth: usize, window: &mut Window, cx: &mut App) {
         self.drain_inline(depth, window, cx);
         // Atomic открывается только внутри живого внешнего collector.
-        let mut state = self.state.borrow_mut();
-        let moved = std::mem::take(&mut state.frames[depth].positioned);
-        for job in moved.into_values().flatten() {
-            state.frames[depth - 1].push(job);
-        }
+        self.jobs.export_atomic(depth);
     }
 }

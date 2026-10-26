@@ -4,16 +4,15 @@ use super::*;
 use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AnyElement, App, Bounds, PaintTraversal, Pixels};
 
-#[derive(Default)]
-struct Owner(RefCell<Option<Rc<CssPaintPass>>>);
+use super::state::PassOwner;
 
 struct Root {
     child: AnyElement,
-    owner: Rc<Owner>,
+    owner: Rc<PassOwner>,
 }
 
 pub(crate) fn roots(children: Vec<AnyElement>) -> Vec<AnyElement> {
-    let owner = Rc::new(Owner::default());
+    let owner = Rc::new(PassOwner::default());
     children
         .into_iter()
         .map(|child| {
@@ -48,21 +47,7 @@ impl Wrap for Root {
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let outer = current(window);
-        let pass = {
-            let mut owned = self.owner.0.borrow_mut();
-            if owned.as_ref().is_none_or(|pass| {
-                !pass.id.is_live() || pass.id != window.paint_pass_id() || pass.failed.get()
-            }) {
-                *owned = Some(outer.clone().unwrap_or_else(|| {
-                    Rc::new(CssPaintPass {
-                        id: window.paint_pass_id(),
-                        failed: Cell::new(false),
-                        state: RefCell::default(),
-                    })
-                }));
-            }
-            owned.as_ref().expect("active CSS pass").clone()
-        };
+        let pass = self.owner.select(window.paint_pass_id(), outer.as_ref());
         let _abort = Abort(pass.clone());
         if outer.is_some_and(|outer| Rc::ptr_eq(&outer, &pass)) {
             self.child.paint(window, cx);
