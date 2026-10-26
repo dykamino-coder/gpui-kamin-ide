@@ -57,13 +57,14 @@ impl TaffyLayoutEngine {
             let _calc = self.taffy.calc_scope();
             style.to_taffy(rem_size, scale_factor)
         };
+        // KaminIDE patch: measurement also supports the ordinary native stack.
+        let measure = node_measure(Box::new(measure));
         self.taffy
             .new_leaf_with_context(
                 taffy_style,
                 NodeContext {
-                    measure: std::rc::Rc::new(std::cell::RefCell::new(StackSafe::new(Box::new(
-                        measure,
-                    )))),
+                    static_positions: Vec::new(),
+                    measure: std::rc::Rc::new(std::cell::RefCell::new(measure)),
                     layout_lines: None,
                     layout_lines_x: None,
                     layout_lines_x_from_right: false,

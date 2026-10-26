@@ -19,9 +19,15 @@ use gpui::{AnyElement, ParentElement, Styled};
 /// по физической оси x), а не левый, как у горизонтальной строки.
 pub(crate) fn overlay_in_row(
     el: AnyElement,
+    how: OverlayAt,
     turned: Option<bool>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
+    // Такой overlay уже является нулевым щупом и передаёт строке свой
+    // LayoutId. Вторая пустышка скрывала настоящую static dependency.
+    if how.line_probe.is_some() {
+        return el;
+    }
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     if let Some(rl) = turned {
         spot.set(crate::layout::positioned::containing_block::Spot {

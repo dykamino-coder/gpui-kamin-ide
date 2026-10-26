@@ -17,18 +17,26 @@ fn host(nodes: &[Node]) -> &Element {
     find(nodes).expect("authored div")
 }
 
-#[test]
-fn rows_reserve_all_child_views_from_measured_overflow() {
+#[gpui::test]
+fn rows_reserve_all_child_views_from_measured_overflow(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
     for (axis, mode) in [
         (StackAxis::Horizontal, "horizontal-tb"),
         (StackAxis::VerticalLr, "vertical-lr"),
         (StackAxis::VerticalRl, "vertical-rl"),
     ] {
-        reserve_views(axis, mode);
+        cx.draw(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(400.), gpui::px(400.)),
+            |window, app| {
+                reserve_views(axis, mode, window, app);
+                gpui::div()
+            },
+        );
     }
 }
 
-fn reserve_views(axis: StackAxis, mode: &str) {
+fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &mut gpui::App) {
     let tree = crate::dom::parse(
         &format!(
             "<div><div style='writing-mode:{mode}'></div><div style='writing-mode:{mode}'>text</div></div>"
@@ -59,7 +67,7 @@ fn reserve_views(axis: StackAxis, mode: &str) {
         Some(rows),
     )
     .expect("independent row recipe");
-    let children = recipe.children(100.0);
+    let children = recipe.children(100.0, window, app);
     assert_eq!(children.len(), 2);
     assert!(children.iter().all(|c| c.regrow.is_some()));
     assert!(children.iter().all(|c| c.measure == Some(100.0)));
@@ -109,8 +117,9 @@ fn reserve_views(axis: StackAxis, mode: &str) {
 }
 
 #[cfg(feature = "wpt-harness")]
-#[test]
-fn flex_stack_children_bypass_shape_and_direct_measure_calls() {
+#[gpui::test]
+fn flex_stack_children_bypass_shape_and_direct_measure_calls(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
     for direction in ["row", "row-reverse", "column", "column-reverse"] {
         for wrap in ["nowrap", "wrap", "wrap-reverse"] {
             let tree = crate::dom::parse(
@@ -137,17 +146,24 @@ fn flex_stack_children_bypass_shape_and_direct_measure_calls() {
                 None,
             )
             .expect("normal-flow flex recipe");
-            let children = recipe.children(100.0);
-            assert_eq!(children.len(), 1, "{direction}/{wrap}");
-            assert_eq!(children[0].measure, Some(100.0));
-            assert!(children[0].regrow.is_some());
-            assert!(
-                opts.frag
-                    .probe
-                    .take()
-                    .values()
-                    .all(|p| p.estimate_calls == 0),
-                "shape_full or direct measure reached for {direction}/{wrap}"
+            cx.draw(
+                gpui::point(gpui::px(0.), gpui::px(0.)),
+                gpui::size(gpui::px(400.), gpui::px(400.)),
+                |window, app| {
+                    let children = recipe.children(100.0, window, app);
+                    assert_eq!(children.len(), 1, "{direction}/{wrap}");
+                    assert_eq!(children[0].measure, Some(100.0));
+                    assert!(children[0].regrow.is_some());
+                    assert!(
+                        opts.frag
+                            .probe
+                            .take()
+                            .values()
+                            .all(|p| p.estimate_calls == 0),
+                        "shape_full or direct measure reached for {direction}/{wrap}"
+                    );
+                    gpui::div()
+                },
             );
         }
     }

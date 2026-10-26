@@ -10,6 +10,7 @@ use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, App, Pixels, Window};
 use std::cell::RefCell;
+mod geometry;
 
 /// Исходное дерево, без LayoutId и изменяемых рекордеров от пробной раскладки.
 pub(crate) struct Recipe {
@@ -84,13 +85,18 @@ impl Recipe {
             .collect()
     }
 
-    pub(super) fn children(&self, width: f32) -> Vec<StackChild> {
+    pub(super) fn children(
+        &self,
+        width: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Vec<StackChild> {
         let measured = RefCell::default();
-        let opts = self.opts.clone();
-        let vcx = opts.cx.vcx();
         let vertical = self.axis.is_vertical();
         let reverse = self.axis == crate::layout::fragment::types::StackAxis::VerticalRl;
         let host = self.resolved_host(width);
+        let opts = self.geometry_options(&host, width, window, cx);
+        let vcx = opts.cx.vcx();
         let kids = if vertical {
             laid::vertical_children(&host, &self.merged, vcx, width, reverse, &measured)
         } else {
@@ -110,7 +116,7 @@ impl Recipe {
             copies,
             self.fixed,
             (Some(width), Some(width)),
-            vcx,
+            &opts,
         );
         let prepared = kids
             .iter()
@@ -172,7 +178,7 @@ impl Recipe {
         window: &mut Window,
         cx: &mut App,
     ) {
-        stack.children = self.children(width);
+        stack.children = self.children(width, window, cx);
         if stack.fixed_height.is_some() {
             stack.copies = stack
                 .children

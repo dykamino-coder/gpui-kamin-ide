@@ -6275,6 +6275,16 @@ impl Window {
         self.layout_engine.as_ref()?.final_layout(id, tree, self.scale_factor())
     }
 
+    /// KaminIDE patch: static-position geometry from the matching performed measurement.
+    pub fn final_static_position(&self, id: LayoutId, tree: crate::LayoutTreeId, key: usize) -> Option<crate::MeasuredStaticPosition> {
+        self.layout_engine.as_ref()?.final_static_position(id, tree, key, self.scale_factor())
+    }
+
+    /// KaminIDE patch: completed flex-line geometry, before visual translation.
+    pub fn final_flex_line(&self, id: LayoutId, tree: crate::LayoutTreeId) -> Option<Bounds<Pixels>> {
+        self.layout_engine.as_ref()?.final_flex_line(id, tree, self.scale_factor())
+    }
+
     /// KaminIDE patch: реальные линии родителя-flex и начало его border box.
     pub fn parent_flex_layout(&mut self, child: LayoutId) -> Option<(Point<Pixels>, crate::FlexLayout)> {
         let scale = self.scale_factor();

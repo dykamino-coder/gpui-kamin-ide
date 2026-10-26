@@ -161,8 +161,15 @@ fn element_inner(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyEle
     } else {
         None
     };
+    let geometry_style = merged.clone();
+    let built = dispatch_element(e, merged, inherited, opts, outer_row, built_iframe);
     crate::interactive::scroll_extent::project(
-        dispatch_element(e, merged, inherited, opts, outer_row, built_iframe),
+        crate::layout::positioned::containing_block::metrics::record::wrap(
+            e.node_id,
+            &geometry_style,
+            built,
+            opts,
+        ),
         scroll_projection,
     )
 }

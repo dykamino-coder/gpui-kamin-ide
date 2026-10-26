@@ -5,6 +5,10 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub(crate) struct PositioningContext {
+    /// Запись исходного прохода; результат замораживается до вставки разрывов.
+    pub(crate) geometry_record:
+        Option<Rc<crate::layout::positioned::containing_block::metrics::record::Recorder>>,
+    pub(crate) geometry: Option<Rc<crate::layout::positioned::containing_block::metrics::Snapshot>>,
     /// Containing-block layers of the current build pass (`Positioning`):
     /// a new document (`render`, a nested document) starts its own.
     pub(crate) state: Rc<Positioning>,

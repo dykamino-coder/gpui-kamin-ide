@@ -7,6 +7,7 @@
 
 mod clamp;
 mod measured_layout;
+mod normal_static;
 pub(crate) use crate::text::paragraph::element::layout::measured_layout::measured_layout;
 
 use crate::text::paragraph::*;
@@ -114,6 +115,8 @@ impl Paragraph {
         let measures = self.measures.clone();
         let paint_context = self.paint_context.clone();
         let inline_measure = self.inline_measure.clone();
+        let normal_static = normal_static::NormalStatic::new(self, window, cx);
+        let static_bind = normal_static.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -178,11 +181,13 @@ impl Paragraph {
                     ortho_limit,
                     line_height,
                     &ruby_base_sink,
+                    &normal_static,
                     window,
                     _cx,
                 )
             },
         );
+        static_bind.bind(crate::layout::fragment::geometry::Node::capture(id, window));
         if let Some(f) = &self.fragment {
             f.node.record(id, window);
         }

@@ -13,7 +13,7 @@ mod box_edges;
 mod final_geometry;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
-pub use measured_content::MeasuredContent;
+pub use measured_content::{MeasuredContent, MeasuredStaticPosition};
 pub use measurement::LayoutMeasurement;
 
 #[cfg(test)]
@@ -56,8 +56,16 @@ type MeasureFn = dyn FnMut(
 ) -> MeasuredContent;
 type NodeMeasureFn = StackSafe<Box<MeasureFn>>;
 
+fn node_measure(measure: Box<MeasureFn>) -> NodeMeasureFn {
+    #[cfg(feature = "stacker")]
+    let measure = StackSafe::new(measure);
+    measure
+}
+
 #[derive(Clone)]
 struct NodeContext {
+    // KaminIDE patch: intrinsic callbacks cannot overwrite performed static rects.
+    static_positions: Vec<MeasuredStaticPosition>,
     measure: std::rc::Rc<std::cell::RefCell<NodeMeasureFn>>,
     layout_lines: Option<Vec<Pixels>>,
     layout_lines_x: Option<Vec<Pixels>>,

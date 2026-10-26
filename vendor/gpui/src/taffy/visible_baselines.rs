@@ -24,7 +24,8 @@ impl LayoutMeasurement {
     }
 }
 
-#[stacksafe::stacksafe]
+// KaminIDE patch: keep the optional stacker feature optional, as in #430.
+#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
 fn collect(
     tree: &TaffyTree<NodeContext>,
     node: NodeId,

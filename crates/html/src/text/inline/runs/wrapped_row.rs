@@ -76,15 +76,15 @@ pub fn as_wrapped_row(
     // разворот ряда — точная перестановка. Blink:
     // `LogicalLineBuilder::BidiReorder` (атом = U+FFFC).
     // Ряд со знаками не трогаем: у прогонов текста свои уровни. Жёсткий
-    // разрыв и куски вне потока (`Overlay`, щуп статической позиции) — тоже:
-    // первый переставил бы сами строки, второй сдвинул бы щуп, чьи rtl-рукава
-    // в `LatePlace` настроены на прежний порядок.
+    // разрыв не трогаем: он переставил бы сами строки. Нулевой щуп абсолюта
+    // отмечает нейтральный объект в гипотетической строке (CSS2 §10.3.7),
+    // поэтому получает ту же перестановку, что и соседний строчный атом.
     let reversed = rtl
         && !hard_break
         && pieces.iter().any(|p| matches!(p, Piece::Atom(_)))
         && pieces.iter().all(|p| match p {
             Piece::Atom(_) => true,
-            Piece::Overlay(..) => false,
+            Piece::Overlay(_, how) => how.line_probe.is_some(),
             Piece::Text { text, .. } => text.chars().all(|c| c.is_whitespace() || c == '\u{200b}'),
         });
     let mut row = gpui::div().flex().max_w_full();
@@ -181,7 +181,7 @@ pub fn as_wrapped_row(
                     {
                         glued
                     }
-                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned, cx)),
+                    Piece::Overlay(el, how) => glued.child(overlay_in_row(el, how, turned, cx)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
             }
@@ -197,7 +197,7 @@ pub fn as_wrapped_row(
                 Piece::Overlay(_, how) if how.cb_marker.is_some() || how.box_marker.is_some() => {
                     row
                 }
-                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned, cx)),
+                Piece::Overlay(el, how) => row.child(overlay_in_row(el, how, turned, cx)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.
                     for (n, part) in text.split('\n').enumerate() {

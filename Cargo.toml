@@ -37,9 +37,8 @@ style = { level = "allow", priority = -1 }
 
 [workspace.dependencies]
 # Пакет на crates.io — `gpui-pre` (снимок zed@279fe07), библиотека — `gpui`.
-# `stacker`: рекурсия раскладки/отрисовки под StackSafe — глубокие HTML-деревья
-# (в 0.2.2 было всегда, в 0.3.8 стало фичей).
-gpui = { package = "gpui-pre", version = "=0.3.8", features = ["stacker"] }
+# GPUI measure использует обычный стек, без stacker/stacksafe (#430).
+gpui = { package = "gpui-pre", version = "=0.3.8" }
 # Платформа (Windows-бэкенд) вынесена из ядра: `gpui_platform::application()`.
 gpui-platform = { package = "gpui-pre-platform", version = "=0.3.8" }
 # Грамматики ровно тех языков, что выдаёт `file_names::editor_lang`. В 0.5.1

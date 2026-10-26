@@ -26,7 +26,8 @@ fn visible(lines: Vec<Pixels>, from: Pixels, width: Pixels) -> (Option<Pixels>, 
     (first, lines.last().or(first))
 }
 
-#[stacksafe::stacksafe]
+// KaminIDE patch: keep the optional stacker feature optional, as in #430.
+#[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
 fn collect(tree: &TaffyTree<NodeContext>, node: NodeId, x: f32, scale: f32, result: &mut Vec<Pixels>) {
     let Some(output) = tree.computed_layout_output(node).expect(EXPECT_MESSAGE) else { return; };
     if output.baselines_x.first.is_none() && output.baselines_x.last.is_none() { return; }

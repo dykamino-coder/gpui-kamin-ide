@@ -31,6 +31,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "gpui": [
+        "Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.",
         "Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.",
         "Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.",
         "Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.",
