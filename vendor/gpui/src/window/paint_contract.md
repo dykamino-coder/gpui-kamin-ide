@@ -86,3 +86,27 @@ CSS очередь живёт в HTML coordinator, который задаёт �
 внутри прежних scopes GPUI. Opaque boundary guard и метаданные прозрачных
 holders являются общими hooks; GPUI их не интерпретирует. Text-background
 policy пока остаётся в прежнем адаптере; snapshot не принимает решений хозяина.
+
+### Immutable command records
+
+`Window::record_paint(source_clip, cx, paint)` consumes source painting once.
+The explicit source clip replaces the ambient fragment clip before culling.
+An optional host `PaintRecording` lifecycle opens and finishes its own deferred
+work inside capture; guard destruction restores or aborts host state.
+No element or callback is retained by `PaintRecord` or `PaintPlan`.
+
+A record shares immutable canonical Scene commands and frame-local resources.
+It outlives its capture scope, but only in the same live window/draw and raster
+scale. This does not relax snapshot checks: PaintState/PaintCtx still require
+their original live composition scope. Stale identity or invalid placement is
+a typed error before destination writes.
+
+The host composes ordered records and explicit Clip/Group descriptors, including
+shared effect ancestors. GPUI does not choose CSS order, source identity,
+fragment scheduling, layout generation or hit geometry. Plan playback accepts
+no App and invokes no element/host callback. Each invocation adopts fresh group
+ids through the existing compositor. Source transforms/raster positions remain
+resolved; an explicit source-to-destination translation moves commands once.
+The final destination clip follows effects, preserving off-clip filter inputs.
+Pending plane contexts, raster state and host contexts are restored on return
+or unwind; an abort invalidates the draw rather than granting replay rights.

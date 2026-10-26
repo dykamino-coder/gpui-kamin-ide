@@ -7,6 +7,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::cx::deferred::Deferred;
+use crate::style::box_input::BoxStyleInput;
 use crate::style::computed::{BoxStyle, Computed};
 use gpui::{AnyElement, App, Bounds, Pixels, Window};
 use std::cell::Cell;
@@ -29,14 +30,14 @@ pub(crate) enum Effect<'a> {
     /// clipping and masking): the box painted as one image when an effect
     /// needs the finished picture.
     Group {
-        style: &'a Computed,
+        style: BoxStyleInput,
         vcx: ValueCx<'a>,
     },
     /// The group of a replaced box with shaped corners (css-borders-4
     /// §corner-shape-rendering): its content clipped by the inner contour,
     /// the border ring over it.
     GroupReplaced {
-        style: &'a Computed,
+        style: BoxStyleInput,
         vcx: ValueCx<'a>,
     },
     /// The transform of `style` (css-transforms-1/2) under `parent`, with a
@@ -59,8 +60,11 @@ pub(crate) enum Effect<'a> {
 
 impl<'a> Effect<'a> {
     /// The grouped effects of `style`.
-    pub(crate) fn group(style: &'a Computed, vcx: ValueCx<'a>) -> Self {
-        Effect::Group { style, vcx }
+    pub(crate) fn group(style: impl Into<BoxStyleInput>, vcx: ValueCx<'a>) -> Self {
+        Effect::Group {
+            style: style.into(),
+            vcx,
+        }
     }
 
     /// The transform of `style` under `parent` against the box's own

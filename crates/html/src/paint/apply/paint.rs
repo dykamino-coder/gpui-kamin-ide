@@ -20,14 +20,14 @@ pub(crate) fn apply_opacity(d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     }
 }
 
-pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     d.style().css_border_snap = Some(true);
     // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
     // for floats; css-flexbox-1 §5.4 and css-grid-1 §9: flex and grid items
     // "paint exactly the same as inline blocks"): the box's own line content
     // is painted with it, not after later siblings' backgrounds
     // (`grid-lanes` items with overlapping negative margins).
-    let atomic = c.parent_flex_grid
+    let atomic = c.context.parent_flex_grid
         || c.float.is_some_and(|f| f != 0)
         || matches!(
             c.display,
@@ -38,7 +38,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // inside it — a `z-index: -1` box's text no longer paints above later flow
     // backgrounds (`line-breaking-ic-001`).
     let stacking = c.z_index.is_some()
-        && (c.parent_flex_grid
+        && (c.context.parent_flex_grid
             || matches!(
                 c.position,
                 Some(Position::Relative)

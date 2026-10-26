@@ -4,16 +4,16 @@
 //! baseline`. Реализован только физически-вертикальный первый baseline;
 //! остальные предпочтения оставляют прежний запасной путь без сдвига коробки.
 
-use crate::style::computed::{Align, Computed, Position};
+use crate::style::computed::{Align, BoxStyle, Position};
 
-pub(super) fn apply(style: &mut gpui::StyleRefinement, c: &Computed) {
+pub(super) fn apply(style: &mut gpui::StyleRefinement, c: &BoxStyle) {
     // Only the physical-y, first-baseline contract is currently implemented.
     // Other preferences keep their existing fallback rather than moving the box.
-    if c.parent_grid == 1
+    if c.context.parent_grid == 1
         && !c.wm().vertical()
         && c.align_content_baseline == Some(false)
         && matches!(
-            c.align_self.or(c.parent_grid_align_items),
+            c.align_self.or(c.context.parent_grid_align_items),
             None | Some(Align::Stretch)
         )
         && !matches!(c.position, Some(Position::Absolute | Position::Fixed))
@@ -25,7 +25,7 @@ pub(super) fn apply(style: &mut gpui::StyleRefinement, c: &Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::BoxStyle;
+    use crate::style::computed::Computed;
 
     #[test]
     fn content_preference_survives_parsing_inheritance_and_reset() {
@@ -53,12 +53,12 @@ mod tests {
             (Some(Align::Center), false),
             (Some(Align::End), false),
         ] {
-            let c = Computed {
-                parent_grid: 1,
-                parent_grid_align_items: alignment,
+            let mut c = BoxStyle::new(Computed {
                 align_content_baseline: Some(false),
                 ..Computed::default()
-            };
+            });
+            c.context.parent_grid = 1;
+            c.context.parent_grid_align_items = alignment;
             let mut style = gpui::StyleRefinement::default();
             apply(&mut style, &c);
             assert_eq!(style.table_cell_baseline == Some(true), participates);

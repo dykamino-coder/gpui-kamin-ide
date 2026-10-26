@@ -5,6 +5,7 @@ mod admission;
 mod capture;
 mod interaction;
 mod order;
+mod record;
 mod scope;
 mod snapshot_abort;
 mod snapshot_scope;
@@ -61,13 +62,23 @@ fn collect(children: Vec<AnyElement>) -> gpui::Div {
 }
 
 fn draw<E: gpui::Element>(make: impl FnOnce() -> E) {
+    draw_at_scale(None, make);
+}
+
+fn draw_at_scale<E: gpui::Element>(scale: Option<f32>, make: impl FnOnce() -> E) {
     let mut cx = gpui::TestAppContext::single();
-    cx.add_empty_window()
-        .draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+    cx.add_empty_window().draw(
+        point(px(0.), px(0.)),
+        size(px(100.), px(100.)),
+        |window, _| {
+            if let Some(scale) = scale {
+                window.set_scale_factor(scale);
+            }
             // AnyElement должен создаваться внутри app-specific arena этого draw,
             // иначе fallback arena потока удерживает дерево до завершения потока.
             crate::hooks::paint_root(make().into_any_element())
-        });
+        },
+    );
     cx.quit();
 }
 

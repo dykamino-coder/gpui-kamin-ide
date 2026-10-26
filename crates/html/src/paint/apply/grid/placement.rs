@@ -9,7 +9,7 @@ use super::*;
 /// ЛОГИЧЕСКИЕ и переставляются при вертикальном письме, как его дорожки
 /// (`grid_style`); у подсеточной оси список — `<line-name-list>`. Грани
 /// элемента идут той же осью, что и его числовые (`grid_location`).
-pub(in crate::paint::apply) fn grid_line_names(c: &Computed) -> Option<gpui::GridLineNames> {
+pub(in crate::paint::apply) fn grid_line_names(c: &BoxStyle) -> Option<gpui::GridLineNames> {
     let mut out = gpui::GridLineNames::default();
     let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     if grid {
@@ -90,14 +90,15 @@ pub(in crate::paint::apply) fn grid_line_names(c: &Computed) -> Option<gpui::Gri
 /// свойство элемента сетки, а элементом здесь служит обёртка). Числовые грани
 /// и именованные (без имён линий самого элемента: обёртка — своя сетка).
 pub(crate) fn grid_item_placement(
-    c: &Computed,
+    input: crate::style::box_input::BoxStyleInput,
 ) -> (Option<gpui::GridLocation>, Option<gpui::GridLineNames>) {
+    let c = BoxStyle::shared(input);
     let location = (c.grid_col.is_some() || c.grid_row.is_some()).then(|| {
         let span = |p: Option<(Placement, Placement)>| {
             let (a, b) = p.unwrap_or((Placement::Auto, Placement::Auto));
             to_placement(a)..to_placement(b)
         };
-        if placement_flip(c) {
+        if placement_flip(&c) {
             gpui::GridLocation {
                 row: span(c.grid_col),
                 column: span(c.grid_row),
@@ -114,7 +115,7 @@ pub(crate) fn grid_item_placement(
         .iter()
         .chain(c.grid_row_named.iter())
         .any(Option::is_some);
-    let (column, row) = if placement_flip(c) {
+    let (column, row) = if placement_flip(&c) {
         (c.grid_row_named.clone(), c.grid_col_named.clone())
     } else {
         (c.grid_col_named.clone(), c.grid_row_named.clone())
@@ -129,8 +130,8 @@ pub(crate) fn grid_item_placement(
 
 /// Элемент вертикальной сетки (и лунок на её пути): его логические грани
 /// ложатся на переставленные физические оси (см. `grid_style`, `flip`).
-pub(in crate::paint::apply) fn placement_flip(c: &Computed) -> bool {
-    c.parent_grid >= 2
+pub(in crate::paint::apply) fn placement_flip(c: &BoxStyle) -> bool {
+    c.context.parent_grid >= 2
 }
 
 pub(in crate::paint::apply) fn to_placement(p: Placement) -> gpui::GridPlacement {

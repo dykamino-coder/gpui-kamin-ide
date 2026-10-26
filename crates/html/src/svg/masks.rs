@@ -141,7 +141,7 @@ pub(super) fn masked_layers(
                 }
             }
         }
-        let style = &style;
+        let style = &crate::style::computed::BoxStyle::new(style);
         // Срез по рамке: внешняя канва размером с рамку, `viewBox` — её
         // окно в CSS-точках коробки рисунка (вложенный `<svg>` — вьюпорт
         // с прежними единицами).

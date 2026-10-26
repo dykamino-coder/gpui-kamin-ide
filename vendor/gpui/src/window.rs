@@ -70,6 +70,9 @@ mod natural_image;
 mod absolute_transformation;
 mod scene_capture;
 mod paint_scope;
+mod paint_record;
+pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan,
+    PaintScopeDescriptor, PaintGroupDescriptor};
 mod paint_snapshot;
 mod raster_frame;
 mod scoped;

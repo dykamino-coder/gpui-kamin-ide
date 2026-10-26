@@ -63,7 +63,7 @@ pub(super) async fn render(
     ) || (li.style.used().display == Some(Display::InlineBlock)
         && li.style.used().inline_display != Some(true))
     {
-        crate::dom::pseudo_line_layers::install(li, &mut merged, vcx);
+        crate::layout::box_tree::pseudo_line_layers::install(li, &mut merged, vcx);
     }
     render_with_style(stk, li, inherited, &merged, opts).await
 }

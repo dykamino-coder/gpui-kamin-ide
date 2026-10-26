@@ -2,14 +2,14 @@
 //! длина в пределах доступного. Статическая позиция в grid/flex и растяжка между двумя
 //! вставками остаются своими договорами и сюда не берутся.
 use crate::style::computed::orthogonal::InlineConstraint;
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::{BoxStyle, Position};
 use crate::style::values::value::Len;
 
-pub(super) fn constraint(style: &Computed, available: f32) -> Option<InlineConstraint> {
+pub(super) fn constraint(style: &BoxStyle, available: f32) -> Option<InlineConstraint> {
     let positioned =
         matches!(style.position, Some(Position::Absolute | Position::Fixed)) || style.abs_static;
     let definite = |value| !matches!(value, None | Some(Len::Auto));
-    if !positioned || !style.wm().vertical() || style.ortho_col || style.parent_flex_grid {
+    if !positioned || !style.wm().vertical() || style.ortho_col || style.context.parent_flex_grid {
         return None;
     }
     let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
@@ -31,6 +31,7 @@ pub(super) fn constraint(style: &Computed, available: f32) -> Option<InlineConst
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     #[test]
     fn free_absolute_inline_size_uses_intrinsics_instead_of_zero() {
         let style = {
@@ -41,17 +42,15 @@ mod tests {
             with_inherited.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
-            with_inherited
+            BoxStyle::new(with_inherited)
         };
         let c = constraint(&style, 600.0).unwrap();
         assert_eq!(c.used(120.0, 120.0), 120.0);
         assert_eq!(c.used(700.0, 700.0), 700.0);
         assert_eq!(c.used(30.0, 1000.0), 600.0);
-        let static_style = Computed {
-            position: None,
-            abs_static: true,
-            ..style
-        };
+        let mut static_style = style;
+        static_style.position = None;
+        static_style.abs_static = true;
         assert!(constraint(&static_style, 600.0).is_some());
     }
     #[test]
@@ -64,7 +63,7 @@ mod tests {
             with_inherited.writing_mode = Some(
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
-            with_inherited
+            BoxStyle::new(with_inherited)
         };
         style.height = Some(Len::Px(200.0));
         assert_eq!(constraint(&style, 600.0).unwrap().fixed, Some(200.0));
@@ -73,9 +72,9 @@ mod tests {
         style.inset.bottom = Some(Len::Px(20.0));
         assert!(constraint(&style, 600.0).is_none());
         style.inset.bottom = None;
-        style.parent_flex_grid = true;
+        style.context.parent_flex_grid = true;
         assert!(constraint(&style, 600.0).is_none());
-        style.parent_flex_grid = false;
+        style.context.parent_flex_grid = false;
         style.position = None;
         style.hug_inline = true;
         assert!(constraint(&style, 600.0).is_none());
@@ -93,7 +92,7 @@ mod tests {
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
             with_inherited.rtl = Some(true);
-            with_inherited
+            BoxStyle::new(with_inherited)
         };
         style.inset.top = Some(Len::Px(160.0));
         style.inset.bottom = Some(Len::Px(160.0));
