@@ -99,11 +99,14 @@ impl Computed {
                             spec.reverse = true;
                             spec.alternate = true;
                         }
-                        _ if token.parse::<f64>().is_ok() => {
-                            spec.iterations = token.parse::<f64>().unwrap().max(0.0);
-                            spec.infinite = false;
+                        _ => {
+                            if let Ok(iterations) = token.parse::<f64>() {
+                                spec.iterations = iterations.max(0.0);
+                                spec.infinite = false;
+                            } else {
+                                spec.name = token.into();
+                            }
                         }
-                        _ => spec.name = token.into(),
                     }
                 }
             }

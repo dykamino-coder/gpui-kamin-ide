@@ -7,5 +7,7 @@ mod tokens;
 mod unescape;
 pub(crate) use comments::strip_comments;
 pub(crate) use functions::functions;
-pub(crate) use tokens::{at_url, escape_end, skip_string, skip_url, skip_url_body};
+pub(crate) use tokens::{
+    at_url, escape_end, escaped_codepoint_end, scan_string, skip_string, skip_url, skip_url_body,
+};
 pub use unescape::unescape;

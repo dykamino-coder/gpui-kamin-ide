@@ -25,8 +25,7 @@ pub(crate) fn skip_url_body(text: &str) -> usize {
         let ch = text[at..].chars().next().unwrap_or('\u{0}');
         match ch {
             '\\' => {
-                at += ch.len_utf8();
-                at += text[at..].chars().next().map_or(0, char::len_utf8);
+                at = escaped_codepoint_end(text, at);
                 continue;
             }
             '"' | '\'' => {
@@ -44,6 +43,13 @@ pub(crate) fn skip_url_body(text: &str) -> usize {
 /// Byte length of a string body, including its closing quote if present.
 /// Escapes hide delimiters; a bad string ends before its unescaped newline.
 pub(crate) fn skip_string(text: &str, quote: char) -> usize {
+    match scan_string(text, quote) {
+        Ok(end) | Err(end) => end,
+    }
+}
+
+/// Граница строки: Ok после кавычки/EOF, Err перед bad-string newline.
+pub(crate) fn scan_string(text: &str, quote: char) -> Result<usize, usize> {
     let mut at = 0;
     while at < text.len() {
         let ch = text[at..].chars().next().unwrap();
@@ -54,14 +60,14 @@ pub(crate) fn skip_string(text: &str, quote: char) -> usize {
             continue;
         }
         if ch == quote {
-            return at + ch.len_utf8();
+            return Ok(at + ch.len_utf8());
         }
         if matches!(ch, '\n' | '\r' | '\u{c}') {
-            return at;
+            return Err(at);
         }
         at += ch.len_utf8();
     }
-    text.len()
+    Ok(text.len())
 }
 
 pub(crate) fn escape_end(raw: &str, at: usize) -> usize {
@@ -80,4 +86,11 @@ pub(crate) fn escape_end(raw: &str, at: usize) -> usize {
         }
     }
     end
+}
+
+/// Пропуск обратного слеша и одного знака для поиска разделителей.
+/// В отличие от escape_end не поглощает hex-последовательность и её пробел.
+pub(crate) fn escaped_codepoint_end(text: &str, at: usize) -> usize {
+    let body = at + 1;
+    body + text[body..].chars().next().map_or(0, char::len_utf8)
 }

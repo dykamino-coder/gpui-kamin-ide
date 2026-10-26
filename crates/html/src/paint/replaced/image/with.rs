@@ -6,6 +6,7 @@ use crate::layout::cx::LayoutCx;
 use crate::layout::replaced::image::PictureSizing;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::box_tree::styled::styled_div;
+use crate::resources::css_images::Source as CpuSource;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
 pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> AnyElement {
@@ -86,7 +87,9 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         )
         .map(crate::paint::background::Source::from_cpu)
         .and_then(|s| match s {
-            crate::paint::background::Source::Vector { markup, .. } => Some(markup),
+            crate::paint::background::Source::Image(CpuSource::Vector { markup, .. }) => {
+                Some(markup)
+            }
             _ => None,
         });
         let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {

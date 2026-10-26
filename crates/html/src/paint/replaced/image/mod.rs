@@ -6,6 +6,7 @@
 use crate::dom::Element;
 use crate::layout::replaced::image::view_box::{ViewBoxSize, view_box_size};
 use crate::paint::box_tree::styled::styled_div;
+use crate::resources::css_images::Source as CpuSource;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, div, px};
 mod with;
@@ -39,7 +40,7 @@ pub(crate) fn image(e: &Element, cx: &crate::layout::cx::LayoutCx) -> AnyElement
 /// Overview.bs` «object-view-box»): видимая часть природного объекта
 /// становится его НОВЫМ природным размером, а рисуется только она — вырез
 /// растягивается на коробку (`object-fit: fill`). Вырез и коробка —
-/// `view_box_size`. Только растр (`background::Source::Raster`); иначе —
+/// `view_box_size`. Только растр (`resources::css_images::Source::Raster`); иначе —
 /// прежний путь.
 fn view_boxed(
     e: &Element,
@@ -54,7 +55,7 @@ fn view_boxed(
             .map(crate::paint::background::Source::from_cpu)?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
-    let crate::paint::background::Source::Raster(ready) = source else {
+    let crate::paint::background::Source::Image(CpuSource::Raster(ready)) = source else {
         return None;
     };
     let ViewBoxSize {

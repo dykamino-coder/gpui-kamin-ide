@@ -18,6 +18,11 @@ use crate::resources::images::natural::Intrinsic;
 use raster::{place_stops, rasterize_gradient, wrap_repeat};
 pub(crate) use source_types::Source;
 pub(crate) use sources::{computed_source, element_source, source};
-fn len_px(l: Option<crate::style::values::value::Len>, base: f32, vcx: ValueCx<'_>) -> Option<f32> {
+/// Длина CSS-картинки: база по оси, шрифтовые единицы уже вычислены каскадом.
+pub(crate) fn len_px(
+    l: Option<crate::style::values::value::Len>,
+    base: f32,
+    vcx: ValueCx<'_>,
+) -> Option<f32> {
     l?.to_px(Some(base), crate::style::computed::FontCx::FALLBACK, vcx)
 }
