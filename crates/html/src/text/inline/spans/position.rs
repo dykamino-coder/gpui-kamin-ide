@@ -52,12 +52,7 @@ pub fn shift_spans(
         let size = text_size(style, base_size);
         // К вне-поточной коробке выравнивание в строке не применяется
         // (CSS 2.1 §9.5, §10.8): она из строки вынута.
-        let out_of_flow = style.float.is_some_and(|f| f != 0)
-            || matches!(
-                style.position,
-                Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-            );
+        let out_of_flow = crate::style::flow::out_of_flow(style);
         let dy = (!out_of_flow)
             .then_some(style.vertical_shift_px)
             .flatten()
@@ -199,7 +194,7 @@ fn dominant_shift(
         return dy;
     }
     let offset = own_central() - strut;
-    if offset.abs() < 0.001 {
+    if offset.abs() < crate::tolerance::TEXT_COORD_EPS {
         return dy;
     }
     Some(dy.unwrap_or(0.0) + offset)

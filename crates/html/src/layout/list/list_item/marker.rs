@@ -90,13 +90,12 @@ pub(crate) fn resolve(
     let no_marker = (!matches!(li_style.display, None | Some(Display::ListItem)))
         || merged.no_marker == Some(true)
         || (normal && image.is_none() && merged.list_style_type == Some(MarkerType::None));
-    // CSS Lists 3 marker-properties: an outside generated symbol has no
-    // tracking advance (Blink list_marker.cc:391,407, InlineMarginsForOutside).
-    // Preserve text markers and the inside-marker text flow from #355.
+    // Внешний геометрический знак не использует advance текстового пробела;
+    // строковые и внутренние маркеры остаются частью текстового форматирования.
     if symbol && merged.list_style_inside != Some(true) {
-        style
-            .get_or_insert_with(|| inherit(merged, &Computed::default(), vcx))
-            .letter_spacing = Some(crate::style::values::value::Len::Px(0.0));
+        style = Some(crate::style::cascade::inherit::marker_symbol(
+            style, merged, vcx,
+        ));
     }
     (!no_marker).then_some(Marker {
         text: marker,

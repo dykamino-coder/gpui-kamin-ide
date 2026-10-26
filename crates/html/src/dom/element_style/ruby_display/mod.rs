@@ -13,7 +13,7 @@ pub(crate) use crate::dom::element_style::ruby_display::direction::apply_directi
 pub(crate) use crate::dom::element_style::ruby_display::direction::inlinify_in_ruby;
 
 use crate::dom::*;
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 pub(crate) fn finish_inline_display(
@@ -24,22 +24,13 @@ pub(crate) fn finish_inline_display(
 ) {
     use crate::style::computed::Display;
     replaced_display::normalize(style, tag, attrs);
-    let out_of_flow = style.float.is_some()
-        || matches!(
-            style.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        );
+    let out_of_flow = crate::style::flow::has_float_or_absolute_position(style);
     // Блокификация СТРОЧНЫХ вариантов под float/abspos (§9.7): каждый
     // получает свой блочный аналог, а не только `inline`.
     // §9.7: у абсолютно позиционированной коробки `float` вычисляется в
     // `none`. Пока сброса не было, `float: right; position: fixed` уезжал в
     // ряд обтекания и до выноса в слой окна не доходил (`position-fixed-007`).
-    if matches!(
-        style.position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
-    ) {
+    if crate::style::flow::absolutely_positioned(style.position) {
         style.float = None;
         // Блокифицированная коробка строчного выравнивания не имеет
         // (`vertical-align` «applies to inline-level and table-cell
@@ -49,17 +40,15 @@ pub(crate) fn finish_inline_display(
         style.apply_one("vertical-align", "baseline", vcx);
     }
     if out_of_flow {
-        if matches!(
-            style.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        ) && matches!(
-            style.display,
-            Some(Display::InlineFlex)
-                | Some(Display::InlineGrid)
-                | Some(Display::InlineTable)
-                | Some(Display::InlineBlock)
-        ) {
+        if crate::style::flow::absolutely_positioned(style.position)
+            && matches!(
+                style.display,
+                Some(Display::InlineFlex)
+                    | Some(Display::InlineGrid)
+                    | Some(Display::InlineTable)
+                    | Some(Display::InlineBlock)
+            )
+        {
             style.abs_inline_level = true;
         }
         match style.display {
@@ -97,10 +86,7 @@ pub(crate) fn finish_inline_display(
     ) || style.is_caption == Some(true)
         // Абсолютная коробка вне потока: флоатов выше неё в её контексте нет,
         // и очищать нечего (§9.5.2 действует на поток).
-        || matches!(
-            style.position,
-            Some(Position::Absolute) | Some(Position::Fixed)
-        )
+        || crate::style::flow::absolutely_positioned(style.position)
     {
         style.clear = None;
         style.clear_inherit = false;

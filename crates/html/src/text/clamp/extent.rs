@@ -4,6 +4,7 @@
 //! протяжённости и прячет абзацы и поточные блочные коробки за точкой при сборке стилей.
 
 use crate::layout::cx::LayoutCx;
+use crate::tolerance::LINE_FIT_EPS;
 
 /// The visible extent of the content before the clamp point reaches below
 /// the cut (css-overflow-4 §5.3: only boxes and lines AFTER the clamp point
@@ -16,7 +17,7 @@ pub fn revealed_extent(key: u64, cx: &LayoutCx) -> Option<f32> {
         .filter(|c| c.is_finite())?;
     cx.clamp_plan(key)
         .and_then(|p| p.extent)
-        .filter(|e| *e > cut + 0.5)
+        .filter(|e| *e > cut + LINE_FIT_EPS)
 }
 
 /// Extend the container's clip edge down to the revealed extent; `cut` is

@@ -42,9 +42,13 @@ impl PagePercentages {
                             style: boxed.style_rc().clone(),
                         }),
                     );
-                    parents.push(boxed.style_rc().clone());
+                    if !super::transparent(e) {
+                        parents.push(boxed.style_rc().clone());
+                    }
                     walk(&e.children, &boxed, opts, parents, map);
-                    parents.pop();
+                    if !super::transparent(e) {
+                        parents.pop();
+                    }
                 }
             }
         }
@@ -61,6 +65,27 @@ impl PagePercentages {
 
     /// Обновляет размеры существующей continuation, сохраняя её child identities.
     pub(crate) fn refresh(&self, e: &mut crate::dom::Element, space: Space, opts: &RenderOpts) {
+        // CSS2 §9.2.1.1: служебный корень пробега не входит в цепочку CB.
+        if e.node_id == 0 && e.tag == "anon-block" {
+            for node in &mut e.children {
+                if let Node::Element(child) = node
+                    && super::percentage_child(child)
+                {
+                    self.refresh(child, space, opts);
+                }
+            }
+            return;
+        }
+        if super::transparent(e) {
+            for node in &mut e.children {
+                if let Node::Element(child) = node
+                    && super::percentage_child(child)
+                {
+                    self.refresh(child, space, opts);
+                }
+            }
+            return;
+        }
         let context = self.context(e.node_id);
         if context.style.wm().vertical() {
             return;
@@ -90,6 +115,7 @@ impl PagePercentages {
                 crate::style::computed::Display::Block
                     | crate::style::computed::Display::ListItem
                     | crate::style::computed::Display::Contents
+                    | crate::style::computed::Display::InlineBlock
             )
         ) && !style.wm().vertical()
             && style.column_count.is_none()
@@ -97,8 +123,7 @@ impl PagePercentages {
         {
             for node in &mut e.children {
                 if let Node::Element(child) = node
-                    && !child.inline
-                    && !crate::layout::box_kind::out_of_flow(&child.style.used())
+                    && super::percentage_child(child)
                 {
                     self.refresh(child, space, opts);
                 }

@@ -1,5 +1,7 @@
 //! Опрошенные боксы clamp и схлопнутые концевые края цепочек их предков.
 
+use crate::tolerance::LINE_FIT_EPS;
+
 /// A probed block box inside the clamp container, in box-tree preorder.
 #[derive(Debug)]
 pub(crate) struct ClampBox {
@@ -29,7 +31,7 @@ impl ClampBox {
         all.iter().any(|o| {
             !std::ptr::eq(o, self)
                 && o.fixed
-                && o.y1 <= c + 0.5
+                && o.y1 <= c + LINE_FIT_EPS
                 && o.y0 <= self.y0
                 && o.span.is_some_and(|(oa, oz)| oa <= a && z <= oz)
         })
