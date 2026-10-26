@@ -22,7 +22,10 @@ pub(super) fn inherit_lh_units(
     };
     let parent_family = parent.font_family.clone().unwrap_or_else(|| {
         if parent.monospace == Some(true) {
-            crate::text::metrics::mono_family_for(parent.lang.as_deref(), vcx).to_string()
+            vcx.doc
+                .font_snapshot()
+                .mono_family(parent.lang.as_deref())
+                .to_string()
         } else {
             String::new()
         }
@@ -31,14 +34,7 @@ pub(super) fn inherit_lh_units(
         Some(crate::style::values::value::Len::Px(v)) => v,
         Some(crate::style::values::value::Len::Em(k))
         | Some(crate::style::values::value::Len::Pct(k)) => k * parent_font,
-        _ => {
-            let f = crate::text::metrics::normal_line(&parent_family, vcx);
-            if f > 0.0 {
-                crate::text::metrics::normal_px(f, parent_font, vcx)
-            } else {
-                1.2 * parent_font
-            }
-        }
+        _ => crate::style::font_metrics::normal_height(&parent_family, parent_font, vcx),
     };
     // `c` — это `own.clone()`: слияние с родителем ещё впереди, значит в
     // `c.line_height`/`c.font_size` лежит ровно то, что задано НА ЭТОМ
@@ -73,7 +69,10 @@ pub(super) fn inherit_lh_units(
         .or_else(|| parent.font_family.clone())
         .unwrap_or_else(|| {
             if c.monospace.or(parent.monospace) == Some(true) {
-                crate::text::metrics::mono_family_for(c.lang.as_deref(), vcx).to_string()
+                vcx.doc
+                    .font_snapshot()
+                    .mono_family(c.lang.as_deref())
+                    .to_string()
             } else {
                 String::new()
             }
@@ -82,14 +81,7 @@ pub(super) fn inherit_lh_units(
         Some(crate::style::values::value::Len::Px(v)) => v,
         Some(crate::style::values::value::Len::Em(k))
         | Some(crate::style::values::value::Len::Pct(k)) => k * font,
-        _ => {
-            let f = crate::text::metrics::normal_line(&family, vcx);
-            if f > 0.0 {
-                crate::text::metrics::normal_px(f, font, vcx)
-            } else {
-                1.2 * font
-            }
-        }
+        _ => crate::style::font_metrics::normal_height(&family, font, vcx),
     };
     let fix = |l: &mut Option<crate::style::values::value::Len>| match *l {
         Some(crate::style::values::value::Len::Lh(k)) => {
