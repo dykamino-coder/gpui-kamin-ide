@@ -4,12 +4,16 @@ version.workspace = true
 edition.workspace = true
 publish = false
 
+[features]
+engine-bench = ["dep:kamin-html"]
+
 [[bin]]
 name = "engine_bench"
 path = "src/main.rs"
+required-features = ["engine-bench"]
 
 [dependencies]
-kamin-html = { workspace = true, features = ["engine-bench"] }
+kamin-html = { workspace = true, optional = true, features = ["engine-bench"] }
 gpui.workspace = true
 gpui-platform.workspace = true
 mimalloc.workspace = true
