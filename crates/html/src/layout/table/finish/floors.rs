@@ -77,7 +77,7 @@ pub(super) fn table_size_floors(
             let floor = first_row_widths.iter().flatten().sum::<f32>()
                 + spacing.0 * (f32::from(cols) + 1.0)
                 + edges;
-            (floor > w + 0.5).then_some(floor)
+            (floor > w + crate::tolerance::TABLE_SIZE_EPS).then_some(floor)
         }
         _ => None,
     };

@@ -139,7 +139,7 @@ fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
             }
         } else if k >= 0.0 {
             let (dx, dy) = (1.0 - ex, 1.0 - ey);
-            if (k - 1.0).abs() < 1e-3 {
+            if (k - 1.0).abs() < crate::tolerance::CORNER_CURVATURE_EPS {
                 let dd = (dx * dx + dy * dy).sqrt();
                 let grad = ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / dd.max(1e-6);
                 ((dd - 1.0) / grad.max(1e-6), dx / rx, dy / ry)

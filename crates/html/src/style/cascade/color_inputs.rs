@@ -28,11 +28,7 @@ pub(super) fn text_clip_colors(
         b: 0.0,
         a: 1.0,
     };
-    let out_of_flow = matches!(
-        own.position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
-    );
+    let out_of_flow = crate::style::flow::absolutely_positioned(own.position);
     if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, images) {
         let foreground = c.text_clip_raw.or(c.color);
         out.raw = foreground;

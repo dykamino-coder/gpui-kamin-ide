@@ -58,6 +58,7 @@ FIXES = {
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
         "DirectX: CSS primitives, images, filters, masks, gradients and frame capture with CPU copy/map timing for WPT phase measurements.",
         "Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.",
+        "Process shutdown: drain deferred native window destruction, stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop.",
         "Diagnostics: GPU batch measurements consumed by the application's diagnostic panel.",
         "Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.",
         "Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state,"

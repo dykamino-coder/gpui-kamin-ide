@@ -77,7 +77,7 @@ impl VerticalText {
             window.layout_origin_unrounded(id).x + window.layout_size_unrounded(id).width,
         );
         let delta = right - (right * scale).round() / scale;
-        if !delta.is_finite() || delta.abs() > 0.5 {
+        if !delta.is_finite() || delta.abs() > crate::tolerance::TEXT_ORIGIN_SNAP_EPS {
             return (bounds, Pixels::ZERO);
         }
         let mut frame = bounds;

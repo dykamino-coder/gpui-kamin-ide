@@ -72,7 +72,9 @@ pub(super) fn along(mode: Tiling, span: f32, piece: f32) -> Vec<(f32, f32)> {
             // девайс-сетке (при 125% масштабе 135 становится 134.8), и целая
             // копия терялась на ровно влезающих полосах (`space-5`: две
             // вместо трёх). Сами копии и зазоры считаются от настоящей длины.
-            let count = (span.round() / piece + 1e-3).floor().min(MAX);
+            let count = (span.round() / piece + crate::tolerance::TILE_COUNT_EPS)
+                .floor()
+                .min(MAX);
             if count < 1.0 {
                 return vec![];
             }

@@ -156,7 +156,10 @@ impl Paragraph {
                 // оставляло столбец красного (`static-position/vlr-*`).
                 let origin = if rotated {
                     let y = f32::from(origin.y + px(how.rot_dy)) * scale;
-                    point(origin.x + px(how.rot_dx), px((y + 1e-3).floor() / scale))
+                    point(
+                        origin.x + px(how.rot_dx),
+                        px((y + crate::tolerance::RASTER_FLOOR_BIAS).floor() / scale),
+                    )
                 } else {
                     origin
                 };
