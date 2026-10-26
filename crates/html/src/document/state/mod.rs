@@ -37,6 +37,8 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Ревизия и её document owner живут с отложенными ValueDoc/кадрами.
+    pub(crate) budget: RefCell<Option<crate::budget::RevisionBudget>>,
     pub(crate) font_facts: font_facts::DocumentFonts,
     pub(crate) traversal: traversal::TraversalState,
     /// Первый отказ вложенного документа этой revision; не теряется при повторном кадре.

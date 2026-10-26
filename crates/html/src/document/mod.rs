@@ -13,6 +13,8 @@
 #[cfg(test)]
 mod admission_tests;
 mod base_url;
+#[cfg(test)]
+mod budget_tests;
 mod builder;
 mod outcome;
 mod revision;
@@ -88,6 +90,7 @@ impl Document {
         xml: bool,
         media: Media,
         fonts: &crate::text::metrics::FontContext,
+        revision: crate::budget::RevisionBudget,
     ) -> Result<Self, DocumentFailure> {
         let key = base_url::key(html, theme_css, base_url.as_ref());
         let input = crate::dom::input::Admitted::parse(html, xml).map_err(|mut failure| {
@@ -99,8 +102,14 @@ impl Document {
         } else {
             base_url::document_base(&input.dom.document, base_url.as_ref())
         };
-        let (state, nodes, root) =
-            parse_document(&input, theme_css, effective_base.as_ref(), media, fonts);
+        let (state, nodes, root) = parse_document(
+            &input,
+            theme_css,
+            effective_base.as_ref(),
+            media,
+            fonts,
+            revision,
+        );
         state.traversal.retain(input);
         Ok(Document {
             state,
