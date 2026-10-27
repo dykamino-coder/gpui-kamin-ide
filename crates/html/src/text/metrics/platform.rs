@@ -63,10 +63,6 @@ impl FontContext {
         })
     }
 
-    pub(crate) fn installed_names(&self) -> Rc<HashSet<String>> {
-        self.installed.clone()
-    }
-
     /// Снять список семейств после регистрации встроенных шрифтов приложения.
     pub fn new(system: Arc<gpui::TextSystem>) -> Self {
         let installed = Rc::new(
@@ -113,6 +109,7 @@ impl FontContext {
 
     pub(crate) fn install(&self, vcx: ValueCx<'_>) {
         vcx.doc.metrics.platform.replace(self.clone());
+        vcx.doc.set_installed_fonts(self.installed.clone());
         *vcx.doc.metrics.wrap.borrow_mut() = None;
         *vcx.doc.metrics.space.borrow_mut() = None;
         if let Some(system) = &self.system {

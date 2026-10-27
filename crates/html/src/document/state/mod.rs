@@ -52,7 +52,7 @@ pub struct DocState {
     /// Anchor registries and root frame geometry of the layout phase of this document.
     pub(crate) layout: Rc<crate::layout::layout_state::LayoutState>,
     /// Font-face descriptors and source caches belonging to this document.
-    pub(crate) font_faces: crate::text::fonts::FontFaces,
+    pub(crate) font_faces: font_facts::FontFaces,
     /// Parsed MATH sources and registered native-family data of this document.
     pub(crate) font_math: crate::text::fonts::math::MathFonts,
     /// Font measurement caches scoped to this document.
