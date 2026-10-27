@@ -366,5 +366,7 @@ fn late_placed_root_carries_its_admission_to_its_static_position() {
     let found = printed(html, 800., 600.);
     let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).collect();
     assert_eq!(blue.len(), 1, "{found:?}");
-    eprintln!("LATE {found:?}");
+    // Its line in the second block, under the 20px block and the 48px margin
+    // (where the legacy copy painted it); unshifted it landed a line higher.
+    assert_eq!(f32::from(blue[0].0.origin.y), 81.5);
 }
