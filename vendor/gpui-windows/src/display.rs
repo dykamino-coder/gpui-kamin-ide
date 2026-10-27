@@ -23,6 +23,7 @@ pub(crate) struct WindowsDisplay {
     pub handle: HMONITOR,
     pub display_id: DisplayId,
     scale_factor: f32,
+    pub(crate) forced_scale: Option<f32>,
     bounds: Bounds<Pixels>,
     visible_bounds: Bounds<Pixels>,
     physical_bounds: Bounds<DevicePixels>,
@@ -34,13 +35,13 @@ unsafe impl Send for WindowsDisplay {}
 unsafe impl Sync for WindowsDisplay {}
 
 impl WindowsDisplay {
-    pub(crate) fn new(display_id: DisplayId) -> Option<Self> {
+    pub(crate) fn new(display_id: DisplayId, forced_scale: Option<f32>) -> Option<Self> {
         let handle = HMONITOR(u64::from(display_id) as _);
         let info = get_monitor_info(handle).log_err()?;
         let monitor_size = info.monitorInfo.rcMonitor;
         let work_area = info.monitorInfo.rcWork;
         let uuid = generate_uuid(&info.szDevice);
-        let scale_factor = get_scale_factor_for_monitor(handle).log_err()?;
+        let scale_factor = get_scale_factor_for_monitor(handle, forced_scale).log_err()?;
         let physical_size = size(
             (monitor_size.right - monitor_size.left).into(),
             (monitor_size.bottom - monitor_size.top).into(),
@@ -50,6 +51,7 @@ impl WindowsDisplay {
             handle,
             display_id,
             scale_factor,
+            forced_scale,
             bounds: Bounds {
                 origin: logical_point(
                     monitor_size.left as f32,
@@ -78,7 +80,7 @@ impl WindowsDisplay {
         DisplayId::new(monitor.0 as u64)
     }
 
-    pub fn primary_monitor() -> Option<Self> {
+    pub fn primary_monitor(forced_scale: Option<f32>) -> Option<Self> {
         // https://devblogs.microsoft.com/oldnewthing/20070809-00/?p=25643
         const POINT_ZERO: POINT = POINT { x: 0, y: 0 };
         let monitor = unsafe { MonitorFromPoint(POINT_ZERO, MONITOR_DEFAULTTOPRIMARY) };
@@ -89,7 +91,7 @@ impl WindowsDisplay {
             );
             return None;
         }
-        WindowsDisplay::new(Self::display_id_for_monitor(monitor))
+        WindowsDisplay::new(Self::display_id_for_monitor(monitor), forced_scale)
     }
 
     /// The DPI scale factor of this monitor, independent of whatever monitor
@@ -109,19 +111,19 @@ impl WindowsDisplay {
         if monitor.is_invalid() {
             false
         } else {
-            let Some(display) = WindowsDisplay::new(Self::display_id_for_monitor(monitor)) else {
+            let Some(display) = WindowsDisplay::new(Self::display_id_for_monitor(monitor), self.forced_scale) else {
                 return false;
             };
             display.uuid == self.uuid
         }
     }
 
-    pub fn displays() -> Vec<Rc<dyn PlatformDisplay>> {
+    pub fn displays(forced_scale: Option<f32>) -> Vec<Rc<dyn PlatformDisplay>> {
         available_monitors()
             .into_iter()
             .filter_map(|handle| {
                 Some(
-                    Rc::new(WindowsDisplay::new(Self::display_id_for_monitor(handle))?)
+                    Rc::new(WindowsDisplay::new(Self::display_id_for_monitor(handle), forced_scale)?)
                         as Rc<dyn PlatformDisplay>,
                 )
             })
@@ -201,16 +203,10 @@ fn generate_uuid(device_name: &[u16]) -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_DNS, &name)
 }
 
-fn get_scale_factor_for_monitor(monitor: HMONITOR) -> Result<f32> {
+fn get_scale_factor_for_monitor(monitor: HMONITOR, forced_scale: Option<f32>) -> Result<f32> {
     let mut dpi_x = 0;
     let mut dpi_y = 0;
     unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) }?;
     assert_eq!(dpi_x, dpi_y);
-    Ok(forced_scale().unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
-}
-
-/// `KAMIN_FORCE_SCALE` overrides the monitor scale factor (set by the WPT runner to 1;
-/// unset in the IDE, where the real monitor scale applies).
-pub(crate) fn forced_scale() -> Option<f32> {
-    std::env::var("KAMIN_FORCE_SCALE").ok().and_then(|v| v.parse().ok())
+    Ok(forced_scale.unwrap_or(dpi_x as f32 / USER_DEFAULT_SCREEN_DPI as f32))
 }

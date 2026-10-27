@@ -325,6 +325,8 @@ bitflags::bitflags! {
 
 #[expect(missing_docs)]
 pub trait Platform: 'static {
+    /// Передать типизированные настройки измерений до запуска платформы.
+    fn set_instrumentation(&self, _instrumentation: crate::Instrumentation) {}
     fn background_executor(&self) -> BackgroundExecutor;
     fn foreground_executor(&self) -> ForegroundExecutor;
     fn text_system(&self) -> Arc<dyn PlatformTextSystem>;
@@ -1142,6 +1144,14 @@ pub enum TextInputStateChange {
 
 #[expect(missing_docs)]
 pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
+    /// Установить единственный readback endpoint; неподдерживаемый backend вернёт ошибку.
+    fn set_frame_capture(
+        &self,
+        _sink: Option<Box<dyn crate::frame_capture::FrameCaptureSink>>,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("frame readback capture is unsupported on this platform")
+    }
+
     fn bounds(&self) -> Bounds<Pixels>;
     fn is_maximized(&self) -> bool;
     fn window_bounds(&self) -> WindowBounds;

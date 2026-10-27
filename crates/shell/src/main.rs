@@ -51,6 +51,7 @@ mod output_log;
 mod overlay;
 mod probe;
 mod root;
+mod startup;
 mod state;
 mod term;
 mod theme;
@@ -94,16 +95,9 @@ fn main() {
         unsafe { std::env::set_var("GPUI_DISABLE_DIRECT_COMPOSITION", "false") };
     }
 
-    // Single-instance: живой инстанс (probe-порт отвечает) получает нашу
-    // папку из argv («Open with KaminIDE») или просто фокус — а мы выходим.
-    // СТРОГО до probe::host::start(), иначе начнём отбирать порт у живого.
-    let launch_folder = win_integration::launch_folder();
-    if win_integration::forward_to_running_instance(launch_folder.as_deref()) {
+    if startup::forward_launch() {
         return;
     }
-    win_integration::set_launch_folder(launch_folder);
-    // Self-heal контекстного меню Explorer: фоном, reg.exe небыстрый.
-    std::thread::spawn(win_integration::register_context_menu);
 
     #[cfg(feature = "probe")]
     probe::host::start();
@@ -129,93 +123,9 @@ fn main() {
         let _ = tx.try_send(host_link::ShellEvent::Ed(EdEvent::OpenFile(path)));
     }
 
-    let app = gpui_platform::application().with_assets(assets::Assets);
+    let app = startup::application();
     app.run(move |cx| {
-        // Серые глифы, как до gpui-pre 0.3.8 (ClearType меняет вид всего текста
-        // и не пишет альфу — в прозрачных слоях текст бы пропадал).
-        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
-        // Шрифты вложены в бинарь (plan/22: Bricolage задаёт всю метрику).
-        // Сабсеты ТЕ ЖЕ, что шипит kamin-ide; name-таблица починена
-        // (апстрим: family «96pt ExtraBold», STAT-синтез — см. память).
-        cx.text_system()
-            .add_fonts(vec![
-                std::borrow::Cow::Borrowed(
-                    include_bytes!("../assets/fonts/bricolage-latin.ttf").as_slice(),
-                ),
-                std::borrow::Cow::Borrowed(
-                    include_bytes!("../assets/fonts/bricolage-latin-ext.ttf").as_slice(),
-                ),
-                std::borrow::Cow::Borrowed(
-                    include_bytes!("../assets/fonts/JetBrainsMono-Variable.ttf").as_slice(),
-                ),
-                std::borrow::Cow::Borrowed(
-                    include_bytes!("../assets/fonts/JetBrainsMono-Italic-Variable.ttf").as_slice(),
-                ),
-                std::borrow::Cow::Borrowed(
-                    include_bytes!("../assets/fonts/codicon.ttf").as_slice(),
-                ),
-                std::borrow::Cow::Borrowed(
-                    include_bytes!("../assets/fonts/fa-solid-900.ttf").as_slice(),
-                ),
-            ])
-            .expect("embed fonts");
-        for name in cx.text_system().all_font_names() {
-            let l = name.to_lowercase();
-            if l.contains("awesome") || l.contains("codicon") {
-                println!("font family loaded: {name}");
-            }
-        }
-
-        gpui_component::init(cx);
-        // Клавиши шелла (роутятся через key_context "Root").
-        // «!webview»: при фокусе В СТРАНИЦЕ (CEF) биндинг молчит, и клавиша
-        // уходит листенеру обёртки → в Chromium. gpui матчит биндинги РАНЬШЕ
-        // key-листенеров, поэтому Enter/Escape/Ctrl+S иначе срабатывали как
-        // действия шелла и до чата не доходили. `Not` в предикате проверяет
-        // ВЕСЬ стек контекстов (`keymap/context.rs:284`) — глубина работает.
-        // Палитра — глобальная, работает и из страницы.
-        cx.bind_keys([
-            gpui::KeyBinding::new("ctrl-shift-p", actions::TogglePalette, Some("Root")),
-            gpui::KeyBinding::new("ctrl-p", actions::ToggleQuickOpen, Some("Root && !webview")),
-            gpui::KeyBinding::new(
-                "ctrl-shift-f",
-                actions::ToggleFindInFiles,
-                Some("Root && !webview"),
-            ),
-            gpui::KeyBinding::new(
-                "ctrl-t",
-                actions::ToggleWorkspaceSymbols,
-                Some("Root && !webview"),
-            ),
-            gpui::KeyBinding::new("escape", actions::CloseOverlay, Some("Root && !webview")),
-            // Enter обрабатывается ЗДЕСЬ, в главном окне: обработчики
-            // оверлеев висят на элементах overlay-слоя и не получают
-            // клавиатуру — фокус инпута живёт в main (ревью ц.7).
-            gpui::KeyBinding::new("enter", actions::PressEnter, Some("Root && !webview")),
-            gpui::KeyBinding::new("ctrl-s", actions::SaveFile, Some("Root && !webview")),
-            gpui::KeyBinding::new(
-                "ctrl-b",
-                actions::ToggleSidebarAction,
-                Some("Root && !webview"),
-            ),
-            gpui::KeyBinding::new("ctrl-z", actions::UndoFileOp, Some("Root && !webview")),
-            gpui::KeyBinding::new("f2", actions::RenameActiveSession, Some("Root && !webview")),
-        ]);
-        // Тема gpui-component: полный сет + оверрайды палитры KaminIDE
-        // (общая точка с Appearance-переключателем — theme_sync).
-        // Сначала КЭШ contributed-темы (мгновенно, до загрузки расширения-
-        // поставщика — бут раньше шёл на дефолтной теме до прихода реестра);
-        // без кэша — builtin по персисту themeChoice.
-        if !theme_sync::apply_cached_contributed(cx) {
-            let choice = crate::layout_store::load_raw_key("themeChoice")
-                .and_then(|v| v.as_str().map(str::to_string));
-            let kind = if choice.as_deref() == Some("light") {
-                kamin_theme::ThemeKind::Light
-            } else {
-                kamin_theme::ThemeKind::Dark
-            };
-            theme_sync::apply(kind, cx);
-        }
+        startup::configure(cx);
 
         // Насос CEF: очередь событий и перерисовка по приходу кадра.
         web::start_pump(cx);
@@ -254,14 +164,9 @@ fn main() {
                     )
                 })
                 .unwrap_or(WindowBounds::Windowed(bounds));
-            // Debug acceptance on the owner's desktop: show without activating.
-            #[cfg(debug_assertions)]
-            let focus = !native_acceptance::config::Config::from_env().no_activate;
-            #[cfg(not(debug_assertions))]
-            let focus = true;
             let options = WindowOptions {
                 window_bounds: Some(window_bounds),
-                focus,
+                focus: startup::focus(),
                 // Нативный хедер убит: frameless, титлбар рисуем сами
                 // (ui/titlebar). Заголовок всё равно задаём — им подписаны
                 // строки диспетчера задач и Alt+Tab.
