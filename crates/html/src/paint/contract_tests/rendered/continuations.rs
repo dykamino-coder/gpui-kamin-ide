@@ -211,3 +211,20 @@ background:repeating-linear-gradient(lime, lime 20px, blue 20px, blue 40px)'></d
     assert!(gradient(25., 75.), "first fragment: {found:?}");
     assert!(gradient(75., 25.), "continuation: {found:?}");
 }
+
+#[test]
+fn absolute_box_in_a_repeated_table_header_repeats_with_it() {
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;column-fill:auto;gap:0;width:100px;height:100px'>\
+<div style='display:table;width:100%'>\
+<div style='display:table-header-group;break-inside:avoid'>\
+<div style='position:relative;contain:size;width:50px;height:20px'>\
+<div style='position:absolute;width:50px;height:20px;background:#0000ff'></div></div></div>\
+<div style='height:160px'></div></div></div>",
+        400.,
+        200.,
+    );
+    assert!(is(top(&found, 25., 10.), 0x0000ff), "first header");
+    assert!(is(top(&found, 75., 10.), 0x0000ff), "repeated header");
+}

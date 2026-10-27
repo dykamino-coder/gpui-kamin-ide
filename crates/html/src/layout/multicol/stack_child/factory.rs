@@ -39,7 +39,11 @@ pub(super) fn new(
     let copy = copy.clone();
     std::rc::Rc::new(move |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
-        opts.cx.position.continue_in_slots(slots.clone());
+        // A repeated header/footer band clones its monolithic content, absolute
+        // boxes included: they repeat with the band instead of continuing.
+        opts.cx
+            .position
+            .continue_in_slots(slots.clone().filter(|_| !band));
         // Копия строится после закрытия слоёв предков. Измерительные деревья
         // изолированы; только prepaint публикует OOF в исходный containing block.
         let (state, escaped) = positioning.isolate();
