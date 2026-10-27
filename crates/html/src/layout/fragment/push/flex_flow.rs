@@ -98,11 +98,22 @@ fn flow_growths(
         // Мягкий avoid закрывает и точную границу соседей без монолита.
         // Внутри пустого элемента сам диапазон не запрещает разрез класса C.
         let boundary = breaks.cuts.iter().any(|p| (p.0 - edge).abs() < COORD_EPS);
+        // Пожелание с начала элемента сетки выполнил бы только перенос его ряда: ряд
+        // переносит лишь первая неделимая часть и `break-inside: avoid`
+        // (`GridBox::breaks`), остальное ослабляется внутри элемента.
+        let grid_top = laid
+            .placements
+            .contains_key(&flow.id)
+            .then(|| laid.at(flow.id).map(|p| p.0))
+            .flatten();
+        let wish = |p: &&(f32, f32)| grid_top.is_none_or(|top| p.0 > top + COORD_EPS);
+        let keep: Vec<_> = breaks.keep.iter().filter(wish).copied().collect();
+        let avoid: Vec<_> = breaks.avoid.iter().filter(wish).copied().collect();
         let solid = breaks
             .solid
             .iter()
-            .chain(&breaks.keep)
-            .chain(breaks.avoid.iter().filter(|_| boundary))
+            .chain(&keep)
+            .chain(avoid.iter().filter(|_| boundary))
             .filter(|&&(a, b)| {
                 overflow_edge
                     && a > from + COORD_EPS
@@ -113,11 +124,10 @@ fn flow_growths(
             .map(|p| p.0)
             .min_by(f32::total_cmp);
         let solid = solid.map(|mut point| {
-            for _ in 0..breaks.keep.len() + breaks.avoid.len() {
-                let start = breaks
-                    .keep
+            for _ in 0..keep.len() + avoid.len() {
+                let start = keep
                     .iter()
-                    .chain(&breaks.avoid)
+                    .chain(&avoid)
                     .filter(|&&(a, b)| {
                         a > from + COORD_EPS && a < point - COORD_EPS && point < b - COORD_EPS
                     })
@@ -208,13 +218,16 @@ fn pushed_past_edge(flow: &BlockBox, laid: &Laid, from: f32, edge: f32) -> Optio
     None
 }
 
-/// Верх элемента ряда flex, чей поток — `id`.
+/// Верх элемента ряда flex или элемента сетки, чей поток — `id`: его первую неделимую часть
+/// переносит линия или ряд (`FlexBox::breaks`, `GridBox::breaks`).
 fn row_item_top(laid: &Laid, id: u64) -> Option<f32> {
-    laid.flexes
-        .values()
-        .any(|f| !f.column && f.lines.iter().any(|l| l.items.contains(&id)))
-        .then(|| laid.at(id).map(|p| p.0))
-        .flatten()
+    (laid.placements.contains_key(&id)
+        || laid
+            .flexes
+            .values()
+            .any(|f| !f.column && f.lines.iter().any(|l| l.items.contains(&id))))
+    .then(|| laid.at(id).map(|p| p.0))
+    .flatten()
 }
 
 /// Начало линии ряда, в которой стоит элемент `id`.

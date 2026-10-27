@@ -209,10 +209,11 @@ impl ColumnStack {
             }
         }
         for (kid, list) in tagged.into_iter().enumerate() {
+            // Независимые потоки flex и сетки растут по одному фрагменту за проход.
             let flex = self.children[kid]
                 .regrow
                 .as_ref()
-                .is_some_and(|r| !r.laid.flexes.is_empty());
+                .is_some_and(|r| !r.laid.flexes.is_empty() || !r.laid.placements.is_empty());
             let first = list.iter().map(|g| g.0).min();
             local_grows[kid].extend(
                 list.into_iter()

@@ -34,8 +34,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/fragment/mod.rs"),
     include_str!("../../layout/fragment/probe.rs"),
     include_str!("../../layout/fragment/grid_bands/mod.rs"),
-    include_str!("../../layout/fragment/grid_bands/auto_rows/mod.rs"),
-    include_str!("../../layout/fragment/grid_bands/auto_rows/pass.rs"),
     include_str!("../../layout/fragment/grid_bands/forced/mod.rs"),
     include_str!("../../layout/fragment/grid_bands/forced/stack.rs"),
     include_str!("../../layout/fragment/clone/mod.rs"),

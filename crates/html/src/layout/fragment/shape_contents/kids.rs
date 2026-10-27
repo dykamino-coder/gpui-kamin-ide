@@ -84,21 +84,7 @@ pub(super) fn shape_from_kids(
     }
     // Заданная высота — в точках или (для страниц) в единицах окна.
     let (h, mt, mb) = match shaped_height(
-        c,
-        depth,
-        px_or,
-        mt,
-        mb,
-        unclamp,
-        cx,
-        top,
-        bot,
-        kids,
-        &mut cuts,
-        &mut forced,
-        &mut solid,
-        stacked,
-        vcx,
+        c, px_or, mt, mb, unclamp, cx, top, bot, kids, &mut cuts, stacked,
     ) {
         Ok(value) => value,
         Err(value) => return value.map(Measure::plain),

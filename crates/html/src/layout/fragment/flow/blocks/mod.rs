@@ -56,6 +56,8 @@ mod flex_overflow_tests;
 #[cfg(test)]
 mod flex_tests;
 #[cfg(test)]
+mod grid_flow_tests;
+#[cfg(test)]
 mod grid_tests;
 #[cfg(test)]
 mod mixed_tests;
