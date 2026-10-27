@@ -27,19 +27,23 @@ pub(super) fn new(
     let opts = opts.clone();
     // Under a native source of this multicol every absolute/fixed root of a
     // copy replays its own continuation record (paint::continuation).
-    let slots = opts.cx.position.continuation_slots
-        || opts
-            .cx
-            .position
-            .geometry
-            .as_ref()
-            .is_some_and(|g| g.native_oof().is_some() && g.host == merged.self_node);
+    let slots = opts
+        .cx
+        .position
+        .geometry
+        .as_ref()
+        .is_some_and(|g| g.native_oof().is_some() && g.host == merged.self_node)
+        .then(|| {
+            crate::layout::positioned::containing_block::metrics::fragmentation::continuation_roots(
+                std::iter::once(copy),
+            )
+        });
     let positioning = opts.cx.position.state.retain();
     let merged = merged.clone();
     let copy = copy.clone();
     std::rc::Rc::new(move |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
-        opts.cx.position.continue_in_slots(slots);
+        opts.cx.position.continue_in_slots(slots.clone());
         // Копия строится после закрытия слоёв предков. Измерительные деревья
         // изолированы; только prepaint публикует OOF в исходный containing block.
         let (state, escaped) = positioning.isolate();

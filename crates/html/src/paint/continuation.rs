@@ -71,8 +71,15 @@ impl Wrap for Slot {
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, _: &mut App) {
         let Some(copy) = window.render_context::<CopySegment>() else {
+            eprintln!("P08DBG slot {} no copy context", self.id);
             return;
         };
+        eprintln!(
+            "P08DBG slot {} seg {:?} found {}",
+            self.id,
+            copy.segment,
+            copy.records.get(copy.segment, self.id).is_some()
+        );
         let record = copy.records.get(copy.segment, self.id);
         if let Some(record) = record {
             let origin = point(px(0.), px(0.));

@@ -102,12 +102,15 @@ impl Recorder {
                         e.node_id
                     },
                     None,
+                    false,
                 )
             })
             .collect();
         pending.reverse();
-        while let Some((e, owner, mut parent)) = pending.pop() {
-            let is_positioned = positioned(e.style.used().position);
+        while let Some((e, owner, mut parent, nested)) = pending.pop() {
+            // A nested multicol fragments its own absolute/fixed descendants: they
+            // stay plain nodes of the enclosing family here (css-multicol-1 §2).
+            let is_positioned = !nested && positioned(e.style.used().position);
             if is_positioned {
                 let mut blocks = BlockBox::collect(
                     e,
@@ -136,8 +139,10 @@ impl Recorder {
                 });
                 parent = Some(index);
             }
+            let inner =
+                nested || crate::layout::multicol::spanner::multicol_container(&e.style.used());
             pending.extend(e.children.iter().rev().filter_map(|n| match n {
-                Node::Element(c) => Some((c, owner, parent)),
+                Node::Element(c) => Some((c, owner, parent, inner)),
                 _ => None,
             }));
             families.insert(e.node_id, parent.map_or(owner, |index| flows[index].id));
@@ -150,6 +155,27 @@ impl Recorder {
         };
         recorder
     }
+}
+
+/// Outermost absolute/fixed roots of `kids` continued by their native source;
+/// boxes inside a nested multicol belong to that container's own source.
+pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) -> Rc<[u64]> {
+    let mut roots = Vec::new();
+    let mut pending: Vec<&Element> = kids.collect();
+    while let Some(e) = pending.pop() {
+        if positioned(e.style.used().position) {
+            roots.push(e.node_id);
+            continue;
+        }
+        if crate::layout::multicol::spanner::multicol_container(&e.style.used()) {
+            continue;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(c) => Some(c),
+            _ => None,
+        }));
+    }
+    Rc::from(roots)
 }
 
 // Float остаётся потоком своего владельца P06, а не abspos/fixed continuation.

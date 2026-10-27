@@ -205,6 +205,12 @@ fn own_capture(
         Err(error) => return source.fail(error),
     };
     for (segment, record) in records.into_records() {
+        eprintln!(
+            "P08DBG own {} seg {:?} bare {}",
+            id,
+            segment,
+            nested.bare.contains(&segment)
+        );
         if nested.bare.contains(&segment) {
             source.bare.insert(segment, id, record);
             continue;

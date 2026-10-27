@@ -158,9 +158,13 @@ async fn element_inner(
     let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
         e.node_id, &merged, opts,
     );
-    let slot = (opts.cx.position.continuation_slots
-        && crate::style::flow::absolutely_positioned(merged.position))
-    .then_some(e.node_id);
+    let slot = opts
+        .cx
+        .position
+        .continuation_slots
+        .as_ref()
+        .is_some_and(|roots| roots.contains(&e.node_id))
+        .then_some(e.node_id);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::paint::controls::element(e, &merged, opts) {

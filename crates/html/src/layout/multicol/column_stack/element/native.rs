@@ -39,6 +39,15 @@ impl ColumnStack {
         let scale = window.scale_factor();
         let mut admission = Admission::new();
         for f in oof.iter() {
+            eprintln!(
+                "P08DBG plan kid {} col {} y {} from {} h {} (src {:?})",
+                f.kid,
+                f.col,
+                f.y,
+                f.from,
+                f.h,
+                sources.get(f.kid)
+            );
             let id = *sources
                 .get(f.kid)
                 .ok_or(PaintRecordError::InvalidGeometry)?;

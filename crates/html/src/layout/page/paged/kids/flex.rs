@@ -80,13 +80,13 @@ pub(super) fn regrow(
     let (root, rec) = (root.clone(), watched.clone());
     // Native page sources paint the absolute/fixed continuations; the copies
     // replay them in place (paint::continuation).
-    let oof_slots = group.iter().any(|n| {
-        matches!(n, Node::Element(e)
-            if crate::layout::positioned::containing_block::metrics::layout::contains_oof_box(e))
-    });
+    let oof_slots =
+        crate::layout::positioned::containing_block::metrics::fragmentation::continuation_roots(
+            std::iter::once(dom),
+        );
     let build = move |dom: &crate::dom::Element, part: usize, _band: bool, base: &RenderOpts| {
         let mut opts = base.clone();
-        opts.cx.position.continue_in_slots(oof_slots);
+        opts.cx.position.continue_in_slots(Some(oof_slots.clone()));
         let paged = crate::layout::page::paged::PagedBuild::begin();
         opts.frag.paged = Some(paged.clone());
         opts.frag.watch = Some(if part == 0 {

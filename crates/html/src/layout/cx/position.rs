@@ -9,9 +9,9 @@ pub(crate) struct PositioningContext {
     pub(crate) geometry_record:
         Option<Rc<crate::layout::positioned::containing_block::metrics::record::Recorder>>,
     pub(crate) geometry: Option<Rc<crate::layout::positioned::containing_block::metrics::Snapshot>>,
-    /// Legacy normal-flow copies under a native source: absolute/fixed roots
-    /// replay their own continuation records instead of painting themselves.
-    pub(crate) continuation_slots: bool,
+    /// Legacy normal-flow copies under a native source: these absolute/fixed
+    /// roots replay their own continuation records instead of painting themselves.
+    pub(crate) continuation_slots: Option<Rc<[u64]>>,
     /// Containing-block layers of the current build pass (`Positioning`):
     /// a new document (`render`, a nested document) starts its own.
     pub(crate) state: Rc<Positioning>,
@@ -35,7 +35,9 @@ pub(crate) struct PositioningContext {
 impl PositioningContext {
     /// Copies of a fragmentation host under its native source replay their
     /// absolute/fixed roots (`paint::continuation`) for the whole subtree.
-    pub(crate) fn continue_in_slots(&mut self, on: bool) {
-        self.continuation_slots |= on;
+    pub(crate) fn continue_in_slots(&mut self, roots: Option<Rc<[u64]>>) {
+        if roots.is_some() {
+            self.continuation_slots = roots;
+        }
     }
 }
