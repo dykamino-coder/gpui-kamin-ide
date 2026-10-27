@@ -230,6 +230,7 @@ pub(super) fn stack_child_of(
                     head,
                     foot,
                     geom,
+                    row_ends: Vec::new(),
                     head_els: match head {
                         Some(_) => (1..kid_copies).map(|i| build(false, i, true)).collect(),
                         None => Vec::new(),

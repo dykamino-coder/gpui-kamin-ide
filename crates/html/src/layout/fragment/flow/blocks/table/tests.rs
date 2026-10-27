@@ -5,10 +5,17 @@ use crate::layout::fragment::flow::FlowGeometry;
 use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed, TableFrame};
 use crate::style::computed::Display;
 
+mod captions;
+
 /// Стопка первой таблицы документа (`display: table`) и номера узлов блоков
 /// `<p>` в её ячейках в порядке документа.
 fn table(html: &str) -> (BlockBox, Vec<u64>) {
-    let doc = crate::dom::parse(html, "");
+    collected(&crate::dom::parse(html, ""))
+}
+
+/// Стопка первой таблицы разобранного документа `doc` и номера узлов `<p>`
+/// её ячеек.
+fn collected(doc: &crate::dom::Parsed) -> (BlockBox, Vec<u64>) {
     fn find(n: &Node) -> Option<&Element> {
         let Node::Element(e) = n else { return None };
         if e.style.used().display == Some(Display::Table) {

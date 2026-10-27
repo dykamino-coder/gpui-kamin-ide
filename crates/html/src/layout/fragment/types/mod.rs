@@ -19,8 +19,8 @@ mod stack_child;
 use crate::tolerance::COORD_EPS;
 pub(crate) use lazy::{FragmentHandle, FragmentMeasurement};
 pub(crate) use stack_child::BreaksAt;
-pub use stack_child::Repeat;
-pub use stack_child::RepeatGeom;
+mod repeat;
+pub use repeat::{Repeat, RepeatGeom};
 pub use stack_child::StackChild;
 
 /// Ребёнок потока: элемент и его известный размер.

@@ -1,7 +1,7 @@
-//! Ребёнок стопки фрагментов (StackChild) и повторяемые заголовки/подвалы (Repeat, RepeatGeom).
+//! Ребёнок стопки фрагментов (`StackChild`) и его геометрия для укладки (`Kid`).
 
 use super::rows::Par;
-use crate::tolerance::COORD_EPS;
+use super::{Repeat, RepeatGeom};
 use gpui::AnyElement;
 
 /// Когда главная копия раскладывается ради измеренных точок разрыва.
@@ -144,76 +144,6 @@ pub struct StackChild {
     /// Paginated by its own layout (`fragment::paginate`): the stack lays the
     /// copy out against the fragmentainer grid and rebuilds it with struts.
     pub paginate: Option<crate::layout::fragment::paginate::Paginate>,
-}
-
-/// Повтор секций таблицы во фрагментах. Фрагмент в нашей модели — СРЕЗ одной
-/// нарисованной копии `[from, from + h)`, а повторённой шапки в срезе нет:
-/// она рисуется ОТДЕЛЬНОЙ копией той же таблицы, поднятой так, что полоса
-/// шапки встаёт на верх фрагмента, и режется маской по этой полосе. Тело
-/// фрагмента-продолжения уезжает вниз на высоту полосы (`Frag::head`), у
-/// непоследнего фрагмента снизу оставлено место под подвал (`Frag::foot`) —
-/// это Blink `reserved_space = repeated_header_block_size +
-/// repeated_footer_block_size` (`:1323-1327`).
-pub struct Repeat {
-    /// Полоса шапки в координатах коробки: `(верх, высота)`; высота — шапка
-    /// плюс `border-spacing` под ней (Blink `repeated_header_block_size`,
-    /// `:1393-1395`: продолжение шапку кладёт без зазора над ней, `:942`).
-    pub head: Option<(f32, f32)>,
-    /// Полоса подвала: `(верх, высота)`; высота — подвал плюс зазор над ним
-    /// (Blink `repeated_footer_block_size`, `:1147-1149`).
-    pub foot: Option<(f32, f32)>,
-    /// Где полосам место (`RepeatGeom`).
-    pub geom: RepeatGeom,
-    /// Копии для полос: шапка — фрагменту `c ≥ 1` (`head_els[c - 1]`),
-    /// подвал — НЕпоследнему фрагменту `c` (`foot_els[c]`).
-    pub head_els: Vec<AnyElement>,
-    pub foot_els: Vec<AnyElement>,
-}
-
-/// Геометрия повтора для укладки (`fill_at`), в координатах коробки. Нули —
-/// повтора нет, укладка тождественна прежней.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct RepeatGeom {
-    /// Место полосы шапки сверху у продолжения и полосы подвала снизу.
-    pub head: f32,
-    pub foot: f32,
-    /// Конец полосы шапки на её родном месте: продолжение, начатое раньше,
-    /// шапку ещё не прошло.
-    pub head_end: f32,
-    /// Точка разрыва перед подвалом на родном месте и конец подвала: фрагмент,
-    /// куда родной подвал влезает целиком, полосы не берёт — подвал в нём
-    /// последний (Blink `has_pending_repeated_footer = false`, `:1315`).
-    pub foot_at: f32,
-    pub foot_end: f32,
-    /// Коробка рядов (без подписей): повтор — только во фрагментах, где она
-    /// есть (Blink: «If this isn't the first fragment for the table box …»,
-    /// `:1108-1114`; подписи о повторе не знают, `:1248-1249`).
-    pub box_top: f32,
-    pub box_end: f32,
-}
-
-impl RepeatGeom {
-    /// Полоса шапки у фрагмента-продолжения, начатого с `from`.
-    pub(crate) fn head_at(&self, from: f32) -> f32 {
-        if self.head > 0.0 && from >= self.head_end - COORD_EPS && from < self.box_end - COORD_EPS {
-            self.head
-        } else {
-            0.0
-        }
-    }
-
-    /// Место под подвал у фрагмента с `from`, которому доступно `room`.
-    pub(crate) fn foot_for(&self, from: f32, room: f32) -> f32 {
-        if self.foot > 0.0
-            && from < self.foot_at - COORD_EPS
-            && from + room > self.box_top + COORD_EPS
-            && from + room < self.foot_end - COORD_EPS
-        {
-            self.foot
-        } else {
-            0.0
-        }
-    }
 }
 
 impl StackChild {

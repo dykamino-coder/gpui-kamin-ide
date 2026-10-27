@@ -149,6 +149,13 @@ pub(crate) fn col_role(el: &Element) -> Option<bool> {
     }
 }
 
+/// Подпись стоит у block-end края коробки таблицы: собственное computed
+/// значение `caption-side` подписи (CSS 2.2 §17.4.1). Свойство наследуемое:
+/// подпись, ребёнок таблицы, получает его от таблицы и её предков каскадом.
+pub(crate) fn caption_at_bottom(caption: &Element) -> bool {
+    caption.style.used().caption_bottom == Some(true)
+}
+
 pub(crate) fn is_cell(element: &Element) -> bool {
     match element.style.used().display {
         Some(Display::TableCell) => true,
