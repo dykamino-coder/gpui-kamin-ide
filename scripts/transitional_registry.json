@@ -155,16 +155,6 @@
     "reason": "Смешанный clone/nested/OOF preplan исключён из роста копий; удалить общий gate в P21 после recorded child resume поверх P05/P08/P10."
   },
   {
-    "file": "crates/html/src/layout/multicol/container/parallel.rs",
-    "task": "F2-2",
-    "reason": "После роста OOF форма всего ребёнка оценивается заново для копий held-семей (P08b) и grid-семей (P16); удалить после их нативного resume и live Reach."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/container/parallel.rs",
-    "task": "F2-2",
-    "reason": "Прямой measure смешивает оценку normal size с OOF reach копий held-семей (P08b) и grid-семей (P16); удалить, когда их продолжения рисует нативный источник."
-  },
-  {
     "file": "crates/html/src/layout/multicol/measure/children.rs",
     "task": "F2-4",
     "reason": "Вертикальная смешанная группа оценивается через временный root; удалить в P21 после child resume в логических осях и OOF поверх P08/P10/P16."

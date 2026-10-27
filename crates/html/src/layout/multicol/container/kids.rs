@@ -49,7 +49,7 @@ pub(in crate::layout::multicol) fn column_kids(
             p.clears = c.style.used().clear.is_some();
         }
     }
-    let mut kids = if col_vert {
+    let kids = if col_vert {
         kids
     } else {
         let measured =
@@ -65,19 +65,6 @@ pub(in crate::layout::multicol) fn column_kids(
             vcx,
         )
     };
-    if !col_vert
-        && rows.is_none()
-        && let Some(height) = fixed.filter(|h| *h > COORD_EPS)
-    {
-        super::parallel::grow(
-            &mut kids,
-            height,
-            cols as usize,
-            copies,
-            opts.cx.position.geometry.as_deref(),
-            vcx,
-        );
-    }
     (kid_parent, kid_starts, kid_par, kids)
 }
 
