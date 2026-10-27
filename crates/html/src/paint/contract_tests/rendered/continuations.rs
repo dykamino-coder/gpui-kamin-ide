@@ -291,3 +291,18 @@ fn named_pages_inside_an_absolute_box_do_not_break_it() {
     assert_eq!(second.len(), 1, "{found:?}");
     assert_eq!(f32::from(second[0].0.origin.y), 68.);
 }
+
+#[test]
+fn box_nested_in_a_continued_box_is_placed_in_the_same_continuous_flow() {
+    // 100vh + 300vh lands on the fifth sheet, not past it.
+    let found = printed(
+        "<style>body{margin:0}</style><div style='height:300vh'></div>\
+<div style='position:absolute;top:100vh;width:50px'>\
+<div style='position:absolute;top:300vh;width:50px;height:10px;background:#0000ff'></div></div>",
+        800.,
+        600.,
+    );
+    let sheets = found.iter().filter(|(_, c)| opaque(*c) == 0xffffff).count();
+    assert_eq!(sheets, 5, "{found:?}");
+    assert!(any(&found, 0x0000ff));
+}

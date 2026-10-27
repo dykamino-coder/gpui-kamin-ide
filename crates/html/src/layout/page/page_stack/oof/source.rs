@@ -27,15 +27,29 @@ impl PageStack {
                 .snapshots
                 .borrow_mut()
                 .push((owner, snapshot.clone()));
+            // The initial containing block of this source: a box whose CB is
+            // another continued box is placed in that one continuous flow too.
+            let icb = snapshot
+                .flows
+                .iter()
+                .find(|f| f.metrics.cb_id == 0)
+                .map(|f| f.metrics.original_cb_rect);
             for source in &snapshot.flows {
-                inputs.push(self.oof_input(source, owner, normal)?);
+                let nested = snapshot.flows.iter().any(|f| f.id == source.metrics.cb_id);
+                inputs.push(self.oof_input(source, owner, normal, icb.filter(|_| nested))?);
                 sources.push((owner, source.clone()));
             }
         }
         Ok((sources, inputs))
     }
 
-    fn oof_input(&self, source: &Source, owner: usize, normal: &Plan) -> Result<Input, Error> {
+    fn oof_input(
+        &self,
+        source: &Source,
+        owner: usize,
+        normal: &Plan,
+        icb: Option<Bounds<Pixels>>,
+    ) -> Result<Input, Error> {
         let offset = |rect: Bounds<Pixels>| {
             block_offset(
                 source.owner_rect.origin,
@@ -51,7 +65,19 @@ impl PageStack {
             .iter()
             .filter(|f| f.kid == owner)
             .find(|f| cb_start < f.from + f.h || f.from + f.h >= self.kids[owner].end.get());
-        let (first, start) = if root_cb && !source.static_block {
+        let (first, start) = if let Some(icb) = icb.filter(|_| !source.static_block) {
+            // Nested in a continued box: the source's continuous flow places it.
+            (
+                0,
+                block_offset(
+                    icb.origin,
+                    icb.size,
+                    source.metrics.normal_rect().origin,
+                    source.metrics.normal_rect().size,
+                    self.axis,
+                ),
+            )
+        } else if root_cb && !source.static_block {
             (
                 0,
                 block_offset(
@@ -125,7 +151,13 @@ impl PageStack {
                     .iter()
                     .find(|s| s.id == old.id)
                     .ok_or(Error::InvalidGeometry)?;
-                streams.refresh_fixed(id, self.oof_input(source, owner, context.normal)?)?;
+                let icb = snapshot
+                    .flows
+                    .iter()
+                    .find(|f| f.metrics.cb_id == 0)
+                    .map(|f| f.metrics.original_cb_rect)
+                    .filter(|_| snapshot.flows.iter().any(|f| f.id == source.metrics.cb_id));
+                streams.refresh_fixed(id, self.oof_input(source, owner, context.normal, icb)?)?;
                 self.oof
                     .fixed
                     .borrow_mut()
