@@ -99,6 +99,14 @@ impl Hooks for PageStack {
             window,
             cx,
         );
+        // Independent OOF continuations need their own sheets (css-break-3
+        // parallel flows): the stream plan, not an estimate, owns the count.
+        let oof_pages = self.oof.plan.borrow().iter().map(|f| f.col + 1).max();
+        let pages = pages.max(oof_pages.unwrap_or(0));
+        while geoms.len() < pages {
+            let i = geoms.len();
+            geoms.push((self.geom_for)(i, &tail));
+        }
         // 2. Сетка листов и масштаб до вмещения в коробку стопки.
         let (ww, wh) = (
             f32::from(bounds.size.width).max(1.0),
@@ -136,6 +144,12 @@ impl Hooks for PageStack {
         plan.check_copies(|kid| self.kids[kid].frags.len() + 1);
         self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
         self.prepaint_canvas(bounds, window, cx, &geoms);
+        *self.geoms.borrow_mut() = geoms.clone();
+        if self.prepaint_native(bounds, window, cx).is_err() {
+            let mut oof = self.oof.plan.borrow_mut();
+            oof.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
+            oof.incomplete();
+        }
         // Марджин-боксы — после листов: `counter(pages)` знает их число.
         self.margin_els.clear();
         self.prepaint_margins(bounds, window, cx, &geoms, names, pages, tail);
@@ -152,7 +166,11 @@ impl Hooks for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if !self.has_complete_plan() {
+        if !self.has_complete_plan() || self.oof.plan.borrow().failure.is_some() {
+            return;
+        }
+        // Each native source is painted exactly once; sheets replay its records.
+        if self.record_native(window, cx).is_err() {
             return;
         }
         let s = self.grid.get().1;

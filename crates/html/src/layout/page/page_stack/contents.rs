@@ -23,35 +23,11 @@ impl PageStack {
                 continue;
             }
             let (sx, sy) = self.sheet_origin(i);
-            let (bx0, by0) = (
-                f32::from(bounds.origin.x) * k,
-                f32::from(bounds.origin.y) * k,
-            );
-            let (ox, oy) = (bx0 + sx * k, by0 + sy * k);
-            let (w, h) = (g.size.0 * k, g.size.1 * k);
-            // p -> O + R(p - O) + сдвиг, затем q -> B + s(q - B).
-            let (rs, t) = if g.turn == 1 {
-                // rotate-right: (x, y) -> (O.x + H - (y - O.y), O.y + (x - O.x)).
-                (
-                    [[0.0, -s], [s, 0.0]],
-                    [
-                        bx0 * (1.0 - s) + s * (ox + h + oy),
-                        by0 * (1.0 - s) + s * (oy - ox),
-                    ],
-                )
-            } else {
-                // rotate-left: (x, y) -> (O.x + (y - O.y), O.y + W - (x - O.x)).
-                (
-                    [[0.0, s], [-s, 0.0]],
-                    [
-                        bx0 * (1.0 - s) + s * (ox - oy),
-                        by0 * (1.0 - s) + s * (oy + w + ox),
-                    ],
-                )
-            };
+            // The sheet matrix (logical) in device pixels, as with_transformation.
+            let sheet = self.sheet_matrix(bounds, i);
             let m = gpui::TransformationMatrix {
-                rotation_scale: rs,
-                translation: t,
+                rotation_scale: sheet.rotation_scale,
+                translation: [sheet.translation[0] * k, sheet.translation[1] * k],
             };
             let plan_i: Vec<Frag> = plan.iter().copied().filter(|f| f.col == i).collect();
             window.with_transformation_masked(m, |window| {
@@ -115,6 +91,8 @@ impl PageStack {
                         );
                     }
                 }
+                let clip = self.presented_area(bounds, i);
+                let _ = self.paint_native(bounds, i, clip, window);
                 let sheet = rect(sx, sy, g.size.0, g.size.1);
                 for (p, el) in &mut self.margin_els {
                     if *p == i {

@@ -95,12 +95,17 @@ pub(super) fn regrow(
         {
             wrap = wrap.h(px(ah));
         }
-        let el =
-            wrap.children(opts.cx.contracts.build.blocks(
-                &[Node::Element(dom.clone())],
-                &root,
-                &opts,
-            ))
+        let el = wrap
+            .children(
+                opts.cx.contracts.build.blocks(
+                    // Native page sources paint every OOF box (PageStack OOF plan).
+                    &crate::layout::positioned::repeat::without_oof(&Node::Element(dom.clone()))
+                        .into_iter()
+                        .collect::<Vec<_>>(),
+                    &root,
+                    &opts,
+                ),
+            )
             .into_any_element();
         let layer = |els| {
             div()

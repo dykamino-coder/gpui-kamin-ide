@@ -200,6 +200,16 @@ impl PageStack {
                 });
             }
         }
+        // Independent OOF continuations: each sheet replays its native records
+        // under the sheet matrix, clipped like the page-area layers above.
+        for p in 0..pages {
+            if self.slot(p).is_none() || self.geom(p).turn % 2 == 1 {
+                continue;
+            }
+            if let Some(mask) = masks.get(p) {
+                let _ = self.paint_native(bounds, p, mask.bounds, window);
+            }
+        }
         // Марджин-боксы — ПОСЛЕДНИМ слоем (css-page-3 §painting: «page-margin
         // boxes» после содержимого документа), под маской всего листа.
         let sheets: Vec<Bounds<Pixels>> = (0..pages)

@@ -22,7 +22,12 @@ impl PageStack {
             let Some(build) = &kid.oof else { continue };
             let first = normal.iter().find(|f| f.kid == owner).map_or(0, |f| f.col);
             let geom = pages.geometry(first);
-            for source in &build(geom.area, window, cx).flows {
+            let snapshot = build(geom.area, window, cx);
+            self.oof
+                .snapshots
+                .borrow_mut()
+                .push((owner, snapshot.clone()));
+            for source in &snapshot.flows {
                 inputs.push(self.oof_input(source, owner, normal)?);
                 sources.push((owner, source.clone()));
             }
@@ -126,6 +131,10 @@ impl PageStack {
                     .borrow_mut()
                     .push((index, id, source.clone()));
             }
+            self.oof
+                .repeat_snapshots
+                .borrow_mut()
+                .push((index, owner, snapshot.clone()));
         }
         Ok(())
     }

@@ -4,16 +4,25 @@ use super::{PageGeom, PageStack, spaces::Pages};
 use crate::layout::fragment::plan::oof::stream::Streams;
 use crate::layout::fragment::plan::{Completion, Plan};
 use crate::layout::fragment::token::Error;
+use crate::layout::positioned::containing_block::metrics::Snapshot;
 use crate::layout::positioned::containing_block::metrics::fragmentation::Source;
+use crate::layout::positioned::containing_block::metrics::layout::Native;
 use gpui::{App, Window};
 use std::cell::RefCell;
+use std::rc::Rc;
 mod source;
 
 #[derive(Default)]
 pub(super) struct State {
     pub(super) plan: RefCell<Plan>,
-    sources: RefCell<Vec<(usize, Source)>>,
+    pub(super) sources: RefCell<Vec<(usize, Source)>>,
     fixed: RefCell<Vec<(usize, usize, Source)>>,
+    /// Native source of each OOF owner, laid out in the first sheet's page area.
+    pub(super) snapshots: RefCell<Vec<(usize, Rc<Snapshot>)>>,
+    /// Fixed repeats: the owner's source laid out in sheet `page`'s area.
+    pub(super) repeat_snapshots: RefCell<Vec<(usize, usize, Rc<Snapshot>)>>,
+    pub(super) natives: RefCell<Vec<Rc<Native>>>,
+    pub(super) records: RefCell<super::native::Records>,
 }
 
 #[cfg(test)]
@@ -37,6 +46,9 @@ impl PageStack {
         let mut plan = Plan::default();
         self.oof.fixed.borrow_mut().clear();
         self.oof.sources.borrow_mut().clear();
+        self.oof.snapshots.borrow_mut().clear();
+        self.oof.repeat_snapshots.borrow_mut().clear();
+        self.oof.natives.borrow_mut().clear();
         let mut interned = normal.names.to_vec();
         interned.sort();
         interned.dedup();

@@ -1,9 +1,9 @@
-//! Физические срезы normal и OOF имеют одну логическую ось фрагментации.
+//! Физические срезы normal и OOF имеют одну логическую ось фрагментации (колонки, листы).
 
 use crate::layout::fragment::types::{StackAxis, axis_box};
 use gpui::{Bounds, Pixels};
 
-pub(super) fn inline(axis: StackAxis, bounds: Bounds<Pixels>) -> f32 {
+pub(crate) fn inline(axis: StackAxis, bounds: Bounds<Pixels>) -> f32 {
     if axis.is_vertical() {
         bounds.size.height.into()
     } else {
@@ -11,7 +11,7 @@ pub(super) fn inline(axis: StackAxis, bounds: Bounds<Pixels>) -> f32 {
     }
 }
 
-pub(super) fn block(axis: StackAxis, bounds: Bounds<Pixels>) -> f32 {
+pub(crate) fn block(axis: StackAxis, bounds: Bounds<Pixels>) -> f32 {
     if axis.is_vertical() {
         bounds.size.width.into()
     } else {
@@ -19,7 +19,7 @@ pub(super) fn block(axis: StackAxis, bounds: Bounds<Pixels>) -> f32 {
     }
 }
 
-pub(super) fn slice(
+pub(crate) fn slice(
     axis: StackAxis,
     bounds: Bounds<Pixels>,
     io: f32,

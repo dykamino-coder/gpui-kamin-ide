@@ -1,5 +1,6 @@
 //! Фрагментация: формы, полосы, переносимые коробки.
 
+pub(crate) mod axis_slice;
 pub mod breaks;
 pub mod clone;
 pub mod flex_lines;

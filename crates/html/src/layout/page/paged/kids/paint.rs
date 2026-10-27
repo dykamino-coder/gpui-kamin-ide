@@ -47,10 +47,16 @@ impl Paint<'_> {
                     crate::layout::positioned::repeat::drop_uncontained_oof(n, false, false)
                 })
                 .collect()
+        } else if self.native_oof() {
+            // The group's native source paints every OOF box exactly once.
+            self.group
+                .iter()
+                .filter_map(crate::layout::positioned::repeat::without_oof)
+                .collect()
         } else {
             Vec::new()
         };
-        let source = if band {
+        let source = if band || self.native_oof() {
             band_group.as_slice()
         } else {
             self.group

@@ -7,7 +7,7 @@ use gpui::{
 };
 use std::{collections::HashMap, rc::Rc};
 mod clips;
-mod geometry;
+use crate::layout::fragment::axis_slice as geometry;
 mod tables;
 
 impl ColumnStack {

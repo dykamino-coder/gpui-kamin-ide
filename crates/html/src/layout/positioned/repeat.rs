@@ -1,6 +1,7 @@
 //! Внепоточные потомки повторяемых секций таблицы (css-tables-3 §repeated-headers): копия
 //! шапки/подвала несёт только оформление, и абсолют или `fixed`, чей содержащий блок лежит
-//! вне копии, из неё удаляется; здесь же признак коробки — содержащего блока `fixed`.
+//! вне копии, из неё удаляется; здесь же признак коробки — содержащего блока `fixed` и
+//! normal-копия печатной группы без внепоточных потомков (их рисует native-источник листов).
 
 use crate::dom::Node;
 
@@ -37,4 +38,30 @@ pub(crate) fn drop_uncontained_oof(n: &Node, abs_cb: bool, fixed_cb: bool) -> Op
         }
         other => Some(other.clone()),
     }
+}
+
+/// Normal-flow paint copy of a paged group: every absolute or fixed box is painted
+/// once by the group's native source through its continuation fragments
+/// (css-break-3 §parallel flows), so the per-page copy carries none of them.
+pub(crate) fn without_oof(n: &Node) -> Option<Node> {
+    use crate::style::computed::Position;
+    let oof = |n: &Node| {
+        matches!(n, Node::Element(k) if matches!(
+            k.style.used().position,
+            Some(Position::Absolute) | Some(Position::Fixed)
+        ))
+    };
+    if oof(n) {
+        return None;
+    }
+    // Iterative: deep documents must not grow the native stack.
+    let mut root = n.clone();
+    let mut pending: Vec<&mut Node> = vec![&mut root];
+    while let Some(node) = pending.pop() {
+        if let Node::Element(e) = node {
+            e.children.retain(|c| !oof(c));
+            pending.extend(e.children.iter_mut());
+        }
+    }
+    Some(root)
 }
