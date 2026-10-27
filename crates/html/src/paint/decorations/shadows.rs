@@ -4,18 +4,18 @@ use crate::document::state::ValueCx;
 
 use crate::hooks::IntoHooked;
 use crate::paint::decorations::rect_minus::paint_rect_minus;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{IntoElement, Styled, div, px};
 
-pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
+pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
     // вырождается в шейдере, поэтому она рисуется слоем-квадом, раздутым на
     // разлёт. Радиус фигуры — по спеке (css-backgrounds-3 §7.1): нулевой
     // остаётся острым, иначе растёт на разлёт; доля считается от размера
     // раздутой фигуры (известные ширина и высота).
     // css-backgrounds-3 §7.1: «The first shadow is on top» — paint bottom-up.
-    for sh in c.shadows.iter().rev() {
+    for sh in c.paint_shadows().iter().rev() {
         // `currentcolor` тени — цвет текста элемента (css-backgrounds-3 §7.1).
         // У `border-shape` тени повторяют фигуру — растром под группой
         // (`grouped`, `Grouped::under`), квад здесь лёг бы прямоугольником.
@@ -126,7 +126,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
     }
 }
 
-pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
+pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     // РЕЗКАЯ ВНУТРЕННЯЯ тень (без размытия). §7.1: «An inner box-shadow casts
     // a shadow as if everything outside the padding edge were opaque» — тень =
     // padding-box МИНУС фигура, сжатая на разлёт и сдвинутая на смещение.

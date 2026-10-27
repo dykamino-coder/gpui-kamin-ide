@@ -687,11 +687,7 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     debug_log!("collect_flex_lines");
     // KaminIDE patch: line breaking precedes fragmentation (css-flexbox-1 §10).
     // Lines fixed by the fragmenter are kept while fragmentation grows items.
-    let pinned: Option<Vec<usize>> = constants
-        .is_wrap
-        .then(|| flex_items.iter().map(|item| tree.flex_item_fragmentation_line(item.node)).collect::<Option<Vec<_>>>())
-        .flatten()
-        .filter(|lines| !lines.is_empty() && lines.windows(2).all(|w| w[0] <= w[1]));
+    let pinned = fragmentation::pinned_lines(tree, &flex_items, &constants);
     #[cfg(feature = "flexbox_balance")]
     let mut flex_lines = if let Some(lines) = pinned {
         pinned_flex_lines(&lines, &mut flex_items)

@@ -26,6 +26,15 @@ impl TraversalState {
         self.embedded.set(true);
     }
 
+    /// Область, к которой относятся наблюдения этого документа.
+    pub(crate) fn scope(&self) -> FailureScope {
+        if self.embedded.get() {
+            FailureScope::EmbeddedDocument
+        } else {
+            FailureScope::Document
+        }
+    }
+
     /// Запомнить первый предел ревизии и вернуть это наблюдение для журнала.
     pub(crate) fn limit(
         &self,
@@ -34,11 +43,7 @@ impl TraversalState {
         attempted: usize,
     ) -> TraversalLimit {
         let event = TraversalLimit {
-            scope: if self.embedded.get() {
-                FailureScope::EmbeddedDocument
-            } else {
-                FailureScope::Document
-            },
+            scope: self.scope(),
             traversal,
             limit,
             attempted,

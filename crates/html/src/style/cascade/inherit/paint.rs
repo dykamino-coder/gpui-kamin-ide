@@ -1,115 +1,128 @@
-//! Стадия коробки, краска: цветовой `filter` поддерева и drop-shadow, заливка текста под
-//! background-clip: text.
+//! Результат оформления коробки; наследование читает исходные CSS-значения.
 
 use super::*;
-use crate::document::state::ValueCx;
-use crate::style::computed::BoxStyle;
-
+use crate::style::decoration_paint::{DecorationPaint, PaintInput};
+use std::rc::Rc;
 mod gradient_filter;
 
 pub(super) fn inherit_paint(
-    parent: &Computed,
+    parent: &BoxStyle,
     declared: &Computed,
     own: &Computed,
     c: &mut BoxStyle,
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) {
-    // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и
-    // применяем к собственным цветам потомка: раньше фильтр действовал только
-    // на узел, где написан, и дети оставались цветными.
-    if c.filter.is_none() {
-        set!(c.filter, parent.filter);
-        set!(c.scrollbar_filter_ops, parent.scrollbar_filter_ops.clone());
+    // layout_made возвращает ту же коробку, а не нового CSS-потомка.
+    if c.paint.as_ref().is_some_and(|p| p.preparation.is_none()) {
+        return;
     }
-    // ЕДИНСТВЕННАЯ точка окраски фильтром (каскад цвета не трогает).
-    // Computed-цвет элемента ещё не окрашен, в том числе унаследованный.
-    // Анонимная коробка получает уже окрашенный цвет от коробки-родителя:
-    // у неё фильтруются только собственные объявления.
-    if paint_filter && let Some(f) = c.filter {
+    let input = c
+        .paint
+        .as_ref()
+        .and_then(|p| p.preparation)
+        .unwrap_or_else(|| {
+            let element = c.element_style.is_some();
+            let declares_color = declared.declares_color();
+            PaintInput {
+                parent: parent.foreground_paint(),
+                foreground: if !element && !declares_color {
+                    parent.foreground_paint()
+                } else {
+                    crate::style::decoration_paint::ForegroundPaint {
+                        color: c.color,
+                        ..Default::default()
+                    }
+                },
+                element,
+                declares_color,
+            }
+        });
+    let mut paint = DecorationPaint::from_computed(c);
+    let own_filter = c
+        .paint_filter()
+        .filter(|f| *f != crate::style::computed::Filter::neutral());
+    paint.filter = own_filter.or(parent.paint_filter());
+    paint.filter_ops = if own_filter.is_some() {
+        c.paint_filter_ops().to_vec()
+    } else {
+        parent.paint_filter_ops().to_vec()
+    };
+    paint.foreground = input.foreground;
+    if paint_filter && let Some(f) = paint.filter {
+        let operations = paint.filter_ops.clone();
+        let apply = |color| f.apply_operations(&operations, color);
         if own.background.is_some() {
-            set!(c.background, c.background.map(|col| f.apply(col)));
+            paint.background.color = paint.background.color.map(&apply);
         }
-        if c.element_style.is_some()
-            || declared.declares_color()
-            || own.filter.is_some() && parent.color.is_none()
+        if input.element
+            || input.declares_color
+            || own.filter.is_some() && input.parent.color.is_none()
         {
-            set!(c.color, c.color.map(|col| f.apply(col)));
+            paint.foreground.color = paint.foreground.color.map(&apply);
         }
-        // `currentcolor` сторон решится уже окрашенным цветом текста.
-        for side in c.border_colors.iter_mut() {
+        for side in &mut paint.border_colors {
             if let crate::style::values::value::StyleColor::Absolute(col) = side {
-                *col = f.apply(*col);
+                *col = apply(*col);
             }
         }
         if own.gradient.is_some()
-            && let Some(g) = c.gradient.as_mut()
+            && let Some(g) = &mut paint.background.gradient
         {
-            g.from = f.apply(g.from);
-            g.to = f.apply(g.to);
-            for stop in g.stops.iter_mut() {
-                stop.0 = f.apply(stop.0);
+            g.from = apply(g.from);
+            g.to = apply(g.to);
+            for stop in &mut g.stops {
+                stop.0 = apply(stop.0);
             }
         }
-        gradient_filter::apply(c, own, f, vcx);
+        gradient_filter::apply(&mut paint.background, own, f, &operations);
         if own.bg_image.is_some()
-            && let Some(image) = &mut c.bg_image
+            && let Some(image) = &mut paint.background.top.image
         {
-            image.filter_stops(&f);
+            image.filter_stops(&f, &operations);
         }
         if !own.shadows.is_empty() {
-            for sh in c.shadows.iter_mut() {
+            for sh in &mut paint.shadows {
                 if let crate::style::values::value::StyleColor::Absolute(col) = &mut sh.color {
-                    *col = f.apply(*col);
+                    *col = apply(*col);
                 }
             }
         }
     }
-    // `filter: drop-shadow()` у коробки со СПЛОШНЫМ фоном: силуэт такой
-    // коробки — border-box со скруглением, и тень фильтра (filter-effects-1
-    // §dropshadowEquivalent: размытая альфа входа, сдвиг, цвет — ПОД входом)
-    // совпадает с внешней box-shadow без разлёта. Картинку поддерева так не
-    // выразить — только коробку; повторное слияние тень не удваивает.
-    // Длина размытия у `drop-shadow()` — это σ (filter-effects-1
-    // §funcdef-filter-drop-shadow: «standard deviation»), а у `box-shadow`
-    // радиус = 2σ (css-backgrounds-3 §box-shadow) — в список внешних теней
-    // она идёт удвоенной, чтобы после деления в `apply::apply_paint` σ
-    // осталась своей.
+    // У непрозрачной коробки силуэт filter drop-shadow совпадает с box-shadow;
+    // размытие коробки равно двум sigma фильтра.
     if let Some(sh) = c.drop_shadow.clone()
         && c.background_paint.paints()
-        && c.background.is_some_and(|b| b.a >= 1.0)
+        && paint.background.color.is_some_and(|b| b.a >= 1.0)
     {
         let as_box = crate::style::computed::Shadow {
             blur: sh.blur * 2.0,
             ..sh
         };
-        if !c.shadows.contains(&as_box) {
-            c.shadows.push(as_box);
+        if !paint.shadows.contains(&as_box) {
+            paint.shadows.push(as_box);
         }
     }
-    // `background-clip: text` со СПЛОШНОЙ заливкой (css-backgrounds-4
-    // §background-clip): фон виден только под глифами элемента и его
-    // поточных и плавающих потомков, а сам текст красится ПОВЕРХ фона своим
-    // цветом. Для одноцветного непрозрачного фона это ровно «цвет текста
-    // поверх заливки» — маска глифов не нужна, а подчёркивания, многоточие и
-    // знаки выделения цветом `currentColor` получают тот же цвет сами.
-    // Computed-цвет элемента смешивается на его коробке; анонимная коробка
-    // получает уже смешанный цвет. Внепоточные потомки в геометрию текста
-    // не входят (`clip-text-out-of-flow-child`) и сохраняют исходный цвет.
     let images = vcx.background_images();
     if paint_filter && c.background_paint.paints() {
-        crate::style::computed::flat_background::collapse_flat_stack(c, vcx, &images);
+        crate::style::computed::flat_background::collapse_flat_stack(
+            &mut paint.background,
+            c.image_orient_none != Some(true),
+            &images,
+        );
     }
-    let colors = super::super::color_inputs::text_clip_colors(
-        parent,
-        declared,
-        own,
-        c,
-        c.element_style.is_some(),
-        c.background_paint,
+    paint.foreground = super::super::color_inputs::text_clip_colors(
+        super::super::color_inputs::TextClipInput {
+            parent: input.parent,
+            foreground: paint.foreground,
+            element: input.element,
+            declares_color: input.declares_color,
+            out_of_flow: crate::style::flow::absolutely_positioned(own.position),
+            background: c.background_paint,
+        },
+        &paint.background,
         &images,
     );
-    set!(c.color, colors.color);
-    set!(c.text_clip_raw, colors.raw);
-    set!(c.text_clip_fill, colors.fill);
+    paint.preparation = (!paint_filter).then_some(input);
+    c.paint = Some(Rc::new(paint));
 }

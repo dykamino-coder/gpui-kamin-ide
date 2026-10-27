@@ -4,12 +4,22 @@
 
 use super::fixtures;
 
-use super::decode::decode;
 use super::svg_view::apply_view;
 use super::types::*;
 use super::vector::svg_size;
-use crate::resources::loader::{ResourceLoader, ResourceUrl, SyncLoader};
+use crate::resources::loader::{Cancellation, ResourceUrl, SyncLoader, fetch};
 use fixtures::*;
+
+/// Декодирование с допуском в стандартном профиле отдельного документа.
+fn decode(
+    bytes: &[u8],
+    options: &DecodeOptions,
+) -> Result<(DecodedImage, ImageMetadata), ImageError> {
+    let budget = crate::budget::RevisionBudget::standalone();
+    super::decode::decode(bytes, options, |declared| {
+        super::admission::grant(budget.document(), declared).map(|(grant, _)| grant)
+    })
+}
 
 fn raster(bytes: &[u8], options: DecodeOptions) -> (std::sync::Arc<CpuRaster>, ImageMetadata) {
     match decode(bytes, &options).unwrap() {
@@ -22,7 +32,8 @@ fn raster(bytes: &[u8], options: DecodeOptions) -> (std::sync::Arc<CpuRaster>, I
 fn data_and_file_urls_decode_through_the_loader() {
     let png = png(3, 2);
     let (url, _) = ResourceUrl::resolve(&data_url("image/png", &png), None);
-    let loaded = SyncLoader.load(&url).unwrap();
+    let revision = crate::budget::RevisionBudget::standalone();
+    let loaded = fetch(&SyncLoader, &url, &revision, &Cancellation::default()).unwrap();
     let (image, meta) = raster(&loaded.bytes, DecodeOptions::default());
     assert_eq!((image.width, image.height), (3, 2));
     assert_eq!(image.pixel(2, 1), Some(pixel_at(2, 1)));
@@ -37,7 +48,8 @@ fn data_and_file_urls_decode_through_the_loader() {
     std::fs::write(&path, &png).unwrap();
     let file = url::Url::from_file_path(&path).unwrap().to_string();
     let (url, _) = ResourceUrl::resolve(&file, None);
-    let loaded = SyncLoader.load(&url).unwrap();
+    let revision = crate::budget::RevisionBudget::standalone();
+    let loaded = fetch(&SyncLoader, &url, &revision, &Cancellation::default()).unwrap();
     assert_eq!(raster(&loaded.bytes, DecodeOptions::default()).0.width, 3);
     std::fs::remove_file(path).unwrap();
 }

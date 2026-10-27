@@ -13,6 +13,7 @@ pub(crate) mod stream;
 #[derive(Default)]
 pub(crate) struct Flow {
     inline: InlineTokens,
+    pub(crate) shortage: Option<f32>,
 }
 
 impl Flow {
@@ -26,6 +27,7 @@ impl Flow {
         input: Option<TokenId>,
         store: &mut TokenStore,
     ) -> Result<Child<Frag>, Error> {
+        self.shortage = None;
         let size = space.block_size.ok_or(Error::InvalidGeometry)?;
         let previous = input
             .map(|id| store.get(id).cloned().ok_or(Error::InvalidToken))
@@ -95,6 +97,7 @@ impl Flow {
             &mut self.inline,
             true,
         )?;
+        self.shortage = (shortage < f32::MAX && shortage > 0.).then_some(shortage);
         let fragment = plan.fragments.into_iter().next();
         let next = if cursor.complete {
             None

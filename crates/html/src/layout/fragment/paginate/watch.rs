@@ -26,6 +26,10 @@ use hook::{Slot, Watch};
 mod flex;
 mod flex_flows;
 mod flex_geometry;
+#[cfg(test)]
+mod flex_geometry_tests;
+#[cfg(test)]
+mod flex_pin_tests;
 mod geometry;
 mod grid;
 mod owner;

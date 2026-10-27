@@ -8,6 +8,7 @@ use std::fmt::{self, Write as _};
 /// Уровень консоли для записи: ошибки области и предупреждения о fallback.
 pub fn level(severity: Severity) -> &'static str {
     match severity {
+        Severity::Info => "info",
         Severity::Warning => "warning",
         Severity::Error => "error",
     }
@@ -26,6 +27,8 @@ impl fmt::Display for Phase {
             Self::Admission => f.write_str("admission"),
             Self::Parse => f.write_str("parse"),
             Self::Traversal(kind) => write!(f, "traversal-{kind:?}"),
+            Self::Resource => f.write_str("resource"),
+            Self::Style => f.write_str("style"),
         }
     }
 }
@@ -49,6 +52,13 @@ impl fmt::Display for Diagnostic {
                 " budget={:?}/{:?} limit={} consumed={} increment={} unit={:?} overflow={}",
                 e.scope, e.kind, e.limit, e.consumed, e.increment, e.unit, e.overflow
             )?,
+            Some(Measure::Ceiling { limit }) => write!(f, " limit={limit} unit=bytes")?,
+            Some(Measure::Length { limit, attempted }) => {
+                write!(f, " limit={limit} attempted={attempted} unit=bytes")?
+            }
+            Some(Measure::Dimensions { width, height }) => {
+                write!(f, " width={width} height={height} unit=pixels")?
+            }
             None => {}
         }
         if let Some(Location::Source { row, column }) = self.location {

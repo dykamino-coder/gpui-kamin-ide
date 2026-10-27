@@ -9,7 +9,7 @@ use crate::layout::writing_mode::upright_in_mixed;
 use crate::paint::apply::apply;
 use crate::render::paragraph::edges::edge_pieces;
 use crate::render::paragraph::metrics::line_box_spans;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::BoxStyle;
 use crate::text::inline;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -123,7 +123,7 @@ pub(crate) fn route_pieces(
     // (`flexbox.rs:405`). Кусок заявляет 1.0em, атом — 0.8em: атом тонет на
     // спуск шрифта, а короб строки растёт до 1.2em вместо `line-height`
     // (§10.8): при `font: 100px/1 Ahem` короб 120, атом на +20.
-    let mut render_text = |t: String, style: &Computed| -> AnyElement {
+    let mut render_text = |t: String, style: &BoxStyle| -> AnyElement {
         // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
         // CJK): набор идёт вертикальными формами шрифта — возможность `vert`
         // подставляет глиф, а продвижение берётся из его вертикальных метрик
@@ -145,7 +145,7 @@ pub(crate) fn route_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(div(), &BoxStyle::new(style.text_only()), vcx)
+        let d = apply(div(), &style.text_paint_style(), vcx)
             .max_w_full()
             .child(SharedString::from(t));
         d.into_any_element()
@@ -178,6 +178,7 @@ pub(crate) fn route_pieces(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
 
     #[test]
     fn physical_rows_keep_overlay_only_content_out_of_the_turned_paragraph() {

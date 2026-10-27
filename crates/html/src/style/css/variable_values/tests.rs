@@ -1,9 +1,29 @@
 //! Тесты вычисления пользовательских свойств (`compute`/`substitute`) без
 //! отрисовки: экраны в именах, общие CSS-слова через `var()`, `@property`.
 
-use super::super::{VarMap, parse_decls};
-use super::{compute, has_var, substitute};
+use super::super::{Registered, VarMap, parse_decls};
+use super::{Work, has_var};
+use crate::budget::RevisionBudget;
 use std::collections::HashMap;
+
+/// Подстановка одного значения в стандартном профиле отдельной ревизии.
+pub(super) fn substitute(
+    raw: &str,
+    lookup: &mut impl FnMut(&str) -> Option<String>,
+) -> Option<String> {
+    let revision = RevisionBudget::standalone();
+    super::substitute(raw, lookup, &Work::new(&revision)).ok()
+}
+
+pub(super) fn compute(
+    raw: &VarMap,
+    parent: &VarMap,
+    registered: &HashMap<String, Registered>,
+    accepts: impl Fn(&str, &str) -> bool,
+) -> VarMap {
+    let revision = RevisionBudget::standalone();
+    super::compute(raw, parent, registered, accepts, &Work::new(&revision))
+}
 
 /// Custom-property declarations of a block as a substitution map.
 fn vars(css: &str) -> VarMap {

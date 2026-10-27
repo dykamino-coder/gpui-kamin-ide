@@ -44,7 +44,7 @@ pub(super) fn grouped_with(
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let el = crate::paint::decorations::outline_phase::context(el, c, vcx.paint);
-    let blur = c.filter.map_or(0.0, |f| f.blur);
+    let blur = c.paint_filter().map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
     // `<length-percentage>`) меряются ЗДЕСЬ, как у `clip: rect()` ниже: на

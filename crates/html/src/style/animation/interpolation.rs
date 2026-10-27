@@ -71,17 +71,13 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> 
             .1
             .filter
             .unwrap_or_else(crate::style::computed::Filter::neutral);
-        out.filter = Some(crate::style::computed::Filter {
-            grayscale: lerp(a.grayscale, b.grayscale),
-            brightness: lerp(a.brightness, b.brightness),
-            saturate: lerp(a.saturate, b.saturate),
-            invert: lerp(a.invert, b.invert),
-            sepia: lerp(a.sepia, b.sepia),
-            opacity: lerp(a.opacity, b.opacity),
-            hue_rotate: lerp(a.hue_rotate, b.hue_rotate),
-            contrast: lerp(a.contrast, b.contrast),
-            blur: lerp(a.blur, b.blur),
-        });
+        out.filter = Some(a.lerp(&b, k));
+        // Цветовые функции — в порядке записи списков (Filter Effects 1 §5).
+        out.scrollbar_filter_ops = crate::style::computed::Filter::interpolate_operations(
+            &prev.1.scrollbar_filter_ops,
+            &next.1.scrollbar_filter_ops,
+            k,
+        );
     }
     if prev.1.backdrop_blur.is_some() || next.1.backdrop_blur.is_some() {
         out.backdrop_blur = Some(lerp(

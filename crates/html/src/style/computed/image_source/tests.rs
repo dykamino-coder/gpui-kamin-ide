@@ -127,14 +127,14 @@ fn background_layers_inherit_computed_image_lengths_and_current_colors() {
     own.apply_one("font-size", "80px", vcx);
     own.apply_one("color", "green", vcx);
     let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
-    let layers = child.bg_layers(vcx).unwrap();
-    let ImageSource::Conic(image) = layers[0].bg_image.as_ref().unwrap() else {
+    let layers = child.background_layers().unwrap();
+    let ImageSource::Conic(image) = layers[0].image.as_ref().unwrap() else {
         panic!("conic");
     };
     assert_eq!(image.position.x, Some(Len::Px(40.0)));
     assert_eq!(image.position.y, Some(Len::Px(20.0)));
     assert_eq!(image.stops[0].0, Color::parse("green", vcx).unwrap());
-    let image = layers[1].bg_image.as_ref().unwrap().gradient().unwrap().0;
+    let image = layers[1].image.as_ref().unwrap().gradient().unwrap().0;
     assert_eq!(image.stops_px[0].1, 20.0);
     assert_eq!(image.stops_px[1].1, 40.0);
 }
@@ -150,11 +150,11 @@ fn layered_background_geometry_uses_own_line_height() {
     own.apply_one("background-size", "1lh 2lh, 3lh 4lh", vcx);
     own.apply_one("background-position", "1lh 2lh, 3lh 4lh", vcx);
     let c = inherit(&BoxStyle::default(), &own, vcx);
-    let layers = c.bg_layers(vcx).unwrap();
-    assert_eq!(layers[1].bg_pos.x, Some(Len::Px(120.0)));
-    assert_eq!(layers[1].bg_pos.y, Some(Len::Px(160.0)));
+    let layers = c.background_layers().unwrap();
+    assert_eq!(layers[1].position.x, Some(Len::Px(120.0)));
+    assert_eq!(layers[1].position.y, Some(Len::Px(160.0)));
     assert_eq!(
-        layers[0].bg_size,
+        layers[0].size,
         super::super::BgSize::Fixed(Some(Len::Px(40.0)), Some(Len::Px(80.0)))
     );
 }
@@ -173,10 +173,13 @@ fn filtered_gradient_stops_keep_interpolation_without_color_replay() {
         )
         .unwrap();
         image.resolve_colors(Color::parse("red", vcx).unwrap());
-        image.filter_stops(&Filter {
-            brightness: 0.5,
-            ..Filter::neutral()
-        });
+        image.filter_stops(
+            &Filter {
+                brightness: 0.5,
+                ..Filter::neutral()
+            },
+            &[],
+        );
         let before = image.gradient().unwrap().0.stops.clone();
         image.resolve_colors(Color::parse("green", vcx).unwrap());
         let value = image.gradient().unwrap().0;

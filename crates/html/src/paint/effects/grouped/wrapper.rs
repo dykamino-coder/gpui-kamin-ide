@@ -42,7 +42,7 @@ pub(crate) fn grouped_wrapper(
     // `HasBorderShape`). Квад тени (`apply::apply_paint`) и слой резкой
     // тени (`decorations`) у такой коробки не ставятся.
     if let Some(bs) = c.border_shape.clone()
-        && !c.shadows.is_empty()
+        && !c.paint_shadows().is_empty()
     {
         let (stroke, _) = c.border_shape_stroke();
         let outer_out = c.geometry_outsets(bs.outer_box);

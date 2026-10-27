@@ -23,9 +23,9 @@ fn adjoining_monolith_carries_the_block_start_decoration() {
                 solid: m.solid,
                 ..Default::default()
             };
-            let (_, _, plan) = crate::layout::fragment::plan::fill(
+            let (_, _, plan) = crate::layout::fragment::plan::fill_at(
                 &[k],
-                100.,
+                &|_| 100.,
                 crate::layout::fragment::plan::Space::pages(8),
             );
             assert_eq!(

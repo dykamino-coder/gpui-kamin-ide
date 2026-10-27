@@ -139,7 +139,7 @@ fn reversed_row_line_break_moves_container_after_preceding_content() {
             ..Default::default()
         },
     ];
-    let (_, _, fragments) = plan::fill(&kids, 100.0, plan::Space::columns(4));
+    let (_, _, fragments) = plan::fill_at(&kids, &|_| 100.0, plan::Space::columns(4));
     let first = fragments.iter().find(|f| f.kid == 1).unwrap();
     assert_eq!((first.col, first.y, first.from), (1, 0.0, 0.0));
     assert_eq!(

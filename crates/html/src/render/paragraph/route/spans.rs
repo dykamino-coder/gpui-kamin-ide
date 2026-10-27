@@ -126,7 +126,7 @@ pub(crate) fn paragraph_spans(
 }
 
 /// Rotated vertical line set with a central dominant baseline (mixed/upright).
-fn rotated_central(inherited: &Computed) -> bool {
+pub(super) fn rotated_central(inherited: &Computed) -> bool {
     inherited.wm().turned() && !inherited.wm().alphabetic_baseline()
 }
 

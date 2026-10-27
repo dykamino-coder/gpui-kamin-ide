@@ -16,6 +16,7 @@ pub(crate) fn bgra(w: u32, h: u32, bytes: Vec<u8>) -> Option<Arc<CpuRaster>> {
         alpha: AlphaMode::Straight,
         colour_space: ColourSpace::Srgb,
         bytes: bytes.into(),
+        retention: Default::default(),
     }))
 }
 

@@ -18,6 +18,25 @@ pub(super) fn main_growth(tree: &impl LayoutFlexboxContainer, lines: &[FlexLine]
         .unwrap_or(0.0)
 }
 
+/// Line membership fixed by the fragmenter, in `DetailedFlexInfo` line indices.
+/// Those follow physical placement, so under wrap-reverse they decrease along
+/// order-modified document order. Only a complete, contiguous assignment that
+/// starts at the first line in that order is used; anything else is re-collected.
+pub(super) fn pinned_lines(
+    tree: &impl LayoutFlexboxContainer,
+    items: &[FlexItem],
+    constants: &AlgoConstants,
+) -> Option<Vec<usize>> {
+    if !constants.is_wrap {
+        return None;
+    }
+    let lines: Vec<usize> = items.iter().map(|item| tree.flex_item_fragmentation_line(item.node)).collect::<Option<_>>()?;
+    let reverse = constants.is_wrap_reverse;
+    let step = |a: usize, b: usize| if reverse { a.checked_sub(b) } else { b.checked_sub(a) };
+    let first = if reverse { lines.last() } else { lines.first() };
+    (first == Some(&0) && lines.windows(2).all(|w| matches!(step(w[0], w[1]), Some(0 | 1)))).then_some(lines)
+}
+
 /// Apply fragmentainer space after flexible sizing and before native line placement.
 pub(super) fn apply(
     tree: &impl LayoutFlexboxContainer,

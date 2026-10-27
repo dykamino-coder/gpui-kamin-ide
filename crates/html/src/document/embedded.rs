@@ -104,7 +104,7 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let state = DocState::new(media);
-    state.budget.replace(Some(revision));
+    state.admit_revision(revision, None);
     state.traversal.set_embedded();
     let vcx = state.values();
     fonts.install(vcx);
@@ -177,14 +177,13 @@ pub(super) fn unwrap_document(
             .map(|n| match n {
                 Node::Element(mut child) => {
                     let input = child.style.used();
-                    child.style = crate::style::cascade::inherit::inherit_unpainted(
+                    // Document preparation: the unwrapped child's cascade takes the
+                    // wrapper's values (before materialization).
+                    child.style = crate::style::cascade::inherit::inherit_unwrapped(
                         &wrapper,
                         child.style.cascaded(),
                         vcx,
                     )
-                    // Document preparation: the unwrapped child's cascade takes the
-                    // wrapper's values (before materialization).
-                    .into_computed()
                     .into();
                     child.style.set_background_paint(input.background_paint);
                     child.style.set_canvas_background(input.canvas_background);
@@ -208,3 +207,6 @@ fn embedded_failure(error: crate::budget::admission::Error) -> super::DocumentFa
     failure.scope = super::FailureScope::EmbeddedDocument;
     failure
 }
+
+#[cfg(test)]
+mod unwrap_tests;

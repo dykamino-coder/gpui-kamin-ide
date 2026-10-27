@@ -10,11 +10,12 @@ use gpui::{Bounds, Pixels, Window, point, px};
 
 pub(super) fn paint(
     c: &Computed,
+    clip: Option<BgClip>,
     bounds: Bounds<Pixels>,
     window: &mut Window,
-    mut fill: impl FnMut(&Computed, &mut Window),
+    mut fill: impl FnMut(&mut Window),
 ) {
-    if c.bg_clip != Some(BgClip::BorderArea)
+    if clip != Some(BgClip::BorderArea)
         || c.radius != Default::default()
         || c.radius_ell.is_some()
         || c.border_shape.is_some()
@@ -23,7 +24,7 @@ pub(super) fn paint(
             .iter()
             .any(|s| !matches!(s, None | Some(3..=6) | Some(9)))
     {
-        return fill(c, window);
+        return fill(window);
     }
     let b = c.borders();
     let widths: Option<Vec<f32>> = [b.top, b.right, b.bottom, b.left]
@@ -35,7 +36,7 @@ pub(super) fn paint(
         })
         .collect();
     let Some(b) = widths else {
-        return fill(c, window);
+        return fill(window);
     };
     // Clip uses the existing painting grid, while tile positioning retains
     // ExactLayer's unrounded box. Mixing them discards the last device edge.
@@ -59,7 +60,7 @@ pub(super) fn paint(
     ];
     for rect in rects {
         if rect.size.width > px(0.0) && rect.size.height > px(0.0) {
-            window.with_content_mask(Some(gpui::ContentMask { bounds: rect }), |w| fill(c, w));
+            window.with_content_mask(Some(gpui::ContentMask { bounds: rect }), |w| fill(w));
         }
     }
 }

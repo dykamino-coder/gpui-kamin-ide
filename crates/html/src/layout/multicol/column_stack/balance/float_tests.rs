@@ -3,6 +3,27 @@ use super::*;
 use crate::layout::fragment::flow::FloatGeometry;
 
 #[test]
+fn balancing_keeps_an_avoided_boundary_with_an_earlier_break() {
+    let kids: Vec<_> = [25., 50., 25., 50.]
+        .into_iter()
+        .enumerate()
+        .map(|(i, h)| Kid {
+            h,
+            over: h,
+            avoid_before: i == 2,
+            ..Default::default()
+        })
+        .collect();
+    // Ранний разрыв на 25 сохраняет недолаз запрещённой границы 75.
+    let space = crate::layout::fragment::plan::Space::columns(2);
+    let (_, shortage, _) = ColumnStack::fill_avoiding(&kids, &|_| 75., space);
+    assert_eq!(shortage, 25.);
+    let stack = ColumnStack::new(vec![], 2, 0., None, None, None, None, Default::default());
+    let (height, _) = stack.balance_line(&kids, 2, None);
+    assert_eq!(height, 100.);
+}
+
+#[test]
 fn float_balance_floor_preserves_independent_normal_breaks() {
     let float = FloatGeometry {
         id: 7,
@@ -22,8 +43,30 @@ fn float_balance_floor_preserves_independent_normal_breaks() {
     let stack = ColumnStack::new(vec![], 2, 0.0, None, None, None, None, Default::default());
     let (height, _) = stack.balance_line(std::slice::from_ref(&kid), 8, None);
     assert_eq!(height, 100.0);
-    let (cols, _, plan) = plan::fill(&[kid], 20.0, Space::columns(8));
+    let (cols, _, plan) = plan::fill_at(&[kid], &|_| 20.0, Space::columns(8));
     assert_eq!(cols, 6);
     assert_eq!(plan[0].h, 20.0);
     assert_eq!(plan[1].from, 20.0);
+}
+
+#[test]
+fn forced_groups_can_require_more_than_forty_eight_columns() {
+    let kids: Vec<_> = (0..65)
+        .map(|i| Kid {
+            h: 20.,
+            over: 20.,
+            monolith: true,
+            force_before: i > 0,
+            ..Default::default()
+        })
+        .collect();
+    let mut stack = ColumnStack::new(vec![], 2, 0., None, None, None, None, Default::default());
+    let (height, plan) = stack.balance_line(&kids, 2, None);
+    assert_eq!(height, 20.);
+    assert_eq!(plan.completion, plan::Completion::Complete);
+    assert_eq!(plan.last().unwrap().col, 64);
+    stack.forced_h = Some(height);
+    let replay = stack.balance_line(&kids, 2, None).1;
+    assert_eq!(replay.len(), 65);
+    assert_eq!(replay.last().unwrap().col, 64);
 }

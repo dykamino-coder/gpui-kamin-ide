@@ -344,8 +344,11 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     fn flex_line_fragmentation_growth(&self, _node_id: NodeId, _line: usize) -> f32 { 0.0 }
 
     /// KaminIDE patch: the item's line index fixed before fragmentation, if any.
-    /// When every item of a wrapping container has one, in non-decreasing order,
-    /// lines are taken from it instead of being re-collected.
+    /// Indices are those of `DetailedFlexInfo::lines` (physical order, reversed
+    /// under wrap-reverse), like `flex_line_fragmentation_growth`. When every item
+    /// of a wrapping container has one and they form contiguous lines from the
+    /// first line in order-modified document order, lines are taken from it
+    /// instead of being re-collected.
     fn flex_item_fragmentation_line(&self, _node_id: NodeId) -> Option<usize> { None }
 
     /// KaminIDE patch: caller-owned atomic box classification (replaced, scroll, etc.).

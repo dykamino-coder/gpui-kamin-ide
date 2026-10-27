@@ -1,6 +1,6 @@
 //! Планировщик: явный `Space` вместо скрытого состояния обхода.
 
-use super::{Space, fill};
+use super::{Space, fill_at};
 use crate::layout::fragment::types::Kid;
 
 /// Монолит высоты `h` с верхним полем `mt` (поле первого ребёнка контекста не
@@ -17,7 +17,7 @@ fn monolith(h: f32, mt: f32) -> Kid {
 
 #[test]
 fn monolith_overflows_a_fragmentainer_it_starts() {
-    let (_, _, plan) = fill(&[monolith(80.0, 10.0)], 50.0, Space::columns(3));
+    let (_, _, plan) = fill_at(&[monolith(80.0, 10.0)], &|_| 50.0, Space::columns(3));
     assert_eq!(plan.len(), 1);
     assert_eq!(plan[0].col, 0);
 }
@@ -25,7 +25,7 @@ fn monolith_overflows_a_fragmentainer_it_starts() {
 #[test]
 fn monolith_is_pushed_from_a_fragmentainer_not_at_its_start() {
     let space = Space::columns(3).with_not_at_start(1);
-    let (_, _, plan) = fill(&[monolith(80.0, 10.0)], 50.0, space);
+    let (_, _, plan) = fill_at(&[monolith(80.0, 10.0)], &|_| 50.0, space);
     assert_eq!(plan.len(), 1);
     assert_eq!(plan[0].col, 1);
 }
@@ -91,8 +91,8 @@ fn exhausted_copy_caps_report_incomplete_and_keep_the_same_prefix() {
     for limit in [12, 48, 16] {
         for space in [Space::columns(limit), Space::pages(limit)] {
             let kid = slice((limit + 1) as f32 * 10.0);
-            let (_, _, plan) = fill(std::slice::from_ref(&kid), 10.0, space);
-            let (_, _, full) = fill(&[kid], 10.0, Space::columns(limit + 1));
+            let (_, _, plan) = fill_at(std::slice::from_ref(&kid), &|_| 10.0, space);
+            let (_, _, full) = fill_at(&[kid], &|_| 10.0, Space::columns(limit + 1));
             assert_eq!(plan.completion, super::Completion::Incomplete);
             assert_eq!(plan.len(), limit);
             for (a, b) in plan.iter().zip(full.iter()) {
@@ -108,9 +108,13 @@ fn exhausted_copy_caps_report_incomplete_and_keep_the_same_prefix() {
 #[test]
 fn exact_capacity_and_monolithic_overflow_are_complete() {
     for limit in [12, 48, 16] {
-        let (_, _, plan) = fill(&[slice(limit as f32 * 10.0)], 10.0, Space::columns(limit));
+        let (_, _, plan) = fill_at(
+            &[slice(limit as f32 * 10.0)],
+            &|_| 10.0,
+            Space::columns(limit),
+        );
         assert_eq!(plan.completion, super::Completion::Complete);
-        let (_, _, plan) = fill(&[monolith(1000.0, 0.0)], 10.0, Space::columns(limit));
+        let (_, _, plan) = fill_at(&[monolith(1000.0, 0.0)], &|_| 10.0, Space::columns(limit));
         assert_eq!(plan.completion, super::Completion::Complete);
     }
 }
@@ -127,8 +131,8 @@ fn forced_break_and_cloned_decoration_report_incomplete() {
             ..slice(30.0)
         },
     ] {
-        let (_, _, plan) = fill(std::slice::from_ref(&kid), 10.0, Space::columns(2));
-        let (_, _, full) = fill(&[kid], 10.0, Space::columns(8));
+        let (_, _, plan) = fill_at(std::slice::from_ref(&kid), &|_| 10.0, Space::columns(2));
+        let (_, _, full) = fill_at(&[kid], &|_| 10.0, Space::columns(8));
         assert_eq!(plan.completion, super::Completion::Incomplete);
         assert_eq!(plan.len(), 2);
         assert_eq!((plan[0].copy, plan[1].copy), (0, 1));
@@ -140,7 +144,7 @@ fn forced_break_and_cloned_decoration_report_incomplete() {
 
 #[test]
 fn missing_built_copy_marks_plan_without_dropping_fragments() {
-    let (_, _, mut plan) = fill(&[slice(30.0)], 10.0, Space::columns(3));
+    let (_, _, mut plan) = fill_at(&[slice(30.0)], &|_| 10.0, Space::columns(3));
     assert_eq!(plan.completion, super::Completion::Complete);
     plan.check_copies(|_| 2);
     assert_eq!(plan.completion, super::Completion::Incomplete);
