@@ -16,6 +16,9 @@ mod base_url;
 #[cfg(test)]
 mod budget_tests;
 mod builder;
+mod diagnostics;
+#[cfg(test)]
+mod diagnostics_tests;
 #[cfg(feature = "engine-bench")]
 mod timing;
 #[cfg(feature = "engine-bench")]

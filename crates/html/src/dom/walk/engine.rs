@@ -153,8 +153,7 @@ pub(crate) fn walk_children(
                     )
                 {
                     tree.doc
-                        .traversal
-                        .limit(TraversalKind::BoxBuild, limit, v.depth);
+                        .traversal_limit_reached(TraversalKind::BoxBuild, limit, v.depth);
                     continue;
                 }
                 match &v.handle().data {

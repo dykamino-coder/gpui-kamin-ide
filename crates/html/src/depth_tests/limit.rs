@@ -52,6 +52,27 @@ fn reflow_reports_its_limit_after_building_the_deeper_boxes() {
 }
 
 #[test]
+fn layout_limit_is_delivered_at_the_frame_boundary_once_per_key() {
+    regression::on_eight_mib(|| {
+        let document = Document::builder(&markup(1500), "").build().unwrap();
+        assert!(document.take_diagnostics().is_empty());
+        draw(&document);
+        let batch = document.take_diagnostics();
+        let [record] = batch.records.as_slice() else {
+            panic!("{:?}", batch.records)
+        };
+        assert_eq!(
+            record.phase,
+            crate::diagnostics::Phase::Traversal(TraversalKind::Layout)
+        );
+        draw(&document);
+        assert!(document.take_diagnostics().is_empty());
+        let repeated = document.diagnostics().records[0].occurrences;
+        assert!(repeated > record.occurrences);
+    });
+}
+
+#[test]
 fn beyond_box_limit_paints_the_remainder_and_keeps_the_whole_dom() {
     regression::on_eight_mib(|| {
         for source in [

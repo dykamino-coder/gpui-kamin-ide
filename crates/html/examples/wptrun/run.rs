@@ -68,7 +68,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
         trace: trace.clone(),
         frame_errors: Default::default(),
         document_failure: Default::default(),
-        degradation: Default::default(),
+        engine_lines: Default::default(),
     };
     // Время на пару: страница, у которой один кадр считается
     // секундами, выглядит на экране долгой пустотой и неотличима от
@@ -156,11 +156,13 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
                 }
             });
         }
-        if let Some(report) = stage.degradation.take() {
-            let limit = report.degradation.expect("recorded degraded report");
-            let line = format!("{test}|{reference}|{} {report:?}\n", limit.code());
-            eprint!("{line}");
-            engine_report.push_str(&line);
+        let engine_lines = stage.engine_lines.take();
+        if !engine_lines.is_empty() {
+            for line in engine_lines.lines() {
+                let line = format!("{test}|{reference}|{line}\n");
+                eprint!("{line}");
+                engine_report.push_str(&line);
+            }
             let _ = std::fs::write(format!("{report_path}.engine"), &engine_report);
         }
         let errors = stage.frame_errors.take();
