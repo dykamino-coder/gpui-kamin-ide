@@ -11,17 +11,6 @@ impl Window {
         cx: &mut App,
         paint: impl FnOnce(&mut Self, &mut App) -> R,
     ) -> Result<(R, PaintRecord), PaintRecordError> {
-        let _recording = self.render_contexts.enter::<segments::Recording>(None);
-        let (result, scene, identity, scale) = self.capture_paint_commands(source_clip, cx, paint)?;
-        Ok((result, PaintRecord(Rc::new(Recorded { identity, scale, clip: source_clip, scene }))))
-    }
-
-    pub(super) fn capture_paint_commands<R>(
-        &mut self,
-        source_clip: Bounds<Pixels>,
-        cx: &mut App,
-        paint: impl FnOnce(&mut Self, &mut App) -> R,
-    ) -> Result<(R, Scene, paint_scope::Identity, f32), PaintRecordError> {
         let identity = paint_scope::Identity::capture(self);
         identity.check_pass(self)?;
         if !validation::scaled_bounds_valid(source_clip, self.scale_factor()) || !self.scale_factor().is_finite()
@@ -44,7 +33,7 @@ impl Window {
         });
         identity.check_pass(self)?;
         scene.finish();
-        Ok((result, scene, identity, scale))
+        Ok((result, PaintRecord(Rc::new(Recorded { identity, scale, clip: source_clip, scene }))))
     }
 
     /// Invoke immutable commands under new scopes, without any element callback.
@@ -69,16 +58,11 @@ impl Window {
             return Err(PaintRecordError::InvalidGeometry);
         }
         let clip = placement.clip.intersect(&self.content_mask().bounds).scale(self.scale_factor());
-        let (invocation, scene) = {
-            // Неизменяемый план — один лист сегментного обхода;
-            // его собственные эффекты разрешены до привязки к сегментам.
-            let _recording = self.render_contexts.enter::<segments::Recording>(None);
-            self.record_scene(extent, true, |window| {
-                let id = window.paint_scope_id();
-                plan.paint(window);
-                id
-            })
-        };
+        let (invocation, scene) = self.record_scene(extent, true, |window| {
+            let id = window.paint_scope_id();
+            plan.paint(window);
+            id
+        });
         // No destination writes occur until the complete invocation has succeeded.
         paint_scope::Identity::capture(self).check_pass(self)?;
         let scene = scene.copy_record(scaled, Some(clip));

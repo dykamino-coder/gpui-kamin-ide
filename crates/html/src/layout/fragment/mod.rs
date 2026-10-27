@@ -18,8 +18,6 @@ pub(crate) mod static_coordinates;
 pub mod table_bands;
 // Модель токенов вводится раньше потребителей: укладка читает из неё
 // `Space`, остальное подключают шаги перехода на токены.
-pub(crate) mod decoration;
-pub(crate) mod paint_source;
 #[cfg_attr(
     not(test),
     expect(dead_code, reason = "break-token model lands before its consumers")

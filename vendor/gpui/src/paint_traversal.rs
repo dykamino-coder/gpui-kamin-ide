@@ -51,15 +51,3 @@ pub struct PaintTraversal {
     /// Optional lifecycle for source recording; playback never invokes it.
     pub recording: Option<PaintRecording>,
 }
-
-/// Наблюдение в обычной точке prepaint детей, внутри clip их бокса.
-/// Хозяин сохраняет непрозрачные scopes; GPUI не повторяет обход детей.
-pub struct PrepaintTraversal {
-    /// Вызывается перед детьми после применения overflow и scroll offset.
-    pub enter_children: Rc<dyn Fn(&Window)>,
-}
-
-/// Замена собственной краски коробки в прежней точке, внутри scope её предка.
-/// true означает, что хозяин выдал команды через общий native painter.
-#[derive(Clone)]
-pub struct BoxPainter(pub Rc<dyn Fn(&Style, Bounds<Pixels>, &mut Window, &mut App) -> bool>);

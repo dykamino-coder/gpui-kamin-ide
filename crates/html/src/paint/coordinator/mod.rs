@@ -7,7 +7,6 @@ mod deferred;
 mod queue;
 mod recording;
 mod root;
-pub(crate) mod segments;
 mod state;
 
 pub(crate) use children::{atomic, box_policy};

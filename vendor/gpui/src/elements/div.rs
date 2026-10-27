@@ -1828,12 +1828,6 @@ pub trait LayoutObserver: 'static {
 }
 
 impl Div {
-    /// Локальная замена собственной краски; callback не наследуется потомками.
-    pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
-        self.interactivity.box_painter = Some(painter);
-        self
-    }
-
     /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
     pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
         self.paint_metadata = Some(std::rc::Rc::new(metadata));
@@ -2117,9 +2111,6 @@ impl Element for Div {
 
                 window.with_image_cache(image_cache, |window| {
                     window.with_element_offset(scroll_offset, |window| {
-                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
-                            (traversal.enter_children)(window);
-                        }
                         if let Some(order_fn) = &self.prepaint_order_fn {
                             let order = order_fn(window, cx);
                             for idx in order {
@@ -2250,7 +2241,6 @@ pub(crate) struct AriaProperties {
 /// interactivity in the `Div` element.
 #[derive(Default)]
 pub struct Interactivity {
-    pub(crate) box_painter: Option<crate::BoxPainter>,
     /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
     pub element_id: Option<ElementId>,
     /// Whether the element was clicked. This will only be present after layout.
@@ -2733,8 +2723,7 @@ impl Interactivity {
         }
 
         window.with_element_opacity(style.opacity, |window| {
-            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx);
-            style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
+            style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
                 window.with_child_style(&style, bounds, |window| {
                     window.with_tab_group(tab_group, |window| {
                         // Register the container's own focus handle *inside* its

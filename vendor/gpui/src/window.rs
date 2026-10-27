@@ -72,7 +72,7 @@ mod scene_capture;
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
-pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
+pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan,
     PaintScopeDescriptor, PaintGroupDescriptor};
 mod paint_snapshot;
 mod raster_frame;
@@ -4236,7 +4236,7 @@ impl Window {
         if let Some(text) = style.text_style() {
             self.push_text_style_ref(text);
         }
-        let _clip_scope = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
+        self.push_content_mask(style.overflow_mask_snapped(bounds, self));
         self.with_restore(depth, |window, depth| {
             window.text_style_stack.truncate(depth.0);
             window.content_mask_stack.truncate(depth.1);
@@ -4293,13 +4293,13 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
         let depth = self.content_mask_stack.len();
-        let _clip_scope = self.push_content_mask(mask);
+        self.push_content_mask(mask);
         self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
     }
 
     // Prepare mask temporaries before entering the recursive child traversal.
     #[inline(never)]
-    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
+    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> bool {
         if let Some(mask) = mask {
             // KaminIDE patch: под `with_transformation_masked` маска ребёнка
             // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -4309,12 +4309,12 @@ impl Window {
             let mask = match self.mask_map {
                 Some(m) => self.mapped_mask(mask, &m),
                 None => self.scaled_mask(mask),
-            };
-            let scope = self.segment_clip_scope(mask, false);
-            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
-            scope
+            }
+            .intersect(&self.content_mask());
+            self.content_mask_stack.push(mask);
+            true
         } else {
-            None
+            false
         }
     }
 
@@ -4330,7 +4330,6 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
         let mask = self.scaled_mask(mask);
-        let _clip_scope = self.segment_clip_scope(mask, true);
         let depth = self.content_mask_stack.len();
         self.content_mask_stack.push(mask);
         self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -4649,7 +4648,6 @@ impl Window {
     /// Obtain the current content mask. This method should only be called during element drawing.
     pub fn content_mask(&self) -> ContentMask<Pixels> {
         self.invalidator.debug_assert_paint_or_prepaint();
-        if let Some(mask) = self.segment_capture_mask() { return mask; }
         self.content_mask_stack
             .last()
             .cloned()
@@ -5801,7 +5799,7 @@ impl Window {
             fragment: 0,
         };
         if hoist && self.next_frame.scene.in_group {
-            self.next_frame.scene.hoist_backdrop(surface);
+            self.next_frame.scene.hoisted_backdrops.push(surface);
         } else {
             self.next_frame.scene.insert_primitive(surface);
         }
@@ -5870,7 +5868,7 @@ impl Window {
         inner.finish();
         // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
         // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
-        let hoisted = inner.take_backdrops();
+        let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
         // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
         // их номера были местными, поэтому сдвигаются на длину списка.
         let mut nested = std::mem::take(&mut inner.groups);
@@ -5904,9 +5902,14 @@ impl Window {
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
         // копирует кадр, уже нарисованный под элементом, а буфер группы
         // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.
-        self.next_frame.scene.adopt_backdrops(hoisted);
-        let unbounded = self.content_mask_stack.len() == 1;
-        self.next_frame.scene.insert_group_surface(PaintSurface {
+        if self.next_frame.scene.in_group {
+            self.next_frame.scene.hoisted_backdrops.extend(hoisted);
+        } else {
+            for surface in hoisted {
+                self.next_frame.scene.insert_primitive(surface);
+            }
+        }
+        self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,
             bounds: scaled,
             content_mask,
@@ -5916,7 +5919,7 @@ impl Window {
             opacity,
             color_matrix: None,
             fragment: 0,
-        }, unbounded);
+        });
         result
     }
 
@@ -6360,9 +6363,7 @@ impl Window {
             content_mask,
             behavior,
         };
-        if !self.insert_segment_hitbox(&hitbox) {
-            self.next_frame.hitboxes.push(hitbox.clone());
-        }
+        self.next_frame.hitboxes.push(hitbox.clone());
         hitbox
     }
 

@@ -4,9 +4,7 @@ use super::*;
 mod invocation;
 mod plan;
 mod validation;
-pub(super) mod segments;
 pub use plan::{PaintGroupDescriptor, PaintPlan, PaintScopeDescriptor};
-pub use segments::{PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentClips, PaintSegmentSlice};
 
 /// Immutable drawing commands. Clones share commands and retained resources.
 /// Capture scope may close; the original window, draw and raster scale must live.
@@ -47,9 +45,6 @@ pub enum PaintRecordError {
     /// Geometry contains nonfinite coordinates, sizes or effect parameters.
     #[error("paint record geometry is invalid")]
     InvalidGeometry,
-    /// Выбран необъявленный сегмент либо сегментная запись не активна.
-    #[error("paint segment is outside the active recording boundary")]
-    InvalidSegment,
 }
 
 impl PaintRecord {
@@ -59,10 +54,6 @@ impl PaintRecord {
     /// Inspect frozen commands in renderer contract tests without mutating them.
     #[cfg(any(test, feature = "test-support"))]
     pub fn scene(&self) -> &Scene { &self.0.scene }
-
-    /// Проверка сохранённых подложек до включения их команд в кадр.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn hoisted_backdrops(&self) -> &[crate::PaintSurface] { &self.0.scene.hoisted_backdrops }
 
     fn check(&self, window: &Window) -> Result<(), PaintRecordError> {
         self.0.identity.check_pass(window)?;

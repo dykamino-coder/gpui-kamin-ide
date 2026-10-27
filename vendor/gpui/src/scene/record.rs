@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) mod geometry;
+mod geometry;
 
 impl Scene {
     pub(crate) fn copy_record(
@@ -12,13 +12,8 @@ impl Scene {
     ) -> Self {
         let mut scene = self.copy_commands(offset, clip);
         // The compositor keeps dependencies flat, children before parents.
-        scene.groups = self.groups.iter().map(|group| Self::copy_group(group, group.scene.copy_commands(offset, None), offset)).collect();
-        scene
-    }
-
-    pub(super) fn copy_group(group: &PaintGroup, scene: Scene, offset: Point<ScaledPixels>) -> PaintGroup {
-        PaintGroup {
-            scene,
+        scene.groups = self.groups.iter().map(|group| PaintGroup {
+            scene: group.scene.copy_commands(offset, None),
             bounds: geometry::bounds(group.bounds, offset),
             blur_radius: group.blur_radius,
             blend: group.blend,
@@ -36,7 +31,8 @@ impl Scene {
             fragments: group.fragments.iter().map(|fragment| {
                 fragment.iter().map(|p| *p + offset).collect()
             }).collect(),
-        }
+        }).collect();
+        scene
     }
 
     fn copy_commands(

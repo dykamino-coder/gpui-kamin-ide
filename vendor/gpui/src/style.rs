@@ -930,44 +930,6 @@ impl Style {
         continuation: impl FnOnce(&mut Window, &mut App),
     ) {
         self.paint_box(bounds, window, cx);
-        self.paint_after_box(window, cx, continuation);
-    }
-
-    /// Общая точка собственной краски: локальный callback меняет только геометрию.
-    pub fn paint_with_box(
-        &self,
-        bounds: Bounds<Pixels>,
-        painter: Option<&crate::BoxPainter>,
-        window: &mut Window,
-        cx: &mut App,
-        continuation: impl FnOnce(&mut Window, &mut App),
-    ) {
-        self.paint_box_with(bounds, painter, window, cx);
-        self.paint_after_box(window, cx, continuation);
-    }
-
-    /// Завершает callback собственной краски до рекурсивного обхода детей.
-    #[inline(never)]
-    pub fn paint_box_with(
-        &self,
-        bounds: Bounds<Pixels>,
-        painter: Option<&crate::BoxPainter>,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if !painter.is_some_and(|painter| (painter.0)(self, bounds, window, cx)) {
-            self.paint_box(bounds, window, cx);
-        }
-    }
-
-    /// Продолжает обход после собственной краски и завершает debug scope.
-    #[inline(always)]
-    pub fn paint_after_box(
-        &self,
-        window: &mut Window,
-        cx: &mut App,
-        continuation: impl FnOnce(&mut Window, &mut App),
-    ) {
         continuation(window, cx);
 
         #[cfg(debug_assertions)]
@@ -976,10 +938,9 @@ impl Style {
         }
     }
 
-    /// Собственная краска общего painter по явному border-box, без обхода детей.
     // Finish shadows, background and border temporaries before painting children.
     #[inline(never)]
-    pub fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) {
+    fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) {
         #[cfg(debug_assertions)]
         if self.debug_below {
             _cx.set_global(DebugBelow)

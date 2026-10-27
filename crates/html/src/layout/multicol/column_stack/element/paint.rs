@@ -22,9 +22,6 @@ impl ColumnStack {
     ) {
         let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
         for f in plan {
-            if self.native_kid(f.kid) {
-                continue;
-            }
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
             // маска, оставленная на месте колонки, съедала его целиком

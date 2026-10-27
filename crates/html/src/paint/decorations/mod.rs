@@ -3,10 +3,8 @@
 use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
 mod borders;
-mod fragments;
 pub(super) use borders::box_borders;
 pub(super) use borders::coloured_borders;
-pub(crate) use fragments::layer as fragment_layer;
 
 use crate::hooks::{IntoHooked, PaintOnly};
 use crate::paint::decorations::backdrop::backdrop_matrix;

@@ -137,15 +137,8 @@ pub(crate) fn styled_div_with_dimensions(
     } else {
         c
     };
-    if cx.position.geometry_record.is_some() {
-        d = d.paint_box_with(crate::paint::coordinator::segments::box_painter(
-            c.self_node,
-        ));
-        d = d.child(crate::paint::decorations::fragment_layer(c, empty, cx));
-    } else {
-        for extra in decorations(c, empty, vcx, Some(cx)) {
-            d = d.child(extra);
-        }
+    for extra in decorations(c, empty, vcx, Some(cx)) {
+        d = d.child(extra);
     }
     super::container_units::observe(d, e, style)
 }
