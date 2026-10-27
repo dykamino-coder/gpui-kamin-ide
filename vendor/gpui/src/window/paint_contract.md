@@ -25,7 +25,7 @@ GPUI исполняет упорядоченные команды рисован
   удерживает тот же `Rc<T>`; значения внутри него не копируются глубоко.
   Отсутствующий тип скрывает одноимённый контекст вызывающего на время replay.
 
-### Текущий baseline API
+### Снимки и проверяемый replay
 
 `paint_ctx` сохраняет element/entity ids, text style, typed host contexts,
 element offsets и глубину exact offsets, transformation stack, mask scale/map,
@@ -63,14 +63,22 @@ Unwind помечает проход недействительным: прод�
 окружение. HTML coordinator владеет очередями прохода и освобождает их через Drop,
 в том числе при пойманном unwind. Глобального reset нет.
 
-Текущий `frame_capture` использует process-wide sequence при одном хозяине.
-Sequence различает завершённые readback, но не идентифицирует окно, документ
-или paint pass. Выбор first/latest и будущая изоляция сессий принадлежат
-хозяину. Production offscreen scene остаётся общим механизмом GPUI/backend.
+### Capture и instrumentation
 
-### Требования к общему scoped API
+`Window::set_frame_capture` передаёт backend единственный `FrameCaptureSink`
+этого окна без клонирования. Backend доставляет завершённые BGRA pixels и
+длительность readback. Хозяин владеет сессией, sequence, подписками и выбором
+first/latest; endpoint не смешивает кадры разных окон. Замена или уничтожение
+endpoint закрывает сессию и завершает ожидающие подписки. Readiness и выбор
+результата принадлежат WPT, а не renderer. Production offscreen scene остаётся
+общим механизмом GPUI/backend и не зависит от подписок на оконные кадры.
 
-Контракт механизма и последующей миграции consumers:
+`Application::with_instrumentation` принимает типизированные настройки хозяина
+до запуска платформы. Измерения prepaint и GPU принадлежат приложению и явно
+передаются backend, включая пересоздание устройства. Toolkit не разбирает
+диагностические переменные окружения.
+
+### Инварианты scoped API
 
 - frame-local pass token идентифицирует окно и кадр; scope token дополнительно
   идентифицирует открытую композиционную область, включая offscreen capture;
