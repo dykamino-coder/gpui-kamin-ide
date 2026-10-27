@@ -52,7 +52,7 @@ pub(super) fn range_has_space(value: Option<&str>) -> bool {
 
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
 ///
-pub fn load_faces(css: &str, vcx: ValueCx<'_>) -> Result<(), crate::document::DocumentFailure> {
+pub fn load_faces(css: &str, vcx: ValueCx<'_>) -> Result<(), crate::dom::outcome::DocumentFailure> {
     let admission = admit(css, vcx)?;
     clear(vcx);
     Ok(load_faces_into(css, None, vcx, &admission)?)
@@ -77,7 +77,7 @@ fn clear(vcx: ValueCx<'_>) {
 pub fn load_faces_additive(
     css: &str,
     vcx: ValueCx<'_>,
-) -> Result<(), crate::document::DocumentFailure> {
+) -> Result<(), crate::dom::outcome::DocumentFailure> {
     let admission = admit(css, vcx)?;
     Ok(load_faces_into(css, None, vcx, &admission)?)
 }
@@ -122,7 +122,7 @@ pub(super) fn load_faces_into(
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
             continue;
         };
-        let src = crate::document::resource_url::resolve(&src, base, admission)?;
+        let src = crate::resources::url_loader::resolve(&src, base, admission)?;
         let real = vcx.doc.font_faces.loaded.borrow().get(&src).cloned();
         let real = match real {
             Some(hit) => hit,

@@ -48,7 +48,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     );
     let embedded = match crate::document::parse_embedded_sized(
         &html,
-        crate::BROWSER_CSS,
+        crate::style::ua::BROWSER_CSS,
         (w, h),
         opts.cx.doc().media().print,
         false,

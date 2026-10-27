@@ -20,6 +20,7 @@ mod mathml_lengths;
 mod mathml_routing;
 #[cfg(test)]
 mod nth_child_tests;
+pub(crate) mod outcome;
 mod page_scheme;
 mod parse_document;
 pub(crate) mod source_walk;
@@ -48,7 +49,10 @@ pub(crate) use parse_document::convert;
 pub use parse_document::{try_parse, try_parse_media};
 
 /// XML-вход без HTML-восстановления.
-pub fn try_parse_xml(markup: &str, css: &str) -> Result<Parsed, crate::document::DocumentFailure> {
+pub fn try_parse_xml(
+    markup: &str,
+    css: &str,
+) -> Result<Parsed, crate::dom::outcome::DocumentFailure> {
     parse_document::parse_mode(markup, css, crate::style::css::Media::default(), true)
 }
 

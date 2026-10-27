@@ -10,7 +10,7 @@ mod overhead;
 mod policy;
 mod xml;
 
-use crate::document::DocumentFailure;
+use crate::dom::outcome::DocumentFailure;
 use markup5ever_rcdom::RcDom;
 use std::rc::Rc;
 
@@ -39,11 +39,13 @@ impl Admitted {
     #[cfg(test)]
     pub fn parse(source: &str, xml: bool) -> Result<Self, DocumentFailure> {
         let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
-            .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+            .map_err(|error| {
+                DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error))
+            })?;
         let revision = budget.revision();
-        revision
-            .source(source, "")
-            .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+        revision.source(source, "").map_err(|error| {
+            DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error))
+        })?;
         Self::with_budget(source, xml, revision)
     }
 

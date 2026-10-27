@@ -76,7 +76,7 @@ pub(crate) fn styled_div_with(
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     }
-    d = crate::interactive::scroll_target::attach(d, e, c, cx);
+    d = super::scroll::attach(d, e, c, cx);
     if let Some(probe) = crate::interactive::scroll_extent::probe(
         cx.scroll.frame.as_ref(),
         e.node_id,

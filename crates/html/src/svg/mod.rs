@@ -20,15 +20,14 @@ use gpui::{AnyElement, IntoElement};
 use masks::masked_layers;
 use serialize::serialize_sized;
 
-mod clip;
-pub(crate) use clip::ClipIds;
+use crate::resources::svg_document::clip;
 mod device_image;
 mod foreign;
 mod masks;
 pub(crate) mod path_commands;
 pub(crate) mod path_scene;
 pub(crate) mod raster;
-pub mod serialize;
+pub use crate::resources::svg_document::serialize;
 
 /// Во сколько раз растрировать плотнее логического размера: на дробном
 /// системном масштабе (125%, 150%) картинка иначе выглядит мыльной.

@@ -2,7 +2,7 @@
 
 use super::expand_xhtml_self_closing;
 use crate::budget::{BudgetKind, DocumentBudget, DocumentLimits, RevisionBudget};
-use crate::document::FailureReason;
+use crate::dom::outcome::FailureReason;
 
 fn budget(kind: BudgetKind, cap: u64) -> RevisionBudget {
     DocumentBudget::new(

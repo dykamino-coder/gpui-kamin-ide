@@ -1,7 +1,7 @@
 //! html5ever работает с единственной политикой tokenizer и RcDom.
 
 use super::{overhead::QUEUE_OVERHEAD, policy::Policy};
-use crate::document::FailureReason;
+use crate::dom::outcome::FailureReason;
 use html5ever::admission::{
     Admission, Operation,
     deque::StorageDeque,

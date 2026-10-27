@@ -2,7 +2,7 @@
 
 use super::names::Names;
 use crate::budget::{BudgetKind, RevisionBudget};
-use crate::document::FailureReason;
+use crate::dom::outcome::FailureReason;
 use std::cell::Cell;
 use std::sync::{
     Arc,

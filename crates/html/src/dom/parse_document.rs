@@ -12,10 +12,10 @@ use super::input::Admitted;
 use super::style_sources::try_collect_style_tags;
 use super::{Node, user_agent_css};
 use super::{float_tail, grid_static_position, subgrid_used};
-use crate::document::DocumentFailure;
 use crate::dom::display_inheritance::resolve_display_inherit;
 use crate::dom::fixup_grid::*;
 use crate::dom::fixup_tree::*;
+use crate::dom::outcome::DocumentFailure;
 use crate::dom::shadow::*;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::walk::*;
@@ -52,11 +52,11 @@ pub(super) fn parse_mode(
     xml: bool,
 ) -> Result<Parsed, DocumentFailure> {
     let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
-        .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+        .map_err(|error| DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error)))?;
     let revision = budget.revision();
     revision
         .source(html, extra_css)
-        .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+        .map_err(|error| DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error)))?;
     let input = Admitted::with_budget(html, xml, revision.clone())?;
     super::early_admission::admit_sources(&input, extra_css)?;
     let doc = crate::document::state::DocState::new(media);

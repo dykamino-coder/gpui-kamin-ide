@@ -2,7 +2,7 @@
 
 use super::{Admitted, Context, html, policy::Policy};
 use crate::budget::{BudgetKind, DocumentBudget, DocumentLimits, ResourceGovernor};
-use crate::document::FailureReason;
+use crate::dom::outcome::FailureReason;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 
 fn context(kind: BudgetKind, cap: u64) -> Context {

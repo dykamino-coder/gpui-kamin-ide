@@ -45,6 +45,7 @@ impl Default for ChildBuild {
                 apply::self_align,
             ),
             crate::paint::replaced::image::image_with,
+            crate::paint::controls::element,
             crate::svg::element_with_html,
             EffectBuild::new(
                 effects,

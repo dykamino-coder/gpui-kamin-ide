@@ -38,8 +38,8 @@ pub(crate) fn load_profiles_sheets(
             let Some(path) = crate::style::computed::parse_url(&src) else {
                 continue;
             };
-            let path = crate::document::resource_url::resolve(&path, base, &admission)?;
-            if let Some(bytes) = crate::document::resource_url::read(&path) {
+            let path = crate::resources::url_loader::resolve(&path, base, &admission)?;
+            if let Some(bytes) = crate::resources::url_loader::read(&path) {
                 vcx.doc.profiles.borrow_mut().insert(rule.prelude, bytes);
             }
         }

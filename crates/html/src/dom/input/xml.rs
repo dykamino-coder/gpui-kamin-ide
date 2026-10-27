@@ -1,7 +1,7 @@
 //! Канонический XML driver: storage событий и RcDom разделяют revision policy.
 
 use super::{Context, policy::Policy};
-use crate::document::FailureReason;
+use crate::dom::outcome::FailureReason;
 use html5ever::admission::{Admission as HtmlAdmission, storage::Storage};
 use html5ever::interface::{ElementFlags, NodeOrText, TreeSink};
 use html5ever::tendril::StrTendril;

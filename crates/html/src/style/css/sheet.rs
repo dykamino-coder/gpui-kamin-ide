@@ -16,7 +16,7 @@ pub(super) fn selector_for_supports(selector: &str, cx: &SelectorCx) -> String {
     nesting::top_level_parts(&[selector], cx).remove(0)
 }
 
-pub fn parse_stylesheet(css: &str) -> Result<Vec<Rule>, crate::document::DocumentFailure> {
+pub fn parse_stylesheet(css: &str) -> Result<Vec<Rule>, crate::dom::outcome::DocumentFailure> {
     parse_stylesheet_media(css, Media::default())
 }
 
@@ -91,14 +91,16 @@ pub(super) fn attr_prefixes_declared(v: &str, cx: &SelectorCx) -> bool {
 pub fn parse_stylesheet_media(
     css: &str,
     media: Media,
-) -> Result<Vec<Rule>, crate::document::DocumentFailure> {
+) -> Result<Vec<Rule>, crate::dom::outcome::DocumentFailure> {
     let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
         .map_err(|error| {
-            crate::document::DocumentFailure::new(crate::document::FailureReason::Budget(error))
+            crate::dom::outcome::DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(
+                error,
+            ))
         })?;
     let revision = budget.revision();
     revision.source("", css).map_err(|error| {
-        crate::document::DocumentFailure::new(crate::document::FailureReason::Budget(error))
+        crate::dom::outcome::DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error))
     })?;
     crate::css_syntax::admission::admit(
         css,

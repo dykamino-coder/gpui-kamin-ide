@@ -19,10 +19,10 @@ pub(super) fn expand_xhtml_self_closing<'a>(
         std::borrow::Cow<'a, str>,
         Option<crate::budget::LiveReservation>,
     ),
-    crate::document::FailureReason,
+    crate::dom::outcome::FailureReason,
 > {
     use crate::budget::BudgetKind;
-    use crate::document::FailureReason;
+    use crate::dom::outcome::FailureReason;
     // Six source-wide feature searches and at most two source lengths copied.
     // Tag/body searches below admit each inspected byte before touching it.
     let work = (html.len() as u64)

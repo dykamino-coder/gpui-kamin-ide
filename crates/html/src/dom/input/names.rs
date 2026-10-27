@@ -1,7 +1,7 @@
 //! Набор допущенных имён ревизии: до интернирования, один раз на написание.
 
 use crate::budget::{BudgetKind, LiveReservation, RevisionBudget};
-use crate::document::FailureReason;
+use crate::dom::outcome::FailureReason;
 use std::mem;
 
 struct Name {

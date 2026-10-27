@@ -76,7 +76,7 @@ pub(super) fn animation_frames(
             let mut base = style.clone();
             for name in &a.names {
                 if let Some(track) = resolve(name, &base)
-                    && let Some(sample) = crate::animation::frames::sample_at(&track, a, 0.0, vcx)
+                    && let Some(sample) = crate::style::animation::sample_at(&track, a, 0.0, vcx)
                 {
                     base = sample;
                 }

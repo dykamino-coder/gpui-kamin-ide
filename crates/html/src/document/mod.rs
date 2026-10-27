@@ -22,13 +22,12 @@ mod early_tests;
 mod timing;
 #[cfg(feature = "engine-bench")]
 pub use timing::BuildTimings;
-mod outcome;
 mod revision;
-pub use builder::DocumentBuilder;
-pub use outcome::{
+pub use crate::dom::outcome::{
     BuildReport, DocumentFailure, FailureReason, FailureScope, RevisionStatus, TraversalKind,
     TraversalLimit,
 };
+pub use builder::DocumentBuilder;
 mod canvas_background;
 mod embedded;
 pub(crate) mod image_values;

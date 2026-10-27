@@ -1,9 +1,9 @@
-//! XML test entry uses the same admitted parser as production revisions.
+//! Тестовый XML-вход использует тот же допускающий парсер, что и ревизии документа.
 
 #[cfg(test)]
 pub(crate) fn xml_dom(
     markup: &str,
-) -> Result<markup5ever_rcdom::RcDom, crate::document::DocumentFailure> {
+) -> Result<markup5ever_rcdom::RcDom, crate::dom::outcome::DocumentFailure> {
     crate::dom::input::Admitted::parse(markup, true).map(|admitted| admitted.dom)
 }
 

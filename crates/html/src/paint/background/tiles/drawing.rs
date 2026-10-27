@@ -11,6 +11,7 @@ use gpui::{Bounds, Pixels, px};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_tiles(
     c: &Computed,
+    layer: &crate::style::computed::BgLayer,
     bounds: Bounds<Pixels>,
     canvas: Option<Bounds<Pixels>>,
     window: &mut gpui::Window,
@@ -105,10 +106,9 @@ pub(crate) fn draw_tiles(
         },
         window,
     );
-    let start = c.background_position_used(
+    let start = layer.position_used(
         origin(pos, box_size, tile, vcx),
         (box_size.0 - tile.0, box_size.1 - tile.1),
-        vcx,
     );
     let shift = (
         f64::from(f32::from(bounds.origin.x)) - f64::from(f32::from(clip.origin.x)),
