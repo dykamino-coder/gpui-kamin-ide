@@ -17595,10 +17595,10 @@ index 0000000000000000000000000000000000000000..563dcbad9889673173d86f969e931cd8
 +}
 diff --git a/vendor/gpui/src/window/hit_transform.rs b/vendor/gpui/src/window/hit_transform.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c57d795ae78741f4bfa73fc7e897baca688872c5
+index 0000000000000000000000000000000000000000..4dd6f006fee72a8210e087a6c2b1d36ce5382818
 --- /dev/null
 +++ b/vendor/gpui/src/window/hit_transform.rs
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,155 @@
 +//! KaminIDE patch: hit testing of a transformed subtree through its inverse matrix.
 +//! The host prepaints the subtree once in its untransformed (local) coordinates;
 +//! hitboxes keep the scope chain and the frame maps the pointer back before testing.
@@ -17706,6 +17706,17 @@ index 0000000000000000000000000000000000000000..c57d795ae78741f4bfa73fc7e897baca
 +    /// The hit scope of the current prepaint position.
 +    pub fn paint_hit_scope(&self) -> PaintHitScope {
 +        PaintHitScope(self.hit_scope.clone())
++    }
++
++    /// `base` followed by content presented under `matrix` (logical pixels, in
++    /// base space): placements replayed under a presentation are hit through it.
++    pub fn paint_hit_scope_under(&self, base: &PaintHitScope, matrix: TransformationMatrix) -> PaintHitScope {
++        let radius = f32::MAX / 64.0;
++        PaintHitScope(Some(Rc::new(HitScope {
++            parent: base.0.clone(),
++            inverse: matrix.inverse(),
++            clip: Bounds::new(point(px(-radius), px(-radius)), size(px(radius * 2.0), px(radius * 2.0))),
++        })))
 +    }
 +
 +    /// Inside `with_prepaint_segments`, test the listed placements (segment,
