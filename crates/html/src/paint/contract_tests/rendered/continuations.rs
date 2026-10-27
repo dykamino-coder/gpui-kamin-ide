@@ -354,3 +354,20 @@ fn box_after_a_spanner_takes_its_static_position_in_its_row() {
     let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).map(|(b, _)| *b).collect();
     assert!(!blue.is_empty() && blue.iter().all(|b| f32::from(b.origin.x) >= 100.), "{blue:?}");
 }
+
+#[test]
+fn direct_box_with_an_outside_containing_block_keeps_its_static_layer() {
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:400px'><div style='height:70px'></div>\
+<div style='column-span:all;height:10px'></div><div style='height:35px'></div>\
+<div style='height:15px'></div>\
+<div style='position:absolute;width:100px;height:100px;background:#0000ff'></div>\
+<div style='height:20px;width:100px'></div></div>",
+        600.,
+        400.,
+    );
+    let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).collect();
+    assert_eq!(blue.len(), 1, "{found:?}");
+    assert_eq!(f32::from(blue[0].0.size.height), 100.);
+}

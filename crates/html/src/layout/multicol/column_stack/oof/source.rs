@@ -58,9 +58,11 @@ impl ColumnStack {
                     anchor
                 };
                 (anchor.col, anchor.y + start - anchor.from)
-            } else if source.owner == 0 {
+            } else if source.owner == 0 && source.native {
                 // Прямой OOF привязан к исходной коробке контейнера. Его
                 // static cursor уже разрешён native layout; normal-копии нет.
+                // A direct box painted by its legacy static layer keeps the
+                // probe-measured place, not a plan anchor.
                 (0, offset(source.metrics.normal_rect()))
             } else {
                 return Err(Error::InvalidGeometry);
