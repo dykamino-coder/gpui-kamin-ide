@@ -1,6 +1,7 @@
 //! Пробы баланса из неизменного исходного дерева; рост одной высоты не попадает в другую.
 
-use super::{ColumnStack, rebuild};
+use super::ColumnStack;
+use super::copies::rebuild;
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::push::Regrow;

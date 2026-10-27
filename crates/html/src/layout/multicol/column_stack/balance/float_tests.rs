@@ -60,17 +60,7 @@ fn forced_groups_can_require_more_than_forty_eight_columns() {
             ..Default::default()
         })
         .collect();
-    let mut stack = ColumnStack::new(
-        vec![],
-        2,
-        0.,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Default::default(),
-    );
+    let mut stack = ColumnStack::new(vec![], 2, 0., None, None, None, None, Default::default());
     let (height, plan) = stack.balance_line(&kids, 2, None);
     assert_eq!(height, 20.);
     assert_eq!(plan.completion, plan::Completion::Complete);
