@@ -1,6 +1,6 @@
 //! Построение абзаца с собственной раскладкой строк.
 
-use super::spans::{paragraph_spans, rotate_rel_spans};
+use super::spans::{paragraph_spans, rotate_rel_spans, rotated_central};
 use super::{LineAtoms, NativeRequest};
 use crate::layout::options::{RenderOpts, own_size};
 use crate::render::paragraph::metrics::flow_metrics;
@@ -82,7 +82,9 @@ pub(crate) fn native_paragraph(
         .edge_spans(edges)
         .line_boxes(
             boxes.as_ref().map(|b| b.0.clone()).unwrap_or_default(),
-            boxes.as_ref().map(|_| {
+            // A turned central line aligns its runs to the root inline box
+            // (`Paragraph::shared_base`), so it needs the strut font as well.
+            (boxes.is_some() || rotated_central(inherited)).then(|| {
                 (
                     inline::strut_font(inherited, &opts.text, opts.cx.vcx()),
                     gpui::px(own_size(inherited, opts)),
