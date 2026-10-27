@@ -4,9 +4,9 @@ use crate::document::state::ValueCx;
 mod ids;
 mod reference;
 pub(crate) use ids::ClipIds;
-pub(super) use reference::reference_box;
-pub(super) use reference::shape_box;
-pub(super) use reference::translate_only;
+pub(crate) use reference::reference_box;
+pub(crate) use reference::shape_box;
+pub(crate) use reference::translate_only;
 
 use super::serialize::SerializeCx;
 use super::serialize::escape_attr;

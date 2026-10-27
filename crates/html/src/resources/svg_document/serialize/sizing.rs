@@ -4,9 +4,9 @@ use super::{SerializeCx, escape_attr, escape_text, write_with};
 use crate::document::state::ValueCx;
 use crate::dom::resource_facts::view_box_ratio;
 use crate::dom::{Element, Node};
-use crate::layout::replaced::svg_size::size_of;
-use crate::svg::serialize::filters::subtree_has;
-use crate::svg::serialize::filters::untaint_filters;
+use crate::resources::svg_document::serialize::filters::subtree_has;
+use crate::resources::svg_document::serialize::filters::untaint_filters;
+use crate::resources::svg_document::size::size_of;
 
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
@@ -27,7 +27,7 @@ pub(crate) fn serialize_sized(
     } else {
         e
     };
-    let ids = crate::svg::ClipIds::for_document(e);
+    let ids = crate::resources::svg_document::ClipIds::for_document(e);
     let mut out = String::new();
     // Канва с запасом влево/вверх (`nx`, `ny` — переполнение в минус).
     let (cw, ch) = (w + nx, h + ny);

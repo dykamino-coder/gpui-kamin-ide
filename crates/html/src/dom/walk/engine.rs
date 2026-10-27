@@ -5,7 +5,8 @@ use super::{
     pending::{Pending, Restore},
     sibling_survey::{Survey, Visit},
 };
-use crate::document::{TraversalKind, state::ValueCx};
+use crate::document::state::ValueCx;
+use crate::dom::outcome::TraversalKind;
 use crate::dom::{Node, shadow::Scope, tree_index::TreeIndex};
 use crate::style::{css::VarMap, generated::counters::Counters, select::Ancestor};
 use markup5ever_rcdom::{Handle, NodeData};

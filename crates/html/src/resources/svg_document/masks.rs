@@ -52,10 +52,15 @@ impl MaskResources {
                     && let Some(id) = e.attr("id")
                 {
                     let mut markup = String::new();
-                    let ids = crate::svg::ClipIds::for_document(e);
+                    let ids = crate::resources::svg_document::ClipIds::for_document(e);
                     for c in &e.children {
                         if let Node::Element(el) = c {
-                            crate::svg::serialize::write_in(el, &mut markup, &ids, vcx);
+                            crate::resources::svg_document::serialize::write_in(
+                                el,
+                                &mut markup,
+                                &ids,
+                                vcx,
+                            );
                         }
                     }
                     out.0.insert(
@@ -70,7 +75,7 @@ impl MaskResources {
                     && let Some(id) = e.attr("id")
                 {
                     let mut markup = String::new();
-                    crate::svg::serialize::write_element(e, &mut markup, vcx);
+                    crate::resources::svg_document::serialize::write_element(e, &mut markup, vcx);
                     out.0.insert(
                         format!("filter:{id}"),
                         MaskDefinition {

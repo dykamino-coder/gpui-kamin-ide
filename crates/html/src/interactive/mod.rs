@@ -1,6 +1,5 @@
 //! Интерактивные элементы: прокрутка, изменение размера, липкие коробки.
 
-pub(crate) mod forms;
 pub mod frame;
 pub mod resizable;
 pub mod scroll;

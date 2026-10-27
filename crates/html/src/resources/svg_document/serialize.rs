@@ -9,7 +9,7 @@ mod attributes;
 pub(super) use attributes::write_attributes;
 
 mod sizing;
-pub(super) use sizing::serialize_sized;
+pub(crate) use sizing::serialize_sized;
 
 mod filters;
 
@@ -19,7 +19,7 @@ use filters::untaint_filters;
 
 use super::clip::synth_clip;
 use crate::dom::resource_facts::view_box_ratio;
-use crate::layout::replaced::svg_size::size_of;
+use crate::resources::svg_document::size::size_of;
 /// Viewport and clip content model of this serialization traversal.
 #[derive(Clone, Copy)]
 pub(super) struct SerializeCx {

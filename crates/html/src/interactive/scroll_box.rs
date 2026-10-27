@@ -8,10 +8,11 @@ use hoisting::hoist_from_scroll;
 
 use crate::dom::Element;
 use crate::layout::box_kind::in_flow;
+use crate::layout::build_contracts::Styling;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 /// Обернуть элемент лентой прокрутки, если `overflow` её просит.
 ///
@@ -119,16 +120,15 @@ pub(crate) fn scrollable(
                 cx.scroll.target = Some(target.clone());
                 cx.scroll.frame = frame;
             });
-            let built = inner_opts
-                .cx
-                .contracts
-                .build
-                .element(&inner, &inherited, &inner_opts);
+            let build = inner_opts.cx.contracts.build;
+            let built = build.element(&inner, &inherited, &inner_opts);
             if target.applied() {
                 return built;
             }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
-            let mut d = crate::paint::apply::margins(div(), &outer_margin, vcx)
+            let margins = Styling::Margins(&outer_margin);
+            let mut d = build
+                .styled_div(margins, &opts.cx)
                 .id(node.state_id("html-scroll-content", vcx))
                 .track_scroll(handle)
                 .child(built);
