@@ -31,6 +31,11 @@ impl DocState {
         self.readiness.children.borrow_mut().push(child);
     }
 
+    /// Вложенные документы текущего кадра (копия списка, без удержания borrow).
+    pub(super) fn observed_children(&self) -> Vec<Rc<DocState>> {
+        self.readiness.children.borrow().clone()
+    }
+
     /// Вложенные failures возникают и при отложенной сборке дочернего кадра.
     pub(crate) fn embedded_failure(&self) -> Option<crate::document::DocumentFailure> {
         self.embedded_failure.get().or_else(|| {

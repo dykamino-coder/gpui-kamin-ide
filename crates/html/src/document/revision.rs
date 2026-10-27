@@ -67,7 +67,8 @@ impl Document {
             BuildReport {
                 revision: Some(self.key),
                 retained_revision: Some(self.key),
-                status: if self.traversal_limit().is_some() {
+                // Отказ вложенного документа — штатный fallback своей области.
+                status: if self.traversal_limit().is_some() || self.embedded_failure().is_some() {
                     RevisionStatus::Degraded
                 } else {
                     RevisionStatus::Complete
@@ -81,13 +82,6 @@ impl Document {
     /// Постоянный статус для хоста до следующего успешного обновления.
     pub fn last_failure(&self) -> Option<DocumentFailure> {
         self.last_failure
-    }
-
-    /// Минимальный постоянный сигнал для host, включая виртуализованный вывод.
-    pub fn status_message(&self) -> Option<String> {
-        self.last_failure
-            .map(|failure| failure.to_string())
-            .or_else(|| self.traversal_limit().map(|limit| limit.to_string()))
     }
 
     /// Полное исходное дерево этой revision, независимо от глубины представления.

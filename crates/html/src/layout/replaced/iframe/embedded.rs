@@ -10,6 +10,7 @@ pub(crate) fn rejected(
     if opts.cx.doc().embedded_failure.get().is_none() {
         opts.cx.doc().embedded_failure.set(Some(failure));
     }
+    opts.cx.doc().record_diagnostic((&failure).into());
     gpui::div().child(failure.to_string()).into_any_element()
 }
 
