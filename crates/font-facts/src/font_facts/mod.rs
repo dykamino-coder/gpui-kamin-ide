@@ -9,12 +9,12 @@ use std::rc::Rc;
 pub const CSS_WEIGHT_TAG: (&str, u32) = ("cssw", 1);
 
 mod descriptors;
-pub(crate) mod matching;
+pub mod matching;
 mod registry;
 mod request;
 mod used;
-pub(crate) use descriptors::{MetricFaces, uniform_slope};
-pub(crate) use registry::{FeatureDefinitions, Registry};
+pub use descriptors::{MetricFaces, uniform_slope};
+pub use registry::{FeatureDefinitions, Registry};
 pub use registry::{FontRegistrySnapshot, GENERIC_SANS, generic_family};
 pub use request::{FontMetricQuery, FontOrientation, FontRequest, FontStyle};
 pub use used::UsedFont;
@@ -41,9 +41,9 @@ impl Eq for FontEnvironmentId {}
 /// Ключ выдаёт backend; строка семейства не может создать identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FaceId {
-    pub(crate) environment: FontEnvironmentId,
-    pub(crate) generation: u64,
-    pub(crate) backend_key: usize,
+    pub environment: FontEnvironmentId,
+    pub generation: u64,
+    pub backend_key: usize,
 }
 
 /// Факты нативного выбора; не утверждают наличие конкретного глифа.

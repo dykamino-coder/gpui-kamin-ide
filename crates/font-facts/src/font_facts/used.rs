@@ -15,7 +15,7 @@ pub struct UsedFont {
 }
 
 impl UsedFont {
-    pub(crate) fn new(
+    pub fn new(
         selected: Option<SelectedFaceFacts>,
         computed_px: f32,
         descriptor_scale: f32,
@@ -34,11 +34,7 @@ impl UsedFont {
     }
     /// Сначала контуры масштабируются дескриптором и свойством; затем
     /// проценты overrides заменяют метрики от того же использованного em.
-    pub(crate) fn override_metrics(
-        size: f32,
-        native: [f32; 3],
-        overrides: [Option<f32>; 3],
-    ) -> [f32; 3] {
+    pub fn override_metrics(size: f32, native: [f32; 3], overrides: [Option<f32>; 3]) -> [f32; 3] {
         std::array::from_fn(|i| overrides[i].map_or(native[i], |ratio| ratio * size))
     }
 }

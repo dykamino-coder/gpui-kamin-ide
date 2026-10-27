@@ -340,6 +340,9 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
 
     /// KaminIDE patch: space consumed by fragmentation after each row flex line.
     /// Applied after item sizing/alignment: completed items retain their used size.
+    /// A negative value suppresses part of the gap after the line: following lines
+    /// move towards block-start and a content-sized container shrinks, while
+    /// align-content keeps the unfragmented free space.
     /// Values are physical line indices as returned by `DetailedFlexInfo`.
     fn flex_line_fragmentation_growth(&self, _node_id: NodeId, _line: usize) -> f32 { 0.0 }
 

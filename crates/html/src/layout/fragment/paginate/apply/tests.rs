@@ -1,9 +1,9 @@
-//! Оставшаяся часть row-gap перед строкой после усечения разрывом.
+//! Распорка элемента ряда flex — его верхнее поле; заданный row-gap не переписывается.
 use super::*;
 
 #[test]
-fn carried_gap_excludes_fragment_growth_and_tracks_truncation() {
-    for (by, remaining) in [(-10.0, 0.0), (-6.0, 4.0), (0.0, 10.0), (20.0, 10.0)] {
+fn row_item_strut_moves_its_margin_and_keeps_the_gap() {
+    for by in [-6.0, 0.0, 20.0] {
         let mut tree = crate::dom::parse(
             "<div style='display:flex;flex-wrap:wrap;row-gap:10px'><div style='margin-top:3px;height:50px'></div></div>",
             "",
@@ -24,22 +24,13 @@ fn carried_gap_excludes_fragment_growth_and_tracks_truncation() {
         let Node::Element(item) = &parent.children[0] else {
             panic!("item")
         };
-        let struts = HashMap::from([(
-            item.node_id,
-            Strut {
-                by,
-                gap: 10.0,
-                size: 50.0,
-            },
-        )]);
+        let struts = HashMap::from([(item.node_id, Strut { by, size: 50.0 })]);
         assert!(apply(parent, &struts));
         let Node::Element(item) = &parent.children[0] else {
             panic!("item")
         };
-        assert_eq!(item.marks.carried_row_gap, remaining, "growth {by}");
-        assert_eq!(item.style.used().margin.top, Some(Len::Px(13.0 + by)));
-        assert_eq!(parent.style.used().gap.unwrap().0, Some(Len::Px(0.0)));
+        assert_eq!(item.style.used().margin.top, Some(Len::Px(3.0 + by)));
+        assert_eq!(parent.style.used().gap.unwrap().0, Some(Len::Px(10.0)));
         assert_eq!(item.style.computed().margin.top, Some(Len::Px(3.0)));
-        assert_eq!(parent.style.computed().gap.unwrap().0, Some(Len::Px(10.0)));
     }
 }

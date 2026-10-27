@@ -313,9 +313,10 @@ impl<NodeContext> TaffyTree<NodeContext> {
     }
 
     /// KaminIDE patch: consumed space after row flex lines (css-flexbox-1 §10).
+    /// A negative value suppresses that much of the gap after the line at a break.
     /// This constraint is outside the style/cache key; changing it invalidates layout.
     pub fn set_flex_line_fragmentation_growth(&mut self, node: NodeId, growth: Vec<f32>) -> TaffyResult<()> {
-        if growth.iter().any(|v| !v.is_finite() || *v < 0.0) {
+        if growth.iter().any(|v| !v.is_finite()) {
             return Err(TaffyError::InvalidInputNode(node));
         }
         let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;

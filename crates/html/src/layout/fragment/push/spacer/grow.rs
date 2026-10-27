@@ -108,9 +108,7 @@ pub(crate) fn grow_pushed(
                 continue;
             }
             // Ряд в точках, вытолкнутый целиком: растёт ПРЕДЫДУЩАЯ дорожка.
-            if grow_grid_track(c, at, grow)
-                || (!forced && super::super::row::grow_row_at(c, at, grow, vcx))
-            {
+            if grow_grid_track(c, at, grow) {
                 // TRANSITIONAL(F2-4): После мутации grid track геометрия оценивается заново; удалить в P16 после track growth result и StaticPosition из P08 без переписывания authored tracks.
                 if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS, vcx) {
                     kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));

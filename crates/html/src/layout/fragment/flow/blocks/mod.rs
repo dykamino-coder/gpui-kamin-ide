@@ -35,6 +35,7 @@ pub(crate) use grid_tree::grid_tree;
 mod flex;
 mod flex_breaks;
 mod flex_edges;
+mod flex_gaps;
 mod flex_tree;
 pub(crate) use flex::{FlexBox, FlexFrame, FlexLine, FlexPush, flex_container};
 pub(crate) use flex_tree::flex_tree;
@@ -44,6 +45,8 @@ mod depth_tests;
 mod flex_avoid_tests;
 #[cfg(test)]
 mod flex_column_tests;
+#[cfg(test)]
+mod flex_gap_tests;
 #[cfg(test)]
 mod flex_overflow_tests;
 #[cfg(test)]

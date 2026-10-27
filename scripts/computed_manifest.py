@@ -12,11 +12,14 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from html_source_inventory import texts
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "crates/html/src"
 OUT = ROOT / "scripts/computed_manifest"
-FIELDS = SRC / "style/computed/fields.rs"
+DEFINITIONS = "crates/html/src/style/computed/fields.rs"
 FIELD = re.compile(r"^    pub(?:\([^)]*\))? (\w+):\s*(.*)")
 STRUCT = re.compile(r"^pub(?:\([^)]*\))? struct (Computed|InheritedStyle)\b")
 # Owners describe the eventual contract, not a claim that today's fields are pure.
@@ -37,14 +40,10 @@ API = re.compile(
 )
 
 
-def relative(path):
-    return path.relative_to(ROOT).as_posix()
-
-
-def fields():
+def fields(source):
     owner = None
     result = []
-    for line, text in enumerate(FIELDS.read_text(encoding="utf-8").splitlines(), 1):
+    for line, text in enumerate(source.splitlines(), 1):
         start = STRUCT.match(text)
         if start:
             owner = start[1]
@@ -68,13 +67,14 @@ def destination(name, sites):
 
 
 def census():
-    definitions = fields()
+    sources = texts(ROOT)
+    definitions = fields(sources[DEFINITIONS])
     names = {f[1] for f in definitions}
     tokens = re.compile(r"\b(?:" + "|".join(sorted(names, key=len, reverse=True)) + r")\b")
     sites = {name: [] for name in names}
     apis = []
-    for path in sorted(SRC.rglob("*.rs")):
-        for line, text in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for path, source in sorted(sources.items(), key=lambda item: Path(item[0])):
+        for line, text in enumerate(source.splitlines(), 1):
             stripped = text.strip()
             if not stripped or stripped.startswith("//"):
                 continue
@@ -87,9 +87,9 @@ def census():
                     kind = "initializer-or-pattern-or-definition"
                 elif re.search(r"&mut\s+[^;]*\b" + name + r"\b", text):
                     kind = "mutable-projection"
-                sites[name].append([relative(path), line, kind, stripped])
+                sites[name].append([path, line, kind, stripped])
             if API.search(text):
-                apis.append([relative(path), line, stripped])
+                apis.append([path, line, stripped])
     rows = []
     for struct, name, line, declaration in definitions:
         rows.append({"field": f"{struct}.{name}", "definition": line,
@@ -103,7 +103,7 @@ def census():
                 json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n"
                 for row in records[offset:offset + size])
     metadata = {"schema": 1, "fields": len(rows), "api_sites": len(apis),
-                "field_source_sha256": hashlib.sha256(FIELDS.read_text(encoding="utf-8").encode()).hexdigest(),
+                "field_source_sha256": hashlib.sha256(sources[DEFINITIONS].replace("\r\n", "\n").encode()).hexdigest(),
                 "limitations": "Conservative token census; same-name false positives; whole-value writes in APIs; not runtime counts",
                 "files": {name: hashlib.sha256(data.encode()).hexdigest() for name, data in outputs.items()}}
     outputs["identity.json"] = (OUT / "identity.json").read_text(encoding="utf-8")
@@ -128,3 +128,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# KaminIDE crate-split guard adapter schema 1
