@@ -179,3 +179,19 @@ fn nested_box_above_its_containing_block_fragment_starts_in_the_earlier_column()
     assert!(is(top(&found, 25., 50.), 0x0000ff), "first fragment in column 1");
     assert!(is(top(&found, 75., 50.), 0x0000ff), "continuation in column 2");
 }
+
+#[test]
+fn continuation_keeps_the_inline_offsets_of_its_ancestors() {
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'>\
+<div style='margin-left:10px'><div style='position:relative;height:200px'>\
+<div style='position:absolute;width:30px;height:200px;background:#0000ff'></div></div></div></div>",
+        400.,
+        200.,
+    );
+    assert!(is(top(&found, 15., 50.), 0x0000ff));
+    assert!(!is(top(&found, 5., 50.), 0x0000ff));
+    assert!(is(top(&found, 65., 50.), 0x0000ff), "continuation keeps the 10px offset");
+    assert!(!is(top(&found, 55., 50.), 0x0000ff));
+}

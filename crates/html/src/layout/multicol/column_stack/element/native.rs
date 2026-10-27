@@ -62,10 +62,12 @@ impl ColumnStack {
             let rect = flow.metrics.normal_rect();
             let inline_size = geometry::inline(self.axis, rect);
             let source = geometry::slice(self.axis, rect, 0., inline_size, f.from, f.h).origin;
+            // The source lays the columns' content out from its origin: the inline
+            // offset there includes every ancestor's offset (owner margins too).
             let inline = if self.axis.is_vertical() {
-                rect.top() - flow.owner_rect.top()
+                rect.top()
             } else {
-                rect.left() - flow.owner_rect.left()
+                rect.left()
             };
             let destination =
                 geometry::slice(self.axis, actual.rect, inline.into(), inline_size, f.y, f.h)
