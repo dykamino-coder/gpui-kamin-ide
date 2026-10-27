@@ -10,6 +10,7 @@ mod column_regrow;
 pub mod column_stack;
 pub mod container;
 mod deferred;
+pub(crate) mod dimensions;
 pub mod gap_rules;
 pub mod measure;
 pub mod spanner;

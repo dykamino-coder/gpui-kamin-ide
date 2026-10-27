@@ -1,6 +1,7 @@
 //! Доказательство ограничения max-height по определённой стопке блоков.
 use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::struts::{
     adjoin, margin_or_bail, margin_px, solve, strut_of, through_strut, top_edge_open, zero_len,
 };
@@ -14,6 +15,7 @@ use crate::style::values::value::Len;
 /// к стопке с вычислимыми border edges; неизвестное содержимое её не даёт.
 pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
     let st = e.style.used();
+    let sizes = BoxDimensions::for_element(e, &st);
     if !matches!(
         st.display,
         None | Some(
@@ -22,7 +24,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
     ) {
         return false;
     }
-    let Some(mut cap) = margin_px(st.max_height, &st, vcx) else {
+    let Some(mut cap) = margin_px(sizes.maximum[1], &st, vcx) else {
         return false;
     };
     let edges = |style: &Computed| -> Option<f32> {
@@ -35,15 +37,15 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
                 _ => None,
             })
     };
-    if st.border_box == Some(true) {
+    if sizes.border_box {
         let Some(inset) = edges(&st) else {
             return false;
         };
         cap = (cap - inset).max(0.0);
     }
-    if let Some(min) = margin_px(st.min_height, &st, vcx) {
+    if let Some(min) = margin_px(sizes.minimum[1], &st, vcx) {
         cap = cap.max(min);
-    } else if !zero_len(st.min_height) {
+    } else if !zero_len(sizes.minimum[1]) {
         return false;
     }
     let mut bottom = None;
@@ -56,10 +58,11 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
             Node::Element(child) => child,
         };
         let cs = child.style.used();
+        let child_sizes = BoxDimensions::for_element(child, &cs);
         if inline_level_box(child)
             || cs.clear.is_some()
-            || cs.min_height.is_some()
-            || cs.max_height.is_some()
+            || child_sizes.minimum[1].is_some()
+            || child_sizes.maximum[1].is_some()
         {
             return false;
         }
@@ -67,11 +70,11 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
             previous_margin = adjoin(previous_margin, through);
             continue;
         }
-        let height = match margin_px(cs.height, &cs, vcx) {
+        let height = match margin_px(child_sizes.preferred[1], &cs, vcx) {
             Some(height) => height,
             // Пустой блочный контейнер без строк имеет auto-высоту 0
             // (CSS2 §10.6.3/§10.6.7), в том числе пустой flow-root.
-            None if matches!(cs.height, None | Some(Len::Auto))
+            None if matches!(child_sizes.preferred[1], None | Some(Len::Auto))
                 && matches!(
                     cs.display,
                     None | Some(crate::style::computed::Display::Block)
@@ -91,7 +94,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
         let Some(top) = margin_or_bail(cs.margin.top, &cs, vcx) else {
             return false;
         };
-        let height = if cs.border_box == Some(true) {
+        let height = if child_sizes.border_box {
             height.max(inset)
         } else {
             height + inset

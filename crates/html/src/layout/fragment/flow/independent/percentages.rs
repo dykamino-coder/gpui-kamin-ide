@@ -1,6 +1,7 @@
 //! Проценты normal flow разрешаются от исходного CB до MaxContent-меры копий.
 
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::{available_height, available_width};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed, Display, Position};
@@ -71,6 +72,16 @@ pub(crate) fn column_percentages(
         opts.cx.constraints.avail_w,
         opts.viewport.1,
     );
+    column_percentages_in(nodes, parent, height, width, opts)
+}
+
+pub(crate) fn column_percentages_in(
+    nodes: &[Node],
+    parent: &BoxStyle,
+    height: Option<f32>,
+    width: Option<f32>,
+    opts: &RenderOpts,
+) -> Vec<Node> {
     nodes
         .iter()
         .map(|n| match n {
@@ -132,8 +143,10 @@ fn resolve(
         && used.column_count.is_none()
         && used.column_width.is_none()
     {
-        let next_height = available_height::inner(&used, height, width, opts.viewport.1);
-        let next_width = available_width::inner(&used, width);
+        let sizes = BoxDimensions::for_element(e, &used);
+        let next_height =
+            available_height::inner_with_dimensions(&used, &sizes, height, width, opts.viewport.1);
+        let next_width = available_width::inner_with_dimensions(&used, &sizes, width);
         element.children = e
             .children
             .iter()

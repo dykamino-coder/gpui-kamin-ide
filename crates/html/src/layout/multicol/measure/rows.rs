@@ -1,9 +1,12 @@
 //! Размеры рядов и ограничения вложенного многоколоночного потока.
 
 use crate::dom::Element;
+use crate::layout::fragment::token::space::sequence::Nested;
+use crate::layout::multicol::dimensions::MulticolDimensions;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn row_plan(
@@ -13,7 +16,28 @@ pub(crate) fn row_plan(
     column_width: Option<Len>,
     cols: u16,
     col_vert: bool,
-    outer_row: Option<(f32, f32)>,
+    outer_space: Option<Rc<Nested>>,
+) -> RowPlan {
+    row_plan_in(
+        e,
+        opts,
+        column_width,
+        cols,
+        col_vert,
+        outer_space,
+        MulticolDimensions::for_element(e, &e.style.used()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn row_plan_in(
+    e: &Element,
+    opts: &RenderOpts,
+    column_width: Option<Len>,
+    cols: u16,
+    col_vert: bool,
+    outer_space: Option<Rc<Nested>>,
+    dimensions: MulticolDimensions,
 ) -> RowPlan {
     let col_w_px = match column_width {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
@@ -32,9 +56,9 @@ pub(crate) fn row_plan(
     };
     // Блочный размер коробки: в вертикальном письме — ширина.
     let box_h = match if col_vert {
-        e.style.used().width
+        dimensions.preferred[0]
     } else {
-        e.style.used().height
+        dimensions.preferred[1]
     } {
         Some(Len::Px(h)) if h > 0.0 => Some(h),
         _ => None,
@@ -74,9 +98,9 @@ pub(crate) fn row_plan(
     // точках (доля, `em`) — потолка нет, как до P5: ниже используемой
     // высоты резать нельзя, а её здесь не знаем.
     let (max_block, min_block) = if col_vert {
-        (e.style.used().max_width, e.style.used().min_width)
+        (dimensions.maximum[0], dimensions.minimum[0])
     } else {
-        (e.style.used().max_height, e.style.used().min_height)
+        (dimensions.maximum[1], dimensions.minimum[1])
     };
     let cap_h = box_h.and_then(|h| {
         let h = match max_block {
@@ -89,17 +113,22 @@ pub(crate) fn row_plan(
             _ => None,
         }
     });
-    // Вложенный многоколоночник во внешней колонке (`FragCx::outer_row`):
+    // Вложенный многоколоночник во внешней колонке (`FragCx::outer_space`):
     // ряды высотой во внешний фрагментаинер без зазора — граница
     // ряда совпадает с границей внешней колонки (css-break-4 §2.1;
     // Blink `ConstrainColumnBlockSize`, `LayoutLine` :1009-1026
     // «wrap … if we're participating in an outer fragmentation
     // context»). Последний ряд балансируется (css-multicol-1 §7.1
     // «only the last fragment is balanced»).
-    let nest_phase = outer_row.map_or(0.0, |r| r.1);
-    let nest_rows = outer_row
-        .map(|r| r.0)
+    let outer_space = outer_space
         .filter(|_| col_h.is_none() && e.style.used().column_wrap.is_none() && !col_vert);
+    let nest_phase = outer_space.as_ref().map_or(0., |r| r.offset);
+    let nest_rows = outer_space.as_ref().map(|r| {
+        r.outer_at(0)
+            .expect("validated outer Space")
+            .block_size
+            .unwrap()
+    });
     let rows = match nest_rows {
         Some(hh) => Some(crate::layout::fragment::types::Rows {
             h: Some(hh),
@@ -129,6 +158,7 @@ pub(crate) fn row_plan(
         rows,
         nest_phase,
         nest_rows,
+        outer_space,
     }
 }
 
@@ -139,6 +169,10 @@ pub(crate) struct RowPlan {
     pub(crate) box_h: Option<f32>,
     pub(crate) row_gap: f32,
     pub(crate) rows: Option<crate::layout::fragment::types::Rows>,
+    pub(crate) outer_space: Option<Rc<Nested>>,
     pub(crate) nest_phase: f32,
     pub(crate) nest_rows: Option<f32>,
 }
+
+#[cfg(test)]
+mod tests;

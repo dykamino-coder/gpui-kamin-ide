@@ -5,7 +5,7 @@
 use super::*;
 use crate::style::computed::CalcSizeBasis;
 
-pub(super) fn apply(mut d: Div, c: &Computed) -> Div {
+pub(super) fn apply(mut d: Div, c: &Computed, sizes: &BoxDimensions) -> Div {
     if c.calc_size
         .iter()
         .chain(c.calc_size_max.iter())
@@ -13,7 +13,7 @@ pub(super) fn apply(mut d: Div, c: &Computed) -> Div {
     {
         return d;
     }
-    d.style().calc_size_content_box = Some(c.border_box != Some(true));
+    d.style().calc_size_content_box = Some(!sizes.border_box);
     d.style().calc_size = Some(c.calc_size);
     d.style().calc_size_max = Some(c.calc_size_max);
     d.style().calc_size_basis = Some(c.calc_size_basis.map(|basis| match basis {

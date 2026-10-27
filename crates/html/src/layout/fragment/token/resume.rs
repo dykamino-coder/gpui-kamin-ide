@@ -3,6 +3,8 @@
 
 use super::TokenId;
 
+pub(crate) mod oof;
+
 /// Абсолютно позиционированный потомок, продолжающийся в следующем
 /// фрагментаинере (css-break-3 §2 «absolutely-positioned boxes … are
 /// fragmented»; Blink `OofBlockStartOffset`/`OofInlineStartOffset`, Gecko

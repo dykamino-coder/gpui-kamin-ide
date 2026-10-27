@@ -16,8 +16,11 @@ fn host(nodes: &[Node]) -> &Element {
     find(nodes).expect("authored host")
 }
 
-#[test]
-fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins() {
+#[gpui::test]
+fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins(
+    cx: &mut gpui::TestAppContext,
+) {
+    let cx = cx.add_empty_window();
     let tree = crate::dom::parse(
         "<div><div style='margin:calc(10% + 3px) 0 0'><div style='float:left;width:20px;overflow:scroll'>float</div>text</div><div>ordinary</div></div>",
         "",
@@ -41,24 +44,32 @@ fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins() {
         None,
     )
     .expect("deferred native float");
-    let kids = recipe.children(120.0);
-    assert_eq!(kids.len(), 1);
-    assert!(kids[0].paginate.is_none());
-    assert_eq!(kids[0].measure, Some(120.0));
-    assert_eq!(kids[0].mt, 15.0);
-    assert!(kids[0].regrow.is_some());
-    #[cfg(feature = "wpt-harness")]
-    assert!(
-        opts.frag
-            .probe
-            .take()
-            .values()
-            .all(|p| p.estimate_calls == 0)
+    cx.draw(
+        gpui::point(gpui::px(0.), gpui::px(0.)),
+        gpui::size(gpui::px(400.), gpui::px(400.)),
+        |window, app| {
+            let kids = recipe.children(120.0, window, app);
+            assert_eq!(kids.len(), 1);
+            assert!(kids[0].paginate.is_none());
+            assert_eq!(kids[0].measure, Some(120.0));
+            assert_eq!(kids[0].mt, 15.0);
+            assert!(kids[0].regrow.is_some());
+            #[cfg(feature = "wpt-harness")]
+            assert!(
+                opts.frag
+                    .probe
+                    .take()
+                    .values()
+                    .all(|p| p.estimate_calls == 0)
+            );
+            gpui::div()
+        },
     );
 }
 
-#[test]
-fn empty_float_host_is_measured_without_a_height_estimate() {
+#[gpui::test]
+fn empty_float_host_is_measured_without_a_height_estimate(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
     let tree = crate::dom::parse(
         "<div><div><div style='float:left;width:70px;height:40px'></div><div style='float:right;width:70px;height:60px'></div></div></div>",
         "",
@@ -81,18 +92,25 @@ fn empty_float_host_is_measured_without_a_height_estimate() {
         None,
     )
     .unwrap();
-    let kids = recipe.children(100.0);
-    assert_eq!(kids.len(), 1);
-    assert_eq!(kids[0].measure, Some(100.0));
-    assert!(kids[0].paginate.is_none());
-    assert!(kids[0].watched.as_ref().is_some_and(|w| w.has_blocks()));
-    #[cfg(feature = "wpt-harness")]
-    assert!(
-        opts.frag
-            .probe
-            .take()
-            .values()
-            .all(|p| p.estimate_calls == 0)
+    cx.draw(
+        gpui::point(gpui::px(0.), gpui::px(0.)),
+        gpui::size(gpui::px(400.), gpui::px(400.)),
+        |window, app| {
+            let kids = recipe.children(100.0, window, app);
+            assert_eq!(kids.len(), 1);
+            assert_eq!(kids[0].measure, Some(100.0));
+            assert!(kids[0].paginate.is_none());
+            assert!(kids[0].watched.as_ref().is_some_and(|w| w.has_blocks()));
+            #[cfg(feature = "wpt-harness")]
+            assert!(
+                opts.frag
+                    .probe
+                    .take()
+                    .values()
+                    .all(|p| p.estimate_calls == 0)
+            );
+            gpui::div()
+        },
     );
 }
 

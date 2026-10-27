@@ -2,6 +2,7 @@
 
 use crate::dom::Node;
 use crate::dom::whitespace::blank_text;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::in_flow;
 use crate::layout::table::anon::anon_element;
 use crate::style::computed::{Computed, Display};
@@ -118,6 +119,7 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 pub(crate) fn resolve_inline_pct(
     mut children: Vec<Node>,
     container: &Computed,
+    sizes: &BoxDimensions,
     vertical: bool,
 ) -> Vec<Node> {
     if matches!(
@@ -130,7 +132,7 @@ pub(crate) fn resolve_inline_pct(
     let b = container.borders();
     let (size, edges) = if vertical {
         (
-            container.height,
+            sizes.preferred[1],
             [
                 b.top,
                 b.bottom,
@@ -140,7 +142,7 @@ pub(crate) fn resolve_inline_pct(
         )
     } else {
         (
-            container.width,
+            sizes.preferred[0],
             [
                 b.left,
                 b.right,
@@ -154,7 +156,7 @@ pub(crate) fn resolve_inline_pct(
     };
     // Строчный размер СБ — его content-box: при `border-box` заданная
     // величина включает рамки и отступы по той же оси.
-    if container.border_box == Some(true) {
+    if sizes.border_box {
         base -= edges.iter().map(|l| px(*l).unwrap_or(0.0)).sum::<f32>();
     }
     let base = base.max(0.0);

@@ -17,6 +17,7 @@ mod flex;
 mod frame;
 mod laid;
 mod leaf;
+mod oof;
 mod paint;
 mod repeat;
 mod shape;
@@ -190,6 +191,7 @@ pub(super) fn page_kids_from_groups(
                 .flatten(),
             percentages: (vertical.is_none() && regrow.is_some()).then(|| percentages.clone()),
             regrow,
+            oof: paint.oof_source(),
             leaf,
             watched: Some(watched),
             float_id: match n {

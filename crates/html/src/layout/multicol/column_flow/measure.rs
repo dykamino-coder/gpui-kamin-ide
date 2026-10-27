@@ -4,13 +4,6 @@ use gpui::{Font, LineFragment, Pixels, Window, px};
 
 /// Места разрезов на колонки и высота потока при заданной ширине.
 #[allow(clippy::too_many_arguments)]
-/// Не делать заданную блочную высоту многоколонника потолком высоты КОЛОНКИ
-/// (`cap_height` здесь, `balance_line(kids, count, cap)` в `ColumnStack`)
-/// ради переполняющих колонок css-multicol-1 §Overflow: потолок режет
-/// ВНУТРЕННИЙ многоколонник, у которого своя балансировка
-/// (`column-height-025/026/027`, `multicol-nested-021/031`,
-/// `multicol-fill-balance-nested-000`). Вернуть можно только вместе с
-/// фрагментацией вложенного многоколонника внешним.
 pub(super) fn measure_columns(
     text: &str,
     count: Option<usize>,
@@ -23,8 +16,11 @@ pub(super) fn measure_columns(
     whole: bool,
     line_breaks: (usize, usize),
     width: Pixels,
+    outer: Option<&crate::layout::fragment::token::space::sequence::Nested>,
+    rows: &mut Vec<super::rows::Row>,
     window: &mut Window,
-) -> (Vec<usize>, usize, Pixels, usize) {
+) -> Result<(Vec<usize>, usize, Pixels, usize), crate::layout::fragment::token::Error> {
+    rows.clear();
     // Used column-count по фактической ширине (css-multicol §3.4,
     // ResolveUsedColumnCount): `columns: auto <w>` до замера не решается.
     let avail = f32::from(width);
@@ -55,7 +51,7 @@ pub(super) fn measure_columns(
     // 1em) с границами по пробелам давал «A B | C D | E» — не прямоугольник.
     // Широкие колонки — как прежде.
     if narrow && whole {
-        return (Vec::new(), count, px(line_height), 1);
+        return Ok((Vec::new(), count, px(line_height), 1));
     }
     let mut wrapper = window
         .text_system()
@@ -84,15 +80,24 @@ pub(super) fn measure_columns(
         off += seg.len() + 1;
     }
     let lines = boundaries.len() + 1;
-    // Высоту фрагментатора нельзя вводить ОТДЕЛЬНЫМ шагом: одни и те же пары
-    // (`overflow-clip-004`, `table-cell-expansion-006`,
-    // `flex-container-fragmentation-008/009`, `monolithic-with-overflow`,
-    // `out-of-flow-in-multicolumn-120/127`, `overflowing-block-003`,
-    // `box-shadow-001`, `become-unfragmented-001`) рушатся и от неё одной, и
-    // от одного лишь разреза ребёнка по краю колонки (`ColumnStack`) — они
-    // зелены не потому, что мы фрагментируем верно, а потому, что не
-    // фрагментируем вовсе. Фрагментацию делать одним куском: высота
-    // фрагментатора + разрыв между блочными детьми РЕКУРСИВНО + монолиты.
+    if let Some(outer) = outer {
+        let plan = super::rows::partition(
+            lines,
+            count,
+            line_height,
+            outer,
+            fill_height.is_none(),
+            line_breaks,
+        )?;
+        let first = plan.ends.first().copied().unwrap_or(lines);
+        let cuts = plan
+            .ends
+            .iter()
+            .filter_map(|&k| boundaries.get(k - 1).copied())
+            .collect();
+        *rows = plan.rows;
+        return Ok((cuts, count, px(plan.height), first));
+    }
     // `column-fill: auto` (css-multicol-1 §3.3): колонки заполняются ПОДРЯД
     // до высоты фрагментатора, а не делятся поровну. Пока высота не
     // учитывалась вовсе, и заданная высота коробки не влияла на разрезы:
@@ -154,48 +159,5 @@ pub(super) fn measure_columns(
     // Строк в первой колонке — по фактическому первому разрыву (после
     // поправки на `orphans`/`widows`), без разрывов — все строки блока.
     let first = ks.first().copied().unwrap_or(lines);
-    (cuts, count, px(per_col as f32 * line_height), first)
-}
-
-/// Внутренний размер многоколоночного контейнера с ТЕКСТОВЫМ потоком.
-///
-/// css-sizing-4 `intrinsic-sizing-notes.bs` §multicol-intrinsic — единственное
-/// письменное определение (css-multicol-1 §3.4 прямо отказывается его давать).
-/// Порядок действий — как в Blink `ColumnLayoutAlgorithm::ComputeMinMaxSizes`.
-/// Вклад содержимого у текста берут те же метрики, что и перенос
-/// (`LineWrapper::min_content_width` / `max_content_width`), иначе замер и
-/// перенос разойдутся между собой.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn intrinsic_column_width(
-    text: &str,
-    count: Option<usize>,
-    col_w: Option<f32>,
-    gap: f32,
-    font: &Font,
-    font_size: f32,
-    min: bool,
-    window: &mut Window,
-) -> Pixels {
-    let mut wrapper = window
-        .text_system()
-        .line_wrapper(font.clone(), px(font_size));
-    let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
-    // Жёсткие разрывы приходят переводом строки: каждый сегмент — свой абзац,
-    // и вклад даёт самый широкий из них.
-    for seg in text.split('\n') {
-        kid_min = kid_min.max(f32::from(wrapper.min_content_width(seg)));
-        kid_max = kid_max.max(f32::from(wrapper.max_content_width(seg)));
-    }
-    let n = count.unwrap_or(1).max(1) as f32;
-    let gap_extra = gap * (n - 1.0);
-    let (mut mn, mut mx) = (kid_min, kid_max);
-    match col_w.filter(|w| *w > 0.0) {
-        Some(w) => {
-            mn = mn.min(w);
-            mx = mx.max(w).max(mn);
-        }
-        None => mn = mn * n + gap_extra,
-    }
-    mx = mx * n + gap_extra;
-    px(if min { mn } else { mx })
+    Ok((cuts, count, px(per_col as f32 * line_height), first))
 }

@@ -89,6 +89,16 @@ impl Hooks for PageStack {
             geoms.push((self.geom_for)(i, &tail));
         }
         geoms.truncate(pages);
+        self.plan_oof(
+            super::oof::Normal {
+                plan: &plan,
+                geoms: &geoms,
+                names: &names,
+                count: pages,
+            },
+            window,
+            cx,
+        );
         // 2. Сетка листов и масштаб до вмещения в коробку стопки.
         let (ww, wh) = (
             f32::from(bounds.size.width).max(1.0),

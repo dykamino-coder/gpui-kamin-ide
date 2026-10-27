@@ -1,12 +1,14 @@
 //! Заданный размер содержимого ряда колонок многоколоночника.
 
-use crate::layout::block::available_height::content_block_size;
+use crate::layout::block::available_height::content_block_size_with_dimensions;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::cx::BoxConstraints;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 pub(super) fn fixed_column_height(
     style: &Computed,
+    sizes: &BoxDimensions,
     col_vert: bool,
     col_h: Option<f32>,
     nest_rows: Option<f32>,
@@ -19,11 +21,16 @@ pub(super) fn fixed_column_height(
         return Some(height);
     }
     let (preferred, maximum, outer, inline) = if col_vert {
-        (style.width, style.max_width, parent.avail_w, parent.avail_h)
+        (
+            sizes.preferred[0],
+            sizes.maximum[0],
+            parent.avail_w,
+            parent.avail_h,
+        )
     } else {
         (
-            style.height,
-            style.max_height,
+            sizes.preferred[1],
+            sizes.maximum[1],
             parent.avail_h,
             parent.cb_width,
         )
@@ -35,7 +42,7 @@ pub(super) fn fixed_column_height(
         None | Some(Len::Auto) => maximum,
         value => value,
     };
-    content_block_size(style, col_vert, preferred, outer, inline)
+    content_block_size_with_dimensions(style, sizes, col_vert, preferred, outer, inline)
 }
 
 #[cfg(test)]
@@ -59,7 +66,14 @@ mod tests {
         style.padding.left = Some(Len::Px(10.0));
         style.padding.right = Some(Len::Px(30.0));
         let height = |style: &Computed, vertical| {
-            fixed_column_height(style, vertical, None, None, &BoxConstraints::default())
+            fixed_column_height(
+                style,
+                &BoxDimensions::from_computed(style),
+                vertical,
+                None,
+                None,
+                &BoxConstraints::default(),
+            )
         };
         assert_eq!(height(&style, false), Some(80.0));
         assert_eq!(height(&style, true), Some(100.0));

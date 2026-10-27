@@ -12,9 +12,9 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::push::grow_pushed;
 use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::positioned::containing_block::metrics::{PositionedMetrics, Snapshot};
 use crate::style::computed::Position;
 use crate::style::values::value::Len;
-use crate::text::inline::establishes_cb;
 use crate::tolerance::COORD_EPS;
 
 mod block;
@@ -30,9 +30,7 @@ fn measure_fragment_and_own_height(c: &Element, vcx: ValueCx<'_>) -> Option<(Sha
 #[allow(clippy::too_many_arguments)]
 fn positioned(
     c: &mut Element,
-    cb_height: f32,
-    static_y: f32,
-    origin: f32,
+    geometry: &PositionedMetrics,
     h: f32,
     count: usize,
     copies: usize,
@@ -52,13 +50,8 @@ fn positioned(
     if s.cuts.is_empty() || (s.forced.is_empty() && s.solid.is_empty()) {
         return false;
     }
-    let used = match (c.style.used().inset.top, c.style.used().inset.bottom) {
-        (Some(Len::Px(top)), None | Some(Len::Auto)) => top,
-        (None | Some(Len::Auto), Some(Len::Px(bottom))) => cb_height - bottom - s.height,
-        (None | Some(Len::Auto), None | Some(Len::Auto)) => static_y,
-        _ => return false,
-    };
-    let phase = (origin + used).rem_euclid(h);
+    let used = f32::from(geometry.normal_offset.y);
+    let phase = f32::from(geometry.normal_rect().origin.y).rem_euclid(h);
     let original = c.style.clone();
     let mut probe = c.clone();
     probe.style.used_mut().position = Some(Position::Relative);
@@ -91,7 +84,7 @@ fn positioned(
 
 fn grow_positioned_descendants(
     c: &mut Element,
-    origin: f32,
+    geometry: &Snapshot,
     h: f32,
     count: usize,
     copies: usize,
@@ -100,27 +93,16 @@ fn grow_positioned_descendants(
     if !block(c) {
         return false;
     }
-    let Some((_, own)) = measure_fragment_and_own_height(c, vcx) else {
-        return false;
-    };
-    let cb = establishes_cb(&c.style.used());
-    let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     let mut changed = false;
     for n in &mut c.children {
         let Node::Element(k) = n else { continue };
         if out_of_flow(&k.style.used()) {
-            if cb {
-                changed |= positioned(k, own, cursor, origin, h, count, copies, vcx);
+            if let Some(metrics) = geometry.get(k.node_id) {
+                changed |= positioned(k, metrics, h, count, copies, vcx);
             }
-            continue;
+        } else {
+            changed |= grow_positioned_descendants(k, geometry, h, count, copies, vcx);
         }
-        let Some((s, height)) = measure_fragment_and_own_height(k, vcx) else {
-            continue;
-        };
-        let start = cursor + previous.max(s.margin_top);
-        changed |= grow_positioned_descendants(k, origin + start, h, count, copies, vcx);
-        cursor = start + height;
-        previous = s.margin_bottom;
     }
     changed
 }
@@ -130,21 +112,14 @@ pub(super) fn grow(
     h: f32,
     count: usize,
     copies: usize,
+    geometry: Option<&Snapshot>,
     vcx: ValueCx<'_>,
 ) {
-    if !kids
-        .iter()
-        .any(|(c, _)| crate::layout::positioned::predicates::carries_abspos(c, 4))
-    {
-        return;
-    }
-    let (mut cursor, mut previous) = (0.0f32, 0.0f32);
+    let Some(geometry) = geometry else { return };
     for (c, s) in kids {
-        let own = measure_fragment_and_own_height(c, vcx).map_or(s.height, |(_, own)| own);
-        let start = cursor + previous.max(s.margin_top);
         // TRANSITIONAL(F2-2): После роста OOF форма всего ребёнка оценивается заново; удалить в P08 после независимого OOF resume и live Reach с исходным CB/static rect.
         if !c.marks.paginate
-            && grow_positioned_descendants(c, start, h, count, copies, vcx)
+            && grow_positioned_descendants(c, geometry, h, count, copies, vcx)
             && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS, vcx)
         {
             *s = crate::layout::fragment::Shape {
@@ -152,10 +127,6 @@ pub(super) fn grow(
                 margin_bottom: s.margin_bottom,
                 ..next
             };
-        }
-        if !out_of_flow(&c.style.used()) {
-            cursor = start + own;
-            previous = s.margin_bottom;
         }
     }
 }

@@ -1,13 +1,8 @@
-//! Фрагменты охватчика: видимость, доля высоты, части многоколоночника.
+//! Фрагменты предков спаннера: видимость и разделение декораций slice/clone.
 
 use super::spanner_edge;
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
-use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::fragment_size::shape_full;
-use crate::style::values::value::Len;
-use crate::tolerance::COORD_EPS;
 mod parts;
 pub(super) use parts::spanner_parts;
 
@@ -22,6 +17,7 @@ pub(super) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last
         return true;
     }
     let b = &c.style.used().border_width;
+    let clone = c.style.used().bdb_clone;
     (first
         && (spanner_edge(&c.style.used().margin.top)
             || spanner_edge(&c.style.used().padding.top)
@@ -30,21 +26,21 @@ pub(super) fn spanner_frag_visible(c: &Element, kids: &[Node], first: bool, last
             && (spanner_edge(&c.style.used().margin.bottom)
                 || spanner_edge(&c.style.used().padding.bottom)
                 || spanner_edge(&b.bottom)))
+        || (clone
+            && (spanner_edge(&c.style.used().padding.top)
+                || spanner_edge(&c.style.used().padding.bottom)
+                || spanner_edge(&b.top)
+                || spanner_edge(&b.bottom)))
 }
 
 /// Фрагмент предка спаннера. css-break-3 §4.3 (вид `slice`, умолчание
 /// `box-decoration-break`): верхние поле/рамка/отбивка — только у первого
-/// фрагмента, нижние — только у последнего.
+/// фрагмента, нижние — только у последнего. При `clone` рамки и padding
+/// остаются у каждого фрагмента; клонированные поля на разрыве нулевые.
 ///
-/// `keep_size` — отдать фрагменту ЗАДАННУЮ блочную высоту предка. Она
-/// принадлежит коробке ЦЕЛИКОМ и расходуется фрагментами по очереди (Blink
-/// `fragmentation_utils.cc`: остаток блочного размера считается от уже
-/// уложенных фрагментов). Разложить остаток по фрагментам на уровне дерева
-/// нечем — геометрия колонок здесь ещё не известна, — поэтому высота
-/// ставится ТОЛЬКО когда предок на деле не разошёлся: видимый фрагмент
-/// один. Разошёлся на несколько — каждый меряется по содержимому, а не
-/// повторяет `height` предка целиком (иначе `height: 200px` удвоилась бы:
-/// `non-adjacent-spanners-001`).
+/// `keep_size` оставляет исходное ограничение только неразрезанной коробке.
+/// Для разрезанной коробки ParentResume задаёт остаток content-box после
+/// native-измерения предыдущего фрагмента; спаннер в этот расход не входит.
 pub(super) fn spanner_fragment(
     c: &Element,
     kids: Vec<Node>,
@@ -57,8 +53,10 @@ pub(super) fn spanner_fragment(
     f.children = kids.into();
     if !first {
         f.style.used_mut().margin.top = None;
-        f.style.used_mut().padding.top = None;
-        f.style.used_mut().border_width.top = None;
+        if !c.style.used().bdb_clone {
+            f.style.used_mut().padding.top = None;
+            f.style.used_mut().border_width.top = None;
+        }
         // Устойчивый номер узла у продолжения свой: по нему GPUI хранит
         // состояние (анимация, буферы линеек промежутков), и два фрагмента
         // с одним номером слились бы в один.
@@ -66,73 +64,50 @@ pub(super) fn spanner_fragment(
     }
     if !last {
         f.style.used_mut().margin.bottom = None;
-        f.style.used_mut().padding.bottom = None;
-        f.style.used_mut().border_width.bottom = None;
+        if !c.style.used().bdb_clone {
+            f.style.used_mut().padding.bottom = None;
+            f.style.used_mut().border_width.bottom = None;
+        }
     }
     if !keep_size {
         f.style.used_mut().height = None;
-        f.style.used_mut().min_height = None;
+        f.marks.spanner_content_box = true;
     }
     f
 }
 
-/// Доли заданной блочной высоты предка по его фрагментам вокруг спаннеров.
-/// Blink (`fragmentation_utils.cc`, `FinishFragmentation`) расходует
-/// `block-size` коробки фрагментами ПО ОЧЕРЕДИ: непоследний фрагмент берёт
-/// своё содержимое, но не больше остатка, последний — весь остаток
-/// (`multicol-span-all-children-height-004a`: 450 = 200 + 200 + 50, `-005`:
-/// 250 = 100 + 100 + 50; `non-adjacent-spanners-000`, `parallel-flow-after-
-/// spanner-002`: до спаннера содержимого нет — вся высота ПОСЛЕ него).
-/// `None` — правило не берётся (высота не в точках, фрагмент один, виден
-/// один и не после пустых, мера не вышла), и действует прежний `keep_size`.
-/// В векторе: `Some(v)` — высота фрагмента, `None` — своя, по содержимому.
-pub(super) fn spanner_height_share(
-    c: &Element,
-    bodies: &[Vec<Node>],
-    shape_cx: ShapeCx<'_>,
-    vcx: ValueCx<'_>,
-) -> Option<Vec<Option<f32>>> {
-    let Some(Len::Px(total)) = c.style.used().height else {
-        return None;
-    };
-    let n = bodies.len();
-    if n < 2 {
-        return None;
-    }
-    let empty = |b: &Vec<Node>| b.iter().all(is_blank);
-    let pre_empty = bodies[..n - 1].iter().all(&empty);
-    let seen = bodies
-        .iter()
-        .enumerate()
-        .filter(|(i, b)| spanner_frag_visible(c, b, *i == 0, *i + 1 == n))
-        .count();
-    if !pre_empty && seen <= 1 {
-        return None;
-    }
-    let px = |l: &Option<Len>| match l {
-        None => Some(0.0),
-        Some(Len::Px(v)) => Some(*v),
-        _ => None,
-    };
-    let edge = px(&c.style.used().padding.top)? + px(&c.style.used().borders().top)?;
-    let mut left = total;
-    let mut out = Vec::with_capacity(n);
-    for (i, b) in bodies.iter().enumerate() {
-        if i + 1 == n {
-            out.push(Some(left.max(0.0)));
-            break;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::values::value::Len;
+
+    #[test]
+    fn spanner_break_slices_edges_but_clone_repeats_only_decorations() {
+        fn find(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
         }
-        if empty(b) {
-            out.push(None);
-            continue;
+        for clone in [false, true] {
+            let tree = crate::dom::parse(
+                &format!(
+                    "<div style='margin:10px; padding:20px; border:3px solid; box-decoration-break:{}'></div>",
+                    if clone { "clone" } else { "slice" }
+                ),
+                "",
+            );
+            let parent = find(&tree).expect("parent");
+            let fragment = spanner_fragment(parent, vec![], false, false, false, 1);
+            let style = fragment.style.used();
+            assert!(style.margin.top.is_none() && style.margin.bottom.is_none());
+            assert_eq!(style.padding.top, clone.then_some(Len::Px(20.)));
+            assert_eq!(style.padding.bottom, clone.then_some(Len::Px(20.)));
+            assert_eq!(style.border_width.top, clone.then_some(Len::Px(3.)));
+            assert_eq!(style.border_width.bottom, clone.then_some(Len::Px(3.)));
+            assert_ne!(fragment.node_id, parent.node_id);
+            assert_eq!(spanner_frag_visible(parent, &[], false, false), clone);
         }
-        let f = spanner_fragment(c, b.clone(), i == 0, false, false, i);
-        // TRANSITIONAL(F2-3): Доля спаннера измеряется по предыдущим клонам; удалить в P10 после consumed спаннера и продолжения внешнего ряда.
-        let h = shape_full(&f, 4, shape_cx, vcx)?.height;
-        let own = (h - if i == 0 { edge } else { 0.0 }).max(0.0);
-        let take = own.min(left);
-        out.push((own > left + COORD_EPS).then_some(take));
-        left -= take;
     }
-    Some(out)
 }

@@ -5,6 +5,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::cx::LayoutCx;
 use crate::style::computed::{Align, BoxStyle, Sides};
 use crate::style::values::value::Len;
@@ -14,7 +15,7 @@ use gpui::AnyElement;
 /// line names.
 pub(crate) type GridPlacement = (Option<gpui::GridLocation>, Option<gpui::GridLineNames>);
 
-type StyledBox = fn(&Element, &BoxStyle, &LayoutCx) -> gpui::Div;
+type StyledBox = fn(&Element, &BoxStyle, &LayoutCx, Option<BoxDimensions>) -> gpui::Div;
 type StyledDiv = fn(Styling<'_>, &LayoutCx) -> gpui::Div;
 type ContentSized = fn(AnyElement, &BoxStyle, &BoxStyle, GridPlacement, &LayoutCx) -> AnyElement;
 
@@ -86,7 +87,17 @@ impl BoxBuild {
     }
 
     pub(super) fn styled_box(&self, e: &Element, style: &BoxStyle, cx: &LayoutCx) -> gpui::Div {
-        (self.styled_box)(e, style, cx)
+        (self.styled_box)(e, style, cx, None)
+    }
+
+    pub(super) fn sized_box(
+        &self,
+        e: &Element,
+        style: &BoxStyle,
+        cx: &LayoutCx,
+        sizes: BoxDimensions,
+    ) -> gpui::Div {
+        (self.styled_box)(e, style, cx, Some(sizes))
     }
 
     pub(super) fn styled_div(&self, styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {

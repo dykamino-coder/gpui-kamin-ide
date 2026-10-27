@@ -51,6 +51,7 @@ impl PageStack {
                 geom_for: &geom_for,
                 principal: self.principal,
             };
+            let spaces = pages.sequence();
             self.measured.clear();
             for (index, kid) in self.kids.iter().enumerate() {
                 if let Some(r) = &kid.regrow {
@@ -63,7 +64,7 @@ impl PageStack {
                                     parent: r.opts.cx.constraints.clone(),
                                 },
                                 source: r.space,
-                                page: pages.at(0).page,
+                                page: spaces.at(0).expect("resolved page geometry").page,
                             },
                             from: 0.0,
                             offset: 0.0,
@@ -77,7 +78,13 @@ impl PageStack {
                 }
             }
             let axis = self.axis;
-            let heights = |col| pages.at(col).block_size.unwrap();
+            let heights = |col| {
+                spaces
+                    .at(col)
+                    .expect("resolved page geometry")
+                    .block_size
+                    .unwrap()
+            };
             let leaves: Vec<_> = self
                 .kids
                 .iter()
@@ -86,7 +93,7 @@ impl PageStack {
             let mut continuation_error = None;
             let planned = plan::fill_resumed(
                 &kids,
-                &|col| pages.at(col),
+                &|col| spaces.at(col).expect("resolved page geometry"),
                 Space::pages(limit),
                 &|index, space| leaves[index].as_ref().map(|at| at(space)),
                 &mut |request| {

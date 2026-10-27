@@ -78,6 +78,8 @@ pub(crate) struct CpuRaster {
     pub(crate) alpha: AlphaMode,
     pub(crate) colour_space: ColourSpace,
     pub(crate) bytes: Arc<[u8]>,
+    /// Physical квота декодированных точек; последнее поле — буфер освобождается раньше.
+    pub(crate) retention: super::admission::Retention,
 }
 
 impl CpuRaster {
@@ -152,8 +154,23 @@ pub(crate) enum ImageError {
     InvalidData,
     /// Кодек распознал формат, но данные повреждены.
     Decode,
-    /// Размеры за пределами ограничений кодека.
-    LimitExceeded,
+    /// Предел ресурса: стадия и величины сохраняются типом причины.
+    LimitExceeded(ImageLimit),
+    /// Задание отменено вместе с устаревшим поколением; не ошибка ресурса.
+    Cancelled,
+}
+
+/// Какой предел остановил ресурс (ADR2 §4: ResourceFailure со штатным fallback).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ImageLimit {
+    /// Входные байты одного ресурса до декодирования (S6).
+    ResourceBytes { limit: u64 },
+    /// Ledger: work ревизии, живые точки/байты документа или host governor.
+    Budget(crate::budget::BudgetError),
+    /// Заявленный растр непредставим: произведение сторон и байтов точки переполняется.
+    Dimensions { width: u32, height: u32 },
+    /// Собственный предел кодека.
+    Codec,
 }
 
 #[cfg(test)]
@@ -170,6 +187,7 @@ mod tests {
                 alpha: AlphaMode::Straight,
                 colour_space: ColourSpace::Srgb,
                 bytes: Arc::from([1, 2, 3, 64, 9, 9, 9, 9, 4, 5, 6, 128, 0, 0, 0, 0]),
+                retention: Default::default(),
             };
             assert_eq!(raster.alpha_at(0, 0), Some(64));
             assert_eq!(raster.alpha_at(0, 1), Some(128));

@@ -126,6 +126,7 @@ pub(super) fn leaf(
     let performed = matches!(input.run_mode, taffy::RunMode::PerformLayout);
     if performed {
         if let Some(context) = context.as_deref_mut() {
+            context.static_positions.clear();
             context.layout_lines = None;
             context.layout_lines_x = None;
             context.layout_lines_x_from_right = false;
@@ -154,6 +155,7 @@ pub(super) fn leaf(
         let output = measured.to_native(scale);
         // Intrinsic probes must not replace metadata belonging to a cached full layout.
         if performed {
+            context.static_positions = measured.static_positions;
             context.layout_lines = measured.lines_y;
             context.layout_lines_x = measured.lines_x;
             context.layout_lines_x_from_right = measured.x_from_right;

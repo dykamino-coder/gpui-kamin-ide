@@ -9,6 +9,7 @@ use super::geometry::row_container;
 use super::intrinsic::intrinsic_main;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::Align;
 use crate::style::values::value::{Len, px_auto_zero};
@@ -27,6 +28,7 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
             continue;
         }
         let s = &*k.style.used();
+        let sizes = BoxDimensions::for_element(k, s);
         if k.inline
             || out_of_flow(s)
             || s.float.unwrap_or(0) != 0
@@ -37,7 +39,7 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
             // the item (§9.6). Bounded stretch also needs max-size resolution.
             || s.margin.top == Some(Len::Auto)
             || s.margin.bottom == Some(Len::Auto)
-            || (matches!(s.height, None | Some(Len::Auto)) && s.max_height.is_some())
+            || (matches!(s.height, None | Some(Len::Auto)) && sizes.maximum[1].is_some())
             || !matches!(
                 s.align_self,
                 None | Some(Align::Stretch) | Some(Align::Start)
@@ -57,7 +59,7 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
             None => return None,
         };
         let b = s.borders();
-        let edges = if s.border_box == Some(true) {
+        let edges = if sizes.border_box {
             0.0
         } else {
             px_auto_zero(s.padding.left)?

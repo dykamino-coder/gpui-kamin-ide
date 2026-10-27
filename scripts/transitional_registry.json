@@ -70,11 +70,6 @@
     "reason": "Grid preplan оценивает items без consumed, clone edges и OOF anchors; удалить в P16 после recorded tracks и item tokens поверх P04/P08."
   },
   {
-    "file": "crates/html/src/layout/fragment/line_shape/nested.rs",
-    "task": "F2-3",
-    "reason": "Высота вложенного ряда оценивается без остатка внешнего Space; удалить в P10 после NestedRow cursor и child resume."
-  },
-  {
     "file": "crates/html/src/layout/fragment/oof_reach.rs",
     "task": "F2-2",
     "reason": "Reach/Measure сохраняют оценочную legacy-модель страниц и clone; удалить в P22 после живых OOF fragments из P08 и последних readers из P21."
@@ -152,7 +147,7 @@
   {
     "file": "crates/html/src/layout/fragment/types/scope.rs",
     "task": "F2-7",
-    "reason": "FragCx несёт implicit in_stack_copy/outer_row вместо явного Space/resume; удалить эти поля в P22 после последних consumers P09/P10/P21."
+    "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."
   },
   {
     "file": "crates/html/src/layout/multicol/column_regrow/copies.rs",
@@ -163,11 +158,6 @@
     "file": "crates/html/src/layout/multicol/column_regrow/copies.rs",
     "task": "F2-4",
     "reason": "Смешанный clone/nested/OOF preplan исключён из роста копий; удалить общий gate в P21 после recorded child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/column_stack/mod.rs",
-    "task": "F2-3",
-    "reason": "Щуп баланса ограничивает копии числом 48; удалить предел в P11 после сходимости кандидатов по реальному прогрессу row tokens."
   },
   {
     "file": "crates/html/src/layout/multicol/container/mod.rs",
@@ -185,21 +175,6 @@
     "reason": "Прямой measure смешивает оценку normal size с OOF reach; удалить в P08 после исходного CB/static rect и emitted OOF child fragments."
   },
   {
-    "file": "crates/html/src/layout/multicol/container/spanner.rs",
-    "task": "F2-3",
-    "reason": "Внешний план рядов и спаннеров строится до вложенного Space; удалить в P10 после row cursor и отдельного продолжения спаннера."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/container/spanner.rs",
-    "task": "F2-3",
-    "reason": "Допуск хвоста проверяется через shape_full без consumed внешнего ряда; удалить в P10 после типизированного результата NestedRow resume."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/children.rs",
-    "task": "F2-3",
-    "reason": "Первый вложенный auto row при отказе native пути получает оценку; удалить fallback в P10 после actual outer Space и typed child outcome."
-  },
-  {
     "file": "crates/html/src/layout/multicol/measure/children.rs",
     "task": "F2-4",
     "reason": "Вертикальная смешанная группа оценивается через временный root; удалить в P21 после child resume в логических осях и OOF поверх P08/P10/P16."
@@ -213,16 +188,6 @@
     "file": "crates/html/src/layout/multicol/measure/laid.rs",
     "task": "F2-2",
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/measure/tail.rs",
-    "task": "F2-3",
-    "reason": "Остаток внешнего ряда вычитается из оценок целых спаннеров; удалить в P10 после outer-row extent и spanner token."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/spanner/fragment/mod.rs",
-    "task": "F2-3",
-    "reason": "Доля спаннера измеряется по предыдущим клонам; удалить в P10 после consumed спаннера и продолжения внешнего ряда."
   },
   {
     "file": "crates/html/src/layout/multicol/stack_child/cuts.rs",

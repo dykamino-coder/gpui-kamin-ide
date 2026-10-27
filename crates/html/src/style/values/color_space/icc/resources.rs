@@ -39,7 +39,9 @@ pub(crate) fn load_profiles_sheets(
                 continue;
             };
             let path = crate::resources::url_loader::resolve(&path, base, &admission)?;
-            if let Some(bytes) = crate::resources::url_loader::read(&path) {
+            let revision = vcx.doc.revision_budget();
+            let read = crate::resources::url_loader::read(&path, &revision);
+            if let Ok(bytes) = read.inspect_err(|error| vcx.doc.record_load_failure(error)) {
                 vcx.doc.profiles.borrow_mut().insert(rule.prelude, bytes);
             }
         }

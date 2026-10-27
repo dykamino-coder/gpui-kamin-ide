@@ -8,6 +8,16 @@ use crate::style::values::value::Len;
 use gpui::CssSizingKeyword;
 
 pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
+    keywords_with_dimensions(
+        style,
+        &crate::layout::block::sizing::BoxDimensions::from_computed(style),
+    )
+}
+
+pub(crate) fn keywords_with_dimensions(
+    style: &Computed,
+    sizes: &crate::layout::block::sizing::BoxDimensions,
+) -> [Option<CssSizingKeyword>; 2] {
     let keyword = |value, argument| match value {
         Some(Len::MinContent) => Some(CssSizingKeyword::MinContent),
         Some(Len::MaxContent) => Some(CssSizingKeyword::MaxContent),
@@ -30,12 +40,12 @@ pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
         stretch(0).or(if style.contains_width() {
             None
         } else {
-            keyword(style.width, style.fit_arg[0])
+            keyword(sizes.preferred[0], style.fit_arg[0])
         }),
         stretch(1).or(if style.contains_height() {
             None
         } else {
-            keyword(style.height, None)
+            keyword(sizes.preferred[1], None)
         }),
     ]
 }

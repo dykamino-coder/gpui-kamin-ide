@@ -2,14 +2,15 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::side_margin_wrap;
-use crate::layout::fragment::types::StackChild;
 use crate::layout::multicol::column_stack::ColumnStack;
-use crate::layout::multicol::container::kids::{column_kids, stack_children};
 use crate::layout::multicol::measure::laid;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, App, Pixels, Window};
-use std::cell::RefCell;
+mod children;
+mod geometry;
+#[cfg(test)]
+mod oof_tests;
 
 /// Исходное дерево, без LayoutId и изменяемых рекордеров от пробной раскладки.
 pub(crate) struct Recipe {
@@ -84,75 +85,6 @@ impl Recipe {
             .collect()
     }
 
-    pub(super) fn children(&self, width: f32) -> Vec<StackChild> {
-        let measured = RefCell::default();
-        let opts = self.opts.clone();
-        let vcx = opts.cx.vcx();
-        let vertical = self.axis.is_vertical();
-        let reverse = self.axis == crate::layout::fragment::types::StackAxis::VerticalRl;
-        let host = self.resolved_host(width);
-        let kids = if vertical {
-            laid::vertical_children(&host, &self.merged, vcx, width, reverse, &measured)
-        } else {
-            laid::children(&host, &self.merged, vcx, width, &measured).or_else(|| {
-                super::measure::native_float::children(&host, &self.merged, vcx, width, &measured)
-            })
-        };
-        let kids = kids.expect("deferred recipe preserves the measured-tree contract");
-        let copies = self.count.max(1) as usize;
-        let (parents, _, parallel, kids) = column_kids(
-            &self.merged,
-            kids,
-            self.count,
-            self.gap,
-            vertical,
-            self.rows,
-            copies,
-            self.fixed,
-            (Some(width), Some(width)),
-            vcx,
-        );
-        let prepared = kids
-            .iter()
-            .enumerate()
-            .map(|(ix, (c, s))| {
-                super::stack_child::prepare(
-                    ix,
-                    c,
-                    s,
-                    parents[ix].as_ref().unwrap_or(&self.merged),
-                    &opts,
-                    &parallel,
-                    vertical,
-                    reverse,
-                    Some(width),
-                    self.fixed,
-                    &measured,
-                )
-            })
-            .collect();
-        stack_children(
-            &host,
-            &self.merged,
-            &opts,
-            self.count,
-            vertical,
-            reverse,
-            (Some(width), Some(width)),
-            self.rows,
-            RefCell::default(),
-            RefCell::default(),
-            measured,
-            copies,
-            self.fixed,
-            parents,
-            parallel,
-            kids,
-            Vec::new(),
-            prepared,
-        )
-    }
-
     /// После определения ширины используется тот же CB, что в stack_plan.
     fn resolved_host(&self, width: f32) -> Element {
         super::measure::prepared(
@@ -172,7 +104,9 @@ impl Recipe {
         window: &mut Window,
         cx: &mut App,
     ) {
-        stack.children = self.children(width);
+        let (children, geometry) = self.recorded_children(width, window, cx);
+        stack.children = children;
+        stack.oof.geometry = geometry;
         if stack.fixed_height.is_some() {
             stack.copies = stack
                 .children
@@ -202,6 +136,10 @@ impl Recipe {
             self.prepare(stack, col_width, window, cx);
             let kids = stack.kid_geoms();
             let (height, lines, plan, spans) = stack.balance(&kids);
+            let height =
+                stack
+                    .row_extent
+                    .block_size(height, &lines, &spans, &plan, stack.count, &kids);
             let (first, last) = if self.axis.is_vertical() {
                 (None, None)
             } else {

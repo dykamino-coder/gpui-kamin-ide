@@ -18,7 +18,7 @@ pub(crate) fn native_content_box_with(
     style: &Computed,
     sizes: &super::block::sizing::BoxDimensions,
 ) -> bool {
-    style.border_box != Some(true)
+    !sizes.border_box
         && ((sizes.preferred[0] == Some(Len::FitContent)
             && matches!(style.fit_arg[0], Some(Len::Px(_) | Len::Pct(_))))
             || [

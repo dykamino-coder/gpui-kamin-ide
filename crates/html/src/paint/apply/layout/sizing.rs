@@ -70,7 +70,7 @@ pub(super) fn layout_sizing(
     // Positioned boxes cannot use the intrinsic grid wrapper: it would change
     // their containing block. Preserve authored keywords for native measurement.
     if matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
-        d.style().sizing_keywords = Some(intrinsic_size::keywords(c));
+        d.style().sizing_keywords = Some(intrinsic_size::keywords_with_dimensions(c, sizes));
     }
     // Explicit flex constraints must preserve the preferred size / flex basis.
     // Native layout measures their intrinsic border-box sizes independently.
@@ -186,7 +186,7 @@ pub(super) fn layout_sizing(
                 _ => v,
             }
         };
-        let bb = c.border_box == Some(true);
+        let bb = sizes.border_box;
         match (sizes.preferred[0], sizes.preferred[1]) {
             (Some(Len::Px(w)), _) => {
                 let w = clamp(w, sizes.minimum[0], sizes.maximum[0]);

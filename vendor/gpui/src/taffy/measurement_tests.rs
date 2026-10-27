@@ -1,7 +1,6 @@
 //! Independent subtree measurement keeps native layout caches and callbacks separate.
 
 use super::*;
-use stacksafe::StackSafe;
 use std::{cell::RefCell, rc::Rc};
 use taffy::style_helpers::TaffyMaxContent;
 
@@ -52,7 +51,8 @@ fn copied_subtree_has_independent_styles_and_layout_cache() {
 fn copied_subtree_keeps_actual_callback_alive_after_source_clear() {
     let mut source = TaffyTree::new();
     let context = NodeContext {
-        measure: Rc::new(RefCell::new(StackSafe::new(Box::new(|_, _, _, _, _| {
+        static_positions: Vec::new(),
+        measure: Rc::new(RefCell::new(node_measure(Box::new(|_, _, _, _, _| {
             (
                 crate::size(crate::px(12.0), crate::px(8.0)),
                 None,

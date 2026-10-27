@@ -11,6 +11,7 @@ use crate::document::state::ValueCx;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::float::{float_only_box, has_float};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::line_shape::{inline_content, line_run_shape};
@@ -48,6 +49,7 @@ pub(super) fn shape_contents(
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) -> Option<Measure> {
+    let sizes = BoxDimensions::for_element(c, &c.style.used());
     let none = Measure::plain;
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
     let lines = crate::layout::fragment::LineCx::child(c, vcx);
@@ -66,7 +68,7 @@ pub(super) fn shape_contents(
     // точек разреза внутри нет (флоаты пустые), рамка сверху — монолит, как
     // у общей ветки ниже.
     if matches!(c.style.used().height, None | Some(Len::Auto))
-        && c.style.used().min_height.is_none()
+        && sizes.minimum[1].is_none()
         && let Some(tall) = float_only_box(c)
     {
         let b = c.style.used().borders();

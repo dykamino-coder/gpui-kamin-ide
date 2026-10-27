@@ -91,6 +91,48 @@ impl TaffyLayoutEngine {
         });
     }
 
+    /// KaminIDE patch: static rects are retained with the performed native leaf result.
+    /// Dirty ancestry, intrinsic probes and copied measurements cannot publish geometry.
+    pub fn final_static_position(&self, id: LayoutId, tree: LayoutTreeId, key: usize, scale: f32) -> Option<super::MeasuredStaticPosition> {
+        self.final_layout(id, tree, scale)?;
+        let mut position = self.taffy.get_node_context(id.into())?.static_positions.iter()
+            .find(|position| position.key == key).copied()?;
+        let layout = self.taffy.unrounded_layout(id.into());
+        let content_origin = point(
+            Pixels((layout.border.left + layout.padding.left) / scale),
+            Pixels((layout.border.top + layout.padding.top) / scale),
+        );
+        position.rect.origin += content_origin;
+        position.line.origin += content_origin;
+        Some(position)
+    }
+
+    /// KaminIDE patch: the actual horizontal flex line containing an in-flow item.
+    /// Unlike the item's own box this retains line height for zero-sized markers.
+    pub fn final_flex_line(&self, id: LayoutId, tree: LayoutTreeId, scale: f32) -> Option<Bounds<Pixels>> {
+        self.final_layout(id, tree, scale)?;
+        let parent = self.taffy.parent(id.into())?;
+        let parent_geometry = self.final_layout(parent.into(), tree, scale)?;
+        let taffy::DetailedLayoutInfo::Flex(info) = self.taffy.detailed_layout_info(parent) else {
+            return None;
+        };
+        if !matches!(info.direction, taffy::FlexDirection::Row | taffy::FlexDirection::RowReverse) {
+            return None;
+        }
+        let line = info.lines.iter().find(|line| line.items.iter().any(|item| item.node == id.into()))?;
+        let layout = self.taffy.unrounded_layout(parent);
+        Some(Bounds {
+            origin: parent_geometry.normal.origin + point(
+                Pixels((layout.border.left + layout.padding.left) / scale),
+                Pixels(line.cross_offset / scale),
+            ),
+            size: size(
+                Pixels((layout.size.width - layout.border.left - layout.border.right - layout.padding.left - layout.padding.right) / scale),
+                Pixels(line.cross_size / scale),
+            ),
+        })
+    }
+
     /// Read only nodes belonging to a completed pass. An intrinsic cache entry
     /// is insufficient, and a dirty ancestor invalidates descendant placement.
     pub fn final_layout(&self, id: LayoutId, tree: LayoutTreeId, scale: f32) -> Option<FinalLayout> {
@@ -134,3 +176,7 @@ impl TaffyLayoutEngine {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "static_position_tests.rs"]
+mod static_position_tests;

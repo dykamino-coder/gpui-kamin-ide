@@ -127,7 +127,7 @@ pub(super) fn load_faces_into(
         let real = match real {
             Some(hit) => hit,
             None => {
-                let loaded = read_font(&src).and_then(|bytes| {
+                let loaded = read_font(&src, vcx.doc).and_then(|bytes| {
                     super::math::remember(&src, &bytes, vcx);
                     let romn = sfnt_romn_baseline(&bytes);
                     vcx.doc

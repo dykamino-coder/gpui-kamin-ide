@@ -12,7 +12,7 @@ use crate::layout::float::block_like_float;
 use crate::layout::fragment::flow::blocks::table_tree;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::line_shape::{
-    inline_content, nested_rows_box, nested_rows_shape, resolved_lengths, transpose_tree,
+    inline_content, nested_rows_box, resolved_lengths, transpose_tree,
 };
 use crate::layout::fragment::probe::forced_inside;
 use crate::layout::fragment::{Shape, ShapeCx};
@@ -47,7 +47,7 @@ pub(crate) fn measure_children(
         .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
         .map(|n| match n {
             // Вложенный многоколоночник `height: auto` с верха
-            // внешней колонки — рядами (`nested_rows_shape`).
+            // внешней колонки измеряется живой вложенной раскладкой рядов.
             Node::Element(c)
                 if first_flow == Some(n as *const Node)
                     && matches!(c.style.used().height, None | Some(Len::Auto))
@@ -56,18 +56,18 @@ pub(crate) fn measure_children(
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
-                let c = &resolved_lengths(c, merged, vcx);
-                let (Some(hh), Some(cw)) = (outer_frag, line_col_w) else {
-                    return None;
-                };
-                match nested_rows_shape(c, merged, hh, cw, opts) {
-                    Some(h) => {
-                        nested_auto.borrow_mut().push(c.node_id);
-                        Some(((*c).clone(), h))
-                    }
-                    // TRANSITIONAL(F2-3): Первый вложенный auto row при отказе native пути получает оценку; удалить fallback в P10 после actual outer Space и typed child outcome.
-                    None => shape_full(c, 4, ShapeCx::COLUMNS, vcx).map(|h| ((*c).clone(), h)),
-                }
+                let c = resolved_lengths(c, merged, vcx);
+                let (mt, mb) = measured_margins(&c)?;
+                nested_auto.borrow_mut().push(c.node_id);
+                measured_kids.borrow_mut().push((c.node_id, line_col_w?));
+                Some((
+                    c,
+                    Shape {
+                        margin_top: mt,
+                        margin_bottom: mb,
+                        ..Shape::default()
+                    },
+                ))
             }
             // Вложенный многоколоночник `height: auto` во внешних колонках с
             // заданной высотой: его блочный размер — СБАЛАНСИРОВАННЫЕ колонки

@@ -3,6 +3,7 @@
 use super::{Strut, margin_or_bail};
 use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::{holds_line_box, in_flow, inline_marked_block, own_context};
 use crate::layout::float::initial_letter::px_margin_w;
 use crate::style::computed::Display;
@@ -92,8 +93,8 @@ fn own_strut(
         e.style.used().height,
         None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
     ) || matches!(e.style.used().height, Some(Len::Pct(_)) if !e.style.used().cb_height_def_hint);
-    let min_height_is_zero = zero(e.style.used().min_height)
-        || matches!(e.style.used().min_height, Some(Len::Pct(_)) if !e.style.used().cb_height_def_hint);
+    let min_height_is_zero = zero(BoxDimensions::for_element(e, &e.style.used()).minimum[1])
+        || matches!(BoxDimensions::for_element(e, &e.style.used()).minimum[1], Some(Len::Pct(_)) if !e.style.used().cb_height_def_hint);
     if !zero(e.style.used().padding.top)
         || !zero(e.style.used().padding.bottom)
         || !zero(b.top)
@@ -145,7 +146,7 @@ pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
             w.style.used().height,
             None | Some(Len::Auto) | Some(Len::Px(0.0))
         )
-        || !zero(w.style.used().min_height)
+        || !zero(BoxDimensions::for_element(w, &w.style.used()).minimum[1])
         || ![
             w.style.used().margin.top,
             w.style.used().margin.bottom,
