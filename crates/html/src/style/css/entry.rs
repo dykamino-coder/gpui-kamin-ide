@@ -4,6 +4,12 @@ use super::{DeclBlock, Keyframes, Media, Selector};
 use crate::{css_syntax::admission, dom::outcome::DocumentFailure};
 use std::collections::HashMap;
 
+/// Снятие CSS-экранирования допускает вход до создания выходной строки.
+pub fn try_unescape(raw: &str) -> Result<String, DocumentFailure> {
+    let _admitted = admission::standalone(raw)?;
+    Ok(super::decls::unescape(raw))
+}
+
 impl Selector {
     /// Синтаксический промах — `None`, исчерпание допуска — типизированный отказ.
     pub fn try_parse(raw: &str) -> Result<Option<Self>, DocumentFailure> {
@@ -54,6 +60,8 @@ mod tests {
         assert!(try_parse_decls(&deep).is_err());
         assert!(try_parse_keyframes(&deep, Media::default()).is_err());
         assert!(Media::default().try_matches(&deep).is_err());
+        assert!(try_unescape(&deep).is_err());
+        assert_eq!(try_unescape(r"green\ block.png").unwrap(), "green block.png");
         assert_eq!(
             try_parse_decls("color: red").unwrap().last("color"),
             Some("red")

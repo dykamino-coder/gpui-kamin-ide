@@ -39,7 +39,7 @@ pub(super) mod decls;
 pub(crate) use crate::style::css::decls::*;
 mod entry;
 pub(crate) use decls::split_top_level;
-pub use entry::{try_parse_decls, try_parse_keyframes};
+pub use entry::{try_parse_decls, try_parse_keyframes, try_unescape};
 pub(super) mod sheet;
 pub use crate::style::css::sheet::*;
 mod media;

@@ -1,5 +1,14 @@
 //! Измерение аллокаций допущенных CSS/URL операций на реальной сборке Document.
 
+#![allow(
+    clippy::print_stdout,
+    reason = "measurement process entry point emits tabular allocation evidence"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "measurement process entry point reads its optional corpus manifest from the environment"
+)]
+
 use kamin_html::{Document, budget::BudgetKind};
 use std::{
     alloc::{GlobalAlloc, Layout, System},
