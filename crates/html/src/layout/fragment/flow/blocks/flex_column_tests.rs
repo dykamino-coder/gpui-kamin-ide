@@ -46,9 +46,9 @@ fn single_column_preserves_later_monolithic_ranges() {
         overflow_top: true,
         ..Default::default()
     };
-    let (_, _, plan) = crate::layout::fragment::plan::fill(
+    let (_, _, plan) = crate::layout::fragment::plan::fill_at(
         &[kid],
-        60.0,
+        &|_| 60.0,
         crate::layout::fragment::plan::Space::columns(4),
     );
     assert_eq!(plan.len(), 2);
@@ -116,9 +116,9 @@ fn trailing_decoration_preserves_soft_avoid_in_single_column_and_blocks() {
             monolith: true,
             ..Default::default()
         };
-        let (_, _, plan) = crate::layout::fragment::plan::fill(
+        let (_, _, plan) = crate::layout::fragment::plan::fill_at(
             &[starter, kid],
-            160.0,
+            &|_| 160.0,
             crate::layout::fragment::plan::Space::columns(4),
         );
         assert_eq!(
@@ -162,7 +162,7 @@ fn trailing_decoration_keeps_avoid_soft_and_respects_class_c_gap() {
             keep: measured.keep,
             ..Default::default()
         };
-        let (_, _, pieces) = plan::fill(&[kid], 100.0, plan::Space::columns(4));
+        let (_, _, pieces) = plan::fill_at(&[kid], &|_| 100.0, plan::Space::columns(4));
         assert_eq!(pieces.iter().map(|f| f.h).sum::<f32>(), end);
         assert!(pieces.iter().all(|f| f.h <= 100.0));
     }

@@ -53,9 +53,9 @@ pub(crate) fn stack_plan(
     );
     let prepared = super::prepared(e, merged, opts, col_vert, line_col_w);
     let ge = &prepared;
-    // Плавающие прямые дети — как прежде: не в стопку,
+    // Прямые флоаты legacy-пути — не в стопку,
     // рисуются её соседями.
-    let direct_oof: Vec<Element> = ge
+    let mut direct_oof: Vec<Element> = ge
         .children
         .iter()
         .filter_map(|n| match n {
@@ -173,6 +173,11 @@ pub(crate) fn stack_plan(
         .and_then(|w| {
             super::laid::vertical_children(ge, merged, opts.cx.vcx(), w, col_rl, &measured_kids)
         });
+    // Native-копии copy_flow уже содержат прямые флоаты в анонимном блоке.
+    // Повторный сосед стопки увеличил бы её высоту второй margin-box.
+    if laid.is_some() || pending.is_some() || vertical.is_some() {
+        direct_oof.clear();
+    }
     let stackable: Option<Vec<(Element, Shape)>> = laid.or(pending).or(vertical).or_else(|| {
         with_lines(merged, line_col_w, opts, |opts| {
             measure_children(

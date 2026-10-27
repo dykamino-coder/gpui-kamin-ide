@@ -49,6 +49,11 @@ impl ColumnStack {
         // Ранние разрывы ВНУТРИ предыдущего ребёнка: `(ребёнок, точка)`.
         let mut early: Vec<(usize, f32)> = Vec::new();
         let mut early_tried: Vec<usize> = Vec::new();
+        // Недолаз нарушенной границы переживает перенос разрыва выше: в новом
+        // плане он не возникнет (Blink SetupRelayoutData повторяет
+        // MinimalSpaceShortage прохода, нашедшего ранний разрыв).
+        let mut carried = f32::MAX;
+        let done = |best: (usize, f32, Plan), carried: f32| (best.0, best.1.min(carried), best.2);
         let build = |marks: &[(usize, usize)], early: &[(usize, f32)]| -> Vec<Kid> {
             let mut work: Vec<Kid> = kids.to_vec();
             for &(_, m) in marks {
@@ -60,16 +65,26 @@ impl ColumnStack {
             }
             work
         };
-        'outer: for _ in 0..kids.len().min(8) {
+        'outer: loop {
             let Some(bad) =
                 Self::avoid_violation_where(kids, &best.2, &|i| stuck.contains(&flow_of(i)))
             else {
-                return best;
+                return done(best, carried);
             };
             let flow = flow_of(bad);
+            let col = best
+                .2
+                .iter()
+                .filter(|f| f.kid == bad - 1)
+                .map(|f| f.col)
+                .max();
+            if let Some(s) =
+                col.and_then(|c| Self::avoid_shortage(kids, &best.2, bad, target_at(c)))
+            {
+                carried = carried.min(s);
+            }
             // Лучшая точка разрыва может лежать ВНУТРИ содержимого, которое
-            // уже пройдено (css-break-4 §4.4: «the UA … must choose the
-            // breakpoint with the highest break appeal»; Blink `early_break_` в
+            // уже пройдено (css-break-4 §4.3–4.4; Blink `early_break_` в
             // `block_layout_algorithm.cc:1086`, `fragmentation_utils.cc:1250`):
             // запрет на границе с предыдущим ребёнком снимается разрывом в его
             // последней законной точке, а не переносом его целиком —
@@ -90,7 +105,6 @@ impl ColumnStack {
                             && n < pk.h - COORD_EPS
                             && !pk.forced.iter().any(|&f| (f - n).abs() < COORD_EPS)
                     })
-                    .take(4)
                     .collect();
                 for at in cands {
                     let mut e2 = early.clone();
@@ -111,7 +125,7 @@ impl ColumnStack {
             // где отступать некуда, больше не трогается.
             let next = match Self::retreat_to(kids, bad) {
                 Some(n) if prev.is_none_or(|m| n < m) => n,
-                _ if flow == usize::MAX => return best,
+                _ if flow == usize::MAX => return done(best, carried),
                 _ => {
                     stuck.push(flow);
                     continue;
@@ -121,6 +135,5 @@ impl ColumnStack {
             marks.push((flow, next));
             best = plan::fill_at(&build(&marks, &early), target_at, space);
         }
-        best
     }
 }

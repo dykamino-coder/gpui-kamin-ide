@@ -76,15 +76,13 @@ pub(crate) fn cut_at(
         // avoid-007`: край в монолите c, перед c граница с `break-
         // before: avoid` — разрыв между a и b, а не перед c).
         let mut a = a;
-        for _ in 0..4 {
-            match solid
-                .iter()
-                .chain(&k.avoid)
-                .find(|&&(s0, s1)| s0 < a - 0.01 && a < s1 - 0.01 && s0 > from + 0.01)
-            {
-                Some(&(s0, _)) => a = s0,
-                None => break,
-            }
+        // Начало строго убывает по конечному списку диапазонов.
+        while let Some(&(start, _)) = solid
+            .iter()
+            .chain(&k.avoid)
+            .find(|&&(start, end)| start < a - 0.01 && a < end - 0.01 && start > from + 0.01)
+        {
+            a = start;
         }
         if a > from + 0.01 { Some(at(a)) } else { None }
     } else {

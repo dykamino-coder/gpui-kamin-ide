@@ -13,7 +13,6 @@ impl Recipe {
         let mut opts = self.opts.clone();
         if !self.axis.is_vertical()
             && self.rows.is_none()
-            && self.fixed.is_some_and(|h| h > crate::tolerance::COORD_EPS)
             && opts.cx.position.geometry_record.is_none()
         {
             let source = host

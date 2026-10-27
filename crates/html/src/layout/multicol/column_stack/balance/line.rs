@@ -12,19 +12,13 @@ impl ColumnStack {
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
     pub(crate) fn balance_line(&self, kids: &[Kid], limit: usize, cap: Option<f32>) -> (f32, Plan) {
         if let Some(h) = self.fixed_height {
-            // Правило 1 css-break-4 §4.3 применяется ТОЛЬКО здесь —
-            // `column-fill: auto` с заданной высотой колонки. Балансировку
-            // (`ResolveColumnAutoBlockSize` ниже) и пробег рядов
-            // (`balance_run`) отступ не трогает НАМЕРЕННО: там лишняя колонка
-            // от отступа растит `target` на весь недолаз и МЕНЯЕТ высоту
-            // многоколоночника (`balance-break-avoidance-002`: баланс уходит
-            // в 125 при верных 100) — в балансе отступ мало поставить, надо
-            // ещё выбрать высоту, а это отдельный шаг.
+            // При заданной высоте ранний разрыв выбирает место переноса;
+            // при балансе ниже его план ещё проверяется поиском высоты.
             let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, Space::columns(limit));
             return (h, slots);
         }
         if let Some(h) = self.forced_h {
-            let (_, _, slots) = plan::fill(kids, h, Space::columns(limit));
+            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, Space::columns(usize::MAX));
             return (h, slots);
         }
         // Нижнее поле ПОСЛЕДНЕГО ребёнка не примыкает к разрыву — многоколоночник
@@ -80,143 +74,63 @@ impl ColumnStack {
                 normal.max(k.float_min)
             })
             .fold(0.0f32, f32::max);
-        let clamp = |t: f32| cap.map_or(t, |c| t.min(c));
-        let mut target = clamp(guess.max(tallest).max(1.0));
-        for _ in 0..6 {
-            let (cols, shortage, slots) = plan::fill(kids, target, Space::columns(limit));
-            if cols <= self.count {
-                // Колонок хватило, но план рвёт запрещённую границу (css-break-3
-                // §4.3, правило 1) — растим высоту ровно на недолаз
-                // (`avoid_shortage`): Blink выходит из цикла балансировки только
-                // без нарушений (`column_layout_algorithm.cc:1145-1147`).
-                // `balance-break-avoidance-002` 75 → 100, `-001` 50 → 100.
-                //
-                // Гейты — те же, что у Blink перед растяжением. (1) Рост идёт
-                // через `clamp`, то есть в потолок `cap` = заданная высота коробки
-                // (`Rows::cap`, `render::generic_box::multicol`; Blink `ConstrainColumnBlockSize`,
-                // `:1172`, `:1785-1788`, `:1812`), и если выше не вышло — план
-                // принимается С НАРУШЕНИЕМ (`:1175-1178` «Give up if we cannot
-                // get taller columns»; css-break-3 §4.3: «rules 1, 2 and 4 are
-                // dropped»). Без этого гейта
-                // `flex-/grid-lanes-container-fragmentation-003/004` —
-                // `height: 100px`, 50 + 50 + 300 в четырёх колонках — росли
-                // вчетверо за коробку. (2) Принудительных разрывов не меньше
-                // `count − 1` — растягивать бесполезно (`:1152`, `forced_breaks`).
-                if Self::forced_breaks(kids) + 1 < self.count
-                    && let Some(d) = Self::first_avoid_violation(kids, &slots)
-                        .and_then(|bad| Self::avoid_shortage(kids, &slots, bad, target))
-                {
-                    let grown = clamp(target + d);
-                    if grown > target + COORD_EPS {
-                        target = grown;
-                        continue;
-                    }
-                }
-                return (target, Self::avoid_at_cap(kids, target, limit, slots));
+        let start = guess.max(tallest).max(1.0);
+        let ceiling = cap.unwrap_or_else(|| {
+            self.oof_balance_bound(Self::whole_flow_bound(kids))
+                .max(start)
+        });
+        let start = start.min(ceiling);
+        let forced_columns = Self::forced_breaks(kids).saturating_add(1);
+        let result = super::search::search(start, ceiling, cap.is_some(), |height| {
+            // Число запасных paint-копий не ограничивает измерительную пробу.
+            let (cols, shortage, slots) =
+                Self::fill_avoiding(kids, &|_| height, Space::columns(usize::MAX));
+            let avoid = (forced_columns < self.count)
+                .then(|| Self::first_avoid_violation(kids, &slots))
+                .flatten()
+                .and_then(|bad| Self::avoid_shortage(kids, &slots, bad, height));
+            let oof = self.oof_balance_trial(&slots, height, self.count.max(forced_columns));
+            let fits = oof.as_ref().is_ok_and(|r| r.0)
+                && slots.completion == plan::Completion::Complete
+                && cols <= self.count.max(forced_columns)
+                && avoid.is_none();
+            super::search::Trial {
+                fits,
+                shortage: super::search::min_shortage([
+                    avoid,
+                    oof.as_ref().ok().and_then(|r| r.1),
+                    Some(shortage),
+                ]),
+                value: match oof {
+                    Ok(_) => slots,
+                    Err(error) => super::failed(error),
+                },
             }
-            // Недолаза не было ни у одной коробки: `shortage` так и остался
-            // сторожевым `f32::MAX`. Значит лишние колонки родились
-            // ПРИНУДИТЕЛЬНЫМИ разрывами, и растягивать нечего —
-            // css-multicol-1 §7: «minimize variations in column height, while
-            // honoring forced breaks»; Blink: `if (used_column_count_ <=
-            // forced_break_count + 1) break;`.
-            // Прежняя строка спрашивала `shortage.is_finite()`, а `f32::MAX` —
-            // КОНЕЧНОЕ число: `target += f32::MAX` уводил высоту колонки в
-            // `f32::MAX`, затем в бесконечность (`multicol-fill-balance-002`,
-            // «Don't overstretch»).
-            // Упёрлись в потолок — выше колонкам нельзя, остаток уходит вбок.
-            if shortage >= f32::MAX {
-                // Лишние колонки — только от принудительных разрывов: каждая
-                // колонка держит свой прогон целиком, и высота линии — самый
-                // высокий из них (Blink `ContentRuns::DistributeImplicitBreaks`
-                // при числе прогонов больше колонок; css-multicol-1 §7
-                // «honoring forced breaks»). Стартовая оценка `total / count`
-                // выше любого прогона (`grid-item-fragmentation-039`:
-                // `columns: 1`, прогоны 100 + 100 — колонка 200 вместо 100).
-                let used = slots.iter().map(|f| f.y + f.h).fold(0.0f32, f32::max);
-                if used > COORD_EPS && used < target - COORD_EPS {
-                    let (cols2, _, slots2) = plan::fill(kids, used, Space::columns(limit));
-                    if cols2 == cols {
-                        return (used, slots2);
-                    }
-                }
-                return (target, slots);
-            }
-            if cap.is_some_and(|c| target >= c) {
-                return (target, Self::avoid_at_cap(kids, target, limit, slots));
-            }
-            // Как blink: расти ровно на минимально необходимое.
-            target = clamp(target + if shortage > 0.0 { shortage } else { 1.0 });
+        });
+        match result {
+            Ok(chosen) => chosen,
+            Err(error) => (start, super::failed(error)),
         }
-        let (_, _, slots) = plan::fill(kids, target, Space::columns(limit));
-        (target, slots)
     }
 
-    /// Колонки упёрлись в потолок (`Rows::cap`, заданная высота коробки), а
-    /// план рвёт запрещённую границу: выше расти нельзя, но окончательная
-    /// укладка в колонки этой высоты — обычная фрагментация со своими ранними
-    /// разрывами (css-break-3 §4.3 правило 1; Blink балансирует высоту
-    /// `CalculateBalancedColumnBlockSize`, а затем раскладывает содержимое
-    /// `LayoutRow` той же `block_layout_algorithm` с `early_break_`,
-    /// `fragmentation_utils.cc:1250`). `flex-container-fragmentation-003/004`:
-    /// 50 + 50 + 300 при `break-before: avoid` у третьей — разрыв после первой.
-    pub(crate) fn avoid_at_cap(kids: &[Kid], target: f32, limit: usize, slots: Plan) -> Plan {
-        if Self::first_avoid_violation(kids, &slots).is_none() {
-            return slots;
-        }
-        Self::fill_avoiding(kids, &|_| target, Space::columns(limit)).2
-    }
-
-    /// Пробег линий колонок между спаннерами: первая линия высотой `first`
-    /// (остаток текущего ряда), остальные — `cap`; последняя при
-    /// `balance_last` балансируется (Blink балансирует КАЖДУЮ линию и режет
-    /// её остатком ряда, так что полные ряды выходят ровно в `column-height`,
-    /// а последняя — по содержимому: `column-height-003` — 80px остатка в
-    /// двух колонках по 40, а не 50 + 30). `not_at_start` — сколько первых
-    /// колонок стоят не с верха фрагментаинера (`Space`). Возвращает число линий, план
-    /// (колонки от нуля, дети от нуля) и высоту последней линии.
-    pub(crate) fn balance_run(
-        &self,
-        kids: &[Kid],
-        first: f32,
-        cap: f32,
-        balance_last: bool,
-        not_at_start: usize,
-    ) -> (usize, Plan, f32) {
-        let count = self.count;
-        let space = Space::columns(self.copies).with_not_at_start(not_at_start);
-        let line_h = |l: usize| if l == 0 { first } else { cap };
-        let (cols, _, plan) = plan::fill_at(kids, &|c| line_h(c / count), space);
-        let n = cols.div_ceil(count).max(1);
-        let last = line_h(n - 1);
-        if !balance_last {
-            return (n, plan, last);
-        }
-        let full = (n - 1) * count;
-        let rem: f32 = plan.iter().filter(|f| f.col >= full).map(|f| f.h).sum();
-        let tallest = plan
+    /// Конечная верхняя граница: все положительные протяжённости и поля
+    /// исходного потока помещаются без неявных разрывов. Forced остаются.
+    pub(crate) fn whole_flow_bound(kids: &[Kid]) -> f32 {
+        let bound = kids
             .iter()
-            .filter(|f| f.col >= full && kids[f.kid].monolith)
-            .map(|f| f.h)
-            .fold(0.0f32, f32::max);
-        let mut t = (rem / count as f32).ceil().max(tallest).max(1.0);
-        if t >= last {
-            return (n, plan, last);
+            .map(|k| {
+                f64::from(k.h.max(k.over).max(k.float_min))
+                    + f64::from(k.mt.max(0.0))
+                    + f64::from(k.mb.max(0.0))
+                    + f64::from(k.repeat.head + k.repeat.foot)
+            })
+            .sum::<f64>()
+            .min(f64::from(f32::MAX));
+        let rounded = bound as f32;
+        if f64::from(rounded) < bound {
+            rounded.next_up()
+        } else {
+            rounded
         }
-        for _ in 0..6 {
-            let at = |c: usize| if c < full { line_h(c / count) } else { t };
-            let (cols, shortage, slots) = plan::fill_at(kids, &at, space);
-            if cols <= full + count {
-                return (n, slots, t);
-            }
-            if shortage >= f32::MAX {
-                break;
-            }
-            t += if shortage > 0.0 { shortage } else { 1.0 };
-            if t >= last {
-                break;
-            }
-        }
-        (n, plan, last)
     }
 }

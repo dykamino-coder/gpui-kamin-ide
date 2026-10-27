@@ -89,3 +89,30 @@ fn fixed_in_a_transformed_cb_overflows_without_paginating_or_repeating() {
     assert!(batch.next.is_empty());
     assert!(!batch.needs_space);
 }
+
+#[test]
+fn fresh_oof_trials_report_shortage_and_do_not_share_tokens() {
+    for height in [50., 100., 50.] {
+        let mut positioned = input(0, 20., 80., false);
+        positioned.kid.monolith = true;
+        let mut streams = Streams::new(vec![positioned]).unwrap();
+        let batch = streams
+            .resume(
+                0,
+                Space {
+                    block_size: Some(height),
+                    ..Space::columns()
+                },
+                true,
+            )
+            .unwrap();
+        if height == 50. {
+            assert!(batch.fragments.is_empty());
+            assert!(batch.needs_space);
+            assert_eq!(streams.shortage(), Some(50.));
+        } else {
+            assert_eq!(batch.fragments[0].1.h, 80.);
+            assert!(!batch.needs_space);
+        }
+    }
+}
