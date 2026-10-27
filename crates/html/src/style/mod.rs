@@ -5,6 +5,7 @@
 //! и кавычки, `zoom` масштабирует длины, `apply` переводит стиль в элемент GPUI.
 
 pub(crate) mod animation;
+pub(crate) mod background_paint;
 pub mod box_input;
 pub mod cascade;
 pub mod computed;

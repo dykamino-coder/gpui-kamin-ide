@@ -37,15 +37,19 @@ pub(crate) fn needs_color_layer(c: &Computed, vcx: ValueCx<'_>) -> bool {
 
 /// Абсолютный слой измеряется от padding-box; painter восстанавливает
 /// border-box по использованным краям родителя, независимо от clip.
-pub(crate) fn color_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
-    if !needs_color_layer(c, vcx)
-        || crate::style::computed::single_corner::eligible(c)
+pub(crate) fn color_layer(
+    c: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> Option<AnyElement> {
+    if !c.background_paint.paints()
+        || !needs_color_layer(c, vcx)
+        || crate::paint::background::single_corner::eligible(c)
         || crate::paint::effects::corner_clip::insets(c, vcx).is_some()
         || (c.background.is_none() && (c.gradient.is_none() || c.gradient_as_tile()))
     {
         return None;
     }
-    let style = c.clone();
+    let style = c.style_rc().clone();
     let values = vcx.keep();
     Some(
         super::exact_layer::ExactLayer::inset([0.0; 4], move |geometry, window| {

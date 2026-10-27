@@ -204,18 +204,20 @@ impl Demo {
 }
 
 fn main() {
-    gpui_platform::application().run(|cx| {
-        // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
-        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
-        let bounds = Bounds::centered(None, size(px(760.), px(900.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
-            },
-            |_, cx| -> Entity<Demo> { cx.new(Demo::new) },
-        )
-        .unwrap();
-        cx.activate(true);
-    });
+    gpui_platform::application()
+        .with_instrumentation(kamin_html::host::instrumentation::from_env())
+        .run(|cx| {
+            // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
+            cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+            let bounds = Bounds::centered(None, size(px(760.), px(900.)), cx);
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    ..Default::default()
+                },
+                |_, cx| -> Entity<Demo> { cx.new(Demo::new) },
+            )
+            .unwrap();
+            cx.activate(true);
+        });
 }

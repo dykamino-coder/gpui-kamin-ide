@@ -53,7 +53,8 @@ pub(crate) fn styled_div_with(
     // его край расплывается на десяток точек — чёткий фон коробки под ним
     // держит край (`filter-scale-001`, `filter-scaling-001`).
     let unfilled;
-    let paint = if c.background.is_some()
+    let paint = if c.background_paint.paints()
+        && c.background.is_some()
         && !c.transform_ancestor
         && c.transform.is_none()
         && c.filter_ref
@@ -105,7 +106,7 @@ pub(crate) fn styled_div_with(
     if c.pointer_events_none != Some(true)
         && let Some(h) = &e.hover
     {
-        d = apply_hover(d, h.cascaded());
+        d = apply_hover(d, h.cascaded(), c);
     }
     let mut d = clamp::apply(d, e, c, cx);
     let empty = !e.children.iter().any(|n| !is_blank(n));

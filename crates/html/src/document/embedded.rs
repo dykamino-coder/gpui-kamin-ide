@@ -146,6 +146,7 @@ pub(super) fn unwrap_document(
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut child) => {
+                    let background = child.style.used().background_paint;
                     child.style = crate::style::cascade::inherit::inherit_unpainted(
                         &wrapper,
                         child.style.cascaded(),
@@ -155,6 +156,7 @@ pub(super) fn unwrap_document(
                     // wrapper's values (before materialization).
                     .into_computed()
                     .into();
+                    child.style.set_background_paint(background);
                     Node::Element(child)
                 }
                 other => other,

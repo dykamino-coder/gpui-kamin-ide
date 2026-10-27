@@ -32,6 +32,7 @@ pub(crate) fn colors(parent: &Computed, own: &SharedStyle, vcx: ValueCx<'_>) -> 
         &view,
         &computed,
         element,
+        view.background_paint,
         &vcx.background_images(),
     );
     if computed.color != colors.color
