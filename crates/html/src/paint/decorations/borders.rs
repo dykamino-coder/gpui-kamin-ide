@@ -5,12 +5,15 @@
 //! абсолютные дети от padding-box, вынесенные наружу на толщину сторон.
 
 use crate::document::state::ValueCx;
-use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<'_>) {
+pub(crate) fn box_borders(
+    c: &crate::style::computed::BoxStyle,
+    out: &mut Vec<AnyElement>,
+    vcx: ValueCx<'_>,
+) {
     if let Some((colour, [t, r, b, l])) = crate::paint::apply::border_layer(c, vcx) {
         let mut layer = div()
             .absolute()
@@ -123,7 +126,11 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<'_>) {
+pub(crate) fn coloured_borders(
+    c: &crate::style::computed::BoxStyle,
+    out: &mut Vec<AnyElement>,
+    vcx: ValueCx<'_>,
+) {
     // Не снимать полосу, когда все ЗАДАННЫЕ стороны одного цвета (квад и так
     // красит их, `apply::apply_paint` `!mixed`), ради удвоенной альфы
     // односторонней полупрозрачной рамки (`grid-gap-decorations-067…082`):

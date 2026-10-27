@@ -125,7 +125,7 @@ static CLOCK: std::sync::LazyLock<std::sync::Mutex<super::diag_clock::Clock>> =
     });
 
 /// Напечатать сводку активности или минутный heartbeat. Насос не останавливаем.
-pub(crate) fn report() {
+pub(crate) fn report(instrumentation: &gpui::Instrumentation) {
     let now = std::time::Instant::now();
     let interval = {
         let Ok(mut clock) = CLOCK.lock() else { return };
@@ -203,7 +203,7 @@ pub(crate) fn report() {
         ));
     }
     // #76: топ self-time prepaint по типам элементов (KAMIN_PREPAINT_PROF=1).
-    let top = gpui::prepaint_prof::take_top(6);
+    let top = instrumentation.prepaint.take_top(6);
     if !top.is_empty() {
         let line: Vec<String> = top
             .iter()

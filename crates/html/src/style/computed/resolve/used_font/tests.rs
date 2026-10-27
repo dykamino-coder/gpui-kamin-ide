@@ -52,6 +52,27 @@ fn doc() -> Rc<crate::document::state::DocState> {
 }
 
 #[test]
+fn background_lengths_use_computed_em_and_adjusted_font_facts() {
+    let doc = doc();
+    let vcx = doc.values();
+    let result = inherit(
+        &BoxStyle::default(),
+        &styled(
+            "font-family:narrow;font-size:20px;font-size-adjust:0.8;background-position:1em 1ex;background-size:2em 1ch",
+            vcx,
+        ),
+        vcx,
+    );
+    assert_eq!(result.font_size, Some(Len::Px(20.0)));
+    assert_eq!(result.bg_pos.x, Some(Len::Px(20.0)));
+    assert_eq!(result.bg_pos.y, Some(Len::Px(16.0)));
+    assert_eq!(
+        result.bg_size,
+        BgSize::Fixed(Some(Len::Px(40.0)), Some(Len::Px(24.0)))
+    );
+}
+
+#[test]
 fn font_size_adjust_keeps_computed_em_and_numeric_line_height() {
     let doc = doc();
     let vcx = doc.values();

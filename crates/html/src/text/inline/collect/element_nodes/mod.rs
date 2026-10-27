@@ -123,13 +123,15 @@ pub(super) async fn collect_element(
     // inline, even when a descendant supplies a different background.
     // Its advance is already carried by the edge spacers; paint those
     // advances instead of extending a descendant's text band into them.
-    let painted_padding = merged.inline_bg.is_some() && merged.inline_border.is_none();
+    let painted_padding = merged.inline_decoration.band_color.is_some()
+        && merged.inline_decoration.border_stroke.is_none();
     let side_pad = merged
-        .inline_pad
+        .inline_decoration
+        .physical_padding
         .is_some_and(|pad| pad[1] != 0.0 || pad[3] != 0.0);
     if painted_padding
         && side_pad
-        && let Some(pad) = &mut merged.inline_pad
+        && let Some(pad) = &mut merged.inline_decoration.physical_padding
     {
         (pad[1], pad[3]) = (0.0, 0.0);
     }

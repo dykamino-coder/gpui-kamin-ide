@@ -10,7 +10,7 @@
 use crate::document::state::ValueCx;
 use crate::paint::background::{contour_offset, rrect_spec};
 use crate::paint::effects::grouped_element::FillLayer;
-use crate::style::computed::{Computed, OUTLINE_DOUBLE};
+use crate::style::computed::{BoxStyle, Computed, OUTLINE_DOUBLE};
 use crate::style::values::basic_shape::commands::{Command, Sink};
 use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::*;
@@ -72,7 +72,7 @@ pub(crate) fn reach(c: &Computed, vcx: ValueCx<'_>) -> [f32; 4] {
 /// непрозрачном фоне вырез не нужен — фон его кроет (Blink
 /// `PaintNormalBoxShadow`: у непрозрачной коробки вырез ужат на точку), и
 /// край фигуры ложится на тень, как у эталонов «тень, затем коробка».
-pub(crate) fn shadow_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<Layer> {
+pub(crate) fn shadow_layer(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<Layer> {
     let args = args(c, vcx)?;
     let shadows: Vec<_> = c
         .resolved_shadows(false)
@@ -121,14 +121,14 @@ pub(crate) fn shadow_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<Layer> {
     }))
 }
 
-fn opaque_background(c: &Computed) -> bool {
-    c.background.is_some_and(|b| b.a >= 1.0)
+fn opaque_background(c: &BoxStyle) -> bool {
+    c.background_paint.paints() && c.background.is_some_and(|b| b.a >= 1.0)
 }
 
 /// Резкие тени при непрозрачном фоне — заливками по пути под буфером
 /// (`Grouped::under_fills`): вырез под коробкой не нужен, а край ложится
 /// так же, как у `div` с фоном и `clip-path: path()`.
-pub(crate) fn shadow_fills(c: &Computed, vcx: ValueCx<'_>) -> Option<FillLayer> {
+pub(crate) fn shadow_fills(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<FillLayer> {
     let args = args(c, vcx)?;
     let shadows: Vec<_> = c
         .resolved_shadows(false)

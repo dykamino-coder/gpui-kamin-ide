@@ -95,7 +95,7 @@ fn letter_style(
     letter.italic = style.italic.or(own.italic);
     letter.font_family = style.font_family.clone().or(own.font_family.clone());
     if let Some(bg) = style.background {
-        letter.inline_bg = Some(bg);
+        letter.inline_decoration.band_color = Some(bg);
         if style.float.is_some_and(|f| f != 0) {
             float_band(&mut letter, vcx);
         }
@@ -107,7 +107,7 @@ fn letter_style(
 /// background fills the box, as tall as its line height, not only the
 /// glyphs' content area. The letter is painted as an inline piece, so its
 /// band is padded by the half-leading on both sides.
-fn float_band(letter: &mut Computed, vcx: crate::document::state::ValueCx<'_>) {
+fn float_band(letter: &mut BoxStyle, vcx: crate::document::state::ValueCx<'_>) {
     use crate::style::values::value::Len;
     let Some(Len::Px(computed)) = letter.font_size else {
         return;
@@ -122,10 +122,13 @@ fn float_band(letter: &mut Computed, vcx: crate::document::state::ValueCx<'_>) {
         return;
     };
     let half = ((line - content) / 2.0).max(0.0);
-    let mut pad = letter.inline_pad.unwrap_or_default();
+    let mut pad = letter
+        .inline_decoration
+        .physical_padding
+        .unwrap_or_default();
     pad[0] += half;
     pad[2] += half;
-    letter.inline_pad = Some(pad);
+    letter.inline_decoration.physical_padding = Some(pad);
 }
 
 /// Unicode categories, rather than script ranges, define first-letter punctuation.

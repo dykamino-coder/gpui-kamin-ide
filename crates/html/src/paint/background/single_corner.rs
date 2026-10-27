@@ -7,9 +7,12 @@
 
 mod geometry;
 use crate::hooks::IntoHooked;
-use crate::style::computed::{BgClip, Computed};
+use crate::style::computed::{BgClip, BoxStyle};
 use crate::style::values::value::{Color, Len};
-pub(crate) use geometry::eligible;
+/// Примитив совмещает рамку с собственным used-фоном коробки.
+pub(crate) fn eligible(c: &BoxStyle) -> bool {
+    crate::style::computed::single_corner::eligible_background(c, c.background_paint)
+}
 use geometry::{inset, square, uniform, virtual_circle};
 use gpui::{AnyElement, Bounds, Pixels, Window, px};
 
@@ -59,7 +62,7 @@ fn paint_area(
     });
 }
 
-pub(crate) fn layer(c: &Computed) -> Option<AnyElement> {
+pub(crate) fn layer(c: &BoxStyle) -> Option<AnyElement> {
     if !eligible(c) {
         return None;
     }
@@ -72,9 +75,15 @@ pub(crate) fn layer(c: &Computed) -> Option<AnyElement> {
         })?;
     let b = uniform(c.borders())?;
     let p = uniform(c.padding)?;
-    let background = c.background.unwrap_or_default();
+    let background = c
+        .background
+        .filter(|_| c.background_paint.paints())
+        .unwrap_or_default();
     let border = c.used_border_color(0);
-    let clip = c.bg_clip.unwrap_or(BgClip::BorderBox);
+    let clip = c
+        .bg_clip
+        .filter(|_| c.background_paint.paints())
+        .unwrap_or(BgClip::BorderBox);
     Some(
         super::exact_layer::ExactLayer::inset([-b; 4], move |geometry, window| {
             let bounds = geometry.positioning(geometry.snapped);

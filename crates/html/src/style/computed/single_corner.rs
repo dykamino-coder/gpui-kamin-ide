@@ -41,17 +41,26 @@ pub(crate) fn corner(c: &Computed, size: (f32, f32)) -> Option<(usize, f32)> {
 
 #[inline(never)]
 pub(crate) fn eligible(c: &Computed) -> bool {
-    if c.gradient.is_some()
-        || c.bg_image.is_some()
+    eligible_background(c, crate::style::background_paint::BackgroundPaint::Css)
+}
+
+/// Выбор совместного примитива по собственному used-фону, без изменения CSS.
+pub(crate) fn eligible_background(
+    c: &Computed,
+    background: crate::style::background_paint::BackgroundPaint,
+) -> bool {
+    if background.paints()
+        && (c.gradient.is_some()
+            || c.bg_image.is_some()
+            || !c.bg_lists.is_empty()
+            || matches!(c.bg_clip, Some(BgClip::Text | BgClip::BorderArea)))
         || c.border_image.is_some()
         || c.border_shape.is_some()
         || c.corner_shape.is_some()
         || c.radius_ell.is_some()
-        || !c.bg_lists.is_empty()
         || !c.shadows.is_empty()
         || !c.inset_shadows.is_empty()
         || c.contain_paint == Some(true)
-        || matches!(c.bg_clip, Some(BgClip::Text | BgClip::BorderArea))
         || [c.overflow_x, c.overflow_y]
             .into_iter()
             .any(|v| !matches!(v, None | Some(Overflow::Visible)))

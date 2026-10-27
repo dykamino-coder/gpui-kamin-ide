@@ -61,11 +61,13 @@ pub fn style_first_line(
                     // (css-pseudo-4 §4.1; first-line-line-height-001/002).
                     c.background = style.background.or(base.background);
                     // Красит подложку прогон текста, и берёт он её из
-                    // `inline_bg`: слой первой строки накладывается уже ПОСЛЕ
-                    // сборки кусков, когда `inline_bg` посчитан по своему
+                    // `InlineDecoration::band_color`: слой первой строки накладывается уже ПОСЛЕ
+                    // сборки кусков, когда `InlineDecoration::band_color` посчитан по своему
                     // стилю (`c25-pseudo-elmnt-000`: зелёной полосы не было).
-                    c.inline_bg =
-                        first_line_background::paint_color(base.inline_bg, style.background);
+                    c.inline_decoration.band_color = first_line_background::paint_color(
+                        base.inline_decoration.band_color,
+                        style.background,
+                    );
                     c.line_height = style.line_height.or(base.line_height);
                     // TRANSITIONAL(cascade-7b-R12): Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере.
                     // Не переносить сюда сдвиг по вертикали (§5.12.1 относит

@@ -30,7 +30,7 @@ pub(super) fn post(id: &str) {
     super::diag_views::post(id);
 }
 
-pub(super) fn report() {
+pub(super) fn report(instrumentation: &gpui::Instrumentation) {
     let now = Instant::now();
     let Some((interval, line, policy)) = STATS.lock().ok().and_then(|mut stats| {
         if !sample_due(stats.sampled, now) {
@@ -67,7 +67,7 @@ pub(super) fn report() {
     if !dirty.is_empty() {
         super::diag_sink::emit_line(format!("[dirty] {dirty:?}"));
     }
-    if let Some(gpu) = gpui::batch_cost::take_line() {
+    if let Some(gpu) = instrumentation.batches.take_line() {
         super::diag_sink::emit_line(gpu);
     }
     super::diag_views::report(now);

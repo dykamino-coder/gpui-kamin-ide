@@ -1,10 +1,10 @@
 //! Измерения фаз стенда в stderr: включаются WPT_PHASE_TIMING, отчёт пар не меняют.
 
+use kamin_html::host::capture::CaptureSession;
 use std::time::{Duration, Instant};
 
 pub(super) fn enabled() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("WPT_PHASE_TIMING").is_some())
+    std::env::var_os("WPT_PHASE_TIMING").is_some()
 }
 
 pub(super) fn emit(source: Option<&str>, phase: &str, elapsed: Duration, steps: u32) {
@@ -46,17 +46,21 @@ pub(super) struct PageTiming<'a> {
     pub(super) first: Option<Duration>,
     source: Option<&'a str>,
     gpu_readback_start: Duration,
+    capture: Option<CaptureSession>,
 }
 
 impl<'a> PageTiming<'a> {
-    pub(super) fn new(source: Option<&'a str>) -> Self {
+    pub(super) fn new(source: Option<&'a str>, capture: Option<CaptureSession>) -> Self {
         Self {
             source,
             started: Instant::now(),
             steps: 0,
             readback: Duration::ZERO,
             first: None,
-            gpu_readback_start: gpui::frame_capture::readback_time(),
+            gpu_readback_start: capture
+                .as_ref()
+                .map_or(Duration::ZERO, CaptureSession::readback_time),
+            capture,
         }
     }
 }
@@ -74,7 +78,10 @@ impl Drop for PageTiming<'_> {
         emit(
             self.source,
             "readback",
-            gpui::frame_capture::readback_time().saturating_sub(self.gpu_readback_start),
+            self.capture
+                .as_ref()
+                .map_or(Duration::ZERO, CaptureSession::readback_time)
+                .saturating_sub(self.gpu_readback_start),
             self.steps,
         );
         emit(self.source, "readback-consume", self.readback, self.steps);

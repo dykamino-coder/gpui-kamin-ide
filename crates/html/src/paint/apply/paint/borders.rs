@@ -17,7 +17,7 @@ use crate::style::values::value::px_lossy_zero;
 /// `paint_tiles` и раньше обходил ужатием области краски — слой делает то же
 /// для любой рамки. `None` — рисовать по-старому.
 pub(crate) fn border_layer(
-    c: &Computed,
+    c: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<(crate::style::values::value::Color, [f32; 4])> {
     // Рамку `double` рисуют кольца (`double_border`) — поверх плиток и так.
@@ -30,7 +30,8 @@ pub(crate) fn border_layer(
     // belongs above the backdrop (Filter Effects 2 §backdrop-filter).
     let backdrop =
         (c.backdrop_color.is_some() || c.backdrop_ref.is_some()) && !c.backdrop_root_above;
-    if c.bg_image.is_none() && !c.gradient_as_tile() && !backdrop {
+    if (!c.background_paint.paints() || c.bg_image.is_none() && !c.gradient_as_tile()) && !backdrop
+    {
         return None;
     }
     // Особые рамки несут свои слои, разные цвета сторон — полосы поверх:
@@ -78,7 +79,7 @@ pub(crate) fn border_layer(
 /// толщиной от 3 px (тоньше линии не разойтись — Blink рисует сплошной) и
 /// цвет у сторон один (иначе поверх легли бы полосы сторон).
 pub(crate) fn double_border(
-    c: &Computed,
+    c: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<(crate::style::values::value::Color, [f32; 4])> {
     if c.border_image.as_ref().is_some_and(|bi| bi.src.is_some())
@@ -124,7 +125,11 @@ pub(crate) fn double_border(
     ))
 }
 
-pub(super) fn paint_border_colors(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(super) fn paint_border_colors(
+    mut d: Div,
+    c: &crate::style::computed::BoxStyle,
+    vcx: ValueCx<'_>,
+) -> Div {
     // Цвет рамки: единый — прямо в стиль. Разные цвета сторон рисуются
     // полосами в сборщике дерева: у GPUI цвет рамки один на элемент.
     // Рамка-картинка рисуется ВМЕСТО обычной рамки (css-backgrounds-3 §6):
@@ -153,7 +158,7 @@ pub(super) fn paint_border_colors(mut d: Div, c: &Computed, vcx: ValueCx<'_>) ->
     // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
     let strips = mixed && c.border_shape.is_none();
     if !border_image_on
-        && !crate::style::computed::single_corner::eligible(c)
+        && !crate::paint::background::single_corner::eligible(c)
         && !mixed
         && !strips
         && !c.corner_shaped()
