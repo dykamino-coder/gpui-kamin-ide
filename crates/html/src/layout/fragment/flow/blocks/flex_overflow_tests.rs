@@ -80,9 +80,14 @@ fn column_overflow_does_not_constrain_the_following_item() {
         &|_| 100.0,
         crate::layout::fragment::plan::Space::columns(4),
     );
+    // css-break-3 §4.4: сначала используется точка между items; произвольный
+    // срез оставшегося item допустим лишь в следующей пустой колонке.
+    // Переполнение первого item не должно запрещать эту точку или терять контент.
     assert_eq!(
-        plan.iter().map(|f| f.h).collect::<Vec<_>>(),
-        vec![100.0, 100.0]
+        plan.iter()
+            .map(|f| (f.col, f.from, f.h))
+            .collect::<Vec<_>>(),
+        vec![(0, 0.0, 10.0), (1, 10.0, 100.0), (2, 110.0, 90.0)]
     );
 }
 
