@@ -12,6 +12,15 @@ use crate::tolerance::COORD_EPS;
 mod float_tests;
 mod growth;
 mod line;
+mod run;
+pub(crate) mod search;
+
+fn failed(error: crate::layout::fragment::token::Error) -> Plan {
+    let mut plan = Plan::default();
+    plan.failure = Some(error);
+    plan.incomplete();
+    plan
+}
 
 impl ColumnStack {
     /// Укладка стопки: её высота, линии колонок `(y, высота)`, план кусков и
@@ -32,6 +41,9 @@ impl ColumnStack {
     // Балансировка возвращает геометрию колонок и статус продолжения плана.
     #[allow(clippy::type_complexity)]
     pub(crate) fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Plan, Vec<(usize, f32)>) {
+        if let Some(error) = self.balance_failure {
+            return (0., Vec::new(), failed(error), Vec::new());
+        }
         let count = self.count;
         // Потолок баланса без рядов (`Rows::cap`): баланс как прежде, но не
         // выше высоты коробки; копий — сколько построил `render::generic_box::multicol`, лишние
@@ -96,11 +108,10 @@ impl ColumnStack {
             // него, баланс не выше потолка (Blink `ConstrainColumnBlockSize`:
             // «Never become taller than used column-height»), лишние
             // колонки — вбок (§8.2 уровня 1; `column-height-005/030`).
-            let target = match self.fixed_height {
-                Some(_) => cap,
-                None => self.balance_line(kids, limit, Some(cap)).0,
+            let plan = match self.fixed_height {
+                Some(_) => Self::fill_avoiding(kids, &|_| cap, Space::columns(limit)).2,
+                None => self.balance_line(kids, limit, Some(cap)).1,
             };
-            let (_, _, plan) = plan::fill(kids, target, Space::columns(limit));
             return (h, vec![(0.0, h)], plan, Vec::new());
         }
         // Курсор по коробке (Blink `intrinsic_block_size_`): сетка рядов с
@@ -184,6 +195,7 @@ impl ColumnStack {
             if frags.completion == crate::layout::fragment::plan::Completion::Incomplete {
                 plan.incomplete();
             }
+            plan.failure = plan.failure.or(frags.failure);
             for f in frags {
                 plan.push(Frag {
                     kid: f.kid + i,
