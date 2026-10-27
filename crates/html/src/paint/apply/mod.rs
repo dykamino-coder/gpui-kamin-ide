@@ -206,7 +206,13 @@ pub(crate) fn apply_for_decorations_with_dimensions(
     }
     d = apply_box(d, c, vcx);
     d = apply_paint(d, c, vcx);
-    apply_text(d, c, vcx)
+    apply_text(
+        d,
+        c,
+        c.text_shadow_ink.or(c.ink()),
+        c.paints_decorations(),
+        vcx,
+    )
 }
 
 #[cfg(test)]

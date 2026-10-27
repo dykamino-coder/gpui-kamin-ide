@@ -7,7 +7,7 @@ pub(crate) mod interaction;
 mod modern;
 #[cfg(test)]
 mod theme;
-use crate::style::computed::{Computed, Overflow};
+use crate::style::computed::{BoxStyle, Computed, Overflow};
 use crate::style::values::value::Color;
 use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};
 
@@ -23,7 +23,7 @@ pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
 // The painter consumes the scroll geometry and the GPUI paint context together.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn paint(
-    c: &Computed,
+    c: &BoxStyle,
     handle: &ScrollHandle,
     selected: [bool; 2],
     range: [f32; 2],
@@ -53,7 +53,7 @@ pub(crate) fn paint(
     b.size.width -= px(edge(edges.left) + edge(edges.right));
     b.size.height -= px(edge(edges.top) + edge(edges.bottom));
     let paint_color = |mut color: Color| {
-        for filter in &c.scrollbar_filter_ops {
+        for filter in c.paint_filter_ops() {
             color = filter.apply(color);
         }
         color.a *= c.opacity.unwrap_or(1.0);

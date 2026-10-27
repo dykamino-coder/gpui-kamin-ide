@@ -10,10 +10,15 @@ pub(super) enum Fill<'a> {
 }
 
 impl<'a> Fill<'a> {
-    pub(super) fn new(c: &'a Computed, area: super::ColorBox, vcx: ValueCx<'_>) -> Option<Self> {
+    pub(super) fn new(
+        c: &Computed,
+        bg: &'a crate::style::background_paint::BackgroundValues,
+        area: super::ColorBox,
+        vcx: ValueCx<'_>,
+    ) -> Option<Self> {
         if matches!(area, super::ColorBox::Padding { .. })
-            && !c.gradient_as_tile()
-            && let Some(gradient) = &c.gradient
+            && !bg.gradient_as_tile()
+            && let Some(gradient) = &bg.gradient
         {
             // Неначальный origin обслуживает painter плиток. У GPU-заливки остаётся
             // начальный padding-box (css-backgrounds-3 §3.8), независимо от clip.
@@ -22,8 +27,7 @@ impl<'a> Fill<'a> {
                 super::geometry::area(c, area, BgClip::PaddingBox, vcx).0,
             ));
         }
-        c.background
-            .map(|v| Self::Solid(Background::from(v.to_hsla())))
+        bg.color.map(|v| Self::Solid(Background::from(v.to_hsla())))
     }
 
     pub(super) fn at(&self, bounds: Bounds<Pixels>, matrix: [f32; 6]) -> Background {

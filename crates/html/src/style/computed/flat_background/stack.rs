@@ -8,95 +8,73 @@
 //! (CSS Backgrounds 3 §2.3) и даёт прозрачный чёрный. Частичная альфа свёртке не подлежит.
 
 use super::{BackgroundImageValues, ImageAvailability, flat_fill, over};
-use crate::document::state::ValueCx;
-use crate::style::computed::{BgClip, BlendMode, Computed};
+use crate::style::computed::{BgClip, BlendMode};
 use crate::style::values::value::Color;
 
 mod blend;
 
 pub(crate) fn collapse(
-    c: &mut super::super::BoxStyle,
-    vcx: ValueCx<'_>,
+    c: &mut crate::style::background_paint::BackgroundValues,
+    orient: bool,
     images: &dyn BackgroundImageValues,
 ) {
-    let Some(stack) = evaluate(c, vcx, images) else {
+    let Some(stack) = evaluate(c, orient, images) else {
         return;
     };
-    c.background = (stack[0].a > 0.0).then_some(stack[0]);
-    c.flat_text_background = (stack[1] != stack[0] && stack[1].a == 1.0).then_some(stack[1]);
-    c.flat_border_background = (stack[2] != stack[0] && stack[2].a == 1.0).then_some(stack[2]);
-    c.bg_clip = None;
-    c.bg_image = None;
+    c.color = (stack[0].a > 0.0).then_some(stack[0]);
+    c.flat = Some(stack);
+    c.color_clip = None;
+    c.top.clip = None;
+    c.top.image = None;
     c.gradient = None;
-    c.gradient_raw = None;
-    c.bg_lists.clear();
-    c.background_blend = None;
+    c.gradient_image = None;
+    c.layers = None;
 }
 
 fn evaluate(
-    c: &Computed,
-    vcx: ValueCx<'_>,
+    c: &crate::style::background_paint::BackgroundValues,
+    orient: bool,
     images: &dyn BackgroundImageValues,
 ) -> Option<[Color; 3]> {
-    let layers = match c.bg_layers(vcx) {
-        Some(layers) => layers,
-        // Один слой — сам стиль: копия нужна только стопке, которую есть что сворачивать.
-        None if !matches!(c.bg_clip, Some(BgClip::Text | BgClip::BorderArea))
-            && !c.background_blend.is_some_and(|v| v != BlendMode::Normal) =>
-        {
-            return None;
-        }
-        None => {
-            let mut image = c.clone();
-            image.background = None;
-            vec![image]
-        }
-    };
+    let layers = c.layers.as_deref().unwrap_or(std::slice::from_ref(&c.top));
     let special = layers
         .iter()
-        .any(|l| matches!(l.bg_clip, Some(BgClip::Text | BgClip::BorderArea)));
+        .any(|l| matches!(l.clip, Some(BgClip::Text | BgClip::BorderArea)));
     let blended = layers
         .iter()
-        .any(|l| l.background_blend.is_some_and(|v| v != BlendMode::Normal));
+        .any(|l| l.blend.is_some_and(|v| v != BlendMode::Normal));
     if !special && !blended {
         return None;
     }
     let mut result = [Color::default(); 3];
-    let background = c.background.unwrap_or_default();
     for (region, pixel) in result.iter_mut().enumerate() {
-        if contains(c.color_clip(vcx), region)? {
-            *pixel = background;
+        if contains(c.color_clip, region)? {
+            *pixel = c.color.unwrap_or_default();
         }
     }
     for layer in layers.iter().rev() {
         let availability = layer
-            .bg_image
+            .image
             .as_ref()
-            .map(|image| images.image_available(image, layer.image_orient_none != Some(true)));
+            .map(|image| images.image_available(image, orient));
         if availability == Some(ImageAvailability::Pending) {
             return None;
         }
         let unavailable = availability == Some(ImageAvailability::Failed);
-        // CSS Backgrounds 3 §2.3: an image that cannot be displayed is
-        // treated as none. It contributes transparent black to the stack,
-        // without suppressing the lower background color or blend modes.
-        let color = if unavailable || (layer.bg_image.is_none() && layer.gradient.is_none()) {
+        // CSS Backgrounds 3 §2.3: недоступная картинка даёт прозрачный чёрный.
+        let operands = c.layer_operands(layer);
+        let color = if unavailable || (layer.image.is_none() && operands.gradient.is_none()) {
             Color::default()
         } else {
-            flat_fill(layer, images)?
+            flat_fill(&operands, images)?
         };
         for (region, pixel) in result.iter_mut().enumerate() {
-            if contains(layer.bg_clip, region)? {
-                *pixel = blend::composite(
-                    color,
-                    *pixel,
-                    layer.background_blend.unwrap_or(BlendMode::Normal),
-                )?;
+            if contains(layer.clip, region)? {
+                *pixel = blend::composite(color, *pixel, layer.blend.unwrap_or(BlendMode::Normal))?;
             }
         }
     }
-    // A single glyph/border color is exact for an opaque constant region.
-    // Partial alpha needs a mask composited separately from foreground ink.
+    // Частичная альфа требует отдельной композиции маски глифов или рамки.
     result
         .iter()
         .all(|p| p.a == 0.0 || p.a == 1.0)
@@ -108,7 +86,7 @@ fn contains(clip: Option<BgClip>, region: usize) -> Option<bool> {
         None | Some(BgClip::BorderBox) => true,
         Some(BgClip::Text) => region == 1,
         Some(BgClip::BorderArea) => region == 2,
-        // Padding/content edges require separate geometry, not one box color.
+        // Обрезка по padding/content требует собственной геометрии.
         _ => return None,
     })
 }
@@ -131,10 +109,18 @@ mod tests {
         c.apply_one("background-clip", "text", vcx);
         c.apply_one("background-color", "red", vcx);
         c.apply_one("background-blend-mode", "difference, normal", vcx);
-        collapse(&mut c, vcx, &vcx.background_images());
-        assert!(c.background.is_none());
-        assert_eq!(c.flat_text_background, Color::parse("lime", vcx));
-        assert!(c.bg_layers(vcx).is_none());
+        let css = c.style_rc().clone();
+        let mut result = crate::style::background_paint::BackgroundValues::from_computed(&c);
+        collapse(
+            &mut result,
+            c.image_orient_none != Some(true),
+            &vcx.background_images(),
+        );
+        assert_eq!(c.style_rc(), &css);
+        assert!(result.color.is_none());
+        assert_eq!(result.flat.map(|s| s[1]), Color::parse("lime", vcx));
+        assert!(result.layers.is_none());
+        assert!(c.background_layers().is_some());
     }
 
     #[test]
@@ -145,9 +131,16 @@ mod tests {
         c.apply_one("background-image", "linear-gradient(green, green)", vcx);
         c.apply_one("background-color", "red", vcx);
         c.apply_one("background-clip", "text", vcx);
-        collapse(&mut c, vcx, &vcx.background_images());
-        assert!(c.background.is_none());
-        assert_eq!(c.flat_text_background, Color::parse("green", vcx));
+        let css = c.style_rc().clone();
+        let mut result = crate::style::background_paint::BackgroundValues::from_computed(&c);
+        collapse(
+            &mut result,
+            c.image_orient_none != Some(true),
+            &vcx.background_images(),
+        );
+        assert_eq!(c.style_rc(), &css);
+        assert!(result.color.is_none());
+        assert_eq!(result.flat.map(|s| s[1]), Color::parse("green", vcx));
     }
 
     #[test]
@@ -170,8 +163,15 @@ mod tests {
             vec![],
         );
         crate::document::image_values::prepare(&[crate::dom::Node::Element(node)], vcx);
-        collapse(&mut c, vcx, &vcx.background_images());
-        assert_eq!(c.background, Color::parse("cyan", vcx));
-        assert_eq!(c.flat_text_background, Color::parse("blue", vcx));
+        let css = c.style_rc().clone();
+        let mut result = crate::style::background_paint::BackgroundValues::from_computed(&c);
+        collapse(
+            &mut result,
+            c.image_orient_none != Some(true),
+            &vcx.background_images(),
+        );
+        assert_eq!(c.style_rc(), &css);
+        assert_eq!(result.color, Color::parse("cyan", vcx));
+        assert_eq!(result.flat.map(|s| s[1]), Color::parse("blue", vcx));
     }
 }

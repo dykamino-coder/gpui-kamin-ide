@@ -72,9 +72,6 @@ impl BgLists {
     pub fn is_empty(&self) -> bool {
         self.lists.is_empty()
     }
-    pub fn clear(&mut self) {
-        self.lists.clear();
-    }
     pub(crate) fn get(&self, prop: BgListProp) -> Option<&[super::bg_layer::BgLayer]> {
         self.lists
             .iter()
@@ -149,11 +146,9 @@ mod tests {
         let mut l = BgLists::default();
         l.set(BgListProp::Clip, "border-box, padding-box".into(), vcx);
         l.set(BgListProp::Clip, "text, content-box".into(), vcx);
-        let mut c = super::super::Computed::default();
         let layers = l.get(BgListProp::Clip).unwrap();
         assert_eq!(layers.len(), 2);
-        layers[1].apply(BgListProp::Clip, &mut c);
-        assert_eq!(c.bg_clip, Some(super::super::BgClip::ContentBox));
+        assert_eq!(layers[1].clip, Some(super::super::BgClip::ContentBox));
         l.remove(BgListProp::Clip);
         assert!(l.is_empty());
     }

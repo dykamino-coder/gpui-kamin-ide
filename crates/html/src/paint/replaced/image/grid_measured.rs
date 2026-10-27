@@ -31,7 +31,7 @@ pub(super) fn measured(
         || style.outline.is_some()
         || !style.shadows.is_empty()
         || !style.inset_shadows.is_empty()
-        || style.filter.is_some()
+        || style.paint_filter().is_some()
         || style.mask_image.is_some()
         || style.clip_ref.is_some()
         || ![

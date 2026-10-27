@@ -15,36 +15,43 @@ pub(crate) fn computed(
     super::compute::compute(parent, own, vcx).handle
 }
 
-/// Цвет подготовки с прежним смешиванием background-clip: text.
-/// Подготовка документа не создаёт контекст форматирования и стиль коробки.
-pub(crate) fn colors(parent: &Computed, own: &SharedStyle, vcx: ValueCx<'_>) -> Rc<Computed> {
+/// CSS для наследования и отдельный результат окраски подготовки документа.
+#[derive(Default)]
+pub(crate) struct Colors {
+    css: Rc<Computed>,
+    pub foreground: crate::style::decoration_paint::ForegroundPaint,
+}
+
+pub(crate) fn colors(parent: &Colors, own: &SharedStyle, vcx: ValueCx<'_>) -> Colors {
     let published = own.slot().any();
     let element = published.is_some();
     let view = own.used();
-    let mut computed = match published {
+    let css = match published {
         Some(_) => Rc::clone(&view),
-        None => super::compute::compute(parent, own.cascaded(), vcx).legacy,
+        None => super::compute::compute(&parent.css, own.cascaded(), vcx).legacy,
     };
     let declared = if element { own.cascaded() } else { &view };
-    let colors = super::color_inputs::text_clip_colors(
-        parent,
-        declared,
-        &view,
-        &computed,
-        element,
-        view.background_paint,
+    let input = if !element && !declared.declares_color() {
+        parent.foreground
+    } else {
+        crate::style::decoration_paint::ForegroundPaint {
+            color: css.color,
+            ..Default::default()
+        }
+    };
+    let foreground = super::color_inputs::text_clip_colors(
+        super::color_inputs::TextClipInput {
+            parent: parent.foreground,
+            foreground: input,
+            element,
+            declares_color: declared.declares_color(),
+            out_of_flow: crate::style::flow::absolutely_positioned(view.position),
+            background: view.background_paint,
+        },
+        &crate::style::background_paint::BackgroundValues::from_computed(&css),
         &vcx.background_images(),
     );
-    if computed.color != colors.color
-        || computed.text_clip_raw != colors.raw
-        || computed.text_clip_fill != colors.fill
-    {
-        let computed = Rc::make_mut(&mut computed);
-        computed.color = colors.color;
-        computed.text_clip_raw = colors.raw;
-        computed.text_clip_fill = colors.fill;
-    }
-    computed
+    Colors { css, foreground }
 }
 
 #[cfg(test)]
@@ -77,24 +84,13 @@ mod tests {
                 let body =
                     crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "body").unwrap();
                 let old_root = box_style_unpainted(&BoxStyle::default(), &root.style, vcx);
-                let new_root = colors(&Computed::default(), &root.style, vcx);
+                let new_root = colors(&Colors::default(), &root.style, vcx);
                 let old = box_style_unpainted(&old_root, &body.style, vcx);
                 let new = colors(&new_root, &body.style, vcx);
+                assert_eq!(new_root.foreground, old_root.foreground_paint());
                 assert_eq!(
-                    (
-                        new_root.color,
-                        new_root.text_clip_raw,
-                        new_root.text_clip_fill
-                    ),
-                    (
-                        old_root.color,
-                        old_root.text_clip_raw,
-                        old_root.text_clip_fill
-                    )
-                );
-                assert_eq!(
-                    (new.color, new.text_clip_raw, new.text_clip_fill),
-                    (old.color, old.text_clip_raw, old.text_clip_fill),
+                    new.foreground,
+                    old.foreground_paint(),
                     "{style}: {published}"
                 );
             }

@@ -13,7 +13,7 @@ pub(crate) struct BgLayer {
     pub(crate) origin: Option<BgClip>,
     pub(crate) clip: Option<BgClip>,
     pub(crate) fixed: Option<bool>,
-    blend: Option<BlendMode>,
+    pub(crate) blend: Option<BlendMode>,
 }
 
 impl BgLayer {
@@ -102,26 +102,6 @@ impl BgLayer {
         if let BgSize::Fixed(w, h) = &mut self.size {
             fix(w);
             fix(h);
-        }
-    }
-
-    pub(crate) fn apply(&self, prop: BgListProp, c: &mut Computed) {
-        match prop {
-            BgListProp::Image => c.bg_image = self.image.clone(),
-            BgListProp::Size => c.bg_size = self.size,
-            BgListProp::PositionX => {
-                c.bg_pos.x = self.position.x;
-                c.bg_position_math[0] = self.position_math[0].clone();
-            }
-            BgListProp::PositionY => {
-                c.bg_pos.y = self.position.y;
-                c.bg_position_math[1] = self.position_math[1].clone();
-            }
-            BgListProp::Repeat => c.bg_repeat = self.repeat,
-            BgListProp::Origin => c.bg_origin = self.origin,
-            BgListProp::Clip => c.bg_clip = self.clip,
-            BgListProp::Attachment => c.bg_fixed = self.fixed,
-            BgListProp::BlendMode => c.background_blend = self.blend,
         }
     }
 }

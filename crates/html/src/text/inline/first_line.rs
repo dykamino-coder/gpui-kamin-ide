@@ -32,7 +32,7 @@ pub fn style_first_line(
                     // §first-line-inheritance): an element's own color wins
                     // (`display-contents-first-line-002`: green spans).
                     if base.color == block.color {
-                        c.color = style.color.or(base.color);
+                        c.overlay_pseudo_color(style.color);
                     }
                     c.font_weight = style.font_weight.or(base.font_weight);
                     c.italic = style.italic.or(base.italic);

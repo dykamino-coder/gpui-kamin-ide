@@ -75,7 +75,7 @@ pub(super) fn prepare(
             html.marks = Default::default();
             html.set_layout_box(LayoutBoxInput::new(
                 BoxOrigin::EmbeddedRoot,
-                embedded_root(merged, (w * zoom, h * zoom)),
+                embedded_root(merged.without_paint_filter(), (w * zoom, h * zoom)),
             ));
             let root = BoxStyle::default();
             let mut element = crate::interactive::scroll_box::scrollable(&html, &root, opts)

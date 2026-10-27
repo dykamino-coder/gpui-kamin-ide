@@ -11,6 +11,7 @@ pub(crate) mod canvas_background;
 pub mod cascade;
 pub mod computed;
 pub mod css;
+pub(crate) mod decoration_paint;
 pub(crate) mod flow;
 pub mod generated;
 pub(crate) mod inline_decoration;

@@ -4,18 +4,23 @@
 //! крайних полос. Наклонный и радиальный полосами не выражаются; градиент, ушедший в растровую
 //! плитку, полосами не дублируется.
 
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
-pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
+pub(super) fn gradient_stripes(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>) {
     // Градиент из пяти и более стопов: заливка несёт четыре (патч GPUI), а
     // дальше осевой градиент по-прежнему рисуется полосами — по слою на пару
     // соседних стопов. Наклонный полосами не выразить.
     // Градиент, ушедший в растровую плитку (`gradient_as_tile`), полосами не
     // дублируется: они красили ВСЮ коробку поверх плитки — мимо размера,
     // повтора и пространства смешения.
-    if let Some(g) = c.gradient.as_ref().filter(|_| !c.gradient_as_tile()) {
+    if let Some(g) = c
+        .paint_background()
+        .gradient
+        .as_ref()
+        .filter(|_| !c.gradient_as_tile())
+    {
         let vertical = matches!(g.angle_deg as i32, 0 | 180);
         let horizontal = matches!(g.angle_deg as i32, 90 | 270);
         let reverse = matches!(g.angle_deg as i32, 0 | 270);

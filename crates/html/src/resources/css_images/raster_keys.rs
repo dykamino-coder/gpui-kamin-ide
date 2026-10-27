@@ -118,31 +118,35 @@ fn stops(values: &[(Color, f32)]) -> Vec<Stop> {
 #[derive(Clone, PartialEq, Eq)]
 pub(super) struct FilterKey {
     filter: Option<[FloatKey; 9]>,
+    /// Authored color operations: the raster applies them in this order.
+    operations: Vec<[FloatKey; 9]>,
     shadow: Option<([FloatKey; 3], [FloatKey; 4])>,
     calls: usize,
+}
+
+fn filter_fields(f: crate::style::computed::Filter) -> [FloatKey; 9] {
+    let crate::style::computed::Filter {
+        grayscale,
+        brightness,
+        saturate,
+        invert,
+        sepia,
+        opacity,
+        hue_rotate,
+        contrast,
+        blur,
+    } = f;
+    [
+        grayscale, brightness, saturate, invert, sepia, opacity, hue_rotate, contrast, blur,
+    ]
+    .map(FloatKey::from)
 }
 
 impl From<&ImageFilter> for FilterKey {
     fn from(list: &ImageFilter) -> Self {
         Self {
-            filter: list.filter.map(|f| {
-                let crate::style::computed::Filter {
-                    grayscale,
-                    brightness,
-                    saturate,
-                    invert,
-                    sepia,
-                    opacity,
-                    hue_rotate,
-                    contrast,
-                    blur,
-                } = f;
-                [
-                    grayscale, brightness, saturate, invert, sepia, opacity, hue_rotate, contrast,
-                    blur,
-                ]
-                .map(FloatKey::from)
-            }),
+            filter: list.filter.map(filter_fields),
+            operations: list.operations.iter().copied().map(filter_fields).collect(),
             shadow: list.shadow.as_ref().map(|s| {
                 (
                     [s.x, s.y, s.blur].map(FloatKey::from),

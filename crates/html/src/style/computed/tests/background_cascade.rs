@@ -53,14 +53,14 @@ fn layer_lists_belong_to_their_longhand() {
         "background: url(a) no-repeat, url(b) repeat-x; background-repeat: space",
         vcx,
     );
-    let layers = c.bg_layers(vcx).unwrap();
+    let layers = c.background_layers().unwrap();
     assert_eq!(layers.len(), 2);
     assert!(
         layers
             .iter()
-            .all(|l| l.bg_repeat == Some(BgRepeat::Axes(Tiling::Space, Tiling::Space)))
+            .all(|l| l.repeat == Some(BgRepeat::Axes(Tiling::Space, Tiling::Space)))
     );
-    assert_eq!(layers[1].bg_image, Some(ImageSource::Url("b".into())));
+    assert_eq!(layers[1].image, Some(ImageSource::Url("b".into())));
 }
 
 #[test]
