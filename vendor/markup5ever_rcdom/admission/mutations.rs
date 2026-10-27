@@ -3,7 +3,7 @@
 use super::{parent_index, remove, reserve, Admission};
 use crate::{append, Attribute, Handle, Node, NodeData, QualName, RcDom};
 use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText};
-use std::{borrow::Cow, cell::RefCell, mem, rc::Rc};
+use std::{cell::RefCell, mem, rc::Rc};
 use tendril::StrTendril;
 
 fn append_text<A: Admission>(node: &Handle, text: &str, policy: &A) -> Result<bool, A::Error> {
@@ -17,6 +17,7 @@ fn append_text<A: Admission>(node: &Handle, text: &str, policy: &A) -> Result<bo
         .ok_or_else(|| policy.overflow())?;
     policy.buffer(&mut contents, text.len())?;
     let payload = policy.replace_payload(size, 0, &node.payload_lease.borrow())?;
+    policy.work(text.len())?;
     contents.push_slice(text);
     *node.payload_lease.borrow_mut() = payload;
     Ok(true)
@@ -33,6 +34,7 @@ impl RcDom {
         let mut owned_attrs = Vec::new();
         let mut attrs_lease = None;
         reserve(&mut owned_attrs, &mut attrs_lease, attrs.len(), policy)?;
+        policy.work(attrs.len())?;
         owned_attrs.extend(attrs);
         let template = if flags.template {
             Some(Node::try_new(NodeData::Document, None, policy)?)
@@ -125,6 +127,7 @@ impl RcDom {
         };
         parent.reserve_children(1, policy)?;
         remove(&child, policy)?;
+        policy.work(parent.children.borrow().len() - index)?;
         child.parent.set(Some(crate::WeakHandle::new(&parent)));
         parent.children.borrow_mut().insert(index, child);
         Ok(())
@@ -231,8 +234,8 @@ impl RcDom {
     ) -> Result<(), A::Error> {
         let mut children = node.children.borrow_mut();
         parent.reserve_children(children.len(), policy)?;
+        policy.work(children.len())?;
         for child in children.iter() {
-            policy.visit()?;
             let previous = child.parent.replace(Some(crate::WeakHandle::new(parent)));
             assert!(Rc::ptr_eq(
                 node,
@@ -244,21 +247,6 @@ impl RcDom {
             .borrow_mut()
             .extend(mem::take(&mut *children));
         node.children_lease.borrow_mut().take();
-        Ok(())
-    }
-
-    pub fn try_parse_error<A: Admission>(
-        &self,
-        message: Cow<'static, str>,
-        policy: &A,
-    ) -> Result<(), A::Error> {
-        reserve(
-            &mut self.errors.borrow_mut(),
-            &mut self.errors_lease.borrow_mut(),
-            1,
-            policy,
-        )?;
-        self.errors.borrow_mut().push(message);
         Ok(())
     }
 }

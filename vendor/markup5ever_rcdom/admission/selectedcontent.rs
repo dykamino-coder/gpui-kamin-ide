@@ -51,6 +51,7 @@ impl Node {
         }
         let mut remaining = Work::new();
         for child in self.children.borrow().iter().rev() {
+            policy.visit()?;
             remaining.push(child.clone(), policy)?;
         }
         while let Some(node) = remaining.pop() {
@@ -61,6 +62,7 @@ impl Node {
                 }
             }
             for child in node.children.borrow().iter().rev() {
+                policy.visit()?;
                 remaining.push(child.clone(), policy)?;
             }
         }
@@ -78,6 +80,7 @@ impl Node {
             } => {
                 let mut copied = Vec::new();
                 reserve(&mut copied, &mut attrs_lease, attrs.borrow().len(), policy)?;
+                policy.work(attrs.borrow().len())?;
                 copied.extend_from_slice(&attrs.borrow());
                 NodeData::Element {
                     name: name.clone(),
@@ -100,6 +103,7 @@ impl Node {
         while let Some((source, target)) = remaining.pop() {
             policy.visit()?;
             for child in source.children.borrow().iter() {
+                policy.visit()?;
                 let copied = child.try_clone_shallow(policy)?;
                 target.reserve_children(1, policy)?;
                 append(&target, copied.clone());
@@ -135,6 +139,8 @@ impl Node {
             append(&fragment, copied);
         }
         let children = mem::take(&mut *fragment.children.borrow_mut());
+        policy.work(children.len())?;
+        policy.work(target.children.borrow().len())?;
         for child in &children {
             child.parent.set(Some(crate::WeakHandle::new(target)));
         }
@@ -186,6 +192,7 @@ impl RcDom {
                             option.try_clone_into(&target, policy)?;
                         } else {
                             let previous = mem::take(&mut *target.children.borrow_mut());
+                            policy.work(previous.len())?;
                             for child in &previous {
                                 child.parent.set(None);
                             }
@@ -196,6 +203,7 @@ impl RcDom {
                 }
             }
             for child in node.children.borrow().iter() {
+                policy.visit()?;
                 stack.push(child.clone(), policy)?;
             }
         }

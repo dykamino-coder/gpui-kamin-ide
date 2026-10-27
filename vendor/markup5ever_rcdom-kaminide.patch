@@ -23,10 +23,10 @@ index c26a3f8f62f896123e027178baf1d4006ee9bfde..d811625f657e75fd27a6f38ae1d8e56d
 +version = "0.40"
 diff --git a/vendor/markup5ever_rcdom/admission.rs b/vendor/markup5ever_rcdom/admission.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb32e9cb6e
+index 0000000000000000000000000000000000000000..c42432cd056b4e79be5d04aa1d2e31aafd8da0ae
 --- /dev/null
 +++ b/vendor/markup5ever_rcdom/admission.rs
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,263 @@
 +//! Storage reservations precede allocation and travel with their physical owner.
 +
 +use crate::{Handle, Node, NodeData, RcDom};
@@ -41,6 +41,7 @@ index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb
 +};
 +use tendril::StrTendril;
 +
++mod diagnostics;
 +mod mutations;
 +mod selectedcontent;
 +
@@ -69,6 +70,12 @@ index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb
 +    }
 +    fn buffer(&self, text: &mut StrTendril, additional: usize) -> Result<(), Self::Error>;
 +    fn visit(&self) -> Result<(), Self::Error>;
++    fn work(&self, amount: usize) -> Result<(), Self::Error> {
++        for _ in 0..amount {
++            self.visit()?;
++        }
++        Ok(())
++    }
 +    fn allocation(&self, error: TryReserveError) -> Self::Error;
 +    fn overflow(&self) -> Self::Error;
 +}
@@ -89,6 +96,9 @@ index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb
 +        Ok(())
 +    }
 +    fn visit(&self) -> Result<(), Infallible> {
++        Ok(())
++    }
++    fn work(&self, _: usize) -> Result<(), Infallible> {
 +        Ok(())
 +    }
 +    fn allocation(&self, _: TryReserveError) -> Infallible {
@@ -125,6 +135,9 @@ index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb
 +        .checked_mul(mem::size_of::<T>())
 +        .ok_or_else(|| policy.overflow())?;
 +    let next_lease = policy.storage(bytes)?;
++    for _ in 0..values.len() {
++        policy.visit()?;
++    }
 +    let mut next = Vec::new();
 +    next.try_reserve_exact(capacity)
 +        .map_err(|error| policy.allocation(error))?;
@@ -179,6 +192,7 @@ index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb
 +        NodeData::Element { attrs, .. } => (
 +            0,
 +            attrs.borrow().iter().try_fold(0usize, |total, attr| {
++                policy.visit()?;
 +                sum(&[
 +                    total,
 +                    attr.name.local.len(),
@@ -236,6 +250,7 @@ index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb
 +            errors: RefCell::new(Vec::new()),
 +            quirks_mode: Cell::new(markup5ever::interface::tree_builder::NoQuirks),
 +            errors_lease: RefCell::new(None),
++            errors_owned: RefCell::new(Work::new()),
 +        })
 +    }
 +}
@@ -269,23 +284,113 @@ index 0000000000000000000000000000000000000000..1ff1be3965cb2bba5820e395e97457eb
 +
 +pub(crate) fn remove<A: Admission>(target: &Handle, policy: &A) -> Result<(), A::Error> {
 +    if let Some((parent, index)) = parent_index(target, policy)? {
++        policy.work(parent.children.borrow().len() - index - 1)?;
 +        parent.children.borrow_mut().remove(index);
 +        target.parent.set(None);
 +    }
 +    Ok(())
 +}
+diff --git a/vendor/markup5ever_rcdom/admission/diagnostics.rs b/vendor/markup5ever_rcdom/admission/diagnostics.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3372638144aa152c3da03a3f370d54b1458abc37
+--- /dev/null
++++ b/vendor/markup5ever_rcdom/admission/diagnostics.rs
+@@ -0,0 +1,83 @@
++//! Diagnostic text is admitted before formatting and retained with its owner.
++
++use super::{reserve, Admission, Lease};
++use crate::RcDom;
++use std::{borrow::Cow, fmt};
++
++struct Count<'a, A: Admission> {
++    policy: &'a A,
++    bytes: usize,
++    error: Option<A::Error>,
++}
++
++impl<A: Admission> fmt::Write for Count<'_, A> {
++    fn write_str(&mut self, text: &str) -> fmt::Result {
++        let result = self.policy.work(text.len()).and_then(|()| {
++            self.bytes = self
++                .bytes
++                .checked_add(text.len())
++                .ok_or_else(|| self.policy.overflow())?;
++            Ok(())
++        });
++        result.map_err(|error| {
++            self.error = Some(error);
++            fmt::Error
++        })
++    }
++}
++
++impl RcDom {
++    fn push_error<A: Admission>(
++        &self,
++        message: Cow<'static, str>,
++        lease: Lease,
++        policy: &A,
++    ) -> Result<(), A::Error> {
++        reserve(
++            &mut self.errors.borrow_mut(),
++            &mut self.errors_lease.borrow_mut(),
++            1,
++            policy,
++        )?;
++        if lease.is_some() {
++            self.errors_owned.borrow_mut().push(lease, policy)?;
++        }
++        self.errors.borrow_mut().push(message);
++        Ok(())
++    }
++
++    pub fn try_parse_error<A: Admission>(
++        &self,
++        message: Cow<'static, str>,
++        policy: &A,
++    ) -> Result<(), A::Error> {
++        let lease = match &message {
++            Cow::Owned(text) => policy.storage(text.capacity())?,
++            Cow::Borrowed(_) => None,
++        };
++        self.push_error(message, lease, policy)
++    }
++
++    pub fn try_parse_error_fmt<A: Admission>(
++        &self,
++        message: fmt::Arguments<'_>,
++        policy: &A,
++    ) -> Result<(), A::Error> {
++        let mut count = Count {
++            policy,
++            bytes: 0,
++            error: None,
++        };
++        if fmt::write(&mut count, message).is_err() {
++            return Err(count.error.unwrap_or_else(|| policy.overflow()));
++        }
++        // Both formatting passes are admitted before the allocating pass.
++        policy.work(count.bytes)?;
++        let lease = policy.storage(count.bytes)?;
++        let mut text = String::new();
++        text.try_reserve_exact(count.bytes)
++            .map_err(|error| policy.allocation(error))?;
++        fmt::write(&mut text, message).map_err(|_| policy.overflow())?;
++        self.push_error(Cow::Owned(text), lease, policy)
++    }
++}
 diff --git a/vendor/markup5ever_rcdom/admission/mutations.rs b/vendor/markup5ever_rcdom/admission/mutations.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5c59879da716b687d7d6621f7a669983f9b5daf9
+index 0000000000000000000000000000000000000000..34a56db2fe065b4571d06e201558facac5579a2d
 --- /dev/null
 +++ b/vendor/markup5ever_rcdom/admission/mutations.rs
-@@ -0,0 +1,264 @@
+@@ -0,0 +1,252 @@
 +//! Canonical DOM mutations share one fallible implementation with TreeSink.
 +
 +use super::{parent_index, remove, reserve, Admission};
 +use crate::{append, Attribute, Handle, Node, NodeData, QualName, RcDom};
 +use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText};
-+use std::{borrow::Cow, cell::RefCell, mem, rc::Rc};
++use std::{cell::RefCell, mem, rc::Rc};
 +use tendril::StrTendril;
 +
 +fn append_text<A: Admission>(node: &Handle, text: &str, policy: &A) -> Result<bool, A::Error> {
@@ -299,6 +404,7 @@ index 0000000000000000000000000000000000000000..5c59879da716b687d7d6621f7a669983
 +        .ok_or_else(|| policy.overflow())?;
 +    policy.buffer(&mut contents, text.len())?;
 +    let payload = policy.replace_payload(size, 0, &node.payload_lease.borrow())?;
++    policy.work(text.len())?;
 +    contents.push_slice(text);
 +    *node.payload_lease.borrow_mut() = payload;
 +    Ok(true)
@@ -315,6 +421,7 @@ index 0000000000000000000000000000000000000000..5c59879da716b687d7d6621f7a669983
 +        let mut owned_attrs = Vec::new();
 +        let mut attrs_lease = None;
 +        reserve(&mut owned_attrs, &mut attrs_lease, attrs.len(), policy)?;
++        policy.work(attrs.len())?;
 +        owned_attrs.extend(attrs);
 +        let template = if flags.template {
 +            Some(Node::try_new(NodeData::Document, None, policy)?)
@@ -407,6 +514,7 @@ index 0000000000000000000000000000000000000000..5c59879da716b687d7d6621f7a669983
 +        };
 +        parent.reserve_children(1, policy)?;
 +        remove(&child, policy)?;
++        policy.work(parent.children.borrow().len() - index)?;
 +        child.parent.set(Some(crate::WeakHandle::new(&parent)));
 +        parent.children.borrow_mut().insert(index, child);
 +        Ok(())
@@ -513,8 +621,8 @@ index 0000000000000000000000000000000000000000..5c59879da716b687d7d6621f7a669983
 +    ) -> Result<(), A::Error> {
 +        let mut children = node.children.borrow_mut();
 +        parent.reserve_children(children.len(), policy)?;
++        policy.work(children.len())?;
 +        for child in children.iter() {
-+            policy.visit()?;
 +            let previous = child.parent.replace(Some(crate::WeakHandle::new(parent)));
 +            assert!(Rc::ptr_eq(
 +                node,
@@ -528,28 +636,13 @@ index 0000000000000000000000000000000000000000..5c59879da716b687d7d6621f7a669983
 +        node.children_lease.borrow_mut().take();
 +        Ok(())
 +    }
-+
-+    pub fn try_parse_error<A: Admission>(
-+        &self,
-+        message: Cow<'static, str>,
-+        policy: &A,
-+    ) -> Result<(), A::Error> {
-+        reserve(
-+            &mut self.errors.borrow_mut(),
-+            &mut self.errors_lease.borrow_mut(),
-+            1,
-+            policy,
-+        )?;
-+        self.errors.borrow_mut().push(message);
-+        Ok(())
-+    }
 +}
 diff --git a/vendor/markup5ever_rcdom/admission/selectedcontent.rs b/vendor/markup5ever_rcdom/admission/selectedcontent.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb94dd0e963
+index 0000000000000000000000000000000000000000..42adec2d484592f8876464cfb1c96a687f30cfa9
 --- /dev/null
 +++ b/vendor/markup5ever_rcdom/admission/selectedcontent.rs
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,212 @@
 +//! Selectedcontent cloning is iterative and propagates every storage refusal.
 +
 +use super::{reserve, Admission, Work};
@@ -603,6 +696,7 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +        }
 +        let mut remaining = Work::new();
 +        for child in self.children.borrow().iter().rev() {
++            policy.visit()?;
 +            remaining.push(child.clone(), policy)?;
 +        }
 +        while let Some(node) = remaining.pop() {
@@ -613,6 +707,7 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +                }
 +            }
 +            for child in node.children.borrow().iter().rev() {
++                policy.visit()?;
 +                remaining.push(child.clone(), policy)?;
 +            }
 +        }
@@ -630,6 +725,7 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +            } => {
 +                let mut copied = Vec::new();
 +                reserve(&mut copied, &mut attrs_lease, attrs.borrow().len(), policy)?;
++                policy.work(attrs.borrow().len())?;
 +                copied.extend_from_slice(&attrs.borrow());
 +                NodeData::Element {
 +                    name: name.clone(),
@@ -652,6 +748,7 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +        while let Some((source, target)) = remaining.pop() {
 +            policy.visit()?;
 +            for child in source.children.borrow().iter() {
++                policy.visit()?;
 +                let copied = child.try_clone_shallow(policy)?;
 +                target.reserve_children(1, policy)?;
 +                append(&target, copied.clone());
@@ -687,6 +784,8 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +            append(&fragment, copied);
 +        }
 +        let children = mem::take(&mut *fragment.children.borrow_mut());
++        policy.work(children.len())?;
++        policy.work(target.children.borrow().len())?;
 +        for child in &children {
 +            child.parent.set(Some(crate::WeakHandle::new(target)));
 +        }
@@ -738,6 +837,7 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +                            option.try_clone_into(&target, policy)?;
 +                        } else {
 +                            let previous = mem::take(&mut *target.children.borrow_mut());
++                            policy.work(previous.len())?;
 +                            for child in &previous {
 +                                child.parent.set(None);
 +                            }
@@ -748,6 +848,7 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +                }
 +            }
 +            for child in node.children.borrow().iter() {
++                policy.visit()?;
 +                stack.push(child.clone(), policy)?;
 +            }
 +        }
@@ -756,10 +857,10 @@ index 0000000000000000000000000000000000000000..307a4f94142c59072c1b85223831dcb9
 +}
 diff --git a/vendor/markup5ever_rcdom/admission/tests.rs b/vendor/markup5ever_rcdom/admission/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ec5face3b3b5323ba4a83741c2ef41a7eee5872e
+index 0000000000000000000000000000000000000000..667d02f5a7d59d475e6205cbbf68cf83122605ce
 --- /dev/null
 +++ b/vendor/markup5ever_rcdom/admission/tests.rs
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,225 @@
 +//! Refusal at every internal operation frees partial trees and temporary work.
 +
 +use super::*;
@@ -899,6 +1000,7 @@ index 0000000000000000000000000000000000000000..ec5face3b3b5323ba4a83741c2ef41a7
 +    }
 +    dom.try_append(&dom.document, NodeOrText::AppendNode(select), policy)?;
 +    dom.try_parse_error("recovery".into(), policy)?;
++    dom.try_parse_error_fmt(format_args!("recovery {}", "KEEP/LOST"), policy)?;
 +    dom.try_finish(policy)
 +}
 +
@@ -1031,7 +1133,7 @@ index 0000000000000000000000000000000000000000..6a37e5ca289081fefe10a3423590ca4e
 +        .unwrap();
 +}
 diff --git a/vendor/markup5ever_rcdom/lib.rs b/vendor/markup5ever_rcdom/lib.rs
-index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf0288fd2100
+index 3cd9c2a93fee730db545c66ba9b4252714335aec..14a8594942261e6867f6baae8dadd4fefabf17f5
 --- a/vendor/markup5ever_rcdom/lib.rs
 +++ b/vendor/markup5ever_rcdom/lib.rs
 @@ -49,0 +50,3 @@
@@ -1293,15 +1395,16 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -        target.parent.set(None);
 -    }
 +    admission::infallible(admission::remove(target, &admission::Unbounded));
-@@ -357,0 +252 @@
+@@ -357,0 +252,2 @@
 +    errors_lease: RefCell<admission::Lease>,
-@@ -363 +258 @@
++    errors_owned: RefCell<admission::Work<admission::Lease>>,
+@@ -363 +259 @@
 -        self
 +        admission::infallible(self.try_finish(&admission::Unbounded))
-@@ -374 +269 @@
+@@ -374 +270 @@
 -        self.errors.borrow_mut().push(msg);
 +        admission::infallible(self.try_parse_error(msg, &admission::Unbounded))
-@@ -413,10 +308 @@
+@@ -413,10 +309 @@
 -        Node::new(NodeData::Element {
 -            name,
 -            attrs: RefCell::new(attrs),
@@ -1313,16 +1416,16 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -            mathml_annotation_xml_integration_point: flags.mathml_annotation_xml_integration_point,
 -        })
 +        admission::infallible(self.try_create_element(name, attrs, flags, &admission::Unbounded))
-@@ -426 +312 @@
+@@ -426 +313 @@
 -        Node::new(NodeData::Comment { contents: text })
 +        admission::infallible(self.try_create_comment(text, &admission::Unbounded))
-@@ -430,4 +316 @@
+@@ -430,4 +317 @@
 -        Node::new(NodeData::ProcessingInstruction {
 -            target,
 -            contents: data,
 -        })
 +        admission::infallible(self.try_create_pi(target, data, &admission::Unbounded))
-@@ -437,18 +320 @@
+@@ -437,18 +321 @@
 -        // Append to an existing Text node if we have one.
 -        if let NodeOrText::AppendText(text) = &child {
 -            if let Some(h) = parent.children.borrow().last() {
@@ -1342,7 +1445,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -            },
 -        );
 +        admission::infallible(self.try_append(parent, child, &admission::Unbounded))
-@@ -458,32 +324 @@
+@@ -458,32 +325 @@
 -        let (parent, i) = get_parent_and_index(sibling)
 -            .expect("append_before_sibling called on node without parent");
 -
@@ -1376,7 +1479,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -        child.parent.set(Some(Rc::downgrade(&parent)));
 -        parent.children.borrow_mut().insert(i, child);
 +        admission::infallible(self.try_before_sibling(sibling, child, &admission::Unbounded))
-@@ -498,9 +333,6 @@
+@@ -498,9 +334,6 @@
 -        let parent = element.parent.take();
 -        let has_parent = parent.is_some();
 -        element.parent.set(parent);
@@ -1392,7 +1495,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 +            child,
 +            &admission::Unbounded,
 +        ))
-@@ -515,8 +347 @@
+@@ -515,8 +348 @@
 -        append(
 -            &self.document,
 -            Node::new(NodeData::Doctype {
@@ -1402,7 +1505,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -            }),
 -        );
 +        admission::infallible(self.try_doctype(name, public_id, system_id, &admission::Unbounded))
-@@ -526,15 +351 @@
+@@ -526,15 +352 @@
 -        let mut existing = if let NodeData::Element { ref attrs, .. } = target.data {
 -            attrs.borrow_mut()
 -        } else {
@@ -1419,7 +1522,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -                .filter(|attr| !existing_names.contains(&attr.name)),
 -        );
 +        admission::infallible(self.try_attributes(target, attrs, &admission::Unbounded))
-@@ -548,10 +359 @@
+@@ -548,10 +360 @@
 -        let mut children = node.children.borrow_mut();
 -        let mut new_children = new_parent.children.borrow_mut();
 -        for child in children.iter() {
@@ -1431,7 +1534,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -        }
 -        new_children.extend(mem::take(&mut *children));
 +        admission::infallible(self.try_reparent(node, new_parent, &admission::Unbounded))
-@@ -571,0 +374,11 @@
+@@ -571,0 +375,11 @@
 +    /// KaminIDE patch: снятие узла со стека открытых элементов.
 +    ///
 +    /// Спецификация требует переносить содержимое выбранного `<option>` в
@@ -1443,7 +1546,7 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 +        admission::infallible(self.try_pop(node, &admission::Unbounded))
 +    }
 +
-@@ -573,24 +386 @@
+@@ -573,24 +387 @@
 -        let NodeData::Element { name, attrs, .. } = &option.data else {
 -            panic!("\"maybe clone an option into selectedcontent\" called with non-element node");
 -        };
@@ -1469,12 +1572,13 @@ index 3cd9c2a93fee730db545c66ba9b4252714335aec..90be5fc52f398894276837851a96cf02
 -            }
 -        }
 +        admission::infallible(self.try_selectedcontent(option, &admission::Unbounded))
-@@ -605,0 +396 @@
+@@ -605,0 +397,2 @@
 +            errors_lease: RefCell::new(None),
-@@ -659 +450 @@
++            errors_owned: RefCell::new(admission::Work::new()),
+@@ -659 +452 @@
 -                    },
 +                    }
-@@ -677 +468 @@
+@@ -677 +470 @@
 -                },
 +                }
 diff --git a/vendor/markup5ever_rcdom/selectedcontent_tests.rs b/vendor/markup5ever_rcdom/selectedcontent_tests.rs

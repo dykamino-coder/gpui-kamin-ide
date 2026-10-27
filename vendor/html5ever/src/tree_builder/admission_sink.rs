@@ -168,6 +168,14 @@ impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<S>> TreeBuilder<H, S, A> {
         self.admission.check(Operation::ParseError(&message))?;
         self.admission.parse_error(&self.sink, message)
     }
+    pub(super) fn checked_parse_error_fmt(
+        &self,
+        message: std::fmt::Arguments<'_>,
+    ) -> Result<(), A::Error> {
+        self.result()?;
+        self.admission.check(Operation::ParseError(""))?;
+        self.admission.parse_error_fmt(&self.sink, message)
+    }
     pub(super) fn checked_selectedcontent(&self, node: &H) -> Result<(), A::Error> {
         self.result()?;
         self.admission.check(Operation::Selectedcontent(node))?;

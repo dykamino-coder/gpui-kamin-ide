@@ -79,7 +79,7 @@ impl<'a> DocumentBuilder<'a> {
     /// Разобрать документ с выбранными настройками в свежем состоянии.
     ///
     /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
-    /// Source admission предшествует разбору; parser allocations подключает B3.
+    /// Source admission предшествует разбору и ранним проходам документа.
     pub fn build(&self) -> Result<Document, super::DocumentFailure> {
         let budget = crate::budget::DocumentBudget::new(self.limits.clone(), self.governor.clone())
             .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;

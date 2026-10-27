@@ -12,6 +12,7 @@ use std::{
 };
 use tendril::StrTendril;
 
+mod diagnostics;
 mod mutations;
 mod selectedcontent;
 
@@ -40,6 +41,12 @@ pub trait Admission {
     }
     fn buffer(&self, text: &mut StrTendril, additional: usize) -> Result<(), Self::Error>;
     fn visit(&self) -> Result<(), Self::Error>;
+    fn work(&self, amount: usize) -> Result<(), Self::Error> {
+        for _ in 0..amount {
+            self.visit()?;
+        }
+        Ok(())
+    }
     fn allocation(&self, error: TryReserveError) -> Self::Error;
     fn overflow(&self) -> Self::Error;
 }
@@ -60,6 +67,9 @@ impl Admission for Unbounded {
         Ok(())
     }
     fn visit(&self) -> Result<(), Infallible> {
+        Ok(())
+    }
+    fn work(&self, _: usize) -> Result<(), Infallible> {
         Ok(())
     }
     fn allocation(&self, _: TryReserveError) -> Infallible {
@@ -96,6 +106,9 @@ pub(crate) fn reserve<T, A: Admission>(
         .checked_mul(mem::size_of::<T>())
         .ok_or_else(|| policy.overflow())?;
     let next_lease = policy.storage(bytes)?;
+    for _ in 0..values.len() {
+        policy.visit()?;
+    }
     let mut next = Vec::new();
     next.try_reserve_exact(capacity)
         .map_err(|error| policy.allocation(error))?;
@@ -150,6 +163,7 @@ pub(crate) fn payload<A: Admission>(
         NodeData::Element { attrs, .. } => (
             0,
             attrs.borrow().iter().try_fold(0usize, |total, attr| {
+                policy.visit()?;
                 sum(&[
                     total,
                     attr.name.local.len(),
@@ -207,6 +221,7 @@ impl RcDom {
             errors: RefCell::new(Vec::new()),
             quirks_mode: Cell::new(markup5ever::interface::tree_builder::NoQuirks),
             errors_lease: RefCell::new(None),
+            errors_owned: RefCell::new(Work::new()),
         })
     }
 }
@@ -240,6 +255,7 @@ pub(crate) fn parent_index<A: Admission>(
 
 pub(crate) fn remove<A: Admission>(target: &Handle, policy: &A) -> Result<(), A::Error> {
     if let Some((parent, index)) = parent_index(target, policy)? {
+        policy.work(parent.children.borrow().len() - index - 1)?;
         parent.children.borrow_mut().remove(index);
         target.parent.set(None);
     }

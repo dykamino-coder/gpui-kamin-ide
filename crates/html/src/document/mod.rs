@@ -101,10 +101,12 @@ impl Document {
         let key = base_url::key(html, theme_css, base_url.as_ref());
         #[cfg(feature = "engine-bench")]
         let parse_started = std::time::Instant::now();
-        let input = crate::dom::input::Admitted::parse(html, xml).map_err(|mut failure| {
-            failure.report.revision = Some(key);
-            failure
-        })?;
+        let input = crate::dom::input::Admitted::with_budget(html, xml, revision.clone()).map_err(
+            |mut failure| {
+                failure.report.revision = Some(key);
+                failure
+            },
+        )?;
         #[cfg(feature = "engine-bench")]
         let mut timings = BuildTimings {
             parse: parse_started.elapsed(),

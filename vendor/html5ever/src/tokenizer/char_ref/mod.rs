@@ -239,15 +239,14 @@ impl CharRefTokenizer {
         };
 
         if error {
-            let msg = if tokenizer.opts.exact_errors {
-                Cow::from(format!(
+            if tokenizer.opts.exact_errors {
+                tokenizer.emit_error_fmt(format_args!(
                     "Invalid numeric character reference value 0x{:06X}",
                     self.num
-                ))
+                ));
             } else {
-                Cow::from("Invalid numeric character reference")
-            };
-            tokenizer.emit_error(msg);
+                tokenizer.emit_error(Cow::from("Invalid numeric character reference"));
+            }
         }
 
         self.finish_one(c)
@@ -290,12 +289,14 @@ impl CharRefTokenizer {
     }
 
     fn emit_name_error<Sink: TokenSink>(&mut self, tokenizer: &Tokenizer<Sink>) {
-        let msg = if tokenizer.opts.exact_errors {
-            Cow::from(format!("Invalid character reference &{}", self.name_buf()))
+        if tokenizer.opts.exact_errors {
+            tokenizer.emit_error_fmt(format_args!(
+                "Invalid character reference &{}",
+                self.name_buf()
+            ));
         } else {
-            Cow::from("Invalid character reference")
-        };
-        tokenizer.emit_error(msg);
+            tokenizer.emit_error(Cow::from("Invalid character reference"));
+        }
     }
 
     fn unconsume_name(&mut self, input: &BufferQueue) {

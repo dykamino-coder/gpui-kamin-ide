@@ -322,8 +322,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 _ => false,
             }
         {
-            let msg = format!("Bad character {c}");
-            self.emit_error(Cow::Owned(msg));
+            self.emit_error_fmt(format_args!("Bad character {c}"));
         }
 
         trace!("got character {c}");
@@ -456,14 +455,13 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         #[cfg(feature = "trace_tokenizer")]
         trace!("  error");
 
-        let msg = if self.opts.exact_errors {
-            Cow::from("Bad character")
+        if self.opts.exact_errors {
+            self.emit_error(Cow::from("Bad character"));
         } else {
             let c = self.current_char.get();
             let state = self.state.get();
-            Cow::from(format!("Saw {c} in state {state:?}"))
-        };
-        self.emit_error(msg);
+            self.emit_error_fmt(format_args!("Saw {c} in state {state:?}"));
+        }
     }
 
     #[inline]
@@ -471,13 +469,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         #[cfg(feature = "trace_tokenizer")]
         trace!("  error_eof");
 
-        let msg = if self.opts.exact_errors {
-            Cow::from("Unexpected EOF")
+        if self.opts.exact_errors {
+            self.emit_error(Cow::from("Unexpected EOF"));
         } else {
             let state = self.state.get();
-            Cow::from(format!("Saw EOF in state {state:?}"))
-        };
-        self.emit_error(msg);
+            self.emit_error_fmt(format_args!("Saw EOF in state {state:?}"));
+        }
     }
 
     fn emit_char(&self, c: char) {
@@ -607,6 +604,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         let target = mem::take(&mut *self.current_pi_target.borrow_mut());
         let mut data = mem::take(&mut *self.current_pi_data.borrow_mut());
         let raw = mem::take(&mut *self.current_pi_raw.borrow_mut());
+        if !self.admit(self.sink.before_work(target.len())) {
+            return;
+        }
         if Self::pi_is_comment(&target) {
             if raw.len() > 1 {
                 self.process_token_and_continue(CommentToken(raw));
@@ -661,7 +661,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         }
         if !self.admit(self.sink.before_attribute(
             &self.current_attr_name.borrow(),
-            self.current_tag_attrs.borrow().len(),
+            self.current_attr_value.borrow().len(),
         )) {
             return;
         }
@@ -669,12 +669,16 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         self.current_attr_name.borrow_mut().clear();
         // Check for a duplicate attribute.
         // FIXME: the spec says we should error as soon as the name is finished.
-        let dup = {
-            self.current_tag_attrs
-                .borrow()
-                .iter()
-                .any(|a| a.name.local == name)
-        };
+        let mut dup = false;
+        for attr in self.current_tag_attrs.borrow().iter() {
+            if !self.admit(self.sink.before_work(1)) {
+                return;
+            }
+            if attr.name.local == name {
+                dup = true;
+                break;
+            }
+        }
 
         if dup {
             self.emit_error(Borrowed("Duplicate attribute"));
@@ -774,6 +778,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         let target = buffer.get_or_insert_with(StrTendril::new);
         if !self.is_aborted() && self.admit(self.sink.before_buffer(target, c.len_utf8())) {
             option_push(buffer, c);
+        }
+    }
+
+    fn emit_error_fmt(&self, error: std::fmt::Arguments<'_>) {
+        if !self.is_aborted() {
+            self.admit(self.sink.process_error(error, self.current_line.get()));
         }
     }
 
@@ -3264,6 +3274,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 // Запись с годным именем без `>` теряется целиком: она ещё не
                 // инструкция. Негодная давно стала комментарием, и комментарий
                 // на конце ввода отдаётся как есть.
+                if !self.admit(self.sink.before_work(target.len())) {
+                    return ProcessResult::Suspend;
+                }
                 if raw.len() > 1 && Self::pi_is_comment(&target) {
                     self.process_token_and_continue(CommentToken(raw));
                 }

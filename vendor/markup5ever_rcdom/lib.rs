@@ -250,6 +250,7 @@ pub struct RcDom {
     /// The document's quirks mode.
     pub quirks_mode: Cell<QuirksMode>,
     errors_lease: RefCell<admission::Lease>,
+    errors_owned: RefCell<admission::Work<admission::Lease>>,
 }
 
 impl TreeSink for RcDom {
@@ -394,6 +395,7 @@ impl Default for RcDom {
             errors: Default::default(),
             quirks_mode: Cell::new(tree_builder::NoQuirks),
             errors_lease: RefCell::new(None),
+            errors_owned: RefCell::new(admission::Work::new()),
         }
     }
 }

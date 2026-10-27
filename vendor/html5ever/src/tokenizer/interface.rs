@@ -154,9 +154,21 @@ pub trait TokenSink {
     fn before_attribute(&self, _: &str, _: usize) -> bool {
         true
     }
+    /// Byte/entry work in canonical scans that do not consume tokenizer input.
+    fn before_work(&self, _: usize) -> bool {
+        true
+    }
     fn reserve<T>(&self, values: &mut Storage<T>, additional: usize) -> bool {
         values.reserve(additional);
         true
+    }
+
+    /// Formatting is deferred so a bounded sink can admit diagnostic storage.
+    fn process_error(&self, message: std::fmt::Arguments<'_>, line: u64) -> bool {
+        !matches!(
+            self.process_token(Token::ParseError(Cow::Owned(message.to_string())), line),
+            TokenSinkResult::Abort
+        )
     }
 
     /// Process a token.

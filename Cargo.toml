@@ -108,6 +108,9 @@ debug = "line-tables-only"
 codegen-units = 16
 
 [patch.crates-io]
+# Existing dependency nodes: fallible storage hooks retain allocation leases.
+tendril = { path = "vendor/tendril" }
+xml-rs = { path = "vendor/xml-rs" }
 # Vendored gpui (gpui-pre 0.3.8 + патчи KaminIDE: рендер CSS, текст, раскладка,
 # захват кадра). Windows-платформа в 0.3.8 — отдельный крейт, тоже с патчами
 # (DirectX-рендерер, DirectWrite, dcomp/blit по окну).

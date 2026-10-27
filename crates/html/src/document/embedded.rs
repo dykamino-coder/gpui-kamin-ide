@@ -53,6 +53,7 @@ pub(crate) fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) 
         true,
         None,
         &Default::default(),
+        None,
     )
     .unwrap()
 }
@@ -67,8 +68,28 @@ pub(crate) fn parse_embedded_sized(
     scrolling: bool,
     scheme: Option<EmbeddingScheme>,
     fonts: &crate::text::metrics::FontContext,
+    parent: Option<crate::dom::input::Context>,
 ) -> Result<Embedded, super::DocumentFailure> {
-    let input = crate::dom::input::Admitted::parse(html, false).map_err(|mut failure| {
+    let prepare = || {
+        let context = match parent {
+            Some(context) => context,
+            None => crate::dom::input::Context::new(
+                crate::budget::DocumentBudget::new(Default::default(), Default::default())
+                    .map_err(|error| {
+                        super::DocumentFailure::new(super::FailureReason::Budget(error))
+                    })?
+                    .revision(),
+            ),
+        };
+        context
+            .budget()
+            .source(html, theme_css)
+            .map_err(|error| super::DocumentFailure::new(super::FailureReason::Budget(error)))?;
+        let revision = context.budget().clone();
+        let input = crate::dom::input::Admitted::with_context(html, false, context)?;
+        Ok::<_, super::DocumentFailure>((input, revision))
+    };
+    let (input, revision) = prepare().map_err(|mut failure| {
         failure.scope = super::FailureScope::EmbeddedDocument;
         failure
     })?;
@@ -82,6 +103,7 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let state = DocState::new(media);
+    state.budget.replace(Some(revision));
     state.traversal.set_embedded();
     let vcx = state.values();
     fonts.install(vcx);

@@ -135,6 +135,7 @@ fn embedded_degradation_is_typed_scoped_and_retains_the_whole_dom() {
         true,
         None,
         &Default::default(),
+        None,
     )
     .unwrap();
     let limit = embedded.state.traversal_limit().unwrap();

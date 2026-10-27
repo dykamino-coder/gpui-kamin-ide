@@ -19,7 +19,7 @@ pub(crate) struct TraversalState {
 
 impl TraversalState {
     pub(crate) fn retain(&self, source: Admitted) {
-        *self.source.borrow_mut() = Some(source);
+        self.source.replace(Some(source));
     }
 
     pub(crate) fn set_embedded(&self) {
@@ -43,6 +43,14 @@ impl TraversalState {
 }
 
 impl DocState {
+    pub(crate) fn input_context(&self) -> Option<crate::dom::input::Context> {
+        self.traversal
+            .source
+            .borrow()
+            .as_ref()
+            .map(Admitted::context)
+    }
+
     /// Полный исходный DOM, включая детей за пределом представления и templates.
     pub fn source_dom(&self) -> Option<Handle> {
         self.traversal

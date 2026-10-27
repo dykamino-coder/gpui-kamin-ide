@@ -1,40 +1,92 @@
 //! Полный HTML/XML DOM: парсер не обрезает и не сплющивает вложенность.
 //!
-//! B1 ограничивает глубину downstream, но не allocation/work самого парсера (B3).
+//! HTML driver и sink используют общую per-revision admission policy.
 
+#[cfg(test)]
+mod admission_tests;
+mod html;
 mod names;
+mod overhead;
+mod policy;
 
 use crate::document::DocumentFailure;
-use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::RcDom;
+use std::rc::Rc;
+
+/// Подразборы одной ревизии разделяют work, имена и structural admission.
+#[derive(Clone)]
+pub(crate) struct Context(Rc<policy::Policy>);
+
+impl Context {
+    pub(crate) fn new(budget: crate::budget::RevisionBudget) -> Self {
+        Self(Rc::new(policy::Policy::new(budget)))
+    }
+
+    pub(crate) fn budget(&self) -> &crate::budget::RevisionBudget {
+        &self.0.budget
+    }
+}
 
 /// Исходное дерево остаётся во владении revision независимо от её представления.
 pub(crate) struct Admitted {
     pub dom: RcDom,
     pub xhtml: bool,
+    context: Context,
 }
 
 impl Admitted {
+    #[cfg(test)]
     pub fn parse(source: &str, xml: bool) -> Result<Self, DocumentFailure> {
+        let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
+            .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+        let revision = budget.revision();
+        revision
+            .source(source, "")
+            .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+        Self::with_budget(source, xml, revision)
+    }
+
+    pub(crate) fn with_budget(
+        source: &str,
+        xml: bool,
+        revision: crate::budget::RevisionBudget,
+    ) -> Result<Self, DocumentFailure> {
+        Self::with_context(source, xml, Context::new(revision))
+    }
+
+    pub(crate) fn context(&self) -> Context {
+        self.context.clone()
+    }
+
+    pub(crate) fn with_context(
+        source: &str,
+        xml: bool,
+        context: Context,
+    ) -> Result<Self, DocumentFailure> {
+        let policy = &context.0;
         let mut dom = if xml {
             super::xml::xml_dom(source)?
         } else {
-            raw_html(source)
+            html::parse(source, policy).map_err(DocumentFailure::new)?
         };
-        let xhtml = xml || super::content::is_xhtml(&dom.document);
-        if xhtml
-            && !xml
-            && let std::borrow::Cow::Owned(expanded) =
-                super::xhtml::expand_xhtml_self_closing(source)
-        {
-            dom = raw_html(&expanded);
+        let xhtml = xml
+            || super::content::is_xhtml(&dom.document, &policy.budget)
+                .map_err(DocumentFailure::new)?;
+        if xhtml && !xml {
+            let (expanded, _storage) =
+                super::xhtml::expand_xhtml_self_closing(source, &policy.budget)
+                    .map_err(DocumentFailure::new)?;
+            if let std::borrow::Cow::Owned(expanded) = expanded {
+                drop(dom);
+                dom = html::parse(&expanded, policy).map_err(DocumentFailure::new)?;
+            }
         }
-        Ok(Self { dom, xhtml })
+        Ok(Self {
+            dom,
+            xhtml,
+            context,
+        })
     }
-}
-
-fn raw_html(source: &str) -> RcDom {
-    html5ever::parse_document(RcDom::default(), Default::default()).one(source)
 }
 
 #[cfg(test)]

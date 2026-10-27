@@ -35,7 +35,7 @@ use std::{fmt, slice};
 
 use crate::tokenizer::states::RawKind;
 use crate::tree_builder::tag_sets::*;
-use crate::util::str::to_escaped_string;
+use crate::util::str::EscapedDebug;
 use log::{debug, log_enabled, warn, Level};
 use markup5ever::{expanded_name, local_name, namespace_prefix, ns};
 
@@ -208,7 +208,9 @@ where
         tb.create_root(Storage::default())
             .unwrap_or_else(|never| match never {});
         // 10. Reset the parser's insertion mode appropriately.
-        let old_insertion_mode = tb.reset_insertion_mode();
+        let old_insertion_mode = tb
+            .reset_insertion_mode()
+            .unwrap_or_else(|never| match never {});
         tb.mode.set(old_insertion_mode);
 
         tb
@@ -361,7 +363,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
         if log_enabled!(Level::Debug) {
             debug!(
                 "processing {} in insertion mode {:?}",
-                to_escaped_string(token),
+                format_args!("{token:?}"),
                 mode
             );
         }
@@ -375,6 +377,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
         let mut more_tokens = StorageDeque::new();
 
         loop {
+            self.work(1)?;
             let should_have_acknowledged_self_closing_flag = matches!(
                 token,
                 Token::Tag(Tag {
@@ -413,6 +416,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
                     token = t;
                 },
                 ProcessResult::SplitWhitespace(mut buf) => {
+                    self.admit_whitespace_run(&buf)?;
                     let p = buf.pop_front_char_run(|c| c.is_ascii_whitespace());
                     let Some((first, is_ws)) = p else {
                         return Ok(tokenizer::TokenSinkResult::Continue);
@@ -457,7 +461,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
     fn appropriate_place_for_insertion(
         &self,
         override_target: Option<Handle>,
-    ) -> InsertionPoint<Handle> {
+    ) -> Result<InsertionPoint<Handle>, A::Error> {
         use self::tag_sets::*;
 
         declare_tag_set!(foster_target = "table" "tbody" "tfoot" "thead" "tr");
@@ -466,10 +470,10 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
             if self.html_elem_named(&target, local_name!("template")) {
                 // No foster parenting (inside template).
                 let contents = self.sink.get_template_contents(&target);
-                return InsertionPoint::LastChild(contents);
+                return Ok(InsertionPoint::LastChild(contents));
             } else {
                 // No foster parenting (the common case).
-                return InsertionPoint::LastChild(target);
+                return Ok(InsertionPoint::LastChild(target));
             }
         }
 
@@ -477,18 +481,19 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
         let open_elems = self.open_elems.borrow();
         let mut iter = open_elems.iter().rev().peekable();
         while let Some(elem) = iter.next() {
+            self.work(1)?;
             if self.html_elem_named(elem, local_name!("template")) {
                 let contents = self.sink.get_template_contents(elem);
-                return InsertionPoint::LastChild(contents);
+                return Ok(InsertionPoint::LastChild(contents));
             } else if self.html_elem_named(elem, local_name!("table")) {
-                return InsertionPoint::TableFosterParenting {
+                return Ok(InsertionPoint::TableFosterParenting {
                     element: elem.clone(),
                     prev_element: (*iter.peek().unwrap()).clone(),
-                };
+                });
             }
         }
         let html_elem = self.html_elem();
-        InsertionPoint::LastChild(html_elem.clone())
+        Ok(InsertionPoint::LastChild(html_elem.clone()))
     }
 
     fn insert_at(
@@ -516,6 +521,14 @@ where
     Sink: TreeSink<Handle = Handle>,
 {
     type Handle = Handle;
+
+    fn process_error(&self, message: fmt::Arguments<'_>, line: u64) -> bool {
+        if line != self.current_line.get() {
+            self.sink.set_current_line(line);
+            self.current_line.set(line);
+        }
+        self.result().is_ok() && self.record(self.checked_parse_error_fmt(message))
+    }
 
     fn process_token(&self, token: tokenizer::Token, line_number: u64) -> TokenSinkResult<Handle> {
         if self.result().is_err() {
@@ -546,6 +559,10 @@ where
         self.result().is_ok()
             && self.record(self.admission.check(Operation::Name(name)))
             && self.record(self.admission.check(Operation::TokenAttribute(name, count)))
+    }
+
+    fn before_work(&self, count: usize) -> bool {
+        self.result().is_ok() && self.record(self.work(count))
     }
 
     fn reserve<T>(&self, values: &mut Storage<T>, additional: usize) -> bool {
@@ -628,15 +645,15 @@ where
     Sink: TreeSink<Handle = Handle>,
 {
     fn unexpected<T: fmt::Debug>(&self, _thing: &T) -> Result<ProcessResult<Handle>, A::Error> {
-        self.checked_parse_error(if self.opts.exact_errors {
-            Cow::from(format!(
+        if self.opts.exact_errors {
+            self.checked_parse_error_fmt(format_args!(
                 "Unexpected token {} in insertion mode {:?}",
-                to_escaped_string(_thing),
+                EscapedDebug(_thing),
                 self.mode.get()
-            ))
+            ))?;
         } else {
-            Cow::from("Unexpected token")
-        })?;
+            self.checked_parse_error(Cow::from("Unexpected token"))?;
+        }
         Ok(ProcessResult::Done)
     }
 
@@ -652,14 +669,16 @@ where
         }
     }
 
-    fn position_in_active_formatting(&self, element: &Handle) -> Option<usize> {
-        self.active_formatting
-            .borrow()
-            .iter()
-            .position(|n| match n {
-                FormatEntry::Marker => false,
-                FormatEntry::Element(ref handle, _) => self.sink.same_node(handle, element),
-            })
+    fn position_in_active_formatting(&self, element: &Handle) -> Result<Option<usize>, A::Error> {
+        Ok(self
+            .find(
+                self.active_formatting.borrow().iter().enumerate(),
+                |(_, n)| match n {
+                    FormatEntry::Marker => false,
+                    FormatEntry::Element(ref handle, _) => self.sink.same_node(handle, element),
+                },
+            )?
+            .map(|(i, _)| i))
     }
 
     fn set_quirks_mode(&self, mode: QuirksMode) {
@@ -719,7 +738,7 @@ where
         child: NodeOrText<Handle>,
         override_target: Option<Handle>,
     ) -> Result<(), A::Error> {
-        let insertion_point = self.appropriate_place_for_insertion(override_target);
+        let insertion_point = self.appropriate_place_for_insertion(override_target)?;
         self.insert_at(insertion_point, child)?;
         Ok(())
     }
@@ -728,7 +747,7 @@ where
         // 1.
         if self.current_node_named(subject.clone())
             && self
-                .position_in_active_formatting(&self.current_node())
+                .position_in_active_formatting(&self.current_node())?
                 .is_none()
         {
             self.pop()?;
@@ -737,12 +756,14 @@ where
 
         // 2. 3. 4.
         for _ in 0..8 {
+            self.work(1)?;
             // 5.
             // We clone the Handle and Tag so they don't cause an immutable borrow of self.
             let maybe_fmt_entry = self
-                .active_formatting_end_to_marker()
-                .iter()
-                .find(|&(_, _, tag)| tag.name == subject)
+                .find(
+                    self.active_formatting_end_to_marker().iter(),
+                    |&(_, _, tag)| tag.name == subject,
+                )?
                 .map(|(i, h, t)| self.clone_tag(t).map(|tag| (i, h.clone(), tag)))
                 .transpose()?;
 
@@ -756,19 +777,18 @@ where
                 });
             };
 
-            let Some(fmt_elem_stack_index) = self
-                .open_elems
-                .borrow()
-                .iter()
-                .rposition(|n| self.sink.same_node(n, &fmt_elem))
+            let Some((fmt_elem_stack_index, _)) = self.find(
+                self.open_elems.borrow().iter().enumerate().rev(),
+                |(_, n)| self.sink.same_node(n, &fmt_elem),
+            )?
             else {
                 self.checked_parse_error(Borrowed("Formatting element not open"))?;
-                self.active_formatting.borrow_mut().remove(fmt_elem_index);
+                self.remove_from(&self.active_formatting, fmt_elem_index)?;
                 return Ok(());
             };
 
             // 7.
-            if !self.in_scope(default_scope, |n| self.sink.same_node(&n, &fmt_elem)) {
+            if !self.in_scope(default_scope, |n| self.sink.same_node(&n, &fmt_elem))? {
                 self.checked_parse_error(Borrowed("Formatting element not in scope"))?;
                 return Ok(());
             }
@@ -780,18 +800,20 @@ where
 
             // 9.
             let maybe_furthest_block = self
-                .open_elems
-                .borrow()
-                .iter()
-                .enumerate()
-                .skip(fmt_elem_stack_index)
-                .find(|&(_, open_element)| self.elem_in(open_element, special_tag))
+                .find(
+                    self.open_elems
+                        .borrow()
+                        .iter()
+                        .enumerate()
+                        .skip(fmt_elem_stack_index),
+                    |&(_, open_element)| self.elem_in(open_element, special_tag),
+                )?
                 .map(|(i, h)| (i, h.clone()));
 
             let Some((furthest_block_index, furthest_block)) = maybe_furthest_block else {
                 // 10.
                 self.open_elems.borrow_mut().truncate(fmt_elem_stack_index);
-                self.active_formatting.borrow_mut().remove(fmt_elem_index);
+                self.remove_from(&self.active_formatting, fmt_elem_index)?;
                 return Ok(());
             };
 
@@ -809,6 +831,7 @@ where
             // 13.1.
             let mut inner_counter = 0;
             loop {
+                self.work(1)?;
                 // 13.2.
                 inner_counter += 1;
 
@@ -823,15 +846,16 @@ where
 
                 // 13.5.
                 if inner_counter > 3 {
-                    self.position_in_active_formatting(&node)
-                        .map(|position| self.active_formatting.borrow_mut().remove(position));
-                    self.open_elems.borrow_mut().remove(node_index);
+                    if let Some(position) = self.position_in_active_formatting(&node)? {
+                        self.remove_from(&self.active_formatting, position)?;
+                    }
+                    self.remove_from(&self.open_elems, node_index)?;
                     continue;
                 }
 
-                let Some(node_formatting_index) = self.position_in_active_formatting(&node) else {
+                let Some(node_formatting_index) = self.position_in_active_formatting(&node)? else {
                     // 13.6.
-                    self.open_elems.borrow_mut().remove(node_index);
+                    self.remove_from(&self.open_elems, node_index)?;
                     continue;
                 };
 
@@ -896,30 +920,29 @@ where
             match bookmark {
                 Bookmark::Replace(to_replace) => {
                     let index = self
-                        .position_in_active_formatting(&to_replace)
+                        .position_in_active_formatting(&to_replace)?
                         .expect("bookmark not found in active formatting elements");
                     self.active_formatting.borrow_mut()[index] = new_entry;
                 },
                 Bookmark::InsertAfter(previous) => {
                     let index = self
-                        .position_in_active_formatting(&previous)
+                        .position_in_active_formatting(&previous)?
                         .expect("bookmark not found in active formatting elements")
                         + 1;
                     self.insert_into(&self.active_formatting, index, new_entry)?;
                     let old_index = self
-                        .position_in_active_formatting(&fmt_elem)
+                        .position_in_active_formatting(&fmt_elem)?
                         .expect("formatting element not found in active formatting elements");
-                    self.active_formatting.borrow_mut().remove(old_index);
+                    self.remove_from(&self.active_formatting, old_index)?;
                 },
             }
 
             // 19.
             self.remove_from_stack(&fmt_elem)?;
-            let new_furthest_block_index = self
-                .open_elems
-                .borrow()
-                .iter()
-                .position(|n| self.sink.same_node(n, &furthest_block))
+            let (new_furthest_block_index, _) = self
+                .find(self.open_elems.borrow().iter().enumerate(), |(_, n)| {
+                    self.sink.same_node(n, &furthest_block)
+                })?
                 .expect("furthest block missing from open element stack");
             self.insert_into(&self.open_elems, new_furthest_block_index + 1, new_element)?;
 
@@ -945,27 +968,27 @@ where
 
     fn remove_from_stack(&self, elem: &Handle) -> Result<(), A::Error> {
         let position = self
-            .open_elems
-            .borrow()
-            .iter()
-            .rposition(|x| self.sink.same_node(elem, x));
+            .find(
+                self.open_elems.borrow().iter().enumerate().rev(),
+                |(_, x)| self.sink.same_node(elem, x),
+            )?
+            .map(|(i, _)| i);
         if let Some(position) = position {
-            self.open_elems.borrow_mut().remove(position);
+            self.remove_from(&self.open_elems, position)?;
             self.checked_pop(elem)?;
         }
         Ok(())
     }
 
-    fn is_marker_or_open(&self, entry: &FormatEntry<Handle>) -> bool {
-        match *entry {
+    fn is_marker_or_open(&self, entry: &FormatEntry<Handle>) -> Result<bool, A::Error> {
+        Ok(match *entry {
             FormatEntry::Marker => true,
             FormatEntry::Element(ref node, _) => self
-                .open_elems
-                .borrow()
-                .iter()
-                .rev()
-                .any(|n| self.sink.same_node(n, node)),
-        }
+                .find(self.open_elems.borrow().iter().rev(), |n| {
+                    self.sink.same_node(n, node)
+                })?
+                .is_some(),
+        })
     }
 
     /// <https://html.spec.whatwg.org/#reconstruct-the-active-formatting-elements>
@@ -982,7 +1005,7 @@ where
             // Step 2. If the last (most recently added) entry in the list of active formatting elements is a marker,
             // or if it is an element that is in the stack of open elements, then there is nothing to reconstruct;
             // stop this algorithm.
-            if self.is_marker_or_open(last) {
+            if self.is_marker_or_open(last)? {
                 return Ok(());
             }
         }
@@ -991,6 +1014,7 @@ where
         // NOTE: We track the index of the element instead
         let mut entry_index = self.active_formatting.borrow().len() - 1;
         loop {
+            self.work(1)?;
             // Step 4. Rewind: If there are no entries before entry in the list of active formatting elements,
             // then jump to the step labeled create.
             if entry_index == 0 {
@@ -1004,13 +1028,14 @@ where
             // go to the step labeled rewind.
             // Step 7. Advance: Let entry be the element one later than entry in the list
             // of active formatting elements.
-            if self.is_marker_or_open(&self.active_formatting.borrow()[entry_index]) {
+            if self.is_marker_or_open(&self.active_formatting.borrow()[entry_index])? {
                 entry_index += 1;
                 break;
             }
         }
 
         loop {
+            self.work(1)?;
             // Step 8. Create: Insert an HTML element for the token for which the element entry was created,
             // to obtain new element.
             let tag = match self.active_formatting.borrow()[entry_index] {
@@ -1071,7 +1096,8 @@ where
             "thead" "tr" "body" "html");
 
         for elem in self.open_elems.borrow().iter() {
-            let error = {
+            self.work(1)?;
+            {
                 let elem_name = self.sink.elem_name(elem);
                 let name = elem_name.expanded();
                 if body_end_ok(name) {
@@ -1079,12 +1105,13 @@ where
                 }
 
                 if self.opts.exact_errors {
-                    Cow::from(format!("Unexpected open tag {name:?} at end of body"))
+                    self.checked_parse_error_fmt(format_args!(
+                        "Unexpected open tag {name:?} at end of body"
+                    ))?;
                 } else {
-                    Cow::from("Unexpected open tag at end of body")
+                    self.checked_parse_error(Cow::from("Unexpected open tag at end of body"))?;
                 }
-            };
-            self.checked_parse_error(error)?;
+            }
             // FIXME: Do we keep checking after finding one bad tag?
             // The spec suggests not.
             return Ok(());
@@ -1092,23 +1119,24 @@ where
         Ok(())
     }
 
-    fn in_scope<TagSet, Pred>(&self, scope: TagSet, pred: Pred) -> bool
+    fn in_scope<TagSet, Pred>(&self, scope: TagSet, pred: Pred) -> Result<bool, A::Error>
     where
         TagSet: Fn(ExpandedName) -> bool,
         Pred: Fn(Handle) -> bool,
     {
         for node in self.open_elems.borrow().iter().rev() {
+            self.work(1)?;
             if pred(node.clone()) {
-                return true;
+                return Ok(true);
             }
             if scope(self.sink.elem_name(node).expanded()) {
-                return false;
+                return Ok(false);
             }
         }
 
         // supposed to be impossible, because <html> is always in scope
 
-        false
+        Ok(false)
     }
 
     fn elem_in<TagSet>(&self, elem: &Handle, set: TagSet) -> bool
@@ -1123,18 +1151,19 @@ where
         *elem_name.ns() == ns!(html) && *elem_name.local_name() == name
     }
 
-    fn in_html_elem_named(&self, name: LocalName) -> bool {
-        self.open_elems
-            .borrow()
-            .iter()
-            .any(|elem| self.html_elem_named(elem, name.clone()))
+    fn in_html_elem_named(&self, name: LocalName) -> Result<bool, A::Error> {
+        Ok(self
+            .find(self.open_elems.borrow().iter(), |elem| {
+                self.html_elem_named(elem, name.clone())
+            })?
+            .is_some())
     }
 
     fn current_node_named(&self, name: LocalName) -> bool {
         self.html_elem_named(&self.current_node(), name)
     }
 
-    fn in_scope_named<TagSet>(&self, scope: TagSet, name: LocalName) -> bool
+    fn in_scope_named<TagSet>(&self, scope: TagSet, name: LocalName) -> Result<bool, A::Error>
     where
         TagSet: Fn(ExpandedName) -> bool,
     {
@@ -1147,6 +1176,7 @@ where
         TagSet: Fn(ExpandedName) -> bool,
     {
         loop {
+            self.work(1)?;
             {
                 let open_elems = self.open_elems.borrow();
                 let Some(elem) = open_elems.last() else {
@@ -1193,6 +1223,7 @@ where
     {
         let mut n = 0;
         loop {
+            self.work(1)?;
             self.admission.check(Operation::TreeStep)?;
             n += 1;
             match self.open_elems.borrow_mut().pop() {
@@ -1216,11 +1247,13 @@ where
     /// Signal an error if it was not the first one.
     fn expect_to_close(&self, name: LocalName) -> Result<(), A::Error> {
         if self.pop_until_named(name.clone())? != 1 {
-            self.checked_parse_error(if self.opts.exact_errors {
-                Cow::from(format!("Unexpected open element while closing {name:?}"))
+            if self.opts.exact_errors {
+                self.checked_parse_error_fmt(format_args!(
+                    "Unexpected open element while closing {name:?}"
+                ))?;
             } else {
-                Cow::from("Unexpected open element")
-            })?;
+                self.checked_parse_error(Cow::from("Unexpected open element"))?;
+            }
         }
         Ok(())
     }
@@ -1233,22 +1266,18 @@ where
     }
 
     fn close_p_element_in_button_scope(&self) -> Result<(), A::Error> {
-        if self.in_scope_named(button_scope, local_name!("p")) {
+        if self.in_scope_named(button_scope, local_name!("p"))? {
             self.close_p_element()?;
         }
         Ok(())
     }
 
     // Check <input> tags for type=hidden
-    fn is_type_hidden(&self, tag: &Tag) -> bool {
-        match tag
-            .attrs
-            .iter()
-            .find(|&at| at.name.expanded() == expanded_name!("", "type"))
-        {
-            None => false,
-            Some(at) => at.value.eq_ignore_ascii_case("hidden"),
-        }
+    fn is_type_hidden(&self, tag: &Tag) -> Result<bool, A::Error> {
+        let attr = self.find(tag.attrs.iter(), |at| {
+            at.name.expanded() == expanded_name!("", "type")
+        })?;
+        Ok(attr.is_some_and(|at| at.value.eq_ignore_ascii_case("hidden")))
     }
 
     fn foster_parent_in_body(&self, token: Token) -> Result<ProcessResult<Handle>, A::Error> {
@@ -1267,22 +1296,23 @@ where
             self.orig_mode.set(Some(self.mode.get()));
             ProcessResult::Reprocess(InsertionMode::InTableText, token)
         } else {
-            self.checked_parse_error(if self.opts.exact_errors {
-                Cow::from(format!(
+            if self.opts.exact_errors {
+                self.checked_parse_error_fmt(format_args!(
                     "Unexpected characters {} in table",
-                    to_escaped_string(&token)
-                ))
+                    EscapedDebug(&token)
+                ))?;
             } else {
-                Cow::from("Unexpected characters in table")
-            })?;
+                self.checked_parse_error(Cow::from("Unexpected characters in table"))?;
+            }
             self.foster_parent_in_body(token)?
         })
     }
 
     // https://html.spec.whatwg.org/multipage/#reset-the-insertion-mode-appropriately
-    fn reset_insertion_mode(&self) -> InsertionMode {
+    fn reset_insertion_mode(&self) -> Result<InsertionMode, A::Error> {
         let open_elems = self.open_elems.borrow();
         for (i, mut node) in open_elems.iter().enumerate().rev() {
+            self.work(1)?;
             let last = i == 0usize;
             let context_elem = self.context_elem.borrow();
             if let (true, Some(ctx)) = (last, context_elem.as_ref()) {
@@ -1298,32 +1328,34 @@ where
             };
             match *name {
                 local_name!("td") | local_name!("th") if !last => {
-                    return InsertionMode::InCell;
+                    return Ok(InsertionMode::InCell);
                 },
-                local_name!("tr") => return InsertionMode::InRow,
+                local_name!("tr") => return Ok(InsertionMode::InRow),
                 local_name!("tbody") | local_name!("thead") | local_name!("tfoot") => {
-                    return InsertionMode::InTableBody;
+                    return Ok(InsertionMode::InTableBody);
                 },
-                local_name!("caption") => return InsertionMode::InCaption,
-                local_name!("colgroup") => return InsertionMode::InColumnGroup,
-                local_name!("table") => return InsertionMode::InTable,
-                local_name!("template") => return *self.template_modes.borrow().last().unwrap(),
+                local_name!("caption") => return Ok(InsertionMode::InCaption),
+                local_name!("colgroup") => return Ok(InsertionMode::InColumnGroup),
+                local_name!("table") => return Ok(InsertionMode::InTable),
+                local_name!("template") => {
+                    return Ok(*self.template_modes.borrow().last().unwrap())
+                },
                 local_name!("head") => {
                     if !last {
-                        return InsertionMode::InHead;
+                        return Ok(InsertionMode::InHead);
                     }
                 },
-                local_name!("body") => return InsertionMode::InBody,
-                local_name!("frameset") => return InsertionMode::InFrameset,
+                local_name!("body") => return Ok(InsertionMode::InBody),
+                local_name!("frameset") => return Ok(InsertionMode::InFrameset),
                 local_name!("html") => match *self.head_elem.borrow() {
-                    None => return InsertionMode::BeforeHead,
-                    Some(_) => return InsertionMode::AfterHead,
+                    None => return Ok(InsertionMode::BeforeHead),
+                    Some(_) => return Ok(InsertionMode::AfterHead),
                 },
 
                 _ => (),
             }
         }
-        InsertionMode::InBody
+        Ok(InsertionMode::InBody)
     }
 
     fn close_the_cell(&self) -> Result<(), A::Error> {
@@ -1423,7 +1455,7 @@ where
         declare_tag_set!(listed = [form_associatable] - "img");
 
         // Step 7.
-        let insertion_point = self.appropriate_place_for_insertion(None);
+        let insertion_point = self.appropriate_place_for_insertion(None)?;
         let (node1, node2) = match insertion_point {
             InsertionPoint::LastChild(ref p) | InsertionPoint::BeforeSibling(ref p) => {
                 (p.clone(), None)
@@ -1436,9 +1468,10 @@ where
 
         // Step 12.
         let qname = QualName::new(None, ns, name);
+        self.work(attrs.len())?;
         let form_is_associatable = form_associatable(qname.expanded())
             && self.form_elem.borrow().is_some()
-            && !self.in_html_elem_named(local_name!("template"))
+            && !self.in_html_elem_named(local_name!("template"))?
             && !(listed(qname.expanded())
                 && attrs
                     .iter()
@@ -1497,7 +1530,7 @@ where
         ns: Namespace,
         only_add_to_element_stack: bool,
     ) -> Result<Handle, A::Error> {
-        let adjusted_insertion_location = self.appropriate_place_for_insertion(None);
+        let adjusted_insertion_location = self.appropriate_place_for_insertion(None)?;
         let qname = QualName::new(None, ns, tag.name.clone());
         let elem = self.checked_create_element(qname, tag.attrs, tag.had_duplicate_attributes)?;
 
@@ -1513,8 +1546,8 @@ where
     /// <https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead>
     ///
     /// A start tag whose tag name is "template"
-    fn should_attach_declarative_shadow(&self, tag: &Tag) -> bool {
-        let adjusted_insertion_location = self.appropriate_place_for_insertion(None);
+    fn should_attach_declarative_shadow(&self, tag: &Tag) -> Result<bool, A::Error> {
+        let adjusted_insertion_location = self.appropriate_place_for_insertion(None)?;
 
         let (intended_parent, _node2) = match adjusted_insertion_location {
             InsertionPoint::LastChild(ref p) | InsertionPoint::BeforeSibling(ref p) => {
@@ -1527,6 +1560,7 @@ where
         };
 
         // template start tag's shadowrootmode is not in the none state
+        self.work(tag.attrs.len())?;
         let is_shadow_root_mode = tag.attrs.iter().any(|attr| {
             attr.name.local == local_name!("shadowrootmode")
                 && (attr.value.as_ref() == "open" || attr.value.as_ref() == "closed")
@@ -1550,7 +1584,9 @@ where
             None => true,
         };
 
-        is_shadow_root_mode && allow_declarative_shadow_roots && adjusted_current_node_not_topmost
+        Ok(is_shadow_root_mode
+            && allow_declarative_shadow_roots
+            && adjusted_current_node_not_topmost)
     }
 
     /// <https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead>
@@ -1570,6 +1606,7 @@ where
         let mut first_match = None;
         let mut matches = 0usize;
         for (i, _, old_tag) in self.active_formatting_end_to_marker().iter() {
+            self.work(1)?;
             if self.equivalent_tags(&tag, old_tag)? {
                 first_match = Some(i);
                 matches += 1;
@@ -1577,9 +1614,10 @@ where
         }
 
         if matches >= 3 {
-            self.active_formatting
-                .borrow_mut()
-                .remove(first_match.expect("matches with no index"));
+            self.remove_from(
+                &self.active_formatting,
+                first_match.expect("matches with no index"),
+            )?;
         }
 
         let elem = self.insert_element(
@@ -1598,6 +1636,7 @@ where
 
     fn clear_active_formatting_to_marker(&self) -> Result<(), A::Error> {
         loop {
+            self.work(1)?;
             self.admission.check(Operation::TreeStep)?;
             match self.active_formatting.borrow_mut().pop() {
                 None | Some(FormatEntry::Marker) => break,
@@ -1611,6 +1650,7 @@ where
         // Look back for a matching open element.
         let mut match_idx = None;
         for (i, elem) in self.open_elems.borrow().iter().enumerate().rev() {
+            self.work(1)?;
             if self.html_elem_named(elem, tag.name.clone()) {
                 match_idx = Some(i);
                 break;
@@ -1641,9 +1681,10 @@ where
 
     fn handle_misnested_a_tags(&self, tag: &Tag) -> Result<(), A::Error> {
         let Some(node) = self
-            .active_formatting_end_to_marker()
-            .iter()
-            .find(|&(_, n, _)| self.html_elem_named(n, local_name!("a")))
+            .find(
+                self.active_formatting_end_to_marker().iter(),
+                |&(_, n, _)| self.html_elem_named(n, local_name!("a")),
+            )?
             .map(|(_, n, _)| n.clone())
         else {
             return Ok(());
@@ -1651,8 +1692,9 @@ where
 
         self.unexpected(tag)?;
         self.adoption_agency(local_name!("a"))?;
-        self.position_in_active_formatting(&node)
-            .map(|index| self.active_formatting.borrow_mut().remove(index));
+        if let Some(index) = self.position_in_active_formatting(&node)? {
+            self.remove_from(&self.active_formatting, index)?;
+        }
         self.remove_from_stack(&node)?;
         Ok(())
     }
@@ -1723,6 +1765,8 @@ where
         mut tag: Tag,
         ns: Namespace,
     ) -> Result<ProcessResult<Handle>, A::Error> {
+        self.work(tag.attrs.len())?;
+        self.work(tag.attrs.len())?;
         match ns {
             ns!(mathml) => self.adjust_mathml_attributes(&mut tag),
             ns!(svg) => self.adjust_svg_attributes(&mut tag),
@@ -1894,6 +1938,8 @@ where
     }
 
     fn foreign_start_tag(&self, mut tag: Tag) -> Result<ProcessResult<Handle>, A::Error> {
+        self.work(tag.attrs.len())?;
+        self.work(tag.attrs.len())?;
         let current_ns = self
             .sink
             .elem_name(&self.adjusted_current_node())
@@ -1966,13 +2012,14 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
 
             tokenizer::DoctypeToken(dt) => {
                 if self.mode.get() == InsertionMode::Initial {
+                    self.work(data::doctype_work())?;
                     let (err, quirk) = data::doctype_error_and_quirks(&dt, self.opts.iframe_srcdoc);
                     if err {
-                        self.checked_parse_error(if self.opts.exact_errors {
-                            Cow::from(format!("Bad DOCTYPE: {dt:?}"))
+                        if self.opts.exact_errors {
+                            self.checked_parse_error_fmt(format_args!("Bad DOCTYPE: {dt:?}"))?;
                         } else {
-                            Cow::from("Bad DOCTYPE")
-                        })?;
+                            self.checked_parse_error(Cow::from("Bad DOCTYPE"))?;
+                        }
                     }
                     let Doctype {
                         name,
@@ -1992,11 +2039,14 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
                     self.mode.set(InsertionMode::BeforeHtml);
                     return Ok(tokenizer::TokenSinkResult::Continue);
                 } else {
-                    self.checked_parse_error(if self.opts.exact_errors {
-                        Cow::from(format!("DOCTYPE in insertion mode {:?}", self.mode.get()))
+                    if self.opts.exact_errors {
+                        self.checked_parse_error_fmt(format_args!(
+                            "DOCTYPE in insertion mode {:?}",
+                            self.mode.get()
+                        ))?;
                     } else {
-                        Cow::from("DOCTYPE in body")
-                    })?;
+                        self.checked_parse_error(Cow::from("DOCTYPE in body"))?;
+                    }
                     return Ok(tokenizer::TokenSinkResult::Continue);
                 }
             },

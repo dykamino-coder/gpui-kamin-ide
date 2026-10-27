@@ -137,6 +137,7 @@ fn document(policy: &Policy) -> Result<RcDom, Error> {
     }
     dom.try_append(&dom.document, NodeOrText::AppendNode(select), policy)?;
     dom.try_parse_error("recovery".into(), policy)?;
+    dom.try_parse_error_fmt(format_args!("recovery {}", "KEEP/LOST"), policy)?;
     dom.try_finish(policy)
 }
 

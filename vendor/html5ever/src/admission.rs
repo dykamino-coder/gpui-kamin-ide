@@ -24,6 +24,8 @@ pub enum Operation<'a, H> {
     },
     TokenizerStep,
     TreeStep,
+    /// Admitted byte/entry work before a bulk copy, comparison or shift.
+    Work(usize),
     CreateElement(&'a QualName, &'a [Attribute]),
     CreateComment(&'a str),
     CreatePi(&'a str, &'a str),
@@ -152,6 +154,13 @@ pub trait Admission<S: TreeSink> {
     ) -> Result<(), Self::Error> {
         sink.parse_error(message);
         Ok(())
+    }
+    fn parse_error_fmt(
+        &self,
+        sink: &S,
+        message: std::fmt::Arguments<'_>,
+    ) -> Result<(), Self::Error> {
+        self.parse_error(sink, std::borrow::Cow::Owned(message.to_string()))
     }
     fn finish(&self, sink: S) -> Result<S::Output, Self::Error>
     where

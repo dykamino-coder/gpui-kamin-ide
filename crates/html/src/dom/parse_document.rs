@@ -51,8 +51,15 @@ pub(super) fn parse_mode(
     media: Media,
     xml: bool,
 ) -> Result<Parsed, DocumentFailure> {
-    let input = Admitted::parse(html, xml)?;
+    let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
+        .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+    let revision = budget.revision();
+    revision
+        .source(html, extra_css)
+        .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
+    let input = Admitted::with_budget(html, xml, revision.clone())?;
     let doc = crate::document::state::DocState::new(media);
+    doc.budget.replace(Some(revision));
     let nodes = convert(&input, extra_css, media, &doc);
     doc.traversal.retain(input);
     Ok(Parsed { nodes, doc })
