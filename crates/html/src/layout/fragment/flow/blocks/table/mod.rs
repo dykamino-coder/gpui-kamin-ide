@@ -38,6 +38,8 @@ pub(crate) struct TableBox {
     /// break-inside: avoid секции)`.
     pub(crate) head: Option<(usize, usize, bool)>,
     pub(crate) foot: Option<(usize, usize, bool)>,
+    /// `border-collapse: collapse`: рамки ячеек и таблицы сросшиеся.
+    pub(crate) collapsed: bool,
 }
 
 /// Ряд таблицы: факты стиля его границ и ячеек.
@@ -76,6 +78,7 @@ impl TableBox {
     pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
         let mut out = TableBox {
             key: table_key(e),
+            collapsed: e.style.used().border_collapse == Some(true),
             ..Default::default()
         };
         for n in children(&e.children).filter(|n| !is_blank(n)) {

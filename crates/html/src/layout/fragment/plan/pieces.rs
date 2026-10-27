@@ -51,8 +51,10 @@ pub(super) fn fill_pieces_inner(
         }
         let k = measured.as_ref().unwrap_or(k);
         let flow = measured.as_ref().map_or(flow, |k| k.h.max(k.over));
-        let rg = measured.as_ref().map_or(rg, |k| k.repeat);
+        let source = measured.as_ref().map_or(rg, |k| k.repeat);
         let target = target_at(*col);
+        let rg = source.admit(target, paged);
+        let next_head = |c: usize, f: f32| source.admit(target_at(c), paged).head_at(f);
         let room = target - cur;
         // `box-decoration-break: clone` (css-break-4 §break-decoration):
         // украшения резервируются в каждом фрагменте (Blink
@@ -71,11 +73,9 @@ pub(super) fn fill_pieces_inner(
         // Продолжение — под повторяемой шапкой, подвал резервируется снизу
         // (Blink table_layout_algorithm.cc:1145–1149,1323–1327).
         let hd = if copy > 0 { rg.head_at(from) } else { 0.0 };
-        let room_all = room;
-        let rf = rg.foot_for(from, room_all);
-        let room = room_all - rf;
-        // Непоследний фрагмент тянется до края; подвал стоит снизу
-        // (css-break-3 §box-splitting).
+        let rf = rg.foot_for(from, room);
+        let (room_all, room) = (room, room - rf);
+        // Непоследний фрагмент тянется до края (css-break-3 §box-splitting).
         let ft = |h: f32| {
             if rf > 0.0 {
                 (room_all - h).max(rf)
@@ -92,7 +92,7 @@ pub(super) fn fill_pieces_inner(
             .find(|&f| f > from + 0.01 && f < flow + 0.01 && f - from <= room + 0.01);
         match forced_or_fits(
             limit, col, y, not_top, placed, out, float_hold, kid, k, &mut cur, &mut from,
-            &mut copy, rg, target, rest, hd, room_all, ft, forced,
+            &mut copy, &next_head, target, rest, hd, room_all, ft, forced,
         ) {
             Some(LoopStep::Break) => break,
             Some(LoopStep::Continue) => continue,
@@ -238,7 +238,7 @@ pub(super) fn fill_pieces_inner(
         }
         copy += 1;
         *col += 1;
-        cur = rg.head_at(from);
+        cur = next_head(*col, from);
         *placed = *col < not_top;
         skip_float(float_hold, col, &mut cur, placed);
     }
