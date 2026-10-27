@@ -193,6 +193,7 @@ pub(super) fn fill_pieces_inner(
             k,
             from,
             room,
+            target,
             edge,
             mono,
             at,

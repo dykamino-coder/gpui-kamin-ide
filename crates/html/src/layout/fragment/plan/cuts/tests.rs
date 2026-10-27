@@ -37,6 +37,24 @@ fn box_that_fits_a_column_moves_before_last_resort_slicing() {
 }
 
 #[test]
+fn class_a_boundaries_do_not_remove_class_c_breaks_in_overflow() {
+    let mut block = kid(250.);
+    block.over = 500.;
+    block.cuts = vec![(125., 125.), (250., 250.)];
+    let (_, _, plan) = fill_at(&[block], &|_| 100., Space::columns(5));
+    assert_eq!(
+        plan.iter().map(|f| (f.from, f.h)).collect::<Vec<_>>(),
+        [
+            (0., 100.),
+            (100., 100.),
+            (200., 100.),
+            (300., 100.),
+            (400., 100.)
+        ]
+    );
+}
+
+#[test]
 fn forced_break_skips_margin_and_growth_uses_the_same_plan() {
     let mut k = kid(120.0);
     k.forced = vec![40.0];
