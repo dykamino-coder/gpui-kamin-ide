@@ -33,7 +33,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
-    "xml-rs": ["Admission: opt-in terminal driver checks canonical lexer and parser work, including queued entity expansion, without synthesizing XML errors or EOF."],
+    "xml-rs": [],
     "gpui": [
         "Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.",
         "Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.",
