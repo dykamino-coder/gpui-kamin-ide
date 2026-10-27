@@ -3,7 +3,7 @@
 
 use gpui::{
     AnyElement, AvailableSpace, Bounds, Context, Hsla, IntoElement, ParentElement, Pixels, Render,
-    Scene, TestAppContext, Window, canvas, point, px, size,
+    Scene, Styled, TestAppContext, Window, canvas, point, px, size,
 };
 use std::{cell::RefCell, rc::Rc};
 
