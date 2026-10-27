@@ -11,11 +11,16 @@
 //! проверяется по хэшу, а не по строке целиком.
 
 #[cfg(test)]
+mod admission_diagnostics_tests;
+#[cfg(test)]
 mod admission_tests;
 mod base_url;
 #[cfg(test)]
 mod budget_tests;
 mod builder;
+mod diagnostics;
+#[cfg(test)]
+mod diagnostics_tests;
 #[cfg(test)]
 mod early_tests;
 #[cfg(feature = "engine-bench")]

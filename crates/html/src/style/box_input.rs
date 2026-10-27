@@ -10,8 +10,7 @@ use crate::style::computed::writing_mode::WritingMode;
 pub struct BoxStyleInput {
     pub(crate) style: std::rc::Rc<crate::style::computed::Computed>,
     pub(crate) context: Option<std::rc::Rc<BoxContext<WritingMode, Align>>>,
-    pub(crate) canvas_background:
-        Option<std::rc::Rc<crate::style::canvas_background::CanvasBackground>>,
+    pub(crate) canvas_background: Option<crate::style::canvas_background::CanvasBackgroundSource>,
     pub(crate) background_paint: crate::style::background_paint::BackgroundPaint,
     pub(crate) inline_decoration: crate::style::inline_decoration::InlineDecoration,
 }
@@ -22,7 +21,7 @@ impl BoxStyleInput {
         context: Option<std::rc::Rc<BoxContext<WritingMode, Align>>>,
         inline_decoration: crate::style::inline_decoration::InlineDecoration,
         background_paint: crate::style::background_paint::BackgroundPaint,
-        canvas_background: Option<std::rc::Rc<crate::style::canvas_background::CanvasBackground>>,
+        canvas_background: Option<crate::style::canvas_background::CanvasBackgroundSource>,
     ) -> Self {
         Self {
             style,

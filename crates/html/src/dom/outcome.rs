@@ -45,7 +45,7 @@ pub struct TraversalLimit {
 
 impl TraversalLimit {
     pub fn code(self) -> &'static str {
-        "KAMINIDE_LIMIT_TRAVERSAL_DEPTH"
+        crate::diagnostics::Code::TraversalDepth.as_str()
     }
 }
 
@@ -59,7 +59,7 @@ impl std::fmt::Display for TraversalLimit {
     }
 }
 
-/// B1 хранит первый предел; очередь последующих диагностик относится к B5.
+/// Первый предел ревизии; все наблюдения — в `Document::take_diagnostics`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildReport {
     /// Ключ запрошенного содержимого; прямой DOM-разбор не имеет ключа Document.
@@ -92,15 +92,7 @@ impl DocumentFailure {
 
     /// Стабильный код для host/headless, без разбора текста сообщения.
     pub fn code(&self) -> &'static str {
-        match self.reason {
-            FailureReason::XmlSyntax { .. } => "KAMINIDE_XML_SYNTAX",
-            FailureReason::Budget(crate::budget::BudgetError::Exceeded(_)) => {
-                "KAMINIDE_BUDGET_EXCEEDED"
-            }
-            FailureReason::Budget(_) => "KAMINIDE_BUDGET_INVARIANT",
-            FailureReason::Allocation => "KAMINIDE_ALLOCATION_FAILED",
-            FailureReason::CapacityOverflow => "KAMINIDE_CAPACITY_OVERFLOW",
-        }
+        crate::diagnostics::Code::of(self.reason).as_str()
     }
 }
 

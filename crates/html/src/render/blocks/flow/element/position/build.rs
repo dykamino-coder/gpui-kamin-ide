@@ -86,7 +86,7 @@ pub(super) async fn build(
         )
     };
     let built = match root_box {
-        Some(area) if e.style.used().root_box && e.style.used().canvas_bg => {
+        Some(area) if e.style.used().root_box && e.style.used().canvas_background.is_some() => {
             crate::paint::background::record_root_box(
                 built,
                 area,

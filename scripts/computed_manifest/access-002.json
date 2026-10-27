@@ -1,5 +1,4 @@
 [
-{"field":"Computed.transform_ancestor","owners":{"interactive":{"read":2},"layout":{"read":3},"paint":{"read":2},"render":{"read":1},"style":{"initialize":1,"read":3}}},
 {"field":"Computed.transform_box","owners":{"animation":{"read":1},"resources":{"read":1},"style":{"initialize":1,"write":1}}},
 {"field":"Computed.transform_box_fill","owners":{"resources":{"read":1},"style":{"initialize":1,"write":1}}},
 {"field":"Computed.transform_origin","owners":{"animation":{"read":1},"paint":{"read":2,"write":1},"resources":{"read":1},"resources:test":{"write":1},"style":{"initialize":1,"read":1,"write":2}}},
@@ -46,7 +45,7 @@
 {"field":"InheritedStyle.caret_color","owners":{"style":{"initialize":1,"read":3,"write":3}}},
 {"field":"InheritedStyle.clamp_legacy","owners":{"style":{"initialize":1,"read":5,"write":3},"style:test":{"read":3}}},
 {"field":"InheritedStyle.clamp_mark","owners":{"render":{"read":1},"style":{"initialize":1,"read":4,"write":4},"style:test":{"read":2}}},
-{"field":"InheritedStyle.color","owners":{"animation":{"read":2,"write":1},"animation:test":{"read":2,"write":2},"document:test":{"read":4},"dom":{"read":3,"write":2},"dom:test":{"read":23},"layout":{"read":22,"write":3},"layout:test":{"read":8},"paint":{"read":6,"write":2},"paint:test":{"read":13},"render":{"read":3,"write":1},"resources:test":{"read":3,"write":1},"style":{"initialize":1,"mutable":1,"read":33,"write":11},"style:test":{"read":45},"svg":{"read":3},"text":{"read":14,"write":3},"text:test":{"read":2}}},
+{"field":"InheritedStyle.color","owners":{"animation":{"read":2,"write":1},"animation:test":{"read":2,"write":2},"document:test":{"read":7},"dom":{"read":3,"write":2},"dom:test":{"read":23},"layout":{"read":22,"write":3},"layout:test":{"read":8},"paint":{"read":6,"write":2},"paint:test":{"read":13},"render":{"read":4,"write":1},"resources:test":{"read":3,"write":1},"style":{"initialize":1,"mutable":1,"read":33,"write":11},"style:test":{"read":45},"svg":{"read":3},"text":{"read":14,"write":3},"text:test":{"read":2}}},
 {"field":"InheritedStyle.color_scheme","owners":{"dom":{"read":1},"style":{"initialize":1,"read":4,"write":3},"style:test":{"read":3}}},
 {"field":"InheritedStyle.combine_upright","owners":{"style":{"initialize":1,"read":2,"write":4},"style:test":{"read":1},"text":{"read":1,"write":1}}},
 {"field":"InheritedStyle.cursor","owners":{"layout":{"read":2},"paint":{"read":1},"style":{"initialize":1,"read":3,"write":3},"style:test":{"read":1}}},

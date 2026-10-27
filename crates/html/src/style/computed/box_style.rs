@@ -51,7 +51,7 @@ pub struct BoxStyle {
     /// Факты коробки-родителя отдельно от вычисленных значений элемента.
     pub(crate) context: BoxContext<super::writing_mode::WritingMode, super::Align>,
     /// Собственный источник холста, отдельно от computed CSS.
-    pub(crate) canvas_background: Option<Rc<crate::style::canvas_background::CanvasBackground>>,
+    pub(crate) canvas_background: Option<crate::style::canvas_background::CanvasBackgroundSource>,
     /// Собственный used-фон коробки, отдельно от наследуемого computed CSS.
     pub(crate) background_paint: crate::style::background_paint::BackgroundPaint,
     /// Физическая реализация текущего строчного контекста, отдельно от CSS элемента.

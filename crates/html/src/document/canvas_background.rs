@@ -8,8 +8,10 @@
 //! Здесь же предикаты `any_side` и `any_containment` для соседних проходов.
 
 use crate::dom::Node;
+use crate::style::canvas_background::{CanvasBackground, CanvasBackgroundSource};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use std::rc::Rc;
 
 /// Есть ли у обёртки НЕНУЛЕВОЙ отступ хоть с одной стороны.
 ///
@@ -100,8 +102,8 @@ pub(super) fn mark_canvas_background(
         if html.tag == "html" {
             html.style.cascaded_mut().root_box = true;
             // css-display-3 §2.7: «a display of contents computes to block on
-            // the root element». Без коробки корня слой канваса (`canvas_bg`
-            // ниже) не заводился, и фон-картинка корня пропадала целиком
+            // the root element». Без коробки корня слой канваса
+            // не заводился, и фон-картинка корня пропадала целиком
             // (`display-contents-root-background` 99.93).
             if html.style.cascaded().display == Some(crate::style::computed::Display::Contents) {
                 html.style.cascaded_mut().display = Some(crate::style::computed::Display::Block);
@@ -129,7 +131,8 @@ pub(super) fn mark_canvas_background(
             // одну `contain-{body,html}-bg-002`, где написан именно
             // `contain: paint`; `layout`, `size` и `style` пролезали.
             if html.tag == "body" && has_bg(&root_style) && boxed(html) && !any_containment(html) {
-                html.style.cascaded_mut().canvas_bg = true;
+                html.style
+                    .set_canvas_background(Some(CanvasBackgroundSource::Root));
             }
             continue;
         }
@@ -139,7 +142,8 @@ pub(super) fn mark_canvas_background(
             continue;
         }
         if has_bg(&root_style) && boxed(html) {
-            html.style.cascaded_mut().canvas_bg = true;
+            html.style
+                .set_canvas_background(Some(CanvasBackgroundSource::Root));
             continue;
         }
         // css-backgrounds-3 §2.11.2: донор задаёт фон холста, но не CSS
@@ -161,15 +165,13 @@ pub(super) fn mark_canvas_background(
                 // его computed CSS остаётся источником явного inherit.
                 body.style
                     .set_background_paint(crate::style::background_paint::BackgroundPaint::Initial);
-                moved =
-                    Some(crate::style::canvas_background::CanvasBackground::from_computed(&donor));
+                moved = Some(CanvasBackground::from_computed(&donor));
                 break;
             }
         }
         if let Some(take) = moved {
             html.style
-                .set_canvas_background(Some(std::rc::Rc::new(take)));
-            html.style.cascaded_mut().canvas_bg = true;
+                .set_canvas_background(Some(CanvasBackgroundSource::Donor(Rc::new(take))));
         }
     }
     nodes
@@ -186,3 +188,6 @@ mod suppression_tests;
 
 #[cfg(test)]
 mod expression_tests;
+
+#[cfg(test)]
+mod role_tests;

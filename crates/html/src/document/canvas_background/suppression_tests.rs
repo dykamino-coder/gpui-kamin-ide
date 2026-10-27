@@ -3,6 +3,7 @@
 use super::mark_canvas_background;
 use crate::dom::test_support::find;
 use crate::style::background_paint::*;
+use crate::style::canvas_background::CanvasBackgroundSource;
 use crate::style::cascade::materialize::{box_style, materialize};
 use crate::style::computed::{BoxStyle, Computed};
 use std::rc::Rc;
@@ -22,17 +23,20 @@ fn donor_computed_background_remains_the_source_for_explicit_inheritance() {
     let donor = body.style.computed();
     let inherited = child.style.computed();
     let canvas = root.style.used().canvas_background.unwrap();
-    assert!(root.style.computed().canvas_bg);
+    let CanvasBackgroundSource::Donor(background) = &canvas else {
+        panic!("expected body donor");
+    };
+    assert!(root.style.used().canvas_background.is_some());
     assert_eq!(inherited.background, donor.background);
     assert_eq!(inherited.gradient_raw, donor.gradient_raw);
     assert_eq!(inherited.bg_size, donor.bg_size);
     assert_eq!(inherited.bg_pos, donor.bg_pos);
     assert_eq!(inherited.bg_repeat, donor.bg_repeat);
-    assert_eq!(canvas.color, donor.background);
-    assert_eq!(canvas.gradient_image, donor.gradient_raw);
-    assert_eq!(canvas.top.size, donor.bg_size);
-    assert_eq!(canvas.top.position, donor.bg_pos);
-    assert_eq!(canvas.top.repeat, donor.bg_repeat);
+    assert_eq!(background.color, donor.background);
+    assert_eq!(background.gradient_image, donor.gradient_raw);
+    assert_eq!(background.top.size, donor.bg_size);
+    assert_eq!(background.top.position, donor.bg_pos);
+    assert_eq!(background.top.repeat, donor.bg_repeat);
     assert!(root.style.computed().gradient_raw.is_none());
     assert!(donor.gradient.is_some());
     let root_box = box_style(&BoxStyle::default(), &root.style, vcx);

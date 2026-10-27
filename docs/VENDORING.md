@@ -56,7 +56,7 @@ Windows-изменения DirectWrite/DirectX не являются перен�
 ## Политика изменений
 
 Контракт границы paint policy хозяина и механизмов GPUI включён в rustdoc
-`PaintCtx` из `vendor/gpui/src/window/paint_contract.md`. Он различает текущие
+`PaintCtx` из `vendor/gpui/src/window/paint_contract.md`. Он определяет
 гарантии snapshot/replay, live identity прохода/группы и восстановление
 окружения при unwind. Общий `PaintState` и прежние consumers используют один
 проверяемый replay. CSS collector, atomic/stacking policy и fallback-порядок

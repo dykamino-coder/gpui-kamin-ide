@@ -5,15 +5,29 @@ use super::page::Page;
 use super::reftest_meta::reftest_pages;
 use super::show::Stage;
 use gpui::{AppContext as _, AsyncApp};
+use kamin_html::budget::DocumentLimits;
+use kamin_html::diagnostics::{DiagnosticBatch, console};
 use kamin_html::{BROWSER_CSS, Document};
 use std::rc::Rc;
 
 impl Stage {
-    pub(super) fn record_report(&self, doc: &Document) {
-        let report = doc.report();
-        if report.degradation.is_some() && self.degradation.get().is_none() {
-            self.degradation.set(Some(report));
+    /// Новые диагностики показанного документа — в машиночитаемый артефакт пары.
+    pub(super) fn record_diagnostics(&self, doc: &Document) {
+        let batch = doc.take_diagnostics();
+        let outcome = format!("{:?}", doc.report().status).to_lowercase();
+        self.write_engine(&outcome, &batch);
+    }
+
+    fn write_engine(&self, outcome: &str, batch: &DiagnosticBatch) {
+        if batch.is_empty() {
+            return;
         }
+        let prefix = format!(
+            "profile={}/{} outcome={outcome} ",
+            DocumentLimits::PROFILE_ID,
+            DocumentLimits::VERSION
+        );
+        console::write_batch(&mut self.engine_lines.borrow_mut(), &prefix, batch);
     }
 
     pub(super) fn prepare(
@@ -43,11 +57,17 @@ impl Stage {
                     };
                     match candidate {
                         Ok(doc) => {
-                            self.record_report(&doc);
+                            self.record_diagnostics(&doc);
                             page.doc = Rc::new(doc);
                             admitted = true;
                         }
                         Err(failure) => {
+                            let batch = DiagnosticBatch {
+                                revision: failure.report.revision,
+                                terminal: Some(failure),
+                                ..Default::default()
+                            };
+                            self.write_engine("failed", &batch);
                             if self.document_failure.get().is_none() {
                                 self.document_failure.set(Some(failure));
                             }

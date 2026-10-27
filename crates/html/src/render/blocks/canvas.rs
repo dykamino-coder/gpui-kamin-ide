@@ -4,6 +4,7 @@ use gpui::IntoElement;
 
 use crate::dom::Element;
 use crate::paint::effects::grouped::grouped;
+use crate::style::canvas_background::{CanvasBackground, CanvasBackgroundSource};
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
@@ -12,6 +13,7 @@ use gpui::{ParentElement, Styled, div, px};
 /// measurement it reads, for the root's own box to fill at prepaint.
 pub(crate) fn canvas_layer(
     e: &Element,
+    source: &CanvasBackgroundSource,
     opts: &RenderOpts,
     out: &mut Vec<gpui::AnyElement>,
 ) -> Option<crate::paint::background::RootMeasurement> {
@@ -19,23 +21,21 @@ pub(crate) fn canvas_layer(
     let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
     let measurement = measured.clone();
     let vcx = opts.cx.vcx();
-    // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
-    // §pagebackdrop): фильтр корня красит и его. Слой лежит
-    // СОСЕДОМ коробки корня, поэтому единственная точка окраски
-    // фильтром (`style::cascade::inherit`) до него не доходит — красим
-    // здесь, от СОБСТВЕННОГО фильтра корня.
+    // Фон холста входит в группу корня (css-compositing-1 §pagebackdrop).
+    // Соседний слой получает собственный фильтр корня отдельно.
     let root_filter = st.filter;
     let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
-    let mut background =
-        st.canvas_background.as_deref().cloned().unwrap_or_else(|| {
-            crate::style::canvas_background::CanvasBackground::from_computed(&st)
-        });
-    if st.canvas_background.is_some() {
-        background.resolve_viewport(&st, opts.viewport, vcx);
-    }
+    let background = match source {
+        CanvasBackgroundSource::Root => CanvasBackground::from_computed(&st),
+        CanvasBackgroundSource::Donor(donor) => {
+            let mut background = donor.as_ref().clone();
+            background.resolve_viewport(&st, opts.viewport, vcx);
+            background
+        }
+    };
     let canvas_layers = &background.layers;
     // Градиент корня — картинка (css-images-3 §3): его плитка
     // размещается и мостится от коробки корня (CSS 2.2 §14.2, «sized and
