@@ -26,23 +26,42 @@ impl TraversalState {
         self.embedded.set(true);
     }
 
-    pub(crate) fn limit(&self, traversal: TraversalKind, limit: usize, attempted: usize) {
+    /// Запомнить первый предел ревизии и вернуть это наблюдение для журнала.
+    pub(crate) fn limit(
+        &self,
+        traversal: TraversalKind,
+        limit: usize,
+        attempted: usize,
+    ) -> TraversalLimit {
+        let event = TraversalLimit {
+            scope: if self.embedded.get() {
+                FailureScope::EmbeddedDocument
+            } else {
+                FailureScope::Document
+            },
+            traversal,
+            limit,
+            attempted,
+        };
         if self.first_limit.get().is_none() {
-            self.first_limit.set(Some(TraversalLimit {
-                scope: if self.embedded.get() {
-                    FailureScope::EmbeddedDocument
-                } else {
-                    FailureScope::Document
-                },
-                traversal,
-                limit,
-                attempted,
-            }));
+            self.first_limit.set(Some(event));
         }
+        event
     }
 }
 
 impl DocState {
+    /// Проход представления упёрся в предел: статус ревизии и запись журнала.
+    pub(crate) fn traversal_limit_reached(
+        &self,
+        traversal: TraversalKind,
+        limit: usize,
+        attempted: usize,
+    ) {
+        let event = self.traversal.limit(traversal, limit, attempted);
+        self.record_diagnostic(event.into());
+    }
+
     /// Полный исходный DOM, включая детей за пределом представления и templates.
     pub fn source_dom(&self) -> Option<Handle> {
         self.traversal
