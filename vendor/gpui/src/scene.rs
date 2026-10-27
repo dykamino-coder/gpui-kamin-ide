@@ -2,6 +2,7 @@
 #![cfg_attr(windows, allow(dead_code))]
 
 mod record;
+mod vector_transform;
 pub(crate) mod segments;
 
 use schemars::JsonSchema;
@@ -1296,6 +1297,8 @@ pub struct Path<P: Clone + Debug + Default + PartialEq> {
     pub content_mask: ContentMask<P>,
     pub vertices: Vec<PathVertex<P>>,
     pub color: Background,
+    /// Original color coordinates and destination-to-source matrix for vector presentation.
+    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
     start: Point<P>,
     current: Point<P>,
     contour_count: usize,
@@ -1316,6 +1319,7 @@ impl Path<Pixels> {
             },
             content_mask: Default::default(),
             color: Default::default(),
+            color_mapping: None,
             contour_count: 0,
         }
     }
@@ -1336,6 +1340,12 @@ impl Path<Pixels> {
             current: self.current.scale(factor),
             contour_count: self.contour_count,
             color: self.color,
+            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
+                let mut matrix = *matrix;
+                matrix.translation[0] *= factor;
+                matrix.translation[1] *= factor;
+                (bounds.scale(factor), matrix)
+            }),
         }
     }
 

@@ -51,6 +51,9 @@ pub(in crate::scene) fn primitive(primitive: &mut Primitive, offset: Point<Scale
             mask(&mut p.content_mask, offset, clip);
         }
         Primitive::Path(p) => {
+            if let Some((_, inverse)) = &mut p.color_mapping {
+                *inverse = inverse.compose(TransformationMatrix::unit().translate(-offset));
+            }
             p.bounds = bounds(p.bounds, offset);
             p.start += offset;
             p.current += offset;

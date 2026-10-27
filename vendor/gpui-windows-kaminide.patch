@@ -6472,7 +6472,7 @@ index 8e65e6e626aa9bca9bdf60d268d2309ec4b4c1e1..5a01716319241eac4afa84e8e1380dd8
 +    }
 +    create(bgra)
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6b2cf72b2
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..e576317d4650c268fd9266129fea1146d4b4e1b5
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7489,15 +7489,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +        } else {
 +            (start, len)
 +        };
-@@ -672 +1480 @@
+@@ -643,0 +1452,2 @@
++                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
++                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
+@@ -672 +1482 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
-@@ -815,0 +1624,4 @@
+@@ -815,0 +1626,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1632,23 @@
+@@ -819,0 +1634,23 @@
 +        for surface in surfaces {
 +            // KaminIDE patch: метка группы (`Window::paint_group`) — не
 +            // размытие фона, а «положить сюда готовый буфер группы».
@@ -7521,7 +7524,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -820,0 +1656,394 @@
+@@ -820,0 +1658,394 @@
 +    }
 +
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
@@ -7916,10 +7919,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +            unsafe { dc.PSSetShaderResources(2, Some(&[None])) };
 +        }
 +        drawn
-@@ -840 +2069 @@
+@@ -840 +2071 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2120,12 @@
+@@ -890,0 +2122,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -7932,9 +7935,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +                (!h.is_invalid()).then_some(FrameLatencyGate(h))
 +            })
 +        };
-@@ -904,0 +2146 @@
+@@ -904,0 +2148 @@
 +            frame_gate,
-@@ -999,0 +2242,7 @@
+@@ -999,0 +2244,7 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -7942,20 +7945,20 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +            4,
 +            create_blend_state(device)?,
 +        )?;
-@@ -1009,0 +2259 @@
+@@ -1009,0 +2261 @@
 +            blur_pipeline,
-@@ -1018,0 +2269,4 @@
+@@ -1018,0 +2271,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2278 @@
+@@ -1023,0 +2280 @@
 +            comp_root,
-@@ -1030 +2285,2 @@
+@@ -1030 +2287,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1076,0 +2333,13 @@
+@@ -1076,0 +2335,13 @@
 +}
 +
 +/// KaminIDE patch: параметры кадра для вьюпорта `viewport_size` — общие у
@@ -7969,7 +7972,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +        is_bgr: font_info.is_bgr as u32,
 +        _pad: [0; 3],
 +    }
-@@ -1190,0 +2460,45 @@
+@@ -1190,0 +2462,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -8015,18 +8018,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2511 @@
+@@ -1197 +2513 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1319 +2633,2 @@
+@@ -1275,0 +2592,2 @@
++    color_bounds: Bounds<ScaledPixels>,
++    color_transform: TransformationMatrix,
+@@ -1319 +2637,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2662,2 @@
+@@ -1347 +2666,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1492,0 +2809,33 @@
+@@ -1492,0 +2813,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -8060,17 +8066,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..dcb956a053b3cd89225aa231a601d7a6
 +    }
 +}
 +
-@@ -1719,0 +3069,2 @@
+@@ -1719,0 +3073,2 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
-@@ -1796,0 +3148,4 @@
+@@ -1796,0 +3152,4 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
 +                },
-@@ -1883,0 +3239 @@
+@@ -1883,0 +3243 @@
 +                ShaderModule::Blur => "blur",
-@@ -2054,17 +3410,33 @@
+@@ -2054,17 +3414,33 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -9644,7 +9650,7 @@ index 0000000000000000000000000000000000000000..7c5331367978c8913accd30b438cc7de
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..ff8228e8707b98001f21bdebc770bb4b2958a58c
+index ba89c6873354fb7449b8294878e080a68c3dd29b..083bf61f8c4d12be847950ce14a3c59931845786
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -59,0 +60,2 @@
@@ -9922,10 +9928,38 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..ff8228e8707b98001f21bdebc770bb4b
 +                             shadow.element_corner_radii);
 +        alpha *= saturate(own + 0.5);
 +    }
-@@ -1221,0 +1355,2 @@
+@@ -966,0 +1100,2 @@
++    Bounds color_bounds;
++    TransformationMatrix color_transform;
+@@ -1002 +1137 @@
+-    Bounds bounds = sprite.bounds;
++    Bounds bounds = sprite.color_bounds;
+@@ -1017 +1152,3 @@
+-    float4 color = gradient_color(background, input.position.xy, bounds,
++    float2 color_position = mul(input.position.xy, sprite.color_transform.rotation_scale)
++        + sprite.color_transform.translation;
++    float4 color = gradient_color(background, color_position, bounds,
+@@ -1116,3 +1253,10 @@
+-        float2 st = ((input.position.xy - origin) / underline.bounds.size.y) - float2(0., 0.5);
+-        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / underline.bounds.size.y;
+-        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / underline.bounds.size.y;
++        float2 local = input.position.xy - origin;
++        float2 extent = underline.bounds.size;
++        uint turn = underline.pad & 3u;
++        if (turn == 1u) { local = float2(local.y, extent.x - local.x); }
++        if (turn == 2u) { local = extent - local; }
++        if (turn == 3u) { local = float2(extent.y - local.y, local.x); }
++        float height = (turn & 1u) ? extent.x : extent.y;
++        float2 st = (local / height) - float2(0., 0.5);
++        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / height;
++        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / height;
+@@ -1123 +1267 @@
+-        float distance_in_pixels = distance * underline.bounds.size.y;
++        float distance_in_pixels = distance * height;
+@@ -1221,0 +1366,2 @@
 +    // KaminIDE patch: см. `Quad::transformation`.
 +    TransformationMatrix transformation;
-@@ -1243,3 +1378,6 @@
+@@ -1243,3 +1389,6 @@
 -    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
 -                                                    sprite.content_mask);
@@ -9935,7 +9969,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..ff8228e8707b98001f21bdebc770bb4b
 +        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-@@ -1258,2 +1396,23 @@
+@@ -1258,2 +1407,23 @@
 -    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
 -    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 +    // KaminIDE patch: координаты самого спрайта.
@@ -9961,7 +9995,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..ff8228e8707b98001f21bdebc770bb4b
 +        sample = t_sprite.Load(int3(texel, 0));
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1428,349 @@
+@@ -1268,0 +1439,353 @@
 +
 +/*
 +**
@@ -10240,6 +10274,10 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..ff8228e8707b98001f21bdebc770bb4b
 +        if (q.pad2.x > 0.5) {
 +            float2 mt = (input.position.xy - q.mask_rect.xy) / q.mask_rect.zw;
 +            uint norep = uint(q.pad2.y + 0.5);
++            uint turn = (norep >> 3u) & 3u;
++            if (turn == 1u) { mt = float2(mt.y, 1.0 - mt.x); }
++            if (turn == 2u) { mt = 1.0 - mt; }
++            if (turn == 3u) { mt = float2(1.0 - mt.y, mt.x); }
 +            float inside = 1.0;
 +            if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
 +            if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }

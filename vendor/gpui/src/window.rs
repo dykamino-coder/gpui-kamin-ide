@@ -68,6 +68,8 @@ mod prompts;
 mod image_sampling;
 mod natural_image;
 mod absolute_transformation;
+mod vector_transform;
+pub use vector_transform::PaintVectorTransform;
 mod scene_capture;
 mod frame_capture;
 mod paint_scope;

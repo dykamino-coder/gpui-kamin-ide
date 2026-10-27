@@ -8531,14 +8531,15 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c790529299
+index 160587a4ad924f80c2dd01b90a8300febbc13105..d7c37d4b520a4f57151ad032a8f6d972d9c538a0
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
-@@ -2,0 +3,3 @@
+@@ -2,0 +3,4 @@
 +
 +mod record;
++mod vector_transform;
 +pub(crate) mod segments;
-@@ -38,0 +42,18 @@
+@@ -38,0 +43,18 @@
 +/// KaminIDE patch: overlap orders from the bounds tree are spaced by this
 +/// step, leaving room below each level for per-primitive bottom-layer orders
 +/// (`push_bottom_layer`): equal orders are batched by primitive kind (quads
@@ -8557,7 +8558,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +/// рисуют теми же конвейерами, только в свою текстуру.
 +/// KaminIDE patch: `pub` + `doc(hidden)` — буферы групп рисует рендерер из
 +/// отдельного крейта `gpui_windows`, которому доступен лишь публичный API.
-@@ -39,0 +61,40 @@
+@@ -39,0 +62,40 @@
 +#[doc(hidden)]
 +#[allow(missing_docs)]
 +pub struct PaintGroup {
@@ -8598,9 +8599,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +}
 +
 +#[derive(Default)]
-@@ -41,0 +103 @@
+@@ -41,0 +104 @@
 +    pub(crate) segment_capture: Option<Box<segments::Capture>>,
-@@ -42,0 +105,7 @@
+@@ -42,0 +106,7 @@
 +    /// KaminIDE patch: группы, нарисованные в отдельные буферы.
 +    ///
 +    /// Список плоский и упорядочен по зависимости: вложенная группа стоит
@@ -8608,10 +8609,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +    /// готов (см. `Window::paint_group`).
 +    #[doc(hidden)]
 +    pub groups: Vec<PaintGroup>,
-@@ -44,0 +114,2 @@
+@@ -44,0 +115,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +124,38 @@
+@@ -52,0 +125,38 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
@@ -8650,7 +8651,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +166,140 @@
+@@ -56,0 +167,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -8791,19 +8792,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +        }
 +    }
 +
-@@ -57,0 +307 @@
+@@ -57,0 +308 @@
 +        self.segment_capture = None;
-@@ -58,0 +309 @@
+@@ -58,0 +310 @@
 +        self.groups.clear();
-@@ -60,0 +312 @@
+@@ -60,0 +313 @@
 +        self.bottom_seq = 0;
-@@ -68,0 +321,2 @@
+@@ -68,0 +322,2 @@
 +        self.hoisted_backdrops.clear();
 +        self.depth = DepthSort::default();
-@@ -76 +330 @@
+@@ -76 +331 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.primitive_bounds.insert(bounds) * ORDER_STEP;
-@@ -86,0 +341,15 @@
+@@ -86,0 +342,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -8819,7 +8820,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -87,0 +357,32 @@
+@@ -87,0 +358,32 @@
 +        // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
 +        // четырёх углов матрицей.
 +        fn placed_by(
@@ -8852,7 +8853,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +                },
 +            }
 +        }
-@@ -89,3 +390,56 @@
+@@ -89,3 +391,56 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -8912,7 +8913,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +            _ => *primitive.bounds(),
 +        };
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -97,5 +451,10 @@
+@@ -97,5 +452,10 @@
 -        let order = self
 -            .layer_stack
 -            .last()
@@ -8928,7 +8929,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +            Some(o) => o,
 +            None => self.primitive_bounds.insert(clipped_bounds) * ORDER_STEP,
 +        };
-@@ -136,0 +496,16 @@
+@@ -136,0 +497,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -8945,11 +8946,11 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -138,0 +514,3 @@
+@@ -138,0 +515,3 @@
 +        if let Some(capture) = self.segment_capture.as_mut() {
 +            capture.primitive();
 +        }
-@@ -143,5 +521,14 @@
+@@ -143,5 +522,14 @@
 -            match operation {
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
@@ -8969,17 +8970,17 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +            PaintOperation::EndDepthContext => self.pop_depth_context(),
 +            PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
 +            PaintOperation::EndDepthPlane => self.pop_depth_plane(),
-@@ -213,0 +601 @@
+@@ -213,0 +602 @@
 +#[derive(Clone)]
-@@ -216,0 +605,2 @@
+@@ -216,0 +606,2 @@
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +608,4 @@
+@@ -217,0 +609,4 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
 +    EndDepthPlane,
-@@ -543,0 +938,10 @@
+@@ -543,0 +939,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -8990,19 +8991,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -580,0 +985,5 @@
+@@ -580,0 +986,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1012,5 @@
+@@ -602,0 +1013,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1064,12 @@
+@@ -649,0 +1065,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -9015,10 +9016,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -751 +1177 @@
+@@ -751 +1178 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1184,54 @@
+@@ -757,0 +1185,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -9073,7 +9074,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1254,23 @@
+@@ -773,0 +1255,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -9097,6 +9098,18 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..b3d0246370a5efe745b8f8a13a5534c7
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
+@@ -795,0 +1300,2 @@
++    /// Original color coordinates and destination-to-source matrix for vector presentation.
++    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
+@@ -815,0 +1322 @@
++            color_mapping: None,
+@@ -835,0 +1343,6 @@
++            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
++                let mut matrix = *matrix;
++                matrix.translation[0] *= factor;
++                matrix.translation[1] *= factor;
++                (bounds.scale(factor), matrix)
++            }),
 diff --git a/vendor/gpui/src/scene/record.rs b/vendor/gpui/src/scene/record.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..202f29698d9a103f46492295b5261e90c8e088d2
@@ -9171,10 +9184,10 @@ index 0000000000000000000000000000000000000000..202f29698d9a103f46492295b5261e90
 +}
 diff --git a/vendor/gpui/src/scene/record/geometry.rs b/vendor/gpui/src/scene/record/geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3076e0badb390d04e630c030742c160e5978f2d3
+index 0000000000000000000000000000000000000000..9090b1b86f9dbb9011a68508df11f5cb545a4909
 --- /dev/null
 +++ b/vendor/gpui/src/scene/record/geometry.rs
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,81 @@
 +//! Перенос разрешённой геометрии команд без повторной растеризации текста.
 +
 +use super::*;
@@ -9228,6 +9241,9 @@ index 0000000000000000000000000000000000000000..3076e0badb390d04e630c030742c160e
 +            mask(&mut p.content_mask, offset, clip);
 +        }
 +        Primitive::Path(p) => {
++            if let Some((_, inverse)) = &mut p.color_mapping {
++                *inverse = inverse.compose(TransformationMatrix::unit().translate(-offset));
++            }
 +            p.bounds = bounds(p.bounds, offset);
 +            p.start += offset;
 +            p.current += offset;
@@ -9667,6 +9683,149 @@ index 0000000000000000000000000000000000000000..b09832d694d351eac6b4b47d155f7b2b
 +        }
 +        *common = candidate.parent.clone();
 +    }
++}
+diff --git a/vendor/gpui/src/scene/vector_transform.rs b/vendor/gpui/src/scene/vector_transform.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0404f02b049d8d2a05c9af52de36edd06194f12a
+--- /dev/null
++++ b/vendor/gpui/src/scene/vector_transform.rs
+@@ -0,0 +1,137 @@
++//! Точный перенос векторных команд страницы: равномерный масштаб и четверти оборота.
++
++use super::*;
++use crate::{PaintVectorTransform, TransformationMatrix};
++
++impl Scene {
++    pub(crate) fn transform_vector(mut self, transform: PaintVectorTransform, density: f32) -> Self {
++        let matrix = transform.matrix(density);
++        let groups = mem::take(&mut self.groups);
++        let mut scene = self.transform_commands(transform, matrix);
++        scene.groups = groups.into_iter().map(|mut group| {
++            group.bounds = map_bounds(group.bounds, matrix);
++            group.blur_radius *= transform.scale();
++            group.polygon.iter_mut().for_each(|p| *p = map_point(*p, matrix));
++            group.mask_bounds = map_bounds(group.mask_bounds, matrix);
++            let turn = ((group.mask_once >> 3) + u32::from(transform.quarter_turns())) % 4;
++            group.mask_once = (group.mask_once & 7) | (turn << 3);
++            group.mask_clip = group.mask_clip.map(|b| {
++                let b = map_bounds(Bounds::new(point(ScaledPixels(b[0]), ScaledPixels(b[1])),
++                    crate::size(ScaledPixels(b[2]), ScaledPixels(b[3]))), matrix);
++                [b.origin.x.0, b.origin.y.0, b.size.width.0, b.size.height.0]
++            });
++            group.projection = group.projection.map(|m| conjugate(m, matrix, transform.inverse_matrix(density)));
++            for fragment in &mut group.fragments {
++                fragment.iter_mut().for_each(|p| *p = map_point(*p, matrix));
++            }
++            group.scene = group.scene.transform_commands(transform, matrix);
++            group
++        }).collect();
++        scene
++    }
++
++    fn transform_commands(mut self, transform: PaintVectorTransform, matrix: TransformationMatrix) -> Self {
++        let mut scene = Self { in_group: self.in_group, ..Self::default() };
++        for mut command in mem::take(&mut self.paint_operations) {
++            match &mut command {
++                PaintOperation::Primitive(p) => primitive(p, transform, matrix),
++                PaintOperation::StartLayer(b) => *b = map_bounds(*b, matrix),
++                _ => {},
++            }
++            scene.replay_operation(command);
++        }
++        scene.segment_capture = self.segment_capture;
++        scene.hoisted_backdrops = self.hoisted_backdrops.into_iter().map(|mut p| {
++            surface(&mut p, transform, matrix);
++            p
++        }).collect();
++        scene.finish();
++        scene
++    }
++}
++
++use std::mem;
++
++fn map_point(p: Point<ScaledPixels>, m: TransformationMatrix) -> Point<ScaledPixels> {
++    let p = m.apply(point(crate::px(p.x.0), crate::px(p.y.0)));
++    point(ScaledPixels(p.x.0), ScaledPixels(p.y.0))
++}
++
++fn map_bounds(b: Bounds<ScaledPixels>, m: TransformationMatrix) -> Bounds<ScaledPixels> {
++    let a = map_point(b.origin, m);
++    let z = map_point(b.bottom_right(), m);
++    Bounds::new(point(a.x.min(z.x), a.y.min(z.y)),
++        crate::size((z.x - a.x).abs(), (z.y - a.y).abs()))
++}
++
++fn radii(c: &mut Corners<ScaledPixels>, t: PaintVectorTransform) {
++    let mut v = [c.top_left, c.top_right, c.bottom_right, c.bottom_left];
++    v.rotate_right(usize::from(t.quarter_turns()));
++    *c = Corners { top_left: v[0], top_right: v[1], bottom_right: v[2], bottom_left: v[3] }.map(|x| *x * t.scale());
++}
++
++fn surface(p: &mut PaintSurface, t: PaintVectorTransform, m: TransformationMatrix) {
++    p.bounds = map_bounds(p.bounds, m);
++    p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++    #[cfg(not(target_os = "macos"))] {
++        radii(&mut p.corner_radii, t);
++        p.blur_radius *= t.scale();
++    }
++}
++
++fn primitive(p: &mut Primitive, t: PaintVectorTransform, m: TransformationMatrix) {
++    match p {
++        Primitive::Quad(p) => {
++            p.transformation = m.compose(p.transformation);
++            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++        },
++        Primitive::MonochromeSprite(p) => {
++            p.transformation = m.compose(p.transformation);
++            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++        },
++        Primitive::SubpixelSprite(p) => {
++            p.transformation = m.compose(p.transformation);
++            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++        },
++        Primitive::PolychromeSprite(p) => {
++            p.transformation = m.compose(p.transformation);
++            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++        },
++        Primitive::Shadow(p) => {
++            p.bounds = map_bounds(p.bounds, m);
++            p.element_bounds = map_bounds(p.element_bounds, m);
++            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++            radii(&mut p.corner_radii, t);
++            radii(&mut p.element_corner_radii, t);
++            p.blur_radius = p.blur_radius * t.scale();
++        },
++        Primitive::Underline(p) => {
++            p.bounds = map_bounds(p.bounds, m);
++            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++            p.thickness = p.thickness * t.scale();
++            p.pad = (p.pad + u32::from(t.quarter_turns())) % 4;
++        },
++        Primitive::Surface(p) => surface(p, t, m),
++        Primitive::Path(p) => {
++            let (bounds, inverse) = p.color_mapping.unwrap_or((p.clipped_bounds(), TransformationMatrix::unit()));
++            p.color_mapping = Some((bounds, inverse.compose(t.inverse_of(m))));
++            p.bounds = map_bounds(p.bounds, m);
++            p.start = map_point(p.start, m);
++            p.current = map_point(p.current, m);
++            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
++            for v in &mut p.vertices {
++                v.xy_position = map_point(v.xy_position, m);
++                v.content_mask.bounds = map_bounds(v.content_mask.bounds, m);
++            }
++        },
++    }
++}
++
++fn conjugate(h: [f32; 9], m: TransformationMatrix, inverse: TransformationMatrix) -> [f32; 9] {
++    let expand = |m: TransformationMatrix| [m.rotation_scale[0][0], m.rotation_scale[0][1], m.translation[0],
++        m.rotation_scale[1][0], m.rotation_scale[1][1], m.translation[1], 0., 0., 1.];
++    let multiply = |a: [f32; 9], b: [f32; 9]| {
++        std::array::from_fn(|i| (0..3).map(|k| a[i / 3 * 3 + k] * b[k * 3 + i % 3]).sum())
++    };
++    multiply(multiply(expand(m), h), expand(inverse))
 +}
 diff --git a/vendor/gpui/src/style.rs b/vendor/gpui/src/style.rs
 index 9150fdded91b817305454f18beb0a0b7d6c5966a..5f71dd217fb3cc918fb312e0396faa67a43257c8
@@ -15633,16 +15792,18 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c1efa58c5
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..66c529ec7bfa589a37d40d73107e83ff556bd179
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
 -    EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
 +    EntityId, EventEmitter, ExternalTexture, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
-@@ -67,0 +68,25 @@
+@@ -67,0 +68,27 @@
 +mod image_sampling;
 +mod natural_image;
 +mod absolute_transformation;
++mod vector_transform;
++pub use vector_transform::PaintVectorTransform;
 +mod scene_capture;
 +mod frame_capture;
 +mod paint_scope;
@@ -15665,16 +15826,16 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +pub use layout_inputs::LayoutInputId;
 +pub use plane3d::PlaneSpec;
 +pub use image_sampling::ImageSampling;
-@@ -978,0 +1004,2 @@
+@@ -978,0 +1006,2 @@
 +    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
 +    render_contexts: render_context::Snapshot,
-@@ -1187,0 +1215,5 @@
+@@ -1187,0 +1217,5 @@
 +    // KaminIDE patch: typed host context belongs to this window and traversal.
 +    render_contexts: render_context::RenderContexts,
 +    paint_window: Rc<()>,
 +    paint_pass: PaintPassId,
 +    paint_scope: PaintScopeId,
-@@ -1189,0 +1222,23 @@
+@@ -1189,0 +1224,23 @@
 +    /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
 +    /// while non-zero, `layout_bounds` adds the element offset unsnapped.
 +    pub(crate) exact_element_offset_depth: u32,
@@ -15698,23 +15859,23 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +    mask_map: Option<TransformationMatrix>,
 +    /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
 +    pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
-@@ -1235,0 +1291,3 @@
+@@ -1235,0 +1293,3 @@
 +    // KaminIDE patch: a completed layout changed an input to style/layout.
 +    layout_retry: bool,
 +    layout_inputs: Option<FxHashSet<LayoutInputId>>,
-@@ -1237,0 +1296,3 @@
+@@ -1237,0 +1298,3 @@
 +    /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
 +    /// Поднимается на Tab-переходах, гаснет на любом mouse-down.
 +    pub(crate) focus_visible: bool,
-@@ -1522,0 +1584 @@
+@@ -1522,0 +1586 @@
 +
-@@ -1837,0 +1900,3 @@
+@@ -1837,0 +1902,3 @@
 +                                // KaminIDE patch: стоимость кадра — в счётчики
 +                                // `frame_perf`, приложение печатает сводку.
 +                                let t0 = std::time::Instant::now();
-@@ -1843,0 +1909 @@
+@@ -1843,0 +1911 @@
 +                                let t1 = std::time::Instant::now();
-@@ -1844,0 +1911,8 @@
+@@ -1844,0 +1913,8 @@
 +                                {
 +                                    use crate::frame_perf::*;
 +                                    use std::sync::atomic::Ordering::Relaxed;
@@ -15723,52 +15884,52 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +                                    FRAMES.fetch_add(1, Relaxed);
 +                                }
 +                                // drop the arena elements after present to reduce latency
-@@ -2082,0 +2157,4 @@
+@@ -2082,0 +2159,4 @@
 +            render_contexts: Default::default(),
 +            paint_window: Rc::new(()),
 +            paint_pass: PaintPassId::default(),
 +            paint_scope: PaintScopeId::default(),
-@@ -2084,0 +2163,6 @@
+@@ -2084,0 +2165,6 @@
 +            exact_element_offset_depth: 0,
 +            raster_frame: RasterFrame::default(),
 +            transformation_stack: Vec::new(),
 +            mask_scale: None,
 +            mask_map: None,
 +            plane_contexts: Vec::new(),
-@@ -2127,0 +2212,2 @@
+@@ -2127,0 +2214,2 @@
 +            layout_retry: false,
 +            layout_inputs: None,
-@@ -2129,0 +2216,2 @@
+@@ -2129,0 +2218,2 @@
 +            // KaminIDE patch: см. `Window::focus_visible`
 +            focus_visible: false,
-@@ -2191,0 +2280 @@
+@@ -2191,0 +2282 @@
 +
-@@ -2315,0 +2405,2 @@
+@@ -2315,0 +2407,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2317,0 +2409 @@
+@@ -2317,0 +2411 @@
 +            crate::dirty_sources::note("refresh", std::panic::Location::caller());
-@@ -2378,0 +2471,5 @@
+@@ -2378,0 +2473,5 @@
 +    /// KaminIDE patch: фокус получен клавиатурой — рисуем `:focus-visible`.
 +    pub fn focus_visible(&self) -> bool {
 +        self.focus_visible
 +    }
 +
-@@ -2385,0 +2483,2 @@
+@@ -2385,0 +2485,2 @@
 +            // KaminIDE patch: Tab — клавиатурная модальность
 +            self.focus_visible = true;
-@@ -2396,0 +2496,2 @@
+@@ -2396,0 +2498,2 @@
 +            // KaminIDE patch: Shift+Tab — тоже клавиатура
 +            self.focus_visible = true;
-@@ -2649,0 +2751,2 @@
+@@ -2649,0 +2753,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2650,0 +2754 @@
+@@ -2650,0 +2756 @@
 +        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
-@@ -2669,0 +2774,2 @@
+@@ -2669,0 +2776,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2884,2 +2990,52 @@
+@@ -2884,2 +2992,52 @@
 -    /// Handle window movement for Linux and macOS.
 -    /// Tells the compositor to take control of window movement (Wayland and X11)
 +    /// KaminIDE patch: raw ID3D11Device окна — по нему открывается общий
@@ -15823,7 +15984,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +
 +    /// KaminIDE patch: нарисовать чужую текстуру как обычный спрайт — с теми
 +    /// же скруглением и маской, что у картинок.
-@@ -2887 +3043,71 @@
+@@ -2887 +3045,71 @@
 -    /// Events may not be received during a move operation.
 +    /// Зовётся в фазе отрисовки элемента.
 +    pub fn paint_external_texture(
@@ -15896,41 +16057,41 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +    }
 +
 +    /// Start moving the window (drag) via the platform.
-@@ -3019,0 +3246 @@
+@@ -3019,0 +3248 @@
 +        let depth = self.element_id_stack.len();
-@@ -3021,3 +3248 @@
+@@ -3021,3 +3250 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -3038,0 +3264 @@
+@@ -3038,0 +3266 @@
 +            let depth = self.rem_size_override_stack.len();
-@@ -3040,3 +3266 @@
+@@ -3040,3 +3268 @@
 -            let result = f(self);
 -            self.rem_size_override_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.rem_size_override_stack.truncate(*depth), f).0
-@@ -3189,5 +3412,0 @@
+@@ -3189,5 +3414,0 @@
 -    #[inline]
 -    fn snap_border_widths(&self, edges: Edges<Pixels>) -> Edges<ScaledPixels> {
 -        edges.map(|e| self.snap_stroke(*e))
 -    }
 -
-@@ -3305,0 +3525,4 @@
+@@ -3305,0 +3527,4 @@
 +        self.with_paint_pass(|window| window.draw_frame(cx))
 +    }
 +
 +    fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {
-@@ -3354,0 +3578,4 @@
+@@ -3354,0 +3580,4 @@
 +        }
 +        // A caught unwind still aborts this pass; never publish its partial scene.
 +        if !self.paint_pass.is_live() {
 +            return arena_scope.exit(&cx.element_arena);
-@@ -3554,3 +3780,0 @@
+@@ -3554,3 +3782,0 @@
 -        if self.a11y.is_active() {
 -            self.a11y.begin_frame();
 -        }
-@@ -3579,37 +3803,16 @@
+@@ -3579,37 +3805,16 @@
 -        let scale_factor = self.scale_factor();
 -        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
 -        let root_layout_id = root_element.request_layout(self, cx);
@@ -15984,28 +16145,28 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        );
 +
 +        let _hit_started = std::time::Instant::now();
-@@ -3616,0 +3820,4 @@
+@@ -3616,0 +3822,4 @@
 +        crate::frame_perf::HITTEST_US.fetch_add(
 +            _hit_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3619,0 +3827 @@
+@@ -3619,0 +3829 @@
 +        let _paint_started = std::time::Instant::now();
-@@ -3620,0 +3829,4 @@
+@@ -3620,0 +3831,4 @@
 +        crate::frame_perf::PAINT_US.fetch_add(
 +            _paint_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3763,0 +3976,3 @@
+@@ -3763,0 +3978,3 @@
 +                let _render_scope = self.render_contexts.enter_snapshot(
 +                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
 +                );
-@@ -3817,0 +4033,2 @@
+@@ -3817,0 +4035,2 @@
 +            let _render_scope = self.render_contexts
 +                .enter_snapshot(deferred_draw.render_contexts.clone());
-@@ -3901,0 +4119 @@
+@@ -3901,0 +4121 @@
 +                    render_contexts: deferred_draw.render_contexts.clone(),
-@@ -3972,0 +4191,19 @@
+@@ -3972,0 +4193,19 @@
 +    /// KaminIDE patch: read the host context of type `T` for this traversal.
 +    /// Values belong to this window; callers retain ownership through `Rc`.
 +    pub fn render_context<T: 'static>(&self) -> Option<Rc<T>> {
@@ -16025,14 +16186,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        self.with_restore(scope, |_, _| {}, f).0
 +    }
 +
-@@ -3981,0 +4219 @@
+@@ -3981,0 +4221 @@
 +            let depth = self.text_style_stack.len();
-@@ -3983,3 +4221 @@
+@@ -3983,3 +4223 @@
 -            let result = f(self);
 -            self.text_style_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.text_style_stack.truncate(*depth), f).0
-@@ -3988,0 +4225,24 @@
+@@ -3988,0 +4227,24 @@
 +    }
 +
 +    /// Apply borrowed text and overflow context together during child drawing.
@@ -16057,7 +16218,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +    #[inline(never)]
 +    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
 +        self.text_style_stack.push(style.clone());
-@@ -4034,0 +4295,8 @@
+@@ -4034,0 +4297,8 @@
 +        let depth = self.content_mask_stack.len();
 +        let _clip_scope = self.push_content_mask(mask);
 +        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -16066,7 +16227,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +    // Prepare mask temporaries before entering the recursive child traversal.
 +    #[inline(never)]
 +    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
-@@ -4036,5 +4304,12 @@
+@@ -4036,5 +4306,12 @@
 -            let mask = mask.intersect(&self.content_mask());
 -            self.content_mask_stack.push(mask);
 -            let result = f(self);
@@ -16084,7 +16245,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            let scope = self.segment_clip_scope(mask, false);
 +            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
 +            scope
-@@ -4042,2 +4317,120 @@
+@@ -4042,2 +4319,120 @@
 -            f(self)
 -        }
 +            None
@@ -16207,7 +16368,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +    ) -> R {
 +        let prev = self.mask_scale.replace((origin, scale));
 +        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f).0
-@@ -4060,0 +4454,19 @@
+@@ -4060,0 +4456,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -16227,19 +16388,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        let abs_offset = self.element_offset() + offset;
 +        self.with_restore(depth, |window, depth| window.exact_element_offset_depth = *depth,
 +            |window| window.with_absolute_element_offset(abs_offset, f)).0
-@@ -4071,0 +4484 @@
+@@ -4071,0 +4486 @@
 +        let depth = self.element_offset_stack.len();
-@@ -4073,3 +4486 @@
+@@ -4073,3 +4488 @@
 -        let result = f(self);
 -        self.element_offset_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_offset_stack.truncate(*depth), f).0
-@@ -4091,3 +4502 @@
+@@ -4091,3 +4504 @@
 -        let result = f(self);
 -        self.element_opacity = previous_opacity;
 -        result
 +        self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
-@@ -4147 +4556,10 @@
+@@ -4147 +4558,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -16251,7 +16412,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +4576,56 @@
+@@ -4157,0 +4578,56 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -16308,25 +16469,25 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        self.with_transform_frame(combined, keeps_axes.then_some(combined), f)
 +    }
 +
-@@ -4168,2 +4642 @@
+@@ -4168,2 +4644 @@
 -    /// Obtain the current element opacity. This method should only be called during the
 -    /// prepaint phase of element drawing.
 +    /// Текущая накопленная непрозрачность элемента в фазе prepaint или paint.
-@@ -4171 +4644 @@
+@@ -4171 +4646 @@
 -    pub(crate) fn element_opacity(&self) -> f32 {
 +    pub fn element_opacity(&self) -> f32 {
-@@ -4178,0 +4652 @@
+@@ -4178,0 +4654 @@
 +        if let Some(mask) = self.segment_capture_mask() { return mask; }
-@@ -4196,0 +4671 @@
+@@ -4196,0 +4673 @@
 +        let depth = self.element_id_stack.len();
-@@ -4198,3 +4673 @@
+@@ -4198,3 +4675 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -4383,0 +4857 @@
+@@ -4383,0 +4859 @@
 +            render_contexts: self.render_contexts.snapshot(),
-@@ -4405,12 +4879,91 @@
+@@ -4405,12 +4881,91 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -16430,7 +16591,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        }, |window| {
 +            if pushed { window.with_paint_scope(f) } else { f(window) }
 +        }).0
-@@ -4554,2 +5107,8 @@
+@@ -4554,2 +5109,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -16441,24 +16602,24 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5116 @@
+@@ -4556,0 +5118 @@
 +            transformation,
-@@ -4558,2 +5118,2 @@
+@@ -4558,2 +5120,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5122,2 @@
+@@ -4562,2 +5124,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567 +5127,3 @@
+@@ -4567 +5129,3 @@
 -        if !quad.background.is_transparent() {
 +        // The strip split below restricts screen-space content masks, which
 +        // only matches the quad's own coordinates without a transformation.
 +        if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
-@@ -4678,0 +5241,9 @@
+@@ -4678,0 +5243,9 @@
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
 +    /// painted afterwards and return the previous one. Layout snaps a box's
 +    /// edges to device pixels, but text inside it belongs at the box's exact
@@ -16468,7 +16629,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        std::mem::replace(&mut self.raster_frame.glyph_offset, offset)
 +    }
 +
-@@ -4699,13 +5270,31 @@
+@@ -4699,13 +5272,31 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -16513,7 +16674,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +                },
 +            )
 +        };
-@@ -4738 +5327,6 @@
+@@ -4738 +5329,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -16521,13 +16682,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4748 +5342 @@
+@@ -4748 +5344 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4758 +5352 @@
+@@ -4758 +5354 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4798,0 +5393,14 @@
+@@ -4798,0 +5395,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -16542,11 +16703,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5411,2 @@
+@@ -4803 +5413,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,3 +5438,4 @@
+@@ -4829,3 +5440,4 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -16554,14 +16715,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            let opacity = self.element_opacity() * alpha;
 +
 +            let transformation = self.current_transformation();
-@@ -4832,0 +5443 @@
+@@ -4832,0 +5445 @@
 +                transformation,
-@@ -5003,0 +5615,2 @@
+@@ -5003,0 +5617,2 @@
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
-@@ -5004,0 +5618 @@
+@@ -5004,0 +5620 @@
 +            transformation,
-@@ -5016,0 +5631,71 @@
+@@ -5016,0 +5633,71 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -16633,7 +16794,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        Ok(())
 +    }
 +
-@@ -5018,0 +5704,219 @@
+@@ -5018,0 +5706,219 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -16853,7 +17014,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        result
 +    }
 +
-@@ -5073,0 +5978,11 @@
+@@ -5073,0 +5980,11 @@
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
@@ -16865,7 +17026,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +    pub fn request_layout_ref(
 +        &mut self,
 +        style: &Style,
-@@ -5114,0 +6030,55 @@
+@@ -5114,0 +6032,55 @@
 +    /// То же, что `request_measured_layout`, но замер отдаёт ещё и первую
 +    /// базовую линию содержимого — от верха коробки содержимого вниз.
 +    ///
@@ -16921,7 +17082,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
 +    }
 +
-@@ -5116,0 +6087,172 @@
+@@ -5116,0 +6089,172 @@
 +    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
 +    ///
 +    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
@@ -17094,7 +17255,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
 +    }
 +
-@@ -5132,0 +6275,48 @@
+@@ -5132,0 +6277,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -17143,7 +17304,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6337,6 @@
+@@ -5147,2 +6339,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -17152,12 +17313,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5169 +6363,3 @@
+@@ -5169 +6365,3 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if !self.insert_segment_hitbox(&hitbox) {
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6408,16 @@
+@@ -5211,0 +6410,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -17174,21 +17335,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..d418db2985136ff854e8e2cefae39a3c
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6436 @@
+@@ -5223,0 +6438 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6438 @@
+@@ -5225,3 +6440 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6447 @@
+@@ -5235,0 +6449 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6449 @@
+@@ -5237,3 +6451 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5792,0 +7003,5 @@
+@@ -5792,0 +7005,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
@@ -19767,6 +19928,109 @@ index 0000000000000000000000000000000000000000..c63e084b94a6344306491f7a2dea173f
 +            f(guard.window)
 +        };
 +        (result, state)
++    }
++}
+diff --git a/vendor/gpui/src/window/vector_transform.rs b/vendor/gpui/src/window/vector_transform.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f8d5fc7b85438d817a913340743dd9981f685b49
+--- /dev/null
++++ b/vendor/gpui/src/window/vector_transform.rs
+@@ -0,0 +1,97 @@
++//! Внешняя область векторного преобразования страниц до растеризации и композиции.
++
++use super::*;
++
++/// Uniform positive scale and an exact clockwise quarter-turn in logical pixels.
++/// This presentation transform is deliberately separate from `PaintPlacement`.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct PaintVectorTransform {
++    scale: f32,
++    quarter_turns: u8,
++    translation: Point<Pixels>,
++}
++
++impl PaintVectorTransform {
++    /// Construct a finite, invertible page presentation transform.
++    pub fn new(scale: f32, quarter_turns: u8, translation: Point<Pixels>) -> Option<Self> {
++        (scale.is_finite() && scale > 0.0 && (1.0 / scale).is_finite()
++            && translation.x.0.is_finite() && translation.y.0.is_finite())
++            .then_some(Self { scale, quarter_turns: quarter_turns % 4, translation })
++    }
++
++    /// Positive uniform scale.
++    pub fn scale(self) -> f32 { self.scale }
++    /// Number of clockwise quarter-turns, in `0..4`.
++    pub fn quarter_turns(self) -> u8 { self.quarter_turns }
++    /// Translation in destination logical pixels.
++    pub fn translation(self) -> Point<Pixels> { self.translation }
++    /// Map a source point to the destination.
++    pub fn point(self, p: Point<Pixels>) -> Point<Pixels> { self.matrix(1.0).apply(p) }
++    /// Map destination coordinates back to the source.
++    pub fn inverse_point(self, p: Point<Pixels>) -> Point<Pixels> { self.inverse_matrix(1.0).apply(p) }
++    /// Map an axis-aligned source rectangle exactly.
++    pub fn bounds(self, b: Bounds<Pixels>) -> Bounds<Pixels> { map_bounds(b, self.matrix(1.0)) }
++    /// Obtain an exact source rectangle for a destination clip.
++    pub fn inverse_bounds(self, b: Bounds<Pixels>) -> Bounds<Pixels> { map_bounds(b, self.inverse_matrix(1.0)) }
++
++    pub(crate) fn matrix(self, density: f32) -> TransformationMatrix {
++        let s = self.scale;
++        let rotation_scale = match self.quarter_turns {
++            1 => [[0., -s], [s, 0.]], 2 => [[-s, 0.], [0., -s]],
++            3 => [[0., s], [-s, 0.]], _ => [[s, 0.], [0., s]],
++        };
++        TransformationMatrix { rotation_scale,
++            translation: [self.translation.x.0 * density, self.translation.y.0 * density] }
++    }
++
++    pub(crate) fn inverse_matrix(self, density: f32) -> TransformationMatrix {
++        self.inverse_of(self.matrix(density))
++    }
++
++    pub(crate) fn inverse_of(self, m: TransformationMatrix) -> TransformationMatrix {
++        let s = 1.0 / self.scale;
++        let rotation_scale = match self.quarter_turns {
++            1 => [[0., s], [-s, 0.]], 2 => [[-s, 0.], [0., -s]],
++            3 => [[0., -s], [s, 0.]], _ => [[s, 0.], [0., s]],
++        };
++        let mut inverse = TransformationMatrix {
++            rotation_scale,
++            translation: [0.; 2],
++        };
++        let p = inverse.apply(point(px(-m.translation[0]), px(-m.translation[1])));
++        inverse.translation = [p.x.0, p.y.0];
++        inverse
++    }
++}
++
++fn map_bounds(b: Bounds<Pixels>, m: TransformationMatrix) -> Bounds<Pixels> {
++    let a = m.apply(b.origin);
++    let z = m.apply(b.bottom_right());
++    Bounds::new(point(a.x.min(z.x), a.y.min(z.y)), size((z.x - a.x).abs(), (z.y - a.y).abs()))
++}
++
++impl Window {
++    /// Transform resolved vector commands, their clips and flat composition groups.
++    /// No rendered image is resized; immutable records remain translation-only.
++    /// The callback uses source coordinates, independently of the ambient CSS matrix.
++    pub fn with_paint_vector_transform<R>(
++        &mut self,
++        transform: PaintVectorTransform,
++        paint: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        self.invalidator.debug_assert_paint();
++        let state = Box::new(self.snapshot_paint_state());
++        let source_clip = transform.inverse_bounds(self.content_mask().bounds);
++        let (result, scene) = self.with_restore(state, |window, state| state.restore(window), |window| {
++            window.transformation_stack.clear();
++            window.mask_map = None;
++            window.mask_scale = None;
++            window.content_mask_stack = vec![ContentMask { bounds: source_clip }];
++            window.with_isolated_scene(paint)
++        }).0;
++        let scene = scene.transform_vector(transform, self.scale_factor());
++        let scene = self.adopt_scene(scene);
++        self.next_frame.scene.replay(0..scene.paint_operations.len(), &scene);
++        result
 +    }
 +}
 diff --git a/vendor/gpui/tests/fonts/IBMPlexSans-Regular.ttf b/vendor/gpui/tests/fonts/IBMPlexSans-Regular.ttf

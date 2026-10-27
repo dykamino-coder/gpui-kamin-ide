@@ -8,6 +8,7 @@ mod placement;
 mod primitives;
 mod scopes;
 mod segments;
+mod vector_transform;
 
 fn draw<E: gpui::Element>(make: impl FnOnce() -> E) {
     super::draw_at_scale(Some(1.), make);
