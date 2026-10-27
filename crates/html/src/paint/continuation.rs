@@ -134,16 +134,17 @@ impl Wrap for Slot {
         let Some(copy) = window.render_context::<CopySegment>() else {
             return;
         };
-        let Some(record) = copy.records.get(copy.segment, self.id) else {
+        let records = copy.records.get(copy.segment, self.id);
+        if records.is_empty() {
             return;
-        };
+        }
         let origin = point(px(0.), px(0.));
         let placement = PaintPlacement {
             source: origin,
             destination: origin,
             clip: window.content_mask().bounds,
         };
-        let plan = PaintPlan::record(record);
+        let plan = PaintPlan::sequence(records.into_iter().map(PaintPlan::record));
         // The copy's own transform (CSS transforms of the copied ancestors, the
         // page sheet) is the explicit presentation of the replayed record.
         let device = window.current_transformation();

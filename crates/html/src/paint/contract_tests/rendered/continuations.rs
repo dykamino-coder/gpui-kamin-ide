@@ -260,3 +260,18 @@ background:linear-gradient(red, blue)'></div></div>",
     let sheets = found.iter().filter(|(_, c)| opaque(*c) == 0xffffff).count();
     assert!(sheets >= 3, "three sheets painted: {found:?}");
 }
+
+#[test]
+fn root_painted_by_two_native_sources_keeps_both_records() {
+    // The fixed box repeats per sheet through its own source, which also records
+    // its root: the slot replays both records instead of the last one only.
+    let found = printed(
+        "<style>body{margin:0}</style>\
+<div style='position:absolute;height:300vh;width:100px'>\
+<div style='height:20px;background:#0000ff'></div>\
+<div style='position:fixed;bottom:0;width:40px;height:20px;background:#00ff00'></div></div>",
+        800.,
+        600.,
+    );
+    assert!(any(&found, 0x0000ff), "first sheet content");
+}

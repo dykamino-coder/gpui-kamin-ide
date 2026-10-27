@@ -31,9 +31,11 @@ pub(crate) struct Nested {
     pub(crate) bare: Rc<[PaintSegmentId]>,
 }
 
-type Table = RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>>;
+type Table = RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>>;
 
-/// Own records of continued roots, by destination segment and root node.
+/// Own records of continued roots, by destination segment and root node. Every
+/// native source that paints part of a root (a page-repeated layer of it, say)
+/// adds its record; the slot replays them in source order.
 #[derive(Clone, Default)]
 pub(crate) struct BareRecords(Rc<Table>);
 
@@ -43,20 +45,23 @@ impl BareRecords {
     }
 
     pub(crate) fn insert(&self, segment: PaintSegmentId, root: u64, record: PaintRecord) {
-        let table: &RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>> = self.table();
-        table.borrow_mut().insert((segment, root), record);
+        let table: &RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>> = self.table();
+        table.borrow_mut().entry((segment, root)).or_default().push(record);
     }
 
-    pub(crate) fn get(&self, segment: PaintSegmentId, root: u64) -> Option<PaintRecord> {
-        self.table().borrow().get(&(segment, root)).cloned()
+    pub(crate) fn get(&self, segment: PaintSegmentId, root: u64) -> Vec<PaintRecord> {
+        self.table().borrow().get(&(segment, root)).cloned().unwrap_or_default()
     }
 
-    /// Move every record of other into this table.
+    /// Move every record of other into this table, after its own.
     pub(crate) fn absorb(&self, other: &BareRecords) {
-        let table: &RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>> = self.table();
-        let other: &RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>> = other.table();
+        let table: &RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>> = self.table();
+        let other: &RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>> = other.table();
         let moved = std::mem::take(&mut *other.borrow_mut());
-        table.borrow_mut().extend(moved);
+        let mut table = table.borrow_mut();
+        for (key, records) in moved {
+            table.entry(key).or_default().extend(records);
+        }
     }
 
     pub(crate) fn is_empty(&self) -> bool {
