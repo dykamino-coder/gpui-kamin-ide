@@ -1,6 +1,8 @@
-//! Тесты точек разрыва сетки по заданным разложенным дорожкам и border box элементов.
+//! Тесты точек разрыва сетки по заданным разложенным дорожкам, border box элементов и рядам их
+//! размещения.
 
-use super::{BlockBox, Laid, Pushed, RowPush};
+use super::grid::RowPush;
+use super::{BlockBox, Laid, Pushed};
 use crate::dom::Node;
 use crate::layout::fragment::flow::FlowGeometry;
 use crate::layout::fragment::flow::blocks::MeasuredBreaks;
@@ -32,15 +34,25 @@ fn grid(html: &str) -> (BlockBox, Vec<u64>) {
     (b, ids)
 }
 
+/// Разложенная сетка: border box элементов `(id, верх, низ, первый ряд, последний ряд)`.
+fn laid(b: &BlockBox, items: &[(u64, f32, f32, usize, usize)], rows: &[(f32, f32)]) -> Laid {
+    let boxes: Vec<_> = items.iter().map(|&(id, t, b, _, _)| (id, t, b)).collect();
+    let mut laid = Laid::of_boxes(&boxes);
+    laid.grids.insert(b.id, rows.to_vec());
+    for &(id, _, _, first, last) in items {
+        laid.placements.insert(id, (first, last));
+    }
+    laid
+}
+
 fn breaks(
     b: &BlockBox,
-    boxes: &[(u64, f32, f32)],
+    items: &[(u64, f32, f32, usize, usize)],
     rows: &[(f32, f32)],
     end: f32,
 ) -> MeasuredBreaks {
-    let mut laid = Laid::of_boxes(boxes);
-    laid.grids.insert(b.id, rows.to_vec());
-    b.breaks(end, &laid).finish(FlowGeometry::default(), end)
+    b.breaks(end, &laid(b, items, rows))
+        .finish(FlowGeometry::default(), end)
 }
 
 #[test]
@@ -51,13 +63,29 @@ fn item_break_before_lands_on_its_row_start() {
     );
     let m = breaks(
         &b,
-        &[(ids[0], 0.0, 40.0), (ids[1], 50.0, 80.0)],
+        &[(ids[0], 0.0, 40.0, 0, 0), (ids[1], 50.0, 80.0, 1, 1)],
         &[(0.0, 40.0), (50.0, 80.0)],
         80.0,
     );
     assert_eq!(m.forced, vec![50.0]);
     // The gap between the rows is truncated at a break.
     assert_eq!(m.cuts, vec![(40.0, 50.0)]);
+}
+
+#[test]
+fn rows_come_from_the_placement_not_from_the_box() {
+    // An end-aligned item spanning two rows sits in the second row only physically: its
+    // break-after belongs to the end of its grid area (css-grid-2 §8, §12).
+    let (b, ids) = grid(
+        "<div style='display:grid;grid-template-rows:50px 50px 50px'><div style='grid-row:1/span 2;height:40px;align-self:end;break-after:column'></div><div style='grid-row:3'></div></div>",
+    );
+    let m = breaks(
+        &b,
+        &[(ids[0], 60.0, 100.0, 0, 1), (ids[1], 100.0, 150.0, 2, 2)],
+        &[(0.0, 50.0), (50.0, 100.0), (100.0, 150.0)],
+        150.0,
+    );
+    assert_eq!(m.forced, vec![100.0]);
 }
 
 #[test]
@@ -70,10 +98,10 @@ fn monolithic_item_moves_its_whole_row() {
     let m = breaks(
         &b,
         &[
-            (ids[0], 0.0, 40.0),
-            (ids[1], 0.0, 40.0),
-            (ids[2], 40.0, 100.0),
-            (ids[3], 50.0, 100.0),
+            (ids[0], 0.0, 40.0, 0, 0),
+            (ids[1], 0.0, 40.0, 0, 0),
+            (ids[2], 40.0, 100.0, 1, 1),
+            (ids[3], 50.0, 100.0, 1, 1),
         ],
         &[(0.0, 40.0), (40.0, 100.0)],
         100.0,
@@ -92,9 +120,9 @@ fn avoided_row_boundary_is_reached_only_through_a_moved_row() {
     let m = breaks(
         &b,
         &[
-            (ids[0], 0.0, 50.0),
-            (ids[1], 50.0, 90.0),
-            (ids[2], 90.0, 150.0),
+            (ids[0], 0.0, 50.0, 0, 0),
+            (ids[1], 50.0, 90.0, 1, 1),
+            (ids[2], 90.0, 150.0, 2, 2),
         ],
         &[(0.0, 50.0), (50.0, 90.0), (90.0, 150.0)],
         150.0,
@@ -105,21 +133,58 @@ fn avoided_row_boundary_is_reached_only_through_a_moved_row() {
 }
 
 #[test]
-fn row_push_grows_the_items_ending_above() {
+fn row_push_targets_the_track_before_the_row() {
     let (b, ids) = grid(
-        "<div style='display:grid'><div style='height:50px'></div><div style='height:40px'></div></div>",
+        "<div style='display:grid'><div style='height:50px'></div><div style='height:40px'></div><div style='grid-row:1/3'></div></div>",
     );
-    let mut laid = Laid::of_boxes(&[(ids[0], 0.0, 50.0), (ids[1], 50.0, 90.0)]);
-    laid.grids.insert(b.id, vec![(0.0, 50.0), (50.0, 90.0)]);
+    let rows = [(0.0, 50.0), (50.0, 90.0)];
+    let mut items = vec![
+        (ids[0], 0.0, 50.0, 0, 0),
+        (ids[1], 50.0, 90.0, 1, 1),
+        (ids[2], 0.0, 90.0, 0, 1),
+    ];
+    assert_eq!(
+        b.pushed_at(50.0, &laid(&b, &items, &rows)),
+        Some(Pushed::Row(RowPush {
+            grid: b.id,
+            track: 0,
+        }))
+    );
+    assert_eq!(b.pushed_at(20.0, &laid(&b, &items, &rows)), None);
+    // Only a spanning item crosses the boundary: the point lies inside it.
+    items.remove(0);
+    assert_eq!(b.pushed_at(50.0, &laid(&b, &items, &rows)), None);
+}
+
+#[test]
+fn subgrid_rows_are_pushed_on_the_parent_grid() {
+    let (b, ids) = grid(
+        "<div style='display:grid'><div style='display:grid;grid-template-rows:subgrid;grid-row:span 2'><div style='height:50px'></div><div style='height:40px'></div></div></div>",
+    );
+    let sub = b.grid.as_ref().unwrap().items[0].inner.as_ref().unwrap();
+    assert!(sub.grid.as_ref().unwrap().subgrid_rows);
+    let kids: Vec<u64> = sub
+        .grid
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|i| i.id)
+        .collect();
+    let rows = [(0.0, 50.0), (50.0, 90.0)];
+    let mut laid = laid(&b, &[(ids[0], 0.0, 90.0, 0, 1)], &rows);
+    laid.grids.insert(sub.id, rows.to_vec());
+    for (kid, (t, bottom, row)) in kids.iter().zip([(0.0, 50.0, 0), (50.0, 90.0, 1)]) {
+        laid.boxes.insert(*kid, (t, bottom));
+        laid.placements.insert(*kid, (row, row));
+    }
     assert_eq!(
         b.pushed_at(50.0, &laid),
         Some(Pushed::Row(RowPush {
             grid: b.id,
-            items: vec![ids[0]],
             track: 0,
         }))
     );
-    assert_eq!(b.pushed_at(20.0, &laid), None);
 }
 
 #[test]
@@ -132,12 +197,9 @@ fn empty_grid_keeps_native_tracks_and_their_break_boundaries() {
     laid.grids
         .insert(b.id, vec![(0.0, 61.0), (61.0, 120.0), (120.0, 137.0)]);
     assert_eq!(b.pushed_at(61.0, &laid), None);
-    let m = breaks(
-        &b,
-        &[(b.id, 0.0, 137.0)],
-        &[(0.0, 61.0), (61.0, 120.0), (120.0, 137.0)],
-        137.0,
-    );
+    let m = b
+        .breaks(137.0, &laid)
+        .finish(FlowGeometry::default(), 137.0);
     assert!(m.cuts.is_empty());
     assert!(m.solid.is_empty());
     assert!(m.forced.is_empty());

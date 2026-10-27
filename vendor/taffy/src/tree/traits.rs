@@ -406,6 +406,17 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     /// child layout never accumulates it. Default implementation stores nothing.
     fn set_content_shift(&mut self, _node_id: NodeId, _dy: f32) {}
 
+    /// KaminIDE patch: block space a fragmenting caller inserts after track `track` of the
+    /// physical `axis` (css-grid-2 §12). Tracks are indexed like
+    /// [`DetailedGridTracksInfo::positions`](crate::compute::grid::DetailedGridTracksInfo):
+    /// logical order including leading implicit tracks. Sizing and content alignment keep the
+    /// unfragmented layout; following tracks move towards the axis end, spanning items grow with
+    /// their area and a content-sized container grows. Ignored in a subgridded axis and by
+    /// grid-lanes containers.
+    fn grid_track_fragmentation_growth(&self, _node_id: NodeId, _axis: crate::geometry::AbsoluteAxis, _track: usize) -> f32 {
+        0.0
+    }
+
     /// Set the node's detailed grid information
     ///
     /// Implementing this method is optional. Doing so allows you to access details about the the grid such as

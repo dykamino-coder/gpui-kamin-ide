@@ -156,6 +156,9 @@ struct NodeData {
     /// KaminIDE patch: fragmentation cannot expand a monolithic item.
     #[cfg(feature = "flexbox")]
     pub(crate) fragmentation_monolithic: bool,
+    /// KaminIDE patch: block space inserted after the tracks of one physical grid axis.
+    #[cfg(feature = "grid")]
+    pub(crate) grid_track_growth: (crate::geometry::AbsoluteAxis, Vec<f32>),
 }
 
 impl NodeData {
@@ -188,6 +191,8 @@ impl NodeData {
             flex_fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
             #[cfg(feature = "flexbox")]
             fragmentation_monolithic: false,
+            #[cfg(feature = "grid")]
+            grid_track_growth: (crate::geometry::AbsoluteAxis::Vertical, Vec::new()),
         }
     }
 
@@ -316,6 +321,30 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
         if data.flex_line_growth != growth {
             data.flex_line_growth = growth;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "grid")]
+impl<NodeContext> TaffyTree<NodeContext> {
+    /// KaminIDE patch: block space inserted after each track of the physical `axis` of a grid
+    /// container (css-grid-2 §12), indexed like `DetailedGridTracksInfo::positions`. This
+    /// constraint is outside the style/cache key; changing it invalidates layout.
+    pub fn set_grid_fragmentation_growth(
+        &mut self,
+        node: NodeId,
+        axis: crate::geometry::AbsoluteAxis,
+        growth: Vec<f32>,
+    ) -> TaffyResult<()> {
+        if growth.iter().any(|v| !v.is_finite() || *v < 0.0) {
+            return Err(TaffyError::InvalidInputNode(node));
+        }
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        let growth = (axis, growth);
+        if data.grid_track_growth != growth {
+            data.grid_track_growth = growth;
             self.mark_dirty(node)?;
         }
         Ok(())
@@ -779,6 +808,11 @@ where
 
     fn set_content_shift(&mut self, node_id: NodeId, dy: f32) {
         self.taffy.nodes[node_id.into()].content_shift = dy;
+    }
+
+    fn grid_track_fragmentation_growth(&self, node: NodeId, axis: crate::geometry::AbsoluteAxis, track: usize) -> f32 {
+        let (growth_axis, growth) = &self.taffy.nodes[node.into()].grid_track_growth;
+        if *growth_axis == axis { growth.get(track).copied().unwrap_or(0.0) } else { 0.0 }
     }
 
     fn set_subgrid_tracks(&mut self, node_id: NodeId, tracks: Option<crate::style::SubgridTracks>) {

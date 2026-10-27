@@ -236,3 +236,5 @@ mod flex_fragmentation_continuation_tests;
 mod flex_fragmentation_pin_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox", feature = "block_layout"))]
 mod flex_fragmentation_min_tests;
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod grid_fragmentation_growth_tests;

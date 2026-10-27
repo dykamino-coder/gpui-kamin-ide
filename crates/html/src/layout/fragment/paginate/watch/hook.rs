@@ -49,17 +49,13 @@ impl Hooks for Watch {
                     window.set_flex_fragmentation(lid, true);
                 }
                 let axis = self.rec.axis();
-                window.set_flex_fragmentation_axis(
-                    lid,
-                    if axis.is_vertical() {
-                        gpui::Axis::Horizontal
-                    } else {
-                        gpui::Axis::Vertical
-                    },
-                    axis == StackAxis::VerticalRl,
-                );
+                let block = super::axis::solver_axis(axis);
+                window.set_flex_fragmentation_axis(lid, block, axis == StackAxis::VerticalRl);
                 if let Some(growth) = self.rec.flex_growth.borrow().get(&id) {
                     window.set_flex_line_fragmentation_growth(lid, growth);
+                }
+                if let Some(growth) = self.rec.grid_growth.borrow().get(&id) {
+                    window.set_grid_fragmentation_growth(lid, block, growth);
                 }
                 if let Some(&line) = self.rec.flex_lines.borrow().get(&id) {
                     window.set_flex_item_fragmentation_line(lid, Some(line));

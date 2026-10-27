@@ -1,10 +1,14 @@
-//! Точные границы рядов элемента из завершённого размещения родительской сетки.
+//! Точные линии элемента по одной физической оси из завершённого размещения родительской сетки.
 use taffy::{
     BoxGenerationMode, CoreStyle, DetailedLayoutInfo, Display, NodeId, Position, TaffyTree,
     TraversePartialTree,
 };
 
-pub(super) fn grid_item_rows<C>(tree: &TaffyTree<C>, child: NodeId) -> Option<(u16, u16)> {
+pub(super) fn grid_item_lines<C>(
+    tree: &TaffyTree<C>,
+    child: NodeId,
+    axis: crate::Axis,
+) -> Option<(u16, u16)> {
     let parent = tree.parent(child)?;
     if tree.style(parent).ok()?.display != Display::Grid {
         return None;
@@ -24,7 +28,10 @@ pub(super) fn grid_item_rows<C>(tree: &TaffyTree<C>, child: NodeId) -> Option<(u
         })
         .position(|node| node == child)?;
     let item = info.items.get(index)?;
-    Some((item.row_start, item.row_end))
+    Some(match axis {
+        crate::Axis::Horizontal => (item.column_start, item.column_end),
+        crate::Axis::Vertical => (item.row_start, item.row_end),
+    })
 }
 
 #[cfg(test)]
@@ -78,22 +85,22 @@ mod tests {
                 &[hidden, absolute, short, other],
             )
             .unwrap();
-        assert_eq!(grid_item_rows(&tree, short), None);
+        assert_eq!(grid_item_lines(&tree, short, crate::Axis::Vertical), None);
         tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
         assert_eq!(tree.layout(short).unwrap().size.height, 2.0);
-        assert_eq!(grid_item_rows(&tree, short), Some((1, 4)));
-        assert_eq!(grid_item_rows(&tree, other), Some((2, 3)));
-        assert_eq!(grid_item_rows(&tree, hidden), None);
-        assert_eq!(grid_item_rows(&tree, absolute), None);
+        assert_eq!(grid_item_lines(&tree, short, crate::Axis::Vertical), Some((1, 4)));
+        assert_eq!(grid_item_lines(&tree, other, crate::Axis::Vertical), Some((2, 3)));
+        assert_eq!(grid_item_lines(&tree, hidden, crate::Axis::Vertical), None);
+        assert_eq!(grid_item_lines(&tree, absolute, crate::Axis::Vertical), None);
         tree.set_children(root, &[other, hidden, short, absolute])
             .unwrap();
-        assert_eq!(grid_item_rows(&tree, short), None);
+        assert_eq!(grid_item_lines(&tree, short, crate::Axis::Vertical), None);
         tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
-        assert_eq!(grid_item_rows(&tree, short), Some((1, 4)));
-        assert_eq!(grid_item_rows(&tree, other), Some((2, 3)));
+        assert_eq!(grid_item_lines(&tree, short, crate::Axis::Vertical), Some((1, 4)));
+        assert_eq!(grid_item_lines(&tree, other, crate::Axis::Vertical), Some((2, 3)));
         tree.set_style(root, Style::DEFAULT).unwrap();
         tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
-        assert_eq!(grid_item_rows(&tree, short), None);
+        assert_eq!(grid_item_lines(&tree, short, crate::Axis::Vertical), None);
     }
 
     #[test]
@@ -131,9 +138,11 @@ mod tests {
             )
             .unwrap();
         tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
-        assert_eq!(grid_item_rows(&tree, before), Some((1, 2)));
-        assert_eq!(grid_item_rows(&tree, explicit), Some((2, 3)));
-        assert_eq!(grid_item_rows(&tree, automatic), Some((3, 4)));
+        assert_eq!(grid_item_lines(&tree, before, crate::Axis::Vertical), Some((1, 2)));
+        assert_eq!(grid_item_lines(&tree, explicit, crate::Axis::Vertical), Some((2, 3)));
+        assert_eq!(grid_item_lines(&tree, automatic, crate::Axis::Vertical), Some((3, 4)));
+        // The single explicit column holds every item.
+        assert_eq!(grid_item_lines(&tree, automatic, crate::Axis::Horizontal), Some((1, 2)));
     }
 
     #[test]
@@ -179,7 +188,7 @@ mod tests {
             )
             .unwrap();
         tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
-        assert_eq!(grid_item_rows(&tree, subgrid), Some((2, 4)));
-        assert_eq!(grid_item_rows(&tree, other), Some((1, 2)));
+        assert_eq!(grid_item_lines(&tree, subgrid, crate::Axis::Vertical), Some((2, 4)));
+        assert_eq!(grid_item_lines(&tree, other, crate::Axis::Vertical), Some((1, 2)));
     }
 }

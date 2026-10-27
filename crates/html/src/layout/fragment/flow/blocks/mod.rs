@@ -29,7 +29,7 @@ pub(crate) mod table;
 use table::TableBox;
 mod grid;
 mod grid_breaks;
-pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container, item_rows};
+pub(crate) use grid::{GridBox, Pushed, grid_container};
 mod grid_tree;
 pub(crate) use grid_tree::grid_tree;
 mod flex;

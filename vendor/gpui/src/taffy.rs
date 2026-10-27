@@ -1,4 +1,6 @@
-mod grid_item_rows;
+mod grid_item_lines;
+// KaminIDE patch: fragmentation growth after grid tracks.
+mod grid_fragmentation;
 // KaminIDE patch: final flex line metadata for fragmentation.
 mod flex_layout;
 pub use flex_layout::{FlexItemLayout, FlexLayout, FlexLineLayout};
@@ -475,11 +477,11 @@ impl TaffyLayoutEngine {
         point(Pixels(ax / scale_factor), Pixels(ay / scale_factor))
     }
 
-    /// KaminIDE patch: точный полуоткрытый охват рядов из размещения элемента.
+    /// KaminIDE patch: точный полуоткрытый охват линий элемента по физической оси `axis`.
     /// Индексы начинаются с 1 и учитывают ведущие неявные дорожки.
     /// `None` означает отсутствие завершённого размещения в родительской сетке.
-    pub fn grid_item_rows(&self, child: LayoutId) -> Option<(u16, u16)> {
-        grid_item_rows::grid_item_rows(&self.taffy, child.into())
+    pub fn grid_item_lines(&self, child: LayoutId, axis: crate::Axis) -> Option<(u16, u16)> {
+        grid_item_lines::grid_item_lines(&self.taffy, child.into(), axis)
     }
 
     /// KaminIDE patch: parent identity for joining completed layout metadata.

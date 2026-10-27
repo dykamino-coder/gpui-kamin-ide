@@ -112,6 +112,7 @@ impl Watched {
             tables: self.tables.clone(),
             flow: Rc::new(self.flow.constraints_only()),
             flex_growth: self.flex_growth.clone(),
+            grid_growth: self.grid_growth.clone(),
             flex_offsets: self.flex_offsets.clone(),
             axis: self.axis,
             item_flows: Rc::new(

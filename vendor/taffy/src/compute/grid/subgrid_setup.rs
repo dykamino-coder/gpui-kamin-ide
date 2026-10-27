@@ -44,12 +44,14 @@ pub(in super::super) fn tracks<S: crate::CheapCloneStr>(
             sizes: None,
             gap: gap.width,
             names: inherited(true, local.0),
+            growth: Vec::new(),
         }),
         rows: (linked & SUBGRID_ROWS != 0).then(|| SubgridAxisTracks {
             count: area.1.span().max(1),
             sizes: None,
             gap: gap.height,
             names: inherited(false, local.1),
+            growth: Vec::new(),
         }),
     }
 }

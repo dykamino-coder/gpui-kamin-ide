@@ -342,6 +342,9 @@ pub struct SubgridAxisTracks {
     /// Явные имена линий родителя на линиях пролёта (`count + 1` список) —
     /// подсетка их наследует (§9 (d) `#subgrid-line-name-inheritance`).
     pub names: Vec<Vec<String>>,
+    /// Рост фрагментации родителя между дорожками пролёта (css-grid-2 §12): элемент `k` —
+    /// после дорожки `k` подсетки в её логическом порядке; размеры выше его не включают.
+    pub growth: Vec<f32>,
 }
 
 /// KaminIDE patch: `<line-name-list>` подсеточной оси (css-grid-2

@@ -32,6 +32,8 @@ mod flex_geometry_tests;
 mod flex_pin_tests;
 mod geometry;
 mod grid;
+#[cfg(test)]
+mod grid_geometry_tests;
 mod owner;
 mod table;
 use table::TableNodes;
@@ -55,6 +57,8 @@ pub(crate) struct Watched {
     independent: bool,
     axis: Option<StackAxis>,
     flex_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
+    /// Рост после дорожек блочной оси сеток по номеру контейнера (`grid`).
+    grid_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
     flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
     flex_consumed: Rc<RefCell<HashMap<u64, (f32, bool)>>>,
     item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasure>>>,
@@ -124,6 +128,7 @@ impl Watched {
             tables: self.tables.clone(),
             table_nodes: self.table_nodes.clone(),
             flex_growth: self.flex_growth.clone(),
+            grid_growth: self.grid_growth.clone(),
             flex_offsets: self.flex_offsets.clone(),
             flex_consumed: self.flex_consumed.clone(),
             item_flows: self.item_flows.clone(),
