@@ -2,7 +2,9 @@
 //! внепоточных корней, воспроизводимые в legacy-копиях их предков.
 
 use super::decoration::Decoration;
-use gpui::{Bounds, PaintRecord, PaintSegment, PaintSegmentId, PaintSegmentSlice, Pixels};
+use gpui::{
+    Bounds, PaintHitScope, PaintRecord, PaintSegment, PaintSegmentId, PaintSegmentSlice, Pixels,
+};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// Admission of a native source paint: nodes and their fragment decorations,
@@ -78,5 +80,41 @@ impl BareRecords {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.table().borrow().is_empty()
+    }
+}
+
+/// Hit scopes of the slots met while prepainting the copies, by (segment, root).
+#[derive(Clone, Default)]
+pub(crate) struct SlotScopes(Rc<RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>>>);
+
+impl SlotScopes {
+    pub(crate) fn push(&self, segment: PaintSegmentId, root: u64, scope: PaintHitScope) {
+        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
+        cell.borrow_mut().push((segment, root, scope));
+    }
+
+    /// Forget the slots of the previous prepaint.
+    pub(crate) fn clear(&self) {
+        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
+        cell.borrow_mut().clear();
+    }
+
+    /// Scopes of the placements `(segment, ordinal, root)` that a slot replays.
+    pub(crate) fn scopes(
+        &self,
+        placements: &[(PaintSegmentId, u32, u64)],
+    ) -> Rc<[(PaintSegmentId, u32, PaintHitScope)]> {
+        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
+        let slots = cell.borrow();
+        placements
+            .iter()
+            .filter_map(|&(segment, ordinal, root)| {
+                let (_, _, scope) = slots
+                    .iter()
+                    .rev()
+                    .find(|(s, r, _)| *s == segment && *r == root)?;
+                Some((segment, ordinal, scope.clone()))
+            })
+            .collect()
     }
 }

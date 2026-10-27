@@ -74,7 +74,7 @@ impl PageStack {
                         continue;
                     };
                     window.with_content_mask(Some(mask), |window| {
-                        crate::paint::continuation::with_copy_segment(
+                        crate::hooks::with_copy_segment(
                             gpui::PaintSegmentId(f.col as u64),
                             records.as_ref(),
                             window,
@@ -87,7 +87,7 @@ impl PageStack {
                         window.with_content_mask(
                             Some(gpui::ContentMask { bounds: area }),
                             |window| {
-                                crate::paint::continuation::with_copy_segment(
+                                crate::hooks::with_copy_segment(
                                     gpui::PaintSegmentId(i as u64),
                                     records.as_ref(),
                                     window,
@@ -102,7 +102,7 @@ impl PageStack {
                         window.with_content_mask(
                             Some(gpui::ContentMask { bounds: area }),
                             |window| {
-                                crate::paint::continuation::with_copy_segment(
+                                crate::hooks::with_copy_segment(
                                     gpui::PaintSegmentId(i as u64),
                                     records.as_ref(),
                                     window,

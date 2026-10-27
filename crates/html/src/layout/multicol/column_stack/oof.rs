@@ -26,7 +26,7 @@ pub(crate) struct State {
     )>,
     pub(crate) owners: Vec<(u64, usize, f32)>,
     /// Hit scopes of the slots in this stack's copies, read by the native prepaint.
-    pub(crate) slot_scopes: crate::paint::continuation::SlotScopes,
+    pub(crate) slot_scopes: crate::hooks::SlotScopes,
 }
 
 impl State {

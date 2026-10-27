@@ -2,48 +2,12 @@
 //! но рисует его собственную запись продолжения в своём сегменте — внутри того же
 //! экземпляра эффектов предков и в CSS-порядке своего контекста наложения.
 
-use crate::hooks::{BareRecords, IntoHooked, Wrap};
+use crate::hooks::{BareRecords, IntoHooked, SlotScopes, Wrap};
 use gpui::{
-    AnyElement, App, Bounds, PaintHitScope, PaintPlacement, PaintPlan, PaintSegmentId, Pixels,
+    AnyElement, App, Bounds, PaintPlacement, PaintPlan, PaintSegmentId, Pixels,
     TransformationMatrix, Window, point, px,
 };
-use std::{cell::RefCell, rc::Rc};
-
-/// Hit scopes of the slots met while prepainting the copies, by (segment, root).
-#[derive(Clone, Default)]
-pub(crate) struct SlotScopes(Rc<RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>>>);
-
-impl SlotScopes {
-    fn push(&self, segment: PaintSegmentId, root: u64, scope: PaintHitScope) {
-        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
-        cell.borrow_mut().push((segment, root, scope));
-    }
-
-    /// Forget the slots of the previous prepaint.
-    pub(crate) fn clear(&self) {
-        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
-        cell.borrow_mut().clear();
-    }
-
-    /// Scopes of the placements `(segment, ordinal, root)` that a slot replays.
-    pub(crate) fn scopes(
-        &self,
-        placements: &[(PaintSegmentId, u32, u64)],
-    ) -> Rc<[(PaintSegmentId, u32, PaintHitScope)]> {
-        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
-        let slots = cell.borrow();
-        placements
-            .iter()
-            .filter_map(|&(segment, ordinal, root)| {
-                let (_, _, scope) = slots
-                    .iter()
-                    .rev()
-                    .find(|(s, r, _)| *s == segment && *r == root)?;
-                Some((segment, ordinal, scope.clone()))
-            })
-            .collect()
-    }
-}
+use std::rc::Rc;
 
 struct CopyHits {
     segment: PaintSegmentId,

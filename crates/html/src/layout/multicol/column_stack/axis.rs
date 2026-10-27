@@ -197,12 +197,9 @@ impl ColumnStack {
             };
             let segment = gpui::PaintSegmentId(f.col as u64);
             let mut paint = |window: &mut Window| {
-                crate::paint::continuation::with_copy_segment(
-                    segment,
-                    records.as_ref(),
-                    window,
-                    |window| el.paint(window, cx),
-                )
+                crate::hooks::with_copy_segment(segment, records.as_ref(), window, |window| {
+                    el.paint(window, cx)
+                })
             };
             if split {
                 window.with_content_mask(Some(mask), paint);

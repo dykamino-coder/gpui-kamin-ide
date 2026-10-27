@@ -112,6 +112,7 @@ impl PageStack {
         // целой page area оставляла на странице хвост следующего
         // фрагмента до края листа (`block-page-break-inside-avoid-7`).
         let records = self.copy_records();
+        let copy = (records.as_ref(), bounds.origin, s);
         for f in plan.iter().copied() {
             if self.geom(f.col).turn % 2 == 1 {
                 continue;
@@ -171,16 +172,7 @@ impl PageStack {
             // Маски детей (overflow ячеек, полосы таблиц, срезы) заданы в
             // немасштабированных точках — под матрицей стопки они обязаны
             // пройти то же подобие (`Window::with_mask_scale`).
-            super::native::paint_copy(
-                records.as_ref(),
-                f.col,
-                mask,
-                bounds.origin,
-                s,
-                el,
-                window,
-                cx,
-            );
+            super::native::paint_copy(copy, f.col, mask, el, window, cx);
         }
         for p in 0..pages.min(self.icb.len()) {
             if self.geom(p).turn % 2 == 1 {
@@ -190,16 +182,7 @@ impl PageStack {
                 continue;
             };
             for el in &mut self.icb[p] {
-                super::native::paint_copy(
-                    records.as_ref(),
-                    p,
-                    mask,
-                    bounds.origin,
-                    s,
-                    el,
-                    window,
-                    cx,
-                );
+                super::native::paint_copy(copy, p, mask, el, window, cx);
             }
         }
         for p in 0..pages.min(self.fixed.len()) {
@@ -210,16 +193,7 @@ impl PageStack {
                 continue;
             };
             for el in &mut self.fixed[p] {
-                super::native::paint_copy(
-                    records.as_ref(),
-                    p,
-                    mask,
-                    bounds.origin,
-                    s,
-                    el,
-                    window,
-                    cx,
-                );
+                super::native::paint_copy(copy, p, mask, el, window, cx);
             }
         }
         // Independent OOF continuations: each sheet replays its native records

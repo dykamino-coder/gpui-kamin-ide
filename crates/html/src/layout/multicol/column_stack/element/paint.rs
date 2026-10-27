@@ -209,7 +209,7 @@ impl ColumnStack {
                         }),
                         || {
                             gap_fragment::with(&self.paint, scope, || {
-                                crate::paint::continuation::with_copy_segment(
+                                crate::hooks::with_copy_segment(
                                     gpui::PaintSegmentId(f.col as u64),
                                     records.as_ref(),
                                     window,
@@ -220,7 +220,7 @@ impl ColumnStack {
                     );
                 });
             } else {
-                crate::paint::continuation::with_copy_segment(
+                crate::hooks::with_copy_segment(
                     gpui::PaintSegmentId(f.col as u64),
                     records.as_ref(),
                     window,

@@ -226,20 +226,17 @@ impl PageStack {
 
 /// Paint a sheet's copy under its page-area mask and the stack scale; its slots
 /// replay the sheet's own continuation records.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn paint_copy(
-    records: Option<&BareRecords>,
+    (records, origin, scale): (Option<&BareRecords>, gpui::Point<Pixels>, f32),
     page: usize,
     mask: gpui::ContentMask<Pixels>,
-    origin: gpui::Point<Pixels>,
-    scale: f32,
     el: &mut gpui::AnyElement,
     window: &mut Window,
     cx: &mut App,
 ) {
     window.with_content_mask(Some(mask), |window| {
         window.with_mask_scale(origin, scale, |window| {
-            crate::paint::continuation::with_copy_segment(
+            crate::hooks::with_copy_segment(
                 PaintSegmentId(page as u64),
                 records,
                 window,

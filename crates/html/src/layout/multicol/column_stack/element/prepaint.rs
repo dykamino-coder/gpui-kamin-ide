@@ -91,12 +91,9 @@ impl ColumnStack {
                 .map(|places| (f.kid, point(x, y - px(f.from)), places.clone()));
             let segment = gpui::PaintSegmentId(f.col as u64);
             static_coordinates::with(&self.paint, mapping, || {
-                crate::paint::continuation::with_copy_hits(
-                    segment,
-                    &self.oof.slot_scopes,
-                    window,
-                    |window| el.prepaint_at(point(px(0.0), px(0.0)), window, cx),
-                );
+                crate::hooks::with_copy_hits(segment, &self.oof.slot_scopes, window, |window| {
+                    el.prepaint_at(point(px(0.0), px(0.0)), window, cx)
+                });
             });
             // Retain the actual root width for fragment decoration bounds.
             kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));

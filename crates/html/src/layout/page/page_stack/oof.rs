@@ -24,7 +24,7 @@ pub(super) struct State {
     pub(super) natives: RefCell<Vec<Rc<Native>>>,
     pub(super) records: RefCell<super::native::Records>,
     /// Hit scopes of the slots in the sheets' copies, read by the native prepaint.
-    pub(super) slot_scopes: crate::paint::continuation::SlotScopes,
+    pub(super) slot_scopes: crate::hooks::SlotScopes,
 }
 
 #[cfg(test)]

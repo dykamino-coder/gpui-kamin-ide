@@ -115,7 +115,7 @@ impl PageStack {
                 cx,
             );
             window.with_hitbox_transform(sheet, |window| {
-                crate::paint::continuation::with_copy_hits(segment, &scopes, window, |window| {
+                crate::hooks::with_copy_hits(segment, &scopes, window, |window| {
                     el.prepaint_at(
                         point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y)),
                         window,
@@ -135,7 +135,7 @@ impl PageStack {
             for el in &mut self.icb[p] {
                 window.with_hitbox_transform(sheet, |window| {
                     let segment = gpui::PaintSegmentId(p as u64);
-                    crate::paint::continuation::with_copy_hits(segment, &scopes, window, |window| {
+                    crate::hooks::with_copy_hits(segment, &scopes, window, |window| {
                         el.prepaint_at(
                             point(
                                 bounds.origin.x + px(sx + ax),
@@ -163,7 +163,7 @@ impl PageStack {
             for el in &mut self.fixed[p] {
                 window.with_hitbox_transform(sheet, |window| {
                     let segment = gpui::PaintSegmentId(p as u64);
-                    crate::paint::continuation::with_copy_hits(segment, &scopes, window, |window| {
+                    crate::hooks::with_copy_hits(segment, &scopes, window, |window| {
                         el.prepaint_at(
                             point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
                             window,
