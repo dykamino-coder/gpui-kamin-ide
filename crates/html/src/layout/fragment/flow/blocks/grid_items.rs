@@ -86,6 +86,30 @@ impl BlockBox {
     }
 }
 
+impl BlockBox {
+    /// Начала margin box элементов всех сеток стопки: элемент принадлежит фрагменту, где
+    /// начинается его ряд, даже если отрицательное поле вынесло его коробку выше
+    /// (`paginate::watch::owner`; Blink кладёт элемент в смещение его ряда).
+    pub(crate) fn grid_item_starts(&self, laid: &Laid, out: &mut Vec<(u64, f32)>) {
+        if let Some(g) = &self.grid {
+            out.extend(
+                g.items
+                    .iter()
+                    .filter_map(|it| laid.at(it.id).map(|p| (it.id, p.0 - it.mt))),
+            );
+        }
+        let grid_items = self.grid.iter().flat_map(|g| &g.items).map(|i| &i.inner);
+        let kids = self
+            .kids
+            .iter()
+            .chain(self.flex.iter().flat_map(|f| &f.items))
+            .map(|k| &k.inner);
+        for inner in grid_items.chain(kids).flatten() {
+            inner.grid_item_starts(laid, out);
+        }
+    }
+}
+
 /// Конец содержимого коробки: её дети и строки, без растяжения самой коробки.
 fn content_end(b: &BlockBox, laid: &Laid) -> Option<f32> {
     let kids = b
