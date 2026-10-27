@@ -105,10 +105,16 @@ pub(super) fn cascade_element(
         crate::style::css::custom_properties::cascade_map(&pre, vars, &registered.rules, |s, v| {
             syntax_accepts(s, v, vcx)
         });
-    let own_vars =
-        crate::style::css::variable_values::compute(&cascaded, vars, &registered.rules, |s, v| {
-            syntax_accepts(s, v, vcx)
-        });
+    let revision = tree.doc.revision_budget();
+    let work = crate::style::css::variable_values::Work::new(&revision);
+    let own_vars = crate::style::css::variable_values::compute(
+        &cascaded,
+        vars,
+        &registered.rules,
+        |s, v| syntax_accepts(s, v, vcx),
+        &work,
+    );
+    work.finish(&tree.doc);
     let vars = &own_vars;
     drop(pre);
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента

@@ -27,6 +27,12 @@ pub enum Code {
     BudgetInvariant,
     AllocationFailed,
     CapacityOverflow,
+    /// Предел одного ресурса: байты до декодирования, заявленный растр, кодек.
+    ResourceLimit,
+    /// Подстановка `var()` стала invalid at computed-value time по пределу реализации.
+    SubstitutionLimit,
+    /// Задание отменено вместе с устаревшим поколением документа (телеметрия).
+    Cancelled,
 }
 
 impl Code {
@@ -38,6 +44,9 @@ impl Code {
             Self::BudgetInvariant => "KAMINIDE_BUDGET_INVARIANT",
             Self::AllocationFailed => "KAMINIDE_ALLOCATION_FAILED",
             Self::CapacityOverflow => "KAMINIDE_CAPACITY_OVERFLOW",
+            Self::ResourceLimit => "KAMINIDE_LIMIT_RESOURCE",
+            Self::SubstitutionLimit => "KAMINIDE_LIMIT_SUBSTITUTION",
+            Self::Cancelled => "KAMINIDE_CANCELLED",
         }
     }
 
@@ -52,9 +61,11 @@ impl Code {
     }
 }
 
+/// Info — телеметрия без проблемы для пользователя (отмена устаревшего задания);
 /// Warning — документ показан со штатным fallback; Error — отказ своей области.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Severity {
+    Info,
     Warning,
     Error,
 }
@@ -68,6 +79,10 @@ pub enum Phase {
     Parse,
     /// Ограниченный проход представления.
     Traversal(TraversalKind),
+    /// Загрузка и декодирование ресурса.
+    Resource,
+    /// Вычисление стиля (подстановки).
+    Style,
 }
 
 /// Что именно упёрлось в предел.
@@ -79,6 +94,20 @@ pub enum Measure {
         attempted: u64,
     },
     Budget(BudgetExceeded),
+    /// Неизменяемый предел одного ресурса или значения, в байтах.
+    Ceiling {
+        limit: u64,
+    },
+    /// Результат длиннее предела: `attempted` байт при пределе `limit`.
+    Length {
+        limit: u64,
+        attempted: u64,
+    },
+    /// Заявленные стороны растра непредставимы.
+    Dimensions {
+        width: u32,
+        height: u32,
+    },
 }
 
 /// Позиция только если она достоверно известна.
@@ -105,6 +134,46 @@ impl Diagnostic {
     fn same_key(&self, other: &Self) -> bool {
         (self.code, self.scope, self.phase, self.location)
             == (other.code, other.scope, other.phase, other.location)
+    }
+}
+
+impl Diagnostic {
+    /// Наблюдение продюсера фазы; scope выставляет владелец журнала.
+    pub(crate) fn observed(
+        code: Code,
+        severity: Severity,
+        phase: Phase,
+        measure: Option<Measure>,
+    ) -> Self {
+        Self {
+            code,
+            severity,
+            scope: Scope::Document,
+            phase,
+            measure,
+            location: None,
+            occurrences: 1,
+        }
+    }
+
+    /// Отказ ledger в фазе: aggregate ревизии терминален, live-квота — fallback.
+    pub(crate) fn budget(phase: Phase, error: BudgetError) -> Self {
+        match error {
+            BudgetError::Exceeded(e) => {
+                let severity = if e.scope == crate::budget::BudgetScope::Revision {
+                    Severity::Error
+                } else {
+                    Severity::Warning
+                };
+                Self::observed(
+                    Code::BudgetExceeded,
+                    severity,
+                    phase,
+                    Some(Measure::Budget(e)),
+                )
+            }
+            _ => Self::observed(Code::BudgetInvariant, Severity::Error, phase, None),
+        }
     }
 }
 

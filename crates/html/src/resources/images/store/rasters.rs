@@ -7,7 +7,7 @@ use crate::resources::images::{
     svg_raster::{self, RasterRequest},
     types::CpuRaster,
 };
-use crate::resources::loader::{ResourceUrl, Revision};
+use crate::resources::loader::{ResourceUrl, Revision, fetch};
 use resvg::usvg::fontdb::Database;
 use std::sync::{Arc, Mutex};
 #[cfg(test)]
@@ -80,9 +80,8 @@ impl ImageStore {
                 self.rasters
                     .external
                     .get_or_insert_with((url.clone(), revision.clone()), || {
-                        self.services
-                            .loader
-                            .load(&url)
+                        let loader = &*self.services.loader;
+                        fetch(loader, &url, &self.budget, &self.cancel)
                             .ok()
                             .map(|loaded| Arc::new(loaded.bytes.to_vec()))
                     })

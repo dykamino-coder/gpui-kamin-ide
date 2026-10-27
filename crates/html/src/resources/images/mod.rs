@@ -6,6 +6,7 @@
 //! Раскладка получает отсюда размеры и альфу, покраска — точки, стиль — факты через
 //! `BackgroundImageValues`; модуль не импортирует ни `style`, ни фазы, ни GPUI.
 
+pub(crate) mod admission;
 pub(crate) mod cache;
 pub(crate) mod colour;
 pub(crate) mod decode;
