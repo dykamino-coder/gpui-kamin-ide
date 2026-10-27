@@ -68,6 +68,18 @@ pub struct Marks {
     pub(crate) initial_letter: bool,
     /// Width probe of inline content before the floats of a measured band host.
     pub(crate) lead: Option<LeadProbe>,
+    /// Why layout made this element's box (`style::box_input::BoxOrigin`);
+    /// copies keep it. None for author elements and anonymous table wrappers.
+    pub(crate) box_origin: Option<crate::style::box_input::BoxOrigin>,
+}
+
+impl super::Element {
+    /// Give the element the box layout made for it: the box values re-enter
+    /// box construction as its only style stage, and the marks record why.
+    pub(crate) fn set_layout_box(&mut self, input: crate::style::box_input::LayoutBoxInput) {
+        self.style = super::SharedStyle::layout_made(input.style);
+        self.marks.box_origin = Some(input.origin);
+    }
 }
 
 /// Synthetic band host: floats of one run and the content they wrap.

@@ -6,6 +6,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
+use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Display, Overflow, Position};
 use crate::style::values::value::Len;
@@ -72,37 +73,10 @@ pub(super) fn prepare(
             html.tag = "div".into();
             html.attrs.clear();
             html.marks = Default::default();
-            html.style = crate::dom::SharedStyle::layout_made(merged);
-            html.style.used_mut().width = Some(Len::Px(w * zoom));
-            html.style.used_mut().height = Some(Len::Px(h * zoom));
-            html.style.used_mut().display = Some(Display::Block);
-            html.style.used_mut().position = Some(Position::Relative);
-            html.style.used_mut().flow_root = Some(true);
-            html.style.used_mut().transform = None;
-            html.style.used_mut().transform_raw = None;
-            html.style.used_mut().translate = None;
-            html.style.used_mut().opacity = None;
-            html.style.used_mut().clip_ref = None;
-            html.style.used_mut().clip_inset = None;
-            html.style.used_mut().clip_edges = None;
-            html.style.used_mut().clip_xywh = None;
-            html.style.used_mut().clip_shape = None;
-            html.style.used_mut().clip_polygon = None;
-            html.style.used_mut().clip_bare_box = false;
-            html.style.used_mut().mask_image = None;
-            html.style.used_mut().filter = None;
-            html.style.used_mut().filter_ref = None;
-            html.style.used_mut().rotate_prop = None;
-            html.style.used_mut().scale_prop = None;
-            html.style
-                .used_mut()
-                .overflow_x
-                .get_or_insert(Overflow::Hidden);
-            html.style
-                .used_mut()
-                .overflow_y
-                .get_or_insert(Overflow::Hidden);
-            html.style.used_mut().blend = None;
+            html.set_layout_box(LayoutBoxInput::new(
+                BoxOrigin::EmbeddedRoot,
+                embedded_root(merged, (w * zoom, h * zoom)),
+            ));
             let root = BoxStyle::default();
             let mut element = crate::interactive::scroll_box::scrollable(&html, &root, opts)
                 .unwrap_or_else(|| opts.cx.contracts.build.element(&html, &root, opts));
@@ -166,6 +140,38 @@ pub(super) fn prepare(
     }
 }
 
+/// The box of `foreignObject` as the root of its embedded HTML viewport:
+/// a block of the viewport size whose SVG effects (transforms, opacity,
+/// clipping, masking, filters, blending) the SVG host already applies to the
+/// captured layer; its contents are clipped to the viewport.
+fn embedded_root(mut root: BoxStyle, size: (f32, f32)) -> BoxStyle {
+    root.width = Some(Len::Px(size.0));
+    root.height = Some(Len::Px(size.1));
+    root.display = Some(Display::Block);
+    root.position = Some(Position::Relative);
+    root.flow_root = Some(true);
+    root.transform = None;
+    root.transform_raw = None;
+    root.translate = None;
+    root.opacity = None;
+    root.clip_ref = None;
+    root.clip_inset = None;
+    root.clip_edges = None;
+    root.clip_xywh = None;
+    root.clip_shape = None;
+    root.clip_polygon = None;
+    root.clip_bare_box = false;
+    root.mask_image = None;
+    root.filter = None;
+    root.filter_ref = None;
+    root.rotate_prop = None;
+    root.scale_prop = None;
+    root.overflow_x.get_or_insert(Overflow::Hidden);
+    root.overflow_y.get_or_insert(Overflow::Hidden);
+    root.blend = None;
+    root
+}
+
 pub(super) fn cache(key: u64, png: &[u8], vcx: ValueCx<'_>) -> String {
     use std::fmt::Write as _;
     let mut uri = String::from("data:image/png,");
@@ -193,3 +199,6 @@ pub(super) fn set_image(e: &mut Element, id: u64, uri: String) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
