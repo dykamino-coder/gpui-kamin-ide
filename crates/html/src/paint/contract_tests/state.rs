@@ -47,23 +47,30 @@ fn snapshot_restores_exact_geometry_and_shared_context_identity() {
                     window.with_render_context(
                         Some(Rc::new(String::from("caller-only"))),
                         |window| {
-                            window.with_paint_ctx(snapshot.clone(), |window| {
-                                assert!(Rc::ptr_eq(
-                                    &window.render_context::<Cell<u32>>().unwrap(),
-                                    &captured
-                                ));
-                                assert_eq!(window.render_context::<Cell<u32>>().unwrap().get(), 2);
-                                assert!(window.render_context::<String>().is_none());
-                                assert_eq!(window.current_transformation(), transform);
-                                assert_eq!(window.element_offset(), offset);
-                                assert_eq!(window.content_mask(), saved_mask);
-                                window.with_paint_ctx(snapshot, |window| {
+                            window
+                                .with_paint_ctx(snapshot.clone(), |window| {
                                     assert!(Rc::ptr_eq(
                                         &window.render_context::<Cell<u32>>().unwrap(),
                                         &captured
                                     ));
-                                });
-                            });
+                                    assert_eq!(
+                                        window.render_context::<Cell<u32>>().unwrap().get(),
+                                        2
+                                    );
+                                    assert!(window.render_context::<String>().is_none());
+                                    assert_eq!(window.current_transformation(), transform);
+                                    assert_eq!(window.element_offset(), offset);
+                                    assert_eq!(window.content_mask(), saved_mask);
+                                    window
+                                        .with_paint_ctx(snapshot, |window| {
+                                            assert!(Rc::ptr_eq(
+                                                &window.render_context::<Cell<u32>>().unwrap(),
+                                                &captured
+                                            ));
+                                        })
+                                        .unwrap();
+                                })
+                                .unwrap();
                             assert!(Rc::ptr_eq(
                                 &window.render_context::<Cell<u32>>().unwrap(),
                                 &caller
@@ -91,18 +98,18 @@ fn typed_context_replay_restores_caller_on_unwind() {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
-                // A1 baseline: остальные поля snapshot здесь одинаковы. Их полное
-                // восстановление при panic — отдельная гарантия механизма A2.
                 let empty = window.paint_ctx();
                 let caller = Rc::new(17u32);
                 window.with_render_context(Some(caller.clone()), |window| {
                     let failed = catch_unwind(AssertUnwindSafe(|| {
-                        window.with_paint_ctx(empty, |window| {
-                            assert!(window.render_context::<u32>().is_none());
-                            window.with_render_context(Some(Rc::new(23u32)), |_| {
-                                panic!("aborted paint job");
-                            });
-                        });
+                        window
+                            .with_paint_ctx(empty, |window| {
+                                assert!(window.render_context::<u32>().is_none());
+                                window.with_render_context(Some(Rc::new(23u32)), |_| {
+                                    panic!("aborted paint job");
+                                });
+                            })
+                            .unwrap();
                     }));
                     assert!(failed.is_err());
                     assert!(Rc::ptr_eq(

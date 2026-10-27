@@ -593,15 +593,14 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     let LayoutInput { known_dimensions, parent_size, available_space, run_mode, .. } = inputs;
 
     // Define some general constants we will need for the remainder of the algorithm.
-    // KaminIDE patch: per-container constants outlive child layout on the heap.
-    let mut constants = crate::util::sys::Box::new(compute_constants(
+    let mut constants = compute_constants(
         tree,
         tree.get_flexbox_container_style(node),
         known_dimensions,
         inputs.known_dimensions_are_definite,
         parent_size,
         available_space,
-    ));
+    );
     constants.fragmentation_axis = tree.flex_fragmentation_axis(node);
     constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
     constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);
@@ -1011,7 +1010,9 @@ fn resolve_normal_alignment(alignment: AlignItems) -> AlignItems {
 }
 
 /// Compute constants that can be reused during the flexbox algorithm.
-#[inline]
+// KaminIDE patch: временные значения построения должны исчезнуть до обхода детей.
+// Возвращаем уже выделенный Box, чтобы кадр рекурсии не хранил AlgoConstants.
+#[inline(never)]
 fn compute_constants(
     tree: &impl LayoutFlexboxContainer,
     style: impl FlexboxContainerStyle,
@@ -1019,7 +1020,7 @@ fn compute_constants(
     known_dimensions_are_definite: Size<bool>,
     parent_size: Size<Option<f32>>,
     available_space: Size<AvailableSpace>,
-) -> AlgoConstants {
+) -> crate::util::sys::Box<AlgoConstants> {
     let dir = style.flex_direction();
     let is_row = dir.is_row();
     let is_column = dir.is_column();
@@ -1101,7 +1102,7 @@ fn compute_constants(
     let container_size = Size::zero();
     let inner_container_size = Size::zero();
 
-    AlgoConstants {
+    crate::util::sys::Box::new(AlgoConstants {
         dir,
         layout_direction,
         fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
@@ -1168,7 +1169,7 @@ fn compute_constants(
         cross_axis_available_space_is_definite,
         container_size,
         inner_container_size,
-    }
+    })
 }
 
 /// Resolve a `position: relative` item's inset to a single offset in the container's flex axes,

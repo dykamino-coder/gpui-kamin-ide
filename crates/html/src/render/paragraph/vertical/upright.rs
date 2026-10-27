@@ -52,10 +52,7 @@ pub(crate) fn upright_paragraph(
     stack.writing_mode = None;
     stack.upright_stack = true;
     stack.break_word = Some(true);
-    let em = match stack.font_size {
-        Some(Len::Px(v)) => v,
-        _ => opts.base_size(),
-    };
+    let em = crate::layout::options::own_size(&stack, opts);
     // Каждый стоячий глиф продвигает строку РОВНО на кегль (§7.4):
     // шаг стопки — кегль, а не своя высота строки; полоса переноса
     // уже одного глифа — в строку ложится ровно один знак (два узких
@@ -66,7 +63,9 @@ pub(crate) fn upright_paragraph(
     // равнялась кеглю (`vertical-alignment-vrl-022`).
     let lane = match stack.line_height {
         Some(Len::Px(v)) => v,
-        Some(Len::Em(k)) | Some(Len::Pct(k)) => k * em,
+        Some(Len::Em(_)) | Some(Len::Pct(_)) => {
+            stack.numeric_line_px(opts.base_size()).unwrap_or(em)
+        }
         // До этой точки `ch` мог не разрешиться: стоячий ноль
         // продвигается на кегль (§7.4) — считаем сами.
         Some(Len::Ch(k)) => k * em,

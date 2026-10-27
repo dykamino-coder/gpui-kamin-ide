@@ -11,7 +11,7 @@ pub struct DeferredPaintContext {
     pub(crate) vertical_paint: Rc<crate::text::vertical::VerticalPaint>,
     /// Paint-order and deferred-geometry boundaries of the box being built.
     pub(crate) depth: crate::layout::cx::scope::Depth,
-    /// Paint keys of CSS 2.1 Appendix E step 8 (`gpui::PaintLast`), in build
+    /// Paint keys of CSS 2.1 Appendix E step 8 (`PaintLast`), in build
     /// order: an ancestor gets a smaller key than its descendants. Shared by
     /// everything that paints into one collector, nested documents included.
     pub(crate) keys: Rc<std::cell::Cell<u64>>,

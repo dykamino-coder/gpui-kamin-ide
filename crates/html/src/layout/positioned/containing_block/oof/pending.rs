@@ -5,7 +5,7 @@ use crate::document::state::ValueDoc;
 mod context;
 use context::Context;
 type Output = Rc<RefCell<Vec<Painted>>>;
-use gpui::{AnyElement, App, Bounds, ContentMask, Pixels, Window, point, px};
+use gpui::{AnyElement, App, Bounds, ContentMask, Pixels, ResultExt, Window, point, px};
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -134,14 +134,16 @@ impl Pending {
             // Kahn: если готовых вершин больше нет, остаток содержит цикл
             // либо отсутствующий якорь. Ранняя вершина получает CSS fallback;
             // FnOnce исключает повторное построение этой коробки.
-            context.enter(window, |window| {
-                let (mut root, paint) = super::host::build_one(item, bounds, place, window, cx);
-                root.prepaint_at(point(px(0.), px(0.)), window, cx);
-                match paint {
-                    Some(paint) => paint.publish(root, context.mask),
-                    None => output.borrow_mut().push(Painted(root, context.mask)),
-                }
-            });
+            context
+                .enter(window, |window| {
+                    let (mut root, paint) = super::host::build_one(item, bounds, place, window, cx);
+                    root.prepaint_at(point(px(0.), px(0.)), window, cx);
+                    match paint {
+                        Some(paint) => paint.publish(root, context.mask),
+                        None => output.borrow_mut().push(Painted(root, context.mask)),
+                    }
+                })
+                .log_err();
         }
     }
 }

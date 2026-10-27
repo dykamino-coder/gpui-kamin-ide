@@ -26,7 +26,7 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<
         // The layer IS the box's CSS border: it takes the same device-pixel
         // edge snapping as the quad border (`apply::apply_paint`; CSS 2.1
         // §8.5.3, Blink box_border_painter.cc snaps outer and inner rects).
-        layer.style().css_border_snap = Some(true);
+        layer.style().snap_to_device_pixels = Some(true);
         if c.border_dashed == Some(true) {
             layer = layer.border_dashed();
         }

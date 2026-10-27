@@ -199,7 +199,9 @@ pub(super) fn paint_body(
             window,
             |window| {
                 if let Some(exact) = fill_matrix {
-                    window.with_css_fill_transform(exact, |window| {
+                    let mut frame = window.raster_frame().clone();
+                    frame.fill_transform = Some((window.current_transformation(), exact));
+                    window.with_raster_frame(frame, |window| {
                         crate::paint::decorations::outline_phase::scoped(
                             paint.as_ref(),
                             window,

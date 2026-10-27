@@ -59,7 +59,7 @@ impl Hooks for SourcePaint {
         cx: &mut App,
     ) {
         if self.placeholder.is_some() {
-            gpui::paint_reopen(|| self.child.borrow_mut().paint(window, cx));
+            crate::hooks::paint_reopen(window, |window| self.child.borrow_mut().paint(window, cx));
         }
     }
 }

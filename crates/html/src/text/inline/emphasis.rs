@@ -6,7 +6,6 @@
 
 use super::Piece;
 use crate::style::values::value::Color;
-use crate::style::values::value::Len;
 
 /// Куски со знаком акцента. Знак набирается в половину кегля своей базы
 /// (css-text-decor-3 §5.3, как аннотация руби с `font-size: 50%`) и встаёт
@@ -31,15 +30,10 @@ pub(crate) fn emphasis_spans(
         if let Some(mark) = style.text_emphasis.as_deref().filter(|m| !m.is_empty())
             && text.chars().any(|c| !c.is_whitespace() && c != '\u{feff}')
         {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                _ => base_size,
-            };
-            let line_height = match style.line_height {
-                Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => crate::text::metrics::normal_px(normal, size, vcx),
-            };
+            let size = style.used_font(base_size, vcx).size_px;
+            let line_height = style
+                .numeric_line_px(base_size)
+                .unwrap_or_else(|| crate::text::metrics::normal_px(normal, size, vcx));
             out.push(crate::text::paragraph::EmphSpan {
                 ruby: ruby.cloned(),
                 range: at..end,

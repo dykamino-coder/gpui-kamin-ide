@@ -1,5 +1,4 @@
 pub(crate) mod border_snap;
-pub(crate) mod transformed_box;
 mod sizing_keyword;
 pub use sizing_keyword::CssSizingKeyword;
 
@@ -375,17 +374,6 @@ pub struct Style {
     /// min-content его содержимого (css-tables-3 §3.9: GRIDMIN сильнее
     /// `min-width`/`max-width`/`flex-shrink`).
     pub item_is_table: bool,
-    /// KaminIDE patch: the box paints atomically (CSS 2.1 Appendix E step
-    /// 7.2.1.4 / css-flexbox-1 §5.4 / css-grid-1 §9: inline-blocks, floats,
-    /// flex and grid items paint "as if" they created a stacking context):
-    /// its own inline content is not deferred past later sibling
-    /// backgrounds of the outer stacking context (`paint_last::hoist_atomic`).
-    pub paint_atomic: bool,
-    /// KaminIDE patch: the box establishes a stacking context through an
-    /// integer `z-index` (CSS 2.1 §9.9.1): its whole subtree, including the
-    /// deferred inline content and positioned descendants, paints inside it
-    /// (`paint_last::hoist_collect`), like a box with opacity < 1.
-    pub paint_stacking: bool,
     /// Sets the initial main axis size of the item
     pub flex_basis: Length,
     /// The relative rate at which this item grows when it is expanding to fill space, 0.0 is the default value, and this value must be positive.
@@ -402,12 +390,8 @@ pub struct Style {
     /// The border style of this element
     pub border_style: BorderStyle,
 
-    /// Snap axis-aligned square CSS borders to device pixels; HTML opt-in.
-    pub css_border_snap: bool,
-    /// A table row/group fill replicated onto a cell is not the cell's own
-    /// CSS background (CSS 2.1 section 17.5.1). Keep its text layout frame.
-    pub css_synthetic_background: bool,
-
+    /// Явная привязка прямоугольных границ к пикселям устройства.
+    pub snap_to_device_pixels: bool,
     /// The radius of the corners of this element
     #[refineable]
     pub corner_radii: Corners<AbsoluteLength>,
@@ -900,7 +884,7 @@ impl Style {
         }
     }
 
-    /// KaminIDE patch: `overflow_mask` of an HTML box (`css_border_snap`)
+    /// KaminIDE patch: `overflow_mask` of an HTML box (`snap_to_device_pixels`)
     /// computed from its unrounded geometry, each edge snapped to the device
     /// pixel grid like its border edges (`border_snap`): Blink clips to the
     /// pixel-snapped clip rect, so a clip edge and a border edge at the same
@@ -912,12 +896,12 @@ impl Style {
         window: &Window,
     ) -> Option<ContentMask<Pixels>> {
         let exact = window
-            .css_exact_bounds
+            .raster_frame.exact_bounds
             .filter(|(snapped, _)| *snapped == bounds)
             .map(|(_, exact)| exact);
         let exact = match exact {
             Some(exact)
-                if self.css_border_snap
+                if self.snap_to_device_pixels
                     && window.current_transformation()
                         == crate::TransformationMatrix::unit() =>
             {
@@ -999,7 +983,8 @@ impl Style {
             };
             border_color.a = 0.;
             window.paint_quad(quad(
-                transformed_box::bounds(self, bounds, window),
+                window.render_context::<crate::PaintTraversal>()
+                    .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window)),
                 corner_radii,
                 background_color.unwrap_or_default(),
                 Edges::default(),
@@ -1129,14 +1114,11 @@ impl Default for Style {
             flex_grow: 0.0,
             flex_shrink: 1.0,
             item_is_table: false,
-            paint_atomic: false,
-            paint_stacking: false,
             flex_basis: Length::Auto,
             background: None,
             border_color: None,
             border_style: BorderStyle::default(),
-            css_border_snap: false,
-            css_synthetic_background: false,
+            snap_to_device_pixels: false,
             corner_radii: Corners::default(),
             box_shadow: Default::default(),
             inset_box_shadow: Default::default(),

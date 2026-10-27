@@ -219,10 +219,12 @@ impl Window {
             pending: Vec::new(),
             content_mask,
         });
-        let result = crate::elements::paint_last::hoist_boundary(|| f(self));
-        let Some(ctx) = self.plane_contexts.pop() else {
-            return result;
-        };
+        let (result, ctx) = self.with_restore(None, |window, ctx| {
+            *ctx = window.plane_contexts.pop();
+        }, |window| window.with_paint_scope(|window| {
+            f(window)
+        }));
+        let Some(ctx) = ctx else { return result };
         let records: Vec<PlaneRecord> = ctx.pending.into_iter().flatten().collect();
         let mut polys = Vec::new();
         for (i, rec) in records.iter().enumerate() {
@@ -255,7 +257,7 @@ impl Window {
             // its place in the BSP order (byte-identical to painting it
             // directly; a buffer would requantize glyph coverage).
             if rec.projection.is_none() && pieces[i] == 1 && polygon.is_empty() {
-                inline[i] = Some(self.adopt_plane_scene(rec.scene));
+                inline[i] = Some(self.adopt_scene(rec.scene));
                 continue;
             }
             let fragments = if pieces[i] > 1 {
@@ -297,21 +299,22 @@ impl Window {
         });
         let depth = self.plane_contexts.len();
         let content_mask = self.content_mask().scale(self.scale_factor());
-        let mut scene = Scene::default();
-        scene.in_group = true;
-        std::mem::swap(&mut self.next_frame.scene, &mut scene);
         let r = spec.raster.rotation_scale;
         let keeps_axes = (r[0][1].abs() < 1e-4 && r[1][0].abs() < 1e-4)
             || (r[0][0].abs() < 1e-4 && r[1][1].abs() < 1e-4);
         let map = (spec.masked && keeps_axes).then_some(spec.raster);
-        let stack = std::mem::replace(&mut self.transformation_stack, vec![spec.raster]);
-        let mask_map = std::mem::replace(&mut self.mask_map, map);
-        let masks = std::mem::take(&mut self.content_mask_stack);
-        let result = f(self);
-        self.content_mask_stack = masks;
-        self.mask_map = mask_map;
-        self.transformation_stack = stack;
-        std::mem::swap(&mut self.next_frame.scene, &mut scene);
+        let (result, mut scene) = self.with_isolated_scene(|window| {
+            let state = (
+                mem::replace(&mut window.transformation_stack, vec![spec.raster]),
+                mem::replace(&mut window.mask_map, map),
+                mem::take(&mut window.content_mask_stack),
+            );
+            window.with_restore(state, |window, state| {
+                mem::swap(&mut window.transformation_stack, &mut state.0);
+                mem::swap(&mut window.mask_map, &mut state.1);
+                mem::swap(&mut window.content_mask_stack, &mut state.2);
+            }, f).0
+        });
         scene.finish();
         let mut rect = spec.rect;
         if let Some((ix0, iy0, ix1, iy1)) = ink_bounds(&scene, spec.raster) {
@@ -347,7 +350,7 @@ impl Window {
 
     /// Prepare a plane scene for replay into the current one: its nested
     /// groups join the frame's list (ids shifted), hoisted backdrops go first.
-    fn adopt_plane_scene(&mut self, mut inner: Scene) -> Scene {
+    pub(super) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
         let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
         let mut nested = std::mem::take(&mut inner.groups);
         let base = self.next_frame.scene.groups.len() as u32;
