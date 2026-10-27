@@ -775,9 +775,6 @@ pub struct Computed {
     /// outsets for background positioning and clipping: top/right/bottom/left.
     pub(crate) bg_border_insets: Option<[f32; 4]>,
     /// `overflow-clip-margin`: на сколько обрезка отступает НАРУЖУ от коробки.
-    /// Узел, чей фон красит КАНВАС (CSS 2.2 §14.2): корневой html, а без
-    /// его фона — body. Ставится сборкой документа, не каскадом.
-    pub(crate) canvas_bg: bool,
     /// Письмо `<body>` НЕ стало письмом области просмотра: обособление есть
     /// либо на `<html>`, либо на самом `<body>`, и распространение свойств
     /// тела наружу выключено (css-contain-2 §containment-types: «when any

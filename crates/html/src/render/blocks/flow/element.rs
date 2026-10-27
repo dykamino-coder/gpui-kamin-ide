@@ -177,22 +177,21 @@ pub(crate) async fn paint_element(
     // фон body — красит всю область просмотра, включая место за
     // полями. Слой absolute от родителя-корня растягивается на всё
     // окно, с самой коробки краска снимается (иначе двойная альфа).
-    let canvas_paint = e.style.used().canvas_bg;
+    let canvas_paint = e.style.used().canvas_background.clone();
     // Тело под корнем-донором фона холста при `vertical-rl`: его
     // margin-box (плюс рамка/отбивка корня) — коробка корня по
     // содержимому; её левый край пишется на подготовке тела.
     let record_root = e.tag == "body"
-        && inherited.canvas_bg
+        && inherited.canvas_background.is_some()
         && inherited.wm().block_rl()
         && !matches!(inherited.width, Some(Len::Px(_)));
     let canvas_stripped;
     let mut root_box = None;
-    let e = if canvas_paint {
-        root_box = canvas_layer(e, opts, out);
+    let e = if let Some(source) = canvas_paint {
+        root_box = canvas_layer(e, &source, opts, out);
         let mut copy = e.clone();
-        copy.style.used_mut().background = None;
-        copy.style.used_mut().gradient = None;
-        copy.style.used_mut().bg_image = None;
+        copy.style
+            .set_background_paint(crate::style::background_paint::BackgroundPaint::Initial);
         canvas_stripped = copy;
         &canvas_stripped
     } else {

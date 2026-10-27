@@ -125,6 +125,7 @@ impl SharedStyle {
                 .as_deref()
                 .map(|d| d.background_paint)
                 .unwrap_or_default(),
+            self.decoration.as_deref().and_then(|d| d.canvas.clone()),
         )
     }
 
@@ -133,8 +134,18 @@ impl SharedStyle {
         &mut self,
         paint: crate::style::background_paint::BackgroundPaint,
     ) {
-        let mut decoration = self.decoration.as_deref().copied().unwrap_or_default();
+        let mut decoration = self.decoration.as_deref().cloned().unwrap_or_default();
         decoration.background_paint = paint;
+        self.decoration = Some(Rc::new(decoration)).filter(|d| **d != Default::default());
+    }
+
+    /// Собственный источник холста, не computed CSS корня и не наследуемый фон.
+    pub(crate) fn set_canvas_background(
+        &mut self,
+        canvas: Option<crate::style::canvas_background::CanvasBackgroundSource>,
+    ) {
+        let mut decoration = self.decoration.as_deref().cloned().unwrap_or_default();
+        decoration.canvas = canvas;
         self.decoration = Some(Rc::new(decoration)).filter(|d| **d != Default::default());
     }
 
@@ -154,6 +165,7 @@ impl SharedStyle {
             context,
             inline_decoration,
             background_paint,
+            canvas_background,
         } = input.into();
         Self {
             cascaded: style,
@@ -163,6 +175,7 @@ impl SharedStyle {
             decoration: Some(Rc::new(crate::style::background_paint::DecorationInput {
                 inline: inline_decoration,
                 background_paint,
+                canvas: canvas_background,
             }))
             .filter(|d| **d != Default::default()),
         }

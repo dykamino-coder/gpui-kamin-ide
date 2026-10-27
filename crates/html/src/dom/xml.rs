@@ -9,7 +9,7 @@ use xml::name::OwnedName;
 use xml::reader::{ParserConfig, XmlEvent};
 
 /// Невалидный XML не заменяет прошлую ревизию; глубина сама по себе допустима.
-pub(crate) fn xml_dom(markup: &str) -> Result<RcDom, crate::document::DocumentFailure> {
+pub(crate) fn xml_dom(markup: &str) -> Result<RcDom, crate::dom::outcome::DocumentFailure> {
     let dom = RcDom::default();
     // Строка уже декодирована загрузчиком. Объявление кодировки не должно
     // повторно интерпретировать её UTF-8 байты. Entity expansion остаётся bounded
@@ -24,10 +24,12 @@ pub(crate) fn xml_dom(markup: &str) -> Result<RcDom, crate::document::DocumentFa
     for event in reader {
         let event = event.map_err(|error| {
             let pos = error.position();
-            crate::document::DocumentFailure::new(crate::document::FailureReason::XmlSyntax {
-                row: (pos.row + 1).min(u32::MAX as u64) as u32,
-                column: (pos.column + 1).min(u32::MAX as u64) as u32,
-            })
+            crate::dom::outcome::DocumentFailure::new(
+                crate::dom::outcome::FailureReason::XmlSyntax {
+                    row: (pos.row + 1).min(u32::MAX as u64) as u32,
+                    column: (pos.column + 1).min(u32::MAX as u64) as u32,
+                },
+            )
         })?;
         match event {
             XmlEvent::StartElement {

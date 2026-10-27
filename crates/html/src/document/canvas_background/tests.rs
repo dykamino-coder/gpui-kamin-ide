@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::dom::test_support::find;
-use crate::style::values::value::Color;
+use crate::style::values::value::{Color, StyleColor};
 use std::rc::Rc;
 
 #[test]
@@ -26,12 +26,11 @@ fn body_currentcolor_uses_its_computed_color_with_or_without_an_image() {
             let root = find(&nodes, &|e| e.tag == "html").unwrap();
             let body = find(&nodes, &|e| e.tag == "body").unwrap();
             let blue = Color::parse("blue", vcx).unwrap();
-            assert!(root.style.computed().canvas_bg);
-            assert_eq!(
-                root.style.computed().background,
-                Some(blue),
-                "{color}; {image}"
-            );
+            let source = root.style.used().canvas_background.unwrap();
+            let CanvasBackgroundSource::Donor(background) = &source else {
+                panic!("expected body donor");
+            };
+            assert_eq!(background.color, Some(blue), "{color}; {image}");
             assert_eq!(root.style.computed().color, Color::parse(root_color, vcx));
             assert_eq!(body.style.computed().color, Some(blue));
             assert_eq!(body.style.computed().background, Some(blue));
@@ -50,7 +49,10 @@ fn root_currentcolor_selects_the_root_and_leaves_body_background_in_place() {
     let nodes = mark_canvas_background(parsed.nodes.clone(), vcx);
     let root = find(&nodes, &|e| e.tag == "html").unwrap();
     let body = find(&nodes, &|e| e.tag == "body").unwrap();
-    assert!(root.style.cascaded().canvas_bg);
+    assert_eq!(
+        root.style.used().canvas_background.as_ref(),
+        Some(&CanvasBackgroundSource::Root)
+    );
     assert_eq!(
         root.style.cascaded().background_color,
         Some(StyleColor::Current)
@@ -67,6 +69,10 @@ fn transparent_root_currentcolor_still_allows_body_propagation() {
     let vcx = parsed.values();
     let nodes = mark_canvas_background(parsed.nodes.clone(), vcx);
     let root = find(&nodes, &|e| e.tag == "html").unwrap();
-    assert!(root.style.cascaded().canvas_bg);
-    assert_eq!(root.style.cascaded().background, Color::parse("blue", vcx));
+    assert!(root.style.used().canvas_background.is_some());
+    let source = root.style.used().canvas_background.unwrap();
+    let CanvasBackgroundSource::Donor(background) = &source else {
+        panic!("expected body donor");
+    };
+    assert_eq!(background.color, Color::parse("blue", vcx));
 }

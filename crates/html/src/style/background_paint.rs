@@ -16,8 +16,9 @@ impl BackgroundPaint {
 }
 
 /// Не наследуемые входы оформления в существующем транспорте коробки.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct DecorationInput {
     pub inline: super::inline_decoration::InlineDecoration,
     pub background_paint: BackgroundPaint,
+    pub canvas: Option<super::canvas_background::CanvasBackgroundSource>,
 }

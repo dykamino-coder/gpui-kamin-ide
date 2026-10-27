@@ -6,6 +6,7 @@ use crate::font_facts::{
     FontFactsError, FontFactsProvider, FontMetric, FontMetricFacts, FontRegistrySnapshot,
     FontRequest, NormalLineFacts,
 };
+use crate::style::canvas_background::CanvasBackgroundSource;
 use crate::style::computed::BgSize;
 use std::rc::Rc;
 
@@ -53,18 +54,24 @@ fn donor_font_lengths_use_body_computed_font_and_document_facts() {
             let root = find(&nodes, &|e| e.tag == "html").unwrap();
             let body = find(&nodes, &|e| e.tag == "body").unwrap();
             let font = 20.0 * x_height * 2.5;
-            let background = root.style.cascaded();
-            assert_eq!(background.bg_pos.x, Some(Len::Px(font)));
-            assert_eq!(background.bg_pos.y, Some(Len::Px(6.25 * font * x_height)));
+            let source = root.style.used().canvas_background.unwrap();
+            let CanvasBackgroundSource::Donor(background) = &source else {
+                panic!("expected body donor");
+            };
+            assert_eq!(background.top.position.x, Some(Len::Px(font)));
             assert_eq!(
-                background.bg_size,
+                background.top.position.y,
+                Some(Len::Px(6.25 * font * x_height))
+            );
+            assert_eq!(
+                background.top.size,
                 BgSize::Fixed(Some(Len::Px(2.0 * font)), Some(Len::Px(2.25 * font)))
             );
-            if let Some(layers) = background.bg_layers(vcx) {
-                assert_eq!(layers[1].bg_pos.x, Some(Len::Px(1.5 * font)));
-                assert_eq!(layers[1].bg_pos.y, Some(Len::Pct(0.5)));
+            if let Some(layers) = &background.layers {
+                assert_eq!(layers[1].position.x, Some(Len::Px(1.5 * font)));
+                assert_eq!(layers[1].position.y, Some(Len::Pct(0.5)));
                 assert_eq!(
-                    layers[1].bg_size,
+                    layers[1].size,
                     BgSize::Fixed(Some(Len::Px(4.0 * font * x_height)), Some(Len::Pct(0.5)))
                 );
             }
@@ -77,7 +84,7 @@ fn donor_font_lengths_use_body_computed_font_and_document_facts() {
             );
             assert_eq!(root.style.computed().font_size, Some(Len::Px(20.0)));
             assert_eq!(body.style.computed().font_size, Some(Len::Px(font)));
-            assert_eq!(root.style.computed().bg_pos.y, background.bg_pos.y);
+            assert_eq!(root.style.computed().bg_pos.y, None);
         }
     }
 }
