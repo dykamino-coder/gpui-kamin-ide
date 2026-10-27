@@ -7,10 +7,16 @@ Clippy owns environment access, debug macros and console output checks.
 
 import argparse
 from collections import defaultdict
+import difflib
 from pathlib import Path
 import re
 import subprocess
 import sys
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from html_source_inventory import texts, PREFIX
+from html_guard_paths import logical_path, normalize
 
 
 def git(*args):
@@ -18,23 +24,26 @@ def git(*args):
 
 
 def tree_sources(revision):
-    """Read blobs in one batch rather than starting Git for every Rust file."""
-    files = git("ls-tree", "-r", "--name-only", revision, "crates/html/src").decode().splitlines()
-    files = [f for f in files if f.endswith(".rs")]
-    if not files:
-        return {}
-    queries = "".join(f"{revision}:{f}\n" for f in files).encode()
-    data = subprocess.check_output(
-        ["git", "-C", str(REPO), "cat-file", "--batch"], input=queries
-    )
-    sources, offset = {}, 0
-    for filename in files:
-        end = data.index(b"\n", offset)
-        size = int(data[offset:end].split()[-1])
-        offset = end + 1
-        sources[filename] = data[offset:offset + size].decode("utf-8", "replace")
-        offset += size + 1
-    return sources
+    """Use phase identities so a crate move does not reset inherited debt."""
+    return {name: normalize(text) for name, text in texts(REPO, revision).items()}
+
+
+def convention_diff(base, head, old, now):
+    """Preserve other crates/vendor; diff engine files by stable phase identity."""
+    skip = False
+    for line in git("diff", "-U0", f"{base}..{head}", "--", "crates", "vendor").decode(
+            "utf-8", "replace").splitlines():
+        if line.startswith("diff --git "):
+            names = line.split()[2:4]
+            skip = any(logical_path(name[2:]).startswith(PREFIX) for name in names)
+        if not skip:
+            yield line
+    for name in sorted(old.keys() | now.keys()):
+        if old.get(name) == now.get(name):
+            continue
+        yield from difflib.unified_diff(old.get(name, "").splitlines(),
+                                        now.get(name, "").splitlines(),
+                                        fromfile="a/" + name, tofile="b/" + name, n=0)
 
 
 RULES = [
@@ -90,11 +99,10 @@ def shared_counts(sources, changed):
 def check(args):
     head = git("rev-parse", "--verify", f"{args.head}^{{commit}}").decode().strip()
     base = git("merge-base", args.base, head).decode().strip()
-    diff_range = f"{base}..{head}"
+    sources, old_sources = tree_sources(head), tree_sources(base)
     bad, current = [], None
     in_test = False
-    diff = git("diff", "-U0", diff_range, "--", "crates", "vendor").decode("utf-8", "replace")
-    for line in diff.splitlines():
+    for line in convention_diff(base, head, old_sources, sources):
         if line.startswith("+++ b/"):
             current = line[6:]
             in_test = False
@@ -109,12 +117,9 @@ def check(args):
                 if re.search(path, current) and re.search(pattern, line[1:]):
                     bad.append((name, current, line[1:].strip()[:110]))
 
-    changed = git("diff", "--name-only", "--diff-filter=AM", diff_range,
-                  "--", "crates/html/src").decode().splitlines()
-    changed = [f for f in changed if f.endswith(".rs")]
+    changed = [name for name in sources if sources[name] != old_sources.get(name)]
     dups = []
     if changed:
-        sources, old_sources = tree_sources(head), tree_sources(base)
         for filename in changed:
             if filename.endswith("fields.rs"):
                 continue
@@ -156,3 +161,5 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError as error:
         print(f"ERROR Git check failed (exit {error.returncode})", file=sys.stderr)
         sys.exit(2)
+
+# KaminIDE crate-split guard adapter schema 1

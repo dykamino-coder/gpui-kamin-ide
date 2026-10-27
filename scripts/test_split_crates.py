@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from split_crates import main
 from test_migration_plan import MigrationPlanTests
 from migration_guards import GUARDS
+from test_migration_guards import unadapted
 
 OUT = Path(__file__).resolve().parent
 MANIFEST = '''[package]
@@ -37,9 +38,8 @@ class EntryPointTests(unittest.TestCase):
             path.write_bytes(text.encode())
         (self.root / 'crates/html/Cargo.toml').write_bytes(MANIFEST.encode())
         (self.root / 'scripts').mkdir()
-        repository = Path(__file__).resolve().parents[1]
         for name in GUARDS:
-            shutil.copyfile(repository / 'scripts' / name, self.root / 'scripts' / name)
+            (self.root / 'scripts' / name).write_bytes(unadapted(name).encode('utf-8'))
         self.git('init', '-q')
         self.git('config', 'core.autocrlf', 'false')
         self.git('add', '.')

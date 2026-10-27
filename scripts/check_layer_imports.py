@@ -19,11 +19,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rust_layer_paths import dependencies
 from rust_layer_exports import Exports
+from html_source_inventory import PREFIX, read
+from html_guard_paths import normalize
 
 
 REPO = Path(__file__).resolve().parent.parent
 ALLOWLIST = 'scripts/layer_import_allowlist.json'
-STAGE = {'dom': 0, 'style': 1, 'layout': 2, 'text': 2, 'paint': 3, 'svg': 3, 'render': 4}
+STAGE = {'dom': 0, 'box_facts': 0, 'font_facts': 0, 'style': 1, 'layout': 2, 'text': 2, 'paint': 3, 'svg': 3, 'render': 4}
 
 
 def forbidden(source, target):
@@ -32,9 +34,8 @@ def forbidden(source, target):
 
 def inventory(root):
     found = []
-    folder = root / 'crates/html/src'
-    sources = {p.relative_to(folder).as_posix(): p.read_text(encoding='utf-8')
-               for p in sorted(folder.rglob('*.rs'))}
+    sources = {name.removeprefix(PREFIX): normalize(item.text)
+               for name, item in read(root).items()}
     exports = Exports(sources)
     for relative, contents in sources.items():
         source = relative.split('/')[0].removesuffix('.rs')
@@ -126,3 +127,5 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
+# KaminIDE crate-split guard adapter schema 1
