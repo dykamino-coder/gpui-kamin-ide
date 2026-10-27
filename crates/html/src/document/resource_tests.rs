@@ -43,7 +43,9 @@ fn absolute_html_base_works_without_a_source_url() {
         .dom
         .document,
         None,
-    );
+        &Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         base.as_ref().map(url::Url::as_str),
         Some("file:///tests/assets/")
@@ -102,7 +104,7 @@ fn interleaved_documents_keep_their_font_face_descriptors() {
     assert_eq!(fonts::size_adjust("Shared", 0, b), 0.75);
     assert!(!fonts::covers_space("Shared", a));
     assert!(fonts::covers_space("Shared", b));
-    fonts::load_faces("", b);
+    fonts::load_faces("", b).unwrap();
     assert_eq!(fonts::alias("Shared", b), None);
     assert_eq!(fonts::alias("Shared", a).as_deref(), Some("Face49"));
     assert_eq!(fonts::size_adjust("Shared", 0, a), 1.5);

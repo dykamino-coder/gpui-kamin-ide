@@ -10,21 +10,21 @@ mod urls;
 use continuation::join_string_continuations;
 pub(crate) use lexical::split_top_level;
 pub(super) use lexical::{ends_with_open_escape, unescape_value};
-pub use lexical::{split_args, unescape};
+pub(crate) use lexical::{split_args, unescape};
 use urls::has_bad_url;
 pub(crate) use urls::{Piece, at_url, skip_url, strip_comments};
 
 /// Разбор `style="a: 1; b: 2"` CSS самого движка (умолчания, подсказки,
 /// дескрипторы): сокращения раскрываются, значения длинных свойств реестра
 /// не проверяются — для этого нужен документ ([`parse_decls_in`]).
-pub fn parse_decls(raw: &str) -> DeclBlock {
+pub(crate) fn parse_decls(raw: &str) -> DeclBlock {
     parse_block(raw, None)
 }
 
 /// Разбор блока объявлений документа: негодное значение длинного свойства
 /// реестра (и сокращение с негодной частью) объявлением не становится
 /// (CSS Syntax §4.1.7, css-cascade-5 §4).
-pub fn parse_decls_in(raw: &str, vcx: ValueCx<'_>) -> DeclBlock {
+pub(crate) fn parse_decls_in(raw: &str, vcx: ValueCx<'_>) -> DeclBlock {
     parse_block(raw, Some(vcx))
 }
 

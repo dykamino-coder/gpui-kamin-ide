@@ -10,6 +10,7 @@ mod collect;
 mod walk;
 pub(crate) use collect::collect_has_args;
 
+use crate::budget::admission::Error;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::Selector;
 use crate::style::select::matching::matches;
@@ -102,57 +103,69 @@ fn has_in_subtree(
     sel: &Selector,
     path: &mut Vec<Ancestor>,
     tree: &TreeIndex,
-) -> bool {
-    let mut walk = Walk::new(handle, path);
-    while let Some((_, all, pos)) = walk.next(tree) {
+) -> Result<bool, Error> {
+    let mut walk = Walk::new(handle, path, tree)?;
+    while let Some((_, all, pos)) = walk.next(tree)? {
         let sibs = Sibs {
             all: &all,
             pos,
             is_elem: true,
             rc: Some(&all),
         };
+        tree.admission().work(1)?;
         if matches(sel, &all[pos], &walk.path, sibs) {
-            return true;
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
-/// Проход-разметчик `:has()`: на каждый элемент и каждый аргумент решает,
-/// найдётся ли предмет - в поддереве либо среди последующих братьев - и
-/// складывает отметку. Вложенный `:has` запрещён, поэтому матчи внутри
-/// аргумента в отметки не заглядывают и циклов нет.
+/// Аргументы выполняются с тем же revision ledger; первый отказ прекращает проход.
 pub(crate) fn mark_has(
     handle: &Handle,
     args: &[HasArg],
     path: &mut Vec<Ancestor>,
     tree: &mut TreeIndex,
-) {
-    let mut walk = Walk::new(handle, path);
-    while let Some((child, all, pos)) = walk.next(tree) {
+) -> Result<(), Error> {
+    let admission = tree.admission();
+    let mut walk = Walk::new(handle, path, tree)?;
+    while let Some((child, all, pos)) = walk.next(tree)? {
         let path = &mut walk.path;
-        let mut marks: Vec<u64> = vec![];
+        let mut marks = Vec::new();
         for arg in args {
-            let hit = arg.parts.iter().any(|(sibling, sel)| {
-                if *sibling {
+            let mut hit = false;
+            for (sibling, sel) in &arg.parts {
+                admission.work(1)?;
+                hit = if *sibling {
+                    admission.work(all.len())?;
                     let mut peers = all.as_ref().clone();
                     peers[pos] = with_sentinel(&all[pos]);
-                    (pos + 1..peers.len()).any(|i| {
+                    let mut found = false;
+                    for i in pos + 1..peers.len() {
+                        admission.work(1)?;
                         let sibs = Sibs {
                             all: &peers,
                             pos: i,
                             is_elem: true,
                             rc: None,
                         };
-                        matches(sel, &peers[i], path, sibs)
-                    })
+                        if matches(sel, &peers[i], path, sibs) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    found
                 } else {
+                    admission.work(path.len() + 1)?;
                     path.push(with_sentinel(&all[pos]));
-                    let hit = has_in_subtree(&child, sel, path, tree);
+                    let result = has_in_subtree(&child, sel, path, tree);
                     path.pop();
-                    hit
+                    result?
+                };
+                if hit {
+                    break;
                 }
-            });
+            }
             if hit {
                 marks.push(arg.id);
             }
@@ -161,6 +174,7 @@ pub(crate) fn mark_has(
             tree.has_marks.insert(NodeKey::of(&child), marks);
         }
     }
+    Ok(())
 }
 
 /// Relational matches anchored on the host but searching its shadow tree.
@@ -169,14 +183,19 @@ pub(crate) fn shadow_marks(
     args: &[HasArg],
     host: &Ancestor,
     tree: &TreeIndex,
-) -> Vec<u64> {
+) -> Result<Vec<u64>, Error> {
+    let admission = tree.admission();
+    admission.work(1)?;
     let mut path = vec![with_sentinel(host)];
-    args.iter()
-        .filter(|arg| {
-            arg.parts
-                .iter()
-                .any(|(sibling, sel)| !sibling && has_in_subtree(root, sel, &mut path, tree))
-        })
-        .map(|arg| arg.id)
-        .collect()
+    let mut marks = Vec::new();
+    for arg in args {
+        for (sibling, sel) in &arg.parts {
+            admission.work(1)?;
+            if !sibling && has_in_subtree(root, sel, &mut path, tree)? {
+                marks.push(arg.id);
+                break;
+            }
+        }
+    }
+    Ok(marks)
 }

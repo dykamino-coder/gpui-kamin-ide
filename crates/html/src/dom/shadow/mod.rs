@@ -20,6 +20,7 @@ use std::rc::Rc;
 pub(crate) struct Scope {
     pub(crate) rules: Vec<Rule>,
     pub(crate) frames: HashMap<String, Keyframes>,
+    pub(crate) clone_cost: crate::css_syntax::admission::Counts,
 }
 
 /// Дерево теней хоста (HTML §4.12.3, `<template shadowrootmode>`).
@@ -96,28 +97,31 @@ fn attr_of(handle: &Handle, key: &str) -> Option<String> {
 
 /// Наличие шаблона тени проверяется после нормализации имён HTML-парсером.
 /// Вложенные шаблоны также учитываются; XML не получает HTML-атрибуты.
-pub(super) fn has_declarative_shadow(root: &Handle) -> bool {
-    let mut pending = vec![root.clone()];
-    while let Some(node) = pending.pop() {
+pub(super) fn has_declarative_shadow(
+    root: &Handle,
+    admission: &crate::budget::admission::Admission,
+) -> Result<bool, crate::budget::admission::Error> {
+    use crate::dom::source_walk::{SourceWalk, Templates};
+    let mut walk = SourceWalk::new(root, Templates::All, admission.clone())?;
+    while let Some(node) = walk.try_next()? {
         if let NodeData::Element {
             attrs,
             template_contents,
             ..
         } = &node.data
-            && let Some(contents) = template_contents.borrow().as_ref()
+            && template_contents.borrow().is_some()
         {
+            admission.work(attrs.borrow().len())?;
             if attrs
                 .borrow()
                 .iter()
                 .any(|a| a.name.ns.is_empty() && &*a.name.local == "shadowrootmode")
             {
-                return true;
+                return Ok(true);
             }
-            pending.push(contents.clone());
         }
-        pending.extend(node.children.borrow().iter().cloned());
     }
-    false
+    Ok(false)
 }
 
 mod walk;

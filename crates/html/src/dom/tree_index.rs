@@ -58,6 +58,15 @@ pub(crate) struct TreeIndex {
 }
 
 impl TreeIndex {
+    pub(crate) fn admission(&self) -> crate::budget::admission::Admission {
+        self.doc
+            .budget
+            .borrow()
+            .clone()
+            .map(crate::budget::admission::Admission::new)
+            .unwrap_or_default()
+    }
+
     pub(crate) fn new(doc: Rc<crate::document::state::DocState>, xhtml: bool) -> Self {
         TreeIndex {
             doc,

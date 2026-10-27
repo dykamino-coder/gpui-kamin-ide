@@ -36,8 +36,10 @@ pub(crate) use crate::style::css::property::{
 };
 pub use crate::style::css::visited::LinkMatch;
 pub(super) mod decls;
-pub use crate::style::css::decls::*;
+pub(crate) use crate::style::css::decls::*;
+mod entry;
 pub(crate) use decls::split_top_level;
+pub use entry::{try_parse_decls, try_parse_keyframes, try_unescape};
 pub(super) mod sheet;
 pub use crate::style::css::sheet::*;
 mod media;
@@ -49,7 +51,8 @@ pub(crate) use crate::style::css::supports::*;
 pub(super) mod at_rules;
 pub use crate::style::css::at_rules::*;
 pub(super) mod keyframes;
-pub use crate::style::css::keyframes::*;
+pub use crate::style::css::keyframes::Keyframes;
+pub(crate) use crate::style::css::keyframes::{parse_keyframes, parse_keyframes_in};
 
 /// Одно правило: с чем сопоставлять и что применять.
 #[derive(Clone, Debug)]

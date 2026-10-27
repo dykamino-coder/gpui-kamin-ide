@@ -16,7 +16,7 @@ pub(super) fn selector_for_supports(selector: &str, cx: &SelectorCx) -> String {
     nesting::top_level_parts(&[selector], cx).remove(0)
 }
 
-pub fn parse_stylesheet(css: &str) -> Vec<Rule> {
+pub fn parse_stylesheet(css: &str) -> Result<Vec<Rule>, crate::dom::outcome::DocumentFailure> {
     parse_stylesheet_media(css, Media::default())
 }
 
@@ -88,9 +88,32 @@ pub(super) fn attr_prefixes_declared(v: &str, cx: &SelectorCx) -> bool {
 /// То же, но с известными условиями окружения. Таблица разбирается сама по
 /// себе — со своим реестром слоёв и своим документом для at-правил; таблицы
 /// документа делят его (`parse_document_sheet`).
-pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
+pub fn parse_stylesheet_media(
+    css: &str,
+    media: Media,
+) -> Result<Vec<Rule>, crate::dom::outcome::DocumentFailure> {
+    let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
+        .map_err(|error| {
+            crate::dom::outcome::DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(
+                error,
+            ))
+        })?;
+    let revision = budget.revision();
+    revision.source("", css).map_err(|error| {
+        crate::dom::outcome::DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error))
+    })?;
+    crate::css_syntax::admission::admit(
+        css,
+        &crate::budget::admission::Admission::new(revision.clone()),
+    )?;
     let doc = crate::document::state::DocState::new(media);
-    parse_document_sheet(css, media, &mut LayerRegistry::default(), doc.values())
+    doc.budget.replace(Some(revision));
+    Ok(parse_document_sheet(
+        css,
+        media,
+        &mut LayerRegistry::default(),
+        doc.values(),
+    ))
 }
 
 /// Таблица документа: слои — в общем реестре `layers`, пролог `@namespace`

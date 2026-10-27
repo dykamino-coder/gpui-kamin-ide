@@ -129,6 +129,8 @@ unsafe impl Atomicity for Atomic {
 struct Header<A: Atomicity> {
     refcount: A,
     cap: u32,
+    // KaminIDE patch: shared slices retain the physical allocation lease.
+    lease: Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 impl<A> Header<A>
@@ -140,8 +142,17 @@ where
         Header {
             refcount: A::new(),
             cap: 0,
+            lease: None,
         }
     }
+}
+
+/// KaminIDE patch: fallible allocation is distinct from admission rejection.
+#[derive(Debug)]
+pub enum ReserveError<E> {
+    Admission(E),
+    Allocation(std::collections::TryReserveError),
+    CapacityOverflow,
 }
 
 /// Errors that can occur when slicing a `Tendril`.
@@ -586,6 +597,62 @@ where
             // right away.
             self.force_reserve(additional);
         }
+    }
+
+    /// KaminIDE patch: make the buffer unique and reserve before mutation.
+    /// The callback receives the complete requested allocation size, including
+    /// the header and rounding, while the old storage lease is still live.
+    /// Its returned lease follows clones and subtendrils until physical drop.
+    /// Failure leaves this tendril and its sharing relationships unchanged.
+    pub fn try_reserve_with<E>(
+        &mut self,
+        additional: u32,
+        admit: impl FnOnce(usize) -> Result<std::sync::Arc<dyn std::any::Any + Send + Sync>, E>,
+    ) -> Result<(), ReserveError<E>> {
+        let required = self
+            .len32()
+            .checked_add(additional)
+            .ok_or(ReserveError::CapacityOverflow)?;
+        if required <= MAX_INLINE_LEN as u32 && self.ptr.get().get() <= MAX_INLINE_TAG {
+            return Ok(());
+        }
+        if self.ptr.get().get() > MAX_INLINE_TAG && !self.is_shared() {
+            let buffer = unsafe { self.assume_buf().0 };
+            if required <= buffer.cap && unsafe { (*buffer.ptr).lease.is_some() } {
+                return Ok(());
+            }
+        }
+        let capacity = required
+            .max(buf32::MIN_CAP)
+            .checked_next_power_of_two()
+            .ok_or(ReserveError::CapacityOverflow)?;
+        let bytes =
+            Buf32::<Header<A>>::allocation_size(capacity).ok_or(ReserveError::CapacityOverflow)?;
+        let lease = admit(bytes).map_err(ReserveError::Admission)?;
+        let mut header = unsafe { Header::new() };
+        header.lease = Some(lease);
+        let mut buffer = unsafe { Buf32::try_with_capacity(capacity, header) }
+            .map_err(ReserveError::Allocation)?;
+        unsafe {
+            ptr::copy_nonoverlapping(
+                self.as_byte_slice().as_ptr(),
+                buffer.data_ptr(),
+                self.len32() as usize,
+            );
+            buffer.len = self.len32();
+            *self = Tendril::owned(buffer);
+        }
+        Ok(())
+    }
+
+    /// Retained physical bytes; a shared slice reports its entire parent buffer.
+    pub fn allocation_size(&self) -> usize {
+        if self.ptr.get().get() <= MAX_INLINE_TAG {
+            return 0;
+        }
+        let buffer = unsafe { self.assume_buf().0 };
+        // Existing constructors have already validated the capacity.
+        Buf32::<Header<A>>::allocation_size(buffer.cap).expect(OFLOW)
     }
 
     /// Reserve space for additional bytes, even for shared buffers.
@@ -1635,8 +1702,9 @@ mod test {
         // assert_eq!(correct, mem::size_of::<Option<ByteTendril>>());
         // assert_eq!(correct, mem::size_of::<Option<StrTendril>>());
 
+        // KaminIDE patch: the shared header also owns a two-word storage lease.
         assert_eq!(
-            mem::size_of::<*const ()>() * 2,
+            mem::size_of::<*const ()>() * 4,
             mem::size_of::<Header<Atomic>>(),
         );
         assert_eq!(
@@ -2351,3 +2419,8 @@ mod test {
         assert_eq!("x", &*t);
     }
 }
+
+// KaminIDE patch: allocation ownership and rejection regressions.
+#[cfg(test)]
+#[path = "admission_tests.rs"]
+mod admission_tests;

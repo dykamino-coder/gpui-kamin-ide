@@ -41,14 +41,33 @@ pub(crate) fn snapshot_generated(
 
 /// HTML-адаптер XHTML включается явным xmlns разобранного корня html.
 /// Настоящий XML задаёт язык хоста независимо от наличия пространства имён.
-pub(super) fn is_xhtml(document: &markup5ever_rcdom::Handle) -> bool {
-    document.children.borrow().iter().any(|node| {
-        matches!(&node.data, markup5ever_rcdom::NodeData::Element { name, attrs, .. }
-            if &*name.local == "html" && &*name.ns == "http://www.w3.org/1999/xhtml"
-                && attrs.borrow().iter().any(|a| a.name.ns.is_empty()
-                    && &*a.name.local == "xmlns"
-                    && &*a.value == "http://www.w3.org/1999/xhtml"))
-    })
+pub(super) fn is_xhtml(
+    document: &markup5ever_rcdom::Handle,
+    budget: &crate::budget::RevisionBudget,
+) -> Result<bool, crate::dom::outcome::FailureReason> {
+    use crate::{budget::BudgetKind, document::FailureReason};
+    for node in document.children.borrow().iter() {
+        budget
+            .consume(BudgetKind::TraversalVisits, 1)
+            .map_err(FailureReason::Budget)?;
+        if let markup5ever_rcdom::NodeData::Element { name, attrs, .. } = &node.data
+            && &*name.local == "html"
+            && &*name.ns == "http://www.w3.org/1999/xhtml"
+        {
+            for attr in attrs.borrow().iter() {
+                budget
+                    .consume(BudgetKind::TraversalVisits, 32)
+                    .map_err(FailureReason::Budget)?;
+                if attr.name.ns.is_empty()
+                    && &*attr.name.local == "xmlns"
+                    && &*attr.value == "http://www.w3.org/1999/xhtml"
+                {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
 }
 
 pub(crate) fn html_attributes(namespace: &str, xhtml: bool) -> bool {

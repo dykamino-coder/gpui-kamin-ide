@@ -11,6 +11,8 @@
 //! проверяется по хэшу, а не по строке целиком.
 
 #[cfg(test)]
+mod admission_diagnostics_tests;
+#[cfg(test)]
 mod admission_tests;
 mod base_url;
 #[cfg(test)]
@@ -19,6 +21,8 @@ mod builder;
 mod diagnostics;
 #[cfg(test)]
 mod diagnostics_tests;
+#[cfg(test)]
+mod early_tests;
 #[cfg(feature = "engine-bench")]
 mod timing;
 #[cfg(feature = "engine-bench")]
@@ -36,8 +40,8 @@ mod logical_properties;
 mod prepare;
 #[cfg(test)]
 mod resource_tests;
-pub(crate) mod resource_url;
 mod scope;
+mod source;
 use prepare::parse_document;
 pub mod state;
 #[cfg(test)]
@@ -103,10 +107,12 @@ impl Document {
         let key = base_url::key(html, theme_css, base_url.as_ref());
         #[cfg(feature = "engine-bench")]
         let parse_started = std::time::Instant::now();
-        let input = crate::dom::input::Admitted::parse(html, xml).map_err(|mut failure| {
-            failure.report.revision = Some(key);
-            failure
-        })?;
+        let input = crate::dom::input::Admitted::with_budget(html, xml, revision.clone()).map_err(
+            |mut failure| {
+                failure.report.revision = Some(key);
+                failure
+            },
+        )?;
         #[cfg(feature = "engine-bench")]
         let mut timings = BuildTimings {
             parse: parse_started.elapsed(),
@@ -115,8 +121,13 @@ impl Document {
         let effective_base = if xml {
             base_url.clone()
         } else {
-            base_url::document_base(&input.dom.document, base_url.as_ref())
+            base_url::document_base(
+                &input.dom.document,
+                base_url.as_ref(),
+                &crate::budget::admission::Admission::new(revision.clone()),
+            )?
         };
+        crate::dom::early_admission::admit_sources(&input, theme_css)?;
         let (state, nodes, root) = parse_document(
             &input,
             theme_css,
@@ -126,7 +137,11 @@ impl Document {
             revision,
             #[cfg(feature = "engine-bench")]
             &mut timings,
-        );
+        )
+        .map_err(|mut failure| {
+            failure.report.revision = Some(key);
+            failure
+        })?;
         state.traversal.retain(input);
         Ok(Document {
             state,

@@ -92,16 +92,8 @@ pub(crate) fn doctype_error_and_quirks(
     doctype: &Doctype,
     iframe_srcdoc: bool,
 ) -> (bool, QuirksMode) {
-    fn opt_string_as_slice(x: &Option<String>) -> Option<&str> {
-        x.as_deref()
-    }
-
     fn opt_tendril_as_slice(x: &Option<StrTendril>) -> Option<&str> {
         x.as_deref()
-    }
-
-    fn opt_to_ascii_lower(x: Option<&str>) -> Option<String> {
-        x.map(|y| y.to_ascii_lowercase())
     }
 
     let name = opt_tendril_as_slice(&doctype.name);
@@ -136,24 +128,26 @@ pub(crate) fn doctype_error_and_quirks(
             )
     );
 
-    // FIXME: We could do something asymptotically faster here.
-    // But there aren't many strings, and this happens at most once per parse.
+    // ASCII-insensitive comparisons avoid allocating lowercase copies.
     fn contains_pfx(haystack: &[&str], needle: &str) -> bool {
-        haystack.iter().any(|&x| needle.starts_with(x))
+        haystack.iter().any(|x| {
+            needle
+                .get(..x.len())
+                .is_some_and(|s| s.eq_ignore_ascii_case(x))
+        })
+    }
+    fn contains(haystack: &[&str], needle: &str) -> bool {
+        haystack.iter().any(|x| needle.eq_ignore_ascii_case(x))
     }
 
-    // Quirks-mode matches are case-insensitive.
-    let public = opt_to_ascii_lower(public);
-    let system = opt_to_ascii_lower(system);
-
-    let quirk = match (opt_string_as_slice(&public), opt_string_as_slice(&system)) {
+    let quirk = match (public, system) {
         _ if doctype.force_quirks => Quirks,
         _ if name != Some("html") => Quirks,
 
         _ if iframe_srcdoc => NoQuirks,
 
-        (Some(ref p), _) if QUIRKY_PUBLIC_MATCHES.contains(p) => Quirks,
-        (_, Some(ref s)) if QUIRKY_SYSTEM_MATCHES.contains(s) => Quirks,
+        (Some(p), _) if contains(QUIRKY_PUBLIC_MATCHES, p) => Quirks,
+        (_, Some(s)) if contains(QUIRKY_SYSTEM_MATCHES, s) => Quirks,
 
         (Some(p), _) if contains_pfx(QUIRKY_PUBLIC_PREFIXES, p) => Quirks,
         (Some(p), _) if contains_pfx(LIMITED_QUIRKY_PUBLIC_PREFIXES, p) => LimitedQuirks,
@@ -167,4 +161,17 @@ pub(crate) fn doctype_error_and_quirks(
     };
 
     (err, quirk)
+}
+
+/// Upper bound on bytes inspected by the fixed doctype compatibility tables.
+pub(crate) fn doctype_work() -> usize {
+    QUIRKY_PUBLIC_MATCHES
+        .iter()
+        .chain(QUIRKY_SYSTEM_MATCHES)
+        .chain(QUIRKY_PUBLIC_PREFIXES)
+        .chain(LIMITED_QUIRKY_PUBLIC_PREFIXES)
+        .chain(HTML4_PUBLIC_PREFIXES)
+        .map(|text| text.len() + 1)
+        .sum::<usize>()
+        + 382
 }

@@ -3,75 +3,64 @@
 
 use markup5ever_rcdom::{Handle, NodeData};
 
-pub(crate) fn collect(input: &super::input::Admitted) -> Vec<String> {
-    let dom = &input.dom;
-    let mut pending = vec![dom.document.clone()];
-    let mut sheets = Vec::new();
-    let mut active_templates = std::collections::HashSet::new();
-    while let Some(node) = pending.pop() {
-        if let Some((template, _)) = super::shadow::declarative_shadow(&node) {
-            active_templates.insert(std::rc::Rc::as_ptr(&template));
-        }
-        if let NodeData::Element {
-            name,
-            template_contents,
-            ..
-        } = &node.data
-        {
-            if &*name.local == "style" {
-                let mut sheet = String::new();
-                for child in node.children.borrow().iter() {
-                    if let NodeData::Text { contents } = &child.data {
-                        let text = contents.borrow();
-                        let body = text
-                            .trim()
-                            .strip_prefix("<![CDATA[")
-                            .and_then(|body| body.strip_suffix("]]>"))
-                            .unwrap_or(&text);
-                        sheet.push_str(body);
-                    }
-                }
-                sheets.push(sheet);
-            }
-            if &*name.local == "template"
-                && active_templates.contains(&std::rc::Rc::as_ptr(&node))
-                && let Some(contents) = template_contents.borrow().as_ref()
-            {
-                pending.push(contents.clone());
-            }
-        }
-        pending.extend(node.children.borrow().iter().rev().cloned());
-    }
-    sheets
+use super::source_walk::{SourceWalk, Templates};
+use crate::budget::admission::{Admission, Buffer, Error, Text};
+
+/// Ресурсные источники: тема и активные style; ownership резервов остаётся у строк.
+pub(crate) fn collect(input: &super::input::Admitted, theme: &str) -> Result<Buffer<Text>, Error> {
+    let admission = Admission::new(input.context().budget().clone());
+    let mut sheets = Buffer::default();
+    sheets.push(Text::from_str(theme, &admission)?, &admission)?;
+    collect_into(
+        &input.dom.document,
+        Templates::Active,
+        &admission,
+        &mut sheets,
+    )?;
+    Ok(sheets)
 }
 
-/// Содержимое `<style>`-тегов документа, каждый — отдельной таблицей;
-/// HTML сохраняет сырой текст, а XHTML раскрывает ссылки на знаки
-/// на стадии XML-разбора, до передачи дерева этому сборщику.
-pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
-    for handle in super::source_walk::descendants(handle, false) {
-        if let NodeData::Element { name, .. } = &handle.data
-            && &*name.local == "style"
-        {
-            let mut sheet = String::new();
-            for child in handle.children.borrow().iter() {
+/// Один и тот же сборщик обслуживает document и shadow sheet без склейки EOF.
+pub(crate) fn try_collect_style_tags(
+    root: &Handle,
+    admission: &Admission,
+) -> Result<Buffer<Text>, Error> {
+    let mut sheets = Buffer::default();
+    collect_into(root, Templates::None, admission, &mut sheets)?;
+    Ok(sheets)
+}
+
+fn collect_into(
+    root: &Handle,
+    templates: Templates,
+    admission: &Admission,
+    out: &mut Buffer<Text>,
+) -> Result<(), Error> {
+    let mut walk = SourceWalk::new(root, templates, admission.clone())?;
+    while let Some(node) = walk.try_next()? {
+        if let NodeData::Element { name, .. } = &node.data {
+            admission.work(name.local.len())?;
+            if &*name.local != "style" {
+                continue;
+            }
+            let mut sheet = Text::default();
+            for child in node.children.borrow().iter() {
+                admission.work(1)?;
                 if let NodeData::Text { contents } = &child.data {
-                    // Обёртка `<![CDATA[ … ]]>` встречается в эталонах XHTML: там
-                    // она прячет стиль от разбора XML. Разбору CSS она мусор, и
-                    // правила до первой закрывающей скобки пропадали вместе с ней.
                     let text = contents.borrow();
-                    let trimmed = text.trim();
-                    let body = trimmed
+                    admission.work(text.len())?;
+                    let body = text
+                        .trim()
                         .strip_prefix("<![CDATA[")
-                        .and_then(|rest| rest.strip_suffix("]]>"))
+                        .and_then(|body| body.strip_suffix("]]>"))
                         .unwrap_or(&text);
-                    // Сохраняем текст детей: добавленный LF меняет строки CSS на EOF.
-                    sheet.push_str(body);
+                    sheet.push_str(body, admission)?;
                 }
             }
-            out.push(sheet);
+            out.push(sheet, admission)?;
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -86,7 +75,15 @@ mod tests {
             <div><template shadowrootmode='OPEN'><style>shadow</style></template>\
             <template shadowrootmode='open'><style>second-inert</style></template></div>";
         assert_eq!(
-            collect(&super::super::input::Admitted::parse(html, false).unwrap()),
+            collect(
+                &super::super::input::Admitted::parse(html, false).unwrap(),
+                ""
+            )
+            .unwrap()
+            .iter()
+            .skip(1)
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>(),
             ["document", "shadow"]
         );
     }
@@ -96,8 +93,114 @@ mod tests {
         let xml = "<svg xmlns='http://www.w3.org/2000/svg'>\
             <style><![CDATA[p { content: '<&>'; }]]></style></svg>";
         assert_eq!(
-            collect(&super::super::input::Admitted::parse(xml, true).unwrap()),
+            collect(
+                &super::super::input::Admitted::parse(xml, true).unwrap(),
+                ""
+            )
+            .unwrap()
+            .iter()
+            .skip(1)
+            .map(AsRef::as_ref)
+            .collect::<Vec<&str>>(),
             ["p { content: '<&>'; }"]
         );
+    }
+
+    fn policy(
+        kind: crate::budget::BudgetKind,
+        cap: u64,
+    ) -> (Admission, crate::budget::RevisionBudget) {
+        use crate::budget::{DocumentBudget, DocumentLimits, ResourceGovernor};
+        let revision = DocumentBudget::new(
+            DocumentLimits::default().lower(kind, cap).unwrap(),
+            ResourceGovernor::default(),
+        )
+        .unwrap()
+        .revision();
+        (Admission::new(revision.clone()), revision)
+    }
+
+    #[test]
+    fn source_work_boundaries_and_live_failure_release_partial_sheets() {
+        use crate::budget::BudgetKind::{LiveBytes, TraversalVisits};
+        let input = super::super::input::Admitted::parse(
+            "<style>KEEP</style><div><template shadowrootmode=open><style>LOST</style></template></div>",
+            false,
+        )
+        .unwrap();
+        let root = &input.dom.document;
+        let run = |admission: &Admission| {
+            let mut out = Buffer::default();
+            collect_into(root, Templates::Active, admission, &mut out)?;
+            Ok::<_, Error>(out)
+        };
+        let (admission, revision) = policy(TraversalVisits, 1_000_000);
+        let sheets = run(&admission).unwrap();
+        assert_eq!(
+            sheets.iter().map(AsRef::as_ref).collect::<Vec<&str>>(),
+            ["KEEP", "LOST"]
+        );
+        let needed = revision.used(TraversalVisits);
+        assert!(revision.document().used(LiveBytes) > 0);
+        drop(sheets);
+        assert_eq!(revision.document().used(LiveBytes), 0);
+        for cap in [needed - 1, needed, needed + 1] {
+            let (admission, revision) = policy(TraversalVisits, cap);
+            let result = run(&admission);
+            assert_eq!(result.is_ok(), cap >= needed);
+            if let Err(error) = &result {
+                assert!(matches!(error, Error::Budget(_)));
+            }
+            drop(result);
+            assert_eq!(revision.document().used(LiveBytes), 0);
+        }
+        let mut low = 0;
+        let mut high = 65_536;
+        while low < high {
+            let mid = (low + high) / 2;
+            let (admission, revision) = policy(LiveBytes, mid);
+            let result = run(&admission);
+            let success = result.is_ok();
+            drop(result);
+            assert_eq!(revision.document().used(LiveBytes), 0);
+            if success {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+        for cap in [low - 1, low, low + 1] {
+            let (admission, revision) = policy(LiveBytes, cap);
+            let result = run(&admission);
+            assert_eq!(result.is_ok(), cap >= low);
+            drop(result);
+            assert_eq!(revision.document().used(LiveBytes), 0);
+            assert_eq!(revision.document().governor().used(LiveBytes), 0);
+        }
+    }
+
+    #[test]
+    fn source_walk_failure_is_terminal_and_documents_are_independent() {
+        use crate::budget::BudgetKind::{LiveBytes, TraversalVisits};
+        let input =
+            super::super::input::Admitted::parse("<style>KEEP</style><style>LOST</style>", false)
+                .unwrap();
+        let (admission, revision) = policy(TraversalVisits, 1);
+        let mut walk = SourceWalk::new(&input.dom.document, Templates::Active, admission).unwrap();
+        assert!(walk.try_next().unwrap().is_some());
+        assert!(matches!(walk.try_next(), Err(Error::Budget(_))));
+        assert_eq!(revision.document().used(LiveBytes), 0);
+        let used = revision.used(TraversalVisits);
+        assert!(walk.try_next().unwrap().is_none());
+        assert_eq!(revision.used(TraversalVisits), used);
+        let (first, first_revision) = policy(LiveBytes, 65_536);
+        let (second, second_revision) = policy(LiveBytes, 65_536);
+        let a = try_collect_style_tags(&input.dom.document, &first).unwrap();
+        let b = try_collect_style_tags(&input.dom.document, &second).unwrap();
+        drop(a);
+        assert_eq!(first_revision.document().used(LiveBytes), 0);
+        assert!(second_revision.document().used(LiveBytes) > 0);
+        drop(b);
+        assert_eq!(second_revision.document().used(LiveBytes), 0);
     }
 }

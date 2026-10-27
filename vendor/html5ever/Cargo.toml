@@ -69,6 +69,10 @@ path = "examples/tokenize.rs"
 name = "driver"
 path = "tests/driver.rs"
 
+[[test]]
+name = "admission"
+path = "tests/admission.rs"
+
 [[bench]]
 name = "html5ever"
 path = "benches/html5ever.rs"

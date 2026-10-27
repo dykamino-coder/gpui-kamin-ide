@@ -9,7 +9,7 @@
 
 use super::Parsed;
 use super::input::Admitted;
-use super::style_sources::collect_style_tags;
+use super::style_sources::try_collect_style_tags;
 use super::{Node, user_agent_css};
 use super::{float_tail, grid_static_position, subgrid_used};
 use crate::dom::display_inheritance::resolve_display_inherit;
@@ -51,9 +51,17 @@ pub(super) fn parse_mode(
     media: Media,
     xml: bool,
 ) -> Result<Parsed, DocumentFailure> {
-    let input = Admitted::parse(html, xml)?;
+    let budget = crate::budget::DocumentBudget::new(Default::default(), Default::default())
+        .map_err(|error| DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error)))?;
+    let revision = budget.revision();
+    revision
+        .source(html, extra_css)
+        .map_err(|error| DocumentFailure::new(crate::dom::outcome::FailureReason::Budget(error)))?;
+    let input = Admitted::with_budget(html, xml, revision.clone())?;
+    super::early_admission::admit_sources(&input, extra_css)?;
     let doc = crate::document::state::DocState::new(media);
-    let nodes = convert(&input, extra_css, media, &doc);
+    doc.budget.replace(Some(revision));
+    let nodes = convert(&input, extra_css, media, &doc)?;
     doc.traversal.retain(input);
     Ok(Parsed { nodes, doc })
 }
@@ -64,12 +72,13 @@ pub(crate) fn convert(
     extra_css: &str,
     mut media: Media,
     doc: &Rc<crate::document::state::DocState>,
-) -> Vec<Node> {
+) -> Result<Vec<Node>, DocumentFailure> {
     let vcx = doc.values();
     vcx.doc.reset_font_alternates();
     let dom = &input.dom;
     let xhtml = input.xhtml;
-    if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
+    let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
+    if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark, &admission)? {
         media.dark = dark;
     }
     let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
@@ -111,9 +120,8 @@ pub(crate) fn convert(
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
     // запись первой таблицы съедала правила второй.
-    let mut sheets: Vec<String> = vec![];
-    collect_style_tags(&dom.document, &mut sheets);
-    for css in &sheets {
+    let sheets = try_collect_style_tags(&dom.document, &admission)?;
+    for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)
             .into_iter()
@@ -143,8 +151,9 @@ pub(crate) fn convert(
     let agent = Scope {
         rules: agent_rules,
         frames: frames.clone(),
+        clone_cost: input.agent_css.get(),
     };
-    for css in &sheets {
+    for css in sheets.iter() {
         frames.extend(crate::style::css::parse_keyframes_in(css, Some(media), vcx));
     }
     // `:has()`: аргументы собираются со всех селекторов, правила с
@@ -160,8 +169,12 @@ pub(crate) fn convert(
     // слотов считаются ДО обхода, как отметки `:has`; обход получает их
     // индексом по узлу. Документ без теней предпроход не платит.
     let mut tree = TreeIndex::new(doc.clone(), xhtml);
-    let doc = Rc::new(Scope { rules, frames });
-    if has_declarative_shadow(&dom.document) {
+    let doc = Rc::new(Scope {
+        rules,
+        frames,
+        clone_cost: Default::default(),
+    });
+    if has_declarative_shadow(&dom.document, &admission)? {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
         let prepared = prepare(
@@ -171,7 +184,7 @@ pub(crate) fn convert(
             &mut layers,
             &mut has_args,
             &mut tree,
-        );
+        )?;
         scan_shadows(
             &top,
             &mut vec![],
@@ -180,10 +193,10 @@ pub(crate) fn convert(
             &has_args,
             &mut drafts,
             &mut tree,
-        );
-        finish_slots(drafts, &mut tree);
+        )?;
+        finish_slots(drafts, &mut tree)?;
     } else if !has_args.is_empty() {
-        mark_has(&dom.document, &has_args, &mut vec![], &mut tree);
+        mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
     }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
@@ -227,5 +240,5 @@ pub(crate) fn convert(
         quirks_percent_heights(&mut out, None);
     }
     super::state_identity::finalize(&out, vcx);
-    out
+    Ok(out)
 }

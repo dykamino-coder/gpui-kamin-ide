@@ -8,8 +8,17 @@
 
 use markup5ever_rcdom::{Handle, NodeData};
 
-pub(super) fn preference(node: &Handle, preferred: bool) -> Option<bool> {
-    for node in super::source_walk::descendants(node, false) {
+pub(super) fn preference(
+    node: &Handle,
+    preferred: bool,
+    admission: &crate::budget::admission::Admission,
+) -> Result<Option<bool>, crate::budget::admission::Error> {
+    let mut walk = super::source_walk::SourceWalk::new(
+        node,
+        super::source_walk::Templates::None,
+        admission.clone(),
+    )?;
+    while let Some(node) = walk.try_next()? {
         if let NodeData::Element { name, attrs, .. } = &node.data
             && &*name.local == "meta"
             && &*name.ns == "http://www.w3.org/1999/xhtml"
@@ -20,11 +29,11 @@ pub(super) fn preference(node: &Handle, preferred: bool) -> Option<bool> {
                 && let Some(content) = attr("content")
                 && let Some(dark) = supported(&content.value, preferred)
             {
-                return Some(dark);
+                return Ok(Some(dark));
             }
         }
     }
-    None
+    Ok(None)
 }
 
 fn supported(value: &str, preferred: bool) -> Option<bool> {
@@ -125,6 +134,9 @@ mod tests {
         let dom = html5ever::parse_document(markup5ever_rcdom::RcDom::default(), Default::default()).one(
             "<meta name=color-scheme content='only'><meta name=COLOR-SCHEME content=dark><meta name=color-scheme content=light>"
         );
-        assert_eq!(preference(&dom.document, false), Some(true));
+        assert_eq!(
+            preference(&dom.document, false, &Default::default()).unwrap(),
+            Some(true)
+        );
     }
 }

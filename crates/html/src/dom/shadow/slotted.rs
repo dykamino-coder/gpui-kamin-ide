@@ -59,9 +59,12 @@ fn candidates(scope: &Scope, slot: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
 
 /// Fallback children are not assigned to their own slot. A fallback expanded
 /// through a reprojected slot is included by `flatten_slot`, as required by DOM.
-pub(super) fn register_all(tree: &mut TreeIndex) {
+pub(super) fn register_all(tree: &mut TreeIndex) -> Result<(), crate::budget::admission::Error> {
+    let admission = tree.admission();
+    admission.work(tree.slots.len())?;
     let slots: Vec<_> = tree.slots.values().cloned().collect();
     for slot in slots {
+        admission.work(1)?;
         if slot.assigned.is_empty() {
             continue;
         }
@@ -74,6 +77,7 @@ pub(super) fn register_all(tree: &mut TreeIndex) {
             is_elem: true,
             rc: Some(&origin.peers),
         };
+        admission.work(origin.scope.rules.len())?;
         let rules = candidates(&origin.scope, &slot_node, &origin.path, sibs);
         for FlatCtx {
             node,
@@ -83,6 +87,7 @@ pub(super) fn register_all(tree: &mut TreeIndex) {
             pos,
         } in slot.flattened.iter().flatten()
         {
+            admission.work(rules.len())?;
             let sibs = Sibs {
                 all,
                 pos: *pos,
@@ -100,4 +105,5 @@ pub(super) fn register_all(tree: &mut TreeIndex) {
             }
         }
     }
+    Ok(())
 }
