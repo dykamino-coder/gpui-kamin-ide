@@ -113,7 +113,6 @@ fn moving_a_main_float_rebuilds_continuations_with_the_new_floor() {
         vec![kid],
         Rc::new(|_, _| panic!("no page layout")),
         Vec::new(),
-        0.,
         Vec::new(),
         None,
     );

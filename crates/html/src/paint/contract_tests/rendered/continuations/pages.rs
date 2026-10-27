@@ -70,6 +70,28 @@ fn box_nested_in_a_continued_box_is_placed_in_the_same_continuous_flow() {
 }
 
 #[test]
+fn sheets_past_the_flow_come_from_the_native_placement_of_root_boxes() {
+    // No in-flow content: the sheets exist only because the root absolute boxes
+    // are placed there (css-position-3 §abspos-breaking), not from a reach estimate.
+    for (style, pages) in [
+        ("top:300vh;height:10px", 4),
+        ("bottom:-200vh;height:10px", 3),
+    ] {
+        let found = printed(
+            &format!(
+                "<style>body{{margin:0}}</style>\
+<div style='position:absolute;width:50px;{style};background:#0000ff'></div>"
+            ),
+            800.,
+            600.,
+        );
+        let sheets = found.iter().filter(|(_, c)| opaque(*c) == 0xffffff).count();
+        assert_eq!(sheets, pages, "{style}: {found:?}");
+        assert!(any(&found, 0x0000ff), "{style}: the box is painted");
+    }
+}
+
+#[test]
 fn anchor_positioned_box_on_a_sheet_paints_beside_its_anchor() {
     let found = printed(
         "<style>body{margin:0}</style>\

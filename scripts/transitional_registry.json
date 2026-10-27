@@ -15,16 +15,6 @@
     "reason": "used_mut() меняет единственную стадию нематериализованного стиля; удалить fallback после разделения стадий у всех синтетических коробок."
   },
   {
-    "file": "crates/html/src/layout/fragment/breaks/mod.rs",
-    "task": "F2-2",
-    "reason": "OOF reach оценивает полный border box для семей, которые рисуют legacy-копии: held (P08b — transform дальше переноса, anchor-positioned, процентный статический abs, корень с боксом вне multicol) и grid static anchors (P16); удалить, когда обе группы рисует нативный источник."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/breaks/mod.rs",
-    "task": "F2-2",
-    "reason": "Static position получает sibling offsets суммой оценок высоты и полей для reach held-семей (P08b) и grid static anchors (P16); удалить вместе с оценкой reach после их измеренного static rect."
-  },
-  {
     "file": "crates/html/src/layout/fragment/clone/mod.rs",
     "task": "F2-7",
     "reason": "Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование."

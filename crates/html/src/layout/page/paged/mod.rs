@@ -123,7 +123,6 @@ pub fn render_paged_select(
     // `LatePlace` абсолютов, копия `c` уходит на лист `c` (`PageStack.icb`).
     let mut icb_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();
     let mut fixed_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();
-    let mut icb_reach = 0.0f32;
     let mut kids: Vec<crate::layout::page::page_stack::PageKid> = Vec::new();
     let prev_end: Option<String> = None;
     let first = true;
@@ -213,7 +212,6 @@ pub fn render_paged_select(
         shape_cx,
         &mut icb_copies,
         &mut fixed_copies,
-        &mut icb_reach,
         &mut kids,
         prev_end,
         first,
@@ -233,7 +231,6 @@ pub fn render_paged_select(
         kids,
         geom_for,
         icb_copies,
-        icb_reach,
         fixed_copies,
         margin_for,
     )

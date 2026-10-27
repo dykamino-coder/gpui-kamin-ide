@@ -1,93 +1,13 @@
 //! Принудительные разрывы и запреты разрыва при фрагментации: `break-before/after` и
-//! `avoid` на краях коробки (`edges`), монолиты стопки страниц (`page_monolith`, css-break-4
-//! §4.1; Blink `IsMonolithic`) и досягаемость внепоточного корня стопки страниц
-//! (`oof_reach`): до какой глубины абсолют с `top`/`bottom` в `vh` и его переполнение
-//! требуют листов (Blink `BlockBreakToken::monolithic_overflow_`, crbug 1402540).
+//! `avoid` на краях коробки (`edges`) и монолиты стопки страниц (`page_monolith`,
+//! css-break-4 §4.1; Blink `IsMonolithic`). Листы под внепоточные корни добавляет
+//! план OOF стопки страниц.
 
-use crate::document::state::ValueCx;
-
-use crate::dom::whitespace::is_blank;
-use crate::dom::{Element, Node};
-use crate::layout::box_kind::out_of_flow;
-use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::fragment_size::shape_full;
+use crate::dom::Element;
 use crate::style::computed::Display;
-use crate::style::values::value::Len;
 mod edges;
 pub(crate) use edges::edge_avoid;
 pub(crate) use edges::edge_break;
-
-/// Досягаемость внепоточного корня стопки страниц: низ его коробки, а при
-/// видимом переполнении — низ стопки его блочных детей (Blink копит
-/// переполнение монолита в `BlockBreakToken::monolithic_overflow_` и
-/// добавляет страницы, пока оно не кончится, crbug 1402540;
-/// `monolithic-overflow-027`: абсолют `contain:size` 4in с ребёнком 8in —
-/// «four green pages»). Обрезка `overflow-y` переполнение гасит (`-028`).
-pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
-    // `vh`/`vw` — от page area; `bottom: -200vh` тянет низ коробки на две
-    // area ниже листа (эталоны `fixedpos-001..009`: копии `bottom: -N00vh` и
-    // `top: N00vh` — досягаемость была нулевой, лист один).
-    let lens = crate::style::computed::LenCx::box_viewport(cx.viewport, &e.style.used());
-    let len = |l: &Option<Len>| lens.px_strict(*l, vcx);
-    let top = len(&e.style.used().inset.top).unwrap_or(0.0);
-    let from_bottom = len(&e.style.used().inset.bottom)
-        .and_then(|b| cx.viewport.map(|v| v.1 - b))
-        .unwrap_or(0.0);
-    // Мера `None` (строчное содержимое) — не «пусто»: хотя бы точка высоты,
-    // чтобы лист под самой строкой родился (`fixedpos-005-print`: `top:
-    // 300vh` внутри `top: 100vh` — текст ровно на краю четвёртого листа).
-    // TRANSITIONAL(F2-2): OOF reach оценивает полный border box для семей, которые рисуют legacy-копии: held (P08b — transform дальше переноса, anchor-positioned, процентный статический abs, корень с боксом вне multicol) и grid static anchors (P16); удалить, когда обе группы рисует нативный источник.
-    let own = shape_full(e, 4, cx, vcx)
-        .map(|s| s.height)
-        .unwrap_or_else(|| {
-            if e.children.iter().all(is_blank) {
-                0.0
-            } else {
-                1.0
-            }
-        });
-    let clipped = matches!(
-        e.style.used().overflow_y,
-        Some(crate::style::computed::Overflow::Hidden)
-            | Some(crate::style::computed::Overflow::Clip)
-            | Some(crate::style::computed::Overflow::Scroll)
-    );
-    let inner: f32 = if clipped {
-        0.0
-    } else {
-        e.children
-            .iter()
-            .filter_map(|n| match n {
-                Node::Element(k) if !k.inline && !out_of_flow(&k.style.used()) => {
-                    // TRANSITIONAL(F2-2): Static position получает sibling offsets суммой оценок высоты и полей для reach held-семей (P08b) и grid static anchors (P16); удалить вместе с оценкой reach после их измеренного static rect.
-                    shape_full(k, 3, cx, vcx).map(|s| s.height + s.margin_top + s.margin_bottom)
-                }
-                _ => None,
-            })
-            .sum()
-    };
-    // Абсолютные потомки-абсолюты: содержащий блок — эта коробка, их `top`
-    // — от её верха (CSS 2.1 §10.6.4). Мера `shape_full` у коробки со
-    // строчным содержимым `None`, и дотяг вложенного `top: 300vh` терялся
-    // (`fixedpos-005-print`: три листа вместо пяти).
-    let nested = if clipped {
-        0.0
-    } else {
-        e.children
-            .iter()
-            .filter_map(|n| match n {
-                Node::Element(k)
-                    if k.style.used().position
-                        == Some(crate::style::computed::Position::Absolute) =>
-                {
-                    Some(oof_reach(k, cx, vcx))
-                }
-                _ => None,
-            })
-            .fold(0.0f32, f32::max)
-    };
-    (top + own.max(inner).max(nested)).max(from_bottom)
-}
 
 /// Монолит стопки страниц (css-break-4 §4.1; Blink `IsMonolithic`):
 /// замещаемый, прокручиваемый, `break-inside: avoid`, `contain: size`,

@@ -76,7 +76,7 @@ fn actual_page_cb_repeats_fixed_through_the_last_absolute_fragment(cx: &mut gpui
                 &nodes, &root, (area, gpui::div()), &opts, window, app,
             )
         });
-        let stack = PageStack::new(vec![kid(source)], Rc::new(|i, _| geom(i)), Vec::new(), 0., Vec::new(), None);
+        let stack = PageStack::new(vec![kid(source)], Rc::new(|i, _| geom(i)), Vec::new(), Vec::new(), None);
         let normal = Plan { fragments: vec![Frag { kid: 0, copy: 0, col: 0, y: 0., from: 0., h: 20., head: 0., foot: 0. }], ..Default::default() };
         stack.plan_oof(Normal { plan: &normal, geoms: &[geom(0)], names: &[String::new()], count: 1 }, window, app);
         let plan = stack.oof.plan.borrow();

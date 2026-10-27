@@ -60,14 +60,6 @@ impl Hooks for PageStack {
             self.canvas_els.clear();
             return;
         };
-        // Абсолюты корня добавляют листы, пока не кончится их досягаемость
-        // (Blink: «If overflowed by monolithic overflow, we need more pages»,
-        // box_fragment_builder.h). Потолок — число копий слоя.
-        let icb_pages = if self.icb.is_empty() {
-            0
-        } else {
-            ((self.icb_reach / ah).ceil().max(0.0) as usize).min(self.icb.len())
-        };
         // Monolithic overflow reserves pages past the box (`PageKid::reach`).
         let block = self.area_logical(&g).1.max(1.0);
         let reach_pages = plan
@@ -80,7 +72,7 @@ impl Hooks for PageStack {
             .max()
             .unwrap_or(0)
             .min(self.kids.first().map_or(1, |k| k.frags.len() + 1));
-        let pages = pages.max(icb_pages).max(reach_pages).max(1);
+        let pages = pages.max(reach_pages).max(1);
         self.spill_overflow(&mut plan, pages, block);
         // Листы сверх плана (досягаемость абсолютов) — с именем последнего.
         let tail = names.last().cloned().unwrap_or_default();

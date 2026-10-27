@@ -2,9 +2,7 @@
 
 use super::PAGE_COPIES;
 use crate::dom::Node;
-use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::breaks::oof_reach;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::table_bands::repeat_candidates;
 use crate::layout::options::RenderOpts;
@@ -36,7 +34,6 @@ pub(super) fn page_kids_from_groups(
     shape_cx: ShapeCx,
     icb_copies: &mut [Vec<AnyElement>],
     fixed_copies: &mut [Vec<AnyElement>],
-    icb_reach: &mut f32,
     kids: &mut Vec<super::super::page_stack::PageKid>,
     mut prev_end: Option<String>,
     mut first: bool,
@@ -54,11 +51,6 @@ pub(super) fn page_kids_from_groups(
             && matches!(e.style.used().display, Some(Display::None))
         {
             continue;
-        }
-        if let Node::Element(e) = n
-            && out_of_flow(&e.style.used())
-        {
-            *icb_reach = icb_reach.max(oof_reach(e, shape_cx, vcx));
         }
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };

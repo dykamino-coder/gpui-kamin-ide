@@ -24,7 +24,6 @@ fn settlement_preserves_exhausted_copy_status() {
         Vec::new(),
         std::rc::Rc::new(|_, _| unreachable!()),
         Vec::new(),
-        0.0,
         Vec::new(),
         None,
     );
