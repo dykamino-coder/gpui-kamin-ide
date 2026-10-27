@@ -62,23 +62,10 @@ fn evaluate(
         }
         let unavailable = availability == Some(ImageAvailability::Failed);
         // CSS Backgrounds 3 §2.3: недоступная картинка даёт прозрачный чёрный.
-        let gradient = if c.layers.is_none() {
-            c.gradient.clone()
-        } else {
-            None
-        };
-        let color = if unavailable || (layer.image.is_none() && gradient.is_none()) {
+        let operands = c.layer_operands(layer);
+        let color = if unavailable || (layer.image.is_none() && operands.gradient.is_none()) {
             Color::default()
         } else {
-            let operands = crate::style::background_paint::BackgroundValues {
-                color: None,
-                gradient,
-                gradient_image: None,
-                top: layer.clone(),
-                layers: None,
-                color_clip: layer.clip,
-                flat: None,
-            };
             flat_fill(&operands, images)?
         };
         for (region, pixel) in result.iter_mut().enumerate() {

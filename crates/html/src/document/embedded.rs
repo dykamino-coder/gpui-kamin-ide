@@ -177,15 +177,16 @@ pub(super) fn unwrap_document(
             .map(|n| match n {
                 Node::Element(mut child) => {
                     let input = child.style.used();
-                    child.style = crate::style::cascade::inherit::inherit_unpainted(
+                    // Document preparation: the unwrapped child's cascade takes the
+                    // wrapper's values (before materialization).
+                    let mut merged = crate::style::cascade::inherit::inherit_unpainted(
                         &wrapper,
                         child.style.cascaded(),
                         vcx,
                     )
-                    // Document preparation: the unwrapped child's cascade takes the
-                    // wrapper's values (before materialization).
-                    .into_computed()
-                    .into();
+                    .into_computed();
+                    carry_wrapper_filter(&wrapper, &mut merged);
+                    child.style = merged.into();
                     child.style.set_background_paint(input.background_paint);
                     child.style.set_canvas_background(input.canvas_background);
                     Node::Element(child)
@@ -193,6 +194,17 @@ pub(super) fn unwrap_document(
                 other => other,
             })
             .collect();
+    }
+}
+
+/// Снятая обёртка своей коробки не рисует, и её `filter` (Filter Effects 1
+/// §5: фильтр обрабатывает отрисовку элемента вместе с потомками) переходит
+/// на содержимое, занявшее её место; собственный фильтр ребёнка сильнее.
+fn carry_wrapper_filter(wrapper: &BoxStyle, merged: &mut crate::style::computed::Computed) {
+    let neutral = crate::style::computed::Filter::neutral();
+    if merged.filter.is_none_or(|f| f == neutral) {
+        merged.filter = wrapper.filter;
+        merged.scrollbar_filter_ops = wrapper.scrollbar_filter_ops.clone();
     }
 }
 
@@ -208,3 +220,6 @@ fn embedded_failure(error: crate::budget::admission::Error) -> super::DocumentFa
     failure.scope = super::FailureScope::EmbeddedDocument;
     failure
 }
+
+#[cfg(test)]
+mod unwrap_tests;

@@ -117,8 +117,20 @@ pub(crate) fn layer(
     let values = vcx.keep();
     layer.image.as_ref()?;
     // Одноцветный фон `border-area` несёт краска рамки (`border_paint`):
-    // плитки легли бы на всю коробку.
-    if border_area_fill(&c.paint_background(), vcx).is_some() {
+    // плитки легли бы на всю коробку. Решают операнды именно этого слоя:
+    // в списке — свой clip слоя, у плитки градиента — его картинка.
+    let background = c.paint_background();
+    let own = if background.layers.is_some() {
+        std::borrow::Cow::Owned(background.layer_operands(layer))
+    } else if background.top == *layer {
+        background
+    } else {
+        std::borrow::Cow::Owned(crate::style::background_paint::BackgroundValues {
+            top: layer.clone(),
+            ..background.into_owned()
+        })
+    };
+    if border_area_fill(&own, vcx).is_some() {
         return None;
     }
     let style = c.style_rc().clone();
