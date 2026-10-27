@@ -61,7 +61,7 @@ fn map_bounds(b: Bounds<ScaledPixels>, m: TransformationMatrix) -> Bounds<Scaled
     let a = map_point(b.origin, m);
     let z = map_point(b.bottom_right(), m);
     Bounds::new(point(a.x.min(z.x), a.y.min(z.y)),
-        crate::size((z.x - a.x).abs(), (z.y - a.y).abs()))
+        crate::size(ScaledPixels((z.x - a.x).0.abs()), ScaledPixels((z.y - a.y).0.abs())))
 }
 
 fn radii(c: &mut Corners<ScaledPixels>, t: PaintVectorTransform) {
