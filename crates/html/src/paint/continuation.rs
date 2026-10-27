@@ -79,11 +79,15 @@ impl Wrap for Slot {
         &mut self.child
     }
 
-    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         // The native placement replayed here is hit through this copy's scope.
         if let Some(copy) = window.render_context::<CopyHits>() {
-            copy.scopes
-                .push(copy.segment, self.id, window.paint_hit_scope());
+            copy.scopes.push(
+                copy.segment,
+                self.id,
+                window.paint_hit_scope(),
+                bounds.origin,
+            );
         }
         // Layout stays with the copy; its hitboxes live at the native placements
         // only (a singular matrix makes this copy's own ones unreachable).
@@ -94,7 +98,7 @@ impl Wrap for Slot {
         window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, _: &mut App) {
+    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, _: &mut App) {
         let Some(copy) = window.render_context::<CopySegment>() else {
             return;
         };
@@ -111,11 +115,12 @@ impl Wrap for Slot {
             rotation_scale: device.rotation_scale,
             translation: [device.translation[0] / k, device.translation[1] / k],
         });
-        for (record, own) in records {
+        for (record, own, follow) in records {
             let origin = point(px(0.), px(0.));
+            // A following root lands where this copy laid its box out.
             let placement = PaintPlacement {
                 source: origin,
-                destination: origin,
+                destination: follow.map_or(origin, |expected| bounds.origin - expected),
                 clip: window.content_mask().bounds,
             };
             let plan = PaintPlan::record(record);

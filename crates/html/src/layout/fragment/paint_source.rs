@@ -40,10 +40,16 @@ pub(crate) struct Nested {
     pub(crate) bare: Rc<[PaintSegmentId]>,
     /// Per-segment presentation of the root's own transform (destination).
     pub(crate) presentations: HashMap<PaintSegmentId, gpui::TransformationMatrix>,
+    /// Expected destination origin of a following root's box, per segment.
+    pub(crate) follow: HashMap<PaintSegmentId, gpui::Point<Pixels>>,
 }
 
 /// A root's record and the presentation of its own per-fragment transform.
-pub(crate) type Replay = (PaintRecord, Option<gpui::TransformationMatrix>);
+pub(crate) type Replay = (
+    PaintRecord,
+    Option<gpui::TransformationMatrix>,
+    Option<gpui::Point<Pixels>>,
+);
 
 type Table = RefCell<HashMap<(PaintSegmentId, u64), Vec<Replay>>>;
 
@@ -91,37 +97,47 @@ impl BareRecords {
     }
 }
 
+/// A slot met while prepainting a copy: segment, root, hit scope, box origin.
+type Slot = (PaintSegmentId, u64, PaintHitScope, gpui::Point<Pixels>);
+
 /// Hit scopes of the slots met while prepainting the copies, by (segment, root).
 #[derive(Clone, Default)]
-pub(crate) struct SlotScopes(Rc<RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>>>);
+pub(crate) struct SlotScopes(Rc<RefCell<Vec<Slot>>>);
 
 impl SlotScopes {
-    pub(crate) fn push(&self, segment: PaintSegmentId, root: u64, scope: PaintHitScope) {
-        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
-        cell.borrow_mut().push((segment, root, scope));
+    pub(crate) fn push(
+        &self,
+        segment: PaintSegmentId,
+        root: u64,
+        scope: PaintHitScope,
+        origin: gpui::Point<Pixels>,
+    ) {
+        let cell: &RefCell<Vec<Slot>> = &self.0;
+        cell.borrow_mut().push((segment, root, scope, origin));
     }
 
     /// Forget the slots of the previous prepaint.
     pub(crate) fn clear(&self) {
-        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
+        let cell: &RefCell<Vec<Slot>> = &self.0;
         cell.borrow_mut().clear();
     }
 
-    /// Scopes of the placements `(segment, ordinal, root)` that a slot replays.
+    /// Scope and box origin of the slot replaying each placement
+    /// `(segment, ordinal, root)`.
     pub(crate) fn scopes(
         &self,
         placements: &[(PaintSegmentId, u32, u64)],
-    ) -> Rc<[(PaintSegmentId, u32, PaintHitScope)]> {
-        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
+    ) -> Vec<(PaintSegmentId, u32, PaintHitScope, gpui::Point<Pixels>)> {
+        let cell: &RefCell<Vec<Slot>> = &self.0;
         let slots = cell.borrow();
         placements
             .iter()
             .filter_map(|&(segment, ordinal, root)| {
-                let (_, _, scope) = slots
+                let (_, _, scope, origin) = slots
                     .iter()
                     .rev()
-                    .find(|(s, r, _)| *s == segment && *r == root)?;
-                Some((segment, ordinal, scope.clone()))
+                    .find(|(s, r, _, _)| *s == segment && *r == root)?;
+                Some((segment, ordinal, scope.clone(), *origin))
             })
             .collect()
     }

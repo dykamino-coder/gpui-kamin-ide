@@ -14,7 +14,7 @@ use std::{cell::Cell, rc::Rc};
 pub(crate) mod paint;
 mod roots;
 pub(crate) use roots::continuation_roots;
-use roots::held;
+use roots::follows;
 mod snapshot;
 
 #[derive(Clone)]
@@ -38,6 +38,8 @@ pub(crate) struct Source {
     pub(crate) native: bool,
     /// Its own flat transform, resolved against each of its fragments.
     pub(crate) transform: Option<crate::style::computed::FlatTransform>,
+    /// Its place is resolved by the legacy copy that replays it.
+    pub(crate) follows: bool,
 }
 
 struct Flow {
@@ -50,9 +52,8 @@ struct Flow {
     policy: Cell<FixedPolicy>,
     fixed: Cell<bool>,
     static_block: Cell<bool>,
-    /// The source cannot paint it in place (`held`): an anchor or the flow
-    /// of a percentage-sized box places it, or it transforms per fragment.
-    held: bool,
+    /// Its place is resolved by its legacy copy (`roots::follows`).
+    follows: bool,
     transform: Option<crate::style::computed::FlatTransform>,
 }
 
@@ -150,7 +151,7 @@ impl Recorder {
                     policy: Cell::new(FixedPolicy::Fragment),
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
-                    held: held(e),
+                    follows: follows(e),
                     transform: crate::style::computed::FlatTransform::of(&e.style.used()),
                 });
                 parent = Some(index);

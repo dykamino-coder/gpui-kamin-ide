@@ -88,25 +88,51 @@ pub(crate) fn paint_collect() -> (AnyElement, AnyElement) {
     (open.into_any_element(), close.into_any_element())
 }
 
-/// Hit scopes of the placements: a slot's copy scope, else the current scope
-/// under the placement's per-fragment presentation.
+/// Hit scopes of the placements: a slot's copy scope (moved to where the copy
+/// laid a following root out), else the current scope under the placement's
+/// per-fragment presentation.
 pub(crate) fn presented_hit_scopes(
-    slots: std::rc::Rc<[(gpui::PaintSegmentId, u32, gpui::PaintHitScope)]>,
+    slots: Vec<(
+        gpui::PaintSegmentId,
+        u32,
+        gpui::PaintHitScope,
+        gpui::Point<gpui::Pixels>,
+    )>,
     presented: &[(gpui::PaintSegmentId, u32, gpui::TransformationMatrix)],
+    follow: &[(gpui::PaintSegmentId, u32, gpui::Point<gpui::Pixels>)],
     window: &Window,
 ) -> std::rc::Rc<[(gpui::PaintSegmentId, u32, gpui::PaintHitScope)]> {
-    if presented.is_empty() {
-        return slots;
-    }
-    let base = window.paint_hit_scope();
-    let mut all = slots.to_vec();
-    for &(segment, ordinal, matrix) in presented {
-        if !all.iter().any(|(s, o, _)| *s == segment && *o == ordinal) {
-            all.push((
-                segment,
-                ordinal,
-                window.paint_hit_scope_under(&base, matrix),
-            ));
+    let mut all: Vec<_> = slots
+        .into_iter()
+        .map(|(segment, ordinal, scope, origin)| {
+            let moved = follow
+                .iter()
+                .find(|(s, o, _)| *s == segment && *o == ordinal)
+                .map(|&(_, _, expected)| origin - expected)
+                .filter(|by| *by != gpui::Point::default());
+            let scope = match moved {
+                Some(by) => window.paint_hit_scope_under(
+                    &scope,
+                    gpui::TransformationMatrix {
+                        rotation_scale: [[1., 0.], [0., 1.]],
+                        translation: [f32::from(by.x), f32::from(by.y)],
+                    },
+                ),
+                None => scope,
+            };
+            (segment, ordinal, scope)
+        })
+        .collect();
+    if !presented.is_empty() {
+        let base = window.paint_hit_scope();
+        for &(segment, ordinal, matrix) in presented {
+            if !all.iter().any(|(s, o, _)| *s == segment && *o == ordinal) {
+                all.push((
+                    segment,
+                    ordinal,
+                    window.paint_hit_scope_under(&base, matrix),
+                ));
+            }
         }
     }
     all.into()

@@ -50,6 +50,7 @@ impl PageStack {
             let scopes = crate::hooks::presented_hit_scopes(
                 self.oof.slot_scopes.scopes(&routing.roots),
                 &routing.presented,
+                &routing.follow,
                 window,
             );
             window.with_hitbox_transform(hits, |window| {
@@ -172,6 +173,8 @@ impl PageStack {
                 decoration,
                 copied,
                 transform: flow.transform,
+                follows: flow.follows,
+                origin: laid.origin,
                 reference: geometry::slice(self.axis, laid, 0., inline, f.from, f.h),
                 start: geometry::slice(self.axis, page, offset.into(), inline, 0., 0.).origin
                     - (to + shift - from),
