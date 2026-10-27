@@ -10,6 +10,8 @@ use gpui::{AnyElement, App, Pixels, Window};
 #[cfg(test)]
 mod balance_tests;
 mod children;
+#[cfg(test)]
+mod clip_tests;
 mod geometry;
 #[cfg(test)]
 mod oof_tests;

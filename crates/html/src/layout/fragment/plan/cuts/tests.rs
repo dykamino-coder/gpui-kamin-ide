@@ -30,6 +30,13 @@ fn slice_continues_content_in_successive_columns() {
 }
 
 #[test]
+fn box_that_fits_a_column_moves_before_last_resort_slicing() {
+    let (_, _, plan) = fill_at(&[kid(75.), kid(25.)], &|_| 75.015625, Space::columns(2));
+    assert_eq!(plan.len(), 2);
+    assert_eq!((plan[1].col, plan[1].from, plan[1].h), (1, 0., 25.));
+}
+
+#[test]
 fn forced_break_skips_margin_and_growth_uses_the_same_plan() {
     let mut k = kid(120.0);
     k.forced = vec![40.0];

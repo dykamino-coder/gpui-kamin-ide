@@ -68,8 +68,7 @@ impl ColumnStack {
             };
             let flow = flow_of(bad);
             // Лучшая точка разрыва может лежать ВНУТРИ содержимого, которое
-            // уже пройдено (css-break-4 §4.4: «the UA … must choose the
-            // breakpoint with the highest break appeal»; Blink `early_break_` в
+            // уже пройдено (css-break-4 §4.3–4.4; Blink `early_break_` в
             // `block_layout_algorithm.cc:1086`, `fragmentation_utils.cc:1250`):
             // запрет на границе с предыдущим ребёнком снимается разрывом в его
             // последней законной точке, а не переносом его целиком —

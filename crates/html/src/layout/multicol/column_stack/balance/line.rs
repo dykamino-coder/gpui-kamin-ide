@@ -12,14 +12,8 @@ impl ColumnStack {
     /// `cap` — потолок баланса (`ConstrainColumnBlockSize`).
     pub(crate) fn balance_line(&self, kids: &[Kid], limit: usize, cap: Option<f32>) -> (f32, Plan) {
         if let Some(h) = self.fixed_height {
-            // Правило 1 css-break-4 §4.3 применяется ТОЛЬКО здесь —
-            // `column-fill: auto` с заданной высотой колонки. Балансировку
-            // (`ResolveColumnAutoBlockSize` ниже) и пробег рядов
-            // (`balance_run`) отступ не трогает НАМЕРЕННО: там лишняя колонка
-            // от отступа растит `target` на весь недолаз и МЕНЯЕТ высоту
-            // многоколоночника (`balance-break-avoidance-002`: баланс уходит
-            // в 125 при верных 100) — в балансе отступ мало поставить, надо
-            // ещё выбрать высоту, а это отдельный шаг.
+            // При заданной высоте ранний разрыв выбирает место переноса;
+            // при балансе ниже его план ещё проверяется поиском высоты.
             let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, Space::columns(limit));
             return (h, slots);
         }

@@ -23,10 +23,8 @@ pub(super) fn place_oof_statics(
     let oof_spots: Vec<crate::layout::positioned::containing_block::SpotCell> =
         oof_static.iter().map(|_| Default::default()).collect();
     for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
-        // Заданную ось считает раскладка от содержащего
-        // блока, щуп правит только ПУСТУЮ (CSS 2.1
-        // §10.3.7) — тот же гейт `fixed_axes`, что у слоёв
-        // в `blocks()`.
+        // Щуп правит только пустую ось; заданную считает CB
+        // (CSS 2.1 §10.3.7), как fixed_axes у слоёв в blocks().
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (
                 edge_set(oof.style.used().inset.left) || edge_set(oof.style.used().inset.right),
@@ -115,6 +113,16 @@ pub(super) fn column_stack_div(
     opts: &RenderOpts,
     deferred: Option<std::rc::Rc<super::super::deferred::Recipe>>,
 ) -> gpui::Div {
+    // OOF других рядов между спаннерами продолжается там, в исходных координатах CB.
+    let geometry = opts.cx.position.geometry.as_ref().map(|geometry| {
+        let mut selected = (**geometry).clone();
+        selected.flows.retain(|source| {
+            e.children
+                .iter()
+                .any(|node| matches!(node, Node::Element(child) if child.node_id == if source.owner == 0 { source.id } else { source.owner }))
+        });
+        std::rc::Rc::new(selected)
+    });
     let d = if col_vert {
         let d = d.flex();
         if col_rl {
@@ -125,7 +133,6 @@ pub(super) fn column_stack_div(
     } else {
         d
     };
-
     d.child(
         crate::layout::multicol::column_stack::ColumnStack::new(
             children,
@@ -148,7 +155,7 @@ pub(super) fn column_stack_div(
         } else {
             crate::layout::multicol::measure::RowExtent::ColumnHeight
         })
-        .with_oof(opts.cx.position.geometry.clone(), merged.wm())
+        .with_oof(geometry, merged.wm())
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
         .with_fill_shrink(
