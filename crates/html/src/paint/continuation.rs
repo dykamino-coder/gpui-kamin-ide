@@ -94,10 +94,15 @@ impl Wrap for Slot {
         window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, _: &mut App) {
+    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let Some(copy) = window.render_context::<CopySegment>() else {
             return;
         };
+        // The copy's own paint still runs for what it publishes to the rest of
+        // the copy (static position probes of boxes laid out in other layers);
+        // its commands are discarded, the record below replaces them.
+        let extent = window.content_mask().bounds;
+        let _ = window.record_paint(extent, cx, |window, cx| self.child.paint(window, cx));
         let records = copy.records.get(copy.segment, self.id);
         if records.is_empty() {
             return;
