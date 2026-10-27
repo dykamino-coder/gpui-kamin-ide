@@ -63,7 +63,6 @@ fn one_source_prepaint_routes_click_and_cursor_to_column_and_page_not_source() {
                     )
                     .unwrap();
                 window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
-                let clicked = clicked.clone();
                 window.on_mouse_event::<MouseDownEvent>(move |event, phase, window, _| {
                     if phase.bubble() && hitbox.is_hovered(window) {
                         clicked.borrow_mut().push(event.position);

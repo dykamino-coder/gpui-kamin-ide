@@ -70,8 +70,6 @@ pub struct Marks {
     pub(crate) lead: Option<LeadProbe>,
 }
 
-/// Намерение фрагмента; CSS-размеры исходного элемента остаются неизменными.
-
 /// Synthetic band host: floats of one run and the content they wrap.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct ShapeFlow {
