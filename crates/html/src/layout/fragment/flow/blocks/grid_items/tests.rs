@@ -1,6 +1,42 @@
 //! Продолжение элементов сетки со своего расхода по фрагментам.
 
-use super::{ItemFrame, ResumedItem, resume_items};
+use super::{BlockBox, ItemFrame, Laid, ResumedItem, resume_items};
+use crate::dom::{Element, Node};
+
+fn first_div(nodes: &[Node]) -> Option<&Element> {
+    nodes.iter().find_map(|n| match n {
+        Node::Element(e) if e.tag == "div" => Some(e),
+        Node::Element(e) => first_div(&e.children),
+        _ => None,
+    })
+}
+
+#[test]
+fn an_item_belongs_to_the_fragment_where_its_margin_box_starts() {
+    // A negative margin lifts the item above its row; the row still decides its fragment.
+    let doc = crate::dom::parse(
+        "<div style='display:grid;grid-template-rows:90px 90px'><div></div><div style='margin-top:-10px;height:100px'></div></div>",
+        "",
+    );
+    let root = first_div(&doc).expect("grid");
+    let b = BlockBox::collect(
+        root,
+        crate::layout::fragment::ShapeCx::COLUMNS,
+        doc.values(),
+    );
+    let ids: Vec<u64> = b
+        .grid
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|i| i.id)
+        .collect();
+    let laid = Laid::of_boxes(&[(ids[0], 0.0, 90.0), (ids[1], 80.0, 180.0)]);
+    let mut starts = Vec::new();
+    b.grid_item_starts(&laid, &mut starts);
+    assert_eq!(starts, vec![(ids[0], 0.0), (ids[1], 90.0)]);
+}
 
 #[test]
 fn a_sibling_of_an_overflowing_monolith_resumes_from_its_own_consumed_size() {
