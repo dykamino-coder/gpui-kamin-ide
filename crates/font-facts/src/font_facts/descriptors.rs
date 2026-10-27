@@ -3,10 +3,10 @@
 use super::FontRegistrySnapshot;
 use std::collections::HashMap;
 
-pub(crate) type MetricFaces = HashMap<String, Vec<(u8, [Option<f32>; 3])>>;
+pub type MetricFaces = HashMap<String, Vec<(u8, [Option<f32>; 3])>>;
 
 /// Механически сохранён порядок наклонов и отказ при разных значениях одного наклона.
-pub(crate) fn uniform_slope<T: Copy + PartialEq>(faces: &[(u8, T)], want: u8) -> Option<T> {
+pub fn uniform_slope<T: Copy + PartialEq>(faces: &[(u8, T)], want: u8) -> Option<T> {
     let order = match want {
         1 => [1, 2, 0],
         2 => [2, 0, 1],
@@ -22,7 +22,7 @@ pub(crate) fn uniform_slope<T: Copy + PartialEq>(faces: &[(u8, T)], want: u8) ->
 }
 
 impl FontRegistrySnapshot {
-    pub(crate) fn size_adjust(&self, family: &str, slope: u8) -> f32 {
+    pub fn size_adjust(&self, family: &str, slope: u8) -> f32 {
         self.registry
             .size_adjust
             .get(&family.to_ascii_lowercase())
@@ -30,7 +30,7 @@ impl FontRegistrySnapshot {
             .unwrap_or(1.0)
     }
 
-    pub(crate) fn metric_overrides(&self, family: &str, slope: u8) -> [Option<f32>; 3] {
+    pub fn metric_overrides(&self, family: &str, slope: u8) -> [Option<f32>; 3] {
         self.registry
             .metric_overrides
             .get(&family.to_ascii_lowercase())
@@ -39,7 +39,7 @@ impl FontRegistrySnapshot {
     }
 
     /// Прежний нейтральный транспорт дескрипторов в списке тегов адаптера.
-    pub(crate) fn metric_features(&self, family: &str, slope: u8) -> Vec<(String, u32)> {
+    pub fn metric_features(&self, family: &str, slope: u8) -> Vec<(String, u32)> {
         ["kasc", "kdsc", "kgap"]
             .into_iter()
             .zip(self.metric_overrides(family, slope))
