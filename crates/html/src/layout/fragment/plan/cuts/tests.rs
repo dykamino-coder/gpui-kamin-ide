@@ -63,7 +63,7 @@ fn row_line_preference_does_not_escape_avoid_between_measured_boundaries() {
     block.avoid = vec![(25., 75.05)];
     for height in [75.046875, 90., 100. - 1. / 64.] {
         let (columns, _, plan) = fill_at(&[block.clone()], &|_| height, Space::columns(3));
-        assert_eq!(columns, 3, "height={height}: {:?}", plan.fragments);
+        assert_eq!(columns, 3, "height={height}");
         assert_eq!(plan[0].h, 25.);
         assert_eq!(plan[1].from, 25.);
         assert_eq!(plan[1].h, 75.);
