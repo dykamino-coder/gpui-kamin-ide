@@ -98,12 +98,12 @@ pub(crate) fn top(quads: &[(Bounds<Pixels>, Hsla)], x: f32, y: f32) -> Option<Hs
 
 #[test]
 fn p08dbg_probe() {
-    let html =
-        std::fs::read_to_string(std::env::var("P08_HTML").unwrap_or_default()).unwrap_or_default();
-    if html.is_empty() {
-        return;
-    }
-    for (b, c) in quads(&html, 800., 600.) {
-        eprintln!("P08Q {:?} {:?} {:?}", b.origin, b.size, (c.h, c.s, c.l));
+    let list = std::env::var("P08_HTML").unwrap_or_default();
+    for path in list.split(';').filter(|p| !p.is_empty()) {
+        let html = std::fs::read_to_string(path).unwrap_or_default();
+        let name = path.rsplit(['\\', '/']).next().unwrap_or(path);
+        for (b, c) in quads(&html, 800., 600.) {
+            eprintln!("P08Q {name} {:?} {:?} {:?}", b.origin, b.size, (c.h, c.s, c.l));
+        }
     }
 }
