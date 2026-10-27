@@ -3,7 +3,6 @@
 //! повтора секций таблицы-ребёнка — по её разложенным секциям (`refresh_repeat`).
 
 use crate::layout::fragment::flow::blocks::table::TableSections;
-use crate::layout::fragment::table_bands::repeat_spec;
 use crate::layout::fragment::types::{StackAxis, StackChild};
 use gpui::{Pixels, Size, Window, point, px};
 mod leaf;
@@ -64,18 +63,10 @@ impl StackChild {
         let (Some(sec), Some(per)) = (sections, per) else {
             return;
         };
-        if self.repeat.is_none() {
-            return;
-        }
-        match repeat_spec(sec, per) {
-            Some((head, foot, geom)) => {
-                if let Some(r) = self.repeat.as_mut() {
-                    r.head = head;
-                    r.foot = foot;
-                    r.geom = geom;
-                }
-            }
-            None => self.repeat = None,
+        if let Some(r) = self.repeat.as_mut()
+            && !r.refresh(&sec, per)
+        {
+            self.repeat = None;
         }
     }
 }

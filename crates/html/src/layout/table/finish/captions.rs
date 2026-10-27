@@ -23,15 +23,7 @@ pub(super) async fn collect_captions(
             && (cap.tag == "caption" || cap.style.used().is_caption == Some(true))
         {
             let cm = box_style(inherited, &cap.style, vcx);
-            // Сторона — с самого заголовка, при пустоте — от таблицы
-            // (наследование caption-side).
-            // TRANSITIONAL(F2-5): Сторона подписи читается из cascaded подписи/таблицы вместо собственного computed контекста; удалить обход в P18 после caption token с исходным стилем и владельцем таблицы.
-            let cap_side_bottom = cap
-                .style
-                .cascaded()
-                .caption_bottom
-                .or(e.style.cascaded().caption_bottom)
-                == Some(true);
+            let cap_side_bottom = crate::dom::table_boxes::caption_at_bottom(cap);
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
             // contains its floats (§10.6.7), like a cell (`BoxConstraints::cell_bfc`).
@@ -180,7 +172,7 @@ pub(super) fn wrap_with_captions(
         };
         // Порядок обёртки — верхние подписи, коробка рядов, нижние подписи
         // (css-tables-3 §terminology; Blink `table_layout_algorithm.cc:988`
-        // и `:1584`). Тот же порядок мерит `table_shape`.
+        // и `:1584`). Тот же порядок читает запись `flow::blocks::table`.
         let mut cap_wrap: Vec<AnyElement> = Vec::new();
         for cap_el in caps_top {
             cap_wrap.push(own_width(cap_el));
