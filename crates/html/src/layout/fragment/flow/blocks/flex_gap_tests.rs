@@ -10,14 +10,7 @@ fn rows(force_before_second: bool) -> (BlockBox, Laid) {
             ..Default::default()
         })
         .collect();
-    let root = BlockBox {
-        id: 10,
-        flex: Some(FlexBox {
-            items,
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
+    let root = flex_root(items);
     let mut laid = Laid::of_boxes(&[(10, 0.0, 100.0), (1, 0.0, 50.0), (2, 60.0, 100.0)]);
     let line = |index, start, end, id| FlexLine {
         index,
@@ -34,6 +27,18 @@ fn rows(force_before_second: bool) -> (BlockBox, Laid) {
         },
     );
     (root, laid)
+}
+
+/// Flex-контейнер `10` с этими элементами.
+pub(super) fn flex_root(items: Vec<BlockKid>) -> BlockBox {
+    BlockBox {
+        id: 10,
+        flex: Some(FlexBox {
+            items,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
 }
 
 fn gaps(b: &BlockBox, laid: &Laid, from: f32, edge: f32) -> Vec<(FlexPush, f32, f32)> {

@@ -36,6 +36,8 @@ mod flex;
 mod flex_breaks;
 mod flex_edges;
 mod flex_gaps;
+mod flex_line_starts;
+pub(crate) use flex_line_starts::pending as forced_line_start_pending;
 mod flex_tree;
 pub(crate) use flex::{FlexBox, FlexFrame, FlexLine, FlexPush, flex_container};
 pub(crate) use flex_tree::flex_tree;
@@ -47,6 +49,8 @@ mod flex_avoid_tests;
 mod flex_column_tests;
 #[cfg(test)]
 mod flex_gap_tests;
+#[cfg(test)]
+mod flex_line_start_tests;
 #[cfg(test)]
 mod flex_overflow_tests;
 #[cfg(test)]
