@@ -34,7 +34,8 @@ fn body_currentcolor_uses_its_computed_color_with_or_without_an_image() {
             );
             assert_eq!(root.style.computed().color, Color::parse(root_color, vcx));
             assert_eq!(body.style.computed().color, Some(blue));
-            assert!(body.style.computed().background.is_none());
+            assert_eq!(body.style.computed().background, Some(blue));
+            assert!(!body.style.used().background_paint.paints());
         }
     }
 }

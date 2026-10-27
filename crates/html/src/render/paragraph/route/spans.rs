@@ -3,14 +3,14 @@
 use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::native_vertical;
 use crate::render::paragraph::edges::in_edge;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
 use gpui::px;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn paragraph_spans(
     para: crate::text::paragraph::Paragraph,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],

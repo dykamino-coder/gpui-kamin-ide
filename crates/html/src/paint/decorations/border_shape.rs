@@ -2,11 +2,14 @@
 
 use crate::document::state::ValueCx;
 
-use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use gpui::{IntoElement, Styled, px};
 
-pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
+pub(super) fn border_shape_layer(
+    c: &crate::style::computed::BoxStyle,
+    out: &mut Vec<gpui::AnyElement>,
+    vcx: ValueCx<'_>,
+) {
     let values = vcx.keep();
     // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура —
     // обводка толщиной «relevant side» по центру контура, две — заливка между

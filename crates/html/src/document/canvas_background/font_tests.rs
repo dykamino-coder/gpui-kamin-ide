@@ -68,8 +68,8 @@ fn donor_font_lengths_use_body_computed_font_and_document_facts() {
                     BgSize::Fixed(Some(Len::Px(4.0 * font * x_height)), Some(Len::Pct(0.5)))
                 );
             }
-            assert_eq!(body.style.cascaded().bg_pos, Default::default());
-            assert!(body.style.cascaded().bg_lists.is_empty());
+            assert_eq!(body.style.cascaded().bg_pos.x, Some(Len::Em(1.0)));
+            assert!(!body.style.used().background_paint.paints());
             crate::style::cascade::materialize::materialize(
                 &nodes,
                 &Rc::new(Computed::default()),

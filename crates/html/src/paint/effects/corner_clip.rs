@@ -6,7 +6,7 @@
 
 use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
-use crate::style::computed::{BoxStyle, Computed, Overflow};
+use crate::style::computed::{BoxStyle, Overflow};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Styled, Window, div, px};
 
@@ -21,7 +21,7 @@ fn side(v: Option<Len>) -> f32 {
 
 /// Signed offsets from the border contour; scrolling boxes keep their own clip.
 /// Explicit masks and background-clip continue through their existing compositors.
-pub(crate) fn insets(c: &Computed, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
+pub(crate) fn insets(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
     if !c.corner_shaped()
         || c.border_shape.is_some()
         || c.overflow_x != Some(Overflow::Clip)

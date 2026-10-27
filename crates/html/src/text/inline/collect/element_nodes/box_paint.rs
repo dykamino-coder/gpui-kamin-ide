@@ -53,10 +53,10 @@ pub(super) fn element_style(
     // относительная функция) решён только там.
     // `background-clip: text`: бокс фоном не красится — заливку
     // несёт цвет глифов (`inherit`), узорную показать нечем.
-    if let Some(bg) = merged
-        .background
-        .filter(|_| merged.bg_clip != Some(crate::style::computed::BgClip::Text))
-    {
+    if let Some(bg) = merged.background.filter(|_| {
+        merged.background_paint.paints()
+            && merged.bg_clip != Some(crate::style::computed::BgClip::Text)
+    }) {
         merged.inline_decoration.band_color = Some(bg);
         // Единицы шрифта разрешаются так же, как в `inline_sides`:
         // разбор только по точкам ронял `padding: 1em` в ноль, и
@@ -99,7 +99,10 @@ pub(super) fn element_style(
     };
     let own_bg = merged
         .background
-        .filter(|_| merged.bg_clip != Some(crate::style::computed::BgClip::Text))
+        .filter(|_| {
+            merged.background_paint.paints()
+                && merged.bg_clip != Some(crate::style::computed::BgClip::Text)
+        })
         .is_some();
     let mut own_border = true;
     if let Some((color, width)) = uniform_border(&e.style.used(), font_px, vcx) {
