@@ -7,7 +7,7 @@ use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
-fn host(nodes: &[Node]) -> &Element {
+pub(super) fn host(nodes: &[Node]) -> &Element {
     fn find(nodes: &[Node]) -> Option<&Element> {
         nodes.iter().find_map(|n| match n {
             Node::Element(e) if e.tag == "div" => Some(e),
@@ -18,7 +18,7 @@ fn host(nodes: &[Node]) -> &Element {
     find(nodes).expect("authored host")
 }
 
-fn opts() -> RenderOpts {
+pub(super) fn opts() -> RenderOpts {
     RenderOpts {
         text: Default::default(),
         viewport: (800.0, 600.0),
@@ -26,6 +26,23 @@ fn opts() -> RenderOpts {
         cx: Default::default(),
         frag: Default::default(),
     }
+}
+
+/// Recipe of two horizontal `column-fill: auto` columns 100 high without rows.
+pub(super) fn two_columns(
+    host: &Element,
+    opts: &RenderOpts,
+) -> Option<std::rc::Rc<crate::layout::multicol::deferred::Recipe>> {
+    crate::layout::multicol::deferred::Recipe::new(
+        host,
+        &BoxStyle::default(),
+        opts,
+        2,
+        0.0,
+        Some(100.0),
+        crate::layout::fragment::types::StackAxis::Horizontal,
+        None,
+    )
 }
 
 #[test]

@@ -131,7 +131,7 @@ pub(crate) fn multicol_column_stack(
                 })
                 .collect();
             let clone_plan = clone_plan_of(
-                cols, col_vert, rows, copies, fixed, &kid_par, &kids, &prepared, vcx, opts,
+                cols, col_vert, rows, copies, fixed, &kid_par, &kids, &prepared, vcx,
             );
             // All column rules use the canonical gap painter, including vertical writing modes.
             let gap_spec = multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap);

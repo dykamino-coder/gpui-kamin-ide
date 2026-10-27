@@ -149,10 +149,9 @@ pub(super) fn stack_child_of(
     span: bool,
     kid_copies: usize,
     measured_table: Option<(bool, bool)>,
-    shape_cx: crate::layout::fragment::ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
-    let repeat = repeat_bands(copy, fixed, rows, measured_table, shape_cx, vcx);
+    let repeat = repeat_bands(copy, fixed, rows, measured_table);
     let (el, frags, fragment_builders) = super::factory::fragments(
         build.clone(),
         copy,
@@ -227,7 +226,7 @@ pub(super) fn stack_child_of(
         },
         laid_w: Default::default(),
         paginate: None,
-        // Повтор шапки/подвала — копии flow::Repeat с мерой repeat_leads.
+        // Повтор шапки/подвала — копии flow::Repeat, полосы по разложенным секциям.
         repeat: repeat
             .filter(|_| !span && !col_vert)
             .map(

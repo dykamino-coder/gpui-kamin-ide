@@ -97,7 +97,12 @@ fn definite_and_clamped_containers_keep_their_size() {
 fn reversed_axis_keeps_completed_rows_at_its_start_edge() {
     let mut tree: TaffyTree<()> = TaffyTree::new();
     tree.disable_rounding();
-    let items = [item(&mut tree, Some(50.0), 1, 2), item(&mut tree, Some(40.0), 2, 3)];
+    let items = [
+        item(&mut tree, Some(50.0), 1, 2),
+        item(&mut tree, Some(40.0), 2, 3),
+        item(&mut tree, None, 1, 2),
+        item(&mut tree, None, 2, 3),
+    ];
     let style = Style { grid_axis_reversed: Some(Size { width: false, height: true }), ..Style::DEFAULT };
     let root = grid(&mut tree, style, &items);
     tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
@@ -106,6 +111,9 @@ fn reversed_axis_keeps_completed_rows_at_its_start_edge() {
     tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
     assert_eq!(row_positions(&tree, root), vec![(70.0, 120.0), (0.0, 40.0)]);
     assert_eq!(frame(&tree, items[0]), (70.0, 50.0));
+    // Stretched items keep the size of their own rows on a reversed axis too.
+    assert_eq!(frame(&tree, items[2]), (70.0, 50.0));
+    assert_eq!(frame(&tree, items[3]), (0.0, 40.0));
     assert_eq!(tree.layout(root).unwrap().size.height, 120.0);
 }
 
