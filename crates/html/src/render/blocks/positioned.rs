@@ -118,7 +118,7 @@ pub(crate) fn static_position_layer(
     } else if paint_last_ok(e, &nodes[idx + 1..], cx) {
         cx.position.state.late_push(
             spot,
-            gpui::PaintLast::new(built)
+            crate::paint::coordinator::PaintLast::new(built)
                 .key(paint_key)
                 .into_any_element(),
         )

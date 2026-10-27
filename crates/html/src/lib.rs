@@ -32,6 +32,7 @@
 #[cfg(test)]
 mod depth_tests;
 
+pub mod budget;
 #[cfg(test)]
 pub mod coverage;
 pub(crate) mod defaults;
@@ -70,6 +71,9 @@ pub(crate) mod style;
 pub(crate) mod text;
 
 pub use style::ua::BROWSER_CSS;
+
+#[cfg(feature = "engine-bench")]
+pub use document::BuildTimings;
 
 #[cfg(feature = "wpt-harness")]
 pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};

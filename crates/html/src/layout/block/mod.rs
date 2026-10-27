@@ -10,5 +10,6 @@ mod margin_inline_boxes;
 pub mod margins;
 pub(super) mod ratio_basis;
 pub mod reorder;
+pub(crate) mod sizing;
 pub mod struts;
 pub(crate) mod vertical_flow_margins;

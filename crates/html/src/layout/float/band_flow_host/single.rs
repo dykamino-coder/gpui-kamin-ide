@@ -105,8 +105,7 @@ fn frame(side: i8, child: AnyElement) -> gpui::Div {
     } else {
         frame.items_end()
     };
-    frame.style().paint_atomic = Some(true);
-    frame
+    crate::hooks::paint_atomic(frame)
 }
 
 #[cfg(test)]

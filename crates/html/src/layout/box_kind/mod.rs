@@ -7,22 +7,16 @@ pub(crate) use line_boxes::inline_level_box;
 pub(crate) use line_boxes::phantom_inline;
 pub(crate) use line_boxes::replaced_tag;
 
+mod flex;
+pub(crate) use flex::{flex_row, flex_row_nowrap};
+
 mod contexts;
 pub(crate) use contexts::{bfc_root, own_context};
 
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Display};
 
-/// Уходит ли элемент из потока: плавающие и внепоточные строчного не рвут
-/// (Blink `layout_inline.cc`: разрыв вызывают только блоки В ПОТОКЕ).
-pub(crate) fn out_of_flow(c: &Computed) -> bool {
-    c.float.is_some_and(|f| f != 0)
-        || matches!(
-            c.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        )
-}
+pub(crate) use crate::style::flow::out_of_flow;
 
 /// Настоящий ли это строчный элемент.
 ///
@@ -114,11 +108,7 @@ pub(crate) use crate::dom::whitespace::is_blank;
 /// кроме первой.
 pub(crate) fn in_flow(c: &Computed) -> bool {
     c.float.is_none()
-        && !matches!(
-            c.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        )
+        && !crate::style::flow::absolutely_positioned(c.position)
         && !matches!(
             c.display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
@@ -149,11 +139,7 @@ pub(crate) fn replaced_inline(tag: &str) -> bool {
 /// `inline_display`, поэтому одного взгляда на `display` мало.
 pub(crate) fn atomic_inline(c: &Computed) -> bool {
     c.float.is_none()
-        && !matches!(
-            c.position,
-            Some(crate::style::computed::Position::Absolute)
-                | Some(crate::style::computed::Position::Fixed)
-        )
+        && !crate::style::flow::absolutely_positioned(c.position)
         && c.inline_display != Some(true)
         && matches!(
             c.display,

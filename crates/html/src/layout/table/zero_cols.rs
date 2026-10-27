@@ -97,7 +97,10 @@ pub(super) fn zero_width_cols(
                 let sum: f32 = declared.iter().flatten().sum();
                 let свободно = base - sum;
                 (0..cols as usize)
-                    .map(|i| declared.get(i).copied().flatten().is_none() && свободно <= 0.5)
+                    .map(|i| {
+                        declared.get(i).copied().flatten().is_none()
+                            && свободно <= crate::tolerance::TABLE_SIZE_EPS
+                    })
                     .collect()
             }
             _ => vec![false; cols as usize],

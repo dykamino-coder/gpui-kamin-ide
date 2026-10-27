@@ -39,6 +39,7 @@ pub(crate) fn plain_tree(e: &Element) -> bool {
 pub(crate) fn stacked_tree(e: &Element) -> bool {
     stacks_blocks(e)
         && children(&e.children).all(|n| match n {
+            Node::Element(k) if crate::layout::fragment::flex_lines::inline_display(k) => true,
             Node::Element(k) if out_of_flow(&k.style.used()) || k.inline => {
                 !holds_blocks(k) || stacked_tree(k)
             }
@@ -80,7 +81,13 @@ pub(crate) fn table_tree(e: &Element) -> bool {
 /// Строчная коробка с поточным блоком внутри (на любой глубине строчных).
 pub(super) fn holds_blocks(e: &Element) -> bool {
     children(&e.children).any(|n| match n {
-        Node::Element(k) if out_of_flow(&k.style.used()) => false,
+        // CSS2 section 9.2.1.1: an atomic inline does not split its inline ancestor.
+        Node::Element(k)
+            if out_of_flow(&k.style.used())
+                || crate::layout::fragment::flex_lines::inline_display(k) =>
+        {
+            false
+        }
         Node::Element(k) if !k.inline => true,
         Node::Element(k) => k.style.used().display.is_none() && holds_blocks(k),
         _ => false,

@@ -15,7 +15,7 @@ pub(crate) struct FlowNode {
     pub(crate) geometry: Rc<RefCell<FlowGeometry>>,
     pub(crate) axis: StackAxis,
     pub(crate) growth: ParagraphGrowth,
-    pub(crate) starts: Rc<RefCell<Vec<f32>>>,
+    pub(crate) starts: Rc<RefCell<Vec<(usize, f32)>>>,
     pub(crate) content: Rc<RefCell<Vec<super::ContentLine>>>,
     pub(crate) resume: Rc<super::inline::Cursor>,
     pub(crate) ordinal: usize,
@@ -53,12 +53,14 @@ impl FlowNode {
     }
 }
 
-// Только числовая FlowGeometry переживает временный layout-движок.
+// Геометрия и адреса роста строк переживают временный layout без LayoutId.
 #[derive(Debug, Default)]
 pub(crate) struct FlowMeasure {
     pub(super) records: Records<Record>,
     pub(super) resumes: RefCell<Vec<Rc<super::inline::Cursor>>>,
     pub(crate) lines: bool,
+    pub(super) contexts: RefCell<std::collections::BTreeMap<usize, Rc<FlowMeasure>>>,
+    pub(crate) float_resume: RefCell<Option<super::float_resume::Cursor>>,
     paragraphs: Rc<RefCell<Vec<ParagraphGrowth>>>,
     next: Cell<usize>,
 }
@@ -68,7 +70,7 @@ pub(crate) struct Record {
     axis: StackAxis,
     geometry: Rc<RefCell<FlowGeometry>>,
     growth: ParagraphGrowth,
-    starts: Rc<RefCell<Vec<f32>>>,
+    starts: Rc<RefCell<Vec<(usize, f32)>>>,
     pub(super) content: Rc<RefCell<Vec<super::ContentLine>>>,
 }
 
@@ -86,17 +88,27 @@ impl FlowMeasure {
     /// Повторная сборка потока сохраняет уже потреблённое место каждого абзаца.
     pub(crate) fn rewind(&self) {
         self.next.set(0);
+        for child in self.contexts.borrow().values() {
+            child.rewind();
+        }
     }
 
     pub(crate) fn constraints_only(&self) -> Self {
         Self {
             lines: self.lines,
             paragraphs: self.paragraphs.clone(),
+            contexts: RefCell::new(
+                self.contexts
+                    .borrow()
+                    .iter()
+                    .map(|(&key, child)| (key, Rc::new(child.constraints_only())))
+                    .collect(),
+            ),
             ..Self::default()
         }
     }
 
-    /// Геометрия строк остаётся в области текущего layout-движка.
+    /// Включает строки вложенных проб, чей временный layout уже освобождён.
     pub(crate) fn line_pushes_axis(
         &self,
         origin: Point<Pixels>,
@@ -104,24 +116,14 @@ impl FlowMeasure {
         axis: StackAxis,
         window: &mut Window,
     ) -> Vec<super::LinePush> {
-        let mut pushes = Vec::new();
-        self.records.for_each(window, |bounds, record| {
-            let Some(offset) = record.offset(origin, size, axis, bounds) else {
-                return;
-            };
-            pushes.extend(record.starts.borrow().iter().enumerate().map(|(line, at)| {
-                super::LinePush {
-                    at: offset + at,
-                    line,
-                    growth: record.growth.clone(),
-                }
-            }));
-        });
-        pushes
+        self.at(origin, size, axis, window).line_pushes
     }
 
     pub(crate) fn reset(&self) {
         self.records.reset();
+        for child in self.contexts.borrow().values() {
+            child.reset();
+        }
     }
 
     pub(crate) fn for_lines() -> Self {
@@ -158,6 +160,19 @@ impl FlowMeasure {
         self.records.for_each(window, |bounds, record| {
             if let Some(offset) = record.offset(origin, size, axis, bounds) {
                 result.append(&record.geometry.borrow(), offset);
+                result
+                    .line_pushes
+                    .extend(
+                        record
+                            .starts
+                            .borrow()
+                            .iter()
+                            .map(|&(line, at)| super::LinePush {
+                                at: offset + at,
+                                line,
+                                growth: record.growth.clone(),
+                            }),
+                    );
             }
         });
         result.normalize();

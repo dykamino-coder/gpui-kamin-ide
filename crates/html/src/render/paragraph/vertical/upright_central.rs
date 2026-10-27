@@ -13,6 +13,7 @@ use crate::layout::options::RenderOpts;
 use crate::render::paragraph::{own_size, paragraph};
 use crate::style::computed::{Align, BoxStyle, Computed, TextAlign};
 use crate::style::values::value::Len;
+use crate::tolerance::TEXT_COORD_EPS;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 struct Glyph {
@@ -128,7 +129,7 @@ pub(super) fn upright_central(
     let mixed = stack
         .glyphs
         .iter()
-        .any(|g| (g.size - em).abs() > 0.001 || g.shift.abs() > 0.001);
+        .any(|g| (g.size - em).abs() > TEXT_COORD_EPS || g.shift.abs() > TEXT_COORD_EPS);
     if !mixed {
         return None;
     }

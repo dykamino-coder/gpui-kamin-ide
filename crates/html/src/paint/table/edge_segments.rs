@@ -1,6 +1,7 @@
 //! Разбор сросшихся кромок (CSS 2.1 §17.6.2.1): кандидаты по линиям сетки и победители по отрезкам.
 
 use crate::layout::table::probes::{EdgeCell, GRID_BOX};
+use crate::tolerance::PAINT_EDGE_EPS;
 use gpui::{Bounds, Pixels};
 
 // Кандидат кромки на ЛИНИИ сетки: совпадающие отрезки соседей — ОДНА
@@ -112,10 +113,10 @@ pub(super) fn draw_cands(
             .find_map(|c| (c.outward != 0).then_some(c.outward));
         let mut cuts: Vec<f32> = group.iter().flat_map(|c| [c.a, c.b]).collect();
         cuts.sort_by(f32::total_cmp);
-        cuts.dedup_by(|p, q| (*p - *q).abs() < 0.5);
+        cuts.dedup_by(|p, q| (*p - *q).abs() < PAINT_EDGE_EPS);
         for seg in cuts.windows(2) {
             let (a, b) = (seg[0], seg[1]);
-            if b - a < 0.5 {
+            if b - a < PAINT_EDGE_EPS {
                 continue;
             }
             let mid = (a + b) / 2.0;

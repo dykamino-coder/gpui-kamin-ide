@@ -73,7 +73,7 @@ pub(crate) fn native_paragraph(
         runs,
         gpui::px(biggest),
         line,
-        crate::text::paragraph::align_for(inherited),
+        super::alignment::first(inherited, opts),
         wrap,
     )
     .measure_context(&opts.cx)
@@ -97,28 +97,7 @@ pub(crate) fn native_paragraph(
             line_atoms.iter().any(|atom| !atom.3.is_empty()),
         )
         .justify_chars(inherited.justify_chars.unwrap_or(1))
-        .align_last(
-            inherited
-                .text_align_last
-                .flatten()
-                .map(|a| a.physical(inherited.wm().rtl()))
-                .map(crate::text::paragraph::align_of_value)
-                // `text-justify: none` forbids justification of the last
-                // line too: it aligns as `start` (css-text-3 §7.3,
-                // `text-justify-none-001` with `text-align-last: justify`).
-                .map(|a| match a {
-                    crate::text::paragraph::Align::Justify
-                        if inherited.no_justify == Some(true) =>
-                    {
-                        if inherited.wm().rtl() {
-                            crate::text::paragraph::Align::Right
-                        } else {
-                            crate::text::paragraph::Align::Left
-                        }
-                    }
-                    other => other,
-                }),
-        )
+        .align_last(super::alignment::last(inherited, opts))
         .letter_spacing(gpui::px(metrics::spacing_px(
             inherited.letter_spacing,
             &family,

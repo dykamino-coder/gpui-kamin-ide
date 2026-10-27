@@ -70,3 +70,56 @@ fn deferred_children_resolve_percentages_from_original_content_box() {
     };
     assert_eq!(original.style.used().height, Some(Len::Pct(0.5)));
 }
+
+#[test]
+fn deferred_width_preserves_the_full_width_float_measurement_contract() {
+    let tree = crate::dom::parse(
+        "<!doctype html><section style='column-count:2;height:150px'><div style='height:100px'></div><div style='float:left;break-inside:avoid;width:100%;height:100px'><div style='height:60px'></div></div><div style='float:left;width:100%;height:0'><div style='height:40px;margin-top:-40px'></div></div></section>",
+        "",
+    );
+    let host = section(&tree);
+    let mut opts = RenderOpts {
+        text: Default::default(),
+        viewport: (800.0, 600.0),
+        normal_line_height: 1.2,
+        cx: Default::default(),
+        frag: Default::default(),
+    };
+    opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+    opts.cx.values.viewport = opts.viewport;
+    crate::style::cascade::materialize::materialize(
+        &tree,
+        opts.root_style().style_rc(),
+        opts.cx.vcx(),
+    );
+    let merged = crate::style::cascade::materialize::box_style(
+        &opts.root_style(),
+        &host.style,
+        opts.cx.vcx(),
+    );
+    let recipe = Recipe::new(
+        host,
+        &merged,
+        &opts,
+        2,
+        0.0,
+        Some(150.0),
+        StackAxis::Horizontal,
+        None,
+    )
+    .expect("pending geometry must have a deferred recipe");
+    for width in [50.0, 80.0] {
+        let resolved = recipe.resolved_host(width);
+        let Node::Element(float) = &resolved.children[1] else {
+            panic!("float")
+        };
+        assert!(float.marks.float_block);
+        assert_eq!(float.style.used().float, None);
+        assert_eq!(float.style.used().height, Some(Len::Px(100.0)));
+        assert_eq!(recipe.children(width).len(), 3);
+    }
+    let Node::Element(original) = &host.children[1] else {
+        panic!("original float")
+    };
+    assert_eq!(original.style.used().float, Some(-1));
+}

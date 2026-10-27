@@ -9,7 +9,6 @@ mod img;
 mod list;
 // KaminIDE patch: второй проход краски детей `Div`.
 pub(crate) mod context_scope;
-pub(crate) mod paint_last;
 mod surface;
 mod svg;
 mod text;
@@ -25,7 +24,6 @@ pub use image_cache::*;
 pub use img::*;
 pub use list::*;
 pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
-pub use paint_last::*;
 pub use surface::*;
 pub use svg::*;
 pub use text::*;

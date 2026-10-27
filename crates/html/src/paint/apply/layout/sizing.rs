@@ -9,6 +9,7 @@ use crate::style::values::value::px_strict;
 pub(super) fn layout_sizing(
     mut d: Div,
     c: &BoxStyle,
+    sizes: &BoxDimensions,
     pad_x: f32,
     pad_y: f32,
     vcx: ValueCx<'_>,
@@ -24,16 +25,16 @@ pub(super) fn layout_sizing(
     // Пороги и размеры здесь — content-box, отбивки добавит цикл ниже.
     let natural_fit: Option<(f32, f32)> = if c.attr_sized.0
         && c.attr_sized.1
-        && let (Some(Len::Px(w)), Some(Len::Px(h))) = (c.width, c.height)
+        && let (Some(Len::Px(w)), Some(Len::Px(h))) = (sizes.preferred[0], sizes.preferred[1])
         && w > 0.0
         && h > 0.0
     {
         let px_of = px_strict;
-        let min_w = px_of(c.min_width).unwrap_or(0.0);
-        let min_h = px_of(c.min_height).unwrap_or(0.0);
+        let min_w = px_of(sizes.minimum[0]).unwrap_or(0.0);
+        let min_h = px_of(sizes.minimum[1]).unwrap_or(0.0);
         // §10.4: «max-width/max-height … less than min-* is treated as min-*».
-        let max_w = px_of(c.max_width).unwrap_or(f32::INFINITY).max(min_w);
-        let max_h = px_of(c.max_height).unwrap_or(f32::INFINITY).max(min_h);
+        let max_w = px_of(sizes.maximum[0]).unwrap_or(f32::INFINITY).max(min_w);
+        let max_h = px_of(sizes.maximum[1]).unwrap_or(f32::INFINITY).max(min_h);
         let r = w / h;
         let fit = if w > max_w && h > max_h {
             if max_w / w <= max_h / h {
@@ -79,16 +80,19 @@ pub(super) fn layout_sizing(
             Some(Len::MaxContent) => Some(gpui::CssSizingKeyword::MaxContent),
             _ => None,
         };
-        d.style().min_sizing_keywords = Some([kw(c.min_width), kw(c.min_height)]);
-        d.style().max_sizing_keywords = Some([kw(c.max_width), kw(c.max_height)]);
+        d.style().min_sizing_keywords = Some([kw(sizes.minimum[0]), kw(sizes.minimum[1])]);
+        d.style().max_sizing_keywords = Some([kw(sizes.maximum[0]), kw(sizes.maximum[1])]);
     }
     for (val, f) in [
-        (natural_fit.map(|f| Len::Px(f.0)).or(c.width), 0u8),
-        (natural_fit.map(|f| Len::Px(f.1)).or(c.height), 1),
-        (c.min_width, 2),
-        (c.min_height, 3),
-        (c.max_width, 4),
-        (c.max_height, 5),
+        (
+            natural_fit.map(|f| Len::Px(f.0)).or(sizes.preferred[0]),
+            0u8,
+        ),
+        (natural_fit.map(|f| Len::Px(f.1)).or(sizes.preferred[1]), 1),
+        (sizes.minimum[0], 2),
+        (sizes.minimum[1], 3),
+        (sizes.maximum[0], 4),
+        (sizes.maximum[1], 5),
     ] {
         let Some(l) = val else { continue };
         // Размер по содержимому длиной не выражается: его ставит
@@ -123,16 +127,16 @@ pub(super) fn layout_sizing(
             )
         };
         if (!c.flex_item
-            || matches!(c.min_height, Some(Len::FitContent))
-            || matches!(c.max_height, Some(Len::FitContent)))
+            || matches!(sizes.minimum[1], Some(Len::FitContent))
+            || matches!(sizes.maximum[1], Some(Len::FitContent)))
             && f == 1
             && let Len::Px(h) = l
         {
-            if kw(c.min_height) {
+            if kw(sizes.minimum[1]) {
                 d = d.min_h(px(h));
                 continue;
             }
-            if kw(c.max_height) {
+            if kw(sizes.maximum[1]) {
                 d = d.max_h(px(h));
                 continue;
             }
@@ -164,7 +168,7 @@ pub(super) fn layout_sizing(
     // max(ratio-размер, содержимое). Отношение в раскладку при этом не
     // отдаётся, иначе taffy зафиксировал бы ось (`block-aspect-ratio-009/…`,
     // `flex-aspect-ratio-040/…`).
-    if ratio_as_auto_min(c)
+    if ratio_as_auto_min(c, sizes)
         && let Some(r) = c.aspect_ratio
     {
         // Определённая ось сперва зажимается своими min/max (§5.1 «size
@@ -183,18 +187,18 @@ pub(super) fn layout_sizing(
             }
         };
         let bb = c.border_box == Some(true);
-        match (c.width, c.height) {
+        match (sizes.preferred[0], sizes.preferred[1]) {
             (Some(Len::Px(w)), _) => {
-                let w = clamp(w, c.min_width, c.max_width);
+                let w = clamp(w, sizes.minimum[0], sizes.maximum[0]);
                 let mh = if bb { (w + pad_x) / r - pad_y } else { w / r };
-                let mh = clamp(mh.max(0.0), None, c.max_height);
+                let mh = clamp(mh.max(0.0), None, sizes.maximum[1]);
                 d = d.min_h(px(mh + pad_y));
                 d.style().aspect_ratio_preferred_size = Some([None, Some(mh + pad_y)]);
             }
             (_, Some(Len::Px(h))) => {
-                let h = clamp(h, c.min_height, c.max_height);
+                let h = clamp(h, sizes.minimum[1], sizes.maximum[1]);
                 let mw = if bb { (h + pad_y) * r - pad_x } else { h * r };
-                let mw = clamp(mw.max(0.0), None, c.max_width);
+                let mw = clamp(mw.max(0.0), None, sizes.maximum[0]);
                 d = d.min_w(px(mw + pad_x));
                 d.style().aspect_ratio_preferred_size = Some([Some(mw + pad_x), None]);
             }

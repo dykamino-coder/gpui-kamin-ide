@@ -153,10 +153,12 @@ pub(crate) fn route_pieces(
     // Начальное значение `text-align` — `start`, а он при письме справа налево
     // означает ПРАВЫЙ край. Без этого ряд из слов оставался слева, и строка
     // расходилась с абзацем-соседом.
-    let align = inherited
-        .text_align
-        .unwrap_or(crate::style::computed::TextAlign::Start)
-        .physical(inherited.wm().rtl());
+    let align = super::alignment::marker(opts).unwrap_or_else(|| {
+        inherited
+            .text_align
+            .unwrap_or(crate::style::computed::TextAlign::Start)
+            .physical(inherited.wm().rtl())
+    });
     inline::as_wrapped_row(
         pieces,
         inherited.vertical_align,

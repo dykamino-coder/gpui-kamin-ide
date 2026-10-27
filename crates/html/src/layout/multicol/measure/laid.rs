@@ -20,14 +20,11 @@ pub(crate) fn children(
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    // TRANSITIONAL(F2-1): Замер children не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance.
-    if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start
-        || merged.text_box_trim_end
-    {
+    if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
-    let flow: Vec<_> = host.children.iter().filter(|n| !is_blank(n)).collect();
+    let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
+    let flow: Vec<_> = nodes.iter().filter(|n| !is_blank(n)).collect();
     if !flow.iter().all(|n| match n {
         // TRANSITIONAL(F2-2): Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume.
         Node::Element(c) => {
@@ -71,14 +68,11 @@ pub(crate) fn pending(
     merged: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(Element, Shape)>> {
-    // TRANSITIONAL(F2-1): Замер pending не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC и clearance.
-    if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start
-        || merged.text_box_trim_end
-    {
+    if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
-    host.children
+    let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
+    nodes
         .iter()
         .filter(|n| !is_blank(n))
         .map(|n| {
@@ -102,15 +96,11 @@ pub(crate) fn vertical_children(
     reverse: bool,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    // TRANSITIONAL(F2-1): Замер vertical_children не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC в логических осях.
-    if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start
-        || merged.text_box_trim_end
-    {
+    if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
-    let kids: Option<Vec<_>> = host
-        .children
+    let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
+    let kids: Option<Vec<_>> = nodes
         .iter()
         .filter(|n| !is_blank(n))
         .map(|n| {
@@ -154,14 +144,11 @@ pub(crate) fn pending_vertical(
     vcx: ValueCx<'_>,
     reverse: bool,
 ) -> Option<Vec<(Element, Shape)>> {
-    // TRANSITIONAL(F2-1): Замер pending_vertical не видит float bands предыдущей копии; удалить отказ в P06 после продолжения BFC в логических осях.
-    if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start
-        || merged.text_box_trim_end
-    {
+    if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
-    host.children
+    let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
+    nodes
         .iter()
         .filter(|n| !is_blank(n))
         .map(|n| {

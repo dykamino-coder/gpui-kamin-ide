@@ -23,6 +23,6 @@ impl Scoped {
             }
             Box::new(())
         });
-        ContextScope::new(enter, child).into_any_element()
+        crate::hooks::paint_root(ContextScope::new(enter, child).into_any_element())
     }
 }

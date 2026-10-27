@@ -17,9 +17,28 @@ pub(super) fn top(
     margin: f32,
     adjoining: bool,
 ) -> f32 {
-    if clear.is_some() && adjoining && bands.bottom(clear) > y {
-        bands.bottom(clear)
+    let cleared = bands.clearance_including_initial_letter(clear, y);
+    if adjoining && cleared > y {
+        cleared
     } else {
         bands.clearance(clear, y + margin)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn continued_float_clearance_uses_its_remaining_margin_edge() {
+        let mut bands = FloatBands::new(120.);
+        bands.resume_float(-1, 60., 100., -40., 0.);
+        assert_eq!(top(&bands, Some(-1), 10., -30., false), 60.);
+        assert_eq!(top(&bands, Some(-1), 10., 50., true), 60.);
+        // CSS2 §9.5.2: отделение примыкающего поля даёт отрицательный
+        // clearance, а поле ниже float без примыкания сохраняется.
+        assert_eq!(top(&bands, Some(-1), 10., 200., true), 60.);
+        assert_eq!(top(&bands, Some(-1), 10., 200., false), 210.);
+        assert_eq!(top(&bands, Some(1), 10., -30., false), -20.);
     }
 }
