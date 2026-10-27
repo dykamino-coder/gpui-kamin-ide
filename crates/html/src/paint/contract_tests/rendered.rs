@@ -52,12 +52,25 @@ impl Render for Frame {
 
 /// Visible solid quads of `html` laid out in a `w × h` viewport, in paint order.
 pub(crate) fn quads(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
+    draw(html, false, w, h)
+}
+
+/// The same for a print document on the default WPT page box (5in × 3in sheet,
+/// 0.5in margins): sheets laid out by the page stack in a `w × h` window.
+pub(crate) fn printed(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
+    draw(html, true, w, h)
+}
+
+fn draw(html: &str, print: bool, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
     let document = crate::Document::builder(html, crate::BROWSER_CSS)
+        .print(print)
         .build()
         .expect("test document");
+    let (sheet, margin) = ((480., 288.), 48.);
+    let area = (sheet.0 - 2. * margin, sheet.1 - 2. * margin);
     let options = crate::layout::options::RenderOpts {
         text: gpui::TextStyle::default(),
-        viewport: (w, h),
+        viewport: if print { area } else { (w, h) },
         normal_line_height: 1.2,
         cx: Default::default(),
         frag: Default::default(),
@@ -71,11 +84,39 @@ pub(crate) fn quads(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
         size: (w, h),
     });
     sink.borrow_mut().clear();
-    *root.borrow_mut() = Some(
+    let element = if print {
+        let geom_for: crate::layout::page::page_stack::PageGeomFn =
+            Rc::new(
+                move |_, _: &str| crate::layout::page::page_stack::PageGeom {
+                    size: sheet,
+                    margin: [margin; 4],
+                    border: (0., gpui::black()),
+                    outline: (0., 0., gpui::black()),
+                    padding: [0.; 4],
+                    bg: gpui::white(),
+                    canvas: None,
+                    area,
+                    turn: 0,
+                },
+            );
+        let stack = crate::layout::page::paged::render_paged_select(
+            document.nodes(),
+            &document.frame_opts(&options),
+            geom_for,
+            None,
+            None,
+        );
+        gpui::div()
+            .w(px(w))
+            .h(px(h))
+            .child(document.scoped(stack))
+            .into_any_element()
+    } else {
         gpui::div()
             .children(document.render(&options))
-            .into_any_element(),
-    );
+            .into_any_element()
+    };
+    *root.borrow_mut() = Some(element);
     vcx.update(|window, app| {
         window.refresh();
         window.draw(app).clear(app);
@@ -129,7 +170,12 @@ fn p08dbg_probe() {
     for path in list.split(';').filter(|p| !p.is_empty()) {
         let html = std::fs::read_to_string(path).unwrap_or_default();
         let name = path.rsplit(['\\', '/']).next().unwrap_or(path);
-        for (b, c) in quads(&html, 800., 600.) {
+        let found = if name.contains("-print") {
+            printed(&html, 800., 600.)
+        } else {
+            quads(&html, 800., 600.)
+        };
+        for (b, c) in found {
             eprintln!(
                 "P08Q {name} {:?} {:?} {:?}",
                 b.origin,
