@@ -6357,7 +6357,9 @@ impl Window {
             content_mask,
             behavior,
         };
-        self.next_frame.hitboxes.push(hitbox.clone());
+        if !self.insert_segment_hitbox(&hitbox) {
+            self.next_frame.hitboxes.push(hitbox.clone());
+        }
         hitbox
     }
 

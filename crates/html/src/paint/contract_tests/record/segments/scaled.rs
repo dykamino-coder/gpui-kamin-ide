@@ -12,6 +12,7 @@ fn parent_clip_uses_its_own_two_axis_placement_at_each_raster_scale() {
                 move |_, (), window, cx| {
                     let parent = PaintSegment {
                         id: PaintSegmentId(2),
+                        ordinal: 0,
                         source: point(px(5.), px(7.)),
                         destination: point(px(105.), px(207.)),
                     };

@@ -36,12 +36,12 @@ impl Scene {
         }
     }
 
-    pub(super) fn segment_backdrops(&self, output: &mut Scene, id: PaintSegmentId, scale: f32, extent: Bounds<ScaledPixels>, excluded: Option<&Rc<Clip>>) {
+    pub(super) fn segment_backdrops(&self, output: &mut Scene, id: PaintSegmentId, ordinal: Option<u32>, scale: f32, extent: Bounds<ScaledPixels>, excluded: Option<&Rc<Clip>>) {
         let Some(capture) = &self.segment_capture else { return; };
         for (surface, routes) in self.hoisted_backdrops.iter().zip(&capture.hoisted) {
-            if let Some(route) = routes.routes.iter().find(|route| route.id == id) {
+            for route in routes.routes.iter().filter(|route| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal)).copied() {
                 let mut primitive = Primitive::Surface(surface.clone());
-                record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(routes.admission(id, scale, Tag::clip_chain(routes.clips.as_ref(), excluded, id, scale, extent))));
+                record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(routes.admission(route, scale, Tag::clip_chain(routes.clips.as_ref(), excluded, route, scale, extent))));
                 if let Primitive::Surface(surface) = primitive {
                     output.hoisted_backdrops.push(surface);
                 }

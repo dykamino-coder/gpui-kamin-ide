@@ -2111,6 +2111,9 @@ impl Element for Div {
 
                 window.with_image_cache(image_cache, |window| {
                     window.with_element_offset(scroll_offset, |window| {
+                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
+                            (traversal.enter_children)(window);
+                        }
                         if let Some(order_fn) = &self.prepaint_order_fn {
                             let order = order_fn(window, cx);
                             for idx in order {

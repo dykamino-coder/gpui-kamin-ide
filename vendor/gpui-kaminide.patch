@@ -20,7 +20,7 @@
 # 18. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
 # 19. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
 # 20. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
-# 21. Segmented paint commands: admit each node by its own source slice, share ancestor effect groups once per destination segment, retain scope-local clip placement independently of child movement, and select containing-block clip chains without splitting composition.
+# 21. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
 # 22. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
 # 23. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
 # 24. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
@@ -6291,7 +6291,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a1819c55d65e
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb9b60148f
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -1800,0 +1801,3 @@
@@ -6395,24 +6395,28 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 @@ -2026,0 +2105,2 @@
 +                // Children bring their own exact bounds.
 +                window.raster_frame.exact_bounds = None;
-@@ -2055 +2135,3 @@
+@@ -2033,0 +2114,3 @@
++                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
++                            (traversal.enter_children)(window);
++                        }
+@@ -2055 +2138,3 @@
 -        )
 +        );
 +        window.raster_frame.exact_bounds = outer_exact;
 +        hitbox
-@@ -2064 +2146 @@
+@@ -2064 +2149 @@
 -        _request_layout: &mut Self::RequestLayoutState,
 +        request_layout: &mut Self::RequestLayoutState,
-@@ -2073,0 +2156,4 @@
+@@ -2073,0 +2159,4 @@
 +        let outer_exact = std::mem::replace(
 +            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
-@@ -2082,0 +2169,3 @@
+@@ -2082,0 +2172,3 @@
 +                    let exact_bounds = window.raster_frame.exact_bounds;
 +                    // Own borders are painted; children bring their own bounds.
 +                    window.raster_frame.exact_bounds = None;
-@@ -2088,2 +2177,22 @@
+@@ -2088,2 +2180,22 @@
 -                    for child in &mut self.children {
 -                        child.paint(window, cx);
 +                    let painter = self.child_painter.clone().or_else(|| {
@@ -6437,9 +6441,9 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 +                        );
 +                    } else {
 +                        for child in children { child.paint(window, cx); }
-@@ -2093,0 +2203 @@
+@@ -2093,0 +2206 @@
 +        window.raster_frame.exact_bounds = outer_exact;
-@@ -2216,0 +2327,14 @@
+@@ -2216,0 +2330,14 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
 +            f(*style, window, cx)
 +        })
@@ -6454,10 +6458,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 +        cx: &mut App,
 +        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
-@@ -2294 +2418 @@
+@@ -2294 +2421 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-@@ -2354,11 +2478,53 @@
+@@ -2354,11 +2481,53 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -6522,7 +6526,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2532 @@
+@@ -2366,18 +2535 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -6542,7 +6546,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2534,12 @@
+@@ -2385,20 +2537,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -6575,7 +6579,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2518,113 +2659,108 @@
+@@ -2518,113 +2662,108 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -6797,7 +6801,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2768,27 @@
+@@ -2632,2 +2771,27 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -6827,14 +6831,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2796,2 @@
+@@ -2635,4 +2799,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -3404,0 +3564,13 @@
+@@ -3404,0 +3567,13 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -6848,11 +6852,11 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..fe71f21bff0a65f3c973d47b3de0a181
 +        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
 +    }
 +
-@@ -3499 +3671,2 @@
+@@ -3499 +3674,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -4101,0 +4275,3 @@
+@@ -4101,0 +4278,3 @@
 +
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
@@ -8117,10 +8121,10 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..d8e5d7f729b111793307f408788be807
 +pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent, MeasuredStaticPosition};
 diff --git a/vendor/gpui/src/paint_traversal.rs b/vendor/gpui/src/paint_traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fc1ac1970efa3951011cedee1a1dd3dfb4193898
+index 0000000000000000000000000000000000000000..fa7109cd6945b274f1664b9092389ecedbc35892
 --- /dev/null
 +++ b/vendor/gpui/src/paint_traversal.rs
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,60 @@
 +//! Общие callbacks: геометрия и метаданные явные, правила принадлежат хозяину.
 +
 +use crate::{AnyElement, App, Bounds, Pixels, Style, Window};
@@ -8173,6 +8177,13 @@ index 0000000000000000000000000000000000000000..fc1ac1970efa3951011cedee1a1dd3df
 +    pub fill_bounds: Rc<FillBoundsCallback>,
 +    /// Optional lifecycle for source recording; playback never invokes it.
 +    pub recording: Option<PaintRecording>,
++}
++
++/// Наблюдение в обычной точке prepaint детей, внутри clip их бокса.
++/// Хозяин сохраняет непрозрачные scopes; GPUI не повторяет обход детей.
++pub struct PrepaintTraversal {
++    /// Вызывается перед детьми после применения overflow и scroll offset.
++    pub enter_children: Rc<dyn Fn(&Window)>,
 +}
 diff --git a/vendor/gpui/src/plane_bsp.rs b/vendor/gpui/src/plane_bsp.rs
 new file mode 100644
@@ -9190,10 +9201,10 @@ index 0000000000000000000000000000000000000000..3076e0badb390d04e630c030742c160e
 +}
 diff --git a/vendor/gpui/src/scene/segments.rs b/vendor/gpui/src/scene/segments.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3c19fd2257d561b9047466604ba129a0c3055901
+index 0000000000000000000000000000000000000000..710a156c3f64da9df8c978553ebf14494034dac8
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments.rs
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,98 @@
 +//! Разветвление некомпозированных команд по явным сегментам перед заморозкой.
 +
 +use super::*;
@@ -9203,6 +9214,8 @@ index 0000000000000000000000000000000000000000..3c19fd2257d561b9047466604ba129a0
 +mod backdrops;
 +mod clips;
 +mod groups;
++mod freeze;
++mod commands;
 +use groups::Group;
 +pub(crate) use clips::{Clip, Tag};
 +
@@ -9279,7 +9292,7 @@ index 0000000000000000000000000000000000000000..3c19fd2257d561b9047466604ba129a0
 +        for scene in std::iter::once(self).chain(self.groups.iter().map(|group| &group.scene)) {
 +            if let Some(capture) = &scene.segment_capture {
 +                for routes in std::iter::once(&capture.entry).chain(&capture.primitives).chain(&capture.hoisted) {
-+                    if let Some(route) = routes.routes.iter().find(|route| route.id == id) {
++                    for route in routes.routes.iter().filter(|route| route.id == id) {
 +                        let clip = Bounds::new(source.origin + route.destination - route.source, source.size);
 +                        result = Some(result.map_or(clip, |prior: Bounds<Pixels>| prior.union(&clip)));
 +                    }
@@ -9289,116 +9302,10 @@ index 0000000000000000000000000000000000000000..3c19fd2257d561b9047466604ba129a0
 +        result.unwrap_or(Bounds::new(source.origin, crate::Size::default()))
 +    }
 +
-+    pub(crate) fn freeze_segment(&self, id: PaintSegmentId, scale: f32, source: Bounds<Pixels>) -> Scene {
-+        // Плоский список групп уже упорядочен по зависимостям: повторный обход
-+        // исходных элементов и промежуточная композиция не нужны.
-+        let mut groups = Vec::new();
-+        let mut mapping = Vec::with_capacity(self.groups.len());
-+        for group in &self.groups {
-+            let clips = group.scene.common_segment_clips(id, &mapping);
-+            let (scene, route) = group.scene.segment_commands(id, scale, &mapping, self.segment_clip(id, source).scale(scale), clips.as_ref());
-+            let mapped = route.map(|route| {
-+                let offset = (route.destination - route.source).scale(scale);
-+                let index = groups.len() as u32 + 1;
-+                let mut copy = Self::copy_group(group, scene, offset);
-+                // Независимые потомки могут выйти за старый буфер предка.
-+                // Буфер расширяется с сохранением clip его эффектов.
-+                if let Some(capture) = &group.scene.segment_capture {
-+                    for routes in &capture.primitives {
-+                        if let Some(route) = routes.routes.iter().find(|route| route.id == id) {
-+                            copy.bounds = copy.bounds.union(&record::geometry::bounds(
-+                                group.bounds, (route.destination - route.source).scale(scale),
-+                            ));
-+                        }
-+                    }
-+                }
-+                for mark in &copy.scene.surfaces {
-+                    copy.bounds = copy.bounds.union(&mark.bounds);
-+                }
-+                let bounds = copy.bounds;
-+                groups.push(copy);
-+                Group { index, route, bounds, clips: clips.clone(), atomic: group.scene.segment_capture.as_ref().is_some_and(|capture| capture.atomic) }
-+            });
-+            mapping.push(mapped);
-+        }
-+        let (mut scene, _) = self.segment_commands(id, scale, &mapping, self.segment_clip(id, source).scale(scale), None);
-+        scene.groups = groups;
-+        scene.finish();
-+        scene
-+    }
-+
-+    fn segment_commands(
-+        &self,
-+        id: PaintSegmentId,
-+        scale: f32,
-+        groups: &[Option<Group>],
-+        extent: Bounds<ScaledPixels>,
-+        excluded: Option<&Rc<Clip>>,
-+    ) -> (Scene, Option<PaintSegment>) {
-+        let mut output = Scene { in_group: self.in_group, ..Scene::default() };
-+        let Some(capture) = &self.segment_capture else { return (output, None); };
-+        let entry = capture.entry.scopes.iter().find(|route| route.id == id).copied();
-+        let mut first = None;
-+        let layer_route = entry.or_else(|| capture.primitives.iter()
-+            .find_map(|routes| routes.routes.iter().find(|route| route.id == id).copied()));
-+        let mut tags = capture.primitives.iter();
-+        let mut primitive_index = 0;
-+        for operation in &self.paint_operations {
-+            match operation {
-+                PaintOperation::Primitive(primitive) => {
-+                    let tag = tags.next().expect("captured primitive tag");
-+                    let selected = tag.routes.iter().find(|route| route.id == id).copied();
-+                    let unclipped = capture.unclipped_groups.contains(&primitive_index);
-+                    primitive_index += 1;
-+                    let mut primitive = primitive.clone();
-+                    let mut output_clips = tag.clips.as_ref();
-+                    let mut shared = false;
-+                    let route = if let Primitive::Surface(surface) = &mut primitive {
-+                        if surface.group > 0 {
-+                            let Some(Some(group)) = groups.get(surface.group as usize - 1) else { continue; };
-+                            surface.group = group.index;
-+                            if !group.atomic { output_clips = group.clips.as_ref(); shared = true; }
-+                            let route = entry.or(selected).unwrap_or(group.route);
-+                            // Группа уже размещена: дальнейший перенос геометрии
-+                            // не должен сместить её повторно.
-+                            surface.bounds = record::geometry::bounds(group.bounds, (route.source - route.destination).scale(scale));
-+                            if unclipped { surface.content_mask.bounds = surface.bounds; }
-+                            route
-+                        } else {
-+                            let Some(route) = selected else { continue; };
-+                            route
-+                        }
-+                    } else {
-+                        let Some(route) = selected else { continue; };
-+                        route
-+                    };
-+                    let delta = (route.destination - route.source).scale(scale);
-+                    let clip = Tag::clip_chain(output_clips, excluded, id, scale, extent);
-+                    // Композиция предка включает независимо допущенные листья;
-+                    // его normal-срез не ограничивает их общий выход.
-+                    let clip = if shared {
-+                        clip
-+                    } else { tag.admission(id, scale, clip) };
-+                    record::geometry::primitive(&mut primitive, delta, Some(clip));
-+                    output.insert_primitive(primitive);
-+                    first.get_or_insert(route);
-+                }
-+                PaintOperation::StartLayer(bounds) => {
-+                    let route = layer_route.or(first);
-+                    let delta = route.map_or(Point::default(), |route| (route.destination - route.source).scale(scale));
-+                    output.push_layer(record::geometry::bounds(*bounds, delta).union(&extent));
-+                }
-+                _ => output.replay_operation(operation.clone()),
-+            }
-+        }
-+        self.segment_backdrops(&mut output, id, scale, extent, excluded);
-+        output.finish();
-+        (output, first.map(|route| entry.unwrap_or(route)))
-+    }
 +}
 diff --git a/vendor/gpui/src/scene/segments/backdrops.rs b/vendor/gpui/src/scene/segments/backdrops.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..081393df6ca231a3fa950b2d1da650022aa6e8bb
+index 0000000000000000000000000000000000000000..c6fa95902baa8c68a2cec0c03c64ada478eb437e
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/backdrops.rs
 @@ -0,0 +1,51 @@
@@ -9440,12 +9347,12 @@ index 0000000000000000000000000000000000000000..081393df6ca231a3fa950b2d1da65002
 +        }
 +    }
 +
-+    pub(super) fn segment_backdrops(&self, output: &mut Scene, id: PaintSegmentId, scale: f32, extent: Bounds<ScaledPixels>, excluded: Option<&Rc<Clip>>) {
++    pub(super) fn segment_backdrops(&self, output: &mut Scene, id: PaintSegmentId, ordinal: Option<u32>, scale: f32, extent: Bounds<ScaledPixels>, excluded: Option<&Rc<Clip>>) {
 +        let Some(capture) = &self.segment_capture else { return; };
 +        for (surface, routes) in self.hoisted_backdrops.iter().zip(&capture.hoisted) {
-+            if let Some(route) = routes.routes.iter().find(|route| route.id == id) {
++            for route in routes.routes.iter().filter(|route| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal)).copied() {
 +                let mut primitive = Primitive::Surface(surface.clone());
-+                record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(routes.admission(id, scale, Tag::clip_chain(routes.clips.as_ref(), excluded, id, scale, extent))));
++                record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(routes.admission(route, scale, Tag::clip_chain(routes.clips.as_ref(), excluded, route, scale, extent))));
 +                if let Primitive::Surface(surface) = primitive {
 +                    output.hoisted_backdrops.push(surface);
 +                }
@@ -9455,10 +9362,10 @@ index 0000000000000000000000000000000000000000..081393df6ca231a3fa950b2d1da65002
 +}
 diff --git a/vendor/gpui/src/scene/segments/clips.rs b/vendor/gpui/src/scene/segments/clips.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f15e964e961abcf30fdcb44e3b9cafb38ceb285a
+index 0000000000000000000000000000000000000000..a7cd3de1e23cc00cc05ab0a0cc4fbf8781548a37
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/clips.rs
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,57 @@
 +//! Clip принадлежит охватывающему scope, а не размещению его листьев.
 +
 +use super::*;
@@ -9492,21 +9399,22 @@ index 0000000000000000000000000000000000000000..f15e964e961abcf30fdcb44e3b9cafb3
 +}
 +
 +impl Tag {
-+    pub(super) fn admission(&self, id: PaintSegmentId, scale: f32, extent: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
-+        self.slices.iter().find(|slice| slice.placement.id == id).map_or(extent, |slice| {
++    pub(crate) fn admission(&self, route: PaintSegment, scale: f32, extent: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
++        self.slices.iter().find(|slice| slice.placement.id == route.id && slice.placement.ordinal == route.ordinal).map_or(extent, |slice| {
 +            let route = slice.placement;
 +            extent.intersect(&Bounds::new(slice.source_clip.origin + route.destination - route.source, slice.source_clip.size).scale(scale))
 +        })
 +    }
 +
-+    pub(super) fn clip_chain(
++    pub(crate) fn clip_chain(
 +        chain: Option<&Rc<Clip>>, excluded: Option<&Rc<Clip>>,
-+        id: PaintSegmentId, scale: f32, mut extent: Bounds<ScaledPixels>,
++        placement: PaintSegment, scale: f32, mut extent: Bounds<ScaledPixels>,
 +    ) -> Bounds<ScaledPixels> {
 +        let mut scope = chain;
 +        while let Some(clip) = scope {
 +            if excluded.is_some_and(|excluded| Rc::ptr_eq(clip, excluded)) { break; }
-+            if let Some(route) = clip.routes.iter().find(|route| route.id == id) {
++            if let Some(route) = clip.routes.iter().find(|route| route.id == placement.id && route.ordinal == placement.ordinal)
++                .or_else(|| clip.routes.iter().find(|route| route.id == placement.id)) {
 +                let bounds = Bounds::new(clip.bounds.origin + route.destination - route.source, clip.bounds.size);
 +                extent = extent.intersect(&bounds.scale(scale));
 +            }
@@ -9515,12 +9423,141 @@ index 0000000000000000000000000000000000000000..f15e964e961abcf30fdcb44e3b9cafb3
 +        extent
 +    }
 +}
+diff --git a/vendor/gpui/src/scene/segments/commands.rs b/vendor/gpui/src/scene/segments/commands.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef95823bd5750ac5fa92e2f8d38d47a58b30e2d4
+--- /dev/null
++++ b/vendor/gpui/src/scene/segments/commands.rs
+@@ -0,0 +1,69 @@
++//! Проекция каждого допуска выполняется до композиции неизменяемого сегмента.
++
++use super::*;
++
++impl Scene {
++    pub(super) fn segment_commands(
++        &self, id: PaintSegmentId, ordinal: Option<u32>, scale: f32,
++        groups: &[Vec<Group>], extent: Bounds<ScaledPixels>, excluded: Option<&Rc<Clip>>,
++    ) -> (Scene, Option<PaintSegment>) {
++        let mut output = Scene { in_group: self.in_group, ..Scene::default() };
++        let Some(capture) = &self.segment_capture else { return (output, None); };
++        let admits = |route: &&PaintSegment| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal);
++        let entry = capture.entry.scopes.iter().find(admits).copied();
++        let mut first = None;
++        let layer_route = entry.or_else(|| capture.primitives.iter()
++            .find_map(|tag| tag.routes.iter().find(admits).copied()));
++        let mut tags = capture.primitives.iter();
++        let mut primitive_index = 0;
++        for operation in &self.paint_operations {
++            match operation {
++                PaintOperation::Primitive(primitive) => {
++                    let tag = tags.next().expect("captured primitive tag");
++                    let unclipped = capture.unclipped_groups.contains(&primitive_index);
++                    primitive_index += 1;
++                    if let Primitive::Surface(surface) = primitive {
++                        if surface.group > 0 {
++                            let Some(copies) = groups.get(surface.group as usize - 1) else { continue; };
++                            for group in copies.iter().filter(|group| ordinal.is_none_or(|ordinal| group.route.ordinal == ordinal)) {
++                                let mut primitive = primitive.clone();
++                                let Primitive::Surface(surface) = &mut primitive else { unreachable!() };
++                                surface.group = group.index;
++                                let route = if copies.len() > 1 { group.route } else {
++                                    entry.or_else(|| tag.routes.iter().find(admits).copied()).unwrap_or(group.route)
++                                };
++                                // Вход группы уже размещён; выход не получает второй перенос.
++                                surface.bounds = record::geometry::bounds(group.bounds, (route.source - route.destination).scale(scale));
++                                if unclipped { surface.content_mask.bounds = surface.bounds; }
++                                let clips = if group.atomic { tag.clips.as_ref() } else { group.clips.as_ref() };
++                                let clip = Tag::clip_chain(clips, excluded, route, scale, extent);
++                                let clip = if group.atomic { tag.admission(route, scale, clip) } else { clip };
++                                record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(clip));
++                                output.insert_primitive(primitive);
++                                first.get_or_insert(route);
++                            }
++                            continue;
++                        }
++                    }
++                    for route in tag.routes.iter().filter(admits).copied() {
++                        let mut primitive = primitive.clone();
++                        let clip = Tag::clip_chain(tag.clips.as_ref(), excluded, route, scale, extent);
++                        let clip = tag.admission(route, scale, clip);
++                        record::geometry::primitive(&mut primitive, (route.destination - route.source).scale(scale), Some(clip));
++                        output.insert_primitive(primitive);
++                        first.get_or_insert(route);
++                    }
++                }
++                PaintOperation::StartLayer(bounds) => {
++                    let route = layer_route.or(first);
++                    let delta = route.map_or(Point::default(), |route| (route.destination - route.source).scale(scale));
++                    output.push_layer(record::geometry::bounds(*bounds, delta).union(&extent));
++                }
++                _ => output.replay_operation(operation.clone()),
++            }
++        }
++        self.segment_backdrops(&mut output, id, ordinal, scale, extent, excluded);
++        output.finish();
++        (output, first.map(|route| entry.unwrap_or(route)))
++    }
++}
+diff --git a/vendor/gpui/src/scene/segments/freeze.rs b/vendor/gpui/src/scene/segments/freeze.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..dedc1d27e6c97154449eb97affb716fe42232418
+--- /dev/null
++++ b/vendor/gpui/src/scene/segments/freeze.rs
+@@ -0,0 +1,48 @@
++//! Экземпляры исходной группы сохраняют общий эффект и явные повторные размещения.
++
++use super::*;
++
++impl Scene {
++    pub(crate) fn freeze_segment(&self, id: PaintSegmentId, scale: f32, source: Bounds<Pixels>) -> Scene {
++        let extent = self.segment_clip(id, source).scale(scale);
++        let mut groups = Vec::new();
++        let mut mapping: Vec<Vec<Group>> = Vec::with_capacity(self.groups.len());
++        for group in &self.groups {
++            let entries: Vec<_> = group.scene.segment_capture.as_ref().into_iter()
++                .flat_map(|capture| capture.entry.scopes.iter())
++                .filter(|route| route.id == id).copied().collect();
++            let mut copies = Vec::new();
++            for entry in &entries {
++                // Один scope объединяет независимых потомков. Явно повторённый
++                // scope получает отдельный эффект для каждого ordinal.
++                let ordinal = (entries.len() > 1).then_some(entry.ordinal);
++                let clips = group.scene.common_segment_clips(id, ordinal, &mapping);
++                let (scene, route) = group.scene.segment_commands(id, ordinal, scale, &mapping, extent, clips.as_ref());
++                let Some(route) = route else { continue; };
++                let offset = (route.destination - route.source).scale(scale);
++                let index = groups.len() as u32 + 1;
++                let mut copy = Self::copy_group(group, scene, offset);
++                if let Some(capture) = &group.scene.segment_capture {
++                    for tag in &capture.primitives {
++                        for route in tag.routes.iter().filter(|route| route.id == id
++                            && ordinal.is_none_or(|ordinal| route.ordinal == ordinal)) {
++                            copy.bounds = copy.bounds.union(&record::geometry::bounds(
++                                group.bounds, (route.destination - route.source).scale(scale),
++                            ));
++                        }
++                    }
++                }
++                for mark in &copy.scene.surfaces { copy.bounds = copy.bounds.union(&mark.bounds); }
++                let bounds = copy.bounds;
++                groups.push(copy);
++                copies.push(Group { index, route, bounds, clips: clips.clone(),
++                    atomic: group.scene.segment_capture.as_ref().is_some_and(|capture| capture.atomic) });
++            }
++            mapping.push(copies);
++        }
++        let (mut scene, _) = self.segment_commands(id, None, scale, &mapping, extent, None);
++        scene.groups = groups;
++        scene.finish();
++        scene
++    }
++}
 diff --git a/vendor/gpui/src/scene/segments/groups.rs b/vendor/gpui/src/scene/segments/groups.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..80414d67b24f9968f9bbcfd3ba4c9a6aa963c467
+index 0000000000000000000000000000000000000000..b09832d694d351eac6b4b47d155f7b2bc8f54b9f
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments/groups.rs
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,56 @@
 +//! Общий внешний clip группы сохраняется после фильтра только для всех её листьев.
 +
 +use super::*;
@@ -9534,7 +9571,7 @@ index 0000000000000000000000000000000000000000..80414d67b24f9968f9bbcfd3ba4c9a6a
 +}
 +
 +impl Scene {
-+    pub(super) fn common_segment_clips(&self, id: PaintSegmentId, groups: &[Option<Group>]) -> Option<Rc<Clip>> {
++    pub(super) fn common_segment_clips(&self, id: PaintSegmentId, ordinal: Option<u32>, groups: &[Vec<Group>]) -> Option<Rc<Clip>> {
 +        let capture = self.segment_capture.as_ref()?;
 +        let mut common = capture.entry.clips.clone();
 +        let mut tags = capture.primitives.iter();
@@ -9543,20 +9580,23 @@ index 0000000000000000000000000000000000000000..80414d67b24f9968f9bbcfd3ba4c9a6a
 +            let tag = tags.next().expect("captured primitive tag");
 +            let chain = if let Primitive::Surface(surface) = primitive {
 +                if surface.group > 0 {
-+                    let Some(Some(group)) = groups.get(surface.group as usize - 1) else { continue; };
-+                    if group.atomic { tag.clips.as_ref() } else { group.clips.as_ref() }
++                    let Some(copies) = groups.get(surface.group as usize - 1) else { continue; };
++                    for group in copies.iter().filter(|group| ordinal.is_none_or(|ordinal| group.route.ordinal == ordinal)) {
++                        retain_common(&mut common, if group.atomic { tag.clips.as_ref() } else { group.clips.as_ref() });
++                    }
++                    continue;
 +                } else {
-+                    if !tag.routes.iter().any(|route| route.id == id) { continue; }
++                    if !tag.routes.iter().any(|route| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal)) { continue; }
 +                    tag.clips.as_ref()
 +                }
 +            } else {
-+                if !tag.routes.iter().any(|route| route.id == id) { continue; }
++                if !tag.routes.iter().any(|route| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal)) { continue; }
 +                tag.clips.as_ref()
 +            };
 +            retain_common(&mut common, chain);
 +        }
 +        for tag in &capture.hoisted {
-+            if tag.routes.iter().any(|route| route.id == id) {
++            if tag.routes.iter().any(|route| route.id == id && ordinal.is_none_or(|ordinal| route.ordinal == ordinal)) {
 +                retain_common(&mut common, tag.clips.as_ref());
 +            }
 +        }
@@ -15490,7 +15530,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..4e194ce5b522a09896d15e6ff130210a4ccf088f
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..874927fcc7e95c4becb8c0c8c0b428083711dc84
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -17004,7 +17044,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..4e194ce5b522a09896d15e6ff130210a
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5211,0 +6403,16 @@
+@@ -5169 +6360,3 @@
+-        self.next_frame.hitboxes.push(hitbox.clone());
++        if !self.insert_segment_hitbox(&hitbox) {
++            self.next_frame.hitboxes.push(hitbox.clone());
++        }
+@@ -5211,0 +6405,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -17021,21 +17066,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..4e194ce5b522a09896d15e6ff130210a
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6431 @@
+@@ -5223,0 +6433 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6433 @@
+@@ -5225,3 +6435 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6442 @@
+@@ -5235,0 +6444 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6444 @@
+@@ -5237,3 +6446 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5792,0 +6998,5 @@
+@@ -5792,0 +7000,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
@@ -18032,14 +18077,15 @@ index 0000000000000000000000000000000000000000..1360f2e7d43232915ea5fc3d56c86b27
 +}
 diff --git a/vendor/gpui/src/window/paint_record/segments.rs b/vendor/gpui/src/window/paint_record/segments.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..42eafcd118c4919c427ee5afad82c1ac8e8b9ff2
+index 0000000000000000000000000000000000000000..e7f0b2c1b76eb79ef8d5f7c294915e5c7ce93777
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/segments.rs
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,166 @@
 +//! Границы сегментов до публикации immutable record; CSS выбирает размещения.
 +
 +use super::*;
 +mod admission;
++mod hits;
 +pub use admission::{PaintSegmentClips, PaintSegmentSlice};
 +
 +/// Идентичность сегмента фрагментации, назначенная хозяином записи.
@@ -18051,6 +18097,8 @@ index 0000000000000000000000000000000000000000..42eafcd118c4919c427ee5afad82c1ac
 +pub struct PaintSegment {
 +    /// Идентичность фрагментаинера, выбранная хозяином.
 +    pub id: PaintSegmentId,
++    /// Порядковый номер размещения узла внутри сегмента.
++    pub ordinal: u32,
 +    /// Разрешённая исходная точка в координатах окна.
 +    pub source: Point<Pixels>,
 +    /// Целевая точка в системе координат сегмента.
@@ -18077,12 +18125,27 @@ index 0000000000000000000000000000000000000000..42eafcd118c4919c427ee5afad82c1ac
 +
 +fn valid(routes: &[PaintSegment], scale: f32) -> bool {
 +    routes.iter().enumerate().all(|(index, route)| {
-+        !routes[..index].iter().any(|other| other.id == route.id)
++        !routes[..index].iter().any(|other| other.id == route.id && other.ordinal == route.ordinal)
 +            && validation::point_valid(route.source)
 +            && validation::point_valid(route.destination)
 +            && validation::point_valid(route.destination - route.source)
 +            && validation::point_valid((route.destination - route.source) * scale)
 +    })
++}
++
++fn scopes(roots: &[PaintSegment], selected: Option<&Selection>) -> Rc<[PaintSegment]> {
++    let mut result = Vec::new();
++    for (index, root) in roots.iter().enumerate() {
++        if roots[..index].iter().any(|prior| prior.id == root.id) { continue; }
++        let chosen: Vec<_> = selected.into_iter().flat_map(|value| value.0.iter())
++            .filter(|route| route.id == root.id).copied().collect();
++        if chosen.is_empty() {
++            // Предок без собственного допуска охватывает все размещения
++            // потомков одним scope; ordinal повторяет только явный выбор.
++            result.push(*root);
++        } else { result.extend(chosen); }
++    }
++    result.into()
 +}
 +
 +impl Window {
@@ -18135,9 +18198,7 @@ index 0000000000000000000000000000000000000000..42eafcd118c4919c427ee5afad82c1ac
 +        let scope_segments = segments.clone();
 +        let read = Rc::new(move || crate::scene::segments::Tag {
 +            routes: contexts.get::<Selection>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
-+            scopes: scope_segments.iter().map(|root| contexts.get::<Selection>()
-+                .and_then(|selected| selected.0.iter().find(|route| route.id == root.id).copied())
-+                .unwrap_or(*root)).collect(),
++            scopes: scopes(&scope_segments, contexts.get::<Selection>().as_deref()),
 +            clips: contexts.get::<crate::scene::segments::Clip>(),
 +            slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
 +        });
@@ -18149,7 +18210,8 @@ index 0000000000000000000000000000000000000000..42eafcd118c4919c427ee5afad82c1ac
 +            paint(window, cx)
 +        })?;
 +        let mut records = Vec::with_capacity(segments.len());
-+        for segment in segments.iter() {
++        for (index, segment) in segments.iter().enumerate() {
++            if segments[..index].iter().any(|prior| prior.id == segment.id) { continue; }
 +            let scene = draft.freeze_segment(segment.id, scale, source_clip);
 +            let clip = draft.segment_clip(segment.id, source_clip);
 +            if !validation::scaled_bounds_valid(clip, scale) {
@@ -18178,8 +18240,7 @@ index 0000000000000000000000000000000000000000..42eafcd118c4919c427ee5afad82c1ac
 +        let selected = self.render_contexts.get::<Selection>()?;
 +        // Scope присутствует во всех сегментах: собственный допуск предка
 +        // может быть пустым, когда независимый потомок всё ещё рисуется.
-+        let routes = segments.0.iter().map(|root| selected.0.iter()
-+            .find(|route| route.id == root.id).copied().unwrap_or(*root)).collect();
++        let routes = scopes(&segments.0, Some(&selected));
 +        Some(self.render_contexts.enter(Some(Rc::new(crate::scene::segments::Clip {
 +            bounds: mask.bounds, routes,
 +            parent: if replace { None } else { self.render_contexts.get() },
@@ -18265,6 +18326,75 @@ index 0000000000000000000000000000000000000000..82022b5cc628c0bc895fb36393123014
 +        }
 +        let _clips = self.render_contexts.enter(clips.clips.clone());
 +        Ok(paint(self))
++    }
++}
+diff --git a/vendor/gpui/src/window/paint_record/segments/hits.rs b/vendor/gpui/src/window/paint_record/segments/hits.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8193504cf7c2f06b6fd670653a0837983b02c4f5
+--- /dev/null
++++ b/vendor/gpui/src/window/paint_record/segments/hits.rs
+@@ -0,0 +1,63 @@
++//! Один исходный prepaint выпускает hitboxes в тех же размещениях, что и paint.
++
++use super::*;
++
++struct HitRecording;
++
++impl Window {
++    /// Исходный prepaint сохраняет родные идентичности hitbox и их обработчики.
++    /// Размещения выбираются теми же with_paint_segment_slices, что при paint.
++    pub fn with_prepaint_segments<R>(
++        &mut self, source_clip: Bounds<Pixels>, routes: Rc<[PaintSegment]>, cx: &mut App,
++        prepaint: impl FnOnce(&mut Self, &mut App) -> R,
++    ) -> Result<R, PaintRecordError> {
++        paint_scope::Identity::capture(self).check_pass(self)?;
++        if self.invalidator.inner.borrow().draw_phase != DrawPhase::Prepaint {
++            return Err(PaintRecordError::InvalidSegment);
++        }
++        if !valid(&routes, self.scale_factor())
++            || !validation::scaled_bounds_valid(source_clip, self.scale_factor())
++            || routes.iter().any(|route| !validation::scaled_bounds_valid(
++                Bounds::new(source_clip.origin + route.destination - route.source, source_clip.size),
++                self.scale_factor(),
++            )) { return Err(PaintRecordError::InvalidGeometry); }
++        let _recording = self.render_contexts.enter(Some(Rc::new(Recording)));
++        let _hits = self.render_contexts.enter(Some(Rc::new(HitRecording)));
++        let _segments = self.render_contexts.enter(Some(Rc::new(SegmentSet(routes.clone(), source_clip))));
++        let _selection = self.render_contexts.enter(Some(Rc::new(Selection(routes))));
++        let _clips = self.render_contexts.enter::<crate::scene::segments::Clip>(None);
++        let _slices = self.render_contexts.enter::<admission::Slices>(None);
++        let result = prepaint(self, cx);
++        paint_scope::Identity::capture(self).check_pass(self)?;
++        Ok(result)
++    }
++
++    pub(in crate::window) fn insert_segment_hitbox(&mut self, hitbox: &Hitbox) -> bool {
++        if self.render_contexts.get::<HitRecording>().is_none() { return false; }
++        let Some(segments) = self.render_contexts.get::<SegmentSet>() else { return false; };
++        let tag = crate::scene::segments::Tag {
++            routes: self.render_contexts.get::<Selection>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
++            scopes: Rc::from([]), clips: self.render_contexts.get(),
++            slices: self.render_contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
++        };
++        for route in tag.routes.iter().copied() {
++            let delta = route.destination - route.source;
++            let extent = Bounds::new(segments.1.origin + delta, segments.1.size).scale(1.0);
++            let clip = crate::scene::segments::Tag::clip_chain(tag.clips.as_ref(), None, route, 1.0, extent);
++            let clip = tag.admission(route, 1.0, clip).map(|value| px(value.0));
++            let mut placed = hitbox.clone();
++            placed.bounds.origin += delta;
++            placed.content_mask = ContentMask { bounds: clip };
++            if !placed.bounds.intersect(&clip).is_empty() {
++                self.next_frame.hitboxes.push(placed);
++            }
++        }
++        true
++    }
++
++    /// Фактический выбор курсора тем же hit test, который использует платформа.
++    #[cfg(any(test, feature = "test-support"))]
++    pub fn hit_test_cursor_style(&self) -> CursorStyle {
++        self.rendered_frame.cursor_style(self).unwrap_or(CursorStyle::Arrow)
 +    }
 +}
 diff --git a/vendor/gpui/src/window/paint_record/validation.rs b/vendor/gpui/src/window/paint_record/validation.rs

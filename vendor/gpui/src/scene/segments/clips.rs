@@ -31,21 +31,22 @@ impl Drop for Clip {
 }
 
 impl Tag {
-    pub(super) fn admission(&self, id: PaintSegmentId, scale: f32, extent: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
-        self.slices.iter().find(|slice| slice.placement.id == id).map_or(extent, |slice| {
+    pub(crate) fn admission(&self, route: PaintSegment, scale: f32, extent: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+        self.slices.iter().find(|slice| slice.placement.id == route.id && slice.placement.ordinal == route.ordinal).map_or(extent, |slice| {
             let route = slice.placement;
             extent.intersect(&Bounds::new(slice.source_clip.origin + route.destination - route.source, slice.source_clip.size).scale(scale))
         })
     }
 
-    pub(super) fn clip_chain(
+    pub(crate) fn clip_chain(
         chain: Option<&Rc<Clip>>, excluded: Option<&Rc<Clip>>,
-        id: PaintSegmentId, scale: f32, mut extent: Bounds<ScaledPixels>,
+        placement: PaintSegment, scale: f32, mut extent: Bounds<ScaledPixels>,
     ) -> Bounds<ScaledPixels> {
         let mut scope = chain;
         while let Some(clip) = scope {
             if excluded.is_some_and(|excluded| Rc::ptr_eq(clip, excluded)) { break; }
-            if let Some(route) = clip.routes.iter().find(|route| route.id == id) {
+            if let Some(route) = clip.routes.iter().find(|route| route.id == placement.id && route.ordinal == placement.ordinal)
+                .or_else(|| clip.routes.iter().find(|route| route.id == placement.id)) {
                 let bounds = Bounds::new(clip.bounds.origin + route.destination - route.source, clip.bounds.size);
                 extent = extent.intersect(&bounds.scale(scale));
             }

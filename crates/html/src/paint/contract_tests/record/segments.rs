@@ -10,6 +10,8 @@ mod clips;
 mod deferred;
 mod effects;
 mod filter_inputs;
+mod hits;
+mod placements;
 mod reuse;
 mod scaled;
 mod scopes;
@@ -19,6 +21,7 @@ mod validation;
 fn route(id: u64, x: f32) -> PaintSegment {
     PaintSegment {
         id: PaintSegmentId(id),
+        ordinal: 0,
         source: point(px(0.), px(0.)),
         destination: point(px(x), px(0.)),
     }

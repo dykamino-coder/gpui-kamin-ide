@@ -2,6 +2,7 @@
 
 use super::*;
 mod admission;
+mod hits;
 pub use admission::{PaintSegmentClips, PaintSegmentSlice};
 
 /// Идентичность сегмента фрагментации, назначенная хозяином записи.
@@ -13,6 +14,8 @@ pub struct PaintSegmentId(pub u64);
 pub struct PaintSegment {
     /// Идентичность фрагментаинера, выбранная хозяином.
     pub id: PaintSegmentId,
+    /// Порядковый номер размещения узла внутри сегмента.
+    pub ordinal: u32,
     /// Разрешённая исходная точка в координатах окна.
     pub source: Point<Pixels>,
     /// Целевая точка в системе координат сегмента.
@@ -39,12 +42,27 @@ struct SegmentSet(Rc<[PaintSegment]>, Bounds<Pixels>);
 
 fn valid(routes: &[PaintSegment], scale: f32) -> bool {
     routes.iter().enumerate().all(|(index, route)| {
-        !routes[..index].iter().any(|other| other.id == route.id)
+        !routes[..index].iter().any(|other| other.id == route.id && other.ordinal == route.ordinal)
             && validation::point_valid(route.source)
             && validation::point_valid(route.destination)
             && validation::point_valid(route.destination - route.source)
             && validation::point_valid((route.destination - route.source) * scale)
     })
+}
+
+fn scopes(roots: &[PaintSegment], selected: Option<&Selection>) -> Rc<[PaintSegment]> {
+    let mut result = Vec::new();
+    for (index, root) in roots.iter().enumerate() {
+        if roots[..index].iter().any(|prior| prior.id == root.id) { continue; }
+        let chosen: Vec<_> = selected.into_iter().flat_map(|value| value.0.iter())
+            .filter(|route| route.id == root.id).copied().collect();
+        if chosen.is_empty() {
+            // Предок без собственного допуска охватывает все размещения
+            // потомков одним scope; ordinal повторяет только явный выбор.
+            result.push(*root);
+        } else { result.extend(chosen); }
+    }
+    result.into()
 }
 
 impl Window {
@@ -97,9 +115,7 @@ impl Window {
         let scope_segments = segments.clone();
         let read = Rc::new(move || crate::scene::segments::Tag {
             routes: contexts.get::<Selection>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
-            scopes: scope_segments.iter().map(|root| contexts.get::<Selection>()
-                .and_then(|selected| selected.0.iter().find(|route| route.id == root.id).copied())
-                .unwrap_or(*root)).collect(),
+            scopes: scopes(&scope_segments, contexts.get::<Selection>().as_deref()),
             clips: contexts.get::<crate::scene::segments::Clip>(),
             slices: contexts.get::<admission::Slices>().map_or_else(|| Rc::from([]), |value| value.0.clone()),
         });
@@ -111,7 +127,8 @@ impl Window {
             paint(window, cx)
         })?;
         let mut records = Vec::with_capacity(segments.len());
-        for segment in segments.iter() {
+        for (index, segment) in segments.iter().enumerate() {
+            if segments[..index].iter().any(|prior| prior.id == segment.id) { continue; }
             let scene = draft.freeze_segment(segment.id, scale, source_clip);
             let clip = draft.segment_clip(segment.id, source_clip);
             if !validation::scaled_bounds_valid(clip, scale) {
@@ -140,8 +157,7 @@ impl Window {
         let selected = self.render_contexts.get::<Selection>()?;
         // Scope присутствует во всех сегментах: собственный допуск предка
         // может быть пустым, когда независимый потомок всё ещё рисуется.
-        let routes = segments.0.iter().map(|root| selected.0.iter()
-            .find(|route| route.id == root.id).copied().unwrap_or(*root)).collect();
+        let routes = scopes(&segments.0, Some(&selected));
         Some(self.render_contexts.enter(Some(Rc::new(crate::scene::segments::Clip {
             bounds: mask.bounds, routes,
             parent: if replace { None } else { self.render_contexts.get() },
