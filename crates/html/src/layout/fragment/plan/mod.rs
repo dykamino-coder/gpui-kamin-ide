@@ -105,6 +105,8 @@ pub(super) type Remeasure<'a> = dyn FnMut(MeasureRequest) -> Option<(Kid, f32)> 
 pub(super) type ResumeMeasure<'a> = dyn FnMut(MeasureRequest) -> Measurement + 'a;
 
 #[cfg(test)]
+mod repeat_tests;
+#[cfg(test)]
 mod resumed_tests;
 #[cfg(test)]
 mod tests;

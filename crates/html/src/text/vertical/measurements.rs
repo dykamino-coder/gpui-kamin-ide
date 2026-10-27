@@ -58,21 +58,21 @@ mod tests {
     fn measures_follow_document_scope_and_occurrences_survive_frames() {
         let outer = DocState::new(Default::default());
         let inner = DocState::new(Default::default());
-        let a = outer.vertical_measures.next_key(7);
-        let b = outer.vertical_measures.next_key(7);
+        let a = outer.paragraph.vertical.next_key(7);
+        let b = outer.paragraph.vertical.next_key(7);
         assert_ne!(a, b);
-        outer.vertical_measures.record(a, px(20.));
-        outer.vertical_measures.record(b, px(40.));
+        outer.paragraph.vertical.record(a, px(20.));
+        outer.paragraph.vertical.record(b, px(40.));
         {
-            assert_eq!(inner.vertical_measures.next_key(7), a);
-            assert_eq!(inner.vertical_measures.get(a), None);
-            inner.vertical_measures.record(a, px(80.));
+            assert_eq!(inner.paragraph.vertical.next_key(7), a);
+            assert_eq!(inner.paragraph.vertical.get(a), None);
+            inner.paragraph.vertical.record(a, px(80.));
         }
-        outer.vertical_measures.begin_frame();
-        assert_eq!(outer.vertical_measures.next_key(7), a);
-        assert_eq!(outer.vertical_measures.get(a), Some(px(20.)));
-        assert_eq!(outer.vertical_measures.next_key(7), b);
-        assert_eq!(outer.vertical_measures.get(b), Some(px(40.)));
-        assert_eq!(inner.vertical_measures.get(a), Some(px(80.)));
+        outer.paragraph.vertical.begin_frame();
+        assert_eq!(outer.paragraph.vertical.next_key(7), a);
+        assert_eq!(outer.paragraph.vertical.get(a), Some(px(20.)));
+        assert_eq!(outer.paragraph.vertical.next_key(7), b);
+        assert_eq!(outer.paragraph.vertical.get(b), Some(px(40.)));
+        assert_eq!(inner.paragraph.vertical.get(a), Some(px(80.)));
     }
 }

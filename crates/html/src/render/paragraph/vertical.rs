@@ -196,7 +196,7 @@ pub(crate) fn vertical_paragraph(
         .inline_keyword(native_vertical::keyword(inherited))
         .keyed(
             text_id(&plain) ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
-            opts.cx.vcx(),
+            &opts.cx,
         );
     // Настоящий предел от родителя (ортогональная ячейка): строка,
     // которая уже влезает, заявляет высоту честно — без неё гибкая

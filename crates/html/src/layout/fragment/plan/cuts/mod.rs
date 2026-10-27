@@ -27,7 +27,7 @@ pub(super) fn forced_or_fits(
     cur: &mut f32,
     from: &mut f32,
     copy: &mut usize,
-    rg: crate::layout::fragment::types::RepeatGeom,
+    next_head: &dyn Fn(usize, f32) -> f32,
     target: f32,
     rest: f32,
     hd: f32,
@@ -53,7 +53,7 @@ pub(super) fn forced_or_fits(
         }
         *copy += 1;
         *col += 1;
-        *cur = rg.head_at(*from);
+        *cur = next_head(*col, *from);
         *placed = *col < not_top;
         skip_float(float_hold, col, cur, placed);
         return Some(LoopStep::Continue);
