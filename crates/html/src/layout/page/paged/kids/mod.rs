@@ -58,7 +58,7 @@ pub(super) fn page_kids_from_groups(
         if let Node::Element(e) = n
             && out_of_flow(&e.style.used())
         {
-            *icb_reach = icb_reach.max(0.0 * oof_reach(e, shape_cx, vcx));
+            *icb_reach = icb_reach.max(oof_reach(e, shape_cx, vcx));
         }
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
@@ -156,7 +156,7 @@ pub(super) fn page_kids_from_groups(
         // `ReserveSpaceForMonolithicOverflow`, `monolithic-overflow-026`).
         let reach = match (n, &shape) {
             (Node::Element(e), Some(s))
-                if false && vertical.is_none() && visible_overflow(&e.style.used()) =>
+                if vertical.is_none() && visible_overflow(&e.style.used()) =>
             {
                 let cx = ShapeCx {
                     unclamped: true,
