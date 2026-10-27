@@ -47,6 +47,18 @@ pub(crate) fn growths(
             });
         }
     }
+    let mut starts = Vec::new();
+    blocks.forced_line_starts(laid, &mut starts);
+    for (id, start) in starts {
+        if crate::layout::fragment::flow::blocks::forced_line_start_pending(start, from, edge) {
+            out.push(Growth {
+                target: Pushed::Box(id),
+                at: start,
+                amount: edge - start,
+                forced: true,
+            });
+        }
+    }
     out
 }
 
