@@ -172,7 +172,8 @@ impl FlexBox {
 }
 
 impl BlockBox {
-    /// Потоки flex: колонки и собственное содержимое элементов, включая переполнение.
+    /// Независимые потоки flex и сетки: колонки flex и собственное содержимое элементов,
+    /// включая переполнение (css-flexbox-1 §10, css-grid-2 §12).
     pub(crate) fn flex_flows(&self, laid: &Laid, out: &mut Vec<BlockBox>) {
         if let Some(f) = &self.flex
             && let Some(frame) = laid.flexes.get(&self.id)
@@ -187,16 +188,22 @@ impl BlockBox {
                 }
             }
         }
+        // Подсетка по блочной оси кладёт свои элементы в ряды родителя: потоки — у них.
+        for b in self
+            .grid
+            .iter()
+            .flat_map(|g| &g.items)
+            .filter_map(|i| i.inner.as_ref())
+        {
+            if b.grid.as_ref().is_none_or(|g| !g.inherits_rows) {
+                out.push(b.clone());
+            }
+            b.flex_flows(laid, out);
+        }
         for b in self
             .kids
             .iter()
             .filter_map(|i| i.inner.as_ref())
-            .chain(
-                self.grid
-                    .iter()
-                    .flat_map(|g| &g.items)
-                    .filter_map(|i| i.inner.as_ref()),
-            )
             .chain(self.table.iter().flat_map(|t| t.flows()))
         {
             b.flex_flows(laid, out);

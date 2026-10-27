@@ -11,17 +11,14 @@ use crate::style::computed::Display;
 
 /// Поддерево блоков и сеток с хотя бы одной сеткой, всю геометрию разрывов
 /// и рост которого даёт раскладка копии (`flow::blocks`, `push::Regrow`):
-/// блочные стопки, сетки, чьи элементы — такие же поддеревья или монолиты.
-/// Не входят: внепоточные потомки (их продолжение — отдельный поток
-/// фрагментации), многоколоночники, flex-контейнеры, коробки со
-/// своим планом фрагментов (`box-decoration-break: clone`) или обрезающие
-/// переполнение, и строчное содержимое внутри элементов сетки: строку,
-/// перенесённую в следующий фрагментаинер, распорка в дереве копии не
-/// сдвигает, а без сдвига фрагмент элемента не дотягивается до конца
-/// фрагментаинера (css-break-3 §box-splitting) — это делают края строк и
-/// фрагменты-виды (F1-2, F2).
+/// блочные стопки, сетки, чьи элементы — такие же поддеревья, flex, таблицы
+/// или монолиты. Строки элемента сетки — его собственный параллельный поток
+/// (адреса роста строк, `Watched::item_flows`); внепоточные потомки
+/// продолжаются своим потоком, а их статическое положение даёт раскладка
+/// копии. Не входят: многоколоночники, коробки со своим планом фрагментов
+/// (`box-decoration-break: clone`) и обрезающие переполнение.
 pub(crate) fn grid_tree(e: &Element) -> bool {
-    measured_tree(e, false, true) && holds_grid(e)
+    measured_tree(e, false) && holds_grid(e)
 }
 
 fn holds_grid(e: &Element) -> bool {
@@ -32,9 +29,8 @@ fn holds_grid(e: &Element) -> bool {
         })
 }
 
-/// `item` — элемент сетки: его `inline-block` блокифицирован; `lines` —
-/// строчное содержимое допустимо (вне элементов сетки).
-fn measured_tree(e: &Element, item: bool, lines: bool) -> bool {
+/// `item` — элемент сетки: его `inline-block` блокифицирован.
+fn measured_tree(e: &Element, item: bool) -> bool {
     if crate::layout::multicol::spanner::multicol_container(&e.style.used())
         || e.style.used().webkit_box == Some(true)
         || crate::layout::fragment::clone::clone_dec(e).is_some()
@@ -43,14 +39,15 @@ fn measured_tree(e: &Element, item: bool, lines: bool) -> bool {
         return false;
     }
     if crate::layout::fragment::table_bands::table_box(e) {
-        // TRANSITIONAL(F2-4): Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17.
-        return lines && super::table_tree(e);
+        return super::table_tree(e);
     }
     if grid_container(e) {
         return children(&e.children).all(|n| match n {
-            Node::Element(k) if out_of_flow(&k.style.used()) => false,
+            Node::Element(k) if out_of_flow(&k.style.used()) => true,
             Node::Element(k) if matches!(k.style.used().display, Some(Display::None)) => true,
-            Node::Element(k) => monolith_blockified(k) || measured_tree(k, true, false),
+            Node::Element(k) => {
+                monolith_blockified(k) || measured_tree(k, true) || super::flex_tree(k)
+            }
             n => is_blank(n),
         });
     }
@@ -60,25 +57,20 @@ fn measured_tree(e: &Element, item: bool, lines: bool) -> bool {
     ) || (item && e.style.used().display == Some(Display::InlineBlock));
     block
         && children(&e.children).all(|n| match n {
-            Node::Element(k) if out_of_flow(&k.style.used()) => false,
-            Node::Element(_) | Node::Text(_) if !lines && !is_blank(n) && n_inline(n) => false,
+            Node::Element(k) if out_of_flow(&k.style.used()) => true,
+            // Атомарная строчная коробка стоит в строке своего потока.
+            Node::Element(k) if crate::layout::fragment::flex_lines::inline_display(k) => true,
             // Строчная коробка: блоки внутри неё — соседи потока
             // (CSS 2.1 §9.2.1.1), остальное — строки.
             Node::Element(k) if k.inline => {
                 !children(&k.children).any(|x| matches!(x, Node::Element(b) if !b.inline))
-                    || measured_tree(k, false, lines)
+                    || measured_tree(k, false)
             }
             Node::Element(k) => {
-                crate::layout::fragment::clone::monolith_box(k) || measured_tree(k, false, lines)
+                crate::layout::fragment::clone::monolith_box(k)
+                    || measured_tree(k, false)
+                    || super::flex_tree(k)
             }
             _ => true,
         })
-}
-
-/// Строчный узел: текст или строчный элемент.
-fn n_inline(n: &Node) -> bool {
-    match n {
-        Node::Element(k) => k.inline || crate::layout::box_kind::inline_level(k),
-        _ => true,
-    }
 }

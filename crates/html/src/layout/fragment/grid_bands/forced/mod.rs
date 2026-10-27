@@ -1,4 +1,4 @@
-//! Принудительные разрывы рядов сетки, стопка сетки и рост дорожки.
+//! Принудительные разрывы рядов сетки и стопка сетки.
 
 use super::grid_px_row_bands;
 use crate::document::state::ValueCx;
@@ -10,7 +10,6 @@ use crate::layout::fragment::probe::size_monolith;
 use crate::style::computed::Display;
 mod stack;
 pub(crate) use stack::grid_stack;
-pub(crate) use stack::grow_grid_track;
 
 /// Принудительные разрывы, перенесённые с ЭЛЕМЕНТОВ сетки на границы РЯДОВ
 /// (css-grid-2 §Fragmenting Grid Layout: «The 'break-before' and

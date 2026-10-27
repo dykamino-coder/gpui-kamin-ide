@@ -1,18 +1,14 @@
 //! Ряды сетки как полосы фрагментации: высота сетки по явным дорожкам рядов в точках
 //! (`grid_rows_px`), зазоры между рядами с долями `fr` (css-grid-1 §12.7) и полосы рядов —
 //! границы ряда суть точки разреза класса A (css-grid-2 §Fragmenting Grid Layout).
-//! Подмодули: автоматические ряды с элементами (`auto_rows`), принудительные разрывы,
-//! сетка-стопка и рост дорожки (`forced`). Неизвестные дорожки точек не дают.
+//! Подмодуль `forced` — принудительные разрывы и сетка-стопка. Неизвестные дорожки точек не
+//! дают: остальные сетки фрагментирует разложенная копия (`flow::blocks::grid`).
 
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-mod auto_rows;
-pub(super) use auto_rows::grid_auto_row_bands;
-pub(super) use auto_rows::grid_items_spotted;
 mod forced;
 pub(super) use forced::grid_row_forced;
 pub(crate) use forced::grid_stack;
-pub(super) use forced::grow_grid_track;
 
 /// Высота сетки по ЯВНЫМ дорожкам рядов: все дорожки в
 /// точках, плюс зазоры между ними. `None` — дорожки

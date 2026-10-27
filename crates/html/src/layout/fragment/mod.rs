@@ -31,10 +31,6 @@ pub(crate) mod fragment_size;
 pub(crate) mod gap_fragment;
 mod row_element;
 
-/// Элемент сетки для `grid_auto_row_bands`: номер среди `c.children`, ряд,
-/// верхнее поле, мера `shape_full`, годны ли его внутренние точки сетке.
-type GridSpot = (usize, usize, f32, Shape, bool);
-
 mod shape;
 pub(crate) use shape::Shape;
 

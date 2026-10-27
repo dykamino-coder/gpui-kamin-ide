@@ -143,6 +143,17 @@ pub(crate) struct RowPush {
     pub(crate) track: usize,
 }
 
+/// Отношение элемента к границе рядов.
+#[derive(Clone, Copy)]
+enum Edge {
+    /// Последний ряд элемента — перед границей.
+    EndsBefore,
+    /// Первый ряд элемента — после границы.
+    StartsAt,
+    /// Элемент охватывает границу.
+    Crosses,
+}
+
 /// Куда встаёт распорка роста в разложенной стопке.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Pushed {
@@ -172,35 +183,42 @@ impl GridBox {
                 if !at_row {
                     continue;
                 }
-                // Ряд переносится, только если в предыдущем ряду кончается элемент:
-                // иначе точка лежит внутри охватывающих элементов.
-                if !self.ends_in(i - 1, 0, laid) {
+                // Граница рядов — граница элемента: в предыдущем ряду кончается
+                // элемент, либо в этом ряду начинается элемент и границу не охватывает
+                // ни один. Иначе точка лежит внутри охватывающих элементов или в
+                // пустых дорожках, где нечего переносить.
+                let edge = |t: Edge| self.touches(i, t, 0, laid);
+                if !(edge(Edge::EndsBefore) || (edge(Edge::StartsAt) && !edge(Edge::Crosses))) {
                     return None;
                 }
                 return Some(Pushed::Row(RowPush { grid, track: i - 1 }));
             }
         }
-        for it in &self.items {
-            let Some((t, b)) = laid.at(it.id) else {
-                continue;
-            };
-            if t < a - COORD_EPS && a < b - COORD_EPS {
-                return it.inner.as_ref()?.pushed_at(a, laid);
-            }
-        }
-        None
+        // Элементы — параллельные потоки: точку внутри одного не перекрывает сосед.
+        self.items.iter().find_map(|it| {
+            let (t, b) = laid.at(it.id)?;
+            (t < a - COORD_EPS && a < b - COORD_EPS)
+                .then(|| it.inner.as_ref()?.pushed_at(a, laid))
+                .flatten()
+        })
     }
 
-    /// Кончается ли в ряду `row` сетки-владельца дорожек элемент этой сетки, чьи ряды
-    /// начинаются с дорожки `offset` владельца (элементы подсеток — по её дорожкам).
-    fn ends_in(&self, row: usize, offset: usize, laid: &Laid) -> bool {
+    /// Есть ли у границы перед рядом `row` сетки-владельца дорожек элемент этой сетки с
+    /// отношением `edge`; ряды элемента начинаются с дорожки `offset` владельца (элементы
+    /// подсеток — по её дорожкам).
+    fn touches(&self, row: usize, edge: Edge, offset: usize, laid: &Laid) -> bool {
         self.items.iter().any(|it| {
             let Some((first, last)) = laid.item_rows(it.id) else {
                 return false;
             };
+            let (first, last) = (offset + first, offset + last);
             match it.subgrid() {
-                Some(sub) => sub.ends_in(row, offset + first, laid),
-                None => offset + last == row,
+                Some(sub) => sub.touches(row, edge, first, laid),
+                None => match edge {
+                    Edge::EndsBefore => last + 1 == row,
+                    Edge::StartsAt => first == row,
+                    Edge::Crosses => first < row && row <= last,
+                },
             }
         })
     }

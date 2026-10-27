@@ -12,7 +12,7 @@ use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_items_spotted, grid_stack};
+use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::line_shape::basis_sized;
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::Display;
@@ -67,8 +67,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
             | Some(Display::InlineTable)
             | Some(Display::TableRow)
             | Some(Display::TableRowGroup)
-    ) && !grid_rows_stack
-        && !grid_items_spotted(c))
+    ) && !grid_rows_stack)
         || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
     {
         return None;
@@ -76,27 +75,6 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
     let b = c.style.used().borders();
     let top = px(&c.style.used().padding.top) + px(&b.top);
-    // Сетка `grid_auto_row_bands`: коробка ищется в элементах ряда,
-    // накрывающего `a`, — теми же смещениями, что в мере (`shape_full`).
-    // Точка ровно на верху элемента уходит в его первого ребёнка.
-    if grid_items_spotted(c) {
-        let (bands, spots) = grid_auto_row_bands(c, depth, ShapeCx::COLUMNS, vcx)?;
-        for (ix, row, kmt, s, plain) in spots {
-            let (true, Some(&(r0, _)), Some(Node::Element(k))) =
-                (plain, bands.get(row), c.children.get(ix))
-            else {
-                continue;
-            };
-            let start = top + r0 + kmt;
-            if a > start - 0.01
-                && a < start + s.height - 0.01
-                && let Some(id) = pushed_box_at(k, a - start, depth - 1, forced, vcx)
-            {
-                return Some(id);
-            }
-        }
-        return None;
-    }
     let is_flex = matches!(
         c.style.used().display,
         Some(Display::Flex) | Some(Display::InlineFlex)

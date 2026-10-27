@@ -30,11 +30,6 @@
     "reason": "Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование."
   },
   {
-    "file": "crates/html/src/layout/fragment/flow/blocks/grid_tree.rs",
-    "task": "F2-4",
-    "reason": "Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/independent.rs",
     "task": "F2-3",
     "reason": "Vertical copy допускает только один поток без ортогонального resume; удалить ограничение в P10 после отдельных logical Space и child tokens."
@@ -60,11 +55,6 @@
     "reason": "Estimator применяет ограничения к гипотетической форме; удалить в P22 после удаления всех production readers в P21, сохранив реальные geometry types."
   },
   {
-    "file": "crates/html/src/layout/fragment/grid_bands/auto_rows/pass.rs",
-    "task": "F2-4",
-    "reason": "Grid preplan оценивает items без consumed, clone edges и OOF anchors; удалить в P16 после recorded tracks и item tokens поверх P04/P08."
-  },
-  {
     "file": "crates/html/src/layout/fragment/oof_reach.rs",
     "task": "F2-2",
     "reason": "Reach/Measure сохраняют оценочную legacy-модель страниц и clone; удалить в P22 после живых OOF fragments из P08 и последних readers из P21."
@@ -88,11 +78,6 @@
     "file": "crates/html/src/layout/fragment/push/mod.rs",
     "task": "F2-4",
     "reason": "Рост перенесённой коробки пересчитывается через shape_full; удалить в P21 после FragmentPlacement/GrowthDelta по actual resume поверх P05/P10."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/push/spacer/grow.rs",
-    "task": "F2-4",
-    "reason": "После мутации grid track геометрия оценивается заново; удалить в P16 после track growth result и StaticPosition из P08 без переписывания authored tracks."
   },
   {
     "file": "crates/html/src/layout/fragment/push/spacer/grow.rs",

@@ -55,6 +55,7 @@ impl Watched {
     pub(super) fn flex_item_flows(blocks: &BlockBox) -> Rc<HashMap<u64, Rc<FlowMeasure>>> {
         let mut flexes = Vec::new();
         blocks.flexes(&mut flexes);
+        blocks.grids(&mut flexes);
         Rc::new(
             flexes
                 .into_iter()

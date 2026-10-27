@@ -1,15 +1,12 @@
 //! Высота коробки и её поля по стопке мер детей (`shaped_height`) для `shape_contents`:
 //! заданная высота (у меры потока — не обрезающая, css-break-3 §3), высота по содержимому с
 //! нижним полем последнего ребёнка (CSS 2.1 §8.3.1, §10.6.3, §10.6.7; корень BFC усекает его
-//! разрывом, css-break-3 §5.2), сетка по явным дорожкам или по автоматическим рядам с
-//! элементами как параллельными потоками (css-grid-2 §Fragmenting Grid Layout), пустая
-//! коробка. `max-height` ниже содержимого отделяет поле ребёнка (CSS 2.2 §10.7).
+//! разрывом, css-break-3 §5.2), сетка по явным дорожкам в точках, пустая коробка; прочие
+//! сетки фрагментирует разложенная копия (css-grid-2 §Fragmenting Grid Layout). `max-height` ниже содержимого отделяет поле ребёнка (CSS 2.2 §10.7).
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
-use crate::layout::fragment::clone::solid_box;
-use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_rows_px};
+use crate::layout::fragment::grid_bands::grid_rows_px;
 use crate::layout::fragment::{ShapeCx, fragment_size};
 use crate::style::values::value::Len;
 
@@ -18,7 +15,6 @@ use crate::style::values::value::Len;
 #[allow(clippy::type_complexity)]
 pub(super) fn shaped_height(
     c: &Element,
-    depth: u8,
     px_or: impl Fn(&Option<Len>, bool) -> Option<f32>,
     mt: f32,
     mb: f32,
@@ -28,10 +24,7 @@ pub(super) fn shaped_height(
     bot: f32,
     kids: Vec<&Node>,
     cuts: &mut Vec<(f32, f32)>,
-    forced: &mut Vec<f32>,
-    solid: &mut Vec<(f32, f32)>,
     stacked: Option<(f32, f32, f32)>,
-    vcx: ValueCx<'_>,
 ) -> Result<(f32, f32, f32), Option<crate::layout::fragment::Shape>> {
     let sizes = BoxDimensions::for_element(c, &c.style.used());
     let (h, mt, mb) = match c
@@ -112,70 +105,11 @@ pub(super) fn shaped_height(
             // сеткой блоком 200px = 0.00.
             None => match grid_rows_px(&c.style.used()) {
                 Some(v) => (v + top + bot, mt, mb),
-                // Сетка, у которой дорожки рядов НЕ все в точках (несколько
-                // колонок, ряд `auto`, неявный ряд), до сих пор отдавала
-                // `return None`. `None` тут стоит дорого: в `blocks()`
-                // (:13391) `stackable` собирается через
-                // `collect::<Option<Vec<_>>>()`, и одна неизмеримая сетка
-                // отменяет укладку колонок ВСЕГО многоколоночника вместе с
-                // её соседями — колонка 1 переполнена, остальные пусты
-                // (`grid-item-fragmentation-003`: сетка `auto auto` с
-                // элементом 200px, ряд 200, ничего не фрагментируется).
-                // Высота сетки с `height: auto` — сумма размеров дорожек
-                // рядов (css-grid-2 §Fragmenting Grid Layout, шаг 4
-                // «Sample Fragmentation Algorithm»; Blink
-                // `grid_layout_algorithm.cc:370`
-                // `Rows().CalculateSetSpanSize()`). Точек разреза эта ветка
-                // не добавляет — см. `grid_auto_row_bands`.
-                None => match grid_auto_row_bands(c, depth, cx, vcx) {
-                    Some((b, spots)) => {
-                        // Элементы ряда — параллельные потоки (css-break-3 §3;
-                        // Blink `PlaceGridItems`: у каждого свой break token):
-                        // точки и монолиты — ОБЪЕДИНЕНИЕМ, со смещением ряда,
-                        // как у ряда flex без переноса выше. Рост элемента,
-                        // чья строка ушла в следующую колонку, ставит
-                        // `grow_pushed` через спуск `pushed_box_at`; после него
-                        // строка стоит на краю, и общий срез совпадает с
-                        // раздельными (css-grid-2 §12.1 шаг 3: ряд растёт).
-                        // Границ РЯДОВ по-прежнему нет — см. выше.
-                        for (ix, row, kmt, s, plain) in &spots {
-                            // Страницы: монолитный элемент (`contain: size`,
-                            // замещаемый…) — сплошной диапазон во всю его
-                            // высоту, и край листа внутри него уводит разрыв
-                            // к началу ряда (css-grid-2 §fragmenting: «a grid
-                            // container may break between rows»; Blink
-                            // `IsMonolithic` → разрыв перед рядом;
-                            // `grid-fragmentation-between-rows-001-print`:
-                            // второй ряд `contain: size` резался краем листа).
-                            if cx.paged
-                                && !*plain
-                                && let (Some(&(r0, _)), Some(Node::Element(k))) =
-                                    (b.get(*row), c.children.get(*ix))
-                                && solid_box(k)
-                            {
-                                let start = top + r0 + kmt;
-                                solid.push((start, start + s.height));
-                                continue;
-                            }
-                            let (true, Some(&(r0, _))) = (*plain, b.get(*row)) else {
-                                continue;
-                            };
-                            let start = top + r0 + kmt;
-                            for (need, nf) in &s.cuts {
-                                cuts.push((start + need, start + nf));
-                            }
-                            for f in &s.forced {
-                                forced.push(start + f);
-                            }
-                            for (a, e) in &s.solid {
-                                solid.push((start + a, start + e));
-                            }
-                        }
-                        (b.last().map_or(0.0, |r| r.1) + top + bot, mt, mb)
-                    }
-                    None if kids.is_empty() => (top + bot, mt, mb),
-                    None => return Err(None),
-                },
+                // Прочие сетки (дорожки не все в точках) оценка не выражает:
+                // ряды, размещение и продолжения элементов даёт разложенная
+                // копия (`flow::blocks::grid`), а оценка отказывает.
+                None if kids.is_empty() => (top + bot, mt, mb),
+                None => return Err(None),
             },
         },
     };
