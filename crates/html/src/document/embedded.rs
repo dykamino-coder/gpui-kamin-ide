@@ -107,13 +107,19 @@ pub(crate) fn parse_embedded_sized(
     state.traversal.set_embedded();
     let vcx = state.values();
     fonts.install(vcx);
-    let mut sheets = vec![theme_css.to_string()];
-    sheets.extend(crate::dom::style_sources::collect(&input));
-    for css in &sheets {
+    let sheets = crate::dom::style_sources::collect(&input, theme_css).map_err(|error| {
+        let mut failure = super::DocumentFailure::from(error);
+        failure.scope = super::FailureScope::EmbeddedDocument;
+        failure
+    })?;
+    for css in sheets.iter() {
         crate::text::fonts::load_faces_additive(css, vcx);
     }
     crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx);
-    let parsed = crate::dom::convert(&input, theme_css, media, &state);
+    let parsed = crate::dom::convert(&input, theme_css, media, &state).map_err(|mut failure| {
+        failure.scope = super::FailureScope::EmbeddedDocument;
+        failure
+    })?;
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark), vcx);
     // HTML's embedding policy also applies when responsive sizing is declined.

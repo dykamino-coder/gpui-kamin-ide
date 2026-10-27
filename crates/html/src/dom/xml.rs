@@ -1,74 +1,10 @@
-//! Потоковый XML-вход: полное дерево RcDom без рекурсии по глубине документа.
+//! XML test entry uses the same admitted parser as production revisions.
 
-use html5ever::interface::{ElementFlags, NodeOrText, TreeSink};
-use html5ever::tendril::StrTendril;
-use html5ever::{Attribute, LocalName, Namespace, Prefix, QualName};
-use markup5ever_rcdom::RcDom;
-use xml::common::Position;
-use xml::name::OwnedName;
-use xml::reader::{ParserConfig, XmlEvent};
-
-/// Невалидный XML не заменяет прошлую ревизию; глубина сама по себе допустима.
-pub(crate) fn xml_dom(markup: &str) -> Result<RcDom, crate::document::DocumentFailure> {
-    let dom = RcDom::default();
-    // Строка уже декодирована загрузчиком. Объявление кодировки не должно
-    // повторно интерпретировать её UTF-8 байты. Entity expansion остаётся bounded
-    // настройками парсера; ограничение глубины элементов здесь отсутствует.
-    let reader = ParserConfig::new()
-        .ignore_comments(false)
-        .override_encoding(Some(xml::Encoding::Utf8))
-        .ignore_invalid_encoding_declarations(true)
-        .allow_multiple_root_elements(false)
-        .create_reader(markup.as_bytes());
-    let mut parents = vec![dom.get_document()];
-    for event in reader {
-        let event = event.map_err(|error| {
-            let pos = error.position();
-            crate::document::DocumentFailure::new(crate::document::FailureReason::XmlSyntax {
-                row: (pos.row + 1).min(u32::MAX as u64) as u32,
-                column: (pos.column + 1).min(u32::MAX as u64) as u32,
-            })
-        })?;
-        match event {
-            XmlEvent::StartElement {
-                name, attributes, ..
-            } => {
-                let attrs = attributes
-                    .into_iter()
-                    .map(|a| Attribute {
-                        name: qual(a.name),
-                        value: StrTendril::from(a.value),
-                    })
-                    .collect();
-                let element = dom.create_element(qual(name), attrs, ElementFlags::default());
-                dom.append(
-                    parents.last().unwrap(),
-                    NodeOrText::AppendNode(element.clone()),
-                );
-                parents.push(element);
-            }
-            XmlEvent::EndElement { .. } => {
-                parents.pop();
-            }
-            XmlEvent::Characters(text) | XmlEvent::Whitespace(text) | XmlEvent::CData(text) => {
-                dom.append(parents.last().unwrap(), NodeOrText::AppendText(text.into()));
-            }
-            XmlEvent::Comment(text) => {
-                let comment = dom.create_comment(text.into());
-                dom.append(parents.last().unwrap(), NodeOrText::AppendNode(comment));
-            }
-            _ => {}
-        }
-    }
-    Ok(dom)
-}
-
-fn qual(name: OwnedName) -> QualName {
-    QualName::new(
-        name.prefix.map(Prefix::from),
-        Namespace::from(name.namespace.unwrap_or_default()),
-        LocalName::from(name.local_name),
-    )
+#[cfg(test)]
+pub(crate) fn xml_dom(
+    markup: &str,
+) -> Result<markup5ever_rcdom::RcDom, crate::document::DocumentFailure> {
+    crate::dom::input::Admitted::parse(markup, true).map(|admitted| admitted.dom)
 }
 
 #[cfg(test)]

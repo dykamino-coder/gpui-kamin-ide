@@ -110,6 +110,7 @@ codegen-units = 16
 [patch.crates-io]
 # Существующий узел зависимостей: fallible storage сохраняет leases до drop.
 tendril = { path = "vendor/tendril" }
+xml-rs = { path = "vendor/xml-rs" }
 # Vendored gpui (gpui-pre 0.3.8 + патчи KaminIDE: рендер CSS, текст, раскладка,
 # захват кадра). Windows-платформа в 0.3.8 — отдельный крейт, тоже с патчами
 # (DirectX-рендерер, DirectWrite, dcomp/blit по окну).

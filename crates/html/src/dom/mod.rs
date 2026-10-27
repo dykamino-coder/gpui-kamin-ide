@@ -56,7 +56,7 @@ mod fixture_parse;
 #[cfg(test)]
 pub(crate) use fixture_parse::{parse, parse_current, parse_xml};
 mod parsed;
-use crate::dom::style_sources::collect_style_tags;
+use crate::dom::style_sources::try_collect_style_tags;
 use crate::dom::ua_style::BLOCK_TAGS;
 use crate::dom::ua_style::user_agent_css;
 pub use parsed::Parsed;

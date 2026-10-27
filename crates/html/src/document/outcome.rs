@@ -126,6 +126,22 @@ impl std::fmt::Display for DocumentFailure {
 
 impl std::error::Error for DocumentFailure {}
 
+impl From<crate::budget::admission::Error> for FailureReason {
+    fn from(error: crate::budget::admission::Error) -> Self {
+        match error {
+            crate::budget::admission::Error::Budget(error) => Self::Budget(error),
+            crate::budget::admission::Error::Allocation => Self::Allocation,
+            crate::budget::admission::Error::CapacityOverflow => Self::CapacityOverflow,
+        }
+    }
+}
+
+impl From<crate::budget::admission::Error> for DocumentFailure {
+    fn from(error: crate::budget::admission::Error) -> Self {
+        Self::new(error.into())
+    }
+}
+
 impl BuildReport {
     /// Обновление действительно заменило committed revision.
     pub fn changed(self) -> bool {

@@ -12,10 +12,15 @@ fn load_profiles_with_base(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>)
     load_profiles_sheets(&[css.to_string()], base, vcx);
 }
 
-pub(crate) fn load_profiles_sheets(sheets: &[String], base: Option<&url::Url>, vcx: ValueCx<'_>) {
+pub(crate) fn load_profiles_sheets(
+    sheets: &[impl AsRef<str>],
+    base: Option<&url::Url>,
+    vcx: ValueCx<'_>,
+) {
     vcx.doc.profiles.borrow_mut().clear();
     for css in sheets {
-        for rule in crate::style::css::resource_rules::resources(css, vcx.doc.media(), vcx) {
+        for rule in crate::style::css::resource_rules::resources(css.as_ref(), vcx.doc.media(), vcx)
+        {
             if rule.name != "color-profile" {
                 continue;
             }

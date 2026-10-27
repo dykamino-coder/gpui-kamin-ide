@@ -76,10 +76,14 @@ pub fn load_faces_additive(css: &str, vcx: ValueCx<'_>) {
     load_faces_into(css, None, vcx);
 }
 
-pub(crate) fn load_faces_sheets(sheets: &[String], base: Option<&url::Url>, vcx: ValueCx<'_>) {
+pub(crate) fn load_faces_sheets(
+    sheets: &[impl AsRef<str>],
+    base: Option<&url::Url>,
+    vcx: ValueCx<'_>,
+) {
     load_faces_with_base("", base, vcx);
     for css in sheets {
-        load_faces_into(css, base, vcx);
+        load_faces_into(css.as_ref(), base, vcx);
     }
 }
 

@@ -8,6 +8,7 @@ mod html;
 mod names;
 mod overhead;
 mod policy;
+mod xml;
 
 use crate::document::DocumentFailure;
 use markup5ever_rcdom::RcDom;
@@ -65,7 +66,7 @@ impl Admitted {
     ) -> Result<Self, DocumentFailure> {
         let policy = &context.0;
         let mut dom = if xml {
-            super::xml::xml_dom(source)?
+            xml::parse(source, &context).map_err(DocumentFailure::new)?
         } else {
             html::parse(source, policy).map_err(DocumentFailure::new)?
         };

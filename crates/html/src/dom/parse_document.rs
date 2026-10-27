@@ -9,7 +9,7 @@
 
 use super::Parsed;
 use super::input::Admitted;
-use super::style_sources::collect_style_tags;
+use super::style_sources::try_collect_style_tags;
 use super::{Node, user_agent_css};
 use super::{float_tail, grid_static_position, subgrid_used};
 use crate::document::DocumentFailure;
@@ -60,7 +60,7 @@ pub(super) fn parse_mode(
     let input = Admitted::with_budget(html, xml, revision.clone())?;
     let doc = crate::document::state::DocState::new(media);
     doc.budget.replace(Some(revision));
-    let nodes = convert(&input, extra_css, media, &doc);
+    let nodes = convert(&input, extra_css, media, &doc)?;
     doc.traversal.retain(input);
     Ok(Parsed { nodes, doc })
 }
@@ -71,7 +71,7 @@ pub(crate) fn convert(
     extra_css: &str,
     mut media: Media,
     doc: &Rc<crate::document::state::DocState>,
-) -> Vec<Node> {
+) -> Result<Vec<Node>, DocumentFailure> {
     let vcx = doc.values();
     vcx.doc.reset_font_alternates();
     let dom = &input.dom;
@@ -118,9 +118,9 @@ pub(crate) fn convert(
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
     // запись первой таблицы съедала правила второй.
-    let mut sheets: Vec<String> = vec![];
-    collect_style_tags(&dom.document, &mut sheets);
-    for css in &sheets {
+    let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
+    let sheets = try_collect_style_tags(&dom.document, &admission)?;
+    for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)
             .into_iter()
@@ -151,7 +151,7 @@ pub(crate) fn convert(
         rules: agent_rules,
         frames: frames.clone(),
     };
-    for css in &sheets {
+    for css in sheets.iter() {
         frames.extend(crate::style::css::parse_keyframes_in(css, Some(media), vcx));
     }
     // `:has()`: аргументы собираются со всех селекторов, правила с
@@ -178,7 +178,7 @@ pub(crate) fn convert(
             &mut layers,
             &mut has_args,
             &mut tree,
-        );
+        )?;
         scan_shadows(
             &top,
             &mut vec![],
@@ -234,5 +234,5 @@ pub(crate) fn convert(
         quirks_percent_heights(&mut out, None);
     }
     super::state_identity::finalize(&out, vcx);
-    out
+    Ok(out)
 }

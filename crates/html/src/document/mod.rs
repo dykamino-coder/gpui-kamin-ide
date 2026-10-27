@@ -126,7 +126,11 @@ impl Document {
             revision,
             #[cfg(feature = "engine-bench")]
             &mut timings,
-        );
+        )
+        .map_err(|mut failure| {
+            failure.report.revision = Some(key);
+            failure
+        })?;
         state.traversal.retain(input);
         Ok(Document {
             state,

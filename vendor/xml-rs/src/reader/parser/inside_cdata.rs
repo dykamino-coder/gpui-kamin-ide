@@ -1,6 +1,6 @@
 use crate::common::is_whitespace_char;
+use crate::reader::admission::Event as XmlEvent;
 use crate::reader::error::SyntaxError;
-use crate::reader::events::XmlEvent;
 use crate::reader::lexer::Token;
 
 use super::{PullParser, Result, State};
@@ -20,22 +20,22 @@ impl PullParser {
                     Some(Ok(XmlEvent::CData(data)))
                 };
                 self.into_state(State::OutsideTag, event)
-            },
+            }
 
             Token::Character(c) if !self.is_valid_xml_char(c) => {
-                Some(self.error(SyntaxError::InvalidCharacterEntity(c as u32)))
-            },
+                Some(self.error(|| SyntaxError::InvalidCharacterEntity(c as u32)))
+            }
             Token::Character(c) => {
                 if !is_whitespace_char(c) {
                     self.inside_whitespace = false;
                 }
-                self.buf.push(c);
+                admit!(self.buf.push(c, &self.control));
                 None
-            },
+            }
             _ => {
                 debug_assert!(false, "unreachable");
                 None
-            },
+            }
         }
     }
 }
