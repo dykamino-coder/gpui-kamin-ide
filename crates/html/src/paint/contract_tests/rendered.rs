@@ -255,25 +255,3 @@ pub(crate) fn top(quads: &[(Bounds<Pixels>, Hsla)], x: f32, y: f32) -> Option<Hs
 }
 
 mod continuations;
-
-#[test]
-fn p08dbg_probe() {
-    let list = std::env::var("P08_HTML").unwrap_or_default();
-    for path in list.split(';').filter(|p| !p.is_empty()) {
-        let html = std::fs::read_to_string(path).unwrap_or_default();
-        let name = path.rsplit(['\\', '/']).next().unwrap_or(path);
-        let found = if name.contains("-print") {
-            printed(&html, 800., 600.)
-        } else {
-            quads(&html, 800., 600.)
-        };
-        for (b, c) in found {
-            eprintln!(
-                "P08Q {name} {:?} {:?} {:?}",
-                b.origin,
-                b.size,
-                (c.h, c.s, c.l)
-            );
-        }
-    }
-}

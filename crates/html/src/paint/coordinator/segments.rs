@@ -198,7 +198,6 @@ fn admitted(
             Ok(())
         }
         Some(None) => {
-            eprintln!("P08DBG node {} missing cb clips {:?}", id, cb);
             Err(PaintRecordError::InvalidGeometry)
         }
         None => {
@@ -207,7 +206,6 @@ fn admitted(
         }
     });
     if let Err(error) = result.and_then(|result| result) {
-        eprintln!("P08DBG node {} key {} error {:?}", id, key, error);
         source.fail(error);
     }
 }
@@ -263,18 +261,6 @@ fn own_capture(
         Err(error) => return source.fail(error),
     };
     for (segment, record) in records.into_records() {
-        eprintln!(
-            "P08DBG own {} seg {:?} bare {} quads {:?}",
-            id,
-            segment,
-            nested.bare.contains(&segment),
-            record
-                .scene()
-                .quads
-                .iter()
-                .map(|q| (q.transformation.translation, q.content_mask.bounds))
-                .collect::<Vec<_>>()
-        );
         if nested.bare.contains(&segment) {
             source.bare.insert(segment, id, record);
             continue;

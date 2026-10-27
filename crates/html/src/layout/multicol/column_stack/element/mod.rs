@@ -93,10 +93,7 @@ impl Hooks for ColumnStack {
             return;
         }
         if self.oof.plan.borrow().failure.is_some()
-            || self
-                .record_native(window, cx)
-                .inspect_err(|e| eprintln!("P08DBG record {e:?}"))
-                .is_err()
+            || self.record_native(window, cx).is_err()
         {
             return;
         }
