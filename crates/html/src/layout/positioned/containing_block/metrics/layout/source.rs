@@ -23,6 +23,21 @@ pub(crate) fn contains_positioned(e: &Element) -> bool {
     false
 }
 
+/// An absolute or fixed box (an independent continuation flow) in 's subtree.
+pub(crate) fn contains_oof_box(e: &Element) -> bool {
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if crate::style::flow::absolutely_positioned(e.style.used().position) {
+            return true;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            crate::dom::Node::Element(c) => Some(c),
+            _ => None,
+        }));
+    }
+    false
+}
+
 pub(crate) fn collect(
     kids: &[Element],
     parent: &BoxStyle,

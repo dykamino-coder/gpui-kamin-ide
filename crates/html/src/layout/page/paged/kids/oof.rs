@@ -10,11 +10,15 @@ impl Paint<'_> {
     pub(super) fn native_oof(&self) -> bool {
         self.group
             .iter()
-            .any(|n| matches!(n, Node::Element(e) if layout::contains_positioned(e)))
+            .any(|n| matches!(n, Node::Element(e) if layout::contains_oof_box(e)))
     }
 
     pub(super) fn oof_source(&self) -> Option<PageSource> {
-        if !self.native_oof() {
+        if !self
+            .group
+            .iter()
+            .any(|n| matches!(n, Node::Element(e) if layout::contains_positioned(e)))
+        {
             return None;
         }
         let nodes = self.group.to_vec();

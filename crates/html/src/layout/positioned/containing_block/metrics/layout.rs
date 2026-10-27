@@ -10,7 +10,7 @@ use std::rc::Rc;
 mod native;
 mod source;
 pub(crate) use native::Native;
-pub(crate) use source::{collect, collect_paged, contains_positioned};
+pub(crate) use source::{collect, collect_paged, contains_oof_box, contains_positioned};
 
 pub(crate) type PageSource = Rc<dyn Fn((f32, f32), &mut Window, &mut App) -> Rc<super::Snapshot>>;
 

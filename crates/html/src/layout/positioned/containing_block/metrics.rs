@@ -55,6 +55,12 @@ pub(crate) struct Snapshot {
 }
 
 impl Snapshot {
+    /// The native source paints only when an absolute or fixed flow continues;
+    /// floats are recorded for geometry but stay in their owner's normal flow.
+    pub(crate) fn native_oof(&self) -> Option<&std::rc::Rc<layout::Native>> {
+        self.native.as_ref().filter(|_| !self.flows.is_empty())
+    }
+
     pub(crate) fn get(&self, id: u64) -> Option<&PositionedMetrics> {
         let metrics = self.positioned.get(&id)?;
         let &(node, space) = self.containing_blocks.get(&metrics.cb_id)?;

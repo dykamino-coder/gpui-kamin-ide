@@ -12,7 +12,7 @@ mod tables;
 
 impl ColumnStack {
     pub(crate) fn native_kid(&self, _kid: usize) -> bool {
-        self.oof.geometry.native.is_some()
+        self.oof.geometry.native_oof().is_some()
     }
 
     pub(crate) fn prepaint_native(
@@ -23,7 +23,7 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
-        let Some(native) = self.oof.geometry.native.clone() else {
+        let Some(native) = self.oof.geometry.native_oof().cloned() else {
             return Ok(());
         };
         let snapshot = self.oof.geometry.clone();
@@ -205,7 +205,7 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
-        let Some(native) = &self.oof.geometry.native else {
+        let Some(native) = self.oof.geometry.native_oof() else {
             return Ok(());
         };
         let records = native
