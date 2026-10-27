@@ -104,6 +104,7 @@ pub(crate) fn rasterize(
         alpha: AlphaMode::Straight,
         colour_space: ColourSpace::Srgb,
         bytes: bytes.into(),
+        retention: Default::default(),
     }))
 }
 

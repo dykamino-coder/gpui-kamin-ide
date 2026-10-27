@@ -126,7 +126,7 @@ impl std::fmt::Display for InvalidLimit {
 }
 impl std::error::Error for InvalidLimit {}
 
-/// Profile `kaminide-document/3`; значения калиброваны corpus B2.
+/// Profile `kaminide-document/4`; значения калиброваны corpus B2.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentLimits {
     pub(super) caps: [u64; BudgetKind::COUNT],
@@ -140,7 +140,7 @@ impl Default for DocumentLimits {
                 512 * MIB,
                 1 << 12,
                 1 << 26,
-                Self::VAR_WORK_BYTES,
+                256 * MIB,
                 1 << 22,
                 32 * MIB,
                 32 * MIB,
@@ -165,7 +165,7 @@ impl Default for DocumentLimits {
 
 impl DocumentLimits {
     pub const PROFILE_ID: &'static str = "kaminide-document";
-    pub const VERSION: u32 = 3;
+    pub const VERSION: u32 = 4;
     pub const BOX_DEPTH: usize = 2052;
     pub const LAYOUT_DEPTH: usize = 1026;
     pub const CSS_NESTING: usize = 128;

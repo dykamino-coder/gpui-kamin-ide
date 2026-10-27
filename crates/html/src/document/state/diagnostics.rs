@@ -14,6 +14,7 @@ impl DocState {
     /// Вложенный документ пересобирается кадром, поэтому повтор его ключа лишь
     /// увеличивает счётчик уже известной записи.
     fn absorb_children(&self) {
+        self.absorb_resources();
         for child in self.observed_children() {
             let (records, suppressed) = child.take_diagnostics();
             for record in records {
