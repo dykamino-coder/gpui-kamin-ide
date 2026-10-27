@@ -19,6 +19,30 @@ pub(crate) enum Error {
 pub(crate) struct Admission(Option<super::RevisionBudget>);
 
 impl Admission {
+    pub(crate) fn consume(&self, kind: super::BudgetKind, amount: usize) -> Result<(), Error> {
+        if let Some(revision) = &self.0 {
+            revision
+                .consume(
+                    kind,
+                    u64::try_from(amount).map_err(|_| Error::CapacityOverflow)?,
+                )
+                .map_err(Error::Budget)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn maximum(&self, kind: super::BudgetKind, amount: usize) -> Result<(), Error> {
+        if let Some(revision) = &self.0 {
+            revision
+                .check_maximum(
+                    kind,
+                    u64::try_from(amount).map_err(|_| Error::CapacityOverflow)?,
+                )
+                .map_err(Error::Budget)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn new(revision: super::RevisionBudget) -> Self {
         Self(Some(revision))
     }

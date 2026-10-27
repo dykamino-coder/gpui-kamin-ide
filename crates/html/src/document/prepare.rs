@@ -16,13 +16,14 @@ pub(super) fn parse_document(
     #[cfg(feature = "engine-bench")] timings: &mut super::BuildTimings,
 ) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
     let state = DocState::new(media);
+    let admission = crate::budget::admission::Admission::new(revision.clone());
     state.budget.replace(Some(revision));
     state.images.borrow_mut().set_base(base.cloned());
     let vcx = state.values();
     fonts.install(vcx);
     let sheets = crate::dom::style_sources::collect(input, theme_css)?;
-    crate::text::fonts::load_faces_sheets(&sheets, base, vcx);
-    crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx);
+    crate::text::fonts::load_faces_sheets(&sheets, base, vcx)?;
+    crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx)?;
     #[cfg(feature = "engine-bench")]
     let style_started = std::time::Instant::now();
     let styled = crate::dom::convert(input, theme_css, media, &state)?;
@@ -32,7 +33,7 @@ pub(super) fn parse_document(
     }
     let (mut nodes, root) = viewport::prepare(styled, vcx);
     if let Some(base) = base {
-        base_url::resolve(&mut nodes, base, false);
+        base_url::resolve(&mut nodes, base, false, &admission)?;
     }
     state.masks.collect(&nodes, vcx);
     Ok((state, nodes, root))

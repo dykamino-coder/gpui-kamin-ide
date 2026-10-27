@@ -12,6 +12,7 @@ pub enum BudgetUnit {
     Tasks,
     Documents,
     Names,
+    Operations,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -38,10 +39,18 @@ pub enum BudgetKind {
     Documents,
     UniqueNames,
     NameBytes,
+    CssBytes,
+    CssTokens,
+    CssRules,
+    CssSelectors,
+    CssComponents,
+    CssDeclarations,
+    CssDepth,
+    UrlBytes,
 }
 
 impl BudgetKind {
-    pub const COUNT: usize = Self::NameBytes as usize + 1;
+    pub const COUNT: usize = Self::UrlBytes as usize + 1;
     pub const ALL: [Self; Self::COUNT] = [
         Self::SourceBytes,
         Self::ResourceBytes,
@@ -57,6 +66,14 @@ impl BudgetKind {
         Self::Documents,
         Self::UniqueNames,
         Self::NameBytes,
+        Self::CssBytes,
+        Self::CssTokens,
+        Self::CssRules,
+        Self::CssSelectors,
+        Self::CssComponents,
+        Self::CssDeclarations,
+        Self::CssDepth,
+        Self::UrlBytes,
     ];
 
     pub fn unit(self) -> BudgetUnit {
@@ -68,13 +85,21 @@ impl BudgetKind {
             Self::PendingTasks => BudgetUnit::Tasks,
             Self::Documents => BudgetUnit::Documents,
             Self::UniqueNames => BudgetUnit::Names,
+            Self::CssTokens
+            | Self::CssRules
+            | Self::CssSelectors
+            | Self::CssComponents
+            | Self::CssDeclarations
+            | Self::CssDepth => BudgetUnit::Operations,
             _ => BudgetUnit::Bytes,
         }
     }
 
     pub fn class(self) -> BudgetClass {
         match self {
-            Self::DomNodes | Self::TextBytes | Self::AttributeBytes => BudgetClass::Structural,
+            Self::DomNodes | Self::TextBytes | Self::AttributeBytes | Self::CssDepth => {
+                BudgetClass::Structural
+            }
             Self::LiveBytes | Self::DecodedPixels | Self::PendingTasks | Self::Documents => {
                 BudgetClass::Live
             }
@@ -101,7 +126,7 @@ impl std::fmt::Display for InvalidLimit {
 }
 impl std::error::Error for InvalidLimit {}
 
-/// Profile `kaminide-document/2`; значения калиброваны corpus B2.
+/// Profile `kaminide-document/3`; значения калиброваны corpus B2.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentLimits {
     pub(super) caps: [u64; BudgetKind::COUNT],
@@ -125,6 +150,14 @@ impl Default for DocumentLimits {
                 1,
                 1 << 10,
                 1 << 14,
+                4 * MIB,
+                4 * MIB,
+                1 << 15,
+                1 << 16,
+                16 * MIB,
+                1 << 18,
+                Self::CSS_NESTING as u64,
+                8 * MIB,
             ],
         }
     }
@@ -132,7 +165,7 @@ impl Default for DocumentLimits {
 
 impl DocumentLimits {
     pub const PROFILE_ID: &'static str = "kaminide-document";
-    pub const VERSION: u32 = 2;
+    pub const VERSION: u32 = 3;
     pub const BOX_DEPTH: usize = 2052;
     pub const LAYOUT_DEPTH: usize = 1026;
     pub const CSS_NESTING: usize = 128;

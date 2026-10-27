@@ -58,6 +58,7 @@ pub(super) fn parse_mode(
         .source(html, extra_css)
         .map_err(|error| DocumentFailure::new(crate::document::FailureReason::Budget(error)))?;
     let input = Admitted::with_budget(html, xml, revision.clone())?;
+    super::early_admission::admit_sources(&input, extra_css)?;
     let doc = crate::document::state::DocState::new(media);
     doc.budget.replace(Some(revision));
     let nodes = convert(&input, extra_css, media, &doc)?;
@@ -76,7 +77,8 @@ pub(crate) fn convert(
     vcx.doc.reset_font_alternates();
     let dom = &input.dom;
     let xhtml = input.xhtml;
-    if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
+    let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
+    if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark, &admission)? {
         media.dark = dark;
     }
     let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
@@ -118,7 +120,6 @@ pub(crate) fn convert(
     // Каждый `<style>` — ОТДЕЛЬНАЯ таблица: конец каждой закрывает свои
     // незакрытые конструкции (CSS 2.1 §4.2, `uri-017`). В склейке незакрытая
     // запись первой таблицы съедала правила второй.
-    let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
     let sheets = try_collect_style_tags(&dom.document, &admission)?;
     for css in sheets.iter() {
         let base = rules.len();
@@ -168,7 +169,7 @@ pub(crate) fn convert(
     // индексом по узлу. Документ без теней предпроход не платит.
     let mut tree = TreeIndex::new(doc.clone(), xhtml);
     let doc = Rc::new(Scope { rules, frames });
-    if has_declarative_shadow(&dom.document) {
+    if has_declarative_shadow(&dom.document, &admission)? {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
         let prepared = prepare(
@@ -187,10 +188,10 @@ pub(crate) fn convert(
             &has_args,
             &mut drafts,
             &mut tree,
-        );
-        finish_slots(drafts, &mut tree);
+        )?;
+        finish_slots(drafts, &mut tree)?;
     } else if !has_args.is_empty() {
-        mark_has(&dom.document, &has_args, &mut vec![], &mut tree);
+        mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
     }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке

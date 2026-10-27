@@ -87,6 +87,7 @@ pub(crate) fn parse_embedded_sized(
             .map_err(|error| super::DocumentFailure::new(super::FailureReason::Budget(error)))?;
         let revision = context.budget().clone();
         let input = crate::dom::input::Admitted::with_context(html, false, context)?;
+        crate::dom::early_admission::admit_sources(&input, theme_css)?;
         Ok::<_, super::DocumentFailure>((input, revision))
     };
     let (input, revision) = prepare().map_err(|mut failure| {
@@ -112,10 +113,9 @@ pub(crate) fn parse_embedded_sized(
         failure.scope = super::FailureScope::EmbeddedDocument;
         failure
     })?;
-    for css in sheets.iter() {
-        crate::text::fonts::load_faces_additive(css, vcx);
-    }
-    crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx);
+    crate::text::fonts::load_faces_sheets(&sheets, None, vcx).map_err(embedded_failure)?;
+    crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx)
+        .map_err(embedded_failure)?;
     let parsed = crate::dom::convert(&input, theme_css, media, &state).map_err(|mut failure| {
         failure.scope = super::FailureScope::EmbeddedDocument;
         failure
@@ -196,4 +196,10 @@ pub(super) fn hash_of(html: &str, theme: &str) -> u64 {
     html.hash(&mut h);
     theme.hash(&mut h);
     h.finish()
+}
+
+fn embedded_failure(error: crate::budget::admission::Error) -> super::DocumentFailure {
+    let mut failure = super::DocumentFailure::from(error);
+    failure.scope = super::FailureScope::EmbeddedDocument;
+    failure
 }

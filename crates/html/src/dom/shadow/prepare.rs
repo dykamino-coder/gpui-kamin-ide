@@ -34,9 +34,9 @@ pub(crate) fn prepare(
     let mut scopes = HashMap::new();
     collect(document, agent, media, layers, args, &mut scopes, vcx)?;
     if !args.is_empty() {
-        mark_has(document, args, &mut vec![], tree);
+        mark_has(document, args, &mut vec![], tree)?;
         for (root, _) in scopes.values() {
-            mark_has(root, args, &mut vec![], tree);
+            mark_has(root, args, &mut vec![], tree)?;
         }
     }
     Ok(scopes)
@@ -51,8 +51,16 @@ fn collect(
     scopes: &mut Prepared,
     vcx: ValueCx<'_>,
 ) -> Result<(), crate::budget::admission::Error> {
+    let admission = vcx
+        .doc
+        .budget
+        .borrow()
+        .clone()
+        .map(crate::budget::admission::Admission::new)
+        .unwrap_or_default();
     let mut pending = vec![node.clone()];
     while let Some(node) = pending.pop() {
+        admission.work(node.children.borrow().len() + 1)?;
         pending.extend(node.children.borrow().iter().rev().cloned());
         if let Some((_, root)) = declarative_shadow(&node) {
             let (scope, inner_args) = shadow_scope(&root, agent, media, layers, vcx)?;

@@ -1,6 +1,7 @@
 //! Загрузка именованных ICC-ресурсов (`@color-profile`) в реестр документа
 //! (`document::state`) относительно действующего базового URL документа.
 
+use crate::budget::admission::{Admission, Error};
 use crate::document::state::ValueCx;
 #[cfg(test)]
 fn load_profiles(css: &str, vcx: ValueCx<'_>) {
@@ -9,14 +10,21 @@ fn load_profiles(css: &str, vcx: ValueCx<'_>) {
 
 #[cfg(test)]
 fn load_profiles_with_base(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
-    load_profiles_sheets(&[css.to_string()], base, vcx);
+    load_profiles_sheets(&[css.to_string()], base, vcx).unwrap();
 }
 
 pub(crate) fn load_profiles_sheets(
     sheets: &[impl AsRef<str>],
     base: Option<&url::Url>,
     vcx: ValueCx<'_>,
-) {
+) -> Result<(), Error> {
+    let admission = vcx
+        .doc
+        .budget
+        .borrow()
+        .clone()
+        .map(Admission::new)
+        .unwrap_or_default();
     vcx.doc.profiles.borrow_mut().clear();
     for css in sheets {
         for rule in crate::style::css::resource_rules::resources(css.as_ref(), vcx.doc.media(), vcx)
@@ -30,12 +38,13 @@ pub(crate) fn load_profiles_sheets(
             let Some(path) = crate::style::computed::parse_url(&src) else {
                 continue;
             };
-            let path = crate::document::resource_url::resolve(&path, base);
+            let path = crate::document::resource_url::resolve(&path, base, &admission)?;
             if let Some(bytes) = crate::document::resource_url::read(&path) {
                 vcx.doc.profiles.borrow_mut().insert(rule.prelude, bytes);
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]

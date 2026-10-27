@@ -16,6 +16,8 @@ mod base_url;
 #[cfg(test)]
 mod budget_tests;
 mod builder;
+#[cfg(test)]
+mod early_tests;
 #[cfg(feature = "engine-bench")]
 mod timing;
 #[cfg(feature = "engine-bench")]
@@ -36,6 +38,7 @@ mod prepare;
 mod resource_tests;
 pub(crate) mod resource_url;
 mod scope;
+mod source;
 use prepare::parse_document;
 pub mod state;
 #[cfg(test)]
@@ -115,8 +118,13 @@ impl Document {
         let effective_base = if xml {
             base_url.clone()
         } else {
-            base_url::document_base(&input.dom.document, base_url.as_ref())
+            base_url::document_base(
+                &input.dom.document,
+                base_url.as_ref(),
+                &crate::budget::admission::Admission::new(revision.clone()),
+            )?
         };
+        crate::dom::early_admission::admit_sources(&input, theme_css)?;
         let (state, nodes, root) = parse_document(
             &input,
             theme_css,
