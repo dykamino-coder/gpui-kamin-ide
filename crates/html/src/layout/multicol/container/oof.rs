@@ -24,8 +24,7 @@ pub(super) fn place_oof_statics(
     let oof_spots: Vec<crate::layout::positioned::containing_block::SpotCell> =
         oof_static.iter().map(|_| Default::default()).collect();
     for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
-        // Щуп правит только пустую ось; заданную считает CB
-        // (CSS 2.1 §10.3.7), как fixed_axes у слоёв в blocks().
+        // Щуп правит только пустую ось; заданную считает CB (CSS 2.1 §10.3.7), как fixed_axes.
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (
                 edge_set(oof.style.used().inset.left) || edge_set(oof.style.used().inset.right),
