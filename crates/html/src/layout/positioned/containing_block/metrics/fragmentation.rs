@@ -42,6 +42,8 @@ struct Flow {
     policy: Cell<FixedPolicy>,
     fixed: Cell<bool>,
     static_block: Cell<bool>,
+    /// Anchor-positioned: its geometry follows an anchor outside the source.
+    anchored: bool,
 }
 
 pub(super) struct Recording {
@@ -138,6 +140,9 @@ impl Recorder {
                     policy: Cell::new(FixedPolicy::Fragment),
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
+                    anchored: crate::layout::positioned::anchor::resolve::needs_deferred(
+                        &e.style.used(),
+                    ),
                 });
                 parent = Some(index);
             }

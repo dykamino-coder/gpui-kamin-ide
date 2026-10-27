@@ -145,3 +145,47 @@ fn family_holding_a_box_laid_out_outside_the_multicol_stays_with_its_copies(cx: 
         gpui::div()
     });
 }
+
+#[gpui::test]
+fn anchor_positioned_box_stays_with_its_copies(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
+    cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
+        let tree = crate::dom::parse(
+            "<section style='columns:2;height:100px;position:relative'><div style='anchor-name:--a;height:150px'></div><aside style='position:absolute;position-anchor:--a;top:anchor(top);width:20px;height:300px'></aside></section>",
+            "",
+        );
+        let mut opts = RenderOpts {
+            viewport: (400., 400.),
+            normal_line_height: 1.2,
+            text: Default::default(),
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+        opts.cx.values.viewport = opts.viewport;
+        crate::style::cascade::materialize::materialize(
+            &tree, opts.root_style().style_rc(), opts.cx.vcx(),
+        );
+        let mut pending: Vec<_> = tree.iter().filter_map(|n| match n {
+            Node::Element(e) => Some(e), _ => None,
+        }).collect();
+        let host = loop {
+            let e = pending.pop().unwrap();
+            if e.tag == "section" { break e; }
+            pending.extend(e.children.iter().filter_map(|n| match n {
+                Node::Element(e) => Some(e), _ => None,
+            }));
+        };
+        let kids: Vec<_> = host.children.iter().filter_map(|n| match n {
+            Node::Element(e) => Some(e.clone()), _ => None,
+        }).collect();
+        let mut parent = crate::style::computed::BoxStyle::shared(host.style.used());
+        parent.self_node = host.node_id;
+        let geometry = crate::layout::positioned::containing_block::metrics::layout::collect(
+            &kids, &parent, 100., &opts, window, app,
+        );
+        // Its anchor is laid out by the columns, not by the source.
+        assert!(geometry.flows.is_empty(), "host {} {:?}", geometry.host, geometry.flows.iter().map(|f| (f.id, f.metrics.cb_id)).collect::<Vec<_>>());
+        gpui::div()
+    });
+}
