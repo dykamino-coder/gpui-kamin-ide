@@ -2,10 +2,53 @@
 //! в порядке краски (граница ∩ маска, после переноса). Для unit-тестов потребителей.
 
 use gpui::{
-    AvailableSpace, Bounds, Hsla, IntoElement, ParentElement, Pixels, Scene, TestAppContext,
-    canvas, point, px, size,
+    AnyElement, AvailableSpace, Bounds, Context, Hsla, IntoElement, ParentElement, Pixels, Render,
+    Scene, TestAppContext, Window, canvas, point, px, size,
 };
 use std::{cell::RefCell, rc::Rc};
+
+type Quads = Rc<RefCell<Vec<(Bounds<Pixels>, Hsla)>>>;
+
+/// One explicit frame inside a real view (element state needs a current view).
+struct Frame {
+    root: Rc<RefCell<Option<AnyElement>>>,
+    sink: Quads,
+    size: (f32, f32),
+}
+
+impl Render for Frame {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let (root, sink, (w, h)) = (self.root.clone(), self.sink.clone(), self.size);
+        canvas(
+            move |_, window, cx| {
+                let mut root = root.borrow_mut().take()?;
+                root.layout_as_root(
+                    size(
+                        AvailableSpace::Definite(px(w)),
+                        AvailableSpace::Definite(px(h)),
+                    ),
+                    window,
+                    cx,
+                );
+                root.prepaint_at(point(px(0.), px(0.)), window, cx);
+                Some(root)
+            },
+            move |_, root, window, cx| {
+                let Some(mut root) = root else { return };
+                let extent = Bounds::new(point(px(0.), px(0.)), size(px(w), px(h)));
+                let (_, record) = window
+                    .record_paint(extent, cx, |window, cx| root.paint(window, cx))
+                    .expect("document paint");
+                collect(
+                    record.scene(),
+                    window.scale_factor(),
+                    &mut sink.borrow_mut(),
+                );
+            },
+        )
+        .size_full()
+    }
+}
 
 /// Visible solid quads of `html` laid out in a `w × h` viewport, in paint order.
 pub(crate) fn quads(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
@@ -19,41 +62,25 @@ pub(crate) fn quads(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
         cx: Default::default(),
         frag: Default::default(),
     };
-    let boxes = document.render(&options);
-    let out = Rc::new(RefCell::new(Vec::new()));
-    let sink = out.clone();
+    let root = Rc::new(RefCell::new(None));
+    let sink: Quads = Rc::default();
     let mut cx = TestAppContext::single();
-    cx.add_empty_window()
-        .draw(point(px(0.), px(0.)), size(px(w), px(h)), move |_, _| {
-            let root = RefCell::new(Some(gpui::div().children(boxes).into_any_element()));
-            canvas(
-                move |_, window, cx| {
-                    let mut root = root.borrow_mut().take().expect("one prepaint");
-                    root.layout_as_root(
-                        size(
-                            AvailableSpace::Definite(px(w)),
-                            AvailableSpace::Definite(px(h)),
-                        ),
-                        window,
-                        cx,
-                    );
-                    root.prepaint_at(point(px(0.), px(0.)), window, cx);
-                    root
-                },
-                move |_, mut root, window, cx| {
-                    let extent = Bounds::new(point(px(0.), px(0.)), size(px(w), px(h)));
-                    let (_, record) = window
-                        .record_paint(extent, cx, |window, cx| root.paint(window, cx))
-                        .expect("document paint");
-                    collect(
-                        record.scene(),
-                        window.scale_factor(),
-                        &mut sink.borrow_mut(),
-                    );
-                },
-            )
-        });
-    out.take()
+    let (_, vcx) = cx.add_window_view(|_, _| Frame {
+        root: root.clone(),
+        sink: sink.clone(),
+        size: (w, h),
+    });
+    sink.borrow_mut().clear();
+    *root.borrow_mut() = Some(
+        gpui::div()
+            .children(document.render(&options))
+            .into_any_element(),
+    );
+    vcx.update(|window, app| {
+        window.refresh();
+        window.draw(app).clear(app);
+    });
+    sink.take()
 }
 
 fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, Hsla)>) {
@@ -103,7 +130,12 @@ fn p08dbg_probe() {
         let html = std::fs::read_to_string(path).unwrap_or_default();
         let name = path.rsplit(['\\', '/']).next().unwrap_or(path);
         for (b, c) in quads(&html, 800., 600.) {
-            eprintln!("P08Q {name} {:?} {:?} {:?}", b.origin, b.size, (c.h, c.s, c.l));
+            eprintln!(
+                "P08Q {name} {:?} {:?} {:?}",
+                b.origin,
+                b.size,
+                (c.h, c.s, c.l)
+            );
         }
     }
 }
