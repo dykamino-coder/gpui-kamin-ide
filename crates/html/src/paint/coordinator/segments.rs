@@ -42,6 +42,17 @@ impl Source {
         self.clips.borrow_mut().insert(key, clips);
     }
 
+    /// The clip chain selected by a containing block. A CB outside the source
+    /// subtree (the fragmentation host, the initial containing block) shares the
+    /// source root's chain.
+    fn cb_clips(&self, key: u64, cb: u64) -> Option<PaintSegmentClips> {
+        let clips = self.clips.borrow();
+        clips
+            .get(&(key, cb))
+            .or_else(|| (key == 0).then(|| clips.get(&(0, 0))).flatten())
+            .cloned()
+    }
+
     fn family(&self, id: u64) -> u64 {
         self.slices.families.get(&id).copied().unwrap_or(id)
     }
@@ -147,7 +158,7 @@ pub(crate) fn node(
     let paint = |window: &mut Window| {
         window.with_render_context(Some(Rc::new(CurrentNode(id))), |window| paint(window, cx));
     };
-    let clips = cb.map(|cb| source.clips.borrow().get(&(key, cb)).cloned());
+    let clips = cb.map(|cb| source.cb_clips(key, cb));
     let result = window.with_paint_segment_slices(slices, |window| match clips {
         Some(Some(clips)) => window.with_paint_segment_clips(&clips, paint),
         // Inside an own capture the CB may lie outside: its clip belongs to
@@ -156,13 +167,17 @@ pub(crate) fn node(
             paint(window);
             Ok(())
         }
-        Some(None) => Err(PaintRecordError::InvalidGeometry),
+        Some(None) => {
+            eprintln!("P08DBG node {} missing cb clips {:?}", id, cb);
+            Err(PaintRecordError::InvalidGeometry)
+        }
         None => {
             paint(window);
             Ok(())
         }
     });
     if let Err(error) = result.and_then(|result| result) {
+        eprintln!("P08DBG node {} key {} error {:?}", id, key, error);
         source.fail(error);
     }
 }
@@ -227,7 +242,7 @@ fn own_capture(
         if outer.is_empty() {
             continue;
         }
-        let clips = cb.and_then(|cb| source.clips.borrow().get(&(key, cb)).cloned());
+        let clips = cb.and_then(|cb| source.cb_clips(key, cb));
         let replay = move |window: &mut Window| {
             let origin = point(px(0.), px(0.));
             let placement = PaintPlacement {
