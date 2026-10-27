@@ -139,4 +139,11 @@ impl Computed {
         program.resolve_colors(crate::style::values::value::Color::BLACK);
         program
     }
+
+    /// Анимированный `filter` входит в каскад сводным значением и функциями
+    /// в порядке списка (Filter Effects 1 §5).
+    pub(crate) fn set_animated_filter(&mut self, frame: &Computed) {
+        self.filter = frame.filter;
+        self.scrollbar_filter_ops = frame.scrollbar_filter_ops.clone();
+    }
 }
