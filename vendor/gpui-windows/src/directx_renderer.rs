@@ -84,6 +84,7 @@ pub(crate) struct DirectXRenderer {
     skip_draws: bool,
     /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
     gpu_timer: batch_cost::GpuTimer,
+    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
     /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
     timing_main: bool,
 }
@@ -450,6 +451,10 @@ impl DirectXRendererDevices {
 }
 
 impl DirectXRenderer {
+    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
+        self.capture = sink;
+    }
+
     pub(crate) fn new(
         hwnd: HWND,
         directx_devices: &DirectXDevices,
@@ -492,7 +497,8 @@ impl DirectXRenderer {
             disable_direct_composition,
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
-            gpu_timer: batch_cost::GpuTimer::default(),
+            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
+            capture: None,
             timing_main: false,
             group_target: None,
             group_target_tex: None,
@@ -667,7 +673,7 @@ impl DirectXRenderer {
             .res()
             .frame_gate
             .as_ref()
-            .filter(|_| !gpui::frame_capture::enabled())
+            .filter(|_| self.capture.is_none())
         {
             use windows::Win32::Foundation::WAIT_TIMEOUT;
             use windows::Win32::System::Threading::WaitForSingleObject;
@@ -681,7 +687,7 @@ impl DirectXRenderer {
             }
         }
         self.render(scene, background_appearance)?;
-        if gpui::frame_capture::enabled() {
+        if self.capture.is_some() {
             if let Err(e) = self.capture_frame() {
                 log::warn!("frame capture failed: {e}");
             }
@@ -740,7 +746,9 @@ impl DirectXRenderer {
             bgra[y * row..(y + 1) * row].copy_from_slice(src);
         }
         unsafe { ctx.Unmap(&staging, 0) };
-        gpui::frame_capture::store_timed(w, h, bgra, started.elapsed());
+        if let Some(sink) = &mut self.capture {
+            sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra }, started.elapsed());
+        }
         Ok(())
     }
 
@@ -768,7 +776,7 @@ impl DirectXRenderer {
             log::warn!("paint group failed: {e}");
         }
         if !scene.groups.is_empty() {
-            batch_cost::count(8, scene.groups.len(), 0.0);
+            self.gpu_timer.instrumentation.batches.count(8, scene.groups.len(), 0.0);
             self.gpu_timer.mark(&device, &ctx, 8);
         }
         // Цель — снова кадр, даже если проход группы оборвался ошибкой.
@@ -777,7 +785,7 @@ impl DirectXRenderer {
                 .device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
         }
-        gpui::batch_cost::quad_detail(&scene.quads);
+        self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
         let drawn = self.draw_scene(scene);
         self.timing_main = false;
@@ -840,7 +848,7 @@ impl DirectXRenderer {
                 )
             })?;
             if let Some((kind, prims, area)) = cost {
-                batch_cost::count(kind, prims, area);
+                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
                 let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
                 self.gpu_timer.mark(&device, &ctx, kind);
             }

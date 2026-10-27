@@ -4,7 +4,7 @@ mod borders;
 pub use crate::text::inline::spacers::borders::sided_border;
 pub use crate::text::inline::spacers::borders::uniform_border;
 
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::text::inline::*;
 use gpui::AnyElement;
@@ -28,15 +28,15 @@ pub(super) fn spacer_style(merged: &BoxStyle, advance: f32) -> BoxStyle {
     style.letter_spacing = Some(Len::Px(advance));
     style.word_spacing = None;
     style.word_space_char = None;
-    style.inline_bg = None;
-    style.inline_border = None;
+    style.inline_decoration.band_color = None;
+    style.inline_decoration.border_stroke = None;
     style
 }
 
 pub(super) fn padding_spacer_style(merged: &BoxStyle, advance: f32, painted: bool) -> BoxStyle {
     let mut style = spacer_style(merged, advance);
     if painted {
-        style.inline_bg = merged.inline_bg;
+        style.inline_decoration.band_color = merged.inline_decoration.band_color;
     }
     style
 }
@@ -47,11 +47,11 @@ pub(super) fn padding_spacer_style(merged: &BoxStyle, advance: f32, painted: boo
 /// в `bidi-*` (см. запись у `uniform_border`).
 pub(super) fn margin_spacer_style(
     merged: &BoxStyle,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     advance: f32,
 ) -> BoxStyle {
     let mut style = spacer_style(merged, advance);
-    style.inline_bg = inherited.inline_bg;
+    style.inline_decoration.band_color = inherited.inline_decoration.band_color;
     style
 }
 

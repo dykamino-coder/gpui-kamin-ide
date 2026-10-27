@@ -60,7 +60,7 @@ pub(crate) fn paint_group(
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let el = crate::paint::apply::static_shift(container, &e.style.used());
-    let el = crate::paint::apply::apply_opacity(el, &e.style.used(), vcx);
+    let el = crate::paint::apply::apply_opacity(el, &BoxStyle::shared(e.style.used()), vcx);
     let el = crate::paint::effects::transform::transformed(
         gpui::IntoElement::into_any_element(el),
         &e.style.used(),

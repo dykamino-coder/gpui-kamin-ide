@@ -105,6 +105,7 @@ pub(crate) struct WindowsPlatformState {
     /// thread; see [`DrawCoordinator`].
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
     directx_devices: RefCell<Option<DirectXDevices>>,
+    instrumentation: RefCell<Instrumentation>,
 }
 
 #[derive(Default)]
@@ -133,6 +134,7 @@ impl WindowsPlatformState {
             cursor_visible: Arc::new(AtomicBool::new(true)),
             draw_coordinator: Rc::new(DrawCoordinator::new()),
             directx_devices: RefCell::new(directx_devices),
+            instrumentation: RefCell::new(Instrumentation::default()),
             menus: RefCell::new(Vec::new()),
         }
     }
@@ -430,7 +432,7 @@ impl WindowsPlatform {
 
     /// Creates the DirectX devices that windows draw with, and starts vsync.
     fn attach_gpu(&self) -> Result<()> {
-        let devices = DirectXDevices::new(self.gpu_adapter_preference.clone()).context("Creating DirectX devices")?;
+        let devices = DirectXDevices::with_instrumentation(self.gpu_adapter_preference.clone(), self.inner.state.instrumentation.borrow().clone()).context("Creating DirectX devices")?;
         if let Some(text_system) = &self.direct_write_text_system {
             text_system.handle_gpu_lost(&devices)?;
         }
@@ -570,6 +572,10 @@ fn encode_restart_arguments(arguments: &[OsString]) -> OsString {
 }
 
 impl Platform for WindowsPlatform {
+    fn set_instrumentation(&self, instrumentation: Instrumentation) {
+        *self.inner.state.instrumentation.borrow_mut() = instrumentation;
+    }
+
     fn background_executor(&self) -> BackgroundExecutor {
         self.background_executor.clone()
     }
@@ -750,11 +756,11 @@ impl Platform for WindowsPlatform {
     }
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
-        WindowsDisplay::displays()
+        WindowsDisplay::displays(self.inner.state.instrumentation.borrow().config().scale_factor)
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        WindowsDisplay::primary_monitor().map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
+        WindowsDisplay::primary_monitor(self.inner.state.instrumentation.borrow().config().scale_factor).map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
     }
 
     #[cfg(feature = "screen-capture")]
@@ -1707,8 +1713,9 @@ fn handle_gpu_device_lost(
     std::thread::sleep(std::time::Duration::from_millis(350));
 
     let preference = directx_devices.adapter_preference.clone();
+    let instrumentation = directx_devices.instrumentation.clone();
     *directx_devices = try_to_recover_from_device_lost(|| {
-        DirectXDevices::new(preference.clone()).context("Failed to recreate new DirectX devices after device lost")
+        DirectXDevices::with_instrumentation(preference.clone(), instrumentation.clone()).context("Failed to recreate new DirectX devices after device lost")
     })?;
     log::info!("DirectX devices successfully recreated.");
 

@@ -200,8 +200,8 @@ pub(crate) fn paragraph_pieces_routed(
         let mut mark = inherited.clone();
         mark.word_space_char = None;
         mark.letter_spacing = Some(Len::Px(0.0));
-        mark.inline_bg = None;
-        mark.inline_border = None;
+        mark.inline_decoration.band_color = None;
+        mark.inline_decoration.border_stroke = None;
         for p in pieces {
             match p {
                 inline::Piece::Atom(el) => {

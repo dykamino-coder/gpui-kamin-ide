@@ -59,7 +59,11 @@ impl Stage {
                 });
             }
             if first {
-                gpui::frame_capture::arm_first();
+                self.capture
+                    .session
+                    .as_ref()
+                    .expect("first-frame capture session")
+                    .arm_first();
             }
             window.refresh();
         });

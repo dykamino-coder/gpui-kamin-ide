@@ -6,7 +6,8 @@ use super::{
     host, pixels, report, resources,
     view::{Phases, View},
 };
-use gpui::{AsyncApp, WindowHandle, frame_capture, frame_perf};
+use gpui::{AsyncApp, WindowHandle, frame_perf};
+use kamin_html::host::capture::CaptureSession;
 use kamin_html::{BROWSER_CSS, Document, metrics::FontContext};
 use serde_json::json;
 use std::{
@@ -27,13 +28,13 @@ struct Counters {
 }
 
 impl Counters {
-    fn read() -> Self {
+    fn read(capture: &CaptureSession) -> Self {
         Self {
             draw: frame_perf::DRAW_US.load(Relaxed),
             present: frame_perf::PRESENT_US.load(Relaxed),
             layout: frame_perf::TAFFY_US.load(Relaxed),
             frames: frame_perf::FRAMES.load(Relaxed),
-            readback: frame_capture::readback_time(),
+            readback: capture.readback_time(),
         }
     }
     fn delta(current: u32, previous: u32) -> Duration {
@@ -41,9 +42,9 @@ impl Counters {
     }
 }
 
-async fn wait(cx: &AsyncApp, sequence: u64) -> Result<u64> {
+async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<u64> {
     use futures::future::{Either, select};
-    let event = frame_capture::after(sequence);
+    let event = capture.after(sequence);
     let timeout = cx.background_executor().timer(Duration::from_secs(60));
     match select(event, timeout).await {
         Either::Left((Ok(seq), _)) => Ok(seq),
@@ -57,12 +58,13 @@ async fn sample(
     fonts: &FontContext,
     args: &Args,
     cold: bool,
-) -> Result<(Measured, frame_capture::CapturedFrame)> {
+    capture: &CaptureSession,
+) -> Result<(Measured, kamin_html::host::capture::Frame)> {
     let (started, before, seq, resources_time, build_time, timings, phases) =
         window.update(cx, |view, window, cx| -> Result<_> {
             let started = Instant::now();
-            let before = Counters::read();
-            let seq = frame_capture::sequence();
+            let before = Counters::read(capture);
+            let seq = capture.sequence();
             let mut resources_time = None;
             let mut build_time = None;
             let mut timings = None;
@@ -83,7 +85,7 @@ async fn sample(
                 view.doc = doc;
             }
             view.phases = Rc::new(RefCell::new(Phases::default()));
-            frame_capture::arm_first();
+            capture.arm_first();
             cx.notify();
             window.refresh();
             Ok((
@@ -96,10 +98,12 @@ async fn sample(
                 view.phases.clone(),
             ))
         })??;
-    let completed = wait(cx, seq).await?;
+    let completed = wait(cx, seq, capture).await?;
     let total = started.elapsed();
-    let after = Counters::read();
-    let frame = frame_capture::take_first().ok_or("armed first frame was not captured")?;
+    let after = Counters::read(capture);
+    let frame = capture
+        .take_first()
+        .ok_or("armed first frame was not captured")?;
     if completed != seq + 1
         || frame.seq != seq + 1
         || after.frames.wrapping_sub(before.frames) != 1
@@ -107,10 +111,11 @@ async fn sample(
     {
         return Err("unexpected extra/reused frame; refusing an ambiguous phase sample".into());
     }
-    if (frame.width, frame.height) != args.viewport {
+    let pixels = &frame.pixels;
+    if (pixels.width, pixels.height) != args.viewport {
         return Err(format!(
             "capture size {}x{} differs from requested viewport",
-            frame.width, frame.height
+            pixels.width, pixels.height
         )
         .into());
     }
@@ -143,11 +148,12 @@ pub(super) async fn run(
     fonts: &FontContext,
     args: &Args,
     platform: &gpui_windows::WindowsPlatform,
+    capture: &CaptureSession,
 ) -> Result<()> {
     // Пустой стартовый кадр и инициализация GPU не входят в document-cold.
-    let seq = frame_capture::sequence();
+    let seq = capture.sequence();
     window.update(cx, |_, window, _| window.refresh())?;
-    wait(cx, seq).await?;
+    wait(cx, seq, capture).await?;
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
     gpu["requested"] = json!(args.gpu);
@@ -162,7 +168,7 @@ pub(super) async fn run(
     let mut pixels = pixels::Recorder::new(args.frame_diff_dir.as_deref())?;
     let mut snapshot_pending = args.snapshot.as_deref();
     if args.mode == Mode::Warm {
-        sample(cx, window, fonts, args, true).await?;
+        sample(cx, window, fonts, args, true, capture).await?;
     }
     for (name, cold) in [("cold", true), ("warm", false)] {
         if (cold && args.mode == Mode::Warm) || (!cold && args.mode == Mode::Cold) {
@@ -171,22 +177,17 @@ pub(super) async fn run(
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         for index in 1..=args.runs {
-            let (sample, frame) = sample(cx, window, fonts, args, cold).await?;
+            let (sample, frame) = sample(cx, window, fonts, args, cold, capture).await?;
             if let Some(path) = snapshot_pending.take() {
-                pixels::save(&frame, path)?;
+                pixels::save(&frame.pixels, path)?;
             }
-            pixels.observe(frame, name, index)?;
+            pixels.observe(frame.pixels, frame.seq, name, index)?;
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
         let mut mode = report::mode(&samples);
         mode["diagnostic_scopes"] = report::mode(&diagnostics);
         modes.insert(name.into(), mode);
-    }
-    if platform.gpu_adapter_info()? != identity {
-        return Err(
-            "GPU identity changed during measurement; refusing a mixed-adapter report".into(),
-        );
     }
     let mut report = json!({"schema_version": 2, "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,

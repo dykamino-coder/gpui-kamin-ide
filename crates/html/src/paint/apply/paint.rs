@@ -2,7 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::paint::apply::*;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{Display, Position};
 use gpui::{Div, Styled, px};
 
 mod borders;
@@ -13,7 +13,7 @@ use shadows::paint_shadows;
 
 /// Group opacity of the box and its content (CSS Color 4 §opacity). With a
 /// corner clip the group buffer applies it instead (`grouped_wrapper`).
-pub(crate) fn apply_opacity(d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+pub(crate) fn apply_opacity(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     match c.opacity {
         Some(o) if crate::paint::effects::corner_clip::insets(c, vcx).is_none() => d.opacity(o),
         _ => d,
@@ -50,11 +50,13 @@ pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // Смешивание больше не живёт на заливке: раньше блендер знал четыре
     // формулы и красил только фон узла, а CSS смешивает ВСЁ поддерево целиком.
     // Теперь оно считается при сборке буфера группы (см. `render::grouped`).
-    if matches!(
-        c.color_clip(vcx),
-        None | Some(crate::style::computed::BgClip::BorderBox)
-    ) && !crate::paint::background::needs_color_layer(c, vcx)
-        && !crate::style::computed::single_corner::eligible(c)
+    if c.background_paint.paints()
+        && matches!(
+            c.color_clip(vcx),
+            None | Some(crate::style::computed::BgClip::BorderBox)
+        )
+        && !crate::paint::background::needs_color_layer(c, vcx)
+        && !crate::paint::background::single_corner::eligible(c)
         && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {
         if let Some(g) = &c.gradient {

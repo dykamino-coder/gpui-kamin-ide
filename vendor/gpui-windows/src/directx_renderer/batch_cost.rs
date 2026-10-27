@@ -9,21 +9,13 @@
 //!
 //! Число и площадь копятся всегда: это несколько сложений на пачку, а для
 //! программного растеризатора площадь и есть цена. Timestamp-запросы — только
-//! с `KAMIN_DIAG_GPU_TIMING=1`: это лишние объекты устройства и вызовы на
+//! при явном gpu_timing: это лишние объекты устройства и вызовы на
 //! каждую пачку, нужные лишь при разборе.
 
 use windows::Win32::Graphics::Direct3D11::*;
 
 /// Сколько кадров ждут ответа видеокарты одновременно.
 const RING: usize = 4;
-
-/// Включены ли timestamp-запросы (читается один раз за процесс).
-fn timing_enabled() -> bool {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| std::env::var("KAMIN_DIAG_GPU_TIMING").as_deref() == Ok("1"))
-}
-
-pub(crate) use gpui::batch_cost::count;
 
 struct Slot {
     disjoint: ID3D11Query,
@@ -36,6 +28,7 @@ struct Slot {
 /// Timestamp-запросы кадра: стартовая отметка, отметка после каждой пачки.
 #[derive(Default)]
 pub(crate) struct GpuTimer {
+    pub(crate) instrumentation: gpui::Instrumentation,
     slots: Vec<Slot>,
     next: usize,
     current: Option<usize>,
@@ -46,17 +39,22 @@ pub(crate) struct GpuTimer {
 }
 
 impl GpuTimer {
+    pub(crate) fn new(instrumentation: gpui::Instrumentation) -> Self {
+        Self { instrumentation, ..Self::default() }
+    }
+
     /// Начать кадр. Если слот ещё ждёт видеокарту, кадр идёт без GPU-времени.
     pub(crate) fn begin(&mut self, device: &ID3D11Device, ctx: &ID3D11DeviceContext) {
-        gpui::batch_cost::frame();
+        self.instrumentation.batches.frame();
         self.current = None;
-        if !timing_enabled() {
+        if !self.instrumentation.config().gpu_timing {
             return;
         }
         let raw = windows::core::Interface::as_raw(device) as usize;
         if raw != self.device {
             *self = Self {
                 device: raw,
+                instrumentation: self.instrumentation.clone(),
                 ..Self::default()
             };
         }
@@ -75,7 +73,7 @@ impl GpuTimer {
             }
         }
         for i in 0..RING {
-            collect(&mut self.slots[i], ctx);
+            collect(&mut self.slots[i], ctx, &self.instrumentation);
         }
         let index = self.next;
         let slot = &mut self.slots[index];
@@ -147,7 +145,7 @@ fn create_slot(device: &ID3D11Device) -> Option<Slot> {
 }
 
 /// Забрать готовый ответ слота без ожидания.
-fn collect(slot: &mut Slot, ctx: &ID3D11DeviceContext) {
+fn collect(slot: &mut Slot, ctx: &ID3D11DeviceContext, instrumentation: &gpui::Instrumentation) {
     if !slot.pending {
         return;
     }
@@ -178,7 +176,7 @@ fn collect(slot: &mut Slot, ctx: &ID3D11DeviceContext) {
         .enumerate()
         .map(|(i, kind)| (*kind, ns(stamps[i], stamps[i + 1])))
         .collect();
-    gpui::batch_cost::timed(frame, &kinds);
+    instrumentation.batches.timed(frame, &kinds);
 }
 
 fn ready<T>(ctx: &ID3D11DeviceContext, query: &ID3D11Query, out: &mut T) -> bool {

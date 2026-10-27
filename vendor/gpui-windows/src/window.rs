@@ -133,7 +133,7 @@ impl WindowsWindowState {
     ) -> Result<Self> {
         let scale_factor = {
             let monitor_dpi = unsafe { GetDpiForWindow(hwnd) } as f32;
-            crate::display::forced_scale().unwrap_or(monitor_dpi / USER_DEFAULT_SCREEN_DPI as f32)
+            display.forced_scale.unwrap_or(monitor_dpi / USER_DEFAULT_SCREEN_DPI as f32)
         };
         let origin = logical_point(window_params.x as f32, window_params.y as f32, scale_factor);
         let logical_size = {
@@ -533,11 +533,11 @@ impl WindowsWindow {
 
         let hinstance = get_module_handle();
         let display = if let Some(display_id) = params.display_id {
-            WindowsDisplay::new(display_id)
+            WindowsDisplay::new(display_id, directx_devices.instrumentation.config().scale_factor)
         } else {
             None
         }
-        .or_else(WindowsDisplay::primary_monitor)
+        .or_else(|| WindowsDisplay::primary_monitor(directx_devices.instrumentation.config().scale_factor))
         .context("failed to find any monitor")?;
         let appearance = system_appearance().unwrap_or_default();
         let mut context = WindowCreateContext {
@@ -650,6 +650,11 @@ impl Drop for WindowsWindow {
 }
 
 impl PlatformWindow for WindowsWindow {
+    fn set_frame_capture(&self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) -> Result<()> {
+        self.state.renderer.borrow_mut().set_frame_capture(sink);
+        Ok(())
+    }
+
     fn bounds(&self) -> Bounds<Pixels> {
         self.state.bounds()
     }
