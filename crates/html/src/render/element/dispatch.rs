@@ -47,8 +47,7 @@ pub(crate) async fn dispatch_element(
         return frame;
     }
     match e.tag.as_str() {
-        // CSS Lists 3 §2: a block list item generates its own marker even
-        // when its parent is an ordinary block rather than a list container.
+        // CSS Lists 3 §2: блочный list-item создаёт свой маркер даже вне списка.
         _ if (st.display == Some(Display::ListItem) || (e.tag == "li" && st.display.is_none()))
             && !matches!(
                 e.tag.as_str(),
@@ -215,9 +214,8 @@ pub(crate) async fn dispatch_element(
             let opts = &*opts.inner(|cx| cx.clamp.build = cx.clamp.build.bfc());
             table_stack(stk, e, &merged, opts).await
         }
-        // Ряд, группа рядов или ячейка ВНЕ таблицы получают анонимную
-        // таблицу-обёртку (css-tables-3 §3.1): иначе ячейки складывались
-        // столбиком обычных блоков.
+        // css-tables-3 §3.1: вне таблицы ряд, группа рядов и ячейка получают
+        // анонимную таблицу, иначе ячейки складывались бы столбиком обычных блоков.
         _ if matches!(
             st.display,
             Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
