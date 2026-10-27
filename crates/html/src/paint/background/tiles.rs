@@ -42,12 +42,33 @@ pub(super) fn paint_tiles_in(
     geometry: Option<super::exact_layer::PaintGeometry>,
     vcx: ValueCx<'_>,
 ) {
+    paint_layer_in(
+        &crate::style::computed::BgLayer::from_computed(c),
+        c,
+        bounds,
+        canvas,
+        window,
+        geometry,
+        vcx,
+    );
+}
+
+/// Операнды фона и геометрия элемента имеют разных владельцев у холста.
+pub(super) fn paint_layer_in(
+    layer: &crate::style::computed::BgLayer,
+    c: &Computed,
+    bounds: Bounds<Pixels>,
+    canvas: Option<Bounds<Pixels>>,
+    window: &mut gpui::Window,
+    geometry: Option<super::exact_layer::PaintGeometry>,
+    vcx: ValueCx<'_>,
+) {
     let positioning = geometry.map_or(bounds, |geometry| geometry.positioning(bounds));
-    let Some(src) = c.bg_image.clone() else {
+    let Some(src) = layer.image.clone() else {
         return;
     };
-    let size = c.bg_size;
-    let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
+    let size = layer.size;
+    let repeat = layer.repeat.unwrap_or(BgRepeat::Repeat);
     let family = c.font_family.clone().unwrap_or_default();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
@@ -73,8 +94,8 @@ pub(super) fn paint_tiles_in(
             other => other,
         };
         crate::style::computed::BgPos {
-            x: to_px(c.bg_pos.x),
-            y: to_px(c.bg_pos.y),
+            x: to_px(layer.position.x),
+            y: to_px(layer.position.y),
         }
     };
     let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font, vcx);
@@ -94,8 +115,8 @@ pub(super) fn paint_tiles_in(
     // property has no effect» — the positioning area is the viewport itself
     // (`background-origin-006`: content-box origin moved a fixed tile by the
     // box's border and padding).
-    let fixed_area = c.bg_fixed == Some(true) && canvas.is_some();
-    let inset = match c.bg_origin {
+    let fixed_area = layer.fixed == Some(true) && canvas.is_some();
+    let inset = match layer.origin {
         _ if fixed_area => [0.0; 4],
         Some(crate::style::computed::BgClip::BorderBox) => [
             -px_of(border.top),
@@ -140,7 +161,7 @@ pub(super) fn paint_tiles_in(
     } else {
         bounds
     };
-    let paint_box = match c.bg_clip {
+    let paint_box = match layer.clip {
         Some(crate::style::computed::BgClip::PaddingBox)
         | Some(crate::style::computed::BgClip::Text) => paint_base,
         Some(crate::style::computed::BgClip::ContentBox) => Bounds {
@@ -188,6 +209,7 @@ pub(super) fn paint_tiles_in(
     // знает (`exact_layer`); краска режется округлённой (`paint_box` выше).
     draw_tiles(
         c,
+        layer,
         positioning,
         canvas,
         window,

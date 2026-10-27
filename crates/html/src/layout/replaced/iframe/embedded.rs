@@ -3,7 +3,10 @@
 use crate::layout::options::RenderOpts;
 use gpui::{AnyElement, IntoElement, ParentElement};
 
-pub(crate) fn rejected(failure: crate::document::DocumentFailure, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn rejected(
+    failure: crate::dom::outcome::DocumentFailure,
+    opts: &RenderOpts,
+) -> AnyElement {
     if opts.cx.doc().embedded_failure.get().is_none() {
         opts.cx.doc().embedded_failure.set(Some(failure));
     }

@@ -16,10 +16,12 @@ pub fn tab_stops(
     base: &gpui::TextStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TabStops {
-    let size = match block.font_size {
-        Some(Len::Px(v)) => v,
-        _ => f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX))),
-    };
+    let size = block
+        .used_font(
+            f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX))),
+            vcx,
+        )
+        .size_px;
     let family = block.font_family.as_deref().unwrap_or_else(|| {
         if block.monospace == Some(true) {
             metrics::mono_family_for(block.lang.as_deref(), vcx)

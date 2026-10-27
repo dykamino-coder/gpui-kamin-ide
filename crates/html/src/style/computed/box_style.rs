@@ -7,6 +7,7 @@
 use crate::style::computed::*;
 use std::rc::Rc;
 
+mod background;
 mod context;
 mod inputs;
 use crate::box_facts::BoxContext;
@@ -49,8 +50,14 @@ impl ElementStyle {
 pub struct BoxStyle {
     /// Факты коробки-родителя отдельно от вычисленных значений элемента.
     pub(crate) context: BoxContext<super::writing_mode::WritingMode, super::Align>,
+    /// Собственный источник холста, отдельно от computed CSS.
+    pub(crate) canvas_background: Option<Rc<crate::style::canvas_background::CanvasBackground>>,
+    /// Собственный used-фон коробки, отдельно от наследуемого computed CSS.
+    pub(crate) background_paint: crate::style::background_paint::BackgroundPaint,
     /// Физическая реализация текущего строчного контекста, отдельно от CSS элемента.
     pub(crate) inline_format: Option<InlineFormat>,
+    /// Оформление разрезанного inline, не вычисленные CSS-значения.
+    pub(crate) inline_decoration: crate::style::inline_decoration::InlineDecoration,
     /// Вычисленный стиль (с used-значениями раскладки); общий для коробок элемента.
     style: Rc<Computed>,
     /// Computed-стадия элемента отдельно от стиля его коробки; у анонимных коробок её нет.
@@ -113,11 +120,20 @@ impl BoxStyle {
 
     /// Коробка с общим вычисленным стилем и переданными фактами родителя.
     pub fn shared(input: impl Into<BoxStyleInput>) -> Self {
-        let BoxStyleInput { style, context } = input.into();
+        let BoxStyleInput {
+            style,
+            context,
+            inline_decoration,
+            background_paint,
+            canvas_background,
+        } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
         Self {
             context: context.as_deref().cloned().unwrap_or_default(),
+            inline_decoration,
+            background_paint,
+            canvas_background,
             cb_height_def: style.cb_height_def_hint,
             quirk_pct_base: style.quirk_pct_base_hint,
             style,
@@ -173,6 +189,9 @@ impl From<&BoxStyle> for BoxStyleInput {
         Self::new(
             Rc::clone(style.style_rc()),
             Some(Rc::new(style.context.clone())),
+            style.inline_decoration,
+            style.background_paint,
+            style.canvas_background.clone(),
         )
     }
 }
@@ -180,7 +199,14 @@ impl From<&BoxStyle> for BoxStyleInput {
 impl From<BoxStyle> for BoxStyleInput {
     fn from(style: BoxStyle) -> Self {
         let context = Rc::new(style.context.clone());
-        Self::new(Rc::new(style.into_computed()), Some(context))
+        let inline_decoration = style.inline_decoration;
+        Self::new(
+            style.style,
+            Some(context),
+            inline_decoration,
+            style.background_paint,
+            style.canvas_background,
+        )
     }
 }
 

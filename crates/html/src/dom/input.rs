@@ -2,7 +2,7 @@
 //!
 //! B1 ограничивает глубину downstream, но не allocation/work самого парсера (B3).
 
-use crate::document::DocumentFailure;
+use crate::dom::outcome::DocumentFailure;
 use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::RcDom;
 

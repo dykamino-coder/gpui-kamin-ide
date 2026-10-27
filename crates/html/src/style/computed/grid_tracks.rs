@@ -40,17 +40,11 @@ impl Track {
     /// после разрешения кегля узла.
     pub(crate) fn resolve_font_one(
         &mut self,
-        family: &str,
-        size_px: f32,
+        font: super::FontCx<'_>,
         vcx: crate::document::state::ValueCx<'_>,
     ) {
         if let Track::Font(l) = *self {
-            *self = Track::Px(crate::style::font_metrics::spacing_px(
-                Some(l),
-                family,
-                size_px,
-                vcx,
-            ));
+            *self = Track::Px(l.to_px(None, font, vcx).unwrap_or(0.0));
         }
     }
 }
@@ -59,19 +53,18 @@ impl TrackSize {
     /// То же для обеих граней записи.
     pub(crate) fn resolve_font(
         &mut self,
-        family: &str,
-        size_px: f32,
+        font: super::FontCx<'_>,
         vcx: crate::document::state::ValueCx<'_>,
     ) {
         match self {
-            TrackSize::Single(t) => t.resolve_font_one(family, size_px, vcx),
+            TrackSize::Single(t) => t.resolve_font_one(font, vcx),
             TrackSize::MinMax(a, b) => {
-                a.resolve_font_one(family, size_px, vcx);
-                b.resolve_font_one(family, size_px, vcx);
+                a.resolve_font_one(font, vcx);
+                b.resolve_font_one(font, vcx);
             }
             TrackSize::AutoRepeat { tracks, .. } => {
                 for t in tracks.iter_mut() {
-                    t.resolve_font(family, size_px, vcx);
+                    t.resolve_font(font, vcx);
                 }
             }
         }

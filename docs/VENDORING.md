@@ -14,8 +14,14 @@
 | `gpui-component` | crates.io `gpui-component` 0.7.1, тот же commit, `crates/component` |
 | `taffy` | `cargo package` из DioxusLabs/taffy `2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f` (manifest version 0.14.0) |
 | `html5ever` | crates.io `html5ever` 0.40.1 |
+| `tendril` | crates.io `tendril` 0.5.1; неизменённый импорт, пока без path override |
+| `xml-rs` | crates.io `xml-rs` 0.8.29; неизменённый импорт, пока без path override |
 | `markup5ever_rcdom` | crates.io `markup5ever_rcdom` 0.39.0+unofficial |
 | `resvg`, `usvg` | crates.io 0.48.1 с заменой `src/` из linebender/resvg commit `77b12f4951a7b75d759c42e8c9497cff7c839c3c` |
+
+Архивные файлы `tendril` и `xml-rs` сохранены целиком, включая исходные
+лицензии MIT/Apache-2.0. Пустой полный патч означает неизменённый импорт;
+регистрация базы сама по себе не подключает fork к графу зависимостей.
 
 Taffy с версией manifest 0.14.0 уже содержит изменения upstream после релиза.
 Релизный архив 0.14.0 не является базой этого форка. Для подготовки базы
@@ -233,10 +239,10 @@ git apply --unidiff-zero vendor/gpui-kaminide.patch
 | `WPT_FIRST_FRAME=1` | `crates/html/examples/wptrun`: снимок первого GPU-кадра документа без ожидания сходимости; диагностический режим, CI его не включает |
 | `WPT_READY=0` | `crates/html/examples/wptrun`: отключить сигнал готовности и использовать прежний протокол устойчивости; быстрый путь требует offscreen и фиксированного анимационного времени |
 | `WPT_PHASE_TIMING=1` | `crates/html/examples/wptrun`: микросекунды загрузки, разбора, первого кадра, устойчивости, readback и сравнения в stderr; отчёт вердиктов не меняется |
-| `KAMIN_FORCE_SCALE` | `crates/html/examples/wptrun.rs`: стабильный scale 1 для WPT; Windows display читает положительный scale |
-| `KAMIN_PREPAINT_PROF=1` | профилировщик GPUI и `crates/shell/src/web/diag*.rs`: время prepaint по типам элементов |
-| `KAMIN_DIAG_GPU_TIMING=1` | Windows batch-cost timestamps; `gpui::batch_cost::take_line()` читается диагностикой shell |
-| `KAMIN_DEBUG_D3D_DEVICE=warp\|d3d11on12` | `vendor/gpui-windows/src/debug_device.rs`, только debug-сборки: устройство WARP или D3D11On12 для native acceptance (`scripts/start_native_acceptance.ps1`, `docs/NATIVE_ACCEPTANCE_SEAMS.md`); release переменную не читает |
+| `KAMIN_FORCE_SCALE` | host shell/HTML читает scale и передаёт `InstrumentationConfig`; WPT по умолчанию и engine_bench используют scale 1; Windows display применяет переданный scale |
+| `KAMIN_PREPAINT_PROF=1` | host shell/HTML включает `InstrumentationConfig::prepaint`; профиль приложения читается диагностикой shell |
+| `KAMIN_DIAG_GPU_TIMING=1` | host shell/HTML включает GPU timestamps; `App::instrumentation().batches.take_line()` читается диагностикой shell |
+| `KAMIN_DEBUG_D3D_DEVICE=warp\|d3d11on12` | host shell/HTML, только debug-сборки: устройство WARP или D3D11On12 для native acceptance (`scripts/start_native_acceptance.ps1`, `docs/NATIVE_ACCEPTANCE_SEAMS.md`); release переменную не читает |
 
 `ORD_DBG`, `VERT_DBG` и `IMG_DBG` были локальными печатными пробами без
 потребителей и удалены. `GPUI_NATIVE_TREE` (печать дерева Taffy в
@@ -253,3 +259,17 @@ descriptors and source/destination placement carry host-selected geometry;
 CSS order and fragment ownership remain in HTML. The command contract is in
 `vendor/gpui/src/window/paint_contract.md`, with HTML contract probes covering
 record identity, placement, effects and lifecycle. No second backend is added.
+
+## Capture и instrumentation приложения
+
+`Application::with_instrumentation` задаёт типизированные настройки до запуска
+платформы. Профиль prepaint и счётчики GPU принадлежат приложению; backend
+получает тот же экземпляр явно, включая пересоздание устройства. Toolkit
+не читает перечисленные диагностические переменные окружения.
+
+`Window::set_frame_capture` передаёт единственный `FrameCaptureSink` backend
+этого окна. GPUI сохраняет GPU readback и BGRA pixels, а сессия
+`kamin_html::host::capture` владеет sequence, подписками, first/latest и временем
+readback. Уничтожение или замена endpoint завершает подписки ошибкой закрытия.
+WPT владеет readiness и выбором кадра; engine_bench сохраняет проверку строго
+одного первого кадра. Production offscreen scenes используют прежний renderer.

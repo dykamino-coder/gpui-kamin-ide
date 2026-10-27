@@ -8,7 +8,7 @@
 
 mod animation_frame;
 pub(super) mod animation_live;
-pub(crate) mod easing;
+pub(crate) use crate::style::animation::easing;
 pub mod frames;
 pub(crate) mod motion;
 mod transition;

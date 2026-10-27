@@ -124,7 +124,9 @@ pub(super) fn unwrap_document(
     loop {
         let single_wrapper = match nodes.as_slice() {
             [Node::Element(e)] if matches!(e.tag.as_str(), "html" | "body") => {
-                !e.marks.quirks_fill && !has_box_style(e.style.cascaded())
+                !e.marks.quirks_fill
+                    && e.style.used().canvas_background.is_none()
+                    && !has_box_style(e.style.cascaded())
             }
             _ => false,
         };
@@ -146,6 +148,7 @@ pub(super) fn unwrap_document(
             .into_iter()
             .map(|n| match n {
                 Node::Element(mut child) => {
+                    let input = child.style.used();
                     child.style = crate::style::cascade::inherit::inherit_unpainted(
                         &wrapper,
                         child.style.cascaded(),
@@ -155,6 +158,8 @@ pub(super) fn unwrap_document(
                     // wrapper's values (before materialization).
                     .into_computed()
                     .into();
+                    child.style.set_background_paint(input.background_paint);
+                    child.style.set_canvas_background(input.canvas_background);
                     Node::Element(child)
                 }
                 other => other,

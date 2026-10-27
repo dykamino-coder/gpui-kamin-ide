@@ -108,7 +108,7 @@ pub(crate) fn finish_element(
         && e.style.cascaded().wm().block_rl()
         && !e.style.used().wm_contained
     {
-        if e.style.used().bg_image.is_none() {
+        if !e.style.used().background_paint.paints() || e.style.used().bg_image.is_none() {
             done = div()
                 .w_full()
                 .flex()

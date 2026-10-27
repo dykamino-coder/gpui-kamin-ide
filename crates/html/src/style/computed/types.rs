@@ -5,6 +5,7 @@ use crate::style::values::value::{Color, Len};
 
 mod background;
 mod bg_layer;
+pub(crate) use bg_layer::BgLayer;
 mod bg_lists;
 mod blend;
 mod boxes;

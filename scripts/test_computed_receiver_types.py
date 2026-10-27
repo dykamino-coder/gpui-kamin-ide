@@ -21,6 +21,55 @@ def escapes(source, name='borrow_mut', extra=None):
 
 
 class ReceiverTests(unittest.TestCase):
+    def test_weak_upgrade_preserves_payload_and_pattern_scope(self):
+        for module in ('rc', 'sync'):
+            for payload, expected in [('u8', 0), ('Computed', 1), ('Unknown', 1)]:
+                for pattern in ('let Some(event) = self.event.upgrade() else { return; }; event.borrow_mut();',
+                                'if let Some(event) = self.event.upgrade() { event.borrow_mut(); }',
+                                'let Some(event) = self.event.upgrade() else { return; }; let mut event = event.borrow_mut();',
+                                'if let Some(event) = self.event.upgrade() { let mut event = event.borrow_mut(); }'):
+                    source = f'''use std::{module}::Weak; use std::cell::RefCell;
+                        struct Local {{ value: {payload} }} struct Waiter {{ event: Weak<RefCell<Local>> }}
+                        impl Waiter {{ fn complete(&self) {{ {pattern} }} }}'''
+                    with self.subTest(module=module, payload=payload, pattern=pattern):
+                        self.assertEqual(expected, escapes(source))
+
+    def test_weak_upgrade_unknown_providers_and_shadows_stay_guarded(self):
+        for declaration, receiver in [('struct Weak<T>(T);', 'Weak<RefCell<u8>>'),
+                                      ('use foreign::Weak;', 'Weak<RefCell<u8>>'),
+                                      ('mod std {}', 'std::rc::Weak<RefCell<u8>>'),
+                                      ('trait Other { fn upgrade(self) -> Option<RefCell<Computed>>; }', 'std::rc::Weak<RefCell<u8>>'),
+                                      ('', 'Unknown'), ('', 'std::rc::Weak<RefCell<Unknown>>')]:
+            source = declaration + f''' fn f(weak: {receiver}) {{
+                let Some(event) = weak.upgrade() else {{ return; }}; event.borrow_mut(); }}'''
+            with self.subTest(declaration=declaration, receiver=receiver): self.assertEqual(1, escapes(source))
+        for body in ('let Some(event) = weak.upgrade() else { return; }; let event = source(); event.borrow_mut();',
+                     'if let Some(event) = weak.upgrade() {} event.borrow_mut();',
+                     'if let Some(event) = weak.upgrade() {} else { event.borrow_mut(); }',
+                     'if let Some(event) = weak.upgrade() { let event = source(); event.borrow_mut(); }',
+                     'if let Some(event) = weak.upgrade() { let event = event.borrow_mut(); event.borrow_mut(); }',
+                     'let Some(event) = weak.upgrade() else { return; }; if let Some(event) = source() { event.borrow_mut(); }',
+                     'let Some(event) = weak.upgrade() else { return; }; if let Some(other) = source() && let Some(event) = source() { event.borrow_mut(); }',
+                     'let Some(event) = weak.upgrade() else { return; }; let event = { let event = source(); event.borrow_mut() };'):
+            source = 'fn f(weak: std::rc::Weak<RefCell<u8>>) { '+body+' }'
+            with self.subTest(body=body): self.assertEqual(1, escapes(source))
+        source = '''enum Other { Some(RefCell<Computed>) } use Other::Some;
+            fn f(weak: std::rc::Weak<RefCell<u8>>) {
+                let Some(event) = weak.upgrade() else { return; }; event.borrow_mut(); }'''
+        self.assertEqual(1, escapes(source))
+
+    def test_weak_upgrade_keeps_payload_module_and_strong_pointer_family(self):
+        for module, strong in [('rc', 'Rc'), ('sync', 'Arc')]:
+            for payload, expected in [('u8', 0), ('Computed', 1), ('Unknown', 1)]:
+                extra = {PREFIX+'dom/events.rs': f'pub struct Local {{ value: {payload} }}'}
+                source = f'''use std::{module}::Weak as Observer; use super::events::Local;
+                    fn f(weak: Observer<RefCell<Local>>) {{
+                        let Some(mut event) = weak.upgrade() else {{ return; }};
+                        std::{module}::{strong}::make_mut(&mut event);
+                    }}'''
+                with self.subTest(module=module, payload=payload):
+                    self.assertEqual(expected, escapes(source, 'make_mut', extra=extra))
+
     def test_field_writes_use_the_declared_owner_not_the_field_spelling(self):
         for body in ['plan.width = 1.;', 'plan.width += 1.;', 'consume(&mut plan.width);']:
             source = 'struct Plan { width: f32, style: Computed } fn f(plan: &mut Plan) { '+body+' }'

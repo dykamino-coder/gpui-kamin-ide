@@ -47,10 +47,7 @@ pub(super) fn blank_box(
                     .all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
     if blank && (lead != 0.0 || trail != 0.0) {
         let px_of = px_lossy_zero;
-        let size = match merged.font_size {
-            Some(Len::Px(v)) => v,
-            _ => MEDIUM_FONT_SIZE_PX,
-        };
+        let size = merged.used_font(MEDIUM_FONT_SIZE_PX, cx.vcx()).size_px;
         let bs = e.style.used().borders();
         let padding = e.style.used().padding;
         let flat = physical_sides::project(
@@ -76,15 +73,15 @@ pub(super) fn blank_box(
         });
         let (asc, desc, _) = crate::text::metrics::vmetrics_px(&family, size, cx.vcx());
         let content = if asc + desc > 0.0 { asc + desc } else { size };
-        let line = match merged.line_height {
-            Some(Len::Px(v)) => v,
-            Some(Len::Em(k)) => k * size,
-            _ => crate::text::metrics::normal_px(
-                crate::text::metrics::normal_line(&family, cx.vcx()),
-                size,
-                cx.vcx(),
-            ),
-        };
+        let line = merged
+            .numeric_line_px(MEDIUM_FONT_SIZE_PX)
+            .unwrap_or_else(|| {
+                crate::text::metrics::normal_px(
+                    crate::text::metrics::normal_line(&family, cx.vcx()),
+                    size,
+                    cx.vcx(),
+                )
+            });
         // Коробка стоит на области содержимого: она в середине
         // строки, а полулидинг делит остаток поровну (§10.8).
         let dy = ((line - content) / 2.0 - top).max(-line);

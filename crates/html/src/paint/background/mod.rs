@@ -67,21 +67,26 @@ pub use crate::paint::background::tiles::*;
 const MAX_TILES: f32 = 2048.0;
 
 /// Слой фона КАНВАСА: плитки меряются коробкой корня, а красят весь холст.
-pub fn canvas_layer(c: &Computed, area: RootArea, vcx: ValueCx<'_>) -> Option<AnyElement> {
+pub(crate) fn canvas_layer(
+    layer: &crate::style::computed::BgLayer,
+    geometry: std::rc::Rc<Computed>,
+    area: RootArea,
+    vcx: ValueCx<'_>,
+) -> Option<AnyElement> {
     let values = vcx.keep();
-    c.bg_image.as_ref()?;
-    let style = c.clone();
+    layer.image.as_ref()?;
+    let layer = layer.clone();
     Some(
         gpui::canvas(
             |_, _, _| {},
             move |clip: Bounds<Pixels>, _, window, _| {
                 let vcx = values.vcx();
-                let bounds = if style.bg_fixed == Some(true) {
+                let bounds = if layer.fixed == Some(true) {
                     clip
                 } else {
                     area.rect(clip, vcx)
                 };
-                paint_tiles(&style, bounds, Some(clip), window, vcx);
+                tiles::paint_layer_in(&layer, &geometry, bounds, Some(clip), window, None, vcx);
             },
         )
         .absolute()

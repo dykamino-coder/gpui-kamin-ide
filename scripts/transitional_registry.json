@@ -250,9 +250,9 @@
     "reason": "layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle."
   },
   {
-    "file": "crates/html/src/style/computed/resolve/em.rs",
+    "file": "crates/html/src/text/inline/runs/mod.rs",
     "task": "cascade-7b-font-size-adjust",
-    "reason": "font_size хранит used размер для shaping, а computed размер спрятан в font_adjust_base; удалить обходные em readers после переноса used размера в BoxStyle и возврата computed font_size."
+    "reason": "A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face."
   },
   {
     "file": "crates/html/src/text/inline/first_line.rs",

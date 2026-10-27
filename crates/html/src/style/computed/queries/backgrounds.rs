@@ -16,25 +16,39 @@ impl Computed {
         if images.len() < 2 || clips.is_empty() {
             return self.bg_clip;
         }
-        let mut probe = Computed::default();
-        clips[(images.len() - 1) % clips.len()].apply(BgListProp::Clip, &mut probe);
-        probe.bg_clip
+        clips[(images.len() - 1) % clips.len()].clip
+    }
+
+    /// Вычисленные фоновые компоненты, без копии геометрии и CSS элемента.
+    pub(crate) fn background_layers(&self) -> Option<Vec<BgLayer>> {
+        let images = self.bg_lists.get(BgListProp::Image)?;
+        if images.len() < 2 {
+            return None;
+        }
+        Some(
+            (0..images.len())
+                .map(|i| {
+                    let mut layer = BgLayer::from_computed(self);
+                    for (prop, layers) in self.bg_lists.iter() {
+                        layer.copy_component(prop, &layers[i % layers.len()]);
+                    }
+                    layer
+                })
+                .collect(),
+        )
     }
 
     /// Слои сверху вниз. Цвет лежит под всей стопкой; градиенты слоёв идут
     /// общим путём растровых плиток. Разбор CSS завершён каскадом.
     pub(crate) fn bg_layers(&self, _vcx: ValueCx<'_>) -> Option<Vec<Computed>> {
-        let images = self.bg_lists.get(BgListProp::Image)?;
-        if images.len() < 2 {
-            return None;
-        }
-        let mut out = Vec::with_capacity(images.len());
-        for i in 0..images.len() {
+        let layers = self.background_layers()?;
+        let mut out = Vec::with_capacity(layers.len());
+        for layer in layers {
             let mut c = self.clone();
             c.bg_lists.clear();
             c.background = None;
-            for (prop, layers) in self.bg_lists.iter() {
-                layers[i % layers.len()].apply(prop, &mut c);
+            for (prop, _) in self.bg_lists.iter() {
+                layer.apply(prop, &mut c);
             }
             c.gradient = None;
             c.gradient_raw = None;

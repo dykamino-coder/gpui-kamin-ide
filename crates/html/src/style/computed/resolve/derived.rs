@@ -86,7 +86,6 @@ impl Computed {
             // Кусок, собранный из `text_only`, бывает родителем: без базы он
             // отдал бы детям ПОДОГНАННЫЙ кегль, и подгонка накопилась бы.
             with_inherited.font_size_adjust = self.font_size_adjust;
-            with_inherited.font_adjust_base = self.font_adjust_base;
             with_inherited
         }
     }

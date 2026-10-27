@@ -100,13 +100,12 @@ fn main() {
     // Стенд запускают пачками и без человека у экрана: любое модальное окно
     // gpui («Failed to launch») повесило бы процесс намертво.
     unsafe { std::env::set_var("GPUI_NO_ERROR_DIALOG", "1") };
-    // WPT reftests assume 1 CSS px = 1 device px (official runs use DPR 1). On a
-    // 120-DPI monitor the window would render at 1.25 and fractional lengths would
-    // snap differently in tests and references. KAMIN_FORCE_SCALE (vendor
-    // gpui-windows) pins the scale; an explicit value in the environment wins.
+    let mut instrumentation = kamin_html::host::instrumentation::from_env();
+    // WPT по умолчанию использует DPR 1; явно заданное окружение сохраняет приоритет.
     if std::env::var_os("KAMIN_FORCE_SCALE").is_none() {
-        unsafe { std::env::set_var("KAMIN_FORCE_SCALE", "1") };
+        instrumentation.scale_factor = Some(1.);
     }
+    let (capture, sink) = capture::setup();
     std::panic::set_hook(Box::new(|info| {
         let _ = std::fs::write("target/wpt-panic.txt", format!("{info}"));
         eprintln!("{info}");
@@ -129,94 +128,99 @@ fn main() {
         std::process::exit(1);
     }
 
-    gpui_platform::application().run(move |cx| {
-        // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
-        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
-        if let Some(elapsed) = animation_elapsed {
-            eprintln!("WPT animation elapsed override: {} ms", elapsed.as_millis());
-            cx.set_global(gpui::AnimationElapsedTime(elapsed));
-        }
-        // Ahem — служебный шрифт набора: все его буквы одинаковые чёрные
-        // квадраты в кегль. На нём построены сотни тестов: фигуры сходятся
-        // ровно потому, что метрики предсказуемы. Без него текст набирается
-        // системным шрифтом, и «квадраты» разъезжаются.
-        for name in ["Ahem.ttf", "AHEM____.TTF"] {
-            let path = std::path::Path::new("vendor/wpt-parsing/fonts").join(name);
-            if let Ok(bytes) = std::fs::read(&path) {
-                let _ = cx.text_system().add_fonts(vec![bytes.into()]);
-                break;
+    gpui_platform::application()
+        .with_instrumentation(instrumentation)
+        .run(move |cx| {
+            // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
+            cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+            if let Some(elapsed) = animation_elapsed {
+                eprintln!("WPT animation elapsed override: {} ms", elapsed.as_millis());
+                cx.set_global(gpui::AnimationElapsedTime(elapsed));
             }
-        }
-        // Шрифты CSSTest — второе предусловие набора: тесты css-fonts пишут
-        // «Test fonts must be installed for this test» и зовут их по имени
-        // семейства как УСТАНОВЛЕННЫЕ (`font-family: CSSTest Verify`), без
-        // `@font-face`. Без них обе стороны пары набираются подменой.
-        if let Ok(dir) = std::fs::read_dir("vendor/wpt-parsing/fonts/CSSTest") {
-            let mut paths: Vec<_> = dir.flatten().map(|e| e.path()).collect();
-            paths.sort();
-            let fonts: Vec<_> = paths
-                .iter()
-                .filter(|p| p.extension().is_some_and(|e| e == "ttf"))
-                .filter_map(|p| std::fs::read(p).ok())
-                .map(Into::into)
-                .collect();
-            let _ = cx.text_system().add_fonts(fonts);
-        }
-        // Щуп метрик ставится ПОСЛЕ регистрации: до неё `Ahem` ещё не найден,
-        // и `ch` мерился бы по шрифту-подмене.
-        let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
-        let empty = Rc::new(
-            Document::builder("", BROWSER_CSS)
-                .fonts(&fonts)
-                .build()
-                .expect("static empty runner document"),
-        );
-        if capture::offscreen() || capture::first_frame() {
-            gpui::frame_capture::enable();
-        }
-        let window = cx
-            .open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds {
-                        // An off-screen origin here made GPUI fall back to a
-                        // display-sized window (1920x1080 shots): create on screen,
-                        // `capture::park_offscreen` moves it away before the first frame.
-                        origin: point(px(40.), px(40.)),
-                        size: size(px(w), px(h)),
-                    })),
+            // Ahem — служебный шрифт набора: все его буквы одинаковые чёрные
+            // квадраты в кегль. На нём построены сотни тестов: фигуры сходятся
+            // ровно потому, что метрики предсказуемы. Без него текст набирается
+            // системным шрифтом, и «квадраты» разъезжаются.
+            for name in ["Ahem.ttf", "AHEM____.TTF"] {
+                let path = std::path::Path::new("vendor/wpt-parsing/fonts").join(name);
+                if let Ok(bytes) = std::fs::read(&path) {
+                    let _ = cx.text_system().add_fonts(vec![bytes.into()]);
+                    break;
+                }
+            }
+            // Шрифты CSSTest — второе предусловие набора: тесты css-fonts пишут
+            // «Test fonts must be installed for this test» и зовут их по имени
+            // семейства как УСТАНОВЛЕННЫЕ (`font-family: CSSTest Verify`), без
+            // `@font-face`. Без них обе стороны пары набираются подменой.
+            if let Ok(dir) = std::fs::read_dir("vendor/wpt-parsing/fonts/CSSTest") {
+                let mut paths: Vec<_> = dir.flatten().map(|e| e.path()).collect();
+                paths.sort();
+                let fonts: Vec<_> = paths
+                    .iter()
+                    .filter(|p| p.extension().is_some_and(|e| e == "ttf"))
+                    .filter_map(|p| std::fs::read(p).ok())
+                    .map(Into::into)
+                    .collect();
+                let _ = cx.text_system().add_fonts(fonts);
+            }
+            // Щуп метрик ставится ПОСЛЕ регистрации: до неё `Ahem` ещё не найден,
+            // и `ch` мерился бы по шрифту-подмене.
+            let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
+            let empty = Rc::new(
+                Document::builder("", BROWSER_CSS)
+                    .fonts(&fonts)
+                    .build()
+                    .expect("static empty runner document"),
+            );
+            let window = cx
+                .open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(Bounds {
+                            // An off-screen origin here made GPUI fall back to a
+                            // display-sized window (1920x1080 shots): create on screen,
+                            // `capture::park_offscreen` moves it away before the first frame.
+                            origin: point(px(40.), px(40.)),
+                            size: size(px(w), px(h)),
+                        })),
 
-                    titlebar: Some(TitlebarOptions {
-                        appears_transparent: true,
+                        titlebar: Some(TitlebarOptions {
+                            appears_transparent: true,
+                            ..Default::default()
+                        }),
+                        window_decorations: Some(WindowDecorations::Client),
+                        window_background: WindowBackgroundAppearance::Opaque,
+                        is_resizable: false,
+                        is_minimizable: false,
                         ..Default::default()
-                    }),
-                    window_decorations: Some(WindowDecorations::Client),
-                    window_background: WindowBackgroundAppearance::Opaque,
-                    is_resizable: false,
-                    is_minimizable: false,
-                    ..Default::default()
-                },
-                |_, cx| -> Entity<Page> {
-                    cx.new(|_| Page {
-                        doc: empty,
-                        select: None,
-                        #[cfg(feature = "wpt-harness")]
-                        probes: Default::default(),
-                    })
-                },
-            )
-            .unwrap();
-        // Фокус НЕ забираем: стенд идёт десятками минут, и всё это время его
-        // окно висело поверх чужой работы — в паузах между страницами белое.
-        // Снимок делает `PrintWindow` с флагом 3, ему передний план не нужен:
-        // достаточно, чтобы окно не было СВЁРНУТО.
+                    },
+                    |window, cx| -> Entity<Page> {
+                        if let Some(sink) = sink {
+                            window
+                                .set_frame_capture(Some(sink))
+                                .expect("Windows GPU readback");
+                        }
+                        cx.new(|_| Page {
+                            doc: empty,
+                            select: None,
+                            #[cfg(feature = "wpt-harness")]
+                            probes: Default::default(),
+                        })
+                    },
+                )
+                .unwrap();
+            // Фокус НЕ забираем: стенд идёт десятками минут, и всё это время его
+            // окно висело поверх чужой работы — в паузах между страницами белое.
+            // Снимок делает `PrintWindow` с флагом 3, ему передний план не нужен:
+            // достаточно, чтобы окно не было СВЁРНУТО.
 
-        let cfg = run::RunConfig {
-            pairs,
-            exact,
-            dumping,
-            dump_all,
-        };
-        cx.spawn(async move |cx| run::run(cx, window.into(), cfg).await)
-            .detach();
-    });
+            let cfg = run::RunConfig {
+                capture,
+                pairs,
+                exact,
+                dumping,
+                dump_all,
+            };
+            cx.spawn(async move |cx| run::run(cx, window.into(), cfg).await)
+                .detach();
+        });
 }

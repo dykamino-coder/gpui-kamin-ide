@@ -160,7 +160,7 @@ async fn element_inner(
     );
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
-    if let Some(el) = crate::interactive::forms::element(e, &merged, opts) {
+    if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
         let el = transformed(el, &merged, inherited, vcx);
         let el = match geometry {
             Some(geometry) => geometry.wrap(el),
