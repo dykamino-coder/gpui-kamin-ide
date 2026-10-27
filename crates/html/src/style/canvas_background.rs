@@ -4,6 +4,13 @@ use super::computed::{BgLayer, Computed, Gradient, ImageSource};
 use super::values::value::Color;
 use crate::document::state::ValueCx;
 
+/// Собственный источник фона холста; роль не наследуется как CSS.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum CanvasBackgroundSource {
+    Root,
+    Donor(std::rc::Rc<CanvasBackground>),
+}
+
 /// css-backgrounds-3 §2.11.2: краска берётся у донора, геометрия — у корня.
 /// Выражения цвета уже подготовлены с цветом донора; исходный CSS остаётся
 /// источником явного inherit и разрешается в контексте самого потомка.
