@@ -228,3 +228,19 @@ fn absolute_box_in_a_repeated_table_header_repeats_with_it() {
     assert!(is(top(&found, 25., 10.), 0x0000ff), "first header");
     assert!(is(top(&found, 75., 10.), 0x0000ff), "repeated header");
 }
+
+#[test]
+fn statically_positioned_box_is_routed_from_its_laid_out_place_and_paints_above_later_flow() {
+    // The source lays the box out where its layout put it, while the plan used
+    // its resolved static position; it still paints above a later in-flow sibling.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'>\
+<div style='position:relative'><div style='height:100px'></div>\
+<div><div style='position:absolute;width:50px;height:100px;background:#0000ff'></div>\
+<div style='height:100px;background:#ff0000'></div></div></div></div>",
+        400.,
+        200.,
+    );
+    assert!(is(top(&found, 75., 50.), 0x0000ff), "{found:?}");
+}

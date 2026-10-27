@@ -60,8 +60,11 @@ impl ColumnStack {
                 .fragmentainer(f.col, bounds)
                 .map_err(|_| PaintRecordError::InvalidGeometry)?;
             let rect = flow.metrics.normal_rect();
+            // The source paints the box where its layout put it; the normal
+            // rect above holds the resolved static position the plan used.
+            let laid = snapshot.normal.get(&flow.id).copied().unwrap_or(rect);
             let inline_size = geometry::inline(self.axis, rect);
-            let source = geometry::slice(self.axis, rect, 0., inline_size, f.from, f.h).origin;
+            let source = geometry::slice(self.axis, laid, 0., inline_size, f.from, f.h).origin;
             // The source lays the columns' content out from its origin: the inline
             // offset there includes every ancestor's offset (owner margins too).
             let inline = if self.axis.is_vertical() {
@@ -82,7 +85,7 @@ impl ColumnStack {
             let down = if last { spill } else { -tail };
             let clip = geometry::slice(
                 self.axis,
-                rect,
+                laid,
                 -spill,
                 inline_size + spill * 2.,
                 f.from - up,
@@ -97,7 +100,7 @@ impl ColumnStack {
             };
             let decoration = geometry::slice(
                 self.axis,
-                rect,
+                laid,
                 -spill,
                 inline_size + spill * 2.,
                 f.from - if first { spill } else { 0. },

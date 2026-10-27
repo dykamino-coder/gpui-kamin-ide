@@ -106,6 +106,11 @@ impl Wrap for Slot {
     fn paint_boundary(&self) -> bool {
         false
     }
+    // The positioned root keeps its paint phase (CSS 2.1 Appendix E): the
+    // replay happens where the copy would have painted the box.
+    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
+        self.child.paint_metadata()
+    }
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
     }

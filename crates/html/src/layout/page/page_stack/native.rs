@@ -96,8 +96,11 @@ impl PageStack {
                 .find(|s| s.id == source.id)
                 .ok_or(PaintRecordError::InvalidGeometry)?;
             let rect = flow.metrics.normal_rect();
+            // The source paints the box where its layout put it; the normal
+            // rect above holds the resolved static position the plan used.
+            let laid = snapshot.normal.get(&flow.id).copied().unwrap_or(rect);
             let inline = geometry::inline(self.axis, rect);
-            let from = geometry::slice(self.axis, rect, 0., inline, f.from, f.h).origin;
+            let from = geometry::slice(self.axis, laid, 0., inline, f.from, f.h).origin;
             let offset = if self.axis.is_vertical() {
                 rect.origin.y
             } else {
@@ -115,7 +118,7 @@ impl PageStack {
             let down = if last { spill } else { -tail };
             let clip = geometry::slice(
                 self.axis,
-                rect,
+                laid,
                 -spill,
                 inline + spill * 2.,
                 f.from - up,
@@ -131,7 +134,7 @@ impl PageStack {
             };
             let decoration = geometry::slice(
                 self.axis,
-                rect,
+                laid,
                 -spill,
                 inline + spill * 2.,
                 f.from - if first { spill } else { 0. },
