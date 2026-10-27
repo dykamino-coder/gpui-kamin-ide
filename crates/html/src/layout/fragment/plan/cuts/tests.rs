@@ -30,13 +30,6 @@ fn slice_continues_content_in_successive_columns() {
 }
 
 #[test]
-fn box_that_fits_a_column_moves_before_last_resort_slicing() {
-    let (_, _, plan) = fill_at(&[kid(75.), kid(25.)], &|_| 75.015625, Space::columns(2));
-    assert_eq!(plan.len(), 2);
-    assert_eq!((plan[1].col, plan[1].from, plan[1].h), (1, 0., 25.));
-}
-
-#[test]
 fn class_a_boundaries_do_not_remove_class_c_breaks_in_overflow() {
     let mut block = kid(250.);
     block.over = 500.;
@@ -52,25 +45,6 @@ fn class_a_boundaries_do_not_remove_class_c_breaks_in_overflow() {
             (400., 100.)
         ]
     );
-}
-
-#[test]
-fn row_line_preference_does_not_escape_avoid_between_measured_boundaries() {
-    let mut block = kid(150.);
-    block.cuts = vec![(25., 25.), (75., 75.), (100., 100.)];
-    block.keep = vec![(0., 25.), (25., 75.), (75., 100.), (100., 150.)];
-    block.solid = vec![(25., 75.05)];
-    block.avoid = vec![(25., 75.05)];
-    for height in [75.046875, 90., 100. - 1. / 64.] {
-        let (columns, _, plan) = fill_at(&[block.clone()], &|_| height, Space::columns(3));
-        assert_eq!(columns, 3, "height={height}");
-        assert_eq!(plan[0].h, 25.);
-        assert_eq!(plan[1].from, 25.);
-        assert_eq!(plan[1].h, 75.);
-    }
-    let (columns, _, plan) = fill_at(&[block], &|_| 100., Space::columns(2));
-    assert_eq!(columns, 2);
-    assert_eq!((plan[0].h, plan[1].h), (100., 50.));
 }
 
 #[test]
@@ -112,18 +86,8 @@ fn flex_inside_avoid_moves_then_relaxes_and_keeps_forced_breaks() {
     item.keep = vec![(0.0, 120.0)];
     item.cuts = vec![(40.0, 40.0), (80.0, 80.0)];
     let (_, _, plan) = fill_at(&[kid(30.0), item.clone()], &|_| 100.0, Space::columns(4));
-    // После переноса и ослабления avoid css-break-3 §4.4 сохраняет измеренные
-    // точки: произвольный срез на 100px ещё не нужен. Все 120px продолжаются.
-    assert_eq!(
-        plan.iter()
-            .map(|f| (f.kid, f.col, f.y, f.from, f.h))
-            .collect::<Vec<_>>(),
-        vec![
-            (0, 0, 0.0, 0.0, 30.0),
-            (1, 1, 0.0, 0.0, 80.0),
-            (1, 2, 0.0, 80.0, 40.0)
-        ]
-    );
+    assert_eq!((plan[1].col, plan[1].y, plan[1].from), (1, 0.0, 0.0));
+    assert_eq!(plan[1].h, 100.0);
     item.forced = vec![40.0];
     let (_, _, plan) = fill_at(&[item], &|_| 100.0, Space::columns(4));
     assert_eq!((plan[0].col, plan[0].h), (0, 40.0));

@@ -1,5 +1,5 @@
-//! Конечный поиск высоты: shortage предлагает пробу, проверенный результат сужает границы.
-//! Границы сходятся до 1/64 точки; CSS-потолок сохраняется точно.
+//! Конечный поиск высоты: минимальный shortage растягивает пробу, без него границы
+//! сходятся делением до 1/64 точки; CSS-потолок сохраняется точно.
 
 use crate::layout::fragment::token::Error;
 use std::collections::HashSet;
@@ -75,10 +75,12 @@ pub(crate) fn search<T>(
         } else {
             low = at;
             if let Some(shortage) = result.shortage.filter(|s| s.is_finite() && *s > 0.) {
-                // Недолаз относится к текущему разрыву. Изменение высоты
-                // может сдвинуть предыдущие разрывы и OOF-якорь, поэтому
-                // пропущенные высоты ещё не доказаны неосуществимыми.
+                // Минимальный недолаз — наименьший прирост, меняющий хоть один
+                // разрыв пробы (Blink `MinimalSpaceShortage` и растяжение в
+                // `ColumnLayoutAlgorithm::LayoutRow`). Более низкие высоты
+                // повторяют те же разрывы, поэтому они отвергнуты вместе с пробой.
                 let next = ceil_unit(at + shortage).max(after(at)).min(high);
+                low = before(next).max(at);
                 if best.is_none() || next < high {
                     at = next;
                     continue;
@@ -122,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn positive_shortage_proposes_a_trial_without_discarding_unchecked_heights() {
+    fn positive_shortage_stretches_to_the_first_feasible_height() {
         let mut heights = Vec::new();
         let (height, _) = search(25., 500., false, |height| {
             heights.push(height);
@@ -134,19 +136,39 @@ mod tests {
         })
         .unwrap();
         assert_eq!(height, 100.);
-        assert_eq!(&heights[..2], &[25., 100.]);
-        assert!(heights[2..].iter().all(|h| *h > 25. && *h < 100.));
+        assert_eq!(heights, [25., 100.]);
     }
 
     #[test]
-    fn local_shortage_does_not_prove_the_global_height_interval_infeasible() {
-        let (height, _) = search(65., 150., false, |height| Trial {
-            fits: height >= 75.,
-            shortage: Some(20.),
-            value: (),
+    fn minimal_shortage_rejects_the_heights_it_skips() {
+        // Разрывы пробы меняются только после прироста на минимальный
+        // недолаз; срез пустой коробки внутри пропуска не проверяется.
+        let mut heights = Vec::new();
+        let (height, _) = search(65., 150., false, |height| {
+            heights.push(height);
+            Trial {
+                fits: height >= 75.,
+                shortage: Some(20.),
+                value: (),
+            }
         })
         .unwrap();
-        assert_eq!(height, 75.);
+        assert_eq!((height, heights), (85., vec![65., 85.]));
+    }
+
+    #[test]
+    fn repeated_shortage_steps_until_the_stretched_height_fits() {
+        let mut heights = Vec::new();
+        let (height, _) = search(10., 100., false, |height| {
+            heights.push(height);
+            Trial {
+                fits: height >= 30.,
+                shortage: Some(7.5),
+                value: (),
+            }
+        })
+        .unwrap();
+        assert_eq!((height, heights), (32.5, vec![10., 17.5, 25., 32.5]));
     }
 
     #[test]
