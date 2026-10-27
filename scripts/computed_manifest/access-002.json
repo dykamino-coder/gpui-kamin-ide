@@ -1,5 +1,4 @@
 [
-{"field":"Computed.transform_ancestor","owners":{"interactive":{"read":2},"layout":{"read":3},"paint":{"read":2},"render":{"read":1},"style":{"initialize":1,"read":3}}},
 {"field":"Computed.transform_box","owners":{"animation":{"read":1},"resources":{"read":1},"style":{"initialize":1,"write":1}}},
 {"field":"Computed.transform_box_fill","owners":{"resources":{"read":1},"style":{"initialize":1,"write":1}}},
 {"field":"Computed.transform_origin","owners":{"animation":{"read":1},"paint":{"read":2,"write":1},"resources":{"read":1},"resources:test":{"write":1},"style":{"initialize":1,"read":1,"write":2}}},
