@@ -57,8 +57,7 @@ pub(super) fn own_capture(
         if nested.bare.contains(&segment) {
             // The copy's own transformed element already applies the root's
             // matrix about this fragment around the slot (effect_fragment).
-            let follow = nested.follow.get(&segment).copied();
-            source.bare.insert(segment, id, (record, None, follow));
+            source.bare.insert(segment, id, (record, None));
             continue;
         }
         // The root's own transform about this segment's fragment.

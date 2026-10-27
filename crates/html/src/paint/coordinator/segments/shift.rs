@@ -76,6 +76,5 @@ pub(super) fn nested(nested: Rc<Nested>, by: Point<Pixels>) -> Rc<Nested> {
             .collect(),
         bare: nested.bare.clone(),
         presentations: nested.presentations.clone(),
-        follow: nested.follow.clone(),
     })
 }

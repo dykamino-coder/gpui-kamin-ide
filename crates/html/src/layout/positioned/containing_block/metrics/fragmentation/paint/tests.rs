@@ -21,8 +21,6 @@ fn placement(family: u64, root: u64, segment: u64, dx: f32, copied: bool) -> Pla
         transform: None,
         reference: rect(20.),
         start: point(px(0.), px(0.)),
-        follows: false,
-        origin: point(px(0.), px(20.)),
     }
 }
 

@@ -23,8 +23,6 @@ struct Own {
     segments: Vec<(PaintSegmentId, bool, Bounds<Pixels>)>,
     extent: Option<Bounds<Pixels>>,
     frames: presentation::Frames,
-    /// Where a following root's box lands in each segment (destination).
-    follow: HashMap<PaintSegmentId, Point<Pixels>>,
 }
 
 /// Placements of continued absolute/fixed families, keyed (segment, ordinal).
@@ -46,8 +44,6 @@ pub(crate) struct Routing {
     pub(crate) roots: Vec<(PaintSegmentId, u32, u64)>,
     /// Hit placements presented under their root's per-fragment transform.
     pub(crate) presented: Vec<(PaintSegmentId, u32, TransformationMatrix)>,
-    /// Hit placements of following roots and their box's expected origin.
-    pub(crate) follow: Vec<(PaintSegmentId, u32, Point<Pixels>)>,
 }
 
 /// One fragment of a continued flow.
@@ -69,10 +65,6 @@ pub(crate) struct Placement {
     pub(crate) reference: Bounds<Pixels>,
     /// Source point of this fragmentainer's start on the block axis.
     pub(crate) start: Point<Pixels>,
-    /// The family box follows its copy's placement (`Source::follows`); its
-    /// layout origin in the source.
-    pub(crate) follows: bool,
-    pub(crate) origin: Point<Pixels>,
 }
 
 impl Admission {
@@ -119,11 +111,6 @@ impl Admission {
         };
         let own = &mut self.own[index].1;
         own.frames.note(&p);
-        if p.follows && p.family == p.root {
-            own.follow
-                .entry(p.segment)
-                .or_insert(p.origin + (p.destination - p.source));
-        }
         own.routes.push(placement);
         own.families.entry(p.family).or_default().push(slice);
         own.decorations.entry(p.family).or_default().push(decorated);
@@ -148,7 +135,6 @@ impl Admission {
         };
         let mut orphan_routes = Vec::new();
         let mut presented = Vec::new();
-        let mut follow = Vec::new();
         for (root, _) in &self.own {
             let origin = snapshot
                 .normal
@@ -169,11 +155,6 @@ impl Admission {
                     Some((route.id, route.ordinal, *m))
                 }));
             }
-            follow.extend(
-                own.routes.iter().filter_map(|route| {
-                    Some((route.id, route.ordinal, *own.follow.get(&route.id)?))
-                }),
-            );
             // Placed records re-enter the source record unmoved.
             let mut identity = Vec::new();
             for &(segment, copied, placed) in &own.segments {
@@ -226,7 +207,6 @@ impl Admission {
                     boxes,
                     bare,
                     presentations,
-                    follow: own.follow,
                 }),
             );
         }
@@ -235,7 +215,6 @@ impl Admission {
             paint: (Rc::from(orphan_routes), paint),
             roots: self.hit_roots,
             presented,
-            follow,
         }
     }
 }

@@ -119,8 +119,6 @@ impl ColumnStack {
                 decoration,
                 copied,
                 transform: flow.transform,
-                follows: flow.follows,
-                origin: laid.origin,
                 reference: geometry::slice(self.axis, laid, 0., inline_size, f.from, f.h),
                 start: geometry::slice(self.axis, actual.rect, inline.into(), inline_size, 0., 0.)
                     .origin
@@ -134,7 +132,6 @@ impl ColumnStack {
         let scopes = crate::hooks::presented_hit_scopes(
             self.oof.slot_scopes.scopes(&routing.roots),
             &routing.presented,
-            &routing.follow,
             window,
         );
         self.oof.slot_scopes.clear();
