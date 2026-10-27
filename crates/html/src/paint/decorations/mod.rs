@@ -58,7 +58,11 @@ pub(crate) fn decorations(
         && let Some(id) = c.filter_ref.as_deref()
         && let Some(def) = vcx.doc.masks.markup(&format!("filter:{id}"))
     {
-        let fill = match c.background.filter(|_| c.background_paint.paints()) {
+        let fill = match c
+            .paint_background()
+            .color
+            .filter(|_| c.background_paint.paints())
+        {
             Some(col) if col.a > 0.0 => format!(
                 "rgba({},{},{},{})",
                 (col.r * 255.0).round(),
@@ -83,6 +87,9 @@ pub(crate) fn decorations(
     // content on top of it; borders after it stay unfiltered
     // (`backdrop-filter-with-background-clip-padding-box`).
     backdrop_matrix(c, &mut out, vcx);
+    if !c.paints_decorations() {
+        return out;
+    }
     if !(empty
         && !c.transform_ancestor
         && c.transform.is_none()
@@ -99,21 +106,20 @@ pub(crate) fn decorations(
     // Несколько слоёв (css-backgrounds-3 §2.1): плитки каждого слоя своей
     // механикой, снизу вверх — первый в списке рисуется последним, поверх.
     if c.background_paint.paints() {
-        if let Some(layers) = c.bg_layers(vcx) {
-            for l in layers.iter().rev() {
-                if let Some(layer) = crate::paint::background::layer(l, vcx) {
-                    out.push(layer);
+        let bg = c.paint_background();
+        if let Some(layers) = &bg.layers {
+            for layer in layers.iter().rev() {
+                if let Some(element) = crate::paint::background::layer(layer, c, vcx) {
+                    out.push(element);
                 }
             }
-        } else if let Some(layer) = crate::paint::background::layer(c, vcx) {
-            out.push(layer);
-        } else if c.gradient_as_tile() {
-            // Градиент с размером/повтором/позицией — той же механикой плитки:
-            // источник понимает записи `linear-gradient(...)`.
-            let mut tiled = c.clone();
-            tiled.bg_image = tiled.gradient_raw.clone();
-            if let Some(layer) = crate::paint::background::layer(&tiled, vcx) {
-                out.push(layer);
+        } else {
+            let mut layer = bg.top.clone();
+            if layer.image.is_none() && bg.gradient_as_tile() {
+                layer.image = bg.gradient_image.clone();
+            }
+            if let Some(element) = crate::paint::background::layer(&layer, c, vcx) {
+                out.push(element);
             }
         }
     }

@@ -44,7 +44,7 @@ pub(super) fn sample(
         style.translate = frame.translate;
     }
     if frame.filter.is_some() {
-        style.filter = frame.filter;
+        style.set_animated_filter(frame);
     }
     if frame.backdrop_blur.is_some() {
         style.backdrop_blur = frame.backdrop_blur;

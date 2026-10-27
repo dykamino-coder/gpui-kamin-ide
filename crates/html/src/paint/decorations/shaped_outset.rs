@@ -47,7 +47,7 @@ pub(crate) fn shapes_outline(c: &Computed, vcx: ValueCx<'_>) -> bool {
 
 /// Вынос слоёв за border-box (l t r b): разлёт со смещением теней и
 /// сдвиг с толщиной контура, с запасом в точку под сглаживание.
-pub(crate) fn reach(c: &Computed, vcx: ValueCx<'_>) -> [f32; 4] {
+pub(crate) fn reach(c: &BoxStyle, vcx: ValueCx<'_>) -> [f32; 4] {
     let mut e = [0.0f32; 4];
     if shapes_shadows(c, vcx) {
         for (sh, _) in c.resolved_shadows(false) {
@@ -122,7 +122,7 @@ pub(crate) fn shadow_layer(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<Layer> {
 }
 
 fn opaque_background(c: &BoxStyle) -> bool {
-    c.background_paint.paints() && c.background.is_some_and(|b| b.a >= 1.0)
+    c.background_paint.paints() && c.paint_background().color.is_some_and(|b| b.a >= 1.0)
 }
 
 /// Резкие тени при непрозрачном фоне — заливками по пути под буфером
@@ -154,7 +154,7 @@ pub(crate) fn shadow_fills(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<FillLayer> 
 
 /// Накладка контура: полоса между контурами, раздвинутыми на сдвиг и на
 /// сдвиг с толщиной (css-ui-4 §outline; у `double` — две полосы по трети).
-pub(crate) fn outline_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<FillLayer> {
+pub(crate) fn outline_layer(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<FillLayer> {
     if !shapes_outline(c, vcx) {
         return None;
     }

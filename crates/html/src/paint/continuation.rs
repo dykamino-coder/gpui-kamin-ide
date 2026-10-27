@@ -15,13 +15,13 @@ pub(crate) struct SlotScopes(Rc<RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)
 
 impl SlotScopes {
     fn push(&self, segment: PaintSegmentId, root: u64, scope: PaintHitScope) {
-        let cell: &RefCell<Vec<_>> = &self.0;
+        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
         cell.borrow_mut().push((segment, root, scope));
     }
 
     /// Forget the slots of the previous prepaint.
     pub(crate) fn clear(&self) {
-        let cell: &RefCell<Vec<_>> = &self.0;
+        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
         cell.borrow_mut().clear();
     }
 
@@ -30,7 +30,7 @@ impl SlotScopes {
         &self,
         placements: &[(PaintSegmentId, u32, u64)],
     ) -> Rc<[(PaintSegmentId, u32, PaintHitScope)]> {
-        let cell: &RefCell<Vec<_>> = &self.0;
+        let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
         let slots = cell.borrow();
         placements
             .iter()

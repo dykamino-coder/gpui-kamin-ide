@@ -7,8 +7,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::style::cascade::preparation::Colors;
 use crate::style::cascade::preparation::colors;
-use crate::style::computed::Computed;
 use crate::style::values::value::Color;
 
 pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
@@ -18,19 +18,22 @@ pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
     if root.tag != "html" {
         return;
     }
-    let parent = colors(&Computed::default(), &root.style, vcx);
+    let parent = colors(&Colors::default(), &root.style, vcx);
     let Some(body) = root.children.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
     }) else {
         return;
     };
-    let color = colors(&parent, &body.style, vcx).color.unwrap_or(Color {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    });
+    let color = colors(&parent, &body.style, vcx)
+        .foreground
+        .color
+        .unwrap_or(Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
     apply(nodes, color);
 }
 
@@ -47,19 +50,19 @@ fn apply(nodes: &mut [Node], color: Color) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::Computed;
+    use crate::style::cascade::preparation::Colors;
 
     fn color(
         nodes: &[Node],
         tag: &str,
-        parent: &Computed,
+        parent: &Colors,
         vcx: crate::document::state::ValueCx<'_>,
     ) -> Option<Color> {
         nodes.iter().find_map(|node| {
             let Node::Element(e) = node else { return None };
             let computed = colors(parent, &e.style, vcx);
             if e.tag == tag {
-                computed.color
+                computed.foreground.color
             } else {
                 color(&e.children, tag, &computed, vcx)
             }
@@ -73,16 +76,16 @@ mod tests {
         let doc = "<style>body{color:green}div{color:red}p{color:initial}</style><div><table><tr><td>X</table><p>X";
         let nodes = crate::dom::parse(doc, "");
         assert_eq!(
-            color(&nodes, "td", &Computed::default(), vcx),
+            color(&nodes, "td", &Colors::default(), vcx),
             Color::parse("green", vcx)
         );
         assert_eq!(
-            color(&nodes, "p", &Computed::default(), vcx),
+            color(&nodes, "p", &Colors::default(), vcx),
             Color::parse("black", vcx)
         );
         let standard = crate::dom::parse(&format!("<!doctype html>{doc}"), "");
         assert_eq!(
-            color(&standard, "td", &Computed::default(), vcx),
+            color(&standard, "td", &Colors::default(), vcx),
             Color::parse("red", vcx)
         );
     }
@@ -97,7 +100,7 @@ mod tests {
             );
             let nodes = crate::dom::parse(&doc, "");
             assert_eq!(
-                color(&nodes, "td", &Computed::default(), vcx),
+                color(&nodes, "td", &Colors::default(), vcx),
                 Color::parse("red", vcx),
                 "{value}"
             );

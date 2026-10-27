@@ -6,11 +6,11 @@
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
-use crate::style::computed::{Computed, OUTLINE_DOUBLE};
+use crate::style::computed::{BoxStyle, OUTLINE_DOUBLE};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
-pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
+pub(super) fn decorations(c: &BoxStyle, vcx: ValueCx<'_>) -> Vec<AnyElement> {
     let mut out = Vec::new();
     // `outline`: рамка ВНЕ коробки и без влияния на раскладку — отдельный
     // абсолютный слой с отрицательным отступом ровно на её толщину.

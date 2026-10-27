@@ -467,9 +467,6 @@ pub struct Computed {
     pub(crate) gradient_current: Option<Gradient>,
     /// CSS Compositing 1: each image blends with the isolated background stack.
     pub(crate) background_blend: Option<BlendMode>,
-    /// Resolved opaque, constant background stacks retain their clip regions.
-    pub(crate) flat_text_background: Option<Color>,
-    pub(crate) flat_border_background: Option<Color>,
     pub outline: Option<Outline>,
     /// `backdrop-filter: blur(N)` — размытие того, что под элементом.
     pub backdrop_blur: Option<f32>,
@@ -756,13 +753,6 @@ pub struct Computed {
     /// строках и её осадка (sink) — на базовой какой строки она стоит.
     /// `None` — `normal`, обычная буква. Живёт в слое `::first-letter`.
     pub initial_letter: Option<(f32, u32)>,
-    /// Сплошная заливка предка с `background-clip: text` (css-backgrounds-4
-    /// §background-clip): глифы поддерева красятся цветом текста ПОВЕРХ неё.
-    /// Ставит и снимает `style::cascade::inherit`; `None` — такого предка нет.
-    pub text_clip_fill: Option<Color>,
-    /// Цвет текста ДО наложения на `text_clip_fill`: его получают внепоточные
-    /// потомки — в геометрию текста они не входят.
-    pub text_clip_raw: Option<Color>,
     /// `background-clip`: до какого края красится фон. `None` — до внешнего
     /// края рамки, как по умолчанию в CSS.
     pub bg_clip: Option<BgClip>,

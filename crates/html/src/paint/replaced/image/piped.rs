@@ -101,7 +101,11 @@ pub(super) fn piped_image(
                 .child(div().w(px(w)).h(px(h)).relative().child(layer))
                 .into_any_element());
         }
-        if let Some(layer) = crate::paint::background::layer(&bgc, vcx) {
+        if let Some(layer) = crate::paint::background::layer(
+            &crate::style::computed::BgLayer::from_computed(&bgc),
+            &crate::style::computed::BoxStyle::new(bgc),
+            vcx,
+        ) {
             // Внутренняя коробка = content box: поля и рамка остаются
             // на хосте, слой не должен их накрывать.
             return Ok(d

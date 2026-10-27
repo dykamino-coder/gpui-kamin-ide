@@ -176,9 +176,8 @@ impl Filter {
         // Filter Effects 1 §6.1 caps conversion amounts at one when used.
         // Keep the specified value intact for animation interpolation.
         let (mut r, mut g, mut b) = (c.r, c.g, c.b);
-        // Порядок как в CSS: функции применяются слева направо, а записаны
-        // они у нас в фиксированном порядке — для набора без повторов это то
-        // же самое.
+        // Одна цветовая операция. Порядок списка функций хранит парсер;
+        // его выполнение принадлежит `apply_operations`.
         if self.sepia > 0.0 {
             let k = self.sepia.min(1.0);
             let (sr, sg, sb) = (

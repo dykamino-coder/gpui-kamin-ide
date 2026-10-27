@@ -49,16 +49,41 @@ pub(crate) fn eligible_background(
     c: &Computed,
     background: crate::style::background_paint::BackgroundPaint,
 ) -> bool {
-    if background.paints()
+    let special = background.paints()
         && (c.gradient.is_some()
             || c.bg_image.is_some()
             || !c.bg_lists.is_empty()
-            || matches!(c.bg_clip, Some(BgClip::Text | BgClip::BorderArea)))
+            || matches!(c.bg_clip, Some(BgClip::Text | BgClip::BorderArea)));
+    geometry_eligible(
+        c,
+        special,
+        !c.shadows.is_empty(),
+        c.used_uniform_border_color().is_some(),
+    )
+}
+
+pub(crate) fn box_eligible(c: &super::BoxStyle) -> bool {
+    let bg = c.paint_background();
+    let special = c.background_paint.paints()
+        && (bg.gradient.is_some()
+            || bg.top.image.is_some()
+            || bg.layers.is_some()
+            || matches!(bg.top.clip, Some(BgClip::Text | BgClip::BorderArea)));
+    geometry_eligible(
+        c,
+        special,
+        !c.paint_shadows().is_empty(),
+        c.used_uniform_border_color().is_some(),
+    )
+}
+
+fn geometry_eligible(c: &Computed, special: bool, shadows: bool, uniform_color: bool) -> bool {
+    if special
         || c.border_image.is_some()
         || c.border_shape.is_some()
         || c.corner_shape.is_some()
         || c.radius_ell.is_some()
-        || !c.shadows.is_empty()
+        || shadows
         || !c.inset_shadows.is_empty()
         || c.contain_paint == Some(true)
         || [c.overflow_x, c.overflow_y]
@@ -76,7 +101,7 @@ pub(crate) fn eligible_background(
     if b > 0.0 && c.border_side_styles.iter().any(|v| *v != Some(9)) {
         return false;
     }
-    if c.used_uniform_border_color().is_none() {
+    if !uniform_color {
         return false;
     }
     let (Some(Len::Px(w)), Some(Len::Px(h))) = (c.width, c.height) else {

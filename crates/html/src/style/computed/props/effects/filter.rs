@@ -7,7 +7,6 @@ use crate::style::computed::{Computed, Filter, ImageFilter, Len, Shadow};
 pub(super) struct ParsedFilter {
     pub(super) program: ImageFilter,
     pub(super) reference: Option<String>,
-    operations: Vec<Filter>,
 }
 
 impl ParsedFilter {
@@ -116,11 +115,8 @@ impl ParsedFilter {
             }
         }
         program.filter = Some(f);
-        Some(Self {
-            program,
-            reference,
-            operations,
-        })
+        program.operations = operations;
+        Some(Self { program, reference })
     }
 }
 
@@ -137,10 +133,17 @@ impl Computed {
         self.filter = parsed.program.filter;
         self.drop_shadow = parsed.program.shadow.clone();
         self.filter_ref = parsed.reference;
-        self.scrollbar_filter_ops = parsed.operations;
+        self.scrollbar_filter_ops = parsed.program.operations.clone();
         let mut program = parsed.program;
         // `currentcolor` is resolved per element by `resolve_colors`.
         program.resolve_colors(crate::style::values::value::Color::BLACK);
         program
+    }
+
+    /// Анимированный `filter` входит в каскад сводным значением и функциями
+    /// в порядке списка (Filter Effects 1 §5).
+    pub(crate) fn set_animated_filter(&mut self, frame: &Computed) {
+        self.filter = frame.filter;
+        self.scrollbar_filter_ops = frame.scrollbar_filter_ops.clone();
     }
 }

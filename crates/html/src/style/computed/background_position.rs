@@ -180,13 +180,13 @@ mod tests {
             vcx,
         );
         c.resolve_em(16.0, vcx);
-        let layers = c.bg_layers(vcx).unwrap();
+        let layers = c.background_layers().unwrap();
         assert_eq!(
-            layers[0].background_position_used((0.0, 0.0), (100.0, 100.0), vcx),
+            layers[0].position_used((0.0, 0.0), (100.0, 100.0)),
             (80.0, 0.0)
         );
         assert_eq!(
-            layers[1].background_position_used((0.0, 0.0), (100.0, 100.0), vcx),
+            layers[1].position_used((0.0, 0.0), (100.0, 100.0)),
             (160.0, 0.0)
         );
     }

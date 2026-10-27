@@ -2,7 +2,7 @@
 //! по текущему смещению и диапазону, покраска с учётом `opacity` и фильтров. CSS Scrollbars 1
 //! оставляет платформенный вид за UA; авторские `scrollbar-color` уводят на классическую тему.
 //! Размеры классического gutter остаются в `scrollbar_gutter`.
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};
 
 #[derive(Clone, Copy)]
@@ -105,7 +105,7 @@ pub(super) fn bars(
         .collect()
 }
 
-pub(super) fn paint(c: &Computed, bars: &[Bar], alpha: f32, window: &mut Window) {
+pub(super) fn paint(c: &BoxStyle, bars: &[Bar], alpha: f32, window: &mut Window) {
     let color = |value: u32, alpha| {
         let mut color = crate::style::values::value::Color {
             r: value as f32 / 255.0,
@@ -113,7 +113,7 @@ pub(super) fn paint(c: &Computed, bars: &[Bar], alpha: f32, window: &mut Window)
             b: value as f32 / 255.0,
             a: alpha,
         };
-        for filter in &c.scrollbar_filter_ops {
+        for filter in c.paint_filter_ops() {
             color = filter.apply(color);
         }
         color.a *= c.opacity.unwrap_or(1.0);

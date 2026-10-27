@@ -124,3 +124,80 @@ fn splitting_a_run_keeps_band_geometry_independent_of_css() {
     }
     assert_eq!(original.radius.tl, Some(Len::Px(11.0)));
 }
+
+#[test]
+fn filtered_inline_border_uses_box_colors_once_in_filter_order() {
+    for (filter, expected) in [
+        ("brightness(50%)", [0.5, 0.0, 0.0]),
+        ("brightness(50%) brightness(50%)", [0.25, 0.0, 0.0]),
+        ("brightness(50%) invert(100%)", [0.5, 1.0, 1.0]),
+        ("invert(100%) brightness(50%)", [0.0, 0.5, 0.5]),
+    ] {
+        for ancestor in [false, true] {
+            for border in ["red", "currentColor"] {
+                let parent_filter = if ancestor { filter } else { "none" };
+                let own_filter = if ancestor { "none" } else { filter };
+                let parsed = crate::dom::parse(
+                    &format!(
+                        r#"<div style="filter:{parent_filter}"><span style="color:red;filter:{own_filter};border:2px solid {border};background:blue">ab</span></div>"#
+                    ),
+                    "",
+                );
+                let vcx = parsed.values();
+                crate::style::cascade::materialize::materialize(
+                    &parsed.nodes,
+                    &Rc::new(Computed::default()),
+                    vcx,
+                );
+                let find =
+                    |tag| crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == tag).unwrap();
+                let parent = box_style(&BoxStyle::default(), &find("div").style, vcx);
+                let span = find("span");
+                let before = span.style.computed();
+                let (boxed, _) = element_style(span, &parent, vcx);
+                let ink = Color {
+                    r: expected[0],
+                    g: expected[1],
+                    b: expected[2],
+                    a: 1.0,
+                };
+                assert_eq!(
+                    boxed.inline_decoration.border_stroke,
+                    Some((ink, [2.0; 4])),
+                    "{filter}, ancestor={ancestor}, border={border}"
+                );
+                assert_eq!(*span.style.computed(), *before);
+                assert_eq!(boxed.borders(), before.borders());
+            }
+        }
+    }
+}
+
+#[test]
+fn filtered_inline_border_and_band_use_own_result_once() {
+    let parsed = crate::dom::parse(
+        r#"<span style="color:red;filter:brightness(50%);border:2px solid currentColor;background:blue">ab</span>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    crate::style::cascade::materialize::materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        vcx,
+    );
+    let span = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "span").unwrap();
+    let (boxed, _) = element_style(span, &BoxStyle::default(), vcx);
+    let red = Color {
+        r: 0.5,
+        ..Color::BLACK
+    };
+    let blue = Color {
+        b: 0.5,
+        ..Color::BLACK
+    };
+    assert_eq!(boxed.inline_decoration.border_stroke, Some((red, [2.0; 4])));
+    assert_eq!(boxed.inline_decoration.band_color, Some(blue));
+    assert_eq!(boxed.ink(), Some(red));
+    assert_eq!(boxed.color.unwrap().r, 1.0);
+    assert_eq!(boxed.background.unwrap().b, 1.0);
+}

@@ -53,9 +53,9 @@ pub(super) fn element_style(
     // относительная функция) решён только там.
     // `background-clip: text`: бокс фоном не красится — заливку
     // несёт цвет глифов (`inherit`), узорную показать нечем.
-    if let Some(bg) = merged.background.filter(|_| {
+    if let Some(bg) = merged.paint_background().color.filter(|_| {
         merged.background_paint.paints()
-            && merged.bg_clip != Some(crate::style::computed::BgClip::Text)
+            && merged.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
     }) {
         merged.inline_decoration.band_color = Some(bg);
         // Единицы шрифта разрешаются так же, как в `inline_sides`:
@@ -98,16 +98,19 @@ pub(super) fn element_style(
         _ => MEDIUM_FONT_SIZE_PX,
     };
     let own_bg = merged
-        .background
+        .paint_background()
+        .color
         .filter(|_| {
             merged.background_paint.paints()
-                && merged.bg_clip != Some(crate::style::computed::BgClip::Text)
+                && merged.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
         })
         .is_some();
+    let colors = std::array::from_fn(|i| merged.used_border_color(i));
     let mut own_border = true;
-    if let Some((color, width)) = uniform_border(&e.style.used(), font_px, vcx) {
+    if let Some((color, width)) = uniform_border_with_colors(&e.style.used(), colors, font_px, vcx)
+    {
         merged.inline_decoration.border_stroke = Some((color, [width; 4]));
-    } else if let Some(sided) = sided_border(&e.style.used(), font_px, vcx) {
+    } else if let Some(sided) = sided_border_with_colors(&e.style.used(), colors, font_px, vcx) {
         merged.inline_decoration.border_stroke =
             Some((sided.0, physical_sides::project(inherited, sided.1)));
     } else {
