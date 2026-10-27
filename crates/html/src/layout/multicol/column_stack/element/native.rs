@@ -56,6 +56,9 @@ impl ColumnStack {
                 .iter()
                 .find(|s| s.id == id)
                 .ok_or(PaintRecordError::InvalidGeometry)?;
+            if !flow.native {
+                continue;
+            }
             let actual = self
                 .fragmentainer(f.col, bounds)
                 .map_err(|_| PaintRecordError::InvalidGeometry)?;

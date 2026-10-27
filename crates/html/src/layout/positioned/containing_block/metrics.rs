@@ -65,7 +65,9 @@ impl Snapshot {
     /// The native source paints only when an absolute or fixed flow continues;
     /// floats are recorded for geometry but stay in their owner's normal flow.
     pub(crate) fn native_oof(&self) -> Option<&std::rc::Rc<layout::Native>> {
-        self.native.as_ref().filter(|_| !self.flows.is_empty())
+        self.native
+            .as_ref()
+            .filter(|_| self.flows.iter().any(|flow| flow.native))
     }
 
     /// The native source of a stack fragmenting along `vertical`: a stack laid
@@ -79,7 +81,12 @@ impl Snapshot {
     /// Outermost roots of the continued flows: the boxes whose legacy copies
     /// replay their own records.
     pub(crate) fn continued_roots(&self) -> std::rc::Rc<[u64]> {
-        let mut roots: Vec<u64> = self.flows.iter().map(|flow| flow.root).collect();
+        let mut roots: Vec<u64> = self
+            .flows
+            .iter()
+            .filter(|flow| flow.native)
+            .map(|flow| flow.root)
+            .collect();
         roots.sort_unstable();
         roots.dedup();
         roots.into()

@@ -95,6 +95,9 @@ impl PageStack {
                 .iter()
                 .find(|s| s.id == source.id)
                 .ok_or(PaintRecordError::InvalidGeometry)?;
+            if !flow.native {
+                continue;
+            }
             let rect = flow.metrics.normal_rect();
             // The source paints the box where its layout put it; the normal
             // rect above holds the resolved static position the plan used.

@@ -141,7 +141,8 @@ fn family_holding_a_box_laid_out_outside_the_multicol_stays_with_its_copies(cx: 
         );
         // The fixed box's containing block is the viewport: its continued
         // ancestor cannot be routed without it.
-        assert!(geometry.flows.is_empty(), "host {} {:?}", geometry.host, geometry.flows.iter().map(|f| (f.id, f.metrics.cb_id)).collect::<Vec<_>>());
+        assert!(!geometry.flows.is_empty() && geometry.flows.iter().all(|f| !f.native));
+        assert!(geometry.native_oof().is_none());
         gpui::div()
     });
 }
@@ -185,7 +186,8 @@ fn anchor_positioned_box_stays_with_its_copies(cx: &mut gpui::TestAppContext) {
             &kids, &parent, 100., &opts, window, app,
         );
         // Its anchor is laid out by the columns, not by the source.
-        assert!(geometry.flows.is_empty(), "host {} {:?}", geometry.host, geometry.flows.iter().map(|f| (f.id, f.metrics.cb_id)).collect::<Vec<_>>());
+        assert!(!geometry.flows.is_empty() && geometry.flows.iter().all(|f| !f.native));
+        assert!(geometry.native_oof().is_none());
         gpui::div()
     });
 }

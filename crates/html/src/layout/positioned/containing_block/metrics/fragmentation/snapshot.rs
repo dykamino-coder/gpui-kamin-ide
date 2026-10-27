@@ -11,7 +11,8 @@ impl Recorder {
         let outside = self.outside(snapshot);
         // A continued root cannot hold a box laid out by a block outside the
         // source: that box keeps its static place in the root's legacy copies,
-        // so the whole family stays there.
+        // so the whole family stays there. The plan keeps every flow (column
+        // balancing counts them); only the paint owner changes.
         let mut held = std::collections::HashSet::new();
         let mut walk: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
         for (index, flow) in self.flows.flows.iter().enumerate() {
@@ -30,9 +31,8 @@ impl Recorder {
             contexts.push((repeated, fixed_content));
             let root = flow.parent.map_or(flow.id, |parent| roots[parent]);
             roots.push(root);
-            let metrics = snapshot.get(flow.id).copied();
-            let escapes = outside[index] || held.contains(&root);
-            let Some(metrics) = metrics.filter(|_| !escapes) else {
+            let native = !(outside[index] || held.contains(&root));
+            let Some(metrics) = snapshot.get(flow.id).copied() else {
                 continue;
             };
             let Some(owner_rect) = self.normal(flow.owner, window) else {
@@ -90,6 +90,7 @@ impl Recorder {
                 inside_fixed: parent_fixed,
                 static_block: flow.static_block.get(),
                 root,
+                native,
             });
         }
     }

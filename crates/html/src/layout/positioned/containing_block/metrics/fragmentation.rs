@@ -30,6 +30,9 @@ pub(crate) struct Source {
     /// Outermost enclosing absolute/fixed flow (itself at the top): its own
     /// capture paints every nested continuation once (`paint::continuation`).
     pub(crate) root: u64,
+    /// The native source paints it; otherwise its legacy copies do (a box laid
+    /// out outside the source, or held, and every flow of its family).
+    pub(crate) native: bool,
 }
 
 struct Flow {
