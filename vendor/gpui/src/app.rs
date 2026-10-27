@@ -198,6 +198,15 @@ impl Application {
         this
     }
 
+    /// Настроить измерения до запуска платформы.
+    pub fn with_instrumentation(self, config: crate::InstrumentationConfig) -> Self {
+        let mut app = self.0.borrow_mut();
+        app.instrumentation = crate::Instrumentation::new(config);
+        app.platform.set_instrumentation(app.instrumentation.clone());
+        drop(app);
+        self
+    }
+
     /// Assigns the source of assets for the application.
     pub fn with_assets(self, asset_source: impl AssetSource) -> Self {
         let mut context_lock = self.0.borrow_mut();
@@ -758,6 +767,7 @@ enum PlatformOwnedDragState {
 pub struct App {
     pub(crate) this: Weak<AppCell>,
     pub(crate) platform: Rc<dyn Platform>,
+    instrumentation: crate::Instrumentation,
     text_system: Arc<TextSystem>,
 
     pub(crate) actions: Rc<ActionRegistry>,
@@ -855,6 +865,11 @@ pub struct App {
 }
 
 impl App {
+    /// Измерения этого приложения, независимые от других экземпляров.
+    pub fn instrumentation(&self) -> &crate::Instrumentation {
+        &self.instrumentation
+    }
+
     #[allow(clippy::new_ret_no_self)]
     pub(crate) fn new_app(
         platform: Rc<dyn Platform>,
@@ -879,10 +894,13 @@ impl App {
         #[cfg(any(test, gpui_leak_detection))]
         let _ref_counts = entities.ref_counts_drop_handle();
 
+        let instrumentation = crate::Instrumentation::default();
+        platform.set_instrumentation(instrumentation.clone());
         let app = Rc::new_cyclic(|this| AppCell {
             app: RefCell::new(App {
                 this: this.clone(),
                 platform: platform.clone(),
+                instrumentation,
                 text_system,
                 text_rendering_mode: Rc::new(Cell::new(TextRenderingMode::default())),
                 mode: GpuiMode::Production,

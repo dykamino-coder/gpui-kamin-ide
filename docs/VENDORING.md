@@ -233,10 +233,10 @@ git apply --unidiff-zero vendor/gpui-kaminide.patch
 | `WPT_FIRST_FRAME=1` | `crates/html/examples/wptrun`: снимок первого GPU-кадра документа без ожидания сходимости; диагностический режим, CI его не включает |
 | `WPT_READY=0` | `crates/html/examples/wptrun`: отключить сигнал готовности и использовать прежний протокол устойчивости; быстрый путь требует offscreen и фиксированного анимационного времени |
 | `WPT_PHASE_TIMING=1` | `crates/html/examples/wptrun`: микросекунды загрузки, разбора, первого кадра, устойчивости, readback и сравнения в stderr; отчёт вердиктов не меняется |
-| `KAMIN_FORCE_SCALE` | `crates/html/examples/wptrun.rs`: стабильный scale 1 для WPT; Windows display читает положительный scale |
-| `KAMIN_PREPAINT_PROF=1` | профилировщик GPUI и `crates/shell/src/web/diag*.rs`: время prepaint по типам элементов |
-| `KAMIN_DIAG_GPU_TIMING=1` | Windows batch-cost timestamps; `gpui::batch_cost::take_line()` читается диагностикой shell |
-| `KAMIN_DEBUG_D3D_DEVICE=warp\|d3d11on12` | `vendor/gpui-windows/src/debug_device.rs`, только debug-сборки: устройство WARP или D3D11On12 для native acceptance (`scripts/start_native_acceptance.ps1`, `docs/NATIVE_ACCEPTANCE_SEAMS.md`); release переменную не читает |
+| `KAMIN_FORCE_SCALE` | host shell/HTML читает scale и передаёт `InstrumentationConfig`; WPT по умолчанию и engine_bench используют scale 1; Windows display применяет переданный scale |
+| `KAMIN_PREPAINT_PROF=1` | host shell/HTML включает `InstrumentationConfig::prepaint`; профиль приложения читается диагностикой shell |
+| `KAMIN_DIAG_GPU_TIMING=1` | host shell/HTML включает GPU timestamps; `App::instrumentation().batches.take_line()` читается диагностикой shell |
+| `KAMIN_DEBUG_D3D_DEVICE=warp\|d3d11on12` | host shell/HTML, только debug-сборки: устройство WARP или D3D11On12 для native acceptance (`scripts/start_native_acceptance.ps1`, `docs/NATIVE_ACCEPTANCE_SEAMS.md`); release переменную не читает |
 
 `ORD_DBG`, `VERT_DBG` и `IMG_DBG` были локальными печатными пробами без
 потребителей и удалены. `GPUI_NATIVE_TREE` (печать дерева Taffy в
@@ -253,3 +253,17 @@ descriptors and source/destination placement carry host-selected geometry;
 CSS order and fragment ownership remain in HTML. The command contract is in
 `vendor/gpui/src/window/paint_contract.md`, with HTML contract probes covering
 record identity, placement, effects and lifecycle. No second backend is added.
+
+## Capture и instrumentation приложения
+
+`Application::with_instrumentation` задаёт типизированные настройки до запуска
+платформы. Профиль prepaint и счётчики GPU принадлежат приложению; backend
+получает тот же экземпляр явно, включая пересоздание устройства. Toolkit
+не читает перечисленные диагностические переменные окружения.
+
+`Window::set_frame_capture` передаёт единственный `FrameCaptureSink` backend
+этого окна. GPUI сохраняет GPU readback и BGRA pixels, а сессия
+`kamin_html::host::capture` владеет sequence, подписками, first/latest и временем
+readback. Уничтожение или замена endpoint завершает подписки ошибкой закрытия.
+WPT владеет readiness и выбором кадра; engine_bench сохраняет проверку строго
+одного первого кадра. Production offscreen scenes используют прежний renderer.

@@ -2183,7 +2183,7 @@ impl<M: InputModeKind> TextElement<M> {
         cx: &mut App,
     ) -> Option<Vec<(Range<usize>, HighlightStyle)>> {
         // KaminIDE patch (#76): спан профиля — где именно жир TextElement.
-        let _prof = gpui::prepaint_prof::enter("highlight_lines");
+        let _prof = cx.instrumentation().prepaint.enter("highlight_lines");
         let state = self.state.read(cx);
         let text = &state.text;
         let is_multi_line = state.is_multi_line();
@@ -2616,7 +2616,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         // Calculate the width of the line numbers
         let (line_number_width, line_number_len) = {
             // KaminIDE patch (#76): спан профиля.
-            let _prof = gpui::prepaint_prof::enter("layout_line_numbers");
+            let _prof = cx.instrumentation().prepaint.enter("layout_line_numbers");
             Self::layout_line_numbers(&state, &text, text_size, &text_style, window)
         };
 
@@ -2788,7 +2788,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
 
         let lines = {
             // KaminIDE patch (#76): спан профиля.
-            let _prof = gpui::prepaint_prof::enter("layout_lines");
+            let _prof = cx.instrumentation().prepaint.enter("layout_lines");
             Self::layout_lines(
                 &state,
                 &display_text,
