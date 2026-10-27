@@ -4,10 +4,9 @@
 //! отложенные группы держат неизменяемый снимок, а не общий реестр. Здесь же матрица 4×5
 //! из SVG-фильтра для `backdrop-filter: url(#id)`.
 
-mod context;
 pub mod element;
 pub(super) mod mask_geometry;
-pub(crate) use context::{MaskDefinitions, MaskResources};
+pub(crate) use crate::resources::svg_document::masks::MaskDefinitions;
 
 /// Prepare document definitions while deferred groups retain their previous set.
 pub(crate) fn collect_mask_defs(

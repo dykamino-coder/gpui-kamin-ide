@@ -64,7 +64,7 @@ pub struct DocState {
     /// Rasterized foreignObject layers of this document, bounded by the painter.
     pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
     /// SVG mask/filter definitions retained by deferred groups of this document.
-    pub(crate) masks: crate::paint::effects::mask::MaskResources,
+    pub(crate) masks: crate::resources::svg_document::masks::MaskResources,
     /// Носитель и область просмотра, которыми разобран документ.
     pub(crate) media: Cell<Media>,
     /// Режим quirks (HTML §13.2.6.4.1), ставит разбор.

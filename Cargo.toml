@@ -9,6 +9,8 @@ exclude = [
   "vendor/gpui-component",
   "vendor/taffy",
   "vendor/html5ever",
+  "vendor/tendril",
+  "vendor/xml-rs",
   "vendor/markup5ever_rcdom",
   "vendor/resvg",
   "vendor/usvg",

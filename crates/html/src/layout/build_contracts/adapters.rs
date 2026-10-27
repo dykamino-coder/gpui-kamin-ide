@@ -8,6 +8,16 @@ use crate::style::values::value::Len;
 use gpui::AnyElement;
 
 impl ChildBuild {
+    /// Native form control with its merged style; `None` for other tags.
+    pub(crate) fn control(
+        &self,
+        e: &Element,
+        style: &BoxStyle,
+        opts: &crate::layout::options::RenderOpts,
+    ) -> Option<AnyElement> {
+        (self.control)(e, style, opts)
+    }
+
     /// Рисует formatting context в текущем сборщике outline либо открывает собственную фазу.
     pub(crate) fn outline_flow(
         &self,

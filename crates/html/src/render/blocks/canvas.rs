@@ -21,11 +21,8 @@ pub(crate) fn canvas_layer(
     let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
     let measurement = measured.clone();
     let vcx = opts.cx.vcx();
-    // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
-    // §pagebackdrop): фильтр корня красит и его. Слой лежит
-    // СОСЕДОМ коробки корня, поэтому единственная точка окраски
-    // фильтром (`style::cascade::inherit`) до него не доходит — красим
-    // здесь, от СОБСТВЕННОГО фильтра корня.
+    // Фон холста входит в группу корня (css-compositing-1 §pagebackdrop).
+    // Соседний слой получает собственный фильтр корня отдельно.
     let root_filter = st.filter;
     let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а

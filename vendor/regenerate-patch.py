@@ -19,6 +19,8 @@ PINS = {
     "gpui-component": "gpui-component 0.7.1 (longbridge/gpui-kit 87d10ae5e1299d1be18670a37570c5402f952e34)",
     "taffy": "taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)",
     "html5ever": "html5ever 0.40.1",
+    "tendril": "tendril 0.5.1",
+    "xml-rs": "xml-rs 0.8.29",
     "markup5ever_rcdom": "markup5ever_rcdom 0.39.0+unofficial",
     "resvg": "resvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
     "usvg": "usvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
@@ -30,6 +32,8 @@ PACKAGE_REVISIONS = {
 }
 
 FIXES = {
+    "tendril": [],
+    "xml-rs": [],
     "gpui": [
         "Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.",
         "Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.",
@@ -212,7 +216,8 @@ def render(name, before, after):
             tofile=f"b/{path}" if rel in after else "/dev/null", n=0)
         for line in delta:
             lines.append(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n")
-    return "".join(lines).encode()
+    result = "".join(lines).encode()
+    return result if b"\ndiff --git " in result else result.rstrip(b"\n") + b"\n"
 
 
 def round_trip(name, before, after, patch, scratch):
@@ -224,8 +229,10 @@ def round_trip(name, before, after, patch, scratch):
             target = crate / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
-        subprocess.run(["git", "apply", "--unidiff-zero", "--whitespace=nowarn", "-"],
-                       input=patch, cwd=root, check=True)
+        # A clean import has a header-only patch; git apply rejects an empty diff.
+        if b"\ndiff --git " in patch:
+            subprocess.run(["git", "apply", "--unidiff-zero", "--whitespace=nowarn", "-"],
+                           input=patch, cwd=root, check=True)
         actual = upstream_files(crate)
         if actual != after:
             changed = sorted(k for k in actual.keys() | after.keys() if actual.get(k) != after.get(k))
