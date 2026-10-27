@@ -10,6 +10,8 @@
 //! освобождённый слот, перезапрошенная попытка) отбрасываются.
 
 mod access;
+#[cfg(test)]
+mod budget_tests;
 mod job;
 mod rasters;
 mod resolve;
@@ -23,7 +25,7 @@ pub(crate) use job::ImageServices;
 pub(crate) use subscriptions::{ConsumerId, ImageChange, ImageUse};
 
 use super::types::{DecodeOptions, DecodedImage, ImageError, ImageMetadata};
-use crate::resources::loader::{ResourceUrl, Revision};
+use crate::resources::loader::{Cancellation, ResourceUrl, Revision};
 use std::collections::HashMap;
 use url::Url;
 
@@ -66,6 +68,8 @@ struct Entry {
     /// Номер последней поставленной попытки: итог прежней попытки устарел.
     attempt: u64,
     subscribers: Vec<(ConsumerId, ImageUse)>,
+    /// Logical квота документа на точки готового растра.
+    admission: Option<super::admission::Admission>,
 }
 
 #[derive(Default)]
@@ -86,7 +90,12 @@ pub(crate) struct ImageStore {
     slots: Vec<Slot>,
     free: Vec<u32>,
     by_request: HashMap<ImageRequest, ImageId>,
-    queue: Vec<ImageId>,
+    queue: Vec<job::Queued>,
+    /// Ревизия, на которую списываются загрузки и точки; отмена — на поколение.
+    budget: crate::budget::RevisionBudget,
+    cancel: Cancellation,
+    /// Пределы и отмены заданий до выдачи в журнал документа.
+    diagnostics: std::sync::Mutex<crate::diagnostics::DiagnosticLog>,
 }
 
 impl Default for ImageStore {
@@ -109,6 +118,9 @@ impl ImageStore {
             free: Vec::new(),
             by_request: HashMap::new(),
             queue: Vec::new(),
+            budget: crate::budget::RevisionBudget::standalone(),
+            cancel: Cancellation::default(),
+            diagnostics: Default::default(),
         }
     }
 
@@ -151,10 +163,11 @@ impl ImageStore {
             content: None,
             attempt: self.attempts,
             subscribers: Vec::new(),
+            admission: None,
         });
         self.by_request.insert(request, id);
         if allowed {
-            self.queue.push(id);
+            self.enqueue(id);
         }
         self.revision += 1;
         id
@@ -163,7 +176,7 @@ impl ImageStore {
     /// Перепроверить ревизии прочитанного: изменившийся, появившийся или исчезнувший файл
     /// ставится заново, прежнее состояние держится до нового итога. Число поставленных.
     pub(crate) fn revalidate(&mut self) -> usize {
-        let mut queued = 0;
+        let mut queued = Vec::new();
         for (slot, cell) in self.slots.iter_mut().enumerate() {
             let Some(entry) = cell.entry.as_mut() else {
                 continue;
@@ -177,19 +190,22 @@ impl ImageStore {
             self.attempts += 1;
             entry.attempt = self.attempts;
             entry.content = None;
-            self.queue.push(ImageId {
+            queued.push(ImageId {
                 slot: slot as u32,
                 generation: cell.generation,
             });
-            queued += 1;
         }
-        queued
+        for &id in &queued {
+            self.enqueue(id);
+        }
+        queued.len()
     }
 
     /// Обновление документа: все запросы и подписки отбрасываются, итоги прежнего
     /// поколения больше не принимаются.
     pub(crate) fn begin_generation(&mut self) {
         self.generation += 1;
+        std::mem::take(&mut self.cancel).cancel();
         self.rasters.clear();
         for (slot, cell) in self.slots.iter_mut().enumerate() {
             if cell.entry.take().is_some() {

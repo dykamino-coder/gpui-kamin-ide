@@ -62,7 +62,7 @@ impl Paragraph {
                 // На базовую линию строки — ту же, на которую
                 // `paint_justified` опускает слова (`block-ellipsis-005`:
                 // знак кегля блока за `<span>` 1.5em стоял выше).
-                self.base_of(range).map(px),
+                self.shared_base(range).map(px),
                 false,
                 window,
                 cx,

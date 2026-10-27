@@ -56,6 +56,7 @@ mod tests {
                 alpha,
                 colour_space: ColourSpace::Srgb,
                 bytes: rgba.clone().into(),
+                retention: Default::default(),
             });
             let mut expected = rgba.clone();
             for p in expected.chunks_exact_mut(4) {
