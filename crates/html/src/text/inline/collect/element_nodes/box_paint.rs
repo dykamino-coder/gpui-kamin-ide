@@ -53,9 +53,9 @@ pub(super) fn element_style(
     // относительная функция) решён только там.
     // `background-clip: text`: бокс фоном не красится — заливку
     // несёт цвет глифов (`inherit`), узорную показать нечем.
-    if let Some(bg) = merged.background.filter(|_| {
+    if let Some(bg) = merged.paint_background().color.filter(|_| {
         merged.background_paint.paints()
-            && merged.bg_clip != Some(crate::style::computed::BgClip::Text)
+            && merged.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
     }) {
         merged.inline_decoration.band_color = Some(bg);
         // Единицы шрифта разрешаются так же, как в `inline_sides`:
@@ -98,10 +98,11 @@ pub(super) fn element_style(
         _ => MEDIUM_FONT_SIZE_PX,
     };
     let own_bg = merged
-        .background
+        .paint_background()
+        .color
         .filter(|_| {
             merged.background_paint.paints()
-                && merged.bg_clip != Some(crate::style::computed::BgClip::Text)
+                && merged.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
         })
         .is_some();
     let colors = std::array::from_fn(|i| merged.used_border_color(i));

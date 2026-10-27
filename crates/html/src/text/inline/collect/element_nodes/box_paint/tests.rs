@@ -172,3 +172,32 @@ fn filtered_inline_border_uses_box_colors_once_in_filter_order() {
         }
     }
 }
+
+#[test]
+fn filtered_inline_border_and_band_use_own_result_once() {
+    let parsed = crate::dom::parse(
+        r#"<span style="color:red;filter:brightness(50%);border:2px solid currentColor;background:blue">ab</span>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    crate::style::cascade::materialize::materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        vcx,
+    );
+    let span = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "span").unwrap();
+    let (boxed, _) = element_style(span, &BoxStyle::default(), vcx);
+    let red = Color {
+        r: 0.5,
+        ..Color::BLACK
+    };
+    let blue = Color {
+        b: 0.5,
+        ..Color::BLACK
+    };
+    assert_eq!(boxed.inline_decoration.border_stroke, Some((red, [2.0; 4])));
+    assert_eq!(boxed.inline_decoration.band_color, Some(blue));
+    assert_eq!(boxed.ink(), Some(red));
+    assert_eq!(boxed.color.unwrap().r, 1.0);
+    assert_eq!(boxed.background.unwrap().b, 1.0);
+}

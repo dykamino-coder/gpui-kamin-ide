@@ -13,9 +13,9 @@ pub(super) struct ShadowStyle {
 }
 
 impl ShadowStyle {
-    pub(super) fn new(style: &Computed) -> Self {
+    pub(super) fn new(style: &Computed, ink: Option<Color>) -> Self {
         Self {
-            color: style.color.unwrap_or(Color {
+            color: ink.unwrap_or(Color {
                 r: 0.,
                 g: 0.,
                 b: 0.,

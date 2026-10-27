@@ -37,7 +37,7 @@ pub(crate) fn styled_div_with(
     let c = if style.hidden == Some(true)
         && (shows_inside(&e.children) || style.filter_ref.is_some())
     {
-        bare = style.restyled(style.paint_off());
+        bare = style.without_own_decorations();
         &bare
     } else {
         style
@@ -54,7 +54,7 @@ pub(crate) fn styled_div_with(
     // держит край (`filter-scale-001`, `filter-scaling-001`).
     let unfilled;
     let paint = if c.background_paint.paints()
-        && c.background.is_some()
+        && c.paint_background().color.is_some()
         && !c.transform_ancestor
         && c.transform.is_none()
         && c.filter_ref
@@ -62,11 +62,7 @@ pub(crate) fn styled_div_with(
             .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some())
         && !e.children.iter().any(|n| !is_blank(n))
     {
-        unfilled = {
-            let mut unfilled = c.clone();
-            unfilled.background = None;
-            unfilled
-        };
+        unfilled = c.without_background_color();
         &unfilled
     } else {
         c
@@ -90,8 +86,8 @@ pub(crate) fn styled_div_with(
     // на подготовке — позже по дереву её прочтёт `anchor::AnchorPlace`
     // позиционированной коробки. Ставится здесь, потому что через
     // `styled_div_with` проходят и блоки, и атомы строки (`inline-block` из
-    // `anchor-position-005`), и держатели. `visibility: hidden` якоря —
-    // из `style`: `c` может быть `paint_off()` без этого флага
+    // `anchor-position-005`), и держатели. Подавление собственной краски
+    // сохраняет исходный `visibility: hidden` якоря
     // (§position-visibility: anchor-visible, «anchor box is invisible»).
     if let Some(probe) =
         crate::layout::positioned::anchor::probe_for(e, c, style.hidden == Some(true), vcx)

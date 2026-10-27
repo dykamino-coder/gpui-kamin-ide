@@ -100,10 +100,12 @@ mod tests {
         own.apply_one("background-image", raw, vcx);
         own.apply_one("filter", "invert(1)", vcx);
         let rendered = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
-        let image = super::super::computed_source(rendered.bg_image.as_ref().unwrap(), true, vcx)
-            .unwrap()
-            .raster((7.0, 5.0), vcx)
-            .unwrap();
+        let background = rendered.paint_background();
+        let image =
+            super::super::computed_source(background.top.image.as_ref().unwrap(), true, vcx)
+                .unwrap()
+                .raster((7.0, 5.0), vcx)
+                .unwrap();
         let operand =
             crate::style::computed::ImageSource::parse(&format!("filter({raw}, invert(1))"), vcx)
                 .unwrap();
@@ -112,6 +114,8 @@ mod tests {
             .raster((7.0, 5.0), vcx)
             .unwrap();
         assert_eq!(image.bytes.as_ref(), expected.bytes.as_ref());
-        assert!(rendered.gradient.is_none());
+        assert!(background.gradient.is_none());
+        assert_eq!(rendered.gradient, own.gradient);
+        assert_eq!(rendered.bg_image, own.bg_image);
     }
 }

@@ -62,7 +62,13 @@ fn styled_div(styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
     let vcx = cx.vcx();
     match styling {
         Styling::Box(style) => apply::apply(gpui::div(), style, vcx),
-        Styling::Text(style) => apply::apply_text(gpui::div(), style, vcx),
+        Styling::Text(style) => apply::apply_text(
+            gpui::div(),
+            style,
+            style.text_shadow_ink.or(style.ink()),
+            true,
+            vcx,
+        ),
         Styling::Margins(margins) => apply::margins(gpui::div(), margins, vcx),
     }
 }

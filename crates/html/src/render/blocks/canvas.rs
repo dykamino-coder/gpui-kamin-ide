@@ -5,19 +5,18 @@ use gpui::IntoElement;
 use crate::dom::Element;
 use crate::paint::effects::grouped::grouped;
 use crate::style::canvas_background::{CanvasBackground, CanvasBackgroundSource};
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
-/// Push the canvas background layer of root `e`; return the root box
-/// measurement it reads, for the root's own box to fill at prepaint.
+/// Фон холста и замер коробки корня, который заполнит её prepaint.
 pub(crate) fn canvas_layer(
     e: &Element,
     source: &CanvasBackgroundSource,
     opts: &RenderOpts,
     out: &mut Vec<gpui::AnyElement>,
 ) -> Option<crate::paint::background::RootMeasurement> {
-    let st = e.style.used();
+    let st = BoxStyle::shared(e.style.used().style);
     let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
     let measurement = measured.clone();
     let vcx = opts.cx.vcx();
@@ -133,7 +132,7 @@ pub(crate) fn canvas_layer(
                     for l in layers.iter().rev() {
                         if let Some(t) = crate::paint::background::canvas_layer(
                             l,
-                            st.style.clone(),
+                            st.style_rc().clone(),
                             area.clone(),
                             vcx,
                         ) {
@@ -144,7 +143,7 @@ pub(crate) fn canvas_layer(
                 }
                 None => crate::paint::background::canvas_layer(
                     root_tile.as_ref().unwrap_or(&background.top),
-                    st.style.clone(),
+                    st.style_rc().clone(),
                     area,
                     vcx,
                 ),
@@ -161,7 +160,7 @@ pub(crate) fn canvas_layer(
             .child(tiles)
             .into_any_element();
     } else if st.bg_image.is_some()
-        && let Some(tiles) = crate::paint::background::layer(&st, vcx)
+        && let Some(tiles) = crate::paint::background::layer(&background.top, &st, vcx)
     {
         // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
         // ширина + горизонтальные отступы; полоса прижата по

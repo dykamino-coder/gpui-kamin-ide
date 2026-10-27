@@ -171,7 +171,10 @@ pub(super) fn local_image_source<'a>(
         .preserve_natural_pixels(true);
     // css-images-3 §image-rendering: `pixelated` scales by nearest neighbour.
     image = image.pixelated(e.style.cascaded().image_pixelated == Some(true));
-    if e.style.used().filter.is_some_and(|f| f.grayscale > 0.5) {
+    if crate::style::computed::BoxStyle::shared(e.style.used())
+        .paint_filter()
+        .is_some_and(|f| f.grayscale > 0.5)
+    {
         image = image.grayscale(true);
     }
     // Содержимое замещаемого режется кривой ВНУТРЕННЕГО края его поля

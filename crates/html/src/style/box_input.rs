@@ -8,6 +8,7 @@ use crate::style::computed::writing_mode::WritingMode;
 /// вместе с `layout_made`; вычисленные CSS-значения не владеют этими фактами.
 #[derive(Clone, Debug)]
 pub struct BoxStyleInput {
+    pub(crate) paint: Option<std::rc::Rc<crate::style::decoration_paint::DecorationPaint>>,
     pub(crate) style: std::rc::Rc<crate::style::computed::Computed>,
     pub(crate) context: Option<std::rc::Rc<BoxContext<WritingMode, Align>>>,
     pub(crate) canvas_background: Option<crate::style::canvas_background::CanvasBackgroundSource>,
@@ -22,9 +23,11 @@ impl BoxStyleInput {
         inline_decoration: crate::style::inline_decoration::InlineDecoration,
         background_paint: crate::style::background_paint::BackgroundPaint,
         canvas_background: Option<crate::style::canvas_background::CanvasBackgroundSource>,
+        paint: Option<std::rc::Rc<crate::style::decoration_paint::DecorationPaint>>,
     ) -> Self {
         Self {
             style,
+            paint,
             context,
             inline_decoration,
             background_paint,
@@ -35,7 +38,14 @@ impl BoxStyleInput {
 
 impl From<std::rc::Rc<crate::style::computed::Computed>> for BoxStyleInput {
     fn from(style: std::rc::Rc<crate::style::computed::Computed>) -> Self {
-        Self::new(style, None, Default::default(), Default::default(), None)
+        Self::new(
+            style,
+            None,
+            Default::default(),
+            Default::default(),
+            None,
+            None,
+        )
     }
 }
 

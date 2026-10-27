@@ -72,7 +72,7 @@ pub(super) fn prepare(
             html.tag = "div".into();
             html.attrs.clear();
             html.marks = Default::default();
-            html.style = crate::dom::SharedStyle::layout_made(merged);
+            html.style = crate::dom::SharedStyle::layout_made(merged.without_paint_filter());
             html.style.used_mut().width = Some(Len::Px(w * zoom));
             html.style.used_mut().height = Some(Len::Px(h * zoom));
             html.style.used_mut().display = Some(Display::Block);

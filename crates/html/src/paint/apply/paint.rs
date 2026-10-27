@@ -59,17 +59,17 @@ pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         && !crate::paint::background::single_corner::eligible(c)
         && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {
-        if let Some(g) = &c.gradient {
+        if let Some(g) = &c.paint_background().gradient {
             // Градиенту с размером/повтором/позицией нужна механика плитки —
             // его рисует слой-картинка (см. render::decorations), заливка
             // красила бы всю коробку.
             if !c.gradient_as_tile() {
                 d = d.bg(fill(g));
             }
-            if let Some(bg) = c.background {
+            if let Some(bg) = c.paint_background().color {
                 d = d.bg(gpui::Background::from(bg.to_hsla()));
             }
-        } else if let Some(bg) = c.background {
+        } else if let Some(bg) = c.paint_background().color {
             d = d.bg(gpui::Background::from(bg.to_hsla()));
         }
     }
@@ -82,7 +82,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     }
     d = apply_opacity(d, c, vcx);
     // `visibility: hidden` — элемент занимает своё место, но не рисуется.
-    if c.hidden == Some(true) {
+    if c.hidden == Some(true) && c.paints_decorations() {
         d.style().visibility = Some(gpui::Visibility::Hidden);
     }
     // Элемент, не ловящий курсор, не меняет и его форму.

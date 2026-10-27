@@ -17,15 +17,6 @@ impl Computed {
         value.resolve(self.current_color())
     }
 
-    /// `caret-color`: `auto` — `currentcolor` (css-ui-4 §caret-color);
-    /// `None` — цвета текста нет, решает тема поля.
-    pub(crate) fn used_caret_color(&self) -> Option<Color> {
-        match self.caret_color.as_ref().and_then(ColorOrAuto::color) {
-            Some(color) => Some(self.used_color(color)),
-            None => self.color,
-        }
-    }
-
     /// `accent-color`; `None` — `auto` (цвет акцента платформы).
     pub(crate) fn used_accent_color(&self) -> Option<Color> {
         let color = self.accent_color.as_ref().and_then(ColorOrAuto::color)?;

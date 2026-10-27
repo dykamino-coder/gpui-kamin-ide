@@ -27,7 +27,7 @@ pub(crate) enum ColorBox {
 /// Filter Effects 2 §2.1, шаг 5: собственный фон рисуется после фильтрации
 /// подложки. Квад GPUI предшествует детям, поэтому здесь нужен слой фона,
 /// даже когда background-clip оставляет всю border-box.
-pub(crate) fn needs_color_layer(c: &Computed, vcx: ValueCx<'_>) -> bool {
+pub(crate) fn needs_color_layer(c: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> bool {
     match c.color_clip(vcx) {
         Some(BgClip::PaddingBox | BgClip::ContentBox) => true,
         None | Some(BgClip::BorderBox) => c.backdrop_filter_set,
@@ -45,11 +45,12 @@ pub(crate) fn color_layer(
         || !needs_color_layer(c, vcx)
         || crate::paint::background::single_corner::eligible(c)
         || crate::paint::effects::corner_clip::insets(c, vcx).is_some()
-        || (c.background.is_none() && (c.gradient.is_none() || c.gradient_as_tile()))
+        || (c.paint_background().color.is_none()
+            && (c.paint_background().gradient.is_none() || c.gradient_as_tile()))
     {
         return None;
     }
-    let style = c.style_rc().clone();
+    let style = c.clone();
     let values = vcx.keep();
     Some(
         super::exact_layer::ExactLayer::inset([0.0; 4], move |geometry, window| {
@@ -59,7 +60,13 @@ pub(crate) fn color_layer(
                     border,
                     padding,
                 };
-                paint_color(&style, area, window, values.vcx());
+                paint_color_values(
+                    &style,
+                    &style.paint_background(),
+                    area,
+                    window,
+                    values.vcx(),
+                );
             }
         })
         .hooked(),
@@ -69,11 +76,27 @@ pub(crate) fn color_layer(
 /// Цвет — под изображениями, clip берётся у нижнего слоя. Прямоугольник
 /// задан в padding-box; маска ячеек таблицы остаётся ответственностью caller.
 pub(crate) fn paint_color(c: &Computed, area: ColorBox, window: &mut Window, vcx: ValueCx<'_>) {
-    let clip = c.color_clip(vcx).unwrap_or(BgClip::BorderBox);
+    paint_color_values(
+        c,
+        &crate::style::background_paint::BackgroundValues::from_computed(c),
+        area,
+        window,
+        vcx,
+    );
+}
+
+fn paint_color_values(
+    c: &Computed,
+    bg: &crate::style::background_paint::BackgroundValues,
+    area: ColorBox,
+    window: &mut Window,
+    vcx: ValueCx<'_>,
+) {
+    let clip = bg.color_clip.unwrap_or(BgClip::BorderBox);
     if matches!(clip, BgClip::Text | BgClip::BorderArea) {
         return;
     }
-    let Some(fill) = fill::Fill::new(c, area, vcx) else {
+    let Some(fill) = fill::Fill::new(c, bg, area, vcx) else {
         return;
     };
     let (bounds, radii) = geometry::area(c, area, clip, vcx);

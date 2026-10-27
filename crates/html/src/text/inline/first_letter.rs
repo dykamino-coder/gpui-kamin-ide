@@ -90,7 +90,7 @@ fn letter_style(
     let mut letter = own.clone();
     letter.overlay_font_size(style);
     letter.line_height = style.line_height.or(own.line_height);
-    letter.color = style.color.or(own.color);
+    letter.overlay_pseudo_color(style.color);
     letter.font_weight = style.font_weight.or(own.font_weight);
     letter.italic = style.italic.or(own.italic);
     letter.font_family = style.font_family.clone().or(own.font_family.clone());

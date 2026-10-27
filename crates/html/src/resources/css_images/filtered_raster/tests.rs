@@ -52,7 +52,10 @@ fn concrete_size_keeps_shadow_lengths_in_css_pixels() {
     let input = Source::Raster(original);
     let filtered = Source::Filtered {
         image: Box::new(input),
-        list: crate::style::computed::ImageFilter::parse("drop-shadow(5px 0 0 green)", vcx),
+        list: Box::new(crate::style::computed::ImageFilter::parse(
+            "drop-shadow(5px 0 0 green)",
+            vcx,
+        )),
     };
     assert_eq!(filtered.intrinsic().w, Some(2.0));
     let result = filtered.sampled_raster((10.0, 10.0), true, vcx).unwrap();
