@@ -72,4 +72,43 @@ impl Window {
         let _clips = self.render_contexts.enter(clips.clips.clone());
         Ok(paint(self))
     }
+
+    /// Повтор во вложенной записи тех clip, которые цепочка containing block
+    /// добавляет поверх `base`. Обе цепочки сохранены одной охватывающей записью
+    /// над теми же исходными координатами; каждый clip следует за всеми
+    /// выбранными размещениями активной записи, как собственный clip её узлов.
+    pub fn with_paint_source_clips<R>(
+        &mut self,
+        clips: &PaintSegmentClips,
+        base: &PaintSegmentClips,
+        paint: impl FnOnce(&mut Self) -> R,
+    ) -> Result<R, PaintRecordError> {
+        clips.identity.check_pass(self)?;
+        if !Rc::ptr_eq(&clips.segments, &base.segments) {
+            return Err(PaintRecordError::InvalidSegment);
+        }
+        let mut local = Vec::new();
+        let mut scope = clips.clips.as_ref();
+        while let Some(clip) = scope {
+            if base.clips.as_ref().is_some_and(|base| Rc::ptr_eq(clip, base)) {
+                break;
+            }
+            local.push(clip.bounds);
+            scope = clip.parent.as_ref();
+        }
+        if scope.is_none() && base.clips.is_some() {
+            return Err(PaintRecordError::InvalidSegment);
+        }
+        if self.render_contexts.get::<Recording>().is_none() {
+            return Err(PaintRecordError::InvalidSegment);
+        }
+        let segments = self.render_contexts.get::<SegmentSet>().ok_or(PaintRecordError::InvalidSegment)?;
+        let routes = scopes(&segments.0, self.render_contexts.get::<Selection>().as_deref());
+        let mut chain = self.render_contexts.get::<crate::scene::segments::Clip>();
+        for bounds in local.into_iter().rev() {
+            chain = Some(Rc::new(crate::scene::segments::Clip { bounds, routes: routes.clone(), parent: chain }));
+        }
+        let _clips = self.render_contexts.enter(chain);
+        Ok(paint(self))
+    }
 }

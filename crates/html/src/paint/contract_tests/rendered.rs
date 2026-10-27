@@ -164,6 +164,8 @@ pub(crate) fn top(quads: &[(Bounds<Pixels>, Hsla)], x: f32, y: f32) -> Option<Hs
         .map(|(_, c)| *c)
 }
 
+mod continuations;
+
 #[test]
 fn p08dbg_probe() {
     let list = std::env::var("P08_HTML").unwrap_or_default();
