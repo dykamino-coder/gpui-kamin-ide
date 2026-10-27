@@ -94,7 +94,10 @@ impl DecodedImageCache {
             admission = Some(admitted);
             Ok(grant)
         });
-        if !matches!(decoded, Err(ImageError::LimitExceeded(ImageLimit::Budget(_)))) {
+        if !matches!(
+            decoded,
+            Err(ImageError::LimitExceeded(ImageLimit::Budget(_)))
+        ) {
             let encoded = bytes.len();
             let entry = Entry {
                 encoded,

@@ -15,14 +15,16 @@ mod admission_tests;
 mod base_url;
 #[cfg(test)]
 mod budget_tests;
-#[cfg(test)]
-mod work_budget_tests;
 mod builder;
 mod diagnostics;
 #[cfg(test)]
 mod diagnostics_tests;
+#[cfg(test)]
+mod resource_diagnostics_tests;
 #[cfg(feature = "engine-bench")]
 mod timing;
+#[cfg(test)]
+mod work_budget_tests;
 #[cfg(feature = "engine-bench")]
 pub use timing::BuildTimings;
 mod revision;

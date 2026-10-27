@@ -10,12 +10,12 @@
 //! освобождённый слот, перезапрошенная попытка) отбрасываются.
 
 mod access;
+#[cfg(test)]
+mod budget_tests;
 mod job;
 mod rasters;
 mod resolve;
 mod subscriptions;
-#[cfg(test)]
-mod budget_tests;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -94,6 +94,8 @@ pub(crate) struct ImageStore {
     /// Ревизия, на которую списываются загрузки и точки; отмена — на поколение.
     budget: crate::budget::RevisionBudget,
     cancel: Cancellation,
+    /// Пределы и отмены заданий до выдачи в журнал документа.
+    diagnostics: crate::diagnostics::DiagnosticLog,
 }
 
 impl Default for ImageStore {
@@ -118,6 +120,7 @@ impl ImageStore {
             queue: Vec::new(),
             budget: crate::budget::RevisionBudget::standalone(),
             cancel: Cancellation::default(),
+            diagnostics: Default::default(),
         }
     }
 

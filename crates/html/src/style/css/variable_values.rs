@@ -15,9 +15,8 @@ pub(crate) fn compute(
     parent: &VarMap,
     registered: &HashMap<String, Registered>,
     accepts: impl Fn(&str, &str) -> bool,
-    revision: &crate::budget::RevisionBudget,
+    work: &Work<'_>,
 ) -> VarMap {
-    let work = Work::new(revision);
     let mut resolver = Resolver {
         raw,
         parent,
@@ -32,7 +31,7 @@ pub(crate) fn compute(
     names
         .into_iter()
         .filter_map(|name| {
-            let value = resolver.value(name, &work)?;
+            let value = resolver.value(name, work)?;
             Some((name.clone(), value))
         })
         .collect()

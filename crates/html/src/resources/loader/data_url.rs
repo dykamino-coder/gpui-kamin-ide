@@ -135,7 +135,10 @@ mod tests {
                 Err(LoadError::TooLarge { limit: 3 })
             );
         }
-        assert_eq!(decode_bounded(",%E2%82%AC", 64, 3, free).unwrap(), "€".as_bytes());
+        assert_eq!(
+            decode_bounded(",%E2%82%AC", 64, 3, free).unwrap(),
+            "€".as_bytes()
+        );
         assert_eq!(decode_bounded(",%broken", 64, 8, free).unwrap(), b"%broken");
     }
 

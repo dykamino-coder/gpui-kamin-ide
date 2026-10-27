@@ -24,7 +24,12 @@ fn rgb_png(w: u32, h: u32) -> Vec<u8> {
     use image::ImageEncoder;
     let mut out = Vec::new();
     image::codecs::png::PngEncoder::new(&mut out)
-        .write_image(&vec![9; (w * h * 3) as usize], w, h, image::ExtendedColorType::Rgb8)
+        .write_image(
+            &vec![9; (w * h * 3) as usize],
+            w,
+            h,
+            image::ExtendedColorType::Rgb8,
+        )
         .unwrap();
     out
 }
@@ -41,10 +46,21 @@ fn declared_pixels_boundary_is_checked_before_decoding() {
         assert_eq!(doc.used(BudgetKind::DecodedPixels), if ok { 16 } else { 0 });
         if !ok {
             let e = exceeded(decoded.as_ref().unwrap_err()).unwrap();
-            assert_eq!((e.scope, e.limit, e.increment), (BudgetScope::Document, 15, 16));
-            assert_eq!(cache.len(), 0, "a quota refusal is not a property of the bytes");
+            assert_eq!(
+                (e.scope, e.limit, e.increment),
+                (BudgetScope::Document, 15, 16)
+            );
+            assert_eq!(
+                cache.len(),
+                0,
+                "a quota refusal is not a property of the bytes"
+            );
         }
-        assert_eq!(doc.used(BudgetKind::LiveBytes), 0, "temporaries end with decoding");
+        assert_eq!(
+            doc.used(BudgetKind::LiveBytes),
+            0,
+            "temporaries end with decoding"
+        );
         drop((decoded, admission, cache));
         assert_eq!(governor.used(BudgetKind::DecodedPixels), 0);
         assert_eq!(doc.used(BudgetKind::DecodedPixels), 0);
@@ -78,7 +94,10 @@ fn conversion_temporaries_are_live_bytes_during_decoding() {
         let (decoded, _) = cache.decode(bytes.clone(), DecodeOptions::default(), &doc);
         assert_eq!(decoded.is_ok(), ok);
         if !ok {
-            assert_eq!(exceeded(decoded.as_ref().unwrap_err()).unwrap().increment, 48);
+            assert_eq!(
+                exceeded(decoded.as_ref().unwrap_err()).unwrap().increment,
+                48
+            );
             assert_eq!(governor.used(BudgetKind::DecodedPixels), 0, "rolled back");
         }
         assert_eq!(doc.used(BudgetKind::LiveBytes), 0);
@@ -114,15 +133,33 @@ fn documents_share_one_physical_raster_and_eviction_keeps_live_owners() {
     };
     assert!(Arc::ptr_eq(&raster(&first), &raster(&second)));
     assert_eq!(cache.len(), 1);
-    assert_eq!(governor.used(BudgetKind::DecodedPixels), 16, "one physical buffer");
-    assert_eq!((a.used(BudgetKind::DecodedPixels), b.used(BudgetKind::DecodedPixels)), (16, 16));
+    assert_eq!(
+        governor.used(BudgetKind::DecodedPixels),
+        16,
+        "one physical buffer"
+    );
+    assert_eq!(
+        (
+            a.used(BudgetKind::DecodedPixels),
+            b.used(BudgetKind::DecodedPixels)
+        ),
+        (16, 16)
+    );
     let live = raster(&second);
     drop((first, second, held_a, cache));
     assert_eq!(a.used(BudgetKind::DecodedPixels), 0);
-    assert_eq!(governor.used(BudgetKind::DecodedPixels), 16, "evicted, still owned");
+    assert_eq!(
+        governor.used(BudgetKind::DecodedPixels),
+        16,
+        "evicted, still owned"
+    );
     drop(held_b);
     assert_eq!(b.used(BudgetKind::DecodedPixels), 0);
-    assert_eq!(governor.used(BudgetKind::DecodedPixels), 16, "the raster Arc is alive");
+    assert_eq!(
+        governor.used(BudgetKind::DecodedPixels),
+        16,
+        "the raster Arc is alive"
+    );
     drop(live);
     assert_eq!(governor.used(BudgetKind::DecodedPixels), 0);
 }

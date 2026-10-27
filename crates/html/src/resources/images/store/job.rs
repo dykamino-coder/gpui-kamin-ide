@@ -121,6 +121,17 @@ impl ImageStore {
         &self.budget
     }
 
+    /// Новые наблюдения пределов и отмен с прошлой выдачи.
+    pub(crate) fn take_diagnostics(&mut self) -> (Vec<crate::diagnostics::Diagnostic>, u64) {
+        self.diagnostics.take()
+    }
+
+    fn observe(&mut self, error: &ImageError) {
+        if let Some(diagnostic) = crate::resources::images::admission::diagnostic(error) {
+            self.diagnostics.record(diagnostic);
+        }
+    }
+
     /// Поставить запрос: live-квота задания документа резервируется до работы;
     /// отказ — типизированная неудача запроса, а не вечное ожидание.
     pub(super) fn enqueue(&mut self, id: ImageId) {
@@ -128,10 +139,10 @@ impl ImageStore {
         match task {
             Ok(task) => self.queue.push(Queued { id, task }),
             Err(error) => {
+                let error = ImageError::LimitExceeded(ImageLimit::Budget(error));
+                self.observe(&error);
                 if let Some(entry) = self.entry_mut(id) {
-                    entry.state = ImageState::Failed(ImageError::LimitExceeded(
-                        ImageLimit::Budget(error),
-                    ));
+                    entry.state = ImageState::Failed(error);
                 }
             }
         }
@@ -169,10 +180,15 @@ impl ImageStore {
 
     /// Принять итог задания; устаревший итог отбрасывается (`None`) вместе с его квотами.
     pub(crate) fn apply_completed(&mut self, done: CompletedImage) -> Option<ImageChange> {
+        // Отмена устаревшего задания — телеметрия; прочие отказы — только принятого итога.
+        if let Err(error @ ImageError::Cancelled) = &done.result {
+            self.observe(error);
+        }
         if done.generation != self.generation {
             return None;
         }
         let revision = self.revision + 1;
+        let failed = done.result.as_ref().err().cloned();
         let entry = self.entry_mut(done.id)?;
         if entry.attempt != done.attempt {
             return None;
@@ -187,6 +203,9 @@ impl ImageStore {
         entry.admission = done.admission;
         entry.content = Some(done.revision);
         self.revision = revision;
+        if let Some(error) = failed {
+            self.observe(&error);
+        }
         Some(change)
     }
 

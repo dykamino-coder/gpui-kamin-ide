@@ -51,7 +51,10 @@ mod tests {
         let resource = Url::from_file_path(&path).unwrap().to_string();
         assert!(resource.contains("%20"));
         let revision = crate::budget::RevisionBudget::standalone();
-        assert_eq!(read(&resource, &revision).as_deref(), Ok(b"resource".as_slice()));
+        assert_eq!(
+            read(&resource, &revision).as_deref(),
+            Ok(b"resource".as_slice())
+        );
         assert_eq!(revision.used(crate::budget::BudgetKind::ResourceBytes), 8);
         std::fs::remove_file(path).unwrap();
     }

@@ -33,6 +33,8 @@ pub(crate) enum Unsubstituted {
 pub(crate) struct Work<'a> {
     left: Cell<usize>,
     revision: &'a RevisionBudget,
+    /// Первый предел области: одна причина для журнала документа.
+    first: Cell<Option<SubstitutionLimit>>,
 }
 
 impl<'a> Work<'a> {
@@ -40,37 +42,69 @@ impl<'a> Work<'a> {
         Self {
             left: Cell::new(MAX_WORK),
             revision,
+            first: Cell::new(None),
         }
     }
 
+    /// Записать первый предел области в журнал документа (invalid at computed time
+    /// со штатной семантикой уже применён вызывающим).
+    pub(crate) fn finish(self, doc: &crate::document::state::DocState) {
+        if let Some(limit) = self.first.get() {
+            doc.record_observed(diagnostic(limit));
+        }
+    }
+
+    fn limit(&self, limit: SubstitutionLimit) -> Unsubstituted {
+        if self.first.get().is_none() {
+            self.first.set(Some(limit));
+        }
+        Unsubstituted::Limit(limit)
+    }
+
     fn spend(&self, bytes: usize) -> Result<(), Unsubstituted> {
-        let limit = Unsubstituted::Limit(SubstitutionLimit::Work {
-            limit: MAX_WORK as u64,
-        });
-        let left = self.left.get().checked_sub(bytes).ok_or(limit)?;
+        let Some(left) = self.left.get().checked_sub(bytes) else {
+            return Err(self.limit(SubstitutionLimit::Work {
+                limit: MAX_WORK as u64,
+            }));
+        };
         self.revision
             .consume(BudgetKind::SubstitutionBytes, bytes as u64)
-            .map_err(|error| Unsubstituted::Limit(SubstitutionLimit::Revision(error)))?;
+            .map_err(|error| self.limit(SubstitutionLimit::Revision(error)))?;
         self.left.set(left);
         Ok(())
     }
 
     fn append(&self, result: &mut String, value: &str) -> Result<(), Unsubstituted> {
-        fit(result.len(), value.len())?;
+        self.fit(result.len(), value.len())?;
         self.spend(value.len())?;
         result.push_str(value);
         Ok(())
     }
+
+    fn fit(&self, len: usize, extra: usize) -> Result<(), Unsubstituted> {
+        if extra > MAX_OUTPUT.saturating_sub(len) {
+            return Err(self.limit(SubstitutionLimit::Output {
+                limit: MAX_OUTPUT as u64,
+                attempted: len as u64 + extra as u64,
+            }));
+        }
+        Ok(())
+    }
 }
 
-fn fit(len: usize, extra: usize) -> Result<(), Unsubstituted> {
-    if extra > MAX_OUTPUT.saturating_sub(len) {
-        return Err(Unsubstituted::Limit(SubstitutionLimit::Output {
-            limit: MAX_OUTPUT as u64,
-            attempted: len as u64 + extra as u64,
-        }));
-    }
-    Ok(())
+fn diagnostic(limit: SubstitutionLimit) -> crate::diagnostics::Diagnostic {
+    use crate::diagnostics::{Code, Diagnostic, Measure, Phase, Severity};
+    let measure = match limit {
+        SubstitutionLimit::Output { limit, attempted } => Measure::Length { limit, attempted },
+        SubstitutionLimit::Work { limit } => Measure::Ceiling { limit },
+        SubstitutionLimit::Revision(error) => return Diagnostic::budget(Phase::Style, error),
+    };
+    Diagnostic::observed(
+        Code::SubstitutionLimit,
+        Severity::Warning,
+        Phase::Style,
+        Some(measure),
+    )
 }
 
 struct Call {
@@ -95,7 +129,7 @@ pub(crate) fn substitute(
 ) -> Result<String, Unsubstituted> {
     let calls = calls(raw);
     if calls.is_empty() {
-        fit(0, raw.len())?;
+        work.fit(0, raw.len())?;
         return Ok(raw.to_string());
     }
     expand(raw, calls, lookup, work)

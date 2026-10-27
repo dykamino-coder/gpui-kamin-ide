@@ -42,8 +42,12 @@ fn ask(store: &mut ImageStore, w: u32) -> ImageId {
 }
 
 fn live(doc: &Doc) -> [u64; 3] {
-    [BudgetKind::PendingTasks, BudgetKind::DecodedPixels, BudgetKind::LiveBytes]
-        .map(|kind| doc.document.used(kind) + doc.governor.used(kind))
+    [
+        BudgetKind::PendingTasks,
+        BudgetKind::DecodedPixels,
+        BudgetKind::LiveBytes,
+    ]
+    .map(|kind| doc.document.used(kind) + doc.governor.used(kind))
 }
 
 fn budget_kind(state: Option<&ImageState>) -> Option<BudgetKind> {
@@ -66,7 +70,10 @@ fn queued_jobs_reserve_pending_tasks_at_the_boundary() {
         assert_eq!(refused, (queued == 1).then_some(BudgetKind::PendingTasks));
         d.store.complete_pending();
         assert_eq!(d.document.used(BudgetKind::PendingTasks), 0);
-        assert!(matches!(d.store.snapshot().state(a), Some(ImageState::Ready { .. })));
+        assert!(matches!(
+            d.store.snapshot().state(a),
+            Some(ImageState::Ready { .. })
+        ));
     }
 }
 
@@ -98,7 +105,11 @@ fn cancelled_late_and_superseded_results_release_every_reservation() {
     // Вытесненная попытка того же поколения: её допуск возвращается, новый — принят.
     let id = ask(&mut d.store, 3);
     let old = d.store.take_jobs();
-    d.store.slots[id.slot as usize].entry.as_mut().unwrap().content = Some(Revision::Absent);
+    d.store.slots[id.slot as usize]
+        .entry
+        .as_mut()
+        .unwrap()
+        .content = Some(Revision::Absent);
     assert_eq!(d.store.revalidate(), 1);
     let stale = old[0].run(&services);
     drop(old);
@@ -117,8 +128,15 @@ fn closing_the_store_cancels_its_outstanding_jobs() {
     let services = d.store.services().clone();
     let jobs = d.store.take_jobs();
     drop(d.store);
-    assert!(matches!(jobs[0].run(&services).result, Err(ImageError::Cancelled)));
-    assert_eq!(d.document.used(BudgetKind::PendingTasks), 1, "the job is still held");
+    assert!(matches!(
+        jobs[0].run(&services).result,
+        Err(ImageError::Cancelled)
+    ));
+    assert_eq!(
+        d.document.used(BudgetKind::PendingTasks),
+        1,
+        "the job is still held"
+    );
     drop(jobs);
     assert_eq!(d.document.used(BudgetKind::PendingTasks), 0);
     assert_eq!(d.governor.used(BudgetKind::PendingTasks), 0);
@@ -131,8 +149,14 @@ fn exhausted_resource_aggregate_fails_the_image_and_the_revision() {
     let mut d = doc(BudgetKind::ResourceBytes, size + png(2, 1).len() as u64 - 1);
     let (a, b) = (ask(&mut d.store, 1), ask(&mut d.store, 2));
     d.store.complete_pending();
-    assert!(matches!(d.store.snapshot().state(a), Some(ImageState::Ready { .. })));
-    assert_eq!(budget_kind(d.store.snapshot().state(b)), Some(BudgetKind::ResourceBytes));
+    assert!(matches!(
+        d.store.snapshot().state(a),
+        Some(ImageState::Ready { .. })
+    ));
+    assert_eq!(
+        budget_kind(d.store.snapshot().state(b)),
+        Some(BudgetKind::ResourceBytes)
+    );
     let terminal = d.store.budget().exhausted().unwrap();
     assert!(matches!(terminal, BudgetError::Exceeded(e) if e.kind == BudgetKind::ResourceBytes));
     assert_eq!(d.store.budget().used(BudgetKind::ResourceBytes), size);

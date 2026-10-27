@@ -49,7 +49,10 @@ fn revision_aggregate_boundary_makes_the_value_invalid_and_the_revision_terminal
 fn values_without_var_neither_substitute_nor_spend() {
     let revision = revision(0);
     let work = Work::new(&revision);
-    assert_eq!(substitute("green", &mut |_| None, &work).as_deref(), Ok("green"));
+    assert_eq!(
+        substitute("green", &mut |_| None, &work).as_deref(),
+        Ok("green")
+    );
     assert_eq!(revision.used(BudgetKind::SubstitutionBytes), 0);
     assert!(revision.exhausted().is_none());
 }
@@ -65,13 +68,17 @@ fn many_properties_of_one_element_share_the_dag_work_budget() {
             raw.insert(format!("--b{n:02}"), "var(--a)".into());
         }
         let revision = RevisionBudget::standalone();
-        let values = compute(&raw, &VarMap::new(), &HashMap::new(), |_, _| true, &revision);
+        let work = Work::new(&revision);
+        let values = compute(&raw, &VarMap::new(), &HashMap::new(), |_, _| true, &work);
         let resolved = (0..count)
             .filter(|n| values.contains_key(&format!("--b{n:02}")))
             .count();
         assert_eq!(resolved, valid);
         // Детерминированный порядок: негодны всегда последние по имени.
         assert!((0..valid).all(|n| values.contains_key(&format!("--b{n:02}"))));
-        assert!(revision.exhausted().is_none(), "a per-element limit is recoverable");
+        assert!(
+            revision.exhausted().is_none(),
+            "a per-element limit is recoverable"
+        );
     }
 }

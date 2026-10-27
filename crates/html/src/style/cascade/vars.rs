@@ -48,28 +48,40 @@ mod substitute;
 pub(super) use substitute::{resolve_attrs, resolve_sibling};
 
 /// Значение без `var()` возвращается как есть; подстановка одного значения делит один
-/// бюджет работы на все проходы и списывает его с ревизии документа.
+/// бюджет работы на все проходы и списывает его с ревизии документа. Предел делает
+/// объявление `unset` (invalid at computed-value time) и попадает в журнал документа.
 pub(super) fn resolve_vars(value: &str, vars: &VarMap, vcx: ValueCx<'_>) -> String {
-    use crate::style::css::variable_values::{Work, has_var, substitute};
+    use crate::style::css::variable_values::{Work, has_var};
     if !has_var(value) {
         return value.to_string();
     }
     let revision = vcx.doc.revision_budget();
     let work = Work::new(&revision);
+    let resolved = substitute_passes(value, vars, &work);
+    work.finish(vcx.doc);
+    resolved
+}
+
+fn substitute_passes(
+    value: &str,
+    vars: &VarMap,
+    work: &crate::style::css::variable_values::Work<'_>,
+) -> String {
+    use crate::style::css::variable_values::{has_var, substitute};
     let mut out = value.to_string();
     for _ in 0..VAR_DEPTH {
-        let Ok(next) = substitute(&out, &mut |name| vars.get(name).cloned(), &work) else {
+        let Ok(next) = substitute(&out, &mut |name| vars.get(name).cloned(), work) else {
             return "unset".into();
         };
         if next == out {
             break;
         }
         out = next;
-        if !crate::style::css::variable_values::has_var(&out) {
+        if !has_var(&out) {
             break;
         }
     }
-    if out.trim().is_empty() && crate::style::css::variable_values::has_var(value) {
+    if out.trim().is_empty() && has_var(value) {
         "unset".into()
     } else {
         out

@@ -11,7 +11,10 @@ use crate::resources::loader::{Cancellation, ResourceUrl, SyncLoader, fetch};
 use fixtures::*;
 
 /// Декодирование с допуском в стандартном профиле отдельного документа.
-fn decode(bytes: &[u8], options: &DecodeOptions) -> Result<(DecodedImage, ImageMetadata), ImageError> {
+fn decode(
+    bytes: &[u8],
+    options: &DecodeOptions,
+) -> Result<(DecodedImage, ImageMetadata), ImageError> {
     let budget = crate::budget::RevisionBudget::standalone();
     super::decode::decode(bytes, options, |declared| {
         super::admission::grant(budget.document(), declared).map(|(grant, _)| grant)

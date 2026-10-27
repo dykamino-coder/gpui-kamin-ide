@@ -21,7 +21,8 @@ pub(super) fn compute(
     registered: &HashMap<String, Registered>,
     accepts: impl Fn(&str, &str) -> bool,
 ) -> VarMap {
-    super::compute(raw, parent, registered, accepts, &RevisionBudget::standalone())
+    let revision = RevisionBudget::standalone();
+    super::compute(raw, parent, registered, accepts, &Work::new(&revision))
 }
 
 /// Custom-property declarations of a block as a substitution map.

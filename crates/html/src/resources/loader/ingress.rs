@@ -22,6 +22,26 @@ impl Cancellation {
     }
 }
 
+/// Наблюдение предела или отмены загрузки; обычные ошибки чтения — не диагностика пределов.
+pub(crate) fn diagnostic(error: &LoadError) -> Option<crate::diagnostics::Diagnostic> {
+    use crate::diagnostics::{Code, Diagnostic, Measure, Phase, Severity};
+    Some(match *error {
+        LoadError::TooLarge { limit } => Diagnostic::observed(
+            Code::ResourceLimit,
+            Severity::Warning,
+            Phase::Resource,
+            Some(Measure::Ceiling {
+                limit: limit as u64,
+            }),
+        ),
+        LoadError::Budget(error) => Diagnostic::budget(Phase::Resource, error),
+        LoadError::Cancelled => {
+            Diagnostic::observed(Code::Cancelled, Severity::Info, Phase::Resource, None)
+        }
+        _ => return None,
+    })
+}
+
 /// Загрузка с допуском: запрос ревизии списывается до обращения к бэкенду.
 pub(crate) fn fetch(
     loader: &dyn super::ResourceLoader,
@@ -115,7 +135,10 @@ mod tests {
         let budget = revision(BudgetKind::ResourceBytes, 10);
         assert_eq!(load(url, &budget), Ok(4));
         assert_eq!(load(url, &budget), Ok(4));
-        assert!(exceeded(load(url, &budget).unwrap_err(), BudgetKind::ResourceBytes));
+        assert!(exceeded(
+            load(url, &budget).unwrap_err(),
+            BudgetKind::ResourceBytes
+        ));
         assert_eq!(budget.used(BudgetKind::ResourceBytes), 8);
         assert_eq!(budget.used(BudgetKind::ResourceRequests), 3);
         for (limit, ok) in [(1, 1), (2, 2), (3, 3)] {
@@ -125,7 +148,10 @@ mod tests {
         }
         let budget = revision(BudgetKind::ResourceRequests, 2);
         let fourth = (0..3).map(|_| load("http://x/a.png", &budget)).last();
-        assert!(exceeded(fourth.unwrap().unwrap_err(), BudgetKind::ResourceRequests));
+        assert!(exceeded(
+            fourth.unwrap().unwrap_err(),
+            BudgetKind::ResourceRequests
+        ));
     }
 
     #[test]

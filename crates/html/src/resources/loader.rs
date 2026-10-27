@@ -13,7 +13,7 @@ mod limits;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use ingress::{Cancellation, Ingress, fetch};
+pub(crate) use ingress::{Cancellation, Ingress, diagnostic, fetch};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;

@@ -123,6 +123,35 @@ pub(crate) fn admit(
         .transpose()
 }
 
+/// Наблюдение предела или отмены картинки для журнала документа.
+pub(crate) fn diagnostic(error: &ImageError) -> Option<crate::diagnostics::Diagnostic> {
+    use crate::diagnostics::{Code, Diagnostic, Measure, Phase, Severity};
+    let limit = |measure| {
+        Diagnostic::observed(
+            Code::ResourceLimit,
+            Severity::Warning,
+            Phase::Resource,
+            measure,
+        )
+    };
+    Some(match *error {
+        ImageError::LimitExceeded(ImageLimit::ResourceBytes { limit: bytes }) => {
+            limit(Some(Measure::Ceiling { limit: bytes }))
+        }
+        ImageError::LimitExceeded(ImageLimit::Budget(error)) => {
+            Diagnostic::budget(Phase::Resource, error)
+        }
+        ImageError::LimitExceeded(ImageLimit::Dimensions { width, height }) => {
+            limit(Some(Measure::Dimensions { width, height }))
+        }
+        ImageError::LimitExceeded(ImageLimit::Codec) => limit(None),
+        ImageError::Cancelled => {
+            Diagnostic::observed(Code::Cancelled, Severity::Info, Phase::Resource, None)
+        }
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 #[path = "admission_tests.rs"]
 mod tests;
