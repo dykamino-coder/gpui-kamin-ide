@@ -21,7 +21,7 @@ impl Recorder {
             walk.push(root);
             let nested_outside =
                 outside[index] && flow.parent.is_some_and(|parent| !outside[parent]);
-            if nested_outside || (flow.held && !outside[index]) {
+            if (false && nested_outside) || (flow.held && !outside[index]) {
                 held.insert(root);
             }
         }
