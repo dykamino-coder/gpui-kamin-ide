@@ -13,8 +13,8 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
         e,
         merged,
         opts,
-        MulticolDimensions::css(merged),
-        MulticolDimensions::css(&e.style.used()),
+        MulticolDimensions::for_element(e, merged),
+        MulticolDimensions::for_element(e, &e.style.used()),
     )
 }
 

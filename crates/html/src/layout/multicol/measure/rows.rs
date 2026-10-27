@@ -25,7 +25,7 @@ pub(crate) fn row_plan(
         cols,
         col_vert,
         outer_space,
-        MulticolDimensions::css(&e.style.used()),
+        MulticolDimensions::for_element(e, &e.style.used()),
     )
 }
 

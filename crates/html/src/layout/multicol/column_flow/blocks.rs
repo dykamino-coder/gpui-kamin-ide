@@ -62,9 +62,13 @@ pub(super) fn non_inline_columns(
             stretch,
             outer,
             {
-                let mut dimensions =
-                    crate::layout::multicol::dimensions::MulticolDimensions::css(&inside);
-                dimensions.preferred[1] = inside.height.or(only.style.used().height);
+                let mut dimensions: crate::layout::multicol::dimensions::MulticolDimensions =
+                    crate::layout::multicol::dimensions::MulticolDimensions::for_element(
+                        only, &inside,
+                    );
+                if !only.marks.spanner_content_box {
+                    dimensions.preferred[1] = inside.height.or(only.style.used().height);
+                }
                 dimensions
             },
         ));

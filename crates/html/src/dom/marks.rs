@@ -32,6 +32,8 @@ pub struct Marks {
     /// `node_id` of the source-tree parent of a hoisted column spanner: margins
     /// of spanners from different parents do not collapse.
     pub(crate) span_parent: Option<u64>,
+    /// Ряд колонок или продолжение предка спаннера с собственным остатком.
+    pub(crate) spanner_content_box: bool,
     /// Исходный содержащий блок, удалённый из пути при разрыве inline.
     pub(crate) inline_cb: Option<InlineCb>,
     /// Block whose auto height is proven zero by its float host
@@ -67,6 +69,8 @@ pub struct Marks {
     /// Width probe of inline content before the floats of a measured band host.
     pub(crate) lead: Option<LeadProbe>,
 }
+
+/// Намерение фрагмента; CSS-размеры исходного элемента остаются неизменными.
 
 /// Synthetic band host: floats of one run and the content they wrap.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

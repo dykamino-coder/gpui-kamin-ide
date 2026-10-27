@@ -3,6 +3,7 @@
 use super::solid_box;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::multicol::spanner::multicol_container;
@@ -95,7 +96,7 @@ pub(crate) fn clone_fragment(
     body.style = c.style.used().paint_off().into();
     // Исходный border-box уже вычтен из normal content size. После снятия
     // краёв тело сохраняет эту величину, иначе padding добавился бы дважды.
-    if body.style.used().border_box == Some(true) {
+    if BoxDimensions::for_element(&body, &body.style.used()).border_box {
         let style = body.style.used_mut();
         for length in [
             &mut style.height,

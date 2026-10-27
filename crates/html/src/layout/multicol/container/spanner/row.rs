@@ -47,11 +47,9 @@ pub(super) fn segment(host: &Element, children: &[Node], tail_height: Option<f32
     sub.style.used_mut().padding = Default::default();
     sub.style.used_mut().border_width = Default::default();
     sub.style.used_mut().width = None;
-    sub.style.used_mut().min_height = None;
-    sub.style.used_mut().max_height = None;
-    sub.style.used_mut().border_box = None;
-    // Остаток задаётся один раз: исходная высота хоста не ограничивает ряд.
     sub.style.used_mut().height = tail_height.map(Len::Px);
+    // Остаток задаётся один раз: исходная высота хоста не ограничивает ряд.
+    sub.marks.spanner_content_box = true;
     sub
 }
 
@@ -79,7 +77,7 @@ mod tests {
         );
         for remaining in [None, Some(50.)] {
             let row = segment(&host, &[], remaining);
-            let dimensions = MulticolDimensions::css(&row.style.used());
+            let dimensions = MulticolDimensions::for_element(&row, &row.style.used());
             assert_eq!(
                 dimensions.content_height(&row.style.used(), None, None),
                 remaining

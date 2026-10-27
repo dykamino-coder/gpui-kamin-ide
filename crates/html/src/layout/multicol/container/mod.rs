@@ -51,7 +51,14 @@ pub(crate) fn multicol_column_stack(
     nested_whole: std::cell::RefCell<Vec<u64>>,
     measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
 ) -> AnyElement {
-    let fixed = fixed_column_height(&merged, col_vert, col_h, nest_rows, &opts.cx.constraints);
+    let fixed = fixed_column_height(
+        &merged,
+        &crate::layout::block::sizing::BoxDimensions::for_element(e, &merged),
+        col_vert,
+        col_h,
+        nest_rows,
+        &opts.cx.constraints,
+    );
     let source =
         if !col_vert && rows.is_none() && fixed.is_some_and(|h| h > crate::tolerance::COORD_EPS) {
             kids.iter().map(|(c, _)| c.clone()).collect()

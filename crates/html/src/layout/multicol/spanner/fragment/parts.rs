@@ -201,15 +201,22 @@ mod tests {
                 })
                 .collect();
             assert_eq!(fragments.len(), 2);
-            assert_eq!(fragments[0].style.used().height, None);
+            let dimensions = |f: &Element| {
+                crate::layout::block::sizing::BoxDimensions::for_element(f, &f.style.used())
+            };
+            assert_eq!(dimensions(fragments[0]).preferred[1], None);
             assert_eq!(
-                fragments[1].style.used().height,
+                dimensions(fragments[1]).preferred[1],
                 Some(Len::Px(if clone { 85. } else { 80. }))
             );
             for f in fragments {
-                assert_eq!(f.style.used().min_height, None);
-                assert_eq!(f.style.used().max_height, None);
-                assert_eq!(f.style.used().border_box, None);
+                assert_eq!(dimensions(f).minimum[1], None);
+                assert_eq!(dimensions(f).maximum[1], None);
+                assert!(!dimensions(f).border_box);
+                assert_eq!(dimensions(f).preferred[1], f.style.used().height);
+                assert_eq!(f.style.used().min_height, e.style.used().min_height);
+                assert_eq!(f.style.used().max_height, e.style.used().max_height);
+                assert_eq!(f.style.used().border_box, e.style.used().border_box);
             }
             assert_eq!(e.style.used().height, Some(Len::Px(100.)));
             assert_eq!(e.style.used().min_height, Some(Len::Px(150.)));

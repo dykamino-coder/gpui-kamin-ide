@@ -179,8 +179,20 @@ pub fn apply(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
 /// Полная сборка декораций вставляет общий цвет после backdrop и до картинок.
 /// Остальные держатели получают тот же слой непосредственно через `apply`.
 pub(crate) fn apply_for_decorations(d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
+    apply_for_decorations_with_dimensions(d, c, None, vcx)
+}
+
+pub(crate) fn apply_for_decorations_with_dimensions(
+    d: Div,
+    c: &BoxStyle,
+    dimensions: Option<crate::layout::block::sizing::BoxDimensions>,
+    vcx: ValueCx<'_>,
+) -> Div {
     let mut d = d;
-    d = apply_layout(d, c, vcx);
+    d = match dimensions {
+        Some(sizes) => apply_layout_with_dimensions(d, c, sizes, vcx),
+        None => apply_layout(d, c, vcx),
+    };
     // CSS 2.1 §10.8.1: an inline-block's baseline is that of its last in-flow
     // line box. A float is out of flow, so it never gives the enclosing
     // inline-block its baseline (Blink `PropagateBaselineFromBlockChild`

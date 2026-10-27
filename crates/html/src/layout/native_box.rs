@@ -8,16 +8,26 @@ use crate::style::values::value::Len;
 /// Percentages and functional fit need the native content-box contract: their
 /// used size must add the resolved edges (CSS 2.1 sections 10.2 and 10.5).
 pub(crate) fn native_content_box(style: &Computed) -> bool {
-    style.border_box != Some(true)
-        && ((style.width == Some(Len::FitContent)
+    native_content_box_with(
+        style,
+        &super::block::sizing::BoxDimensions::from_computed(style),
+    )
+}
+
+pub(crate) fn native_content_box_with(
+    style: &Computed,
+    sizes: &super::block::sizing::BoxDimensions,
+) -> bool {
+    !sizes.border_box
+        && ((sizes.preferred[0] == Some(Len::FitContent)
             && matches!(style.fit_arg[0], Some(Len::Px(_) | Len::Pct(_))))
             || [
-                style.width,
-                style.height,
-                style.min_width,
-                style.max_width,
-                style.min_height,
-                style.max_height,
+                sizes.preferred[0],
+                sizes.preferred[1],
+                sizes.minimum[0],
+                sizes.maximum[0],
+                sizes.minimum[1],
+                sizes.maximum[1],
             ]
             .into_iter()
             .zip(style.stretch_size)

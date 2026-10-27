@@ -6,6 +6,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::struts::top_edge_open;
 use crate::layout::box_kind::{block_level_in_flow, is_blank, own_context, replaced_tag};
 use crate::layout::float::band_clearance::supported as band_clear_supported;
@@ -36,6 +37,7 @@ pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
 /// плюс то, что коробка рисуется отдельно от детей — значит ни сдвига, ни
 /// эффектов группы, ни ограничителей высоты; рамка и отступ разрешимы.
 pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
+    let sizes = BoxDimensions::for_element(c, &c.style.used());
     // Рамка, поля и высота коробки `Kind::Nest` — физические.
     !wm.vertical()
         // A box whose writing mode differs from its parent's establishes an
@@ -56,10 +58,10 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         && !(paint_group(&c.style.used()) && positioned_inside(&c.children))
         && (matches!(c.style.used().width, None | Some(Len::Auto))
             || (band_em(&c.style.used(), em).and_then(|em| band_edge(&c.style.used().width, em)).is_some()
-                && c.style.used().border_box != Some(true)))
+                && !sizes.border_box))
         && matches!(c.style.used().height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
-        && c.style.used().min_height.is_none()
-        && c.style.used().max_height.is_none()
+        && sizes.minimum[1].is_none()
+        && sizes.maximum[1].is_none()
         && band_margins(&c.style.used(), em).is_some()
         && band_inset(c, em).is_some()
 }
@@ -108,8 +110,9 @@ pub(super) fn band_nest(
     let cb = opts.cx.constraints.cb_width;
     let inner_em = band_em(&c.style.used(), em)?;
     let mut merged = box_style(inherited, &c.style, vcx);
-    let height = crate::layout::block::available_height::inner(
+    let height = crate::layout::block::available_height::inner_with_dimensions(
         &merged,
+        &BoxDimensions::for_element(c, &merged),
         opts.cx.constraints.avail_h,
         opts.cx.constraints.avail_w,
         opts.viewport.1,

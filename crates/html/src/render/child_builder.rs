@@ -6,7 +6,7 @@ use crate::layout::build_contracts::{
 };
 use crate::layout::cx::LayoutCx;
 use crate::paint::apply;
-use crate::paint::box_tree::{content_wrapper, styled::styled_div_with};
+use crate::paint::box_tree::{content_wrapper, styled::styled_div_with_dimensions};
 use crate::paint::decorations::outline_phase;
 use crate::paint::effects::{grouped, transform, underlay::Underlay};
 use crate::paint::gap_rules::painter::GapRulePainter;
@@ -37,7 +37,7 @@ impl Default for ChildBuild {
                 ))
             },
             BoxBuild::new(
-                styled_div_with,
+                styled_div_with_dimensions,
                 styled_div,
                 content_sized,
                 content_wrapper::for_element,

@@ -5,7 +5,12 @@ use super::*;
 use crate::document::state::ValueCx;
 use crate::style::values::value::px_lossy_zero;
 
-pub(super) fn layout_grid_gap(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
+pub(super) fn layout_grid_gap(
+    mut d: Div,
+    c: &BoxStyle,
+    sizes: &BoxDimensions,
+    vcx: ValueCx<'_>,
+) -> Div {
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     // CSS Align §9.1 / Blink baseline_utils.h: baseline sharing and synthesis
     // are decided for each item in its physical alignment axis. Dropping the
@@ -35,7 +40,7 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div
     d.style().baseline_x_flags = item_metadata::baseline_x_flags(c);
     grid_content_baseline::apply(d.style(), c);
     if let Some(r) = c.aspect_ratio
-        && !ratio_as_auto_min(c)
+        && !ratio_as_auto_min(c, sizes)
     {
         d.style().aspect_ratio = Some(r);
     }
@@ -59,18 +64,18 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div
         let px_or_0 = px_lossy_zero;
         let edges = c.borders();
         let content = |size: Option<Len>, sides: [Option<Len>; 4]| match size {
-            Some(Len::Px(v)) if c.border_box == Some(true) => {
+            Some(Len::Px(v)) if sizes.border_box => {
                 Some((v - sides.iter().map(|s| px_or_0(*s)).sum::<f32>()).max(0.0))
             }
             Some(Len::Px(v)) => Some(v),
             _ => None,
         };
         let basis_y = content(
-            c.height,
+            sizes.preferred[1],
             [c.padding.top, c.padding.bottom, edges.top, edges.bottom],
         );
         let basis_x = content(
-            c.width,
+            sizes.preferred[0],
             [c.padding.left, c.padding.right, edges.left, edges.right],
         );
         let gap_len = |l: Len, basis: Option<f32>| -> Option<gpui::DefiniteLength> {

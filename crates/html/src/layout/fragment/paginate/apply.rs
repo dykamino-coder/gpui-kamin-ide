@@ -7,6 +7,7 @@
 
 use super::{column_flex, layout_parent, row_flex};
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::clone::monolith_box;
 use crate::style::computed::Display;
 use crate::style::values::value::{Len, px_auto_zero};
@@ -42,7 +43,7 @@ fn inner_by(k: &Element, struts: &Struts) -> f32 {
 
 /// Content block size for a border-box size `h` of `k` (lengths in px).
 fn content_height(k: &Element, h: f32) -> Option<f32> {
-    if k.style.used().border_box == Some(true) {
+    if BoxDimensions::for_element(k, &k.style.used()).border_box {
         return Some(h);
     }
     let b = k.style.used().borders();
@@ -90,7 +91,10 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                     matches!(k.style.used().flex_basis, None | Some(Len::Auto)) && auto_h;
                 let encompass = !monolith_box(k)
                     && ((basis_auto && !can_shrink)
-                        || (auto_h && (!can_shrink || k.style.used().min_height.is_none())));
+                        || (auto_h
+                            && (!can_shrink
+                                || BoxDimensions::for_element(k, &k.style.used()).minimum[1]
+                                    .is_none())));
                 // A definite block size stays: pushed content overflows it as
                 // in the unfragmented flow thread.
                 let grown = st.size + if auto_h { inner_by(k, struts) } else { 0.0 };

@@ -3,6 +3,7 @@
 
 use crate::dom::Element;
 use crate::hooks::{IntoHooked, Wrap};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::multicol::spanner::SpannerMetrics;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
@@ -59,15 +60,21 @@ pub(super) fn measure(
         );
         let block_size = f32::from(window.layout_size_unrounded(id.get().unwrap()).height);
 
-        let mut style = box_style(parent, &child.style, opts.cx.vcx());
+        let style = box_style(parent, &child.style, opts.cx.vcx());
+        let sizes = BoxDimensions::for_element(child, &style);
         let constrained =
-            !matches!(style.height, None | Some(Len::Auto)) || style.min_height.is_some();
+            !matches!(sizes.preferred[1], None | Some(Len::Auto)) || sizes.minimum[1].is_some();
         let (content_width, border_size, start_edge) =
-            shell(child, &style, width, opts, window, cx);
-        style.height = None;
-        style.min_height = None;
-        style.max_height = None;
-        let (_, edges, _) = shell(child, &style, width, opts, window, cx);
+            shell(child, &style, sizes, width, opts, window, cx);
+        let (_, edges, _) = shell(
+            child,
+            &style,
+            sizes.unconstrained_height(),
+            width,
+            opts,
+            window,
+            cx,
+        );
         SpannerMetrics {
             block_size,
             content_width,
@@ -78,9 +85,11 @@ pub(super) fn measure(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn shell(
     child: &Element,
     style: &BoxStyle,
+    sizes: BoxDimensions,
     width: f32,
     opts: &RenderOpts,
     window: &mut Window,
@@ -96,7 +105,7 @@ fn shell(
         .cx
         .contracts
         .build
-        .styled_box(child, style, &opts.cx)
+        .sized_box(child, style, &opts.cx, sizes)
         .block()
         .child(marker.into_hooked());
     let el = Capture {

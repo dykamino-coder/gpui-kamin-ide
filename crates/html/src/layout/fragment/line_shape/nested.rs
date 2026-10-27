@@ -3,6 +3,7 @@
 use super::nested_kid::oof_in_plain_kids;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::predicates::carries_abspos;
@@ -14,14 +15,15 @@ use crate::style::values::value::Len;
 /// внепоточных и вертикального письма.
 pub(crate) fn nested_rows_box(c: &Element) -> bool {
     let s = &c.style.used();
+    let sizes = BoxDimensions::for_element(c, s);
     multicol_container(s)
         && (s.column_count.is_some_and(|n| n > 1) || s.column_width.is_some())
         && s.column_height.is_none()
         && s.column_wrap.is_none()
         && (matches!(s.height, Some(Len::Px(h)) if h > 0.0)
             || (matches!(s.height, None | Some(Len::Auto))
-                && s.min_height.is_none()
-                && s.max_height.is_none()))
+                && sizes.minimum[1].is_none()
+                && sizes.maximum[1].is_none()))
         && matches!(s.display, None | Some(Display::Block))
         && !s.wm().vertical()
         && s.float.unwrap_or(0) == 0
@@ -56,6 +58,7 @@ pub(super) fn oof_descendant(e: &Element) -> bool {
 /// Ширина коробки (`width` по её `box-sizing`) ребёнка в колонке `cw`.
 pub(crate) fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
     let s = &c.style.used();
+    let sizes = BoxDimensions::for_element(c, s);
     let px = |l: &Option<Len>| match l {
         None | Some(Len::Auto) => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -65,7 +68,7 @@ pub(crate) fn nested_box_w(c: &Element, cw: f32) -> Option<f32> {
     let outer = cw - px(&s.margin.left)? - px(&s.margin.right)?;
     let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
     Some(
-        if s.border_box == Some(true) {
+        if sizes.border_box {
             outer
         } else {
             outer - edges

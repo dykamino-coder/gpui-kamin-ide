@@ -3,6 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::Shape;
 use crate::style::values::value::Len;
 use crate::text::fonts::style_font::measure_font;
@@ -30,19 +31,17 @@ pub(crate) fn line_run_shape(
 ) -> Option<Shape> {
     // Высота в точках — коробка своей высоты, строки внутри неё режутся так
     // же (css-break-3 §4.3); строки ниже её низа — переполнение, точек там нет.
-    let fixed_h = match c.style.used().height {
+    let sizes = BoxDimensions::for_element(c, &c.style.used());
+    let fixed_h = match sizes.preferred[1] {
         None | Some(Len::Auto) => None,
-        Some(Len::Px(v)) if v >= 0.0 => Some(if c.style.used().border_box == Some(true) {
+        Some(Len::Px(v)) if v >= 0.0 => Some(if sizes.border_box {
             (v - top - bot).max(0.0)
         } else {
             v
         }),
         _ => return None,
     };
-    if c.style.used().min_height.is_some()
-        || c.style.used().max_height.is_some()
-        || c.children.iter().all(is_blank)
-    {
+    if sizes.minimum[1].is_some() || sizes.maximum[1].is_some() || c.children.iter().all(is_blank) {
         return None;
     }
     // Срез строк на РАЗРЫВАХ колонок: `text-box-trim` САМОГО многоколоночника

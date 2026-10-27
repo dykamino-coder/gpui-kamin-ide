@@ -2,6 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
@@ -171,7 +172,7 @@ pub(super) fn column_stack_div(
                 Some(Len::Px(h))
                     if h > 0.0
                         && nest_rows.is_none()
-                        && e.style.used().border_box != Some(true)
+                        && !BoxDimensions::for_element(e, &e.style.used()).border_box
                         && !e
                             .children
                             .iter()
@@ -209,7 +210,7 @@ pub(super) fn finish_column_stack(
             let pad = px(e.style.used().padding.top)? + px(e.style.used().padding.bottom)?;
             let bor = px(b.top)? + px(b.bottom)?;
             match e.style.used().height {
-                Some(Len::Px(h)) if e.style.used().border_box == Some(true) => {
+                Some(Len::Px(h)) if BoxDimensions::for_element(e, &e.style.used()).border_box => {
                     Some((h - bor).max(pad))
                 }
                 Some(Len::Px(h)) => Some(h.max(0.0) + pad),

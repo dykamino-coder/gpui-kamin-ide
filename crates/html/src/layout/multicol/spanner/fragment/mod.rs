@@ -71,9 +71,7 @@ pub(super) fn spanner_fragment(
     }
     if !keep_size {
         f.style.used_mut().height = None;
-        f.style.used_mut().min_height = None;
-        f.style.used_mut().max_height = None;
-        f.style.used_mut().border_box = None;
+        f.marks.spanner_content_box = true;
     }
     f
 }

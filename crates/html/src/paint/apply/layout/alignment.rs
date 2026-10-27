@@ -10,7 +10,9 @@ pub(super) fn layout_alignment(
     rtl_row: bool,
     vcx: ValueCx<'_>,
 ) -> Div {
-    match c.align_items {
+    // Прежняя нормализация legacy-box применяется как контекст, не правит Computed.
+    let block = legacy_block(c);
+    match c.align_items.filter(|_| !block) {
         Some(Align::Center) => d = d.items_center(),
         Some(Align::Start) => d = d.items_start(),
         Some(Align::End) => d = d.items_end(),
@@ -61,7 +63,7 @@ pub(super) fn layout_alignment(
     if let Some(b) = c.flex_basis.filter(|b| *b != Len::Auto) {
         d = d.flex_basis(len_to_gpui(b, vcx));
     }
-    if let Some(j) = c.justify_content {
+    if let Some(j) = c.justify_content.filter(|_| !block) {
         // `left`/`right` (css-align-3 §5.2): вдоль строчной оси — как
         // `start`/`end` письма (в ряду); «if the property's axis is not
         // parallel with the inline axis, this value behaves as start» —

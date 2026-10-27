@@ -35,13 +35,12 @@ pub(crate) fn finish_shape_cuts(
     let own_h = h;
     let (reach_end, up) = oof_reach.finish(c, cx);
     let h = h.max(reach_end + bot);
-    let h = fragment_size::constrain(h, &c.style.used(), top + bot, cx.viewport, unclamp, vcx);
+    let h = fragment_size::constrain(h, c, top + bot, cx.viewport, unclamp, vcx);
     // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
     // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
     // (css-position-3 §abspos-breaking; Blink ведёт OOF во фрагментаинере
     // отдельно от потока). Стопка берёт собственный размер из `Measure::own`.
-    let own =
-        fragment_size::constrain(own_h, &c.style.used(), top + bot, cx.viewport, unclamp, vcx);
+    let own = fragment_size::constrain(own_h, c, top + bot, cx.viewport, unclamp, vcx);
     let own = (own < h - 0.01).then_some((own, h));
     // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
     // disappears when it coincides with a fragmentation break»; Blink

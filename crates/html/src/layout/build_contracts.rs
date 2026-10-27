@@ -145,6 +145,17 @@ impl ChildBuild {
         self.boxes.styled_box(e, style, cx)
     }
 
+    /// Дочерняя оболочка с явными размерами, включая щупы кромок.
+    pub(crate) fn sized_box(
+        &self,
+        e: &Element,
+        style: &BoxStyle,
+        cx: &LayoutCx,
+        sizes: crate::layout::block::sizing::BoxDimensions,
+    ) -> gpui::Div {
+        self.boxes.sized_box(e, style, cx, sizes)
+    }
+
     /// A div without an element, styled with the computed values `styling`.
     pub(crate) fn styled_div(&self, styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
         self.boxes.styled_div(styling, cx)

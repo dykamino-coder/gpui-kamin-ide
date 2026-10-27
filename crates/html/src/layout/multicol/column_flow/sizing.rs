@@ -14,9 +14,11 @@ pub(crate) fn column_flow(
     col_w: Option<f32>,
     outer: Option<Rc<Nested>>,
 ) -> Option<AnyElement> {
-    let mut dimensions: MulticolDimensions = MulticolDimensions::css(inherited);
-    dimensions.preferred[1] = inherited.height.or(e.style.used().height);
-    dimensions.border_box = e.style.used().border_box == Some(true);
+    let mut dimensions: MulticolDimensions = MulticolDimensions::for_element(e, inherited);
+    if !e.marks.spanner_content_box {
+        dimensions.preferred[1] = inherited.height.or(e.style.used().height);
+        dimensions.border_box = e.style.used().border_box == Some(true);
+    }
     column_flow_with_dimensions(e, inherited, opts, count, col_w, outer, dimensions)
 }
 

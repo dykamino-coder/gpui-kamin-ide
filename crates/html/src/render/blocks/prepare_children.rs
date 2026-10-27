@@ -5,6 +5,7 @@ use crate::dom::Node;
 use crate::layout::block::margin_height;
 use crate::layout::block::margins::{CollapseInputs, collapse_margins};
 use crate::layout::block::reorder::reorder;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::in_flow;
 use crate::layout::box_kind::inline_level_box;
 use crate::layout::box_kind::replaced_tag;
@@ -19,6 +20,7 @@ use crate::style::values::value::{Len, px_strict};
 pub(crate) fn prepare_children(
     nodes: &[Node],
     inherited: &BoxStyle,
+    sizes: &BoxDimensions,
     opts: &RenderOpts,
     _cell_bfc: bool,
 ) -> (Vec<Node>, bool, bool) {
@@ -186,7 +188,7 @@ pub(crate) fn prepare_children(
         // Ширина содержащего блока для ПРОЦЕНТНЫХ полей (§8.3: проценты полей
         // считаются от ширины содержащего блока, схлопывание — по уже
         // разрешённым значениям). Известна только заданная в точках.
-        let cb_w = px_strict(inherited.width);
+        let cb_w = px_strict(sizes.preferred[0]);
         // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
         // предикатом, что у слитого стиля (`style::cascade::inherit`): он зависит
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.

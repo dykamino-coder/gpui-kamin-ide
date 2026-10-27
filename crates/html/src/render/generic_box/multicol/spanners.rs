@@ -39,10 +39,12 @@ pub(super) fn deferred(
                 AvailableSpace::Definite(h) => Some(f32::from(h)),
                 _ => None,
             };
-            let dimensions = MulticolDimensions::measured(&style, width, height);
+            let dimensions =
+                MulticolDimensions::for_element(&e, &style).with_measured_size(width, height);
             // План рядов читает собственные ограничения; стадия коробки
             // может разрешить процентную высоту иначе (quirks mode).
-            let own = MulticolDimensions::measured(&host.style.used(), width, height);
+            let own = MulticolDimensions::for_element(&host, &host.style.used())
+                .with_measured_size(width, height);
             host.children = crate::layout::fragment::flow::column_percentages_in(
                 &host.children,
                 &style,
