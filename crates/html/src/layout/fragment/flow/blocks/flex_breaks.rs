@@ -54,6 +54,11 @@ impl FlexBox {
         }
         let mut boundary_avoid = vec![false; frame.lines.len()];
         for (index, line) in frame.lines.iter().enumerate() {
+            // Ряд сохраняет свою линию до разрыва внутри item (css-flexbox-1
+            // §10): произвольный срез её cross-size не является классом C.
+            // Это мягкая группа, а не монолит: если линия выше колонки,
+            // её измеренные внутренние точки остаются доступны.
+            out.keep.push((line.start, line.end));
             if index > 0 {
                 let prev = &frame.lines[index - 1];
                 let prev_items = self.items.iter().filter(|i| prev.items.contains(&i.id));

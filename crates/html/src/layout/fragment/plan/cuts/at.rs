@@ -97,6 +97,12 @@ pub(crate) fn cut_at(
             .iter()
             .map(|&(point, _)| point)
             .filter(|&point| point > from + 0.01 && point <= edge + 0.01)
+            .filter(|&point| {
+                !k.solid
+                    .iter()
+                    .chain(&k.avoid)
+                    .any(|&(a, b)| a < point - 0.01 && point < b - 0.01)
+            })
             .max_by(f32::total_cmp)
             .map(&at)
     } else {
