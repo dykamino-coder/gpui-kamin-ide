@@ -7,6 +7,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 
@@ -144,10 +145,10 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
             // CSS 2 sections 9.5 and 10.1: the block remains the containing
             // block, while inherited text properties come through the inline.
             let containing = box_style(parent, &float.style, vcx);
-            float.style =
-                crate::dom::SharedStyle::layout_made(box_style(&style, &float.style, vcx));
-            float.style.used_mut().cb_height_def_hint = containing.cb_height_def;
-            float.style.used_mut().quirk_pct_base_hint = containing.quirk_pct_base;
+            let mut lifted = box_style(&style, &float.style, vcx);
+            lifted.cb_height_def_hint = containing.cb_height_def;
+            lifted.quirk_pct_base_hint = containing.quirk_pct_base;
+            float.set_layout_box(LayoutBoxInput::new(BoxOrigin::Moved, lifted));
             output.push(Node::Element(float));
         } else {
             pending.push(child);
@@ -178,3 +179,6 @@ fn contains_float(node: &Node) -> bool {
         || matches!(node, Node::Element(e) if transparent(e)
             && e.children.iter().any(contains_float))
 }
+
+#[cfg(test)]
+mod tests;

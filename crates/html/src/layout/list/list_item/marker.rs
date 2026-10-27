@@ -7,9 +7,12 @@ use super::tabular_marker;
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::anon_element;
+use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{BoxStyle, Computed, Display, MarkerType};
 
+#[cfg(test)]
+mod box_tests;
 mod image;
 #[cfg(test)]
 mod tests;
@@ -120,27 +123,32 @@ pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     };
     let mut span = anon_element("::marker", children);
     span.inline = true;
-    span.style = crate::dom::SharedStyle::layout_made(marker.style.unwrap_or_default());
-    tabular_marker(
-        span.style.used_mut(),
-        merged,
-        li.style.used().marker_layer.as_deref(),
-    );
-    span.style.used_mut().content = None;
-    span.style.used_mut().marker_layer = None;
+    span.set_layout_box(LayoutBoxInput::new(
+        BoxOrigin::Marker,
+        box_input(li, merged, marker.style.unwrap_or_default()),
+    ));
+    Node::Element(span)
+}
+
+/// The `::marker` box with the UA rules of CSS Lists 3 §3.1.1 that the
+/// marker's own style does not override.
+fn box_input(li: &Element, merged: &Computed, mut style: BoxStyle) -> BoxStyle {
+    tabular_marker(&mut style, merged, li.style.used().marker_layer.as_deref());
+    style.content = None;
+    style.marker_layer = None;
     // css-lists-3 §marker-properties UA rule `::marker { unicode-bidi:
     // isolate }`: Arabic-Indic digits and the suffix stay one run
     // (`css3-counter-styles-101`, reference `<bdi>١. </bdi>`).
-    if span.style.used().bidi_isolate.is_none()
-        && span.style.used().bidi_embed.is_none()
-        && span.style.used().bidi_override.is_none()
-        && span.style.used().bidi_plaintext.is_none()
+    if style.bidi_isolate.is_none()
+        && style.bidi_embed.is_none()
+        && style.bidi_override.is_none()
+        && style.bidi_plaintext.is_none()
     {
-        span.style.used_mut().bidi_isolate = Some(true);
+        style.bidi_isolate = Some(true);
     }
     // CSS Pseudo 4 #first-letter-application excludes marker content.
-    span.style.used_mut().first_letter_excluded = true;
-    Node::Element(span)
+    style.first_letter_excluded = true;
+    style
 }
 
 /// A generated marker drawn as a symbol rather than as text (css-counter-styles
