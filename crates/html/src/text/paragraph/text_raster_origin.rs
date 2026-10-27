@@ -9,9 +9,10 @@ use super::*;
 use gpui::{App, Pixels, Point, Window, point, px};
 
 impl Paragraph {
-    pub(crate) fn opaque_background(mut self, c: &crate::style::computed::Computed) -> Self {
+    pub(crate) fn opaque_background(mut self, c: &crate::style::computed::BoxStyle) -> Self {
         let empty = |v| matches!(v, Some(crate::style::values::value::Len::Px(n) | crate::style::values::value::Len::Pct(n) | crate::style::values::value::Len::Em(n)) if n == 0.0);
-        self.opaque_text_origin = c.background.is_some_and(|color| color.a == 1.0)
+        self.opaque_text_origin = c.background_paint.paints()
+            && c.background.is_some_and(|color| color.a == 1.0)
             && c.bg_clip != Some(crate::style::computed::BgClip::Text)
             && !empty(c.width)
             && !empty(c.height);

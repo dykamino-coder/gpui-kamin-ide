@@ -161,7 +161,10 @@ pub(super) fn mark_canvas_background(
                 vcx,
             );
             if has_bg(&donor) {
-                let s = body.style.cascaded_mut();
+                // css-backgrounds-3 §2.11.2: initial только used-фон body;
+                // его computed CSS остаётся источником явного inherit.
+                body.style
+                    .set_background_paint(crate::style::background_paint::BackgroundPaint::Initial);
                 let mut take = crate::style::computed::Computed::default();
                 take.background = donor.background;
                 // CSS Backgrounds 3 §2.11.2: цвет берётся у донора, область
@@ -183,18 +186,6 @@ pub(super) fn mark_canvas_background(
                 take.bg_origin = donor.bg_origin;
                 take.bg_fixed = donor.bg_fixed;
                 take.bg_lists = donor.bg_lists.clone();
-                let _ = s.background.take();
-                let _ = s.background_color.take();
-                let _ = s.gradient.take();
-                let _ = s.gradient_raw.take();
-                let _ = s.bg_image.take();
-                let _ = std::mem::take(&mut s.bg_size);
-                let _ = std::mem::take(&mut s.bg_pos);
-                let _ = s.bg_repeat.take();
-                let _ = s.bg_clip.take();
-                let _ = s.bg_origin.take();
-                let _ = s.bg_fixed.take();
-                let _ = std::mem::take(&mut s.bg_lists);
                 moved = Some(take);
                 break;
             }
@@ -224,3 +215,6 @@ mod tests;
 
 #[cfg(test)]
 mod font_tests;
+
+#[cfg(test)]
+mod suppression_tests;

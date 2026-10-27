@@ -27,11 +27,16 @@ pub(super) fn border_area_fill(
 /// Цвет, которым красится рамка: свой `border-color` поверх заливки
 /// `border-area` («ignoring any transparency introduced by border-color»).
 pub(crate) fn border_paint(
-    c: &Computed,
+    c: &crate::style::computed::BoxStyle,
     colour: crate::style::values::value::Color,
     vcx: ValueCx<'_>,
 ) -> crate::style::values::value::Color {
-    match border_area_fill(c, vcx) {
+    match c
+        .background_paint
+        .paints()
+        .then(|| border_area_fill(c, vcx))
+        .flatten()
+    {
         Some(fill) => over(colour, fill),
         None => colour,
     }

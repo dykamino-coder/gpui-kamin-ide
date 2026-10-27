@@ -76,6 +76,7 @@ pub(super) fn inherit_paint(
     // она идёт удвоенной, чтобы после деления в `apply::apply_paint` σ
     // осталась своей.
     if let Some(sh) = c.drop_shadow.clone()
+        && c.background_paint.paints()
         && c.background.is_some_and(|b| b.a >= 1.0)
     {
         let as_box = crate::style::computed::Shadow {
@@ -96,7 +97,7 @@ pub(super) fn inherit_paint(
     // получает уже смешанный цвет. Внепоточные потомки в геометрию текста
     // не входят (`clip-text-out-of-flow-child`) и сохраняют исходный цвет.
     let images = vcx.background_images();
-    if paint_filter {
+    if paint_filter && c.background_paint.paints() {
         crate::style::computed::flat_background::collapse_flat_stack(c, vcx, &images);
     }
     let colors = super::super::color_inputs::text_clip_colors(
@@ -105,6 +106,7 @@ pub(super) fn inherit_paint(
         own,
         c,
         c.element_style.is_some(),
+        c.background_paint,
         &images,
     );
     set!(c.color, colors.color);
