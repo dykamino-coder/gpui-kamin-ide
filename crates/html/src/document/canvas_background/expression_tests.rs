@@ -2,6 +2,7 @@
 
 use super::mark_canvas_background;
 use crate::dom::test_support::find;
+use crate::style::canvas_background::CanvasBackgroundSource;
 use crate::style::cascade::materialize::materialize;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::{Color, Len};
@@ -29,9 +30,12 @@ fn canvas_binds_donor_image_colors_without_rebinding_explicit_inheritance() {
         let child = find(&nodes, &|e| e.tag == "div").unwrap();
         let input = root.style.used();
         let canvas = input.canvas_background.clone().unwrap();
+        let CanvasBackgroundSource::Donor(background) = &canvas else {
+            panic!("expected body donor");
+        };
         let blue = Color::parse("blue", vcx).unwrap();
         let green = Color::parse("green", vcx).unwrap();
-        assert_eq!(canvas.gradient.as_ref().unwrap().from, blue);
+        assert_eq!(background.gradient.as_ref().unwrap().from, blue);
         assert_eq!(body.style.computed().gradient.as_ref().unwrap().from, blue);
         assert_eq!(
             child.style.computed().gradient.as_ref().unwrap().from,
@@ -45,10 +49,11 @@ fn canvas_binds_donor_image_colors_without_rebinding_explicit_inheritance() {
         // Транспорт синтетической коробки сохраняет вход, а не встраивает в CSS.
         let boxed = BoxStyle::shared(input);
         let transported = crate::dom::SharedStyle::layout_made(&boxed);
-        assert!(Rc::ptr_eq(
-            transported.used().canvas_background.as_ref().unwrap(),
-            &canvas
-        ));
+        let transported_source = transported.used().canvas_background.unwrap();
+        let CanvasBackgroundSource::Donor(transported_background) = transported_source else {
+            panic!("expected transported body donor");
+        };
+        assert!(Rc::ptr_eq(&transported_background, background));
         assert!(transported.computed().gradient_raw.is_none());
     }
 }
@@ -66,15 +71,18 @@ fn canvas_keeps_computed_position_expressions_for_single_and_repeated_lists() {
         let nodes = mark_canvas_background(parsed.nodes.clone(), vcx);
         let root = find(&nodes, &|e| e.tag == "html").unwrap();
         let canvas = root.style.used().canvas_background.unwrap();
+        let CanvasBackgroundSource::Donor(background) = &canvas else {
+            panic!("expected body donor");
+        };
         assert_eq!(
-            canvas.top.position_used((0.0, 0.0), (100.0, 100.0)),
+            background.top.position_used((0.0, 0.0), (100.0, 100.0)),
             (40.0, 100.0)
         );
         assert_eq!(
-            canvas.top.position_used((0.0, 0.0), (-50.0, -50.0)),
+            background.top.position_used((0.0, 0.0), (-50.0, -50.0)),
             (-50.0, 80.0)
         );
-        if let Some(layers) = &canvas.layers {
+        if let Some(layers) = &background.layers {
             assert_eq!(layers.len(), 3);
             assert_eq!(layers[0].position, layers[2].position);
             assert_eq!(

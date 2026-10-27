@@ -20,5 +20,5 @@ impl BackgroundPaint {
 pub(crate) struct DecorationInput {
     pub inline: super::inline_decoration::InlineDecoration,
     pub background_paint: BackgroundPaint,
-    pub canvas: Option<std::rc::Rc<super::canvas_background::CanvasBackground>>,
+    pub canvas: Option<super::canvas_background::CanvasBackgroundSource>,
 }

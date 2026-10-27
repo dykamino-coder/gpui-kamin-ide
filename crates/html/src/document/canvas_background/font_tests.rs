@@ -6,6 +6,7 @@ use crate::font_facts::{
     FontFactsError, FontFactsProvider, FontMetric, FontMetricFacts, FontRegistrySnapshot,
     FontRequest, NormalLineFacts,
 };
+use crate::style::canvas_background::CanvasBackgroundSource;
 use crate::style::computed::BgSize;
 use std::rc::Rc;
 
@@ -53,7 +54,10 @@ fn donor_font_lengths_use_body_computed_font_and_document_facts() {
             let root = find(&nodes, &|e| e.tag == "html").unwrap();
             let body = find(&nodes, &|e| e.tag == "body").unwrap();
             let font = 20.0 * x_height * 2.5;
-            let background = root.style.used().canvas_background.unwrap();
+            let source = root.style.used().canvas_background.unwrap();
+            let CanvasBackgroundSource::Donor(background) = &source else {
+                panic!("expected body donor");
+            };
             assert_eq!(background.top.position.x, Some(Len::Px(font)));
             assert_eq!(
                 background.top.position.y,

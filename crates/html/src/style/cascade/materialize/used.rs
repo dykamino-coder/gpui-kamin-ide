@@ -82,7 +82,7 @@ lay_used! {
     vertical_align_base, rel_shift, box_shift, para_vertical, logical, width_from_inline,
     user_select, no_select, frame_sizing_height, first_letter, first_letter_excluded,
     first_letter_own, first_line, first_line_own, initial_letter, text_clip_fill, text_clip_raw, bg_clip, border_image, bg_origin,
-    bg_border_insets, canvas_bg, wm_contained, root_box, cb_height_def_hint, quirk_pct_base_hint,
+    bg_border_insets, wm_contained, root_box, cb_height_def_hint, quirk_pct_base_hint,
     calc_size, flex_main_def, flex_item, flex_main_vertical, float_tail, fit_arg,
     stretch_size, intrinsic_wrapper_required, clip_margin, clip_margin_box, clip_polygon,
     clip_polygon_evenodd, blend, isolate, will_change, contain_paint, contain_size,
