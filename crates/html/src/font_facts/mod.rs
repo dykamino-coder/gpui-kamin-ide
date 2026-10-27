@@ -12,10 +12,12 @@ mod descriptors;
 pub(crate) mod matching;
 mod registry;
 mod request;
+mod used;
 pub(crate) use descriptors::{MetricFaces, uniform_slope};
 pub(crate) use registry::{FeatureDefinitions, Registry};
 pub use registry::{FontRegistrySnapshot, GENERIC_SANS, generic_family};
 pub use request::{FontMetricQuery, FontOrientation, FontRequest, FontStyle};
+pub use used::UsedFont;
 
 /// Identity окружения одного документа без процессного счётчика или реестра.
 #[derive(Clone, Debug)]
@@ -67,6 +69,8 @@ pub enum FontInstanceFacts {
 /// Достоверность факта не выводится из числового значения (ноль допустим).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetricSource {
+    /// Метрика выбранного нативного лица до CSS-дескрипторов.
+    Native,
     /// Backend уже разрешил overrides/fallback; это не raw/design метрика лица.
     BackendResolved,
 }
@@ -99,6 +103,8 @@ pub struct FontMetricFacts {
     pub x_height: Option<FontMetric>,
     pub zero_advance: Option<FontMetric>,
     pub ideographic_advance: Option<FontMetric>,
+    /// Вертикальное продвижение независимо от ширины; None не означает ноль.
+    pub ideographic_vertical_advance: Option<FontMetric>,
     /// Доли MATH, не длины в px; отсутствие таблицы сохраняется явно.
     pub math_script_scale: Option<(f32, f32)>,
     pub alphabetic_baseline: Option<FontMetric>,

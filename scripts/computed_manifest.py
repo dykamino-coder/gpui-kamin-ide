@@ -27,7 +27,7 @@ OWNERS = {
     "inline-context": "flat_mode para_vertical turned_line lines_reversed upright_stack",
     "used-geometry": "rel_shift box_shift float_tail band_kid flex_line_wraps flow_shapes own_margin float_margin_offset spacer_edge vertical_shift_px vertical_align_base frame_sizing_height transform_origin_px perspective_origin_px bg_border_insets clip_round mask_box_override mask_user_scale shape_image fit_arg stretch_size calc_size_basis calc_size_max",
     "paint-context": "canvas_bg text_shadow_ink scrollbar_filter_ops decors flat_text_background flat_border_background inline_bg inline_border inline_pad inline_radius text_clip_fill text_clip_raw embedding_dark_scheme first_letter_excluded first_letter_own first_line_own",
-    "computed-and-used-font": "font_adjust_base font_size line_height",
+    "computed-and-used-font": "font_size line_height",
 }
 API = re.compile(
     r"\b(?:Computed|InheritedStyle|SharedStyle|BoxStyle|ElementStyle|ComputedSlot|ComputedHandle|ComputedBuilder|Published)\b"

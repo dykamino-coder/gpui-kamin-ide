@@ -3,7 +3,7 @@
 use crate::document::state::DocState;
 use crate::font_facts::{FontFactsError, FontFactsProvider, FontMetric, FontRegistrySnapshot};
 use crate::font_facts::{FontMetricFacts, FontRequest, NormalLineFacts};
-use crate::style::computed::Computed;
+use crate::style::computed::{Computed, FontCx};
 use crate::style::font_metrics::*;
 use crate::style::values::value::Len;
 use std::rc::Rc;
@@ -23,6 +23,7 @@ impl FontFactsProvider for Facts {
             x_height: m(0.4),
             zero_advance: m(0.25),
             ideographic_advance: m(1.5),
+            ideographic_vertical_advance: None,
             alphabetic_baseline: m(0.05),
             math_script_scale: Some((0.8, 0.6)),
         })
@@ -61,9 +62,12 @@ fn css_font_lengths_and_roots_follow_each_document_provider() {
         c.apply_one("width", "calc(1ex + 1ch + 1ic + 1cap)", vcx);
         c.resolve_em(16.0, vcx);
         assert_eq!(c.width, Some(Len::Px(57.0 * factor)));
-        assert_eq!(c.computed_font_px("", 20.0, vcx), Some(20.0));
+        assert_eq!(c.computed_font_px(FontCx::new("", 20.0), vcx), Some(20.0));
         c.apply_one("font-size", "2ch", vcx);
-        assert_eq!(c.computed_font_px("", 20.0, vcx), Some(10.0 * factor));
+        assert_eq!(
+            c.computed_font_px(FontCx::new("", 20.0), vcx),
+            Some(10.0 * factor)
+        );
         set_root_family(doc, "root");
         set_root_metrics(doc, 20.0, normal_height("root", 20.0, vcx));
         for (unit, px) in [
@@ -141,4 +145,21 @@ fn absent_metrics_and_real_zero_have_distinct_css_fallbacks() {
     assert_eq!(ideographic("", 20.0, doc.values()), 20.0);
     assert_eq!(normal_height("", 20.0, doc.values()), 24.0);
     assert_eq!(horizontal("", 0.0, doc.values()), (0.0, 0.0));
+}
+
+#[test]
+fn font_size_adjust_root_units_follow_the_document_cascade() {
+    let fonts =
+        crate::text::metrics::FontContext::default().with_facts_provider(|| Rc::new(Facts(1.0)));
+    let document = crate::Document::builder(
+        "<p>root</p>",
+        "html { font-family:narrow; font-size:20px; font-size-adjust:0.8; line-height:1.5 }",
+    )
+    .fonts(&fonts)
+    .build()
+    .unwrap();
+    assert_eq!(
+        crate::style::values::value::calc_pct_px("calc(1rem + 1rex + 1rlh)", document.values()),
+        Some((0.0, 66.0))
+    );
 }

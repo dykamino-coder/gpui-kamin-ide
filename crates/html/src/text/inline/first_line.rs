@@ -26,7 +26,7 @@ pub fn style_first_line(
             Piece::Text { text, style: own } if seen < at => {
                 let dress = |base: &BoxStyle| {
                     let mut c = base.clone();
-                    c.font_size = style.font_size.or(base.font_size);
+                    c.overlay_font_size(style);
                     // The fictional `::first-line` tag sequence wraps the
                     // line's inline elements (css-pseudo-4
                     // §first-line-inheritance): an element's own color wins
@@ -61,11 +61,13 @@ pub fn style_first_line(
                     // (css-pseudo-4 §4.1; first-line-line-height-001/002).
                     c.background = style.background.or(base.background);
                     // Красит подложку прогон текста, и берёт он её из
-                    // `inline_bg`: слой первой строки накладывается уже ПОСЛЕ
-                    // сборки кусков, когда `inline_bg` посчитан по своему
+                    // `InlineDecoration::band_color`: слой первой строки накладывается уже ПОСЛЕ
+                    // сборки кусков, когда `InlineDecoration::band_color` посчитан по своему
                     // стилю (`c25-pseudo-elmnt-000`: зелёной полосы не было).
-                    c.inline_bg =
-                        first_line_background::paint_color(base.inline_bg, style.background);
+                    c.inline_decoration.band_color = first_line_background::paint_color(
+                        base.inline_decoration.band_color,
+                        style.background,
+                    );
                     c.line_height = style.line_height.or(base.line_height);
                     // TRANSITIONAL(cascade-7b-R12): Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере.
                     // Не переносить сюда сдвиг по вертикали (§5.12.1 относит

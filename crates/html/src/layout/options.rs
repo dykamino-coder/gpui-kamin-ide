@@ -7,7 +7,6 @@
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::style::computed::{BoxStyle, Computed};
-use crate::style::values::value::Len;
 use gpui::{TextStyle, px};
 
 /// Настройки отрисовки: то, что задаёт приложение, а не документ.
@@ -71,9 +70,5 @@ impl RenderOpts {
 /// `font-size: 10px` строка обязана быть в 10 точек, а базовый (16) держал её
 /// вдвое выше.
 pub(crate) fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
-    match inherited.font_size {
-        Some(Len::Px(v)) => v,
-        Some(Len::Em(k)) | Some(Len::Pct(k)) => k * opts.base_size(),
-        _ => opts.base_size(),
-    }
+    inherited.used_font(opts.base_size(), opts.cx.vcx()).size_px
 }

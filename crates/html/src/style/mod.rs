@@ -11,6 +11,7 @@ pub mod computed;
 pub mod css;
 pub(crate) mod flow;
 pub mod generated;
+pub(crate) mod inline_decoration;
 pub mod select;
 pub mod values;
 pub mod zoom;

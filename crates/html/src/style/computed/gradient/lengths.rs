@@ -1,6 +1,6 @@
 //! Разрешает разобранные длины градиента после наследования шрифта, до отрисовки.
 
-use super::{Computed, Gradient, GradientShape, Len, RadialSize};
+use super::{BgSize, Computed, Gradient, GradientShape, Len, RadialSize};
 use crate::document::state::ValueCx;
 use crate::style::values::value::calc_get;
 
@@ -83,7 +83,16 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>),
         vcx: ValueCx<'_>,
     ) {
-        let uses_line = self.bg_lists.needs_line_height(vcx)
+        let size = match self.bg_size {
+            BgSize::Fixed(w, h) => [w, h],
+            _ => [None, None],
+        };
+        let uses_line = [self.bg_pos.x, self.bg_pos.y]
+            .into_iter()
+            .chain(size)
+            .flatten()
+            .any(|l| l.needs_line_height(vcx))
+            || self.bg_lists.needs_line_height(vcx)
             || self.image_operands().any(|i| i.needs_line_height(vcx))
             || [self.gradient.as_ref(), self.gradient_current.as_ref()]
                 .into_iter()
@@ -106,7 +115,14 @@ impl Computed {
         {
             gradient.resolve_lengths(&fix, vcx);
         }
-        // Layer positioning and size share the same computed length closure.
+        // Позиция и размер вычисляются и без изображения (css-backgrounds-3
+        // §2.6, §2.9); процент остаётся для области позиционирования.
+        fix(&mut self.bg_pos.x);
+        fix(&mut self.bg_pos.y);
+        if let BgSize::Fixed(w, h) = &mut self.bg_size {
+            fix(w);
+            fix(h);
+        }
         self.bg_lists.resolve_lengths(&fix, vcx);
         for image in self.image_operands() {
             image.resolve_lengths(&fix, vcx);

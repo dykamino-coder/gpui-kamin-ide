@@ -12,7 +12,7 @@ use crate::layout::box_kind::{
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Computed, Display};
-use crate::style::values::value::{Len, px_lossy_zero};
+use crate::style::values::value::px_lossy_zero;
 
 /// Стиль блока, которому принадлежит первая (`start`) или последняя
 /// отформатированная строка контейнера — для `text-box-trim`
@@ -128,19 +128,16 @@ pub(crate) fn text_box_line_style(
 /// (спуска) до метрики края. Та же формула, что `trim_for` в хвосте
 /// `blocks()`; нужна и вне его — точке обрыва `line-clamp`.
 pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &RenderOpts) -> f32 {
-    let size = match line_style.font_size {
-        Some(Len::Px(v)) => v,
-        _ => opts.base_size(),
-    };
+    let size = line_style
+        .used_font(opts.base_size(), opts.cx.vcx())
+        .size_px;
     let vcx = opts.cx.vcx();
     let family = line_style.font_family.clone().unwrap_or_default();
     let extents = crate::style::font_metrics::vertical(&family, size, vcx);
     let (ascent, descent, _) = extents;
-    let line = match line_style.line_height {
-        Some(Len::Px(v)) => v,
-        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => ascent + descent,
-    };
+    let line = line_style
+        .numeric_line_px(opts.base_size())
+        .unwrap_or(ascent + descent);
     let half = (line - (ascent + descent)) / 2.0;
     half + edge_inset(line_style, &family, size, extents, start, vcx)
 }
@@ -190,17 +187,10 @@ pub(crate) fn edge_inset(
 
 /// Высота строки в точках — для статической позиции блочного элемента.
 pub(crate) fn line_height_px(style: &Computed, opts: &RenderOpts) -> f32 {
-    let size = match style.font_size {
-        Some(Len::Px(v)) => v,
-        Some(Len::Em(k)) => k * opts.base_size(),
-        _ => opts.base_size(),
-    };
-    match style.line_height {
-        Some(Len::Px(v)) => v,
-        // Голое число хранится долей: это множитель к кеглю.
-        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => size * crate::defaults::FALLBACK_NORMAL_LINE_HEIGHT,
-    }
+    style.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
+        style.used_font(opts.base_size(), opts.cx.vcx()).size_px
+            * crate::defaults::FALLBACK_NORMAL_LINE_HEIGHT
+    })
 }
 
 /// Есть ли в поддереве непустой текст — по нему считается высота строки.

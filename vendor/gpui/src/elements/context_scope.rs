@@ -1,13 +1,4 @@
-// KaminIDE patch: прозрачная обёртка, которая ставит контекст хозяина на
-// фазы своего поддерева.
-//
-// Документ движка HTML держит свои правила и арены в состоянии документа и
-// делает его текущим на время работы с ним; раскладка, подготовка и краска
-// идут после сборки кадра, поэтому обёртка входит в контекст на каждой фазе
-// (`enter` возвращает guard, его сброс — выход). Для раскладки и порядка
-// краски обёртки нет: узел раскладки — узел ребёнка, собиратель `PaintLast`
-// проходит её насквозь (`AnyElement::paint`), второй проход `Div` видит
-// `PaintLast` внутри неё (`is_paint_last`).
+//! Контекст хозяина сохраняет layout identity и метаданные ребёнка.
 
 use crate::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
@@ -43,16 +34,10 @@ impl ContextScope {
     }
 }
 
-/// `PaintLast` — сам элемент или внутри прозрачных обёрток.
-pub(crate) fn is_paint_last(el: &mut AnyElement) -> bool {
-    if el.downcast_mut::<crate::PaintLast>().is_some() {
-        return true;
-    }
-    el.downcast_mut::<ContextScope>()
-        .is_some_and(|scope| is_paint_last(&mut scope.child))
-}
-
 impl Element for ContextScope {
+    fn paint_boundary(&self) -> bool { false }
+    fn paint_metadata(&self) -> Option<&dyn Any> { self.child.paint_metadata() }
+
     type RequestLayoutState = ();
     type PrepaintState = ();
 
