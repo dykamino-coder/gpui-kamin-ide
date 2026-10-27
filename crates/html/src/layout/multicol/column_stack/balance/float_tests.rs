@@ -3,6 +3,23 @@ use super::*;
 use crate::layout::fragment::flow::FloatGeometry;
 
 #[test]
+fn balancing_keeps_an_avoided_boundary_with_an_earlier_break() {
+    let kids: Vec<_> = [25., 50., 25., 50.]
+        .into_iter()
+        .enumerate()
+        .map(|(i, h)| Kid {
+            h,
+            over: h,
+            avoid_before: i == 2,
+            ..Default::default()
+        })
+        .collect();
+    let stack = ColumnStack::new(vec![], 2, 0., None, None, None, None, Default::default());
+    let (height, _) = stack.balance_line(&kids, 2, None);
+    assert_eq!(height, 100.);
+}
+
+#[test]
 fn float_balance_floor_preserves_independent_normal_breaks() {
     let float = FloatGeometry {
         id: 7,

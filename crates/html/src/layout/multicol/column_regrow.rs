@@ -82,7 +82,20 @@ impl ColumnStack {
                 .watched
                 .as_ref()
                 .is_some_and(|w| w.blocks().is_some_and(|b| b.table.is_some()));
-            if table {
+            let clipped = c
+                .watched
+                .as_ref()
+                .is_some_and(|w| w.blocks().is_some_and(|b| b.clips_block));
+            if clipped {
+                // Shape-оценка может включать содержимое за clip box. Только
+                // измеренный border box участвует в продолжении колонок.
+                c.h = f32::from(if axis.is_vertical() {
+                    sz.width
+                } else {
+                    sz.height
+                });
+                c.over = c.h;
+            } else if table {
                 // Таблица: высота — разложенные ряды, подписи и заданная
                 // высота (css-tables-3 §computing-the-table-height), поток —
                 // и видимое переполнение её содержимого (css-break-3 §3).

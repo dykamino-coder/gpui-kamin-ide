@@ -85,6 +85,16 @@ pub(crate) fn cut_at(
             a = start;
         }
         if a > from + 0.01 { Some(at(a)) } else { None }
+    } else if !paged {
+        // Сначала допустимая точка разрыва, затем перенос целиком.
+        // Срез последней возможности выбирает place_cut лишь для коробки,
+        // которая выше целой колонки (css-break-3 §4.4).
+        k.cuts
+            .iter()
+            .map(|&(point, _)| point)
+            .filter(|&point| point > from + 0.01 && point <= edge + 0.01)
+            .max_by(f32::total_cmp)
+            .map(&at)
     } else {
         Some(at(edge))
     };
