@@ -29,7 +29,10 @@ impl Render for Page {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let doc = match &self.doc {
             Ok(doc) => doc,
-            Err(failure) => return div().child(failure.to_string()).into_any_element(),
+            Err(failure) => {
+                let status = kamin_html::diagnostics::DisplayStatus::Failed(*failure);
+                return div().children(status.message()).into_any_element();
+            }
         };
         let mut text = window.text_style();
         text.color = rgb(0x1a1c23).into();
@@ -95,6 +98,17 @@ fn main() {
                 .fonts(&fonts)
                 .build()
                 .map(Rc::new);
+            // Консоль — представление typed диагностик, не их источник.
+            let mut lines = String::new();
+            let batch = match &doc {
+                Ok(doc) => doc.take_diagnostics(),
+                Err(failure) => kamin_html::diagnostics::DiagnosticBatch {
+                    terminal: Some(*failure),
+                    ..Default::default()
+                },
+            };
+            kamin_html::diagnostics::console::write_batch(&mut lines, "", &batch);
+            eprint!("{lines}");
             cx.open_window(
                 WindowOptions {
                     // Точка в углу экрана и точный размер: снимок сравнивается с

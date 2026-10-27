@@ -13,6 +13,7 @@
 
 mod arena;
 mod budget;
+mod diagnostics;
 mod font_facts;
 mod property_registry;
 mod readiness;
@@ -44,6 +45,8 @@ pub struct DocState {
     pub(crate) traversal: traversal::TraversalState,
     /// Первый отказ вложенного документа этой revision; не теряется при повторном кадре.
     pub(crate) embedded_failure: Cell<Option<crate::document::DocumentFailure>>,
+    /// Ограниченный журнал диагностик ревизии; ёмкость резервируется при создании.
+    diagnostics: RefCell<crate::diagnostics::DiagnosticLog>,
     /// Следующий ключ синтетической коробки, независимо от авторских node_id.
     synthetic_id: RefCell<Vec<u8>>,
     /// Anchor geometry and fallback selection belonging to this document.

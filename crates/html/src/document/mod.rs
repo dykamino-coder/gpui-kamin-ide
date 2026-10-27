@@ -18,6 +18,9 @@ mod budget_tests;
 #[cfg(test)]
 mod work_budget_tests;
 mod builder;
+mod diagnostics;
+#[cfg(test)]
+mod diagnostics_tests;
 #[cfg(feature = "engine-bench")]
 mod timing;
 #[cfg(feature = "engine-bench")]
