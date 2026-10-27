@@ -53,25 +53,35 @@ impl Computed {
     /// CSS Values 4 §10.2/10.10 compares resolved lengths, not percentage
     /// coefficients. Blink ResolveXPosition passes available width (which
     /// can be negative) into the calculated length evaluator.
+    #[cfg(test)]
     pub(crate) fn background_position_used(
         &self,
         fallback: (f32, f32),
         free: (f32, f32),
         _vcx: ValueCx<'_>,
     ) -> (f32, f32) {
-        if self.bg_position_math.iter().all(Option::is_none) {
-            return fallback;
-        }
-        let mut used = [fallback.0, fallback.1];
-        for (i, expression) in self.bg_position_math.iter().enumerate() {
-            if let Some(expression) = expression
-                && let Some(value) = expression.evaluate([free.0, free.1][i])
-            {
-                used[i] = value;
-            }
-        }
-        (used[0], used[1])
+        used(&self.bg_position_math, fallback, free)
     }
+}
+
+/// Общий вычислитель CSS-выражения для стиля и собственного входа краски.
+pub(crate) fn used(
+    expressions: &[Option<PositionExpression>; 2],
+    fallback: (f32, f32),
+    free: (f32, f32),
+) -> (f32, f32) {
+    if expressions.iter().all(Option::is_none) {
+        return fallback;
+    }
+    let mut used = [fallback.0, fallback.1];
+    for (i, expression) in expressions.iter().enumerate() {
+        if let Some(expression) = expression
+            && let Some(value) = expression.evaluate([free.0, free.1][i])
+        {
+            used[i] = value;
+        }
+    }
+    (used[0], used[1])
 }
 
 /// Положение (верхний слой) и выражения сравнения по осям. Смешанное

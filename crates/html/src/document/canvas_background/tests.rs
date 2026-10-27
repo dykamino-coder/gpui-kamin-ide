@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::dom::test_support::find;
-use crate::style::values::value::Color;
+use crate::style::values::value::{Color, StyleColor};
 use std::rc::Rc;
 
 #[test]
@@ -28,7 +28,7 @@ fn body_currentcolor_uses_its_computed_color_with_or_without_an_image() {
             let blue = Color::parse("blue", vcx).unwrap();
             assert!(root.style.computed().canvas_bg);
             assert_eq!(
-                root.style.computed().background,
+                root.style.used().canvas_background.as_ref().unwrap().color,
                 Some(blue),
                 "{color}; {image}"
             );
@@ -68,5 +68,8 @@ fn transparent_root_currentcolor_still_allows_body_propagation() {
     let nodes = mark_canvas_background(parsed.nodes.clone(), vcx);
     let root = find(&nodes, &|e| e.tag == "html").unwrap();
     assert!(root.style.cascaded().canvas_bg);
-    assert_eq!(root.style.cascaded().background, Color::parse("blue", vcx));
+    assert_eq!(
+        root.style.used().canvas_background.as_ref().unwrap().color,
+        Color::parse("blue", vcx)
+    );
 }

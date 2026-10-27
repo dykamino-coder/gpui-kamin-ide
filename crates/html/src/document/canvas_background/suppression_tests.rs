@@ -21,15 +21,19 @@ fn donor_computed_background_remains_the_source_for_explicit_inheritance() {
     let child = find(&nodes, &|e| e.tag == "div").unwrap();
     let donor = body.style.computed();
     let inherited = child.style.computed();
-    let canvas = root.style.computed();
-    assert!(canvas.canvas_bg);
-    for copy in [&*inherited, &*canvas] {
-        assert_eq!(copy.background, donor.background);
-        assert_eq!(copy.gradient_raw, donor.gradient_raw);
-        assert_eq!(copy.bg_size, donor.bg_size);
-        assert_eq!(copy.bg_pos, donor.bg_pos);
-        assert_eq!(copy.bg_repeat, donor.bg_repeat);
-    }
+    let canvas = root.style.used().canvas_background.unwrap();
+    assert!(root.style.computed().canvas_bg);
+    assert_eq!(inherited.background, donor.background);
+    assert_eq!(inherited.gradient_raw, donor.gradient_raw);
+    assert_eq!(inherited.bg_size, donor.bg_size);
+    assert_eq!(inherited.bg_pos, donor.bg_pos);
+    assert_eq!(inherited.bg_repeat, donor.bg_repeat);
+    assert_eq!(canvas.color, donor.background);
+    assert_eq!(canvas.gradient_image, donor.gradient_raw);
+    assert_eq!(canvas.top.size, donor.bg_size);
+    assert_eq!(canvas.top.position, donor.bg_pos);
+    assert_eq!(canvas.top.repeat, donor.bg_repeat);
+    assert!(root.style.computed().gradient_raw.is_none());
     assert!(donor.gradient.is_some());
     let root_box = box_style(&BoxStyle::default(), &root.style, vcx);
     let body_box = box_style(&root_box, &body.style, vcx);
@@ -54,11 +58,19 @@ fn initial_used_background_suppresses_paint_without_erasing_css_or_borders() {
         "blue",
         "blue padding-box",
         "linear-gradient(blue,blue)",
+        "linear-gradient(rgba(0,0,255,.5),rgba(0,0,255,.5)) 0 0 / 100px 100px no-repeat",
+        "linear-gradient(rgba(0,0,255,.5),rgba(0,0,255,.5)),linear-gradient(transparent,transparent)",
         "url(a)",
         "blue border-area",
     ] {
         let mut css = Computed::default();
         css.apply_one("background", background, vcx);
+        let mut background_only = BoxStyle::new(css.clone());
+        background_only.background_paint = BackgroundPaint::Initial;
+        // Начальный фон исключает также плитки из сохранённых CSS-списков.
+        assert!(
+            crate::paint::decorations::decorations(&background_only, true, vcx, None).is_empty()
+        );
         css.apply_one("border", "10px solid red", vcx);
         let mut body = BoxStyle::new(css);
         let source = body.style_rc().clone();
