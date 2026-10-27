@@ -223,18 +223,31 @@ fn nonzero(growth: Vec<f32>) -> Vec<f32> {
     }
 }
 
-/// Move the tracks after each growth towards the axis end (see `Growth::shift`).
+/// Move the tracks after each growth towards the axis end (see `Growth::shift`). The gutter after
+/// a grown track stays with the area that ends at that track (`lanes_geometry::track_area`): on a
+/// forward axis its offset is that area's end line, on a reversed axis it is the physical end of
+/// the next track's area, so completed items keep their size either way.
 fn shift_axis(tracks: &mut [GridTrack], after: &[f32], reversed: bool, extra: f32) {
     if after.is_empty() {
         return;
     }
     let mut before = 0.0;
+    let mut pending = 0.0;
     let mut index = 0;
     for track in tracks.iter_mut() {
+        if track.kind == GridTrackKind::Track {
+            before += pending;
+            pending = 0.0;
+        }
         track.offset += if reversed { extra - before } else { before };
         if track.kind == GridTrackKind::Track {
-            before += after.get(index).copied().unwrap_or(0.0);
+            let growth = after.get(index).copied().unwrap_or(0.0);
             index += 1;
+            if reversed {
+                before += growth;
+            } else {
+                pending = growth;
+            }
         }
     }
 }
