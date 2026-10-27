@@ -3,6 +3,7 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::probe::size_monolith;
 use crate::layout::multicol::spanner::multicol_container;
@@ -24,6 +25,7 @@ pub(crate) use dec::clone_fragment;
 pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
     use crate::style::computed::FlexDir;
     let s = &*w.style.used();
+    let sizes = BoxDimensions::for_element(w, s);
     let zero = |l: &Option<Len>| match l {
         None => true,
         Some(Len::Px(v)) => v.abs() < 0.01,
@@ -52,8 +54,8 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
         || s.align_items.is_some()
         || s.justify_content.is_some()
         || !matches!(s.height, None | Some(Len::Auto))
-        || s.min_height.is_some()
-        || s.max_height.is_some()
+        || sizes.minimum[1].is_some()
+        || sizes.maximum[1].is_some()
         || ![
             &s.padding.top,
             &s.padding.bottom,

@@ -2,6 +2,7 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
@@ -17,6 +18,7 @@ use crate::style::values::value::Len;
 /// `nested_rows_shape` отклоняет: Blink переносит его иначе, чем наша укладка.
 pub(super) fn plain_block_kid(k: &Element) -> bool {
     let s = &k.style.used();
+    let sizes = BoxDimensions::for_element(k, s);
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
     let unset = |l: &Option<Len>| matches!(l, None | Some(Len::Auto));
     matches!(s.display, None | Some(Display::Block))
@@ -24,8 +26,8 @@ pub(super) fn plain_block_kid(k: &Element) -> bool {
         && s.float.unwrap_or(0) == 0
         && (matches!(s.height, Some(Len::Px(h)) if h > 0.0)
             || (s.position == Some(Position::Relative) && unset(&s.height)))
-        && s.min_height.is_none()
-        && s.max_height.is_none()
+        && sizes.minimum[1].is_none()
+        && sizes.maximum[1].is_none()
         && zero(&s.margin.top)
         && zero(&s.margin.bottom)
         && !s.break_inside_avoid

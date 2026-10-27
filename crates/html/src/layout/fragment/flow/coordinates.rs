@@ -2,7 +2,7 @@
 use crate::layout::fragment::types::StackAxis;
 use gpui::{Pixels, Point, Size};
 
-pub(super) fn block_offset(
+pub(crate) fn block_offset(
     origin: Point<Pixels>,
     owner: Size<Pixels>,
     at: Point<Pixels>,

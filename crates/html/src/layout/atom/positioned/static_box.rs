@@ -88,6 +88,15 @@ pub(in crate::layout::atom) fn static_position_atom(
         line_rect: true,
         ..Default::default()
     });
+    if let Some(recorder) = &opts.cx.position.geometry_record {
+        recorder.spot(
+            e.node_id,
+            &spot,
+            opts.cx.position.line_box.clone(),
+            &e.style.used(),
+            opts.cx.vcx(),
+        );
+    }
     let probe = crate::layout::positioned::containing_block::spot_probe(
         spot.clone(),
         false,
@@ -103,6 +112,12 @@ pub(in crate::layout::atom) fn static_position_atom(
         Some(el) => el,
         None => inner.into_any_element(),
     };
+    let inner = crate::layout::positioned::containing_block::metrics::record::wrap(
+        e.node_id,
+        &positioned,
+        inner,
+        opts,
+    );
     let inner = anchor::place::place_in_context(inner, &positioned, inherited, &opts.cx);
     if anchor::trials::inline::is_root(e, opts) {
         return Some(inner);

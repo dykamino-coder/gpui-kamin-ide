@@ -5,6 +5,7 @@ use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level;
 use crate::layout::float::band_flow_host::band_flow_host;
+use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::list::{self, list_item};
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::iframe::object_is_document;
@@ -19,6 +20,7 @@ use crate::render::generic_box::generic_box_stack;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_element(
@@ -27,7 +29,7 @@ pub(crate) async fn dispatch_element(
     merged: BoxStyle,
     inherited: &BoxStyle,
     opts: &RenderOpts,
-    outer_row: Option<(f32, f32)>,
+    outer_space: Option<Rc<Nested>>,
     built_iframe: Option<AnyElement>,
 ) -> AnyElement {
     let st = e.style.used();
@@ -55,14 +57,12 @@ pub(crate) async fn dispatch_element(
         {
             list_item::render_with_style(stk, e, inherited, &merged, opts).await
         }
-        // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4): слитый стиль
-        // его уже несёт, а копия для замещаемой коробки — нет. Без переноса
-        // блочная картинка под `body { image-orientation: none }` всё равно
-        // разворачивалась по метке EXIF.
+        // `image-orientation` наследуется (css-images-3 §5.4): замещаемая коробка
+        // получает его из слитого стиля, включая запрет поворота по EXIF.
         "canvas" if merged.context.parent_grid != 0 => {
             match crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx) {
                 Some(canvas) => canvas,
-                None => generic_box_stack(stk, e, merged, inherited, opts, outer_row).await,
+                None => generic_box_stack(stk, e, merged, inherited, opts, outer_space).await,
             }
         }
         "img" => {
@@ -245,6 +245,6 @@ pub(crate) async fn dispatch_element(
         // переносится, хотя абзац — нет. Отдельный рисователь преформата
         // правил куска не знает, поэтому такой случай уходит в обычную
         // строчную раскладку (`white-space-pre-031`).
-        _ => generic_box_stack(stk, e, merged, inherited, opts, outer_row).await,
+        _ => generic_box_stack(stk, e, merged, inherited, opts, outer_space).await,
     }
 }

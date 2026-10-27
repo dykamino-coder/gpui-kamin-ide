@@ -1,10 +1,11 @@
 //! Куски ребёнка по колонкам: цикл размещения фрагментов одного ребёнка (fill_pieces).
+pub(super) use super::piece::LoopStep;
 use super::{cut_at, fill_clone_dec, forced_or_fits, place_cut};
 use crate::layout::fragment::plan::{Plan, skip_float};
 use crate::layout::fragment::types::{Frag, Kid};
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn fill_pieces(
+pub(super) fn fill_pieces_inner(
     target_at: &dyn Fn(usize) -> f32,
     limit: usize,
     paged: bool,
@@ -23,10 +24,19 @@ pub(super) fn fill_pieces(
     flow: f32,
     rg: crate::layout::fragment::types::RepeatGeom,
     remeasure: &mut super::ResumeMeasure<'_>,
-) -> Result<(), crate::layout::fragment::token::Error> {
+    tokens: &mut super::cuts::InlineTokens,
+    single: bool,
+) -> Result<super::piece::Cursor, crate::layout::fragment::token::Error> {
     let mut measured = None;
-    let mut tokens = super::cuts::InlineTokens::default();
+    let first_col = *col;
     loop {
+        if single && *col != first_col {
+            return Ok(super::piece::Cursor {
+                from,
+                copy,
+                complete: false,
+            });
+        }
         let measurement = remeasure(super::MeasureRequest {
             kid,
             copy,
@@ -58,22 +68,14 @@ pub(super) fn fill_pieces(
             None => {}
         }
         let rest = flow - from;
-        // Повтор секций таблицы: фрагмент-продолжение начат ПОД полосой
-        // шапки (курсор уже стоит под ней, `RepeatGeom::head_at` при переходе),
-        // а непоследний фрагмент оставляет снизу место под подвал —
-        // Blink кладёт его сразу за содержимым фрагмента и вычитает из
-        // доступного места заранее (`table_layout_algorithm.cc:1145-1149`,
-        // `:1323-1327` `reserved_space`). Целиком влезающий остаток
-        // подвал несёт сам — он последний в таблице.
+        // Продолжение — под повторяемой шапкой, подвал резервируется снизу
+        // (Blink table_layout_algorithm.cc:1145–1149,1323–1327).
         let hd = if copy > 0 { rg.head_at(from) } else { 0.0 };
         let room_all = room;
         let rf = rg.foot_for(from, room_all);
         let room = room_all - rf;
-        // Место под содержимым непоследнего фрагмента: секция тянется до
-        // низа фрагментаинера (css-break-3 §box-splitting: «its content
-        // box extends to fill any remaining fragmentainer extent»), и
-        // подвал встаёт на самый низ — `forced-break-before-repeated-
-        // footer-001`: ряд 50 с `break-after: column`, подвал на 80..100.
+        // Непоследний фрагмент тянется до края; подвал стоит снизу
+        // (css-break-3 §box-splitting).
         let ft = |h: f32| {
             if rf > 0.0 {
                 (room_all - h).max(rf)
@@ -196,7 +198,7 @@ pub(super) fn fill_pieces(
             at,
             overflow_to,
             shortage,
-            &mut tokens,
+            tokens,
             &measurement.inline,
         )?;
         // Недолаз: на сколько не хватило колонки до ближайшего
@@ -240,11 +242,9 @@ pub(super) fn fill_pieces(
         *placed = *col < not_top;
         skip_float(float_hold, col, &mut cur, placed);
     }
-    Ok(())
-}
-
-/// Выход из шага цикла, вынесенного в функцию: `break` или `continue` вызывающего цикла.
-pub(super) enum LoopStep {
-    Break,
-    Continue,
+    Ok(super::piece::Cursor {
+        from,
+        copy,
+        complete: out.completion == super::Completion::Complete,
+    })
 }

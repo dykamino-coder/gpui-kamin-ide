@@ -141,6 +141,8 @@ pub struct OverlayAt {
     /// inset axis (`absolute_atom`): its prepaint gets the line box through
     /// this slot.
     pub line_probe: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
+    /// Исходный layout самостоятельного overlay, не paint-геометрия щупа.
+    pub(crate) normal_probe: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
 }
 
 /// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;

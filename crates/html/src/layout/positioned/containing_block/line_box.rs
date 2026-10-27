@@ -3,7 +3,20 @@
 use gpui::Pixels;
 
 /// Each probe receives its paragraph's current line rather than a global slot.
-pub type LineBoxSlot = std::rc::Rc<std::cell::Cell<Option<(Pixels, Pixels, Pixels)>>>;
+pub type LineBoxSlot = std::rc::Rc<LineBox>;
+
+#[derive(Debug, Default, PartialEq)]
+pub struct LineBox {
+    paint: std::cell::Cell<Option<(Pixels, Pixels, Pixels)>>,
+    pub(crate) normal: std::cell::Cell<Option<super::metrics::static_rect::LineGeometry>>,
+}
+
+impl std::ops::Deref for LineBox {
+    type Target = std::cell::Cell<Option<(Pixels, Pixels, Pixels)>>;
+    fn deref(&self) -> &Self::Target {
+        &self.paint
+    }
+}
 
 /// Expose this line while the probe prepaints, preserving any outer value.
 pub fn with_line_box<R>(

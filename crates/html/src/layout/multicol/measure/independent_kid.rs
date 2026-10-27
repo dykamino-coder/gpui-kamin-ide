@@ -66,8 +66,9 @@ pub(super) fn measured(
 mod tests {
     use super::*;
 
-    #[test]
-    fn empty_grid_uses_measured_copy_at_known_and_deferred_widths() {
+    #[gpui::test]
+    fn empty_grid_uses_measured_copy_at_known_and_deferred_widths(cx: &mut gpui::TestAppContext) {
+        let cx = cx.add_empty_window();
         use crate::dom::Node;
         use crate::layout::fragment::types::StackAxis;
         use crate::layout::multicol::deferred::Recipe;
@@ -103,14 +104,21 @@ mod tests {
         )
         .unwrap();
         for width in [100.0, 120.0] {
-            let kids = recipe.children(width);
-            assert_eq!(kids.len(), 1);
-            assert_eq!(kids[0].measure, Some(width));
-            let Node::Element(grid) = &host.children[0] else {
-                panic!("grid")
-            };
-            assert!(gate(grid, true, Some(width)));
-            assert!(kids[0].watched.as_ref().is_some_and(|w| w.has_blocks()));
+            cx.draw(
+                gpui::point(gpui::px(0.), gpui::px(0.)),
+                gpui::size(gpui::px(400.), gpui::px(400.)),
+                |window, app| {
+                    let kids = recipe.children(width, window, app);
+                    assert_eq!(kids.len(), 1);
+                    assert_eq!(kids[0].measure, Some(width));
+                    let Node::Element(grid) = &host.children[0] else {
+                        panic!("grid")
+                    };
+                    assert!(gate(grid, true, Some(width)));
+                    assert!(kids[0].watched.as_ref().is_some_and(|w| w.has_blocks()));
+                    gpui::div()
+                },
+            );
         }
         #[cfg(feature = "wpt-harness")]
         assert!(

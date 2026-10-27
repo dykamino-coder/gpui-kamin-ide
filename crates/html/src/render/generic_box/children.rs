@@ -1,7 +1,8 @@
 //! Сборка детей общей коробки: ортогональные оси, clamp и контексты окраски.
 
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::options::RenderOpts;
-use crate::render::blocks::blocks_stack;
+use crate::render::blocks::blocks_stack_with_dimensions;
 mod formatting_context;
 mod probes;
 pub(crate) use probes::child_probes;
@@ -84,7 +85,12 @@ pub(crate) async fn generic_children(
             vertical_hug::children(
                 orthogonal_children(
                     vertical_flow_margins::children(
-                        resolve_inline_pct(children, &merged, true),
+                        resolve_inline_pct(
+                            children,
+                            &merged,
+                            &BoxDimensions::for_element(e, &merged),
+                            true,
+                        ),
                         &merged,
                         reverse,
                         lead_margin,
@@ -97,7 +103,15 @@ pub(crate) async fn generic_children(
                 &merged,
             )
         } else {
-            orthogonal_vertical_children(resolve_inline_pct(children, &merged, false), &merged)
+            orthogonal_vertical_children(
+                resolve_inline_pct(
+                    children,
+                    &merged,
+                    &BoxDimensions::for_element(e, &merged),
+                    false,
+                ),
+                &merged,
+            )
         };
         Cow::Owned(children)
     };
@@ -183,7 +197,14 @@ pub(crate) async fn generic_children(
             formatting
         });
         decorated.extend(
-            blocks_stack(stk, &children, formatting.as_ref().unwrap_or(&merged), opts).await,
+            blocks_stack_with_dimensions(
+                stk,
+                &children,
+                formatting.as_ref().unwrap_or(&merged),
+                BoxDimensions::for_element(e, &merged),
+                opts,
+            )
+            .await,
         );
     }
     kids.extend(decorated);

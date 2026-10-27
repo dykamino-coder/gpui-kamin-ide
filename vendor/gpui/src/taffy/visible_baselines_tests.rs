@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::px;
-use stacksafe::StackSafe;
 use std::{cell::RefCell, rc::Rc};
 use taffy::style_helpers::TaffyMaxContent;
 
@@ -11,7 +10,8 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
     let mut tree = TaffyTree::new();
     tree.disable_rounding();
     let context = NodeContext {
-        measure: Rc::new(RefCell::new(StackSafe::new(Box::new(|_, _, _, _, _| {
+        static_positions: Vec::new(),
+        measure: Rc::new(RefCell::new(node_measure(Box::new(|_, _, _, _, _| {
             unreachable!("native fixture supplies its own measurement callback")
         })))),
         layout_lines: Some(vec![px(5.0), px(15.0), px(25.0)]),
@@ -66,7 +66,8 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
                 ..Style::default()
             },
             NodeContext {
-                measure: Rc::new(RefCell::new(StackSafe::new(Box::new(
+                static_positions: Vec::new(),
+                measure: Rc::new(RefCell::new(node_measure(Box::new(
                     |_, _, _, _, _| unreachable!(),
                 )))),
                 layout_lines: Some(vec![px(22.0)]),
@@ -121,7 +122,8 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
 #[test]
 fn copied_line_metadata_is_independent_while_callbacks_are_shared() {
     let original = NodeContext {
-        measure: Rc::new(RefCell::new(StackSafe::new(Box::new(
+        static_positions: Vec::new(),
+        measure: Rc::new(RefCell::new(node_measure(Box::new(
             |_, _, _, _, _| unreachable!(),
         )))),
         layout_lines: Some(vec![px(5.0), px(15.0)]),

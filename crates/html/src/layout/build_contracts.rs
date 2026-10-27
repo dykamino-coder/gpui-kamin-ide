@@ -1,13 +1,10 @@
-//! Контракт построения потомков: как алгоритмы layout, text и paint запрашивают
-//! боксы внутри того, который они раскладывают.
+//! Контракт построения потомков для алгоритмов layout, text и paint.
 //!
-//! В Servo рекурсией владеет построитель дерева боксов, в Blink — обход дерева
-//! layout-объектов; алгоритмы получают уже построенных потомков. Здесь обход — это
-//! оркестратор render, поэтому алгоритм, которому нужно построить собственных
-//! потомков (содержимое list item, ячейка таблицы, копия колонки), вызывает
-//! операции этого контракта из [`BuildContext::build`], не импортируя render. Тип
-//! контракта принадлежит потребителям; реализацию даёт render (`impl Default for
-//! ChildBuild` в `render/child_builder.rs`), так что её несёт каждый `LayoutCx`.
+//! В Servo обходом владеет построитель боксов, в Blink — дерево layout-объектов.
+//! Здесь обходом владеет render: алгоритмы запрашивают потомков (содержимое
+//! list item, ячейку таблицы, копию колонки) через [`BuildContext::build`],
+//! не импортируя render. Контракт принадлежит потребителям; реализацию несёт
+//! каждый `LayoutCx` (`impl Default for ChildBuild` в `render/child_builder.rs`).
 //!
 //! [`BuildContext::build`]: crate::layout::cx::BuildContext::build
 
@@ -146,6 +143,17 @@ impl ChildBuild {
     /// hover layer, scroll target and the decorations `gpui::Style` lacks.
     pub(crate) fn styled_box(&self, e: &Element, style: &BoxStyle, cx: &LayoutCx) -> gpui::Div {
         self.boxes.styled_box(e, style, cx)
+    }
+
+    /// Дочерняя оболочка с явными размерами, включая щупы кромок.
+    pub(crate) fn sized_box(
+        &self,
+        e: &Element,
+        style: &BoxStyle,
+        cx: &LayoutCx,
+        sizes: crate::layout::block::sizing::BoxDimensions,
+    ) -> gpui::Div {
+        self.boxes.sized_box(e, style, cx, sizes)
     }
 
     /// A div without an element, styled with the computed values `styling`.

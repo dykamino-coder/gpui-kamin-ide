@@ -2,6 +2,7 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::style::computed::{BoxStyle, Computed};
@@ -23,7 +24,7 @@ pub(super) fn build(
     c: BoxStyle,
     inherited: &BoxStyle,
     opts: &RenderOpts,
-    outer_row: Option<(f32, f32)>,
+    outer_space: Option<Rc<Nested>>,
     mut d: gpui::Div,
 ) -> AnyElement {
     let mut style = gpui::Style::default();
@@ -63,7 +64,7 @@ pub(super) fn build(
             frame::resolved_style(&c, used_box, opts.cx.vcx()),
             &inherited,
             &opts,
-            outer_row,
+            outer_space.clone(),
         )
     });
     ClampHost::new(key, style, geometry, build, border_box, paint, children).hooked()

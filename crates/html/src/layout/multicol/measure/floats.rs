@@ -2,6 +2,7 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::tolerance::COORD_EPS;
@@ -48,9 +49,10 @@ fn floats_in(
     let inert = |n: &Node| match n {
         Node::Text(_) => is_blank(n),
         Node::Element(k) => {
+            let sizes = BoxDimensions::for_element(k, &k.style.used());
             k.children.iter().all(is_blank)
                 && matches!(k.style.used().height, None | Some(Len::Auto))
-                && matches!(k.style.used().min_height, None | Some(Len::Auto))
+                && matches!(sizes.minimum[1], None | Some(Len::Auto))
                 && k.style.used().padding.top.is_none()
                 && k.style.used().padding.bottom.is_none()
                 && k.style.used().borders().top.is_none()
@@ -121,6 +123,7 @@ fn floats_in(
 /// контекста форматирования (`overflow`/`display`).
 fn plain_wrapper(c: &Element, positioned: &dyn Fn(&Computed) -> bool) -> bool {
     let s = &c.style.used();
+    let sizes = BoxDimensions::for_element(c, s);
     let none = |l: &Option<Len>| match l {
         None => true,
         Some(Len::Px(v)) => v.abs() < COORD_EPS,
@@ -137,8 +140,8 @@ fn plain_wrapper(c: &Element, positioned: &dyn Fn(&Computed) -> bool) -> bool {
         && !positioned(s)
         && s.position.is_none()
         && matches!(s.height, None | Some(Len::Auto))
-        && s.min_height.is_none()
-        && s.max_height.is_none()
+        && sizes.minimum[1].is_none()
+        && sizes.maximum[1].is_none()
         && crate::layout::page::paged::visible_overflow(s)
         && [
             &s.margin.top,
@@ -154,4 +157,49 @@ fn plain_wrapper(c: &Element, positioned: &dyn Fn(&Computed) -> bool) -> bool {
         ]
         .into_iter()
         .all(none)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_continuation_does_not_block_full_width_float_conversion() {
+        let mut tail = Element::synthetic(
+            "div",
+            Computed {
+                min_height: Some(Len::Px(150.)),
+                max_height: Some(Len::Px(180.)),
+                ..Default::default()
+            },
+            Default::default(),
+            vec![],
+        );
+        tail.marks.spanner_content_box = true;
+        let float = Element::synthetic(
+            "div",
+            Computed {
+                width: Some(Len::Px(100.)),
+                float: Some(1),
+                ..Default::default()
+            },
+            Default::default(),
+            vec![],
+        );
+        let host = Element::synthetic(
+            "div",
+            Computed::default(),
+            Default::default(),
+            vec![Node::Element(float), Node::Element(tail.clone())],
+        );
+        let converted = floats_in(&host, &|_| false, Some(100.)).unwrap();
+        let Node::Element(float) = &converted.children[0] else {
+            panic!()
+        };
+        assert!(float.marks.float_block);
+        assert!(plain_wrapper(&tail, &|_| false));
+        tail.marks.spanner_content_box = false;
+        assert!(!plain_wrapper(&tail, &|_| false));
+        assert_eq!(tail.style.used().min_height, Some(Len::Px(150.)));
+    }
 }

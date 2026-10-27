@@ -4,10 +4,19 @@
 //! По CSS 2 §10.2–10.4 доли ширины, полей и отступов разрешаются от содержащего блока, а
 //! `min-width`/`max-width` ограничивают каждую пробную ширину, включая заполнение `auto`.
 
+use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
 pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
+    inner_with_dimensions(st, &BoxDimensions::from_computed(st), outer)
+}
+
+pub(crate) fn inner_with_dimensions(
+    st: &Computed,
+    sizes: &BoxDimensions,
+    outer: Option<f32>,
+) -> Option<f32> {
     // Доли полей и отступов — от ширины содержащего блока (CSS 2.1 §8.3,
     // §8.4), то есть от `outer`. Прежде доля роняла всю цепочку в `None`, и
     // у детей процентные отступы считались от случайной базы
@@ -29,8 +38,8 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
     }
     let b = st.borders();
     let pb = side(st.padding.left)? + side(st.padding.right)? + side(b.left)? + side(b.right)?;
-    let bb = st.border_box == Some(true);
-    let w = match st.width {
+    let bb = sizes.border_box;
+    let w = match sizes.preferred[0] {
         Some(Len::Px(w)) => {
             if bb {
                 w - pb
@@ -78,8 +87,8 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
         _ => None,
     };
     let content_bound = |value: f32| (value - if bb { pb } else { 0.0 }).max(0.0);
-    let minimum = bound(st.min_width)?.map(content_bound).unwrap_or(0.0);
-    let maximum = bound(st.max_width)?
+    let minimum = bound(sizes.minimum[0])?.map(content_bound).unwrap_or(0.0);
+    let maximum = bound(sizes.maximum[0])?
         .map(content_bound)
         .unwrap_or(f32::INFINITY);
     let w = w.min(maximum).max(minimum);

@@ -5,6 +5,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::{
     in_flow, inline_level_box, out_of_flow, own_context, replaced_inline,
@@ -18,6 +19,7 @@ use crate::style::values::value::Len;
 /// Prove only zero-height block content; unknown line boxes stay on layout.
 fn zero_inflow(e: &Element, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
     let st = e.style.used();
+    let sizes = BoxDimensions::for_element(e, &st);
     if !in_flow(&st)
         || own_context(e)
         || inline_level_box(e)
@@ -25,8 +27,8 @@ fn zero_inflow(e: &Element, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         || !matches!(st.display, None | Some(Display::Block))
         || e.list_item.is_some()
         || matches!(e.tag.as_str(), "html" | "body")
-        || !matches!(st.height, None | Some(Len::Auto))
-        || !zero_len(st.min_height)
+        || !matches!(sizes.preferred[1], None | Some(Len::Auto))
+        || !zero_len(sizes.minimum[1])
         || e.style.cascaded().keep_spaces == Some(true)
         || e.style.cascaded().preserve_newlines == Some(true)
     {
@@ -51,6 +53,7 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         Node::Element(e) => e,
     };
     let st = e.style.used();
+    let sizes = BoxDimensions::for_element(e, &st);
     if st.display == Some(Display::None) {
         return true;
     }
@@ -63,8 +66,11 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         && !own_context(e)
         && !replaced_inline(&e.tag)
         && st.clear.is_none()
-        && matches!(st.height, None | Some(Len::Auto) | Some(Len::Px(0.0)))
-        && zero_len(st.min_height)
+        && matches!(
+            sizes.preferred[1],
+            None | Some(Len::Auto) | Some(Len::Px(0.0))
+        )
+        && zero_len(sizes.minimum[1])
         && [
             st.margin.top,
             st.margin.bottom,

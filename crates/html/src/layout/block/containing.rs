@@ -1,6 +1,7 @@
 //! Ширина содержимого коробки как содержащий блок её детей на спуске схлопывания полей.
 
 use crate::document::state::ValueCx;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::in_flow;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -8,7 +9,7 @@ use crate::style::values::value::Len;
 /// Ширина СОДЕРЖИМОГО коробки в точках — содержащий блок её детей (CSS 2.1
 /// §10.1 п.2) — для процентных полей внуков в цепочках схлопывания. `cb` —
 /// содержащий блок самой коробки; `None` — в точках не выводится.
-fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
+fn inner_width_px(c: &Computed, sizes: &BoxDimensions, cb: Option<f32>) -> Option<f32> {
     let side = |l: Option<Len>| match l {
         None | Some(Len::Auto) => Some(0.0),
         Some(Len::Px(v)) => Some(v),
@@ -18,10 +19,10 @@ fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
     let b = c.borders();
     let edges =
         || Some(side(c.padding.left)? + side(c.padding.right)? + side(b.left)? + side(b.right)?);
-    match c.width {
-        Some(Len::Px(w)) if c.border_box == Some(true) => Some((w - edges()?).max(0.0)),
+    match sizes.preferred[0] {
+        Some(Len::Px(w)) if sizes.border_box => Some((w - edges()?).max(0.0)),
         Some(Len::Px(w)) => Some(w),
-        Some(Len::Pct(k)) if c.border_box != Some(true) => cb.map(|w| k * w),
+        Some(Len::Pct(k)) if !sizes.border_box => cb.map(|w| k * w),
         // §10.3.3: блок в потоке с `width: auto` занимает содержащий блок за
         // вычетом своих полей, рамок и отступов (auto-поле — ноль).
         None | Some(Len::Auto) if in_flow(c) => {
@@ -36,8 +37,18 @@ fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
 /// `width: auto` его нет, и `15%` у `#parent` внутри `#grand-parent {width:
 /// 400px}` роняло цепочку целиком — поля абзаца и `#parent` складывались
 /// (16 + 60 вместо 60, `margin-percentage-inherit-001`).
+#[cfg(test)]
 pub(super) fn with_inner_cb<'a, T>(
     c: &Computed,
+    vcx: ValueCx<'a>,
+    f: impl FnOnce(ValueCx<'a>) -> T,
+) -> T {
+    with_inner_dimensions(c, &BoxDimensions::from_computed(c), vcx, f)
+}
+
+pub(super) fn with_inner_dimensions<'a, T>(
+    c: &Computed,
+    sizes: &BoxDimensions,
     vcx: ValueCx<'a>,
     f: impl FnOnce(ValueCx<'a>) -> T,
 ) -> T {
@@ -55,7 +66,7 @@ pub(super) fn with_inner_cb<'a, T>(
     f(
         vcx.with_collapse(crate::layout::block::margins::CollapseInputs {
             font: own,
-            width: inner_width_px(c, level),
+            width: inner_width_px(c, sizes, level),
             ..vcx.collapse
         }),
     )

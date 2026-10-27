@@ -4,6 +4,7 @@
 use crate::style::computed::{Computed, Sides};
 use crate::style::values::value::Len;
 mod auto_min;
+mod fragment;
 pub(crate) use auto_min::ratio_as_auto_min;
 
 /// Физические оси x/y. Неразрешённые проценты и auto сохраняют прежний смысл.
@@ -12,6 +13,7 @@ pub(crate) struct BoxDimensions {
     pub(crate) preferred: [Option<Len>; 2],
     pub(crate) minimum: [Option<Len>; 2],
     pub(crate) maximum: [Option<Len>; 2],
+    pub(crate) border_box: bool,
 }
 
 impl BoxDimensions {
@@ -20,6 +22,7 @@ impl BoxDimensions {
             preferred: [style.width, style.height],
             minimum: [style.min_width, style.min_height],
             maximum: [style.max_width, style.max_height],
+            border_box: style.border_box == Some(true),
         }
     }
 
@@ -66,6 +69,7 @@ impl BoxDimensions {
             preferred: sizes,
             minimum: resolved_min,
             maximum: resolved_max,
+            border_box: self.border_box,
         }
     }
 }
