@@ -62,7 +62,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/fragment/flex_lines/items.rs"),
     include_str!("../../layout/fragment/flex_lines/row/mod.rs"),
     include_str!("../../layout/fragment/table_bands/mod.rs"),
-    include_str!("../../layout/fragment/table_bands/row_cuts.rs"),
     include_str!("../../layout/fragment/table_bands/row_shape/mod.rs"),
     include_str!("../../layout/fragment/table_bands/row_shape/captions.rs"),
     include_str!("../../layout/fragment/table_bands/shape_bands.rs"),

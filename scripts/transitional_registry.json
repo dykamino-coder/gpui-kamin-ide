@@ -120,11 +120,6 @@
     "reason": "DOM-dispatch строит preplan до раскладки форматирующих контекстов; удалить в P22 после перевода всех readers на child resume в P21."
   },
   {
-    "file": "crates/html/src/layout/fragment/table_bands/row_geometry.rs",
-    "task": "F2-5",
-    "reason": "Мера ячейки оценивается до раскладки секции; удалить в P17 после recorded row/span metrics и per-cell tokens."
-  },
-  {
     "file": "crates/html/src/layout/fragment/table_bands/row_shape/captions.rs",
     "task": "F2-5",
     "reason": "Подпись таблицы оценивается целиком в clone preplan; удалить в P18 после caption token с consumed и decoration edges поверх P04."
@@ -183,11 +178,6 @@
     "file": "crates/html/src/layout/page/paged/kids/mod.rs",
     "task": "F2-2",
     "reason": "Reach ребёнка страницы оценивается как полная unclamped форма; удалить в P08 после child token и разделения normal size и OOF reach."
-  },
-  {
-    "file": "crates/html/src/layout/page/paged/kids/repeat.rs",
-    "task": "F2-5",
-    "reason": "Шапки и подвалы страниц резервируются оценочным preplan; удалить в P18 после повторов по продолжениям секций и ячеек из P17."
   },
   {
     "file": "crates/html/src/layout/page/paged/kids/shape.rs",

@@ -1,21 +1,19 @@
-//! Форма рядов таблицы при фрагментации: вырезы между рядами, подписи.
+//! Форма коробки таблицы без рядов при фрагментации: рамка, отбивка, заданная высота, подписи.
 
-use super::{RowRef, TableBands, table_row_cuts};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 mod captions;
-use crate::tolerance::COORD_EPS;
 pub(super) use captions::caption_slots_shape;
 
+/// Коробка таблицы без рядов: её высота — рамка с отбивкой, вертикальный
+/// `border-spacing` и пол заданной высоты; ряды таблицы с рядами кладёт и
+/// измеряет только раскладка (`flow::blocks::table`).
 #[allow(clippy::too_many_arguments)]
-// Row bands return their geometry and fragmentation flags as one record.
-#[allow(clippy::type_complexity)]
 pub(super) fn row_band_shape(
     c: &Element,
     depth: u8,
     cx: ShapeCx,
-    bands: &mut TableBands,
     spec_h: Option<f32>,
     spec_min_h: Option<f32>,
     mt: f32,
@@ -23,98 +21,21 @@ pub(super) fn row_band_shape(
     top: f32,
     bot: f32,
     spacing: f32,
-    cell_cx: ShapeCx,
     caps_top: Vec<&Element>,
     caps_bot: Vec<&Element>,
-    parts: Vec<(u8, &Element)>,
-    rows: Vec<RowRef<'_>>,
     vcx: ValueCx<'_>,
 ) -> Option<crate::layout::fragment::Shape> {
-    let mut cuts: Vec<(f32, f32)> = Vec::new();
-    let mut forced: Vec<f32> = Vec::new();
     let mut solid: Vec<(f32, f32)> = Vec::new();
     if top > 0.0 {
         solid.push((0.0, top));
     }
-    let mut y = top;
-    let mut group_open: Option<(usize, f32)> = None;
-    // Сцепка рядов, скованных `break-before/after: avoid*`: начало открытого
-    // диапазона, `open` предыдущего ряда и его `break-after: avoid*`.
-    let mut avoid_run: Option<f32> = None;
-    let prev_open = 0.0f32;
-    let prev_aa = false;
-    let force_next = false;
-    // Ячейки с `rowspan` через непустые ряды: (первый ряд, охват, высота
-    // содержимого). Их высота ложится на все охваченные (css-tables-3
-    // §height-distribution); мера принимается, только если охват и так
-    // вмещает ячейку (сверка после цикла), иначе — прежний отказ. Точки
-    // разреза внутри такой ячейки не берутся: где именно внутри охвата
-    // стоит её содержимое, мера не знает. Охваты только пустых рядов с
-    // нулевым зазором разрешает общая `row_geometry`. Прежде любой `rowspan` отменял
-    // меру таблицы целиком, и стол не фрагментировался вовсе
-    // (`table-rowspan-001`: пустая ячейка `rowspan=2`, снимок — вторая
-    // колонка пуста, стол переполняет первую).
-    let mut spans: Vec<(usize, usize, f32)> = Vec::new();
-    let mut row_box: Vec<(f32, f32)> = Vec::new();
-    table_row_cuts(
-        depth,
-        bands,
-        spacing,
-        cell_cx,
-        parts,
-        rows,
-        &mut cuts,
-        &mut forced,
-        &mut solid,
-        &mut y,
-        &mut group_open,
-        &mut avoid_run,
-        prev_open,
-        prev_aa,
-        force_next,
-        &mut spans,
-        &mut row_box,
-        vcx,
-    )?;
-    bands.spacing = spacing;
-    // Сверка охватов (см. `spans`): ячейка выше суммы своих рядов с зазорами
-    // раздала бы им высоту — этого мера не умеет, отказ как прежде.
-    for (i, rs, ch) in spans {
-        let last = (i + rs).min(row_box.len()).saturating_sub(1);
-        let span_h = row_box[last].0 + row_box[last].1 - row_box[i].0;
-        if ch > span_h + COORD_EPS {
-            return None;
-        }
-    }
-    // Сцепка, дожившая до конца коробки рядов, закрывается её низом.
-    if let Some(s) = avoid_run {
-        solid.push((s, y));
-    }
-    if let Some((_, gs)) = group_open {
-        solid.push((gs, y));
-    }
-    // Верхняя рамка (0, top) не является содержимым ряда и не мешает
-    // распределению высоты. Остальные монолиты требуют сохранения точек
-    // ячеек: serial_table_parallel позволяет им переполнить колонку.
-    // Страницам этот отказ не нужен: у стопки листов переполнение монолитом
-    // своё (`ColumnStack::fill_at`, ветка `paged && placed && cur > target`,
-    // crbug 1402540), а «монолитом» здесь оказывается уже верхняя рамка любой
-    // ячейки (`shape_full` кладёт её сплошным диапазоном — Blink
-    // `FinishFragmentation`: «Avoid breaking inside block-start border»).
-    // Отказ уводил таблицу с `block-size` в меру стопки блоков по тегу, где
-    // высота считается content-box: `table-fragmentation-001b-print` —
-    // 336 + отбивка + рамка = 432 вместо 336 по border-box (UA-лист
-    // css-tables-3 `table { box-sizing: border-box }`), третий пустой лист.
-    let mono_inside = solid
-        .iter()
-        .any(|&(a, b)| a > COORD_EPS || b > top + COORD_EPS);
     // Заданная высота — ПОЛ коробки рядов. `box-sizing` — та же мерка, что в
     // рисователе (`table()`, `table_border_box`): у ТЕГА `<table>` высота по
     // border-box (UA-правило css-tables-3 `table { box-sizing: border-box }`),
     // у `display: table` на прочих тегах — контентная. `min-height` мерится
     // ПОЛНОЙ коробкой ВСЕГДА — так его кладёт `min_fix` в `table()`
     // (css-tables-3 §computing-the-table-height, CSSWG #5336).
-    let content_h = y + spacing + bot;
+    let content_h = top + spacing + bot;
     let edges = top + bot;
     let border_box = c.style.used().border_box == Some(true)
         || (c.tag == "table" && c.style.used().border_box.is_none());
@@ -123,78 +44,27 @@ pub(super) fn row_band_shape(
         .into_iter()
         .chain(spec_min_h.map(|v| v.max(edges)))
         .fold(0.0f32, f32::max);
-    // Specified table height is a minimum (CSS Tables 3 §3.10). It cannot
-    // invalidate measured cell cuts unless it actually distributes surplus
-    // height to rows. Preserve unbreakable content when the floor is already
-    // satisfied by the intrinsic row grid.
-    if mono_inside && !cx.paged && floor_h > content_h + COORD_EPS {
-        return None;
-    }
     let h_box = content_h.max(floor_h);
-    // Растянутая коробка раздаёт остаток РЯДАМ (CSS 2.1 §17.5.3; css-tables-3
-    // §height-distribution-algorithm), и границы рядов уезжают с измеренных
-    // мест: точки класса A между ними больше не верны. Такая коробка идёт
-    // сплошным блоком — срез по краю колонки есть правило, а не исключение
-    // (css-break-4 §4 «slice»). Снимок `specified-block-size-007`: жёлтый ряд
-    // (10,67)..(172,316), голубой (10,317)..(172,566) — раздача у нас РОВНАЯ
-    // (200/200) при содержимом 1 и 3, и точки на 1 и 4 были бы ложью.
-    if h_box > content_h + COORD_EPS {
-        // Ряды растянуты — измеренные полосы секций тоже неверны.
-        bands.head = None;
-        bands.foot = None;
-        cuts.clear();
-        forced.clear();
-        solid.clear();
-        if top > 0.0 {
-            solid.push((0.0, top));
-        }
-    }
     if bot > 0.0 {
-        // Нижняя рамка/отбивка таблицы приклеена к монолиту последнего ряда —
-        // то же правило, что у блока (`shape_full`, Р4 break-rest): точки
-        // разрыва перед block-end рамкой нет (css-break-4 §possible-breaks, класс
-        // C — только при ненулевом зазоре; Blink `FinishFragmentation` держит там
-        // лишь «last-resort breakpoint»). `table-border-006`: ряды `avoid` 100 и
-        // 70, `border-bottom: 30px` в колонке 170 — рамка уходит вместе с
-        // последним рядом, а не одна во вторую колонку. Зазор `border-spacing`
-        // между рядом и рамкой — та же «без промежутка» граница: рамка таблицы
-        // от ряда отделена именно им, а не полем.
-        let end_edge = h_box - bot;
-        let glue = solid
-            .iter()
-            .filter(|&&(a, b)| a > COORD_EPS && (b - (end_edge - spacing)).abs() < COORD_EPS)
-            .map(|&(a, _)| a)
-            .fold(end_edge, f32::min);
-        solid.push((glue, h_box));
+        // Нижняя рамка/отбивка таблицы — сплошная (css-break-4
+        // §possible-breaks: класс C только при ненулевом зазоре).
+        solid.push((h_box - bot, h_box));
     }
-    bands.box_top = 0.0;
-    bands.box_end = h_box;
-    // Подписей нет — коробка рядов и есть вся мера, как прежде.
+    // Подписей нет — коробка и есть вся мера.
     if caps_top.is_empty() && caps_bot.is_empty() {
-        cuts.retain(|&(need, _)| need > COORD_EPS && need < h_box - COORD_EPS);
-        forced.retain(|&f| f > COORD_EPS && f < h_box - COORD_EPS);
         return Some(crate::layout::fragment::Shape {
             height: h_box,
             margin_top: mt,
             margin_bottom: mb,
-            cuts,
-            forced,
+            cuts: Vec::new(),
+            forced: Vec::new(),
             solid,
         });
     }
     // Обёртка таблицы — обычная блочная стопка: верхние подписи, коробка
-    // рядов, нижние подписи (css-tables-3 §terminology; Blink
-    // `table_layout_algorithm.cc:988` «Add all the top captions» и `:1584`
-    // «Add all the bottom captions» — обе петли по ВСЕМ подписям своей
-    // стороны, секции между ними). Между соседями обёртки — точка класса A
-    // (css-break-4 §possible-breaks: «Between sibling boxes of the following
-    // types: … in-flow block-level boxes»), поля соседей схлопываются, как в
-    // блочной стопке `shape_full`, и подпись поля ИМЕЕТ (Blink `:1195`
-    // «Captions allow margins»). Рамка и отбивка самой таблицы подпись не
-    // трогают: она вне коробки рядов.
-    // `None` в списке — сама коробка рядов; поля у неё НУЛЕВЫЕ, поля таблицы
-    // носит обёртка (они уже в `mt`/`mb` и возвращаются наружу).
-    caption_slots_shape(
-        depth, cx, bands, mt, mb, caps_top, caps_bot, cuts, forced, solid, h_box, vcx,
-    )
+    // таблицы, нижние подписи (css-tables-3 §terminology; Blink
+    // `table_layout_algorithm.cc` «Add all the top captions» / «Add all the
+    // bottom captions»). Между соседями обёртки — точка класса A, поля
+    // соседей схлопываются; поля коробки таблицы несёт обёртка (`mt`/`mb`).
+    caption_slots_shape(depth, cx, mt, mb, caps_top, caps_bot, solid, h_box, vcx)
 }

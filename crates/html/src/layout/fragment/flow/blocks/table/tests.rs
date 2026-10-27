@@ -191,3 +191,26 @@ fn caption_line_geometry_stays_inside_the_table_wrapper_flow() {
     assert_eq!(m.solid, vec![(0.0, 32.0)]);
     assert_eq!(b.pushed_at(0.0, &laid), Some(Pushed::Box(cap)));
 }
+
+#[test]
+fn trailing_border_spacing_is_truncated_at_a_break() {
+    // Без нижней рамки и отбивки коробка таблицы кончается сразу после
+    // последнего ряда, если разрыв приходится на зазор под ним (Blink
+    // «Truncate trailing border-spacing to fit within the fragmentainer»).
+    let (b, _) = table(&rows(&["", ""], "x"));
+    let mut laid = Laid::default();
+    laid.tables.insert(
+        key(&b),
+        TableFrame {
+            table: (0.0, 70.0),
+            grid: (0.0, 70.0),
+            rows: vec![(10.0, 30.0), (40.0, 60.0)],
+        },
+    );
+    let (cuts, _, _) = finish(&b, &laid);
+    assert_eq!(cuts, vec![(30.0, 40.0), (60.0, 70.0)]);
+    // Нижняя рамка с отбивкой остаётся с последним рядом: усекать нечего.
+    let (cuts, _, solid) = finish(&b, &frame(key(&b), &[]));
+    assert_eq!(cuts, vec![(30.0, 32.0)]);
+    assert!(solid.contains(&(90.0, 100.0)));
+}

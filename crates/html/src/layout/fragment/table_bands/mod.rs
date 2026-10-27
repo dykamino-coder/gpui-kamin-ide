@@ -1,10 +1,8 @@
-//! Мера таблицы для укладки по фрагментаинерам (`table_shape`): ряды стопкой с
-//! `border-spacing`, точки класса A между рядами (css-break-4 §possible-breaks,
-//! css-tables-3 §fragmentation), монолитные и принудительные разрывы рядов и групп, подписи
-//! вокруг коробки рядов. Здесь же полосы повтора `thead`/`tfoot` во фрагментах
-//! (`repeat_bands`, css-tables-3 §repeated-headers; Blink `table_layout_algorithm.cc`)
-//! и предикат табличной коробки (`table_box`). Подмодули: геометрия рядов, точки разреза,
-//! формы рядов и подписей, полосы секций, последовательная таблица (`serial`).
+//! Таблица при укладке по фрагментаинерам: предикат табличной коробки (`table_box`), мера
+//! таблицы без рядов — подписи, рамка и заданная высота (`table_shape`; ряды и ячейки даёт
+//! только записанная раскладка, `flow::blocks::table`), полосы повтора `thead`/`tfoot` по
+//! разложенным секциям (`repeat_spec`, css-tables-3 §repeated-headers; Blink
+//! `table_layout_algorithm.cc`) и признак последовательной таблицы (`serial`).
 
 use crate::document::state::ValueCx;
 
@@ -13,11 +11,7 @@ use crate::layout::fragment::flow::blocks::table::TableSections;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::Display;
 pub(crate) mod parts;
-mod row_geometry;
-pub(crate) use row_geometry::row_geometry;
-mod row_cuts;
 mod row_shape;
-use row_cuts::{RowRef, table_row_cuts};
 mod shape_bands;
 use shape_bands::table_shape_bands;
 mod serial;
@@ -33,41 +27,12 @@ pub(crate) fn table_box(c: &Element) -> bool {
         )
 }
 
-/// Мера таблицы для укладки по фрагментаинерам (css-break-4
-/// §possible-breaks, класс A: «table row group boxes, table row boxes»;
-/// css-tables-3 §fragmentation). Ряды — стопка: высота ряда — наибольшая
-/// из мер его ячеек (ячейка — обычная блочная мера с рамкой и отбивкой),
-/// между рядами и вокруг них — `border-spacing`, снаружи — отступ и рамка
-/// таблицы. `break-inside: avoid` ряда или группы — монолитный диапазон
-/// (css-break-4 §breaking-rules, Rule 2), `break-before/after` ряда или
-/// группы — принудительный разрыв на границе ряда. `thead` встаёт первым,
-/// `tfoot` — последним, как в `table()`. Заданная высота — ПОЛ коробки рядов
-/// (CSS 2.1 §17.5.3, css-tables-3 §terminology: `height` относится к table
-/// grid box, обёртка лишь несёт подписи); растянутая коробка раздаёт остаток
-/// рядам и потому идёт сплошным блоком без внутренних точек. Охват `rowspan`
-/// ограничен группой; ячейка растит исходный ряд лишь при равной высоте
-/// ряда и охвата. Неизмеримое распределение высоты охвата,
-/// сросшиеся рамки, вертикальное письмо, монолит при раздаче surplus рядам
-/// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
-/// высоты без точек, как прежде.
+/// Мера таблицы без рядов для укладки по фрагментаинерам: подписи обёртки
+/// (css-tables-3 §terminology), рамка и отбивка коробки таблицы, пол заданной
+/// высоты (CSS 2.1 §17.5.3). Таблица с рядами здесь не мерится (`None`): её
+/// ряды, охваты и ячейки даёт раскладка (`flow::blocks::table`).
 pub(super) fn table_shape(c: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Option<Shape> {
-    table_shape_bands(c, depth, cx, &mut TableBands::default(), vcx)
-}
-
-/// Полосы первой шапки и первого подвала таблицы в координатах её меры:
-/// `(верх секции, высота секции)` и `break-inside: avoid*` секции, плюс
-/// вертикальный `border-spacing`. Нужны повтору секций во фрагментах
-/// (`repeat_bands`).
-#[derive(Default, Clone, Copy)]
-struct TableBands {
-    pub(crate) head: Option<(f32, f32)>,
-    pub(crate) foot: Option<(f32, f32)>,
-    pub(crate) head_avoid: bool,
-    pub(crate) foot_avoid: bool,
-    pub(crate) spacing: f32,
-    /// Коробка рядов `[верх, низ)` — без подписей обёртки.
-    pub(crate) box_top: f32,
-    pub(crate) box_end: f32,
+    table_shape_bands(c, depth, cx, vcx)
 }
 
 /// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
@@ -78,57 +43,24 @@ pub(crate) type RepeatSpec = (
 );
 
 /// Повтор шапки/подвала таблицы-ребёнка стопки колонок (css-tables-3
-/// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): секция
-/// повторяется, если у неё `break-inside: avoid*` и блочный размер не больше
-/// четверти фрагментаинера («block-size of the section is one quarter or less
-/// than that of the fragmentainer»). Размер фрагментаинера Blink знает только
-/// вне первого прохода балансировки (`HasKnownFragmentainerBlockSize`), поэтому
-/// здесь — только `column-fill: auto` с заданной высотой и без рядов. Ответ —
-/// полосы для `flow::Repeat`: шапка `(верх секции, секция + зазор под ней)`,
-/// подвал `(верх секции − зазор, зазор + секция)`. У таблицы, чьи ряды даёт
-/// раскладка копии (`measured`: может ли по стилю повторяться шапка и
-/// подвал), полосы решаются по её разложенным секциям
-/// (`StackChild::refresh_repeat`), а здесь — пустые полосы под копии.
+/// §repeated-headers; Blink `table_layout_algorithm.cc:1082-1150`): только
+/// `column-fill: auto` с заданной высотой и без рядов, когда размер
+/// фрагментаинера известен до укладки. Ряды таблицы даёт раскладка копии
+/// (`measured`: может ли по стилю повторяться шапка и подвал); полосы решаются
+/// по её разложенным секциям (`StackChild::refresh_repeat`), а здесь — пустые
+/// полосы под копии. Без записанной раскладки повтора нет.
 pub(crate) fn repeat_bands(
     c: &Element,
     fixed: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
     measured: Option<(bool, bool)>,
-    cx: ShapeCx<'_>,
-    vcx: ValueCx<'_>,
 ) -> Option<RepeatSpec> {
-    let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
-    match measured {
-        Some((head, foot)) => (head || foot).then(|| {
-            let band = |on: bool| on.then_some((0.0, 0.0));
-            (band(head), band(foot), Default::default())
-        }),
-        None => repeat_bands_in(c, per, cx, vcx),
-    }
-}
-
-/// Known page and column fragmentainers share the repeat reservation algorithm.
-pub(crate) fn repeat_bands_in(
-    c: &Element,
-    per: f32,
-    cx: ShapeCx,
-    vcx: ValueCx<'_>,
-) -> Option<RepeatSpec> {
-    if !table_box(c) {
-        return None;
-    }
-    let mut b = TableBands::default();
-    table_shape_bands(c, 4, cx, &mut b, vcx)?;
-    repeat_spec(
-        TableSections {
-            head: b.head.map(|(at, h)| (at, h, b.head_avoid)),
-            foot: b.foot.map(|(at, h)| (at, h, b.foot_avoid)),
-            spacing: b.spacing,
-            box_top: b.box_top,
-            box_end: b.box_end,
-        },
-        per,
-    )
+    fixed.filter(|_| rows.is_none() && table_box(c))?;
+    let (head, foot) = measured?;
+    (head || foot).then(|| {
+        let band = |on: bool| on.then_some((0.0, 0.0));
+        (band(head), band(foot), Default::default())
+    })
 }
 
 /// Повтор секций таблицы, чьи ряды даёт раскладка копии: полосы решаются
@@ -181,18 +113,3 @@ pub(crate) fn repeat_spec(sec: TableSections, per: f32) -> Option<RepeatSpec> {
     };
     Some((head, foot, geom))
 }
-
-/// `RepeatGeom` для щупов укладки (`grow_pushed`, план `clone`): та же мера,
-/// что у `StackChild` в сборке стопки.
-pub(crate) fn repeat_leads(
-    c: &Element,
-    fixed: Option<f32>,
-    rows: Option<crate::layout::fragment::types::Rows>,
-    cx: ShapeCx<'_>,
-    vcx: ValueCx<'_>,
-) -> crate::layout::fragment::types::RepeatGeom {
-    repeat_bands(c, fixed, rows, None, cx, vcx).map_or_else(Default::default, |r| r.2)
-}
-
-#[cfg(test)]
-mod hint_tests;

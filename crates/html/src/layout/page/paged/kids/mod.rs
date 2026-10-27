@@ -19,7 +19,6 @@ mod laid;
 mod leaf;
 mod oof;
 mod paint;
-mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
 mod names;
@@ -172,23 +171,19 @@ pub(super) fn page_kids_from_groups(
         kids.push(crate::layout::page::page_stack::PageKid {
             #[cfg(feature = "wpt-harness")]
             probe: opts.frag.probe.clone(),
-            repeat: vertical
-                .is_none()
-                .then(|| {
+            // Повтор шапки и подвала — только у таблицы, чьи секции записала
+            // раскладка копии: полосы решаются по ним (`page_stack::kid`).
+            repeat: measured_table
+                .filter(|_| vertical.is_none())
+                .and_then(|(head, foot)| {
                     let band = || paint.build(false, true, &mut Vec::new(), &mut Vec::new());
-                    match measured_table {
-                        Some((head, foot)) => repeat_candidates(
-                            head,
-                            foot,
-                            || (1..PAGE_COPIES).map(|_| band()).collect(),
-                            || (0..PAGE_COPIES).map(|_| band()).collect(),
-                        ),
-                        None => {
-                            repeat::sections(group, ah, shape_cx, pad_top, PAGE_COPIES, band, vcx)
-                        }
-                    }
-                })
-                .flatten(),
+                    repeat_candidates(
+                        head,
+                        foot,
+                        || (1..PAGE_COPIES).map(|_| band()).collect(),
+                        || (0..PAGE_COPIES).map(|_| band()).collect(),
+                    )
+                }),
             percentages: (vertical.is_none() && regrow.is_some()).then(|| percentages.clone()),
             regrow,
             oof: paint.oof_source(),
