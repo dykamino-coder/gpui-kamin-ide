@@ -1,7 +1,7 @@
 //! Сигнал готовности документа + завершённый GPU-кадр + контрольный кадр.
 //! Любая неопределённость возвращает управление прежнему протоколу show.
 
-use super::capture::{CaptureCursor, offscreen};
+use super::capture::{Capture, CaptureCursor};
 use super::capture_dump::Shot;
 use super::frame_metrics::flat;
 use super::page::Page;
@@ -9,21 +9,21 @@ use super::phase_timing::PageTiming;
 use super::show::Stage;
 use gpui::{AppContext as _, AsyncApp};
 
-pub(super) fn enabled(cx: &mut AsyncApp) -> bool {
-    offscreen()
-        && std::env::var("WPT_READY").as_deref() != Ok("0")
+pub(super) fn enabled(cx: &mut AsyncApp, capture: &Capture) -> bool {
+    capture.offscreen
+        && capture.ready
         // Анимация может прийти из внешнего CSS: поиск в HTML недостаточен.
         && cx.update(|cx| cx.try_global::<gpui::AnimationElapsedTime>().is_some())
 }
 
 /// Первый кадр окна подтверждается readback; таймер остаётся пределом ожидания.
-pub(super) async fn startup(cx: &mut AsyncApp) {
+pub(super) async fn startup(cx: &mut AsyncApp, capture: &Capture) {
     use futures::future::select;
     let timeout = cx
         .background_executor()
         .timer(std::time::Duration::from_millis(900));
-    if enabled(cx) && !super::capture::first_frame() {
-        let _ = select(gpui::frame_capture::after(0), timeout).await;
+    if enabled(cx, capture) && !capture.first {
+        let _ = select(capture.session.as_ref().unwrap().after(0), timeout).await;
     } else {
         timeout.await;
     }

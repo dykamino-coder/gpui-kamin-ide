@@ -1,16 +1,53 @@
 //! Снимок завершённого GPU-кадра либо восстановленной клиентской области.
 
 use gpui::AsyncApp;
+use kamin_html::host::capture::CaptureSession;
+
+#[derive(Clone)]
+pub(super) struct Capture {
+    pub(super) session: Option<CaptureSession>,
+    pub(super) offscreen: bool,
+    pub(super) first: bool,
+    pub(super) ready: bool,
+}
+
+pub(super) fn setup() -> (
+    Capture,
+    Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
+) {
+    let offscreen = std::env::var("WPT_OFFSCREEN").as_deref() == Ok("1");
+    let first = std::env::var("WPT_FIRST_FRAME").as_deref() == Ok("1");
+    let ready = std::env::var("WPT_READY").as_deref() != Ok("0");
+    let (session, sink) = if offscreen || first {
+        let (session, sink) = CaptureSession::open();
+        (Some(session), Some(sink))
+    } else {
+        (None, None)
+    };
+    (
+        Capture {
+            session,
+            offscreen,
+            first,
+            ready,
+        },
+        sink,
+    )
+}
 
 /// Fence the previous document and count each completed GPU draw only once.
 pub(super) struct CaptureCursor {
     seq: Option<u64>,
+    session: Option<CaptureSession>,
 }
 
 impl CaptureCursor {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(capture: &Capture) -> Self {
         Self {
-            seq: offscreen().then(gpui::frame_capture::sequence),
+            seq: capture
+                .offscreen
+                .then(|| capture.session.as_ref().unwrap().sequence()),
+            session: capture.session.clone(),
         }
     }
 
@@ -18,7 +55,7 @@ impl CaptureCursor {
     pub(super) async fn wait(&self, cx: &AsyncApp) -> bool {
         use futures::future::{Either, select};
         let Some(seq) = self.seq else { return false };
-        let event = gpui::frame_capture::after(seq);
+        let event = self.session.as_ref().unwrap().after(seq);
         let timeout = cx
             .background_executor()
             .timer(std::time::Duration::from_millis(500));
@@ -38,10 +75,12 @@ impl CaptureCursor {
 
     pub(super) fn next(&mut self, hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
         if self.seq.is_some() {
-            let frame = gpui::frame_capture::latest()?;
-            return self
-                .advance(frame.seq)
-                .then_some((frame.width, frame.height, frame.bgra));
+            let frame = self.session.as_ref()?.latest()?;
+            return self.advance(frame.seq).then_some((
+                frame.pixels.width,
+                frame.pixels.height,
+                frame.pixels.bgra,
+            ));
         }
         capture(hwnd)
     }
@@ -49,12 +88,6 @@ impl CaptureCursor {
 
 /// Снимок клиентской области окна: массив байт BGRA и его размеры.
 pub(super) fn capture(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
-    // `WPT_OFFSCREEN=1`: the frame GPUI itself drew, read back from the GPU
-    // (`gpui::frame_capture`) — independent of window position and occlusion.
-    if offscreen() {
-        let f = gpui::frame_capture::latest()?;
-        return Some((f.width, f.height, f.bgra));
-    }
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC,
@@ -121,19 +154,6 @@ pub(super) fn capture(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
     }
 }
 
-/// GPU readback capture instead of `PrintWindow` (`WPT_OFFSCREEN=1`).
-pub(super) fn offscreen() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("WPT_OFFSCREEN").is_ok_and(|v| v == "1"))
-}
-
-/// Снимок первого GPU-кадра после подмены документа, без ожидания сходимости.
-/// Диагностический режим работает и при видимом окне стенда.
-pub(super) fn first_frame() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| std::env::var("WPT_FIRST_FRAME").is_ok_and(|v| v == "1"))
-}
-
 /// Park the runner window off-screen (`WPT_OFFSCREEN`) and drop its taskbar
 /// button: tool-window ex-style, applied while hidden so the taskbar notices,
 /// then shown again without activation at an off-screen origin. The window
@@ -169,33 +189,11 @@ mod tests {
     use super::CaptureCursor;
 
     #[test]
-    fn first_frame_survives_later_draws_and_rearms_for_the_next_document() {
-        use gpui::frame_capture::{arm_first, store, take_first};
-        let seq = gpui::frame_capture::sequence();
-        let mut next = gpui::frame_capture::after(seq);
-        assert_eq!(next.try_recv().unwrap(), None);
-        arm_first();
-        assert!(take_first().is_none());
-        store(1, 1, vec![1, 2, 3, 255]);
-        let completed = gpui::frame_capture::sequence();
-        assert!(completed > seq);
-        assert_eq!(next.try_recv().unwrap(), Some(completed));
-        assert_eq!(
-            gpui::frame_capture::after(seq).try_recv().unwrap(),
-            Some(completed)
-        );
-        store(1, 1, vec![4, 5, 6, 255]);
-        assert_eq!(take_first().unwrap().bgra, [1, 2, 3, 255]);
-        assert!(take_first().is_none());
-        arm_first();
-        assert!(take_first().is_none());
-        store(1, 1, vec![7, 8, 9, 255]);
-        assert_eq!(take_first().unwrap().bgra, [7, 8, 9, 255]);
-    }
-
-    #[test]
     fn only_new_draws_cross_the_document_fence() {
-        let mut cursor = CaptureCursor { seq: Some(41) };
+        let mut cursor = CaptureCursor {
+            seq: Some(41),
+            session: None,
+        };
         assert!(!cursor.advance(41));
         assert!(!cursor.advance(40));
         assert!(cursor.advance(42));

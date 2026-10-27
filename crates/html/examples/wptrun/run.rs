@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 /// Что и как прогонять.
 pub(super) struct RunConfig {
+    pub(super) capture: capture::Capture,
     pub(super) pairs: Vec<(String, String)>,
     pub(super) exact: bool,
     /// `WPT_DUMP` задан: снимки разошедшихся пар.
@@ -34,6 +35,7 @@ fn hwnd_of(cx: &mut AsyncApp, window: AnyWindowHandle) -> isize {
 
 pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConfig) {
     let RunConfig {
+        capture,
         pairs,
         exact,
         dumping,
@@ -42,14 +44,14 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
     let frames = animation_frames::configured();
     let passed = move |v: &str| pixel_compare::passed(exact, v);
     // Off-screen capture: park the window before its first frame.
-    if capture::offscreen() {
+    if capture.offscreen {
         let early = hwnd_of(cx, window);
         if early != 0 {
             capture::park_offscreen(early);
         }
     }
     // Первый кадр окна: до него снимок пустой.
-    super::ready::startup(cx).await;
+    super::ready::startup(cx, &capture).await;
     // Указатель окна нужен снимку: рисует его система, а не мы.
     let hwnd = hwnd_of(cx, window);
     // Свой файл отчёта на шард: параллельные прогоны не бьются за один путь.
@@ -60,6 +62,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
     let _ = std::fs::write(format!("{report_path}.engine"), &engine_report);
     let trace = Rc::new(std::cell::RefCell::new(String::new()));
     let stage = Stage {
+        capture,
         window,
         hwnd,
         trace: trace.clone(),

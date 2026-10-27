@@ -1,6 +1,6 @@
 //! Show one document in the runner window and poll until its own frame has settled.
 
-use super::capture::{CaptureCursor, first_frame, offscreen};
+use super::capture::{Capture, CaptureCursor};
 use super::capture_dump::Shot;
 use super::frame_metrics::flat;
 use super::page::Page;
@@ -11,6 +11,7 @@ use std::time::Duration;
 
 /// Окно стенда и след опроса кадров.
 pub(super) struct Stage {
+    pub(super) capture: Capture,
     pub(super) window: AnyWindowHandle,
     /// Указатель окна нужен снимку: рисует его система, а не мы.
     pub(super) hwnd: isize,
@@ -78,12 +79,12 @@ impl Stage {
         print: bool,
     ) -> Option<Shot> {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
-        let mut captures = CaptureCursor::new();
-        let first = first_frame();
+        let mut captures = CaptureCursor::new(&self.capture);
+        let first = self.capture.first;
         if !self.prepare(cx, &html, source, print, first) {
             return None;
         }
-        let mut timing = super::phase_timing::PageTiming::new(source);
+        let mut timing = super::phase_timing::PageTiming::new(source, self.capture.session.clone());
         let lower = html.to_ascii_lowercase();
         let has_image = lower.contains("<img");
         // Страница с ДВИЖЕНИЕМ устаивается ложно: медленная анимация
@@ -94,7 +95,7 @@ impl Stage {
         // то 1.13 %, то 0.03 %).
         let has_anim = lower.contains("animation") || lower.contains("transition");
         if !first
-            && super::ready::enabled(cx)
+            && super::ready::enabled(cx, &self.capture)
             && let Some(shot) = self
                 .ready_frame(cx, &mut captures, &prev, want_flat, &mut timing)
                 .await
@@ -132,7 +133,11 @@ impl Stage {
             }
             let readback_started = std::time::Instant::now();
             let shot = if first && first_shot.is_none() {
-                gpui::frame_capture::take_first().map(|f| (f.width, f.height, f.bgra))
+                self.capture
+                    .session
+                    .as_ref()?
+                    .take_first()
+                    .map(|f| (f.pixels.width, f.pixels.height, f.pixels.bgra))
             } else {
                 captures.next(hwnd)
             };
@@ -207,7 +212,7 @@ impl Stage {
             // A cached readback is not another settled frame. Drive a fresh
             // render so deferred layout gets its next lifecycle pass, even
             // when an inactive window would otherwise keep its old scene.
-            if offscreen() {
+            if self.capture.offscreen {
                 let _ = cx.update_window(window, |view, window, cx| {
                     if let Ok(page) = view.downcast::<Page>() {
                         page.update(cx, |_, cx| cx.notify());

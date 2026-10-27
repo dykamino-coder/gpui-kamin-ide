@@ -37,21 +37,26 @@ pub(crate) fn try_to_recover_from_device_lost<T>(mut f: impl FnMut() -> Result<T
 
 #[derive(Clone)]
 pub(crate) struct DirectXDevices {
-    // KaminIDE patch: keep the policy through device-lost recovery.
     pub(crate) adapter_preference: crate::GpuAdapterPreference,
     pub(crate) adapter: IDXGIAdapter1,
     pub(crate) dxgi_factory: IDXGIFactory6,
     pub(crate) device: ID3D11Device,
     pub(crate) device_context: ID3D11DeviceContext,
+    pub(crate) instrumentation: gpui::Instrumentation,
 }
 
 impl DirectXDevices {
-    pub(crate) fn new(adapter_preference: crate::GpuAdapterPreference) -> Result<Self> {
+    #[cfg(test)]
+    pub(crate) fn new() -> Result<Self> {
+        Self::with_instrumentation(crate::GpuAdapterPreference::Default, gpui::Instrumentation::default())
+    }
+
+    pub(crate) fn with_instrumentation(adapter_preference: crate::GpuAdapterPreference, instrumentation: gpui::Instrumentation) -> Result<Self> {
         let debug_layer_available = check_debug_layer_available();
         let dxgi_factory =
             get_dxgi_factory(debug_layer_available).context("Creating DXGI factory")?;
         let (adapter, device, device_context, feature_level) =
-            get_adapter(&dxgi_factory, debug_layer_available, &adapter_preference).context("Getting DXGI adapter")?;
+            get_adapter(&dxgi_factory, debug_layer_available, &adapter_preference, instrumentation.config().debug_device).context("Getting DXGI adapter")?;
         match feature_level {
             D3D_FEATURE_LEVEL_11_1 => {
                 log::info!("Created device with Direct3D 11.1 feature level.")
@@ -71,6 +76,7 @@ impl DirectXDevices {
             dxgi_factory,
             device,
             device_context,
+            instrumentation,
         })
     }
 }
@@ -110,6 +116,7 @@ fn get_adapter(
     dxgi_factory: &IDXGIFactory6,
     debug_layer_available: bool,
     preference: &crate::GpuAdapterPreference,
+    debug_device: gpui::DebugDevice,
 ) -> Result<(
     IDXGIAdapter1,
     ID3D11Device,
@@ -125,9 +132,15 @@ fn get_adapter(
             debug_layer_available).context("Creating device on the requested GPU")?;
         return Ok((adapter, device, context.context("Missing D3D device context")?, feature_level));
     }
-    match crate::debug_device::DeviceOverride::from_env() {
-        crate::debug_device::DeviceOverride::None => {}
-        crate::debug_device::DeviceOverride::Warp => {
+    // В release сохраняется обычный выбор адаптера.
+    let debug_device = if cfg!(debug_assertions) {
+        debug_device
+    } else {
+        gpui::DebugDevice::Default
+    };
+    match debug_device {
+        gpui::DebugDevice::Default => {}
+        gpui::DebugDevice::Warp => {
             let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumWarpAdapter()? };
             log::info!("Debug acceptance override: Direct3D device on the WARP adapter");
             let mut context: Option<ID3D11DeviceContext> = None;
@@ -140,7 +153,7 @@ fn get_adapter(
             )?;
             return Ok((adapter, device, context.unwrap(), feature_level));
         }
-        crate::debug_device::DeviceOverride::D3D11On12 => {
+        gpui::DebugDevice::D3D11On12 => {
             let adapter: IDXGIAdapter1 = unsafe { dxgi_factory.EnumAdapters(0)?.cast()? };
             log::info!("Debug acceptance override: D3D11On12 device on adapter 0");
             let (device, context, feature_level) =
@@ -175,7 +188,7 @@ fn get_adapter(
     unreachable!()
 }
 
-/// Debug acceptance only (`debug_device.rs`): an application-owned D3D11On12
+/// Debug acceptance only (`InstrumentationConfig`): an application-owned D3D11On12
 /// device, so the shell can call `ID3D12Device5::RemoveDevice` on it and GPUI
 /// takes its real device-lost path without any system-wide D3D setting.
 fn get_d3d11on12_device(

@@ -68,51 +68,53 @@ fn main() {
         std::process::exit(1);
     });
 
-    gpui_platform::application().run(move |cx| {
-        // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
-        cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
-        // Тот же служебный шрифт, что и в прогоне reftest-ов: без него замер
-        // против Chrome врал бы на шрифте, а не на раскладке.
-        if let Ok(bytes) = std::fs::read("vendor/wpt-parsing/fonts/Ahem.ttf") {
-            let _ = cx.text_system().add_fonts(vec![bytes.into()]);
-        }
-        // Метрики `ch`/`ex` меряются по РЕАЛЬНОМУ шрифту — щуп ставится после
-        // регистрации, иначе замер шёл бы по шрифту-подмене.
-        let system = cx.text_system().clone();
-        let fonts =
-            kamin_html::metrics::FontContext::new(system.clone()).with_loader(move |bytes| {
-                let before: std::collections::HashSet<String> =
-                    system.all_font_names().into_iter().collect();
-                system.add_fonts(vec![bytes.into()]).ok()?;
-                system
-                    .all_font_names()
-                    .into_iter()
-                    .find(|name| !before.contains(name))
-            });
-        let doc = Document::builder(&html, BROWSER_CSS)
-            .fonts(&fonts)
-            .build()
-            .map(Rc::new);
-        cx.open_window(
-            WindowOptions {
-                // Точка в углу экрана и точный размер: снимок сравнивается с
-                // браузерным по координатам, поэтому окно не должно
-                // центрироваться или подгоняться.
-                window_bounds: Some(WindowBounds::Windowed(Bounds {
-                    origin: point(px(40.), px(40.)),
-                    size: size(px(w), px(h)),
-                })),
-                titlebar: Some(TitlebarOptions {
-                    appears_transparent: true,
+    gpui_platform::application()
+        .with_instrumentation(kamin_html::host::instrumentation::from_env())
+        .run(move |cx| {
+            // Серые (не ClearType) глифы: как до gpui-pre 0.3.8, точный RGB стенда.
+            cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+            // Тот же служебный шрифт, что и в прогоне reftest-ов: без него замер
+            // против Chrome врал бы на шрифте, а не на раскладке.
+            if let Ok(bytes) = std::fs::read("vendor/wpt-parsing/fonts/Ahem.ttf") {
+                let _ = cx.text_system().add_fonts(vec![bytes.into()]);
+            }
+            // Метрики `ch`/`ex` меряются по РЕАЛЬНОМУ шрифту — щуп ставится после
+            // регистрации, иначе замер шёл бы по шрифту-подмене.
+            let system = cx.text_system().clone();
+            let fonts =
+                kamin_html::metrics::FontContext::new(system.clone()).with_loader(move |bytes| {
+                    let before: std::collections::HashSet<String> =
+                        system.all_font_names().into_iter().collect();
+                    system.add_fonts(vec![bytes.into()]).ok()?;
+                    system
+                        .all_font_names()
+                        .into_iter()
+                        .find(|name| !before.contains(name))
+                });
+            let doc = Document::builder(&html, BROWSER_CSS)
+                .fonts(&fonts)
+                .build()
+                .map(Rc::new);
+            cx.open_window(
+                WindowOptions {
+                    // Точка в углу экрана и точный размер: снимок сравнивается с
+                    // браузерным по координатам, поэтому окно не должно
+                    // центрироваться или подгоняться.
+                    window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        origin: point(px(40.), px(40.)),
+                        size: size(px(w), px(h)),
+                    })),
+                    titlebar: Some(TitlebarOptions {
+                        appears_transparent: true,
+                        ..Default::default()
+                    }),
+                    window_decorations: Some(WindowDecorations::Client),
+                    window_background: WindowBackgroundAppearance::Opaque,
                     ..Default::default()
-                }),
-                window_decorations: Some(WindowDecorations::Client),
-                window_background: WindowBackgroundAppearance::Opaque,
-                ..Default::default()
-            },
-            |_, cx| -> Entity<Page> { cx.new(|_| Page { doc }) },
-        )
-        .unwrap();
-        cx.activate(true);
-    });
+                },
+                |_, cx| -> Entity<Page> { cx.new(|_| Page { doc }) },
+            )
+            .unwrap();
+            cx.activate(true);
+        });
 }

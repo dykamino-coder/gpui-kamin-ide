@@ -85,6 +85,7 @@ impl Recorder {
     pub(super) fn observe(
         &mut self,
         frame: CapturedFrame,
+        sequence: u64,
         mode: &str,
         sample: usize,
     ) -> Result<()> {
@@ -112,7 +113,6 @@ impl Recorder {
                     width: frame.width,
                     height: frame.height,
                     bgra: frame.bgra.clone(),
-                    seq: frame.seq,
                 };
                 for (a, b) in image
                     .bgra
@@ -130,7 +130,7 @@ impl Recorder {
             }
             self.differences
                 .push(json!({"frame_index": self.index, "mode": mode,
-                "sample_index": sample, "capture_sequence": frame.seq, "baseline_frame_index": 1,
+                "sample_index": sample, "capture_sequence": sequence, "baseline_frame_index": 1,
                 "different_rgb_pixels": diff.pixels, "bounds_xywh": diff.bounds,
                 "artifacts": artifacts}));
         }
@@ -153,7 +153,6 @@ mod tests {
             width: 2,
             height: 2,
             bgra,
-            seq: 7,
         }
     }
 
@@ -179,14 +178,14 @@ mod tests {
         let first = frame(vec![0; 16]);
         let expected_hash = fingerprint(&first);
         let mut recorder = Recorder::new(None).expect("no IO");
-        recorder.observe(first, "cold", 1).expect("baseline");
+        recorder.observe(first, 7, "cold", 1).expect("baseline");
         let mut changed = frame(vec![0; 16]);
         changed.bgra[0] = 1;
         recorder
-            .observe(changed, "cold", 2)
+            .observe(changed, 8, "cold", 2)
             .expect("changed frame accepted");
         recorder
-            .observe(frame(vec![0; 16]), "warm", 1)
+            .observe(frame(vec![0; 16]), 9, "warm", 1)
             .expect("baseline restored");
         let report = recorder.report();
         assert_eq!(report["first_frame_bgr_fnv1a64"], expected_hash);
