@@ -1,7 +1,6 @@
 //! Очередь зависимостей до конца ICB; остановка графа разрешается через CSS fallback.
 
 use super::{Item, OofKid, OofQueue, Place};
-use crate::document::state::ValueDoc;
 mod context;
 use context::Context;
 type Output = Rc<RefCell<Vec<Painted>>>;
@@ -32,7 +31,7 @@ struct Destination {
 struct Work {
     tasks: VecDeque<Task>,
     destinations: Vec<Destination>,
-    values: Option<ValueDoc>,
+    layout: Option<std::rc::Rc<crate::layout::layout_state::LayoutState>>,
 }
 
 #[derive(Clone, Default)]
@@ -48,13 +47,13 @@ impl Painted {
 
 impl Pending {
     pub(super) fn observe(&self, deps: &crate::layout::positioned::anchor::Dependencies) {
-        if self.0.borrow().values.is_none() {
-            self.0.borrow_mut().values = deps.values();
+        if self.0.borrow().layout.is_none() {
+            self.0.borrow_mut().layout = deps.layout();
         }
     }
 
     pub(super) fn context(&self, window: &Window) -> Context {
-        Context::capture(self.0.borrow().values.clone(), window)
+        Context::capture(self.0.borrow().layout.clone(), window)
     }
 
     pub(super) fn register(

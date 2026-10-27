@@ -20,29 +20,27 @@ pub struct RootArea {
     pub height: Option<f32>,
     /// `vertical-rl`: заданная ширина отмеряется от ПРАВОГО края холста.
     pub from_right: bool,
-    /// Read the measured left edge of the root's padding box (`DocState::root_left`):
+    /// Read the measured left edge of the root's padding box (`LayoutState::root_left`):
     /// корень `vertical-rl` без заданной ширины — по содержимому и прижат
     /// вправо, его край известен только после раскладки. Читается при
     /// ОТРИСОВКЕ: подготовка тела (`text::vertical::root_left::RecordRootLeft`) идёт раньше
     /// отрисовки холста в том же кадре.
-    pub measured_left: bool,
+    pub(crate) measured_left: Option<std::rc::Rc<crate::layout::layout_state::LayoutState>>,
 }
 
 impl RootArea {
-    pub(crate) fn rect(
-        &self,
-        clip: Bounds<Pixels>,
-        vcx: crate::document::state::ValueCx<'_>,
-    ) -> Bounds<Pixels> {
+    pub(crate) fn rect(&self, clip: Bounds<Pixels>) -> Bounds<Pixels> {
         if let Some(bounds) = self.measured.as_ref().and_then(|area| area.get()) {
             return bounds;
         }
         let (cw, ch) = (f32::from(clip.size.width), f32::from(clip.size.height));
         let w = self.width.unwrap_or(cw - self.left - self.right).max(0.0);
         let h = self.height.unwrap_or(ch - self.top - self.bottom).max(0.0);
-        let left_abs = (self.measured_left && self.width.is_none())
-            .then(|| vcx.doc.root_left.get())
-            .flatten()
+        let left_abs = self
+            .measured_left
+            .as_ref()
+            .filter(|_| self.width.is_none())
+            .and_then(|layout| layout.root_left.get())
             .map(|l| l - f32::from(clip.origin.x));
         let (x, w) = match left_abs {
             Some(l) => (l, (cw - l - self.right).max(0.0)),

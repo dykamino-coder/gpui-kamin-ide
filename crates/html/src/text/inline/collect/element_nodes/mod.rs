@@ -216,7 +216,8 @@ pub(super) async fn collect_element(
     } else {
         kids
     };
-    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, vcx);
+    let anchors = &cx.layout.layout().anchors;
+    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, anchors);
     out.extend(shift_overlays(kids, &st, merged.wm().turned()));
     if let Some(mark) = close {
         out.push(piece(mark.to_string(), control()));

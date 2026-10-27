@@ -140,11 +140,18 @@ impl Plan {
         let (items, _, content, justify) = style.safe_alignment.unwrap_or_default();
         style.safe_alignment = Some((items, false, content, justify));
     }
-    pub(crate) fn wrap(self, child: AnyElement, vcx: ValueCx<'_>, build: ChildBuild) -> AnyElement {
+    pub(crate) fn wrap(
+        self,
+        child: AnyElement,
+        vcx: ValueCx<'_>,
+        layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
+        build: ChildBuild,
+    ) -> AnyElement {
         SafePlace {
             child,
             plan: self,
             values: vcx.keep(),
+            layout: layout.clone(),
             build,
         }
         .hooked()
@@ -154,6 +161,7 @@ impl Plan {
         bounds: Bounds<Pixels>,
         window: &Window,
         vcx: ValueCx<'_>,
+        anchors: &crate::layout::positioned::anchor::AnchorState,
         build: ChildBuild,
     ) -> gpui::Point<Pixels> {
         let Some(flex) = self.positioning.flex_content(self.flex) else {
@@ -162,7 +170,7 @@ impl Plan {
         let cb = if self.cb == 0 {
             Some(Bounds::new(point(px(0.0), px(0.0)), window.viewport_size()))
         } else {
-            crate::layout::positioned::anchor::containing_bounds(self.cb, vcx)
+            crate::layout::positioned::anchor::containing_bounds(self.cb, anchors)
         };
         let Some(cb) = cb else {
             return point(px(0.0), px(0.0));
@@ -211,6 +219,8 @@ struct SafePlace {
     plan: Plan,
     /// Values of the document the plan's lengths come from.
     values: crate::document::state::ValueDoc,
+    /// Layout state of the same document: containing-block registry.
+    layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
     build: ChildBuild,
 }
 impl Wrap for SafePlace {
@@ -219,9 +229,13 @@ impl Wrap for SafePlace {
     }
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let shift = self
-            .plan
-            .shift(bounds, window, self.values.vcx(), self.build);
+        let shift = self.plan.shift(
+            bounds,
+            window,
+            self.values.vcx(),
+            &self.layout.anchors,
+            self.build,
+        );
         window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx));
     }
 }

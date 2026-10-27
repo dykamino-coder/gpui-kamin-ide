@@ -34,7 +34,8 @@ mod area;
 mod geometry;
 pub(crate) mod identities;
 mod inline;
-pub use inline::{prepare_inline_abs, register_inline_anchor, register_inline_cb};
+pub use inline::prepare_inline_abs;
+pub(crate) use inline::{register_inline_anchor, register_inline_cb};
 pub(crate) mod parse;
 pub(crate) mod place;
 mod plan;
@@ -54,12 +55,12 @@ pub use probe::probe_for;
 mod tf_stack;
 pub(crate) use tf_stack::TransformContext;
 pub(super) use tf_stack::containing_bounds;
-pub use tf_stack::tf_pop;
-pub use tf_stack::tf_push;
+pub(crate) use tf_stack::tf_pop;
+pub(crate) use tf_stack::tf_push;
 use tf_stack::{tf_map, tf_under};
 mod frame;
-pub use frame::next_seq;
-pub use frame::reset;
+pub(crate) use frame::next_seq;
+pub(crate) use frame::reset;
 
 /// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
 /// пробы и `visibility: hidden` (§position-visibility: anchor-visible), свой
@@ -107,6 +108,8 @@ struct SidePlan {
 pub struct AnchorPlan {
     key: u64,
     values: crate::document::state::ValueDoc,
+    /// Layout state of the same document: anchor registries read at prepaint.
+    layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
     /// По часовой: top, right, bottom, left — как `Sides`.
     sides: [Option<SidePlan>; 4],
     default_anchor: Option<DefaultAnchor>,
@@ -146,6 +149,8 @@ pub(crate) struct PlacementPlans {
     visibility: u8,
     /// Values of the document the plans' `anchor()` lengths come from.
     values: crate::document::state::ValueDoc,
+    /// Layout state of the same document: remembered choices and presence.
+    layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
 }
 
 #[cfg(test)]

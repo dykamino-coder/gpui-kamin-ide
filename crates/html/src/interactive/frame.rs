@@ -7,5 +7,5 @@ pub fn frame_sanitize(cx: &crate::layout::cx::LayoutCx) {
     cx.paragraph().begin_frame();
     // Реестр якорей — расходник кадра того же рода: пишется на подготовке,
     // читается там же, к следующей сборке дерева обязан быть пуст.
-    crate::layout::positioned::anchor::reset(cx.vcx());
+    crate::layout::positioned::anchor::reset(&cx.layout().anchors);
 }

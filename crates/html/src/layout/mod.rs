@@ -11,6 +11,7 @@ pub(crate) mod float;
 pub(crate) mod fragment;
 pub(crate) mod grid;
 pub(crate) mod intrinsic_wrap;
+pub(crate) mod layout_state;
 pub(crate) mod list;
 pub(crate) mod mathml;
 pub(crate) mod multicol;

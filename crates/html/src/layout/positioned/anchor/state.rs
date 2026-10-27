@@ -34,6 +34,7 @@ pub(crate) struct AnchorState {
     /// Последний удачный вариант `position-try-fallbacks` по ключу коробки
     /// (§fallback: «the element keeps those styles until it overflows again»):
     /// 0 — базовые стили, k — k-й элемент списка. Живёт между кадрами,
-    /// удаляется после кадра без коробки и при сборке нового документа.
+    /// удаляется после кадра без коробки; новый документ (и `update`)
+    /// получает новое состояние, выбор прошлого документа его не переживает.
     pub(super) chosen: RefCell<HashMap<u64, super::trials::Chosen>>,
 }

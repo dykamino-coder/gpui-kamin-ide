@@ -13,8 +13,13 @@ use insets::fill_anchor_pairs;
 pub(crate) use try_rule::try_rule_onto;
 
 /// Размеры разрешаются только из реестра текущего кадра.
-pub fn resolve_sizes(c: &mut BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) {
-    resolve_with(c, inherited, None, vcx);
+pub(crate) fn resolve_sizes(
+    c: &mut BoxStyle,
+    inherited: &BoxStyle,
+    vcx: ValueCx<'_>,
+    layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
+) {
+    resolve_with(c, inherited, None, vcx, layout);
 }
 
 fn resolve_with(
@@ -22,6 +27,7 @@ fn resolve_with(
     inherited: &BoxStyle,
     current: Option<SizeInputs>,
     vcx: ValueCx<'_>,
+    layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
 ) {
     if !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
         return;
@@ -29,7 +35,7 @@ fn resolve_with(
     let default_anchor = default_anchor_of(c);
     let cb_vertical = inherited.wm().vertical();
     let own_vertical = c.wm().vertical();
-    let plan = super::AnchorPlan::of(c, inherited, vcx);
+    let plan = super::AnchorPlan::of(c, inherited, vcx, layout);
     let one = |l: Option<Len>, y_axis: bool| -> Option<Len> {
         let Some(Len::Anchor(i)) = l else { return l };
         let mut f = anchor_get(i, vcx);

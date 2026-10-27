@@ -17,6 +17,7 @@ impl AnchorPlan {
         own: &BoxStyle,
         inherited: &Computed,
         vcx: ValueCx<'_>,
+        layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
     ) -> Option<AnchorPlan> {
         if !matches!(
             own.position,
@@ -102,6 +103,7 @@ impl AnchorPlan {
         Some(AnchorPlan {
             key: own.anchor_key,
             values: vcx.keep(),
+            layout: layout.clone(),
             sides,
             default_anchor,
             cb_flipped: flipped(inherited),

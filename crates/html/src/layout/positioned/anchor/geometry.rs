@@ -46,9 +46,9 @@ impl PlacementPlans {
         if places.len() == 1 {
             return (0, places[0]);
         }
-        if let Some(k) = vcx
-            .doc
-            .anchor_frame
+        if let Some(k) = self
+            .layout
+            .anchors
             .chosen
             .borrow()
             .get(&self.key)

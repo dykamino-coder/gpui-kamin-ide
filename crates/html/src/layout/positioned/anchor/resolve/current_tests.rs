@@ -24,7 +24,8 @@ fn record(width: f32) -> AnchorRec {
 fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
     let doc = DocState::new(Default::default());
     let vcx = doc.frame_values();
-    doc.anchor_frame
+    doc.layout
+        .anchors
         .named_seq
         .borrow_mut()
         .push(("--a".into(), 1, record(40.)));
@@ -35,11 +36,23 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
     });
     c.anchor_seq = 2;
     let original = c.clone();
-    resolve_current(&mut c, &BoxStyle::default(), SizeInputs::default(), vcx);
+    resolve_current(
+        &mut c,
+        &BoxStyle::default(),
+        SizeInputs::default(),
+        vcx,
+        &doc.layout,
+    );
     assert_eq!(c.width, Some(Len::Px(40.)));
-    doc.anchor_frame.named_seq.borrow_mut().clear();
+    doc.layout.anchors.named_seq.borrow_mut().clear();
     c = original;
-    resolve_current(&mut c, &BoxStyle::default(), SizeInputs::default(), vcx);
+    resolve_current(
+        &mut c,
+        &BoxStyle::default(),
+        SizeInputs::default(),
+        vcx,
+        &doc.layout,
+    );
     assert_eq!(c.width, Some(Len::Px(9.)));
 }
 
@@ -65,6 +78,7 @@ fn absent_default_anchor_keeps_explicit_anchor_inset_stretch_sizing() {
                 ..Default::default()
             },
             vcx,
+            &doc.layout,
         );
         assert_eq!(c.height, Some(Len::Px(67.)));
     }

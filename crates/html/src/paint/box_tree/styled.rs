@@ -103,7 +103,7 @@ pub(crate) fn styled_div_with_dimensions(
     // сохраняет исходный `visibility: hidden` якоря
     // (§position-visibility: anchor-visible, «anchor box is invisible»).
     if let Some(probe) =
-        crate::layout::positioned::anchor::probe_for(e, c, style.hidden == Some(true), vcx)
+        crate::layout::positioned::anchor::probe_for(e, c, style.hidden == Some(true), cx.layout())
     {
         d = d.child(probe);
     }

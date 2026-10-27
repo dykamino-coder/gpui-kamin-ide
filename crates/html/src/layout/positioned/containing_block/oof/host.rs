@@ -11,7 +11,7 @@ use std::{cell::RefCell, rc::Rc};
 pub(super) struct OofHost {
     pub(super) queue: OofQueue,
     pub(super) place: Place,
-    pub(super) containing: Option<(u64, crate::document::state::ValueDoc)>,
+    pub(super) containing: Option<(u64, std::rc::Rc<crate::layout::layout_state::LayoutState>)>,
 }
 
 pub(super) fn build_one(
@@ -77,16 +77,15 @@ impl Hooks for OofHost {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
-        let bounds = self.containing.as_ref().map_or(bounds, |(cb, values)| {
-            crate::layout::positioned::anchor::containing_bounds(*cb, values.vcx()).unwrap_or_else(
-                || {
+        let bounds = self.containing.as_ref().map_or(bounds, |(cb, layout)| {
+            crate::layout::positioned::anchor::containing_bounds(*cb, &layout.anchors)
+                .unwrap_or_else(|| {
                     if *cb == 0 {
                         Bounds::new(point(px(0.), px(0.)), window.viewport_size())
                     } else {
                         bounds
                     }
-                },
-            )
+                })
         });
         let built = Rc::new(RefCell::new(Vec::new()));
         let context = self.queue.pending.context(window);

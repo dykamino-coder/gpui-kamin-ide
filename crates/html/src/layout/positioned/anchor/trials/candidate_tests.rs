@@ -34,7 +34,7 @@ fn named_try_is_computed_once_and_descendants_see_the_computed_variant() {
     let div = element(&parsed.nodes, "div");
     let child = element(&div.children, "b");
     let base = box_style(&BoxStyle::default(), &div.style, vcx);
-    let options = super::super::Options::new(&base, &BoxStyle::default(), vcx);
+    let options = super::super::Options::new(&base, &BoxStyle::default(), vcx, &parsed.doc.layout);
     let (_, trial) = &options.styles[1];
     assert_eq!(trial.width, Some(Len::Px(20.)));
     assert_eq!(trial.font_size, base.font_size);
@@ -48,7 +48,7 @@ fn named_try_is_computed_once_and_descendants_see_the_computed_variant() {
     );
     assert_eq!(div.style.computed().width, Some(Len::Px(10.)));
     options.record(1, vcx);
-    let next = super::super::Options::new(&base, &BoxStyle::default(), vcx);
+    let next = super::super::Options::new(&base, &BoxStyle::default(), vcx, &parsed.doc.layout);
     assert_eq!(next.styles[0].0, 1);
     assert_eq!(
         box_style(&next.styles[0].1, &child.style, vcx).width,
@@ -75,7 +75,7 @@ fn remembered_geometry_and_computed_parent_share_only_accepted_values() {
     let div = element(&parsed.nodes, "div");
     let parent = BoxStyle::default();
     let base = box_style(&parent, &div.style, vcx);
-    let options = super::super::Options::new(&base, &parent, vcx);
+    let options = super::super::Options::new(&base, &parent, vcx, &parsed.doc.layout);
     assert_eq!(options.styles[1].1.width, Some(Len::Px(20.)));
     options.record(1, vcx);
     let mut changed = div.clone();
@@ -83,7 +83,7 @@ fn remembered_geometry_and_computed_parent_share_only_accepted_values() {
     let nodes = [Node::Element(changed)];
     materialize(&nodes, &Rc::new(Computed::default()), vcx);
     let base = box_style(&parent, &element(&nodes, "div").style, vcx);
-    let options = super::super::Options::new(&base, &parent, vcx);
+    let options = super::super::Options::new(&base, &parent, vcx, &parsed.doc.layout);
     assert_eq!(options.styles[0].0, 1);
     assert_eq!(options.styles[0].1.width, Some(Len::Px(20.)));
     let raw = &options.styles[0].1.element_style.as_ref().unwrap().computed;

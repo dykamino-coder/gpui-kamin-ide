@@ -85,7 +85,7 @@ pub(crate) fn canvas_layer(
                 let bounds = if layer.fixed == Some(true) {
                     clip
                 } else {
-                    area.rect(clip, vcx)
+                    area.rect(clip)
                 };
                 tiles::paint_layer_in(
                     tiles::LayerPaint {

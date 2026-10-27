@@ -66,13 +66,13 @@ impl OofQueue {
         spot: SpotCell,
         kid: OofKid,
         cb: u64,
-        values: crate::document::state::ValueDoc,
+        layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
     ) -> AnyElement {
         self.push_kid(spot, kid);
         host::OofHost {
             queue: self,
             place: super::layers::icb_place,
-            containing: Some((cb, values)),
+            containing: Some((cb, layout)),
         }
         .hooked()
     }

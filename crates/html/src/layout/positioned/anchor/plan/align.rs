@@ -113,14 +113,7 @@ impl AnchorPlan {
                 size: window.viewport_size(),
             });
         }
-        self.values
-            .vcx()
-            .doc
-            .anchor_frame
-            .cb
-            .borrow()
-            .get(&self.cb_node)
-            .copied()
+        self.layout.anchors.cb.borrow().get(&self.cb_node).copied()
     }
 
     /// Предел переполнения по оси — края, за которые коробку не выпускает

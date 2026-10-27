@@ -10,10 +10,10 @@ impl Positioning {
         spot: super::SpotCell,
         kid: super::super::OofKid,
         cb: u64,
-        values: crate::document::state::ValueDoc,
+        layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
     ) -> AnyElement {
         super::OofQueue::with_pending(self.pending.borrow().last().cloned().unwrap_or_default())
-            .local(spot, kid, cb, values)
+            .local(spot, kid, cb, layout)
     }
 }
 

@@ -50,7 +50,7 @@ pub(super) fn mark_inline_box(
     pieces: Vec<Piece>,
     e: &Element,
     merged: &BoxStyle,
-    vcx: crate::document::state::ValueCx<'_>,
+    anchors: &crate::layout::positioned::anchor::AnchorState,
 ) -> Vec<Piece> {
     if e.node_id == 0 {
         return pieces;
@@ -72,7 +72,7 @@ pub(super) fn mark_inline_box(
         names,
         cb,
         own_cb: merged.cb_node,
-        seq: crate::layout::positioned::anchor::next_seq(vcx),
+        seq: crate::layout::positioned::anchor::next_seq(anchors),
         pad: px4(p.top, p.right, p.bottom, p.left),
         border: px4(b.top, b.right, b.bottom, b.left),
         hidden: merged.hidden == Some(true),
