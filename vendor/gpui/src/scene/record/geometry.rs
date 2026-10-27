@@ -52,7 +52,7 @@ pub(in crate::scene) fn primitive(primitive: &mut Primitive, offset: Point<Scale
         }
         Primitive::Path(p) => {
             if let Some((_, inverse)) = &mut p.color_mapping {
-                *inverse = inverse.compose(TransformationMatrix::unit().translate(-offset));
+                *inverse = inverse.compose(TransformationMatrix::unit().translate(point(ScaledPixels(-offset.x.0), ScaledPixels(-offset.y.0))));
             }
             p.bounds = bounds(p.bounds, offset);
             p.start += offset;

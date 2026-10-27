@@ -9184,7 +9184,7 @@ index 0000000000000000000000000000000000000000..202f29698d9a103f46492295b5261e90
 +}
 diff --git a/vendor/gpui/src/scene/record/geometry.rs b/vendor/gpui/src/scene/record/geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9090b1b86f9dbb9011a68508df11f5cb545a4909
+index 0000000000000000000000000000000000000000..6d2ea81a9a139481107fc909826a19d7493593b8
 --- /dev/null
 +++ b/vendor/gpui/src/scene/record/geometry.rs
 @@ -0,0 +1,81 @@
@@ -9242,7 +9242,7 @@ index 0000000000000000000000000000000000000000..9090b1b86f9dbb9011a68508df11f5cb
 +        }
 +        Primitive::Path(p) => {
 +            if let Some((_, inverse)) = &mut p.color_mapping {
-+                *inverse = inverse.compose(TransformationMatrix::unit().translate(-offset));
++                *inverse = inverse.compose(TransformationMatrix::unit().translate(point(ScaledPixels(-offset.x.0), ScaledPixels(-offset.y.0))));
 +            }
 +            p.bounds = bounds(p.bounds, offset);
 +            p.start += offset;
@@ -9686,7 +9686,7 @@ index 0000000000000000000000000000000000000000..b09832d694d351eac6b4b47d155f7b2b
 +}
 diff --git a/vendor/gpui/src/scene/vector_transform.rs b/vendor/gpui/src/scene/vector_transform.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0404f02b049d8d2a05c9af52de36edd06194f12a
+index 0000000000000000000000000000000000000000..8e74c8f5435cfcdb28dedba35589441c22536dc6
 --- /dev/null
 +++ b/vendor/gpui/src/scene/vector_transform.rs
 @@ -0,0 +1,137 @@
@@ -9753,7 +9753,7 @@ index 0000000000000000000000000000000000000000..0404f02b049d8d2a05c9af52de36edd0
 +    let a = map_point(b.origin, m);
 +    let z = map_point(b.bottom_right(), m);
 +    Bounds::new(point(a.x.min(z.x), a.y.min(z.y)),
-+        crate::size((z.x - a.x).abs(), (z.y - a.y).abs()))
++        crate::size(ScaledPixels((z.x - a.x).0.abs()), ScaledPixels((z.y - a.y).0.abs())))
 +}
 +
 +fn radii(c: &mut Corners<ScaledPixels>, t: PaintVectorTransform) {
