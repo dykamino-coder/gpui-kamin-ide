@@ -50,6 +50,8 @@ mod flex_column_tests;
 #[cfg(test)]
 mod flex_gap_tests;
 #[cfg(test)]
+mod flex_line_start_tests;
+#[cfg(test)]
 mod flex_overflow_tests;
 #[cfg(test)]
 mod flex_tests;
