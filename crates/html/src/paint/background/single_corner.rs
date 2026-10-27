@@ -11,7 +11,7 @@ use crate::style::computed::{BgClip, BoxStyle};
 use crate::style::values::value::{Color, Len};
 /// Примитив совмещает рамку с собственным used-фоном коробки.
 pub(crate) fn eligible(c: &BoxStyle) -> bool {
-    crate::style::computed::single_corner::eligible_background(c, c.background_paint)
+    crate::style::computed::single_corner::box_eligible(c)
 }
 use geometry::{inset, square, uniform, virtual_circle};
 use gpui::{AnyElement, Bounds, Pixels, Window, px};
@@ -76,12 +76,15 @@ pub(crate) fn layer(c: &BoxStyle) -> Option<AnyElement> {
     let b = uniform(c.borders())?;
     let p = uniform(c.padding)?;
     let background = c
-        .background
+        .paint_background()
+        .color
         .filter(|_| c.background_paint.paints())
         .unwrap_or_default();
     let border = c.used_border_color(0);
     let clip = c
-        .bg_clip
+        .paint_background()
+        .top
+        .clip
         .filter(|_| c.background_paint.paints())
         .unwrap_or(BgClip::BorderBox);
     Some(

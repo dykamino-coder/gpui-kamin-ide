@@ -58,6 +58,21 @@ pub fn sided_border(
     font_px: f32,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Color, [f32; 4])> {
+    sided_border_with_colors(
+        c,
+        std::array::from_fn(|i| c.used_border_color(i)),
+        font_px,
+        vcx,
+    )
+}
+
+/// Геометрия читает CSS, а цвета — явный результат своей коробки.
+pub(crate) fn sided_border_with_colors(
+    c: &Computed,
+    colors: [Color; 4],
+    font_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<(Color, [f32; 4])> {
     let w = c.borders();
     let px_of = |l: Option<Len>| border_px(l, c, font_px, vcx);
     let sides = [
@@ -88,7 +103,7 @@ pub fn sided_border(
         // стыке двунаправленности и на переносе рисуются обе боковые грани
         // (`bidi-*`), пока у `pad_left`/`pad_right` нет признака «полоса
         // продолжается».
-        let side = c.used_border_color(i);
+        let side = colors[i];
         match color {
             None => color = Some(side),
             Some(prev) if prev == side => {}
@@ -100,6 +115,21 @@ pub fn sided_border(
 
 pub fn uniform_border(
     c: &Computed,
+    font_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<(Color, f32)> {
+    uniform_border_with_colors(
+        c,
+        std::array::from_fn(|i| c.used_border_color(i)),
+        font_px,
+        vcx,
+    )
+}
+
+/// Ровная рамка с явно переданными цветами краски.
+pub(crate) fn uniform_border_with_colors(
+    c: &Computed,
+    colors: [Color; 4],
     font_px: f32,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Color, f32)> {
@@ -117,6 +147,9 @@ pub fn uniform_border(
     if t <= 0.0 || t != r || t != b || t != l {
         return None;
     }
-    let color = c.used_uniform_border_color()?;
-    Some((color, t))
+    let color = colors[0];
+    colors
+        .iter()
+        .all(|side| *side == color)
+        .then_some((color, t))
 }

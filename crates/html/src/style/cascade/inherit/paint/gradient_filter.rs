@@ -4,23 +4,30 @@
 //! как источник `bg_image` с сохранением геометрии, а размытие остаётся на
 //! группе поддерева.
 
-use crate::document::state::ValueCx;
-use crate::style::computed::{BoxStyle, Computed, Filter, ImageFilter, ImageSource};
+use crate::style::computed::{Computed, Filter, ImageFilter, ImageSource};
 
-pub(super) fn apply(c: &mut BoxStyle, own: &Computed, f: Filter, vcx: ValueCx<'_>) {
-    if own.gradient.is_none() || c.bg_layers(vcx).is_some() || f.color_matrix().is_none() {
+pub(super) fn apply(
+    c: &mut crate::style::background_paint::BackgroundValues,
+    own: &Computed,
+    f: Filter,
+    operations: &[Filter],
+) {
+    if own.gradient.is_none()
+        || c.layers.is_some()
+        || operations.iter().all(|op| op.color_matrix().is_none()) && f.color_matrix().is_none()
+    {
         return;
     }
-    let Some(image) = c.gradient_raw.clone() else {
+    let Some(image) = c.gradient_image.clone() else {
         return;
     };
     set!(
-        c.bg_image,
+        c.top.image,
         Some(ImageSource::Filter {
             image: Box::new(image),
-            program: ImageFilter::color_filter(f),
+            program: ImageFilter::color_filter(f, operations),
         })
     );
     set!(c.gradient, None);
-    set!(c.gradient_raw, None);
+    set!(c.gradient_image, None);
 }

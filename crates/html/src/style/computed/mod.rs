@@ -27,7 +27,6 @@ pub(crate) mod font_family;
 mod font_kerning;
 mod font_request;
 pub(super) mod font_weight;
-mod gradient_paint;
 pub(crate) mod image_function;
 mod image_operands;
 mod image_source;

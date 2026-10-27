@@ -1,63 +1,67 @@
 //! Общий расчёт цвета для подготовки документа и оформления коробки.
 
-use crate::style::computed::{Computed, flat_background::BackgroundImageValues};
+use crate::style::computed::flat_background::BackgroundImageValues;
 use crate::style::values::value::Color;
 
-pub(super) struct TextClipColors {
-    pub color: Option<Color>,
-    pub raw: Option<Color>,
-    pub fill: Option<Color>,
+use crate::style::decoration_paint::ForegroundPaint;
+
+pub(super) struct TextClipInput {
+    pub parent: ForegroundPaint,
+    pub foreground: ForegroundPaint,
+    pub element: bool,
+    pub declares_color: bool,
+    pub out_of_flow: bool,
+    pub background: crate::style::background_paint::BackgroundPaint,
 }
 
 pub(super) fn text_clip_colors(
-    parent: &Computed,
-    declared: &Computed,
-    own: &Computed,
-    c: &Computed,
-    element: bool,
-    background: crate::style::background_paint::BackgroundPaint,
+    context: TextClipInput,
+    background_values: &crate::style::background_paint::BackgroundValues,
     images: &dyn BackgroundImageValues,
-) -> TextClipColors {
-    let mut out = TextClipColors {
-        color: c.color,
-        raw: c.text_clip_raw,
-        fill: c.text_clip_fill,
-    };
+) -> ForegroundPaint {
+    let TextClipInput {
+        parent,
+        foreground: input,
+        element,
+        declares_color,
+        out_of_flow,
+        background,
+    } = context;
+    let mut out = input;
     let black = Color {
         r: 0.0,
         g: 0.0,
         b: 0.0,
         a: 1.0,
     };
-    let out_of_flow = crate::style::flow::absolutely_positioned(own.position);
     if let Some(fill) = background
         .paints()
-        .then(|| crate::style::computed::flat_background::text_clip_fill(c, images))
+        .then(|| crate::style::computed::flat_background::text_clip_fill(background_values, images))
         .flatten()
     {
-        let foreground = c.text_clip_raw.or(c.color);
+        let foreground = input.raw.or(input.color);
         out.raw = foreground;
         out.fill = Some(fill);
         out.color = Some(crate::style::values::composite::over(
             foreground.unwrap_or(black),
             fill,
         ));
-    } else if parent.text_clip_fill.is_some() && out_of_flow {
+    } else if parent.fill.is_some() && out_of_flow {
         out.fill = None;
         out.raw = None;
-        if !element && !declared.declares_color() {
-            out.color = parent.text_clip_raw;
+        if !element && !declares_color {
+            out.color = parent.raw;
         }
-    } else if let Some(fill) = parent.text_clip_fill {
+    } else if let Some(fill) = parent.fill {
         out.fill = Some(fill);
-        if element || declared.declares_color() {
-            out.raw = c.color;
+        if element || declares_color {
+            out.raw = input.color;
             out.color = Some(crate::style::values::composite::over(
-                c.color.unwrap_or(black),
+                input.color.unwrap_or(black),
                 fill,
             ));
         } else {
-            out.raw = parent.text_clip_raw;
+            out.raw = parent.raw;
         }
     }
     out

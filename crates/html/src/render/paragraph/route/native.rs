@@ -155,7 +155,7 @@ pub(crate) fn native_paragraph(
             gpui::transparent_black()
         } else {
             inherited
-                .color
+                .ink()
                 .map(crate::style::values::value::Color::to_hsla)
                 .unwrap_or_else(gpui::black)
         }))

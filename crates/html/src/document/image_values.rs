@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 pub(crate) fn prepare(nodes: &[Node], vcx: ValueCx<'_>) {
     let mut urls = HashSet::new();
-    collect(nodes, &mut urls, vcx);
+    collect(nodes, &mut urls);
     publish(urls, vcx);
 }
 
@@ -23,10 +23,10 @@ fn publish(urls: HashSet<String>, vcx: ValueCx<'_>) {
     *vcx.doc.background_images.borrow_mut() = next;
 }
 
-fn collect(nodes: &[Node], urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
+fn collect(nodes: &[Node], urls: &mut HashSet<String>) {
     for node in nodes {
         let Node::Element(e) = node else { continue };
-        style(e.style.cascaded(), urls, vcx);
+        style(e.style.cascaded(), urls);
         for c in [
             e.hover.as_ref().map(crate::dom::SharedStyle::cascaded),
             e.first_line.as_ref().map(crate::dom::SharedStyle::cascaded),
@@ -37,27 +37,27 @@ fn collect(nodes: &[Node], urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
         .into_iter()
         .flatten()
         {
-            style(c, urls, vcx);
+            style(c, urls);
         }
         if let Some(anim) = &e.anim {
             for (_, c) in anim.iter() {
-                style(c, urls, vcx);
+                style(c, urls);
             }
         }
-        collect(&e.children, urls, vcx);
+        collect(&e.children, urls);
     }
 }
 
-fn style(c: &Computed, urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
+fn style(c: &Computed, urls: &mut HashSet<String>) {
     if let Some(Some(image)) = &c.list_style_image {
         operand(image, urls);
     }
     if let Some(image) = &c.bg_image {
         operand(image, urls);
     }
-    if let Some(layers) = c.bg_layers(vcx) {
+    if let Some(layers) = c.background_layers() {
         for c in layers {
-            if let Some(image) = &c.bg_image {
+            if let Some(image) = &c.image {
                 operand(image, urls);
             }
         }
@@ -72,7 +72,7 @@ fn style(c: &Computed, urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
     .into_iter()
     .flatten()
     {
-        style(c, urls, vcx);
+        style(c, urls);
     }
 }
 
@@ -138,9 +138,10 @@ mod tests {
         );
         let revision = doc.images.borrow().snapshot().revision();
         let after = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
-        assert!(after.bg_image.is_none());
+        assert!(after.paint_background().top.image.is_none());
+        assert_eq!(after.bg_image.as_ref(), Some(&image));
         assert_eq!(
-            after.flat_text_background,
+            after.paint_background().flat.map(|v| v[1]),
             ready.uniform_image_color(&image)
         );
         assert_eq!(doc.images.borrow().snapshot().revision(), revision);

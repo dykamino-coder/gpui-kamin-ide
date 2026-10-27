@@ -62,7 +62,7 @@ pub(crate) fn with_text_shadow(
     nodes: &[Node],
     opts: &RenderOpts,
 ) -> AnyElement {
-    let context = ShadowStyle::new(style);
+    let context = ShadowStyle::new(style, style.ink());
     let block = context.resolved();
     let all_text = nodes.iter().all(|n| matches!(n, Node::Text(_)));
     let flat = !style.wm().vertical()
@@ -119,7 +119,7 @@ pub(crate) fn with_text_shadow(
 
 #[cfg(test)]
 fn shadow_list(c: &crate::style::computed::Computed) -> Vec<Shadow> {
-    ShadowStyle::new(c).resolved()
+    ShadowStyle::new(c, c.color).resolved()
 }
 
 /// Атомная или блочная коробка внутри абзаца: её содержимое в слой тени

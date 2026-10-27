@@ -3,7 +3,7 @@
 
 use super::*;
 
-pub(super) fn paint_shadows(mut d: Div, c: &Computed) -> Div {
+pub(super) fn paint_shadows(mut d: Div, c: &BoxStyle) -> Div {
     // `currentcolor` тени — цвет текста ЭТОГО элемента (css-backgrounds-3 §7).
     let shadow_colour = |sh: &crate::style::computed::Shadow| sh.used_color(c.current_color());
     // У `border-shape` обе тени повторяют фигуру и рисуются растром
@@ -36,9 +36,9 @@ pub(super) fn paint_shadows(mut d: Div, c: &Computed) -> Div {
                 .collect(),
         );
     }
-    if !c.shadows.is_empty() && c.border_shape.is_none() {
+    if !c.paint_shadows().is_empty() && c.border_shape.is_none() {
         d = d.shadow(
-            c.shadows
+            c.paint_shadows()
                 .iter()
                 // css-backgrounds-3 §7.1: the first shadow is on top.
                 .rev()

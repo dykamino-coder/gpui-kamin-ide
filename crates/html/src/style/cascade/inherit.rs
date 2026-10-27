@@ -60,6 +60,20 @@ pub(crate) fn inherit_unpainted(parent: &BoxStyle, own: &Computed, vcx: ValueCx<
     box_stage(parent, own, own, computed, None, false, vcx)
 }
 
+/// Каскад ребёнка снятой обёртки `<html>`/`<body>` (подготовка документа):
+/// значения обёртки наследуются, а её `filter`, которому больше негде
+/// рисоваться (Filter Effects 1 §5: фильтр обрабатывает отрисовку элемента
+/// с потомками), переходит на содержимое; собственный фильтр ребёнка сильнее.
+pub(crate) fn inherit_unwrapped(wrapper: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> Computed {
+    let mut merged = inherit_unpainted(wrapper, own, vcx).into_computed();
+    let neutral = crate::style::computed::Filter::neutral();
+    if merged.filter.is_none_or(|f| f == neutral) {
+        merged.filter = wrapper.filter;
+        merged.scrollbar_filter_ops = wrapper.scrollbar_filter_ops.clone();
+    }
+    merged
+}
+
 /// Стиль коробки из вычисленного стиля `c` элемента под коробкой-родителем
 /// со стилем `parent`: `own` — вычисленный стиль элемента с used-значениями
 /// раскладки, `declared` — его каскадный стиль (заданы ли свои цвета).

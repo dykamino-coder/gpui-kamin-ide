@@ -11,6 +11,13 @@ impl Computed {
     /// `RelevantSideForBorderShape`). Физические индексы t/r/b/l = 0..3;
     /// без цвета — цвет текста, без него чёрный (`currentColor`).
     pub fn border_shape_stroke(&self) -> (f32, Color) {
+        let side = self.border_shape_side();
+        let w = self.borders();
+        let width = px_lossy_zero([w.top, w.right, w.bottom, w.left][side]);
+        (width, self.used_border_color(side))
+    }
+
+    pub(crate) fn border_shape_side(&self) -> usize {
         let vertical = self.wm().vertical();
         let rl = self.wm().block_rl();
         let rtl = self.wm().rtl();
@@ -26,14 +33,11 @@ impl Computed {
             (true, true) => (2, 0),
         };
         let order = [block_start, inline_start, block_end, inline_end];
-        let side = order
+        order
             .iter()
             .copied()
             .find(|i| self.border_visible[*i] == Some(true))
-            .unwrap_or(block_start);
-        let w = self.borders();
-        let width = px_lossy_zero([w.top, w.right, w.bottom, w.left][side]);
-        (width, self.used_border_color(side))
+            .unwrap_or(block_start)
     }
 
     /// Края опорной коробки `<geometry-box>` относительно border-box, t/r/b/l,
@@ -75,6 +79,15 @@ impl Computed {
     /// у polygon, шип длиной w/sin(θ/2); 5w покрывает углы от ~23°
     /// (border-shape-polygon-miter-limit: шип ~80 px при w=20).
     pub fn border_shape_ext(&self) -> [f32; 4] {
+        self.border_shape_ext_with(&self.shadows, &self.inset_shadows, self.shaped_outline())
+    }
+
+    pub(crate) fn border_shape_ext_with(
+        &self,
+        shadows: &[Shadow],
+        inset_shadows: &[Shadow],
+        outline: Option<(f32, f32, Color)>,
+    ) -> [f32; 4] {
         let Some(bs) = &self.border_shape else {
             return [0.0; 4];
         };
@@ -97,14 +110,14 @@ impl Computed {
         // смещение и хвост размытия (3σ = 1.5·blur); у внутренней хвост
         // размытия тоже нужен — область фильтра обрезает бросающий
         // прямоугольник, и без запаса край холста просвечивал бы.
-        for sh in &self.shadows {
+        for sh in shadows {
             let tail = sh.spread.max(0.0) + sh.blur.max(0.0) * 1.5 + 1.0;
             ext[0] = ext[0].max(tail - sh.y);
             ext[1] = ext[1].max(tail + sh.x);
             ext[2] = ext[2].max(tail + sh.y);
             ext[3] = ext[3].max(tail - sh.x);
         }
-        for sh in &self.inset_shadows {
+        for sh in inset_shadows {
             let tail = sh.blur.max(0.0) * 1.5 + 1.0;
             for e in &mut ext {
                 *e = e.max(tail);
@@ -112,7 +125,7 @@ impl Computed {
         }
         // Контур `outline` повторяет фигуру (слой над группой,
         // `background::border_shape_outline_scene`) — вынос на сдвиг и толщину.
-        if let Some((w, off, _)) = self.shaped_outline() {
+        if let Some((w, off, _)) = outline {
             let reach = (off + w).max(0.0) + 1.0;
             for e in &mut ext {
                 *e = e.max(reach);

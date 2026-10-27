@@ -5,15 +5,18 @@ use crate::document::state::ValueCx;
 use crate::style::computed::BgClip;
 
 impl BoxStyle {
-    pub(crate) fn color_clip(&self, vcx: ValueCx<'_>) -> Option<BgClip> {
+    pub(crate) fn color_clip(&self, _vcx: ValueCx<'_>) -> Option<BgClip> {
         self.background_paint
             .paints()
-            .then(|| self.style_rc().color_clip(vcx))
+            .then(|| self.paint_background().color_clip)
             .flatten()
     }
 
     pub(crate) fn radius_masked(&self, vcx: ValueCx<'_>) -> bool {
-        !super::super::single_corner::eligible_background(self, self.background_paint)
-            && self.style_rc().radius_masked(vcx)
+        self.style_rc().radius_masked_with(
+            super::super::single_corner::box_eligible(self),
+            self.paint_shadows().is_empty(),
+            vcx,
+        )
     }
 }

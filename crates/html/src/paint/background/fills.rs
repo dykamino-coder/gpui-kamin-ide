@@ -12,13 +12,13 @@ use gpui::{Bounds, Pixels, px};
 /// краской рамки. Рисуют его те же примитивы, что и рамку (квад, слой рамки,
 /// кольца `corner-shape` и `border-shape`), с той же геометрией стиля.
 pub(super) fn border_area_fill(
-    c: &Computed,
+    c: &crate::style::background_paint::BackgroundValues,
     vcx: ValueCx<'_>,
 ) -> Option<crate::style::values::value::Color> {
-    if let Some(fill) = c.flat_border_background {
-        return Some(fill);
+    if let Some(fill) = c.flat {
+        return (fill[2] != fill[0] && fill[2].a == 1.0).then_some(fill[2]);
     }
-    if c.bg_clip != Some(crate::style::computed::BgClip::BorderArea) {
+    if c.top.clip != Some(crate::style::computed::BgClip::BorderArea) {
         return None;
     }
     flat_fill(c, &vcx.background_images())
@@ -34,7 +34,7 @@ pub(crate) fn border_paint(
     match c
         .background_paint
         .paints()
-        .then(|| border_area_fill(c, vcx))
+        .then(|| border_area_fill(&c.paint_background(), vcx))
         .flatten()
     {
         Some(fill) => over(colour, fill),

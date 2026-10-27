@@ -53,6 +53,7 @@ pub enum ImageSource {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ImageFilter {
     pub(crate) filter: Option<Filter>,
+    pub(crate) operations: Vec<Filter>,
     pub(crate) shadow: Option<Shadow>,
     pub(crate) calls: usize,
     /// Used color of `shadow` for the element painting the image
@@ -63,13 +64,14 @@ pub struct ImageFilter {
 }
 
 impl ImageFilter {
-    pub(crate) fn color_filter(filter: Filter) -> Self {
+    pub(crate) fn color_filter(filter: Filter, operations: &[Filter]) -> Self {
         Self {
             filter: Some(Filter {
                 blur: 0.0,
                 ..filter
             }),
-            calls: 8,
+            operations: operations.to_vec(),
+            calls: operations.len().max(1),
             ..Self::default()
         }
     }
@@ -103,9 +105,9 @@ impl ImageSource {
     }
 
     /// Retain the historical element-filter stop quantization without CSS text.
-    pub(crate) fn filter_stops(&mut self, filter: &Filter) {
+    pub(crate) fn filter_stops(&mut self, filter: &Filter, operations: &[Filter]) {
         let apply = |color: &mut Color| {
-            *color = filter.apply(*color);
+            *color = filter.apply_operations(operations, *color);
             color.r = (color.r * 255.0).round() / 255.0;
             color.g = (color.g * 255.0).round() / 255.0;
             color.b = (color.b * 255.0).round() / 255.0;

@@ -6,7 +6,7 @@
 //! одних атомов при `rtl` разворачивается (css-writing-modes-4 §2.4, UAX #9 L2).
 
 use super::glue_atoms;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::text::inline::*;
 use gpui::{AnyElement, ParentElement, Styled};
 
@@ -36,7 +36,7 @@ pub fn as_wrapped_row(
     rtl: bool,
     indent: f32,
     nowrap: bool,
-    render_text: &mut dyn FnMut(String, &Computed) -> AnyElement,
+    render_text: &mut dyn FnMut(String, &BoxStyle) -> AnyElement,
     // Ряд прозрачен для долей высоты (см. `percent_basis_from_parent` ниже):
     // только в горизонтальной строке. Повёрнутый абзац (`VerticalText`)
     // меряется отдельным корнем, и его «родитель» — не блок строки

@@ -10,6 +10,8 @@ use std::rc::Rc;
 mod background;
 mod context;
 mod inputs;
+mod paint;
+mod paint_projection;
 use crate::box_facts::BoxContext;
 use crate::style::box_input::BoxStyleInput;
 
@@ -48,6 +50,7 @@ impl ElementStyle {
 /// Стиль одной коробки.
 #[derive(Clone, Debug, Default)]
 pub struct BoxStyle {
+    pub(crate) paint: Option<Rc<crate::style::decoration_paint::DecorationPaint>>,
     /// Факты коробки-родителя отдельно от вычисленных значений элемента.
     pub(crate) context: BoxContext<super::writing_mode::WritingMode, super::Align>,
     /// Собственный источник холста, отдельно от computed CSS.
@@ -126,6 +129,7 @@ impl BoxStyle {
             inline_decoration,
             background_paint,
             canvas_background,
+            paint,
         } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
@@ -134,6 +138,7 @@ impl BoxStyle {
             inline_decoration,
             background_paint,
             canvas_background,
+            paint,
             cb_height_def: style.cb_height_def_hint,
             quirk_pct_base: style.quirk_pct_base_hint,
             style,
@@ -155,6 +160,11 @@ impl BoxStyle {
         viewport: (f32, f32),
         vcx: crate::document::state::ValueCx<'_>,
     ) {
+        if let Some(paint) = &mut self.paint {
+            Rc::make_mut(paint)
+                .background
+                .resolve_viewport(&self.style, viewport, vcx);
+        }
         if self.style.has_viewport_lengths(vcx) {
             Rc::make_mut(&mut self.style).resolve_viewport(viewport, vcx);
         }
@@ -181,32 +191,6 @@ impl BoxStyle {
     /// Вычисленный стиль без контекста коробки (стиль элемента, сделанного раскладкой).
     pub fn into_computed(self) -> Computed {
         Rc::unwrap_or_clone(self.style)
-    }
-}
-
-impl From<&BoxStyle> for BoxStyleInput {
-    fn from(style: &BoxStyle) -> Self {
-        Self::new(
-            Rc::clone(style.style_rc()),
-            Some(Rc::new(style.context.clone())),
-            style.inline_decoration,
-            style.background_paint,
-            style.canvas_background.clone(),
-        )
-    }
-}
-
-impl From<BoxStyle> for BoxStyleInput {
-    fn from(style: BoxStyle) -> Self {
-        let context = Rc::new(style.context.clone());
-        let inline_decoration = style.inline_decoration;
-        Self::new(
-            style.style,
-            Some(context),
-            inline_decoration,
-            style.background_paint,
-            style.canvas_background,
-        )
     }
 }
 

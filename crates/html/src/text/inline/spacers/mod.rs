@@ -3,6 +3,7 @@
 mod borders;
 pub use crate::text::inline::spacers::borders::sided_border;
 pub use crate::text::inline::spacers::borders::uniform_border;
+pub(crate) use borders::{sided_border_with_colors, uniform_border_with_colors};
 
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;

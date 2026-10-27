@@ -104,7 +104,10 @@ fn caret_and_accent_colors_inherit() {
     );
     let child = merged(&parent, &[("color", "blue")]);
     assert_eq!(child.used_accent_color(), Some(rgb(0.0, 0.0, 1.0)));
-    assert_eq!(child.used_caret_color(), Some(rgb(1.0, 0.0, 0.0)));
+    assert_eq!(
+        super::BoxStyle::new(child).used_caret_color(),
+        Some(rgb(1.0, 0.0, 0.0))
+    );
 }
 
 #[test]
