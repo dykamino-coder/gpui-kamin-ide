@@ -40,6 +40,8 @@ fn identity(tree: &impl LayoutBlockContainer, node: NodeId, flow: BlockFlow) -> 
 }
 
 /// KaminIDE patch: Compute block layout through a logical-axis tree adapter.
+// KaminIDE patch: кадр адаптера не должен занимать стек при тождественном отображении.
+#[inline(never)]
 pub(super) fn compute(
     tree: &mut impl LayoutBlockContainer,
     node: NodeId,

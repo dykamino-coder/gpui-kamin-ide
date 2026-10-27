@@ -11,9 +11,9 @@ impl Window {
     ) -> R {
         let previous = self.scale_factor;
         self.scale_factor *= density.max(1.0);
-        let result = f(self);
-        self.scale_factor = previous;
-        result
+        self.with_restore(previous, |window, previous| {
+            window.scale_factor = *previous;
+        }, f).0
     }
 
     /// Paint a local scene into a transparent PNG, without presenting a frame.
@@ -25,28 +25,26 @@ impl Window {
         paint: impl FnOnce(&mut Self),
     ) -> anyhow::Result<Vec<u8>> {
         self.invalidator.debug_assert_paint();
-        let mut scene = Scene::default();
-        scene.in_group = true;
-        std::mem::swap(&mut scene, &mut self.next_frame.scene);
         let sf = self.scale_factor() * density.max(1.0);
-        let previous_scale = std::mem::replace(&mut self.scale_factor, sf);
-        let previous_mask_scale = self.mask_scale.take();
-        let previous_opacity = std::mem::replace(&mut self.element_opacity, 1.0);
-        self.with_absolute_transformation(TransformationMatrix::unit(), |window| {
-            window.with_content_mask_replaced(
-                ContentMask {
-                    bounds: Bounds {
-                        origin: Point::default(),
-                        size,
-                    },
-                },
-                paint,
+        let (_, mut scene) = self.with_isolated_scene(|window| {
+            let previous = (
+                mem::replace(&mut window.scale_factor, sf),
+                window.mask_scale.take(),
+                mem::replace(&mut window.element_opacity, 1.0),
             );
+            window.with_restore(previous, |window, previous| {
+                window.scale_factor = previous.0;
+                window.mask_scale = previous.1;
+                window.element_opacity = previous.2;
+            }, |window| {
+                window.with_absolute_transformation(TransformationMatrix::unit(), |window| {
+                    window.with_content_mask_replaced(
+                        ContentMask { bounds: Bounds { origin: Point::default(), size } },
+                        paint,
+                    );
+                });
+            });
         });
-        self.element_opacity = previous_opacity;
-        self.scale_factor = previous_scale;
-        self.mask_scale = previous_mask_scale;
-        std::mem::swap(&mut scene, &mut self.next_frame.scene);
         normalize_solid_quads(&mut scene);
         scene.finish();
         let size = crate::size(

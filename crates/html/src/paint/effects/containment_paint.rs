@@ -2,8 +2,9 @@
 //! `transform-style: preserve-3d` (CSS Containment 2 §3.2/3.3, CSS Will Change §2.1, CSS 2
 //! Приложение E): дети оборачиваются парой `PaintCollect`, чтобы отложенные позиционированные
 //! потомки сбрасывались под обрезкой владельца, а не уходили в сборщик документа.
+use crate::paint::coordinator::PaintCollect;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement, PaintCollect};
+use gpui::{AnyElement, IntoElement};
 
 pub(crate) fn collect(mut children: Vec<AnyElement>, style: &Computed) -> Vec<AnyElement> {
     // CSS Containment 2 §§3.2/3.3 and CSS2 Appendix E: a containment

@@ -37,9 +37,9 @@ impl Paragraph {
             let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
             // CSS 2.1 section 14.2: transparent descendants paint in their
             // containing opaque fill's device frame, as glyphs do below.
-            let offset = window
-                .css_text_background_offset(exact + point(px(0.0), base))
-                .or(self.opaque_text_origin.then_some(self.glyph_nudge));
+            let offset =
+                crate::text::raster::background_offset(window, exact + point(px(0.0), base))
+                    .or(self.opaque_text_origin.then_some(self.glyph_nudge));
             exact -= offset.unwrap_or_default();
         }
         let _ = shaped.paint_background(
@@ -108,7 +108,7 @@ impl Paragraph {
         let background_offset = self
             .opaque_text_origin
             .then_some(self.glyph_nudge)
-            .or_else(|| window.css_text_background_offset(baseline))
+            .or_else(|| crate::text::raster::background_offset(window, baseline))
             .unwrap_or_default();
         let origin = origin - point(background_offset.x, px(0.0));
         // GPUI has no vertical subpixel variants on Windows/Linux; flooring the

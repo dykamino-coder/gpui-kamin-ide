@@ -150,7 +150,7 @@ pub(super) fn defer(
             child
         };
         let child = if paint_last {
-            gpui::PaintLast::new(child)
+            crate::paint::coordinator::PaintLast::new(child)
                 .key(paint_key)
                 .into_any_element()
         } else {

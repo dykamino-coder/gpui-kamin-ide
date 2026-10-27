@@ -168,7 +168,7 @@ fn frame(
     // replaced); its positioned descendants still belong to the enclosing
     // context, which the atomic paint passes them to.
     if matches!(kind, Kind::Float { .. }) {
-        col.style().paint_atomic = Some(true);
+        col = crate::hooks::paint_atomic(col);
     }
     let el = if matches!(kind, Kind::Float { .. }) {
         build.effects(
