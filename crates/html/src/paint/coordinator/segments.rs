@@ -18,6 +18,7 @@ mod capture;
 pub(crate) use boxes::{box_painter, decoration, decorations};
 mod shift;
 use capture::own_capture;
+pub(super) use capture::remember_clips;
 
 struct Source {
     slices: SourceSlices,
@@ -231,22 +232,5 @@ fn admitted(
     });
     if let Err(error) = result.and_then(|result| result) {
         source.fail(error);
-    }
-}
-
-pub(super) fn remember_clips(window: &Window) {
-    let (Some(source), Some(node)) = (
-        window.render_context::<Source>(),
-        window.render_context::<CurrentNode>(),
-    ) else {
-        return;
-    };
-    let key = (capture_key(window), node.0);
-    if source.clips.borrow().contains_key(&key) {
-        return;
-    }
-    match window.paint_segment_clips() {
-        Ok(clips) => source.remember(key, clips),
-        Err(error) => source.fail(error),
     }
 }

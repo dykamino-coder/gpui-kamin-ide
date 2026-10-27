@@ -101,3 +101,21 @@ pub(super) fn own_capture(
         }
     }
 }
+
+/// Remember the clip chain of the current node in its capture.
+pub(in crate::paint::coordinator) fn remember_clips(window: &Window) {
+    let (Some(source), Some(node)) = (
+        window.render_context::<super::Source>(),
+        window.render_context::<super::CurrentNode>(),
+    ) else {
+        return;
+    };
+    let key = (super::capture_key(window), node.0);
+    if source.clips.borrow().contains_key(&key) {
+        return;
+    }
+    match window.paint_segment_clips() {
+        Ok(clips) => source.remember(key, clips),
+        Err(error) => source.fail(error),
+    }
+}

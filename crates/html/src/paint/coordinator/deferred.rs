@@ -88,7 +88,7 @@ macro_rules! deferred {
                         ($enqueue)(self, child, &pass, window);
                     }
                 } else if let Some(child) = self.child.take() {
-                    if let Err(mut child) = ($behind)(self, child, window) {
+                    if let Some(mut child) = ($behind)(self, child, window) {
                         child.paint(window, cx);
                         self.child = Some(child);
                     }
@@ -122,7 +122,7 @@ deferred!(
             .paint_metadata()
             .is_some_and(|tag| tag.is::<ReplayTag>());
         let Some(pass) = current(window).filter(|_| replayed) else {
-            return Err(child);
+            return Some(child);
         };
         let job = Positioned {
             key: this.key,
@@ -131,7 +131,7 @@ deferred!(
         };
         pass.jobs
             .admit_in(&window.paint_scope_id(), job)
-            .map_err(|job| job.child)
+            .map(|job| job.child)
     }
 );
 deferred!(
@@ -144,5 +144,5 @@ deferred!(
         };
         pass.jobs.admit_inline(job);
     },
-    |_: &PaintInline, child: AnyElement, _: &Window| Err::<(), _>(child)
+    |_: &PaintInline, child: AnyElement, _: &Window| Some(child)
 );

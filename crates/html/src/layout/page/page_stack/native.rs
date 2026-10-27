@@ -235,25 +235,3 @@ impl PageStack {
             .map(|_| ())
     }
 }
-
-/// Paint a sheet's copy under its page-area mask and the stack scale; its slots
-/// replay the sheet's own continuation records.
-pub(super) fn paint_copy(
-    (records, origin, scale): (Option<&BareRecords>, gpui::Point<Pixels>, f32),
-    page: usize,
-    mask: gpui::ContentMask<Pixels>,
-    el: &mut gpui::AnyElement,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    window.with_content_mask(Some(mask), |window| {
-        window.with_mask_scale(origin, scale, |window| {
-            crate::hooks::with_copy_segment(
-                PaintSegmentId(page as u64),
-                records,
-                window,
-                |window| el.paint(window, cx),
-            )
-        })
-    });
-}

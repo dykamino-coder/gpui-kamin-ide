@@ -4,7 +4,6 @@
 
 use super::super::Snapshot;
 use crate::hooks::SourceSlices;
-use crate::layout::fragment::decoration::Decoration;
 use crate::layout::fragment::paint_source::Nested;
 use gpui::{
     Bounds, PaintRecordError, PaintSegment, PaintSegmentId, PaintSegmentSlice, Pixels, Point,
@@ -12,6 +11,8 @@ use gpui::{
 };
 use std::{collections::HashMap, rc::Rc};
 mod presentation;
+mod slices;
+use slices::{boxes, slices};
 
 /// Placements of one outermost root and every flow nested in it.
 #[derive(Default)]
@@ -217,55 +218,6 @@ impl Admission {
             presented,
         }
     }
-}
-
-fn slices(
-    snapshot: &Snapshot,
-    by_family: &HashMap<u64, Vec<PaintSegmentSlice>>,
-    families: Rc<HashMap<u64, u64>>,
-) -> SourceSlices {
-    let by_family: HashMap<_, Rc<[_]>> = by_family
-        .iter()
-        .map(|(id, slices)| (*id, Rc::from(slices.as_slice())))
-        .collect();
-    let nodes = snapshot
-        .families
-        .iter()
-        .map(|(&id, family)| {
-            let slices = by_family.get(family).cloned();
-            (id, slices.unwrap_or_else(|| Rc::from([])))
-        })
-        .collect();
-    SourceSlices {
-        nodes,
-        boxes: HashMap::new(),
-        families,
-        nested: HashMap::new(),
-        placed: None,
-        origins: HashMap::new(),
-        presented: Default::default(),
-    }
-}
-
-fn boxes(
-    snapshot: &Snapshot,
-    family: u64,
-    slices: &[PaintSegmentSlice],
-) -> HashMap<u64, Rc<[Decoration]>> {
-    snapshot
-        .families
-        .iter()
-        .filter(|(_, f)| **f == family)
-        .filter_map(|(&id, _)| {
-            let bounds = *snapshot.normal.get(&id)?;
-            let cloned = snapshot.cloned_boxes.get(&id).copied();
-            let own = slices
-                .iter()
-                .filter_map(|&slice| Decoration::for_slice(bounds, slice, cloned))
-                .collect::<Rc<[_]>>();
-            Some((id, own))
-        })
-        .collect()
 }
 
 #[cfg(test)]
