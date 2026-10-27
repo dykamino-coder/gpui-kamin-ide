@@ -70,7 +70,12 @@ pub(super) fn expand_style_imports(html: &str, dir: &std::path::Path) -> String 
         let file = if std::path::Path::new(name).is_absolute() {
             std::path::PathBuf::from(name)
         } else {
-            base.join(kamin_html::css::unescape(name))
+            base.join(
+                kamin_html::css::try_unescape(name).unwrap_or_else(|failure| {
+                    eprintln!("Document admission failed: {failure}");
+                    std::process::exit(2);
+                }),
+            )
         };
         if !file.exists() {
             return None;
@@ -199,7 +204,13 @@ fn is_valid_rule(st: &Stmt, text: &str) -> bool {
             }
             head.push_str(rest);
             split_commas(&head).iter().all(|one| {
-                !one.trim().is_empty() && kamin_html::css::Selector::parse(one.trim()).is_some()
+                !one.trim().is_empty()
+                    && kamin_html::css::Selector::try_parse(one.trim())
+                        .unwrap_or_else(|failure| {
+                            eprintln!("Document admission failed: {failure}");
+                            std::process::exit(2);
+                        })
+                        .is_some()
             })
         }
     }
