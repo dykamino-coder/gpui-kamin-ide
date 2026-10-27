@@ -27,8 +27,6 @@ pub struct Marks {
     pub(crate) host_trim_end: bool,
     /// A stack child fragmented by the paginate path of the multicol container.
     pub(crate) paginate: bool,
-    /// Оставшийся row-gap, перенесённый пагинацией в поле flex-элемента.
-    pub(crate) carried_row_gap: f32,
     /// `node_id` of the source-tree parent of a hoisted column spanner: margins
     /// of spanners from different parents do not collapse.
     pub(crate) span_parent: Option<u64>,

@@ -3,7 +3,7 @@
 //! многоколонника. Каждый отрисованный экземпляр контейнера, включая копии одного DOM-узла в
 //! разных фрагментах (CSS Gaps 1 §fragmentation), получает свой буфер под уникальным ключом.
 use crate::layout::probe::Sink;
-use gpui::{Bounds, LayoutId, Pixels};
+use gpui::{Bounds, Pixels};
 
 mod probe;
 pub use probe::gap_item_probe;
@@ -14,7 +14,6 @@ pub use probe::gap_item_probe;
 #[derive(Default)]
 pub struct GapBuffer {
     pub items: Sink<(Bounds<Pixels>, [f32; 2])>,
-    pub carried_row_gaps: Sink<(LayoutId, f32)>,
     pub multicol: Option<MulticolGaps>,
 }
 #[derive(Default)]

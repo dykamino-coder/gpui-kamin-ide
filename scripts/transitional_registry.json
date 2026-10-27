@@ -30,11 +30,6 @@
     "reason": "Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование."
   },
   {
-    "file": "crates/html/src/layout/fragment/flex_lines/row/geometry.rs",
-    "task": "F2-4",
-    "reason": "Форма flex item оценивается до раскладки строк; удалить в P13 после записи line membership, item rect и consumed/resume каждого item."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/blocks/grid_tree.rs",
     "task": "F2-4",
     "reason": "Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17."
@@ -75,14 +70,9 @@
     "reason": "Reach/Measure сохраняют оценочную legacy-модель страниц и clone; удалить в P22 после живых OOF fragments из P08 и последних readers из P21."
   },
   {
-    "file": "crates/html/src/layout/fragment/paginate/apply.rs",
-    "task": "F2-4",
-    "reason": "Остаток row-gap перенесённого ряда записывается в поля и carried_row_gap; удалить в P13 после усечения зазора строки ограничением раскладки."
-  },
-  {
     "file": "crates/html/src/layout/fragment/paginate/gate.rs",
-    "task": "F2-4",
-    "reason": "Распорки усекают только пиксельный row-gap рядов flex с переносом; удалить отказ после gap constraints для остальных flex/grid осей в P13/P16."
+    "task": "F2-7",
+    "reason": "Распорки DOM не усекают зазоры flex/grid у разрыва (ряды flex гасят их ростом линий измеренного пути); удалить отказ вместе с распорками в P22."
   },
   {
     "file": "crates/html/src/layout/fragment/paginate/mod.rs",
@@ -208,11 +198,6 @@
     "file": "crates/html/src/layout/table/finish/captions.rs",
     "task": "F2-5",
     "reason": "Сторона подписи читается из cascaded подписи/таблицы вместо собственного computed контекста; удалить обход в P18 после caption token с исходным стилем и владельцем таблицы."
-  },
-  {
-    "file": "crates/html/src/paint/gap_rules/geometry/flex_lines.rs",
-    "task": "F2-4",
-    "reason": "Полоса Taffy включает перенесённый в поля row-gap и paint вычитает его из декораций; удалить компенсацию в P13 после усечения зазора строки ограничением раскладки."
   },
   {
     "file": "crates/html/src/style/cascade/compute/fonts.rs",
