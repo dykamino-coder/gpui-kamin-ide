@@ -46,10 +46,10 @@ impl Paragraph {
                 base.font_fallbacks = font.fallbacks.clone();
             }
             let font = crate::text::inline::strut_font(&info.font_style, &base, vcx);
-            let size = match info.font_style.font_size {
-                Some(crate::style::values::value::Len::Px(v)) => px(v),
-                _ => self.font_size,
-            };
+            let size = px(info
+                .font_style
+                .used_font(f32::from(self.font_size), vcx)
+                .size_px);
             let ts = window.text_system();
             let id = ts.resolve_font(&font);
             let metrics = crate::text::fonts::metric_overrides::extents(

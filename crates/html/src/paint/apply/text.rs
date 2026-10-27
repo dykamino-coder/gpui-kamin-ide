@@ -50,8 +50,8 @@ pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if let Some(col) = ink {
         d = d.text_color(col.to_hsla());
     }
-    if let Some(Len::Px(size)) = c.font_size {
-        d = d.text_size(px(size));
+    if c.font_size.is_some() {
+        d = d.text_size(px(c.used_font(MEDIUM_FONT_SIZE_PX, vcx).size_px));
     }
     if let Some(w) = c.font_weight {
         d = d.font_weight(gpui::FontWeight(w as f32));
@@ -62,7 +62,9 @@ pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if let Some(lh) = c.line_height {
         d = match lh {
             Len::Px(v) => d.line_height(px(v)),
-            Len::Pct(mult) => d.line_height(relative(mult)),
+            Len::Pct(mult) => d.line_height(px(c
+                .numeric_line_px(MEDIUM_FONT_SIZE_PX)
+                .unwrap_or(mult * MEDIUM_FONT_SIZE_PX))),
             l @ (Len::Em(_) | Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => d
                 .line_height(px(l
                     .to_px(None, FontCx::FALLBACK, vcx)

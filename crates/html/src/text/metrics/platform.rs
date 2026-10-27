@@ -26,6 +26,43 @@ impl FontContext {
         Some((id.0, system.units_per_em(id)))
     }
 
+    /// Метрики конкретного лица до size-adjust и metric overrides.
+    pub(crate) fn native_metrics(
+        &self,
+        font: &gpui::Font,
+        size: f32,
+    ) -> Option<crate::font_facts::FontMetricFacts> {
+        use crate::font_facts::{FontMetric, FontMetricFacts, MetricSource};
+        let system = self.system.as_ref()?;
+        let id = system.resolve_font(font);
+        let px = gpui::px(size);
+        let metric = |v: gpui::Pixels| {
+            Some(FontMetric {
+                px: v.into(),
+                source: MetricSource::Native,
+            })
+        };
+        let advance = |ch| {
+            system
+                .has_glyph(id, ch)
+                .then(|| system.advance(id, px, ch).ok())
+                .flatten()
+                .and_then(|v| metric(v.width))
+        };
+        Some(FontMetricFacts {
+            ascent: metric(system.ascent(id, px)),
+            descent: metric(system.descent(id, px)),
+            cap_height: metric(system.cap_height(id, px)),
+            x_height: metric(system.x_height(id, px)),
+            zero_advance: advance('0'),
+            ideographic_advance: advance('水'),
+            // TextSystem::advance возвращает только горизонтальное продвижение.
+            // Отсутствие вертикального API сохраняем для CSS fallback, не как 0.
+            ideographic_vertical_advance: None,
+            ..FontMetricFacts::default()
+        })
+    }
+
     pub(crate) fn installed_names(&self) -> Rc<HashSet<String>> {
         self.installed.clone()
     }

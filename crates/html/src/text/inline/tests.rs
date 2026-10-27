@@ -155,7 +155,7 @@ fn different_size_stays_in_one_block() {
         "иной размер собирается единым блоком"
     );
     assert_eq!(
-        max_font_size(&pieces, 13.0, 13.0),
+        max_font_size(&pieces, 13.0, 13.0, vcx),
         24.0,
         "строка растёт под кусок"
     );

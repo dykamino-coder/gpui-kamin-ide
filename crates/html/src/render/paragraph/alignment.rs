@@ -166,15 +166,13 @@ pub(crate) fn atom_line_align(
                     AtomAlign::Shift(-k * size)
                 } else if let Some(k) = st.vertical_shift_pct {
                     // Процент — от `line-height` самого атома (§10.8.1).
-                    let own = match merged.line_height {
-                        Some(Len::Px(v)) => v,
-                        Some(Len::Pct(f)) | Some(Len::Em(f)) => f * size,
-                        _ => crate::text::metrics::normal_px(
+                    let own = merged.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
+                        crate::text::metrics::normal_px(
                             normal_fraction(&merged, opts),
-                            size,
+                            own_size(&merged, opts),
                             vcx,
-                        ),
-                    };
+                        )
+                    });
                     AtomAlign::Shift(-k * own)
                 } else {
                     AtomAlign::Shift(0.0)

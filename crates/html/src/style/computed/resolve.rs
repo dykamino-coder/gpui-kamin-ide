@@ -11,9 +11,11 @@ mod decor_inset;
 mod derived;
 mod em;
 mod font_size;
+mod glyph_units;
 mod len_cx;
 mod len_px;
 mod unit_lengths;
+mod used_font;
 mod viewport_lengths;
 pub use len_cx::{LenCx, ViewportCx};
 pub use len_px::FontCx;
@@ -75,45 +77,6 @@ impl Computed {
             }
         };
         self.resolve_unit_lengths(fix, vcx);
-    }
-
-    /// Во сколько раз ИСПОЛЬЗУЕМЫЙ кегль отличается от вычисленного.
-    ///
-    /// css-fonts-5 §font-size-adjust: `u = (m / m′) s` — желаемая доля `m`,
-    /// делённая на ту же метрику шрифта `m′`. `none` и `from-font` (метрика
-    /// своего же первого доступного шрифта, отношение ровно 1) кегль не
-    /// трогают. Метрику, которую не удалось снять, спека велит не подгонять.
-    pub fn used_font_factor(&self, family: &str, vcx: crate::document::state::ValueCx<'_>) -> f32 {
-        // Дескриптор `size-adjust` масштабирует ВСЕ метрики лица; поверх него
-        // `font-size-adjust` сводит метрику к заданной доле, и множитель
-        // дескриптора сокращается: `m / (m′·k) · k = m / m′`
-        // (`size-adjust-02/03`). `from-font` — метрика того же лица, то есть
-        // остаётся один дескриптор.
-        // Множитель — свойство лица, лицо выбирает наклон запроса.
-        let slope = if self.oblique == Some(true) {
-            2
-        } else if self.italic == Some(true) {
-            1
-        } else {
-            0
-        };
-        let size_adjust = vcx
-            .doc
-            .font_snapshot()
-            .matching_face(family, self.font_request(family, 0.0))
-            .map_or_else(
-                || vcx.doc.font_snapshot().size_adjust(family, slope),
-                |f| f.adjust,
-            );
-        match self.font_size_adjust {
-            Some((metric, want)) if want.is_finite() => {
-                match crate::style::font_metrics::adjust_aspect(family, metric, vcx) {
-                    Some(have) if have > 0.0 => want / have,
-                    _ => size_adjust,
-                }
-            }
-            _ => size_adjust,
-        }
     }
 
     /// Итоговые возможности OpenType куска — в порядке старшинства

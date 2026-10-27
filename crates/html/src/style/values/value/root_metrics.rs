@@ -43,20 +43,27 @@ impl Default for RootMetrics {
 
 impl RootMetrics {
     pub(crate) fn resolve_units(&mut self, vcx: ValueCx<'_>) {
-        let Ok(facts) = vcx.doc.font_provider().metrics(
-            FontRequest::new(&self.family, self.font_px),
-            &vcx.doc.font_snapshot(),
-        ) else {
+        let family = self.family.clone();
+        self.resolve_font_units(FontRequest::new(&family, self.font_px), vcx);
+    }
+
+    pub(crate) fn resolve_font_units(&mut self, request: FontRequest<'_>, vcx: ValueCx<'_>) {
+        let size = request.size_px;
+        let Ok(facts) = vcx
+            .doc
+            .font_provider()
+            .metrics(request, &vcx.doc.font_snapshot())
+        else {
             return;
         };
         self.units = [
             facts
                 .cap_height
                 .or(facts.ascent)
-                .map_or(0.7 * self.font_px, |m| m.px),
-            facts.zero_advance.map_or(0.5 * self.font_px, |m| m.px),
-            facts.x_height.map_or(0.5 * self.font_px, |m| m.px),
-            facts.ideographic_advance.map_or(self.font_px, |m| m.px),
+                .map_or(0.7 * size, |m| m.px),
+            facts.zero_advance.map_or(0.5 * size, |m| m.px),
+            facts.x_height.map_or(0.5 * size, |m| m.px),
+            facts.ideographic_advance.map_or(size, |m| m.px),
         ];
     }
 }
