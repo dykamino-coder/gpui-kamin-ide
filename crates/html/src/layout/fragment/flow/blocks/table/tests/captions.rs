@@ -12,19 +12,7 @@ fn sides(html: &str) -> (usize, usize) {
         &std::rc::Rc::new(crate::style::computed::Computed::default()),
         doc.values(),
     );
-    fn find(n: &Node) -> Option<&Element> {
-        let Node::Element(e) = n else { return None };
-        if e.style.used().display == Some(Display::Table) {
-            return Some(e);
-        }
-        e.children.iter().find_map(find)
-    }
-    let root = doc.iter().find_map(find).expect("table");
-    let b = BlockBox::collect(
-        root,
-        crate::layout::fragment::ShapeCx::COLUMNS,
-        doc.values(),
-    );
+    let (b, _) = collected(&doc);
     let t = b.table.as_ref().expect("table box");
     (t.caps_top.len(), t.caps_bot.len())
 }

@@ -35,6 +35,7 @@ fn head_band_only_on_continuations_and_foot_band_below_content() {
         head: Some((5.0, 20.0)),
         foot: Some((200.0, 15.0)),
         geom: RepeatGeom::default(),
+        row_ends: Vec::new(),
         head_els: vec![el(), el()],
         foot_els: vec![el(), el(), el()],
     };

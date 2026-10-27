@@ -6,6 +6,7 @@
 
 use crate::dom::Element;
 use crate::layout::fragment::flow::blocks::table::TableSections;
+use crate::layout::fragment::types::Repeat;
 use crate::style::computed::Display;
 mod serial;
 use crate::tolerance::COORD_EPS;
@@ -57,44 +58,63 @@ pub(crate) fn repeat_candidates(
     foot: bool,
     head_els: impl FnOnce() -> Vec<gpui::AnyElement>,
     foot_els: impl FnOnce() -> Vec<gpui::AnyElement>,
-) -> Option<crate::layout::fragment::types::Repeat> {
-    (head || foot).then(|| crate::layout::fragment::types::Repeat {
+) -> Option<Repeat> {
+    (head || foot).then(|| Repeat {
         head: head.then_some((0.0, 0.0)),
         foot: foot.then_some((0.0, 0.0)),
         geom: Default::default(),
+        row_ends: Vec::new(),
         head_els: if head { head_els() } else { Vec::new() },
         foot_els: if foot { foot_els() } else { Vec::new() },
     })
 }
 
-/// Полосы повтора секций `sec` во фрагментаинере размера `per`: секция
-/// повторяется, если у неё `break-inside: avoid*` и блочный размер не больше
-/// четверти фрагментаинера (css-tables-3 §repeated-headers; Blink
-/// `table_layout_algorithm.cc:1086-1121`). Шапка —
-/// `(верх секции, секция + зазор под ней)`, подвал — `(верх секции − зазор,
-/// зазор + секция)`.
-pub(crate) fn repeat_spec(sec: TableSections, per: f32) -> Option<RepeatSpec> {
+/// Полосы повтора секций `sec`, решённые во фрагментаинере размера `per`, где
+/// начинается таблица: секция повторяется, если у неё `break-inside: avoid*` и
+/// блочный размер не больше четверти фрагментаинера (css-tables-3
+/// §repeated-headers: «up to one quarter»; Blink `table_layout_algorithm.cc:1086-1121`
+/// — `block_size > max_section_block_size` отказ, ровно четверть повторяется).
+/// Шапка — `(верх секции − край, край + секция + зазор под ней)`, подвал —
+/// `(верх секции − зазор, зазор + секция + край)`; край коробки есть только
+/// при сросшихся рамках (`TableSections::edge_top`).
+pub(crate) fn repeat_spec(sec: &TableSections, per: f32) -> Option<RepeatSpec> {
     let max = per / 4.0;
     let fits = |&(_, h, avoid): &(f32, f32, bool)| avoid && h > COORD_EPS && h <= max + COORD_EPS;
-    let head = sec
-        .head
-        .filter(fits)
-        .map(|(at, h, _)| (at, h + sec.spacing));
-    let foot = sec
-        .foot
-        .filter(fits)
-        .map(|(at, h, _)| (at - sec.spacing, h + sec.spacing));
-    if head.is_none() && foot.is_none() {
+    let head = sec.head.filter(fits);
+    let foot = sec.foot.filter(fits);
+    let head_band = head.map(|(at, h, _)| (at - sec.edge_top, sec.edge_top + h + sec.spacing));
+    let foot_band = foot.map(|(at, h, _)| (at - sec.spacing, sec.spacing + h + sec.edge_bottom));
+    if head_band.is_none() && foot_band.is_none() {
         return None;
     }
     let geom = crate::layout::fragment::types::RepeatGeom {
-        head: head.map_or(0.0, |h| h.1),
-        foot: foot.map_or(0.0, |f| f.1),
-        head_end: head.map_or(0.0, |(at, h)| at + h),
-        foot_at: foot.map_or(f32::MAX, |(at, _)| at),
-        foot_end: foot.map_or(f32::MAX, |(at, h)| at + h),
+        head: head_band.map_or(0.0, |h| h.1),
+        foot: foot_band.map_or(0.0, |f| f.1),
+        head_end: head_band.map_or(0.0, |(at, h)| at + h),
+        foot_at: foot_band.map_or(f32::MAX, |(at, _)| at),
+        foot_end: foot_band.map_or(f32::MAX, |(at, h)| at + h),
         box_top: sec.box_top,
         box_end: sec.box_end,
+        head_need: head.map_or(0.0, |s| 4.0 * s.1),
+        foot_need: foot.map_or(0.0, |s| 4.0 * s.1),
     };
-    Some((head, foot, geom))
+    Some((head_band, foot_band, geom))
 }
+
+impl Repeat {
+    /// Полосы по разложенным секциям `sec` во фрагментаинере размера `per`
+    /// (`repeat_spec`); `false` — повторяемой секции нет, повтора нет вовсе.
+    pub(crate) fn refresh(&mut self, sec: &TableSections, per: f32) -> bool {
+        let Some((head, foot, geom)) = repeat_spec(sec, per) else {
+            return false;
+        };
+        self.head = head;
+        self.foot = foot;
+        self.geom = geom;
+        self.row_ends = sec.row_ends.clone();
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests;

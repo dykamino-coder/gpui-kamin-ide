@@ -54,6 +54,7 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source(cx: &mut gpui::TestA
                 head: Some((0.0, 10.0)),
                 foot: Some((150.0, 20.0)),
                 geom: Default::default(),
+                row_ends: Vec::new(),
                 head_els: (0..3).map(|_| gpui::div().into_any_element()).collect(),
                 foot_els: (0..4).map(|_| gpui::div().into_any_element()).collect(),
             });

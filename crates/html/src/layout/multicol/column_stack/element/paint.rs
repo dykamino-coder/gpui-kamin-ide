@@ -105,10 +105,14 @@ impl ColumnStack {
                     .as_ref()
                     .and_then(|r| r.foot)
                     .map_or(0.0, |b| b.1);
-                let tail = if f.foot > COORD_EPS {
-                    f.foot - band
-                } else {
-                    line_h - f.y - f.h
+                // Хвост — остаток фрагментаинера без полосы подвала: под
+                // подвалом, если тот стоит сразу под последним рядом
+                // (`Repeat::foot_top`), иначе над ним.
+                let foot_top = kid.repeat.as_ref().and_then(|r| r.foot_top(&f));
+                let (tail_top, tail) = match foot_top {
+                    Some(top) if top <= f.h + COORD_EPS => (f.h + band, f.foot - band),
+                    Some(_) => (f.h, f.foot - band),
+                    None => (f.h, line_h - f.y - f.h),
                 };
                 // Не шире колонки: разложенная ширина копии несёт дробный
                 // остаток раскладки, и хвост залезал на край соседней колонки
@@ -124,7 +128,7 @@ impl ColumnStack {
                     window.paint_quad(gpui::fill(
                         fragment_mask::snap(
                             Bounds {
-                                origin: point(x, y + px(f.h)),
+                                origin: point(x, y + px(tail_top)),
                                 size: size(px(w), px(tail)),
                             },
                             sf,
