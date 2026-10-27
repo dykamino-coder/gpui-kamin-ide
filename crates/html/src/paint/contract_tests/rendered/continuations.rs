@@ -306,3 +306,19 @@ fn box_nested_in_a_continued_box_is_placed_in_the_same_continuous_flow() {
     assert_eq!(sheets, 5, "{found:?}");
     assert!(any(&found, 0x0000ff));
 }
+
+#[test]
+fn anchor_positioned_box_on_a_sheet_paints_beside_its_anchor() {
+    let found = printed(
+        "<style>body{margin:0}</style>\
+<div style='width:100px;height:100px'><div style='anchor-name:--a;width:50px;height:100px;background:#00ff00'></div></div>\
+<div style='position:absolute;position-anchor:--a;top:anchor(top);left:anchor(right);width:50px;height:100px;background:#0000ff'></div>",
+        800.,
+        600.,
+    );
+    let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).collect();
+    let green: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x00ff00).collect();
+    assert_eq!(blue.len(), 1, "{found:?}");
+    assert_eq!(blue[0].0.origin.y, green[0].0.origin.y);
+    assert_eq!(blue[0].0.origin.x, green[0].0.right());
+}

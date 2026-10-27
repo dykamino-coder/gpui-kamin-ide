@@ -171,7 +171,11 @@ pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) ->
     let mut pending: Vec<&Element> = kids.collect();
     while let Some(e) = pending.pop() {
         if positioned(e.style.used().position) {
-            roots.push(e.node_id);
+            // An anchor-positioned box keeps its family in the copies, as its
+            // source snapshot does (fragmentation::snapshot).
+            if !holds_anchored(e) {
+                roots.push(e.node_id);
+            }
             continue;
         }
         if crate::layout::multicol::spanner::multicol_container(&e.style.used()) {
@@ -183,6 +187,27 @@ pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) ->
         }));
     }
     Rc::from(roots)
+}
+
+/// `e` or a positioned box in its family is anchor-positioned.
+fn holds_anchored(e: &Element) -> bool {
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        let used = e.style.used();
+        if positioned(used.position)
+            && crate::layout::positioned::anchor::resolve::needs_deferred(&used)
+        {
+            return true;
+        }
+        if crate::layout::multicol::spanner::multicol_container(&used) {
+            continue;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(c) => Some(c),
+            _ => None,
+        }));
+    }
+    false
 }
 
 // Float остаётся потоком своего владельца P06, а не abspos/fixed continuation.
