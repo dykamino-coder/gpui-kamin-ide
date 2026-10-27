@@ -18,7 +18,7 @@ pub(super) fn inherit_paint(
     // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и
     // применяем к собственным цветам потомка: раньше фильтр действовал только
     // на узел, где написан, и дети оставались цветными.
-    if c.filter.is_none() {
+    if c.filter.is_none() || c.filter == Some(crate::style::computed::Filter::neutral()) {
         set!(c.filter, parent.filter);
         set!(c.scrollbar_filter_ops, parent.scrollbar_filter_ops.clone());
     }
@@ -27,40 +27,42 @@ pub(super) fn inherit_paint(
     // Анонимная коробка получает уже окрашенный цвет от коробки-родителя:
     // у неё фильтруются только собственные объявления.
     if paint_filter && let Some(f) = c.filter {
+        let operations = c.scrollbar_filter_ops.clone();
+        let apply = |color| f.apply_operations(&operations, color);
         if own.background.is_some() {
-            set!(c.background, c.background.map(|col| f.apply(col)));
+            set!(c.background, c.background.map(|col| apply(col)));
         }
         if c.element_style.is_some()
             || declared.declares_color()
             || own.filter.is_some() && parent.color.is_none()
         {
-            set!(c.color, c.color.map(|col| f.apply(col)));
+            set!(c.color, c.color.map(|col| apply(col)));
         }
         // `currentcolor` сторон решится уже окрашенным цветом текста.
         for side in c.border_colors.iter_mut() {
             if let crate::style::values::value::StyleColor::Absolute(col) = side {
-                *col = f.apply(*col);
+                *col = apply(*col);
             }
         }
         if own.gradient.is_some()
             && let Some(g) = c.gradient.as_mut()
         {
-            g.from = f.apply(g.from);
-            g.to = f.apply(g.to);
+            g.from = apply(g.from);
+            g.to = apply(g.to);
             for stop in g.stops.iter_mut() {
-                stop.0 = f.apply(stop.0);
+                stop.0 = apply(stop.0);
             }
         }
         gradient_filter::apply(c, own, f, vcx);
         if own.bg_image.is_some()
             && let Some(image) = &mut c.bg_image
         {
-            image.filter_stops(&f);
+            image.filter_stops(&f, &operations);
         }
         if !own.shadows.is_empty() {
             for sh in c.shadows.iter_mut() {
                 if let crate::style::values::value::StyleColor::Absolute(col) = &mut sh.color {
-                    *col = f.apply(*col);
+                    *col = apply(*col);
                 }
             }
         }

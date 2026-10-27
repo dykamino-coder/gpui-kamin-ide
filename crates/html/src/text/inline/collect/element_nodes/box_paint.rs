@@ -104,10 +104,12 @@ pub(super) fn element_style(
                 && merged.bg_clip != Some(crate::style::computed::BgClip::Text)
         })
         .is_some();
+    let colors = std::array::from_fn(|i| merged.used_border_color(i));
     let mut own_border = true;
-    if let Some((color, width)) = uniform_border(&e.style.used(), font_px, vcx) {
+    if let Some((color, width)) = uniform_border_with_colors(&e.style.used(), colors, font_px, vcx)
+    {
         merged.inline_decoration.border_stroke = Some((color, [width; 4]));
-    } else if let Some(sided) = sided_border(&e.style.used(), font_px, vcx) {
+    } else if let Some(sided) = sided_border_with_colors(&e.style.used(), colors, font_px, vcx) {
         merged.inline_decoration.border_stroke =
             Some((sided.0, physical_sides::project(inherited, sided.1)));
     } else {

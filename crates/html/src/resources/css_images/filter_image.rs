@@ -63,12 +63,15 @@ pub(crate) fn apply(
             return None;
         }
         for px in out.chunks_exact_mut(4) {
-            let c = f.apply(crate::style::values::value::Color {
-                r: px[2] as f32 / 255.0,
-                g: px[1] as f32 / 255.0,
-                b: px[0] as f32 / 255.0,
-                a: px[3] as f32 / 255.0,
-            });
+            let c = f.apply_operations(
+                &style.operations,
+                crate::style::values::value::Color {
+                    r: px[2] as f32 / 255.0,
+                    g: px[1] as f32 / 255.0,
+                    b: px[0] as f32 / 255.0,
+                    a: px[3] as f32 / 255.0,
+                },
+            );
             let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
             px.copy_from_slice(&[q(c.b), q(c.g), q(c.r), q(c.a)]);
         }

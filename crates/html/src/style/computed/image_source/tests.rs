@@ -173,10 +173,13 @@ fn filtered_gradient_stops_keep_interpolation_without_color_replay() {
         )
         .unwrap();
         image.resolve_colors(Color::parse("red", vcx).unwrap());
-        image.filter_stops(&Filter {
-            brightness: 0.5,
-            ..Filter::neutral()
-        });
+        image.filter_stops(
+            &Filter {
+                brightness: 0.5,
+                ..Filter::neutral()
+            },
+            &[],
+        );
         let before = image.gradient().unwrap().0.stops.clone();
         image.resolve_colors(Color::parse("green", vcx).unwrap());
         let value = image.gradient().unwrap().0;

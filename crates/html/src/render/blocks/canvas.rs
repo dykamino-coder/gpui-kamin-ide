@@ -59,21 +59,21 @@ pub(crate) fn canvas_layer(
     {
         let mut g = g.clone();
         if let Some(f) = root_filter {
-            g.from = f.apply(g.from);
-            g.to = f.apply(g.to);
+            g.from = f.apply_operations(&st.scrollbar_filter_ops, g.from);
+            g.to = f.apply_operations(&st.scrollbar_filter_ops, g.to);
             for stop in g.stops.iter_mut() {
-                stop.0 = f.apply(stop.0);
+                stop.0 = f.apply_operations(&st.scrollbar_filter_ops, stop.0);
             }
             for stop in g.stops_px.iter_mut() {
-                stop.0 = f.apply(stop.0);
+                stop.0 = f.apply_operations(&st.scrollbar_filter_ops, stop.0);
             }
             for stop in g.stops_raw.iter_mut() {
-                stop.0 = f.apply(stop.0);
+                stop.0 = f.apply_operations(&st.scrollbar_filter_ops, stop.0);
             }
         }
         layer = layer.bg(crate::paint::apply::fill(&g));
     } else if let Some(bg) = background.color {
-        let bg = root_filter.map_or(bg, |f| f.apply(bg));
+        let bg = root_filter.map_or(bg, |f| f.apply_operations(&st.scrollbar_filter_ops, bg));
         layer = layer.bg(bg.to_hsla());
     }
     // Фон-КАРТИНКА канваса красит всю область просмотра тем же

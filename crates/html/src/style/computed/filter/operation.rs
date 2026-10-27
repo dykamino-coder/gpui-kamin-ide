@@ -3,6 +3,22 @@
 //! (Filter Effects 1 §5), а не в фиксированном порядке полей.
 use super::Filter;
 impl Filter {
+    /// Последовательность цветовых функций в порядке CSS; сводное значение
+    /// используется для программно построенного одиночного фильтра.
+    pub(crate) fn apply_operations(
+        &self,
+        operations: &[Self],
+        color: crate::style::values::value::Color,
+    ) -> crate::style::values::value::Color {
+        if operations.is_empty() {
+            self.apply(color)
+        } else {
+            operations
+                .iter()
+                .fold(color, |color, operation| operation.apply(color))
+        }
+    }
+
     pub(crate) fn color_operation(&self, name: &str) -> Option<Self> {
         let mut one = Self::neutral();
         match name {
