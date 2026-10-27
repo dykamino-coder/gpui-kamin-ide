@@ -114,8 +114,7 @@ pub(super) fn column_stack_div(
     deferred: Option<std::rc::Rc<super::super::deferred::Recipe>>,
 ) -> gpui::Div {
     // OOF других рядов между спаннерами продолжается там, в исходных координатах CB.
-    // A snapshot belongs to the multicol that laid out its children.
-    let geometry = opts.cx.position.geometry.as_ref().filter(|g| g.host == e.node_id).map(|geometry| {
+    let geometry = opts.cx.position.geometry.as_ref().map(|geometry| {
         let mut selected = (**geometry).clone();
         selected.flows.retain(|source| {
             e.children

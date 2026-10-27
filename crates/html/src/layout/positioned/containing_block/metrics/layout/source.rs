@@ -171,12 +171,12 @@ fn collect_in(
         cx,
     );
     let mut snapshot = recorder.snapshot(window);
+    snapshot.host = if is_page { 0 } else { parent.self_node };
     recorder.fragment_snapshot(&mut snapshot, window);
     let extent = snapshot.normal.values().copied().fold(
         Bounds::new(gpui::point(px(0.), px(0.)), root_size),
         |extent, bounds| extent.union(&bounds),
     );
     snapshot.native = Some(Rc::new(super::Native::new(root, layout, extent)));
-    snapshot.host = if is_page { 0 } else { parent.self_node };
     Rc::new(snapshot)
 }

@@ -7,6 +7,7 @@ impl Recorder {
         let axis = self.flows.axis;
         let mut contexts = Vec::with_capacity(self.flows.flows.len());
         let mut roots: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
+        let mut outside = Vec::with_capacity(self.flows.flows.len());
         for flow in &self.flows.flows {
             let (parent_repeat, parent_fixed) = flow
                 .parent
@@ -16,7 +17,18 @@ impl Recorder {
             contexts.push((repeated, fixed_content));
             let root = flow.parent.map_or(flow.id, |parent| roots[parent]);
             roots.push(root);
-            let Some(&metrics) = snapshot.get(flow.id) else {
+            // A box whose containing block lies outside the multicol is laid out
+            // by that block, not fragmented by these columns (css-multicol-1 §2,
+            // css-break-3 §2); its descendants follow it.
+            let metrics = snapshot.get(flow.id).copied();
+            let escapes = flow.parent.is_some_and(|parent| outside[parent])
+                || metrics.is_some_and(|m| {
+                    snapshot.host != 0
+                        && m.cb_id != snapshot.host
+                        && !self.flows.families.contains_key(&m.cb_id)
+                });
+            outside.push(escapes);
+            let Some(metrics) = metrics.filter(|_| !escapes) else {
                 continue;
             };
             let Some(owner_rect) = self.normal(flow.owner, window) else {

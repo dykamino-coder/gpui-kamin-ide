@@ -66,6 +66,15 @@ impl Snapshot {
         self.native.as_ref().filter(|_| !self.flows.is_empty())
     }
 
+    /// Outermost roots of the continued flows: the boxes whose legacy copies
+    /// replay their own records.
+    pub(crate) fn continued_roots(&self) -> std::rc::Rc<[u64]> {
+        let mut roots: Vec<u64> = self.flows.iter().map(|flow| flow.root).collect();
+        roots.sort_unstable();
+        roots.dedup();
+        roots.into()
+    }
+
     pub(crate) fn get(&self, id: u64) -> Option<&PositionedMetrics> {
         let metrics = self.positioned.get(&id)?;
         let &(node, space) = self.containing_blocks.get(&metrics.cb_id)?;

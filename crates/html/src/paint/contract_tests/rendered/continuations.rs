@@ -137,3 +137,27 @@ fn continuation_on_the_next_page_is_painted_and_hit_there() {
     let at = cursors(html, true, 800., 600., &[(center.x.into(), center.y.into())]);
     assert_eq!(at[0], CursorStyle::PointingHand);
 }
+
+#[test]
+fn box_whose_containing_block_is_outside_the_multicol_is_not_fragmented() {
+    // The initial containing block lays the box out after the spanner: it stays
+    // whole in place instead of continuing in the second column.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;column-fill:auto;gap:0;width:200px'>\
+<div style='column-span:all;height:10px'></div>\
+<div style='position:absolute;width:100px;height:100px;background:#0000ff'></div>\
+<div style='height:100px'></div></div>",
+        400.,
+        300.,
+    );
+    let blue: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x0000ff)
+        .map(|(b, _)| *b)
+        .collect();
+    assert_eq!(blue.len(), 1, "painted once: {blue:?}");
+    assert_eq!(f32::from(blue[0].origin.x), 0.);
+    assert_eq!(f32::from(blue[0].origin.y), 10.);
+    assert_eq!(f32::from(blue[0].size.height), 100.);
+}

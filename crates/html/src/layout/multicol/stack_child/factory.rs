@@ -25,19 +25,15 @@ pub(super) fn new(
     watched: Rc<Watched>,
 ) -> Builder {
     let opts = opts.clone();
-    // Under a native source of this multicol every absolute/fixed root of a
-    // copy replays its own continuation record (paint::continuation).
+    // Under a native source of this multicol every continued absolute/fixed
+    // root replays its own continuation record (paint::continuation).
     let slots = opts
         .cx
         .position
         .geometry
         .as_ref()
-        .is_some_and(|g| g.native_oof().is_some() && g.host == merged.self_node)
-        .then(|| {
-            crate::layout::positioned::containing_block::metrics::fragmentation::continuation_roots(
-                std::iter::once(copy),
-            )
-        });
+        .filter(|g| g.native_oof().is_some() && g.host == merged.self_node)
+        .map(|g| g.continued_roots());
     let positioning = opts.cx.position.state.retain();
     let merged = merged.clone();
     let copy = copy.clone();
