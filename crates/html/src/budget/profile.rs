@@ -154,10 +154,10 @@ impl Default for DocumentLimits {
                 4 * MIB,
                 1 << 15,
                 1 << 16,
-                16 * MIB,
+                32 * MIB,
                 1 << 18,
                 Self::CSS_NESTING as u64,
-                8 * MIB,
+                128 * MIB,
             ],
         }
     }

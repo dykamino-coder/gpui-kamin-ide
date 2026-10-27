@@ -12,11 +12,14 @@ use markup5ever_rcdom::NodeData;
 
 pub(crate) fn admit_sources(input: &Admitted, theme: &str) -> Result<(), Error> {
     let admission = Admission::new(input.context().budget().clone());
-    admit(super::user_agent_css(), &admission)?;
-    admit(super::ua_style::QUIRKS_CSS, &admission)?;
+    let mut agent = admit(super::user_agent_css(), &admission)?;
+    agent.add(admit(super::ua_style::QUIRKS_CSS, &admission)?)?;
     let sheets = super::style_sources::collect(input, theme)?;
-    for css in sheets.iter() {
-        admit(css, &admission)?;
+    for (index, css) in sheets.iter().enumerate() {
+        let counts = admit(css, &admission)?;
+        if index == 0 {
+            agent.add(counts)?;
+        }
     }
     let mut walk = SourceWalk::new(&input.dom.document, Templates::Active, admission.clone())?;
     while let Some(node) = walk.try_next()? {
@@ -29,5 +32,6 @@ pub(crate) fn admit_sources(input: &Admitted, theme: &str) -> Result<(), Error> 
             }
         }
     }
+    input.agent_css.set(agent);
     Ok(())
 }

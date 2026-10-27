@@ -10,10 +10,48 @@ use BudgetKind::{
     CssBytes, CssComponents, CssDeclarations, CssDepth, CssRules, CssSelectors, CssTokens,
 };
 
-mod selector_depth;
+mod expansion;
+pub(crate) mod selector_depth;
 
-#[derive(Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub(crate) struct Counts(pub(crate) [usize; BudgetKind::COUNT]);
+
+impl Counts {
+    pub(crate) fn add(&mut self, other: Self) -> Result<(), Error> {
+        for kind in BudgetKind::ALL {
+            let i = kind as usize;
+            self.0[i] = if kind == CssDepth {
+                self.0[i].max(other.0[i])
+            } else {
+                self.0[i]
+                    .checked_add(other.0[i])
+                    .ok_or(Error::CapacityOverflow)?
+            };
+        }
+        Ok(())
+    }
+
+    /// Копия допущенного AST оплачивает исходные единицы до клонирования.
+    pub(crate) fn replay(&self, admission: &Admission) -> Result<(), Error> {
+        admission.work(self.0[CssBytes as usize])?;
+        for kind in [
+            CssBytes,
+            CssTokens,
+            CssRules,
+            CssSelectors,
+            CssComponents,
+            CssDeclarations,
+            CssDepth,
+        ] {
+            if kind == CssDepth {
+                admission.maximum(kind, self.0[kind as usize])?;
+            } else {
+                admission.consume(kind, self.0[kind as usize])?;
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Независимый CSS entrypoint получает те же конечные defaults и свой ledger.
 pub(crate) fn standalone(css: &str) -> Result<Admission, Error> {
@@ -32,6 +70,7 @@ struct Frame {
     expanded: usize,
     statement: usize,
     chain: usize,
+    width: usize,
 }
 
 /// Консервативные лексические кандидаты покрывают и восстановление синтаксиса.
@@ -46,6 +85,7 @@ pub(crate) fn admit(css: &str, admission: &Admission) -> Result<Counts, Error> {
         statement: 0,
         expanded: 0,
         chain: 0,
+        width: 1,
     };
     scan.charge(CssBytes, css.len())?;
     while scan.at < css.len() {
@@ -63,6 +103,7 @@ struct Scan<'a> {
     statement: usize,
     expanded: usize,
     chain: usize,
+    width: usize,
 }
 
 impl Scan<'_> {
@@ -91,23 +132,27 @@ impl Scan<'_> {
             return Ok(());
         }
         if ch.is_ascii_whitespace() {
+            self.charge(CssComponents, self.width)?;
             self.at += ch.len_utf8();
             return Ok(());
         }
         self.charge(CssTokens, 1)?;
-        self.charge(CssComponents, 1)?;
+        self.charge(CssComponents, self.width)?;
         if ch == '"' || ch == '\'' {
             self.at += ch.len_utf8();
             self.at += try_skip_string(&self.css[self.at..], ch, self.admission)?;
+            self.charge_payload(tail.len() - (self.css.len() - self.at))?;
             return Ok(());
         }
         if at_url(tail) {
             self.at += try_skip_url(tail, self.admission)?;
+            self.charge_payload(tail.len() - (self.css.len() - self.at))?;
             return Ok(());
         }
         if ch == '\\' {
             self.admission.work(9.min(tail.len()))?;
             self.at = escape_end(self.css, self.at);
+            self.charge_payload(tail.len() - (self.css.len() - self.at))?;
             return Ok(());
         }
         match ch {
@@ -119,6 +164,11 @@ impl Scan<'_> {
                 self.charge(CssComponents, self.expanded)?;
             }
             _ => {}
+        }
+        if matches!(ch, '{' | ';') {
+            let head = &self.css[self.statement..self.at];
+            self.admission.work(head.len())?;
+            self.charge(CssComponents, expansion::registry(head, self.expanded)?)?;
         }
         match ch {
             '{' | '(' | '[' => {
@@ -138,36 +188,26 @@ impl Scan<'_> {
                     expanded: self.expanded,
                     statement: self.statement,
                     chain: self.chain,
+                    width: self.width,
                 };
                 if ch == '{' {
                     self.charge(CssRules, 1)?;
                     self.charge(CssSelectors, 1)?;
                     let head = &self.css[self.statement..self.at];
                     self.admission.work(head.len())?;
-                    // Каждый & копирует родительский список; неявный & — один раз.
-                    // Неактивные блоки и custom properties также оплачивают эту оценку.
-                    let copies = head
-                        .bytes()
-                        .filter(|&b| b == b'&')
-                        .count()
-                        .saturating_add(1);
+                    let (expanded, width, amps) = expansion::selectors(head, self.expanded)?;
                     let own_chain = selector_depth::measure(head, self.admission)?;
                     let chain = self
                         .chain
-                        .checked_mul(copies.saturating_sub(1).max(1))
+                        .checked_mul(amps.max(1))
                         .and_then(|n| n.checked_add(own_chain))
                         .ok_or(Error::CapacityOverflow)?;
                     self.admission.maximum(CssDepth, chain)?;
                     self.counts.0[CssDepth as usize] = self.counts.0[CssDepth as usize].max(chain);
                     self.chain = chain;
-                    let expanded = self
-                        .expanded
-                        .checked_add(6)
-                        .and_then(|n| n.checked_mul(copies))
-                        .and_then(|n| n.checked_add(head.len()))
-                        .ok_or(Error::CapacityOverflow)?;
                     self.charge(CssComponents, expanded)?;
                     self.expanded = expanded;
+                    self.width = self.width.max(width);
                     self.statement = self.at + 1;
                 }
                 self.stack.push(frame, self.admission)?;
@@ -176,6 +216,7 @@ impl Scan<'_> {
                 let frame = self.stack.pop().unwrap();
                 self.expanded = frame.expanded;
                 self.chain = frame.chain;
+                self.width = frame.width;
                 self.statement = if ch == '}' {
                     self.at + 1
                 } else {
@@ -187,6 +228,13 @@ impl Scan<'_> {
         }
         self.at += ch.len_utf8();
         Ok(())
+    }
+
+    fn charge_payload(&mut self, bytes: usize) -> Result<(), Error> {
+        let copies = bytes
+            .checked_mul(self.width)
+            .ok_or(Error::CapacityOverflow)?;
+        self.charge(CssComponents, copies)
     }
 }
 

@@ -35,7 +35,6 @@ mod logical_properties;
 mod prepare;
 #[cfg(test)]
 mod resource_tests;
-pub(crate) mod resource_url;
 mod scope;
 mod source;
 use prepare::parse_document;

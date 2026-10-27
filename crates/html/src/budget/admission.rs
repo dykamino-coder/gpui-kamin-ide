@@ -14,7 +14,7 @@ pub(crate) enum Error {
     CapacityOverflow,
 }
 
-/// Отсутствие ledger оставляет прежний контракт standalone CSS API.
+/// Отсутствие ledger используется внутренними consumers без состояния документа.
 #[derive(Clone, Default)]
 pub(crate) struct Admission(Option<super::RevisionBudget>);
 

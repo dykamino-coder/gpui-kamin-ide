@@ -28,7 +28,7 @@ fn css_entries_admit_all_counter_boundaries_before_early_consumers() {
             true,
         ),
         (
-            "<div><template shadowrootmode=open><style>p,a {color:red}</style><slot></slot></template><p>KEEP</p></div>",
+            "<div><template shadowrootmode=open><style>p,a {color:red}</style><slot></slot></template><p>KEEP</p></div><aside><template shadowrootmode=closed><slot></slot></template></aside>",
             "",
             false,
         ),
@@ -206,7 +206,7 @@ fn early_has_and_slot_work_is_fallible_and_releases_partial_state() {
                 .build();
             match result {
                 Err(error) if cap < n => refused(error, BudgetKind::TraversalVisits),
-                Ok(_) if cap >= n => {}
+                Ok(document) if cap >= n => drop(document),
                 _ => panic!("wrong early-pass boundary {cap}/{n}"),
             }
             assert_eq!(governor.used(BudgetKind::LiveBytes), 0);

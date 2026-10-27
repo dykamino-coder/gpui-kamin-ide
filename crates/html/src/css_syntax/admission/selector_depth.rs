@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn measure(head: &str, admission: &Admission) -> Result<usize, Error> {
+pub(crate) fn measure(head: &str, admission: &Admission) -> Result<usize, Error> {
     let mut parents = Buffer::default();
     let (mut chain, mut outer, mut maximum) = (0usize, 0usize, 0usize);
     let mut separated = true;

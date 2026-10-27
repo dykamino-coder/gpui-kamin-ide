@@ -151,6 +151,7 @@ pub(crate) fn convert(
     let agent = Scope {
         rules: agent_rules,
         frames: frames.clone(),
+        clone_cost: input.agent_css.get(),
     };
     for css in sheets.iter() {
         frames.extend(crate::style::css::parse_keyframes_in(css, Some(media), vcx));
@@ -168,7 +169,11 @@ pub(crate) fn convert(
     // слотов считаются ДО обхода, как отметки `:has`; обход получает их
     // индексом по узлу. Документ без теней предпроход не платит.
     let mut tree = TreeIndex::new(doc.clone(), xhtml);
-    let doc = Rc::new(Scope { rules, frames });
+    let doc = Rc::new(Scope {
+        rules,
+        frames,
+        clone_cost: Default::default(),
+    });
     if has_declarative_shadow(&dom.document, &admission)? {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();

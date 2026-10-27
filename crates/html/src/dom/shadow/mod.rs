@@ -20,6 +20,7 @@ use std::rc::Rc;
 pub(crate) struct Scope {
     pub(crate) rules: Vec<Rule>,
     pub(crate) frames: HashMap<String, Keyframes>,
+    pub(crate) clone_cost: crate::css_syntax::admission::Counts,
 }
 
 /// Дерево теней хоста (HTML §4.12.3, `<template shadowrootmode>`).

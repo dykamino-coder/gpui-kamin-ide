@@ -30,7 +30,8 @@ impl Frame {
     }
 }
 
-/// Прежний API обходов представления; bounded ранние проходы вызывают `try_next`.
+/// Тестовый итератор; production-проходы явно распространяют отказ `try_next`.
+#[cfg(test)]
 pub(crate) fn descendants(root: &Handle, templates: bool) -> SourceWalk {
     SourceWalk::new(
         root,
@@ -152,6 +153,7 @@ fn is_shadow(node: &Handle, admission: &Admission) -> Result<bool, Error> {
     Ok(false)
 }
 
+#[cfg(test)]
 impl Iterator for SourceWalk {
     type Item = Handle;
     fn next(&mut self) -> Option<Handle> {

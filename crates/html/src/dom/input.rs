@@ -33,6 +33,7 @@ pub(crate) struct Admitted {
     pub dom: RcDom,
     pub xhtml: bool,
     context: Context,
+    pub(crate) agent_css: std::cell::Cell<crate::css_syntax::admission::Counts>,
 }
 
 impl Admitted {
@@ -88,6 +89,7 @@ impl Admitted {
             dom,
             xhtml,
             context,
+            agent_css: Default::default(),
         })
     }
 }

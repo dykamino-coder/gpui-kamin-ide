@@ -65,6 +65,7 @@ fn collect(
         if let Some((_, root)) = declarative_shadow(&node) {
             let (scope, inner_args) = shadow_scope(&root, agent, media, layers, vcx)?;
             for arg in inner_args {
+                admission.work(args.len())?;
                 if !args.iter().any(|a| a.id == arg.id) {
                     args.push(arg);
                 }

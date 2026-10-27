@@ -119,5 +119,41 @@ fn selector_chain_boundaries_precede_recursive_ast_and_drop() {
         assert_eq!(revision.document().used(BudgetKind::LiveBytes), 0);
     }
     let css = format!("{} {{ color:red }}", "p > ".repeat(10_000) + "p");
-    assert!(crate::style::css::parse_stylesheet(&css).is_err());
+    let revision = revision(CssDepth, 128);
+    assert!(admit(&css, &Admission::new(revision.clone())).is_err());
+    assert_eq!(revision.document().used(BudgetKind::LiveBytes), 0);
+}
+
+#[test]
+fn list_expansion_and_declaration_copies_are_charged_before_ast() {
+    let parents = (0..64)
+        .map(|n| format!(".parent{n}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let children = (0..64)
+        .map(|n| format!(".child{n}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let css = format!(
+        "{parents} {{ {children} {{ --payload:'{}'; }} }}",
+        "x".repeat(1024)
+    );
+    let counts = admit(&css, &Admission::default()).unwrap();
+    assert!(counts.0[CssComponents as usize] >= 64 * (parents.len() + 1024));
+    let revision = revision(CssComponents, 4096);
+    assert!(matches!(admit(&css, &Admission::new(revision.clone())),
+        Err(Error::Budget(BudgetError::Exceeded(limit))) if limit.kind == CssComponents));
+    assert_eq!(revision.document().used(BudgetKind::LiveBytes), 0);
+}
+
+#[test]
+fn dotted_layer_prefix_storage_is_admitted_before_registry_growth() {
+    for end in [";", " { p { color:red } }"] {
+        let css = format!("/* recovery */ @LaYeR {}last{end}", "segment.".repeat(256));
+        let counts = admit(&css, &Admission::default()).unwrap();
+        assert!(counts.0[CssComponents as usize] >= 256 * 256 * 8);
+        let revision = revision(CssComponents, 4096);
+        assert!(admit(&css, &Admission::new(revision.clone())).is_err());
+        assert_eq!(revision.document().used(BudgetKind::LiveBytes), 0);
+    }
 }

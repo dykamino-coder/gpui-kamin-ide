@@ -62,6 +62,7 @@ pub(super) fn shadow_scope(
         .map(crate::budget::admission::Admission::new)
         .unwrap_or_default();
     admission.work(agent.rules.len() + agent.frames.len())?;
+    agent.clone_cost.replay(&admission)?;
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
     let sheets = try_collect_style_tags(root, &admission)?;
@@ -82,7 +83,14 @@ pub(super) fn shadow_scope(
     let mut raw: Vec<String> = vec![];
     rules.retain(|r| collect_has_args(&r.sel, &mut raw));
     let args = raw.iter().filter_map(|a| parse_has_arg(a)).collect();
-    Ok((Rc::new(Scope { rules, frames }), args))
+    Ok((
+        Rc::new(Scope {
+            rules,
+            frames,
+            clone_cost: Default::default(),
+        }),
+        args,
+    ))
 }
 
 /// Все `<slot>` дерева тени в порядке дерева. Вложенные тени лежат в
