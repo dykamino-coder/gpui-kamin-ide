@@ -1,5 +1,6 @@
 //! Принудительный разрыв перед первым элементом линии flex-колонки.
-use super::{BlockBox, BlockKid, FlexBox, FlexFrame, FlexLine, Laid, forced_line_start_pending};
+use super::flex_gap_tests::flex_root;
+use super::{BlockBox, BlockKid, FlexFrame, FlexLine, Laid, forced_line_start_pending};
 
 /// Две линии колонки: 1, 2 и 3, 4; у 3 разрыв перед ним, верх 3 — `top`.
 fn columns(top: f32) -> (BlockBox, Laid) {
@@ -10,14 +11,7 @@ fn columns(top: f32) -> (BlockBox, Laid) {
             ..Default::default()
         })
         .collect();
-    let root = BlockBox {
-        id: 10,
-        flex: Some(FlexBox {
-            items,
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
+    let root = flex_root(items);
     let mut laid = Laid::of_boxes(&[
         (10, 0.0, 200.0),
         (1, 0.0, 50.0),
