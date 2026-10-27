@@ -47,12 +47,18 @@ mod attr_cast;
 mod substitute;
 pub(super) use substitute::{resolve_attrs, resolve_sibling};
 
-pub(super) fn resolve_vars(value: &str, vars: &VarMap) -> String {
+/// Значение без `var()` возвращается как есть; подстановка одного значения делит один
+/// бюджет работы на все проходы и списывает его с ревизии документа.
+pub(super) fn resolve_vars(value: &str, vars: &VarMap, vcx: ValueCx<'_>) -> String {
+    use crate::style::css::variable_values::{Work, has_var, substitute};
+    if !has_var(value) {
+        return value.to_string();
+    }
+    let revision = vcx.doc.revision_budget();
+    let work = Work::new(&revision);
     let mut out = value.to_string();
     for _ in 0..VAR_DEPTH {
-        let Some(next) = crate::style::css::variable_values::substitute(&out, &mut |name| {
-            vars.get(name).cloned()
-        }) else {
+        let Ok(next) = substitute(&out, &mut |name| vars.get(name).cloned(), &work) else {
             return "unset".into();
         };
         if next == out {

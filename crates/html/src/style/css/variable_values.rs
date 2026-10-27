@@ -3,7 +3,9 @@
 //! (CSS Values 5 §substitution-context — негодны все участники), общими
 //! CSS-словами и проверкой синтаксиса `@property`; `substitute` — общая
 //! подстановка `var()` с запасным аргументом (CSS Variables §3), пробелы вокруг
-//! подстановки берегут границы токенов.
+//! подстановки берегут границы токенов. Весь DAG пользовательских свойств элемента
+//! делит один бюджет работы; порядок обхода имён детерминирован, поэтому исчерпание
+//! делает негодными одни и те же свойства при каждом вычислении.
 
 use super::{Registered, VarMap};
 use std::collections::{HashMap, HashSet};
@@ -13,7 +15,9 @@ pub(crate) fn compute(
     parent: &VarMap,
     registered: &HashMap<String, Registered>,
     accepts: impl Fn(&str, &str) -> bool,
+    revision: &crate::budget::RevisionBudget,
 ) -> VarMap {
+    let work = Work::new(revision);
     let mut resolver = Resolver {
         raw,
         parent,
@@ -23,9 +27,14 @@ pub(crate) fn compute(
         cyclic: HashSet::new(),
         cache: HashMap::new(),
     };
-    raw.keys()
-        .filter(|name| name.starts_with("--"))
-        .filter_map(|name| resolver.value(name).map(|value| (name.clone(), value)))
+    let mut names: Vec<_> = raw.keys().filter(|name| name.starts_with("--")).collect();
+    names.sort_unstable();
+    names
+        .into_iter()
+        .filter_map(|name| {
+            let value = resolver.value(name, &work)?;
+            Some((name.clone(), value))
+        })
         .collect()
 }
 
@@ -40,7 +49,7 @@ struct Resolver<'a, F> {
 }
 
 impl<F: Fn(&str, &str) -> bool> Resolver<'_, F> {
-    fn value(&mut self, name: &str) -> Option<String> {
+    fn value(&mut self, name: &str, work: &Work<'_>) -> Option<String> {
         if let Some(value) = self.cache.get(name) {
             return value.clone();
         }
@@ -52,7 +61,7 @@ impl<F: Fn(&str, &str) -> bool> Resolver<'_, F> {
         }
         let raw = self.raw.get(name)?.clone();
         self.stack.push(name.to_string());
-        let value = substitute(&raw, &mut |dependency| self.value(dependency));
+        let value = substitute(&raw, &mut |dependency| self.value(dependency, work), work).ok();
         self.stack.pop();
         let reg = self.registered.get(name);
         let initial = reg.and_then(|r| r.initial.as_deref());
@@ -96,7 +105,7 @@ impl<F: Fn(&str, &str) -> bool> Resolver<'_, F> {
 }
 
 mod substitution;
-pub(crate) use substitution::{has_var, substitute};
+pub(crate) use substitution::{SubstitutionLimit, Unsubstituted, Work, has_var, substitute};
 
 #[cfg(test)]
 #[path = "variable_values/tests.rs"]
@@ -105,3 +114,7 @@ mod tests;
 #[cfg(test)]
 #[path = "variable_values/limits_tests.rs"]
 mod limits_tests;
+
+#[cfg(test)]
+#[path = "variable_values/budget_tests.rs"]
+mod budget_tests;

@@ -26,7 +26,8 @@ pub(crate) fn load_profiles_sheets(sheets: &[String], base: Option<&url::Url>, v
                 continue;
             };
             let path = crate::resources::url_loader::resolve(&path, base);
-            if let Some(bytes) = crate::resources::url_loader::read(&path) {
+            let revision = vcx.doc.revision_budget();
+            if let Ok(bytes) = crate::resources::url_loader::read(&path, &revision) {
                 vcx.doc.profiles.borrow_mut().insert(rule.prelude, bytes);
             }
         }

@@ -8,10 +8,12 @@
 //! запрос тех же байт, поэтому он отделяется при разрешении и в ключ загрузки не входит.
 
 pub(crate) mod data_url;
+mod ingress;
 mod limits;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use ingress::{Cancellation, Ingress, fetch};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -156,14 +158,18 @@ pub(crate) enum LoadError {
     NotFound,
     /// Иная ошибка ввода-вывода.
     Io(std::io::ErrorKind),
-    /// Входной ресурс превысил бюджет байтов до декодирования содержимого.
+    /// Входной ресурс превысил предел одного ресурса (S6) до декодирования содержимого.
     TooLarge { limit: usize },
+    /// Ревизия отказала в запросе или байтах: сумма документа, а не один ресурс.
+    Budget(crate::budget::BudgetError),
+    /// Задание отменено вместе с устаревшим поколением документа.
+    Cancelled,
 }
 
 /// Источник байт документа. Реализация не хранит документ и не знает о картинках.
 pub(crate) trait ResourceLoader: Send + Sync {
-    /// Прочитать байты по адресу.
-    fn load(&self, url: &ResourceUrl) -> Result<Loaded, LoadError>;
+    /// Прочитать байты по адресу; каждую порцию допустить через `ingress` до копирования.
+    fn load(&self, url: &ResourceUrl, ingress: &Ingress<'_>) -> Result<Loaded, LoadError>;
     /// Текущая ревизия без чтения содержимого — для перепроверки прежних результатов.
     fn revision(&self, url: &ResourceUrl) -> Revision;
 }
@@ -173,14 +179,14 @@ pub(crate) trait ResourceLoader: Send + Sync {
 pub(crate) struct SyncLoader;
 
 impl ResourceLoader for SyncLoader {
-    fn load(&self, url: &ResourceUrl) -> Result<Loaded, LoadError> {
+    fn load(&self, url: &ResourceUrl, ingress: &Ingress<'_>) -> Result<Loaded, LoadError> {
         match &url.locator {
             Locator::Data => {
                 let rest = url
                     .text
                     .strip_prefix("data:")
                     .ok_or(LoadError::InvalidUrl)?;
-                let bytes = data_url::decode(rest)?;
+                let bytes = data_url::decode(rest, |count| ingress.admit(count))?;
                 Ok(Loaded {
                     bytes: bytes.into(),
                     revision: Revision::Immutable,
@@ -197,7 +203,7 @@ impl ResourceLoader for SyncLoader {
                         limit: limits::RESOURCE_BYTES,
                     });
                 }
-                let bytes = limits::read(file, limits::RESOURCE_BYTES)?;
+                let bytes = limits::read(file, limits::RESOURCE_BYTES, |n| ingress.admit(n))?;
                 Ok(Loaded {
                     bytes: bytes.into(),
                     revision,

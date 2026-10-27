@@ -25,10 +25,10 @@ pub(super) fn sfnt_ok(bytes: &[u8]) -> bool {
 /// Обе упаковки — это тот же sfnt: в `woff` таблицы просто сжаты, в `woff2`
 /// вдобавок перестроены таблицы глифов. Разбор второй руками не пишут, он
 /// взят крейтом.
-pub(super) fn read_font(path: &str) -> Option<Vec<u8>> {
+pub(super) fn read_font(path: &str, revision: &crate::budget::RevisionBudget) -> Option<Vec<u8>> {
     // Адрес `data:` (RFC 2397) — шрифт в самой таблице; упаковку тогда
     // покажет подпись (ветки ниже без расширения).
-    let bytes = crate::document::resource_url::read(path)?;
+    let bytes = crate::document::resource_url::read(path, revision).ok()?;
     let path = if path.starts_with("data:") { "" } else { path };
     // Упаковку задаёт АДРЕС, а подпись внутри файла — то, что файл о себе
     // заявляет. Их расхождение — отказ (§4.1 WOFF2): файл `.woff2` с

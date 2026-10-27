@@ -1,4 +1,5 @@
-//! Разрешает URL шрифтов и ICC-ресурсов относительно действующей базы документа.
+//! Разрешает URL шрифтов и ICC-ресурсов относительно действующей базы документа и
+//! читает их с допуском ревизии (S6 на ресурс, сумма запросов и байт на документ).
 
 use url::Url;
 
@@ -12,10 +13,15 @@ pub(crate) fn resolve(authored: &str, base: Option<&Url>) -> String {
         .map_or_else(|| authored.to_string(), |url| url.to_string())
 }
 
-pub(crate) fn read(resource: &str) -> Option<Vec<u8>> {
-    use crate::resources::loader::{ResourceLoader, ResourceUrl, SyncLoader};
+/// Синхронное чтение сборки документа: отменяется только вместе с ней самой.
+pub(crate) fn read(
+    resource: &str,
+    revision: &crate::budget::RevisionBudget,
+) -> Result<Vec<u8>, crate::resources::loader::LoadError> {
+    use crate::resources::loader::{Cancellation, ResourceUrl, SyncLoader, fetch};
     let (url, _) = ResourceUrl::resolve(resource, None);
-    Some(SyncLoader.load(&url).ok()?.bytes.to_vec())
+    let loaded = fetch(&SyncLoader, &url, revision, &Cancellation::default())?;
+    Ok(loaded.bytes.to_vec())
 }
 
 #[cfg(test)]
@@ -44,7 +50,9 @@ mod tests {
         std::fs::write(&path, b"resource").unwrap();
         let resource = Url::from_file_path(&path).unwrap().to_string();
         assert!(resource.contains("%20"));
-        assert_eq!(read(&resource).as_deref(), Some(b"resource".as_slice()));
+        let revision = crate::budget::RevisionBudget::standalone();
+        assert_eq!(read(&resource, &revision).as_deref(), Ok(b"resource".as_slice()));
+        assert_eq!(revision.used(crate::budget::BudgetKind::ResourceBytes), 8);
         std::fs::remove_file(path).unwrap();
     }
 }

@@ -6,19 +6,29 @@ use super::{LoadError, limits};
 ///
 /// RFC 2397: без пометки `base64` содержимое лежит прямо в адресе,
 /// процентно-кодированным (`%3Csvg…`). Такое встречается у рисунков.
-pub(crate) fn decode(rest: &str) -> Result<Vec<u8>, LoadError> {
-    decode_bounded(rest, limits::DATA_URL_BYTES, limits::RESOURCE_BYTES)
+/// Точная длина результата известна до выделения: `admit` допускает её в сумму документа.
+pub(crate) fn decode(
+    rest: &str,
+    admit: impl FnOnce(usize) -> Result<(), LoadError>,
+) -> Result<Vec<u8>, LoadError> {
+    decode_bounded(rest, limits::DATA_URL_BYTES, limits::RESOURCE_BYTES, admit)
 }
 
-fn decode_bounded(rest: &str, input_limit: usize, limit: usize) -> Result<Vec<u8>, LoadError> {
+fn decode_bounded(
+    rest: &str,
+    input_limit: usize,
+    limit: usize,
+    admit: impl FnOnce(usize) -> Result<(), LoadError>,
+) -> Result<Vec<u8>, LoadError> {
     // Проверяем весь закодированный вход, включая заголовок и пробелы base64.
     limits::check(rest.len(), input_limit)?;
     let (head, payload) = rest.split_once(',').ok_or(LoadError::InvalidUrl)?;
     if head.ends_with("base64") {
-        return base64_bounded(payload, limit);
+        return base64_bounded(payload, limit, admit);
     }
     let count = percent_bytes(payload).take(limit.saturating_add(1)).count();
     limits::check(count, limit)?;
+    admit(count)?;
     let mut out = buffer(count)?;
     out.extend(percent_bytes(payload));
     Ok(out)
@@ -51,7 +61,7 @@ fn percent_bytes(text: &str) -> impl Iterator<Item = u8> + '_ {
 /// Base64 без зависимости: нужен ровно один раз и только на чтение.
 #[cfg(test)]
 pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
-    base64_bounded(text, limits::RESOURCE_BYTES).ok()
+    base64_bounded(text, limits::RESOURCE_BYTES, |_| Ok(())).ok()
 }
 
 fn buffer(count: usize) -> Result<Vec<u8>, LoadError> {
@@ -61,13 +71,18 @@ fn buffer(count: usize) -> Result<Vec<u8>, LoadError> {
     Ok(out)
 }
 
-fn base64_bounded(text: &str, limit: usize) -> Result<Vec<u8>, LoadError> {
+fn base64_bounded(
+    text: &str,
+    limit: usize,
+    admit: impl FnOnce(usize) -> Result<(), LoadError>,
+) -> Result<Vec<u8>, LoadError> {
     // Первый проход проверяет бюджет и синтаксис до выделения выходного буфера.
     let mut count = 0usize;
     visit_base64(text, |_| {
         count += 1;
         limits::check(count, limit)
     })?;
+    admit(count)?;
     let mut out = buffer(count)?;
     visit_base64(text, |byte| {
         out.push(byte);
@@ -107,30 +122,34 @@ fn visit_base64(
 mod tests {
     use super::*;
 
+    fn free(_: usize) -> Result<(), LoadError> {
+        Ok(())
+    }
+
     #[test]
     fn decoded_budget_counts_bytes_after_percent_decoding() {
         for input in [",abcd", ",%61%62%63%64", ",a%62c%64"] {
-            assert_eq!(decode_bounded(input, 64, 4).unwrap(), b"abcd");
+            assert_eq!(decode_bounded(input, 64, 4, free).unwrap(), b"abcd");
             assert_eq!(
-                decode_bounded(input, 64, 3),
+                decode_bounded(input, 64, 3, free),
                 Err(LoadError::TooLarge { limit: 3 })
             );
         }
-        assert_eq!(decode_bounded(",%E2%82%AC", 64, 3).unwrap(), "€".as_bytes());
-        assert_eq!(decode_bounded(",%broken", 64, 8).unwrap(), b"%broken");
+        assert_eq!(decode_bounded(",%E2%82%AC", 64, 3, free).unwrap(), "€".as_bytes());
+        assert_eq!(decode_bounded(",%broken", 64, 8, free).unwrap(), b"%broken");
     }
 
     #[test]
     fn base64_budget_counts_output_and_preserves_padding_and_whitespace() {
         for input in [";base64,YWJjZA==", ";base64,Y W\tJj\r\nZA=="] {
-            assert_eq!(decode_bounded(input, 64, 4).unwrap(), b"abcd");
+            assert_eq!(decode_bounded(input, 64, 4, free).unwrap(), b"abcd");
             assert_eq!(
-                decode_bounded(input, 64, 3),
+                decode_bounded(input, 64, 3, free),
                 Err(LoadError::TooLarge { limit: 3 })
             );
         }
         assert_eq!(
-            decode_bounded(";base64,?", 64, 4),
+            decode_bounded(";base64,?", 64, 4, free),
             Err(LoadError::InvalidUrl)
         );
     }
@@ -138,21 +157,21 @@ mod tests {
     #[test]
     fn encoded_budget_includes_header_and_ignored_base64_characters() {
         for input in ["text/plain,", ";base64,     ", ",%61%62"] {
-            assert!(decode_bounded(input, input.len(), 32).is_ok());
+            assert!(decode_bounded(input, input.len(), 32, free).is_ok());
             assert_eq!(
-                decode_bounded(input, input.len() - 1, 32),
+                decode_bounded(input, input.len() - 1, 32, free),
                 Err(LoadError::TooLarge {
                     limit: input.len() - 1
                 })
             );
         }
-        assert_eq!(decode_bounded(",", 1, 0).unwrap(), b"");
+        assert_eq!(decode_bounded(",", 1, 0, free).unwrap(), b"");
         assert_eq!(
-            decode_bounded(",x", 2, 0),
+            decode_bounded(",x", 2, 0, free),
             Err(LoadError::TooLarge { limit: 0 })
         );
         assert_eq!(
-            decode_bounded("no comma", 64, 32),
+            decode_bounded("no comma", 64, 32, free),
             Err(LoadError::InvalidUrl)
         );
     }

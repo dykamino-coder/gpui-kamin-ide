@@ -186,7 +186,7 @@ impl Computed {
         let (cx, vcx) = (compute.element, compute.vcx);
         // Типизированный `attr()` подставляется тем же шагом, что и `var()`
         // (css-values-5 §7.7): после него значение разбирается как обычное.
-        let resolved = resolve_sibling(resolve_attrs(k, &resolve_vars(value, vars), cx, vcx), cx);
+        let resolved = resolve_sibling(resolve_attrs(k, &resolve_vars(value, vars, vcx), cx, vcx), cx);
         if is_side_radius(k) && !is_wide(&resolved) {
             // Логическая сторона сопоставляется по письму — итогу фазы
             // письма (css-logical-1 §4), а не по полям стиля на этот миг.

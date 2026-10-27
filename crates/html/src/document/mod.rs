@@ -15,6 +15,8 @@ mod admission_tests;
 mod base_url;
 #[cfg(test)]
 mod budget_tests;
+#[cfg(test)]
+mod work_budget_tests;
 mod builder;
 #[cfg(feature = "engine-bench")]
 mod timing;
@@ -125,6 +127,13 @@ impl Document {
             &mut timings,
         );
         state.traversal.retain(input);
+        // Исчерпание aggregate ревизии в ранних проходах (ресурсы, подстановки) терминально:
+        // кандидат не публикуется, даже если операции вернули штатный fallback.
+        if let Some(error) = state.revision_budget().exhausted() {
+            let mut failure = DocumentFailure::new(FailureReason::Budget(error));
+            failure.report.revision = Some(key);
+            return Err(failure);
+        }
         Ok(Document {
             state,
             nodes,

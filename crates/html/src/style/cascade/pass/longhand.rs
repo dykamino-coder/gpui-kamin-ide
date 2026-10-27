@@ -28,7 +28,7 @@ impl Computed {
         };
         let name = shorthand.map_or(id.name(), |s| s.name());
         let resolved =
-            resolve_sibling(resolve_attrs(name, &resolve_vars(value, vars), cx, vcx), cx);
+            resolve_sibling(resolve_attrs(name, &resolve_vars(value, vars, vcx), cx, vcx), cx);
         let text = match CssWide::parse(&resolved) {
             Some(_) => Some(resolved),
             None => match shorthand {

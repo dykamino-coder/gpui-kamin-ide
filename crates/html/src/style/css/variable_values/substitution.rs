@@ -1,29 +1,76 @@
-//! Ограниченная подстановка CSS var(): размер результата и суммарная работа
-//! выбранных запасных значений ограничены независимо от глубины DAG.
-//! CSS Variables §3.3 разрешает считать чрезмерно длинное значение негодным.
+//! Ограниченная подстановка CSS var(): размер результата одного значения, работа одного
+//! значения или DAG пользовательских свойств элемента и aggregate ревизии ограничены
+//! независимо от глубины DAG. CSS Variables §3.3 разрешает считать чрезмерно длинное
+//! значение негодным в момент вычисления; причина отказа остаётся типизированной.
 
-// Пределы в байтах UTF-8; бюджет принадлежит одному вычисляемому значению.
+use crate::budget::{BudgetError, BudgetKind, RevisionBudget};
+use std::cell::Cell;
+
+// Пределы в байтах UTF-8 из неизменяемого профиля.
 const MAX_OUTPUT: usize = crate::budget::DocumentLimits::VAR_OUTPUT_BYTES as usize;
 const MAX_WORK: usize = crate::budget::DocumentLimits::VAR_WORK_BYTES as usize;
 
-struct Budget {
-    work: usize,
+/// Какой предел сделал подстановку негодной.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SubstitutionLimit {
+    /// Результат одного значения длиннее `limit` байт (CSS Variables §3.3).
+    Output { limit: u64, attempted: u64 },
+    /// Работа одного значения или DAG пользовательских свойств элемента.
+    Work { limit: u64 },
+    /// Aggregate подстановок ревизии исчерпан; ревизия завершается отказом.
+    Revision(BudgetError),
 }
 
-impl Budget {
-    fn spend(&mut self, bytes: usize) -> Option<()> {
-        self.work = self.work.checked_sub(bytes)?;
-        Some(())
+/// Почему значения нет: обычное guaranteed-invalid или предел реализации.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Unsubstituted {
+    Invalid,
+    Limit(SubstitutionLimit),
+}
+
+/// Бюджет работы одной области подстановки: значения обычного свойства или всего DAG
+/// пользовательских свойств элемента. Каждая единица списывается и с ревизии.
+pub(crate) struct Work<'a> {
+    left: Cell<usize>,
+    revision: &'a RevisionBudget,
+}
+
+impl<'a> Work<'a> {
+    pub(crate) fn new(revision: &'a RevisionBudget) -> Self {
+        Self {
+            left: Cell::new(MAX_WORK),
+            revision,
+        }
     }
 
-    fn append(&mut self, result: &mut String, value: &str) -> Option<()> {
-        if value.len() > MAX_OUTPUT.checked_sub(result.len())? {
-            return None;
-        }
+    fn spend(&self, bytes: usize) -> Result<(), Unsubstituted> {
+        let limit = Unsubstituted::Limit(SubstitutionLimit::Work {
+            limit: MAX_WORK as u64,
+        });
+        let left = self.left.get().checked_sub(bytes).ok_or(limit)?;
+        self.revision
+            .consume(BudgetKind::SubstitutionBytes, bytes as u64)
+            .map_err(|error| Unsubstituted::Limit(SubstitutionLimit::Revision(error)))?;
+        self.left.set(left);
+        Ok(())
+    }
+
+    fn append(&self, result: &mut String, value: &str) -> Result<(), Unsubstituted> {
+        fit(result.len(), value.len())?;
         self.spend(value.len())?;
         result.push_str(value);
-        Some(())
+        Ok(())
     }
+}
+
+fn fit(len: usize, extra: usize) -> Result<(), Unsubstituted> {
+    if extra > MAX_OUTPUT.saturating_sub(len) {
+        return Err(Unsubstituted::Limit(SubstitutionLimit::Output {
+            limit: MAX_OUTPUT as u64,
+            attempted: len as u64 + extra as u64,
+        }));
+    }
+    Ok(())
 }
 
 struct Call {
@@ -40,24 +87,32 @@ pub(crate) fn has_var(raw: &str) -> bool {
 /// Only selected fallback arguments are substituted (CSS Variables §3).
 /// Whitespace preserves token boundaries: substituting `20` before `px`
 /// must not manufacture a dimension token that was absent from the input.
+/// Значение без `var()` не подставляется и работы не тратит; предел длины тот же.
 pub(crate) fn substitute(
     raw: &str,
     lookup: &mut impl FnMut(&str) -> Option<String>,
-) -> Option<String> {
-    expand(raw, lookup, &mut Budget { work: MAX_WORK })
+    work: &Work<'_>,
+) -> Result<String, Unsubstituted> {
+    let calls = calls(raw);
+    if calls.is_empty() {
+        fit(0, raw.len())?;
+        return Ok(raw.to_string());
+    }
+    expand(raw, calls, lookup, work)
 }
 
 fn expand(
     raw: &str,
+    calls: Vec<Call>,
     lookup: &mut impl FnMut(&str) -> Option<String>,
-    budget: &mut Budget,
-) -> Option<String> {
+    work: &Work<'_>,
+) -> Result<String, Unsubstituted> {
     // Сканер проходит аргументы несколько раз и создаёт строки запасных значений.
-    budget.spend(raw.len().checked_mul(8)?)?;
+    work.spend(raw.len().saturating_mul(8))?;
     let mut result = String::new();
     let mut from = 0;
-    for call in calls(raw) {
-        budget.append(&mut result, &raw[from..call.start])?;
+    for call in calls {
+        work.append(&mut result, &raw[from..call.start])?;
         // css-variables-2 §3 (resolve a var() function): a first argument
         // that is not a <custom-property-name> yields the guaranteed-invalid
         // value, so the fallback (if any) is used.
@@ -66,15 +121,18 @@ fn expand(
             .flatten();
         let replacement = match value {
             Some(value) => value,
-            None => expand(call.fallback.as_deref()?, lookup, budget)?,
+            None => {
+                let fallback = call.fallback.as_deref().ok_or(Unsubstituted::Invalid)?;
+                expand(fallback, self::calls(fallback), lookup, work)?
+            }
         };
-        budget.append(&mut result, " ")?;
-        budget.append(&mut result, &replacement)?;
-        budget.append(&mut result, " ")?;
+        work.append(&mut result, " ")?;
+        work.append(&mut result, &replacement)?;
+        work.append(&mut result, " ")?;
         from = call.end;
     }
-    budget.append(&mut result, &raw[from..])?;
-    Some(result)
+    work.append(&mut result, &raw[from..])?;
+    Ok(result)
 }
 
 /// Проверить сериализованный идентификатор до декодирования при поиске.

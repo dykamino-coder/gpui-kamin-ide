@@ -33,6 +33,17 @@ pub(crate) fn solid_png(rgba: [u8; 4]) -> Vec<u8> {
     out
 }
 
+/// PNG, чей `IHDR` заявляет `w×h`, а сжатые данные — одна точка: крошечный файл
+/// с огромным декодированным размером.
+pub(crate) fn declared_png(w: u32, h: u32) -> Vec<u8> {
+    let mut out = png(1, 1);
+    out[16..20].copy_from_slice(&w.to_be_bytes());
+    out[20..24].copy_from_slice(&h.to_be_bytes());
+    let crc = crc32(&out[12..29]);
+    out[29..33].copy_from_slice(&crc.to_be_bytes());
+    out
+}
+
 /// Вставить кусок PNG сразу после `IHDR` (сигнатура 8 байт + IHDR 25 байт).
 pub(crate) fn with_chunk(png: &[u8], kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
     let mut chunk = Vec::new();
