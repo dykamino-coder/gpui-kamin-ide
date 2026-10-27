@@ -11,7 +11,6 @@ use crate::layout::fragment::clone::{clone_dec, solid_box};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::grid_bands::grow_grid_track;
 use crate::layout::fragment::probe::size_monolith;
-use crate::layout::fragment::table_bands::repeat_leads;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::multicol::spanner::parallel_items_inside;
 use crate::style::computed::Display;
@@ -89,7 +88,7 @@ pub(crate) fn grow_pushed(
                 overflow_top: fixed.is_some()
                     && rows.is_none()
                     && !parallel_items_inside(c, 4, vcx),
-                repeat: repeat_leads(c, fixed, rows, ShapeCx::COLUMNS, vcx),
+                repeat: Default::default(),
                 par: par.get(i).copied().unwrap_or_default(),
             })
             .collect();
@@ -108,9 +107,7 @@ pub(crate) fn grow_pushed(
                 continue;
             }
             // Ряд в точках, вытолкнутый целиком: растёт ПРЕДЫДУЩАЯ дорожка.
-            if grow_grid_track(c, at, grow)
-                || (!forced && super::super::row::grow_row_at(c, at, grow, vcx))
-            {
+            if grow_grid_track(c, at, grow) {
                 // TRANSITIONAL(F2-4): После мутации grid track геометрия оценивается заново; удалить в P16 после track growth result и StaticPosition из P08 без переписывания authored tracks.
                 if let Some(s) = shape_full(c, 4, ShapeCx::COLUMNS, vcx) {
                     kids[kid].1 = keep_par_margins(s, &kids[kid].1, par.get(kid));

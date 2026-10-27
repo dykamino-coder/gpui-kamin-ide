@@ -76,28 +76,6 @@ fn tall_avoided_float_moves_once_then_relaxes_at_start() {
     );
 }
 
-fn gapped(id: u64, top: f32) -> Geom {
-    Geom {
-        id,
-        cand: Cand::Gap {
-            gap: 100.0,
-            parent: 9,
-        },
-        top,
-        bottom: top + 50.0,
-    }
-}
-
-#[test]
-fn truncates_row_gap_across_boundary() {
-    // Rows 0..50 and 150..200, gap 100 across the boundary at 100.
-    let g = [gapped(1, 0.0), gapped(2, 150.0)];
-    let (ids, delta, later, gap) = gap_violation(&g, 100.0, 0.0).unwrap();
-    assert_eq!((ids, delta, later, gap), (vec![2], -50.0, vec![2], 100.0));
-    // Already truncated: the row starts at the boundary.
-    assert!(gap_violation(&[gapped(1, 0.0), gapped(2, 100.0)], 100.0, 0.0).is_none());
-}
-
 #[test]
 fn avoided_edge_breaks_before_previous_box() {
     let prev = Geom {

@@ -5,7 +5,7 @@
 //! выравниванием выводят из этого пути (`None`).
 
 use super::super::items::row_item_width;
-use super::geometry::row_container;
+use super::container::row_container;
 use super::intrinsic::intrinsic_main;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};

@@ -28,11 +28,7 @@ pub(super) fn paint_body(
     let buffer = std::mem::take(&mut *group.items.borrow_mut());
     let (items, margins): (Vec<_>, Vec<_>) = buffer.items.take().into_iter().unzip();
     let flex = prepaint.flex.take().map(|(origin, layout)| {
-        FlexLines::from_layout(
-            (f32::from(origin.x), f32::from(origin.y)),
-            &layout,
-            &buffer.carried_row_gaps.take().into_iter().collect(),
-        )
+        FlexLines::from_layout((f32::from(origin.x), f32::from(origin.y)), &layout)
     });
     // A grid's gaps come from its track collection, not from its items
     // (css-gaps-1 §gap-grid; Blink `BuildGridTrackGapData`): an empty

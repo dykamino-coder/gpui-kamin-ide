@@ -7,7 +7,7 @@
 //! с распорками не уместится в колонки (Blink `column_layout_algorithm.cc`
 //! `CalculateBalancedColumnBlockSize` + `minimal_space_shortage`).
 
-use crate::layout::fragment::paginate::solve::{first_violation, gap_violation};
+use crate::layout::fragment::paginate::solve::first_violation;
 use crate::layout::fragment::paginate::{Cand, Strut, Struts};
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
@@ -65,7 +65,7 @@ impl ColumnStack {
                     match g.cand {
                         Cand::Forced { mt } => c.forced.push(g.top - mt),
                         Cand::Mono { .. } | Cand::Float { .. } => c.solid.push((g.top, g.bottom)),
-                        Cand::Item | Cand::Gap { .. } | Cand::Avoid { .. } => {}
+                        Cand::Item | Cand::Avoid { .. } => {}
                     }
                 }
                 c.forced.sort_by(f32::total_cmp);
@@ -81,7 +81,6 @@ impl ColumnStack {
                     (
                         g.id,
                         Strut {
-                            gap: 0.0,
                             by: 0.0,
                             size: g.bottom - g.top,
                         },
@@ -107,39 +106,7 @@ impl ColumnStack {
                     };
                     let (h, y0, _) = self.frame_of(i);
                     let Some((id, delta, tall)) = first_violation(&geoms, h, y0) else {
-                        // Truncate a row gap adjoining a break.
-                        let Some((ids, delta, later, gap)) = gap_violation(&geoms, h, y0) else {
-                            break;
-                        };
-                        for id in later {
-                            let size = geoms
-                                .iter()
-                                .find(|g| g.id == id)
-                                .map_or(0.0, |g| g.bottom - g.top);
-                            struts
-                                .entry(id)
-                                .or_insert(Strut {
-                                    by: 0.0,
-                                    size,
-                                    gap: 0.0,
-                                })
-                                .gap = gap;
-                        }
-                        for id in ids {
-                            let size = geoms
-                                .iter()
-                                .find(|g| g.id == id)
-                                .map_or(0.0, |g| g.bottom - g.top);
-                            struts
-                                .entry(id)
-                                .or_insert(Strut {
-                                    by: 0.0,
-                                    size,
-                                    gap: 0.0,
-                                })
-                                .by += delta;
-                        }
-                        continue;
+                        break;
                     };
                     // A monolith pushed past a boundary would have fitted a
                     // column taller by what it overhangs it.
@@ -151,11 +118,7 @@ impl ColumnStack {
                         .iter()
                         .find(|g| g.id == id)
                         .map_or(0.0, |g| g.bottom - g.top);
-                    let s = struts.entry(id).or_insert(Strut {
-                        by: 0.0,
-                        size,
-                        gap: 0.0,
-                    });
+                    let s = struts.entry(id).or_insert(Strut { by: 0.0, size });
                     s.by = (s.by + delta).max(0.0);
                 }
                 if !balanced {

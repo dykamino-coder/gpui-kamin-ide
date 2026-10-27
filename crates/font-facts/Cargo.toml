@@ -1,0 +1,13 @@
+[package]
+name = "kamin-font-facts"
+version.workspace = true
+edition.workspace = true
+
+# Нейтральный нижний контракт шрифтов движка HTML/CSS: запросы, дескрипторы
+# `@font-face`, подбор начертаний и снимок реестра документа. Без GPUI, CSS и
+# DOM; загрузку и метрики платформы держит `kamin-html` (`text/fonts`).
+
+[dependencies]
+
+[lints]
+workspace = true

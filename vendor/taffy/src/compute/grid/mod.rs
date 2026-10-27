@@ -44,6 +44,8 @@ mod alignment;
 mod baseline_x;
 mod container_baselines;
 mod explicit_grid;
+// KaminIDE patch: block space a fragmenting caller inserts after tracks (css-grid-2 §12).
+mod fragmentation_growth;
 mod implicit_grid;
 mod preferred_contribution;
 // KaminIDE patch: раскладка лунками (css-grid-3) на общем алгоритме дорожек.
@@ -459,6 +461,25 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     drop(grid_auto_columns);
     drop(style);
 
+    // KaminIDE patch: block space a fragmenting caller inserts after tracks (css-grid-2 §12) is not
+    // part of the unfragmented track sizing; a size a parent measured with it excludes it.
+    let growth = fragmentation_growth::Growth::read(
+        tree,
+        node,
+        &columns,
+        &rows,
+        Size {
+            width: sub_cols.as_ref().map(|axis| axis.growth.as_slice()),
+            height: sub_rows.as_ref().map(|axis| axis.growth.as_slice()),
+        },
+    );
+    let given_size = Size {
+        width: known_dimensions.width.is_some() && preferred_size.width.is_none(),
+        height: known_dimensions.height.is_some() && preferred_size.height.is_none(),
+    };
+    let available_grid_space = growth.unfragmented_space(available_grid_space, given_size);
+    inner_node_size = growth.unfragmented_size(inner_node_size, given_size);
+
     // KaminIDE patch: элементы подсеток-детей вкладываются в дорожки этой
     // сетки (css-grid-2 §9 (h)); сами подсетки в подсеточной оси пусты (§9 (g)).
     let own_item_count = items.len();
@@ -683,14 +704,28 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         height: f32_max(0.0, container_border_box.height - content_box_inset.vertical_axis_sum()),
     };
 
+    // KaminIDE patch: fragmentation growth after tracks also sizes a content-sized container.
+    let growth_limits = fragmentation_growth::Limits {
+        resolved: resolved_style_size,
+        preferred: preferred_size,
+        inset: content_box_inset.sum_axes(),
+        min: min_size,
+        max: max_size,
+        padding_border: padding_border_size,
+    };
+
     // If only the container's size has been requested
     if run_mode == RunMode::ComputeSize {
-        return LayoutOutput::from_outer_size(container_border_box);
+        return LayoutOutput::from_outer_size(growth.container(
+            container_border_box,
+            Size { width: visible_column_sum, height: initial_row_sum },
+            &growth_limits,
+        ));
     }
 
     // The container's size is now determined, so percentages resolve against its content box when re-running track sizing.
     // This may be a no-op if the container's size was known upfront (in which case it already equals `inner_node_size`).
-    inner_node_size = container_content_box.map(Some);
+    inner_node_size = growth.unfragmented_size(container_content_box.map(Some), given_size);
 
     // Column sizing must be re-run (once) if:
     //   - The grid container's width was initially indefinite and there are any columns with percentage track sizing functions
@@ -891,10 +926,28 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         }
     }
 
+    let track_sums = if growth.is_empty() {
+        Size::ZERO
+    } else {
+        Size {
+            width: table_collapse::visible_sum(&columns, table_collapse.as_ref(), true),
+            height: table_collapse::visible_sum(&rows, table_collapse.as_ref(), false),
+        }
+    };
     // If only the container's size has been requested
     if run_mode == RunMode::ComputeSize {
-        return LayoutOutput::from_outer_size(container_border_box);
+        return LayoutOutput::from_outer_size(growth.container(container_border_box, track_sums, &growth_limits));
     }
+    // KaminIDE patch: content alignment distributes the unfragmented free space; the growth then
+    // moves the tracks after it (`fragmentation_growth`).
+    if !growth.is_empty() {
+        container_border_box = growth.container(container_border_box, track_sums, &growth_limits);
+        container_content_box = Size {
+            width: f32_max(0.0, container_border_box.width - content_box_inset.horizontal_axis_sum()),
+            height: f32_max(0.0, container_border_box.height - content_box_inset.vertical_axis_sum()),
+        };
+    }
+    let alignment_basis = growth.alignment_basis(container_content_box, track_sums, &growth_limits);
 
     // CSS Tables 3: collapse only after the full logical grid has been sized.
     table_collapse::apply(&mut columns, table_collapse.as_ref(), true);
@@ -905,7 +958,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     let inline_size_without_scrollbar = f32_max(container_border_box.width - padding_border_size.width, 0.0);
     let inline_scrollbar_gutter_for_alignment = f32_min(scrollbar_gutter.x, inline_size_without_scrollbar);
     align_tracks(
-        container_content_box.get(AbstractAxis::Inline),
+        alignment_basis.get(AbstractAxis::Inline),
         Line {
             start: padding.left + if direction.is_rtl() { inline_scrollbar_gutter_for_alignment } else { 0.0 },
             end: padding.right + if direction.is_rtl() { 0.0 } else { inline_scrollbar_gutter_for_alignment },
@@ -917,7 +970,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     );
     // Align rows
     align_tracks(
-        container_content_box.get(AbstractAxis::Block),
+        alignment_basis.get(AbstractAxis::Block),
         Line { start: padding.top, end: padding.bottom },
         Line { start: border.top, end: border.bottom },
         &mut rows,
@@ -927,6 +980,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
 
     // KaminIDE patch: дорожки выровнены — подсеткам окончательные размеры
     // по смещениям (доля распределения содержимого входит в зазоры).
+    // Размеры — нефрагментированные; рост фрагментации внутри пролёта подсетка получает отдельно.
     if has_subgrids {
         subgrid::publish_subgrid_tracks(
             tree,
@@ -940,9 +994,19 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             &name_resolver,
             flow,
         );
+        growth.publish_to_subgrids(tree, &items, flow);
         // Сплющенные элементы раскладывает их подсетка.
         items.retain(|item| !item.flattened);
     }
+    growth.shift(
+        &mut columns,
+        &mut rows,
+        flow,
+        Size {
+            width: container_content_box.width - alignment_basis.width,
+            height: container_content_box.height - alignment_basis.height,
+        },
+    );
     // KaminIDE patch: `subgrid::partition_for_axis` permutes the items, so restore document order
     // (upstream #1200 otherwise keeps it; the out-of-flow merge below relies on it).
     items.sort_by_key(|item| item.source_order);

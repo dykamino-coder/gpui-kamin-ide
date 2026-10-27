@@ -20,11 +20,6 @@
     "reason": "Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование."
   },
   {
-    "file": "crates/html/src/layout/fragment/flex_lines/row/geometry.rs",
-    "task": "F2-4",
-    "reason": "Форма flex item оценивается до раскладки строк; удалить в P13 после записи line membership, item rect и consumed/resume каждого item."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/blocks/grid_tree.rs",
     "task": "F2-4",
     "reason": "Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17."
@@ -65,14 +60,9 @@
     "reason": "Reach/Measure сохраняют оценочную legacy-модель страниц и clone; удалить в P22 после живых OOF fragments из P08 и последних readers из P21."
   },
   {
-    "file": "crates/html/src/layout/fragment/paginate/apply.rs",
-    "task": "F2-4",
-    "reason": "Остаток row-gap перенесённого ряда записывается в поля и carried_row_gap; удалить в P13 после усечения зазора строки ограничением раскладки."
-  },
-  {
     "file": "crates/html/src/layout/fragment/paginate/gate.rs",
-    "task": "F2-4",
-    "reason": "Распорки усекают только пиксельный row-gap рядов flex с переносом; удалить отказ после gap constraints для остальных flex/grid осей в P13/P16."
+    "task": "F2-7",
+    "reason": "Распорки DOM не усекают зазоры flex/grid у разрыва (ряды flex гасят их ростом линий измеренного пути); удалить отказ вместе с распорками в P22."
   },
   {
     "file": "crates/html/src/layout/fragment/paginate/mod.rs",
@@ -120,21 +110,6 @@
     "reason": "DOM-dispatch строит preplan до раскладки форматирующих контекстов; удалить в P22 после перевода всех readers на child resume в P21."
   },
   {
-    "file": "crates/html/src/layout/fragment/table_bands/row_geometry.rs",
-    "task": "F2-5",
-    "reason": "Мера ячейки оценивается до раскладки секции; удалить в P17 после recorded row/span metrics и per-cell tokens."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/table_bands/row_shape/captions.rs",
-    "task": "F2-5",
-    "reason": "Подпись таблицы оценивается целиком в clone preplan; удалить в P18 после caption token с consumed и decoration edges поверх P04."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/table_bands/shape_bands.rs",
-    "task": "F2-5",
-    "reason": "Полосы секций и повторов вычисляет рекурсивный estimator; удалить в P18 после продолжений секций и ячеек из P17."
-  },
-  {
     "file": "crates/html/src/layout/fragment/types/scope.rs",
     "task": "F2-7",
     "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."
@@ -170,24 +145,9 @@
     "reason": "Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10."
   },
   {
-    "file": "crates/html/src/layout/page/paged/kids/repeat.rs",
-    "task": "F2-5",
-    "reason": "Шапки и подвалы страниц резервируются оценочным preplan; удалить в P18 после повторов по продолжениям секций и ячеек из P17."
-  },
-  {
     "file": "crates/html/src/layout/page/paged/kids/shape.rs",
     "task": "F2-6",
     "reason": "Группа листа оценивается целиком без PageIdentity и clamp scope продолжения; удалить в P21 после typed child resume поверх P05/P08/P10/P16."
-  },
-  {
-    "file": "crates/html/src/layout/table/finish/captions.rs",
-    "task": "F2-5",
-    "reason": "Сторона подписи читается из cascaded подписи/таблицы вместо собственного computed контекста; удалить обход в P18 после caption token с исходным стилем и владельцем таблицы."
-  },
-  {
-    "file": "crates/html/src/paint/gap_rules/geometry/flex_lines.rs",
-    "task": "F2-4",
-    "reason": "Полоса Taffy включает перенесённый в поля row-gap и paint вычитает его из декораций; удалить компенсацию в P13 после усечения зазора строки ограничением раскладки."
   },
   {
     "file": "crates/html/src/style/cascade/compute/fonts.rs",

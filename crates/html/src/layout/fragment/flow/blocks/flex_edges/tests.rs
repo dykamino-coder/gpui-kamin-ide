@@ -1,4 +1,5 @@
-//! Края колонки следуют order, края ряда — линиям в блочном потоке.
+//! Края колонки и ряда следуют блочному потоку фрагментации: крайний элемент колонки и
+//! крайняя линия ряда.
 use super::*;
 use crate::layout::fragment::flow::blocks::{FlexBox, FlexFrame, FlexLine};
 
@@ -45,15 +46,16 @@ fn scenario(column: bool, lines: &[&[u64]], order: &[u64]) -> (BlockBox, Laid) {
 }
 
 #[test]
-fn column_reverse_propagates_semantic_first_and_last() {
+fn column_reverse_propagates_physical_first_and_last() {
     let (mut root, laid) = scenario(true, &[&[2, 1]], &[1, 2]);
     let items = &mut root.flex.as_mut().unwrap().items;
     items[0].force_before = true;
     items[0].avoid_after = true;
     items[1].avoid_before = true;
     items[1].force_after = true;
-    assert_eq!(root.edge(false, &laid), (true, false));
-    assert_eq!(root.edge(true, &laid), (true, false));
+    // Сверху стоит элемент 2, снизу — 1 (multi-line-column-044).
+    assert_eq!(root.edge(false, &laid), (false, true));
+    assert_eq!(root.edge(true, &laid), (false, true));
 }
 
 #[test]
@@ -153,27 +155,28 @@ fn reversed_row_line_break_moves_container_after_preceding_content() {
 }
 
 #[test]
-fn reverse_columns_each_propagate_their_semantic_edges() {
+fn reverse_columns_each_propagate_their_physical_edges() {
     let (mut root, laid) = scenario(true, &[&[4, 3], &[2, 1]], &[1, 2, 3, 4]);
     let items = &mut root.flex.as_mut().unwrap().items;
-    items[0].avoid_before = true;
-    items[2].force_before = true;
-    items[1].avoid_after = true;
-    items[3].force_after = true;
+    items[3].avoid_before = true;
+    items[1].force_before = true;
+    items[2].avoid_after = true;
+    items[0].force_after = true;
     assert_eq!(root.edge(false, &laid), (true, true));
     assert_eq!(root.edge(true, &laid), (true, true));
 }
 
 #[test]
-fn order_modified_edges_are_independent_of_node_ids_and_coordinates() {
+fn column_edges_follow_coordinates_not_node_ids_or_order() {
     let (mut root, laid) = scenario(true, &[&[2, 4, 1, 3]], &[3, 1, 4, 2]);
     let items = &mut root.flex.as_mut().unwrap().items;
     items[0].force_before = true;
     items[0].avoid_after = true;
     items[3].avoid_before = true;
     items[3].force_after = true;
-    assert_eq!(root.edge(false, &laid), (true, false));
-    assert_eq!(root.edge(true, &laid), (true, false));
+    // Физически первый — 2 (avoid_before), последний — 3 (avoid_after).
+    assert_eq!(root.edge(false, &laid), (false, true));
+    assert_eq!(root.edge(true, &laid), (false, true));
 }
 
 #[test]
@@ -210,8 +213,9 @@ fn css_order_precedes_reverse_for_forced_and_avoid_propagation() {
         .collect();
     assert_eq!(ids.len(), 4);
     let physical: Vec<_> = ids.iter().copied().rev().collect();
-    for column in [false, true] {
-        let (mut root, laid) = scenario(column, &[&physical], &ids);
+    // Ряд: единица разрыва — линия, её края — края контейнера.
+    {
+        let (mut root, laid) = scenario(false, &[&physical], &ids);
         let items = &mut root.flex.as_mut().unwrap().items;
         items[0].force_before = true;
         items[0].avoid_before = true;

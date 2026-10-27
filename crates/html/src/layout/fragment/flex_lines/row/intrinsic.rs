@@ -3,7 +3,7 @@
 //! и ограничения ширины требуют циклического разрешения и дают `None`.
 
 use super::super::items::row_item_width;
-use super::geometry::row_container;
+use super::container::row_container;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;

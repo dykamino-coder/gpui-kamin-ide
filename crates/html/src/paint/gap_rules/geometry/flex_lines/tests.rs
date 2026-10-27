@@ -1,7 +1,7 @@
-//! Границы правил из настоящих полос строк, включая перенос и усечение row-gap.
+//! Границы правил из настоящих полос строк, включая промежуток, погашенный у разрыва.
 
 use super::*;
-use gpui::{FlexItemLayout, FlexLineLayout};
+use gpui::{FlexItemLayout, FlexLineLayout, LayoutId};
 
 fn ids() -> [LayoutId; 4] {
     std::array::from_fn(|index| taffy::NodeId::from(index).into())
@@ -37,17 +37,16 @@ fn runs(lines: &FlexLines) -> (Vec<super::super::GapRun>, Vec<super::super::GapR
 }
 
 #[test]
-fn carried_row_gap_keeps_its_center_and_suppressed_gap_keeps_its_slot() {
+fn suppressed_row_gap_keeps_its_slot_and_center() {
     for remaining in [10.0, 4.0, 0.0] {
         use taffy::prelude::*;
         let mut tree: TaffyTree<()> = TaffyTree::new();
-        let mut child = Style {
+        let child = Style {
             size: Size::from_lengths(40.0, 50.0),
             flex_shrink: 0.0,
             ..Style::DEFAULT
         };
         let first = tree.new_leaf(child.clone()).unwrap();
-        child.margin.top = LengthPercentageAuto::length(remaining);
         let second = tree.new_leaf(child).unwrap();
         let root = tree
             .new_with_children(
@@ -57,10 +56,17 @@ fn carried_row_gap_keeps_its_center_and_suppressed_gap_keeps_its_slot() {
                         height: Dimension::auto(),
                     },
                     flex_wrap: FlexWrap::Wrap,
+                    gap: Size {
+                        width: LengthPercentage::length(0.0),
+                        height: LengthPercentage::length(10.0),
+                    },
                     ..Style::DEFAULT
                 },
                 &[first, second],
             )
+            .unwrap();
+        // Отрицательный рост линии гасит часть промежутка у разрыва.
+        tree.set_flex_line_fragmentation_growth(root, vec![remaining - 10.0])
             .unwrap();
         tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
         let taffy::DetailedLayoutInfo::Flex(native) = tree.detailed_layout_info(root) else {
@@ -82,11 +88,7 @@ fn carried_row_gap_keeps_its_center_and_suppressed_gap_keeps_its_slot() {
                 })
                 .collect(),
         };
-        let lines = FlexLines::from_layout(
-            (0.0, 0.0),
-            &layout,
-            &HashMap::from([(second.into(), remaining)]),
-        );
+        let lines = FlexLines::from_layout((0.0, 0.0), &layout);
         let (main, _) = runs(&lines);
         assert_eq!(main.len(), 1);
         assert_eq!((main[0].g0 + main[0].g1) / 2.0, 50.0 + remaining / 2.0);
@@ -112,7 +114,7 @@ fn line_boundaries_include_alignment_space_instead_of_item_extents() {
             },
         ],
     };
-    let lines = FlexLines::from_layout((3.0, 7.0), &layout, &HashMap::new());
+    let lines = FlexLines::from_layout((3.0, 7.0), &layout);
     let (main, _) = runs(&lines);
     assert_eq!((main[0].g0, main[0].g1), (87.0, 107.0));
 }
@@ -137,7 +139,7 @@ fn overlapping_items_do_not_merge_distinct_native_lines() {
             },
         ],
     };
-    let lines = FlexLines::from_layout((0.0, 0.0), &layout, &HashMap::new());
+    let lines = FlexLines::from_layout((0.0, 0.0), &layout);
     let (main, cross) = runs(&lines);
     assert_eq!(main.len(), 1);
     assert_eq!(cross.len(), 2);
@@ -168,7 +170,7 @@ fn physical_sort_preserves_native_membership_for_columns_and_nan() {
             },
         ],
     };
-    let lines = FlexLines::from_layout((3.0, 7.0), &layout, &HashMap::new());
+    let lines = FlexLines::from_layout((3.0, 7.0), &layout);
     assert_eq!(&lines.lines[..2], &[(3.0, 53.0), (63.0, 113.0)]);
     assert_eq!(lines.members[0][0].b0, 19.0);
     assert_eq!(lines.members[1][0].b0, 15.0);

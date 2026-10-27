@@ -2,12 +2,9 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::{clone_dec, solid_box};
-use crate::layout::fragment::table_bands::repeat_leads;
 use crate::layout::multicol::spanner::parallel_items_inside;
-use crate::layout::options::RenderOpts;
 
 // The clone plan preserves each child's measured shape and painting callback.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -21,7 +18,6 @@ pub(super) fn clone_plan_of(
     kids: &[(Element, crate::layout::fragment::Shape)],
     prepared: &[crate::layout::multicol::stack_child::Prepared],
     vcx: ValueCx<'_>,
-    opts: &RenderOpts,
 ) -> Vec<Vec<(f32, f32)>> {
     let clone_plan: Vec<Vec<(f32, f32)>> =
         if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
@@ -53,7 +49,7 @@ pub(super) fn clone_plan_of(
                         overflow_top: fixed.is_some()
                             && rows.is_none()
                             && !parallel_items_inside(c, 4, vcx),
-                        repeat: repeat_leads(c, fixed, rows, ShapeCx::COLUMNS.observed(opts), vcx),
+                        repeat: Default::default(),
                         par: kid_par[pi],
                     }
                 })

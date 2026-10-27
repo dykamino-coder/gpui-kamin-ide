@@ -70,7 +70,7 @@ pub fn render_paged_select(
     let mut canvas_img: Option<crate::style::computed::Computed> = None;
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
-    crate::interactive::frame::frame_sanitize(vcx);
+    crate::interactive::frame::frame_sanitize(&opts.cx);
     opts.cx.contracts.build.paint_resources(nodes, vcx);
     // CSS2 §10: сохраняем цепочку CB до снятия html/body и named wrappers.
     let (mut nodes, percentages) =

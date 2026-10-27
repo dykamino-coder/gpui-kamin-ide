@@ -50,7 +50,9 @@ fn actual_line_membership_overrides_dom_sequence() {
     let m = b
         .breaks(100.0, &laid)
         .finish(FlowGeometry::default(), 100.0);
-    assert_eq!(m.cuts, vec![(50.0, 60.0)]);
+    // Промежуток 50..60 — пустое место контейнера, а не пропуск копии.
+    assert_eq!(m.cuts, vec![(60.0, 60.0)]);
+    assert!(!m.solid.iter().any(|&(a, b)| a < 55.0 && 55.0 < b));
     assert!(m.solid.contains(&(0.0, 50.0)));
     assert!(m.solid.contains(&(60.0, 100.0)));
     assert_eq!(

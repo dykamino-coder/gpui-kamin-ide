@@ -1,6 +1,7 @@
 import ast
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,9 +12,32 @@ sys.path[:0]=[str(ROOT/'scripts'),str(OUT)]
 from migration_guards import GUARDS, HELPERS, MARKER, transform, plan
 from migration_write import apply
 
+# The live guards are adapted by the first crate extraction (kamin-font-facts).
+# The adapter contract is still exercised on the exact unadapted guard sources
+# of the last revision before that extraction.
+UNADAPTED='3727c9217d0b4f92c914ec6160df55cb1c156b6b'
+
+
+def unadapted(name):
+    live=(ROOT/'scripts'/name).read_bytes().decode('utf-8')
+    if not live.endswith(MARKER):
+        return live
+    try:
+        return subprocess.check_output(['git','-C',str(ROOT),'show',f'{UNADAPTED}:scripts/{name}'],
+                                       stderr=subprocess.DEVNULL).decode('utf-8')
+    except (OSError,subprocess.CalledProcessError):
+        raise unittest.SkipTest(f'unadapted guard revision {UNADAPTED} is not available')
+
+
 class GuardPlanTests(unittest.TestCase):
     def setUp(self):
-        self.inputs={name:(ROOT/'scripts'/name).read_bytes().decode('utf-8') for name in GUARDS}
+        self.inputs={name:unadapted(name) for name in GUARDS}
+
+    def test_live_guards_are_the_adapter_output(self):
+        live={name:(ROOT/'scripts'/name).read_bytes().decode('utf-8') for name in GUARDS}
+        if not all(text.endswith(MARKER) for text in live.values()):
+            self.skipTest('guards are not adapted yet')
+        self.assertEqual(transform(self.inputs),live)
 
     def test_transform_preserves_limits_and_uses_phase_inventory(self):
         result=transform(self.inputs)

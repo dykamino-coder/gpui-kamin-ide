@@ -19,14 +19,29 @@ impl BlockBox {
                     frame.lines.first()
                 };
                 for line in &frame.lines {
-                    let edge_item = if last {
-                        line.order.last()
-                    } else {
-                        line.order.first()
-                    };
+                    // Край колонки — её крайний элемент в блочном потоке
+                    // фрагментации: тот же порядок, что у разрывов между
+                    // соседями линии (Blink переносит front/back линии после
+                    // `ApplyReversals`). Анонимный элемент без записанной
+                    // геометрии может стоять на краю: переноса нет.
+                    let edge_item = line
+                        .order
+                        .iter()
+                        .all(|entry| entry.1.is_some())
+                        .then(|| {
+                            line.items
+                                .iter()
+                                .filter_map(|&id| laid.at(id).map(|span| (id, span)))
+                                .reduce(|a, b| {
+                                    let further = if last { b.1.1 > a.1.1 } else { b.1.0 < a.1.0 };
+                                    if further { b } else { a }
+                                })
+                        })
+                        .flatten()
+                        .map(|edge| edge.0);
                     for item in &flex.items {
                         let at_edge = if frame.column {
-                            edge_item.is_some_and(|edge| edge.1 == Some(item.id))
+                            edge_item == Some(item.id)
                         } else {
                             edge_line.is_some_and(|edge| edge.index == line.index)
                                 && line.items.contains(&item.id)

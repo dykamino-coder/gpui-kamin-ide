@@ -7,7 +7,7 @@
 use super::{FontRequest, FontStyle};
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Face {
+pub struct Face {
     pub width: (f32, f32),
     pub weight: (f32, f32),
     pub slope: u8,
@@ -17,7 +17,7 @@ pub(crate) struct Face {
     pub features: Vec<(String, u32)>,
 }
 
-pub(crate) fn range(value: Option<&str>, default: f32) -> (f32, f32) {
+pub fn range(value: Option<&str>, default: f32) -> (f32, f32) {
     let Some(value) = value else {
         return (default, default);
     };
@@ -40,7 +40,7 @@ pub(crate) fn range(value: Option<&str>, default: f32) -> (f32, f32) {
     (lo.min(hi), lo.max(hi))
 }
 
-pub(crate) fn angle(value: &str) -> Option<f32> {
+pub fn angle(value: &str) -> Option<f32> {
     let (number, scale) = if let Some(v) = value.strip_suffix("deg") {
         (v, 1.0)
     } else if let Some(v) = value.strip_suffix("grad") {
@@ -54,7 +54,7 @@ pub(crate) fn angle(value: &str) -> Option<f32> {
     (angle.is_finite() && (-90.0..=90.0).contains(&angle)).then_some(angle)
 }
 
-pub(crate) fn slope(value: Option<&str>) -> (u8, (f32, f32)) {
+pub fn slope(value: Option<&str>) -> (u8, (f32, f32)) {
     let mut parts = value.unwrap_or("normal").split_whitespace();
     match parts.next() {
         Some("italic") => (1, (0.0, 0.0)),
@@ -149,7 +149,7 @@ fn style(face: &Face, request: &FontRequest<'_>) -> (u8, f32) {
     }
 }
 
-pub(crate) fn select(faces: &[Face], request: &FontRequest<'_>) -> Option<Face> {
+pub fn select(faces: &[Face], request: &FontRequest<'_>) -> Option<Face> {
     {
         let width = request.width;
         let rank = |face: &Face| {
@@ -178,7 +178,7 @@ pub(crate) fn select(faces: &[Face], request: &FontRequest<'_>) -> Option<Face> 
 
 /// Descriptor capabilities override binary style metadata: an oblique/bold
 /// face supplies that style even if its OS/2 flags say normal.
-pub(crate) fn features(face: Face, request: &FontRequest<'_>) -> Vec<(String, u32)> {
+pub fn features(face: Face, request: &FontRequest<'_>) -> Vec<(String, u32)> {
     let mut out = face.features;
     let weight = request.weight;
     // A regular request cannot need artificial bold. Keeping its flags equal

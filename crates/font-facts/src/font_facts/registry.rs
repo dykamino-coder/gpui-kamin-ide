@@ -4,10 +4,10 @@ use super::{FontEnvironmentId, FontRequest, matching};
 use std::collections::{HashMap, HashSet};
 use std::{rc::Rc, sync::Arc};
 
-pub(crate) type FeatureDefinitions = HashMap<(String, String, String), (Vec<u32>, Vec<u32>)>;
+pub type FeatureDefinitions = HashMap<(String, String, String), (Vec<u32>, Vec<u32>)>;
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct Registry {
+pub struct Registry {
     pub default_family: String,
     pub installed: Rc<HashSet<String>>,
     pub aliases: HashMap<String, String>,
@@ -22,9 +22,9 @@ pub(crate) struct Registry {
 /// Данные удерживаются снимком; новая регистрация не меняет старый снимок.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FontRegistrySnapshot {
-    pub(crate) environment: FontEnvironmentId,
-    pub(crate) generation: u64,
-    pub(crate) registry: Rc<Registry>,
+    pub environment: FontEnvironmentId,
+    pub generation: u64,
+    pub registry: Rc<Registry>,
 }
 
 impl FontRegistrySnapshot {
@@ -90,28 +90,20 @@ impl FontRegistrySnapshot {
             .unwrap_or("JetBrains Mono")
     }
 
-    pub(crate) fn matching_face(
-        &self,
-        family: &str,
-        request: FontRequest<'_>,
-    ) -> Option<matching::Face> {
+    pub fn matching_face(&self, family: &str, request: FontRequest<'_>) -> Option<matching::Face> {
         matching::select(
             self.registry.faces.get(&family.to_ascii_lowercase())?,
             &request,
         )
     }
 
-    pub(crate) fn alias_for(&self, family: &str, request: FontRequest<'_>) -> Option<String> {
+    pub fn alias_for(&self, family: &str, request: FontRequest<'_>) -> Option<String> {
         self.matching_face(family, request)
             .map(|f| f.family)
             .or_else(|| self.alias(family))
     }
 
-    pub(crate) fn face_features(
-        &self,
-        family: &str,
-        request: FontRequest<'_>,
-    ) -> Vec<(String, u32)> {
+    pub fn face_features(&self, family: &str, request: FontRequest<'_>) -> Vec<(String, u32)> {
         self.matching_face(family, request)
             .map(|face| matching::features(face, &request))
             .unwrap_or_else(|| {
@@ -123,7 +115,7 @@ impl FontRegistrySnapshot {
             })
     }
 
-    pub(crate) fn alternates(&self) -> Arc<FeatureDefinitions> {
+    pub fn alternates(&self) -> Arc<FeatureDefinitions> {
         self.registry.alternates.clone()
     }
 }

@@ -1,20 +1,8 @@
 //! Native-копии floats: замер без оценки и сохранение parallel overflow P05.
 
 use super::*;
-use crate::layout::fragment::types::StackAxis;
-use crate::layout::multicol::deferred::Recipe;
+use crate::layout::multicol::measure::native_dispatch_tests::{host, two_columns};
 use crate::layout::options::RenderOpts;
-
-fn host(nodes: &[Node]) -> &Element {
-    fn find(nodes: &[Node]) -> Option<&Element> {
-        nodes.iter().find_map(|n| match n {
-            Node::Element(e) if e.tag == "div" => Some(e),
-            Node::Element(e) => find(&e.children),
-            _ => None,
-        })
-    }
-    find(nodes).expect("authored host")
-}
 
 #[gpui::test]
 fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins(
@@ -33,17 +21,7 @@ fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins(
         frag: Default::default(),
     };
     opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
-    let recipe = Recipe::new(
-        host(&tree),
-        &BoxStyle::default(),
-        &opts,
-        2,
-        0.0,
-        Some(100.0),
-        StackAxis::Horizontal,
-        None,
-    )
-    .expect("deferred native float");
+    let recipe = two_columns(host(&tree), &opts).expect("deferred native float");
     cx.draw(
         gpui::point(gpui::px(0.), gpui::px(0.)),
         gpui::size(gpui::px(400.), gpui::px(400.)),
@@ -81,17 +59,7 @@ fn empty_float_host_is_measured_without_a_height_estimate(cx: &mut gpui::TestApp
         cx: Default::default(),
         frag: Default::default(),
     };
-    let recipe = Recipe::new(
-        host(&tree),
-        &BoxStyle::default(),
-        &opts,
-        2,
-        0.0,
-        Some(100.0),
-        StackAxis::Horizontal,
-        None,
-    )
-    .unwrap();
+    let recipe = two_columns(host(&tree), &opts).unwrap();
     cx.draw(
         gpui::point(gpui::px(0.), gpui::px(0.)),
         gpui::size(gpui::px(400.), gpui::px(400.)),

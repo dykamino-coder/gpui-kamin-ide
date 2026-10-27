@@ -62,16 +62,21 @@ impl FlexBox {
                     || items.clone().any(|i| i.edge(false, laid).0);
                 // Поля, примыкающие к непринудительному разрыву, усекаются, после
                 // принудительного — сохраняются (css-break-3 §5.2): продолжение
-                // начинается с border box первого элемента линии, как и после
-                // промежутка (row-gap) у разрыва.
-                let next = if force {
-                    line.start
+                // начинается с border box первого элемента линии.
+                // Эффективный промежуток перед линией (row-gap и место
+                // align-content) — пустое место контейнера: мягкий разрыв ложится
+                // и в него, а непоглощённую часть гасит рост линии
+                // (`suppressed_row_gaps`), не пропуск содержимого копии —
+                // заданный размер контейнера сохраняется (css-gaps-1 §2; Blink
+                // `UpdateOffsetAdjustmentForSuppressedRowGap`).
+                let (from, next) = if force {
+                    (prev.end, line.start)
                 } else {
-                    line_top(line, laid)
+                    (line.start, line_top(line, laid))
                 };
-                out.cuts.push((prev.end, next));
-                if next > prev.end + COORD_EPS {
-                    out.hold((prev.end, next + COORD_EPS));
+                out.cuts.push((from, next));
+                if next > from + COORD_EPS {
+                    out.hold((from, next + COORD_EPS));
                 }
                 if force {
                     out.forced.push(line.start);

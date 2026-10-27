@@ -50,6 +50,8 @@ pub(super) fn apply(
     if axis == dir.cross_axis() {
         let count = lines.len();
         let mut growth_sum = 0.0;
+        let mut suppression = crate::util::sys::Vec::new();
+        suppression.resize(count, 0.0);
         for (index, line) in lines.iter_mut().enumerate() {
             let physical = if constants.is_wrap_reverse {
                 count - 1 - index
@@ -79,6 +81,12 @@ pub(super) fn apply(
                     .fold(0.0, f32::max);
             }
             let growth = tree.flex_line_fragmentation_growth(node, physical);
+            // A negative value suppresses the gap after the line (css-gaps-1 §2:
+            // gaps at a fragmentation break are removed); the line keeps its size.
+            if growth < 0.0 {
+                suppression[physical] = growth;
+                continue;
+            }
             line.cross_size += growth;
             // In a reversed block flow the item stays at the expanded line's high edge.
             if reversed && !line.fragmented {
@@ -87,6 +95,22 @@ pub(super) fn apply(
             growth_sum += growth;
         }
         let native_reversed = constants.is_column && constants.layout_direction.is_rtl();
+        let suppressed: f32 = suppression.iter().sum();
+        if suppressed < 0.0 {
+            // Lines after the gap in block progression move towards block-start,
+            // after alignment (Blink adjusts row offsets once rows are placed).
+            let forward = reversed == native_reversed;
+            for (index, line) in lines.iter_mut().enumerate() {
+                let physical = if constants.is_wrap_reverse { count - 1 - index } else { index };
+                let before: f32 = if forward {
+                    suppression[..physical].iter().sum()
+                } else {
+                    suppression[physical + 1..].iter().sum()
+                };
+                line.fragmentation_shift += if reversed { -before } else { before };
+            }
+            constants.fragmentation_suppression = suppressed;
+        }
         if known.cross(dir).is_some() {
             constants.fragmentation_cross_alignment = growth_sum;
         }
@@ -105,6 +129,43 @@ pub(super) fn apply(
         constants
             .inner_container_size
             .set_main(dir, constants.inner_container_size.main(dir) + growth);
+    }
+}
+
+/// A content-sized container shrinks by its suppressed gaps (clamped by min/max),
+/// while align-content keeps the free space of the unfragmented layout.
+pub(super) fn settle_suppression(
+    lines: &mut [FlexLine],
+    known: Size<Option<f32>>,
+    constants: &mut AlgoConstants,
+) {
+    let dir = constants.dir;
+    let suppressed = constants.fragmentation_suppression;
+    if suppressed >= 0.0 || known.cross(dir).is_some() {
+        return;
+    }
+    let padding_border = constants.content_box_inset.cross_axis_sum(dir);
+    let content = lines.iter().map(|line| line.cross_size).sum::<f32>()
+        + sum_axis_gaps(constants.gap.cross(dir), lines.len())
+        + padding_border;
+    let outer = (content + suppressed)
+        .maybe_clamp(constants.min_size.cross(dir), constants.max_size.cross(dir))
+        .max(padding_border - constants.scrollbar_gutter.cross(dir));
+    let delta = outer - constants.container_size.cross(dir);
+    constants.container_size.set_cross(dir, outer);
+    constants.inner_container_size.set_cross(dir, f32_max(outer - padding_border, 0.0));
+    constants.fragmentation_cross_alignment -= delta;
+    // Lines stay at their distance from the block-start edge of the shrunk box.
+    let native_reversed = constants.is_column && constants.layout_direction.is_rtl();
+    let shift = match (constants.fragmentation_axis.1, native_reversed) {
+        (true, false) => delta,
+        (false, true) => -delta,
+        _ => 0.0,
+    };
+    if shift != 0.0 {
+        for line in lines {
+            line.fragmentation_shift += shift;
+        }
     }
 }
 

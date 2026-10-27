@@ -169,6 +169,16 @@ impl TableBox {
                 edge: first,
             });
         }
+        // Зазор `border-spacing` после последнего ряда на разрыве усекается
+        // (Blink `table_layout_algorithm.cc` «Truncate trailing border-spacing
+        // to fit within the fragmentainer»): без нижней рамки и отбивки коробка
+        // таблицы может кончиться сразу после последнего ряда.
+        if !f.rows.is_empty()
+            && table_bottom <= grid_bottom + COORD_EPS
+            && table_bottom > y + COORD_EPS
+        {
+            out.cuts.push((y, table_bottom));
+        }
         // Нижняя рамка с отбивкой таблицы приклеена к содержимому, кончающемуся
         // на низу последнего ряда (класс C — только при ненулевом зазоре,
         // css-break-4 §possible-breaks; Blink `FinishFragmentation`).

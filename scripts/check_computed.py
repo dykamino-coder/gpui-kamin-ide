@@ -10,16 +10,15 @@ Record accepted owner transfers with --write before committing their source diff
 
 import argparse
 from collections import Counter
-import io
 import json
 from pathlib import Path
 import subprocess
 import sys
-import tarfile
 
 # Embedded Python distributions may omit the script directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from computed_access import PREFIX, aggregate, guarded
+from computed_access import aggregate, guarded
+from html_source_inventory import texts
 from computed_f2_rebaseline import approved_base
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,12 +30,7 @@ def git(root, *args):
 
 
 def sources(root, revision=None):
-    if revision:
-        with tarfile.open(fileobj=io.BytesIO(git(root, 'archive', revision, PREFIX))) as archive:
-            return {p.name: archive.extractfile(p).read().decode('utf-8')
-                    for p in archive if p.isfile() and p.name.endswith('.rs')}
-    return {p.relative_to(root).as_posix(): p.read_text(encoding='utf-8')
-            for p in (root / PREFIX).rglob('*.rs')}
+    return texts(root, revision)
 
 
 def decode(documents):
@@ -182,3 +176,5 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
+# KaminIDE crate-split guard adapter schema 1

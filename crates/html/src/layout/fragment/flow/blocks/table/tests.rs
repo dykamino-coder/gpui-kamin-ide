@@ -5,10 +5,17 @@ use crate::layout::fragment::flow::FlowGeometry;
 use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed, TableFrame};
 use crate::style::computed::Display;
 
+mod captions;
+
 /// Стопка первой таблицы документа (`display: table`) и номера узлов блоков
 /// `<p>` в её ячейках в порядке документа.
 fn table(html: &str) -> (BlockBox, Vec<u64>) {
-    let doc = crate::dom::parse(html, "");
+    collected(&crate::dom::parse(html, ""))
+}
+
+/// Стопка первой таблицы разобранного документа `doc` и номера узлов `<p>`
+/// её ячеек.
+fn collected(doc: &crate::dom::Parsed) -> (BlockBox, Vec<u64>) {
     fn find(n: &Node) -> Option<&Element> {
         let Node::Element(e) = n else { return None };
         if e.style.used().display == Some(Display::Table) {
@@ -190,4 +197,27 @@ fn caption_line_geometry_stays_inside_the_table_wrapper_flow() {
     assert!(m.cuts.is_empty());
     assert_eq!(m.solid, vec![(0.0, 32.0)]);
     assert_eq!(b.pushed_at(0.0, &laid), Some(Pushed::Box(cap)));
+}
+
+#[test]
+fn trailing_border_spacing_is_truncated_at_a_break() {
+    // Без нижней рамки и отбивки коробка таблицы кончается сразу после
+    // последнего ряда, если разрыв приходится на зазор под ним (Blink
+    // «Truncate trailing border-spacing to fit within the fragmentainer»).
+    let (b, _) = table(&rows(&["", ""], "x"));
+    let mut laid = Laid::default();
+    laid.tables.insert(
+        key(&b),
+        TableFrame {
+            table: (0.0, 70.0),
+            grid: (0.0, 70.0),
+            rows: vec![(10.0, 30.0), (40.0, 60.0)],
+        },
+    );
+    let (cuts, _, _) = finish(&b, &laid);
+    assert_eq!(cuts, vec![(30.0, 40.0), (60.0, 70.0)]);
+    // Нижняя рамка с отбивкой остаётся с последним рядом: усекать нечего.
+    let (cuts, _, solid) = finish(&b, &frame(key(&b), &[]));
+    assert_eq!(cuts, vec![(30.0, 32.0)]);
+    assert!(solid.contains(&(90.0, 100.0)));
 }

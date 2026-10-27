@@ -72,10 +72,9 @@ pub(crate) fn serial_table_parallel(
 
 #[cfg(test)]
 mod tests {
-    //! Check anonymous serial cell topology and preserve intrinsic monolithic cuts.
+    //! Check anonymous serial cell topology.
 
     use super::*;
-    use crate::layout::fragment::ShapeCx;
     use crate::layout::table::anon::anon_element;
     use crate::style::values::value::Len;
 
@@ -141,29 +140,5 @@ mod tests {
             ),
             Some(true)
         );
-    }
-
-    #[test]
-    fn satisfied_height_floor_retains_intrinsic_cell_breaks() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
-        let mut table = table(vec![block(), block()]);
-        table.style.used_mut().height = Some(Len::Px(200.0));
-        let shape = super::super::table_shape(&table, 4, ShapeCx::COLUMNS, vcx).unwrap();
-        assert_eq!(shape.height, 200.0);
-        assert!(
-            shape
-                .cuts
-                .iter()
-                .any(|&(need, _)| (need - 100.0).abs() < 0.01)
-        );
-        assert!(
-            shape
-                .solid
-                .iter()
-                .any(|&(start, end)| start == 0.0 && end == 100.0)
-        );
-        table.style.used_mut().height = Some(Len::Px(300.0));
-        assert!(super::super::table_shape(&table, 4, ShapeCx::COLUMNS, vcx).is_none());
     }
 }

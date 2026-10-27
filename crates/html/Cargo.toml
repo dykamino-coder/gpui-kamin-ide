@@ -26,6 +26,8 @@ name = "wptrun"
 required-features = ["wpt-harness"]
 
 [dependencies]
+# Нижний контракт шрифтов; реэкспорт `kamin_html::font_facts` сохраняет путь.
+kamin-font-facts = { path = "../font-facts" }
 # Продолжения обхода боксов в куче, без роста нативного стека.
 reblessive = "0.4.3"
 url = "2"

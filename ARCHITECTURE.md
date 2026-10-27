@@ -130,6 +130,17 @@ SVG; `loader` и `images` не импортируют фазы, `render` или 
 покрытия свойств; таблица в `docs/html-css-mapping.html` генерируется
 `python scripts/css_coverage_table.py`).
 
+Движок выделяется в крейты по фазам снизу вверх. Первый нижний крейт —
+`crates/font-facts` (`kamin-font-facts`): нейтральные запросы и факты
+шрифтов (`font_facts`), без GPUI, CSS, DOM и без зависимостей. `kamin-html`
+реэкспортирует модуль (`pub use kamin_font_facts::font_facts`), поэтому
+`kamin_html::font_facts` и внутренние пути `crate::font_facts` прежние.
+Загрузка шрифтов и метрики платформы остаются в `text/fonts`. Проверки
+исходников (`check_layer_imports`, `check_conventions`, `check_transitional`,
+`check_computed`) читают выделенные крейты через
+`scripts/html_source_inventory.py` по логическим путям `crates/html/src/…`,
+так что перенос не сбрасывает накопленные пределы.
+
 Это правило **типов и импортов**, включая реэкспорты, полные пути вызовов,
 тесты и отключённые `cfg`-ветви. В частности, `dom` не зависит от
 `layout`/`text`/`paint`/`svg`, `style` — от `layout`/`text`/`paint`/`svg`,
@@ -167,7 +178,7 @@ SVG; `loader` и `images` не импортируют фазы, `render` или 
 
 Проверка: `python scripts/check_transitional.py --base origin/main`
 (`origin/main` — база по умолчанию). Проверяются комментарии во всех `.rs`
-в `crates/html` и `vendor`, включая тесты и отключённые `cfg`-ветви;
+в `crates/html`, выделенных крейтах движка и `vendor`, включая тесты и отключённые `cfg`-ветви;
 строковые литералы и vendor-патчи не учитываются. Незарегистрированная метка,
 устаревшая запись и повтор одной тройки ломают проверку. CI рядом с проверкой
 слоёв запрещает рост числа записей относительно merge-base с переданной

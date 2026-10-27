@@ -43,8 +43,8 @@ pub mod tolerance;
 pub use style::css;
 pub(crate) mod box_facts;
 pub mod dom;
-pub mod font_facts;
 pub use dom::encoding;
+pub use kamin_font_facts::font_facts;
 /// Внешний путь геометрии страниц (`kamin_html::flow::PageGeom`).
 pub mod flow {
     pub use crate::layout::page::page_stack::{PageGeom, PageGeomFn};

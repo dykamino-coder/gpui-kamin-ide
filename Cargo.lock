@@ -3838,6 +3838,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kamin-font-facts"
+version = "1.0.80"
+
+[[package]]
 name = "kamin-html"
 version = "1.0.80"
 dependencies = [
@@ -3848,6 +3852,7 @@ dependencies = [
  "html5ever 0.40.1",
  "hypher",
  "image",
+ "kamin-font-facts",
  "kurbo 0.13.1",
  "markup5ever_rcdom 0.39.0+unofficial",
  "png 0.18.1",

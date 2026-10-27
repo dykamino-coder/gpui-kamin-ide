@@ -15,7 +15,6 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::Display;
-use crate::style::values::value::Len;
 mod candidates;
 mod gate;
 pub(crate) use gate::gate;
@@ -40,10 +39,6 @@ pub(crate) enum Cand {
     /// `GiveItemsFinalPositionAndSizeForFragmentation`), so a strut among
     /// its siblings must not shrink or grow it.
     Item,
-    /// Item of a wrapping flex row whose rows are separated by `row-gap`: a
-    /// gap adjoining a break is truncated (Blink
-    /// `UpdateOffsetAdjustmentForSuppressedRowGap`).
-    Gap { gap: f32, parent: u64 },
     /// `break-before: avoid` on this box (or `break-after: avoid` on `prev`):
     /// a fragmentainer boundary right at this edge violates it, and the
     /// earlier breakpoint before `prev` has the better appeal (css-break-3
@@ -58,21 +53,6 @@ fn row_flex(s: &crate::style::computed::Computed) -> bool {
             s.flex_dir,
             None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
         )
-}
-
-/// The px `row-gap` of a wrapping flex row.
-pub(crate) fn row_gap(s: &crate::style::computed::Computed) -> Option<f32> {
-    match s.gap {
-        Some((Some(Len::Px(g)), _))
-            if g > 0.0
-                && row_flex(s)
-                && s.flex_wrap == Some(true)
-                && s.flex_wrap_reverse != Some(true) =>
-        {
-            Some(g)
-        }
-        _ => None,
-    }
 }
 
 fn column_flex(s: &crate::style::computed::Computed) -> bool {

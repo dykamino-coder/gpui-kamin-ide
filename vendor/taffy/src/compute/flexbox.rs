@@ -230,6 +230,8 @@ struct AlgoConstants {
     fragmentation_main_growth: f32,
     /// Fragmentainer growth excluded from native align-content free space.
     fragmentation_cross_alignment: f32,
+    /// Sum of gaps suppressed at fragmentainer breaks (negative or zero).
+    fragmentation_suppression: f32,
     /// Is this segment a row
     is_row: bool,
     /// Is this segment a column
@@ -818,6 +820,7 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     // 15. Determine the flex container’s used cross size.
     debug_log!("determine_container_cross_size");
     let total_line_cross_size = determine_container_cross_size(&flex_lines, known_dimensions, &mut constants);
+    fragmentation::settle_suppression(&mut flex_lines, known_dimensions, &mut constants);
 
     // We have the container size.
     // If our caller does not care about performing layout we are done now.
@@ -1104,6 +1107,7 @@ fn compute_constants(
         fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
         fragmentation_main_growth: 0.0,
         fragmentation_cross_alignment: 0.0,
+        fragmentation_suppression: 0.0,
         is_row,
         is_column,
         is_wrap,

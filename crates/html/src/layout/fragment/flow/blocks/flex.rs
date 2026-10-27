@@ -181,11 +181,7 @@ impl BlockBox {
                 {
                     continue;
                 }
-                let forced = flex.items.iter().any(|item| {
-                    (previous.items.contains(&item.id) && item.edge(true, laid).0)
-                        || (next.items.contains(&item.id) && item.edge(false, laid).0)
-                });
-                if forced {
+                if flex.forced_between(previous, next, laid) {
                     out.push((
                         FlexPush {
                             container: self.id,
@@ -196,8 +192,27 @@ impl BlockBox {
                 }
             }
         }
-        for inner in self
-            .kids
+        for inner in self.nested() {
+            inner.zero_forced_flex_lines(laid, out);
+        }
+    }
+}
+
+impl FlexBox {
+    /// Принудительная граница между соседними линиями ряда: `break-after`
+    /// элемента прежней или `break-before` элемента следующей (css-flexbox-1 §10).
+    pub(super) fn forced_between(&self, previous: &FlexLine, next: &FlexLine, laid: &Laid) -> bool {
+        self.items.iter().any(|item| {
+            (previous.items.contains(&item.id) && item.edge(true, laid).0)
+                || (next.items.contains(&item.id) && item.edge(false, laid).0)
+        })
+    }
+}
+
+impl BlockBox {
+    /// Вложенные стопки: блоки, элементы flex и сетки.
+    pub(super) fn nested(&self) -> impl Iterator<Item = &BlockBox> {
+        self.kids
             .iter()
             .chain(self.flex.iter().flat_map(|f| &f.items))
             .filter_map(|item| item.inner.as_ref())
@@ -207,8 +222,5 @@ impl BlockBox {
                     .flat_map(|g| &g.items)
                     .filter_map(|item| item.inner.as_ref()),
             )
-        {
-            inner.zero_forced_flex_lines(laid, out);
-        }
     }
 }

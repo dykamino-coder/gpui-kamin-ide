@@ -57,12 +57,10 @@ pub struct DocState {
     pub(crate) font_math: crate::text::fonts::math::MathFonts,
     /// Font measurement caches scoped to this document.
     pub(crate) metrics: crate::text::metrics::Metrics,
-    /// Vertical paragraph measurements and root paint geometry of this document.
-    pub(crate) vertical_measures: Rc<crate::text::vertical::VerticalMeasures>,
+    /// Paragraph and vertical-text measurements of the text phase of this document.
+    pub(crate) paragraph: crate::text::paragraph_state::ParagraphState,
     /// CSS font-face metric descriptors, scoped to this document.
     pub(crate) font_metric_faces: RefCell<crate::text::fonts::metric_overrides::MetricFaces>,
-    /// Shaped paragraphs and fit results shared only inside this document.
-    pub(crate) paragraph_measures: Rc<crate::text::paragraph::MeasureCache>,
     /// Named font-feature definitions owned by this document.
     pub(crate) font_alternates: RefCell<crate::font_facts::FeatureDefinitions>,
     /// Rasterized foreignObject layers of this document, bounded by the painter.
@@ -130,7 +128,7 @@ impl DocState {
     pub(crate) fn begin_frame(&self) {
         self.readiness.begin();
         self.images.borrow_mut().revalidate();
-        self.vertical_measures.begin_frame();
+        self.paragraph.begin_frame();
         if self.painted.replace(false) {
             self.frame_owner.set(arena::new_owner());
             self.calc.clear_frame();

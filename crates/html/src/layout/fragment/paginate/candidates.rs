@@ -1,6 +1,6 @@
 //! Обход кандидатов для общего решателя измеренной фрагментации.
 
-use super::{Cand, avoid_row, column_flex, row_flex, row_gap};
+use super::{Cand, avoid_row, column_flex, row_flex};
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -52,15 +52,6 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: ValueCx<'_>) ->
         }
         if column_flex(&p.style.used()) {
             out.push((k.node_id, Cand::Item));
-        }
-        if let Some(gap) = row_gap(&p.style.used()) {
-            out.push((
-                k.node_id,
-                Cand::Gap {
-                    gap,
-                    parent: p.node_id,
-                },
-            ));
         }
         // Breaks propagate from the first/last child to the box edge
         // (css-break-3 §3.1 «break propagation»).

@@ -50,18 +50,10 @@ impl PageKid {
         let Some(sec) = sections else {
             return;
         };
-        if self.repeat.is_none() {
-            return;
-        }
-        match crate::layout::fragment::table_bands::repeat_spec(sec, per) {
-            Some((head, foot, geom)) => {
-                if let Some(r) = self.repeat.as_mut() {
-                    r.head = head;
-                    r.foot = foot;
-                    r.geom = geom;
-                }
-            }
-            None => self.repeat = None,
+        if let Some(r) = self.repeat.as_mut()
+            && !r.refresh(&sec, per)
+        {
+            self.repeat = None;
         }
     }
 
