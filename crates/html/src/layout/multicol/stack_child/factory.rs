@@ -39,7 +39,7 @@ pub(super) fn new(
     let copy = copy.clone();
     std::rc::Rc::new(move |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
-        opts.cx.position.continuation_slots = slots;
+        opts.cx.position.continue_in_slots(slots);
         // Копия строится после закрытия слоёв предков. Измерительные деревья
         // изолированы; только prepaint публикует OOF в исходный containing block.
         let (state, escaped) = positioning.isolate();

@@ -31,3 +31,11 @@ pub(crate) struct PositioningContext {
     /// inline atom being built (`InlineCbOffer`).
     pub(crate) inline_cb: Option<std::rc::Rc<crate::text::inline::InlineCbOffer>>,
 }
+
+impl PositioningContext {
+    /// Copies of a fragmentation host under its native source replay their
+    /// absolute/fixed roots (`paint::continuation`) for the whole subtree.
+    pub(crate) fn continue_in_slots(&mut self, on: bool) {
+        self.continuation_slots |= on;
+    }
+}

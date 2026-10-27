@@ -28,5 +28,35 @@ pub(crate) struct Nested {
     pub(crate) bare: Rc<[PaintSegmentId]>,
 }
 
+type Table = RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>>;
+
 /// Own records of continued roots, by destination segment and root node.
-pub(crate) type BareRecords = Rc<RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>>>;
+#[derive(Clone, Default)]
+pub(crate) struct BareRecords(Rc<Table>);
+
+impl BareRecords {
+    fn table(&self) -> &Table {
+        &self.0
+    }
+
+    pub(crate) fn insert(&self, segment: PaintSegmentId, root: u64, record: PaintRecord) {
+        let table: &RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>> = self.table();
+        table.borrow_mut().insert((segment, root), record);
+    }
+
+    pub(crate) fn get(&self, segment: PaintSegmentId, root: u64) -> Option<PaintRecord> {
+        self.table().borrow().get(&(segment, root)).cloned()
+    }
+
+    /// Move every record of other into this table.
+    pub(crate) fn absorb(&self, other: &BareRecords) {
+        let table: &RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>> = self.table();
+        let other: &RefCell<HashMap<(PaintSegmentId, u64), PaintRecord>> = other.table();
+        let moved = std::mem::take(&mut *other.borrow_mut());
+        table.borrow_mut().extend(moved);
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.table().borrow().is_empty()
+    }
+}

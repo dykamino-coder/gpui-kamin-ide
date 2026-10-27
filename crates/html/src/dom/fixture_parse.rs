@@ -24,4 +24,5 @@ pub(crate) fn parse_current(
         media,
         doc,
     )
+    .unwrap()
 }

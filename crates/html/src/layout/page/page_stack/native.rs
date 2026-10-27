@@ -149,7 +149,7 @@ impl PageStack {
                 let page = usize::try_from(id.0).map_err(|_| PaintRecordError::InvalidGeometry)?;
                 orphans.entry(page).or_default().push(record);
             }
-            records.bare.borrow_mut().extend(bare.take());
+            records.bare.absorb(&bare);
         }
         *self.oof.records.borrow_mut() = Records { orphans, ..records };
         Ok(())
@@ -158,7 +158,7 @@ impl PageStack {
     /// Own root records for the legacy copies (`paint::continuation`).
     pub(super) fn copy_records(&self) -> Option<BareRecords> {
         let records = self.oof.records.borrow();
-        (!records.bare.borrow().is_empty()).then(|| records.bare.clone())
+        (!records.bare.is_empty()).then(|| records.bare.clone())
     }
 
     /// Replay sheet `i`'s source records under its presentation matrix.

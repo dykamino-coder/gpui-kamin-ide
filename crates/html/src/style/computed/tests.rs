@@ -199,7 +199,8 @@ fn content_sized_tracks_are_recognised() {
 fn cascade_order_specificity_then_inline() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
-    let rules = crate::style::css::parse_stylesheet(".a { color: red } div.a { color: blue }");
+    let rules =
+        crate::style::css::parse_stylesheet(".a { color: red } div.a { color: blue }").unwrap();
     let matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
     let c = Computed::resolve(&matched, &parse_decls("color: green"), vcx);
     assert_eq!(c.color.map(|c| c.g), Some(0.5019608), "инлайн бьёт таблицу");

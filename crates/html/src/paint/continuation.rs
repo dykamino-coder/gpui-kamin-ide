@@ -73,7 +73,7 @@ impl Wrap for Slot {
         let Some(copy) = window.render_context::<CopySegment>() else {
             return;
         };
-        let record = copy.records.borrow().get(&(copy.segment, self.id)).cloned();
+        let record = copy.records.get(copy.segment, self.id);
         if let Some(record) = record {
             let origin = point(px(0.), px(0.));
             let placement = PaintPlacement {

@@ -93,7 +93,9 @@ fn xml_shadow_attributes_do_not_acquire_html_normalization() {
     let xml =
         format!("<html xmlns='{XHTML}'><template SHADOWROOTMODE='open'><p/></template></html>");
     let dom = super::super::xml::xml_dom(&xml).unwrap();
-    assert!(!super::super::shadow::has_declarative_shadow(&dom.document));
+    assert!(
+        !super::super::shadow::has_declarative_shadow(&dom.document, &Default::default()).unwrap()
+    );
     let parsed = parse_xml(&xml, "");
     assert!(!parsed.doc.quirks());
 }

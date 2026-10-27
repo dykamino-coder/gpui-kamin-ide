@@ -21,7 +21,9 @@ pub(in crate::dom) fn scan_shadows(
     args: &[HasArg],
     drafts: &mut HashMap<NodeKey, SlotInfo>,
     tree: &mut TreeIndex,
-) {
+) -> Result<(), crate::budget::admission::Error> {
+    let admission = tree.admission();
+    admission.work(children.len() + path.len())?;
     enum Work {
         Level(Vec<Handle>, Rc<Scope>),
         Visit(Handle, Rc<Vec<Ancestor>>, usize, Rc<Scope>),
@@ -32,6 +34,7 @@ pub(in crate::dom) fn scan_shadows(
     }
     let mut work = vec![Work::Level(children.to_vec(), scope.clone())];
     while let Some(next) = work.pop() {
+        admission.work(1)?;
         let (child, all, pos, scope) = match next {
             Work::Truncate(len) => {
                 path.truncate(len);
@@ -53,6 +56,7 @@ pub(in crate::dom) fn scan_shadows(
                 continue;
             }
             Work::Level(children, scope) => {
+                admission.work(children.len())?;
                 let (_, all) = census_of(&children, tree);
                 let all = Rc::new(all);
                 let mut pos = all.len();
@@ -70,6 +74,7 @@ pub(in crate::dom) fn scan_shadows(
         let mut me = all[pos].clone();
         me.peers = Some((all.clone(), pos));
         if let Some(slot) = drafts.get_mut(&NodeKey::of(&child)) {
+            admission.work(path.len())?;
             slot.origin = Some(slotted::SlotContext {
                 scope: scope.clone(),
                 node: me.clone(),
@@ -79,6 +84,9 @@ pub(in crate::dom) fn scan_shadows(
             });
         }
         if let Some((template, root)) = declarative_shadow(&child) {
+            admission.work(
+                path.len() * 2 + child.children.borrow().len() + root.children.borrow().len(),
+            )?;
             let inner = prepared[&NodeKey::of(&child)].1.clone();
             let host_path: Rc<Vec<Ancestor>> = Rc::new(
                 path.iter()
@@ -93,10 +101,10 @@ pub(in crate::dom) fn scan_shadows(
                 .filter(|c| !Rc::ptr_eq(c, &template))
                 .cloned()
                 .collect();
-            assign_slots(&root, &light, &scope, &host_path, drafts, tree);
+            assign_slots(&root, &light, &scope, &host_path, drafts, tree)?;
             let marker = Ancestor {
                 featureless: Some(Rc::new(path.clone())),
-                shadow_has_marks: shadow_marks(&root, args, &me, tree),
+                shadow_has_marks: shadow_marks(&root, args, &me, tree)?,
                 ..me.clone()
             };
             tree.shadows.insert(
@@ -111,8 +119,10 @@ pub(in crate::dom) fn scan_shadows(
             work.push(Work::Children(light, me, scope));
             work.push(Work::Shadow(shadow_kids, marker, inner));
         } else {
+            admission.work(child.children.borrow().len())?;
             let kids: Vec<Handle> = child.children.borrow().clone();
             work.push(Work::Children(kids, me, scope));
         }
     }
+    Ok(())
 }

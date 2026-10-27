@@ -195,7 +195,7 @@ fn own_capture(
     let enclosing = source.slices.nested.get(&key).filter(|_| key != 0);
     for (segment, record) in records.into_records() {
         if nested.bare.contains(&segment) {
-            source.bare.borrow_mut().insert((segment, id), record);
+            source.bare.insert(segment, id, record);
             continue;
         }
         let outer: Rc<[_]> = source

@@ -86,7 +86,7 @@ pub(super) fn regrow(
     });
     let build = move |dom: &crate::dom::Element, part: usize, _band: bool, base: &RenderOpts| {
         let mut opts = base.clone();
-        opts.cx.position.continuation_slots |= oof_slots;
+        opts.cx.position.continue_in_slots(oof_slots);
         let paged = crate::layout::page::paged::PagedBuild::begin();
         opts.frag.paged = Some(paged.clone());
         opts.frag.watch = Some(if part == 0 {
