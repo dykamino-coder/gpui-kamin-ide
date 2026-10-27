@@ -4,7 +4,7 @@ use super::*;
 use crate::resources::images::store::{ImageServices, ResourcePolicy};
 use crate::resources::images::svg_links;
 use crate::resources::images::{cache::DecodedImageCache, fixtures, tests_support::TempDir};
-use crate::resources::loader::{LoadError, Loaded, ResourceLoader};
+use crate::resources::loader::{Ingress, LoadError, Loaded, ResourceLoader};
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -102,10 +102,12 @@ impl ResourceLoader for Loader {
             modified: None,
         }
     }
-    fn load(&self, url: &ResourceUrl) -> Result<Loaded, LoadError> {
+    fn load(&self, url: &ResourceUrl, ingress: &Ingress<'_>) -> Result<Loaded, LoadError> {
         self.reads.fetch_add(1, Ordering::Relaxed);
+        let bytes = self.bytes.lock().unwrap().clone();
+        ingress.admit(bytes.len())?;
         Ok(Loaded {
-            bytes: self.bytes.lock().unwrap().clone().into(),
+            bytes: bytes.into(),
             revision: self.revision(url),
         })
     }

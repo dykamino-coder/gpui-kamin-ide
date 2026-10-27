@@ -2,7 +2,7 @@
 use super::*;
 use crate::resources::images::store::{ImageServices, ResourcePolicy};
 use crate::resources::images::{cache::DecodedImageCache, svg_links, tests_support::TempDir};
-use crate::resources::loader::{LoadError, Loaded, ResourceLoader, SyncLoader};
+use crate::resources::loader::{Ingress, LoadError, Loaded, ResourceLoader, SyncLoader};
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -43,10 +43,10 @@ impl ResourceLoader for Loader {
                 modified: None,
             })
     }
-    fn load(&self, url: &ResourceUrl) -> Result<Loaded, LoadError> {
+    fn load(&self, url: &ResourceUrl, ingress: &Ingress<'_>) -> Result<Loaded, LoadError> {
         self.reads.lock().unwrap().push(url.as_str().into());
         if self.files {
-            return SyncLoader.load(url);
+            return SyncLoader.load(url, ingress);
         }
         let bytes = self
             .resources
@@ -55,6 +55,7 @@ impl ResourceLoader for Loader {
             .get(url.as_str())
             .cloned()
             .ok_or(LoadError::NotFound)?;
+        ingress.admit(bytes.len())?;
         Ok(Loaded {
             bytes: bytes.into(),
             revision: self.revision(url),

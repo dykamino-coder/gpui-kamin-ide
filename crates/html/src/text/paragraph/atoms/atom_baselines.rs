@@ -178,6 +178,22 @@ impl Paragraph {
 impl Paragraph {
     /// Базовая линия строки: по её прогонам, без них — по струту.
     pub(crate) fn line_base(&self, range: &std::ops::Range<usize>) -> f32 {
-        self.base_of(range).unwrap_or_else(|| self.strut_base())
+        self.shared_base(range).unwrap_or_else(|| self.strut_base())
+    }
+
+    /// The alphabetic baseline the runs of a line are aligned to, from the line
+    /// top. Whole-line shaping puts it by the largest run ascent and descent
+    /// (`base_of`). A turned line with a central dominant baseline aligns each
+    /// run's central baseline with the root inline box's instead: `shift_spans`
+    /// carry every run's offset from the strut (css-writing-modes-4 §4.3,
+    /// css-inline-3 §dominant-baseline). The shared baseline is then the root
+    /// inline box's own, half-leading included (CSS 2 §10.8.1), and a taller
+    /// run must not move it.
+    pub(crate) fn shared_base(&self, range: &std::ops::Range<usize>) -> Option<f32> {
+        let (lh, (sa, sd)) = self.root_line_box(range.start);
+        if self.rotated_central && sa + sd > 0.0 {
+            return Some((lh - (sa + sd)) / 2.0 + sa);
+        }
+        self.base_of(range)
     }
 }

@@ -12,6 +12,7 @@
 //! Арены `calc()`/`anchor()` документа и их ручки — `arena`.
 
 mod arena;
+mod budget;
 mod diagnostics;
 mod font_facts;
 mod property_registry;

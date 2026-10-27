@@ -2,7 +2,7 @@
 //! усечения результата; негодное значение сохраняет обычную семантику var().
 
 use super::super::{Registered, VarMap};
-use super::{compute, substitute};
+use super::tests::{compute, substitute};
 use std::collections::HashMap;
 
 #[test]

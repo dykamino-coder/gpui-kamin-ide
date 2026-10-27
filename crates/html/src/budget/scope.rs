@@ -4,11 +4,24 @@ use super::ledger::Ledger;
 use super::{
     BudgetClass, BudgetError, BudgetKind, BudgetScope, DocumentLimits, ProcessLimits, Reservation,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+/// Равенство и hash — идентичность host-домена учёта, а не равенство квот.
 #[derive(Clone)]
 pub struct ResourceGovernor {
     pub(super) ledger: Arc<Ledger>,
+}
+
+impl PartialEq for ResourceGovernor {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.ledger, &other.ledger)
+    }
+}
+impl Eq for ResourceGovernor {}
+impl std::hash::Hash for ResourceGovernor {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.ledger).hash(state);
+    }
 }
 
 impl Default for ResourceGovernor {
@@ -82,6 +95,7 @@ impl DocumentBudget {
         RevisionBudget {
             document: self.clone(),
             ledger: Ledger::new(BudgetScope::Revision, self.owner.limits.caps),
+            exhausted: Arc::default(),
         }
     }
     pub fn reserve(&self, kind: BudgetKind, amount: u64) -> Result<LiveReservation, BudgetError> {
@@ -103,10 +117,13 @@ impl DocumentBudget {
 }
 
 /// Subjobs получают clone этой ревизии; retry внутри неё не возвращает work.
+/// Любой отказ её ledger терминален для ревизии (ADR2 §4): первая причина
+/// сохраняется для build/update, даже если операция сама вернула локальный fallback.
 #[derive(Clone)]
 pub struct RevisionBudget {
     document: DocumentBudget,
     ledger: Arc<Ledger>,
+    exhausted: Arc<OnceLock<BudgetError>>,
 }
 
 impl RevisionBudget {
@@ -117,13 +134,29 @@ impl RevisionBudget {
         self.ledger.used(kind)
     }
     pub fn consume(&self, kind: BudgetKind, amount: u64) -> Result<(), BudgetError> {
-        Ledger::check_class(kind, BudgetClass::Monotonic)?;
-        self.ledger.charge(kind, amount)
+        Ledger::check_class(kind, BudgetClass::Monotonic)
+            .and_then(|()| self.ledger.charge(kind, amount))
+            .inspect_err(|error| self.terminate(*error))
     }
     /// Structural maxima — не refundable work и не сумма повторных проходов.
     pub fn check_maximum(&self, kind: BudgetKind, total: u64) -> Result<(), BudgetError> {
-        Ledger::check_class(kind, BudgetClass::Structural)?;
-        self.ledger.check(kind, total)
+        Ledger::check_class(kind, BudgetClass::Structural)
+            .and_then(|()| self.ledger.check(kind, total))
+            .inspect_err(|error| self.terminate(*error))
+    }
+    /// Ревизия состояния без Document (фикстуры, вложенные состояния до B3):
+    /// собственный host-домен со стандартным конечным профилем, не безлимитный sentinel.
+    pub(crate) fn standalone() -> Self {
+        DocumentBudget::new(DocumentLimits::default(), ResourceGovernor::default())
+            .expect("a fresh governor admits its first document")
+            .revision()
+    }
+    /// Первая терминальная причина ревизии; поздние отказы её не заменяют.
+    pub fn exhausted(&self) -> Option<BudgetError> {
+        self.exhausted.get().copied()
+    }
+    fn terminate(&self, error: BudgetError) {
+        let _ = self.exhausted.set(error);
     }
     pub(crate) fn source(&self, html: &str, theme: &str) -> Result<(), BudgetError> {
         self.consume(BudgetKind::SourceBytes, html.len() as u64)?;

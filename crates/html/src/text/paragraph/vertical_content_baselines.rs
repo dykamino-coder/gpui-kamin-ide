@@ -137,6 +137,50 @@ mod tests {
         assert_eq!(physical, vec![px(5.0), px(15.0), px(25.0), px(35.0)]);
     }
 
+    /// `font: 60px/1.5 Ahem` turned with a central baseline and runs of 120px
+    /// and 30px (`text-baseline-vrl-002`): the line height is the root inline
+    /// box's computed 90px, not 1.5 times the largest run.
+    fn turned_central_line(rotated: bool) -> Paragraph {
+        let runs = (0..3)
+            .map(|_| gpui::TextRun {
+                len: 1,
+                ..Default::default()
+            })
+            .collect();
+        let mut paragraph = Paragraph::new(
+            "ABO".into(),
+            runs,
+            px(60.0),
+            px(90.0),
+            Align::Left,
+            Wrap::default(),
+        )
+        .rotated_central(rotated);
+        paragraph.lines = vec![Line::test(0..3, px(150.0))];
+        paragraph.run_metrics = vec![(48.0, 12.0), (96.0, 24.0), (24.0, 6.0)];
+        paragraph.strut_box = (48.0, 12.0);
+        paragraph
+    }
+
+    #[test]
+    fn turned_central_runs_share_the_root_inline_baseline() {
+        let paragraph = turned_central_line(true);
+        // Half-leading 15 plus the strut ascent 48; the 120px run would put
+        // the whole-line baseline at 81 and every glyph 18px off centre.
+        assert_eq!(paragraph.shared_base(&(0..3)), Some(63.0));
+        assert_eq!(paragraph.line_base(&(0..3)), 63.0);
+        // The root box's central baseline is the line's reported centre.
+        let central = 63.0 - (48.0 - 12.0) / 2.0;
+        let output = paragraph.vertical_content_baselines(size(px(90.0), px(150.0)));
+        assert_eq!(output.first_x, Some(px(central)));
+    }
+
+    #[test]
+    fn horizontal_runs_keep_the_whole_line_shaping_baseline() {
+        let paragraph = turned_central_line(false);
+        assert_eq!(paragraph.shared_base(&(0..3)), Some(81.0));
+    }
+
     #[test]
     fn sideways_uses_real_alphabetic_metrics_instead_of_the_central_line() {
         let paragraph = paragraph().vertical_central_baseline(false);

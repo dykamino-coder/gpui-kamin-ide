@@ -17,8 +17,7 @@ pub(super) fn parse_document(
 ) -> Result<(Rc<DocState>, Vec<Node>, crate::style::computed::Computed), super::DocumentFailure> {
     let state = DocState::new(media);
     let admission = crate::budget::admission::Admission::new(revision.clone());
-    state.budget.replace(Some(revision));
-    state.images.borrow_mut().set_base(base.cloned());
+    state.admit_revision(revision, base);
     let vcx = state.values();
     fonts.install(vcx);
     let sheets = crate::dom::style_sources::collect(input, theme_css)?;
