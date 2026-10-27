@@ -88,7 +88,15 @@ impl PageStack {
                     for el in layer {
                         window.with_content_mask(
                             Some(gpui::ContentMask { bounds: area }),
-                            |window| el.paint(window, cx),
+                            |window| {
+                                crate::paint::continuation::with_copy_segment(
+                                    gpui::PaintSegmentId(i as u64),
+                                    records.as_ref(),
+                                    Some(presentation),
+                                    window,
+                                    |window| el.paint(window, cx),
+                                )
+                            },
                         );
                     }
                 }
@@ -96,7 +104,15 @@ impl PageStack {
                     for el in layer {
                         window.with_content_mask(
                             Some(gpui::ContentMask { bounds: area }),
-                            |window| el.paint(window, cx),
+                            |window| {
+                                crate::paint::continuation::with_copy_segment(
+                                    gpui::PaintSegmentId(i as u64),
+                                    records.as_ref(),
+                                    Some(presentation),
+                                    window,
+                                    |window| el.paint(window, cx),
+                                )
+                            },
                         );
                     }
                 }

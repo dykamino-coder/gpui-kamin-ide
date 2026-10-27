@@ -134,6 +134,10 @@ impl PageStack {
             // The plan placed normal geometry; relative positioning of the box and its
             // ancestors is a paint displacement on top (CSS 2.1 §9.4.3).
             let shift = snapshot.relative.get(&flow.id).copied().unwrap_or_default();
+            eprintln!(
+                "P08DBG pg plan col {} y {} from {} h {} src {:?} to {:?} clip {:?}",
+                f.col, f.y, f.from, f.h, from, to, clip
+            );
             let copied = normal.iter().any(|g| g.kid == *owner && g.col == f.col);
             let index = match entries.iter().position(|e| Rc::ptr_eq(&e.1, snapshot)) {
                 Some(index) => index,
@@ -195,6 +199,23 @@ impl PageStack {
         let Some(page) = records.orphans.get(&i) else {
             return Ok(());
         };
+        for r in page.iter() {
+            eprintln!(
+                "P08DBG page {} orphan quads {:?} clip {:?} m {:?}",
+                i,
+                r.scene()
+                    .quads
+                    .iter()
+                    .map(|q| (
+                        q.bounds.size,
+                        q.transformation.translation,
+                        q.content_mask.bounds
+                    ))
+                    .collect::<Vec<_>>(),
+                clip,
+                self.sheet_matrix(bounds, i)
+            );
+        }
         let plan = PaintPlan::sequence(page.iter().cloned().map(PaintPlan::record));
         let origin = point(px(0.), px(0.));
         window

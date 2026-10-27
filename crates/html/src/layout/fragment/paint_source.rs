@@ -13,6 +13,8 @@ pub(crate) struct SourceSlices {
     pub(crate) boxes: HashMap<u64, Rc<[Decoration]>>,
     pub(crate) families: Rc<HashMap<u64, u64>>,
     pub(crate) nested: HashMap<u64, Rc<Nested>>,
+    /// Placed regions re-admitted unmoved: the source record must reach them.
+    pub(crate) placed: Option<Bounds<Pixels>>,
 }
 
 /// Own continuation capture of an outermost absolute/fixed root and the flows

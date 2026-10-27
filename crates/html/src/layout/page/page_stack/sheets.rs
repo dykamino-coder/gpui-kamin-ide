@@ -191,9 +191,18 @@ impl PageStack {
             let Some(mask) = masks.get(p).cloned() else {
                 continue;
             };
+            let presentation = self.sheet_matrix(bounds, p);
             for el in &mut self.icb[p] {
                 window.with_content_mask(Some(mask), |window| {
-                    window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                    window.with_mask_scale(bounds.origin, s, |window| {
+                        crate::paint::continuation::with_copy_segment(
+                            gpui::PaintSegmentId(p as u64),
+                            records.as_ref(),
+                            Some(presentation),
+                            window,
+                            |window| el.paint(window, cx),
+                        )
+                    })
                 });
             }
         }
@@ -204,9 +213,18 @@ impl PageStack {
             let Some(mask) = masks.get(p).cloned() else {
                 continue;
             };
+            let presentation = self.sheet_matrix(bounds, p);
             for el in &mut self.fixed[p] {
                 window.with_content_mask(Some(mask), |window| {
-                    window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                    window.with_mask_scale(bounds.origin, s, |window| {
+                        crate::paint::continuation::with_copy_segment(
+                            gpui::PaintSegmentId(p as u64),
+                            records.as_ref(),
+                            Some(presentation),
+                            window,
+                            |window| el.paint(window, cx),
+                        )
+                    })
                 });
             }
         }

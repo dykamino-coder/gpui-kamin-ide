@@ -221,10 +221,16 @@ fn own_capture(
     };
     for (segment, record) in records.into_records() {
         eprintln!(
-            "P08DBG own {} seg {:?} bare {}",
+            "P08DBG own {} seg {:?} bare {} quads {:?}",
             id,
             segment,
-            nested.bare.contains(&segment)
+            nested.bare.contains(&segment),
+            record
+                .scene()
+                .quads
+                .iter()
+                .map(|q| (q.transformation.translation, q.content_mask.bounds))
+                .collect::<Vec<_>>()
         );
         if nested.bare.contains(&segment) {
             source.bare.insert(segment, id, record);

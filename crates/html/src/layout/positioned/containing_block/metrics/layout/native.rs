@@ -77,16 +77,12 @@ impl Native {
             .routing
             .take()
             .ok_or(PaintRecordError::InvalidGeometry)?;
-        crate::hooks::paint_source_record(
-            self.extent,
-            segments,
-            slices,
-            window,
-            cx,
-            |window, cx| {
-                self.root.borrow_mut().paint(window, cx);
-            },
-        )
+        let extent = slices
+            .placed
+            .map_or(self.extent, |placed| self.extent.union(&placed));
+        crate::hooks::paint_source_record(extent, segments, slices, window, cx, |window, cx| {
+            self.root.borrow_mut().paint(window, cx);
+        })
     }
 }
 

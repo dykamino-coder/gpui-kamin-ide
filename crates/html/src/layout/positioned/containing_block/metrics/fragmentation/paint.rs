@@ -132,6 +132,7 @@ impl Admission {
                     destination: placed.origin,
                 };
                 orphan_routes.push(route);
+                paint.placed = Some(paint.placed.map_or(placed, |p| p.union(&placed)));
                 identity.push(PaintSegmentSlice {
                     placement: route,
                     source_clip: placed,
@@ -192,6 +193,7 @@ fn slices(
         boxes: HashMap::new(),
         families,
         nested: HashMap::new(),
+        placed: None,
     }
 }
 
