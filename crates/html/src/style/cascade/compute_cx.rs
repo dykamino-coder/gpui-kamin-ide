@@ -71,14 +71,25 @@ impl<'a> ComputeCx<'a> {
 /// начальные 16px), высота строки и семейство.
 fn set_root_from(style: &Computed, vcx: ValueCx<'_>) {
     let family = style.font_family.clone().unwrap_or_default();
-    let font = style.computed_font_px(&family, 16.0, vcx).unwrap_or(16.0);
+    let font = style
+        .computed_font_px(crate::style::computed::FontCx::new(&family, 16.0), vcx)
+        .unwrap_or(16.0);
+    let mut resolved = style.clone();
+    resolved.font_size = Some(Len::Px(font));
+    resolved.compute_font_adjust(&family, vcx);
+    let used = resolved.used_font(font, vcx);
     let line = match style.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => k * font,
-        _ => root_normal_line_px(&family, font, vcx),
+        _ => root_normal_line_px(&family, used.size_px, vcx),
     };
     set_root_metrics(vcx.doc, font, line);
     set_root_family(vcx.doc, &family);
+    let mut request = resolved.font_request(&family, used.size_px);
+    if resolved.font_size_adjust.is_some() {
+        request.metric_query = crate::font_facts::FontMetricQuery::Adjustment;
+    }
+    vcx.doc.root.borrow_mut().resolve_font_units(request, vcx);
     // Кегль в единицах окна: точек окна на каскаде ещё нет, `rem` доживает
     // той же единицей окна.
     set_root_font_view(

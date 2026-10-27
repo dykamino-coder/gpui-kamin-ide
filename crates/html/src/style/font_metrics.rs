@@ -55,18 +55,6 @@ pub(crate) fn normal_height(family: &str, size: f32, vcx: ValueCx<'_>) -> f32 {
     }
 }
 
-pub(crate) fn adjust_aspect(family: &str, metric: u8, vcx: ValueCx<'_>) -> Option<f32> {
-    // Даже cap раньше сначала прогревал горизонтальный замер.
-    let (ch, ex) = horizontal(family, 1.0, vcx);
-    Some(match metric {
-        0 => ex,
-        1 => vertical(family, 1.0, vcx).2,
-        2 => ch,
-        3 | 4 => ideographic(family, 1.0, vcx),
-        _ => return None,
-    })
-}
-
 pub(crate) fn spacing_px(len: Option<Len>, family: &str, size: f32, vcx: ValueCx<'_>) -> f32 {
     let (ch, ex) = horizontal(family, size, vcx);
     match len {

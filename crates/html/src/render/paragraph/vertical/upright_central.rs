@@ -30,12 +30,8 @@ struct Stack {
     glyphs: Vec<Glyph>,
 }
 
-fn line_height(style: &Computed, size: f32) -> f32 {
-    match style.line_height {
-        Some(Len::Px(v)) => v,
-        Some(Len::Em(k)) | Some(Len::Pct(k)) => k * size,
-        _ => size,
-    }
+fn line_height(style: &Computed, size: f32, fallback: f32) -> f32 {
+    style.numeric_line_px(fallback).unwrap_or(size)
 }
 
 /// A plain span: no box decoration in either axis and a vertical-align that
@@ -105,7 +101,8 @@ fn collect(
                 } else {
                     shift
                 };
-                out.boxes.push((shift, line_height(&child, size) / 2.0));
+                out.boxes
+                    .push((shift, line_height(&child, size, opts.base_size()) / 2.0));
                 collect(&e.children, &child, shift, opts, out)?;
             }
         }
@@ -125,7 +122,9 @@ pub(super) fn upright_central(
     }
     let em = own_size(inherited, opts);
     let mut stack = Stack::default();
-    stack.boxes.push((0.0, line_height(inherited, em) / 2.0));
+    stack
+        .boxes
+        .push((0.0, line_height(inherited, em, opts.base_size()) / 2.0));
     collect(nodes, inherited, 0.0, opts, &mut stack)?;
     let mixed = stack
         .glyphs
@@ -165,4 +164,18 @@ pub(super) fn upright_central(
             .children(items)
             .into_any_element(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adjusted_glyph_size_does_not_scale_numeric_lane() {
+        let mut style = Computed::default();
+        style.font_size = Some(Len::Px(20.0));
+        style.line_height = Some(Len::Pct(1.5));
+        assert_eq!(line_height(&style, 40.0, 16.0), 30.0);
+        assert_eq!(line_height(&Computed::default(), 40.0, 16.0), 40.0);
+    }
 }

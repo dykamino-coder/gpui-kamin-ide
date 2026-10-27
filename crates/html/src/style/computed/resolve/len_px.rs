@@ -15,6 +15,10 @@ use crate::style::values::value::{Len, calc_get};
 pub struct FontCx<'a> {
     pub family: &'a str,
     pub font_px: f32,
+    /// Кегль контуров для единиц ex/ch/ic, после обеих подгонок.
+    pub metric_px: f32,
+    /// Метрики выбранного лица для стиля с font-size-adjust: cap/ch/ex/ic.
+    pub units: Option<[f32; 4]>,
     /// Использованная высота строки для `lh`; `None` — запасные 1.2 кегля.
     pub line_px: Option<f32>,
 }
@@ -27,6 +31,8 @@ impl FontCx<'static> {
     pub const FALLBACK: FontCx<'static> = FontCx {
         family: "",
         font_px: 16.0,
+        metric_px: 16.0,
+        units: None,
         line_px: None,
     };
 
@@ -36,6 +42,8 @@ impl FontCx<'static> {
         FontCx {
             family: "",
             font_px,
+            metric_px: font_px,
+            units: None,
             line_px: None,
         }
     }
@@ -46,6 +54,8 @@ impl<'a> FontCx<'a> {
         FontCx {
             family,
             font_px,
+            metric_px: font_px,
+            units: None,
             line_px: None,
         }
     }
@@ -75,6 +85,10 @@ impl Computed {
         FontCx {
             family,
             font_px,
+            metric_px: self.used_font(font_px, vcx).size_px,
+            units: self
+                .font_size_adjust
+                .map(|_| self.glyph_units(family, font_px, vcx)),
             line_px,
         }
     }

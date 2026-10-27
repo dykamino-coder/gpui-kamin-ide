@@ -49,17 +49,12 @@ pub(crate) fn ruby_container_atom(
     // (`lines::ruby_extent`, css-ruby-1 §3.4).
     // Полулидинг базы: стопка стоит на краю её коробки строки.
     let base_half = {
-        let size = match merged.font_size {
-            Some(Len::Px(v)) => v,
-            _ => opts.base_size(),
-        };
+        let size = merged.used_font(opts.base_size(), vcx).size_px;
         let font = crate::text::inline::strut_font(&merged, &opts.text, opts.cx.vcx());
         let (asc, desc) = crate::text::metrics::font_extents(&font, size, vcx);
-        let line = match merged.line_height {
-            Some(Len::Px(v)) => v,
-            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-            _ => crate::text::metrics::normal_px(normal_fraction(&merged, opts), size, vcx),
-        };
+        let line = merged.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
+            crate::text::metrics::normal_px(normal_fraction(&merged, opts), size, vcx)
+        });
         (line - (asc + desc)) / 2.0
     };
     let extent =

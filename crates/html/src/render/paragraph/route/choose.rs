@@ -40,7 +40,12 @@ pub(crate) fn route_pieces(
         // прогоны не съезжают.
         // Строка растёт под самый крупный кусок — как коробка строки в CSS.
         // Иначе крупный `<span>` вылезал бы на соседние строки.
-        let biggest = inline::max_font_size(&pieces, own_size(inherited, opts), opts.base_size());
+        let biggest = inline::max_font_size(
+            &pieces,
+            own_size(inherited, opts),
+            opts.base_size(),
+            opts.cx.vcx(),
+        );
         // Прогон без своего кегля набирается кеглем АБЗАЦА, а им здесь стоит
         // самый крупный кусок: текст блока без объявленного `font-size` рядом
         // с крупным `<span>` вырастал до его кегля (`c43-rpl-ibx-000`: вся
@@ -61,11 +66,17 @@ pub(crate) fn route_pieces(
         }
         let mut opts = opts.clone();
         if biggest != opts.base_size() {
-            opts.text.line_height = gpui::px(crate::text::metrics::normal_px(
-                normal_fraction(inherited, &opts),
-                biggest,
-                vcx,
-            ))
+            opts.text.line_height = gpui::px(
+                inherited
+                    .numeric_line_px(opts.base_size())
+                    .unwrap_or_else(|| {
+                        crate::text::metrics::normal_px(
+                            normal_fraction(inherited, &opts),
+                            biggest,
+                            vcx,
+                        )
+                    }),
+            )
             .into();
         }
         let opts = &opts;

@@ -1466,13 +1466,8 @@ pub struct InheritedStyle {
     pub font_stretch: Option<f32>,
     /// `font-size-adjust` (css-fonts-5): метрика (0 ex-height, 1 cap-height,
     /// 2 ch-width, 3 ic-width, 4 ic-height; `u8::MAX` — `none`) и желаемая
-    /// доля кегля (`NaN` — `from-font`). Наследуется.
+    /// доля кегля (`NaN` — каскадный `from-font`, вычисляется числом). Наследуется.
     pub font_size_adjust: Option<(u8, f32)>,
-    /// Вычисленный кегль и заданная высота строки ДО подгонки кегля. Детям
-    /// уходит ИМЕННО вычисленный кегль («otherwise the effect would
-    /// compound»), и от него же считаются `em` и числовой `line-height`.
-    /// Пусто, пока используемый кегль равен вычисленному.
-    pub font_adjust_base: Option<(f32, Option<Len>)>,
     /// `tab-size` — во сколько пробелов раскрывается табуляция.
     pub tab_size: Option<f32>,
     /// `tab-size` в ДЛИНЕ: шаг табуляции задан не числом знаков, а величиной.
