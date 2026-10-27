@@ -1,19 +1,12 @@
-//! Таблица при укладке по фрагментаинерам: предикат табличной коробки (`table_box`), мера
-//! таблицы без рядов — подписи, рамка и заданная высота (`table_shape`; ряды и ячейки даёт
-//! только записанная раскладка, `flow::blocks::table`), полосы повтора `thead`/`tfoot` по
-//! разложенным секциям (`repeat_spec`, css-tables-3 §repeated-headers; Blink
-//! `table_layout_algorithm.cc`) и признак последовательной таблицы (`serial`).
-
-use crate::document::state::ValueCx;
+//! Таблица при укладке по фрагментаинерам: предикат табличной коробки (`table_box`), полосы
+//! повтора `thead`/`tfoot` по разложенным секциям (`repeat_spec`, css-tables-3
+//! §repeated-headers; Blink `table_layout_algorithm.cc`) и признак последовательной таблицы
+//! (`serial`). Оценки таблицы нет: подписи, коробку, ряды и ячейки даёт только записанная
+//! раскладка (`flow::blocks::table`).
 
 use crate::dom::Element;
 use crate::layout::fragment::flow::blocks::table::TableSections;
-use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::Display;
-pub(crate) mod parts;
-mod row_shape;
-mod shape_bands;
-use shape_bands::table_shape_bands;
 mod serial;
 use crate::tolerance::COORD_EPS;
 pub(crate) use serial::serial_table_parallel;
@@ -25,14 +18,6 @@ pub(crate) fn table_box(c: &Element) -> bool {
             c.style.used().display,
             Some(Display::Table) | Some(Display::InlineTable)
         )
-}
-
-/// Мера таблицы без рядов для укладки по фрагментаинерам: подписи обёртки
-/// (css-tables-3 §terminology), рамка и отбивка коробки таблицы, пол заданной
-/// высоты (CSS 2.1 §17.5.3). Таблица с рядами здесь не мерится (`None`): её
-/// ряды, охваты и ячейки даёт раскладка (`flow::blocks::table`).
-pub(super) fn table_shape(c: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Option<Shape> {
-    table_shape_bands(c, depth, cx, vcx)
 }
 
 /// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
