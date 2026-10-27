@@ -1,13 +1,15 @@
 //! Контекст фрагментации сборки (`FragCx`: копия ребёнка стопки, ряд внешней колонки) и ось стопки.
 
+use crate::layout::fragment::token::space::sequence::Nested;
 use gpui::{Bounds, Pixels, point, px, size};
+use std::rc::Rc;
 
 use crate::layout::options::RenderOpts;
 
 /// Контекст фрагментации сборки — часть `RenderOpts`, которую ставит не
 /// приложение, а код, строящий фрагменты (Blink несёт то же в
 /// `ConstraintSpace` каждого вызова раскладки, а не в глобальном состоянии).
-/// TRANSITIONAL(F2-7): FragCx несёт implicit in_stack_copy/outer_row вместо явного Space/resume; удалить эти поля в P22 после последних consumers P09/P10/P21.
+/// TRANSITIONAL(F2-7): FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21.
 #[derive(Clone, Debug, Default)]
 pub struct FragCx {
     /// Сборщик диагностики конкретного прогона; хост забирает снимок через take.
@@ -19,14 +21,14 @@ pub struct FragCx {
     /// колонку (Blink `LayoutSpanner`: «The new row doesn't fit in the outer
     /// fragmentainer»), которого нет (`column-height-029`).
     pub(crate) in_stack_copy: bool,
-    /// Высота ряда и фаза вложенного многоколоночника, заданные ВНЕШНЕЙ
-    /// колонкой: копия строится рядами этой высоты (css-break-4 §2.1: «when a
+    /// Адрес начала и последовательность реальных внешних Spaces: первый
+    /// ряд получает остаток, последующие — собственные ограничения (css-break-4 §2.1: «when a
     /// multi-column container breaks across pages, it generates a new row of
     /// columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
     /// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
     /// Адресована одному элементу — тому, чей `element()` вызван с ней; его
-    /// дети её не видят (`RenderOpts::take_outer_row`).
-    pub(crate) outer_row: Option<(f32, f32)>,
+    /// дети её не видят (`RenderOpts::take_outer_space`).
+    pub(crate) outer_space: Option<Rc<Nested>>,
     /// Строится копия ребёнка, разбиваемого на фрагменты собственной
     /// раскладкой (`fragment::paginate`): `render::element` оборачивает её
     /// кандидатов в разрыв, и запись узлов их раскладки читает решатель.
@@ -50,20 +52,20 @@ impl RenderOpts {
     }
 
     /// Настройки для сборки вложенного многоколоночника рядами внешней колонки.
-    pub(crate) fn with_outer_row(&self, row: (f32, f32)) -> RenderOpts {
+    pub(crate) fn with_outer_space(&self, row: Rc<Nested>) -> RenderOpts {
         let mut opts = self.clone();
-        opts.frag.outer_row = Some(row);
+        opts.frag.outer_space = Some(row);
         opts
     }
 
-    /// Забрать высоту ряда, адресованную этому элементу: она сама и
+    /// Забрать внешнюю последовательность, адресованную этому элементу: она и
     /// настройки без неё для всего, что строится внутри.
-    pub(crate) fn take_outer_row(&self) -> (Option<(f32, f32)>, Option<Box<RenderOpts>>) {
-        match self.frag.outer_row {
+    pub(crate) fn take_outer_space(&self) -> (Option<Rc<Nested>>, Option<Box<RenderOpts>>) {
+        match self.frag.outer_space.clone() {
             None => (None, None),
             Some(row) => {
                 let mut inner = Box::new(self.clone());
-                inner.frag.outer_row = None;
+                inner.frag.outer_space = None;
                 (Some(row), Some(inner))
             }
         }
@@ -143,6 +145,16 @@ pub fn axis_box(
 mod tests {
     use super::*;
 
+    fn nested(block: f32, offset: f32) -> Rc<Nested> {
+        use crate::layout::fragment::token::{Space, space::sequence::Sequence};
+        Sequence::columns(Space {
+            block_size: Some(block),
+            ..Space::columns()
+        })
+        .nested(0, offset)
+        .unwrap()
+    }
+
     fn opts() -> RenderOpts {
         RenderOpts {
             text: Default::default(),
@@ -154,29 +166,56 @@ mod tests {
     }
 
     #[test]
-    fn outer_row_is_consumed_for_children_without_changing_enclosing_handoff() {
-        let outer = opts().with_outer_row((120.0, 0.0));
-        let inner = outer.with_outer_row((60.0, 0.5));
-        let (row, children) = inner.take_outer_row();
-        assert_eq!(row, Some((60.0, 0.5)));
+    fn outer_space_is_consumed_for_children_without_changing_enclosing_handoff() {
+        let outer = opts().with_outer_space(nested(120.0, 0.0));
+        let inner = outer.with_outer_space(nested(60.0, 0.5));
+        let (row, children) = inner.take_outer_space();
+        assert_eq!(row.unwrap().at(0).unwrap().block_size, Some(59.5));
         let children = children.unwrap();
-        let (row, cleared) = children.take_outer_row();
-        assert_eq!(row, None);
+        let (row, cleared) = children.take_outer_space();
+        assert!(row.is_none());
         assert!(cleared.is_none());
-        assert_eq!(outer.take_outer_row().0, Some((120.0, 0.0)));
+        assert_eq!(
+            outer
+                .take_outer_space()
+                .0
+                .unwrap()
+                .at(0)
+                .unwrap()
+                .block_size,
+            Some(120.0)
+        );
     }
 
     #[test]
-    fn outer_row_survives_unwind_of_nested_build() {
-        let outer = opts().with_outer_row((120.0, 0.0));
+    fn outer_space_survives_unwind_of_nested_build() {
+        let outer = opts().with_outer_space(nested(120.0, 0.0));
         assert!(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let inner = outer.with_outer_row((60.0, 0.5));
-                assert_eq!(inner.take_outer_row().0, Some((60.0, 0.5)));
+                let inner = outer.with_outer_space(nested(60.0, 0.5));
+                assert_eq!(
+                    inner
+                        .take_outer_space()
+                        .0
+                        .unwrap()
+                        .at(0)
+                        .unwrap()
+                        .block_size,
+                    Some(59.5)
+                );
                 panic!("render failed");
             }))
             .is_err()
         );
-        assert_eq!(outer.take_outer_row().0, Some((120.0, 0.0)));
+        assert_eq!(
+            outer
+                .take_outer_space()
+                .0
+                .unwrap()
+                .at(0)
+                .unwrap()
+                .block_size,
+            Some(120.0)
+        );
     }
 }

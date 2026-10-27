@@ -21,17 +21,45 @@ pub(super) struct Pages<'a> {
 }
 
 impl Pages<'_> {
+    /// Снимок владеет именами и геометрией страниц; следующие индексы обращаются
+    /// к поставщику владельца, сохраняя индивидуальную геометрию каждого листа.
+    pub(super) fn sequence(&self) -> crate::layout::fragment::token::space::sequence::Sequence {
+        let names = self.names.to_vec();
+        let interned = self.interned.to_vec();
+        let geoms = self.geoms.to_vec();
+        let geom_for = self.geom_for.clone();
+        let principal = self.principal;
+        crate::layout::fragment::token::space::sequence::Sequence::new(move |index| {
+            Ok(Pages {
+                names: &names,
+                interned: &interned,
+                geoms: &geoms,
+                geom_for: &geom_for,
+                principal,
+            }
+            .at(index))
+        })
+    }
+
+    pub(super) fn geometry(&self, index: usize) -> PageGeom {
+        let name = self
+            .names
+            .get(index)
+            .or_else(|| self.names.last())
+            .map_or("", String::as_str);
+        self.geoms
+            .get(index)
+            .copied()
+            .unwrap_or_else(|| (self.geom_for)(index, name))
+    }
+
     pub(super) fn at(&self, index: usize) -> Space {
         let name = self
             .names
             .get(index)
             .or_else(|| self.names.last())
             .map_or("", String::as_str);
-        let geom = self
-            .geoms
-            .get(index)
-            .copied()
-            .unwrap_or_else(|| (self.geom_for)(index, name));
+        let geom = self.geometry(index);
         let (inline, block) = if self.principal.vertical() {
             (geom.area.1, geom.area.0)
         } else {
@@ -98,6 +126,10 @@ mod tests {
             geom_for: &geom_for,
             principal: style.wm(),
         };
+        let nested = pages.sequence().nested(1, 52.).unwrap();
+        assert_eq!(nested.at(0).unwrap().block_size, Some(149.));
+        assert_eq!(nested.at(1).unwrap().block_size, Some(202.));
+        assert_eq!(nested.outer_at(1).unwrap().page.unwrap().index, 2);
         assert_eq!(pages.at(0).page.unwrap().name, None);
         let space = pages.at(2);
         assert_eq!(

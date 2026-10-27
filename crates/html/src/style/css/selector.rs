@@ -119,7 +119,7 @@ impl Selector {
     }
 
     /// `.card > .title`, `.card .title`, `div.card` — всё сюда.
-    pub fn parse(raw: &str) -> Option<Selector> {
+    pub(crate) fn parse(raw: &str) -> Option<Selector> {
         Selector::parse_in(raw, &SelectorCx::default())
     }
 

@@ -135,6 +135,7 @@ fn embedded_degradation_is_typed_scoped_and_retains_the_whole_dom() {
         true,
         None,
         &Default::default(),
+        None,
     )
     .unwrap();
     let limit = embedded.state.traversal_limit().unwrap();
@@ -162,9 +163,9 @@ fn deep_style_metadata_is_read_without_recursing_or_losing_the_tail() {
 #[test]
 fn shadow_fallback_walks_preserve_deep_content() {
     let nested = format!(
-        "{}deep{}",
-        "<div><template shadowrootmode=open><slot>".repeat(1026),
-        "</slot></template></div>".repeat(1026)
+        "<div><template shadowrootmode=open>{}deep{}</template></div>",
+        "<div><slot>".repeat(1026),
+        "</slot></div>".repeat(1026)
     );
     let html = format!("{nested}<p>tail</p>");
     let doc = Document::builder(&html, "").build().unwrap();
@@ -175,6 +176,26 @@ fn shadow_fallback_walks_preserve_deep_content() {
     let doc = Document::builder(&inert, "").build().unwrap();
     assert!(doc.traversal_limit().is_none());
     assert_eq!(source_text(&doc.source_dom()), "texttail");
+}
+
+#[test]
+fn repeated_shadow_agent_copies_refuse_explicitly_and_release_partial_state() {
+    use crate::budget::{BudgetError, BudgetKind, ResourceGovernor};
+    let html = format!(
+        "{}deep{}<p>LOST</p>",
+        "<div><template shadowrootmode=open><slot>".repeat(1026),
+        "</slot></template></div>".repeat(1026)
+    );
+    let governor = ResourceGovernor::default();
+    let failure = Document::builder(&html, "")
+        .governor(&governor)
+        .build()
+        .err()
+        .expect("repeated UA copies exceed the default CSS rule budget");
+    assert!(matches!(failure.reason,
+        FailureReason::Budget(BudgetError::Exceeded(limit)) if limit.kind == BudgetKind::CssRules));
+    assert_eq!(governor.used(BudgetKind::LiveBytes), 0);
+    assert_eq!(governor.used(BudgetKind::Documents), 0);
 }
 
 #[test]

@@ -4,6 +4,7 @@ use gpui::{Bounds, Pixels};
 
 #[derive(Clone, Copy, Default)]
 pub struct Spot {
+    pub(crate) normal_node: Option<crate::layout::fragment::geometry::Node>,
     pub hole: Option<Bounds<Pixels>>,
     /// Высота строки, если элемент блочный: его статическая позиция — начало
     /// СЛЕДУЮЩЕЙ строки, а не точка в текущей (CSS 2.1 §10.6.4).

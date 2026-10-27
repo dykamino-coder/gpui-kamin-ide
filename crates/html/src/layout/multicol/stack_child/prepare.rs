@@ -67,6 +67,7 @@ pub(in crate::layout::multicol) fn prepare(
             crate::layout::fragment::flow::vertical_copy(&copy, col_rl)
         } else {
             crate::layout::fragment::flow::independent_copy(&copy)
+                || crate::layout::fragment::line_shape::nested_rows_box(&copy)
                 || empty_floats
                 || (copy.marks.paginate
                     && crate::layout::multicol::measure::native_float::float_copy(

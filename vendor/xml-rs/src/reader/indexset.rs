@@ -39,8 +39,8 @@ impl AttributesSet {
 
     pub fn contains(&self, name: &OwnedName) -> bool {
         // fall back to linear search only on duplicate or hash collision
-        (self.vec.len() < HASH_THRESHOLD || self.may_contain.contains(&self.hash(name))) &&
-            self.vec.iter().any(move |a| &a.name == name)
+        (self.vec.len() < HASH_THRESHOLD || self.may_contain.contains(&self.hash(name)))
+            && self.vec.iter().any(move |a| &a.name == name)
     }
 
     pub fn push(&mut self, attr: OwnedAttribute) {
@@ -73,32 +73,49 @@ fn indexset() {
     // this test will take a lot of time if the `contains()` is linear, and the loop is quadratic
     for i in 0..50000 {
         let name = OwnedName {
-            local_name: format!("attr{i}"), namespace: None, prefix: None,
+            local_name: format!("attr{i}"),
+            namespace: None,
+            prefix: None,
         };
         assert!(!s.contains(&name));
 
-        s.push(OwnedAttribute { name, value: String::new() });
+        s.push(OwnedAttribute {
+            name,
+            value: String::new(),
+        });
         assert!(!s.contains(&not_here));
     }
 
     assert!(s.contains(&OwnedName {
-        local_name: "attr1234".into(), namespace: None, prefix: None,
+        local_name: "attr1234".into(),
+        namespace: None,
+        prefix: None,
     }));
     assert!(s.contains(&OwnedName {
-        local_name: "attr0".into(), namespace: None, prefix: None,
+        local_name: "attr0".into(),
+        namespace: None,
+        prefix: None,
     }));
     assert!(s.contains(&OwnedName {
-        local_name: "attr49999".into(), namespace: None, prefix: None,
+        local_name: "attr49999".into(),
+        namespace: None,
+        prefix: None,
     }));
+    assert_eq!(s.len(), 50000);
+    assert_eq!(s.into_vec().len(), 50000);
 }
 
 /// Hashser that does nothing except passing u64 through
 struct U64Hasher(u64);
 
 impl Hasher for U64Hasher {
-    fn finish(&self) -> u64 { self.0 }
+    fn finish(&self) -> u64 {
+        self.0
+    }
     fn write(&mut self, slice: &[u8]) {
-        for &v in slice { self.0 ^= u64::from(v) } // unused in practice
+        for &v in slice {
+            self.0 ^= u64::from(v)
+        } // unused in practice
     }
     fn write_u64(&mut self, i: u64) {
         self.0 ^= i;
@@ -110,5 +127,7 @@ struct U64HasherBuilder;
 
 impl BuildHasher for U64HasherBuilder {
     type Hasher = U64Hasher;
-    fn build_hasher(&self) -> U64Hasher { U64Hasher(0) }
+    fn build_hasher(&self) -> U64Hasher {
+        U64Hasher(0)
+    }
 }

@@ -1,68 +1,74 @@
-//! Высота хвостового ряда колонок после единственного измеримого спаннера:
-//! остаток блочного размера коробки (css-multicol-1 §column-fill).
+//! Остаток после завершённой фазы спаннера: consumed получен из native layout
+//! ряда вместе с полями спаннера, а не из гипотетической формы его поддерева.
 
-use crate::dom::whitespace::is_blank;
-use crate::dom::{Element, Node};
-use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::multicol::spanner::spanner_box;
-use crate::style::cascade::materialize::box_style;
-use crate::style::computed::BoxStyle;
-use crate::style::values::value::Len;
+use crate::layout::fragment::token::{
+    Error, Token,
+    fc::{FcState, MulticolState},
+};
 
-/// Хвостовой ряд колонок при `column-fill: auto` НЕ стоит перед
-/// спаннером, и §column-fill («content in a multi-column line that
-/// does not immediately precede a spanner») велит заполнять его
-/// подряд до высоты коробки. Сегмент теряет высоту
-/// (`sub.style.height = None`) и уходил в балансировку:
-/// `no-balancing-after-column-span` — 200×50 двумя колонками
-/// вместо 100×100 одной. Высота хвоста — остаток коробки после
-/// спаннера (Blink `ConstrainColumnBlockSize`:
-/// `max -= CurrentContentBlockOffset(line_offset)`). Только когда
-/// до хвоста стоит ОДИН измеримый спаннер и больше ничего:
-/// высоту сбалансированных рядов до спаннера здесь не знаем.
-/// То же при балансе: колонки хвоста не выше остатка коробки, лишние
-/// переполняют вбок (Blink `ConstrainColumnBlockSize` действует и на
-/// балансируемый ряд; `multicol-span-all-012`: 120 в трёх колонках по 30
-/// после спаннера 70 в коробке 100).
-pub(crate) fn tail_rest_height(
-    e: &Element,
-    merged: &BoxStyle,
-    box_h: Option<f32>,
-    rows: Option<crate::layout::fragment::types::Rows>,
-    shape_cx: ShapeCx<'_>,
-    vcx: crate::document::state::ValueCx<'_>,
-) -> Option<f32> {
-    let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
-    let cap_only = rows.is_none_or(|r| r.cap);
-    match (box_h, cap_only) {
-        (Some(total), true) => e.children.iter().rposition(&is_span).and_then(|j| {
-            let px = |l: &Option<Len>| match l {
-                None => Some(0.0),
-                Some(Len::Px(v)) => Some(*v),
-                _ => None,
-            };
-            let mut used = 0.0f32;
-            let mut spans = 0usize;
-            for n in &e.children[..=j] {
-                if is_blank(n) {
-                    continue;
-                }
-                let Node::Element(sp) = n else {
-                    return None;
-                };
-                if !is_span(n) {
-                    return None;
-                }
-                spans += 1;
-                let st = box_style(merged, &sp.style, vcx);
-                // TRANSITIONAL(F2-3): Остаток внешнего ряда вычитается из оценок целых спаннеров; удалить в P10 после outer-row extent и spanner token.
-                used += shape_full(sp, 4, shape_cx, vcx)?.height
-                    + px(&st.margin.top)?
-                    + px(&st.margin.bottom)?;
-            }
-            (spans == 1).then(|| (total - used).max(0.0))
-        }),
-        _ => None,
+/// Завершённая фаза спаннера. Курсор детей переживает смену constraints,
+/// consumed относится к ряду, а не к content-box разрезанного предка.
+pub(crate) struct SpannerRow(Token);
+
+impl SpannerRow {
+    pub(crate) fn after_spanner(index: usize, block_end: f32) -> Result<Self, Error> {
+        let index = u32::try_from(index).map_err(|_| Error::ResourceExhausted)?;
+        let state = FcState::Multicol(MulticolState {
+            row: 0,
+            spanner: Some(index),
+            flow: None,
+        });
+        let mut token = Token::new(state.clone()).advance(block_end, state)?;
+        token.flags.by_spanner = true;
+        Ok(Self(token))
+    }
+}
+
+/// Поля уже схлопнуты native layout; повторное сложение нарушило бы
+/// CSS 2 §8.3.1. Вход — завершённая фаза, а не оценка формы поддерева.
+pub(crate) fn tail_rest_height(block_size: f32, phase: &SpannerRow) -> f32 {
+    (block_size - phase.0.consumed).max(0.)
+}
+
+/// `column-height` резервирует всю последнюю строку сетки. Внешний
+/// фрагментаинер ограничивает колонки, но auto-высота коробки — по содержимому.
+#[derive(Clone, Copy, Default)]
+pub(crate) enum RowExtent {
+    #[default]
+    ColumnHeight,
+    Content,
+}
+
+impl RowExtent {
+    pub(crate) fn block_size(
+        self,
+        grid: f32,
+        lines: &[(f32, f32)],
+        spans: &[(usize, f32)],
+        plan: &crate::layout::fragment::plan::Plan,
+        count: usize,
+        kids: &[crate::layout::fragment::types::Kid],
+    ) -> f32 {
+        match self {
+            Self::ColumnHeight => grid,
+            Self::Content => plan
+                .iter()
+                .map(|f| lines.get(f.col / count).map_or(0., |l| l.0) + f.y + f.h)
+                .chain(spans.iter().map(|&(i, at)| at + kids[i].h + kids[i].mb))
+                .fold(0., f32::max),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn completed_spanner_phase_constrains_tail_without_negative_budget() {
+        let phase = SpannerRow::after_spanner(3, 70.).unwrap();
+        assert_eq!(tail_rest_height(100., &phase), 30.);
+        assert_eq!(tail_rest_height(120., &phase), 50.);
+        assert_eq!(tail_rest_height(50., &phase), 0.);
+        assert!(SpannerRow::after_spanner(3, f32::NAN).is_err());
     }
 }

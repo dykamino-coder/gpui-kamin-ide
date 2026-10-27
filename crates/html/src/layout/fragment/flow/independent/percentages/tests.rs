@@ -1,5 +1,6 @@
 //! Процентные ограничения разрешаются от исходного CB, независимо от фрагмента.
 use super::*;
+mod continuation;
 
 #[test]
 fn definite_and_indefinite_cb_have_distinct_percentage_rules() {

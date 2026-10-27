@@ -47,11 +47,12 @@
 extern crate markup5ever;
 extern crate tendril;
 
+pub mod admission;
 mod selection;
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::default::Default;
 use std::fmt;
 use std::io;
@@ -68,8 +69,6 @@ use markup5ever::serialize::{Serialize, Serializer};
 use markup5ever::Attribute;
 use markup5ever::ExpandedName;
 use markup5ever::QualName;
-use xml5ever::interface::ElemName;
-use xml5ever::local_name;
 
 /// The different kinds of nodes in the DOM.
 #[derive(Debug, Clone)]
@@ -124,6 +123,14 @@ pub struct Node {
     pub children: RefCell<Vec<Handle>>,
     /// Represents this node's data.
     pub data: NodeData,
+    // Used only while destroying uniquely owned nodes, without allocating.
+    drop_next: RefCell<Option<Handle>>,
+    // Storage owners follow the data they cover in declaration/drop order.
+    children_lease: RefCell<admission::Lease>,
+    attrs_lease: RefCell<admission::Lease>,
+    payload_lease: RefCell<admission::Lease>,
+    _logical_node: admission::Lease,
+    _node_lease: admission::Lease,
 }
 
 impl Node {
@@ -133,160 +140,59 @@ impl Node {
             data,
             parent: Cell::new(None),
             children: RefCell::new(Vec::new()),
+            drop_next: RefCell::new(None),
+            children_lease: RefCell::new(None),
+            attrs_lease: RefCell::new(None),
+            payload_lease: RefCell::new(None),
+            _logical_node: None,
+            _node_lease: None,
         })
     }
 
-    /// <https://html.spec.whatwg.org/#option-element-nearest-ancestor-select>
-    fn get_option_element_nearest_ancestor_select(&self) -> Option<Rc<Self>> {
-        // Step 1. Let ancestorOptgroup be null.
-        // NOTE: The algorithm doesn't actually need the value, so a boolean is enough.
-        let mut did_see_ancestor_optgroup = false;
-
-        // Step 2. For each ancestor of option's ancestors, in reverse tree order:
-        let mut current = self.parent().and_then(|parent| parent.upgrade())?;
-        loop {
-            if let NodeData::Element { name, .. } = &current.data {
-                // Step 2.1 If ancestor is a datalist, hr, or option element, then return null.
-                if matches!(
-                    name.local_name(),
-                    &local_name!("datalist") | &local_name!("hr") | &local_name!("option")
-                ) {
-                    return None;
-                }
-
-                // Step 2.2 If ancestor is an optgroup element:
-                if name.local_name() == &local_name!("optgroup") {
-                    // Step 2.2.1 If ancestorOptgroup is not null, then return null.
-                    if did_see_ancestor_optgroup {
-                        return None;
-                    }
-
-                    // Step 2.2.2 Set ancestorOptgroup to ancestor.
-                    did_see_ancestor_optgroup = true;
-                }
-
-                // Step 2.3 If ancestor is a select, then return ancestor.
-                if name.local_name() == &local_name!("select") {
-                    return Some(current);
-                }
-            };
-
-            // Move on to the next ancestor
-            let Some(next_ancestor) = current.parent().and_then(|parent| parent.upgrade()) else {
-                break;
-            };
-            current = next_ancestor;
-        }
-
-        // Step 3. Return null.
-        None
-    }
-
-    fn parent(&self) -> Option<Weak<Self>> {
+    fn parent(&self) -> Option<WeakHandle> {
         let parent = self.parent.take();
         self.parent.set(parent.clone());
         parent
-    }
-
-    fn get_a_selects_enabled_selectedcontent(&self) -> Option<Rc<Self>> {
-        // Step 1. If select has the multiple attribute, then return null.
-        let NodeData::Element { name, attrs, .. } = &self.data else {
-            panic!("Trying to get selectedcontent of non-element");
-        };
-        debug_assert_eq!(name.local_name(), &local_name!("select"));
-        if attrs
-            .borrow()
-            .iter()
-            .any(|attribute| attribute.name.local == local_name!("multiple"))
-        {
-            return None;
-        }
-
-        // Step 2. Let selectedcontent be the first selectedcontent element descendant of select in tree order
-        // if any such element exists; otherwise return null.
-        // KaminIDE patch: depth-first tree order, including grouped descendants.
-        let mut remaining: Vec<_> = self.children.borrow().iter().rev().cloned().collect();
-        let mut selectedcontent = None;
-        while let Some(node) = remaining.pop() {
-            remaining.extend(node.children.borrow().iter().rev().cloned());
-
-            // KaminIDE patch: имя ПЕРЕБИРАЕМОГО узла, а не самого `<select>`.
-            // С `self.data` цикл проверял одно и то же имя на каждом шаге и
-            // не находил `<selectedcontent>` никогда — четыре случая набора
-            // html5lib на настраиваемом `<select>` расходились из-за этого.
-            let NodeData::Element { name, .. } = &node.data else {
-                continue;
-            };
-            if name.local_name() == &local_name!("selectedcontent") {
-                selectedcontent = Some(node);
-                break;
-            }
-        }
-        let selectedcontent = selectedcontent?;
-
-        // Step 3. If selectedcontent's disabled is true, then return null.
-        // FIXME: This step is unimplemented for now to reduce complexity.
-
-        // Step 4. Return selectedcontent.
-        Some(selectedcontent)
-    }
-
-    /// <https://html.spec.whatwg.org/#clone-an-option-into-a-selectedcontent>
-    fn clone_an_option_into_selectedcontent(&self, selectedcontent: Rc<Self>) {
-        // Step 1. Let documentFragment be a new DocumentFragment whose node document is option's node document.
-        // NOTE: We just remember the children of said fragment, thats good enough.
-        let mut document_fragment = Vec::new();
-
-        // Step 2. For each child of option's children:
-        for child in self.children.borrow().iter() {
-            // Step 2.1 Let childClone be the result of running clone given child with subtree set to true.
-            let child_clone = child.clone_with_subtree();
-
-            // Step 2.2 Append childClone to documentFragment.
-            document_fragment.push(child_clone);
-        }
-
-        // Step 3. Replace all with documentFragment within selectedcontent.
-        *selectedcontent.children.borrow_mut() = document_fragment;
-    }
-
-    /// Clones the node and all of its descendants, returning a handle to the new subtree.
-    ///
-    /// This function will run into infinite recursion when the DOM tree contains cycles and it makes
-    /// no attempts to guard against that.
-    fn clone_with_subtree(&self) -> Rc<Self> {
-        let children = self
-            .children
-            .borrow()
-            .iter()
-            .map(|child| child.clone_with_subtree())
-            .collect();
-        Rc::new(Self {
-            parent: Cell::new(self.parent()),
-            data: self.data.clone(),
-            children: RefCell::new(children),
-        })
     }
 }
 
 impl Drop for Node {
     fn drop(&mut self) {
-        let mut nodes = mem::take(&mut *self.children.borrow_mut());
-        while let Some(node) = nodes.pop() {
-            let children = mem::take(&mut *node.children.borrow_mut());
-            nodes.extend(children);
+        // Shared subtrees belong to their remaining owners. Only unique nodes
+        // may lend their intrusive link to this allocation-free destruction.
+        fn enqueue(node: Handle, pending: &mut Option<Handle>) {
+            if Rc::strong_count(&node) == 1 {
+                *node.drop_next.borrow_mut() = pending.take();
+                *pending = Some(node);
+            }
+        }
+        fn detach(node: &Node, pending: &mut Option<Handle>) {
+            for child in mem::take(&mut *node.children.borrow_mut()) {
+                enqueue(child, pending);
+            }
             if let NodeData::Element {
-                ref template_contents,
-                ..
-            } = node.data
+                template_contents, ..
+            } = &node.data
             {
-                if let Some(template_contents) = template_contents.borrow_mut().take() {
-                    nodes.push(template_contents);
+                if let Some(fragment) = template_contents.borrow_mut().take() {
+                    enqueue(fragment, pending);
                 }
             }
         }
+        let mut pending = None;
+        detach(self, &mut pending);
+        while let Some(node) = pending.take() {
+            pending = node.drop_next.borrow_mut().take();
+            detach(&node, &mut pending);
+            // The nested Drop sees an empty node and has constant stack cost.
+            drop(node);
+        }
     }
 }
+
+#[cfg(test)]
+#[path = "drop_tests.rs"]
+mod drop_tests;
 
 impl fmt::Debug for Node {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -301,52 +207,36 @@ impl fmt::Debug for Node {
 pub type Handle = Rc<Node>;
 
 /// Weak reference to a DOM node, used for parent pointers.
-pub type WeakHandle = Weak<Node>;
+#[derive(Clone)]
+pub struct WeakHandle {
+    weak: Weak<Node>,
+    // Rc storage is freed after the final weak handle, not the final strong one.
+    _allocation: admission::Lease,
+}
+
+impl WeakHandle {
+    fn new(node: &Handle) -> Self {
+        Self {
+            weak: Rc::downgrade(node),
+            _allocation: node._node_lease.clone(),
+        }
+    }
+    pub fn upgrade(&self) -> Option<Handle> {
+        self.weak.upgrade()
+    }
+}
 
 /// Append a parentless node to another nodes' children
 fn append(new_parent: &Handle, child: Handle) {
-    let previous_parent = child.parent.replace(Some(Rc::downgrade(new_parent)));
+    let previous_parent = child.parent.replace(Some(WeakHandle::new(new_parent)));
     // Invariant: child cannot have existing parent
     assert!(previous_parent.is_none());
     new_parent.children.borrow_mut().push(child);
 }
 
 /// If the node has a parent, get it and this node's position in its children
-fn get_parent_and_index(target: &Handle) -> Option<(Handle, usize)> {
-    if let Some(weak) = target.parent.take() {
-        let parent = weak.upgrade().expect("dangling weak pointer");
-        target.parent.set(Some(weak));
-        let i = match parent
-            .children
-            .borrow()
-            .iter()
-            .enumerate()
-            .find(|&(_, child)| Rc::ptr_eq(child, target))
-        {
-            Some((i, _)) => i,
-            None => panic!("have parent but couldn't find in parent's children!"),
-        };
-        Some((parent, i))
-    } else {
-        None
-    }
-}
-
-fn append_to_existing_text(prev: &Handle, text: &str) -> bool {
-    match prev.data {
-        NodeData::Text { ref contents } => {
-            contents.borrow_mut().push_slice(text);
-            true
-        }
-        _ => false,
-    }
-}
-
 fn remove_from_parent(target: &Handle) {
-    if let Some((parent, i)) = get_parent_and_index(target) {
-        parent.children.borrow_mut().remove(i);
-        target.parent.set(None);
-    }
+    admission::infallible(admission::remove(target, &admission::Unbounded));
 }
 
 /// The DOM itself; the result of parsing.
@@ -359,37 +249,14 @@ pub struct RcDom {
 
     /// The document's quirks mode.
     pub quirks_mode: Cell<QuirksMode>,
+    errors_lease: RefCell<admission::Lease>,
+    errors_owned: RefCell<admission::Work<admission::Lease>>,
 }
 
 impl TreeSink for RcDom {
     type Output = Self;
     fn finish(self) -> Self {
-        // KaminIDE patch: перенос содержимого выбранного `<option>` в
-        // `<selectedcontent>` на конце разбора.
-        //
-        // Спецификация делает это при снятии пункта со стека, но разборщик
-        // зовёт крючок лишь на одном пути, а последний пункт документа со
-        // стека не снимается вовсе. Итог тот же: у каждого `<select>` в
-        // дереве переезжает его выбранный пункт.
-        let mut stack = vec![self.document.clone()];
-        while let Some(node) = stack.pop() {
-            if let NodeData::Element { name, .. } = &node.data {
-                if name.local_name() == &local_name!("select") {
-                    if let Some(target) = node.get_a_selects_enabled_selectedcontent() {
-                        if let Some(option) = node.selected_option() {
-                            option.clone_an_option_into_selectedcontent(target);
-                        } else {
-                            // KaminIDE patch: reset can leave a listbox with no selection.
-                            for child in target.children.borrow_mut().drain(..) {
-                                child.parent.set(None);
-                            }
-                        }
-                    }
-                }
-            }
-            stack.extend(node.children.borrow().iter().cloned());
-        }
-        self
+        admission::infallible(self.try_finish(&admission::Unbounded))
     }
 
     type Handle = Handle;
@@ -400,7 +267,7 @@ impl TreeSink for RcDom {
         Self: 'a;
 
     fn parse_error(&self, msg: Cow<'static, str>) {
-        self.errors.borrow_mut().push(msg);
+        admission::infallible(self.try_parse_error(msg, &admission::Unbounded))
     }
 
     fn get_document(&self) -> Handle {
@@ -439,83 +306,23 @@ impl TreeSink for RcDom {
     }
 
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> Handle {
-        Node::new(NodeData::Element {
-            name,
-            attrs: RefCell::new(attrs),
-            template_contents: RefCell::new(if flags.template {
-                Some(Node::new(NodeData::Document))
-            } else {
-                None
-            }),
-            mathml_annotation_xml_integration_point: flags.mathml_annotation_xml_integration_point,
-        })
+        admission::infallible(self.try_create_element(name, attrs, flags, &admission::Unbounded))
     }
 
     fn create_comment(&self, text: StrTendril) -> Handle {
-        Node::new(NodeData::Comment { contents: text })
+        admission::infallible(self.try_create_comment(text, &admission::Unbounded))
     }
 
     fn create_pi(&self, target: StrTendril, data: StrTendril) -> Handle {
-        Node::new(NodeData::ProcessingInstruction {
-            target,
-            contents: data,
-        })
+        admission::infallible(self.try_create_pi(target, data, &admission::Unbounded))
     }
 
     fn append(&self, parent: &Handle, child: NodeOrText<Handle>) {
-        // Append to an existing Text node if we have one.
-        if let NodeOrText::AppendText(text) = &child {
-            if let Some(h) = parent.children.borrow().last() {
-                if append_to_existing_text(h, text) {
-                    return;
-                }
-            }
-        }
-
-        append(
-            parent,
-            match child {
-                NodeOrText::AppendText(text) => Node::new(NodeData::Text {
-                    contents: RefCell::new(text),
-                }),
-                NodeOrText::AppendNode(node) => node,
-            },
-        );
+        admission::infallible(self.try_append(parent, child, &admission::Unbounded))
     }
 
     fn append_before_sibling(&self, sibling: &Handle, child: NodeOrText<Handle>) {
-        let (parent, i) = get_parent_and_index(sibling)
-            .expect("append_before_sibling called on node without parent");
-
-        let child = match (child, i) {
-            // No previous node.
-            (NodeOrText::AppendText(text), 0) => Node::new(NodeData::Text {
-                contents: RefCell::new(text),
-            }),
-
-            // Look for a text node before the insertion point.
-            (NodeOrText::AppendText(text), i) => {
-                let children = parent.children.borrow();
-                let prev = &children[i - 1];
-                if append_to_existing_text(prev, &text) {
-                    return;
-                }
-                Node::new(NodeData::Text {
-                    contents: RefCell::new(text),
-                })
-            }
-
-            // The tree builder promises we won't have a text node after
-            // the insertion point.
-
-            // Any other kind of node.
-            (NodeOrText::AppendNode(node), _) => node,
-        };
-
-        remove_from_parent(&child);
-
-        child.parent.set(Some(Rc::downgrade(&parent)));
-        parent.children.borrow_mut().insert(i, child);
+        admission::infallible(self.try_before_sibling(sibling, child, &admission::Unbounded))
     }
 
     fn append_based_on_parent_node(
@@ -524,15 +331,12 @@ impl TreeSink for RcDom {
         prev_element: &Self::Handle,
         child: NodeOrText<Self::Handle>,
     ) {
-        let parent = element.parent.take();
-        let has_parent = parent.is_some();
-        element.parent.set(parent);
-
-        if has_parent {
-            self.append_before_sibling(element, child);
-        } else {
-            self.append(prev_element, child);
-        }
+        admission::infallible(self.try_foster_parent(
+            element,
+            prev_element,
+            child,
+            &admission::Unbounded,
+        ))
     }
 
     fn append_doctype_to_document(
@@ -541,32 +345,11 @@ impl TreeSink for RcDom {
         public_id: StrTendril,
         system_id: StrTendril,
     ) {
-        append(
-            &self.document,
-            Node::new(NodeData::Doctype {
-                name,
-                public_id,
-                system_id,
-            }),
-        );
+        admission::infallible(self.try_doctype(name, public_id, system_id, &admission::Unbounded))
     }
 
     fn add_attrs_if_missing(&self, target: &Handle, attrs: Vec<Attribute>) {
-        let mut existing = if let NodeData::Element { ref attrs, .. } = target.data {
-            attrs.borrow_mut()
-        } else {
-            panic!("not an element")
-        };
-
-        let existing_names = existing
-            .iter()
-            .map(|e| e.name.clone())
-            .collect::<HashSet<_>>();
-        existing.extend(
-            attrs
-                .into_iter()
-                .filter(|attr| !existing_names.contains(&attr.name)),
-        );
+        admission::infallible(self.try_attributes(target, attrs, &admission::Unbounded))
     }
 
     fn remove_from_parent(&self, target: &Handle) {
@@ -574,16 +357,7 @@ impl TreeSink for RcDom {
     }
 
     fn reparent_children(&self, node: &Handle, new_parent: &Handle) {
-        let mut children = node.children.borrow_mut();
-        let mut new_children = new_parent.children.borrow_mut();
-        for child in children.iter() {
-            let previous_parent = child.parent.replace(Some(Rc::downgrade(new_parent)));
-            assert!(Rc::ptr_eq(
-                node,
-                &previous_parent.unwrap().upgrade().expect("dangling weak")
-            ))
-        }
-        new_children.extend(mem::take(&mut *children));
+        admission::infallible(self.try_reparent(node, new_parent, &admission::Unbounded))
     }
 
     fn is_mathml_annotation_xml_integration_point(&self, target: &Handle) -> bool {
@@ -606,36 +380,11 @@ impl TreeSink for RcDom {
     /// конце ввода или следующим пунктом, оставался непереехавшим — набор
     /// html5lib ловит это четырьмя случаями настраиваемого `<select>`.
     fn pop(&self, node: &Self::Handle) {
-        if let NodeData::Element { name, .. } = &node.data {
-            if name.local_name() == &local_name!("option") {
-                self.maybe_clone_an_option_into_selectedcontent(node);
-            }
-        }
+        admission::infallible(self.try_pop(node, &admission::Unbounded))
     }
 
     fn maybe_clone_an_option_into_selectedcontent(&self, option: &Self::Handle) {
-        let NodeData::Element { name, .. } = &option.data else {
-            panic!("\"maybe clone an option into selectedcontent\" called with non-element node");
-        };
-        debug_assert_eq!(name.local_name(), &local_name!("option"));
-
-        // Step 1. Let select be option's option element nearest ancestor select.
-        let select = option.get_option_element_nearest_ancestor_select();
-
-        // Step 2. If all of the following conditions are true:
-        // * select is not null;
-        // * option's selectedness is true; and
-        // * select's enabled selectedcontent is not null,
-        // then run clone an option into a selectedcontent given option and select's enabled selectedcontent.
-        if let Some(selectedcontent) =
-            select.and_then(|select| select.get_a_selects_enabled_selectedcontent())
-        {
-            // KaminIDE patch: общий статический reset учитывает порядок дерева,
-            // selected, multiple, disabled и display size (см. selection.rs).
-            if option.is_selected_option() {
-                option.clone_an_option_into_selectedcontent(selectedcontent);
-            }
-        }
+        admission::infallible(self.try_selectedcontent(option, &admission::Unbounded))
     }
 }
 
@@ -645,6 +394,8 @@ impl Default for RcDom {
             document: Node::new(NodeData::Document),
             errors: Default::default(),
             quirks_mode: Cell::new(tree_builder::NoQuirks),
+            errors_lease: RefCell::new(None),
+            errors_owned: RefCell::new(admission::Work::new()),
         }
     }
 }

@@ -2,6 +2,7 @@
 
 use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::anon::has_box_style_probe;
 use crate::style::computed::{BoxStyle, Display};
@@ -18,6 +19,7 @@ pub(crate) fn child_probes(
     is_clamp: bool,
     span: Option<crate::text::clamp::ClampSpan>,
 ) {
+    let sizes = BoxDimensions::for_element(e, merged);
     if let Some(items) = opts.cx.deferred.gap_items.clone()
         && !matches!(
             e.style.used().position,
@@ -72,7 +74,7 @@ pub(crate) fn child_probes(
             );
         // A box with a definite height ends where its size says, even when
         // unstyled: lines overflowing it fit with it (`line-clamp-auto-040`).
-        let sized = e.style.used().height.is_some()
+        let sized = sizes.preferred[1].is_some()
             && !skip
             && matches!(merged.display, None | Some(Display::Block));
         let side = px_lossy_zero;
@@ -109,9 +111,9 @@ pub(crate) fn child_probes(
             0.0
         };
         // `min-height` as a border-box extent from the border-box top.
-        let min_end = match len_px(e.style.used().min_height) {
+        let min_end = match len_px(sizes.minimum[1]) {
             Some(m) if in_flow_block && m > 0.0 => {
-                if merged.border_box == Some(true) {
+                if sizes.border_box {
                     m
                 } else {
                     m + side(e.style.used().borders().top)
@@ -121,7 +123,7 @@ pub(crate) fn child_probes(
             }
             _ => 0.0,
         };
-        let capped = in_flow_block && e.style.used().max_height.is_some();
+        let capped = in_flow_block && sizes.maximum[1].is_some();
         let ends =
             in_flow_block && (bp_after > 0.0 || end_margin != 0.0 || min_end > 0.0 || capped);
         if !is_clamp && (has_box_style_probe(&e.style.used()) || monolithic || sized || ends) {
@@ -134,9 +136,8 @@ pub(crate) fn child_probes(
                 // (`line-clamp-auto-062`); only a definite `height` does,
                 // or `min-height` of a size-contained box, whose height
                 // does not depend on its content (`line-clamp-auto-047`).
-                e.style.used().height.is_some()
-                    || (e.style.used().min_height.is_some()
-                        && e.style.used().contain_size == Some(true))
+                sizes.preferred[1].is_some()
+                    || (sizes.minimum[1].is_some() && e.style.used().contain_size == Some(true))
                     || monolithic,
                 bp_after,
                 crate::text::clamp::BoxEnds {

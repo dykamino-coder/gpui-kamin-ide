@@ -101,6 +101,9 @@ pub struct PageKid {
     pub(crate) percentages: Option<crate::layout::fragment::flow::PagePercentages>,
     /// Paint slices первого token consumer; создаются только по готовому плану.
     pub(crate) leaf: Option<LeafPaint>,
+    /// Исходные CB/static anchors и собственные break geometry внепоточных детей.
+    pub(crate) oof:
+        Option<crate::layout::positioned::containing_block::metrics::layout::PageSource>,
     /// Recorder of the main copy: measured lines and, for a group of one block
     /// box, its block stack (`paged::kids::breaks`).
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,

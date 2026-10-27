@@ -75,6 +75,8 @@ pub struct BoxStyle {
     /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
     pub(crate) self_node: u64,
     pub(crate) cb_node: u64,
+    /// Ближайший CB fixed; промежуточный position:relative его не заменяет.
+    pub(crate) fixed_cb_node: u64,
     /// Used classic gutters of the nearest containing block and viewport.
     pub(crate) cb_scroll_insets: ([f32; 4], [f32; 4]),
     pub(crate) anchor_seq: u32,

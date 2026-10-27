@@ -1,6 +1,5 @@
 //! Дети стопки колонок: копии детей при заданной высоте и элементы StackChild.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::line_shape::nested_rows_box;
@@ -25,13 +24,14 @@ pub(in crate::layout::multicol) fn column_kids(
     copies: usize,
     fixed: Option<f32>,
     (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
-    vcx: ValueCx<'_>,
+    opts: &RenderOpts,
 ) -> (
     Vec<Option<BoxStyle>>,
     Vec<usize>,
     Vec<crate::layout::fragment::types::Par>,
     Vec<(Element, crate::layout::fragment::Shape)>,
 ) {
+    let vcx = opts.cx.vcx();
     // Линии остаются в Taffy-дереве контейнера; копия сохраняет flex sizing,
     // фон и static position. Regrow читает их после layout.
     let n = kids.len();
@@ -69,7 +69,14 @@ pub(in crate::layout::multicol) fn column_kids(
         && rows.is_none()
         && let Some(height) = fixed.filter(|h| *h > COORD_EPS)
     {
-        super::parallel::grow(&mut kids, height, cols as usize, copies, vcx);
+        super::parallel::grow(
+            &mut kids,
+            height,
+            cols as usize,
+            copies,
+            opts.cx.position.geometry.as_deref(),
+            vcx,
+        );
     }
     (kid_parent, kid_starts, kid_par, kids)
 }

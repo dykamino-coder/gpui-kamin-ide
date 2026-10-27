@@ -3,6 +3,7 @@
 //! Ledger учитывает только явно подключённые операции, не RSS. B3 подключает
 //! parser allocations, B4 — resource/decode/var; лимит проверяется до операции.
 
+pub(crate) mod admission;
 mod ledger;
 mod ownership;
 #[cfg(test)]

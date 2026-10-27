@@ -8,7 +8,8 @@ fn first_content_uses_later_line_without_remeasurement_and_rejects_dirty_tree() 
     let mut tree = TaffyTree::new();
     tree.disable_rounding();
     let context = || NodeContext {
-        measure: Rc::new(RefCell::new(StackSafe::new(Box::new(
+        static_positions: Vec::new(),
+        measure: Rc::new(RefCell::new(node_measure(Box::new(
             |_, _, _, _, _| unreachable!(),
         )))),
         layout_lines: None,

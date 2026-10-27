@@ -9,6 +9,7 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::flow::blocks::table_tree;
 use crate::layout::fragment::line_shape::{inline_content, nested_rows_box};
@@ -32,7 +33,7 @@ pub(crate) fn column_layout_width(
             .then_some(inherited.width)
             .flatten()
     });
-    column_of(u, merged, cols, used_gap)
+    column_of(u, &BoxDimensions::for_element(e, merged), cols, used_gap)
 }
 
 /// Ширина раскладки копии ребёнка до укладки: таблице из обычных блоков
@@ -73,9 +74,9 @@ fn auto_fills_parent(e: &Element) -> bool {
 }
 
 /// Колонка из строчного размера коробки `u` (css-multicol-1 §3.4 (11)).
-fn column_of(u: Option<Len>, merged: &Computed, cols: u16, used_gap: f32) -> Option<f32> {
+fn column_of(u: Option<Len>, sizes: &BoxDimensions, cols: u16, used_gap: f32) -> Option<f32> {
     match u {
-        Some(Len::Px(u)) if merged.border_box != Some(true) && cols > 0 => {
+        Some(Len::Px(u)) if !sizes.border_box && cols > 0 => {
             Some(((u + used_gap) / cols as f32 - used_gap).max(0.0))
         }
         _ => None,
@@ -124,5 +125,40 @@ pub(crate) fn column_measure_width(
         .flatten()
         .filter(|w| matches!(w, Len::Px(_)))
     });
-    column_of(line_inline_size, merged, cols, used_gap)
+    column_of(
+        line_inline_size,
+        &BoxDimensions::for_element(e, merged),
+        cols,
+        used_gap,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn continuation_column_uses_content_width_with_original_border_box_css() {
+        let style = Computed {
+            border_box: Some(true),
+            ..Default::default()
+        };
+        let mut e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
+        e.marks.spanner_content_box = true;
+        let width = Some(Len::Px(220.));
+        assert_eq!(
+            column_layout_width(&e, &style, &style, width, false, 2, 20.),
+            Some(100.)
+        );
+        assert_eq!(
+            column_measure_width(&e, &style, &style, width, false, 2, 20.),
+            Some(100.)
+        );
+        e.marks.spanner_content_box = false;
+        assert_eq!(
+            column_layout_width(&e, &style, &style, width, false, 2, 20.),
+            None
+        );
+        assert_eq!(e.style.used().border_box, Some(true));
+    }
 }

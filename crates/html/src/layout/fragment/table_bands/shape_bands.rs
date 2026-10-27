@@ -8,6 +8,7 @@ use super::row_shape::row_band_shape;
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::flow::blocks::table::{row_avoid, row_force};
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::table::anon::fixup_table_children;
@@ -57,7 +58,7 @@ pub(super) fn table_shape_bands(
         _ => None,
     };
     let spec_h = spec_of(&c.style.used().height)?;
-    let spec_min_h = spec_of(&c.style.used().min_height)?;
+    let spec_min_h = spec_of(&BoxDimensions::for_element(c, &c.style.used()).minimum[1])?;
     let b = c.style.used().borders();
     let mt = px_of(&c.style.used().margin.top).unwrap_or(0.0);
     let mb = px_of(&c.style.used().margin.bottom).unwrap_or(0.0);

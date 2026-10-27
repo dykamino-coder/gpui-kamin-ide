@@ -75,7 +75,7 @@ fn immutable_registry_cold_warm_loading_and_two_documents() {
     // A valid empty sfnt directory is sufficient for the injected loader.
     let css = "@font-face { font-family: Alias; \
         src: url(data:font/ttf;base64,AAEAAAAAAAAAAAAA); unicode-range: U+41-5A }";
-    crate::text::fonts::load_faces(css, a.values());
+    crate::text::fonts::load_faces(css, a.values()).unwrap();
     let cold = a.font_snapshot();
     assert!(cold.generation() > old.generation());
     assert_eq!(old.alias("Alias"), None);
@@ -87,13 +87,13 @@ fn immutable_registry_cold_warm_loading_and_two_documents() {
     );
     assert!(cold.covers_space("Ahem"));
     assert_eq!(b.font_snapshot().alias("Alias"), None);
-    crate::text::fonts::load_faces(css, a.values());
+    crate::text::fonts::load_faces(css, a.values()).unwrap();
     let warm = a.font_snapshot();
     assert!(warm.generation() > cold.generation());
     assert_eq!(warm.registry, cold.registry);
     assert_eq!(calls.get(), 1);
     let with_space = css.replace("U+41-5A", "U+20-7F");
-    crate::text::fonts::load_faces(&with_space, a.values());
+    crate::text::fonts::load_faces(&with_space, a.values()).unwrap();
     let later = a.font_snapshot();
     assert!(later.covers_space("Alias"));
     assert!(!cold.covers_space("Alias"));
@@ -154,7 +154,7 @@ fn backend_face_identity_is_native_document_scoped_and_revision_scoped() {
             script: true,
         }
     );
-    crate::text::fonts::load_faces("", a.values());
+    crate::text::fonts::load_faces("", a.values()).unwrap();
     let later = a
         .font_provider()
         .select(request, &a.font_snapshot())

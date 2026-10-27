@@ -91,6 +91,7 @@ fn moving_a_main_float_rebuilds_continuations_with_the_new_floor() {
         regrow: Some(regrow.clone()),
         percentages: None,
         leaf: None,
+        oof: None,
         watched: Some(watched),
         float_id: None,
         float_extent: false,

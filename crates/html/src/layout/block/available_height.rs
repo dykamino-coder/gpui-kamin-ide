@@ -5,6 +5,7 @@
 //! Высота `auto` остаётся неопределённой даже при определённом `min-height`; у корня база —
 //! область просмотра; вертикальное письмо и колонки цепочку обрывают.
 
+use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::{Computed, Display, Position};
 use crate::style::values::value::Len;
 
@@ -13,6 +14,22 @@ use crate::style::values::value::Len;
 /// its own container's available width (percentage padding/borders).
 pub(crate) fn inner(
     st: &Computed,
+    outer: Option<f32>,
+    width: Option<f32>,
+    viewport: f32,
+) -> Option<f32> {
+    inner_with_dimensions(
+        st,
+        &BoxDimensions::from_computed(st),
+        outer,
+        width,
+        viewport,
+    )
+}
+
+pub(crate) fn inner_with_dimensions(
+    st: &Computed,
+    sizes: &BoxDimensions,
     outer: Option<f32>,
     width: Option<f32>,
     viewport: f32,
@@ -26,19 +43,20 @@ pub(crate) fn inner(
         return None;
     }
     let outer = if st.root_box { Some(viewport) } else { outer };
-    if matches!(st.height, Some(Len::Pct(_)))
+    if matches!(sizes.preferred[1], Some(Len::Pct(_)))
         && matches!(st.position, Some(Position::Absolute | Position::Fixed))
     {
         return None;
     }
-    content_block_size(st, false, st.height, outer, width)
+    content_block_size_with_dimensions(st, sizes, false, sizes.preferred[1], outer, width)
 }
 
 /// Определённый размер содержимого по блочной оси: box-sizing и пределы
 /// CSS 2 §10.7 общие для содержащего блока и fragmentainer колонок.
 /// `preferred` позволяет передать потолок колонок при автоматическом размере.
-pub(crate) fn content_block_size(
+pub(crate) fn content_block_size_with_dimensions(
     st: &Computed,
+    sizes: &BoxDimensions,
     vertical: bool,
     preferred: Option<Len>,
     outer: Option<f32>,
@@ -49,7 +67,7 @@ pub(crate) fn content_block_size(
         Some(Len::Pct(k)) => outer.map(|v| k * v),
         _ => None,
     };
-    let edges = if st.border_box == Some(true) {
+    let edges = if sizes.border_box {
         let side = |value| match value {
             None | Some(Len::Auto) => Some(0.0),
             Some(Len::Px(v)) => Some(v),
@@ -69,16 +87,16 @@ pub(crate) fn content_block_size(
     // Auto height stays indefinite even when min-height is definite.
     let height = (length(preferred)? - edges).max(0.0);
     let minimum = length(if vertical {
-        st.min_width
+        sizes.minimum[0]
     } else {
-        st.min_height
+        sizes.minimum[1]
     })
     .map(|v| (v - edges).max(0.0))
     .unwrap_or(0.0);
     let maximum = length(if vertical {
-        st.max_width
+        sizes.maximum[0]
     } else {
-        st.max_height
+        sizes.maximum[1]
     })
     .map(|v| (v - edges).max(0.0))
     .unwrap_or(f32::INFINITY);

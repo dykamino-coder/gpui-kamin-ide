@@ -1,5 +1,7 @@
 //! Границы непрозрачных токенов CSS: строка, url() и escape.
 
+use crate::budget::admission::{Admission, Error};
+
 /// Начинается ли здесь запись `url(`.
 pub(crate) fn at_url(text: &str) -> bool {
     // Сравнение по БАЙТАМ: срез по четвёртому байту может разрезать
@@ -18,26 +20,37 @@ pub(crate) fn skip_url(text: &str) -> usize {
     4 + skip_url_body(&text[4..])
 }
 
+pub(crate) fn try_skip_url(text: &str, admission: &Admission) -> Result<usize, Error> {
+    admission.work(4)?;
+    Ok(4 + try_skip_url_body(&text[4..], admission)?)
+}
+
 /// Длина тела URL вместе с закрывающей скобкой.
 pub(crate) fn skip_url_body(text: &str) -> usize {
+    try_skip_url_body(text, &Admission::default()).expect("unlimited token scan")
+}
+
+fn try_skip_url_body(text: &str, admission: &Admission) -> Result<usize, Error> {
     let mut at = 0;
     while at < text.len() {
+        admission.work(1)?;
         let ch = text[at..].chars().next().unwrap_or('\u{0}');
         match ch {
             '\\' => {
+                admission.work(1)?;
                 at = escaped_codepoint_end(text, at);
                 continue;
             }
             '"' | '\'' => {
                 at += ch.len_utf8();
-                at += skip_string(&text[at..], ch);
+                at += try_skip_string(&text[at..], ch, admission)?;
                 continue;
             }
-            ')' => return at + ch.len_utf8(),
+            ')' => return Ok(at + ch.len_utf8()),
             _ => at += ch.len_utf8(),
         }
     }
-    text.len()
+    Ok(text.len())
 }
 
 /// Byte length of a string body, including its closing quote if present.
@@ -48,26 +61,47 @@ pub(crate) fn skip_string(text: &str, quote: char) -> usize {
     }
 }
 
+pub(crate) fn try_skip_string(
+    text: &str,
+    quote: char,
+    admission: &Admission,
+) -> Result<usize, Error> {
+    Ok(match try_scan_string(text, quote, admission)? {
+        Ok(end) | Err(end) => end,
+    })
+}
+
 /// Граница строки: Ok после кавычки/EOF, Err перед bad-string newline.
 pub(crate) fn scan_string(text: &str, quote: char) -> Result<usize, usize> {
+    try_scan_string(text, quote, &Admission::default()).expect("unlimited token scan")
+}
+
+fn try_scan_string(
+    text: &str,
+    quote: char,
+    admission: &Admission,
+) -> Result<Result<usize, usize>, Error> {
     let mut at = 0;
     while at < text.len() {
+        admission.work(1)?;
         let ch = text[at..].chars().next().unwrap();
         if ch == '\\' {
+            // At most six hex digits and one whitespace/CRLF terminator.
+            admission.work(9.min(text.len() - at))?;
             // A hexadecimal escape consumes its terminating CSS whitespace,
             // including a newline; that newline cannot end a bad-string token.
             at = escape_end(text, at);
             continue;
         }
         if ch == quote {
-            return Ok(at + ch.len_utf8());
+            return Ok(Ok(at + ch.len_utf8()));
         }
         if matches!(ch, '\n' | '\r' | '\u{c}') {
-            return Err(at);
+            return Ok(Err(at));
         }
         at += ch.len_utf8();
     }
-    Ok(text.len())
+    Ok(Ok(text.len()))
 }
 
 pub(crate) fn escape_end(raw: &str, at: usize) -> usize {

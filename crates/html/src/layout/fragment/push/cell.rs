@@ -4,6 +4,7 @@ use super::pushed_box_at;
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::table_bands::parts::{cell_settings, is_row, ordered_parts};
 use crate::layout::fragment::table_bands::row_geometry;
@@ -30,7 +31,7 @@ pub(super) fn pushed_cell_at(
         || c.style.cascaded().wm().vertical()
         || c.style.cascaded().border_collapse == Some(true)
         || c.style.used().height.is_some()
-        || c.style.used().min_height.is_some()
+        || BoxDimensions::for_element(c, &c.style.used()).minimum[1].is_some()
     {
         return None;
     }

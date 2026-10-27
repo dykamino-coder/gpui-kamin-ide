@@ -1,5 +1,5 @@
+use crate::reader::admission::Event as XmlEvent;
 use crate::reader::error::SyntaxError;
-use crate::reader::events::XmlEvent;
 use crate::reader::lexer::Token;
 
 use super::{PullParser, Result, State};
@@ -14,21 +14,21 @@ impl PullParser {
             Token::CommentEnd => {
                 let data = self.take_buf();
                 self.into_state_emit(State::OutsideTag, Ok(XmlEvent::Comment(data)))
-            },
+            }
 
             Token::Character(c) if !self.is_valid_xml_char(c) => {
-                Some(self.error(SyntaxError::InvalidCharacterEntity(c as u32)))
-            },
+                Some(self.error(|| SyntaxError::InvalidCharacterEntity(c as u32)))
+            }
 
             _ if self.config.c.ignore_comments => None, // Do not modify buffer if ignoring the comment
 
             _ => {
-                if self.buf.len() > self.config.max_data_length {
-                    return Some(self.error(SyntaxError::ExceededConfiguredLimit));
+                if !self.control.bounded() && self.buf.len() > self.config.max_data_length {
+                    return Some(self.error(|| SyntaxError::ExceededConfiguredLimit));
                 }
-                t.push_to_string(&mut self.buf);
+                admit!(t.push_to_text(&mut self.buf, &self.control));
                 None
-            },
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ pub(crate) struct TraversalState {
 
 impl TraversalState {
     pub(crate) fn retain(&self, source: Admitted) {
-        *self.source.borrow_mut() = Some(source);
+        self.source.replace(Some(source));
     }
 
     pub(crate) fn set_embedded(&self) {
@@ -51,6 +51,14 @@ impl TraversalState {
 }
 
 impl DocState {
+    pub(crate) fn input_context(&self) -> Option<crate::dom::input::Context> {
+        self.traversal
+            .source
+            .borrow()
+            .as_ref()
+            .map(Admitted::context)
+    }
+
     /// Проход представления упёрся в предел: статус ревизии и запись журнала.
     pub(crate) fn traversal_limit_reached(
         &self,

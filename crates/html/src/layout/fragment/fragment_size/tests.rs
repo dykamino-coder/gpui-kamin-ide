@@ -1,7 +1,10 @@
 //! Тесты `fragment_size`.
 
+mod continuation;
+
 use super::*;
 use crate::dom::Node;
+use crate::style::computed::Computed;
 
 fn constrained(
     natural: f32,
@@ -13,7 +16,7 @@ fn constrained(
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     constrain(
         natural,
-        style,
+        &element(style.clone(), vec![]),
         decoration,
         viewport,
         overflow_extent,

@@ -10,7 +10,7 @@ fn document(governor: &ResourceGovernor) -> DocumentBudget {
 #[test]
 fn every_counter_boundary_and_overflow() {
     for kind in BudgetKind::ALL {
-        let ledger = Ledger::new(BudgetScope::Revision, [8; 12]);
+        let ledger = Ledger::new(BudgetScope::Revision, [8; BudgetKind::COUNT]);
         match kind.class() {
             BudgetClass::Structural => {
                 assert!(ledger.check(kind, 7).is_ok());
@@ -37,7 +37,7 @@ fn every_counter_boundary_and_overflow() {
             }
         }
         if kind.class() != BudgetClass::Structural {
-            let ledger = Ledger::new(BudgetScope::Document, [8; 12]);
+            let ledger = Ledger::new(BudgetScope::Document, [8; BudgetKind::COUNT]);
             ledger.charge(kind, 1).unwrap();
             let Err(BudgetError::Exceeded(error)) = ledger.charge(kind, u64::MAX) else {
                 panic!("expected overflow");
