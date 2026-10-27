@@ -2,6 +2,7 @@
 #![cfg_attr(windows, allow(dead_code))]
 
 mod record;
+pub(crate) mod segments;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -99,6 +100,7 @@ pub struct PaintGroup {
 #[derive(Default)]
 #[expect(missing_docs)]
 pub struct Scene {
+    pub(crate) segment_capture: Option<Box<segments::Capture>>,
     pub(crate) paint_operations: Vec<PaintOperation>,
     /// KaminIDE patch: группы, нарисованные в отдельные буферы.
     ///
@@ -302,6 +304,7 @@ impl Scene {
     }
 
     pub fn clear(&mut self) {
+        self.segment_capture = None;
         self.paint_operations.clear();
         self.groups.clear();
         self.primitive_bounds.clear();
@@ -508,6 +511,9 @@ impl Scene {
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
+        if let Some(capture) = self.segment_capture.as_mut() {
+            capture.primitive();
+        }
     }
 
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {

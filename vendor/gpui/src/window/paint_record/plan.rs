@@ -127,6 +127,7 @@ impl PaintPlan {
                     }
                     PaintScopeDescriptor::Group(group) => {
                         let mut inner = Scene::default();
+                        inner.inherit_segments(&window.next_frame.scene);
                         inner.in_group = true;
                         // Ancestor clips apply to the group output, not its filter input.
                         let masks = mem::replace(&mut window.content_mask_stack, vec![input_mask]);

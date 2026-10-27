@@ -351,7 +351,8 @@ impl Window {
     /// Prepare a plane scene for replay into the current one: its nested
     /// groups join the frame's list (ids shifted), hoisted backdrops go first.
     pub(super) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
-        let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
+        inner.bind_record_segments(&self.next_frame.scene);
+        let hoisted = inner.take_backdrops();
         let mut nested = std::mem::take(&mut inner.groups);
         let base = self.next_frame.scene.groups.len() as u32;
         if !nested.is_empty() {
@@ -361,13 +362,7 @@ impl Window {
             }
             self.next_frame.scene.groups.append(&mut nested);
         }
-        if self.next_frame.scene.in_group {
-            self.next_frame.scene.hoisted_backdrops.extend(hoisted);
-        } else {
-            for surface in hoisted {
-                self.next_frame.scene.insert_primitive(surface);
-            }
-        }
+        self.next_frame.scene.adopt_backdrops(hoisted);
         inner
     }
 
@@ -380,7 +375,7 @@ impl Window {
         polygon: Vec<Point<ScaledPixels>>,
         fragments: Vec<Vec<Point<ScaledPixels>>>,
     ) -> u32 {
-        let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
+        let hoisted = inner.take_backdrops();
         let mut nested = std::mem::take(&mut inner.groups);
         let base = self.next_frame.scene.groups.len() as u32;
         if !nested.is_empty() {
@@ -400,18 +395,12 @@ impl Window {
             fragments,
             ..Default::default()
         });
-        if self.next_frame.scene.in_group {
-            self.next_frame.scene.hoisted_backdrops.extend(hoisted);
-        } else {
-            for surface in hoisted {
-                self.next_frame.scene.insert_primitive(surface);
-            }
-        }
+        self.next_frame.scene.adopt_backdrops(hoisted);
         index
     }
 
     fn insert_plane_mark(&mut self, index: u32, fragment: u32, mask: ContentMask<ScaledPixels>) {
-        self.next_frame.scene.insert_primitive(PaintSurface {
+        self.next_frame.scene.insert_group_surface(PaintSurface {
             order: 0,
             bounds: mask.bounds,
             content_mask: mask,
@@ -421,6 +410,6 @@ impl Window {
             opacity: 1.0,
             color_matrix: None,
             fragment,
-        });
+        }, self.content_mask_stack.len() == 1);
     }
 }

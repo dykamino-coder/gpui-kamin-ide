@@ -6,6 +6,7 @@ mod lifetime;
 mod placement;
 mod primitives;
 mod scopes;
+mod segments;
 
 fn draw<E: gpui::Element>(make: impl FnOnce() -> E) {
     super::draw_at_scale(Some(1.), make);

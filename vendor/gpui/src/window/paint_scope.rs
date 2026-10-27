@@ -137,6 +137,7 @@ impl Window {
     ) -> (R, Scene) {
         let mut scene = Scene::default();
         scene.in_group = true;
+        if self.segment_capture_mask().is_some() { scene.inherit_segments(&self.next_frame.scene); }
         mem::swap(&mut self.next_frame.scene, &mut scene);
         self.with_restore(scene, |window, scene| {
             mem::swap(&mut window.next_frame.scene, scene);
