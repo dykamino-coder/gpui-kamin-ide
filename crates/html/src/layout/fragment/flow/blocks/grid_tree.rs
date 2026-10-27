@@ -21,6 +21,23 @@ pub(crate) fn grid_tree(e: &Element) -> bool {
     measured_tree(e, false) && holds_grid(e)
 }
 
+/// Поддерево сетки, чьи параллельные потоки — только элементы сеток: каждый элемент
+/// продолжается со своего расхода (`multicol::column_regrow::items`), и монолит одного
+/// элемента может переполнить фрагментаинер, не растягивая соседей. Ряды flex и таблицы
+/// такого расхода не ведут.
+pub(crate) fn grid_items_resume(e: &Element) -> bool {
+    fn serial(e: &Element) -> bool {
+        !super::flex_container(e)
+            && !crate::layout::fragment::table_bands::table_box(e)
+            && children(&e.children).all(|n| match n {
+                Node::Element(k) if out_of_flow(&k.style.used()) => true,
+                Node::Element(k) => serial(k),
+                _ => true,
+            })
+    }
+    grid_tree(e) && serial(e)
+}
+
 fn holds_grid(e: &Element) -> bool {
     grid_container(e)
         || children(&e.children).any(|n| {
