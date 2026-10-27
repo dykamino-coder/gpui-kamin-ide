@@ -106,6 +106,9 @@ pub struct BoxStyle {
     /// percentage height calculation quirk» — ближайший предок с не-`auto`
     /// высотой). `None` — квирка нет или опоры не нашлось.
     pub(crate) quirk_pct_base: Option<f32>,
+    /// The colours of this box passed the subtree colour filter
+    /// (`inherit::box_stage`); a re-entered box is not painted again.
+    pub(crate) filter_applied: bool,
 }
 
 impl BoxStyle {
@@ -126,6 +129,8 @@ impl BoxStyle {
             inline_decoration,
             background_paint,
             canvas_background,
+            filter_applied,
+            ..
         } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
@@ -134,6 +139,7 @@ impl BoxStyle {
             inline_decoration,
             background_paint,
             canvas_background,
+            filter_applied,
             cb_height_def: style.cb_height_def_hint,
             quirk_pct_base: style.quirk_pct_base_hint,
             style,
@@ -186,13 +192,17 @@ impl BoxStyle {
 
 impl From<&BoxStyle> for BoxStyleInput {
     fn from(style: &BoxStyle) -> Self {
-        Self::new(
-            Rc::clone(style.style_rc()),
-            Some(Rc::new(style.context.clone())),
-            style.inline_decoration,
-            style.background_paint,
-            style.canvas_background.clone(),
-        )
+        Self {
+            try_source: style.try_style.clone(),
+            filter_applied: style.filter_applied,
+            ..Self::new(
+                Rc::clone(style.style_rc()),
+                Some(Rc::new(style.context.clone())),
+                style.inline_decoration,
+                style.background_paint,
+                style.canvas_background.clone(),
+            )
+        }
     }
 }
 
@@ -200,13 +210,17 @@ impl From<BoxStyle> for BoxStyleInput {
     fn from(style: BoxStyle) -> Self {
         let context = Rc::new(style.context.clone());
         let inline_decoration = style.inline_decoration;
-        Self::new(
-            style.style,
-            Some(context),
-            inline_decoration,
-            style.background_paint,
-            style.canvas_background,
-        )
+        Self {
+            try_source: style.try_style,
+            filter_applied: style.filter_applied,
+            ..Self::new(
+                style.style,
+                Some(context),
+                inline_decoration,
+                style.background_paint,
+                style.canvas_background,
+            )
+        }
     }
 }
 

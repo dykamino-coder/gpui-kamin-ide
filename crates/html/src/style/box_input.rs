@@ -14,6 +14,12 @@ pub struct BoxStyleInput {
     pub(crate) canvas_background: Option<crate::style::canvas_background::CanvasBackgroundSource>,
     pub(crate) background_paint: crate::style::background_paint::BackgroundPaint,
     pub(crate) inline_decoration: crate::style::inline_decoration::InlineDecoration,
+    /// The element style whose cascade `position-try` variants recompute,
+    /// when the box values come from a box stage of that element.
+    pub(crate) try_source: Option<crate::dom::SharedStyle>,
+    /// The colours already passed the subtree colour filter of the stage
+    /// that produced them (Filter Effects 1 §5 paints a subtree once).
+    pub(crate) filter_applied: bool,
 }
 
 impl BoxStyleInput {
@@ -30,6 +36,8 @@ impl BoxStyleInput {
             inline_decoration,
             background_paint,
             canvas_background,
+            try_source: None,
+            filter_applied: false,
         }
     }
 }

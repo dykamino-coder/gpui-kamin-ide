@@ -192,7 +192,10 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         vcx,
     );
     if !boxed.position_try_fallbacks.is_empty() {
-        boxed.try_style = Some(own.clone());
+        // Варианты перенесённой коробки вычисляются из каскада её элемента
+        // под родителем-элементом (css-anchor-position-1 §fallback-rule,
+        // css-cascade-5 §7.2), а не из значений коробки под родителем-коробкой.
+        boxed.try_style = Some(view.try_source.clone().unwrap_or_else(|| own.clone()));
     }
     boxed
 }

@@ -24,7 +24,7 @@ pub struct SharedStyle {
     /// Layout's used values: a copy of the computed style that layout edited.
     used: Option<Rc<Computed>>,
     /// Факты коробки в существующем layout-made мосте до A07.
-    box_context: Option<Rc<BoxContext<WritingMode, Align>>>,
+    box_facts: Option<Rc<BoxFacts>>,
     /// Оформление inline в существующем транспорте синтетических коробок.
     decoration: Option<Rc<crate::style::background_paint::DecorationInput>>,
 }
@@ -35,7 +35,7 @@ impl From<Computed> for SharedStyle {
             cascaded: Rc::new(style),
             computed: ComputedSlot::default(),
             used: None,
-            box_context: None,
+            box_facts: None,
             decoration: Default::default(),
         }
     }
@@ -48,7 +48,7 @@ impl From<Box<Computed>> for SharedStyle {
             cascaded: Rc::from(style),
             computed: ComputedSlot::default(),
             used: None,
-            box_context: None,
+            box_facts: None,
             decoration: Default::default(),
         }
     }
@@ -114,9 +114,9 @@ impl SharedStyle {
             Some(used) => used.clone(),
             None => self.base(),
         };
-        BoxStyleInput::new(
+        let mut input = BoxStyleInput::new(
             style,
-            self.box_context.clone(),
+            self.box_facts.as_deref().and_then(|f| f.context.clone()),
             self.decoration
                 .as_deref()
                 .map(|d| d.inline)
@@ -126,7 +126,12 @@ impl SharedStyle {
                 .map(|d| d.background_paint)
                 .unwrap_or_default(),
             self.decoration.as_deref().and_then(|d| d.canvas.clone()),
-        )
+        );
+        if let Some(facts) = self.box_facts.as_deref() {
+            input.try_source = facts.try_source.clone();
+            input.filter_applied = facts.filter_applied;
+        }
+        input
     }
 
     /// Только собственный фон; потомки наследуют computed CSS, а не этот вход.
@@ -151,7 +156,9 @@ impl SharedStyle {
 
     /// Сохраняет факты существующей синтетической коробки до A07.
     pub(crate) fn set_box_context(&mut self, context: Rc<BoxContext<WritingMode, Align>>) {
-        self.box_context = Some(context);
+        let mut facts = self.box_facts.as_deref().cloned().unwrap_or_default();
+        facts.context = Some(context);
+        self.box_facts = Some(Rc::new(facts));
     }
 
     /// The style of an element that layout made from a box style (a copy styled
@@ -166,12 +173,19 @@ impl SharedStyle {
             inline_decoration,
             background_paint,
             canvas_background,
+            try_source,
+            filter_applied,
         } = input.into();
+        let facts = BoxFacts {
+            context,
+            try_source,
+            filter_applied,
+        };
         Self {
             cascaded: style,
             computed: ComputedSlot::default(),
             used: None,
-            box_context: context,
+            box_facts: Some(Rc::new(facts)).filter(|f| !f.is_empty()),
             decoration: Some(Rc::new(crate::style::background_paint::DecorationInput {
                 inline: inline_decoration,
                 background_paint,
@@ -202,6 +216,21 @@ impl SharedStyle {
 
     fn base(&self) -> Rc<Computed> {
         self.computed.any().unwrap_or_else(|| self.cascaded.clone())
+    }
+}
+
+/// Факты коробки, которую создала раскладка: контекст родителя, стиль элемента
+/// для вариантов `position-try` и признак уже окрашенных фильтром цветов.
+#[derive(Clone, Debug, Default)]
+struct BoxFacts {
+    context: Option<Rc<BoxContext<WritingMode, Align>>>,
+    try_source: Option<SharedStyle>,
+    filter_applied: bool,
+}
+
+impl BoxFacts {
+    fn is_empty(&self) -> bool {
+        self.context.is_none() && self.try_source.is_none() && !self.filter_applied
     }
 }
 

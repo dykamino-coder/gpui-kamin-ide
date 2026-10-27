@@ -54,3 +54,40 @@ fn lifted_float_keeps_its_element_inline_values_and_block_facts() {
     assert_eq!(lifted_box.color, span_box.color);
     assert_ne!(lifted_box.color, block_box.color);
 }
+
+#[test]
+fn lifted_float_colors_pass_the_subtree_filter_once() {
+    let parsed = crate::dom::parse(
+        r#"<div id="block" style="filter: invert(1); color: rgb(0, 0, 255)"><span>a<b id="float" style="float: left; background: rgb(0, 128, 0); border: 1px solid rgb(255, 0, 0)">x</b>c</span></div>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let block =
+        crate::dom::test_support::find(&parsed.nodes, &|e| e.attr("id") == Some("block")).unwrap();
+    let original =
+        crate::dom::test_support::find(&parsed.nodes, &|e| e.attr("id") == Some("float")).unwrap();
+    let block_box = box_style(&BoxStyle::default(), &block.style, vcx);
+    let Node::Element(span) = &block.children[0] else {
+        panic!("inline")
+    };
+    // Filter Effects 1 §5: the filter paints the element and its subtree
+    // once; in place, the float's colours pass through it once.
+    let in_place = box_style(
+        &box_style(&block_box, &span.style, vcx),
+        &original.style,
+        vcx,
+    );
+    let nodes = lift(block.children.to_vec(), &block_box, vcx);
+    let lifted = nodes
+        .iter()
+        .find_map(|n| match n {
+            Node::Element(e) if e.attr("id") == Some("float") => Some(e),
+            _ => None,
+        })
+        .unwrap();
+    let lifted_box = box_style(&block_box, &lifted.style, vcx);
+    assert_eq!(lifted_box.background, in_place.background);
+    assert_eq!(lifted_box.color, in_place.color);
+    assert_eq!(lifted_box.border_colors, in_place.border_colors);
+}

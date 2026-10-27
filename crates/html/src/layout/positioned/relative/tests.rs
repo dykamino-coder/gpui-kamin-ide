@@ -44,3 +44,31 @@ fn hoisted_absolute_box_keeps_its_element_and_css_parent_values() {
     // The element's own style is left as it was.
     assert!(original.style.published().is_some());
 }
+
+#[test]
+fn hoisted_absolute_box_recomputes_position_try_from_its_element() {
+    let parsed = crate::dom::parse(
+        r#"<style>@position-try --f { top: inherit }</style><div id="block" style="position: relative; top: 0px"><span style="top: 10px">a<b id="abs" style="position: absolute; left: 0; top: 300px; position-try-fallbacks: --f">x</b></span></div>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let block =
+        crate::dom::test_support::find(&parsed.nodes, &|e| e.attr("id") == Some("block")).unwrap();
+    let original =
+        crate::dom::test_support::find(&parsed.nodes, &|e| e.attr("id") == Some("abs")).unwrap();
+    let block_box = box_style(&BoxStyle::default(), &block.style, vcx);
+    let nodes = hoist_inset_abs(&block.children, &block_box, vcx);
+    let Some(Node::Element(moved)) = nodes.last() else {
+        panic!("hoisted box: {nodes:?}");
+    };
+    let mut boxed = box_style(&block_box, &moved.style, vcx);
+    let source = boxed.try_style.as_ref().expect("position-try source");
+    // The variant source is the element's own style, not the layout-made copy.
+    assert!(source.published().is_some());
+    assert!(std::ptr::eq(source.cascaded(), original.style.cascaded()));
+    // `inherit` in the rule takes the CSS parent's value (CSS Cascade 5 §7.3.1).
+    let rule = vcx.doc.try_rule("--f").expect("rule");
+    crate::layout::positioned::anchor::resolve::try_rule_onto(&mut boxed, &block_box, &rule, vcx);
+    assert_eq!(boxed.inset.top, Some(Len::Px(10.0)));
+}

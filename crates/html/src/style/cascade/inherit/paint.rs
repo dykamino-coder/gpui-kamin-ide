@@ -26,7 +26,13 @@ pub(super) fn inherit_paint(
     // Computed-цвет элемента ещё не окрашен, в том числе унаследованный.
     // Анонимная коробка получает уже окрашенный цвет от коробки-родителя:
     // у неё фильтруются только собственные объявления.
-    if paint_filter && let Some(f) = c.filter {
+    // Цвета коробки, созданной раскладкой из уже окрашенной стадии, фильтр
+    // прошли: повторный вход в стадию коробки их не красит (Filter Effects 1 §5).
+    if paint_filter
+        && !c.filter_applied
+        && let Some(f) = c.filter
+    {
+        c.filter_applied = true;
         if own.background.is_some() {
             set!(c.background, c.background.map(|col| f.apply(col)));
         }
