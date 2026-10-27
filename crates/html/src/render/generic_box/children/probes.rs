@@ -43,7 +43,6 @@ pub(crate) fn child_probes(
             items,
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
             [bw(merged.margin.right), bw(merged.margin.bottom)],
-            e.marks.carried_row_gap,
         ));
     }
     if let Some((_, skip)) = crate::text::clamp::clamp_context(&opts.cx)

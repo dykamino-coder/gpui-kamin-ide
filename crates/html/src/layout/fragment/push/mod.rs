@@ -18,7 +18,6 @@ use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod cell;
-mod row;
 use cell::pushed_cell_at;
 mod spacer;
 pub(crate) use spacer::avoid_only_monolith;
@@ -45,9 +44,6 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     }
     let lines = crate::layout::fragment::LineCx::child(c, vcx);
     let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
-    if let Some(found) = row::pushed_row_at(c, a, depth, forced, vcx) {
-        return found;
-    }
     if table_box(c) {
         return pushed_cell_at(c, a, depth, forced, vcx);
     }

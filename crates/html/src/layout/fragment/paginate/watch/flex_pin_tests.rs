@@ -36,26 +36,23 @@ fn every_column_frame_is_pinned_once_by_native_line_index() {
     assert_eq!(*rec.flex_lines.borrow(), expected);
 }
 
+/// Нерастяжимый лист заданного размера (общий для тестов flex через Window).
+pub(super) fn leaf(window: &mut gpui::Window, cx: &mut gpui::App, w: f32, h: f32) -> LayoutId {
+    let style = Style {
+        size: size(px(w).into(), px(h).into()),
+        flex_shrink: 0.,
+        ..Style::default()
+    };
+    window.request_layout(style, [], cx)
+}
+
 fn column(
     window: &mut gpui::Window,
     cx: &mut gpui::App,
     wrap: FlexWrap,
     heights: &[f32],
 ) -> (LayoutId, Vec<LayoutId>) {
-    let items: Vec<_> = heights
-        .iter()
-        .map(|&h| {
-            window.request_layout(
-                Style {
-                    size: size(px(10.).into(), px(h).into()),
-                    flex_shrink: 0.,
-                    ..Style::default()
-                },
-                [],
-                cx,
-            )
-        })
-        .collect();
+    let items: Vec<_> = heights.iter().map(|&h| leaf(window, cx, 10., h)).collect();
     let root = window.request_layout(
         Style {
             display: Display::Flex,

@@ -2,8 +2,7 @@
 //! повторной раскладкой: блочный родитель получает пустую коробку-прокладку перед сдвинутой
 //! коробкой, элемент flex/сетки — распорку в верхнем поле, чтобы строка или дорожка росла с
 //! ним; элемент колоночного flex сохраняет главный размер до фрагментации и может вместить
-//! разорванное содержимое (Blink `MinBlockSizeShouldEncompassIntrinsicSize`); зазор строки
-//! ряда переносится в поле элемента, чтобы усечь его у разрыва.
+//! разорванное содержимое (Blink `MinBlockSizeShouldEncompassIntrinsicSize`).
 
 use super::{column_flex, layout_parent, row_flex};
 use crate::dom::{Element, Node};
@@ -22,9 +21,6 @@ mod tests;
 pub(crate) struct Strut {
     pub(crate) by: f32,
     pub(crate) size: f32,
-    /// The flex row gap before this item's row, carried as its margin so
-    /// that one row's gap can be truncated (`row-gap` is one value).
-    pub(crate) gap: f32,
 }
 
 /// Struts by `node_id`.
@@ -73,13 +69,6 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
     let column = column_flex(&c.style.used());
     let can_shrink_box = matches!(c.style.used().height, Some(Len::Px(_)));
     let moved = column && inner_by(c, struts) > 0.0;
-    // Row gaps carried by the items' margins (`Strut::gap`).
-    let gap_rows = c.children.iter().any(
-        |n| matches!(n, Node::Element(k) if struts.get(&k.node_id).is_some_and(|s| s.gap > 0.0)),
-    );
-    if gap_rows && let Some((_, col)) = c.style.used().gap {
-        c.style.used_mut().gap = Some((Some(Len::Px(0.0)), col));
-    }
     let mut i = 0;
     while i < c.children.len() {
         let mut spacer = None;
@@ -114,14 +103,6 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                     k.style.used_mut().flex_grow = Some(0.0);
                     k.style.used_mut().flex_shrink = Some(0.0);
                 }
-            }
-            if let Some(&st) = struts.get(&k.node_id).filter(|s| s.gap > 0.0 && gap_rows) {
-                let Some(m) = px_auto_zero(k.style.used().margin.top) else {
-                    return false;
-                };
-                k.style.used_mut().margin.top = Some(Len::Px(m + st.gap));
-                // TRANSITIONAL(F2-4): Остаток row-gap перенесённого ряда записывается в поля и carried_row_gap; удалить в P13 после усечения зазора строки ограничением раскладки.
-                k.marks.carried_row_gap = (st.gap + st.by.min(0.0)).max(0.0);
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {
                 if k.style.used().float.is_some_and(|f| f != 0) {

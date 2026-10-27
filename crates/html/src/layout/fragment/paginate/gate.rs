@@ -26,13 +26,12 @@ pub(crate) fn refusal(
     _auto_fill: bool,
     vcx: ValueCx<'_>,
 ) -> Option<&'static str> {
-    // TRANSITIONAL(F2-4): Распорки усекают только пиксельный row-gap рядов flex с переносом; удалить отказ после gap constraints для остальных flex/grid осей в P13/P16.
+    // TRANSITIONAL(F2-7): Распорки DOM не усекают зазоры flex/grid у разрыва (ряды flex гасят их ростом линий измеренного пути); удалить отказ вместе с распорками в P22.
     fn gapped(e: &Element) -> bool {
         (matches!(
             e.style.used().display,
             Some(Display::Flex) | Some(Display::Grid)
-        ) && e.style.used().gap.is_some()
-            && super::row_gap(&e.style.used()).is_none())
+        ) && e.style.used().gap.is_some())
             || (children(&e.children)
                 .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k))))
     }
@@ -95,11 +94,15 @@ mod tests {
                     e.children.iter().find_map(flex)
                 }
                 let parent = tree.iter().find_map(flex).expect("flex root");
+                // Промежуток рядов гасит рост линий измеренного пути;
+                // распорки DOM его не усекают и такой ряд не берут.
+                let gapped = flow.contains("row-gap");
                 assert_eq!(
                     refusal(parent, Some(80.0), false, tree.values()),
-                    None,
+                    gapped.then_some("gap"),
                     "{html}"
                 );
+                assert!(crate::layout::fragment::flow::blocks::flex_tree(parent));
             }
         }
     }
