@@ -203,7 +203,7 @@ impl From<BoxStyle> for BoxStyleInput {
             Some(context),
             inline_decoration,
             style.background_paint,
-            style.canvas_background.clone(),
+            style.canvas_background,
         )
     }
 }
