@@ -72,6 +72,7 @@ mod scene_capture;
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
+mod hit_transform;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan,
     PaintScopeDescriptor, PaintGroupDescriptor};
 mod paint_snapshot;
@@ -1020,6 +1021,8 @@ pub(crate) struct Frame {
     pub(crate) dispatch_tree: DispatchTree,
     pub(crate) scene: Scene,
     pub(crate) hitboxes: Vec<Hitbox>,
+    /// KaminIDE patch: inverse-matrix scopes of hitboxes inserted under a transform.
+    pub(crate) hitbox_scopes: FxHashMap<HitboxId, Rc<hit_transform::HitScope>>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
@@ -1076,6 +1079,7 @@ impl Frame {
             dispatch_tree,
             scene: Scene::default(),
             hitboxes: Vec::new(),
+            hitbox_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
             deferred_draws: Vec::new(),
             input_handlers: Vec::new(),
@@ -1106,6 +1110,7 @@ impl Frame {
         self.tooltip_requests.clear();
         self.cursor_styles.clear();
         self.hitboxes.clear();
+        self.hitbox_scopes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
         self.tab_stops.clear();
@@ -1143,8 +1148,7 @@ impl Frame {
         let mut set_hover_hitbox_count = false;
         let mut hit_test = HitTest::default();
         for hitbox in self.hitboxes.iter().rev() {
-            let bounds = hitbox.bounds.intersect(&hitbox.content_mask.bounds);
-            if bounds.contains(&position) {
+            if hit_transform::HitScope::hitbox_contains(self.hitbox_scopes.get(&hitbox.id), hitbox, position) {
                 hit_test.ids.push(hitbox.id);
                 if !set_hover_hitbox_count
                     && hitbox.behavior == HitboxBehavior::BlockMouseExceptScroll
@@ -1244,6 +1248,8 @@ pub struct Window {
     pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
+    /// KaminIDE patch: the innermost transformed-subtree hit scope during prepaint.
+    hit_scope: Option<Rc<hit_transform::HitScope>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
     /// The [`TextInputConfiguration`] most recently forwarded to the platform
     /// window, so that only actual changes are forwarded (reconfiguring a live
@@ -2167,6 +2173,7 @@ impl Window {
             mask_map: None,
             plane_contexts: Vec::new(),
             content_mask_stack: Vec::new(),
+            hit_scope: None,
             element_opacity: 1.0,
             requested_autoscroll: None,
             last_text_input_configuration: None,
@@ -4077,6 +4084,11 @@ impl Window {
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
+        for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
+            if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
+                self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
+            }
+        }
         self.next_frame.hitboxes.extend(
             self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
                 .iter()
@@ -6363,6 +6375,9 @@ impl Window {
             content_mask,
             behavior,
         };
+        if let Some(scope) = &self.hit_scope {
+            self.next_frame.hitbox_scopes.insert(id, scope.clone());
+        }
         self.next_frame.hitboxes.push(hitbox.clone());
         hitbox
     }

@@ -164,7 +164,10 @@ pub(super) fn resolve_links(html: &str, path: &str) -> String {
         // знаки, которые в имени файла стоят как есть (`support/\\'green\\ block.png`
         // — это файл `'green block.png`). Стенд ищет файл так же, как его
         // нашёл бы браузер (`uri-005`).
-        let bare = kamin_html::css::unescape(bare);
+        let bare = kamin_html::css::try_unescape(bare).unwrap_or_else(|failure| {
+            eprintln!("Document admission failed: {failure}");
+            std::process::exit(2);
+        });
         let decoded = percent_decode(&bare);
         // Адрес с фрагментом (`file.svg#mask`): файл существует без хвоста —
         // резолвим базу, хвост приклеиваем обратно

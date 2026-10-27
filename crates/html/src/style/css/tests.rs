@@ -15,14 +15,16 @@ fn decls_keep_commas_inside_functions() {
 fn layer_block_is_transparent_and_supports_not_is_honoured() {
     let media = Media::default();
     // Слой — обёртка: правило внутри него живёт.
-    let rules = parse_stylesheet_media("@layer base { p { color: red } }", media);
+    let rules = parse_stylesheet_media("@layer base { p { color: red } }", media).unwrap();
     assert_eq!(rules.len(), 1);
     assert_eq!(rules[0].decls.last("color"), Some("red"));
     // Отрицание — запасная ветка для движка БЕЗ поддержки; применять её
     // нельзя, иначе применяются обе ветки пары сразу.
-    let neg = parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media);
+    let neg = parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media)
+        .unwrap();
     assert!(neg.is_empty());
-    let pos = parse_stylesheet_media("@supports (display: grid) { p { color: red } }", media);
+    let pos =
+        parse_stylesheet_media("@supports (display: grid) { p { color: red } }", media).unwrap();
     assert_eq!(pos.len(), 1);
 }
 
@@ -123,7 +125,7 @@ fn media_rules_apply_when_the_condition_holds() {
         @media (min-width: 10px) { .b { color: blue } }
         .c, .d { padding: 2px }
     ";
-    let rules = parse_stylesheet(css);
+    let rules = parse_stylesheet(css).unwrap();
     let sels: Vec<String> = rules.iter().map(|r| r.sel.classes.join(",")).collect();
     // Условие выполнено при ширине по умолчанию — правило внутри работает.
     assert_eq!(sels, vec!["a", "b", "c", "d"]);
@@ -139,7 +141,8 @@ fn media_rules_are_skipped_when_the_condition_fails() {
             width: 400.0,
             ..Media::default()
         },
-    );
+    )
+    .unwrap();
     assert!(rules.is_empty(), "узкое окно не берёт правило для широкого");
 }
 
@@ -152,14 +155,16 @@ fn color_scheme_query_follows_the_theme() {
             dark: true,
             ..Media::default()
         },
-    );
+    )
+    .unwrap();
     let light = parse_stylesheet_media(
         css,
         Media {
             dark: false,
             ..Media::default()
         },
-    );
+    )
+    .unwrap();
     assert_eq!(dark.len(), 1);
     assert!(light.is_empty());
 }
@@ -173,6 +178,7 @@ fn media_features_accept_math_functions() {
         @media (resolution: calc(1dppx * sign(5px))) { .d { color: red } }
     ";
     let sels: Vec<String> = parse_stylesheet(css)
+        .unwrap()
         .iter()
         .map(|r| r.sel.classes.join(","))
         .collect();

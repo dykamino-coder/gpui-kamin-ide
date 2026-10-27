@@ -26,7 +26,7 @@ pub(super) fn enabled(handle: &Handle) -> bool {
     let mut root = handle.clone();
     loop {
         let parent = root.parent.take();
-        let next = parent.as_ref().and_then(std::rc::Weak::upgrade);
+        let next = parent.as_ref().and_then(|parent| parent.upgrade());
         root.parent.set(parent);
         match next.filter(is_mathml) {
             Some(parent) => root = parent,

@@ -16,7 +16,7 @@ pub type Keyframes = Vec<(f32, DeclBlock)>;
 /// Разбираются отдельно от правил: у `@keyframes` тело состоит не из
 /// объявлений, а из вложенных блоков, и общий разборщик такое телом правила
 /// не считает.
-pub fn parse_keyframes(css: &str, vcx: ValueCx<'_>) -> HashMap<String, Keyframes> {
+pub(crate) fn parse_keyframes(css: &str, vcx: ValueCx<'_>) -> HashMap<String, Keyframes> {
     parse_keyframes_in(css, None, vcx)
 }
 
@@ -61,7 +61,7 @@ pub(crate) fn in_false_group(css: &str, at: usize, media: Media, vcx: ValueCx<'_
 
 /// Наборы кадров таблицы. `media` — условия окружения: с ними кадры ложной
 /// группы не берутся; `None` (лист агента) — берутся все, как прежде.
-pub fn parse_keyframes_in(
+pub(crate) fn parse_keyframes_in(
     css: &str,
     media: Option<Media>,
     vcx: ValueCx<'_>,

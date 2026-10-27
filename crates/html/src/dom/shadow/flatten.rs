@@ -19,7 +19,8 @@ pub(super) fn flatten_slot(
     drafts: &HashMap<NodeKey, SlotInfo>,
     tree: &TreeIndex,
     out: &mut Vec<Option<FlatCtx>>,
-) {
+) -> Result<(), crate::budget::admission::Error> {
+    let admission = tree.admission();
     enum Work {
         Expand(NodeKey),
         Emit(Box<Option<FlatCtx>>),
@@ -29,6 +30,7 @@ pub(super) fn flatten_slot(
     }
     let mut work = vec![Work::Expand(key.clone())];
     while let Some(next) = work.pop() {
+        admission.work(1)?;
         let key = match next {
             Work::Emit(ctx) => {
                 out.push(*ctx);
@@ -40,6 +42,7 @@ pub(super) fn flatten_slot(
             continue;
         };
         if !info.assigned.is_empty() {
+            admission.work(info.assigned.len())?;
             for s in info.assigned.iter().rev() {
                 let nested = NodeKey::of(&s.node);
                 if is_slot(&s.node) && drafts.contains_key(&nested) {
@@ -57,6 +60,7 @@ pub(super) fn flatten_slot(
             continue;
         }
         let kids = info.slot.children.borrow();
+        admission.work(kids.len())?;
         let (_, all) = census_of(&kids, tree);
         let all = Rc::new(all);
         let mut pos = all.len();
@@ -82,15 +86,20 @@ pub(super) fn flatten_slot(
             }
         }
     }
+    Ok(())
 }
 
 /// Досчитать плоские списки и выложить слоты на склад.
-pub(crate) fn finish_slots(mut drafts: HashMap<NodeKey, SlotInfo>, tree: &mut TreeIndex) {
+pub(crate) fn finish_slots(
+    mut drafts: HashMap<NodeKey, SlotInfo>,
+    tree: &mut TreeIndex,
+) -> Result<(), crate::budget::admission::Error> {
+    tree.admission().work(drafts.len())?;
     let keys: Vec<NodeKey> = drafts.keys().cloned().collect();
     let mut flats: HashMap<NodeKey, Vec<Option<FlatCtx>>> = HashMap::new();
     for key in &keys {
         let mut flat = vec![];
-        flatten_slot(key, &drafts, tree, &mut flat);
+        flatten_slot(key, &drafts, tree, &mut flat)?;
         flats.insert(key.clone(), flat);
     }
     for key in keys {
@@ -99,5 +108,5 @@ pub(crate) fn finish_slots(mut drafts: HashMap<NodeKey, SlotInfo>, tree: &mut Tr
             tree.slots.insert(key, Rc::new(info));
         }
     }
-    super::slotted::register_all(tree);
+    super::slotted::register_all(tree)
 }

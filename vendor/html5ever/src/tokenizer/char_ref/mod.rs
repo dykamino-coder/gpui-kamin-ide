@@ -239,15 +239,14 @@ impl CharRefTokenizer {
         };
 
         if error {
-            let msg = if tokenizer.opts.exact_errors {
-                Cow::from(format!(
+            if tokenizer.opts.exact_errors {
+                tokenizer.emit_error_fmt(format_args!(
                     "Invalid numeric character reference value 0x{:06X}",
                     self.num
-                ))
+                ));
             } else {
-                Cow::from("Invalid numeric character reference")
-            };
-            tokenizer.emit_error(msg);
+                tokenizer.emit_error(Cow::from("Invalid numeric character reference"));
+            }
         }
 
         self.finish_one(c)
@@ -264,6 +263,13 @@ impl CharRefTokenizer {
             return Status::Stuck;
         };
         tokenizer.discard_char(input);
+        if !tokenizer.admit(
+            tokenizer
+                .sink
+                .before_buffer(self.name_buf_mut(), c.len_utf8()),
+        ) {
+            return Status::Stuck;
+        }
         self.name_buf_mut().push_char(c);
         match data::NAMED_ENTITIES.get(&self.name_buf()[..]) {
             // We have either a full match or a prefix of one.
@@ -283,12 +289,14 @@ impl CharRefTokenizer {
     }
 
     fn emit_name_error<Sink: TokenSink>(&mut self, tokenizer: &Tokenizer<Sink>) {
-        let msg = if tokenizer.opts.exact_errors {
-            Cow::from(format!("Invalid character reference &{}", self.name_buf()))
+        if tokenizer.opts.exact_errors {
+            tokenizer.emit_error_fmt(format_args!(
+                "Invalid character reference &{}",
+                self.name_buf()
+            ));
         } else {
-            Cow::from("Invalid character reference")
-        };
-        tokenizer.emit_error(msg);
+            tokenizer.emit_error(Cow::from("Invalid character reference"));
+        }
     }
 
     fn unconsume_name(&mut self, input: &BufferQueue) {
@@ -315,6 +323,9 @@ impl CharRefTokenizer {
                     Some(';') if self.name_buf().len() > 1 => self.emit_name_error(tokenizer),
 
                     _ => (),
+                }
+                if tokenizer.is_aborted() {
+                    return Status::Stuck;
                 }
                 self.unconsume_name(input);
                 Status::Done(CharRef::EMPTY)
@@ -363,11 +374,19 @@ impl CharRefTokenizer {
                     },
                 };
 
+                if tokenizer.is_aborted() {
+                    return Status::Stuck;
+                }
                 if unconsume_all {
                     self.unconsume_name(input);
                     Status::Done(CharRef::EMPTY)
                 } else {
-                    input.push_front(StrTendril::from_slice(&self.name_buf()[name_len..]));
+                    // Keep the admitted backing allocation when returning a suffix.
+                    // Short suffixes remain inline in tendril's canonical slice API.
+                    input.push_front(
+                        self.name_buf()
+                            .subtendril(name_len as u32, (self.name_buf().len() - name_len) as u32),
+                    );
                     tokenizer.ignore_lf.set(false);
                     Status::Done(CharRef {
                         chars: [from_u32(c1).unwrap(), from_u32(c2).unwrap()],
@@ -389,11 +408,21 @@ impl CharRefTokenizer {
             return Status::Stuck;
         };
         tokenizer.discard_char(input);
+        if !tokenizer.admit(
+            tokenizer
+                .sink
+                .before_buffer(self.name_buf_mut(), c.len_utf8()),
+        ) {
+            return Status::Stuck;
+        }
         self.name_buf_mut().push_char(c);
         match c {
             _ if c.is_ascii_alphanumeric() => return Status::Progress,
             ';' => self.emit_name_error(tokenizer),
             _ => (),
+        }
+        if tokenizer.is_aborted() {
+            return Status::Stuck;
         }
         self.unconsume_name(input);
         Status::Done(CharRef::EMPTY)
@@ -405,6 +434,9 @@ impl CharRefTokenizer {
         input: &BufferQueue,
     ) -> CharRef {
         loop {
+            if tokenizer.is_aborted() {
+                return CharRef::EMPTY;
+            }
             let status = match self.state {
                 State::Begin => Status::Done(CharRef::EMPTY),
                 State::Numeric(_) if !self.seen_digit => self.unconsume_numeric(tokenizer, input),

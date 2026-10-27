@@ -59,6 +59,7 @@ impl Hooks for Transformed {
                 return;
             }
         }
+        let mut hit = None;
         if flat {
             let (w, h) = {
                 let exact = window.layout_size_unrounded(*layout_id);
@@ -70,15 +71,27 @@ impl Hooks for Transformed {
             let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
             let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
             let [[a, b], [c, d]] = self.lin;
+            let translation = [ox - a * ox - b * oy + sx, oy - c * ox - d * oy + sy];
             crate::layout::positioned::anchor::tf_push(
-                [
-                    [a, b, ox - a * ox - b * oy + sx],
-                    [c, d, oy - c * ox - d * oy + sy],
-                ],
+                [[a, b, translation[0]], [c, d, translation[1]]],
                 self.values.vcx(),
             );
+            // The same flat matrix maps the pointer back into the subtree's
+            // untransformed hitboxes (css-transforms-1 §transform-rendering:
+            // hit testing follows the rendered, transformed shape).
+            hit = Some(gpui::TransformationMatrix {
+                rotation_scale: self.lin,
+                translation,
+            });
         }
-        self.child.prepaint(window, cx);
+        match hit {
+            Some(matrix) => window.with_hitbox_transform(matrix, |window| {
+                self.child.prepaint(window, cx);
+            }),
+            None => {
+                self.child.prepaint(window, cx);
+            }
+        }
         if flat {
             crate::layout::positioned::anchor::tf_pop(self.values.vcx());
         }

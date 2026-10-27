@@ -1,15 +1,36 @@
 //! Разрешает URL шрифтов и ICC-ресурсов относительно действующей базы документа.
 
+use crate::budget::{
+    BudgetKind,
+    admission::{Admission, Error},
+};
 use url::Url;
 
-pub(crate) fn resolve(authored: &str, base: Option<&Url>) -> String {
-    // Preserve native absolute paths supported by the local document loader.
+pub(crate) fn resolve(
+    authored: &str,
+    base: Option<&Url>,
+    admission: &Admission,
+) -> Result<String, Error> {
+    admission.consume(BudgetKind::UrlBytes, authored.len())?;
+    admission.work(authored.len())?;
+    // Абсолютные локальные пути сохраняют контракт загрузчика.
     if std::path::Path::new(authored).is_absolute() {
-        return authored.to_string();
+        return Ok(authored.to_string());
     }
-    base.and_then(|base| base.join(authored).ok())
-        .or_else(|| Url::parse(authored).ok())
-        .map_or_else(|| authored.to_string(), |url| url.to_string())
+    let joined = if let Some(base) = base {
+        super::source::join(base, authored, admission)?
+    } else {
+        None
+    };
+    let url = match joined {
+        Some(url) => Some(url),
+        None => super::source::Source::Uri(authored).resolve(admission)?,
+    };
+    let resolved = url.map_or_else(|| authored.to_string(), |url| url.to_string());
+    // Загрузчик повторно разбирает сериализацию; этот разбор тоже допускается.
+    admission.consume(BudgetKind::UrlBytes, resolved.len())?;
+    admission.work(resolved.len())?;
+    Ok(resolved)
 }
 
 pub(crate) fn read(resource: &str) -> Option<Vec<u8>> {
@@ -26,11 +47,16 @@ mod tests {
     fn resource_paths_use_the_effective_base() {
         let base = Url::parse("file:///tests/assets/page.html").unwrap();
         assert_eq!(
-            resolve("../fonts/a.ttf", Some(&base)),
+            resolve("../fonts/a.ttf", Some(&base), &Admission::default()).unwrap(),
             "file:///tests/fonts/a.ttf"
         );
         assert_eq!(
-            resolve("data:font/ttf;base64,AAAA", Some(&base)),
+            resolve(
+                "data:font/ttf;base64,AAAA",
+                Some(&base),
+                &Admission::default()
+            )
+            .unwrap(),
             "data:font/ttf;base64,AAAA"
         );
     }

@@ -72,6 +72,7 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
         .unwrap();
     let old_state = doc.state.clone();
     let old_revision = doc.revision_budget();
+    let before = doc.budget().used(BudgetKind::LiveBytes);
     let live = doc.budget().reserve(BudgetKind::LiveBytes, 8).unwrap();
     let salt = doc.salt();
     let failure = doc.update(&"x".repeat(17), "").unwrap_err();
@@ -81,12 +82,40 @@ fn update_retains_document_ledger_but_work_belongs_to_each_attempt() {
     assert!(doc.update("<p>b</p>", "").unwrap().changed());
     assert_eq!(doc.revision_budget().used(BudgetKind::SourceBytes), 8);
     assert_eq!(old_revision.used(BudgetKind::SourceBytes), 8);
-    assert_eq!(doc.budget().used(BudgetKind::LiveBytes), 8);
+    assert!(doc.budget().used(BudgetKind::LiveBytes) > before + 8);
     assert_eq!(governor.used(BudgetKind::Documents), 1);
     drop(doc);
     drop(old_revision);
     drop(live);
     assert_eq!(governor.used(BudgetKind::Documents), 1);
     drop(old_state);
+    assert_eq!(governor.used(BudgetKind::Documents), 0);
+}
+
+#[test]
+fn parser_refusal_retains_keep_and_releases_every_partial_reservation() {
+    let governor = ResourceGovernor::default();
+    let limits = DocumentLimits::default()
+        .lower(BudgetKind::DomNodes, 6)
+        .unwrap();
+    let mut doc = Document::builder("<p>KEEP</p>", "")
+        .limits(limits)
+        .governor(&governor)
+        .build()
+        .unwrap();
+    let (state, dom, key) = (doc.state.clone(), doc.source_dom(), doc.salt());
+    let live = doc.budget().used(BudgetKind::LiveBytes);
+    let failure = doc.update("<p>KEEP</p><p>LOST</p>", "").unwrap_err();
+    assert!(matches!(failure.reason, FailureReason::Budget(_)));
+    assert_eq!(failure.report.retained_revision, Some(key));
+    assert_eq!(doc.salt(), key);
+    assert!(Rc::ptr_eq(&state, &doc.state));
+    assert!(Rc::ptr_eq(&dom, &doc.source_dom()));
+    assert_eq!(doc.budget().used(BudgetKind::LiveBytes), live);
+    let mut text = String::new();
+    crate::dom::text_content::gather_text(doc.nodes(), &mut text);
+    assert_eq!(text, "KEEP");
+    drop((state, dom, doc));
+    assert_eq!(governor.used(BudgetKind::LiveBytes), 0);
     assert_eq!(governor.used(BudgetKind::Documents), 0);
 }

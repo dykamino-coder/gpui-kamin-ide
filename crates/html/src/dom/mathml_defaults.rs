@@ -7,7 +7,7 @@ use markup5ever_rcdom::{Handle, NodeData};
 /// by author CSS. Unlike deleting alternatives, this preserves the cascade.
 pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
     let parent = handle.parent.take();
-    let hides = index > 1 && parent.as_ref().and_then(std::rc::Weak::upgrade)
+    let hides = index > 1 && parent.as_ref().and_then(|parent| parent.upgrade())
         .is_some_and(|parent| is_mathml(&parent) && matches!(&parent.data,
             NodeData::Element { name, .. } if matches!(name.local.as_ref(), "semantics" | "maction")));
     handle.parent.set(parent);
@@ -59,7 +59,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
         let parent = handle.parent.take();
         if let Some(parent) = parent
             .as_ref()
-            .and_then(std::rc::Weak::upgrade)
+            .and_then(|parent| parent.upgrade())
             .filter(is_mathml)
             && let NodeData::Element { name, .. } = &parent.data
         {

@@ -5,6 +5,7 @@
 //! (`<iframe>`) — нет.
 
 use super::{declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc};
+use crate::budget::admission::{Admission, Error};
 use crate::document::state::ValueCx;
 
 /// Покрытие U+0020 объединёнными unicode-range семейства, без проверки глифа.
@@ -51,11 +52,13 @@ pub(super) fn range_has_space(value: Option<&str>) -> bool {
 
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
 ///
-pub fn load_faces(css: &str, vcx: ValueCx<'_>) {
-    load_faces_with_base(css, None, vcx);
+pub fn load_faces(css: &str, vcx: ValueCx<'_>) -> Result<(), crate::dom::outcome::DocumentFailure> {
+    let admission = admit(css, vcx)?;
+    clear(vcx);
+    Ok(load_faces_into(css, None, vcx, &admission)?)
 }
 
-pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
+fn clear(vcx: ValueCx<'_>) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     vcx.doc.font_faces.aliases.borrow_mut().clear();
@@ -66,29 +69,60 @@ pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>, vcx: Valu
     super::metric_overrides::clear(vcx);
     vcx.doc.font_faces.romn.borrow_mut().clear();
     super::math::clear_aliases(vcx);
-    load_faces_into(css, base, vcx);
 }
 
 /// Дозагрузка БЕЗ сброса подмен: вложенный документ (`<iframe>`) разбирается
 /// посреди отрисовки внешнего — сброс крал бы шрифты хозяина, и весь текст
 /// после рамки падал в подстановочный шрифт.
-pub fn load_faces_additive(css: &str, vcx: ValueCx<'_>) {
-    load_faces_into(css, None, vcx);
+pub fn load_faces_additive(
+    css: &str,
+    vcx: ValueCx<'_>,
+) -> Result<(), crate::dom::outcome::DocumentFailure> {
+    let admission = admit(css, vcx)?;
+    Ok(load_faces_into(css, None, vcx, &admission)?)
 }
 
-pub(crate) fn load_faces_sheets(sheets: &[String], base: Option<&url::Url>, vcx: ValueCx<'_>) {
-    load_faces_with_base("", base, vcx);
+pub(crate) fn load_faces_sheets(
+    sheets: &[impl AsRef<str>],
+    base: Option<&url::Url>,
+    vcx: ValueCx<'_>,
+) -> Result<(), Error> {
+    clear(vcx);
+    let admission = vcx
+        .doc
+        .budget
+        .borrow()
+        .clone()
+        .map(Admission::new)
+        .unwrap_or_default();
     for css in sheets {
-        load_faces_into(css, base, vcx);
+        load_faces_into(css.as_ref(), base, vcx, &admission)?;
+    }
+    Ok(())
+}
+
+fn admit(css: &str, vcx: ValueCx<'_>) -> Result<Admission, Error> {
+    let revision = vcx.doc.budget.borrow().clone();
+    if let Some(revision) = revision {
+        let admission = Admission::new(revision);
+        crate::css_syntax::admission::admit(css, &admission)?;
+        Ok(admission)
+    } else {
+        crate::css_syntax::admission::standalone(css)
     }
 }
 
-pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
+pub(super) fn load_faces_into(
+    css: &str,
+    base: Option<&url::Url>,
+    vcx: ValueCx<'_>,
+    admission: &Admission,
+) -> Result<(), Error> {
     for block in faces(css, vcx) {
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
             continue;
         };
-        let src = crate::document::resource_url::resolve(&src, base);
+        let src = crate::resources::url_loader::resolve(&src, base, admission)?;
         let real = vcx.doc.font_faces.loaded.borrow().get(&src).cloned();
         let real = match real {
             Some(hit) => hit,
@@ -184,6 +218,7 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
         }
     }
     vcx.doc.font_registry_changed();
+    Ok(())
 }
 
 /// Множитель `size-adjust` лица, которое подбор по наклону (css-fonts-4
