@@ -9,20 +9,45 @@ fn numeric_filters_hit_with_nan_and_signed_zero_without_hiding_changes() {
     let input =
         Source::Raster(crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255]).unwrap());
     let mut list = crate::style::computed::ImageFilter::parse("invert(0)", vcx);
+    let set = |list: &mut crate::style::computed::ImageFilter, value: f32| {
+        list.filter.as_mut().unwrap().invert = value;
+        list.operations[0].invert = value;
+    };
     for values in [[0.0, -0.0], [f32::NAN, f32::from_bits(0xff80_0123)]] {
         let mut images = Vec::new();
         for value in values {
-            list.filter.as_mut().unwrap().invert = value;
+            set(&mut list, value);
             images.push(raster(&input, &list, (3.0, 2.0), false, vcx).unwrap());
         }
         assert!(Arc::ptr_eq(&images[0], &images[1]));
         assert_eq!(images[0].bytes, images[1].bytes);
     }
-    list.filter.as_mut().unwrap().invert = 0.0;
+    set(&mut list, 0.0);
     let original = raster(&input, &list, (3.0, 2.0), false, vcx).unwrap();
-    list.filter.as_mut().unwrap().invert = 1.0;
+    set(&mut list, 1.0);
     let inverted = raster(&input, &list, (3.0, 2.0), false, vcx).unwrap();
     assert_ne!(original.bytes, inverted.bytes);
+}
+
+#[test]
+fn authored_operation_order_is_part_of_the_cache_key() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let input =
+        Source::Raster(crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255]).unwrap());
+    let parse = |raw| crate::style::computed::ImageFilter::parse(raw, vcx);
+    let first = parse("brightness(50%) invert(100%)");
+    let second = parse("invert(100%) brightness(50%)");
+    let a = raster(&input, &first, (1.0, 1.0), false, vcx).unwrap();
+    let b = raster(&input, &second, (1.0, 1.0), false, vcx).unwrap();
+    let direct = super::super::filter_image::apply(
+        &crate::resources::images::pixels::bgra(1, 1, vec![0, 128, 0, 255]).unwrap(),
+        &second,
+        (1.0, 1.0),
+    )
+    .unwrap();
+    assert_ne!(a.bytes, b.bytes);
+    assert_eq!(b.bytes, direct.bytes);
 }
 
 #[test]
