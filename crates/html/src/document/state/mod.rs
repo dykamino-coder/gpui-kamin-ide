@@ -49,8 +49,8 @@ pub struct DocState {
     diagnostics: RefCell<crate::diagnostics::DiagnosticLog>,
     /// Следующий ключ синтетической коробки, независимо от авторских node_id.
     synthetic_id: RefCell<Vec<u8>>,
-    /// Anchor geometry and fallback selection belonging to this document.
-    pub(crate) anchor_frame: crate::layout::positioned::anchor::AnchorState,
+    /// Anchor registries and root frame geometry of the layout phase of this document.
+    pub(crate) layout: Rc<crate::layout::layout_state::LayoutState>,
     /// Font-face descriptors and source caches belonging to this document.
     pub(crate) font_faces: crate::text::fonts::FontFaces,
     /// Parsed MATH sources and registered native-family data of this document.
@@ -64,7 +64,7 @@ pub struct DocState {
     /// Named font-feature definitions owned by this document.
     pub(crate) font_alternates: RefCell<crate::font_facts::FeatureDefinitions>,
     /// Rasterized foreignObject layers of this document, bounded by the painter.
-    pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
+    pub(crate) foreign_rasters: crate::resources::svg_document::foreign_rasters::ForeignRasters,
     /// SVG mask/filter definitions retained by deferred groups of this document.
     pub(crate) masks: crate::resources::svg_document::masks::MaskResources,
     /// Носитель и область просмотра, которыми разобран документ.
@@ -73,11 +73,6 @@ pub struct DocState {
     pub(crate) quirks: Cell<bool>,
     /// Кегль, строка и семейство корня — базы `rem`, `rlh`, `rcap`…
     pub(crate) root: RefCell<RootMetrics>,
-    /// Left edge of the root's content-sized box under `vertical-rl`
-    /// (CSS 2.2 §14.2: the canvas background is positioned from the root
-    /// box). The body writes it at prepaint, the canvas layer reads it at
-    /// paint of the same frame; the previous frame's value is the fallback.
-    pub(crate) root_left: Cell<Option<f32>>,
     /// Правила `@page` в порядке появления (css-page-3 §cascading-and-page-context).
     pub(crate) page_rules: RefCell<Vec<PageRule>>,
     /// `@position-try <dashed-ident>` (css-anchor-position-1 §fallback-rule).

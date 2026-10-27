@@ -36,15 +36,21 @@ pub(crate) struct Options {
     remembered: bool,
     signature: Signature,
     pub(crate) styles: Vec<(usize, BoxStyle)>,
+    /// Layout state holding the remembered choice of this box.
+    layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
 }
 
 impl Options {
-    pub(crate) fn new(base: &BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn new(
+        base: &BoxStyle,
+        inherited: &BoxStyle,
+        vcx: ValueCx<'_>,
+        layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
+    ) -> Self {
         let mut styles = candidates::build(base, inherited, vcx);
         let signature = Signature::of(base, vcx);
-        let previous = vcx
-            .doc
-            .anchor_frame
+        let previous = layout
+            .anchors
             .chosen
             .borrow()
             .get(&base.anchor_key)
@@ -69,6 +75,7 @@ impl Options {
             remembered,
             signature,
             styles,
+            layout: layout.clone(),
         }
     }
 
@@ -112,7 +119,7 @@ impl Options {
 
     pub(crate) fn record(&self, chosen: usize, vcx: ValueCx<'_>) {
         let (index, style) = &self.styles[chosen];
-        vcx.doc.anchor_frame.chosen.borrow_mut().insert(
+        self.layout.anchors.chosen.borrow_mut().insert(
             self.key,
             Chosen {
                 index: *index,
@@ -188,6 +195,7 @@ impl Hooks for Measured {
             .take()
             .expect("selected position-try plan");
         let values = plan.values.clone();
+        let layout = plan.layout.clone();
         let plans = PlacementPlans {
             plans: vec![plan],
             indices: vec![0],
@@ -195,6 +203,7 @@ impl Hooks for Measured {
             key: self.key,
             visibility: self.visibility,
             values,
+            layout,
         };
         super::place::place_one(&mut self.child, &plans, bounds, *id, window, cx)
     }

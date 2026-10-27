@@ -1,9 +1,8 @@
 //! Сброс реестров одного кадра; между кадрами остаётся лишь выбранный вариант.
 
-use crate::document::state::ValueCx;
+use super::AnchorState;
 
-pub fn reset(vcx: ValueCx<'_>) {
-    let f = &vcx.doc.anchor_frame;
+pub(crate) fn reset(f: &AnchorState) {
     f.named_seq.borrow_mut().clear();
     f.implicit.borrow_mut().clear();
     f.cb.borrow_mut().clear();
@@ -16,8 +15,8 @@ pub fn reset(vcx: ValueCx<'_>) {
     f.tf.borrow_mut().clear();
 }
 
-pub fn next_seq(vcx: ValueCx<'_>) -> u32 {
-    let s = &vcx.doc.anchor_frame.seq;
+pub(crate) fn next_seq(anchors: &AnchorState) -> u32 {
+    let s = &anchors.seq;
     let v = s.get() + 1;
     s.set(v);
     v

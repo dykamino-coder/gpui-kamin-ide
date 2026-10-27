@@ -89,6 +89,11 @@ impl LayoutCx {
         &self.values.doc.0
     }
 
+    /// Layout-phase frame state of the document being built.
+    pub(crate) fn layout(&self) -> &Rc<crate::layout::layout_state::LayoutState> {
+        &self.values.doc.0.layout
+    }
+
     /// Text-phase measurements of the document being built.
     pub(crate) fn paragraph(&self) -> &crate::text::paragraph_state::ParagraphState {
         &self.values.doc.0.paragraph

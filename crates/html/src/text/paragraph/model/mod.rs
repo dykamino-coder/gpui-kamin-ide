@@ -1,9 +1,9 @@
 //! Модель абзаца `Paragraph`: поля строчной раскладки и состояние документа, общее с зондом.
 use crate::text::paragraph::{atom_fit, decor, tabs};
+use crate::{document::state::ValueDoc, layout::layout_state::LayoutState};
 mod configuration;
 mod construct;
 mod overflow_config;
-
 use super::{Align, Indent, Line, Wrap};
 pub use crate::text::paragraph::probes::*;
 use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun};
@@ -11,7 +11,7 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 /// Абзац со своей раскладкой строк.
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
-    pub(super) anchor_values: Option<crate::document::state::ValueDoc>,
+    pub(super) anchor_values: Option<(ValueDoc, std::rc::Rc<LayoutState>)>,
     pub(super) inline_measure: Option<crate::text::vertical::InlineMeasure>,
     pub(super) paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
     pub(super) clamp_rows: Option<crate::text::clamp::ClampMeasure>,
