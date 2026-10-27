@@ -27,6 +27,8 @@ pub struct StackChild {
     pub(crate) probe: crate::FragmentProbes,
     /// Recorder of the main copy (`Watched::for_blocks`): measured breaks.
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
+    /// Source node of the child's box (native paint family); 0 for static-position probes.
+    pub(crate) node: u64,
     /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
     /// (`Some(ширина колонки)`), а не мера `render::shape_full`: та ребёнка не
     /// выразила (флоаты, внепоточные потомки …). Ставится в

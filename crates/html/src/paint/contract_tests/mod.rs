@@ -7,6 +7,7 @@ mod hit_transform;
 mod interaction;
 mod order;
 mod raster;
+pub(crate) mod rendered;
 mod raster_background;
 mod raster_depth;
 mod record;

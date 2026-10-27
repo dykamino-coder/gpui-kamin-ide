@@ -184,6 +184,7 @@ impl PageStack {
                 rect.origin.x
             };
             let to = geometry::slice(self.axis, page, offset.into(), inline, f.y, f.h).origin;
+            let to = from + geometry::snapped(to - from, window.scale_factor());
             // Unbroken edges keep their ink overflow; a break edge cuts it.
             let siblings = || plan.iter().filter(|g| g.kid == f.kid);
             let first = !siblings().any(|g| (g.col, g.from) < (f.col, f.from));

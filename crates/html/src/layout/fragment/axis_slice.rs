@@ -30,6 +30,13 @@ pub(crate) fn slice(
     axis_box(axis, bounds.origin, block(axis, bounds), io, ie, bo, be)
 }
 
+/// Placement translation on the device-pixel grid, as GPUI snaps element
+/// offsets: a moved fragment lands exactly where a laid-out copy would.
+pub(crate) fn snapped(delta: gpui::Point<Pixels>, scale: f32) -> gpui::Point<Pixels> {
+    let snap = |v: Pixels| gpui::px((f32::from(v) * scale).round() / scale);
+    gpui::point(snap(delta.x), snap(delta.y))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

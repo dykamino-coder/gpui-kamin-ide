@@ -46,6 +46,7 @@ pub(super) fn place_oof_statics(
             probe: opts.frag.probe.clone(),
             fragment_builders: Vec::new(),
             watched: None,
+            node: 0,
             breaks_w: None,
             regrow: None,
             measure: None,

@@ -106,7 +106,7 @@ impl Recorder {
         while let Some((e, owner, mut parent)) = pending.pop() {
             let is_positioned = positioned(e.style.used().position);
             if is_positioned {
-                let blocks = BlockBox::collect(
+                let mut blocks = BlockBox::collect(
                     e,
                     ShapeCx {
                         paged,
@@ -115,6 +115,10 @@ impl Recorder {
                     },
                     opts.cx.vcx(),
                 );
+                // css-break-3 §3.1/§3.2: break-before/after/inside do not apply
+                // to absolutely positioned boxes; their content still breaks.
+                blocks.own_breaks = (false, false, false, false);
+                blocks.inside_avoid = false;
                 let index = flows.len();
                 flows.push(Flow {
                     id: e.node_id,

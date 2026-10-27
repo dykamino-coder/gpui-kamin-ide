@@ -7,7 +7,7 @@ use gpui::{
 };
 use std::{collections::HashMap, rc::Rc};
 mod clips;
-use crate::layout::fragment::axis_slice as geometry;
+use crate::layout::fragment::axis_slice::{self as geometry, snapped};
 mod tables;
 
 impl ColumnStack {
@@ -35,12 +35,14 @@ impl ColumnStack {
             .width
             .max(window.viewport_size().height)
             .max(bounds.size.width);
+        let scale = window.scale_factor();
         let mut append = |family: u64,
                           col: usize,
                           source: gpui::Point<Pixels>,
                           destination: gpui::Point<Pixels>,
                           clip: Bounds<Pixels>|
          -> Result<(), PaintRecordError> {
+            let destination = source + snapped(destination - source, scale);
             let ordinal = ordinals.entry(col).or_default();
             let placement = PaintSegment {
                 id: PaintSegmentId(col as u64),
@@ -48,9 +50,10 @@ impl ColumnStack {
                 source,
                 destination,
             };
-            *ordinal = ordinal
-                .checked_add(1)
-                .ok_or(PaintRecordError::InvalidGeometry)?;
+            *ordinal = ordinal.checked_add(1).ok_or_else(|| {
+                eprintln!("P08DBG native.rs:{}", line!());
+                PaintRecordError::InvalidGeometry
+            })?;
             routes.push(placement);
             admission.insert(
                 family,
@@ -65,16 +68,15 @@ impl ColumnStack {
                 continue;
             }
             let kid = &self.children[f.kid];
-            let id = kid
-                .watched
-                .as_ref()
-                .and_then(|w| w.blocks())
-                .map(|b| b.id)
-                .ok_or(PaintRecordError::InvalidGeometry)?;
-            let rect = *snapshot
-                .normal
-                .get(&id)
-                .ok_or(PaintRecordError::InvalidGeometry)?;
+            let id = kid.node;
+            if id == 0 {
+                // Static-position probes carry no box of their own.
+                continue;
+            }
+            let rect = *snapshot.normal.get(&id).ok_or_else(|| {
+                eprintln!("P08DBG native.rs:{}", line!());
+                PaintRecordError::InvalidGeometry
+            })?;
             let (column, row) = self.place(f.col);
             let source = geometry::slice(
                 self.axis,
@@ -108,16 +110,15 @@ impl ColumnStack {
                 continue;
             }
             let kid = &self.children[index];
-            let id = kid
-                .watched
-                .as_ref()
-                .and_then(|w| w.blocks())
-                .map(|b| b.id)
-                .ok_or(PaintRecordError::InvalidGeometry)?;
-            let rect = *snapshot
-                .normal
-                .get(&id)
-                .ok_or(PaintRecordError::InvalidGeometry)?;
+            let id = kid.node;
+            if id == 0 {
+                // Static-position probes carry no box of their own.
+                continue;
+            }
+            let rect = *snapshot.normal.get(&id).ok_or_else(|| {
+                eprintln!("P08DBG native.rs:{}", line!());
+                PaintRecordError::InvalidGeometry
+            })?;
             append(
                 id,
                 plan.iter().map(|f| f.col).max().unwrap_or(0) + index + 1,
@@ -139,18 +140,19 @@ impl ColumnStack {
         }
         let oof = self.oof.plan.borrow();
         if oof.failure.is_some() {
+            eprintln!("P08DBG oof failure {:?}", oof.failure);
             return Err(PaintRecordError::InvalidGeometry);
         }
         let sources = self.oof.sources.borrow();
         for f in &oof.fragments {
-            let id = *sources
-                .get(f.kid)
-                .ok_or(PaintRecordError::InvalidGeometry)?;
-            let flow = snapshot
-                .flows
-                .iter()
-                .find(|s| s.id == id)
-                .ok_or(PaintRecordError::InvalidGeometry)?;
+            let id = *sources.get(f.kid).ok_or_else(|| {
+                eprintln!("P08DBG native.rs:{}", line!());
+                PaintRecordError::InvalidGeometry
+            })?;
+            let flow = snapshot.flows.iter().find(|s| s.id == id).ok_or_else(|| {
+                eprintln!("P08DBG native.rs:{}", line!());
+                PaintRecordError::InvalidGeometry
+            })?;
             let actual = self
                 .fragmentainer(f.col, bounds)
                 .map_err(|_| PaintRecordError::InvalidGeometry)?;
@@ -193,7 +195,9 @@ impl ColumnStack {
         drop(oof);
         let mut slices = admission.nodes(&snapshot);
         slices.slots = self.table_slots(bounds, plan, &mut routes, &mut ordinals, window, cx)?;
-        native.prepaint(Rc::from(routes), slices, window, cx)
+        native
+            .prepaint(Rc::from(routes), slices, window, cx)
+            .inspect_err(|e| eprintln!("P08DBG prepaint {e:?}"))
     }
 
     pub(crate) fn paint_native(
@@ -204,7 +208,9 @@ impl ColumnStack {
         let Some(native) = &self.oof.geometry.native else {
             return Ok(());
         };
-        let records = native.record(window, cx)?;
+        let records = native
+            .record(window, cx)
+            .inspect_err(|e| eprintln!("P08DBG record {e:?}"))?;
         let plan = PaintPlan::sequence(
             records
                 .into_records()

@@ -14,12 +14,10 @@ impl ColumnStack {
                 continue;
             }
             // CB/static anchor принадлежит исходному normal layout, а не копии.
-            let owner = self.children.iter().position(|c| {
-                c.watched
-                    .as_ref()
-                    .and_then(|w| w.blocks())
-                    .is_some_and(|b| b.id == source.owner)
-            });
+            let owner = self
+                .children
+                .iter()
+                .position(|c| c.node != 0 && c.node == source.owner);
             let offset = |rect: Bounds<Pixels>| {
                 block_offset(
                     source.owner_rect.origin,
