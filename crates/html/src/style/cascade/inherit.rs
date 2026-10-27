@@ -67,7 +67,7 @@ pub(crate) fn box_stage(
     parent: &BoxStyle,
     declared: &Computed,
     own: &Computed,
-    computed: std::rc::Rc<Computed>,
+    computed: impl Into<crate::style::box_input::BoxStyleInput>,
     element: Option<crate::style::computed::ElementStyle>,
     paint_filter: bool,
     vcx: ValueCx<'_>,
