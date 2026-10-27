@@ -123,20 +123,19 @@ fn open<R>(
     };
     let build: Rc<dyn Fn() -> AnyElement> = Rc::new(move || {
         if print {
-            let geom_for: crate::layout::page::page_stack::PageGeomFn =
-                Rc::new(
-                    move |_, _: &str| crate::layout::page::page_stack::PageGeom {
-                        size: sheet,
-                        margin: [margin; 4],
-                        border: (0., gpui::black()),
-                        outline: (0., 0., gpui::black()),
-                        padding: [0.; 4],
-                        bg: gpui::white(),
-                        canvas: None,
-                        area,
-                        turn: 0,
-                    },
-                );
+            let geom_for: crate::layout::page::page_stack::PageGeomFn = Rc::new(
+                move |_, _: &str| crate::layout::page::page_stack::PageGeom {
+                    size: sheet,
+                    margin: [margin; 4],
+                    border: (0., gpui::black()),
+                    outline: (0., 0., gpui::black()),
+                    padding: [0.; 4],
+                    bg: gpui::white(),
+                    canvas: None,
+                    area,
+                    turn: 0,
+                },
+            );
             let stack = crate::layout::page::paged::render_paged_select(
                 document.nodes(),
                 &document.frame_opts(&options),

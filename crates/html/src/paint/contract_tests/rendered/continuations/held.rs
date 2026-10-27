@@ -32,10 +32,16 @@ fn box_after_a_spanner_takes_its_static_position_in_its_row() {
         400.,
         400.,
     );
-    let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).map(|(b, _)| *b).collect();
-    assert!(!blue.is_empty() && blue.iter().all(|b| f32::from(b.origin.x) >= 100.), "{blue:?}");
+    let blue: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x0000ff)
+        .map(|(b, _)| *b)
+        .collect();
+    assert!(
+        !blue.is_empty() && blue.iter().all(|b| f32::from(b.origin.x) >= 100.),
+        "{blue:?}"
+    );
 }
-
 
 #[test]
 fn transformed_root_keeps_a_transform_origin_per_fragment() {

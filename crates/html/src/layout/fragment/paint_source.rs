@@ -50,11 +50,19 @@ impl BareRecords {
 
     pub(crate) fn insert(&self, segment: PaintSegmentId, root: u64, record: PaintRecord) {
         let table: &RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>> = self.table();
-        table.borrow_mut().entry((segment, root)).or_default().push(record);
+        table
+            .borrow_mut()
+            .entry((segment, root))
+            .or_default()
+            .push(record);
     }
 
     pub(crate) fn get(&self, segment: PaintSegmentId, root: u64) -> Vec<PaintRecord> {
-        self.table().borrow().get(&(segment, root)).cloned().unwrap_or_default()
+        self.table()
+            .borrow()
+            .get(&(segment, root))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Move every record of other into this table, after its own.

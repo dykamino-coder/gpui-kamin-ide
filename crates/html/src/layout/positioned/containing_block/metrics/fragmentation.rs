@@ -200,11 +200,16 @@ fn held(e: &Element) -> bool {
     let linear = used.transform.as_ref().is_some_and(|t| {
         let [[a, b], [c, d]] = t.lin;
         let eps = 1e-5;
-        (a - 1.).abs() > eps || b.abs() > eps || c.abs() > eps || (d - 1.).abs() > eps
-            || (0..4).any(|i| (0..4).any(|j| {
-                let identity = if i == j { 1. } else { 0. };
-                j != 3 && (t.m4[i][j] - identity).abs() > eps
-            }))
+        (a - 1.).abs() > eps
+            || b.abs() > eps
+            || c.abs() > eps
+            || (d - 1.).abs() > eps
+            || (0..4).any(|i| {
+                (0..4).any(|j| {
+                    let identity = if i == j { 1. } else { 0. };
+                    j != 3 && (t.m4[i][j] - identity).abs() > eps
+                })
+            })
     });
     linear
         || crate::layout::positioned::anchor::resolve::needs_deferred(&used)

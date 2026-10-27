@@ -114,11 +114,7 @@ fn collect_in(
     if !kids.elements().any(contains_positioned) {
         return Rc::default();
     }
-    let recorder = Rc::new(Recorder::for_fragments(
-        kids.elements(),
-        parent,
-        opts,
-    ));
+    let recorder = Rc::new(Recorder::for_fragments(kids.elements(), parent, opts));
     let mut opts = opts.clone();
     opts.cx.position = Default::default();
     opts.cx.deferred = Default::default();

@@ -25,7 +25,12 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
-        let Some(native) = self.oof.geometry.native_along(self.axis.is_vertical()).cloned() else {
+        let Some(native) = self
+            .oof
+            .geometry
+            .native_along(self.axis.is_vertical())
+            .cloned()
+        else {
             return Ok(());
         };
         let snapshot = self.oof.geometry.clone();

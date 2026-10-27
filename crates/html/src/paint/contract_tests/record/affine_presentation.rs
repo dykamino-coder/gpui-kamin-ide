@@ -75,7 +75,9 @@ fn presentation_replay_matches_live_paint_under_any_affine_matrix() {
                             .record_paint(extent, cx, |window, _| {
                                 window
                                     .with_paint_presentation(matrix, |window| {
-                                        window.paint_plan(&plan, placement(0., 0., extent)).unwrap();
+                                        window
+                                            .paint_plan(&plan, placement(0., 0., extent))
+                                            .unwrap();
                                     })
                                     .unwrap();
                             })

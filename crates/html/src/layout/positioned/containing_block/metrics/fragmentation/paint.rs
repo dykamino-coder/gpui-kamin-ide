@@ -120,7 +120,11 @@ impl Admission {
         };
         let mut orphan_routes = Vec::new();
         for (root, _) in &self.own {
-            let origin = snapshot.normal.get(root).map(|b| b.origin).unwrap_or_default()
+            let origin = snapshot
+                .normal
+                .get(root)
+                .map(|b| b.origin)
+                .unwrap_or_default()
                 + snapshot.relative.get(root).copied().unwrap_or_default();
             paint.origins.insert(*root, origin);
             hits.origins.insert(*root, origin);
@@ -154,7 +158,8 @@ impl Admission {
                 boxes.extend(self::boxes(snapshot, family, slices));
             }
             // Decoration layers are laid out at prepaint from the same placements.
-            hits.boxes.extend(boxes.iter().map(|(id, own)| (*id, own.clone())));
+            hits.boxes
+                .extend(boxes.iter().map(|(id, own)| (*id, own.clone())));
             let bare = own
                 .segments
                 .iter()

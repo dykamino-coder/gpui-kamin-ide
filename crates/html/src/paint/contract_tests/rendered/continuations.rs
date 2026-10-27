@@ -67,15 +67,20 @@ fn continuation_replays_inside_the_copy_group_of_a_semi_transparent_ancestor() {
             .collect::<Vec<_>>()
     };
     let (normal, oof) = (second(0xff0000), second(0x0000ff));
-    assert_eq!(oof.len(), 1, "one continuation fragment in the second column");
-    assert!(normal.contains(&oof[0]), "same group instance as the normal flow");
+    assert_eq!(
+        oof.len(),
+        1,
+        "one continuation fragment in the second column"
+    );
+    assert!(
+        normal.contains(&oof[0]),
+        "same group instance as the normal flow"
+    );
     // Paint order: the positioned box comes after the normal flow of its group.
     let order = |rgb: u32| {
         found
             .iter()
-            .position(|(b, c, g)| {
-                *g == oof[0] && opaque(*c) == rgb && f32::from(b.origin.x) >= 50.
-            })
+            .position(|(b, c, g)| *g == oof[0] && opaque(*c) == rgb && f32::from(b.origin.x) >= 50.)
     };
     assert!(order(0xff0000) < order(0x0000ff));
     // The ancestor's opacity reaches both exactly once.
@@ -96,7 +101,13 @@ const POINTER: &str = "<style>body{margin:0}</style>\
 
 #[test]
 fn continuation_in_the_next_column_is_hit_there_and_not_at_its_source() {
-    let at = cursors(POINTER, false, 400., 200., &[(25., 75.), (75., 25.), (25., 125.)]);
+    let at = cursors(
+        POINTER,
+        false,
+        400.,
+        200.,
+        &[(25., 75.), (75., 25.), (25., 125.)],
+    );
     assert_eq!(at[0], CursorStyle::PointingHand, "first fragment");
     assert_eq!(at[1], CursorStyle::PointingHand, "continuation in column 2");
     assert_eq!(at[2], CursorStyle::Arrow, "unfragmented source position");
@@ -132,9 +143,18 @@ fn continuation_on_the_next_page_is_painted_and_hit_there() {
         .map(|(b, _)| *b)
         .collect();
     assert!(blue.len() >= 2, "fragments on two pages: {blue:?}");
-    let last = blue.iter().max_by(|a, b| a.origin.y.partial_cmp(&b.origin.y).unwrap()).unwrap();
+    let last = blue
+        .iter()
+        .max_by(|a, b| a.origin.y.partial_cmp(&b.origin.y).unwrap())
+        .unwrap();
     let center = last.center();
-    let at = cursors(html, true, 800., 600., &[(center.x.into(), center.y.into())]);
+    let at = cursors(
+        html,
+        true,
+        800.,
+        600.,
+        &[(center.x.into(), center.y.into())],
+    );
     assert_eq!(at[0], CursorStyle::PointingHand);
 }
 
@@ -176,8 +196,14 @@ fn nested_box_above_its_containing_block_fragment_starts_in_the_earlier_column()
         400.,
         200.,
     );
-    assert!(is(top(&found, 25., 50.), 0x0000ff), "first fragment in column 1");
-    assert!(is(top(&found, 75., 50.), 0x0000ff), "continuation in column 2");
+    assert!(
+        is(top(&found, 25., 50.), 0x0000ff),
+        "first fragment in column 1"
+    );
+    assert!(
+        is(top(&found, 75., 50.), 0x0000ff),
+        "continuation in column 2"
+    );
 }
 
 #[test]
@@ -192,7 +218,10 @@ fn continuation_keeps_the_inline_offsets_of_its_ancestors() {
     );
     assert!(is(top(&found, 15., 50.), 0x0000ff));
     assert!(!is(top(&found, 5., 50.), 0x0000ff));
-    assert!(is(top(&found, 65., 50.), 0x0000ff), "continuation keeps the 10px offset");
+    assert!(
+        is(top(&found, 65., 50.), 0x0000ff),
+        "continuation keeps the 10px offset"
+    );
     assert!(!is(top(&found, 55., 50.), 0x0000ff));
 }
 

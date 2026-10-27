@@ -1,5 +1,6 @@
 //! Контракт immutable record: однократность фаз и явные scopes размещения.
 
+mod affine_presentation;
 mod clip;
 mod consumer;
 mod host;
@@ -8,7 +9,6 @@ mod placement;
 mod primitives;
 mod scopes;
 mod segments;
-mod affine_presentation;
 mod vector_transform;
 
 fn draw<E: gpui::Element>(make: impl FnOnce() -> E) {

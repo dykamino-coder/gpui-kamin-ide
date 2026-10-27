@@ -147,12 +147,16 @@ pub(crate) fn node(
     };
     // A continued root placed elsewhere than its admission's layout (a late
     // static position) carries its family's admission along.
-    match source.slices.origins.get(&id).map(|origin| placed - *origin) {
-        Some(by) if by != gpui::Point::default() => {
-            window.with_render_context(Some(Rc::new(shift::Shift(by))), |window| {
+    match source
+        .slices
+        .origins
+        .get(&id)
+        .map(|origin| placed - *origin)
+    {
+        Some(by) if by != gpui::Point::default() => window
+            .with_render_context(Some(Rc::new(shift::Shift(by))), |window| {
                 admitted(source, id, cb, window, cx, paint)
-            })
-        }
+            }),
         _ => admitted(source, id, cb, window, cx, paint),
     }
 }
@@ -201,9 +205,7 @@ fn admitted(
             paint(window);
             Ok(())
         }
-        Some(None) => {
-            Err(PaintRecordError::InvalidGeometry)
-        }
+        Some(None) => Err(PaintRecordError::InvalidGeometry),
         None => {
             paint(window);
             Ok(())

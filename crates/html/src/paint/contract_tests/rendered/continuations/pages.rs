@@ -46,7 +46,10 @@ fn named_pages_inside_an_absolute_box_do_not_break_it() {
         600.,
     );
     // The second box stays under the first instead of continuing on a new sheet.
-    let second: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x00ff00).collect();
+    let second: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x00ff00)
+        .collect();
     assert_eq!(second.len(), 1, "{found:?}");
     assert_eq!(f32::from(second[0].0.origin.y), 68.);
 }
@@ -75,8 +78,14 @@ fn anchor_positioned_box_on_a_sheet_paints_beside_its_anchor() {
         800.,
         600.,
     );
-    let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).collect();
-    let green: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x00ff00).collect();
+    let blue: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x0000ff)
+        .collect();
+    let green: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x00ff00)
+        .collect();
     assert_eq!(blue.len(), 1, "{found:?}");
     assert_eq!(blue[0].0.origin.y, green[0].0.origin.y);
     assert_eq!(blue[0].0.origin.x, green[0].0.right());
@@ -90,7 +99,10 @@ fn late_placed_root_carries_its_admission_to_its_static_position() {
 <div style='position:absolute;left:100px'><span style='display:inline-block;width:10px;height:10px;background:#0000ff'></span></div>\
 <div style='page:a;height:20px'></div></div></div>";
     let found = printed(html, 800., 600.);
-    let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).collect();
+    let blue: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x0000ff)
+        .collect();
     assert_eq!(blue.len(), 1, "{found:?}");
     // Its line in the second block, under the 20px block and the 48px margin
     // (where the legacy copy painted it); unshifted it landed a line higher.

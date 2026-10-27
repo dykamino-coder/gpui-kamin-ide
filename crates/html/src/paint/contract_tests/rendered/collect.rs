@@ -22,7 +22,11 @@ fn placed(q: Bounds<ScaledPixels>, m: gpui::TransformationMatrix) -> Bounds<Scal
     )
 }
 
-pub(super) fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, gpui::Hsla, usize)>) {
+pub(super) fn collect(
+    scene: &Scene,
+    scale: f32,
+    out: &mut Vec<(Bounds<Pixels>, gpui::Hsla, usize)>,
+) {
     let mut pending = vec![(scene, 0)];
     let mut groups = 0;
     while let Some((scene, group)) = pending.pop() {
@@ -52,7 +56,8 @@ pub(super) fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, 
         }
         // Glyphs report as near-opaque black quads (text presence).
         for glyph in &scene.monochrome_sprites {
-            let b = placed(glyph.bounds, glyph.transformation).intersect(&glyph.content_mask.bounds);
+            let b =
+                placed(glyph.bounds, glyph.transformation).intersect(&glyph.content_mask.bounds);
             if b.size.width.0 > 0. && b.size.height.0 > 0. {
                 let logical = Bounds::new(
                     point(px(b.origin.x.0 / scale), px(b.origin.y.0 / scale)),
@@ -63,7 +68,8 @@ pub(super) fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, 
         }
         // Raster fills (images, rasterized gradients) report hue -2.
         for sprite in &scene.polychrome_sprites {
-            let b = placed(sprite.bounds, sprite.transformation).intersect(&sprite.content_mask.bounds);
+            let b =
+                placed(sprite.bounds, sprite.transformation).intersect(&sprite.content_mask.bounds);
             if b.size.width.0 > 0. && b.size.height.0 > 0. {
                 let logical = Bounds::new(
                     point(px(b.origin.x.0 / scale), px(b.origin.y.0 / scale)),

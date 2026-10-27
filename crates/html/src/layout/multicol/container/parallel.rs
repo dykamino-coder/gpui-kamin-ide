@@ -21,7 +21,7 @@ mod block;
 use block::{block, zero};
 
 fn measure_fragment_and_own_height(c: &Element, vcx: ValueCx<'_>) -> Option<(Shape, f32)> {
-    // TRANSITIONAL(F2-2): Прямой measure смешивает оценку normal size с OOF reach; удалить в P08 после исходного CB/static rect и emitted OOF child fragments.
+    // TRANSITIONAL(F2-2): Прямой measure смешивает оценку normal size с OOF reach копий held-семей (P08b) и grid-семей (P16); удалить, когда их продолжения рисует нативный источник.
     let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS, vcx)?;
     let own = Measure::own_size(m.own, m.shape.height);
     Some((m.shape, own))
@@ -117,7 +117,7 @@ pub(super) fn grow(
 ) {
     let Some(geometry) = geometry else { return };
     for (c, s) in kids {
-        // TRANSITIONAL(F2-2): После роста OOF форма всего ребёнка оценивается заново; удалить в P08 после независимого OOF resume и live Reach с исходным CB/static rect.
+        // TRANSITIONAL(F2-2): После роста OOF форма всего ребёнка оценивается заново для копий held-семей (P08b) и grid-семей (P16); удалить после их нативного resume и live Reach.
         if !c.marks.paginate
             && grow_positioned_descendants(c, geometry, h, count, copies, vcx)
             && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS, vcx)

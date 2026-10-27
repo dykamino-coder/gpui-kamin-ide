@@ -102,7 +102,9 @@ fn native_source_routes_only_a_stack_on_its_own_axis(cx: &mut gpui::TestAppConte
 }
 
 #[gpui::test]
-fn family_holding_a_box_laid_out_outside_the_multicol_stays_with_its_copies(cx: &mut gpui::TestAppContext) {
+fn family_holding_a_box_laid_out_outside_the_multicol_stays_with_its_copies(
+    cx: &mut gpui::TestAppContext,
+) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
         let tree = crate::dom::parse(

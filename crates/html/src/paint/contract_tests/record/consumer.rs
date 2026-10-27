@@ -69,15 +69,22 @@ fn fragment_box_override_matches_common_background_border_radius_and_shadow_pain
                         window,
                         cx,
                         |window, cx| {
-                            consumer::node(7, None, gpui::Point::default(), window, cx, |window, cx| {
-                                style().paint_with_box(
-                                    whole,
-                                    Some(&consumer::box_painter(7)),
-                                    window,
-                                    cx,
-                                    |_, _| {},
-                                );
-                            });
+                            consumer::node(
+                                7,
+                                None,
+                                gpui::Point::default(),
+                                window,
+                                cx,
+                                |window, cx| {
+                                    style().paint_with_box(
+                                        whole,
+                                        Some(&consumer::box_painter(7)),
+                                        window,
+                                        cx,
+                                        |_, _| {},
+                                    );
+                                },
+                            );
                         },
                     )
                     .unwrap()
