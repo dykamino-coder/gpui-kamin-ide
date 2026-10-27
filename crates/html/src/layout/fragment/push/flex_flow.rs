@@ -28,6 +28,37 @@ pub(crate) fn growths(
             });
         }
     }
+    let mut gaps = Vec::new();
+    blocks.suppressed_row_gaps(laid, from, end, edge, &mut gaps);
+    flow_growths(&flows, laid, from, end, edge, &mut out);
+    // Линия, чей элемент сам растёт в этом фрагменте (принудительный разрыв
+    // внутри, перенос монолита), ещё не кончилась: промежуток после неё лежит
+    // за её продолжением, а не у этого края (css-flexbox-1 §10).
+    for (target, start, next) in gaps {
+        if !out
+            .iter()
+            .any(|g| g.amount > 0.0 && g.at > start - COORD_EPS && g.at < next - COORD_EPS)
+        {
+            out.push(Growth {
+                target: Pushed::Flex(target),
+                at: next,
+                amount: edge - next,
+                forced: false,
+            });
+        }
+    }
+    out
+}
+
+/// Рост каждого независимого потока flex: колонки и содержимое элементов.
+fn flow_growths(
+    flows: &[BlockBox],
+    laid: &Laid,
+    from: f32,
+    end: f32,
+    edge: f32,
+    out: &mut Vec<Growth>,
+) {
     for flow in flows {
         if let Some(growth) = pushed_past_edge(&flow, laid, from, edge) {
             out.push(growth);
@@ -134,7 +165,6 @@ pub(crate) fn growths(
             out.push(growth);
         }
     }
-    out
 }
 
 /// Элемент колонки, начинающийся за краем фрагментаинера после содержимого
