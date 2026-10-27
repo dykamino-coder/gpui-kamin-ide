@@ -6,6 +6,7 @@ impl Recorder {
     pub(crate) fn fragment_snapshot(&self, snapshot: &mut Snapshot, window: &mut Window) {
         let axis = self.flows.axis;
         let mut contexts = Vec::with_capacity(self.flows.flows.len());
+        let mut roots: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
         for flow in &self.flows.flows {
             let (parent_repeat, parent_fixed) = flow
                 .parent
@@ -13,6 +14,8 @@ impl Recorder {
             let repeated = parent_repeat || flow.policy.get() == FixedPolicy::RepeatPages;
             let fixed_content = parent_fixed || flow.fixed.get();
             contexts.push((repeated, fixed_content));
+            let root = flow.parent.map_or(flow.id, |parent| roots[parent]);
+            roots.push(root);
             let Some(&metrics) = snapshot.get(flow.id) else {
                 continue;
             };
@@ -70,6 +73,7 @@ impl Recorder {
                 fixed: flow.fixed.get(),
                 inside_fixed: parent_fixed,
                 static_block: flow.static_block.get(),
+                root,
             });
         }
     }

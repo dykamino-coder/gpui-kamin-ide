@@ -15,15 +15,16 @@ pub(crate) struct SourceSlices {
     pub(crate) nested: HashMap<u64, Rc<Nested>>,
 }
 
-/// Own continuation capture of an absolute/fixed root (CSS 2.1 Appendix E:
-/// it paints in its stacking context, inside its ancestors' effect scopes).
-/// Placements replayed by a legacy copy of the ancestors are translated to the
-/// destination (`bare`); the others keep source coordinates and are
-/// re-admitted by the enclosing source record, one effect scope per segment.
+/// Own continuation capture of an outermost absolute/fixed root and the flows
+/// nested in it (CSS 2.1 Appendix E: it paints in its stacking context, inside
+/// its ancestors' effect scopes). Every placement is translated to its
+/// destination. `bare` segments are replayed by a legacy copy of the ancestors;
+/// the others re-enter the source record unmoved, one effect scope per segment.
 pub(crate) struct Nested {
     pub(crate) extent: Bounds<Pixels>,
     pub(crate) routes: Rc<[PaintSegment]>,
-    pub(crate) slices: Rc<[PaintSegmentSlice]>,
+    /// Admission of every continued family inside the root's own capture.
+    pub(crate) families: HashMap<u64, Rc<[PaintSegmentSlice]>>,
     pub(crate) boxes: HashMap<u64, Rc<[Decoration]>>,
     pub(crate) bare: Rc<[PaintSegmentId]>,
 }

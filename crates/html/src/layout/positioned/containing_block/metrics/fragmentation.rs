@@ -27,6 +27,9 @@ pub(crate) struct Source {
     pub(crate) fixed: bool,
     pub(crate) inside_fixed: bool,
     pub(crate) static_block: bool,
+    /// Outermost enclosing absolute/fixed flow (itself at the top): its own
+    /// capture paints every nested continuation once (`paint::continuation`).
+    pub(crate) root: u64,
 }
 
 struct Flow {

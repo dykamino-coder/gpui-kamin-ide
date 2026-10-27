@@ -8,7 +8,9 @@ use crate::layout::fragment::axis_slice::{self as geometry, snapped};
 use crate::layout::fragment::token::resume::oof::FixedPolicy;
 use crate::layout::fragment::types::Frag;
 use crate::layout::positioned::containing_block::metrics::Snapshot;
-use crate::layout::positioned::containing_block::metrics::fragmentation::paint::Admission;
+use crate::layout::positioned::containing_block::metrics::fragmentation::paint::{
+    Admission, Placement,
+};
 use gpui::{
     App, Bounds, PaintPlacement, PaintPlan, PaintRecord, PaintRecordError, PaintSegmentId, Pixels,
     Window, point, px,
@@ -137,15 +139,16 @@ impl PageStack {
                     entries.len() - 1
                 }
             };
-            entries[index].2.insert(
-                flow.id,
-                PaintSegmentId(f.col as u64),
-                from,
-                to,
+            entries[index].2.insert(Placement {
+                family: flow.id,
+                root: flow.root,
+                segment: PaintSegmentId(f.col as u64),
+                source: from,
+                destination: to,
                 clip,
                 decoration,
                 copied,
-            )?;
+            })?;
         }
         Ok(entries)
     }

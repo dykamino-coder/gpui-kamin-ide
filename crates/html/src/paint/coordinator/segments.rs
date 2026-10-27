@@ -46,11 +46,18 @@ impl Source {
         self.slices.families.get(&id).copied().unwrap_or(id)
     }
 
-    /// The capture-local nested admission when `id` belongs to the active capture.
-    fn own(&self, id: u64, key: u64) -> Option<&Rc<Nested>> {
-        (key != 0 && self.family(id) == key)
-            .then(|| self.slices.nested.get(&key))
-            .flatten()
+    /// The capture-local admission of `id`'s family inside the active capture.
+    fn own(&self, id: u64, key: u64) -> Option<Rc<[gpui::PaintSegmentSlice]>> {
+        let nested = self.slices.nested.get(&key).filter(|_| key != 0)?;
+        nested.families.get(&self.family(id)).cloned()
+    }
+
+    /// Decorations of `id` inside the active capture, else of the source record.
+    fn boxes(&self, id: u64, key: u64) -> Option<Rc<[Decoration]>> {
+        match self.slices.nested.get(&key).filter(|_| key != 0) {
+            Some(nested) => nested.boxes.get(&id).cloned(),
+            None => self.slices.boxes.get(&id).cloned(),
+        }
     }
 }
 
@@ -121,14 +128,15 @@ pub(crate) fn node(
     };
     let key = capture_key(window);
     if source.painting
-        && key != id
+        && key == 0
         && let Some(nested) = source.slices.nested.get(&id).cloned()
     {
         own_capture(&source, id, cb, nested, key, window, cx, paint);
         return;
     }
     let slices = match source.own(id, key) {
-        Some(nested) => nested.slices.clone(),
+        Some(slices) => slices,
+        None if key != 0 => Rc::from([]),
         None => source
             .slices
             .nodes
@@ -174,7 +182,11 @@ fn own_capture(
 ) {
     let captured = window.record_paint_segments(nested.extent, nested.routes.clone(), cx, {
         let source = source.clone();
-        let slices = nested.slices.clone();
+        let slices = nested
+            .families
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| Rc::from([]));
         move |window, cx| {
             window.with_render_context(Some(Rc::new(Capture(id))), |window| {
                 let result = window.with_paint_segment_slices(slices, |window| {
@@ -192,7 +204,6 @@ fn own_capture(
         Ok((_, records)) => records,
         Err(error) => return source.fail(error),
     };
-    let enclosing = source.slices.nested.get(&key).filter(|_| key != 0);
     for (segment, record) in records.into_records() {
         if nested.bare.contains(&segment) {
             source.bare.insert(segment, id, record);
@@ -205,7 +216,6 @@ fn own_capture(
             .into_iter()
             .flat_map(|slices| slices.iter())
             .filter(|slice| slice.placement.id == segment)
-            .filter(|_| enclosing.is_none_or(|e| e.routes.iter().any(|r| r.id == segment)))
             .copied()
             .collect();
         if outer.is_empty() {
@@ -256,10 +266,7 @@ pub(crate) fn decorations(id: u64, window: &Window) -> Rc<[Decoration]> {
     let key = capture_key(window);
     window
         .render_context::<Source>()
-        .and_then(|source| match source.own(id, key) {
-            Some(nested) => nested.boxes.get(&id).cloned(),
-            None => source.slices.boxes.get(&id).cloned(),
-        })
+        .and_then(|source| source.boxes(id, key))
         .unwrap_or_else(|| Rc::from([]))
 }
 
@@ -289,10 +296,7 @@ fn paint_box(id: u64, style: &gpui::Style, window: &mut Window, cx: &mut App) ->
     let key = capture_key(window);
     // Только узлы с явным вводом заменяют свою краску; служебные native-узлы
     // продолжают общий painter без CSS-эвристик в GPUI.
-    let boxes = match source.own(id, key) {
-        Some(nested) => nested.boxes.get(&id).cloned(),
-        None => source.slices.boxes.get(&id).cloned(),
-    };
+    let boxes = source.boxes(id, key);
     let Some(boxes) = boxes else {
         return false;
     };

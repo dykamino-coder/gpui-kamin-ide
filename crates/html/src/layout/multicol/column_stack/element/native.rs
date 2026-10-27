@@ -4,7 +4,9 @@
 
 use super::*;
 use crate::layout::fragment::axis_slice::{self as geometry, snapped};
-use crate::layout::positioned::containing_block::metrics::fragmentation::paint::Admission;
+use crate::layout::positioned::containing_block::metrics::fragmentation::paint::{
+    Admission, Placement,
+};
 use gpui::{PaintPlacement, PaintPlan, PaintRecordError, PaintSegmentId};
 
 impl ColumnStack {
@@ -91,15 +93,16 @@ impl ColumnStack {
                 extent + if first { spill } else { 0. } + if last { spill } else { 0. },
             );
             let copied = self.owner_copy(flow.owner, f.col, plan);
-            admission.insert(
-                id,
-                PaintSegmentId(f.col as u64),
+            admission.insert(Placement {
+                family: id,
+                root: flow.root,
+                segment: PaintSegmentId(f.col as u64),
                 source,
                 destination,
                 clip,
                 decoration,
                 copied,
-            )?;
+            })?;
         }
         drop(sources);
         drop(oof);
