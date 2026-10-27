@@ -120,16 +120,6 @@
     "reason": "DOM-dispatch строит preplan до раскладки форматирующих контекстов; удалить в P22 после перевода всех readers на child resume в P21."
   },
   {
-    "file": "crates/html/src/layout/fragment/table_bands/row_shape/captions.rs",
-    "task": "F2-5",
-    "reason": "Подпись таблицы оценивается целиком в clone preplan; удалить в P18 после caption token с consumed и decoration edges поверх P04."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/table_bands/shape_bands.rs",
-    "task": "F2-5",
-    "reason": "Полосы секций и повторов вычисляет рекурсивный estimator; удалить в P18 после продолжений секций и ячеек из P17."
-  },
-  {
     "file": "crates/html/src/layout/fragment/types/scope.rs",
     "task": "F2-7",
     "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."
@@ -183,11 +173,6 @@
     "file": "crates/html/src/layout/page/paged/kids/shape.rs",
     "task": "F2-6",
     "reason": "Группа листа оценивается целиком без PageIdentity и clamp scope продолжения; удалить в P21 после typed child resume поверх P05/P08/P10/P16."
-  },
-  {
-    "file": "crates/html/src/layout/table/finish/captions.rs",
-    "task": "F2-5",
-    "reason": "Сторона подписи читается из cascaded подписи/таблицы вместо собственного computed контекста; удалить обход в P18 после caption token с исходным стилем и владельцем таблицы."
   },
   {
     "file": "crates/html/src/style/cascade/compute/fonts.rs",

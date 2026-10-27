@@ -63,6 +63,15 @@ impl BlockAxis {
     }
 }
 
+/// Физическая ось решателя, вдоль которой идёт блочная ось копии.
+pub(super) fn solver_axis(axis: StackAxis) -> gpui::Axis {
+    if axis.is_vertical() {
+        gpui::Axis::Horizontal
+    } else {
+        gpui::Axis::Vertical
+    }
+}
+
 /// Продолжение скрывает consumed-space со стороны block-start своей оси.
 pub(super) fn consumed_mask(
     axis: StackAxis,

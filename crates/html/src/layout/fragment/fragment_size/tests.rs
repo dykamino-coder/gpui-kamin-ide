@@ -42,10 +42,8 @@ fn element(style: Computed, children: Vec<Node>) -> Element {
 }
 
 #[test]
-#[cfg(feature = "wpt-harness")]
-fn cloned_table_captions_keep_their_height_until_f2_continuations() {
+fn tables_and_their_captions_are_never_estimated() {
     use crate::layout::fragment::flow::independent_copy;
-    use crate::layout::fragment::probe::diagnostics::FragmentProbes;
 
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let mut caption = element(
@@ -56,33 +54,28 @@ fn cloned_table_captions_keep_their_height_until_f2_continuations() {
         Vec::new(),
     );
     caption.tag = "caption".into();
-    // Rows come only from the laid-out table; the estimate keeps the wrapper
-    // of captions around a table box sized by its specified height.
-    let mut table = element(
-        Computed {
-            bdb_clone: true,
-            height: Some(Len::Px(20.0)),
-            ..Default::default()
-        },
-        vec![Node::Element(caption)],
-    );
-    table.tag = "table".into();
-    assert!(!independent_copy(&table));
-    let probes = FragmentProbes::default();
-    let cx = ShapeCx {
-        probe: Some(&probes),
-        ..ShapeCx::COLUMNS
-    };
-    let shape = shape_full(&table, 4, cx, doc.values()).unwrap();
-    assert_eq!(shape.height, 30.0);
-    assert!(
-        probes
-            .take()
-            .values()
-            .any(|p| p.estimate_sites.keys().any(|site| site
-                .replace('\\', "/")
-                .contains("table_bands/row_shape/captions.rs:")))
-    );
+    // A caption-only table with a cloned box decoration is not an independent
+    // copy either; its caption and box sizes still come only from its layout
+    // (`flow::blocks::table`), never from a column estimate.
+    for rows in [false, true] {
+        let mut kids = vec![Node::Element(caption.clone())];
+        if rows {
+            let mut row = element(Computed::default(), Vec::new());
+            row.tag = "tr".into();
+            kids.push(Node::Element(row));
+        }
+        let mut table = element(
+            Computed {
+                bdb_clone: true,
+                height: Some(Len::Px(20.0)),
+                ..Default::default()
+            },
+            kids,
+        );
+        table.tag = "table".into();
+        assert!(!independent_copy(&table));
+        assert!(shape_full(&table, 4, ShapeCx::COLUMNS, doc.values()).is_none());
+    }
 }
 
 #[test]

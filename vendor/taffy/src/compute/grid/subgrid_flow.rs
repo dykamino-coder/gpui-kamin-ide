@@ -66,6 +66,7 @@ pub(super) fn inherit(mut tracks: SubgridAxisTracks, reversed: bool) -> SubgridA
             sizes.reverse();
         }
         tracks.names.reverse();
+        tracks.growth.reverse();
     }
     tracks
 }

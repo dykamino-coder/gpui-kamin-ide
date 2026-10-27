@@ -58,6 +58,7 @@ pub(super) fn axis_tracks(
                         sizes: None,
                         gap,
                         names,
+                        growth: Vec::new(),
                     },
                     parent_reversed != child_reversed,
                 );
@@ -103,6 +104,7 @@ pub(super) fn axis_tracks(
             sizes: Some(sizes),
             gap,
             names,
+            growth: Vec::new(),
         },
         parent_reversed != child_reversed,
     )

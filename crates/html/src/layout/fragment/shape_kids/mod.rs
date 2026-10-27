@@ -77,8 +77,8 @@ pub(crate) fn stack_kids(
         let mut through = 0.0f32;
         let first = true;
         let force_next = false;
-        // Сцепка элементов, скованных `avoid*`, — как `avoid_run` в
-        // `table_shape`: ОДИН сплошной диапазон от разрешённой границы перед
+        // Сцепка элементов, скованных `avoid*`, — как `avoid_run` у
+        // рядов записанной таблицы: ОДИН сплошной диапазон от разрешённой границы перед
         // сцепкой до конца её последнего элемента.
         let mut flex_run: Option<f32> = None;
         let flex_open = 0.0f32;
