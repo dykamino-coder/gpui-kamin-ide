@@ -370,3 +370,23 @@ fn late_placed_root_carries_its_admission_to_its_static_position() {
     // (where the legacy copy painted it); unshifted it landed a line higher.
     assert_eq!(f32::from(blue[0].0.origin.y), 81.5);
 }
+
+#[test]
+fn transformed_root_keeps_a_transform_origin_per_fragment() {
+    // scaleY(2) about each fragment's own bottom: the first fragment (25px)
+    // fills its column, the second (25px) doubles from the top of the next.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;column-fill:auto;width:100px;height:50px'>\
+<div style='position:relative;height:50px'><div style='position:absolute;transform:scaleY(2);\
+transform-origin:bottom;top:25px;width:100%;height:50px;background:#0000ff'></div></div></div>",
+        400.,
+        200.,
+    );
+    let blue: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x0000ff)
+        .map(|(b, _)| (f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.height)))
+        .collect();
+    assert_eq!(blue, vec![(0., 0., 50.), (50., 0., 25.)]);
+}
