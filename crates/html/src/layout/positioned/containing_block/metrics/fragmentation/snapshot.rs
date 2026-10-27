@@ -9,19 +9,16 @@ impl Recorder {
         let mut contexts = Vec::with_capacity(self.flows.flows.len());
         let mut roots: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
         let outside = self.outside(snapshot);
-        // A continued root cannot hold a box laid out by a block outside the
-        // source, nor a held box (`Flow::held`): such a box keeps its place in
-        // the root's legacy copies, so the whole family stays there. The plan
-        // keeps the family (column balancing counts it); only the paint owner
-        // changes.
+        // A held box (`Flow::held`) keeps its whole family in the root's legacy
+        // copies. The plan keeps the family (column balancing counts it); only
+        // the paint owner changes. A box laid out outside the source inside a
+        // continued root is no flow of it: its copies paint it in its layer.
         let mut held = std::collections::HashSet::new();
         let mut walk: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
         for (index, flow) in self.flows.flows.iter().enumerate() {
             let root = flow.parent.map_or(flow.id, |parent| walk[parent]);
             walk.push(root);
-            let nested_outside =
-                outside[index] && flow.parent.is_some_and(|parent| !outside[parent]);
-            if (false && nested_outside) || (flow.held && !outside[index]) {
+            if flow.held && !outside[index] {
                 held.insert(root);
             }
         }

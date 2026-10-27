@@ -110,7 +110,14 @@ pub(crate) fn record(
             Ok(clips) => source.remember((0, 0), clips),
             Err(error) => source.fail(error),
         }
-        window.with_render_context(Some(source.clone()), |window| paint(window, cx));
+        // Only admitted nodes reach a segment: a box the source lays out in a
+        // layer of its own (a fixed box whose block is the viewport) is not one.
+        let unadmitted = window.with_paint_segment_slices(Rc::from([]), |window| {
+            window.with_render_context(Some(source.clone()), |window| paint(window, cx))
+        });
+        if let Err(error) = unadmitted {
+            source.fail(error);
+        }
     })?;
     if let Some(error) = source.failure.take() {
         return Err(error);
@@ -136,7 +143,9 @@ pub(crate) fn prepaint(
             enter_children: Rc::new(remember_clips),
         });
         window.with_render_context(Some(source.clone()), |window| {
-            window.with_render_context(Some(traversal), |window| prepaint(window, cx));
+            let _ = window.with_paint_segment_slices(Rc::from([]), |window| {
+                window.with_render_context(Some(traversal), |window| prepaint(window, cx))
+            });
         });
     })?;
     source.failure.take().map_or(Ok(()), Err)
