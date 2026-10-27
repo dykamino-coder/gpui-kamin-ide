@@ -54,7 +54,8 @@ impl Window {
         plan: &PaintPlan,
         placement: PaintPlacement,
     ) -> Result<PaintScopeId, PaintRecordError> {
-        let extent = plan.validate(self)?;
+        let presentation = self.paint_presentation();
+        let extent = plan.validate(self, presentation)?;
         paint_scope::Identity::capture(self).check_pass(self)?;
         if self.invalidator.inner.borrow().draw_phase != DrawPhase::Paint {
             return Err(PaintRecordError::NotPainting);
@@ -75,7 +76,7 @@ impl Window {
             let _recording = self.render_contexts.enter::<segments::Recording>(None);
             self.record_scene(extent, true, |window| {
                 let id = window.paint_scope_id();
-                plan.paint(window);
+                plan.paint(window, presentation);
                 id
             })
         };

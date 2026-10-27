@@ -60,6 +60,7 @@ FIXES = {
         "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
         "Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.",
+        "Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit exact axis-preserving similarity (uniform scale, quarter-turns) by transforming vector commands, masks and flat groups before rasterization; without the scope caller transforms are not reapplied.",
     ],
     "gpui-windows": [
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",

@@ -1,11 +1,12 @@
 //! Точный перенос векторных команд страницы: равномерный масштаб и четверти оборота.
 
 use super::*;
-use crate::{PaintVectorTransform, TransformationMatrix};
+use crate::TransformationMatrix;
+use crate::window::vector_transform::VectorTransform;
 
 impl Scene {
-    pub(crate) fn transform_vector(mut self, transform: PaintVectorTransform, density: f32) -> Self {
-        let matrix = transform.matrix(density);
+    pub(crate) fn transform_vector(mut self, transform: VectorTransform) -> Self {
+        let matrix = transform.matrix();
         let groups = mem::take(&mut self.groups);
         let mut scene = self.transform_commands(transform, matrix);
         scene.groups = groups.into_iter().map(|mut group| {
@@ -20,7 +21,7 @@ impl Scene {
                     crate::size(ScaledPixels(b[2]), ScaledPixels(b[3]))), matrix);
                 [b.origin.x.0, b.origin.y.0, b.size.width.0, b.size.height.0]
             });
-            group.projection = group.projection.map(|m| conjugate(m, matrix, transform.inverse_matrix(density)));
+            group.projection = group.projection.map(|m| conjugate(m, matrix, transform.inverse_matrix()));
             for fragment in &mut group.fragments {
                 fragment.iter_mut().for_each(|p| *p = map_point(*p, matrix));
             }
@@ -30,7 +31,7 @@ impl Scene {
         scene
     }
 
-    fn transform_commands(mut self, transform: PaintVectorTransform, matrix: TransformationMatrix) -> Self {
+    fn transform_commands(mut self, transform: VectorTransform, matrix: TransformationMatrix) -> Self {
         let mut scene = Self { in_group: self.in_group, ..Self::default() };
         for mut command in mem::take(&mut self.paint_operations) {
             match &mut command {
@@ -64,13 +65,13 @@ fn map_bounds(b: Bounds<ScaledPixels>, m: TransformationMatrix) -> Bounds<Scaled
         crate::size(ScaledPixels((z.x - a.x).0.abs()), ScaledPixels((z.y - a.y).0.abs())))
 }
 
-fn radii(c: &mut Corners<ScaledPixels>, t: PaintVectorTransform) {
+fn radii(c: &mut Corners<ScaledPixels>, t: VectorTransform) {
     let mut v = [c.top_left, c.top_right, c.bottom_right, c.bottom_left];
     v.rotate_right(usize::from(t.quarter_turns()));
     *c = Corners { top_left: v[0], top_right: v[1], bottom_right: v[2], bottom_left: v[3] }.map(|x| *x * t.scale());
 }
 
-fn surface(p: &mut PaintSurface, t: PaintVectorTransform, m: TransformationMatrix) {
+fn surface(p: &mut PaintSurface, t: VectorTransform, m: TransformationMatrix) {
     p.bounds = map_bounds(p.bounds, m);
     p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
     #[cfg(not(target_os = "macos"))] {
@@ -79,7 +80,7 @@ fn surface(p: &mut PaintSurface, t: PaintVectorTransform, m: TransformationMatri
     }
 }
 
-fn primitive(p: &mut Primitive, t: PaintVectorTransform, m: TransformationMatrix) {
+fn primitive(p: &mut Primitive, t: VectorTransform, m: TransformationMatrix) {
     match p {
         Primitive::Quad(p) => {
             p.transformation = m.compose(p.transformation);
@@ -114,7 +115,7 @@ fn primitive(p: &mut Primitive, t: PaintVectorTransform, m: TransformationMatrix
         Primitive::Surface(p) => surface(p, t, m),
         Primitive::Path(p) => {
             let (bounds, inverse) = p.color_mapping.unwrap_or((p.clipped_bounds(), TransformationMatrix::unit()));
-            p.color_mapping = Some((bounds, inverse.compose(t.inverse_of(m))));
+            p.color_mapping = Some((bounds, inverse.compose(t.inverse_matrix())));
             p.bounds = map_bounds(p.bounds, m);
             p.start = map_point(p.start, m);
             p.current = map_point(p.current, m);
