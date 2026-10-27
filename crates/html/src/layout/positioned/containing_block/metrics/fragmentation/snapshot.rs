@@ -10,15 +10,18 @@ impl Recorder {
         let mut roots: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
         let outside = self.outside(snapshot);
         // A continued root cannot hold a box laid out by a block outside the
-        // source: that box keeps its static place in the root's legacy copies,
-        // so the whole family stays there. The plan keeps every flow (column
-        // balancing counts them); only the paint owner changes.
+        // source, nor a held box (`Flow::held`): such a box keeps its place in
+        // the root's legacy copies, so the whole family stays there. The plan
+        // keeps the family (column balancing counts it); only the paint owner
+        // changes.
         let mut held = std::collections::HashSet::new();
         let mut walk: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
         for (index, flow) in self.flows.flows.iter().enumerate() {
             let root = flow.parent.map_or(flow.id, |parent| walk[parent]);
             walk.push(root);
-            if outside[index] && flow.parent.is_some_and(|parent| !outside[parent]) {
+            let nested_outside =
+                outside[index] && flow.parent.is_some_and(|parent| !outside[parent]);
+            if nested_outside || (flow.held && !outside[index]) {
                 held.insert(root);
             }
         }
@@ -31,7 +34,11 @@ impl Recorder {
             contexts.push((repeated, fixed_content));
             let root = flow.parent.map_or(flow.id, |parent| roots[parent]);
             roots.push(root);
-            let native = !(outside[index] || held.contains(&root));
+            // A box laid out by a block outside the source is no flow of it.
+            if outside[index] {
+                continue;
+            }
+            let native = !held.contains(&root);
             let Some(metrics) = snapshot.get(flow.id).copied() else {
                 continue;
             };
@@ -96,13 +103,11 @@ impl Recorder {
     }
 
     /// Flows laid out by a block outside the multicol, not fragmented by its
-    /// columns (css-multicol-1 §2, css-break-3 §2), and held flows the source
-    /// cannot place itself (`Flow::held`); descendants follow them.
+    /// columns (css-multicol-1 §2, css-break-3 §2); descendants follow them.
     fn outside(&self, snapshot: &Snapshot) -> Vec<bool> {
         let mut outside: Vec<bool> = Vec::with_capacity(self.flows.flows.len());
         for flow in &self.flows.flows {
             let escapes = flow.parent.is_some_and(|parent| outside[parent])
-                || flow.held
                 || snapshot.get(flow.id).is_some_and(|m| {
                     snapshot.host != 0
                         && m.cb_id != snapshot.host
