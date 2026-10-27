@@ -2,8 +2,8 @@
 //! любого элемента первой строки и `break-after`/`avoid` любого элемента последней
 //! переходят на край контейнера; строки собираются той же мерой (`collect_lines`).
 
+use super::container::main_size;
 use super::line_layout::collect_lines;
-use super::measure::main_size;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
@@ -16,7 +16,7 @@ pub(crate) fn row_break_edge(
 ) -> Option<bool> {
     // Кадр строк нужен только многострочному flex-ряду. В остальных коробках
     // collect_lines всё равно отказывает; клонирование пути предков было лишним.
-    if !super::geometry::row_container(c) {
+    if !super::container::row_container(c) {
         return None;
     }
     let lines = crate::layout::fragment::LineCx::child(c, vcx);

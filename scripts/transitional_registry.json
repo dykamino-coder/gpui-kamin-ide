@@ -30,11 +30,6 @@
     "reason": "Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование."
   },
   {
-    "file": "crates/html/src/layout/fragment/flex_lines/row/geometry.rs",
-    "task": "F2-4",
-    "reason": "Форма flex item оценивается до раскладки строк; удалить в P13 после записи line membership, item rect и consumed/resume каждого item."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/blocks/grid_tree.rs",
     "task": "F2-4",
     "reason": "Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17."
