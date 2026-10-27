@@ -42,7 +42,7 @@ impl ColumnStack {
         let viewport = window.viewport_size();
         let spill = f32::from(viewport.width.max(viewport.height).max(bounds.size.width));
         let scale = window.scale_factor();
-        let mut admission = Admission::new();
+        let mut admission = Admission::new(self.axis.is_vertical());
         for f in oof.iter() {
             let id = *sources
                 .get(f.kid)
@@ -118,13 +118,22 @@ impl ColumnStack {
                 clip,
                 decoration,
                 copied,
+                transform: flow.transform,
+                reference: geometry::slice(self.axis, laid, 0., inline_size, f.from, f.h),
+                start: geometry::slice(self.axis, actual.rect, inline.into(), inline_size, 0., 0.)
+                    .origin
+                    - (destination + shift - source),
             })?;
         }
         drop(sources);
         drop(oof);
         let routing = admission.finish(&snapshot);
         // Placements replayed by a slot are hit through that copy's scope.
-        let scopes = self.oof.slot_scopes.scopes(&routing.roots);
+        let scopes = crate::hooks::presented_hit_scopes(
+            self.oof.slot_scopes.scopes(&routing.roots),
+            &routing.presented,
+            window,
+        );
         self.oof.slot_scopes.clear();
         window.with_prepaint_segment_hit_scopes(scopes, |window| {
             native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)

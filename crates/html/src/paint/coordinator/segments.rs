@@ -83,6 +83,15 @@ struct CurrentNode(u64);
 /// Family root whose own capture is active.
 struct Capture(u64);
 
+/// A root presented per fragment under its own transform (`SourceSlices::
+/// presented`): its transformed element paints untransformed in the source.
+pub(crate) fn presented_root(node: u64, window: &Window) -> bool {
+    let Some(source) = window.render_context::<Source>() else {
+        return false;
+    };
+    source.slices.presented.contains(&node) && (!source.painting || capture_key(window) == node)
+}
+
 fn capture_key(window: &Window) -> u64 {
     window.render_context::<Capture>().map_or(0, |c| c.0)
 }

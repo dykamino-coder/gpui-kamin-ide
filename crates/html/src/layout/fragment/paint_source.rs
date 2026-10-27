@@ -21,6 +21,9 @@ pub(crate) struct SourceSlices {
     /// a root placed elsewhere at prepaint (a late static position) carries
     /// its whole family's admission along.
     pub(crate) origins: HashMap<u64, gpui::Point<Pixels>>,
+    /// Roots presented per fragment under their own flat transform: their
+    /// transformed element paints untransformed inside the source.
+    pub(crate) presented: std::collections::HashSet<u64>,
 }
 
 /// Own continuation capture of an outermost absolute/fixed root and the flows
@@ -35,9 +38,14 @@ pub(crate) struct Nested {
     pub(crate) families: HashMap<u64, Rc<[PaintSegmentSlice]>>,
     pub(crate) boxes: HashMap<u64, Rc<[Decoration]>>,
     pub(crate) bare: Rc<[PaintSegmentId]>,
+    /// Per-segment presentation of the root's own transform (destination).
+    pub(crate) presentations: HashMap<PaintSegmentId, gpui::TransformationMatrix>,
 }
 
-type Table = RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>>;
+/// A root's record and the presentation of its own per-fragment transform.
+pub(crate) type Replay = (PaintRecord, Option<gpui::TransformationMatrix>);
+
+type Table = RefCell<HashMap<(PaintSegmentId, u64), Vec<Replay>>>;
 
 /// Own records of continued roots, by destination segment and root node. Every
 /// native source that paints part of a root (a page-repeated layer of it, say)
@@ -50,8 +58,8 @@ impl BareRecords {
         &self.0
     }
 
-    pub(crate) fn insert(&self, segment: PaintSegmentId, root: u64, record: PaintRecord) {
-        let table: &RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>> = self.table();
+    pub(crate) fn insert(&self, segment: PaintSegmentId, root: u64, record: Replay) {
+        let table: &RefCell<HashMap<(PaintSegmentId, u64), Vec<Replay>>> = self.table();
         table
             .borrow_mut()
             .entry((segment, root))
@@ -59,7 +67,7 @@ impl BareRecords {
             .push(record);
     }
 
-    pub(crate) fn get(&self, segment: PaintSegmentId, root: u64) -> Vec<PaintRecord> {
+    pub(crate) fn get(&self, segment: PaintSegmentId, root: u64) -> Vec<Replay> {
         self.table()
             .borrow()
             .get(&(segment, root))
@@ -69,8 +77,8 @@ impl BareRecords {
 
     /// Move every record of other into this table, after its own.
     pub(crate) fn absorb(&self, other: &BareRecords) {
-        let table: &RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>> = self.table();
-        let other: &RefCell<HashMap<(PaintSegmentId, u64), Vec<PaintRecord>>> = other.table();
+        let table: &RefCell<HashMap<(PaintSegmentId, u64), Vec<Replay>>> = self.table();
+        let other: &RefCell<HashMap<(PaintSegmentId, u64), Vec<Replay>>> = other.table();
         let moved = std::mem::take(&mut *other.borrow_mut());
         let mut table = table.borrow_mut();
         for (key, records) in moved {

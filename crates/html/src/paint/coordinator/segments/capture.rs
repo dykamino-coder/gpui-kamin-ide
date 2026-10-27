@@ -55,9 +55,13 @@ pub(super) fn own_capture(
     };
     for (segment, record) in records.into_records() {
         if nested.bare.contains(&segment) {
-            source.bare.insert(segment, id, record);
+            // The copy's own transformed element already applies the root's
+            // matrix about this fragment around the slot (effect_fragment).
+            source.bare.insert(segment, id, (record, None));
             continue;
         }
+        // The root's own transform about this segment's fragment.
+        let presentation = nested.presentations.get(&segment).copied();
         let outer: Rc<[_]> = source
             .slices
             .nodes
@@ -78,9 +82,13 @@ pub(super) fn own_capture(
                 destination: origin,
                 clip: window.content_mask().bounds,
             };
-            window
-                .paint_plan(&PaintPlan::record(record), placement)
-                .map(|_| ())
+            let plan = PaintPlan::record(record);
+            match presentation {
+                Some(matrix) => window
+                    .with_paint_presentation(matrix, |window| window.paint_plan(&plan, placement))
+                    .and_then(|result| result.map(|_| ())),
+                None => window.paint_plan(&plan, placement).map(|_| ()),
+            }
         };
         let result = window.with_paint_segment_slices(outer, |window| match &clips {
             Some(clips) => window

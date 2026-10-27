@@ -64,6 +64,8 @@ pub struct Transformed {
     /// отрисовке округляет края от него (`layout_origin_unrounded` доступен
     /// только до отрисовки).
     pub(crate) exact_origin: Option<gpui::Point<Pixels>>,
+    /// DOM node of the transformed box, when its builder knows it.
+    pub(crate) node: Option<u64>,
     /// Reference box shared by the cells of a transformed table row or row
     /// group (css-transforms-1 §transformable-element: the row has no box
     /// of its own in our grid): every cell unions its unrounded box into it
@@ -161,6 +163,7 @@ impl Transformed {
             under_3d: None,
             placed: false,
             exact_origin: None,
+            node: None,
             ref_box: None,
         }
     }

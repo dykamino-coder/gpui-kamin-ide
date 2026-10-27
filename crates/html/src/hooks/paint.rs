@@ -87,3 +87,27 @@ pub(crate) fn paint_collect() -> (AnyElement, AnyElement) {
     let (open, close) = crate::paint::coordinator::PaintCollect::pair();
     (open.into_any_element(), close.into_any_element())
 }
+
+/// Hit scopes of the placements: a slot's copy scope, else the current scope
+/// under the placement's per-fragment presentation.
+pub(crate) fn presented_hit_scopes(
+    slots: std::rc::Rc<[(gpui::PaintSegmentId, u32, gpui::PaintHitScope)]>,
+    presented: &[(gpui::PaintSegmentId, u32, gpui::TransformationMatrix)],
+    window: &Window,
+) -> std::rc::Rc<[(gpui::PaintSegmentId, u32, gpui::PaintHitScope)]> {
+    if presented.is_empty() {
+        return slots;
+    }
+    let base = window.paint_hit_scope();
+    let mut all = slots.to_vec();
+    for &(segment, ordinal, matrix) in presented {
+        if !all.iter().any(|(s, o, _)| *s == segment && *o == ordinal) {
+            all.push((
+                segment,
+                ordinal,
+                window.paint_hit_scope_under(&base, matrix),
+            ));
+        }
+    }
+    all.into()
+}

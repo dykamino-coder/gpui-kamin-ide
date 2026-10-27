@@ -41,6 +41,17 @@ impl Hooks for Transformed {
         // тот же механизм у `LatePlace`), края округляются на конечном месте.
         self.placed = false;
         self.exact_origin = Some(window.layout_origin_unrounded(*layout_id));
+        // A continued root presented per fragment: each placement applies its
+        // own fragment's matrix, so the source paints it untransformed.
+        if self
+            .node
+            .is_some_and(|node| crate::paint::coordinator::segments::presented_root(node, window))
+        {
+            self.placed = true;
+            self.child
+                .prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
+            return;
+        }
         if let Some(r) = self.ref_box.as_ref() {
             let own = gpui::Bounds {
                 origin: window.layout_origin_unrounded(*layout_id),

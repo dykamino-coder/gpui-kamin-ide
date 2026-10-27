@@ -27,10 +27,8 @@ pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) ->
     Rc::from(roots)
 }
 
-/// The source cannot place `e` itself (see `Flow::held`). A box transformed
-/// beyond a translation resolves its transform origin per fragment, after its
-/// fragment is cut (css-break-3 §2, css-transforms-1 §transform-rendering);
-/// one capture bakes a single origin and its admission cuts after the matrix.
+/// The source cannot place `e` itself (see `Flow::held`). A flat transform is
+/// resolved per fragment (`FlatTransform`); a 3D one is not.
 pub(super) fn held(e: &Element) -> bool {
     let used = e.style.used();
     let linear = used.transform.as_ref().is_some_and(|t| {
@@ -47,7 +45,7 @@ pub(super) fn held(e: &Element) -> bool {
                 })
             })
     });
-    linear
+    (linear && crate::style::computed::FlatTransform::of(&used).is_none())
         || crate::layout::positioned::anchor::resolve::needs_deferred(&used)
         || crate::layout::positioned::static_position::static_place_in_flow_only(&used)
 }

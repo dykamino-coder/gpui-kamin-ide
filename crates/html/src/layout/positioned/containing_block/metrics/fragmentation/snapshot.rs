@@ -98,6 +98,7 @@ impl Recorder {
                 static_block: flow.static_block.get(),
                 root,
                 native,
+                transform: flow.transform,
             });
         }
     }

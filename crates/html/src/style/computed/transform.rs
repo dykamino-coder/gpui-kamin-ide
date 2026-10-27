@@ -1,6 +1,8 @@
 //! Transform: матрицы 2D/3D, перспектива, композиция.
 
 mod compose;
+mod flat;
+pub(crate) use flat::FlatTransform;
 mod matrices4;
 
 /// `transform`: поворот, масштаб и сдвиг при отрисовке.

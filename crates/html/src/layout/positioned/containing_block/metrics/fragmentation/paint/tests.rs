@@ -18,6 +18,9 @@ fn placement(family: u64, root: u64, segment: u64, dx: f32, copied: bool) -> Pla
         clip: rect(20.),
         decoration: rect(20.),
         copied,
+        transform: None,
+        reference: rect(20.),
+        start: point(px(0.), px(0.)),
     }
 }
 
@@ -30,7 +33,7 @@ fn normal_nodes_are_not_admitted_and_nested_flows_paint_in_the_root_capture() {
     snapshot
         .normal
         .extend([(10, rect(0.)), (20, rect(20.)), (30, rect(20.))]);
-    let mut admission = Admission::new();
+    let mut admission = Admission::new(false);
     admission.insert(placement(20, 20, 0, 0., true)).unwrap();
     admission.insert(placement(20, 20, 1, 100., false)).unwrap();
     // A flow nested in 20 continues where 20 has no own fragment.
@@ -55,7 +58,7 @@ fn normal_nodes_are_not_admitted_and_nested_flows_paint_in_the_root_capture() {
 
 #[test]
 fn ordinals_are_per_segment_across_families() {
-    let mut admission = Admission::new();
+    let mut admission = Admission::new(false);
     admission.insert(placement(1, 1, 3, 0., true)).unwrap();
     admission.insert(placement(2, 2, 3, 0., true)).unwrap();
     let routing = admission.finish(&Snapshot::default());

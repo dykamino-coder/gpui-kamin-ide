@@ -107,6 +107,17 @@ impl Window {
         PaintHitScope(self.hit_scope.clone())
     }
 
+    /// `base` followed by content presented under `matrix` (logical pixels, in
+    /// base space): placements replayed under a presentation are hit through it.
+    pub fn paint_hit_scope_under(&self, base: &PaintHitScope, matrix: TransformationMatrix) -> PaintHitScope {
+        let radius = f32::MAX / 64.0;
+        PaintHitScope(Some(Rc::new(HitScope {
+            parent: base.0.clone(),
+            inverse: matrix.inverse(),
+            clip: Bounds::new(point(px(-radius), px(-radius)), size(px(radius * 2.0), px(radius * 2.0))),
+        })))
+    }
+
     /// Inside `with_prepaint_segments`, test the listed placements (segment,
     /// ordinal) through the given scopes instead of the current one: a placement
     /// replayed under a transformed copy is hit through that copy's matrix.

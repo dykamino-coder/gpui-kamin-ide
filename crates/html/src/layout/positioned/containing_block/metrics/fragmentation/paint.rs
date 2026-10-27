@@ -8,8 +8,10 @@ use crate::layout::fragment::decoration::Decoration;
 use crate::layout::fragment::paint_source::Nested;
 use gpui::{
     Bounds, PaintRecordError, PaintSegment, PaintSegmentId, PaintSegmentSlice, Pixels, Point,
+    TransformationMatrix,
 };
 use std::{collections::HashMap, rc::Rc};
+mod presentation;
 
 /// Placements of one outermost root and every flow nested in it.
 #[derive(Default)]
@@ -20,6 +22,7 @@ struct Own {
     /// Segment, whether a legacy copy of the ancestors paints there, placed extent.
     segments: Vec<(PaintSegmentId, bool, Bounds<Pixels>)>,
     extent: Option<Bounds<Pixels>>,
+    frames: presentation::Frames,
 }
 
 /// Placements of continued absolute/fixed families, keyed (segment, ordinal).
@@ -30,6 +33,7 @@ pub(crate) struct Admission {
     hit_roots: Vec<(PaintSegmentId, u32, u64)>,
     hit_families: HashMap<u64, Vec<PaintSegmentSlice>>,
     own: Vec<(u64, Own)>,
+    vertical: bool,
 }
 
 /// Routes and admission of one native source: hit testing, then paint.
@@ -38,6 +42,8 @@ pub(crate) struct Routing {
     pub(crate) paint: (Rc<[PaintSegment]>, SourceSlices),
     /// Hit placements (segment, ordinal) and the outermost root they belong to.
     pub(crate) roots: Vec<(PaintSegmentId, u32, u64)>,
+    /// Hit placements presented under their root's per-fragment transform.
+    pub(crate) presented: Vec<(PaintSegmentId, u32, TransformationMatrix)>,
 }
 
 /// One fragment of a continued flow.
@@ -54,11 +60,19 @@ pub(crate) struct Placement {
     pub(crate) decoration: Bounds<Pixels>,
     /// A legacy copy of the root's ancestors paints in this segment.
     pub(crate) copied: bool,
+    /// The family box's flat transform and its fragment here (source).
+    pub(crate) transform: Option<crate::style::computed::FlatTransform>,
+    pub(crate) reference: Bounds<Pixels>,
+    /// Source point of this fragmentainer's start on the block axis.
+    pub(crate) start: Point<Pixels>,
 }
 
 impl Admission {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    pub(crate) fn new(vertical: bool) -> Self {
+        Self {
+            vertical,
+            ..Self::default()
+        }
     }
 
     fn ordinal(&mut self, segment: PaintSegmentId) -> Result<u32, PaintRecordError> {
@@ -96,6 +110,7 @@ impl Admission {
             }
         };
         let own = &mut self.own[index].1;
+        own.frames.note(&p);
         own.routes.push(placement);
         own.families.entry(p.family).or_default().push(slice);
         own.decorations.entry(p.family).or_default().push(decorated);
@@ -119,6 +134,7 @@ impl Admission {
             ..Default::default()
         };
         let mut orphan_routes = Vec::new();
+        let mut presented = Vec::new();
         for (root, _) in &self.own {
             let origin = snapshot
                 .normal
@@ -130,12 +146,24 @@ impl Admission {
             hits.origins.insert(*root, origin);
         }
         for (root, own) in std::mem::take(&mut self.own) {
+            let presentations = own.frames.matrices(self.vertical);
+            if !presentations.is_empty() {
+                paint.presented.insert(root);
+                hits.presented.insert(root);
+                presented.extend(own.routes.iter().filter_map(|route| {
+                    let m = presentations.get(&route.id)?;
+                    Some((route.id, route.ordinal, *m))
+                }));
+            }
             // Placed records re-enter the source record unmoved.
             let mut identity = Vec::new();
             for &(segment, copied, placed) in &own.segments {
                 if copied {
                     continue;
                 }
+                let placed = presentations
+                    .get(&segment)
+                    .map_or(placed, |m| placed.union(&presentation::image(m, placed)));
                 let Ok(ordinal) = self.ordinal(segment) else {
                     continue;
                 };
@@ -178,6 +206,7 @@ impl Admission {
                         .collect(),
                     boxes,
                     bare,
+                    presentations,
                 }),
             );
         }
@@ -185,6 +214,7 @@ impl Admission {
             hits: (Rc::from(self.hits), hits),
             paint: (Rc::from(orphan_routes), paint),
             roots: self.hit_roots,
+            presented,
         }
     }
 }
@@ -213,6 +243,7 @@ fn slices(
         nested: HashMap::new(),
         placed: None,
         origins: HashMap::new(),
+        presented: Default::default(),
     }
 }
 

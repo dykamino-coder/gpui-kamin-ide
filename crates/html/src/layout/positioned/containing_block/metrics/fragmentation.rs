@@ -36,6 +36,8 @@ pub(crate) struct Source {
     /// The native source paints it; otherwise its legacy copies do (a box laid
     /// out outside the source, or held, and every flow of its family).
     pub(crate) native: bool,
+    /// Its own flat transform, resolved against each of its fragments.
+    pub(crate) transform: Option<crate::style::computed::FlatTransform>,
 }
 
 struct Flow {
@@ -51,6 +53,7 @@ struct Flow {
     /// The source cannot paint it in place (`held`): an anchor or the flow
     /// of a percentage-sized box places it, or it transforms per fragment.
     held: bool,
+    transform: Option<crate::style::computed::FlatTransform>,
 }
 
 pub(super) struct Recording {
@@ -148,6 +151,7 @@ impl Recorder {
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
                     held: held(e),
+                    transform: crate::style::computed::FlatTransform::of(&e.style.used()),
                 });
                 parent = Some(index);
             }

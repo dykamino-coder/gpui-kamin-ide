@@ -47,7 +47,11 @@ impl PageStack {
             let routing = admission.finish(&snapshot);
             // Placements replayed by a slot are hit through that copy's scope
             // (its sheet matrix and its own CSS transforms).
-            let scopes = self.oof.slot_scopes.scopes(&routing.roots);
+            let scopes = crate::hooks::presented_hit_scopes(
+                self.oof.slot_scopes.scopes(&routing.roots),
+                &routing.presented,
+                window,
+            );
             window.with_hitbox_transform(hits, |window| {
                 window.with_prepaint_segment_hit_scopes(scopes, |window| {
                     native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
@@ -150,7 +154,11 @@ impl PageStack {
             let index = match entries.iter().position(|e| Rc::ptr_eq(&e.1, snapshot)) {
                 Some(index) => index,
                 None => {
-                    entries.push((*owner, snapshot.clone(), Admission::new()));
+                    entries.push((
+                        *owner,
+                        snapshot.clone(),
+                        Admission::new(self.axis.is_vertical()),
+                    ));
                     entries.len() - 1
                 }
             };
@@ -163,6 +171,10 @@ impl PageStack {
                 clip,
                 decoration,
                 copied,
+                transform: flow.transform,
+                reference: geometry::slice(self.axis, laid, 0., inline, f.from, f.h),
+                start: geometry::slice(self.axis, page, offset.into(), inline, 0., 0.).origin
+                    - (to + shift - from),
             })?;
         }
         Ok(entries)

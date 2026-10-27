@@ -102,28 +102,36 @@ impl Wrap for Slot {
         if records.is_empty() {
             return;
         }
-        let origin = point(px(0.), px(0.));
-        let placement = PaintPlacement {
-            source: origin,
-            destination: origin,
-            clip: window.content_mask().bounds,
-        };
-        let plan = PaintPlan::sequence(records.into_iter().map(PaintPlan::record));
         // The copy's own transform (CSS transforms of the copied ancestors, the
-        // page sheet) is the explicit presentation of the replayed record.
+        // page sheet) presents the replayed records; the root's own per-fragment
+        // transform applies first.
         let device = window.current_transformation();
-        // A stale or foreign record is rejected without output.
-        let _ = if device == TransformationMatrix::unit() {
-            window.paint_plan(&plan, placement).map(|_| ())
-        } else {
-            let k = window.scale_factor();
-            let matrix = TransformationMatrix {
-                rotation_scale: device.rotation_scale,
-                translation: [device.translation[0] / k, device.translation[1] / k],
+        let k = window.scale_factor();
+        let copy = (device != TransformationMatrix::unit()).then(|| TransformationMatrix {
+            rotation_scale: device.rotation_scale,
+            translation: [device.translation[0] / k, device.translation[1] / k],
+        });
+        for (record, own) in records {
+            let origin = point(px(0.), px(0.));
+            let placement = PaintPlacement {
+                source: origin,
+                destination: origin,
+                clip: window.content_mask().bounds,
             };
-            window
-                .with_paint_presentation(matrix, |window| window.paint_plan(&plan, placement))
-                .and_then(|result| result.map(|_| ()))
-        };
+            let plan = PaintPlan::record(record);
+            let replay = |window: &mut Window| match own {
+                Some(matrix) => window
+                    .with_paint_presentation(matrix, |window| window.paint_plan(&plan, placement))
+                    .and_then(|result| result.map(|_| ())),
+                None => window.paint_plan(&plan, placement).map(|_| ()),
+            };
+            // A stale or foreign record is rejected without output.
+            let _ = match copy {
+                Some(matrix) => window
+                    .with_paint_presentation(matrix, replay)
+                    .and_then(|result| result),
+                None => replay(window),
+            };
+        }
     }
 }
