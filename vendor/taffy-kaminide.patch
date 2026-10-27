@@ -18439,13 +18439,13 @@ index 0000000000000000000000000000000000000000..d723c8575358b45d028d630e6175b4e9
 +}
 diff --git a/vendor/taffy/src/tree/flex_fragmentation_gap_tests.rs b/vendor/taffy/src/tree/flex_fragmentation_gap_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d445f8f0ba557deafb39d3615024d2366c0306d4
+index 0000000000000000000000000000000000000000..f0a625f161e7391eb6f8b63be8611364f5e91d14
 --- /dev/null
 +++ b/vendor/taffy/src/tree/flex_fragmentation_gap_tests.rs
 @@ -0,0 +1,67 @@
 +//! KaminIDE patch: отрицательный рост линии гасит промежуток у разрыва (css-gaps-1 §2).
 +use crate::geometry::Size;
-+use crate::style::LengthPercentage;
++use crate::style::{LengthPercentage, LengthPercentageAuto};
 +use crate::style_helpers::TaffyMaxContent;
 +use crate::{AlignContent, DetailedLayoutInfo, Dimension, FlexWrap, NodeId, Style, TaffyTree};
 +
@@ -18495,7 +18495,7 @@ index 0000000000000000000000000000000000000000..d445f8f0ba557deafb39d3615024d236
 +    let definite = Style { size: size(Dimension::length(300.0)), align_content: AlignContent::SPACE_BETWEEN, ..Style::DEFAULT };
 +    let minimum = Style {
 +        size: size(Dimension::auto()),
-+        min_size: size(Dimension::length(300.0)),
++        min_size: Size { width: LengthPercentageAuto::auto(), height: LengthPercentageAuto::length(300.0) },
 +        gap: gap(100.0),
 +        align_content: AlignContent::END,
 +        ..Style::DEFAULT

@@ -1,6 +1,6 @@
 //! KaminIDE patch: отрицательный рост линии гасит промежуток у разрыва (css-gaps-1 §2).
 use crate::geometry::Size;
-use crate::style::LengthPercentage;
+use crate::style::{LengthPercentage, LengthPercentageAuto};
 use crate::style_helpers::TaffyMaxContent;
 use crate::{AlignContent, DetailedLayoutInfo, Dimension, FlexWrap, NodeId, Style, TaffyTree};
 
@@ -50,7 +50,7 @@ fn definite_and_minimum_sizes_keep_their_block_size_and_alignment() {
     let definite = Style { size: size(Dimension::length(300.0)), align_content: AlignContent::SPACE_BETWEEN, ..Style::DEFAULT };
     let minimum = Style {
         size: size(Dimension::auto()),
-        min_size: size(Dimension::length(300.0)),
+        min_size: Size { width: LengthPercentageAuto::auto(), height: LengthPercentageAuto::length(300.0) },
         gap: gap(100.0),
         align_content: AlignContent::END,
         ..Style::DEFAULT

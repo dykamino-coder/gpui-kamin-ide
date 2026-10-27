@@ -8,17 +8,7 @@ fn rows(
     container: Style,
 ) -> (LayoutId, Vec<LayoutId>) {
     let items: Vec<_> = (0..2)
-        .map(|_| {
-            window.request_layout(
-                Style {
-                    size: size(px(40.).into(), px(50.).into()),
-                    flex_shrink: 0.,
-                    ..Style::default()
-                },
-                [],
-                cx,
-            )
-        })
+        .map(|_| super::flex_pin_tests::leaf(window, cx, 40., 50.))
         .collect();
     let root = window.request_layout(
         Style {

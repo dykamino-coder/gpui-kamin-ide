@@ -24,11 +24,7 @@ impl BlockBox {
         {
             for pair in frame.lines.windows(2) {
                 let (previous, next) = (&pair[0], &pair[1]);
-                let forced = flex.items.iter().any(|item| {
-                    (previous.items.contains(&item.id) && item.edge(true, laid).0)
-                        || (next.items.contains(&item.id) && item.edge(false, laid).0)
-                });
-                if !forced
+                if !flex.forced_between(previous, next, laid)
                     && previous.end > from + COORD_EPS
                     && previous.end <= end + COORD_EPS
                     && end <= edge + COORD_EPS
@@ -42,18 +38,7 @@ impl BlockBox {
                 }
             }
         }
-        for inner in self
-            .kids
-            .iter()
-            .chain(self.flex.iter().flat_map(|f| &f.items))
-            .filter_map(|item| item.inner.as_ref())
-            .chain(
-                self.grid
-                    .iter()
-                    .flat_map(|g| &g.items)
-                    .filter_map(|item| item.inner.as_ref()),
-            )
-        {
+        for inner in self.nested() {
             inner.suppressed_row_gaps(laid, from, end, edge, out);
         }
     }
