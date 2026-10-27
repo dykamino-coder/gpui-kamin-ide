@@ -1,6 +1,7 @@
 //! Параметры многоколоночной коробки перед выбором маршрута раскладки.
 
 use crate::dom::Element;
+use crate::layout::multicol::dimensions::MulticolDimensions;
 use crate::layout::multicol::spanner::{has_deep_spanner, multicol_container};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
@@ -8,14 +9,30 @@ use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> ColumnPlan {
+    column_plan_in(
+        e,
+        merged,
+        opts,
+        MulticolDimensions::for_element(e, merged),
+        MulticolDimensions::for_element(e, &e.style.used()),
+    )
+}
+
+pub(super) fn column_plan_in(
+    e: &Element,
+    merged: &Computed,
+    opts: &RenderOpts,
+    dimensions: MulticolDimensions,
+    own: MulticolDimensions,
+) -> ColumnPlan {
     let used_gap = match merged.column_gap {
         Some(Len::Px(v)) => v,
         // Доля — от ширины содержимого коробки (css-align-3 §8.1), в
         // единицах раскладки 1/64 точки, как Blink `LayoutUnit`: иначе
         // `30%` от 50 даёт 15.0000006, и край колонки 25.4999 округлялся
         // не так, как у точного `15px` (`multicol-nested-033`).
-        Some(Len::Pct(k)) if matches!(e.style.used().width, Some(Len::Px(_))) => {
-            let w = match e.style.used().width {
+        Some(Len::Pct(k)) if matches!(own.preferred[0], Some(Len::Px(_))) => {
+            let w = match own.preferred[0] {
                 Some(Len::Px(w)) => w,
                 _ => 0.0,
             };
@@ -66,9 +83,9 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     };
     let col_vert = col_axis.is_vertical();
     let col_inline_size = if col_vert {
-        merged.height
+        dimensions.preferred[1]
     } else {
-        merged.width
+        dimensions.preferred[0]
     };
     let count_from_width = match (column_width, col_inline_size) {
         (Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
@@ -135,41 +152,4 @@ pub(crate) struct ColumnPlan {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::style::computed::BoxStyle;
-
-    #[test]
-    fn zero_column_width_uses_one_pixel_without_changing_computed_value() {
-        let opts = RenderOpts {
-            text: Default::default(),
-            viewport: (800., 600.),
-            normal_line_height: 1.2,
-            cx: Default::default(),
-            frag: Default::default(),
-        };
-        for (css, expected) in [
-            ("column-width:0", Len::Px(0.)),
-            ("columns:0", Len::Px(0.)),
-            ("column-width:0.5px", Len::Px(0.5)),
-            ("column-width:0em", Len::Em(0.)),
-            ("column-width:0.01em", Len::Em(0.01)),
-        ] {
-            let doc = crate::document::state::DocState::new(Default::default());
-            let mut style = Computed::default();
-            style.apply_decls_with_vars(
-                &crate::style::css::parse_decls(&format!("width:50px; column-gap:0; {css}")),
-                &Default::default(),
-                doc.values(),
-            );
-            assert_eq!(style.column_width, Some(expected), "{css}");
-            let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
-            let merged =
-                crate::style::cascade::inherit::inherit(&BoxStyle::default(), &style, doc.values());
-            let plan = column_plan(&e, &merged, &opts);
-            assert_eq!(plan.column_width, Some(Len::Px(1.0)), "{css}");
-            assert_eq!(plan.used_count, Some(50), "{css}");
-            assert_eq!(style.column_width, Some(expected));
-        }
-    }
-}
+mod tests;

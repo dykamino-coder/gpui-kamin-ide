@@ -6,6 +6,7 @@
 
 use crate::style::computed::BoxStyle;
 
+pub(crate) mod metrics;
 mod spot;
 pub use spot::Spot;
 mod late;

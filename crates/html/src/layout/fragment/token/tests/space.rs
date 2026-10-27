@@ -49,14 +49,18 @@ fn page_identity_marks_the_first_page() {
 
 #[test]
 fn nested_row_first_row_takes_the_rest_of_the_outer_fragmentainer() {
-    let row = NestedRow::from_outer_row((100.0, 30.0), false);
-    assert_eq!((row.row_block(0), row.row_block(1)), (70.0, 100.0));
-    let top = NestedRow::from_outer_row((100.0, -5.0), true);
+    let page = Space {
+        block_size: Some(100.),
+        ..Space::pages()
+    };
+    let row = NestedRow::from_space(page, 30.).unwrap();
+    assert_eq!(row.remaining(), 70.);
+    let top = NestedRow::from_space(page, -5.).unwrap();
     assert_eq!(
         (top.offset, top.outer_block, top.outer_paged),
-        (0.0, 100.0, true)
+        (0., 100., true)
     );
-    assert_eq!(top.row_block(0), 100.0);
+    assert_eq!(top.remaining(), 100.);
 }
 
 #[test]
@@ -73,9 +77,9 @@ fn nesting_starts_a_row_below_the_outer_start() {
         (Some(150.0), Some(300.0))
     );
     assert!(!inner.at_start(0) && inner.at_start(1));
-    // Ряд внутри ряда помнит, что снаружи — страницы.
+    // The nearest enclosing context is a column row, even inside pages.
     let deeper = inner.nest_at(10.0).expect("row block size is known");
-    assert!(matches!(deeper.kind, Kind::NestedRow(r) if r.outer_paged));
+    assert!(matches!(deeper.kind, Kind::NestedRow(r) if !r.outer_paged));
     assert_eq!(Space::columns().nest_at(10.0), None);
     let column = Space {
         block_size: Some(80.0),

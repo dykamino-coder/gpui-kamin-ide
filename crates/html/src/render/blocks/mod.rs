@@ -15,7 +15,8 @@ use flow_children::flow_children;
 
 use crate::dom::Node;
 use crate::interactive::sticky::sticky_probe;
-use crate::layout::block::available_width;
+use crate::layout::block::sizing::BoxDimensions;
+mod context;
 use crate::layout::block::struts::zero_len;
 use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
@@ -23,6 +24,7 @@ use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
+pub(crate) use context::blocks_stack;
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
@@ -36,38 +38,21 @@ pub(crate) use positioned::inset_holder_box;
 // (`text-emphasis-line-height-004a..d`, `text-emphasis-punctuation-1/2`).
 // Вернуть можно только вместе с настоящей надстрочной аннотацией (сдвиг
 // базовой линии без атома).
-pub(crate) async fn blocks_stack(
+pub(crate) async fn blocks_stack_with_dimensions(
     stk: &mut reblessive::Stk,
     nodes: &[Node],
     inherited: &BoxStyle,
+    sizes: BoxDimensions,
     opts: &RenderOpts,
 ) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
-    // Only the cell's own content list is the BFC root's (see `BoxConstraints::cell_bfc`).
     let cell_bfc = opts.cx.constraints.cell_bfc;
-    // Контекст детей этого уровня: ширина содержащего блока, доступные
-    // ширина и высота (см. `LayoutCx`).
-    let outer = &opts.cx;
-    let cb_width = match inherited.width {
-        Some(Len::Px(w)) if w > 0.0 => Some(w),
-        _ => outer.constraints.cb_width,
-    };
-    let avail_h = crate::layout::block::available_height::inner(
-        inherited,
-        outer.constraints.avail_h,
-        outer.constraints.avail_w,
-        opts.viewport.1,
-    );
-    let avail_w = available_width::inner(inherited, outer.constraints.avail_w);
-    let opts = &*opts.inner(|cx| {
-        cx.constraints.cb_width = cb_width;
-        cx.constraints.avail_w = avail_w;
-        cx.constraints.avail_h = avail_h;
-        cx.constraints.cell_bfc = false;
-    });
+    let inner_opts = context::child_options(inherited, &sizes, opts);
+    let opts = &inner_opts;
     // `content-visibility: hidden`: содержимое пропускается целиком
     // (css-contain-2 §4) — коробка остаётся, детей нет.
-    let (collapsed, ordered_context, under_tf) = prepare_children(nodes, inherited, opts, cell_bfc);
+    let (collapsed, ordered_context, under_tf) =
+        prepare_children(nodes, inherited, &sizes, opts, cell_bfc);
     // Плавающий блок и выравнивание по базовой линии на элементе гибкого
     // контейнера или сетки НЕ действуют — так велит CSS. Без этого правила
     // `float: right` на элементе ряда выкидывал его из раскладки родителя.

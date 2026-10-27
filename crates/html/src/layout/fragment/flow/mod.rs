@@ -9,7 +9,7 @@ pub(crate) mod blocks;
 pub(crate) mod box_children;
 mod contexts;
 mod continuation;
-mod coordinates;
+pub(crate) mod coordinates;
 pub(crate) mod float_resume;
 pub(crate) mod inline;
 mod line_growth;
@@ -26,6 +26,11 @@ pub(crate) use stack::fragment_leaf;
 /// границ таблицы; flex/grid и multicol регистрируют свои независимые потоки.
 /// Монолитные и внепоточные коробки не передают строки родительскому потоку.
 pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
+    flow_lines_in(e, None)
+}
+
+/// Собственный OOF-контекст принимает свои строки; родительский поток — нет.
+pub(crate) fn flow_lines_in(e: &crate::dom::Element, owner: Option<u64>) -> bool {
     use crate::style::computed::Display;
     matches!(
         e.style.used().display,
@@ -37,7 +42,7 @@ pub(crate) fn flow_lines(e: &crate::dom::Element) -> bool {
         )
         && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
         && !crate::layout::fragment::clone::monolith_box(e)
-        && !crate::layout::box_kind::out_of_flow(&e.style.used())
+        && (owner == Some(e.node_id) || !crate::layout::box_kind::out_of_flow(&e.style.used()))
 }
 
 #[derive(Clone, Debug, Default)]
@@ -180,8 +185,8 @@ mod logical;
 pub(crate) use logical::transpose_tree;
 mod independent;
 pub(crate) use independent::{
-    PagePercentages, Parallel, column_percentages, flow_end, independent_copy, logical_copy,
-    page_copy, page_percentages, regrow_copy, vertical_copy,
+    PagePercentages, Parallel, column_percentages, column_percentages_in, flow_end,
+    independent_copy, logical_copy, page_copy, page_percentages, regrow_copy, vertical_copy,
 };
 mod copy_clearance;
 pub(crate) use copy_clearance::copy_flow;

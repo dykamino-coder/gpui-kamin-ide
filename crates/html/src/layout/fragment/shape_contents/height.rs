@@ -7,6 +7,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_rows_px};
 use crate::layout::fragment::{ShapeCx, fragment_size};
@@ -32,6 +33,7 @@ pub(super) fn shaped_height(
     stacked: Option<(f32, f32, f32)>,
     vcx: ValueCx<'_>,
 ) -> Result<(f32, f32, f32), Option<crate::layout::fragment::Shape>> {
+    let sizes = BoxDimensions::for_element(c, &c.style.used());
     let (h, mt, mb) = match c
         .style
         .used()
@@ -55,10 +57,10 @@ pub(super) fn shaped_height(
                 // коробка `height: 0` с ребёнком 40px и `margin-top: -40px`
                 // — содержимое кончается на её верху, а мера давала поток
                 // 40, и коробка с края колонки уезжала в следующую).
-                fragment_size::border_size(v, &c.style.used(), top + bot)
+                fragment_size::border_size(v, &sizes, top + bot)
                     .max(stacked.map_or(0.0, |s| s.0 + s.1.min(0.0)) + bot)
             } else {
-                fragment_size::border_size(v, &c.style.used(), top + bot)
+                fragment_size::border_size(v, &sizes, top + bot)
             },
             mt,
             mb,
@@ -188,6 +190,7 @@ pub(super) fn shaped_height(
 /// (`parallel-flow-trailing-margin-001`: `max-height: 0`, поле 80 сдвигало
 /// соседа).
 fn max_lowers(c: &Element, end: f32, edges: f32) -> bool {
-    matches!(c.style.used().max_height, Some(Len::Px(m))
-        if fragment_size::border_size(m, &c.style.used(), edges) < end - 0.01)
+    let sizes = BoxDimensions::for_element(c, &c.style.used());
+    matches!(sizes.maximum[1], Some(Len::Px(m))
+        if fragment_size::border_size(m, &sizes, edges) < end - 0.01)
 }

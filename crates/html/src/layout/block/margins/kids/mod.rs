@@ -1,8 +1,9 @@
 //! Поля детей блока и распорки слитых полей (collapse_margins).
 
 use crate::dom::Node;
-use crate::layout::block::containing::with_inner_cb;
+use crate::layout::block::containing::with_inner_dimensions;
 use crate::layout::block::inline_splits::split_block_in_inline;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::struts::{
     ZeroPaths, first_in_flow, leading_chain, margin_px, pin_inherited_margins, trailing_chain,
     zero_paths,
@@ -141,9 +142,12 @@ pub(super) fn collapse_kid_margins(
                     ))
             }))
             .and_then(|(i, ch)| {
-                with_inner_cb(&e.style.used(), vcx, |vcx| {
-                    margin_px(ch.style.used().margin.bottom, &ch.style.used(), vcx)
-                })
+                with_inner_dimensions(
+                    &e.style.used(),
+                    &BoxDimensions::for_element(e, &e.style.used()),
+                    vcx,
+                    |vcx| margin_px(ch.style.used().margin.bottom, &ch.style.used(), vcx),
+                )
                 .map(|_| i)
             });
         // Проверено: запрет поглощения, когда в хвосте есть коробка с клиренсом

@@ -7,6 +7,7 @@
 use super::geometry::{collect_rows, row_container, row_forced};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::oof_reach::Measure;
@@ -26,11 +27,13 @@ pub(crate) fn main_size(c: &Element, vcx: ValueCx<'_>) -> Option<f32> {
                 + px_auto_zero(c.style.used().padding.right)?
                 + px_auto_zero(b.left)?
                 + px_auto_zero(b.right)?;
-            Some(if c.style.used().border_box == Some(true) {
-                (w - edges).max(0.0)
-            } else {
-                w
-            })
+            Some(
+                if BoxDimensions::for_element(c, &c.style.used()).border_box {
+                    (w - edges).max(0.0)
+                } else {
+                    w
+                },
+            )
         })
 }
 
@@ -122,8 +125,11 @@ pub(crate) fn measure_rows(
     let h = match c.style.used().height {
         None | Some(Len::Auto) => natural,
         Some(Len::Px(h)) => {
-            let h =
-                crate::layout::fragment::fragment_size::border_size(h, &c.style.used(), top + bot);
+            let h = crate::layout::fragment::fragment_size::border_size(
+                h,
+                &BoxDimensions::for_element(c, &c.style.used()),
+                top + bot,
+            );
             if unclamp { h.max(natural) } else { h }
         }
         _ => return None,

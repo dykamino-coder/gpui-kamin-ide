@@ -10,11 +10,12 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::shape_contents::shape_contents;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::style::computed::{Computed, LenCx, Overflow};
+use crate::style::computed::{LenCx, Overflow};
 use crate::style::values::value::Len;
 
 #[cfg_attr(feature = "wpt-harness", track_caller)]
@@ -70,7 +71,7 @@ pub(crate) fn measure(
         + resolve(border.bottom);
     let height = constrain(
         shape.height,
-        &element.style.used(),
+        element,
         decoration,
         cx.viewport,
         cx.unclamped,
@@ -92,8 +93,8 @@ pub(crate) fn measure(
     Some(m)
 }
 
-pub(super) fn border_size(value: f32, style: &Computed, decoration: f32) -> f32 {
-    if style.border_box == Some(true) {
+pub(super) fn border_size(value: f32, sizes: &BoxDimensions, decoration: f32) -> f32 {
+    if sizes.border_box {
         value.max(decoration)
     } else {
         value.max(0.0) + decoration
@@ -102,18 +103,20 @@ pub(super) fn border_size(value: f32, style: &Computed, decoration: f32) -> f32 
 
 pub(super) fn constrain(
     natural_border_size: f32,
-    style: &Computed,
+    element: &Element,
     decoration: f32,
     viewport: Option<(f32, f32)>,
     overflow_extent: bool,
     vcx: ValueCx<'_>,
 ) -> f32 {
+    let style = &element.style.used();
+    let sizes = BoxDimensions::for_element(element, style);
     // Предел, который не решается, не ограничивает.
     let lens = LenCx::box_viewport(viewport, style);
     let resolve = |length: Option<Len>| lens.px_strict(length, vcx);
-    let border_size = |v: f32| border_size(v, style, decoration);
-    let minimum = resolve(style.min_height).map(border_size);
-    let maximum = resolve(style.max_height).map(border_size);
+    let border_size = |v: f32| border_size(v, &sizes, decoration);
+    let minimum = resolve(sizes.minimum[1]).map(border_size);
+    let maximum = resolve(sizes.maximum[1]).map(border_size);
     let clips = matches!(style.overflow_y, Some(Overflow::Hidden | Overflow::Clip));
     if overflow_extent && !clips {
         return natural_border_size.max(minimum.unwrap_or(0.0));

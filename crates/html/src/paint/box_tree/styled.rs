@@ -8,9 +8,10 @@ mod clamp;
 use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
 use crate::layout::block::margin_height;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::writing_mode::native_intrinsic;
-use crate::paint::apply::{apply_for_decorations, apply_hover};
+use crate::paint::apply::{apply_for_decorations_with_dimensions, apply_hover};
 use crate::paint::decorations::decorations;
 use gpui::{ParentElement, Styled, div};
 
@@ -25,6 +26,15 @@ pub(crate) fn styled_div_with(
     e: &Element,
     style: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
+) -> gpui::Div {
+    styled_div_with_dimensions(e, style, cx, None)
+}
+
+pub(crate) fn styled_div_with_dimensions(
+    e: &Element,
+    style: &BoxStyle,
+    cx: &crate::layout::cx::LayoutCx,
+    dimensions: Option<BoxDimensions>,
 ) -> gpui::Div {
     let vcx = cx.vcx();
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
@@ -72,9 +82,12 @@ pub(crate) fn styled_div_with(
         c
     };
     let auto_height = margin_height::used_style(e, paint);
-    let mut d = apply_for_decorations(div(), auto_height.as_ref().unwrap_or(paint), vcx);
+    let paint = auto_height.as_ref().unwrap_or(paint);
+    let dimensions = dimensions.unwrap_or_else(|| BoxDimensions::for_element(e, paint));
+    let mut d = apply_for_decorations_with_dimensions(div(), paint, Some(dimensions), vcx);
     if native_intrinsic::eligible(e) {
-        d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
+        d.style().sizing_keywords =
+            Some(crate::paint::apply::intrinsic_size::keywords_with_dimensions(c, &dimensions));
     }
     d = super::scroll::attach(d, e, c, cx);
     if let Some(probe) = crate::interactive::scroll_extent::probe(

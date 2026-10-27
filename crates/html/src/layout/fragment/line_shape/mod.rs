@@ -7,6 +7,7 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::multicol::spanner::multicol_container;
@@ -22,7 +23,6 @@ mod nested_kid;
 mod resolved_lengths;
 pub(crate) use nested::nested_box_w;
 pub(crate) use nested::nested_rows_box;
-pub(crate) use nested::nested_rows_shape;
 pub(crate) use nested_kid::layout_unit;
 pub(crate) use resolved_lengths::{LengthFacts, resolved_lengths};
 mod inline_runs;
@@ -35,6 +35,7 @@ pub(crate) use inline_runs::side_margin_wrap;
 /// Только обычный блок потока — у прочих ширину решает своя раскладка.
 pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     let s = &c.style.used();
+    let sizes = BoxDimensions::for_element(c, s);
     // Блочный flex-контейнер и сетка в потоке занимают ширину как блок
     // (css-flexbox-1 §9.2 / css-grid-2 §6.1: «block-level … sized as a
     // block»); ширину ИХ детей решает `items_kind`.
@@ -69,7 +70,7 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     let b = s.borders();
     let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
     match s.width {
-        Some(Len::Px(w)) => Some(if s.border_box == Some(true) {
+        Some(Len::Px(w)) => Some(if sizes.border_box {
             (w - edges).max(0.0)
         } else {
             w

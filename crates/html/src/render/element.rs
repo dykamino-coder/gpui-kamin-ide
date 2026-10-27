@@ -34,11 +34,15 @@ pub(crate) async fn element_stack(
 ) -> AnyElement {
     let entered = opts.inner(|cx| cx.contracts.reflow_depth += 1);
     let opts = &*entered;
+    let own = crate::layout::positioned::containing_block::metrics::fragmentation::options(e, opts);
+    let opts = own.as_deref().unwrap_or(opts);
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
     // не пишутся (`flow::flow_lines`).
     let nested = opts.frag.watch.as_ref().and_then(|w| {
         let watch = w.for_flex_item(e.node_id).or_else(|| {
-            (w.takes_lines() && !crate::layout::fragment::flow::flow_lines(e)).then(|| w.nested())
+            (w.takes_lines()
+                && !crate::layout::fragment::flow::flow_lines_in(e, w.blocks().map(|b| b.id)))
+            .then(|| w.nested())
         })?;
         let mut inner = Box::new(opts.clone());
         inner.frag.watch = Some(watch);
@@ -51,6 +55,9 @@ pub(crate) async fn element_stack(
     );
     crate::layout::depth::wrap(built, opts)
 }
+
+#[cfg(test)]
+mod lines_tests;
 
 async fn element_inner(
     stk: &mut reblessive::Stk,
@@ -71,8 +78,8 @@ async fn element_inner(
         vcx,
     );
     let e = media_sized.as_ref().unwrap_or(e);
-    // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_row`).
-    let (outer_row, inner_opts) = opts.take_outer_row();
+    // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_space`).
+    let (outer_space, inner_opts) = opts.take_outer_space();
     let opts = inner_opts.as_deref().unwrap_or(opts);
     let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
@@ -174,8 +181,15 @@ async fn element_inner(
     } else {
         None
     };
+    let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
+        e.node_id, &merged, opts,
+    );
+    let built = dispatch_element(stk, e, merged, inherited, opts, outer_space, built_iframe).await;
     crate::interactive::scroll_extent::project(
-        dispatch_element(stk, e, merged, inherited, opts, outer_row, built_iframe).await,
+        match geometry {
+            Some(geometry) => geometry.wrap(built),
+            None => built,
+        },
         scroll_projection,
     )
 }

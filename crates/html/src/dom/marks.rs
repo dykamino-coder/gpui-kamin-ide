@@ -32,6 +32,8 @@ pub struct Marks {
     /// `node_id` of the source-tree parent of a hoisted column spanner: margins
     /// of spanners from different parents do not collapse.
     pub(crate) span_parent: Option<u64>,
+    /// Ряд колонок или продолжение предка спаннера с собственным остатком.
+    pub(crate) spanner_content_box: bool,
     /// Исходный содержащий блок, удалённый из пути при разрыве inline.
     pub(crate) inline_cb: Option<InlineCb>,
     /// Block whose auto height is proven zero by its float host

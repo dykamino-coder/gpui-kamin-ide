@@ -45,6 +45,19 @@ impl Hooks for Probe {
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let id = self.child.request_layout(window, cx);
+        let mut spot = self.spot.get();
+        spot.normal_node = Some(crate::layout::fragment::geometry::Node::capture(id, window));
+        if let Some(line) = &self.line {
+            // Ряд владеет native щупом; Paragraph публикует свою измеренную
+            // строку в request_layout после запроса строчных атомов.
+            line.normal.set(Some(
+                crate::layout::positioned::containing_block::metrics::static_rect::LineGeometry::Row(
+                    spot.normal_node.unwrap(),
+                ),
+            ));
+        }
+        spot.block_strut = self.full;
+        self.spot.set(spot);
         (id, id)
     }
 

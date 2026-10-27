@@ -9,7 +9,7 @@ pub(crate) use parallel::{Parallel, flow_end};
 mod percentages;
 use continuation::continuation;
 pub(crate) use percentages::PagePercentages;
-pub(crate) use percentages::{column_percentages, page_percentages};
+pub(crate) use percentages::{column_percentages, column_percentages_in, page_percentages};
 
 /// Normal и overflow потоки копии доступны общему рекордеру.
 /// TRANSITIONAL(F2-7): Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21.

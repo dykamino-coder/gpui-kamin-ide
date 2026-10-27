@@ -6,6 +6,7 @@ use super::super::items::row_item_width;
 use super::geometry::row_container;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::out_of_flow;
 use crate::style::values::value::{Len, px_auto_zero};
 
@@ -44,7 +45,7 @@ pub(super) fn intrinsic_main(c: &Element, main: f32, depth: u8) -> Option<(f32, 
             + px_auto_zero(k.style.used().padding.right)?
             + px_auto_zero(b.left)?
             + px_auto_zero(b.right)?;
-        let edges = if k.style.used().border_box == Some(true) {
+        let edges = if BoxDimensions::for_element(k, &k.style.used()).border_box {
             0.0
         } else {
             decoration
@@ -62,7 +63,7 @@ pub(super) fn intrinsic_main(c: &Element, main: f32, depth: u8) -> Option<(f32, 
         + px_auto_zero(c.style.used().padding.right)?
         + px_auto_zero(b.left)?
         + px_auto_zero(b.right)?;
-    let add = if c.style.used().border_box == Some(true) {
+    let add = if BoxDimensions::for_element(c, &c.style.used()).border_box {
         edges
     } else {
         0.0

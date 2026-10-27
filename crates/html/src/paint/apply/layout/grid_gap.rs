@@ -64,18 +64,18 @@ pub(super) fn layout_grid_gap(
         let px_or_0 = px_lossy_zero;
         let edges = c.borders();
         let content = |size: Option<Len>, sides: [Option<Len>; 4]| match size {
-            Some(Len::Px(v)) if c.border_box == Some(true) => {
+            Some(Len::Px(v)) if sizes.border_box => {
                 Some((v - sides.iter().map(|s| px_or_0(*s)).sum::<f32>()).max(0.0))
             }
             Some(Len::Px(v)) => Some(v),
             _ => None,
         };
         let basis_y = content(
-            c.height,
+            sizes.preferred[1],
             [c.padding.top, c.padding.bottom, edges.top, edges.bottom],
         );
         let basis_x = content(
-            c.width,
+            sizes.preferred[0],
             [c.padding.left, c.padding.right, edges.left, edges.right],
         );
         let gap_len = |l: Len, basis: Option<f32>| -> Option<gpui::DefiniteLength> {

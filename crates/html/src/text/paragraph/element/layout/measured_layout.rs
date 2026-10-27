@@ -14,6 +14,7 @@ pub(crate) fn measured_layout(
     atom_fit: std::rc::Rc<std::cell::RefCell<crate::text::paragraph::atom_fit::AtomFit>>,
     known: gpui::Size<Option<Pixels>>,
     available: gpui::Size<gpui::AvailableSpace>,
+    normal_static: &super::normal_static::NormalStatic,
     window: &mut Window,
     _cx: &mut App,
 ) -> gpui::MeasuredContent {
@@ -107,10 +108,8 @@ pub(crate) fn measured_layout(
     if let Some(sink) = &probe.ruby_base_sink {
         sink.set(Some(f32::from(content)));
     }
-    // Fit-content is max(min-content, min(max-content, available))
-    // (css-sizing-3 §5.1): with a negative indent the max-content
-    // line can be NARROWER than the widest piece of a later line,
-    // and the min-content then wins (`text-indent-intrinsic-004`).
+    // При отрицательном отступе min-content может превышать max-content
+    // (css-sizing-3 §5.1, `text-indent-intrinsic-004`).
     let content = match (min_indented, space_along) {
         (Some(min), gpui::AvailableSpace::MinContent) => min,
         (Some(min), _) if min > content => min,
@@ -133,13 +132,8 @@ pub(crate) fn measured_layout(
         gpui::AvailableSpace::Definite(w) if width > w => w,
         _ => width,
     };
-    // Абзац с атомами, перенесённый МЯГКО, занимает всё отведённое
-    // место: ширина «по содержимому» — это min(max-content,
-    // max(min-content, доступное)) (CSS 2.1 §10.3.5, css-sizing-3
-    // §5.1 fit-content), а не самая длинная строка после переноса.
-    // Так мерил и прежний гибкий ряд с переносом, и коробка
-    // `width: fit-content(100px)` из двух `inline-block` по 60px
-    // выходила 60 вместо 100 (`fit-content-length-percentage-*`).
+    // Мягкий перенос атомов сохраняет fit-content, а не ширину самой длинной
+    // уже перенесённой строки (css-sizing-3 §5.1).
     let width = match space_along {
         gpui::AvailableSpace::Definite(w)
             if known_along.is_none() && !probe.atom_boxes.is_empty() && width < w =>
@@ -208,9 +202,17 @@ pub(crate) fn measured_layout(
             known.height.unwrap_or(width),
         ));
     }
+
     let baseline = probe.measured_first_baseline(line_height, first_above, window);
     let last_baseline = baseline.map(|b| b + last_shift);
     gpui::MeasuredContent {
+        static_positions: normal_static.measure(
+            &probe,
+            // PerformLayout передаёт решённую ширину через available, а не known.
+            // Static rect относится к этой строке, не к intrinsic ширине текста.
+            size(limit.unwrap_or(width), known.height.unwrap_or(across)),
+            window,
+        ),
         first_y: baseline,
         last_y: last_baseline,
         lines_y: Some(probe.content_line_baselines(baseline)),

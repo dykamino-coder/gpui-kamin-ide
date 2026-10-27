@@ -25,12 +25,17 @@ pub(super) fn legacy_block(c: &Computed) -> bool {
         && (c.line_clamp.is_some() || c.clamp_by_height())
 }
 
-pub(super) fn apply_layout(
+pub(super) fn apply_layout(d: Div, c: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> Div {
+    apply_layout_with_dimensions(d, c, BoxDimensions::from_computed(c), vcx)
+}
+
+pub(super) fn apply_layout_with_dimensions(
     mut d: Div,
-    c: &crate::style::computed::BoxStyle,
+    c: &BoxStyle,
+    dimensions: BoxDimensions,
     vcx: ValueCx<'_>,
 ) -> Div {
-    let sizes = BoxDimensions::from_computed(c).transfer_ratio(c);
+    let sizes = dimensions.transfer_ratio(c);
     d = layout_display(d, c);
     // При вертикальном письме оси меняются местами: `row` — это ось СТРОКИ,
     // а она идёт сверху вниз; `column` — ось потока, справа налево
@@ -82,6 +87,8 @@ pub(super) fn apply_layout(
     // `vertical-rl` шли слева направо).
     let rtl_row = c.wm().rtl() && !c.wm().vertical();
     d = layout_flex_axes(d, c, dir, rtl_row);
+    // Выражение calc-size использует тот же бокс, что числовые размеры.
+    d = calc_size::apply(d, c, &sizes);
     d = layout_alignment(d, c, dir, rtl_row, vcx);
     d = layout_grid_gap(d, c, &sizes, vcx);
 
@@ -94,7 +101,7 @@ pub(super) fn apply_layout(
     if native_content_box {
         d.style().content_box = Some(true);
     }
-    let [pad_x, pad_y] = edges.content_compensation(c.border_box == Some(true), native_content_box);
+    let [pad_x, pad_y] = edges.content_compensation(sizes.border_box, native_content_box);
 
     d = layout_sizing(d, c, &sizes, pad_x, pad_y, vcx);
     d

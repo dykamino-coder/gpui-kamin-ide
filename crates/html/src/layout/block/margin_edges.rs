@@ -6,8 +6,9 @@
 
 use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::with_inner_cb;
+use crate::layout::block::containing::with_inner_dimensions;
 use crate::layout::block::margin_height;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::struts::{
     Strut, ThroughCache, ZeroPaths, adjoin, float_only_wrapper, leading_chain, margin_or_bail,
     pin_inherited_margins, solve, strut_of, top_edge_open_at, zero_len, zero_paths,
@@ -35,9 +36,12 @@ pub(super) fn collapse_top(
         Some(Len::Px(w)) if w > 0.0 => Some(w),
         _ => cb,
     };
-    let chain = with_inner_cb(&e.style.used(), vcx, |vcx| {
-        leading_chain(&e.children, &mut eat, cb, vcx)
-    });
+    let chain = with_inner_dimensions(
+        &e.style.used(),
+        &BoxDimensions::for_element(e, &e.style.used()),
+        vcx,
+        |vcx| leading_chain(&e.children, &mut eat, cb, vcx),
+    );
     if let (Some(s), Some(own)) = (
         chain,
         margin_or_bail(e.style.used().margin.top, &e.style.used(), vcx),
@@ -51,9 +55,12 @@ pub(super) fn collapse_top(
 
 pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) {
     let mut eat = ZeroPaths::default();
-    let chain = with_inner_cb(&e.style.used(), vcx, |vcx| {
-        bottom_chain(&e.children, &mut eat, vcx)
-    });
+    let chain = with_inner_dimensions(
+        &e.style.used(),
+        &BoxDimensions::for_element(e, &e.style.used()),
+        vcx,
+        |vcx| bottom_chain(&e.children, &mut eat, vcx),
+    );
     let Some(chain) = chain else { return };
     let Some(own) = margin_or_bail(e.style.used().margin.bottom, &e.style.used(), vcx) else {
         return;
@@ -133,12 +140,17 @@ fn bottom_chain(
             if !own_context(child)
                 && zero_len(child.style.used().padding.bottom)
                 && zero_len(child.style.used().borders().bottom)
-                && zero_len(child.style.used().min_height)
+                && zero_len(BoxDimensions::for_element(child, &child.style.used()).minimum[1])
                 && matches!(child.style.used().height, None | Some(Len::Auto))
                 && !margin_height::lowers(child, vcx)
                 && child.style.used().margin_trim & 2 == 0
             {
-                vcx = with_inner_cb(&child.style.used(), vcx, |inner| inner);
+                vcx = with_inner_dimensions(
+                    &child.style.used(),
+                    &BoxDimensions::for_element(child, &child.style.used()),
+                    vcx,
+                    |inner| inner,
+                );
                 children = &child.children;
                 parent = next;
                 continue 'level;

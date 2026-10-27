@@ -11,6 +11,7 @@ mod axis;
 pub mod balance;
 pub mod element;
 mod gap_geometry;
+pub(crate) mod oof;
 mod paginate;
 
 pub struct ColumnStack {
@@ -28,6 +29,7 @@ pub struct ColumnStack {
     /// FragmentainerSpaceLeftForChildren() − line_offset`). Ставится
     /// `with_row_phase`; ноль — ряды от верха.
     pub(crate) row_phase: f32,
+    pub(crate) row_extent: super::measure::RowExtent,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
     /// Balanced column height chosen by the pagination of a child laid out
@@ -52,6 +54,7 @@ pub struct ColumnStack {
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
     pub(crate) gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
     pub(crate) plan: std::cell::RefCell<Plan>,
+    pub(super) oof: oof::State,
     /// Reuse placement storage while mapping viewport static-position probes.
     pub(crate) static_places: Option<crate::layout::fragment::static_coordinates::Places>,
     pub(crate) col_w: std::cell::Cell<f32>,
@@ -112,10 +115,12 @@ impl ColumnStack {
             rows,
             axis: StackAxis::Horizontal,
             row_phase: 0.0,
+            row_extent: Default::default(),
             copies,
             gap_items,
             intrinsic,
             plan: std::cell::RefCell::new(Plan::default()),
+            oof: oof::State::default(),
             static_places: Default::default(),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
@@ -137,57 +142,14 @@ impl ColumnStack {
         self
     }
 
-    /// Блочный размер СОДЕРЖИМОГО многоколоночника рядами `rows` (та же
-    /// укладка, что у `request_layout`): мера вложенного многоколоночника для
-    /// внешней стопки (`render::nested_rows_shape`).
-    pub(crate) fn measure_rows(
-        kids: &[Kid],
-        count: usize,
-        gap: f32,
-        fixed: Option<f32>,
-        rows: Rows,
-    ) -> f32 {
-        let mut probe = ColumnStack::new(
-            Vec::new(),
-            count,
-            gap,
-            fixed,
-            Some(rows),
-            None,
-            None,
-            Default::default(),
-        );
-        probe.row_phase = 0.0;
-        // Копий — как у `render::generic_box::multicol` для стопки с рядами: сколько колонок
-        // ребёнок может занять, с запасом на поля и срезы.
-        let per = rows.h.unwrap_or(f32::MAX).max(1.0);
-        let span = kids
-            .iter()
-            .map(|k| (k.h / per).ceil() as usize)
-            .max()
-            .unwrap_or(0);
-        // TRANSITIONAL(F2-3): Щуп баланса ограничивает копии числом 48; удалить предел в P11 после сходимости кандидатов по реальному прогрессу row tokens.
-        probe.copies = (span + 2).max(count).min(48);
-        // Блочный размер — низ ПОСЛЕДНЕЙ линии, а не полный ряд: последний
-        // фрагмент сбалансирован и короче ряда (Blink `LayoutRow`:
-        // `intrinsic_block_size_` растёт на высоту строки колонок;
-        // `multicol-breaking-006`: ряд 100 + хвост 80 + рамка 20).
-        let (h, lines, _, _) = probe.balance(kids);
-        lines
-            .iter()
-            .map(|l| l.0 + l.1)
-            .fold(0.0f32, f32::max)
-            .min(h)
-            .max(0.0)
-    }
-
-    /// Смещение начала рядов (`row_phase`).
-    /// Блочный размер содержимого коробки заданной высоты: линейки
-    /// единственной линии колонок тянутся до него (Blink `PaintColumnRules`:
-    /// «Paint column rules as tall as the entire multicol container, but only
-    /// when at the last row»).
+    /// Линейки единственной линии колонок до заданного блочного размера.
     pub fn with_rule_stretch(mut self, h: Option<f32>) -> Self {
         self.rule_to = h;
+        self
+    }
+
+    pub(crate) fn with_row_extent(mut self, extent: super::measure::RowExtent) -> Self {
+        self.row_extent = extent;
         self
     }
 

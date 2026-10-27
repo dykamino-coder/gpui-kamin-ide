@@ -7,7 +7,8 @@ use super::through::strut_of;
 use super::{Strut, inline_axis_edges, margin_or_bail, top_edge_open_at};
 use crate::dom::Node;
 use crate::dom::whitespace::blank_text;
-use crate::layout::block::containing::with_inner_cb;
+use crate::layout::block::containing::with_inner_dimensions;
+use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::{atomic_inline, in_flow, inline_marked_block, replaced_inline};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::px_margin_w;
@@ -127,7 +128,12 @@ pub(crate) fn leading_chain(
                     Some(Len::Px(w)) if w > 0.0 => Some(w),
                     _ => cb,
                 };
-                vcx = with_inner_cb(&ch.style.used(), vcx, |inner| inner);
+                vcx = with_inner_dimensions(
+                    &ch.style.used(),
+                    &BoxDimensions::for_element(ch, &ch.style.used()),
+                    vcx,
+                    |inner| inner,
+                );
                 children = &ch.children;
                 parent = next;
                 continue 'level;

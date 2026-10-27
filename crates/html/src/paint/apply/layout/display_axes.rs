@@ -62,9 +62,6 @@ pub(super) fn layout_flex_axes(
             d.style().flex_balance_lines = Some(c.flex_line_count.unwrap_or(1).max(1));
         }
     }
-    // `calc-size()` (css-values-5 §calc-size): выражение над размером основы
-    // применяет раскладка (`vendor/taffy` — `Style::calc_size`).
-    d = calc_size::apply(d, c);
     // `margin-trim` гибкого контейнера и сетки (css-box-4 §margin-trim):
     // раскладка физическая, поэтому логические края переводятся ЗДЕСЬ, по
     // письму самого контейнера. Биты раскладки: 1 верх, 2 право, 4 низ,

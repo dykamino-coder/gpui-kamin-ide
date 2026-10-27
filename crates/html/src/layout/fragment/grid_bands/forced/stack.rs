@@ -2,6 +2,7 @@
 
 use super::super::grid_px_row_bands;
 use crate::dom::{Element, Node};
+use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
@@ -71,7 +72,7 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
             .count();
         if !all_auto
             && (!matches!(s.height, None | Some(Len::Auto))
-                || s.max_height.is_some()
+                || BoxDimensions::for_element(c, s).maximum[1].is_some()
                 || flexible > 1
                 || !rows.iter().all(by_item))
         {
