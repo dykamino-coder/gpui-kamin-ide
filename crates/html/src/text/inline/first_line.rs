@@ -26,7 +26,7 @@ pub fn style_first_line(
             Piece::Text { text, style: own } if seen < at => {
                 let dress = |base: &BoxStyle| {
                     let mut c = base.clone();
-                    c.font_size = style.font_size.or(base.font_size);
+                    c.overlay_font_size(style);
                     // The fictional `::first-line` tag sequence wraps the
                     // line's inline elements (css-pseudo-4
                     // §first-line-inheritance): an element's own color wins

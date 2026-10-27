@@ -5,7 +5,6 @@
 
 use crate::defaults::{FALLBACK_NORMAL_LINE_HEIGHT, MEDIUM_FONT_SIZE_PX};
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 use crate::text::inline::*;
 use gpui::{AnyElement, Styled};
 
@@ -35,16 +34,14 @@ pub(super) fn opening_punct(c: char) -> bool {
 /// текста и без разрыва), её высоту даёт strut — `line-height` блока
 /// (§10.8.1). Распорка `h_0` роняла строку `отступ + <br>` в ноль, и квадрат
 /// вставал наверх вместо низа (`text-indent-on-blank-line-rtl-left-align`).
-pub(crate) fn blank_line_break(style: &Computed) -> AnyElement {
-    let size = match style.font_size {
-        Some(Len::Px(v)) => v,
-        _ => MEDIUM_FONT_SIZE_PX,
-    };
-    let lh = match style.line_height {
-        Some(Len::Px(v)) => v,
-        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => size * FALLBACK_NORMAL_LINE_HEIGHT,
-    };
+pub(crate) fn blank_line_break(
+    style: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> AnyElement {
+    let size = style.used_font(MEDIUM_FONT_SIZE_PX, vcx).size_px;
+    let lh = style
+        .numeric_line_px(MEDIUM_FONT_SIZE_PX)
+        .unwrap_or(size * FALLBACK_NORMAL_LINE_HEIGHT);
     gpui::div()
         .w_full()
         .h(gpui::px(lh))

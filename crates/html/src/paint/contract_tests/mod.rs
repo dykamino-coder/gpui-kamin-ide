@@ -1,9 +1,18 @@
 //! Пробы границы paint policy движка: порядок, однократность фаз и снимки GPUI.
-//! Проверяют существующие consumers без переноса CSS-правил в новый механизм.
+//! Проверяют CSS coordinator и общий механизм снимков без повторной раскладки.
 
+mod admission;
 mod capture;
+mod interaction;
 mod order;
+mod raster;
+mod raster_background;
+mod raster_depth;
+mod record;
 mod scope;
+mod snapshot_abort;
+mod snapshot_scope;
+mod snapshot_unwind;
 mod state;
 
 use crate::hooks::{Hooks, IntoHooked};
@@ -46,7 +55,7 @@ fn probe(name: &'static str, events: &Events) -> AnyElement {
 }
 
 fn collect(children: Vec<AnyElement>) -> gpui::Div {
-    let (open, close) = gpui::PaintCollect::pair();
+    let (open, close) = crate::paint::coordinator::PaintCollect::pair();
     // Контент входит в Div уже после открытия collector: его fallback late pass
     // не должен пересекать закрывающий marker внешнего контейнера.
     div()
@@ -56,15 +65,23 @@ fn collect(children: Vec<AnyElement>) -> gpui::Div {
 }
 
 fn draw<E: gpui::Element>(make: impl FnOnce() -> E) {
-    gpui::paint_collect_reset();
+    draw_at_scale(None, make);
+}
+
+fn draw_at_scale<E: gpui::Element>(scale: Option<f32>, make: impl FnOnce() -> E) {
     let mut cx = gpui::TestAppContext::single();
-    cx.add_empty_window()
-        .draw(point(px(0.), px(0.)), size(px(100.), px(100.)), |_, _| {
+    cx.add_empty_window().draw(
+        point(px(0.), px(0.)),
+        size(px(100.), px(100.)),
+        |window, _| {
+            if let Some(scale) = scale {
+                window.set_scale_factor(scale);
+            }
             // AnyElement должен создаваться внутри app-specific arena этого draw,
             // иначе fallback arena потока удерживает дерево до завершения потока.
-            make()
-        });
-    gpui::paint_collect_reset();
+            crate::hooks::paint_root(make().into_any_element())
+        },
+    );
     cx.quit();
 }
 

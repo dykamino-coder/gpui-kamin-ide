@@ -96,6 +96,14 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     let parent_px = parent_font_px(parent);
     // Кегль (в том числе процент, `larger`/`smaller` по таблице и единицы
     // шрифта) — доля РОДИТЕЛЬСКОГО: его считает `resolve_em` первым шагом.
+    if parent.font_size_adjust.is_some() || parent.used_font(parent_px, vcx).descriptor_scale != 1.0
+    {
+        let font = parent.font_cx(vcx);
+        if let Some(px) = c.computed_font_px(font, vcx) {
+            c.font_size = Some(Len::Px(px));
+            c.font_size_step = 0;
+        }
+    }
     c.resolve_em(parent_px, vcx);
     // `tab-size` в длине наследуется АБСОЛЮТНОЙ величиной: `5em` при кегле
     // 10px — это 50px и у ребёнка с кеглем 20px, а не его собственные 5em
@@ -137,39 +145,13 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
 /// Вычисленный кегль родителя — база `em` ребёнка (у подогнанного
 /// `font-size-adjust` — его вычисленный, а не используемый кегль).
 pub(crate) fn parent_font_px(parent: &Computed) -> f32 {
-    match parent.font_adjust_base {
-        Some((px, _)) => px,
-        None => match parent.font_size {
-            Some(Len::Px(px)) => px,
-            _ => 16.0,
-        },
-    }
+    own_font_px(parent, 16.0)
 }
 
-/// Собственный вычисленный кегль (после `resolve_em`); без своего — кегль
-/// родителя. Под `font-size-adjust` `font_size` несёт подогнанный используемый
-/// кегль, а `em` считается от вычисленного (css-fonts-5 §font-size-adjust) — он в
-/// `font_adjust_base`.
+/// Собственный вычисленный кегль после разрешения относительных единиц.
 pub(crate) fn own_font_px(c: &Computed, parent_px: f32) -> f32 {
-    match (c.font_adjust_base, c.font_size) {
-        (Some((px, _)), _) => px,
-        (None, Some(Len::Px(px))) => px,
+    match c.font_size {
+        Some(Len::Px(px)) => px,
         _ => parent_px,
-    }
-}
-
-#[cfg(test)]
-mod font_px_tests {
-    use super::*;
-
-    #[test]
-    fn em_lengths_use_the_computed_size_under_font_size_adjust() {
-        // Computed 16px adjusted to a used 32px: `tab-size: 1em` and decoration
-        // lengths resolve against 16px.
-        let mut c = Computed::default();
-        c.font_size = Some(Len::Px(32.0));
-        c.font_adjust_base = Some((16.0, None));
-        assert_eq!(own_font_px(&c, 10.0), 16.0);
-        assert_eq!(parent_font_px(&c), 16.0);
     }
 }

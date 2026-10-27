@@ -85,7 +85,7 @@ pub fn line_height_spans(
         if text.is_empty() {
             continue;
         }
-        if style.line_height != inherited.line_height
+        if (style.line_height != inherited.line_height || style.font_size != inherited.font_size)
             && let Some(lh) = style.line_height
         {
             let size = text_size(style, base_size);
@@ -99,7 +99,11 @@ pub fn line_height_spans(
                 Some(v) => out.push((at..end, gpui::px(v))),
                 None => out.push((
                     at..end,
-                    gpui::px(crate::text::metrics::normal_px(normal, size, vcx)),
+                    gpui::px(crate::text::metrics::normal_px(
+                        normal,
+                        style.used_font(base_size, vcx).size_px,
+                        vcx,
+                    )),
                 )),
             }
         }

@@ -87,7 +87,7 @@ fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
     // inline foreground of its stacking context (CSS Color 4 §opacity,
     // CSS Transforms 1 §transform-rendering).
     match group {
-        Some((_, (_, key))) => gpui::PaintLast::new(held).key(*key).into_any_element(),
+        Some((_, (_, key))) => crate::hooks::paint_last(held, *key),
         None => held,
     }
 }

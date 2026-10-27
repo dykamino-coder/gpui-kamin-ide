@@ -152,7 +152,7 @@ impl Wrap for Phase {
             // float's own atomic paint keeps its inline content and passes
             // positioned descendants to the enclosing stacking context
             // (CSS 2.1 Appendix E.2 step 5).
-            Mode::Scope => gpui::paint_reopen(|| {
+            Mode::Scope => crate::hooks::paint_reopen(window, |window| {
                 scoped(self.owner.as_ref(), window, cx, |window, cx| {
                     self.child.paint(window, cx)
                 })

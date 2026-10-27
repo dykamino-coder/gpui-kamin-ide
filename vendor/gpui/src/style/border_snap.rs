@@ -59,7 +59,7 @@ pub(super) fn paint(
 ) {
     if style.is_border_visible() {
         let border_widths = style.border_widths.to_pixels(rem_size);
-        let (bounds, border_widths) = if style.css_border_snap
+        let (bounds, border_widths) = if style.snap_to_device_pixels
             && corner_radii.max() == Pixels::ZERO
             && style.border_style == BorderStyle::Solid
             && translation_only(window.current_transformation()).is_some()
@@ -70,7 +70,7 @@ pub(super) fn paint(
             // by a device pixel off a clip or box edge at the same exact
             // position (`overflow-clip-margin-013`).
             let exact = window
-                .css_exact_bounds
+                .raster_frame.exact_bounds
                 .filter(|(snapped, _)| *snapped == bounds)
                 .map(|(_, exact)| exact);
             let shift = translation_only(window.current_transformation()).unwrap_or([0.0; 2]);

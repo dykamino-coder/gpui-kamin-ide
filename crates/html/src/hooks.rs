@@ -9,6 +9,13 @@
 //! `ScrollArea`, `Paragraph` — и `FilteredImage` (делегирует gpui `Img` с его id)
 //! реализуют `gpui::Element` напрямую.
 
+mod paint;
+#[cfg(test)]
+pub(crate) use paint::{paint_collect, paint_inline};
+mod painter;
+pub(crate) use paint::{paint_atomic, paint_last, paint_reopen, paint_root};
+pub(crate) use painter::{PaintOnly, Painter};
+
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Window,
@@ -16,6 +23,13 @@ use gpui::{
 
 /// The three gpui phases with typed state and without element ids.
 pub(crate) trait Hooks: 'static {
+    fn paint_boundary(&self) -> bool {
+        true
+    }
+    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
+
     /// State from `request_layout`, handed to `prepaint` and `paint`.
     type Layout: 'static;
     /// State from `prepaint`, handed to `paint`.
@@ -41,69 +55,15 @@ pub(crate) trait Hooks: 'static {
     );
 }
 
-/// Слой без детей: геометрия оверлея и работа с кадром, без участия в потоке.
-/// Стиль задаётся явно: растянутый inset и размер 100% различаются в GPUI.
-pub(crate) trait Painter: 'static {
-    type Prepaint: Default + 'static;
-
-    fn style(&self) -> gpui::Style;
-
-    fn prepaint(
-        &mut self,
-        _layout: LayoutId,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Self::Prepaint {
-        Self::Prepaint::default()
-    }
-
-    fn paint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _layout: &mut LayoutId,
-        _prepaint: &mut Self::Prepaint,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) {
-    }
-}
-
-/// Адаптер paint-only слоя: один layout-id, без детей и состояния самого GPUI.
-pub(crate) struct PaintOnly<T>(pub(crate) T);
-
-impl<T: Painter> Hooks for PaintOnly<T> {
-    type Layout = LayoutId;
-    type Prepaint = T::Prepaint;
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
-        let id = window.request_layout(self.0.style(), [], cx);
-        (id, id)
-    }
-
-    fn prepaint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        layout: &mut LayoutId,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> T::Prepaint {
-        self.0.prepaint(*layout, window, cx)
-    }
-
-    fn paint(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        layout: &mut LayoutId,
-        prepaint: &mut T::Prepaint,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.0.paint(bounds, layout, prepaint, window, cx);
-    }
-}
-
 /// A wrapper around exactly one child: every phase forwards to the child unless overridden.
 pub(crate) trait Wrap: 'static {
+    fn paint_boundary(&self) -> bool {
+        true
+    }
+    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
+        None
+    }
+
     fn child(&mut self) -> &mut AnyElement;
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
@@ -120,6 +80,13 @@ pub(crate) trait Wrap: 'static {
 }
 
 impl<T: Wrap> Hooks for T {
+    fn paint_boundary(&self) -> bool {
+        Wrap::paint_boundary(self)
+    }
+    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
+        Wrap::paint_metadata(self)
+    }
+
     type Layout = ();
     type Prepaint = ();
 
@@ -170,6 +137,13 @@ impl<T: Hooks> IntoElement for Hooked<T> {
 }
 
 impl<T: Hooks> Element for Hooked<T> {
+    fn paint_boundary(&self) -> bool {
+        self.0.paint_boundary()
+    }
+    fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
+        self.0.paint_metadata()
+    }
+
     type RequestLayoutState = T::Layout;
     type PrepaintState = T::Prepaint;
 

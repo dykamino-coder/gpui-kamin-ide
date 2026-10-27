@@ -106,7 +106,7 @@ pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
                 // A translucent outline retains edge coverage like a
                 // translucent background. The two double-outline rings
                 // retain their shared fractional partition as well.
-                ring.style().css_border_snap = Some(o.style == Some(1) && colour.a >= 1.0);
+                ring.style().snap_to_device_pixels = Some(o.style == Some(1) && colour.a >= 1.0);
                 ring
             };
             let third = (w / 3.0).round();
