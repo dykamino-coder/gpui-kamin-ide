@@ -95,7 +95,7 @@ pub(crate) struct ImageStore {
     budget: crate::budget::RevisionBudget,
     cancel: Cancellation,
     /// Пределы и отмены заданий до выдачи в журнал документа.
-    diagnostics: crate::diagnostics::DiagnosticLog,
+    diagnostics: std::sync::Mutex<crate::diagnostics::DiagnosticLog>,
 }
 
 impl Default for ImageStore {

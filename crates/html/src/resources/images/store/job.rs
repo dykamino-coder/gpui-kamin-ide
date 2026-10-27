@@ -122,13 +122,20 @@ impl ImageStore {
     }
 
     /// Новые наблюдения пределов и отмен с прошлой выдачи.
-    pub(crate) fn take_diagnostics(&mut self) -> (Vec<crate::diagnostics::Diagnostic>, u64) {
-        self.diagnostics.take()
+    pub(crate) fn take_diagnostics(&self) -> (Vec<crate::diagnostics::Diagnostic>, u64) {
+        self.journal().take()
     }
 
-    fn observe(&mut self, error: &ImageError) {
+    /// Журнал согласован после паники записи: в нём нет частично записанных ключей.
+    fn journal(&self) -> std::sync::MutexGuard<'_, crate::diagnostics::DiagnosticLog> {
+        self.diagnostics
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn observe(&self, error: &ImageError) {
         if let Some(diagnostic) = crate::resources::images::admission::diagnostic(error) {
-            self.diagnostics.record(diagnostic);
+            self.journal().record(diagnostic);
         }
     }
 

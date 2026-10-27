@@ -14,9 +14,12 @@ impl DocState {
         installed.unwrap_or_else(|| self.images.borrow().budget().clone())
     }
 
-    /// Установить ревизию сборки до первого прохода, списывающего её work.
-    pub(crate) fn admit_revision(&self, revision: RevisionBudget) {
-        self.images.borrow_mut().set_budget(revision.clone());
+    /// Установить ревизию сборки и базу её ресурсов до первого прохода, списывающего work.
+    pub(crate) fn admit_revision(&self, revision: RevisionBudget, base: Option<&url::Url>) {
+        let mut images = self.images.borrow_mut();
+        images.set_budget(revision.clone());
+        images.set_base(base.cloned());
+        drop(images);
         self.budget.replace(Some(revision));
     }
 
@@ -35,7 +38,7 @@ impl DocState {
 
     /// Наблюдения заданий картинок переходят в журнал документа на границе выдачи.
     pub(super) fn absorb_resources(&self) {
-        let (records, suppressed) = self.images.borrow_mut().take_diagnostics();
+        let (records, suppressed) = self.images.borrow().take_diagnostics();
         for record in records {
             self.record_observed(record);
         }

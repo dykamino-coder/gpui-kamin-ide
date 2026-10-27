@@ -147,11 +147,11 @@ mod tests {
             assert_eq!(done, ok.min(3));
         }
         let budget = revision(BudgetKind::ResourceRequests, 2);
-        let fourth = (0..3).map(|_| load("http://x/a.png", &budget)).last();
-        assert!(exceeded(
-            fourth.unwrap().unwrap_err(),
-            BudgetKind::ResourceRequests
-        ));
+        // Неизвестная схема — тоже запрос: третий отклоняет уже ревизия.
+        assert!(load("http://x/a.png", &budget).is_err());
+        assert!(load("http://x/a.png", &budget).is_err());
+        let third = load("http://x/a.png", &budget).unwrap_err();
+        assert!(exceeded(third, BudgetKind::ResourceRequests));
     }
 
     #[test]

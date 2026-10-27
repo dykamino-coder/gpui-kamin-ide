@@ -104,7 +104,7 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let state = DocState::new(media);
-    state.admit_revision(revision);
+    state.admit_revision(revision, None);
     state.traversal.set_embedded();
     let vcx = state.values();
     fonts.install(vcx);

@@ -126,7 +126,7 @@ fn documents_share_one_physical_raster_and_eviction_keeps_live_owners() {
     let cache = DecodedImageCache::new(MIB);
     let options = DecodeOptions::default();
     let (first, held_a) = cache.decode(bytes.clone(), options, &a);
-    let (second, held_b) = cache.decode(bytes.clone(), options, &b);
+    let (second, held_b) = cache.decode(bytes, options, &b);
     let raster = |d: &crate::resources::images::cache::Decoded| match d {
         Ok((DecodedImage::Raster(r), _)) => r.clone(),
         _ => panic!("raster expected"),

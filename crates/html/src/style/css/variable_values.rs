@@ -104,7 +104,7 @@ impl<F: Fn(&str, &str) -> bool> Resolver<'_, F> {
 }
 
 mod substitution;
-pub(crate) use substitution::{SubstitutionLimit, Unsubstituted, Work, has_var, substitute};
+pub(crate) use substitution::{Work, has_var, substitute};
 
 #[cfg(test)]
 #[path = "variable_values/tests.rs"]

@@ -107,7 +107,7 @@ pub fn parse_stylesheet_media(
         &crate::budget::admission::Admission::new(revision.clone()),
     )?;
     let doc = crate::document::state::DocState::new(media);
-    doc.admit_revision(revision);
+    doc.admit_revision(revision, None);
     Ok(parse_document_sheet(
         css,
         media,

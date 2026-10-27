@@ -60,7 +60,7 @@ pub(super) fn parse_mode(
     let input = Admitted::with_budget(html, xml, revision.clone())?;
     super::early_admission::admit_sources(&input, extra_css)?;
     let doc = crate::document::state::DocState::new(media);
-    doc.admit_revision(revision);
+    doc.admit_revision(revision, None);
     let nodes = convert(&input, extra_css, media, &doc)?;
     doc.traversal.retain(input);
     Ok(Parsed { nodes, doc })

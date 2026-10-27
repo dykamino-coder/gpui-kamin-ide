@@ -2,7 +2,8 @@
 //! на границе и отсутствие расхода для значений без `var()`.
 
 use super::super::VarMap;
-use super::{SubstitutionLimit, Unsubstituted, Work, compute, substitute};
+use super::substitution::{SubstitutionLimit, Unsubstituted};
+use super::{Work, compute, substitute};
 use crate::budget::{
     BudgetError, BudgetKind, DocumentBudget, DocumentLimits, ResourceGovernor, RevisionBudget,
 };

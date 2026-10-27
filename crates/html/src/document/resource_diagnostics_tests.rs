@@ -13,7 +13,7 @@ fn state(kind: BudgetKind, limit: u64) -> std::rc::Rc<state::DocState> {
     let doc = state::DocState::new(Default::default());
     let limits = DocumentLimits::default().lower(kind, limit).unwrap();
     let budget = DocumentBudget::new(limits, ResourceGovernor::default()).unwrap();
-    doc.admit_revision(budget.revision());
+    doc.admit_revision(budget.revision(), None);
     doc
 }
 
