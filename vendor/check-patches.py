@@ -25,6 +25,8 @@ REGENERATE = ROOT / "vendor" / "regenerate-patch.py"
 
 # crates.io archives: name, version, SHA-256 from the crates.io index.
 CRATES = {
+    "tendril-0.5.1": "5fed54709c5b3a53d09bb1c113ea4f5ceafd1e772ddcb0030a82e1d56c087b08",
+    "xml-rs-0.8.29": "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7",
     "gpui-pre-0.3.8": "d7f0bc3ebba070f8981b3f8e905a12f47d27794a30d029e59cdb9edf7a4b3360",
     "gpui-pre-windows-0.3.8": "371f9bb13f97e3bea2f8b8e5e81232bb74d735153c244ae67f7400e743925b1c",
     "gpui-base-0.7.1": "3cf698677b253118459f552fe15513858c669d79a25837a94e480db2ae330050",
@@ -39,6 +41,8 @@ TAFFY_GIT = ("https://github.com/DioxusLabs/taffy", "2d936b7701f64b0fe95e50f1bfd
 
 # vendor crate -> archive it starts from (taffy is packaged from Git instead).
 ARCHIVE_BASES = {
+    "tendril": "tendril-0.5.1",
+    "xml-rs": "xml-rs-0.8.29",
     "gpui": "gpui-pre-0.3.8",
     "gpui-windows": "gpui-pre-windows-0.3.8",
     "gpui-base": "gpui-base-0.7.1",
