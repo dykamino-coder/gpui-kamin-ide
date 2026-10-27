@@ -94,6 +94,11 @@ impl LayoutCx {
         &self.values.doc.0.layout
     }
 
+    /// Text backend font state of the document being built.
+    pub(crate) fn text_fonts(&self) -> &Rc<crate::text::text_fonts::TextFonts> {
+        &self.values.doc.0.text
+    }
+
     /// Text-phase measurements of the document being built.
     pub(crate) fn paragraph(&self) -> &crate::text::paragraph_state::ParagraphState {
         &self.values.doc.0.paragraph

@@ -65,16 +65,17 @@ pub fn max_line_height(
     strut: f32,
     em_base: f32,
     fraction: f32,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> f32 {
     pieces.iter().fold(
-        crate::text::metrics::normal_px(fraction, strut, vcx),
+        crate::text::metrics::normal_px(fraction, strut, fonts),
         |acc, p| match p {
             Piece::Text { style, .. } => {
                 let size = style.used_font(em_base, vcx).size_px;
                 let own = style
                     .numeric_line_px(em_base)
-                    .unwrap_or_else(|| crate::text::metrics::normal_px(fraction, size, vcx));
+                    .unwrap_or_else(|| crate::text::metrics::normal_px(fraction, size, fonts));
                 acc.max(own)
             }
             Piece::Atom(_) | Piece::Overlay(..) => acc,

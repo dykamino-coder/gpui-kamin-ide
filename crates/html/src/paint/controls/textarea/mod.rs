@@ -29,7 +29,7 @@ pub(super) fn textarea(
     } else {
         opts.cx.contracts.build.paragraph(&e.children, style, opts)
     };
-    let natural = natural(e, style, vcx);
+    let natural = natural(e, style, opts.cx.text_fonts(), vcx);
     let mut paint = field_box(style, vcx)
         .items_start()
         .child(div().w_full().child(body));
@@ -61,21 +61,26 @@ pub(super) fn textarea(
     )
 }
 
-fn natural(e: &Element, c: &Computed, vcx: ValueCx<'_>) -> [f32; 2] {
+fn natural(
+    e: &Element,
+    c: &Computed,
+    fonts: &crate::text::text_fonts::TextFonts,
+    vcx: ValueCx<'_>,
+) -> [f32; 2] {
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
         _ => MEDIUM_FONT_SIZE_PX,
     };
     let family = c.font_family.as_deref().unwrap_or("");
-    let (ch, _) = crate::text::metrics::ch_ex_px(family, font, vcx);
+    let (ch, _) = crate::text::metrics::ch_ex_px(family, font, fonts, vcx);
     let line = c
         .line_height
         .and_then(|v| v.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or_else(|| {
             crate::text::metrics::normal_px(
-                crate::text::metrics::normal_line(family, vcx),
+                crate::text::metrics::normal_line(family, fonts, vcx),
                 font,
-                vcx,
+                fonts,
             )
         });
     let vertical = c.wm().vertical();

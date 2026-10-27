@@ -106,7 +106,7 @@ pub fn shift_spans(
                         None | Some(Len::Auto) => crate::text::metrics::normal_px(
                             crate::text::text_box::normal_fraction(style, opts),
                             size,
-                            opts.cx.vcx(),
+                            opts.cx.text_fonts(),
                         ),
                         _ => line_px,
                     }
@@ -134,15 +134,7 @@ pub fn shift_spans(
         let dy = if out_of_flow {
             dy
         } else {
-            dominant_shift(
-                style,
-                size,
-                base_size,
-                central,
-                dy,
-                block_align,
-                opts.cx.vcx(),
-            )
+            dominant_shift(style, size, base_size, central, dy, block_align, &opts.cx)
         };
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
@@ -171,11 +163,12 @@ fn dominant_shift(
     central: Option<f32>,
     dy: Option<f32>,
     block_align: Option<crate::style::computed::Align>,
-    vcx: crate::document::state::ValueCx<'_>,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> Option<f32> {
+    let (fonts, vcx) = (&**cx.text_fonts(), cx.vcx());
     let family = style.font_family.clone().unwrap_or_default();
     let own_central = || {
-        let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size, vcx);
+        let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size, fonts, vcx);
         (a - d) / 2.0
     };
     // A table cell's own `vertical-align: middle` reaches its text runs
@@ -184,7 +177,7 @@ fn dominant_shift(
         && style.vertical_align != block_align
     {
         let parent = style.vertical_align_base.unwrap_or(base_size);
-        let x_height = crate::text::metrics::ch_ex_px(&family, parent, vcx).1;
+        let x_height = crate::text::metrics::ch_ex_px(&family, parent, fonts, vcx).1;
         return Some(own_central() - central.unwrap_or(0.0) - x_height / 2.0);
     }
     let Some(strut) = central else {

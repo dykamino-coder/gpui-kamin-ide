@@ -144,7 +144,7 @@ pub(super) fn grouped_with(
             _ => MEDIUM_FONT_SIZE_PX,
         };
         let family = c.font_family.clone().unwrap_or_default();
-        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px, vcx);
+        let (ch, ex) = crate::style::font_metrics::horizontal(&family, px, vcx);
         crate::style::computed::font_lengths_to_px(
             &s,
             px,

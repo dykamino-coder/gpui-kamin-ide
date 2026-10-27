@@ -23,7 +23,7 @@ pub(crate) fn flow_metrics(
     let em_base = opts.base_size();
     let (mut size_max, mut lh_max) = (
         strut,
-        crate::text::metrics::normal_px(fraction, strut, opts.cx.vcx()),
+        crate::text::metrics::normal_px(fraction, strut, opts.cx.text_fonts()),
     );
     let mut at = 0usize;
     for p in pieces {
@@ -36,9 +36,9 @@ pub(crate) fn flow_metrics(
             continue;
         }
         let size = style.used_font(em_base, opts.cx.vcx()).size_px;
-        let own = style
-            .numeric_line_px(em_base)
-            .unwrap_or_else(|| crate::text::metrics::normal_px(fraction, size, opts.cx.vcx()));
+        let own = style.numeric_line_px(em_base).unwrap_or_else(|| {
+            crate::text::metrics::normal_px(fraction, size, opts.cx.text_fonts())
+        });
         size_max = size_max.max(size);
         lh_max = lh_max.max(own);
     }
@@ -77,9 +77,11 @@ pub(crate) fn line_box_spans(
     let strut = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(_)) | Some(Len::Em(_)) => inherited.numeric_line_px(opts.base_size())?,
-        None | Some(Len::Auto) => {
-            crate::text::metrics::normal_px(normal_fraction(inherited, opts), own, opts.cx.vcx())
-        }
+        None | Some(Len::Auto) => crate::text::metrics::normal_px(
+            normal_fraction(inherited, opts),
+            own,
+            opts.cx.text_fonts(),
+        ),
         _ => return None,
     };
     let mut out: Vec<(std::ops::Range<usize>, f32)> = Vec::new();
@@ -98,9 +100,11 @@ pub(crate) fn line_box_spans(
         let lh = match style.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(_)) | Some(Len::Em(_)) => style.numeric_line_px(opts.base_size())?,
-            None | Some(Len::Auto) => {
-                crate::text::metrics::normal_px(normal_fraction(style, opts), size, opts.cx.vcx())
-            }
+            None | Some(Len::Auto) => crate::text::metrics::normal_px(
+                normal_fraction(style, opts),
+                size,
+                opts.cx.text_fonts(),
+            ),
             _ => return None,
         };
         if (size - own).abs() > COORD_EPS

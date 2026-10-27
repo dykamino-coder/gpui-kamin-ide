@@ -49,7 +49,11 @@ fn donor_font_lengths_use_body_computed_font_and_document_facts() {
             );
             let vcx = parsed.values();
             vcx.doc.install_font_facts(Some(Rc::new(Facts(x_height))));
-            crate::text::metrics::install_probe(|_, _| panic!("bypassed font facts"), vcx);
+            crate::text::metrics::install_probe(
+                |_, _| panic!("bypassed font facts"),
+                &parsed.doc.text,
+                vcx,
+            );
             let nodes = mark_canvas_background(parsed.nodes.clone(), vcx);
             let root = find(&nodes, &|e| e.tag == "html").unwrap();
             let body = find(&nodes, &|e| e.tag == "body").unwrap();
