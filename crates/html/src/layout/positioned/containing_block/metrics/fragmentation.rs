@@ -87,7 +87,6 @@ impl Recorder {
         kids: impl Iterator<Item = &'a Element>,
         parent: &BoxStyle,
         opts: &RenderOpts,
-        paged: bool,
     ) -> Self {
         let axis = StackAxis::of(parent.wm());
         let mut flows = Vec::new();
@@ -114,8 +113,11 @@ impl Recorder {
             if is_positioned {
                 let mut blocks = BlockBox::collect(
                     e,
+                    // Named pages propagate through class A break points of the
+                    // root's normal flow only: an absolute box's content never
+                    // changes the page (css-page-3 §4.1, Blink).
                     ShapeCx {
-                        paged,
+                        paged: false,
                         viewport: Some(opts.viewport),
                         ..ShapeCx::COLUMNS
                     },

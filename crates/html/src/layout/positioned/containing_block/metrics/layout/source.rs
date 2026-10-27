@@ -118,7 +118,6 @@ fn collect_in(
         kids.elements(),
         parent,
         opts,
-        page.is_some() || opts.frag.paged.is_some(),
     ));
     let mut opts = opts.clone();
     opts.cx.position = Default::default();

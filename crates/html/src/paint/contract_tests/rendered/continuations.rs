@@ -275,3 +275,19 @@ fn root_painted_by_two_native_sources_keeps_both_records() {
     );
     assert!(any(&found, 0x0000ff), "first sheet content");
 }
+
+#[test]
+fn named_pages_inside_an_absolute_box_do_not_break_it() {
+    let found = printed(
+        "<style>body{margin:0}</style>\
+<div style='position:absolute;left:0;top:0;width:50px'>\
+<div style='page:a;height:20px;background:#0000ff'></div>\
+<div style='page:b;height:20px;background:#00ff00'></div></div>",
+        800.,
+        600.,
+    );
+    // The second box stays under the first instead of continuing on a new sheet.
+    let second: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x00ff00).collect();
+    assert_eq!(second.len(), 1, "{found:?}");
+    assert_eq!(f32::from(second[0].0.origin.y), 68.);
+}
