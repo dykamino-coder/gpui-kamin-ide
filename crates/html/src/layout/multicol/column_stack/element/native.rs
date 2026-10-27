@@ -75,6 +75,21 @@ impl ColumnStack {
                 f.from - up,
                 (f.h + up + down).max(0.),
             );
+            // The box's own decoration spans the whole fragment: a broken box
+            // fills the rest of its fragmentainer (css-break-3 §5.4).
+            let extent = if last {
+                f.h
+            } else {
+                (geometry::block(self.axis, actual.rect) - f.y).max(f.h)
+            };
+            let decoration = geometry::slice(
+                self.axis,
+                rect,
+                -spill,
+                inline_size + spill * 2.,
+                f.from - if first { spill } else { 0. },
+                extent + if first { spill } else { 0. } + if last { spill } else { 0. },
+            );
             let copied = self.owner_copy(flow.owner, f.col, plan);
             admission.insert(
                 id,
@@ -82,6 +97,7 @@ impl ColumnStack {
                 source,
                 destination,
                 clip,
+                decoration,
                 copied,
             )?;
         }

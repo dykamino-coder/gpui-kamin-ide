@@ -24,6 +24,7 @@ fn normal_nodes_are_not_admitted_and_oof_slices_are_not_inherited() {
             source,
             point(px(0.), px(20.)),
             rect(20.),
+            rect(20.),
             true,
         )
         .unwrap();
@@ -33,6 +34,7 @@ fn normal_nodes_are_not_admitted_and_oof_slices_are_not_inherited() {
             PaintSegmentId(1),
             source,
             point(px(100.), px(0.)),
+            rect(20.),
             rect(20.),
             false,
         )
@@ -69,6 +71,7 @@ fn duplicate_segment_ordinal_is_impossible_and_ordinals_are_per_segment() {
                 PaintSegmentId(3),
                 point(px(0.), px(0.)),
                 point(px(0.), px(0.)),
+                rect(0.),
                 rect(0.),
                 false,
             )

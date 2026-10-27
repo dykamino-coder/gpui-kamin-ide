@@ -114,6 +114,21 @@ impl PageStack {
                 (f.h + up + down).max(0.),
             );
             // The group's copy on this sheet carries the root's own slot.
+            // The box's own decoration spans the whole fragment: a broken box
+            // fills the rest of its fragmentainer (css-break-3 §5.4).
+            let extent = if last {
+                f.h
+            } else {
+                (self.area_logical(&self.geom(f.col)).1 - f.y).max(f.h)
+            };
+            let decoration = geometry::slice(
+                self.axis,
+                rect,
+                -spill,
+                inline + spill * 2.,
+                f.from - if first { spill } else { 0. },
+                extent + if first { spill } else { 0. } + if last { spill } else { 0. },
+            );
             let copied = normal.iter().any(|g| g.kid == *owner && g.col == f.col);
             let index = match entries.iter().position(|e| Rc::ptr_eq(&e.1, snapshot)) {
                 Some(index) => index,
@@ -128,6 +143,7 @@ impl PageStack {
                 from,
                 to,
                 clip,
+                decoration,
                 copied,
             )?;
         }

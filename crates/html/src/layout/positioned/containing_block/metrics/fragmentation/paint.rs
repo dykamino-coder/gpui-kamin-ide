@@ -14,6 +14,7 @@ use std::{collections::HashMap, rc::Rc};
 struct Own {
     routes: Vec<PaintSegment>,
     slices: Vec<PaintSegmentSlice>,
+    decorations: Vec<PaintSegmentSlice>,
     bare: Vec<PaintSegmentId>,
 }
 
@@ -25,6 +26,7 @@ pub(crate) struct Admission {
     orphan: Vec<PaintSegment>,
     hit_families: HashMap<u64, Vec<PaintSegmentSlice>>,
     orphan_families: HashMap<u64, Vec<PaintSegmentSlice>>,
+    orphan_decorations: HashMap<u64, Vec<PaintSegmentSlice>>,
     own: HashMap<u64, Own>,
 }
 
@@ -39,8 +41,10 @@ impl Admission {
         Self::default()
     }
 
-    /// One fragment of `family` in `segment`. `copied`: a legacy copy of the
-    /// family's ancestors paints in that segment and replays the own record.
+    /// One fragment of `family` in `segment`: content admitted by `clip`, the
+    /// box's own decoration by `decoration` (the fragment extent, css-break-3
+    /// §5.4). `copied`: a legacy copy of the family's ancestors paints in that
+    /// segment and replays the own record.
     pub(crate) fn insert(
         &mut self,
         family: u64,
@@ -48,6 +52,7 @@ impl Admission {
         source: Point<Pixels>,
         destination: Point<Pixels>,
         clip: Bounds<Pixels>,
+        decoration: Bounds<Pixels>,
         copied: bool,
     ) -> Result<(), PaintRecordError> {
         let ordinal = self.ordinals.entry(segment).or_default();
@@ -64,6 +69,10 @@ impl Admission {
             placement,
             source_clip: clip,
         };
+        let decorated = PaintSegmentSlice {
+            placement,
+            source_clip: decoration,
+        };
         self.hits.push(placement);
         self.hit_families.entry(family).or_default().push(slice);
         let own = self.own.entry(family).or_default();
@@ -71,6 +80,7 @@ impl Admission {
             own.bare.push(segment);
             own.routes.push(placement);
             own.slices.push(slice);
+            own.decorations.push(decorated);
         } else {
             // Source coordinates: the enclosing record re-admits and places it.
             let identity = PaintSegment {
@@ -82,6 +92,14 @@ impl Admission {
                 placement: identity,
                 source_clip: clip,
             });
+            own.decorations.push(PaintSegmentSlice {
+                placement: identity,
+                source_clip: decoration,
+            });
+            self.orphan_decorations
+                .entry(family)
+                .or_default()
+                .push(decorated);
             self.orphan.push(placement);
             self.orphan_families.entry(family).or_default().push(slice);
         }
@@ -90,8 +108,18 @@ impl Admission {
 
     pub(crate) fn finish(self, snapshot: &Snapshot) -> Routing {
         let families = Rc::new(snapshot.families.clone());
-        let hits = slices(snapshot, &self.hit_families, families.clone());
-        let mut paint = slices(snapshot, &self.orphan_families, families);
+        let hits = slices(
+            snapshot,
+            &self.hit_families,
+            &self.hit_families,
+            families.clone(),
+        );
+        let mut paint = slices(
+            snapshot,
+            &self.orphan_families,
+            &self.orphan_decorations,
+            families,
+        );
         for (root, own) in self.own {
             let extent = own
                 .slices
@@ -100,7 +128,7 @@ impl Admission {
                 .reduce(|a, b| a.union(&b))
                 .unwrap_or_default();
             let shared: Rc<[PaintSegmentSlice]> = Rc::from(own.slices);
-            let boxes = boxes(snapshot, root, &shared);
+            let boxes = boxes(snapshot, root, &own.decorations);
             paint.nested.insert(
                 root,
                 Rc::new(Nested {
@@ -122,6 +150,7 @@ impl Admission {
 fn slices(
     snapshot: &Snapshot,
     by_family: &HashMap<u64, Vec<PaintSegmentSlice>>,
+    decorations: &HashMap<u64, Vec<PaintSegmentSlice>>,
     families: Rc<HashMap<u64, u64>>,
 ) -> SourceSlices {
     let by_family: HashMap<_, Rc<[_]>> = by_family
@@ -137,7 +166,7 @@ fn slices(
         })
         .collect();
     let mut boxes = HashMap::new();
-    for (&family, slices) in &by_family {
+    for (&family, slices) in decorations {
         boxes.extend(self::boxes(snapshot, family, slices));
     }
     // Normal-flow boxes stay on their legacy copies: no own decoration here.
@@ -155,7 +184,7 @@ fn slices(
 fn boxes(
     snapshot: &Snapshot,
     family: u64,
-    slices: &Rc<[PaintSegmentSlice]>,
+    slices: &[PaintSegmentSlice],
 ) -> HashMap<u64, Rc<[Decoration]>> {
     snapshot
         .families
