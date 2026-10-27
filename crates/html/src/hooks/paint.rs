@@ -49,11 +49,12 @@ pub(crate) fn paint_source_record(
 pub(crate) fn paint_source_node(
     id: u64,
     cb: Option<u64>,
+    placed: gpui::Point<gpui::Pixels>,
     window: &mut Window,
     cx: &mut gpui::App,
     paint: impl FnOnce(&mut Window, &mut gpui::App),
 ) {
-    crate::paint::coordinator::segments::node(id, cb, window, cx, paint);
+    crate::paint::coordinator::segments::node(id, cb, placed, window, cx, paint);
 }
 
 #[cfg(test)]

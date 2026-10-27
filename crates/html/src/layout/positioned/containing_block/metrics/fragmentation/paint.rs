@@ -119,6 +119,12 @@ impl Admission {
             ..Default::default()
         };
         let mut orphan_routes = Vec::new();
+        for (root, _) in &self.own {
+            let origin = snapshot.normal.get(root).map(|b| b.origin).unwrap_or_default()
+                + snapshot.relative.get(root).copied().unwrap_or_default();
+            paint.origins.insert(*root, origin);
+            hits.origins.insert(*root, origin);
+        }
         for (root, own) in std::mem::take(&mut self.own) {
             // Placed records re-enter the source record unmoved.
             let mut identity = Vec::new();
@@ -201,6 +207,7 @@ fn slices(
         families,
         nested: HashMap::new(),
         placed: None,
+        origins: HashMap::new(),
     }
 }
 

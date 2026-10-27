@@ -355,3 +355,19 @@ fn box_after_a_spanner_takes_its_static_position_in_its_row() {
     assert!(!blue.is_empty() && blue.iter().all(|b| f32::from(b.origin.x) >= 100.), "{blue:?}");
 }
 
+
+#[test]
+fn late_placed_root_carries_its_admission_to_its_static_position() {
+    // The initial containing block's layer places the box at its static
+    // position at prepaint, after its admission was built from its layout.
+    let found = printed(
+        "<style>body{margin:0}</style><div style='height:20px'></div>\
+<div><div style='position:absolute;left:100px;width:10px;height:10px;background:#0000ff'></div>\
+<div style='height:20px'></div></div>",
+        800.,
+        600.,
+    );
+    let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).collect();
+    assert_eq!(blue.len(), 1, "{found:?}");
+    assert_eq!(f32::from(blue[0].0.origin.y), 68., "{found:?}");
+}

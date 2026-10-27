@@ -15,6 +15,10 @@ pub(crate) struct SourceSlices {
     pub(crate) nested: HashMap<u64, Rc<Nested>>,
     /// Placed regions re-admitted unmoved: the source record must reach them.
     pub(crate) placed: Option<Bounds<Pixels>>,
+    /// Layout origin of every continued root the admission was built from;
+    /// a root placed elsewhere at prepaint (a late static position) carries
+    /// its whole family's admission along.
+    pub(crate) origins: HashMap<u64, gpui::Point<Pixels>>,
 }
 
 /// Own continuation capture of an outermost absolute/fixed root and the flows

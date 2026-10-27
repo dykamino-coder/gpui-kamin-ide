@@ -13,6 +13,7 @@ use std::{
 
 use crate::layout::fragment::decoration::Decoration;
 use crate::layout::fragment::paint_source::{BareRecords, Nested, SourceSlices};
+mod shift;
 
 struct Source {
     slices: SourceSlices,
@@ -63,12 +64,14 @@ impl Source {
         nested.families.get(&self.family(id)).cloned()
     }
 
-    /// Decorations of `id` inside the active capture, else of the source record.
-    fn boxes(&self, id: u64, key: u64) -> Option<Rc<[Decoration]>> {
-        match self.slices.nested.get(&key).filter(|_| key != 0) {
+    /// Decorations of `id` inside the active capture, else of the source record,
+    /// moved with their root's final placement.
+    fn boxes(&self, id: u64, key: u64, by: gpui::Point<Pixels>) -> Option<Rc<[Decoration]>> {
+        let boxes = match self.slices.nested.get(&key).filter(|_| key != 0) {
             Some(nested) => nested.boxes.get(&id).cloned(),
             None => self.slices.boxes.get(&id).cloned(),
-        }
+        };
+        boxes.map(|boxes| shift::boxes(boxes, by))
     }
 }
 
@@ -129,6 +132,7 @@ pub(crate) fn prepaint(
 pub(crate) fn node(
     id: u64,
     cb: Option<u64>,
+    placed: gpui::Point<Pixels>,
     window: &mut Window,
     cx: &mut App,
     paint: impl FnOnce(&mut Window, &mut App),
@@ -137,23 +141,49 @@ pub(crate) fn node(
         paint(window, cx);
         return;
     };
+    // A continued root placed elsewhere than its admission's layout (a late
+    // static position) carries its family's admission along.
+    match source.slices.origins.get(&id).map(|origin| placed - *origin) {
+        Some(by) if by != gpui::Point::default() => {
+            window.with_render_context(Some(Rc::new(shift::Shift(by))), |window| {
+                admitted(source, id, cb, window, cx, paint)
+            })
+        }
+        _ => admitted(source, id, cb, window, cx, paint),
+    }
+}
+
+fn admitted(
+    source: Rc<Source>,
+    id: u64,
+    cb: Option<u64>,
+    window: &mut Window,
+    cx: &mut App,
+    paint: impl FnOnce(&mut Window, &mut App),
+) {
     let key = capture_key(window);
+    let by = shift::current(window);
     if source.painting
         && key == 0
         && let Some(nested) = source.slices.nested.get(&id).cloned()
     {
+        let nested = shift::nested(nested, by);
         own_capture(&source, id, cb, nested, key, window, cx, paint);
         return;
     }
     let slices = match source.own(id, key) {
+        // A capture's own admission was shifted with its root already.
         Some(slices) => slices,
         None if key != 0 => Rc::from([]),
-        None => source
-            .slices
-            .nodes
-            .get(&id)
-            .cloned()
-            .unwrap_or_else(|| Rc::from([])),
+        None => shift::slices(
+            source
+                .slices
+                .nodes
+                .get(&id)
+                .cloned()
+                .unwrap_or_else(|| Rc::from([])),
+            by,
+        ),
     };
     let paint = |window: &mut Window| {
         window.with_render_context(Some(Rc::new(CurrentNode(id))), |window| paint(window, cx));
@@ -306,7 +336,7 @@ pub(crate) fn decorations(id: u64, window: &Window) -> Rc<[Decoration]> {
     let key = capture_key(window);
     window
         .render_context::<Source>()
-        .and_then(|source| source.boxes(id, key))
+        .and_then(|source| source.boxes(id, key, shift::current(window)))
         .unwrap_or_else(|| Rc::from([]))
 }
 
@@ -336,7 +366,7 @@ fn paint_box(id: u64, style: &gpui::Style, window: &mut Window, cx: &mut App) ->
     let key = capture_key(window);
     // Только узлы с явным вводом заменяют свою краску; служебные native-узлы
     // продолжают общий painter без CSS-эвристик в GPUI.
-    let boxes = source.boxes(id, key);
+    let boxes = source.boxes(id, key, shift::current(window));
     let Some(boxes) = boxes else {
         return false;
     };
