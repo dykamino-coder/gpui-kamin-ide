@@ -11,10 +11,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // Детям уходит ВЫЧИСЛЕННЫЙ кегль, а не подогнанный `font-size-adjust`:
     // «child elements inherit the computed font-size value (otherwise, the
     // effect of font-size-adjust would compound)» (css-fonts-4 §2.5).
-    c.font_size = c.font_size.or(match parent.font_adjust_base {
-        Some((px, _)) => Some(Len::Px(px)),
-        None => parent.font_size,
-    });
+    c.font_size = c.font_size.or(parent.font_size);
     // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
     // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
     // микроскопическому: визуально то же «ничего», формулы живы.
@@ -35,12 +32,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
     // строки родителя; сырое `Lh` уходило в `paint/apply/` как `relative(2)` от
     // СВОЕГО кегля (`lh-unit-001`: 84 вместо 100).
-    // У подогнанного родителя числовой `line-height` переведён в точки ЕГО
-    // вычисленным кеглем; ребёнок наследует сам множитель.
-    c.line_height = c.line_height.or(match parent.font_adjust_base {
-        Some((_, lh)) => lh,
-        None => parent.line_height,
-    });
+    c.line_height = c.line_height.or(parent.line_height);
     c.text_align = own.text_align.or(parent.text_align);
     c.no_justify = own.no_justify.or(parent.no_justify);
     c.ruby_justify = own.ruby_justify.or(parent.ruby_justify);

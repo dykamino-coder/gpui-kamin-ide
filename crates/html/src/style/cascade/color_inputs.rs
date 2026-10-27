@@ -15,6 +15,7 @@ pub(super) fn text_clip_colors(
     own: &Computed,
     c: &Computed,
     element: bool,
+    background: crate::style::background_paint::BackgroundPaint,
     images: &dyn BackgroundImageValues,
 ) -> TextClipColors {
     let mut out = TextClipColors {
@@ -29,7 +30,11 @@ pub(super) fn text_clip_colors(
         a: 1.0,
     };
     let out_of_flow = crate::style::flow::absolutely_positioned(own.position);
-    if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, images) {
+    if let Some(fill) = background
+        .paints()
+        .then(|| crate::style::computed::flat_background::text_clip_fill(c, images))
+        .flatten()
+    {
         let foreground = c.text_clip_raw.or(c.color);
         out.raw = foreground;
         out.fill = Some(fill);

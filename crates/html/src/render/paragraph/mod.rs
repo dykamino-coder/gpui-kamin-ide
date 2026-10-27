@@ -50,20 +50,10 @@ fn paragraph_routed(
         first_line_text::gather(nodes, inherited.preserve_newlines == Some(true), &mut plain);
         let plain = crate::text::inline::transform_case(&normalize_for_shadow(&plain), inherited);
         if !plain.trim().is_empty() {
-            let size = match base.font_size {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * opts.base_size(),
-                _ => opts.base_size(),
-            };
-            let line = match base.line_height {
-                Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => size * k,
-                _ => crate::text::metrics::normal_px(
-                    normal_fraction(&base, opts),
-                    size,
-                    opts.cx.vcx(),
-                ),
-            };
+            let size = own_size(&base, opts);
+            let line = base.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
+                crate::text::metrics::normal_px(normal_fraction(&base, opts), size, opts.cx.vcx())
+            });
             let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
             let base_lh = base.line_height;
             let for_build = first.clone();
@@ -82,18 +72,20 @@ fn paragraph_routed(
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
             let font = crate::text::inline::strut_font(&first, &opts.text, opts.cx.vcx());
-            let measure_size = match first.font_size {
+            let computed_base = match inherited.font_size {
                 Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * size,
-                _ => size,
+                _ => opts.base_size(),
             };
+            let measure_size = first.used_font(computed_base, opts.cx.vcx()).size_px;
             // Интерлиньяж первой строки: свой у `::first-line` или
             // унаследованный — числовой пересчитывается от её кегля.
             // The root inline inherits this strut, including a smaller height
             // (css-pseudo-4 §first-line-styling).
             let first_lh = match first.line_height.or(base_lh) {
                 Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * measure_size,
+                Some(Len::Pct(k)) | Some(Len::Em(k)) => first
+                    .numeric_line_value_px(Some(Len::Pct(k)), computed_base)
+                    .unwrap_or(line),
                 _ => line * measure_size / size.max(1.0),
             };
             let mut full = String::new();

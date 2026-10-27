@@ -79,63 +79,69 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // До запуска GPUI потоки приложения ещё не созданы; масштаб фиксирует геометрию снимка.
     unsafe {
         std::env::set_var("GPUI_NO_ERROR_DIALOG", "1");
-        std::env::set_var("KAMIN_FORCE_SCALE", "1");
     }
+    let mut instrumentation = kamin_html::host::instrumentation::from_env();
+    instrumentation.scale_factor = Some(1.);
+    let (capture, sink) = kamin_html::host::capture::CaptureSession::open();
     let outcome = Rc::new(RefCell::new(None));
     let result = outcome.clone();
     let platform = Rc::new(gpui_windows::WindowsPlatform::with_gpu_adapter(
         false, preference,
     )?);
-    gpui::Application::with_platform(platform.clone()).run(move |cx| {
-        let mut setup = || -> Result<_, Box<dyn std::error::Error>> {
-            cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
-            let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
-            let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
-            gpui::frame_capture::enable();
-            let window = cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds {
-                        origin: point(px(40.), px(40.)),
-                        size: size(px(args.viewport.0 as f32), px(args.viewport.1 as f32)),
-                    })),
-                    titlebar: Some(TitlebarOptions {
-                        appears_transparent: true,
+    gpui::Application::with_platform(platform.clone())
+        .with_instrumentation(instrumentation)
+        .run(move |cx| {
+            let setup = || -> Result<_, Box<dyn std::error::Error>> {
+                cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+                let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
+                let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
+                let window = cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(Bounds {
+                            origin: point(px(40.), px(40.)),
+                            size: size(px(args.viewport.0 as f32), px(args.viewport.1 as f32)),
+                        })),
+                        titlebar: Some(TitlebarOptions {
+                            appears_transparent: true,
+                            ..Default::default()
+                        }),
+                        window_decorations: Some(WindowDecorations::Client),
+                        window_background: WindowBackgroundAppearance::Opaque,
+                        is_resizable: false,
+                        is_minimizable: false,
+                        focus: false,
                         ..Default::default()
-                    }),
-                    window_decorations: Some(WindowDecorations::Client),
-                    window_background: WindowBackgroundAppearance::Opaque,
-                    is_resizable: false,
-                    is_minimizable: false,
-                    focus: false,
-                    ..Default::default()
-                },
-                |_, cx| {
-                    cx.new(|_| View {
-                        doc: empty,
-                        phases: Rc::new(RefCell::new(Phases::default())),
+                    },
+                    |window, cx| {
+                        window
+                            .set_frame_capture(Some(sink))
+                            .expect("Windows GPU readback");
+                        cx.new(|_| View {
+                            doc: empty,
+                            phases: Rc::new(RefCell::new(Phases::default())),
+                        })
+                    },
+                )?;
+                window.update(cx, |_, window, _| park(window))??;
+                Ok((window, fonts))
+            };
+            match setup() {
+                Ok((window, fonts)) => {
+                    cx.spawn(async move |cx| {
+                        let value = run::run(cx, window, &fonts, &args, &platform, &capture)
+                            .await
+                            .map_err(|e| e.to_string());
+                        *result.borrow_mut() = Some(value);
+                        let _ = cx.update(|cx| cx.quit());
                     })
-                },
-            )?;
-            window.update(cx, |_, window, _| park(window))??;
-            Ok((window, fonts))
-        };
-        match setup() {
-            Ok((window, fonts)) => {
-                cx.spawn(async move |cx| {
-                    let value = run::run(cx, window, &fonts, &args, &platform)
-                        .await
-                        .map_err(|e| e.to_string());
-                    *result.borrow_mut() = Some(value);
-                    let _ = cx.update(|cx| cx.quit());
-                })
-                .detach();
+                    .detach();
+                }
+                Err(error) => {
+                    *result.borrow_mut() = Some(Err(error.to_string()));
+                    cx.quit();
+                }
             }
-            Err(error) => {
-                *result.borrow_mut() = Some(Err(error.to_string()));
-                cx.quit();
-            }
-        }
-    });
+        });
     outcome
         .borrow_mut()
         .take()

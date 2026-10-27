@@ -7,7 +7,7 @@ use crate::text::inline::runs::atom_glue::glue_atoms;
 pub use crate::text::inline::runs::wrapped_row::as_wrapped_row;
 
 use crate::style::computed::Computed;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::Color;
 use crate::text::inline::*;
 use gpui::{FontStyle, FontWeight, TextRun, TextStyle, UnderlineStyle};
 
@@ -40,13 +40,14 @@ pub fn single_block(pieces: &[Piece], _base_size: f32) -> bool {
 /// от чего считается доля `em` у куска: это кегль РОДИТЕЛЯ абзаца, а не его
 /// собственный, иначе `font-size: 4em` на абзаце и на его куске умножились бы
 /// дважды (`text-transform-shaping-001`: строка вышла в 256 точек вместо 64).
-pub fn max_font_size(pieces: &[Piece], strut: f32, em_base: f32) -> f32 {
+pub fn max_font_size(
+    pieces: &[Piece],
+    strut: f32,
+    em_base: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> f32 {
     pieces.iter().fold(strut, |acc, p| match p {
-        Piece::Text { style, .. } => match style.font_size {
-            Some(Len::Px(v)) => acc.max(v),
-            Some(Len::Em(k)) => acc.max(k * em_base),
-            _ => acc,
-        },
+        Piece::Text { style, .. } => acc.max(style.used_font(em_base, vcx).size_px),
         Piece::Atom(_) | Piece::Overlay(..) => acc,
     })
 }
@@ -70,16 +71,10 @@ pub fn max_line_height(
         crate::text::metrics::normal_px(fraction, strut, vcx),
         |acc, p| match p {
             Piece::Text { style, .. } => {
-                let size = match style.font_size {
-                    Some(Len::Px(v)) => v,
-                    Some(Len::Em(k)) => k * em_base,
-                    _ => strut,
-                };
-                let own = match style.line_height {
-                    Some(Len::Px(v)) => v,
-                    Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                    _ => crate::text::metrics::normal_px(fraction, size, vcx),
-                };
+                let size = style.used_font(em_base, vcx).size_px;
+                let own = style
+                    .numeric_line_px(em_base)
+                    .unwrap_or_else(|| crate::text::metrics::normal_px(fraction, size, vcx));
                 acc.max(own)
             }
             Piece::Atom(_) | Piece::Overlay(..) => acc,
@@ -107,7 +102,7 @@ pub fn text_and_runs(
                     continue;
                 }
                 text.push_str(t);
-                runs.push(run_for(t, style, base, vcx));
+                runs.push(decorated_run(t, style, style.inline_decoration, base, vcx));
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
             // пробел, а сам он рисуется поверх (см. `overlays`).
@@ -132,6 +127,16 @@ pub fn strut_font(
 pub(super) fn run_for(
     text: &str,
     style: &Computed,
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> TextRun {
+    decorated_run(text, style, Default::default(), base, vcx)
+}
+
+fn decorated_run(
+    text: &str,
+    style: &Computed,
+    inline_decoration: crate::style::inline_decoration::InlineDecoration,
     base: &TextStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TextRun {
@@ -181,11 +186,10 @@ pub(super) fn run_for(
     // Кегль куска: без него разный размер в строке собрать в один блок было
     // нельзя (см. `single_block`).
     let base_px = f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX)));
-    let font_size = match style.font_size {
-        Some(Len::Px(v)) => Some(gpui::px(v)),
-        Some(Len::Em(k)) => Some(gpui::px(k * base_px)),
-        _ => None,
-    };
+    // TRANSITIONAL(cascade-7b-font-size-adjust): A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face.
+    let font_size = style
+        .font_size
+        .map(|_| gpui::px(style.used_font(base_px, vcx).size_px));
     TextRun {
         len: text.len(),
         font,
@@ -194,7 +198,7 @@ pub(super) fn run_for(
         // A fully transparent band colour only identifies its inline box (see
         // `BORDER_BAND`): it is kept black (lightness 0) so nothing of it can
         // blend into the border edge, with the id in hue and saturation.
-        background_color: style.inline_bg.map(|c| {
+        background_color: inline_decoration.band_color.map(|c| {
             if c.a == 0.0 {
                 gpui::Hsla {
                     h: c.r,
@@ -206,11 +210,14 @@ pub(super) fn run_for(
                 c.to_hsla()
             }
         }),
-        background_border: style
-            .inline_border
+        background_border: inline_decoration
+            .border_stroke
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
-        background_pad: style.inline_pad.unwrap_or_default().map(gpui::px),
-        background_radius: gpui::px(style.inline_radius.unwrap_or(0.0)),
+        background_pad: inline_decoration
+            .physical_padding
+            .unwrap_or_default()
+            .map(gpui::px),
+        background_radius: gpui::px(inline_decoration.corner_radius.unwrap_or(0.0)),
         background_line_gap: true,
         underline: style.underline.unwrap_or(false).then(|| UnderlineStyle {
             thickness: gpui::px(1.),

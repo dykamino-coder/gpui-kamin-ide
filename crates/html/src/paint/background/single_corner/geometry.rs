@@ -4,7 +4,6 @@
 
 use gpui::{Bounds, Pixels, px};
 
-pub(crate) use crate::style::computed::single_corner::eligible;
 pub(super) use crate::style::computed::single_corner::uniform;
 
 pub(super) fn inset(r: Bounds<Pixels>, n: f32) -> Bounds<Pixels> {

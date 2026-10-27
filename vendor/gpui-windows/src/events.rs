@@ -215,6 +215,7 @@ impl WindowsWindowInner {
                 // we will get the same monitor if we only have one
                 self.state.display.set(WindowsDisplay::new(
                     WindowsDisplay::display_id_for_monitor(monitor),
+                    self.state.display.get().forced_scale,
                 )?);
             }
         }
@@ -909,7 +910,7 @@ impl WindowsWindowInner {
         let new_dpi = wparam.loword() as f32;
 
         let is_maximized = self.state.is_maximized();
-        let new_scale_factor = crate::display::forced_scale().unwrap_or(new_dpi / USER_DEFAULT_SCREEN_DPI as f32);
+        let new_scale_factor = self.state.display.get().forced_scale.unwrap_or(new_dpi / USER_DEFAULT_SCREEN_DPI as f32);
         self.state.scale_factor.set(new_scale_factor);
         self.state.border_offset.update(handle).log_err();
 
@@ -980,7 +981,7 @@ impl WindowsWindowInner {
             log::error!("No monitor detected!");
             return None;
         }
-        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor))?;
+        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor), self.state.display.get().forced_scale)?;
         self.state.display.set(new_display);
         Some(0)
     }

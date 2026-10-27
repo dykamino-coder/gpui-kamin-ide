@@ -28,9 +28,19 @@ impl Computed {
         // Свой кегль — первым: от него считается всё остальное (одна функция
         // с фазой шрифта корня, `computed_font_px`). Вычисленный кегль —
         // абсолютная длина, и шаг `larger`/`smaller` в нём уже учтён.
-        if let Some(px) = self.computed_font_px(&family, parent_font_px, vcx) {
+        if let Some(px) = self.computed_font_px(FontCx::new(&family, parent_font_px), vcx) {
             self.font_size = Some(Len::Px(px));
             self.font_size_step = 0;
+        }
+        self.compute_font_adjust(&family, vcx);
+        if self.font_size.is_none()
+            && (self.font_size_adjust.is_some()
+                || self
+                    .used_font_for(&family, parent_font_px, vcx)
+                    .descriptor_scale
+                    != 1.0)
+        {
+            self.font_size = Some(Len::Px(parent_font_px));
         }
         // Дорожки сетки в единицах шрифта: считаются от СВОЕГО кегля.
         let own_px = match self.font_size {
@@ -45,7 +55,7 @@ impl Computed {
             || self.text_shadow_raw.is_some()
         {
             let own_font = own_px;
-            let (ch, ex) = crate::style::font_metrics::horizontal(&family, own_font, vcx);
+            let [_, ch, ex, _] = self.glyph_units(&family, own_font, vcx);
             if let Some(raw) = self.transform_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("transform", &px, vcx);
@@ -66,12 +76,21 @@ impl Computed {
                 self.apply_one("text-shadow", &px, vcx);
             }
         }
+        let grid_font = FontCx {
+            family: &family,
+            font_px: own_px,
+            metric_px: self.used_font_for(&family, own_px, vcx).size_px,
+            line_px: self.numeric_line_px(own_px),
+            units: self
+                .font_size_adjust
+                .map(|_| self.glyph_units(&family, own_px, vcx)),
+        };
         for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
             .into_iter()
             .flatten()
         {
             for t in list.iter_mut() {
-                t.resolve_font(&family, own_px, vcx);
+                t.resolve_font(grid_font, vcx);
             }
         }
         let base = match self.font_size {
@@ -82,24 +101,8 @@ impl Computed {
         // нуль занимает целый кегль, у текстового шрифта — около половины.
         // Семейство здесь уже унаследовано, поэтому замер возможен только на
         // этом шаге, вместе с `em`.
-        // Повторный вызов на уже подогнанном стиле: база — сохранённый
-        // вычисленный кегль, а не подогнанный.
-        let base = self.font_adjust_base.map_or(base, |b| b.0);
-        // Используемый кегль (css-fonts-5 §font-size-adjust): «affects the
-        // size of relative units that are based on font metrics such as ex
-        // and ch but does not affect the size of em units». `em` и числовой
-        // `line-height` остаются от `base`, метрики шрифта — от `used`, и сам
-        // текст набирается `used` (`font_size`), а детям уходит `base`.
-        let used = base * self.used_font_factor(&family, vcx);
-        // TRANSITIONAL(cascade-7b-font-size-adjust): font_size хранит used размер для shaping, а computed размер спрятан в font_adjust_base; удалить обходные em readers после переноса used размера в BoxStyle и возврата computed font_size.
-        if used != base && self.font_adjust_base.is_none() {
-            self.font_adjust_base = Some((base, self.line_height));
-            if let Some(Len::Pct(m)) = self.line_height {
-                self.line_height = Some(Len::Px(m * base));
-            }
-            self.font_size = Some(Len::Px(used.max(0.01)));
-        }
-        let (mut ch, ex) = crate::style::font_metrics::horizontal(&family, used, vcx);
+        let used = self.used_font_for(&family, base, vcx).size_px;
+        let [cap, mut ch, ex, ic] = self.glyph_units(&family, base, vcx);
         // `ch` — продвижение нуля вдоль оси строки. При стоящих глифах в
         // вертикальном письме строка идёт сверху вниз, и продвижение равно
         // кеглю, а не ширине глифа (CSS Writing Modes §7.4).
@@ -107,11 +110,9 @@ impl Computed {
             ch = used;
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
-        let ic = crate::style::font_metrics::ideographic(&family, used, vcx);
         // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
         // вертикальных метрик её уже отдаёт третьим числом (по нему
         // `text-box-trim` считает срез `cap`), своего замера не нужно.
-        let cap = crate::style::font_metrics::vertical(&family, used, vcx).2;
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),

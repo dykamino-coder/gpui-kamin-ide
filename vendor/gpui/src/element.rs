@@ -266,84 +266,6 @@ trait ElementObject {
 }
 
 /// A wrapper around an implementer of [`Element`] that allows it to be drawn in a window.
-// KaminIDE patch (#76): профиль prepaint по типам элементов, включается
-// `KAMIN_PREPAINT_PROF=1`. Self-time: из времени узла вычитается время его
-// детей (они prepaint-ятся тем же путём) через thread-local стек. Снимается
-// `take_top()` (зовёт диаг-строка шелла раз в секунду).
-pub mod prepaint_prof {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    use std::time::Instant;
-
-    fn enabled() -> bool {
-        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *ON.get_or_init(|| std::env::var("KAMIN_PREPAINT_PROF").as_deref() == Ok("1"))
-    }
-
-    thread_local! {
-        static STACK: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
-        static MAP: RefCell<HashMap<&'static str, (u64, u32)>> = RefCell::new(HashMap::new());
-    }
-
-    /// RAII-запись одного prepaint-кадра элемента.
-    pub struct Guard {
-        started: Instant,
-        name: &'static str,
-    }
-
-    /// Начать замер prepaint элемента (None — профиль выключен).
-    pub fn enter(name: &'static str) -> Option<Guard> {
-        if !enabled() {
-            return None;
-        }
-        STACK.with_borrow_mut(|s| s.push(0));
-        Some(Guard {
-            started: Instant::now(),
-            name,
-        })
-    }
-
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            let total = self.started.elapsed().as_micros() as u64;
-            let children = STACK.with_borrow_mut(|s| s.pop().unwrap_or(0));
-            let own = total.saturating_sub(children);
-            STACK.with_borrow_mut(|s| {
-                if let Some(parent) = s.last_mut() {
-                    *parent += total;
-                }
-            });
-            MAP.with_borrow_mut(|m| {
-                let e = m.entry(self.name).or_insert((0, 0));
-                e.0 += own;
-                e.1 += 1;
-            });
-        }
-    }
-
-    /// Топ-N типов по суммарному self-time с последнего снятия: (тип, мкс, вызовов).
-    pub fn take_top(n: usize) -> Vec<(String, u64, u32)> {
-        if !enabled() {
-            return Vec::new();
-        }
-        MAP.with_borrow_mut(|m| {
-            let mut v: Vec<_> = m
-                .drain()
-                .map(|(k, (us, cnt))| (short_type(k), us, cnt))
-                .collect();
-            v.sort_by(|a, b| b.1.cmp(&a.1));
-            v.truncate(n);
-            v
-        })
-    }
-
-    fn short_type(full: &str) -> String {
-        // `gpui::elements::div::Div` → `Div`; дженерики оставляем как есть.
-        full.rsplit("::").next().unwrap_or(full).to_string()
-    }
-}
-
-/// A wrapper around an implementer of [`Element`] that allows it to be drawn in a window.
 pub struct Drawable<E: Element> {
     /// The drawn element.
     pub element: E,
@@ -521,7 +443,7 @@ impl<E: Element> Drawable<E> {
 
     pub(crate) fn prepaint(&mut self, window: &mut Window, cx: &mut App) {
         // KaminIDE patch (#76): self-time профиль prepaint по типам элементов.
-        let _prof = prepaint_prof::enter(std::any::type_name::<E>());
+        let _prof = cx.instrumentation().prepaint.enter(std::any::type_name::<E>());
         match &mut self.phase {
             ElementDrawPhase::RequestLayout {
                 layout_id,

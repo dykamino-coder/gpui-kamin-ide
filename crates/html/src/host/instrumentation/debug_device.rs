@@ -1,30 +1,34 @@
-//! KaminIDE debug-only acceptance device override.
+//! Чтение отладочного выбора устройства на границе host.
 //!
-//! Native acceptance must exercise WARP and real device removal without any
-//! system-wide DirectX setting (no D3DConfig). Debug builds may therefore ask
-//! GPUI to create its own D3D11 device on the WARP adapter, or as a D3D11On12
-//! device whose D3D12 device the application can remove itself. Release builds
-//! never read the environment: the reader below is compiled out and tested.
-//! This file has no crate dependencies so CI can compile it alone with
+//! Native acceptance проверяет WARP и настоящее удаление устройства без
+//! системных настроек DirectX. Debug-сборка может запросить WARP либо D3D11On12,
+//! чей D3D12 device приложение удаляет самостоятельно. Release-сборка не читает
+//! окружение: этот путь исключён при компиляции и проверяется тестом.
+//! Файл не зависит от крейтов, поэтому CI компилирует его отдельно с
 //! `-C debug-assertions=no`.
 
-/// Environment switch read only by debug builds.
+/// Переключатель окружения, который читают только debug-сборки.
+#[cfg(any(debug_assertions, test))]
 pub(crate) const ENV: &str = "KAMIN_DEBUG_D3D_DEVICE";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(not(debug_assertions), allow(dead_code))]
 pub(crate) enum DeviceOverride {
-    /// Regular adapter enumeration (the only release behavior).
+    /// Обычное перечисление адаптеров; единственный вариант в release.
     #[default]
     None,
-    /// D3D11 device on the factory's WARP adapter (`EnumWarpAdapter`).
+    /// Устройство D3D11 на WARP-адаптере фабрики (`EnumWarpAdapter`).
     Warp,
-    /// D3D11On12 device over a D3D12 device on the first hardware adapter, so
-    /// `ID3D12Device5::RemoveDevice` produces a genuine device-removed state.
+    /// D3D11On12 на первом аппаратном адаптере: `ID3D12Device5::RemoveDevice`
+    /// переводит его в настоящее состояние device-removed.
     D3D11On12,
 }
 
 impl DeviceOverride {
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "host launch reads process configuration"
+    )]
     pub(crate) fn from_env() -> Self {
         Self::read(|name| std::env::var(name).ok())
     }

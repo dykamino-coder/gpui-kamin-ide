@@ -47,12 +47,13 @@ impl Computed {
             _ => 16.0,
         };
         let family = self.font_family.as_deref().unwrap_or("");
-        let (ch, ex) = crate::style::font_metrics::horizontal(family, font, vcx);
+        let used = self.used_font(font, vcx).size_px;
+        let [_, ch, ex, _] = self.glyph_units(family, font, vcx);
         let line = match self.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
             _ => {
-                let (ascent, descent, _) = crate::style::font_metrics::vertical(family, font, vcx);
+                let (ascent, descent, _) = crate::style::font_metrics::vertical(family, used, vcx);
                 ascent + descent
             }
         };

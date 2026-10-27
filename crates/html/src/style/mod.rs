@@ -4,12 +4,14 @@
 //! `computed::Computed`, `values` держит длины и цвета, `generated` — счётчики
 //! и кавычки, `zoom` масштабирует длины, `apply` переводит стиль в элемент GPUI.
 
+pub(crate) mod background_paint;
 pub mod box_input;
 pub mod cascade;
 pub mod computed;
 pub mod css;
 pub(crate) mod flow;
 pub mod generated;
+pub(crate) mod inline_decoration;
 pub mod select;
 pub mod values;
 pub mod zoom;

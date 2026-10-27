@@ -80,13 +80,14 @@ pub(crate) fn len_to_gpui(l: Len, vcx: ValueCx<'_>) -> gpui::DefiniteLength {
 /// которое и встречается в наведении: цвет, фон, рамка, прозрачность, вес и
 /// начертание шрифта. Отступы и размеры в наведении менять нельзя — это
 /// сдвинуло бы раскладку под курсором.
-pub fn apply_hover(d: Div, hover: &Computed) -> Div {
+pub fn apply_hover(d: Div, hover: &Computed, own: &BoxStyle) -> Div {
+    let background = own.background_paint.paints();
     let h = hover.clone();
     d.hover(move |mut s| {
-        if let Some(bg) = h.background {
+        if background && let Some(bg) = h.background {
             s.background = Some(gpui::Fill::Color(bg.to_hsla().into()));
         }
-        if let Some(g) = &h.gradient {
+        if background && let Some(g) = &h.gradient {
             s.background = Some(gpui::Fill::Color(fill(g)));
         }
         if let Some(bc) = h.used_uniform_border_color() {

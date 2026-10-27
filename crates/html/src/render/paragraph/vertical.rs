@@ -1,7 +1,7 @@
 //! Выбор физического маршрута вертикального абзаца.
 
 use crate::dom::text_content::gather_text;
-use crate::layout::options::RenderOpts;
+use crate::layout::options::{RenderOpts, own_size};
 use crate::render::paragraph::route::NativeRequest;
 use crate::text::fonts::style_font::measure_font;
 use crate::text::paragraph::text_id::text_id;
@@ -181,7 +181,12 @@ pub(crate) fn vertical_paragraph(
         .measure_context(&opts.cx)
         .counter_clockwise(ccw_line)
         .lines_left_first(wm.lines_reversed())
-        .first_line(measure_font(inherited, opts), px(em), lh, central)
+        .first_line(
+            measure_font(inherited, opts),
+            px(own_size(inherited, opts)),
+            lh,
+            central,
+        )
         // Замер по МИНИМАЛЬНОМУ содержимому: заявленная высота повёрнутой
         // коробки становится вкладом ячейки в дорожку её колонки
         // (см. `col_min` выше). Ниже `fit_within` заявит эту же величину

@@ -443,10 +443,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $testExe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # GPUI's debug-only WARP/D3D11On12 device override (vendored, not a workspace member).
+          # Host parsing of the debug-only WARP/D3D11On12 device override.
           foreach ($assertions in @('no', 'yes')) {
             $deviceExe = Join-Path $env:RUNNER_TEMP "gpui-debug-device-$assertions.exe"
-            rustc --edition=2024 --test -D warnings -C debug-assertions=$assertions vendor/gpui-windows/src/debug_device.rs -o $deviceExe
+            rustc --edition=2024 --test -D warnings -C debug-assertions=$assertions crates/html/src/host/instrumentation/debug_device.rs -o $deviceExe
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & $deviceExe
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
