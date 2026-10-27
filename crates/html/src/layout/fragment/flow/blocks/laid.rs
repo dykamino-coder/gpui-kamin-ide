@@ -22,6 +22,12 @@ pub(crate) struct Laid {
     pub(crate) boxes: HashMap<u64, (f32, f32)>,
     pub(crate) tables: HashMap<u64, TableFrame>,
     pub(crate) grids: HashMap<u64, Vec<(f32, f32)>>,
+    /// Ряды элементов сеток из финального размещения решателя: `(первый, последний)` по индексам
+    /// дорожек `grids` (css-grid-2 §8: область задают линии размещения, а не коробка элемента).
+    pub(crate) placements: HashMap<u64, (usize, usize)>,
+    /// Место, которое фрагментация вставила после дорожек сеток (`Watched::grow_grid_row`):
+    /// перенос ряда, а не промежуток `row-gap` между дорожками.
+    pub(crate) row_growth: HashMap<u64, Vec<f32>>,
     pub(crate) flexes: HashMap<u64, super::FlexFrame>,
     pub(crate) content: HashMap<u64, Vec<super::super::ContentLine>>,
     pub(crate) descendants: HashMap<u64, Vec<u64>>,
@@ -60,6 +66,19 @@ impl Laid {
         self.grids.get(&grid).cloned()
     }
 
+    /// Место, вставленное фрагментацией после дорожки `track` сетки `grid`.
+    pub(crate) fn growth_after(&self, grid: u64, track: usize) -> f32 {
+        self.row_growth
+            .get(&grid)
+            .and_then(|g| g.get(track).copied())
+            .unwrap_or(0.0)
+    }
+
+    /// Ряды элемента сетки `id` по его размещению.
+    pub(crate) fn item_rows(&self, id: u64) -> Option<(usize, usize)> {
+        self.placements.get(&id).copied()
+    }
+
     /// Кадр таблицы с ключом `key`.
     pub(crate) fn table(&self, key: u64) -> Option<&TableFrame> {
         self.tables.get(&key)
@@ -72,6 +91,8 @@ impl Laid {
             boxes: boxes.iter().map(|&(id, t, b)| (id, (t, b))).collect(),
             tables: HashMap::new(),
             grids: HashMap::new(),
+            placements: HashMap::new(),
+            row_growth: HashMap::new(),
             flexes: HashMap::new(),
             flows: HashMap::new(),
             lines: HashMap::new(),

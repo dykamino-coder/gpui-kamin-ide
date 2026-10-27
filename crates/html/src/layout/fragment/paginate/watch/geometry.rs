@@ -26,7 +26,10 @@ impl Watched {
         let super::flex_geometry::FlexFrames { flexes, margins } =
             self.flex_frames(projection, window, &mut boxes);
         let tables = self.table_frames(projection, window);
-        let grids = self.rows(projection, window);
+        let super::grid::GridFrames {
+            rows: grids,
+            placements,
+        } = self.grid_frames(projection, window);
         let flows = self.item_geometry(projection, window);
         let content: HashMap<_, _> = self
             .item_flows
@@ -62,16 +65,22 @@ impl Watched {
         if let Some(blocks) = &self.blocks {
             blocks.descendants(&mut descendants);
         }
-        Laid {
+        let mut laid = Laid {
             boxes,
             tables,
             grids,
+            placements,
+            row_growth: self.grid_growth.borrow().clone(),
             flexes,
             flows,
             lines,
             content,
             descendants,
             margins,
+        };
+        if let Some(blocks) = &self.blocks {
+            blocks.subgrid_growth(&mut laid);
         }
+        laid
     }
 }

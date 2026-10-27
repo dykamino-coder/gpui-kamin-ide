@@ -6151,10 +6151,10 @@ impl Window {
         origin + self.element_offset()
     }
 
-    /// KaminIDE patch: охват рядов элемента из завершённого размещения Taffy.
-    /// Возвращает индексы линий с 1, включая ведущие неявные ряды.
-    pub fn grid_item_rows(&self, child: LayoutId) -> Option<(u16, u16)> {
-        self.layout_engine.as_ref()?.grid_item_rows(child)
+    /// KaminIDE patch: охват линий элемента по физической оси из завершённого размещения Taffy.
+    /// Возвращает индексы линий с 1, включая ведущие неявные дорожки.
+    pub fn grid_item_lines(&self, child: LayoutId, axis: crate::Axis) -> Option<(u16, u16)> {
+        self.layout_engine.as_ref()?.grid_item_lines(child, axis)
     }
 
     /// KaminIDE patch: layout parent identity, independent of physical coordinates.
@@ -6238,6 +6238,14 @@ impl Window {
         let scale = self.scale_factor();
         if let Some(engine) = self.layout_engine.as_mut() {
             engine.set_flex_line_fragmentation_growth(id, growth, scale);
+        }
+    }
+
+    /// KaminIDE patch: пространство, вставленное фрагментацией после дорожек сетки по оси `axis`.
+    pub fn set_grid_fragmentation_growth(&mut self, id: LayoutId, axis: crate::Axis, growth: &[f32]) {
+        let scale = self.scale_factor();
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_grid_fragmentation_growth(id, axis, growth, scale);
         }
     }
 

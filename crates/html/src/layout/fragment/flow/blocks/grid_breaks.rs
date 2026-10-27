@@ -10,7 +10,7 @@
 //! ряд с `EBreakBetween::kAuto`, пока смещение ряда во фрагменте положительно).
 
 use super::geometry::{BlockBreaks, walk};
-use super::{GridBox, Laid, item_rows};
+use super::{GridBox, Laid};
 use crate::tolerance::COORD_EPS;
 
 /// Граница рядов: что на ней требуют элементы.
@@ -38,9 +38,7 @@ impl GridBox {
             let Some((t, b)) = laid.at(it.id) else {
                 continue;
             };
-            let (r0, r1) = rows
-                .as_deref()
-                .map_or((0, 0), |r| item_rows(r, t - it.mt, b + it.mb, it.span));
+            let placement = laid.item_rows(it.id);
             let mark = out.solid.len();
             let barrier_mark = out.barriers.len();
             if it.monolith {
@@ -50,7 +48,8 @@ impl GridBox {
             }
             // Первое содержимое элемента не делится: разрыв перед ним
             // переносит ряд целиком (`MovePastBreakpoint` → breakpoint row).
-            if let Some(row_top) = rows.as_deref().and_then(|r| r.get(r0)).map(|r| r.0) {
+            let row_top = placement.and_then(|(r0, _)| rows.as_deref()?.get(r0).map(|r| r.0));
+            if let Some(row_top) = row_top {
                 for s in out.solid[mark..]
                     .iter_mut()
                     .chain(&mut out.barriers[barrier_mark..])
@@ -61,7 +60,9 @@ impl GridBox {
                 }
             }
             last = Some(last.map_or(b + it.mb, |l: f32| l.max(b + it.mb)));
-            placed.push((it, r0, r1));
+            if let Some((r0, r1)) = placement {
+                placed.push((it, r0, r1));
+            }
         }
         let Some(rows) = rows.filter(|r| !r.is_empty()) else {
             return last;
@@ -85,9 +86,11 @@ impl GridBox {
         }
         for i in 1..rows.len() {
             let (prev, next) = (rows[i - 1], rows[i]);
-            if next.0 > prev.1 + COORD_EPS {
-                out.cuts.push((prev.1, next.0));
-                out.hold((prev.1, next.0 + 0.05));
+            // Место переноса ряда (рост фрагментации) — не промежуток: его не усекают.
+            let gap = prev.1 + laid.growth_after(grid, i - 1);
+            if next.0 > gap + COORD_EPS {
+                out.cuts.push((gap, next.0));
+                out.hold((gap, next.0 + 0.05));
             }
             match between[i] {
                 Between::Forced => out.forced.push(next.0),
