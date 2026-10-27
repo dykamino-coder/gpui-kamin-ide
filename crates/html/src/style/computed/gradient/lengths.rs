@@ -116,7 +116,7 @@ impl Computed {
             gradient.resolve_lengths(&fix, vcx);
         }
         // Позиция и размер вычисляются и без изображения (css-backgrounds-3
-        // §3.6, §3.9); процент остаётся для области позиционирования.
+        // §2.6, §2.9); процент остаётся для области позиционирования.
         fix(&mut self.bg_pos.x);
         fix(&mut self.bg_pos.y);
         if let BgSize::Fixed(w, h) = &mut self.bg_size {
