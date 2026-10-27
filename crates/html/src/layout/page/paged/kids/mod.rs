@@ -3,12 +3,9 @@
 use super::PAGE_COPIES;
 use crate::dom::Node;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::table_bands::repeat_candidates;
 use crate::layout::options::RenderOpts;
-use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::{BoxStyle, Display};
-use crate::tolerance::COORD_EPS;
 use gpui::AnyElement;
 mod breaks;
 mod flex;
@@ -143,24 +140,6 @@ pub(super) fn page_kids_from_groups(
         // Монолит выше листа решается в `fill` (правило «сначала перенос,
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.
-        // Visible overflow past the box (unclamped flow measure) reserves
-        // pages after it (css-break-3 §2.1 parallel overflow; Blink
-        // `ReserveSpaceForMonolithicOverflow`, `monolithic-overflow-026`).
-        let reach = match (n, &shape) {
-            (Node::Element(e), Some(s))
-                if vertical.is_none() && visible_overflow(&e.style.used()) =>
-            {
-                let cx = ShapeCx {
-                    unclamped: true,
-                    ..shape_cx
-                };
-                // TRANSITIONAL(F2-2): Reach ребёнка страницы оценивается как полная unclamped форма для held-семей на листах (P08b — anchor-positioned, transform дальше переноса, процентный статический abs); удалить после их нативной отрисовки.
-                shape_full(e, 4, cx, vcx)
-                    .map(|u| u.height + pad_top)
-                    .filter(|&u| u > s.0 + COORD_EPS)
-            }
-            _ => None,
-        };
         kids.push(crate::layout::page::page_stack::PageKid {
             #[cfg(feature = "wpt-harness")]
             probe: opts.frag.probe.clone(),
@@ -192,7 +171,8 @@ pub(super) fn page_kids_from_groups(
             },
             float_extent: prepared.as_ref().is_some_and(|p| p.float_extent)
                 || group.iter().any(&floated),
-            reach,
+            // The measured flow of a regrown copy sets it (`measure`).
+            reach: None,
             end: Default::default(),
             el,
             frags,

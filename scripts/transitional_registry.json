@@ -170,11 +170,6 @@
     "reason": "Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10."
   },
   {
-    "file": "crates/html/src/layout/page/paged/kids/mod.rs",
-    "task": "F2-2",
-    "reason": "Reach ребёнка страницы оценивается как полная unclamped форма для held-семей на листах (P08b — anchor-positioned, transform дальше переноса, процентный статический abs); удалить после их нативной отрисовки."
-  },
-  {
     "file": "crates/html/src/layout/page/paged/kids/repeat.rs",
     "task": "F2-5",
     "reason": "Шапки и подвалы страниц резервируются оценочным preplan; удалить в P18 после повторов по продолжениям секций и ячеек из P17."

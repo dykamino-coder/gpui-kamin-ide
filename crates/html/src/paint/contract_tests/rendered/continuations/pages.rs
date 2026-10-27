@@ -92,6 +92,29 @@ fn sheets_past_the_flow_come_from_the_native_placement_of_root_boxes() {
 }
 
 #[test]
+fn overflow_past_a_short_box_reserves_sheets_from_its_measured_flow() {
+    // A short box whose content overflows it: the sheets after it come from
+    // the placed absolute continuation and the measured in-flow overflow.
+    for inner in [
+        "position:absolute;top:0;width:50px;height:250vh",
+        "width:50px;height:250vh",
+    ] {
+        let found = printed(
+            &format!(
+                "<style>body{{margin:0}}</style><div style='position:relative;height:20px'>\
+<div style='{inner};background:#0000ff'></div></div>"
+            ),
+            800.,
+            600.,
+        );
+        let sheets = found.iter().filter(|(_, c)| opaque(*c) == 0xffffff).count();
+        assert_eq!(sheets, 3, "{inner}: {found:?}");
+        let blue = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).count();
+        assert_eq!(blue, 3, "{inner}: one fragment per sheet");
+    }
+}
+
+#[test]
 fn anchor_positioned_box_on_a_sheet_paints_beside_its_anchor() {
     let found = printed(
         "<style>body{margin:0}</style>\
