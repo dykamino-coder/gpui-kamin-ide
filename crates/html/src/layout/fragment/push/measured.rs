@@ -3,8 +3,9 @@
 //! `FinishFragmentation`). Точку роста даёт план укладки по измеренным точкам разрыва
 //! (`ColumnStack::grow_points`), коробку, перед которой встаёт распорка, — разложенные
 //! border box блочной стопки (`BlockBox::pushed_at`), ряд сетки — её разложенные дорожки
-//! (перенос ряда, `grid_row::push_row`), а новую высоту и точки разрыва — повторная
-//! раскладка копии, собранной заново из правленого дерева (`Regrow::build`).
+//! (перенос ряда — рост решателя после дорожки, `Watched::grow_grid_row`), а новую высоту и
+//! точки разрыва — повторная раскладка копии, собранной заново из правленого дерева
+//! (`Regrow::build`).
 //! Оценка формы (`pushed_box_at`, `shape_full`) здесь не участвует.
 
 use super::cell::grow_before;
@@ -130,7 +131,7 @@ impl Regrow {
                 spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.vcx())
             }
             Pushed::Box(id) => grow_before(&mut self.dom, id, grow),
-            Pushed::Row(row) => super::grid_row::push_row(&mut self.dom, &row, grow, self.axis),
+            Pushed::Row(row) => self.watched.grow_grid_row(row.grid, row.track, grow),
             Pushed::Flex(line) => self.watched.grow_flex_line(line.container, line.line, grow),
             Pushed::Line(line) => line.grow(grow),
         }
