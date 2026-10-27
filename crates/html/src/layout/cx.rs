@@ -89,6 +89,11 @@ impl LayoutCx {
         &self.values.doc.0
     }
 
+    /// Text-phase measurements of the document being built.
+    pub(crate) fn paragraph(&self) -> &crate::text::paragraph_state::ParagraphState {
+        &self.values.doc.0.paragraph
+    }
+
     /// Values of the build: `calc()`/`anchor()` bodies parsed while building
     /// the frame go to the document's frame arena.
     pub(crate) fn vcx(&self) -> ValueCx<'_> {

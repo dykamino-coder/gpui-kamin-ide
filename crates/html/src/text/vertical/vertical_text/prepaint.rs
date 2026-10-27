@@ -1,6 +1,6 @@
 //! Фаза `prepaint` элемента `VerticalText`: решённая раскладкой высота коробки становится
 //! длиной строки содержимого (перенос вертикального текста), высота содержимого при ней
-//! запоминается в состоянии документа для следующего кадра (`vertical_measures`), а на время
+//! запоминается в измерениях документа для следующего кадра (`VerticalMeasures`), а на время
 //! подготовки потомков выставляется рамка поворота (`TurnFrame`: сторона и фаза); рамка
 //! привязана к неокруглённому block-end краю (css-writing-modes-4 §7.1; Blink
 //! `WritingModeConverter::SlowConvert`).
@@ -36,10 +36,10 @@ impl VerticalText {
             // Факт для следующего кадра: высота содержимого при решённой
             // длине строки — она и есть настоящая ширина повёрнутого блока.
             if let Some(k) = self.key
-                && let Some(values) = &self.values
+                && let Some(measures) = &self.measures
                 && sized.height > gpui::px(0.)
             {
-                values.vcx().doc.vertical_measures.record(k, sized.height);
+                measures.record(k, sized.height);
             }
         }
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение
