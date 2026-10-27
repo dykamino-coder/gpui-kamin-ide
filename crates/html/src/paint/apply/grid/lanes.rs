@@ -38,7 +38,9 @@ pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
         // проёмом; Blink `ResolvedAlignSelf(normal)` :1056-1060), а общий
         // путь `align-items: stretch` в стиль не пишет — для сетки это
         // умолчание. Лункам явная растяжка нужна в стиле.
-        if c.align_items == Some(crate::style::computed::Align::Stretch) {
+        if c.align_items == Some(crate::style::computed::Align::Stretch)
+            && !super::super::layout::legacy_block(c)
+        {
             d.style().align_items = Some(gpui::AlignItems::Stretch);
         }
     }

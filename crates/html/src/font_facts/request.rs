@@ -27,6 +27,8 @@ pub enum FontMetricQuery {
     Ideographic,
     Math,
     Alphabetic,
+    /// Метрики выбранного лица до дескрипторов, без CSS-запасных значений.
+    Adjustment,
 }
 
 /// Полный вход matching. Размер — computed CSS px, без size-adjust.

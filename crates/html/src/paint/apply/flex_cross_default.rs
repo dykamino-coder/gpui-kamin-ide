@@ -5,7 +5,7 @@
 use crate::style::computed::{Computed, Display, FlexDir};
 pub(super) fn ends_on_x(c: &Computed, physical: Option<FlexDir>) -> bool {
     c.wm().block_rl()
-        && c.align_items.is_none()
+        && (c.align_items.is_none() || super::layout::legacy_block(c))
         && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
         && matches!(physical, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
 }

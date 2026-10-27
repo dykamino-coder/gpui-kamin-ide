@@ -206,7 +206,7 @@ pub fn as_wrapped_row(
                             // прежде; разрыв ПУСТОЙ строки с отступом держит
                             // её strut (см. `indent_line`).
                             row = row.child(if line_empty && indent_line {
-                                blank_line_break(&style)
+                                blank_line_break(&style, cx.vcx())
                             } else {
                                 line_break()
                             });

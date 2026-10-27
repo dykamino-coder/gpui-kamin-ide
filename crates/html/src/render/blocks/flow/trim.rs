@@ -65,6 +65,7 @@ fn first_line_root(line_style: &Computed) -> Computed {
     let mut c = line_style.clone();
     if let Some(fl) = line_style.first_line.as_deref() {
         let base = px_strict(line_style.font_size);
+        c.overlay_font_size(fl);
         c.font_size = match (fl.font_size, base) {
             (Some(Len::Em(k)), Some(b)) | (Some(Len::Pct(k)), Some(b)) => Some(Len::Px(k * b)),
             (Some(v), _) => Some(v),
@@ -80,17 +81,12 @@ fn first_line_root(line_style: &Computed) -> Computed {
 
 /// Расстояние от верха строки струта до базовой линии: полулидинг + подъём.
 fn root_top(s: &Computed, opts: &RenderOpts) -> f32 {
-    let size = match s.font_size {
-        Some(Len::Px(v)) => v,
-        _ => opts.base_size(),
-    };
+    let size = crate::layout::options::own_size(s, opts);
     let family = s.font_family.clone().unwrap_or_default();
     let (ascent, descent, _) = crate::style::font_metrics::vertical(&family, size, opts.cx.vcx());
-    let line = match s.line_height {
-        Some(Len::Px(v)) => v,
-        Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => ascent + descent,
-    };
+    let line = s
+        .numeric_line_px(opts.base_size())
+        .unwrap_or(ascent + descent);
     (line - (ascent + descent)) / 2.0 + ascent
 }
 
