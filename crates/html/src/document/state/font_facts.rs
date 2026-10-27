@@ -59,12 +59,15 @@ impl DocState {
 
     /// Настройка применяется только к этому документу, включая повторный bootstrap.
     pub(crate) fn install_font_facts(&self, provider: Option<Rc<dyn FontFactsProvider>>) {
-        let previous =
-            self.font_facts
-                .provider
-                .replace(Some(provider.unwrap_or_else(|| {
-                    Rc::new(crate::text::font_facts::Backend::new(self.this.clone()))
-                })));
+        let previous = self
+            .font_facts
+            .provider
+            .replace(Some(provider.unwrap_or_else(|| {
+                Rc::new(crate::text::font_facts::Backend::new(
+                    self.this.clone(),
+                    self.text.clone(),
+                ))
+            })));
         if previous.is_some() {
             self.font_inputs_changed();
         }
@@ -105,7 +108,12 @@ impl DocState {
             .borrow()
             .as_ref()
             .cloned()
-            .unwrap_or_else(|| Rc::new(crate::text::font_facts::Backend::new(self.this.clone())))
+            .unwrap_or_else(|| {
+                Rc::new(crate::text::font_facts::Backend::new(
+                    self.this.clone(),
+                    self.text.clone(),
+                ))
+            })
     }
 }
 

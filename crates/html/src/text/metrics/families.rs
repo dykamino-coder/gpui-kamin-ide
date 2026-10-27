@@ -23,7 +23,11 @@ pub fn set_doc_family(family: &str, vcx: ValueCx<'_>) {
     vcx.doc.set_doc_family(family);
 }
 
-pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) {
+pub(super) fn fractions(
+    family: &str,
+    fonts: &crate::text::text_fonts::TextFonts,
+    vcx: ValueCx<'_>,
+) -> (f32, f32, f32, f32) {
     // Пустое семейство — это шрифт документа, а не родовой sans: щуп мерил
     // его как Segoe UI, и `1ch` выходил 0.56 кегля при наборе Times New Roman
     // с нулём в 0.5 (`white-space-wrap-after-nowrap-001`: «12345 67890»
@@ -37,17 +41,17 @@ pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) 
     };
     let real = crate::text::fonts::alias(family, vcx);
     let family = real.as_deref().unwrap_or(family);
-    if let Some(hit) = vcx.doc.metrics.cache.borrow().get(family).copied() {
+    if let Some(hit) = fonts.metrics.cache.borrow().get(family).copied() {
         return hit;
     }
     let measured = {
-        vcx.doc
+        fonts
             .metrics
             .probe
             .borrow()
             .as_ref()
             .map(|probe| probe(family, PROBE_SIZE))
-            .or_else(|| super::text_system::horizontal(family, PROBE_SIZE, vcx))
+            .or_else(|| super::text_system::horizontal(family, PROBE_SIZE, fonts))
             .map(|(ch, ex, line, ic)| {
                 (
                     ch / PROBE_SIZE,
@@ -75,10 +79,10 @@ pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) 
         && line > 0.0
         && line == out.2
     {
-        let (a, d, _) = super::vmetrics_px(family, 1.0, vcx);
-        super::normal_px::register(line, a, d, vcx);
+        let (a, d, _) = super::vmetrics_px(family, 1.0, fonts, vcx);
+        super::normal_px::register(line, a, d, fonts);
     }
-    vcx.doc
+    fonts
         .metrics
         .cache
         .borrow_mut()
@@ -86,13 +90,13 @@ pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) 
     out
 }
 
-/// Есть ли такое семейство в системе шрифтов. До `use_text_system` список пуст,
+/// Есть ли такое семейство в системе шрифтов. До `FontContext::install` с системой шрифтов список пуст,
 /// и ответ отрицательный для всех — разбор тогда работает как раньше.
 pub fn font_installed(name: &str, vcx: ValueCx<'_>) -> bool {
     vcx.doc.font_snapshot().installed(name)
 }
 
-/// Снят ли список установленных семейств (`use_text_system`). До него
+/// Снят ли список установленных семейств (`FontContext::install`). До него
 /// `font_installed` отрицателен для всех, и судить о «недоступности» имени
 /// нельзя.
 pub fn fonts_known(vcx: ValueCx<'_>) -> bool {

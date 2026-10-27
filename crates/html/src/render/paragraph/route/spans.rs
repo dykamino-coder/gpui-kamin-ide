@@ -83,7 +83,12 @@ pub(crate) fn paragraph_spans(
                 rotated_central(inherited).then(|| {
                     let family = inherited.font_family.clone().unwrap_or_default();
                     let size = crate::render::paragraph::own_size(inherited, opts);
-                    let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size, opts.cx.vcx());
+                    let (a, d, _) = crate::text::metrics::vmetrics_px(
+                        &family,
+                        size,
+                        opts.cx.text_fonts(),
+                        opts.cx.vcx(),
+                    );
                     (a - d) / 2.0
                 }),
                 inherited.vertical_align,
@@ -98,8 +103,10 @@ pub(crate) fn paragraph_spans(
                 biggest,
                 crate::text::metrics::normal_line(
                     &inherited.font_family.clone().unwrap_or_default(),
+                    opts.cx.text_fonts(),
                     opts.cx.vcx(),
                 ),
+                opts.cx.text_fonts(),
                 opts.cx.vcx(),
             );
             v.retain(|(r, _)| !in_edge(edges, r));
@@ -113,11 +120,13 @@ pub(crate) fn paragraph_spans(
             biggest,
             crate::text::metrics::normal_line(
                 &inherited.font_family.clone().unwrap_or_default(),
+                opts.cx.text_fonts(),
                 opts.cx.vcx(),
             ),
             (inherited.wm().turned() || inherited.wm().vertical())
                 .then(|| inherited.wm().sideways_lr()),
             opts.cx.ruby.layers.as_ref(),
+            opts.cx.text_fonts(),
             opts.cx.vcx(),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у

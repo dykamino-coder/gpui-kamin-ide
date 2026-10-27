@@ -13,6 +13,7 @@ use crate::style::computed::{BoxStyle, Computed};
 pub fn split_first_letter(
     pieces: Vec<Piece>,
     style: &Computed,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Piece> {
     let mut text = String::new();
@@ -67,7 +68,7 @@ pub fn split_first_letter(
                 }
                 out.push(Piece::Text {
                     text: text[a..b].into(),
-                    style: letter_style(&own, style, vcx),
+                    style: letter_style(&own, style, fonts, vcx),
                 });
                 if b < text.len() {
                     out.push(Piece::Text {
@@ -85,6 +86,7 @@ pub fn split_first_letter(
 fn letter_style(
     own: &BoxStyle,
     style: &Computed,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> BoxStyle {
     let mut letter = own.clone();
@@ -97,7 +99,7 @@ fn letter_style(
     if let Some(bg) = style.background {
         letter.inline_decoration.band_color = Some(bg);
         if style.float.is_some_and(|f| f != 0) {
-            float_band(&mut letter, vcx);
+            float_band(&mut letter, fonts, vcx);
         }
     }
     letter
@@ -107,18 +109,22 @@ fn letter_style(
 /// background fills the box, as tall as its line height, not only the
 /// glyphs' content area. The letter is painted as an inline piece, so its
 /// band is padded by the half-leading on both sides.
-fn float_band(letter: &mut BoxStyle, vcx: crate::document::state::ValueCx<'_>) {
+fn float_band(
+    letter: &mut BoxStyle,
+    fonts: &crate::text::text_fonts::TextFonts,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     use crate::style::values::value::Len;
     let Some(Len::Px(computed)) = letter.font_size else {
         return;
     };
     let size = letter.used_font(computed, vcx).size_px;
     let family = letter.font_family.clone().unwrap_or_default();
-    let fraction = crate::text::metrics::normal_line(&family, vcx);
+    let fraction = crate::text::metrics::normal_line(&family, fonts, vcx);
     let line = letter
         .numeric_line_px(computed)
-        .unwrap_or_else(|| crate::text::metrics::normal_px(fraction, size, vcx));
-    let Some(content) = crate::text::metrics::content_px(fraction, size, vcx) else {
+        .unwrap_or_else(|| crate::text::metrics::normal_px(fraction, size, fonts));
+    let Some(content) = crate::text::metrics::content_px(fraction, size, fonts) else {
         return;
     };
     let half = ((line - content) / 2.0).max(0.0);

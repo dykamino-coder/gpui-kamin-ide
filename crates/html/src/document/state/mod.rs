@@ -53,10 +53,8 @@ pub struct DocState {
     pub(crate) layout: Rc<crate::layout::layout_state::LayoutState>,
     /// Font-face descriptors and source caches belonging to this document.
     pub(crate) font_faces: font_facts::FontFaces,
-    /// Parsed MATH sources and registered native-family data of this document.
-    pub(crate) font_math: crate::text::fonts::math::MathFonts,
-    /// Font measurement caches scoped to this document.
-    pub(crate) metrics: crate::text::metrics::Metrics,
+    /// Platform font context, measurement caches and MATH tables of the text backend.
+    pub(crate) text: Rc<crate::text::text_fonts::TextFonts>,
     /// Paragraph and vertical-text measurements of the text phase of this document.
     pub(crate) paragraph: crate::text::paragraph_state::ParagraphState,
     /// CSS font-face metric descriptors, scoped to this document.

@@ -137,7 +137,7 @@ async fn build_stack(
         (children, parameters::kind(e, &style, opts))
     };
     let content = Content {
-        values: opts.cx.vcx().keep(),
+        fonts: opts.cx.text_fonts().clone(),
         children,
         factories,
         operator,

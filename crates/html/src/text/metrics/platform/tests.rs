@@ -16,7 +16,7 @@ fn document() -> Rc<DocState> {
         ..Default::default()
     };
     let doc = DocState::new(Default::default());
-    fonts.install(doc.values());
+    fonts.install(&doc.text, doc.values());
     doc
 }
 
@@ -65,17 +65,18 @@ fn immutable_registry_cold_warm_loading_and_two_documents() {
     assert_ne!(old.environment(), b.font_snapshot().environment());
     let calls = Rc::new(std::cell::Cell::new(0));
     let count = calls.clone();
-    a.metrics
+    a.text
+        .metrics
         .font_context()
         .with_loader(move |_| {
             count.set(count.get() + 1);
             Some("Ahem".into())
         })
-        .install(a.values());
+        .install(&a.text, a.values());
     // A valid empty sfnt directory is sufficient for the injected loader.
     let css = "@font-face { font-family: Alias; \
         src: url(data:font/ttf;base64,AAEAAAAAAAAAAAAA); unicode-range: U+41-5A }";
-    crate::text::fonts::load_faces(css, a.values()).unwrap();
+    crate::text::fonts::load_faces(css, &a.text, a.values()).unwrap();
     let cold = a.font_snapshot();
     assert!(cold.generation() > old.generation());
     assert_eq!(old.alias("Alias"), None);
@@ -87,13 +88,13 @@ fn immutable_registry_cold_warm_loading_and_two_documents() {
     );
     assert!(cold.covers_space("Ahem"));
     assert_eq!(b.font_snapshot().alias("Alias"), None);
-    crate::text::fonts::load_faces(css, a.values()).unwrap();
+    crate::text::fonts::load_faces(css, &a.text, a.values()).unwrap();
     let warm = a.font_snapshot();
     assert!(warm.generation() > cold.generation());
     assert_eq!(warm.registry, cold.registry);
     assert_eq!(calls.get(), 1);
     let with_space = css.replace("U+41-5A", "U+20-7F");
-    crate::text::fonts::load_faces(&with_space, a.values()).unwrap();
+    crate::text::fonts::load_faces(&with_space, &a.text, a.values()).unwrap();
     let later = a.font_snapshot();
     assert!(later.covers_space("Alias"));
     assert!(!cold.covers_space("Alias"));
@@ -116,8 +117,8 @@ fn backend_face_identity_is_native_document_scoped_and_revision_scoped() {
     ))));
     let a = DocState::new(Default::default());
     let b = DocState::new(Default::default());
-    fonts.install(a.values());
-    fonts.install(b.values());
+    fonts.install(&a.text, a.values());
+    fonts.install(&b.text, b.values());
     let request = FontRequest::new("Ahem", 16.0);
     let first = a
         .font_provider()
@@ -154,7 +155,7 @@ fn backend_face_identity_is_native_document_scoped_and_revision_scoped() {
             script: true,
         }
     );
-    crate::text::fonts::load_faces("", a.values()).unwrap();
+    crate::text::fonts::load_faces("", &a.text, a.values()).unwrap();
     let later = a
         .font_provider()
         .select(request, &a.font_snapshot())

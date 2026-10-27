@@ -19,9 +19,9 @@ pub(super) fn parse_document(
     let admission = crate::budget::admission::Admission::new(revision.clone());
     state.admit_revision(revision, base);
     let vcx = state.values();
-    fonts.install(vcx);
+    fonts.install(&state.text, vcx);
     let sheets = crate::dom::style_sources::collect(input, theme_css)?;
-    crate::text::fonts::load_faces_sheets(&sheets, base, vcx)?;
+    crate::text::fonts::load_faces_sheets(&sheets, base, &state.text, vcx)?;
     crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx)?;
     #[cfg(feature = "engine-bench")]
     let style_started = std::time::Instant::now();
