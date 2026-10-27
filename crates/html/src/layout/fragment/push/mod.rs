@@ -13,8 +13,8 @@ use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::line_shape::basis_sized;
+use crate::layout::fragment::shape_contents::row_axis_flags;
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
@@ -49,27 +49,8 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     // Сетка-стопка спускается ровно как в `shape_full` — иначе распорка
     // роста до ряда сетки не добирается, отдаёт `None`, и фон
     // коробки не дотягивается до низа колонки.
-    let grid_rows_stack = grid_stack(c);
-    let row_gap = if grid_rows_stack {
-        match c.style.used().gap {
-            Some((Some(Len::Px(v)), _)) => v,
-            _ => 0.0,
-        }
-    } else {
-        0.0
-    };
-    if (matches!(
-        c.style.used().display,
-        Some(Display::Grid)
-            | Some(Display::InlineGrid)
-            | Some(Display::GridLanes)
-            | Some(Display::Table)
-            | Some(Display::InlineTable)
-            | Some(Display::TableRow)
-            | Some(Display::TableRowGroup)
-    ) && !grid_rows_stack)
-        || matches!(c.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
-    {
+    let (row_nowrap, grid_rows_stack, row_gap, no_descent) = row_axis_flags(c);
+    if no_descent {
         return None;
     }
     let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
@@ -79,14 +60,6 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
         c.style.used().display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     ) || c.style.used().webkit_box == Some(true);
-    let row_nowrap = is_flex
-        && matches!(
-            c.style.used().flex_dir,
-            None | Some(crate::style::computed::FlexDir::Row)
-                | Some(crate::style::computed::FlexDir::RowReverse)
-        )
-        && c.style.used().flex_wrap != Some(true)
-        && c.style.cascaded().webkit_box_vertical != Some(true);
     // МНОГОСТРОЧНЫЙ flex: элемент — не коробка стопки, а член СТРОКИ. Распорка
     // перед самим элементом сдвигала его внутри строки и уводила за собой все
     // следующие строки (`flex-gap-decorations-fragmentation-009/010`: из шести

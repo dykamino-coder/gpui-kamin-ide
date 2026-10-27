@@ -2,6 +2,7 @@
 //! сетки, рост строк элемента у края фрагментаинера и перенос ряда через пустой ряд.
 
 use super::grid::RowPush;
+use super::grid_tests::grid;
 use super::{BlockBox, Laid, Pushed, grid_tree};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::flow::{FlowGeometry, LinePush};
@@ -15,26 +16,6 @@ fn first_div(nodes: &[Node]) -> Option<&Element> {
         Node::Element(e) => first_div(&e.children),
         _ => None,
     })
-}
-
-/// Сетка — первый `div` документа; номера её элементов по порядку.
-fn grid(html: &str) -> (BlockBox, Vec<u64>) {
-    let doc = crate::dom::parse(html, "");
-    let root = first_div(&doc).expect("grid root");
-    let b = BlockBox::collect(
-        root,
-        crate::layout::fragment::ShapeCx::COLUMNS,
-        doc.values(),
-    );
-    let ids = b
-        .grid
-        .as_ref()
-        .expect("grid")
-        .items
-        .iter()
-        .map(|i| i.id)
-        .collect();
-    (b, ids)
 }
 
 /// Две строки элемента `item` (`(верх, низ)`) — его собственный поток с адресами роста.
