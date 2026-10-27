@@ -65,7 +65,8 @@ pub(in crate::layout::multicol) fn column_kids(
             vcx,
         )
     };
-    if !col_vert
+    if false
+        && !col_vert
         && rows.is_none()
         && let Some(height) = fixed.filter(|h| *h > COORD_EPS)
     {
