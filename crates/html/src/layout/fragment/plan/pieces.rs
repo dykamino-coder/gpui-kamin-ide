@@ -193,7 +193,6 @@ pub(super) fn fill_pieces_inner(
             k,
             from,
             room,
-            target,
             edge,
             mono,
             at,
@@ -202,7 +201,8 @@ pub(super) fn fill_pieces_inner(
             tokens,
             &measurement.inline,
         )?;
-        // Недолаз до ближайшего разреза (или конца ребёнка).
+        // Недолаз: на сколько не хватило колонки до ближайшего
+        // разреза (или до конца ребёнка).
         let next = k
             .cuts
             .iter()

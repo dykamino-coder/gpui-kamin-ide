@@ -9,7 +9,6 @@ pub(crate) fn cut_at(
     k: &Kid,
     from: f32,
     room: f32,
-    target: f32,
     edge: f32,
     mono: bool,
     at: impl Fn(f32) -> (f32, f32),
@@ -86,25 +85,6 @@ pub(crate) fn cut_at(
             a = start;
         }
         if a > from + 0.01 { Some(at(a)) } else { None }
-    } else if !paged
-        && (k.h.max(k.over) <= target + 0.01 || k.keep.iter().any(|&(a, b)| holds(a, b)))
-    {
-        // Перенос сохраняет коробку, помещающуюся в целую колонку; при
-        // ослаблении break-inside:avoid сначала сохраняются её точки.
-        // cuts содержит класс A, а не все разрешённые разрывы: у более
-        // высокой обычной коробки край может лежать в зазоре класса C.
-        k.cuts
-            .iter()
-            .map(|&(point, _)| point)
-            .filter(|&point| point > from + 0.01 && point <= edge + 0.01)
-            .filter(|&point| {
-                !k.solid
-                    .iter()
-                    .chain(&k.avoid)
-                    .any(|&(a, b)| a < point - 0.01 && point < b - 0.01)
-            })
-            .max_by(f32::total_cmp)
-            .map(&at)
     } else {
         Some(at(edge))
     };

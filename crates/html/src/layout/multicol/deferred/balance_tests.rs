@@ -48,7 +48,7 @@ fn row_flex_037_balances_without_slicing_the_avoided_item(cx: &mut gpui::TestApp
 }
 
 #[gpui::test]
-fn row_line_preference_keeps_normal_balance_and_respects_css_height(cx: &mut gpui::TestAppContext) {
+fn row_flex_balances_without_avoid_and_respects_css_height(cx: &mut gpui::TestAppContext) {
     let content = "<div style='display:flex;flex-wrap:wrap'><div style='height:25px;width:50px'></div><div style='height:50px;width:50px'></div><div style='height:25px;width:50px;break-before:auto'></div><div style='height:50px;width:50px'></div></div>";
     assert_eq!(authored_height(cx, "column-gap:0", content), 75.);
     assert_eq!(

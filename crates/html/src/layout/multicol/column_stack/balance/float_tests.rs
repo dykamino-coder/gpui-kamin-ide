@@ -14,6 +14,10 @@ fn balancing_keeps_an_avoided_boundary_with_an_earlier_break() {
             ..Default::default()
         })
         .collect();
+    // Ранний разрыв на 25 сохраняет недолаз запрещённой границы 75.
+    let space = crate::layout::fragment::plan::Space::columns(2);
+    let (_, shortage, _) = ColumnStack::fill_avoiding(&kids, &|_| 75., space);
+    assert_eq!(shortage, 25.);
     let stack = ColumnStack::new(vec![], 2, 0., None, None, None, None, Default::default());
     let (height, _) = stack.balance_line(&kids, 2, None);
     assert_eq!(height, 100.);
