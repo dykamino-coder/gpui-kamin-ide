@@ -33,6 +33,9 @@ impl ColumnStack {
             }));
         }
         for f in plan {
+            if self.native_kid(f.kid) {
+                continue;
+            }
             // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
             // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
             // на полную высоту коробки и поднимать на срез нельзя.

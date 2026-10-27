@@ -6291,7 +6291,7 @@ index 0000000000000000000000000000000000000000..06408d599c05ad325c2a63c1b66dde4e
 +    }
 +}
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb9b60148f
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..94dc8ae5b94ad5f788ff8fb4d64af2bac19d8d33
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -1800,0 +1801,3 @@
@@ -6315,7 +6315,13 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +    fn prepaint(&mut self, window: &mut Window) -> bool;
 +}
 +
-@@ -1813,0 +1831,18 @@
+@@ -1813,0 +1831,24 @@
++    /// Локальная замена собственной краски; callback не наследуется потомками.
++    pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
++        self.interactivity.box_painter = Some(painter);
++        self
++    }
++
 +    /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
 +    pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
 +        self.paint_metadata = Some(std::rc::Rc::new(metadata));
@@ -6334,21 +6340,21 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +        self.layout_observer = Some(Box::new(observer));
 +        self
 +    }
-@@ -1854,0 +1890,4 @@
+@@ -1854,0 +1896,4 @@
 +    /// KaminIDE patch: this node's layout id and its unrounded window
 +    /// bounds (set in prepaint) for device-pixel snapping of CSS borders.
 +    layout_id: Option<LayoutId>,
 +    exact_bounds: Option<Bounds<Pixels>>,
-@@ -1893,0 +1933,2 @@
+@@ -1893,0 +1939,2 @@
 +    fn paint_boundary(&self) -> bool { false }
 +
-@@ -1942 +1983 @@
+@@ -1942 +1989 @@
 -            self.interactivity.request_layout(
 +            self.interactivity.request_layout_boxed(
-@@ -1954 +1995 @@
+@@ -1954 +2001 @@
 -                        window.request_layout(style, child_layout_ids.iter().copied(), cx)
 +                        window.request_layout_ref(&style, child_layout_ids.iter().copied(), cx)
-@@ -1960 +2001,12 @@
+@@ -1960 +2007,12 @@
 -        (layout_id, DivFrameState { child_layout_ids })
 +        // KaminIDE patch: capture identity in the tree receiving this node.
 +        if let Some(observer) = &mut self.layout_observer {
@@ -6362,14 +6368,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +                exact_bounds: None,
 +            },
 +        )
-@@ -1972,0 +2025,6 @@
+@@ -1972,0 +2031,6 @@
 +        // KaminIDE patch: stale descendants cannot publish inputs in this pass.
 +        if let Some(observer) = &mut self.layout_observer
 +            && !observer.prepaint(window)
 +        {
 +            return None;
 +        }
-@@ -2019 +2077,21 @@
+@@ -2019 +2083,21 @@
 -        self.interactivity.prepaint(
 +        // KaminIDE patch: unrounded bounds of this node, only when they lie
 +        // within half a device pixel of the snapped ones (a node moved by
@@ -6392,31 +6398,31 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +        );
 +
 +        let hitbox = self.interactivity.prepaint(
-@@ -2026,0 +2105,2 @@
+@@ -2026,0 +2111,2 @@
 +                // Children bring their own exact bounds.
 +                window.raster_frame.exact_bounds = None;
-@@ -2033,0 +2114,3 @@
+@@ -2033,0 +2120,3 @@
 +                        if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
 +                            (traversal.enter_children)(window);
 +                        }
-@@ -2055 +2138,3 @@
+@@ -2055 +2144,3 @@
 -        )
 +        );
 +        window.raster_frame.exact_bounds = outer_exact;
 +        hitbox
-@@ -2064 +2149 @@
+@@ -2064 +2155 @@
 -        _request_layout: &mut Self::RequestLayoutState,
 +        request_layout: &mut Self::RequestLayoutState,
-@@ -2073,0 +2159,4 @@
+@@ -2073,0 +2165,4 @@
 +        let outer_exact = std::mem::replace(
 +            &mut window.raster_frame.exact_bounds,
 +            request_layout.exact_bounds.map(|exact| (bounds, exact)),
 +        );
-@@ -2082,0 +2172,3 @@
+@@ -2082,0 +2178,3 @@
 +                    let exact_bounds = window.raster_frame.exact_bounds;
 +                    // Own borders are painted; children bring their own bounds.
 +                    window.raster_frame.exact_bounds = None;
-@@ -2088,2 +2180,22 @@
+@@ -2088,2 +2186,22 @@
 -                    for child in &mut self.children {
 -                        child.paint(window, cx);
 +                    let painter = self.child_painter.clone().or_else(|| {
@@ -6441,9 +6447,11 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +                        );
 +                    } else {
 +                        for child in children { child.paint(window, cx); }
-@@ -2093,0 +2206 @@
+@@ -2093,0 +2212 @@
 +        window.raster_frame.exact_bounds = outer_exact;
-@@ -2216,0 +2330,14 @@
+@@ -2133,0 +2253 @@
++    pub(crate) box_painter: Option<crate::BoxPainter>,
+@@ -2216,0 +2337,14 @@
 +        self.request_layout_boxed(global_id, _inspector_id, window, cx, |style, window, cx| {
 +            f(*style, window, cx)
 +        })
@@ -6458,10 +6466,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +        cx: &mut App,
 +        f: impl FnOnce(Box<Style>, &mut Window, &mut App) -> LayoutId,
 +    ) -> LayoutId {
-@@ -2294 +2421 @@
+@@ -2294 +2428 @@
 -                let style = self.compute_style_internal(None, element_state.as_mut(), window, cx);
 +                let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
-@@ -2354,11 +2481,53 @@
+@@ -2354,11 +2488,53 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -6526,7 +6534,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +                        element_state.long_press_tooltip_active.as_ref()
 +                    {
 +                        long_press_tooltip_active.set(false);
-@@ -2366,18 +2535 @@
+@@ -2366,18 +2542 @@
 -                    if self.hover_style.is_some() || self.group_hover_style.is_some() {
 -                        element_state
 -                            .hover_state
@@ -6546,7 +6554,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 -                        }
 -                    }
 +                    element_state.active_tooltip.take();
-@@ -2385,20 +2537,12 @@
+@@ -2385,20 +2544,12 @@
 -
 -                window.with_text_style(style.text_style().cloned(), |window| {
 -                    window.with_content_mask(
@@ -6579,7 +6587,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +            let scroll_offset = self.clamp_scroll_position(bounds, &style, window, cx);
 +            f(&style, scroll_offset, hitbox, window, cx)
 +        })
-@@ -2518,113 +2662,108 @@
+@@ -2518,113 +2669,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -6760,7 +6768,8 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +        }
 +
 +        window.with_element_opacity(style.opacity, |window| {
-+            style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
++            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx);
++            style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
 +                window.with_child_style(&style, bounds, |window| {
 +                    window.with_tab_group(tab_group, |window| {
 +                        // Register the container's own focus handle *inside* its
@@ -6801,7 +6810,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +2771,27 @@
+@@ -2632,2 +2779,27 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -6831,14 +6840,14 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +2799,2 @@
+@@ -2635,4 +2807,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -3404,0 +3567,13 @@
+@@ -3404,0 +3575,13 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -6852,11 +6861,11 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..4e32629624774b90bb56866ff230f1bb
 +        Box::new(self.compute_style_internal(hitbox, element_state, window, cx))
 +    }
 +
-@@ -3499 +3674,2 @@
+@@ -3499 +3682,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -4101,0 +4278,3 @@
+@@ -4101,0 +4286,3 @@
 +
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
@@ -8121,10 +8130,10 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..d8e5d7f729b111793307f408788be807
 +pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, MeasuredBox, MeasuredContent, MeasuredStaticPosition};
 diff --git a/vendor/gpui/src/paint_traversal.rs b/vendor/gpui/src/paint_traversal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fa7109cd6945b274f1664b9092389ecedbc35892
+index 0000000000000000000000000000000000000000..8de4f9e23b6e68b6e014ecf80cc71d7021cec17f
 --- /dev/null
 +++ b/vendor/gpui/src/paint_traversal.rs
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,65 @@
 +//! Общие callbacks: геометрия и метаданные явные, правила принадлежат хозяину.
 +
 +use crate::{AnyElement, App, Bounds, Pixels, Style, Window};
@@ -8185,6 +8194,11 @@ index 0000000000000000000000000000000000000000..fa7109cd6945b274f1664b9092389ece
 +    /// Вызывается перед детьми после применения overflow и scroll offset.
 +    pub enter_children: Rc<dyn Fn(&Window)>,
 +}
++
++/// Замена собственной краски коробки в прежней точке, внутри scope её предка.
++/// true означает, что хозяин выдал команды через общий native painter.
++#[derive(Clone)]
++pub struct BoxPainter(pub Rc<dyn Fn(&Style, Bounds<Pixels>, &mut Window, &mut App) -> bool>);
 diff --git a/vendor/gpui/src/plane_bsp.rs b/vendor/gpui/src/plane_bsp.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..afbb9d8b0564f29410a266c1c7108dac2e7223d0
@@ -9615,7 +9629,7 @@ index 0000000000000000000000000000000000000000..b09832d694d351eac6b4b47d155f7b2b
 +    }
 +}
 diff --git a/vendor/gpui/src/style.rs b/vendor/gpui/src/style.rs
-index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0ce463a41
+index 9150fdded91b817305454f18beb0a0b7d6c5966a..1b111f61135c3a1f67c197c34096690fae889566
 --- a/vendor/gpui/src/style.rs
 +++ b/vendor/gpui/src/style.rs
 @@ -0,0 +1,4 @@
@@ -9898,8 +9912,46 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0
 +                point(at(b.right()), at(b.bottom())),
 +            ),
 +        })
-@@ -694,0 +932,12 @@
+@@ -694,0 +932,51 @@
 +        self.paint_box(bounds, window, cx);
++        self.paint_after_box(window, cx, continuation);
++    }
++
++    /// Общая точка собственной краски: локальный callback меняет только геометрию.
++    pub fn paint_with_box(
++        &self,
++        bounds: Bounds<Pixels>,
++        painter: Option<&crate::BoxPainter>,
++        window: &mut Window,
++        cx: &mut App,
++        continuation: impl FnOnce(&mut Window, &mut App),
++    ) {
++        self.paint_box_with(bounds, painter, window, cx);
++        self.paint_after_box(window, cx, continuation);
++    }
++
++    /// Завершает callback собственной краски до рекурсивного обхода детей.
++    #[inline(never)]
++    pub fn paint_box_with(
++        &self,
++        bounds: Bounds<Pixels>,
++        painter: Option<&crate::BoxPainter>,
++        window: &mut Window,
++        cx: &mut App,
++    ) {
++        if !painter.is_some_and(|painter| (painter.0)(self, bounds, window, cx)) {
++            self.paint_box(bounds, window, cx);
++        }
++    }
++
++    /// Продолжает обход после собственной краски и завершает debug scope.
++    #[inline(always)]
++    pub fn paint_after_box(
++        &self,
++        window: &mut Window,
++        cx: &mut App,
++        continuation: impl FnOnce(&mut Window, &mut App),
++    ) {
 +        continuation(window, cx);
 +
 +        #[cfg(debug_assertions)]
@@ -9908,10 +9960,11 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0
 +        }
 +    }
 +
++    /// Собственная краска общего painter по явному border-box, без обхода детей.
 +    // Finish shadows, background and border temporaries before painting children.
 +    #[inline(never)]
-+    fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-@@ -720 +969,7 @@
++    pub fn paint_box(&self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+@@ -720 +1008,7 @@
 -
 +                    // KaminIDE patch: радиальный хранит цвета там же, где
 +                    // линейный, — берём первый стоп.
@@ -9920,14 +9973,14 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0
 +                        .first()
 +                        .map(|stop| stop.color)
 +                        .unwrap_or_default(),
-@@ -731 +986,2 @@
+@@ -731 +1025,2 @@
 -                bounds,
 +                window.render_context::<crate::PaintTraversal>()
 +                    .map_or(bounds, |host| (host.fill_bounds)(self, bounds, window)),
-@@ -739,0 +996,2 @@
+@@ -739,0 +1035,2 @@
 +        // Upstream's own inset shadows (`BoxShadow::inset` in `box_shadow`),
 +        // cast from the border box; HTML uses `inset_box_shadow` below.
-@@ -742,20 +1000,36 @@
+@@ -742,20 +1039,36 @@
 -        continuation(window, cx);
 -
 -        if self.is_border_visible() {
@@ -9984,18 +10037,18 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0
 +        }
 +
 +        border_snap::paint(self, bounds, corner_radii, rem_size, window);
-@@ -773,0 +1048,2 @@
+@@ -773,0 +1087,2 @@
 +            safe_alignment: (false, false, false, false),
 +            safe_justify_alignment: (false, false),
-@@ -779,0 +1056 @@
+@@ -779,0 +1095 @@
 +            overflow_clip_offset: None,
-@@ -791,0 +1069,5 @@
+@@ -791,0 +1108,5 @@
 +            aspect_ratio_preferred_size: [None; 2],
 +            sizing_keywords: [None; 2],
 +            max_sizing_keywords: [None; 2],
 +            min_sizing_keywords: [None; 2],
 +            contained_intrinsic_size: [None; 2],
-@@ -797,0 +1080,8 @@
+@@ -797,0 +1119,8 @@
 +            // KaminIDE patch
 +            justify_items: None,
 +            justify_self: None,
@@ -10004,7 +10057,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0
 +            grid_auto_cols: None,
 +            grid_auto_cols_list: Vec::new(),
 +            grid_auto_rows_list: Vec::new(),
-@@ -800,0 +1091,23 @@
+@@ -800,0 +1130,23 @@
 +            flex_balance_lines: 0,
 +            flex_cross_reverse: false,
 +            block_baselines: false,
@@ -10028,29 +10081,29 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..e2754a96591afabf97a1513f22c936b0
 +            block_flow: None,
 +            grid_subgrid: 0,
 +            grid_line_names: None,
-@@ -802,0 +1116 @@
+@@ -802,0 +1155 @@
 +            item_is_table: false,
-@@ -806,0 +1121 @@
+@@ -806,0 +1160 @@
 +            snap_to_device_pixels: false,
-@@ -808,0 +1124 @@
+@@ -808,0 +1163 @@
 +            inset_box_shadow: Default::default(),
-@@ -813,0 +1130,4 @@
+@@ -813,0 +1169,4 @@
 +            grid_cols_min: None,
 +            grid_cols_fit: false,
 +            grid_template_cols: None,
 +            grid_template_rows: None,
-@@ -1059,0 +1380,3 @@
+@@ -1059,0 +1419,3 @@
 +    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
 +    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
 +    LastBaseline,
-@@ -1133,0 +1457,4 @@
+@@ -1133,0 +1496,4 @@
 +    /// KaminIDE patch: a block container that establishes a new block formatting context
 +    /// (`display: flow-root`, css-display-3 §2.2): its margins never collapse with its
 +    /// children's or through it (CSS 2.1 §8.3.1).
 +    FlowRoot,
-@@ -1258,0 +1586 @@
+@@ -1258,0 +1625 @@
 +            AlignItems::LastBaseline => Self::LAST_BASELINE,
-@@ -1282,0 +1611 @@
+@@ -1282,0 +1650 @@
 +            Display::FlowRoot => Self::FlowRoot,
 diff --git a/vendor/gpui/src/style/border_snap.rs b/vendor/gpui/src/style/border_snap.rs
 new file mode 100644

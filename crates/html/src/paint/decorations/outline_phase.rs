@@ -21,6 +21,13 @@ pub(crate) fn paint(
     };
     owner.outlines.borrow_mut().push(Some(Vec::new()));
     f(window, cx);
+    flush(owner, window, cx);
+}
+
+// Вектор и iterator отложенной фазы нужны только после обхода потомков.
+// Отдельный кадр не удерживает их на каждом уровне вложенных float.
+#[inline(never)]
+fn flush(owner: &Rc<Deferred>, window: &mut Window, cx: &mut App) {
     let outlines = owner
         .outlines
         .borrow_mut()
@@ -123,6 +130,30 @@ struct Phase {
     child: AnyElement,
     mode: Mode,
 }
+
+impl Phase {
+    // Замена элемента относится только к отложенному outline; её временные
+    // значения не должны увеличивать рекурсивные кадры Flow и Scope.
+    #[inline(never)]
+    fn paint_outline(&mut self, window: &mut Window, cx: &mut App) {
+        let deferred =
+            self.owner
+                .as_ref()
+                .is_some_and(|owner| match owner.outlines.borrow_mut().last_mut() {
+                    Some(Some(outlines)) => {
+                        let child =
+                            std::mem::replace(&mut self.child, gpui::Empty.into_any_element());
+                        outlines.push((child, window.content_mask()));
+                        true
+                    }
+                    _ => false,
+                });
+        if !deferred {
+            self.child.paint(window, cx);
+        }
+    }
+}
+
 impl Wrap for Phase {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child
@@ -130,24 +161,7 @@ impl Wrap for Phase {
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         match self.mode {
-            Mode::Outline => {
-                // Inside an outline scope the laid-out child moves to the deferred outline
-                // pass (an unlaid `Empty` takes its place and is never painted).
-                let deferred = self.owner.as_ref().is_some_and(|owner| {
-                    match owner.outlines.borrow_mut().last_mut() {
-                        Some(Some(outlines)) => {
-                            let child =
-                                std::mem::replace(&mut self.child, gpui::Empty.into_any_element());
-                            outlines.push((child, window.content_mask()));
-                            true
-                        }
-                        _ => false,
-                    }
-                });
-                if !deferred {
-                    self.child.paint(window, cx);
-                }
-            }
+            Mode::Outline => self.paint_outline(window, cx),
             // Outline isolation is not a paint-order boundary: the scoped
             // float's own atomic paint keeps its inline content and passes
             // positioned descendants to the enclosing stacking context

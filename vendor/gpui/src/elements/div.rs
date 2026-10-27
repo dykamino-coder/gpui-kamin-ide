@@ -1828,6 +1828,12 @@ pub trait LayoutObserver: 'static {
 }
 
 impl Div {
+    /// Локальная замена собственной краски; callback не наследуется потомками.
+    pub fn paint_box_with(mut self, painter: crate::BoxPainter) -> Self {
+        self.interactivity.box_painter = Some(painter);
+        self
+    }
+
     /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
     pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
         self.paint_metadata = Some(std::rc::Rc::new(metadata));
@@ -2244,6 +2250,7 @@ pub(crate) struct AriaProperties {
 /// interactivity in the `Div` element.
 #[derive(Default)]
 pub struct Interactivity {
+    pub(crate) box_painter: Option<crate::BoxPainter>,
     /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
     pub element_id: Option<ElementId>,
     /// Whether the element was clicked. This will only be present after layout.
@@ -2726,7 +2733,8 @@ impl Interactivity {
         }
 
         window.with_element_opacity(style.opacity, |window| {
-            style.paint(bounds, window, cx, |window: &mut Window, cx: &mut App| {
+            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx);
+            style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
                 window.with_child_style(&style, bounds, |window| {
                     window.with_tab_group(tab_group, |window| {
                         // Register the container's own focus handle *inside* its

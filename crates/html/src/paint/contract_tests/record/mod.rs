@@ -1,6 +1,7 @@
 //! Контракт immutable record: однократность фаз и явные scopes размещения.
 
 mod clip;
+mod consumer;
 mod host;
 mod lifetime;
 mod placement;

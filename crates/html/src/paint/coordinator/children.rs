@@ -44,6 +44,7 @@ fn paint(
     window: &mut Window,
     cx: &mut App,
 ) {
+    super::segments::remember_clips(window);
     let pass = current(window);
     let open = pass.as_ref().is_some_and(|pass| pass.is_open(window));
     if open {
@@ -61,21 +62,29 @@ fn paint(
             }
         }
     } else {
-        // Fallback остаётся CSS-политикой: метаданные прозрачных holders
-        // сохраняют фазу позиционированного корня без downcast-эвристик.
-        let mut late = Vec::new();
-        for child in children {
-            if child
-                .paint_metadata()
-                .is_some_and(|tag| tag.is::<deferred::PositionedTag>())
-            {
-                late.push(child);
-            } else {
-                child.paint(window, cx);
-            }
-        }
-        for child in late {
+        fallback(children, window, cx);
+    }
+}
+
+// Список fallback не занимает стек каждого открытого CSS collector.
+#[inline(never)]
+fn fallback(
+    children: &mut dyn Iterator<Item = &mut AnyElement>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let mut late = Vec::new();
+    for child in children {
+        if child
+            .paint_metadata()
+            .is_some_and(|tag| tag.is::<deferred::PositionedTag>())
+        {
+            late.push(child);
+        } else {
             child.paint(window, cx);
         }
+    }
+    for child in late {
+        child.paint(window, cx);
     }
 }

@@ -48,6 +48,10 @@ pub(crate) struct Snapshot {
     pub(crate) positioned: HashMap<u64, PositionedMetrics>,
     pub(crate) containing_blocks: HashMap<u64, (Node, LayoutSpace)>,
     pub(crate) flows: Vec<fragmentation::Source>,
+    pub(crate) families: HashMap<u64, u64>,
+    pub(crate) normal: HashMap<u64, Bounds<Pixels>>,
+    pub(crate) cloned_boxes: HashMap<u64, (crate::layout::fragment::types::StackAxis, f32, f32)>,
+    pub(crate) native: Option<std::rc::Rc<layout::Native>>,
 }
 
 impl Snapshot {

@@ -149,6 +149,7 @@ impl Recipe {
             };
             // Элементы с LayoutId вложенного движка не переживают этот вызов.
             stack.children.clear();
+            stack.oof.geometry = Default::default();
             (height, first, last)
         })
     }

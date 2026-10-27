@@ -12,6 +12,9 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px, size};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 mod static_position;
 use static_position::StaticPosition;
+mod element;
+mod margin;
+use margin::margin_offset;
 
 #[derive(Default)]
 pub(crate) struct Recorder {
@@ -24,6 +27,7 @@ struct Entry {
     node: Node,
     cb: u64,
     border: [f32; 4],
+    clone_edges: Option<(crate::layout::fragment::types::StackAxis, f32, f32)>,
     positioned: bool,
 }
 
@@ -79,6 +83,15 @@ impl Recorder {
         let nodes = self.nodes.borrow();
         let spots = self.spots.borrow();
         let mut snapshot = Snapshot::default();
+        snapshot.families.clone_from(&self.flows.families);
+        snapshot.cloned_boxes = nodes
+            .iter()
+            .filter_map(|(&id, entry)| Some((id, entry.clone_edges?)))
+            .collect();
+        snapshot.normal = nodes
+            .iter()
+            .filter_map(|(&id, entry)| Some((id, entry.node.bounds(window)?)))
+            .collect();
         for (&id, entry) in nodes.iter().filter(|(_, e)| e.positioned) {
             let Some(cb) = nodes.get(&entry.cb) else {
                 continue;
@@ -124,20 +137,6 @@ impl Recorder {
     }
 }
 
-fn margin_offset(style: &Computed, rtl: bool, vcx: ValueCx<'_>) -> gpui::Point<Pixels> {
-    use crate::layout::block::struts::margin_px;
-    // CSS2 §10.3.7: static right задаёт правый margin edge, не левый border edge.
-    let x = if rtl {
-        style.margin.right
-    } else {
-        style.margin.left
-    };
-    point(
-        px(margin_px(x, style, vcx).unwrap_or(0.) * if rtl { -1. } else { 1. }),
-        px(margin_px(style.margin.top, style, vcx).unwrap_or(0.)),
-    )
-}
-
 /// Декоратор исходного CSS-бокса сохраняет его LayoutId, не добавляя коробок solver.
 pub(crate) fn wrap(id: u64, style: &BoxStyle, child: AnyElement, opts: &RenderOpts) -> AnyElement {
     match capture(id, style, opts) {
@@ -160,6 +159,23 @@ pub(crate) fn capture(id: u64, style: &BoxStyle, opts: &RenderOpts) -> Option<Bo
         },
         positioned: crate::layout::box_kind::out_of_flow(style),
         border: [b.top, b.right, b.bottom, b.left].map(px_lossy_zero),
+        clone_edges: style.bdb_clone.then(|| {
+            let axis = crate::layout::fragment::types::StackAxis::of(style.wm());
+            let (head, tail) = if axis.is_vertical() {
+                if axis == crate::layout::fragment::types::StackAxis::VerticalRl {
+                    ((style.padding.right, b.right), (style.padding.left, b.left))
+                } else {
+                    ((style.padding.left, b.left), (style.padding.right, b.right))
+                }
+            } else {
+                ((style.padding.top, b.top), (style.padding.bottom, b.bottom))
+            };
+            (
+                axis,
+                px_lossy_zero(head.0) + px_lossy_zero(head.1),
+                px_lossy_zero(tail.0) + px_lossy_zero(tail.1),
+            )
+        }),
         recorder: recorder.clone(),
     }))
 }
@@ -169,42 +185,8 @@ pub(crate) struct Recording {
     cb: u64,
     positioned: bool,
     border: [f32; 4],
+    clone_edges: Option<(crate::layout::fragment::types::StackAxis, f32, f32)>,
     recorder: Rc<Recorder>,
-}
-
-impl Recording {
-    pub(crate) fn wrap(self: Box<Self>, child: AnyElement) -> AnyElement {
-        Record {
-            geometry: self,
-            child,
-        }
-        .hooked()
-    }
-}
-
-struct Record {
-    geometry: Box<Recording>,
-    child: AnyElement,
-}
-
-impl Wrap for Record {
-    fn child(&mut self) -> &mut AnyElement {
-        &mut self.child
-    }
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let id = self.child.request_layout(window, cx);
-        let geometry = &self.geometry;
-        geometry.recorder.nodes.borrow_mut().insert(
-            geometry.id,
-            Entry {
-                node: Node::capture(id, window),
-                cb: geometry.cb,
-                positioned: geometry.positioned,
-                border: geometry.border,
-            },
-        );
-        id
-    }
 }
 
 #[cfg(test)]

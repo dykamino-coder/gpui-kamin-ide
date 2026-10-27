@@ -4,7 +4,9 @@ use super::super::{Snapshot, record::Recorder};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
-use gpui::{App, AvailableSpace, Div, IntoElement, ParentElement, Styled, Window, div, px, size};
+use gpui::{
+    App, AvailableSpace, Bounds, Div, IntoElement, ParentElement, Styled, Window, div, px, size,
+};
 use std::rc::Rc;
 
 pub(crate) fn contains_positioned(e: &Element) -> bool {
@@ -97,60 +99,68 @@ fn collect_in(
     if !kids.elements().any(contains_positioned) {
         return Rc::default();
     }
-    window.with_nested_layout(|window| {
-        let recorder = Rc::new(Recorder::for_fragments(
-            kids.elements(),
-            parent,
-            opts,
-            page.is_some() || opts.frag.paged.is_some(),
-        ));
-        let mut opts = opts.clone();
-        opts.cx.position = Default::default();
-        opts.cx.deferred = Default::default();
-        opts.cx.position.geometry_record = Some(recorder.clone());
-        opts.cx.position.geometry = None;
-        opts.cx.constraints.avail_w = Some(width);
-        opts.frag = Default::default();
-        // Начальная page area — настоящий ICB; normal потомки остаются overflow.
-        let icb = page.as_ref().map(|_| {
-            crate::layout::positioned::containing_block::LayerScope::icb(&opts.cx.position.state)
-        });
-        let paged = page
-            .as_ref()
-            .map(|_| crate::layout::page::paged::PagedBuild::begin());
-        opts.frag.paged = paged.clone();
-        let children = kids.build(parent, &opts);
-        let is_page = page.is_some();
-        let mut frame = match page {
-            Some((height, frame)) => frame
-                .relative()
-                .w(px(width))
-                .h(px(height))
-                .children(children),
-            None => div().block().w(px(width)).children(children),
-        };
-        if let Some(icb) = icb {
-            frame = frame
-                .children(icb.finish())
-                .children(opts.take_paged_fixed());
-        }
-        if let Some(paged) = paged {
-            paged.end();
-        }
-        let mut root = frame.into_any_element();
-        if is_page {
-            root = super::super::record::wrap(0, parent, root, &opts);
-        }
-        root.layout_as_root(
-            size(
-                AvailableSpace::Definite(px(width)),
-                AvailableSpace::MaxContent,
-            ),
-            window,
-            cx,
-        );
-        let mut snapshot = recorder.snapshot(window);
-        recorder.fragment_snapshot(&mut snapshot, window);
-        Rc::new(snapshot)
-    })
+    let recorder = Rc::new(Recorder::for_fragments(
+        kids.elements(),
+        parent,
+        opts,
+        page.is_some() || opts.frag.paged.is_some(),
+    ));
+    let mut opts = opts.clone();
+    opts.cx.position = Default::default();
+    opts.cx.deferred = Default::default();
+    opts.cx.position.geometry_record = Some(recorder.clone());
+    opts.cx.position.geometry = None;
+    opts.cx.constraints.avail_w = Some(width);
+    opts.frag = Default::default();
+    // Начальная page area — настоящий ICB; normal потомки остаются overflow.
+    let icb = page.as_ref().map(|_| {
+        crate::layout::positioned::containing_block::LayerScope::icb(&opts.cx.position.state)
+    });
+    let paged = page
+        .as_ref()
+        .map(|_| crate::layout::page::paged::PagedBuild::begin());
+    opts.frag.paged = paged.clone();
+    let children = kids.build(parent, &opts);
+    let is_page = page.is_some();
+    let mut frame = match page {
+        Some((height, frame)) => frame
+            .relative()
+            .w(px(width))
+            .h(px(height))
+            .children(children),
+        None => div().block().w(px(width)).children(children),
+    };
+    if let Some(icb) = icb {
+        frame = frame
+            .children(icb.finish())
+            .children(opts.take_paged_fixed());
+    }
+    if let Some(paged) = paged {
+        paged.end();
+    }
+    let mut root = frame.into_any_element();
+    // Нулевой owner — прямой OOF, а настоящий id родителя нужен его CB.
+    // Обе метки ссылаются на тот же LayoutId без дополнительной коробки.
+    root = super::super::record::wrap(0, parent, root, &opts);
+    if !is_page && parent.self_node != 0 {
+        root = super::super::record::wrap(parent.self_node, parent, root, &opts);
+    }
+    let layout =
+        crate::layout::fragment::geometry::Node::capture(root.request_layout(window, cx), window);
+    let root_size = root.layout_as_root(
+        size(
+            AvailableSpace::Definite(px(width)),
+            AvailableSpace::MaxContent,
+        ),
+        window,
+        cx,
+    );
+    let mut snapshot = recorder.snapshot(window);
+    recorder.fragment_snapshot(&mut snapshot, window);
+    let extent = snapshot.normal.values().copied().fold(
+        Bounds::new(gpui::point(px(0.), px(0.)), root_size),
+        |extent, bounds| extent.union(&bounds),
+    );
+    snapshot.native = Some(Rc::new(super::Native::new(root, layout, extent)));
+    Rc::new(snapshot)
 }
