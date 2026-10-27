@@ -9,6 +9,7 @@ use crate::layout::positioned::containing_block::metrics::Snapshot;
 use crate::style::computed::writing_mode::WritingMode;
 use gpui::{Bounds, Pixels};
 use std::{cell::RefCell, rc::Rc};
+mod balance;
 mod source;
 
 #[derive(Default)]
@@ -23,6 +24,18 @@ pub(crate) struct State {
         Vec<(gpui::PaintSegmentId, gpui::PaintRecord)>,
         crate::hooks::BareRecords,
     )>,
+    pub(crate) owners: Vec<(u64, usize, f32)>,
+}
+
+impl State {
+    pub(crate) fn fresh(&self) -> Self {
+        Self {
+            geometry: self.geometry.clone(),
+            wm: self.wm,
+            owners: self.owners.clone(),
+            ..Default::default()
+        }
+    }
 }
 
 /// Прямоугольник и Space имеют одно происхождение: завершённый normal plan.
@@ -32,6 +45,17 @@ pub(crate) struct Fragmentainer {
 }
 
 impl ColumnStack {
+    pub(crate) fn oof_for_measurement(&self) -> State {
+        let mut state = self.oof.fresh();
+        state.owners = self
+            .children
+            .iter()
+            .enumerate()
+            .filter_map(|(index, c)| Some((c.source?, index, c.h)))
+            .collect();
+        state
+    }
+
     pub(crate) fn with_oof(mut self, geometry: Option<Rc<Snapshot>>, wm: WritingMode) -> Self {
         self.oof = State {
             geometry: geometry.unwrap_or_default(),

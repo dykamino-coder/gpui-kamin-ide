@@ -68,13 +68,17 @@ impl Space {
 /// содержимое после него продолжается там, где кончилось переполнение,
 /// а не с верха следующей страницы — `monolithic-overflow-001`, текст
 /// «в середине второй страницы»). В колонках правило не действует.
-pub(crate) fn fill(kids: &[Kid], target: f32, space: Space) -> (usize, f32, Plan) {
-    fill_at(kids, &|_| target, space)
-}
-
-/// То же с высотой ПО КОЛОНКАМ: `target_at(col)`. Нужно рядам —
+/// Высота задаётся ПО КОЛОНКАМ: `target_at(col)`. Нужно рядам —
 /// полные ряды стоят в `column-height`, хвост балансируется ниже
 /// (`balance_tail`).
+pub(crate) fn fill_at(
+    kids: &[Kid],
+    target_at: &dyn Fn(usize) -> f32,
+    space: Space,
+) -> (usize, f32, Plan) {
+    fill_measured(kids, target_at, space, &mut |_| None)
+}
+
 /// Поток дошёл до колонок перенесённого флоата (`float_hold`): встать
 /// под его концом.
 pub(crate) fn skip_float(
@@ -93,15 +97,6 @@ pub(crate) fn skip_float(
         }
         *hold = None;
     }
-}
-
-/// План с постоянной геометрией содержимого.
-pub(crate) fn fill_at(
-    kids: &[Kid],
-    target_at: &dyn Fn(usize) -> f32,
-    space: Space,
-) -> (usize, f32, Plan) {
-    fill_measured(kids, target_at, space, &mut |_| None)
 }
 
 mod measured;

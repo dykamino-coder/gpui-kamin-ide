@@ -14,12 +14,13 @@ pub(crate) enum BreaksAt {
     Column,
 }
 
-/// Ребёнок колонок: элемент, высота коробки и вертикальные поля
-/// (схлопываются между соседями по правилам потока).
+/// Ребёнок колонок: элемент, геометрия и схлопывающиеся поля.
 pub struct StackChild {
     pub el: AnyElement,
     /// Рецепты ещё не востребованных копий; очищаются при замене дерева.
     pub(crate) fragment_builders: Vec<super::FragmentHandle>,
+    /// Исходный normal-владелец OOF, независимо от вида рекордера.
+    pub(crate) source: Option<u64>,
     /// Первый замер сравнивается с оценкой до замены геометрии на измеренную.
     #[cfg(feature = "wpt-harness")]
     pub(crate) probe_pending: bool,
@@ -27,8 +28,6 @@ pub struct StackChild {
     pub(crate) probe: crate::FragmentProbes,
     /// Recorder of the main copy (`Watched::for_blocks`): measured breaks.
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
-    /// Source node of the child's box (native paint family); 0 for static-position probes.
-    pub(crate) node: u64,
     /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
     /// (`Some(ширина колонки)`), а не мера `render::shape_full`: та ребёнка не
     /// выразила (флоаты, внепоточные потомки …). Ставится в
@@ -173,7 +172,7 @@ pub struct Repeat {
 
 /// Геометрия повтора для укладки (`fill_at`), в координатах коробки. Нули —
 /// повтора нет, укладка тождественна прежней.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct RepeatGeom {
     /// Место полосы шапки сверху у продолжения и полосы подвала снизу.
     pub head: f32,

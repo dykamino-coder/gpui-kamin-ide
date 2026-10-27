@@ -75,14 +75,18 @@ fn column_overflow_does_not_constrain_the_following_item() {
         solid: measured.solid,
         ..Default::default()
     };
-    let (_, _, plan) = crate::layout::fragment::plan::fill(
+    let (_, _, plan) = crate::layout::fragment::plan::fill_at(
         &[kid],
-        100.0,
+        &|_| 100.0,
         crate::layout::fragment::plan::Space::columns(4),
     );
+    // Граница первого item не исчерпывает разрывы следующего: его пустой
+    // блок допускает класс C. Параллельное переполнение не сдвигает край.
     assert_eq!(
-        plan.iter().map(|f| f.h).collect::<Vec<_>>(),
-        vec![100.0, 100.0]
+        plan.iter()
+            .map(|f| (f.col, f.from, f.h))
+            .collect::<Vec<_>>(),
+        vec![(0, 0.0, 100.0), (1, 100.0, 100.0)]
     );
 }
 

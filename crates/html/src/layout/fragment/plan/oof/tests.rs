@@ -18,9 +18,9 @@ fn independent_steps_match_normal_plan_with_forced_breaks() {
         forced: vec![35., 120.],
         ..slice(185.)
     };
-    let (_, _, expected) = crate::layout::fragment::plan::fill(
+    let (_, _, expected) = crate::layout::fragment::plan::fill_at(
         std::slice::from_ref(&kid),
-        70.,
+        &|_| 70.,
         super::super::Space::pages(10),
     );
     let mut flow = Flow::default();
@@ -165,4 +165,38 @@ fn absolute_inside_a_repeated_root_is_not_delayed_or_fragmented() {
     let fragment = result.fragment.unwrap();
     assert_eq!((fragment.y, fragment.from, fragment.h), (150., 0., 185.));
     assert!(result.next.is_none());
+}
+
+#[test]
+fn balance_trials_replay_the_same_input_token_without_consuming_it() {
+    let kid = slice(210.);
+    let mut store = TokenStore::default();
+    let space = |height| Space {
+        block_size: Some(height),
+        ..Space::columns()
+    };
+    let input = Flow::default()
+        .resume(&kid, &Geometry::default(), space(60.), 0., None, &mut store)
+        .unwrap()
+        .next
+        .unwrap();
+    let saved = store.get(input).unwrap().clone();
+    let mut replay = Vec::new();
+    for height in [70., 100., 70.] {
+        let fragment = Flow::default()
+            .resume(
+                &kid,
+                &Geometry::default(),
+                space(height),
+                0.,
+                Some(input),
+                &mut store,
+            )
+            .unwrap()
+            .fragment
+            .unwrap();
+        replay.push((fragment.copy, fragment.from, fragment.h));
+        assert_eq!(store.get(input).unwrap(), &saved);
+    }
+    assert_eq!(replay, [(1, 60., 70.), (1, 60., 100.), (1, 60., 70.)]);
 }

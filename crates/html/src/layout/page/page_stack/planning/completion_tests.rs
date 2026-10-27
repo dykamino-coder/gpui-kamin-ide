@@ -7,13 +7,13 @@ use crate::layout::fragment::types::Kid;
 fn settlement_preserves_exhausted_copy_status() {
     use crate::layout::fragment::plan::Completion;
     let (_, plan) = settle(|| {
-        let (pages, _, plan) = plan::fill(
+        let (pages, _, plan) = plan::fill_at(
             &[Kid {
                 h: 300.0,
                 over: 300.0,
                 ..Default::default()
             }],
-            100.0,
+            &|_| 100.0,
             Space::pages(1),
         );
         (true, 0, (pages, plan))

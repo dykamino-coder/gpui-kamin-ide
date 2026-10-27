@@ -73,7 +73,7 @@ fn all_forced_breaks_are_regrown_before_accepting_pages() {
             over: height,
             ..Default::default()
         };
-        let (_, _, plan) = plan::fill(&[kid], 100.0, Space::pages(32));
+        let (_, _, plan) = plan::fill_at(&[kid], &|_| 100.0, Space::pages(32));
         let growth = plan.iter().find_map(|f| {
             super::super::regrow::growths(&blocks, &Kid::default(), &laid, f, 100.0)
                 .into_iter()
@@ -177,7 +177,7 @@ fn oscillating_geometry_is_incomplete_instead_of_accepting_a_stale_plan() {
     let mut passes = 0;
     let result = settle(|| {
         passes += 1;
-        let (_, _, plan) = plan::fill(std::slice::from_ref(&kid), height, Space::pages(8));
+        let (_, _, plan) = plan::fill_at(std::slice::from_ref(&kid), &|_| height, Space::pages(8));
         let state = height.to_bits();
         height = if height == 100.0 { 200.0 } else { 100.0 };
         (false, state, plan)

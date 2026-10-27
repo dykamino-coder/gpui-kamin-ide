@@ -126,7 +126,7 @@ impl ColumnStack {
     fn owner_copy(&self, owner: u64, col: usize, plan: &[Frag]) -> bool {
         self.children
             .iter()
-            .position(|c| c.node != 0 && c.node == owner)
+            .position(|c| c.source == Some(owner))
             .is_some_and(|kid| plan.iter().any(|f| f.kid == kid && f.col == col))
     }
 

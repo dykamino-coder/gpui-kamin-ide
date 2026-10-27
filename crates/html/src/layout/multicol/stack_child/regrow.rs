@@ -58,7 +58,6 @@ impl Measured {
                 || (child.breaks_w.is_some() && measured_push(copy, self.push_w, col_vert)));
         child.paginate = self.paginate;
         if regrows {
-            let watched = self.watched.clone();
             let merged = merged.clone();
             let (h, over) = sizes;
             let build = move |dom: &Element, part: usize, band: bool, opts_b: &RenderOpts| {
@@ -67,6 +66,11 @@ impl Measured {
                 inner.fragment_clip_ancestor = false;
                 let mut opts = opts_b.in_stack_copy();
                 opts.frag.watch = (!band).then(|| {
+                    let watched = opts_b
+                        .frag
+                        .watch
+                        .as_ref()
+                        .expect("regrow records its watch");
                     if part == 0 {
                         watched.clone()
                     } else {
@@ -94,6 +98,8 @@ impl Measured {
                 );
                 side_margin_wrap(el, dom, col_vert)
             };
+            let mut regrow_opts = opts.clone();
+            regrow_opts.frag.watch = Some(self.watched.clone());
             child.regrow = Some(Regrow {
                 axis: if col_vert {
                     if col_rl {
@@ -107,7 +113,7 @@ impl Measured {
                 dom: copy.clone(),
                 source: copy.clone(),
                 build: Rc::new(build),
-                opts: opts.clone(),
+                opts: regrow_opts,
                 laid: Default::default(),
                 floats: Vec::new(),
                 float_leads: Vec::new(),

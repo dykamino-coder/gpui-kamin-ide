@@ -14,10 +14,19 @@ impl ColumnStack {
                 continue;
             }
             // CB/static anchor принадлежит исходному normal layout, а не копии.
-            let owner = self
+            let actual = self
                 .children
                 .iter()
-                .position(|c| c.node != 0 && c.node == source.owner);
+                .enumerate()
+                .find(|(_, c)| c.source == Some(source.owner))
+                .map(|(index, c)| (index, c.h));
+            let owner = actual.or_else(|| {
+                self.oof
+                    .owners
+                    .iter()
+                    .find(|(id, _, _)| *id == source.owner)
+                    .map(|&(_, index, h)| (index, h))
+            });
             let offset = |rect: Bounds<Pixels>| {
                 block_offset(
                     source.owner_rect.origin,
@@ -27,12 +36,12 @@ impl ColumnStack {
                     self.axis,
                 )
             };
-            let (first, block_start) = if let Some(owner) = owner {
+            let (first, block_start) = if let Some((owner, owner_height)) = owner {
                 let cb_start = offset(source.metrics.original_cb_rect);
                 let anchor = normal
                     .iter()
                     .filter(|f| f.kid == owner)
-                    .find(|f| cb_start < f.from + f.h || f.from + f.h >= self.children[owner].h)
+                    .find(|f| cb_start < f.from + f.h || f.from + f.h >= owner_height)
                     .ok_or(Error::InvalidGeometry)?;
                 (
                     anchor.col,
