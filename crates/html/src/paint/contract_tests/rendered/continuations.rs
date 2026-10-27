@@ -195,3 +195,19 @@ fn continuation_keeps_the_inline_offsets_of_its_ancestors() {
     assert!(is(top(&found, 65., 50.), 0x0000ff), "continuation keeps the 10px offset");
     assert!(!is(top(&found, 55., 50.), 0x0000ff));
 }
+
+#[test]
+fn continuation_paints_its_gradient_background_in_every_fragment() {
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'>\
+<div style='position:relative;height:200px'>\
+<div style='position:absolute;top:50px;width:50px;height:100px;\
+background:repeating-linear-gradient(lime, lime 20px, blue 20px, blue 40px)'></div></div></div>",
+        400.,
+        200.,
+    );
+    let gradient = |x: f32, y: f32| top(&found, x, y).is_some_and(|c| c.s == 0. && c.l == 0.);
+    assert!(gradient(25., 75.), "first fragment: {found:?}");
+    assert!(gradient(75., 25.), "continuation: {found:?}");
+}

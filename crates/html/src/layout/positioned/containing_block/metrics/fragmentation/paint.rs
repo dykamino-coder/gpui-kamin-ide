@@ -113,7 +113,7 @@ impl Admission {
 
     pub(crate) fn finish(mut self, snapshot: &Snapshot) -> Routing {
         let families = Rc::new(snapshot.families.clone());
-        let hits = slices(snapshot, &self.hit_families, families.clone());
+        let mut hits = slices(snapshot, &self.hit_families, families.clone());
         let mut paint = SourceSlices {
             families,
             ..Default::default()
@@ -147,6 +147,8 @@ impl Admission {
             for (&family, slices) in &own.decorations {
                 boxes.extend(self::boxes(snapshot, family, slices));
             }
+            // Decoration layers are laid out at prepaint from the same placements.
+            hits.boxes.extend(boxes.iter().map(|(id, own)| (*id, own.clone())));
             let bare = own
                 .segments
                 .iter()
