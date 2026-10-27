@@ -95,13 +95,13 @@ impl Recorder {
     }
 
     /// Flows laid out by a block outside the multicol, not fragmented by its
-    /// columns (css-multicol-1 §2, css-break-3 §2), and anchor-positioned flows,
-    /// placed by anchors the source does not lay out; descendants follow them.
+    /// columns (css-multicol-1 §2, css-break-3 §2), and held flows the source
+    /// cannot place itself (`Flow::held`); descendants follow them.
     fn outside(&self, snapshot: &Snapshot) -> Vec<bool> {
         let mut outside: Vec<bool> = Vec::with_capacity(self.flows.flows.len());
         for flow in &self.flows.flows {
             let escapes = flow.parent.is_some_and(|parent| outside[parent])
-                || flow.anchored
+                || flow.held
                 || snapshot.get(flow.id).is_some_and(|m| {
                     snapshot.host != 0
                         && m.cb_id != snapshot.host

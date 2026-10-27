@@ -42,8 +42,9 @@ struct Flow {
     policy: Cell<FixedPolicy>,
     fixed: Cell<bool>,
     static_block: Cell<bool>,
-    /// Anchor-positioned: its geometry follows an anchor outside the source.
-    anchored: bool,
+    /// Its place is resolved outside the source: by an anchor, or by the
+    /// laid-out flow of a percentage-sized box off the static probe.
+    held: bool,
 }
 
 pub(super) struct Recording {
@@ -140,9 +141,7 @@ impl Recorder {
                     policy: Cell::new(FixedPolicy::Fragment),
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
-                    anchored: crate::layout::positioned::anchor::resolve::needs_deferred(
-                        &e.style.used(),
-                    ),
+                    held: held(e),
                 });
                 parent = Some(index);
             }
@@ -171,9 +170,9 @@ pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) ->
     let mut pending: Vec<&Element> = kids.collect();
     while let Some(e) = pending.pop() {
         if positioned(e.style.used().position) {
-            // An anchor-positioned box keeps its family in the copies, as its
-            // source snapshot does (fragmentation::snapshot).
-            if !holds_anchored(e) {
+            // A held box keeps its family in the copies, as its source
+            // snapshot does (fragmentation::snapshot).
+            if !holds_held(e) {
                 roots.push(e.node_id);
             }
             continue;
@@ -189,14 +188,19 @@ pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) ->
     Rc::from(roots)
 }
 
-/// `e` or a positioned box in its family is anchor-positioned.
-fn holds_anchored(e: &Element) -> bool {
+/// The source cannot place `e` itself (see `Flow::held`).
+fn held(e: &Element) -> bool {
+    let used = e.style.used();
+    crate::layout::positioned::anchor::resolve::needs_deferred(&used)
+        || crate::layout::positioned::static_position::static_place_in_flow_only(&used)
+}
+
+/// `e` or a positioned box in its family is held (see `Flow::held`).
+fn holds_held(e: &Element) -> bool {
     let mut pending = vec![e];
     while let Some(e) = pending.pop() {
         let used = e.style.used();
-        if positioned(used.position)
-            && crate::layout::positioned::anchor::resolve::needs_deferred(&used)
-        {
+        if positioned(used.position) && held(e) {
             return true;
         }
         if crate::layout::multicol::spanner::multicol_container(&used) {

@@ -322,3 +322,35 @@ fn anchor_positioned_box_on_a_sheet_paints_beside_its_anchor() {
     assert_eq!(blue[0].0.origin.y, green[0].0.origin.y);
     assert_eq!(blue[0].0.origin.x, green[0].0.right());
 }
+
+#[test]
+fn box_whose_parent_is_its_containing_block_continues_from_its_static_position() {
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'>\
+<div style='position:relative'><div style='height:150px'></div>\
+<div style='position:absolute;width:50px;height:50px;background:#0000ff'></div></div></div>",
+        400.,
+        200.,
+    );
+    assert!(is(top(&found, 75., 75.), 0x0000ff), "{found:?}");
+    assert!(!any(&found, 0x0000ff) || !is(top(&found, 25., 25.), 0x0000ff));
+}
+
+#[test]
+fn box_after_a_spanner_takes_its_static_position_in_its_row() {
+    // The containing block breaks across the spanner; the box follows the two
+    // blocks of the second row, so it starts in that row's second column.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='width:200px;columns:2;gap:0;position:relative'>\
+<div style='position:relative'><div style='contain:size;height:80px'></div>\
+<div style='column-span:all;height:20px'></div>\
+<div style='contain:size;height:100px'></div><div style='contain:size;height:100px'></div>\
+<div style='position:absolute;width:100%;height:100px;background:#0000ff'></div></div></div>",
+        400.,
+        400.,
+    );
+    let blue: Vec<_> = found.iter().filter(|(_, c)| opaque(*c) == 0x0000ff).map(|(b, _)| *b).collect();
+    assert!(!blue.is_empty() && blue.iter().all(|b| f32::from(b.origin.x) >= 100.), "{blue:?}");
+}

@@ -111,6 +111,17 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
         && !edge_set(c.inset.left)
 }
 
+/// An absolute box with no inset whose percentage size keeps it off the static
+/// position probe (`at_static_position`): only the laid-out flow places it.
+pub(crate) fn static_place_in_flow_only(c: &Computed) -> bool {
+    c.position == Some(crate::style::computed::Position::Absolute)
+        && !at_static_position(c)
+        && !edge_set(c.inset.top)
+        && !edge_set(c.inset.right)
+        && !edge_set(c.inset.bottom)
+        && !edge_set(c.inset.left)
+}
+
 /// Whether the box's hypothetical static box (`position: static`) is
 /// inline-level: such a box stays a point in the line, a block-level one
 /// starts at the line's start (CSS 2.1 §10.3.7, §10.6.4).
