@@ -2,7 +2,7 @@
 //! текста. Накопленный относительный сдвиг, фон строчной коробки с отбивкой и радиусом
 //! (кроме `background-clip: text`), рамка (ровная или с разными гранями), прозрачная уникальная
 //! полоса для рамки без фона (CSS 2.1 §8.6, css-break-3 §5.4) и контур `outline`. На выходе
-//! `Computed` с `inline_*` полями и признак «фон рисуется».
+//! `BoxStyle` с отдельным `InlineDecoration` и признак «фон рисуется».
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::document::state::ValueCx;
@@ -57,7 +57,7 @@ pub(super) fn element_style(
         .background
         .filter(|_| merged.bg_clip != Some(crate::style::computed::BgClip::Text))
     {
-        merged.inline_bg = Some(bg);
+        merged.inline_decoration.band_color = Some(bg);
         // Единицы шрифта разрешаются так же, как в `inline_sides`:
         // разбор только по точкам ронял `padding: 1em` в ноль, и
         // подсветка строчной коробки шла впритык к тексту.
@@ -79,7 +79,7 @@ pub(super) fn element_style(
             ) => crate::text::metrics::spacing_px(l, &family, size, vcx),
             _ => 0.0,
         };
-        merged.inline_pad = Some(physical_sides::project(
+        merged.inline_decoration.physical_padding = Some(physical_sides::project(
             inherited,
             [
                 px_of(e.style.used().padding.top),
@@ -88,7 +88,7 @@ pub(super) fn element_style(
                 px_of(e.style.used().padding.left),
             ],
         ));
-        merged.inline_radius = Some(px_of(e.style.used().radius.tl));
+        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().radius.tl));
     }
     // Рамка строчной коробки рисуется прогоном: и ровная, и
     // с РАЗНЫМИ гранями (у прогона теперь пооосевые ширины) —
@@ -103,9 +103,10 @@ pub(super) fn element_style(
         .is_some();
     let mut own_border = true;
     if let Some((color, width)) = uniform_border(&e.style.used(), font_px, vcx) {
-        merged.inline_border = Some((color, [width; 4]));
+        merged.inline_decoration.border_stroke = Some((color, [width; 4]));
     } else if let Some(sided) = sided_border(&e.style.used(), font_px, vcx) {
-        merged.inline_border = Some((sided.0, physical_sides::project(inherited, sided.1)));
+        merged.inline_decoration.border_stroke =
+            Some((sided.0, physical_sides::project(inherited, sided.1)));
     } else {
         own_border = false;
     }
@@ -120,10 +121,10 @@ pub(super) fn element_style(
     if own_bg || own_border {
         merged.box_shift = Some(merged.rel_shift.unwrap_or((0.0, 0.0)));
     }
-    let mut painted_bg = merged.inline_bg.is_some();
+    let mut painted_bg = merged.inline_decoration.band_color.is_some();
     if own_border && !own_bg && !painted_bg {
         let id = BORDER_BAND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        merged.inline_bg = Some(Color {
+        merged.inline_decoration.band_color = Some(Color {
             r: (id % 251) as f32 / 251.0,
             g: ((id / 251) % 251) as f32 / 251.0,
             b: 0.5,
@@ -140,7 +141,7 @@ pub(super) fn element_style(
             ) => crate::text::metrics::spacing_px(l, &family, font_px, vcx),
             _ => 0.0,
         };
-        merged.inline_pad = Some(physical_sides::project(
+        merged.inline_decoration.physical_padding = Some(physical_sides::project(
             inherited,
             [
                 px_of(e.style.used().padding.top),
@@ -149,7 +150,7 @@ pub(super) fn element_style(
                 px_of(e.style.used().padding.left),
             ],
         ));
-        merged.inline_radius = Some(px_of(e.style.used().radius.tl));
+        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().radius.tl));
     }
     // Контур строчного куска рисует тот же прогон: коробки у
     // куска нет, а место контур и не занимает. Рисуется только
@@ -163,7 +164,7 @@ pub(super) fn element_style(
     // Не заводить полосу в `line.rs` от ЛЮБОЙ рамки: обычная рамка
     // тогда рисуется дважды (`bidi-00*`); здесь — только контур,
     // второго рисовальщика у которого нет.
-    if merged.inline_border.is_none()
+    if merged.inline_decoration.border_stroke.is_none()
         && e.style.used().display.is_none()
         && let Some(o) = e.style.used().outline.as_ref()
         && o.style.is_some_and(|s| s != 0)
@@ -175,9 +176,9 @@ pub(super) fn element_style(
         && width > 0.0
     {
         let color = merged.used_outline_color(o);
-        merged.inline_border = Some((color, [width; 4]));
-        if merged.inline_bg.is_none() {
-            merged.inline_bg = Some(Color {
+        merged.inline_decoration.border_stroke = Some((color, [width; 4]));
+        if merged.inline_decoration.band_color.is_none() {
+            merged.inline_decoration.band_color = Some(Color {
                 r: 0.0,
                 g: 0.0,
                 b: 0.0,
@@ -199,3 +200,6 @@ pub(super) fn element_style(
     // отсечка стоит в `has_own_box`.
     (merged, painted_bg)
 }
+
+#[cfg(test)]
+mod tests;
