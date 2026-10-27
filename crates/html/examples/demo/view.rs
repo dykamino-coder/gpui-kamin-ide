@@ -10,7 +10,10 @@ impl Render for Demo {
         // цветом по умолчанию (тёмным на тёмном фоне).
         let doc = match &self.doc {
             Ok(doc) => doc,
-            Err(failure) => return div().child(failure.to_string()).into_any_element(),
+            Err(failure) => {
+                let status = kamin_html::diagnostics::DisplayStatus::Failed(*failure);
+                return div().children(status.message()).into_any_element();
+            }
         };
         let mut text = window.text_style();
         text.color = rgb(INK).into();
