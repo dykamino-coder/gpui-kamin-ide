@@ -24,7 +24,8 @@ pub(super) struct Stage {
     /// наблюдения без связи между ними.
     pub(super) trace: Rc<RefCell<String>>,
     pub(super) document_failure: Rc<Cell<Option<kamin_html::DocumentFailure>>>,
-    pub(super) degradation: Rc<Cell<Option<kamin_html::BuildReport>>>,
+    /// Строки диагностик пары (`.engine`): профиль, исход, код, ревизия.
+    pub(super) engine_lines: Rc<RefCell<String>>,
     pub(super) frame_errors: Rc<RefCell<Vec<String>>>,
 }
 
@@ -58,7 +59,7 @@ impl Stage {
         let _ = cx.update_window(self.window, |view, _, cx| {
             if let Ok(page) = view.downcast::<Page>() {
                 let doc = &page.read(cx).doc;
-                self.record_report(doc);
+                self.record_diagnostics(doc);
                 if let Some(failure) = doc.embedded_failure()
                     && self.document_failure.get().is_none()
                 {

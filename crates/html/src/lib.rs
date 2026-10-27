@@ -36,6 +36,7 @@ pub mod budget;
 #[cfg(test)]
 pub mod coverage;
 pub(crate) mod defaults;
+pub mod diagnostics;
 pub(crate) mod hooks;
 pub mod host;
 pub mod tolerance;

@@ -38,8 +38,7 @@ impl Hooks for Boundary {
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
         self.doc
-            .traversal
-            .limit(TraversalKind::Layout, MAX_REFLOW_DEPTH, self.attempted);
+            .traversal_limit_reached(TraversalKind::Layout, MAX_REFLOW_DEPTH, self.attempted);
         // Нулевой размер и пустое overflow: состояние фазы остаётся корректным.
         let style = Style {
             size: gpui::size(gpui::px(0.).into(), gpui::px(0.).into()),
