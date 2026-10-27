@@ -8,8 +8,20 @@ impl Recorder {
         snapshot.axis = Some(axis);
         let mut contexts = Vec::with_capacity(self.flows.flows.len());
         let mut roots: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
-        let mut outside = Vec::with_capacity(self.flows.flows.len());
-        for flow in &self.flows.flows {
+        let outside = self.outside(snapshot);
+        // A continued root cannot hold a box laid out by a block outside the
+        // source: that box keeps its static place in the root's legacy copies,
+        // so the whole family stays there.
+        let mut held = std::collections::HashSet::new();
+        let mut walk: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
+        for (index, flow) in self.flows.flows.iter().enumerate() {
+            let root = flow.parent.map_or(flow.id, |parent| walk[parent]);
+            walk.push(root);
+            if outside[index] && flow.parent.is_some_and(|parent| !outside[parent]) {
+                held.insert(root);
+            }
+        }
+        for (index, flow) in self.flows.flows.iter().enumerate() {
             let (parent_repeat, parent_fixed) = flow
                 .parent
                 .map_or((false, false), |parent| contexts[parent]);
@@ -18,17 +30,8 @@ impl Recorder {
             contexts.push((repeated, fixed_content));
             let root = flow.parent.map_or(flow.id, |parent| roots[parent]);
             roots.push(root);
-            // A box whose containing block lies outside the multicol is laid out
-            // by that block, not fragmented by these columns (css-multicol-1 §2,
-            // css-break-3 §2); its descendants follow it.
             let metrics = snapshot.get(flow.id).copied();
-            let escapes = flow.parent.is_some_and(|parent| outside[parent])
-                || metrics.is_some_and(|m| {
-                    snapshot.host != 0
-                        && m.cb_id != snapshot.host
-                        && !self.flows.families.contains_key(&m.cb_id)
-                });
-            outside.push(escapes);
+            let escapes = outside[index] || held.contains(&root);
             let Some(metrics) = metrics.filter(|_| !escapes) else {
                 continue;
             };
@@ -89,5 +92,21 @@ impl Recorder {
                 root,
             });
         }
+    }
+
+    /// Flows laid out by a block outside the multicol, not fragmented by its
+    /// columns (css-multicol-1 §2, css-break-3 §2); descendants follow them.
+    fn outside(&self, snapshot: &Snapshot) -> Vec<bool> {
+        let mut outside: Vec<bool> = Vec::with_capacity(self.flows.flows.len());
+        for flow in &self.flows.flows {
+            let escapes = flow.parent.is_some_and(|parent| outside[parent])
+                || snapshot.get(flow.id).is_some_and(|m| {
+                    snapshot.host != 0
+                        && m.cb_id != snapshot.host
+                        && !self.flows.families.contains_key(&m.cb_id)
+                });
+            outside.push(escapes);
+        }
+        outside
     }
 }
