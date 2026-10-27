@@ -30,7 +30,7 @@ impl Paragraph {
             logical_at,
             placed,
         } = context;
-        let line_base = self.base_of(range);
+        let line_base = self.shared_base(range);
         let mut decor_prev: Option<(usize, Pixels, Pixels, Pixels)> = None;
         let mut boxes: Vec<(Pixels, Pixels, Pixels)> = Vec::with_capacity(words.len());
         for (wi, word) in words.iter().enumerate() {
