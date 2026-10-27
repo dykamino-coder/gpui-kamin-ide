@@ -18,6 +18,11 @@ pub(crate) struct State {
     pub(crate) plan: RefCell<Plan>,
     pub(crate) sources: RefCell<Vec<u64>>,
     pub(crate) pending: RefCell<Option<Streams>>,
+    /// Source records without a copy of the ancestors, and own root records.
+    pub(crate) records: RefCell<(
+        Vec<(gpui::PaintSegmentId, gpui::PaintRecord)>,
+        crate::hooks::BareRecords,
+    )>,
 }
 
 /// Прямоугольник и Space имеют одно происхождение: завершённый normal plan.

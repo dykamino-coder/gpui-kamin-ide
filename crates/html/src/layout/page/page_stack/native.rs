@@ -1,151 +1,63 @@
-//! Независимые OOF-продолжения листов: единственный native paint исходной группы
-//! маршрутизируется по сегментам-листам (ключ — лист и порядковый номер размещения);
-//! лист воспроизводится под своей матрицей листа, она же — матрица hit testing.
+//! Независимые OOF-продолжения листов: один native paint на источник (группу либо повтор
+//! fixed на листе). Копия группы на листе воспроизводит собственные записи корней; лист
+//! без копии получает запись источника под матрицей листа (тот же экземпляр эффектов).
 
 use super::PageStack;
-use crate::layout::fragment::axis_slice as geometry;
+use crate::hooks::BareRecords;
+use crate::layout::fragment::axis_slice::{self as geometry, snapped};
 use crate::layout::fragment::token::resume::oof::FixedPolicy;
+use crate::layout::fragment::types::Frag;
 use crate::layout::positioned::containing_block::metrics::Snapshot;
 use crate::layout::positioned::containing_block::metrics::fragmentation::paint::Admission;
 use gpui::{
-    App, Bounds, PaintPlacement, PaintPlan, PaintRecord, PaintRecordError, PaintSegment,
-    PaintSegmentId, PaintSegmentSlice, Pixels, TransformationMatrix, Window, point, px, size,
+    App, Bounds, PaintPlacement, PaintPlan, PaintRecord, PaintRecordError, PaintSegmentId, Pixels,
+    Window, point, px,
 };
 use std::{collections::HashMap, rc::Rc};
 
-/// One native source (a group's snapshot, or a fixed repeat's page snapshot).
-struct Entry {
-    owner: usize,
-    snapshot: Rc<Snapshot>,
-    routes: Vec<PaintSegment>,
-    ordinals: HashMap<usize, u32>,
-    admission: Admission,
-}
-
-impl Entry {
-    fn new(owner: usize, snapshot: Rc<Snapshot>) -> Self {
-        Self {
-            owner,
-            snapshot,
-            routes: Vec::new(),
-            ordinals: HashMap::new(),
-            admission: Admission::new(),
-        }
-    }
-
-    fn place(
-        &mut self,
-        family: u64,
-        page: usize,
-        source: gpui::Point<Pixels>,
-        destination: gpui::Point<Pixels>,
-        clip: Bounds<Pixels>,
-    ) -> Result<(), PaintRecordError> {
-        let ordinal = self.ordinals.entry(page).or_default();
-        let placement = PaintSegment {
-            id: PaintSegmentId(page as u64),
-            ordinal: *ordinal,
-            source,
-            destination,
-        };
-        *ordinal = ordinal
-            .checked_add(1)
-            .ok_or(PaintRecordError::InvalidGeometry)?;
-        self.routes.push(placement);
-        self.admission.insert(
-            family,
-            PaintSegmentSlice {
-                placement,
-                source_clip: clip,
-            },
-        )
-    }
-}
-
-/// Frozen page records of every native source, in source (group) order.
+/// Source records by sheet (sheets without a copy of the ancestors) and the
+/// own root records replayed by the sheets' legacy copies.
 #[derive(Default)]
-pub(super) struct Records(HashMap<usize, Vec<PaintRecord>>);
+pub(super) struct Records {
+    orphans: HashMap<usize, Vec<PaintRecord>>,
+    pub(super) bare: BareRecords,
+}
 
 impl PageStack {
-    /// Logical-pixel matrix of sheet `i`: the stack scale about `bounds.origin`,
-    /// preceded by the sheet's `page-orientation` quarter-turn.
-    pub(super) fn sheet_matrix(&self, bounds: Bounds<Pixels>, i: usize) -> TransformationMatrix {
-        self.sheet_matrix_turned(bounds, i, self.geom(i).turn)
-    }
-
-    fn sheet_matrix_turned(
-        &self,
-        bounds: Bounds<Pixels>,
-        i: usize,
-        turn: u8,
-    ) -> TransformationMatrix {
-        let s = self.grid.get().1;
-        let (bx, by) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
-        let g = self.geom(i);
-        let (sx, sy) = self.sheet_origin(i);
-        let (ox, oy) = (bx + sx, by + sy);
-        let (w, h) = g.size;
-        let (rotation_scale, translation) = match turn {
-            // rotate-right: p -> O + (H - (y - O.y), x - O.x), then q -> B + s(q - B).
-            1 => (
-                [[0., -s], [s, 0.]],
-                [
-                    bx * (1. - s) + s * (ox + h + oy),
-                    by * (1. - s) + s * (oy - ox),
-                ],
-            ),
-            // rotate-left: p -> O + (y - O.y, W - (x - O.x)).
-            3 => (
-                [[0., s], [-s, 0.]],
-                [
-                    bx * (1. - s) + s * (ox - oy),
-                    by * (1. - s) + s * (oy + w + ox),
-                ],
-            ),
-            _ => ([[s, 0.], [0., s]], [bx * (1. - s), by * (1. - s)]),
-        };
-        TransformationMatrix {
-            rotation_scale,
-            translation,
-        }
-    }
-
     /// Route every OOF fragment of the plan to its sheet and prepaint each native
-    /// source once, its hitboxes projected through the unrotated sheet matrix.
+    /// source once, its hitboxes projected through the stack matrix.
     pub(super) fn prepaint_native(
         &self,
         bounds: Bounds<Pixels>,
+        plan: &[Frag],
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
-        let mut entries = self.native_entries(bounds, window)?;
-        entries.sort_by_key(|entry| entry.owner);
-        // Rotated sheets keep this unrotated projection (see design: one matrix
-        // per prepaint, the source is prepainted once for every sheet).
-        let hits = self.sheet_matrix_turned(bounds, usize::MAX, 0);
-        let mut sources = Vec::with_capacity(entries.len());
-        for entry in entries {
-            let native = entry
-                .snapshot
+        let mut entries = self.native_entries(bounds, plan, window)?;
+        entries.sort_by_key(|(owner, _, _)| *owner);
+        let hits = self.stack_matrix(bounds);
+        let mut natives = Vec::with_capacity(entries.len());
+        for (_, snapshot, admission) in entries {
+            let native = snapshot
                 .native
                 .clone()
                 .ok_or(PaintRecordError::InvalidGeometry)?;
-            let slices = entry.admission.nodes(&entry.snapshot);
-            let routes: Rc<[PaintSegment]> = Rc::from(entry.routes);
+            let routing = admission.finish(&snapshot);
             window.with_hitbox_transform(hits, |window| {
-                native.prepaint(routes.clone(), slices, window, cx)
+                native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
             })?;
-            sources.push(native);
+            natives.push(native);
         }
-        *self.oof.natives.borrow_mut() = sources;
+        *self.oof.natives.borrow_mut() = natives;
         Ok(())
     }
 
     fn native_entries(
         &self,
         bounds: Bounds<Pixels>,
+        normal: &[Frag],
         window: &Window,
-    ) -> Result<Vec<Entry>, PaintRecordError> {
+    ) -> Result<Vec<(usize, Rc<Snapshot>, Admission)>, PaintRecordError> {
         let plan = self.oof.plan.borrow();
         if plan.failure.is_some() {
             return Err(PaintRecordError::InvalidGeometry);
@@ -155,7 +67,8 @@ impl PageStack {
         let repeats = self.oof.repeat_snapshots.borrow();
         let viewport = window.viewport_size();
         let spill = f32::from(viewport.width.max(viewport.height).max(bounds.size.width));
-        let mut entries: Vec<Entry> = Vec::new();
+        let scale = window.scale_factor();
+        let mut entries: Vec<(usize, Rc<Snapshot>, Admission)> = Vec::new();
         for f in plan.iter() {
             let (owner, source) = sources
                 .get(f.kid)
@@ -177,14 +90,14 @@ impl PageStack {
             let rect = flow.metrics.normal_rect();
             let inline = geometry::inline(self.axis, rect);
             let from = geometry::slice(self.axis, rect, 0., inline, f.from, f.h).origin;
-            let page = self.page_area(bounds, f.col);
             let offset = if self.axis.is_vertical() {
                 rect.origin.y
             } else {
                 rect.origin.x
             };
+            let page = self.page_area(bounds, f.col);
             let to = geometry::slice(self.axis, page, offset.into(), inline, f.y, f.h).origin;
-            let to = from + geometry::snapped(to - from, window.scale_factor());
+            let to = from + snapped(to - from, scale);
             // Unbroken edges keep their ink overflow; a break edge cuts it.
             let siblings = || plan.iter().filter(|g| g.kid == f.kid);
             let first = !siblings().any(|g| (g.col, g.from) < (f.col, f.from));
@@ -200,41 +113,25 @@ impl PageStack {
                 f.from - up,
                 (f.h + up + down).max(0.),
             );
-            let index = match entries
-                .iter()
-                .position(|e| Rc::ptr_eq(&e.snapshot, snapshot))
-            {
+            // The group's copy on this sheet carries the root's own slot.
+            let copied = normal.iter().any(|g| g.kid == *owner && g.col == f.col);
+            let index = match entries.iter().position(|e| Rc::ptr_eq(&e.1, snapshot)) {
                 Some(index) => index,
                 None => {
-                    entries.push(Entry::new(*owner, snapshot.clone()));
+                    entries.push((*owner, snapshot.clone(), Admission::new()));
                     entries.len() - 1
                 }
             };
-            entries[index].place(flow.id, f.col, from, to, clip)?;
+            entries[index].2.insert(
+                flow.id,
+                PaintSegmentId(f.col as u64),
+                from,
+                to,
+                clip,
+                copied,
+            )?;
         }
         Ok(entries)
-    }
-
-    /// Page area of sheet `i` in unscaled stack coordinates.
-    fn page_area(&self, bounds: Bounds<Pixels>, i: usize) -> Bounds<Pixels> {
-        let (sx, sy) = self.sheet_origin(i);
-        let g = self.geom(i);
-        let (ax, ay) = g.area_origin();
-        Bounds::new(
-            point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
-            size(px(g.area.0), px(g.area.1)),
-        )
-    }
-
-    /// The sheet's page area as presented in window coordinates.
-    pub(super) fn presented_area(&self, bounds: Bounds<Pixels>, i: usize) -> Bounds<Pixels> {
-        let m = self.sheet_matrix(bounds, i);
-        let area = self.page_area(bounds, i);
-        let (a, z) = (m.apply(area.origin), m.apply(area.bottom_right()));
-        Bounds::new(
-            point(a.x.min(z.x), a.y.min(z.y)),
-            size((z.x - a.x).abs(), (z.y - a.y).abs()),
-        )
     }
 
     /// Paint every native source once into per-sheet immutable records.
@@ -244,18 +141,27 @@ impl PageStack {
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
         let natives = std::mem::take(&mut *self.oof.natives.borrow_mut());
-        let mut records = Records::default();
+        let records = Records::default();
+        let mut orphans = HashMap::<usize, Vec<PaintRecord>>::new();
         for native in natives {
-            for (id, record) in native.record(window, cx)?.into_records() {
+            let (sheets, bare) = native.record(window, cx)?;
+            for (id, record) in sheets.into_records() {
                 let page = usize::try_from(id.0).map_err(|_| PaintRecordError::InvalidGeometry)?;
-                records.0.entry(page).or_default().push(record);
+                orphans.entry(page).or_default().push(record);
             }
+            records.bare.borrow_mut().extend(bare.take());
         }
-        *self.oof.records.borrow_mut() = records;
+        *self.oof.records.borrow_mut() = Records { orphans, ..records };
         Ok(())
     }
 
-    /// Replay sheet `i` under its presentation matrix, clipped to `clip` (window space).
+    /// Own root records for the legacy copies (`paint::continuation`).
+    pub(super) fn copy_records(&self) -> Option<BareRecords> {
+        let records = self.oof.records.borrow();
+        (!records.bare.borrow().is_empty()).then(|| records.bare.clone())
+    }
+
+    /// Replay sheet `i`'s source records under its presentation matrix.
     pub(super) fn paint_native(
         &self,
         bounds: Bounds<Pixels>,
@@ -264,7 +170,7 @@ impl PageStack {
         window: &mut Window,
     ) -> Result<(), PaintRecordError> {
         let records = self.oof.records.borrow();
-        let Some(page) = records.0.get(&i) else {
+        let Some(page) = records.orphans.get(&i) else {
             return Ok(());
         };
         let plan = PaintPlan::sequence(page.iter().cloned().map(PaintPlan::record));

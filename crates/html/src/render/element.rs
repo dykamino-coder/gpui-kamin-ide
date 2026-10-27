@@ -158,6 +158,9 @@ async fn element_inner(
     let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
         e.node_id, &merged, opts,
     );
+    let slot = (opts.cx.position.continuation_slots
+        && crate::style::flow::absolutely_positioned(merged.position))
+    .then_some(e.node_id);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
@@ -166,6 +169,7 @@ async fn element_inner(
             Some(geometry) => geometry.wrap(el),
             None => el,
         };
+        let el = crate::paint::continuation::slot(slot, el);
         return crate::interactive::scroll_extent::project(el, scroll_projection);
     }
     // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`
@@ -188,10 +192,13 @@ async fn element_inner(
     };
     let built = dispatch_element(stk, e, merged, inherited, opts, outer_space, built_iframe).await;
     crate::interactive::scroll_extent::project(
-        match geometry {
-            Some(geometry) => geometry.wrap(built),
-            None => built,
-        },
+        crate::paint::continuation::slot(
+            slot,
+            match geometry {
+                Some(geometry) => geometry.wrap(built),
+                None => built,
+            },
+        ),
         scroll_projection,
     )
 }

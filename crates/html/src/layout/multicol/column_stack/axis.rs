@@ -31,19 +31,13 @@ impl ColumnStack {
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         self.plan_oof(&plan, bounds);
-        if self
-            .prepaint_native(bounds, &plan, &spans, window, cx)
-            .is_err()
-        {
+        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
             plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
             plan.incomplete();
         }
         let step = col_w + self.gap;
         let rl = axis == StackAxis::VerticalRl;
         for f in &plan {
-            if self.native_kid(f.kid) {
-                continue;
-            }
             let full_h = self.children[f.kid].h;
             let (c, ry) = self.place(f.col);
             let rel = self.children[f.kid].rel;
@@ -108,9 +102,6 @@ impl ColumnStack {
         }
         // Спаннер — во всю СТРОЧНУЮ сторону коробки.
         for &(kid, sy) in &spans {
-            if self.native_kid(kid) {
-                continue;
-            }
             let h = self.children[kid].h;
             let b = axis_box(axis, bounds.origin, block_avail, 0.0, inline_avail, sy, h);
             let kid = &mut self.children[kid];
@@ -132,7 +123,7 @@ impl ColumnStack {
 
     /// Отрисовка вертикальной стопки (пара к `prepaint_axis`).
     pub(crate) fn paint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        if self.oof.plan.borrow().failure.is_some() || self.paint_native(window, cx).is_err() {
+        if self.oof.plan.borrow().failure.is_some() || self.record_native(window, cx).is_err() {
             return;
         }
         let axis = self.axis;
@@ -146,10 +137,8 @@ impl ColumnStack {
             parts[f.kid] += 1;
         }
         let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
+        let records = self.copy_records();
         for f in plan {
-            if self.native_kid(f.kid) {
-                continue;
-            }
             let (c, ry) = self.place(f.col);
             let rel = self.children[f.kid].rel;
             let split = parts[f.kid] > 1;
@@ -206,18 +195,26 @@ impl ColumnStack {
             else {
                 continue;
             };
+            let segment = gpui::PaintSegmentId(f.col as u64);
+            let mut paint = |window: &mut Window| {
+                crate::paint::continuation::with_copy_segment(
+                    segment,
+                    records.as_ref(),
+                    None,
+                    window,
+                    |window| el.paint(window, cx),
+                )
+            };
             if split {
-                window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+                window.with_content_mask(Some(mask), paint);
             } else {
-                el.paint(window, cx);
+                paint(window);
             }
         }
         let spans = self.spans_plan.borrow().clone();
         for (kid, _) in spans {
-            if self.native_kid(kid) {
-                continue;
-            }
             self.children[kid].el.paint(window, cx);
         }
+        let _ = self.paint_orphans(window);
     }
 }

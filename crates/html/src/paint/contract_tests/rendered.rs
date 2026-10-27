@@ -30,7 +30,10 @@ pub(crate) fn quads(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
                 move |_, window, cx| {
                     let mut root = root.borrow_mut().take().expect("one prepaint");
                     root.layout_as_root(
-                        size(AvailableSpace::Definite(px(w)), AvailableSpace::Definite(px(h))),
+                        size(
+                            AvailableSpace::Definite(px(w)),
+                            AvailableSpace::Definite(px(h)),
+                        ),
                         window,
                         cx,
                     );
@@ -42,7 +45,11 @@ pub(crate) fn quads(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
                     let (_, record) = window
                         .record_paint(extent, cx, |window, cx| root.paint(window, cx))
                         .expect("document paint");
-                    collect(record.scene(), window.scale_factor(), &mut sink.borrow_mut());
+                    collect(
+                        record.scene(),
+                        window.scale_factor(),
+                        &mut sink.borrow_mut(),
+                    );
                 },
             )
         });
@@ -65,8 +72,14 @@ fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, Hsla)>) {
                 continue;
             }
             let logical = Bounds::new(
-                point(px(visible.origin.x.0 / scale), px(visible.origin.y.0 / scale)),
-                size(px(visible.size.width.0 / scale), px(visible.size.height.0 / scale)),
+                point(
+                    px(visible.origin.x.0 / scale),
+                    px(visible.origin.y.0 / scale),
+                ),
+                size(
+                    px(visible.size.width.0 / scale),
+                    px(visible.size.height.0 / scale),
+                ),
             );
             out.push((logical, color));
         }
@@ -85,8 +98,11 @@ pub(crate) fn top(quads: &[(Bounds<Pixels>, Hsla)], x: f32, y: f32) -> Option<Hs
 
 #[test]
 fn p08dbg_probe() {
-    let html = std::fs::read_to_string(std::env::var("P08_HTML").unwrap_or_default()).unwrap_or_default();
-    if html.is_empty() { return; }
+    let html =
+        std::fs::read_to_string(std::env::var("P08_HTML").unwrap_or_default()).unwrap_or_default();
+    if html.is_empty() {
+        return;
+    }
     for (b, c) in quads(&html, 800., 600.) {
         eprintln!("P08Q {:?} {:?} {:?}", b.origin, b.size, (c.h, c.s, c.l));
     }

@@ -1,25 +1,25 @@
-//! Один source prepaint и paint обслуживают normal и независимые OOF-размещения.
+//! Независимые OOF-продолжения колонок: один source prepaint и один native paint. Копия
+//! предков в колонке воспроизводит собственную запись корня; колонка без копии получает
+//! допуск записи источника с её единственным экземпляром эффектов предков.
 
 use super::*;
-use crate::layout::positioned::containing_block::metrics::fragmentation::paint::Admission;
-use gpui::{
-    PaintPlacement, PaintPlan, PaintRecordError, PaintSegment, PaintSegmentId, PaintSegmentSlice,
-};
-use std::{collections::HashMap, rc::Rc};
-mod clips;
 use crate::layout::fragment::axis_slice::{self as geometry, snapped};
-mod tables;
+use crate::layout::positioned::containing_block::metrics::fragmentation::paint::Admission;
+use gpui::{PaintPlacement, PaintPlan, PaintRecordError, PaintSegmentId};
 
 impl ColumnStack {
-    pub(crate) fn native_kid(&self, _kid: usize) -> bool {
-        self.oof.geometry.native_oof().is_some()
+    /// Legacy copies of a column carry the slots of its continued roots.
+    pub(crate) fn copy_records(&self) -> Option<crate::hooks::BareRecords> {
+        self.oof
+            .geometry
+            .native_oof()
+            .map(|_| self.oof.records.borrow().1.clone())
     }
 
     pub(crate) fn prepaint_native(
         &mut self,
         bounds: Bounds<Pixels>,
         plan: &[Frag],
-        spans: &[(usize, f32)],
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
@@ -27,180 +27,80 @@ impl ColumnStack {
             return Ok(());
         };
         let snapshot = self.oof.geometry.clone();
-        let mut routes = Vec::new();
-        let mut ordinals = HashMap::<usize, u32>::new();
-        let mut admission = Admission::new();
-        let spill = window
-            .viewport_size()
-            .width
-            .max(window.viewport_size().height)
-            .max(bounds.size.width);
-        let scale = window.scale_factor();
-        let mut append = |family: u64,
-                          col: usize,
-                          source: gpui::Point<Pixels>,
-                          destination: gpui::Point<Pixels>,
-                          clip: Bounds<Pixels>|
-         -> Result<(), PaintRecordError> {
-            let destination = source + snapped(destination - source, scale);
-            let ordinal = ordinals.entry(col).or_default();
-            let placement = PaintSegment {
-                id: PaintSegmentId(col as u64),
-                ordinal: *ordinal,
-                source,
-                destination,
-            };
-            *ordinal = ordinal.checked_add(1).ok_or_else(|| {
-                eprintln!("P08DBG native.rs:{}", line!());
-                PaintRecordError::InvalidGeometry
-            })?;
-            routes.push(placement);
-            admission.insert(
-                family,
-                PaintSegmentSlice {
-                    placement,
-                    source_clip: clip,
-                },
-            )
-        };
-        for f in plan {
-            if !self.native_kid(f.kid) {
-                continue;
-            }
-            let kid = &self.children[f.kid];
-            let id = kid.node;
-            if id == 0 {
-                // Static-position probes carry no box of their own.
-                continue;
-            }
-            let rect = *snapshot.normal.get(&id).ok_or_else(|| {
-                eprintln!("P08DBG native.rs:{}", line!());
-                PaintRecordError::InvalidGeometry
-            })?;
-            let (column, row) = self.place(f.col);
-            let source = geometry::slice(
-                self.axis,
-                rect,
-                0.,
-                geometry::inline(self.axis, rect),
-                f.from,
-                f.h,
-            )
-            .origin;
-            let destination = geometry::slice(
-                self.axis,
-                bounds,
-                column as f32 * (self.col_w.get() + self.gap) + kid.par.dx,
-                self.col_w.get(),
-                row + f.y,
-                f.h,
-            )
-            .origin
-                + point(px(kid.rel.0), px(kid.rel.1));
-            let inline_spill = if self.axis.is_vertical() {
-                window.viewport_size().height.max(bounds.size.height)
-            } else {
-                window.viewport_size().width.max(bounds.size.width)
-            };
-            let clip = self.native_clip(rect, f, plan, inline_spill.into());
-            append(id, f.col, source, destination, clip)?;
-        }
-        for &(index, y) in spans {
-            if !self.native_kid(index) {
-                continue;
-            }
-            let kid = &self.children[index];
-            let id = kid.node;
-            if id == 0 {
-                // Static-position probes carry no box of their own.
-                continue;
-            }
-            let rect = *snapshot.normal.get(&id).ok_or_else(|| {
-                eprintln!("P08DBG native.rs:{}", line!());
-                PaintRecordError::InvalidGeometry
-            })?;
-            append(
-                id,
-                plan.iter().map(|f| f.col).max().unwrap_or(0) + index + 1,
-                rect.origin,
-                geometry::slice(
-                    self.axis,
-                    bounds,
-                    0.,
-                    geometry::inline(self.axis, bounds),
-                    y,
-                    geometry::block(self.axis, rect),
-                )
-                .origin,
-                Bounds::new(
-                    rect.origin - point(spill, spill),
-                    rect.size + size(spill + spill, spill + spill),
-                ),
-            )?;
-        }
         let oof = self.oof.plan.borrow();
         if oof.failure.is_some() {
-            eprintln!("P08DBG oof failure {:?}", oof.failure);
             return Err(PaintRecordError::InvalidGeometry);
         }
         let sources = self.oof.sources.borrow();
-        for f in &oof.fragments {
-            let id = *sources.get(f.kid).ok_or_else(|| {
-                eprintln!("P08DBG native.rs:{}", line!());
-                PaintRecordError::InvalidGeometry
-            })?;
-            let flow = snapshot.flows.iter().find(|s| s.id == id).ok_or_else(|| {
-                eprintln!("P08DBG native.rs:{}", line!());
-                PaintRecordError::InvalidGeometry
-            })?;
+        let viewport = window.viewport_size();
+        let spill = f32::from(viewport.width.max(viewport.height).max(bounds.size.width));
+        let scale = window.scale_factor();
+        let mut admission = Admission::new();
+        for f in oof.iter() {
+            let id = *sources
+                .get(f.kid)
+                .ok_or(PaintRecordError::InvalidGeometry)?;
+            let flow = snapshot
+                .flows
+                .iter()
+                .find(|s| s.id == id)
+                .ok_or(PaintRecordError::InvalidGeometry)?;
             let actual = self
                 .fragmentainer(f.col, bounds)
                 .map_err(|_| PaintRecordError::InvalidGeometry)?;
             let rect = flow.metrics.normal_rect();
-            let source = geometry::slice(
-                self.axis,
-                rect,
-                0.,
-                geometry::inline(self.axis, rect),
-                f.from,
-                f.h,
-            )
-            .origin;
+            let inline_size = geometry::inline(self.axis, rect);
+            let source = geometry::slice(self.axis, rect, 0., inline_size, f.from, f.h).origin;
             let inline = if self.axis.is_vertical() {
                 rect.top() - flow.owner_rect.top()
             } else {
                 rect.left() - flow.owner_rect.left()
             };
-            let destination = geometry::slice(
-                self.axis,
-                actual.rect,
-                inline.into(),
-                geometry::inline(self.axis, rect),
-                f.y,
-                f.h,
-            )
-            .origin;
+            let destination =
+                geometry::slice(self.axis, actual.rect, inline.into(), inline_size, f.y, f.h)
+                    .origin;
+            let destination = source + snapped(destination - source, scale);
+            // Unbroken edges keep their ink overflow; a break edge cuts it.
+            let siblings = || oof.iter().filter(|g| g.kid == f.kid);
+            let first = !siblings().any(|g| (g.col, g.from) < (f.col, f.from));
+            let last = !siblings().any(|g| (g.col, g.from) > (f.col, f.from));
             let (head, tail) = flow.kid.clone_dec.unwrap_or_default();
+            let up = if first { spill } else { -head };
+            let down = if last { spill } else { -tail };
             let clip = geometry::slice(
                 self.axis,
                 rect,
-                -f32::from(spill),
-                geometry::inline(self.axis, rect) + f32::from(spill) * 2.,
-                f.from + head,
-                (f.h - head - tail).max(0.),
+                -spill,
+                inline_size + spill * 2.,
+                f.from - up,
+                (f.h + up + down).max(0.),
             );
-            append(id, f.col, source, destination, clip)?;
+            let copied = self.owner_copy(flow.owner, f.col, plan);
+            admission.insert(
+                id,
+                PaintSegmentId(f.col as u64),
+                source,
+                destination,
+                clip,
+                copied,
+            )?;
         }
         drop(sources);
         drop(oof);
-        let mut slices = admission.nodes(&snapshot);
-        slices.slots = self.table_slots(bounds, plan, &mut routes, &mut ordinals, window, cx)?;
-        native
-            .prepaint(Rc::from(routes), slices, window, cx)
-            .inspect_err(|e| eprintln!("P08DBG prepaint {e:?}"))
+        let routing = admission.finish(&snapshot);
+        native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
     }
 
-    pub(crate) fn paint_native(
+    /// A normal kid owning `owner` has a legacy copy in `col`.
+    fn owner_copy(&self, owner: u64, col: usize, plan: &[Frag]) -> bool {
+        self.children
+            .iter()
+            .position(|c| c.node != 0 && c.node == owner)
+            .is_some_and(|kid| plan.iter().any(|f| f.kid == kid && f.col == col))
+    }
+
+    /// Paint the source once; its own records wait for the column copies.
+    pub(crate) fn record_native(
         &self,
         window: &mut Window,
         cx: &mut App,
@@ -208,14 +108,23 @@ impl ColumnStack {
         let Some(native) = self.oof.geometry.native_oof() else {
             return Ok(());
         };
-        let records = native
-            .record(window, cx)
-            .inspect_err(|e| eprintln!("P08DBG record {e:?}"))?;
+        let (records, bare) = native.record(window, cx)?;
+        *self.oof.records.borrow_mut() = (records.into_records(), bare);
+        Ok(())
+    }
+
+    /// Columns without a copy of the ancestors: the source record's single
+    /// instance of their effects, after the column's normal flow.
+    pub(crate) fn paint_orphans(&self, window: &mut Window) -> Result<(), PaintRecordError> {
+        let records = self.oof.records.borrow();
+        if records.0.is_empty() {
+            return Ok(());
+        }
         let plan = PaintPlan::sequence(
             records
-                .into_records()
-                .into_iter()
-                .map(|(_, record)| PaintPlan::record(record)),
+                .0
+                .iter()
+                .map(|(_, record)| PaintPlan::record(record.clone())),
         );
         window.paint_plan(
             &plan,

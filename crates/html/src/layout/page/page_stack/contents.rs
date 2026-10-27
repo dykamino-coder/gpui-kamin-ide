@@ -11,7 +11,6 @@ impl PageStack {
         bounds: Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
-        s: f32,
         pages: usize,
         k: f32,
         plan: Vec<Frag>,
@@ -29,6 +28,8 @@ impl PageStack {
                 rotation_scale: sheet.rotation_scale,
                 translation: [sheet.translation[0] * k, sheet.translation[1] * k],
             };
+            let records = self.copy_records();
+            let presentation = self.sheet_matrix(bounds, i);
             let plan_i: Vec<Frag> = plan.iter().copied().filter(|f| f.col == i).collect();
             window.with_transformation_masked(m, |window| {
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
@@ -73,7 +74,15 @@ impl PageStack {
                     ) else {
                         continue;
                     };
-                    window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+                    window.with_content_mask(Some(mask), |window| {
+                        crate::paint::continuation::with_copy_segment(
+                            gpui::PaintSegmentId(f.col as u64),
+                            records.as_ref(),
+                            Some(presentation),
+                            window,
+                            |window| el.paint(window, cx),
+                        )
+                    });
                 }
                 if let Some(layer) = self.icb.get_mut(i) {
                     for el in layer {

@@ -21,10 +21,8 @@ impl ColumnStack {
         plan: Vec<Frag>,
     ) {
         let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
+        let records = self.copy_records();
         for f in plan {
-            if self.native_kid(f.kid) {
-                continue;
-            }
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
             // маска, оставленная на месте колонки, съедала его целиком
@@ -209,11 +207,27 @@ impl ColumnStack {
                             },
                             clip,
                         }),
-                        || gap_fragment::with(&self.paint, scope, || el.paint(window, cx)),
+                        || {
+                            gap_fragment::with(&self.paint, scope, || {
+                                crate::paint::continuation::with_copy_segment(
+                                    gpui::PaintSegmentId(f.col as u64),
+                                    records.as_ref(),
+                                    None,
+                                    window,
+                                    |window| el.paint(window, cx),
+                                )
+                            })
+                        },
                     );
                 });
             } else {
-                el.paint(window, cx);
+                crate::paint::continuation::with_copy_segment(
+                    gpui::PaintSegmentId(f.col as u64),
+                    records.as_ref(),
+                    None,
+                    window,
+                    |window| el.paint(window, cx),
+                );
             }
         }
     }

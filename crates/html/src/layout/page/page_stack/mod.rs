@@ -20,6 +20,7 @@ mod pages;
 mod planning;
 mod regrow;
 mod resume;
+mod sheet;
 mod sheets;
 mod spaces;
 

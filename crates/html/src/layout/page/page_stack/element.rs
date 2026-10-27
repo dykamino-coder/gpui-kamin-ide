@@ -145,7 +145,7 @@ impl Hooks for PageStack {
         self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
         self.prepaint_canvas(bounds, window, cx, &geoms);
         *self.geoms.borrow_mut() = geoms.clone();
-        if self.prepaint_native(bounds, window, cx).is_err() {
+        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
             let mut oof = self.oof.plan.borrow_mut();
             oof.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
             oof.incomplete();
@@ -210,6 +210,6 @@ impl Hooks for PageStack {
         // `O`); маски детей и фрагментов заданы в его непреобразованных
         // точках и едут вместе с ним (`with_transformation_masked`: поворот на
         // четверть оборота оси сохраняет).
-        self.paint_page_contents(bounds, window, cx, s, pages, k, plan.fragments, rect);
+        self.paint_page_contents(bounds, window, cx, pages, k, plan.fragments, rect);
     }
 }

@@ -22,11 +22,7 @@ pub(crate) fn paint_reopen<R>(window: &mut Window, f: impl FnOnce(&mut Window) -
     crate::paint::coordinator::reopen(window, f)
 }
 
-pub(crate) use crate::layout::fragment::paint_source::{SourceSlices, SourceSlot};
-
-pub(crate) fn paint_source_slot(id: u64, window: &mut Window, cx: &mut gpui::App) {
-    crate::paint::coordinator::segments::slot(id, window, cx);
-}
+pub(crate) use crate::layout::fragment::paint_source::{BareRecords, SourceSlices};
 
 pub(crate) fn prepaint_source_record(
     extent: gpui::Bounds<gpui::Pixels>,
@@ -46,7 +42,7 @@ pub(crate) fn paint_source_record(
     window: &mut Window,
     cx: &mut gpui::App,
     paint: impl FnOnce(&mut Window, &mut gpui::App),
-) -> Result<gpui::PaintSegmentRecords, gpui::PaintRecordError> {
+) -> Result<(gpui::PaintSegmentRecords, BareRecords), gpui::PaintRecordError> {
     crate::paint::coordinator::segments::record(extent, segments, slices, window, cx, paint)
 }
 
@@ -54,9 +50,10 @@ pub(crate) fn paint_source_node(
     id: u64,
     cb: Option<u64>,
     window: &mut Window,
-    paint: impl FnOnce(&mut Window),
+    cx: &mut gpui::App,
+    paint: impl FnOnce(&mut Window, &mut gpui::App),
 ) {
-    crate::paint::coordinator::segments::node(id, cb, window, paint);
+    crate::paint::coordinator::segments::node(id, cb, window, cx, paint);
 }
 
 #[cfg(test)]

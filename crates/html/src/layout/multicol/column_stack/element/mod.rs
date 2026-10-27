@@ -49,19 +49,13 @@ impl Hooks for ColumnStack {
         let step = col_w + self.gap;
         self.assign_flex_owners(&plan);
         self.prepaint_frags(window, cx, bounds, col_w, &plan, step);
-        if self
-            .prepaint_native(bounds, &plan, &spans, window, cx)
-            .is_err()
-        {
+        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
             plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
             plan.incomplete();
         }
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
         for &(kid, sy) in &spans {
-            if self.native_kid(kid) {
-                continue;
-            }
             let kid = &mut self.children[kid];
             let h = kid.h;
             kid.el.layout_as_root_at(
@@ -98,7 +92,7 @@ impl Hooks for ColumnStack {
             self.paint_axis(bounds, window, cx);
             return;
         }
-        if self.oof.plan.borrow().failure.is_some() || self.paint_native(window, cx).is_err() {
+        if self.oof.plan.borrow().failure.is_some() || self.record_native(window, cx).is_err() {
             return;
         }
         let plan = self.plan.borrow().clone();
@@ -125,10 +119,9 @@ impl Hooks for ColumnStack {
         self.paint_frags(window, cx, bounds, col_w, step, parts, plan_all, plan);
         let spans = self.spans_plan.borrow().clone();
         for (kid, _) in spans {
-            if self.native_kid(kid) {
-                continue;
-            }
             self.children[kid].el.paint(window, cx);
         }
+        // Positioned continuations without a column copy of their ancestors.
+        let _ = self.paint_orphans(window);
     }
 }

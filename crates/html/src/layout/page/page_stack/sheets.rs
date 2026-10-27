@@ -111,7 +111,9 @@ impl PageStack {
         // `slice`, css-break-4 §4; ровно как у `ColumnStack`). Маска по
         // целой page area оставляла на странице хвост следующего
         // фрагмента до края листа (`block-page-break-inside-avoid-7`).
+        let records = self.copy_records();
         for f in plan.iter().copied() {
+            let presentation = self.sheet_matrix(bounds, f.col);
             if self.geom(f.col).turn % 2 == 1 {
                 continue;
             }
@@ -171,7 +173,15 @@ impl PageStack {
             // немасштабированных точках — под матрицей стопки они обязаны
             // пройти то же подобие (`Window::with_mask_scale`).
             window.with_content_mask(Some(mask), |window| {
-                window.with_mask_scale(bounds.origin, s, |window| el.paint(window, cx))
+                window.with_mask_scale(bounds.origin, s, |window| {
+                    crate::paint::continuation::with_copy_segment(
+                        gpui::PaintSegmentId(f.col as u64),
+                        records.as_ref(),
+                        Some(presentation),
+                        window,
+                        |window| el.paint(window, cx),
+                    )
+                })
             });
         }
         for p in 0..pages.min(self.icb.len()) {

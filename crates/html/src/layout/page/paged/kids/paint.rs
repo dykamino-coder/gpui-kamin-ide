@@ -29,6 +29,9 @@ impl Paint<'_> {
     ) -> AnyElement {
         let mut opts = self.opts.clone();
         opts.frag.watch = main.then(|| self.watched.clone());
+        // The group's native source paints its absolute/fixed continuations;
+        // the copies replay them in place (paint::continuation).
+        opts.cx.position.continuation_slots |= self.native_oof();
         let icb_layer =
             crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
         opts.clear_paged_fixed();
@@ -47,16 +50,10 @@ impl Paint<'_> {
                     crate::layout::positioned::repeat::drop_uncontained_oof(n, false, false)
                 })
                 .collect()
-        } else if self.native_oof() {
-            // The group's native source paints every OOF box exactly once.
-            self.group
-                .iter()
-                .filter_map(crate::layout::positioned::repeat::without_oof)
-                .collect()
         } else {
             Vec::new()
         };
-        let source = if band || self.native_oof() {
+        let source = if band {
             band_group.as_slice()
         } else {
             self.group

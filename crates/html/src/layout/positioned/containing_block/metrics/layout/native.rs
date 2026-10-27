@@ -1,6 +1,6 @@
 //! Живое исходное дерево сохраняет LayoutId до единственного прохода краски.
 
-use crate::hooks::SourceSlices;
+use crate::hooks::{BareRecords, SourceSlices};
 use crate::layout::fragment::geometry::Node;
 use gpui::{
     AnyElement, App, Bounds, PaintRecordError, PaintSegment, PaintSegmentRecords, Pixels, Window,
@@ -34,6 +34,7 @@ impl Native {
         &self,
         segments: Rc<[PaintSegment]>,
         slices: SourceSlices,
+        paint: (Rc<[PaintSegment]>, SourceSlices),
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
@@ -46,8 +47,8 @@ impl Native {
         self.phase.set(1);
         crate::hooks::prepaint_source_record(
             self.extent,
-            segments.clone(),
-            slices.clone(),
+            segments,
+            slices,
             window,
             cx,
             |window, cx| {
@@ -56,7 +57,7 @@ impl Native {
                     .prepaint_at(point(px(0.), px(0.)), window, cx);
             },
         )?;
-        self.routing.set(Some((segments, slices)));
+        self.routing.set(Some(paint));
         Ok(())
     }
 
@@ -64,7 +65,7 @@ impl Native {
         &self,
         window: &mut Window,
         cx: &mut App,
-    ) -> Result<PaintSegmentRecords, PaintRecordError> {
+    ) -> Result<(PaintSegmentRecords, BareRecords), PaintRecordError> {
         self.layout
             .read(window)
             .ok_or(PaintRecordError::InvalidGeometry)?;

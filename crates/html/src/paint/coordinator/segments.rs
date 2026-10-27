@@ -1,8 +1,9 @@
-//! Допуск CSS-узлов и выбор overflow-цепочки CB в одной сегментной записи.
+//! Допуск CSS-узлов, выбор overflow-цепочки CB и собственные записи внепоточных
+//! корней в одной сегментной записи источника.
 
 use gpui::{
-    App, Bounds, PaintRecordError, PaintSegment, PaintSegmentClips, PaintSegmentRecords, Pixels,
-    Window,
+    App, Bounds, PaintPlacement, PaintPlan, PaintRecordError, PaintSegment, PaintSegmentClips,
+    PaintSegmentRecords, Pixels, Window, point, px,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -11,34 +12,54 @@ use std::{
 };
 
 use crate::layout::fragment::decoration::Decoration;
-use crate::layout::fragment::paint_source::SourceSlices;
+use crate::layout::fragment::paint_source::{BareRecords, Nested, SourceSlices};
 
 struct Source {
     slices: SourceSlices,
-    clips: RefCell<HashMap<u64, PaintSegmentClips>>,
+    painting: bool,
+    bare: BareRecords,
+    /// CB clip chains by (active capture, node).
+    clips: RefCell<HashMap<(u64, u64), PaintSegmentClips>>,
     failure: Cell<Option<PaintRecordError>>,
 }
 
 impl Source {
-    fn remember(&self, id: u64, clips: PaintSegmentClips) {
-        self.clips.borrow_mut().insert(id, clips);
+    fn new(slices: SourceSlices, painting: bool) -> Rc<Self> {
+        Rc::new(Self {
+            slices,
+            painting,
+            bare: BareRecords::default(),
+            clips: RefCell::default(),
+            failure: Cell::default(),
+        })
+    }
+
+    fn fail(&self, error: PaintRecordError) {
+        self.failure.set(Some(error));
+    }
+
+    fn remember(&self, key: (u64, u64), clips: PaintSegmentClips) {
+        self.clips.borrow_mut().insert(key, clips);
+    }
+
+    fn family(&self, id: u64) -> u64 {
+        self.slices.families.get(&id).copied().unwrap_or(id)
+    }
+
+    /// The capture-local nested admission when `id` belongs to the active capture.
+    fn own(&self, id: u64, key: u64) -> Option<&Rc<Nested>> {
+        (key != 0 && self.family(id) == key)
+            .then(|| self.slices.nested.get(&key))
+            .flatten()
     }
 }
 
 struct CurrentNode(u64);
+/// Family root whose own capture is active.
+struct Capture(u64);
 
-/// Потребитель таблиц P18 остаётся в CSS-слоте своего исходного узла.
-/// Слот вызывается при capture; immutable playback его не повторяет.
-pub(crate) fn slot(id: u64, window: &mut Window, cx: &mut App) {
-    let callback = window
-        .render_context::<Source>()
-        .and_then(|source| source.slices.slots.get(&id).cloned());
-    if let Some(callback) = callback
-        && let Err(error) = callback(window, cx)
-        && let Some(source) = window.render_context::<Source>()
-    {
-        source.failure.set(Some(error));
-    }
+fn capture_key(window: &Window) -> u64 {
+    window.render_context::<Capture>().map_or(0, |c| c.0)
 }
 
 pub(crate) fn record(
@@ -48,29 +69,19 @@ pub(crate) fn record(
     window: &mut Window,
     cx: &mut App,
     paint: impl FnOnce(&mut Window, &mut App),
-) -> Result<PaintSegmentRecords, PaintRecordError> {
-    let source = Rc::new(Source {
-        slices,
-        clips: RefCell::default(),
-        failure: Cell::default(),
-    });
+) -> Result<(PaintSegmentRecords, BareRecords), PaintRecordError> {
+    let source = Source::new(slices, true);
     let (_, records) = window.record_paint_segments(extent, segments, cx, |window, cx| {
         match window.paint_segment_clips() {
-            Ok(clips) => {
-                source.remember(0, clips);
-            }
-            Err(error) => {
-                source.failure.set(Some(error));
-            }
+            Ok(clips) => source.remember((0, 0), clips),
+            Err(error) => source.fail(error),
         }
-        window.with_render_context(Some(source.clone()), |window| {
-            paint(window, cx);
-        });
+        window.with_render_context(Some(source.clone()), |window| paint(window, cx));
     })?;
     if let Some(error) = source.failure.take() {
         return Err(error);
     }
-    Ok(records)
+    Ok((records, source.bare.clone()))
 }
 
 pub(crate) fn prepaint(
@@ -81,19 +92,11 @@ pub(crate) fn prepaint(
     cx: &mut App,
     prepaint: impl FnOnce(&mut Window, &mut App),
 ) -> Result<(), PaintRecordError> {
-    let source = Rc::new(Source {
-        slices,
-        clips: RefCell::default(),
-        failure: Cell::default(),
-    });
+    let source = Source::new(slices, false);
     window.with_prepaint_segments(extent, segments, cx, |window, cx| {
         match window.paint_segment_clips() {
-            Ok(clips) => {
-                source.remember(0, clips);
-            }
-            Err(error) => {
-                source.failure.set(Some(error));
-            }
+            Ok(clips) => source.remember((0, 0), clips),
+            Err(error) => source.fail(error),
         }
         let traversal = Rc::new(gpui::PrepaintTraversal {
             enter_children: Rc::new(remember_clips),
@@ -102,37 +105,133 @@ pub(crate) fn prepaint(
             window.with_render_context(Some(traversal), |window| prepaint(window, cx));
         });
     })?;
-    let failure = source.failure.take();
-    failure.map_or(Ok(()), Err)
+    source.failure.take().map_or(Ok(()), Err)
 }
 
-pub(crate) fn node(id: u64, cb: Option<u64>, window: &mut Window, paint: impl FnOnce(&mut Window)) {
+pub(crate) fn node(
+    id: u64,
+    cb: Option<u64>,
+    window: &mut Window,
+    cx: &mut App,
+    paint: impl FnOnce(&mut Window, &mut App),
+) {
     let Some(source) = window.render_context::<Source>() else {
-        paint(window);
+        paint(window, cx);
         return;
     };
-    let slices = source
-        .slices
-        .nodes
-        .get(&id)
-        .cloned()
-        .unwrap_or_else(|| Rc::from([]));
-    let paint = |window: &mut Window| {
-        window.with_render_context(Some(Rc::new(CurrentNode(id))), paint);
+    let key = capture_key(window);
+    if source.painting
+        && key != id
+        && let Some(nested) = source.slices.nested.get(&id).cloned()
+    {
+        own_capture(&source, id, cb, nested, key, window, cx, paint);
+        return;
+    }
+    let slices = match source.own(id, key) {
+        Some(nested) => nested.slices.clone(),
+        None => source
+            .slices
+            .nodes
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| Rc::from([])),
     };
-    let clips = cb.map(|cb| source.clips.borrow().get(&cb).cloned());
+    let paint = |window: &mut Window| {
+        window.with_render_context(Some(Rc::new(CurrentNode(id))), |window| paint(window, cx));
+    };
+    let clips = cb.map(|cb| source.clips.borrow().get(&(key, cb)).cloned());
     let result = window.with_paint_segment_slices(slices, |window| match clips {
-        Some(clips) => match clips {
-            Some(clips) => window.with_paint_segment_clips(&clips, paint),
-            None => Err(PaintRecordError::InvalidGeometry),
-        },
+        Some(Some(clips)) => window.with_paint_segment_clips(&clips, paint),
+        // Inside an own capture the CB may lie outside: its clip belongs to
+        // the enclosing record or the legacy copy that replays this one.
+        Some(None) if key != 0 => {
+            paint(window);
+            Ok(())
+        }
+        Some(None) => Err(PaintRecordError::InvalidGeometry),
         None => {
             paint(window);
             Ok(())
         }
     });
     if let Err(error) = result.and_then(|result| result) {
-        source.failure.set(Some(error));
+        source.fail(error);
+    }
+}
+
+/// Paint a continued root once into its own capture, without its ancestors'
+/// effects; re-admit placements that no legacy copy replays.
+#[allow(clippy::too_many_arguments)]
+fn own_capture(
+    source: &Rc<Source>,
+    id: u64,
+    cb: Option<u64>,
+    nested: Rc<Nested>,
+    key: u64,
+    window: &mut Window,
+    cx: &mut App,
+    paint: impl FnOnce(&mut Window, &mut App),
+) {
+    let captured = window.record_paint_segments(nested.extent, nested.routes.clone(), cx, {
+        let source = source.clone();
+        let slices = nested.slices.clone();
+        move |window, cx| {
+            window.with_render_context(Some(Rc::new(Capture(id))), |window| {
+                let result = window.with_paint_segment_slices(slices, |window| {
+                    window.with_render_context(Some(Rc::new(CurrentNode(id))), |window| {
+                        paint(window, cx)
+                    })
+                });
+                if let Err(error) = result {
+                    source.fail(error);
+                }
+            });
+        }
+    });
+    let records = match captured {
+        Ok((_, records)) => records,
+        Err(error) => return source.fail(error),
+    };
+    let enclosing = source.slices.nested.get(&key).filter(|_| key != 0);
+    for (segment, record) in records.into_records() {
+        if nested.bare.contains(&segment) {
+            source.bare.borrow_mut().insert((segment, id), record);
+            continue;
+        }
+        let outer: Rc<[_]> = source
+            .slices
+            .nodes
+            .get(&id)
+            .into_iter()
+            .flat_map(|slices| slices.iter())
+            .filter(|slice| slice.placement.id == segment)
+            .filter(|_| enclosing.is_none_or(|e| e.routes.iter().any(|r| r.id == segment)))
+            .copied()
+            .collect();
+        if outer.is_empty() {
+            continue;
+        }
+        let clips = cb.and_then(|cb| source.clips.borrow().get(&(key, cb)).cloned());
+        let replay = move |window: &mut Window| {
+            let origin = point(px(0.), px(0.));
+            let placement = PaintPlacement {
+                source: origin,
+                destination: origin,
+                clip: window.content_mask().bounds,
+            };
+            window
+                .paint_plan(&PaintPlan::record(record), placement)
+                .map(|_| ())
+        };
+        let result = window.with_paint_segment_slices(outer, |window| match &clips {
+            Some(clips) => window
+                .with_paint_segment_clips(clips, replay)
+                .and_then(|result| result),
+            None => replay(window),
+        });
+        if let Err(error) = result.and_then(|result| result) {
+            source.fail(error);
+        }
     }
 }
 
@@ -143,23 +242,24 @@ pub(super) fn remember_clips(window: &Window) {
     ) else {
         return;
     };
-    if source.clips.borrow().contains_key(&node.0) {
+    let key = (capture_key(window), node.0);
+    if source.clips.borrow().contains_key(&key) {
         return;
     }
     match window.paint_segment_clips() {
-        Ok(clips) => {
-            source.remember(node.0, clips);
-        }
-        Err(error) => {
-            source.failure.set(Some(error));
-        }
+        Ok(clips) => source.remember(key, clips),
+        Err(error) => source.fail(error),
     }
 }
 
 pub(crate) fn decorations(id: u64, window: &Window) -> Rc<[Decoration]> {
+    let key = capture_key(window);
     window
         .render_context::<Source>()
-        .and_then(|source| source.slices.boxes.get(&id).cloned())
+        .and_then(|source| match source.own(id, key) {
+            Some(nested) => nested.boxes.get(&id).cloned(),
+            None => source.slices.boxes.get(&id).cloned(),
+        })
         .unwrap_or_else(|| Rc::from([]))
 }
 
@@ -169,10 +269,10 @@ pub(crate) fn decoration(
     paint: impl FnOnce(&mut Window),
 ) {
     let result = window.with_paint_segment_slices(Rc::from([geometry.slice]), paint);
-    if let Err(error) = result {
-        if let Some(source) = window.render_context::<Source>() {
-            source.failure.set(Some(error));
-        }
+    if let Err(error) = result
+        && let Some(source) = window.render_context::<Source>()
+    {
+        source.fail(error);
     }
 }
 
@@ -186,9 +286,14 @@ fn paint_box(id: u64, style: &gpui::Style, window: &mut Window, cx: &mut App) ->
     let Some(source) = window.render_context::<Source>() else {
         return false;
     };
+    let key = capture_key(window);
     // Только узлы с явным вводом заменяют свою краску; служебные native-узлы
     // продолжают общий painter без CSS-эвристик в GPUI.
-    let Some(boxes) = source.slices.boxes.get(&id) else {
+    let boxes = match source.own(id, key) {
+        Some(nested) => nested.boxes.get(&id).cloned(),
+        None => source.slices.boxes.get(&id).cloned(),
+    };
+    let Some(boxes) = boxes else {
         return false;
     };
     for geometry in boxes.iter() {

@@ -46,7 +46,8 @@ impl Wrap for Record {
             geometry.id,
             geometry.positioned.then_some(geometry.cb),
             window,
-            |window| {
+            cx,
+            |window, cx| {
                 self.child.prepaint(window, cx);
             },
         );
@@ -54,12 +55,12 @@ impl Wrap for Record {
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let geometry = &self.geometry;
-        crate::hooks::paint_source_slot(geometry.id, window, cx);
         crate::hooks::paint_source_node(
             geometry.id,
             geometry.positioned.then_some(geometry.cb),
             window,
-            |window| self.child.paint(window, cx),
+            cx,
+            |window, cx| self.child.paint(window, cx),
         );
     }
 }

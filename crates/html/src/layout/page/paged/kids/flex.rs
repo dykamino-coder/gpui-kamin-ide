@@ -78,8 +78,15 @@ pub(super) fn regrow(
         })
         .collect();
     let (root, rec) = (root.clone(), watched.clone());
+    // Native page sources paint the absolute/fixed continuations; the copies
+    // replay them in place (paint::continuation).
+    let oof_slots = group.iter().any(|n| {
+        matches!(n, Node::Element(e)
+            if crate::layout::positioned::containing_block::metrics::layout::contains_oof_box(e))
+    });
     let build = move |dom: &crate::dom::Element, part: usize, _band: bool, base: &RenderOpts| {
         let mut opts = base.clone();
+        opts.cx.position.continuation_slots |= oof_slots;
         let paged = crate::layout::page::paged::PagedBuild::begin();
         opts.frag.paged = Some(paged.clone());
         opts.frag.watch = Some(if part == 0 {
@@ -96,16 +103,12 @@ pub(super) fn regrow(
             wrap = wrap.h(px(ah));
         }
         let el = wrap
-            .children(
-                opts.cx.contracts.build.blocks(
-                    // Native page sources paint every OOF box (PageStack OOF plan).
-                    &crate::layout::positioned::repeat::without_oof(&Node::Element(dom.clone()))
-                        .into_iter()
-                        .collect::<Vec<_>>(),
-                    &root,
-                    &opts,
-                ),
-            )
+            .children(opts.cx.contracts.build.blocks(
+                // Native page sources paint every OOF box (PageStack OOF plan).
+                &[Node::Element(dom.clone())],
+                &root,
+                &opts,
+            ))
             .into_any_element();
         let layer = |els| {
             div()

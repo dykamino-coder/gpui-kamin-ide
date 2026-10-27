@@ -72,10 +72,22 @@ fn source_is_prepainted_and_painted_once_and_replay_keeps_independent_roots_vali
                             destination: point(px(0.), px(0.)),
                         }]);
                         native
-                            .prepaint(routes.clone(), SourceSlices::default(), window, cx)
+                            .prepaint(
+                                routes.clone(),
+                                SourceSlices::default(),
+                                (routes.clone(), SourceSlices::default()),
+                                window,
+                                cx,
+                            )
                             .unwrap();
                         assert_eq!(
-                            native.prepaint(routes, SourceSlices::default(), window, cx),
+                            native.prepaint(
+                                routes.clone(),
+                                SourceSlices::default(),
+                                (routes, SourceSlices::default()),
+                                window,
+                                cx,
+                            ),
                             Err(PaintRecordError::InvalidGeometry)
                         );
                         let mut other = gpui::div().into_any_element();
@@ -87,7 +99,7 @@ fn source_is_prepainted_and_painted_once_and_replay_keeps_independent_roots_vali
                     },
                     |_, state, window, cx| {
                         let (native, _other, other_node) = state;
-                        let records = native.record(window, cx).unwrap();
+                        let records = native.record(window, cx).unwrap().0;
                         assert_eq!(
                             native.record(window, cx).err(),
                             Some(PaintRecordError::InvalidGeometry)

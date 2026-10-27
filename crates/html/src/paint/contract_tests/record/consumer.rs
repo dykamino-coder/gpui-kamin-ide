@@ -6,10 +6,9 @@ use crate::layout::fragment::{
 };
 use crate::paint::coordinator::segments as consumer;
 use gpui::{
-    BoxShadow, Corners, Edges, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentSlice, Style,
-    canvas,
+    BoxShadow, Corners, Edges, PaintSegment, PaintSegmentId, PaintSegmentSlice, Style, canvas,
 };
-use std::{cell::Cell, rc::Rc};
+use std::rc::Rc;
 
 fn route(id: u64, y: f32) -> PaintSegment {
     PaintSegment {
@@ -70,7 +69,7 @@ fn fragment_box_override_matches_common_background_border_radius_and_shadow_pain
                         window,
                         cx,
                         |window, cx| {
-                            consumer::node(7, None, window, |window| {
+                            consumer::node(7, None, window, cx, |window, cx| {
                                 style().paint_with_box(
                                     whole,
                                     Some(&consumer::box_painter(7)),
@@ -81,7 +80,8 @@ fn fragment_box_override_matches_common_background_border_radius_and_shadow_pain
                             });
                         },
                     )
-                    .unwrap();
+                    .unwrap()
+                    .0;
                     let (_, expected) = window
                         .record_paint_segments(extent, routes.clone(), cx, |window, cx| {
                             for (index, geometry) in boxes.iter().enumerate() {
@@ -111,95 +111,6 @@ fn fragment_box_override_matches_common_background_border_radius_and_shadow_pain
                         assert_eq!(format!("{:?}", a.shadows), format!("{:?}", b.shadows));
                     }
                 }
-            },
-        )
-    });
-}
-
-#[test]
-fn table_source_slot_stays_between_oof_siblings_inside_one_ancestor_effect() {
-    draw(|| {
-        canvas(
-            |_, _, _| (),
-            |_, (), window, cx| {
-                let extent = rect(0., 0., 90., 90.);
-                let calls = Rc::new(Cell::new(0));
-                let observed = calls.clone();
-                let part = slice(1, 0.);
-                let mut slices = SourceSlices::default();
-                for id in [1, 2, 3] {
-                    slices.nodes.insert(id, Rc::from([part]));
-                }
-                slices.slots.insert(
-                    8,
-                    Rc::new(move |window, _| {
-                        observed.set(observed.get() + 1);
-                        window.with_paint_segment_slices(Rc::from([part]), |window| {
-                            window.paint_quad(fill(rect(4., 4., 20., 20.), rgb(0x00ff00)));
-                        })?;
-                        Ok(())
-                    }),
-                );
-                let records = consumer::record(
-                    extent,
-                    Rc::from([part.placement]),
-                    slices,
-                    window,
-                    cx,
-                    |window, cx| {
-                        consumer::node(1, None, window, |window| {
-                            window.paint_group(
-                                extent,
-                                Corners::default(),
-                                3.,
-                                0.5,
-                                0,
-                                &[],
-                                None,
-                                None,
-                                |window| {
-                                    consumer::node(2, None, window, |window| {
-                                        window.paint_quad(fill(
-                                            rect(4., 4., 20., 20.),
-                                            rgb(0xff0000),
-                                        ));
-                                    });
-                                    consumer::slot(8, window, cx);
-                                    consumer::node(3, None, window, |window| {
-                                        window.paint_quad(fill(
-                                            rect(4., 4., 20., 20.),
-                                            rgb(0x0000ff),
-                                        ));
-                                    });
-                                },
-                            );
-                        })
-                    },
-                )
-                .unwrap();
-                assert_eq!(calls.get(), 1);
-                let record = records.get(PaintSegmentId(1)).unwrap();
-                let scene = record.scene();
-                assert_eq!(scene.groups.len(), 1);
-                assert_eq!(scene.surfaces.len(), 1);
-                assert_eq!(scene.surfaces[0].opacity, 0.5);
-                assert_eq!(scene.groups[0].blur_radius, 3.);
-                let quads = &scene.groups[0].scene.quads;
-                assert_eq!(quads.len(), 3);
-                for (quad, color) in quads.iter().zip([0xff0000, 0x00ff00, 0x0000ff]) {
-                    assert_eq!(
-                        format!("{:?}", quad.background),
-                        format!("{:?}", gpui::Background::from(rgb(color)))
-                    );
-                }
-                assert!(quads[0].order < quads[1].order);
-                assert!(quads[1].order < quads[2].order);
-                for x in [0., 30.] {
-                    window
-                        .paint_plan(&PaintPlan::record(record.clone()), placement(x, 0., extent))
-                        .unwrap();
-                }
-                assert_eq!(calls.get(), 1);
             },
         )
     });

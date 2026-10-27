@@ -52,6 +52,8 @@ pub(crate) struct Snapshot {
     pub(crate) normal: HashMap<u64, Bounds<Pixels>>,
     pub(crate) cloned_boxes: HashMap<u64, (crate::layout::fragment::types::StackAxis, f32, f32)>,
     pub(crate) native: Option<std::rc::Rc<layout::Native>>,
+    /// Fragmentation host whose children the source lays out (0: a page area).
+    pub(crate) host: u64,
 }
 
 impl Snapshot {

@@ -15,6 +15,8 @@ impl Recipe {
             && self.rows.is_none()
             && self.fixed.is_some_and(|h| h > crate::tolerance::COORD_EPS)
             && opts.cx.position.geometry_record.is_none()
+            // Inside a copy of an outer native source its flows own these boxes.
+            && !opts.cx.position.continuation_slots
         {
             let source = host
                 .children

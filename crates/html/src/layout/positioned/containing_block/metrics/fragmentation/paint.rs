@@ -1,112 +1,177 @@
-//! Допуск исходных узлов задаётся своим семейством normal-flow или OOF-токеном.
+//! Допуск независимых OOF-продолжений: hit testing видит все размещения; запись источника
+//! допускает только сегменты без legacy-копии предков, остальные воспроизводит копия.
 
 use super::super::Snapshot;
 use crate::hooks::SourceSlices;
-use gpui::{PaintRecordError, PaintSegmentSlice};
+use crate::layout::fragment::decoration::Decoration;
+use crate::layout::fragment::paint_source::Nested;
+use gpui::{
+    Bounds, PaintRecordError, PaintSegment, PaintSegmentId, PaintSegmentSlice, Pixels, Point,
+};
 use std::{collections::HashMap, rc::Rc};
 
+#[derive(Default)]
+struct Own {
+    routes: Vec<PaintSegment>,
+    slices: Vec<PaintSegmentSlice>,
+    bare: Vec<PaintSegmentId>,
+}
+
+/// Placements of continued absolute/fixed families, keyed (segment, ordinal).
+#[derive(Default)]
 pub(crate) struct Admission {
-    families: HashMap<u64, Vec<PaintSegmentSlice>>,
+    ordinals: HashMap<PaintSegmentId, u32>,
+    hits: Vec<PaintSegment>,
+    orphan: Vec<PaintSegment>,
+    hit_families: HashMap<u64, Vec<PaintSegmentSlice>>,
+    orphan_families: HashMap<u64, Vec<PaintSegmentSlice>>,
+    own: HashMap<u64, Own>,
+}
+
+/// Routes and admission of one native source: hit testing, then paint.
+pub(crate) struct Routing {
+    pub(crate) hits: (Rc<[PaintSegment]>, SourceSlices),
+    pub(crate) paint: (Rc<[PaintSegment]>, SourceSlices),
 }
 
 impl Admission {
     pub(crate) fn new() -> Self {
-        Self {
-            families: HashMap::new(),
-        }
+        Self::default()
     }
 
+    /// One fragment of `family` in `segment`. `copied`: a legacy copy of the
+    /// family's ancestors paints in that segment and replays the own record.
     pub(crate) fn insert(
         &mut self,
         family: u64,
-        slice: PaintSegmentSlice,
+        segment: PaintSegmentId,
+        source: Point<Pixels>,
+        destination: Point<Pixels>,
+        clip: Bounds<Pixels>,
+        copied: bool,
     ) -> Result<(), PaintRecordError> {
-        let slices = self.families.entry(family).or_default();
-        if slices.iter().any(|old| {
-            old.placement.id == slice.placement.id
-                && old.placement.ordinal == slice.placement.ordinal
-        }) {
-            return Err(PaintRecordError::InvalidGeometry);
+        let ordinal = self.ordinals.entry(segment).or_default();
+        let placement = PaintSegment {
+            id: segment,
+            ordinal: *ordinal,
+            source,
+            destination,
+        };
+        *ordinal = ordinal
+            .checked_add(1)
+            .ok_or(PaintRecordError::InvalidGeometry)?;
+        let slice = PaintSegmentSlice {
+            placement,
+            source_clip: clip,
+        };
+        self.hits.push(placement);
+        self.hit_families.entry(family).or_default().push(slice);
+        let own = self.own.entry(family).or_default();
+        if copied {
+            own.bare.push(segment);
+            own.routes.push(placement);
+            own.slices.push(slice);
+        } else {
+            // Source coordinates: the enclosing record re-admits and places it.
+            let identity = PaintSegment {
+                destination: source,
+                ..placement
+            };
+            own.routes.push(identity);
+            own.slices.push(PaintSegmentSlice {
+                placement: identity,
+                source_clip: clip,
+            });
+            self.orphan.push(placement);
+            self.orphan_families.entry(family).or_default().push(slice);
         }
-        slices.push(slice);
         Ok(())
     }
 
-    pub(crate) fn nodes(self, snapshot: &Snapshot) -> SourceSlices {
-        let families: HashMap<_, Rc<[_]>> = self
-            .families
-            .into_iter()
-            .map(|(id, slices)| (id, Rc::from(slices)))
-            .collect();
-        let nodes: HashMap<_, _> = snapshot
-            .families
-            .iter()
-            .map(|(&id, family)| {
-                (
-                    id,
-                    families
-                        .get(family)
-                        .cloned()
-                        .unwrap_or_else(|| Rc::from([])),
-                )
-            })
-            .collect();
-        let boxes = snapshot
-            .normal
-            .iter()
-            .filter_map(|(&id, &bounds)| {
-                let slices = nodes.get(&id)?;
-                Some((
-                    id,
-                    slices
-                        .iter()
-                        .filter_map(|&slice| {
-                            crate::layout::fragment::decoration::Decoration::for_slice(
-                                bounds,
-                                slice,
-                                snapshot.cloned_boxes.get(&id).copied(),
-                            )
-                        })
-                        .collect::<Rc<[_]>>(),
-                ))
-            })
-            .collect();
-        SourceSlices {
-            nodes,
-            boxes,
-            ..Default::default()
+    pub(crate) fn finish(self, snapshot: &Snapshot) -> Routing {
+        let families = Rc::new(snapshot.families.clone());
+        let hits = slices(snapshot, &self.hit_families, families.clone());
+        let mut paint = slices(snapshot, &self.orphan_families, families);
+        for (root, own) in self.own {
+            let extent = own
+                .slices
+                .iter()
+                .map(|slice| slice.source_clip)
+                .reduce(|a, b| a.union(&b))
+                .unwrap_or_default();
+            let shared: Rc<[PaintSegmentSlice]> = Rc::from(own.slices);
+            let boxes = boxes(snapshot, root, &shared);
+            paint.nested.insert(
+                root,
+                Rc::new(Nested {
+                    extent,
+                    routes: Rc::from(own.routes),
+                    slices: shared,
+                    boxes,
+                    bare: Rc::from(own.bare),
+                }),
+            );
+        }
+        Routing {
+            hits: (Rc::from(self.hits), hits),
+            paint: (Rc::from(self.orphan), paint),
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gpui::{Bounds, PaintSegment, PaintSegmentId, point, px, size};
-
-    #[test]
-    fn normal_slice_does_not_admit_the_oof_family_or_its_normal_children() {
-        let mut snapshot = Snapshot::default();
-        snapshot
-            .families
-            .extend([(10, 10), (11, 10), (20, 20), (21, 20), (30, 30)]);
-        let slice = |id| PaintSegmentSlice {
-            placement: PaintSegment {
-                id: PaintSegmentId(id),
-                ordinal: 0,
-                source: point(px(0.), px(0.)),
-                destination: point(px(100. * id as f32), px(0.)),
-            },
-            source_clip: Bounds::new(point(px(0.), px(0.)), size(px(100.), px(20.))),
-        };
-        let mut admission = Admission::new();
-        admission.insert(10, slice(1)).unwrap();
-        admission.insert(20, slice(2)).unwrap();
-        let nodes = admission.nodes(&snapshot);
-        assert_eq!(nodes.nodes[&10][0].placement.id, PaintSegmentId(1));
-        assert!(Rc::ptr_eq(&nodes.nodes[&10], &nodes.nodes[&11]));
-        assert_eq!(nodes.nodes[&20][0].placement.id, PaintSegmentId(2));
-        assert!(Rc::ptr_eq(&nodes.nodes[&20], &nodes.nodes[&21]));
-        assert!(nodes.nodes[&30].is_empty());
+fn slices(
+    snapshot: &Snapshot,
+    by_family: &HashMap<u64, Vec<PaintSegmentSlice>>,
+    families: Rc<HashMap<u64, u64>>,
+) -> SourceSlices {
+    let by_family: HashMap<_, Rc<[_]>> = by_family
+        .iter()
+        .map(|(id, slices)| (*id, Rc::from(slices.as_slice())))
+        .collect();
+    let nodes: HashMap<_, _> = snapshot
+        .families
+        .iter()
+        .map(|(&id, family)| {
+            let slices = by_family.get(family).cloned();
+            (id, slices.unwrap_or_else(|| Rc::from([])))
+        })
+        .collect();
+    let mut boxes = HashMap::new();
+    for (&family, slices) in &by_family {
+        boxes.extend(self::boxes(snapshot, family, slices));
+    }
+    // Normal-flow boxes stay on their legacy copies: no own decoration here.
+    for id in nodes.keys() {
+        boxes.entry(*id).or_insert_with(|| Rc::from([]));
+    }
+    SourceSlices {
+        nodes,
+        boxes,
+        families,
+        nested: HashMap::new(),
     }
 }
+
+fn boxes(
+    snapshot: &Snapshot,
+    family: u64,
+    slices: &Rc<[PaintSegmentSlice]>,
+) -> HashMap<u64, Rc<[Decoration]>> {
+    snapshot
+        .families
+        .iter()
+        .filter(|(_, f)| **f == family)
+        .filter_map(|(&id, _)| {
+            let bounds = *snapshot.normal.get(&id)?;
+            let cloned = snapshot.cloned_boxes.get(&id).copied();
+            let own = slices
+                .iter()
+                .filter_map(|&slice| Decoration::for_slice(bounds, slice, cloned))
+                .collect::<Rc<[_]>>();
+            Some((id, own))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests;

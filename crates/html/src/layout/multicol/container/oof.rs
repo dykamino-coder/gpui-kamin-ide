@@ -149,7 +149,15 @@ pub(super) fn column_stack_div(
         } else {
             crate::layout::multicol::measure::RowExtent::ColumnHeight
         })
-        .with_oof(opts.cx.position.geometry.clone(), merged.wm())
+        .with_oof(
+            // A snapshot belongs to the multicol that laid out its children.
+            opts.cx
+                .position
+                .geometry
+                .clone()
+                .filter(|g| g.host == e.node_id),
+            merged.wm(),
+        )
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
         .with_fill_shrink(

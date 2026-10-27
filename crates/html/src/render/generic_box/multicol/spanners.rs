@@ -65,7 +65,10 @@ pub(super) fn deferred(
             probe_opts.frag.watch = None;
             probe_opts.cx.position.state = Default::default();
             probe_opts.cx.deferred = Default::default();
-            if opts.cx.position.geometry_record.is_none() && opts.cx.position.geometry.is_none() {
+            if opts.cx.position.geometry_record.is_none()
+                && opts.cx.position.geometry.is_none()
+                && !opts.cx.position.continuation_slots
+            {
                 let kids: Vec<_> = host
                     .children
                     .iter()

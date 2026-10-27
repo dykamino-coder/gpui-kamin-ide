@@ -177,5 +177,6 @@ fn collect_in(
         |extent, bounds| extent.union(&bounds),
     );
     snapshot.native = Some(Rc::new(super::Native::new(root, layout, extent)));
+    snapshot.host = if is_page { 0 } else { parent.self_node };
     Rc::new(snapshot)
 }

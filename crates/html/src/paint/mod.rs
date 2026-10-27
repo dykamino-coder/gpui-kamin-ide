@@ -8,6 +8,7 @@ pub mod background;
 pub mod border_image;
 pub(crate) mod box_tree;
 pub(crate) mod cache;
+pub(crate) mod continuation;
 pub(crate) mod controls;
 pub(crate) mod coordinator;
 pub mod decorations;
