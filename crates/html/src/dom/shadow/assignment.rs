@@ -53,12 +53,20 @@ pub(super) fn shadow_scope(
     media: Media,
     layers: &mut LayerRegistry,
     vcx: ValueCx<'_>,
-) -> (Rc<Scope>, Vec<HasArg>) {
+) -> Result<(Rc<Scope>, Vec<HasArg>), crate::budget::admission::Error> {
+    let admission = vcx
+        .doc
+        .budget
+        .borrow()
+        .clone()
+        .map(crate::budget::admission::Admission::new)
+        .unwrap_or_default();
+    admission.work(agent.rules.len() + agent.frames.len())?;
+    agent.clone_cost.replay(&admission)?;
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
-    let mut sheets: Vec<String> = vec![];
-    collect_style_tags(root, &mut sheets);
-    for css in &sheets {
+    let sheets = try_collect_style_tags(root, &admission)?;
+    for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, layers, vcx)
             .into_iter()
@@ -75,18 +83,36 @@ pub(super) fn shadow_scope(
     let mut raw: Vec<String> = vec![];
     rules.retain(|r| collect_has_args(&r.sel, &mut raw));
     let args = raw.iter().filter_map(|a| parse_has_arg(a)).collect();
-    (Rc::new(Scope { rules, frames }), args)
+    Ok((
+        Rc::new(Scope {
+            rules,
+            frames,
+            clone_cost: Default::default(),
+        }),
+        args,
+    ))
 }
 
 /// Все `<slot>` дерева тени в порядке дерева. Вложенные тени лежат в
 /// `template_contents`, а не в `children`, поэтому сюда не попадают; светлые
 /// дети вложенных хостов — попадают, они в этом же дереве.
-pub(super) fn collect_slots(handle: &Handle, out: &mut Vec<Handle>) {
-    for child in crate::dom::source_walk::descendants(handle, false).skip(1) {
+pub(super) fn collect_slots(
+    handle: &Handle,
+    out: &mut Vec<Handle>,
+    tree: &TreeIndex,
+) -> Result<(), crate::budget::admission::Error> {
+    let mut walk = super::super::source_walk::SourceWalk::new(
+        handle,
+        super::super::source_walk::Templates::None,
+        tree.admission(),
+    )?;
+    walk.try_next()?;
+    while let Some(child) = walk.try_next()? {
         if is_slot(&child) {
             out.push(child);
         }
     }
+    Ok(())
 }
 
 /// Распределение по слотам (DOM §4.2.2.4 «find a slot»): каждый светлый
@@ -100,17 +126,20 @@ pub(super) fn assign_slots(
     host_path: &Rc<Vec<Ancestor>>,
     drafts: &mut HashMap<NodeKey, SlotInfo>,
     tree: &TreeIndex,
-) {
+) -> Result<(), crate::budget::admission::Error> {
+    let admission = tree.admission();
     let mut slots: Vec<Handle> = vec![];
-    collect_slots(root, &mut slots);
+    collect_slots(root, &mut slots, tree)?;
     if slots.is_empty() {
-        return;
+        return Ok(());
     }
+    admission.work(light.len())?;
     let (spots, all) = census_of(light, tree);
     let light_all = Rc::new(all);
     let mut assigned: HashMap<NodeKey, Vec<Slotted>> = HashMap::new();
     let mut pos = 0usize;
     for (idx, node) in light.iter().enumerate() {
+        admission.work(slots.len() + 1)?;
         let (name, anc, elem_pos) = match &node.data {
             NodeData::Element { .. } => {
                 let anc = light_all[pos].clone();
@@ -143,6 +172,7 @@ pub(super) fn assign_slots(
             });
     }
     for slot in slots {
+        admission.work(light.len() + spots.len() + 1)?;
         let key = NodeKey::of(&slot);
         let assigned = assigned.remove(&key).unwrap_or_default();
         drafts.insert(
@@ -160,4 +190,5 @@ pub(super) fn assign_slots(
             },
         );
     }
+    Ok(())
 }

@@ -2,7 +2,7 @@
 //!
 //! This module is for internal use. Use `xml::pull` module to do parsing.
 
-use crate::common::{is_name_char, is_whitespace_char, is_xml10_char, is_xml11_char, Position, TextPosition};
+use crate::common::{is_name_char, is_whitespace_char, Position, TextPosition};
 use crate::reader::error::SyntaxError;
 use crate::reader::{Error, ErrorKind};
 use crate::util::{CharReader, Encoding};
@@ -10,7 +10,14 @@ use std::collections::VecDeque;
 use std::io::Read;
 use std::{fmt, result};
 
+use super::admission::{control::Control, Lease, Storage, Text};
 use super::ParserConfig2;
+
+#[derive(Clone, Copy)]
+enum Queued {
+    Character(char),
+    EndEntity,
+}
 
 /// `Token` represents a single lexeme of an XML document. These lexemes
 /// are used to perform actual parsing.
@@ -62,28 +69,29 @@ impl fmt::Display for Token {
         match *self {
             Token::Character(c) => c.fmt(f),
             other => match other {
-                Token::OpeningTagStart            => "<",
+                Token::OpeningTagStart => "<",
                 Token::ProcessingInstructionStart => "<?",
-                Token::DoctypeStart               => "<!DOCTYPE",
-                Token::ClosingTagStart            => "</",
-                Token::CommentStart               => "<!--",
-                Token::CDataStart                 => "<![CDATA[",
-                Token::TagEnd                     => ">",
-                Token::EmptyTagEnd                => "/>",
-                Token::ProcessingInstructionEnd   => "?>",
-                Token::CommentEnd                 => "-->",
-                Token::CDataEnd                   => "]]>",
-                Token::ReferenceStart             => "&",
-                Token::ReferenceEnd               => ";",
-                Token::EqualsSign                 => "=",
-                Token::SingleQuote                => "'",
-                Token::DoubleQuote                => "\"",
-                Token::MarkupDeclarationStart     => "<!",
-                Token::Eof | Token::Character(_)  => {
+                Token::DoctypeStart => "<!DOCTYPE",
+                Token::ClosingTagStart => "</",
+                Token::CommentStart => "<!--",
+                Token::CDataStart => "<![CDATA[",
+                Token::TagEnd => ">",
+                Token::EmptyTagEnd => "/>",
+                Token::ProcessingInstructionEnd => "?>",
+                Token::CommentEnd => "-->",
+                Token::CDataEnd => "]]>",
+                Token::ReferenceStart => "&",
+                Token::ReferenceEnd => ";",
+                Token::EqualsSign => "=",
+                Token::SingleQuote => "'",
+                Token::DoubleQuote => "\"",
+                Token::MarkupDeclarationStart => "<!",
+                Token::Eof | Token::Character(_) => {
                     debug_assert!(false);
                     ""
-                },
-            }.fmt(f),
+                }
+            }
+            .fmt(f),
         }
     }
 }
@@ -91,36 +99,30 @@ impl fmt::Display for Token {
 impl Token {
     pub const fn as_static_str(self) -> Option<&'static str> {
         match self {
-            Self::OpeningTagStart            => Some("<"),
+            Self::OpeningTagStart => Some("<"),
             Self::ProcessingInstructionStart => Some("<?"),
-            Self::DoctypeStart               => Some("<!DOCTYPE"),
-            Self::ClosingTagStart            => Some("</"),
-            Self::CommentStart               => Some("<!--"),
-            Self::CDataStart                 => Some("<![CDATA["),
-            Self::TagEnd                     => Some(">"),
-            Self::EmptyTagEnd                => Some("/>"),
-            Self::ProcessingInstructionEnd   => Some("?>"),
-            Self::CommentEnd                 => Some("-->"),
-            Self::CDataEnd                   => Some("]]>"),
-            Self::ReferenceStart             => Some("&"),
-            Self::ReferenceEnd               => Some(";"),
-            Self::EqualsSign                 => Some("="),
-            Self::SingleQuote                => Some("'"),
-            Self::DoubleQuote                => Some("\""),
-            _                                 => None
+            Self::DoctypeStart => Some("<!DOCTYPE"),
+            Self::ClosingTagStart => Some("</"),
+            Self::CommentStart => Some("<!--"),
+            Self::CDataStart => Some("<![CDATA["),
+            Self::TagEnd => Some(">"),
+            Self::EmptyTagEnd => Some("/>"),
+            Self::ProcessingInstructionEnd => Some("?>"),
+            Self::CommentEnd => Some("-->"),
+            Self::CDataEnd => Some("]]>"),
+            Self::ReferenceStart => Some("&"),
+            Self::ReferenceEnd => Some(";"),
+            Self::EqualsSign => Some("="),
+            Self::SingleQuote => Some("'"),
+            Self::DoubleQuote => Some("\""),
+            _ => None,
         }
     }
 
-    // using String.push_str(token.to_string()) is simply way too slow
-    pub fn push_to_string(self, target: &mut String) {
+    pub(crate) fn push_to_text(self, target: &mut Text, control: &Control) -> Result<()> {
         match self {
-            Self::Character(c) => {
-                debug_assert!(is_xml10_char(c) || is_xml11_char(c));
-                target.push(c);
-            },
-            _ => if let Some(s) = self.as_static_str() {
-                target.push_str(s);
-            }
+            Token::Character(c) => target.push(c, control),
+            other => target.push_str(other.as_static_str().unwrap_or(""), control),
         }
     }
 }
@@ -165,24 +167,36 @@ enum State {
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum QuoteStyle {
-    Single, Double
+    Single,
+    Double,
 }
 
 #[derive(Copy, Clone)]
 enum ClosingSubstate {
-    First, Second
+    First,
+    Second,
 }
 
 #[derive(Copy, Clone)]
 #[allow(clippy::upper_case_acronyms)]
 enum DoctypeStartedSubstate {
-    D, DO, DOC, DOCT, DOCTY, DOCTYP
+    D,
+    DO,
+    DOC,
+    DOCT,
+    DOCTY,
+    DOCTYP,
 }
 
 #[derive(Copy, Clone)]
 #[allow(clippy::upper_case_acronyms)]
 enum CDataStartedSubstate {
-    E, C, CD, CDA, CDAT, CDATA
+    E,
+    C,
+    CD,
+    CDA,
+    CDAT,
+    CDATA,
 }
 
 /// `Result` represents lexing result. It is either a token or an error message.
@@ -223,7 +237,10 @@ pub(crate) struct Lexer {
     reader: CharReader,
     pos: TextPosition,
     head_pos: TextPosition,
-    char_queue: VecDeque<char>,
+    char_queue: VecDeque<Queued>,
+    active_entities: Storage<Text>,
+    queue_lease: Lease,
+    control: Control,
     /// Default state to go back to after a tag end (may be `InsideDoctype`)
     normal_state: State,
     inside_token: bool,
@@ -239,17 +256,26 @@ pub(crate) struct Lexer {
 impl Position for Lexer {
     #[inline]
     /// Returns the position of the last token produced by the lexer
-    fn position(&self) -> TextPosition { self.pos }
+    fn position(&self) -> TextPosition {
+        self.pos
+    }
 }
 
 impl Lexer {
     /// Returns a new lexer with default state.
+    #[cfg(test)]
     pub(crate) fn new(config: &ParserConfig2) -> Self {
-        Self {
+        Self::with_control(config, Control::default()).expect("XML lexer allocation failed")
+    }
+    pub(crate) fn with_control(config: &ParserConfig2, control: Control) -> Result<Self> {
+        let mut lexer = Self {
             reader: CharReader::new(),
             pos: TextPosition::new(),
             head_pos: TextPosition::new(),
-            char_queue: VecDeque::with_capacity(4), // TODO: check size
+            char_queue: VecDeque::new(),
+            active_entities: Storage::new(),
+            queue_lease: None,
+            control,
             st: State::Normal,
             normal_state: State::Normal,
             inside_token: false,
@@ -260,7 +286,9 @@ impl Lexer {
 
             max_entity_expansion_depth: config.max_entity_expansion_depth,
             max_entity_expansion_length: config.max_entity_expansion_length,
-        }
+        };
+        lexer.reserve_queue(4)?;
+        Ok(lexer)
     }
 
     pub(crate) fn encoding(&self) -> Encoding {
@@ -273,11 +301,16 @@ impl Lexer {
 
     /// Disables error handling so `next_token` will return `Some(Chunk(..))`
     /// upon invalid lexeme with this lexeme content.
-    #[cfg(test)] fn disable_errors(&mut self) { self.skip_errors = true; }
+    #[cfg(test)]
+    fn disable_errors(&mut self) {
+        self.skip_errors = true;
+    }
 
     /// Reset the eof handled flag of the lexer.
     #[inline]
-    pub fn reset_eof_handled(&mut self) { self.eof_handled = false; }
+    pub fn reset_eof_handled(&mut self) {
+        self.eof_handled = false;
+    }
 
     /// Tries to read the next token from the buffer.
     ///
@@ -289,6 +322,8 @@ impl Lexer {
     /// * `Ok(Token::Eof)` - upon end of stream is reached;
     /// * `Ok(token) where token: Token` - in case a complete-token has been read from the stream.
     pub fn next_token<B: Read>(&mut self, b: &mut B) -> Result<Token> {
+        self.control.work(1)?;
+        self.reserve_queue(4)?;
         // Already reached end of buffer
         if self.eof_handled {
             return Ok(Token::Eof);
@@ -300,7 +335,16 @@ impl Lexer {
         }
 
         // Check if we have saved a char or two for ourselves
-        while let Some(c) = self.char_queue.pop_front() {
+        while !self.char_queue.is_empty() {
+            self.control.work(1)?;
+            self.reserve_queue(4)?;
+            let c = match self.char_queue.pop_front().unwrap() {
+                Queued::Character(c) => c,
+                Queued::EndEntity => {
+                    self.active_entities.pop();
+                    continue;
+                }
+            };
             if let Some(t) = self.dispatch_char(c)? {
                 self.inside_token = false;
                 return Ok(t);
@@ -308,7 +352,12 @@ impl Lexer {
         }
         // if char_queue is empty, all circular reparsing is done
         self.reparse_depth = 0;
-        while let Some(c) = self.reader.next_char_from(b)? {
+        loop {
+            self.control.work(1)?;
+            self.reserve_queue(4)?;
+            let Some(c) = self.reader.next_char_from(b)? else {
+                break;
+            };
             if c == '\n' {
                 self.head_pos.new_line();
             } else {
@@ -330,57 +379,69 @@ impl Lexer {
         self.eof_handled = true;
         self.pos = self.head_pos;
         match self.st {
-            State::InsideCdata | State::CDataClosing(_) => Err(self.error(SyntaxError::UnclosedCdata)),
-            State::TagStarted | State::CommentOrCDataOrDoctypeStarted |
-            State::CommentStarted | State::CDataStarted(_)| State::DoctypeStarted(_) |
-            State::CommentClosing(ClosingSubstate::Second) |
-            State::InsideComment | State::InsideMarkupDeclaration |
-            State::InsideProcessingInstruction | State::ProcessingInstructionClosing |
-            State::InsideDoctype | State::InsideMarkupDeclarationQuotedString(_) =>
-                Err(self.error(SyntaxError::UnexpectedEof)),
-            State::EmptyTagClosing =>
-                Ok(Token::Character('/')),
-            State::CommentClosing(ClosingSubstate::First) =>
-                Ok(Token::Character('-')),
-            State::InvalidCDataClosing(ClosingSubstate::First) =>
-                Ok(Token::Character(']')),
+            State::InsideCdata | State::CDataClosing(_) => {
+                Err(self.error(|| SyntaxError::UnclosedCdata))
+            }
+            State::TagStarted
+            | State::CommentOrCDataOrDoctypeStarted
+            | State::CommentStarted
+            | State::CDataStarted(_)
+            | State::DoctypeStarted(_)
+            | State::CommentClosing(ClosingSubstate::Second)
+            | State::InsideComment
+            | State::InsideMarkupDeclaration
+            | State::InsideProcessingInstruction
+            | State::ProcessingInstructionClosing
+            | State::InsideDoctype
+            | State::InsideMarkupDeclarationQuotedString(_) => {
+                Err(self.error(|| SyntaxError::UnexpectedEof))
+            }
+            State::EmptyTagClosing => Ok(Token::Character('/')),
+            State::CommentClosing(ClosingSubstate::First) => Ok(Token::Character('-')),
+            State::InvalidCDataClosing(ClosingSubstate::First) => Ok(Token::Character(']')),
             State::InvalidCDataClosing(ClosingSubstate::Second) => {
                 self.eof_handled = false;
                 Ok(self.move_to_with_unread(State::Normal, &[']'], Token::Character(']')))
-            },
+            }
             State::Normal => Ok(Token::Eof),
         }
     }
 
     #[cold]
     #[allow(clippy::needless_pass_by_value)]
-    fn error(&self, e: SyntaxError) -> Error {
+    fn error(&self, build: impl FnOnce() -> SyntaxError) -> Error {
         Error {
             pos: self.position(),
-            kind: ErrorKind::Syntax(e.to_cow()),
+            kind: ErrorKind::Syntax(if self.control.bounded() {
+                "Malformed XML".into()
+            } else {
+                build().to_cow()
+            }),
         }
     }
 
     #[inline(never)]
     fn dispatch_char(&mut self, c: char) -> Result {
         match self.st {
-            State::Normal                         => Ok(self.normal(c)),
-            State::TagStarted                     => self.tag_opened(c),
-            State::EmptyTagClosing                => Ok(Some(self.empty_element_closing(c))),
+            State::Normal => Ok(self.normal(c)),
+            State::TagStarted => self.tag_opened(c),
+            State::EmptyTagClosing => Ok(Some(self.empty_element_closing(c))),
             State::CommentOrCDataOrDoctypeStarted => self.comment_or_cdata_or_doctype_started(c),
-            State::InsideCdata                    => Ok(self.inside_cdata(c)),
-            State::CDataStarted(s)                => self.cdata_started(c, s),
-            State::InsideComment                  => Ok(self.inside_comment_state(c)),
-            State::CommentStarted                 => self.comment_started(c),
-            State::InsideProcessingInstruction    => Ok(self.inside_processing_instruction(c)),
-            State::ProcessingInstructionClosing   => Ok(Some(self.processing_instruction_closing(c))),
-            State::CommentClosing(s)              => self.comment_closing(c, s),
-            State::CDataClosing(s)                => Ok(self.cdata_closing(c, s)),
-            State::InsideDoctype                  => Ok(self.inside_doctype(c)),
-            State::DoctypeStarted(s)              => self.doctype_started(c, s),
-            State::InvalidCDataClosing(s)         => Ok(self.invalid_cdata_closing(c, s)),
-            State::InsideMarkupDeclaration        => self.markup_declaration(c),
-            State::InsideMarkupDeclarationQuotedString(q) => Ok(Some(self.markup_declaration_string(c, q))),
+            State::InsideCdata => Ok(self.inside_cdata(c)),
+            State::CDataStarted(s) => self.cdata_started(c, s),
+            State::InsideComment => Ok(self.inside_comment_state(c)),
+            State::CommentStarted => self.comment_started(c),
+            State::InsideProcessingInstruction => Ok(self.inside_processing_instruction(c)),
+            State::ProcessingInstructionClosing => Ok(Some(self.processing_instruction_closing(c))),
+            State::CommentClosing(s) => self.comment_closing(c, s),
+            State::CDataClosing(s) => Ok(self.cdata_closing(c, s)),
+            State::InsideDoctype => Ok(self.inside_doctype(c)),
+            State::DoctypeStarted(s) => self.doctype_started(c, s),
+            State::InvalidCDataClosing(s) => Ok(self.invalid_cdata_closing(c, s)),
+            State::InsideMarkupDeclaration => self.markup_declaration(c),
+            State::InsideMarkupDeclarationQuotedString(q) => {
+                Ok(Some(self.markup_declaration_string(c, q)))
+            }
         }
     }
 
@@ -405,27 +466,82 @@ impl Lexer {
 
     fn move_to_with_unread(&mut self, st: State, cs: &[char], token: Token) -> Token {
         for c in cs.iter().rev().copied() {
-            self.char_queue.push_front(c);
+            self.char_queue.push_front(Queued::Character(c));
         }
         self.move_to_with(st, token)
     }
 
+    #[cfg(test)]
     pub(crate) fn reparse(&mut self, markup: &str) -> Result<()> {
+        self.reparse_entity(None, markup)
+    }
+
+    pub(crate) fn reparse_entity(&mut self, name: Option<&str>, markup: &str) -> Result<()> {
         if markup.is_empty() {
             return Ok(());
         }
 
-        self.reparse_depth += 1;
-        if self.reparse_depth > self.max_entity_expansion_depth || self.char_queue.len() > self.max_entity_expansion_length {
-            return Err(self.error(SyntaxError::EntityTooBig));
+        if !self.control.bounded() {
+            self.reparse_depth += 1;
+            if self.reparse_depth > self.max_entity_expansion_depth
+                || self.char_queue.len() > self.max_entity_expansion_length
+            {
+                return Err(self.error(|| SyntaxError::EntityTooBig));
+            }
         }
 
         self.eof_handled = false;
-        self.char_queue.reserve(markup.len());
+        self.control.work(markup.len())?;
+        let marker = usize::from(name.is_some());
+        self.reserve_queue(
+            markup
+                .len()
+                .checked_add(marker)
+                .ok_or_else(|| self.control.overflow())?,
+        )?;
+        if let Some(name) = name {
+            // XML 1.0 section 4.1: a parsed entity must not contain itself,
+            // directly or indirectly. The marker leaves it active until
+            // the parser has dispatched the last replacement character.
+            for active in self.active_entities.iter() {
+                self.control
+                    .work(active.len().min(name.len()).saturating_add(1))?;
+                if active.as_str() == name {
+                    return Err(Error::from((&*self, "Recursive entity reference")));
+                }
+            }
+            self.active_entities
+                .push(Text::from_str(name, &self.control)?, &self.control)?;
+            self.char_queue.push_front(Queued::EndEntity);
+        }
         for c in markup.chars().rev() {
-            self.char_queue.push_front(c);
+            self.char_queue.push_front(Queued::Character(c));
         }
 
+        Ok(())
+    }
+
+    fn reserve_queue(&mut self, additional: usize) -> Result<()> {
+        if additional <= self.char_queue.capacity() - self.char_queue.len() {
+            return Ok(());
+        }
+        let capacity = self
+            .char_queue
+            .len()
+            .checked_add(additional)
+            .and_then(|n| n.max(4).checked_next_power_of_two())
+            .ok_or_else(|| self.control.overflow())?;
+        let bytes = capacity
+            .checked_mul(std::mem::size_of::<Queued>())
+            .ok_or_else(|| self.control.overflow())?;
+        self.control.work(self.char_queue.len())?;
+        let lease = self.control.storage(bytes)?;
+        let mut next = VecDeque::new();
+        next.try_reserve_exact(capacity)
+            .map_err(|_| self.control.allocation())?;
+        next.extend(self.char_queue.drain(..));
+        drop(std::mem::replace(&mut self.char_queue, next));
+        self.queue_lease = lease;
         Ok(())
     }
 
@@ -436,67 +552,82 @@ impl Lexer {
         if self.skip_errors {
             let mut chars = chunk.chars();
             let first = chars.next().unwrap_or('\0');
-            self.char_queue.extend(chars);
-            self.char_queue.push_back(c);
-            return Ok(Some(self.move_to_with(State::Normal, Token::Character(first))));
+            self.char_queue.extend(chars.map(Queued::Character));
+            self.char_queue.push_back(Queued::Character(c));
+            return Ok(Some(
+                self.move_to_with(State::Normal, Token::Character(first)),
+            ));
         }
-        Err(self.error(SyntaxError::UnexpectedTokenBefore(chunk, c)))
+        Err(self.error(|| SyntaxError::UnexpectedTokenBefore(chunk, c)))
     }
 
     /// Encountered a char
     fn normal(&mut self, c: char) -> Option<Token> {
         match c {
-            '<'                        => self.move_to(State::TagStarted),
-            '>'                        => Some(Token::TagEnd),
-            '/'                        => self.move_to(State::EmptyTagClosing),
-            '='                        => Some(Token::EqualsSign),
-            '"'                        => Some(Token::DoubleQuote),
-            '\''                       => Some(Token::SingleQuote),
-            ']'                        => self.move_to(State::InvalidCDataClosing(ClosingSubstate::First)),
-            '&'                        => Some(Token::ReferenceStart),
-            ';'                        => Some(Token::ReferenceEnd),
-            _                          => Some(Token::Character(c))
+            '<' => self.move_to(State::TagStarted),
+            '>' => Some(Token::TagEnd),
+            '/' => self.move_to(State::EmptyTagClosing),
+            '=' => Some(Token::EqualsSign),
+            '"' => Some(Token::DoubleQuote),
+            '\'' => Some(Token::SingleQuote),
+            ']' => self.move_to(State::InvalidCDataClosing(ClosingSubstate::First)),
+            '&' => Some(Token::ReferenceStart),
+            ';' => Some(Token::ReferenceEnd),
+            _ => Some(Token::Character(c)),
         }
     }
 
     fn inside_cdata(&mut self, c: char) -> Option<Token> {
         match c {
-            ']'                        => self.move_to(State::CDataClosing(ClosingSubstate::First)),
-            _                          => Some(Token::Character(c)),
+            ']' => self.move_to(State::CDataClosing(ClosingSubstate::First)),
+            _ => Some(Token::Character(c)),
         }
     }
 
     fn inside_processing_instruction(&mut self, c: char) -> Option<Token> {
         // These tokens are used by `<?xml?>` parser
         match c {
-            '?'                        => self.move_to(State::ProcessingInstructionClosing),
-            '<'                        => Some(Token::OpeningTagStart),
-            '>'                        => Some(Token::TagEnd),
-            '='                        => Some(Token::EqualsSign),
-            '"'                        => Some(Token::DoubleQuote),
-            '\''                       => Some(Token::SingleQuote),
-            '&'                        => Some(Token::ReferenceStart),
-            ';'                        => Some(Token::ReferenceEnd),
-            _                          => Some(Token::Character(c))
+            '?' => self.move_to(State::ProcessingInstructionClosing),
+            '<' => Some(Token::OpeningTagStart),
+            '>' => Some(Token::TagEnd),
+            '=' => Some(Token::EqualsSign),
+            '"' => Some(Token::DoubleQuote),
+            '\'' => Some(Token::SingleQuote),
+            '&' => Some(Token::ReferenceStart),
+            ';' => Some(Token::ReferenceEnd),
+            _ => Some(Token::Character(c)),
         }
     }
 
     fn inside_comment_state(&mut self, c: char) -> Option<Token> {
         match c {
-            '-'                        => self.move_to(State::CommentClosing(ClosingSubstate::First)),
-            _                          => Some(Token::Character(c)),
+            '-' => self.move_to(State::CommentClosing(ClosingSubstate::First)),
+            _ => Some(Token::Character(c)),
         }
     }
 
     /// Encountered '<'
     fn tag_opened(&mut self, c: char) -> Result {
         match c {
-            '?'                        => Ok(Some(self.move_to_with(State::InsideProcessingInstruction, Token::ProcessingInstructionStart))),
-            '/'                        => Ok(Some(self.move_to_with(self.normal_state, Token::ClosingTagStart))),
-            '!'                        => Ok(self.move_to(State::CommentOrCDataOrDoctypeStarted)),
-            _ if is_whitespace_char(c) => Ok(Some(self.move_to_with_unread(self.normal_state, &[c], Token::OpeningTagStart))),
-            _ if is_name_char(c)       => Ok(Some(self.move_to_with_unread(self.normal_state, &[c], Token::OpeningTagStart))),
-            _                          => self.handle_error("<", c)
+            '?' => Ok(Some(self.move_to_with(
+                State::InsideProcessingInstruction,
+                Token::ProcessingInstructionStart,
+            ))),
+            '/' => Ok(Some(
+                self.move_to_with(self.normal_state, Token::ClosingTagStart),
+            )),
+            '!' => Ok(self.move_to(State::CommentOrCDataOrDoctypeStarted)),
+            _ if is_whitespace_char(c) => Ok(Some(self.move_to_with_unread(
+                self.normal_state,
+                &[c],
+                Token::OpeningTagStart,
+            ))),
+            _ if is_name_char(c) => Ok(Some(self.move_to_with_unread(
+                self.normal_state,
+                &[c],
+                Token::OpeningTagStart,
+            ))),
+            _ => self.handle_error("<", c),
         }
     }
 
@@ -507,8 +638,12 @@ impl Lexer {
             '[' => Ok(self.move_to(State::CDataStarted(CDataStartedSubstate::E))),
             'D' => Ok(self.move_to(State::DoctypeStarted(DoctypeStartedSubstate::D))),
             'E' | 'A' | 'N' if matches!(self.normal_state, State::InsideDoctype) => {
-                Ok(Some(self.move_to_with_unread(State::InsideMarkupDeclaration, &[c], Token::MarkupDeclarationStart)))
-            },
+                Ok(Some(self.move_to_with_unread(
+                    State::InsideMarkupDeclaration,
+                    &[c],
+                    Token::MarkupDeclarationStart,
+                )))
+            }
             _ => self.handle_error("<!", c),
         }
     }
@@ -516,7 +651,9 @@ impl Lexer {
     /// Encountered '<!-'
     fn comment_started(&mut self, c: char) -> Result {
         match c {
-            '-' => Ok(Some(self.move_to_with(State::InsideComment, Token::CommentStart))),
+            '-' => Ok(Some(
+                self.move_to_with(State::InsideComment, Token::CommentStart),
+            )),
             _ => self.handle_error("<!-", c),
         }
     }
@@ -537,21 +674,31 @@ impl Lexer {
     /// Encountered '<!…' that isn't DOCTYPE or CDATA
     fn markup_declaration(&mut self, c: char) -> Result {
         match c {
-            '<'                        => self.handle_error("<!", c),
-            '>'                        => Ok(Some(self.move_to_with(self.normal_state, Token::TagEnd))),
-            '&'                        => Ok(Some(Token::ReferenceStart)),
-            ';'                        => Ok(Some(Token::ReferenceEnd)),
-            '"'                        => Ok(Some(self.move_to_with(State::InsideMarkupDeclarationQuotedString(QuoteStyle::Double), Token::DoubleQuote))),
-            '\''                       => Ok(Some(self.move_to_with(State::InsideMarkupDeclarationQuotedString(QuoteStyle::Single), Token::SingleQuote))),
-            _                          => Ok(Some(Token::Character(c))),
+            '<' => self.handle_error("<!", c),
+            '>' => Ok(Some(self.move_to_with(self.normal_state, Token::TagEnd))),
+            '&' => Ok(Some(Token::ReferenceStart)),
+            ';' => Ok(Some(Token::ReferenceEnd)),
+            '"' => Ok(Some(self.move_to_with(
+                State::InsideMarkupDeclarationQuotedString(QuoteStyle::Double),
+                Token::DoubleQuote,
+            ))),
+            '\'' => Ok(Some(self.move_to_with(
+                State::InsideMarkupDeclarationQuotedString(QuoteStyle::Single),
+                Token::SingleQuote,
+            ))),
+            _ => Ok(Some(Token::Character(c))),
         }
     }
 
     fn markup_declaration_string(&mut self, c: char, q: QuoteStyle) -> Token {
         match c {
-            '"' if q == QuoteStyle::Double  => self.move_to_with(State::InsideMarkupDeclaration, Token::DoubleQuote),
-            '\'' if q == QuoteStyle::Single => self.move_to_with(State::InsideMarkupDeclaration, Token::SingleQuote),
-            _                               => Token::Character(c),
+            '"' if q == QuoteStyle::Double => {
+                self.move_to_with(State::InsideMarkupDeclaration, Token::DoubleQuote)
+            }
+            '\'' if q == QuoteStyle::Single => {
+                self.move_to_with(State::InsideMarkupDeclaration, Token::SingleQuote)
+            }
+            _ => Token::Character(c),
         }
     }
 
@@ -572,12 +719,12 @@ impl Lexer {
     fn inside_doctype(&mut self, c: char) -> Option<Token> {
         match c {
             '>' => Some(self.move_to_and_reset_normal(State::Normal, Token::TagEnd)),
-            '<'                        => self.move_to(State::TagStarted),
-            '&'                        => Some(Token::ReferenceStart),
-            ';'                        => Some(Token::ReferenceEnd),
-            '"'                        => Some(Token::DoubleQuote),
-            '\''                       => Some(Token::SingleQuote),
-            _                          => Some(Token::Character(c)),
+            '<' => self.move_to(State::TagStarted),
+            '&' => Some(Token::ReferenceStart),
+            ';' => Some(Token::ReferenceEnd),
+            '"' => Some(Token::DoubleQuote),
+            '\'' => Some(Token::SingleQuote),
+            _ => Some(Token::Character(c)),
         }
     }
 
@@ -585,7 +732,11 @@ impl Lexer {
     fn processing_instruction_closing(&mut self, c: char) -> Token {
         match c {
             '>' => self.move_to_with(self.normal_state, Token::ProcessingInstructionEnd),
-            _ => self.move_to_with_unread(State::InsideProcessingInstruction, &[c], Token::Character('?')),
+            _ => self.move_to_with_unread(
+                State::InsideProcessingInstruction,
+                &[c],
+                Token::Character('?'),
+            ),
         }
     }
 
@@ -602,10 +753,16 @@ impl Lexer {
         match s {
             ClosingSubstate::First => match c {
                 '-' => Ok(self.move_to(State::CommentClosing(ClosingSubstate::Second))),
-                _ => Ok(Some(self.move_to_with_unread(State::InsideComment, &[c], Token::Character('-')))),
+                _ => Ok(Some(self.move_to_with_unread(
+                    State::InsideComment,
+                    &[c],
+                    Token::Character('-'),
+                ))),
             },
             ClosingSubstate::Second => match c {
-                '>' => Ok(Some(self.move_to_with(self.normal_state, Token::CommentEnd))),
+                '>' => Ok(Some(
+                    self.move_to_with(self.normal_state, Token::CommentEnd),
+                )),
                 // double dash not followed by a greater-than is a hard error inside comment
                 _ => self.handle_error("--", c),
             },
@@ -617,11 +774,17 @@ impl Lexer {
         match s {
             ClosingSubstate::First => match c {
                 ']' => self.move_to(State::CDataClosing(ClosingSubstate::Second)),
-                _ => Some(self.move_to_with_unread(State::InsideCdata, &[c], Token::Character(']'))),
+                _ => {
+                    Some(self.move_to_with_unread(State::InsideCdata, &[c], Token::Character(']')))
+                }
             },
             ClosingSubstate::Second => match c {
                 '>' => Some(self.move_to_with(State::Normal, Token::CDataEnd)),
-                _ => Some(self.move_to_with_unread(State::InsideCdata, &[']', c], Token::Character(']'))),
+                _ => Some(self.move_to_with_unread(
+                    State::InsideCdata,
+                    &[']', c],
+                    Token::Character(']'),
+                )),
             },
         }
     }
@@ -635,7 +798,9 @@ impl Lexer {
             },
             ClosingSubstate::Second => match c {
                 '>' => Some(self.move_to_with(self.normal_state, Token::CDataEnd)),
-                _ => Some(self.move_to_with_unread(State::Normal, &[']', c], Token::Character(']'))),
+                _ => {
+                    Some(self.move_to_with_unread(State::Normal, &[']', c], Token::Character(']')))
+                }
             },
         }
     }
@@ -673,7 +838,10 @@ mod tests {
     );
 
     fn make_lex_and_buf(s: &str) -> (Lexer, BufReader<Cursor<Vec<u8>>>) {
-        (Lexer::new(&ParserConfig2::default()), BufReader::new(Cursor::new(s.to_owned().into_bytes())))
+        (
+            Lexer::new(&ParserConfig2::default()),
+            BufReader::new(Cursor::new(s.to_owned().into_bytes())),
+        )
     }
 
     #[test]
@@ -719,9 +887,8 @@ mod tests {
 
     #[test]
     fn simple_lexer_test() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r#"<a p='q'> x<b z="y">d	</b></a><p/> <?nm ?> <!-- a c --> &nbsp;"#
-        );
+        let (mut lex, mut buf) =
+            make_lex_and_buf(r#"<a p='q'> x<b z="y">d	</b></a><p/> <?nm ?> <!-- a c --> &nbsp;"#);
 
         assert_oks!(for lex and buf ;
             Token::OpeningTagStart
@@ -782,9 +949,7 @@ mod tests {
 
     #[test]
     fn special_chars_test() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r"?x!+ // -| ]z]]"
-        );
+        let (mut lex, mut buf) = make_lex_and_buf(r"?x!+ // -| ]z]]");
 
         assert_oks!(for lex and buf ;
             Token::Character('?')
@@ -808,9 +973,7 @@ mod tests {
 
     #[test]
     fn cdata_test() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r"<a><![CDATA[x y ?]]> </a>"
-        );
+        let (mut lex, mut buf) = make_lex_and_buf(r"<a><![CDATA[x y ?]]> </a>");
 
         assert_oks!(for lex and buf ;
             Token::OpeningTagStart
@@ -833,9 +996,7 @@ mod tests {
 
     #[test]
     fn cdata_closers_test() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r"<![CDATA[] > ]> ]]><!---->]]<a>"
-        );
+        let (mut lex, mut buf) = make_lex_and_buf(r"<![CDATA[] > ]> ]]><!---->]]<a>");
 
         assert_oks!(for lex and buf ;
             Token::CDataStart
@@ -860,9 +1021,7 @@ mod tests {
 
     #[test]
     fn doctype_test() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r"<a><!DOCTYPE ab xx z> "
-        );
+        let (mut lex, mut buf) = make_lex_and_buf(r"<a><!DOCTYPE ab xx z> ");
         assert_oks!(for lex and buf ;
             Token::OpeningTagStart
             Token::Character('a')
@@ -884,9 +1043,7 @@ mod tests {
 
     #[test]
     fn tricky_comments() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r"<a><!-- C ->--></a>"
-        );
+        let (mut lex, mut buf) = make_lex_and_buf(r"<a><!-- C ->--></a>");
         assert_oks!(for lex and buf ;
             Token::OpeningTagStart
             Token::Character('a')
@@ -907,9 +1064,7 @@ mod tests {
 
     #[test]
     fn doctype_with_internal_subset_test() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r#"<a><!DOCTYPE ab[<!ELEMENT ba ">>>"> ]> "#
-        );
+        let (mut lex, mut buf) = make_lex_and_buf(r#"<a><!DOCTYPE ab[<!ELEMENT ba ">>>"> ]> "#);
         assert_oks!(for lex and buf ;
             Token::OpeningTagStart
             Token::Character('a')
@@ -947,9 +1102,8 @@ mod tests {
 
     #[test]
     fn doctype_internal_pi_comment() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            "<!DOCTYPE a [\n<!ELEMENT l ANY> <!-- <?non?>--> <?pi > ?> \n]>"
-        );
+        let (mut lex, mut buf) =
+            make_lex_and_buf("<!DOCTYPE a [\n<!ELEMENT l ANY> <!-- <?non?>--> <?pi > ?> \n]>");
         assert_oks!(for lex and buf ;
             Token::DoctypeStart
             Token::Character(' ')
@@ -1132,9 +1286,7 @@ mod tests {
 
     #[test]
     fn issue_98_cdata_ending_with_right_bracket() {
-        let (mut lex, mut buf) = make_lex_and_buf(
-            r"<![CDATA[Foo [Bar]]]>"
-        );
+        let (mut lex, mut buf) = make_lex_and_buf(r"<![CDATA[Foo [Bar]]]>");
 
         assert_oks!(for lex and buf ;
             Token::CDataStart

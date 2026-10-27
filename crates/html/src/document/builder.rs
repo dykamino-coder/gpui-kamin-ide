@@ -3,6 +3,7 @@
 use super::Document;
 use crate::style::css::Media;
 use std::path::Path;
+#[cfg(test)]
 use url::Url;
 
 /// Настройки документа до разбора. Повторная сборка создаёт независимое состояние.
@@ -12,7 +13,7 @@ use url::Url;
 pub struct DocumentBuilder<'a> {
     html: &'a str,
     theme_css: &'a str,
-    base_url: Option<Url>,
+    source: Option<super::source::Source<'a>>,
     xml: bool,
     media: Media,
     fonts: crate::text::metrics::FontContext,
@@ -25,7 +26,7 @@ impl<'a> DocumentBuilder<'a> {
         Self {
             html,
             theme_css,
-            base_url: None,
+            source: None,
             xml: false,
             media: Media::default(),
             fonts: Default::default(),
@@ -59,17 +60,15 @@ impl<'a> DocumentBuilder<'a> {
     }
 
     /// Задать URL источника HTML. Невалидный URL оставляет документ без базы.
-    pub fn base_uri(&mut self, base_uri: &str) -> &mut Self {
-        self.base_url = Url::parse(base_uri).ok();
+    pub fn base_uri(&mut self, base_uri: &'a str) -> &mut Self {
+        self.source = Some(super::source::Source::Uri(base_uri));
         self.xml = false;
         self
     }
 
     /// Задать локальный источник; расширение SVG без учёта регистра выбирает XML.
-    pub fn path(&mut self, path: &Path) -> &mut Self {
-        self.base_url = std::path::absolute(path)
-            .ok()
-            .and_then(|p| Url::from_file_path(p).ok());
+    pub fn path(&mut self, path: &'a Path) -> &mut Self {
+        self.source = Some(super::source::Source::Path(path));
         self.xml = path
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
@@ -79,7 +78,7 @@ impl<'a> DocumentBuilder<'a> {
     /// Разобрать документ с выбранными настройками в свежем состоянии.
     ///
     /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
-    /// Source admission предшествует разбору; parser allocations подключает B3.
+    /// Source admission предшествует разбору и ранним проходам документа.
     pub fn build(&self) -> Result<Document, super::DocumentFailure> {
         let budget = crate::budget::DocumentBudget::new(self.limits.clone(), self.governor.clone())
             .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
@@ -90,7 +89,12 @@ impl<'a> DocumentBuilder<'a> {
         Document::build(
             self.html,
             self.theme_css,
-            self.base_url.clone(),
+            self.source
+                .map(|source| {
+                    source.resolve(&crate::budget::admission::Admission::new(revision.clone()))
+                })
+                .transpose()?
+                .flatten(),
             self.xml,
             self.media,
             &self.fonts,

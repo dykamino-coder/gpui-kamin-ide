@@ -25,6 +25,8 @@ pub enum Code {
     XmlSyntax,
     BudgetExceeded,
     BudgetInvariant,
+    AllocationFailed,
+    CapacityOverflow,
     /// Предел одного ресурса: байты до декодирования, заявленный растр, кодек.
     ResourceLimit,
     /// Подстановка `var()` стала invalid at computed-value time по пределу реализации.
@@ -40,6 +42,8 @@ impl Code {
             Self::XmlSyntax => "KAMINIDE_XML_SYNTAX",
             Self::BudgetExceeded => "KAMINIDE_BUDGET_EXCEEDED",
             Self::BudgetInvariant => "KAMINIDE_BUDGET_INVARIANT",
+            Self::AllocationFailed => "KAMINIDE_ALLOCATION_FAILED",
+            Self::CapacityOverflow => "KAMINIDE_CAPACITY_OVERFLOW",
             Self::ResourceLimit => "KAMINIDE_LIMIT_RESOURCE",
             Self::SubstitutionLimit => "KAMINIDE_LIMIT_SUBSTITUTION",
             Self::Cancelled => "KAMINIDE_CANCELLED",
@@ -51,6 +55,8 @@ impl Code {
             FailureReason::XmlSyntax { .. } => Self::XmlSyntax,
             FailureReason::Budget(BudgetError::Exceeded(_)) => Self::BudgetExceeded,
             FailureReason::Budget(_) => Self::BudgetInvariant,
+            FailureReason::Allocation => Self::AllocationFailed,
+            FailureReason::CapacityOverflow => Self::CapacityOverflow,
         }
     }
 }
@@ -197,7 +203,10 @@ impl From<&DocumentFailure> for Diagnostic {
             FailureReason::Budget(BudgetError::Exceeded(exceeded)) => {
                 (Phase::Admission, Some(Measure::Budget(exceeded)), None)
             }
-            FailureReason::Budget(_) => (Phase::Admission, None, None),
+            // Отказы допуска входа: бюджет без измерения, выделение и размер буфера.
+            FailureReason::Budget(_)
+            | FailureReason::Allocation
+            | FailureReason::CapacityOverflow => (Phase::Admission, None, None),
         };
         Self {
             code: Code::of(failure.reason),

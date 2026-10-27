@@ -53,6 +53,7 @@ pub(crate) fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) 
         true,
         None,
         &Default::default(),
+        None,
     )
     .unwrap()
 }
@@ -67,8 +68,29 @@ pub(crate) fn parse_embedded_sized(
     scrolling: bool,
     scheme: Option<EmbeddingScheme>,
     fonts: &crate::text::metrics::FontContext,
+    parent: Option<crate::dom::input::Context>,
 ) -> Result<Embedded, super::DocumentFailure> {
-    let input = crate::dom::input::Admitted::parse(html, false).map_err(|mut failure| {
+    let prepare = || {
+        let context = match parent {
+            Some(context) => context,
+            None => crate::dom::input::Context::new(
+                crate::budget::DocumentBudget::new(Default::default(), Default::default())
+                    .map_err(|error| {
+                        super::DocumentFailure::new(super::FailureReason::Budget(error))
+                    })?
+                    .revision(),
+            ),
+        };
+        context
+            .budget()
+            .source(html, theme_css)
+            .map_err(|error| super::DocumentFailure::new(super::FailureReason::Budget(error)))?;
+        let revision = context.budget().clone();
+        let input = crate::dom::input::Admitted::with_context(html, false, context)?;
+        crate::dom::early_admission::admit_sources(&input, theme_css)?;
+        Ok::<_, super::DocumentFailure>((input, revision))
+    };
+    let (input, revision) = prepare().map_err(|mut failure| {
         failure.scope = super::FailureScope::EmbeddedDocument;
         failure
     })?;
@@ -82,16 +104,22 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let state = DocState::new(media);
+    state.admit_revision(revision);
     state.traversal.set_embedded();
     let vcx = state.values();
     fonts.install(vcx);
-    let mut sheets = vec![theme_css.to_string()];
-    sheets.extend(crate::dom::style_sources::collect(&input));
-    for css in &sheets {
-        crate::text::fonts::load_faces_additive(css, vcx);
-    }
-    crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx);
-    let parsed = crate::dom::convert(&input, theme_css, media, &state);
+    let sheets = crate::dom::style_sources::collect(&input, theme_css).map_err(|error| {
+        let mut failure = super::DocumentFailure::from(error);
+        failure.scope = super::FailureScope::EmbeddedDocument;
+        failure
+    })?;
+    crate::text::fonts::load_faces_sheets(&sheets, None, vcx).map_err(embedded_failure)?;
+    crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx)
+        .map_err(embedded_failure)?;
+    let parsed = crate::dom::convert(&input, theme_css, media, &state).map_err(|mut failure| {
+        failure.scope = super::FailureScope::EmbeddedDocument;
+        failure
+    })?;
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark), vcx);
     // HTML's embedding policy also applies when responsive sizing is declined.
@@ -173,4 +201,10 @@ pub(super) fn hash_of(html: &str, theme: &str) -> u64 {
     html.hash(&mut h);
     theme.hash(&mut h);
     h.finish()
+}
+
+fn embedded_failure(error: crate::budget::admission::Error) -> super::DocumentFailure {
+    let mut failure = super::DocumentFailure::from(error);
+    failure.scope = super::FailureScope::EmbeddedDocument;
+    failure
 }

@@ -202,7 +202,7 @@ impl Media {
     /// остаться «неизвестно» (то есть на верхнем уровне ложью), тогда как
     /// прежний двухзначный разбор переворачивал ложь в истину и применял
     /// правило (`at-media-002`, `negation-001`, `mq-gamut-003`).
-    pub fn matches(&self, query: &str, vcx: ValueCx<'_>) -> bool {
+    pub(crate) fn matches(&self, query: &str, vcx: ValueCx<'_>) -> bool {
         self.matches_in(query, CustomMedia::NONE, vcx)
     }
 

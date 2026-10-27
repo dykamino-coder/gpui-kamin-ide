@@ -10,39 +10,52 @@ use crate::dom::Node;
 use markup5ever_rcdom::{Handle, NodeData};
 use url::Url;
 
-pub(super) fn document_base(root: &Handle, fallback: Option<&Url>) -> Option<Url> {
-    fn find(node: &Handle) -> Option<String> {
-        for node in crate::dom::source_walk::descendants(node, false) {
-            if let NodeData::Element { name, attrs, .. } = &node.data
-                && &*name.local == "base"
-                && &*name.ns == "http://www.w3.org/1999/xhtml"
-                && let Some(attr) = attrs.borrow().iter().find(|a| &*a.name.local == "href")
-            {
-                return Some(attr.value.to_string());
+pub(super) fn document_base(
+    root: &Handle,
+    fallback: Option<&Url>,
+    admission: &crate::budget::admission::Admission,
+) -> Result<Option<Url>, crate::budget::admission::Error> {
+    use crate::dom::source_walk::{SourceWalk, Templates};
+    let mut walk = SourceWalk::new(root, Templates::None, admission.clone())?;
+    while let Some(node) = walk.try_next()? {
+        if let NodeData::Element { name, attrs, .. } = &node.data
+            && &*name.local == "base"
+            && &*name.ns == "http://www.w3.org/1999/xhtml"
+        {
+            for attr in attrs.borrow().iter() {
+                admission.work(1)?;
+                if &*attr.name.local == "href" {
+                    let result = match fallback {
+                        Some(base) => super::source::join(base, &attr.value, admission)?,
+                        None => super::source::Source::Uri(&attr.value).resolve(admission)?,
+                    };
+                    return Ok(result.or_else(|| fallback.cloned()));
+                }
             }
         }
-        None
     }
-    find(root)
-        .and_then(|href| {
-            fallback
-                .map_or_else(|| Url::parse(&href), |base| base.join(&href))
-                .ok()
-        })
-        .or_else(|| fallback.cloned())
+    Ok(fallback.cloned())
 }
 
-pub(super) fn resolve(nodes: &mut [Node], base: &Url, svg: bool) {
+pub(super) fn resolve(
+    nodes: &mut [Node],
+    base: &Url,
+    svg: bool,
+    admission: &crate::budget::admission::Admission,
+) -> Result<(), crate::budget::admission::Error> {
     for node in nodes {
         let Node::Element(e) = node else {
             continue;
         };
-        let base = e
-            .attrs
-            .iter()
-            .find(|(k, _)| k == "xml:base")
-            .and_then(|(_, v)| base.join(v).ok())
-            .unwrap_or_else(|| base.clone());
+        admission.work(1)?;
+        let local = e.attrs.iter().find(|(k, _)| k == "xml:base");
+        let base = if let Some((_, value)) = local {
+            super::source::join(base, value, admission)?
+                .map(std::borrow::Cow::Owned)
+                .unwrap_or(std::borrow::Cow::Borrowed(base))
+        } else {
+            std::borrow::Cow::Borrowed(base)
+        };
         let svg = if e.tag == "svg" {
             true
         } else if e.tag.eq_ignore_ascii_case("foreignObject") {
@@ -54,14 +67,15 @@ pub(super) fn resolve(nodes: &mut [Node], base: &Url, svg: bool) {
             for (name, href) in &mut e.attrs {
                 if name == "href"
                     && !href.starts_with('#')
-                    && let Ok(url) = base.join(href)
+                    && let Some(url) = super::source::join(&base, href, admission)?
                 {
                     *href = url.to_string();
                 }
             }
         }
-        resolve(&mut e.children, &base, svg);
+        resolve(&mut e.children, &base, svg, admission)?;
     }
+    Ok(())
 }
 
 pub(super) fn key(html: &str, css: &str, base: Option<&Url>) -> u64 {

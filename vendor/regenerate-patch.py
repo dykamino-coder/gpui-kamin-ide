@@ -32,8 +32,8 @@ PACKAGE_REVISIONS = {
 }
 
 FIXES = {
-    "tendril": [],
-    "xml-rs": [],
+    "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
+    "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [
         "Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.",
         "Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.",
@@ -57,6 +57,7 @@ FIXES = {
         "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
         "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
+        "Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.",
     ],
     "gpui-windows": [
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
@@ -102,10 +103,12 @@ FIXES = {
         "calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.",
     ],
     "html5ever": [
+        "Admission: opt-in fallible driver and sink operation hooks stop canonical tokenization/tree repair immediately, including EOF recovery; preflight growable token and tree-builder buffers.",
         "Parse processing instructions into DOM nodes instead of bogus comments.",
         "Preserve the tokenizer/tree-builder state and insertion rules for those tokens.",
     ],
     "markup5ever_rcdom": [
+        "Admission: fallible canonical sink mutations retain storage leases, bound payload/work and release partial trees iteratively, including selectedcontent and weak parent owners.",
         "Compatibility: use the shared html5ever/markup5ever/xml5ever 0.40 tree interfaces.",
         "Populate selectedcontent from the selected option during parsing and at finish.",
         "Resolve select options/targets in tree order; static reset respects disabled, multiple and display size instead of selecting an arbitrary BFS result.",

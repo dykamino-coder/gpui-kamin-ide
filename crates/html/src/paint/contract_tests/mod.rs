@@ -3,6 +3,7 @@
 
 mod admission;
 mod capture;
+mod hit_transform;
 mod interaction;
 mod order;
 mod raster;

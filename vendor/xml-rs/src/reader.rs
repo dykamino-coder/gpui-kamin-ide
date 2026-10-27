@@ -15,9 +15,11 @@ pub use self::events::XmlEvent;
 
 use self::parser::PullParser;
 
+pub mod admission;
 mod config;
 mod error;
 mod events;
+#[cfg(test)]
 mod indexset;
 mod lexer;
 mod parser;
@@ -43,7 +45,10 @@ impl<R: Read> EventReader<R> {
     /// Creates a new reader with the provded configuration, consuming the given stream. The reader should be wrapped in a `BufReader`, otherwise parsing may be very slow.
     #[inline]
     pub fn new_with_config(source: R, config: impl Into<ParserConfig2>) -> Self {
-        Self { source, parser: PullParser::new(config) }
+        Self {
+            source,
+            parser: PullParser::new(config),
+        }
     }
 
     /// Pulls and returns next XML event from the stream.
@@ -68,11 +73,13 @@ impl<R: Read> EventReader<R> {
             match self.next()? {
                 XmlEvent::StartElement { .. } => depth += 1,
                 XmlEvent::EndElement { .. } => depth -= 1,
-                XmlEvent::EndDocument => return Err(Error {
-                    kind: ErrorKind::UnexpectedEof,
-                    pos: self.parser.position(),
-                }),
-                _ => {},
+                XmlEvent::EndDocument => {
+                    return Err(Error {
+                        kind: ErrorKind::UnexpectedEof,
+                        pos: self.parser.position(),
+                    })
+                }
+                _ => {}
             }
         }
 
@@ -82,12 +89,16 @@ impl<R: Read> EventReader<R> {
     /// Access underlying reader
     ///
     /// Using it directly while the event reader is parsing is not recommended
-    pub fn source(&self) -> &R { &self.source }
+    pub fn source(&self) -> &R {
+        &self.source
+    }
 
     /// Access underlying reader
     ///
     /// Using it directly while the event reader is parsing is not recommended
-    pub fn source_mut(&mut self) -> &mut R { &mut self.source }
+    pub fn source_mut(&mut self) -> &mut R {
+        &mut self.source
+    }
 
     /// Unwraps this `EventReader`, returning the underlying reader.
     ///
@@ -120,7 +131,10 @@ impl<R: Read> IntoIterator for EventReader<R> {
     type Item = Result<XmlEvent>;
 
     fn into_iter(self) -> Events<R> {
-        Events { reader: self, finished: false }
+        Events {
+            reader: self,
+            finished: false,
+        }
     }
 }
 
@@ -143,16 +157,19 @@ impl<R: Read> Events<R> {
     /// Access the underlying reader
     ///
     /// It's not recommended to use it while the events are still being parsed
-    pub fn source(&self) -> &R { &self.reader.source }
+    pub fn source(&self) -> &R {
+        &self.reader.source
+    }
 
     /// Access the underlying reader
     ///
     /// It's not recommended to use it while the events are still being parsed
-    pub fn source_mut(&mut self) -> &mut R { &mut self.reader.source }
+    pub fn source_mut(&mut self) -> &mut R {
+        &mut self.reader.source
+    }
 }
 
-impl<R: Read> FusedIterator for Events<R> {
-}
+impl<R: Read> FusedIterator for Events<R> {}
 
 impl<R: Read> Iterator for Events<R> {
     type Item = Result<XmlEvent>;

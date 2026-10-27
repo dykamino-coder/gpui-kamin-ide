@@ -9,10 +9,21 @@
 
 use std::fmt;
 
-pub(crate) fn to_escaped_string<T: fmt::Debug>(x: &T) -> String {
-    // FIXME: don't allocate twice
-    let string = format!("{x:?}");
-    string.chars().flat_map(|c| c.escape_default()).collect()
+/// Streams the same escaped Debug representation without intermediate strings.
+pub(crate) struct EscapedDebug<'a, T>(pub &'a T);
+impl<T: fmt::Debug> fmt::Display for EscapedDebug<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        struct Escape<'a, 'b>(&'a mut fmt::Formatter<'b>);
+        impl fmt::Write for Escape<'_, '_> {
+            fn write_str(&mut self, text: &str) -> fmt::Result {
+                for c in text.chars().flat_map(char::escape_default) {
+                    fmt::Write::write_char(self.0, c)?;
+                }
+                Ok(())
+            }
+        }
+        fmt::write(&mut Escape(f), format_args!("{:?}", self.0))
+    }
 }
 
 /// If `c` is an ASCII letter, return the corresponding lowercase

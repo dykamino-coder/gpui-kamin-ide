@@ -28,7 +28,7 @@ pub(super) fn sfnt_ok(bytes: &[u8]) -> bool {
 pub(super) fn read_font(path: &str, doc: &crate::document::state::DocState) -> Option<Vec<u8>> {
     // Адрес `data:` (RFC 2397) — шрифт в самой таблице; упаковку тогда
     // покажет подпись (ветки ниже без расширения).
-    let bytes = crate::document::resource_url::read(path, &doc.revision_budget())
+    let bytes = crate::resources::url_loader::read(path, &doc.revision_budget())
         .inspect_err(|error| doc.record_load_failure(error))
         .ok()?;
     let path = if path.starts_with("data:") { "" } else { path };

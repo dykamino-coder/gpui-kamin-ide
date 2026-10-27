@@ -61,7 +61,8 @@ fn selector_queries_use_the_stylesheet_pseudo_grammar() {
             "{selector}"
         );
         let rules =
-            crate::style::css::parse_stylesheet(&format!("{selector}, .control {{color: green}}"));
+            crate::style::css::parse_stylesheet(&format!("{selector}, .control {{color: green}}"))
+                .unwrap();
         assert_eq!(rules.len(), 2, "{selector}");
     }
     assert!(supports("selector(&)", vcx));

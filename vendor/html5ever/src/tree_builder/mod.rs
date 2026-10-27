@@ -15,6 +15,10 @@ pub use crate::interface::{LimitedQuirks, NoQuirks, Quirks, QuirksMode};
 pub use markup5ever::interface::tree_builder::create_element_with_flags;
 
 use self::types::*;
+use crate::admission::storage::Storage;
+use crate::admission::{Admission, Operation, Unbounded};
+mod admission_buffers;
+mod admission_sink;
 
 use crate::tendril::StrTendril;
 use crate::{ExpandedName, LocalName, Namespace, QualName};
@@ -23,15 +27,15 @@ use crate::tokenizer;
 use crate::tokenizer::states as tok_state;
 use crate::tokenizer::{Doctype, EndTag, StartTag, Tag, TokenSink, TokenSinkResult};
 
+use crate::admission::deque::StorageDeque;
 use std::borrow::Cow::{self, Borrowed};
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::VecDeque;
 use std::iter::{Enumerate, Rev};
 use std::{fmt, slice};
 
 use crate::tokenizer::states::RawKind;
 use crate::tree_builder::tag_sets::*;
-use crate::util::str::to_escaped_string;
+use crate::util::str::EscapedDebug;
 use log::{debug, log_enabled, warn, Level};
 use markup5ever::{expanded_name, local_name, namespace_prefix, ns};
 
@@ -81,7 +85,8 @@ impl Default for TreeBuilderOpts {
 }
 
 /// The HTML tree builder.
-pub struct TreeBuilder<Handle, Sink> {
+pub struct TreeBuilder<Handle, Sink: TreeSink<Handle = Handle>, A: Admission<Sink> = Unbounded> {
+    failure: RefCell<Option<A::Error>>,
     /// Options controlling the behavior of the tree builder.
     opts: TreeBuilderOpts,
 
@@ -95,10 +100,10 @@ pub struct TreeBuilder<Handle, Sink> {
     orig_mode: Cell<Option<InsertionMode>>,
 
     /// Stack of template insertion modes.
-    template_modes: RefCell<Vec<InsertionMode>>,
+    template_modes: RefCell<Storage<InsertionMode>>,
 
     /// Pending table character tokens.
-    pending_table_text: RefCell<Vec<(SplitStatus, StrTendril)>>,
+    pending_table_text: RefCell<Storage<(SplitStatus, StrTendril)>>,
 
     /// Quirks mode as set by the parser.
     /// FIXME: can scripts etc. change this?
@@ -108,10 +113,10 @@ pub struct TreeBuilder<Handle, Sink> {
     doc_handle: Handle,
 
     /// Stack of open elements, most recently added at end.
-    open_elems: RefCell<Vec<Handle>>,
+    open_elems: RefCell<Storage<Handle>>,
 
     /// List of active formatting elements.
-    active_formatting: RefCell<Vec<FormatEntry<Handle>>>,
+    active_formatting: RefCell<Storage<FormatEntry<Handle>>>,
 
     //§ the-element-pointers
     /// Head element pointer.
@@ -139,6 +144,8 @@ pub struct TreeBuilder<Handle, Sink> {
     // safety!
     //
     // FIXME: Auto-generate the trace hooks like Servo does.
+    // The policy owns leases and must outlive the parser storage above.
+    pub(crate) admission: A,
 }
 
 impl<Handle, Sink> TreeBuilder<Handle, Sink>
@@ -149,27 +156,8 @@ where
     /// Create a new tree builder which sends tree modifications to a particular `TreeSink`.
     ///
     /// The tree builder is also a `TokenSink`.
-    pub fn new(sink: Sink, opts: TreeBuilderOpts) -> TreeBuilder<Handle, Sink> {
-        let doc_handle = sink.get_document();
-        TreeBuilder {
-            opts,
-            sink,
-            mode: Cell::new(InsertionMode::Initial),
-            orig_mode: Cell::new(None),
-            template_modes: Default::default(),
-            pending_table_text: Default::default(),
-            quirks_mode: Cell::new(opts.quirks_mode),
-            doc_handle,
-            open_elems: Default::default(),
-            active_formatting: Default::default(),
-            head_elem: Default::default(),
-            form_elem: Default::default(),
-            frameset_ok: Cell::new(true),
-            ignore_lf: Default::default(),
-            foster_parenting: Default::default(),
-            context_elem: Default::default(),
-            current_line: Cell::new(1),
-        }
+    pub fn new(sink: Sink, opts: TreeBuilderOpts) -> Self {
+        Self::with_admission(sink, opts, Unbounded)
     }
 
     /// Create a new tree builder which sends tree modifications to a particular `TreeSink`.
@@ -186,12 +174,14 @@ where
         let context_is_template =
             sink.elem_name(&context_elem).expanded() == expanded_name!(html "template");
         let template_modes = if context_is_template {
-            RefCell::new(vec![InsertionMode::InTemplate])
+            RefCell::new(vec![InsertionMode::InTemplate].into())
         } else {
-            RefCell::new(vec![])
+            RefCell::new(Storage::default())
         };
 
         let tb = TreeBuilder {
+            admission: Unbounded,
+            failure: RefCell::new(None),
             opts,
             sink,
             mode: Cell::new(InsertionMode::Initial),
@@ -215,12 +205,62 @@ where
         // 5. Let root be a new html element with no attributes.
         // 6. Append the element root to the Document node created above.
         // 7. Set up the parser's stack of open elements so that it contains just the single element root.
-        tb.create_root(vec![]);
+        tb.create_root(Storage::default())
+            .unwrap_or_else(|never| match never {});
         // 10. Reset the parser's insertion mode appropriately.
-        let old_insertion_mode = tb.reset_insertion_mode();
+        let old_insertion_mode = tb
+            .reset_insertion_mode()
+            .unwrap_or_else(|never| match never {});
         tb.mode.set(old_insertion_mode);
 
         tb
+    }
+}
+
+impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
+    TreeBuilder<Handle, Sink, A>
+{
+    pub fn with_admission(sink: Sink, opts: TreeBuilderOpts, admission: A) -> Self {
+        let doc_handle = sink.get_document();
+        TreeBuilder {
+            admission,
+            failure: RefCell::new(None),
+            opts,
+            sink,
+            mode: Cell::new(InsertionMode::Initial),
+            orig_mode: Cell::new(None),
+            template_modes: Default::default(),
+            pending_table_text: Default::default(),
+            quirks_mode: Cell::new(opts.quirks_mode),
+            doc_handle,
+            open_elems: Default::default(),
+            active_formatting: Default::default(),
+            head_elem: Default::default(),
+            form_elem: Default::default(),
+            frameset_ok: Cell::new(true),
+            ignore_lf: Default::default(),
+            foster_parenting: Default::default(),
+            context_elem: Default::default(),
+            current_line: Cell::new(1),
+        }
+    }
+
+    pub(crate) fn result(&self) -> Result<(), A::Error> {
+        match &*self.failure.borrow() {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) fn record(&self, result: Result<(), A::Error>) -> bool {
+        if let Err(error) = result {
+            if self.failure.borrow().is_none() {
+                *self.failure.borrow_mut() = Some(error);
+            }
+            false
+        } else {
+            true
+        }
     }
 
     // https://html.spec.whatwg.org/multipage/#concept-frag-parse-context
@@ -323,18 +363,21 @@ where
         if log_enabled!(Level::Debug) {
             debug!(
                 "processing {} in insertion mode {:?}",
-                to_escaped_string(token),
+                format_args!("{token:?}"),
                 mode
             );
         }
     }
 
-    fn process_to_completion(&self, mut token: Token) -> TokenSinkResult<Handle> {
+    fn process_to_completion(&self, mut token: Token) -> Result<TokenSinkResult<Handle>, A::Error> {
+        self.admission
+            .check(crate::admission::Operation::TreeStep)?;
         // Queue of additional tokens yet to be processed.
         // This stays empty in the common case where we don't split whitespace.
-        let mut more_tokens = VecDeque::new();
+        let mut more_tokens = StorageDeque::new();
 
         loop {
+            self.work(1)?;
             let should_have_acknowledged_self_closing_flag = matches!(
                 token,
                 Token::Tag(Tag {
@@ -344,25 +387,24 @@ where
                 })
             );
             let result = if self.is_foreign(&token) {
-                self.step_foreign(token)
+                self.step_foreign(token)?
             } else {
                 let mode = self.mode.get();
-                self.step(mode, token)
+                self.step(mode, token)?
             };
             match result {
                 ProcessResult::Done => {
                     if should_have_acknowledged_self_closing_flag {
-                        self.sink
-                            .parse_error(Borrowed("Unacknowledged self-closing tag"));
+                        self.checked_parse_error(Borrowed("Unacknowledged self-closing tag"))?;
                     }
                     let Some(new_token) = more_tokens.pop_front() else {
-                        return tokenizer::TokenSinkResult::Continue;
+                        return Ok(tokenizer::TokenSinkResult::Continue);
                     };
                     token = new_token;
                 },
                 ProcessResult::DoneAckSelfClosing => {
                     let Some(new_token) = more_tokens.pop_front() else {
-                        return tokenizer::TokenSinkResult::Continue;
+                        return Ok(tokenizer::TokenSinkResult::Continue);
                     };
                     token = new_token;
                 },
@@ -374,9 +416,10 @@ where
                     token = t;
                 },
                 ProcessResult::SplitWhitespace(mut buf) => {
+                    self.admit_whitespace_run(&buf)?;
                     let p = buf.pop_front_char_run(|c| c.is_ascii_whitespace());
                     let Some((first, is_ws)) = p else {
-                        return tokenizer::TokenSinkResult::Continue;
+                        return Ok(tokenizer::TokenSinkResult::Continue);
                     };
                     let status = if is_ws {
                         SplitStatus::Whitespace
@@ -386,23 +429,24 @@ where
                     token = Token::Characters(status, first);
 
                     if buf.len32() > 0 {
+                        self.admission.reserve_deque(&mut more_tokens, 1)?;
                         more_tokens.push_back(Token::Characters(SplitStatus::NotSplit, buf));
                     }
                 },
                 ProcessResult::Script(node) => {
                     assert!(more_tokens.is_empty());
-                    return tokenizer::TokenSinkResult::Script(node);
+                    return Ok(tokenizer::TokenSinkResult::Script(node));
                 },
                 ProcessResult::ToPlaintext => {
                     assert!(more_tokens.is_empty());
-                    return tokenizer::TokenSinkResult::Plaintext;
+                    return Ok(tokenizer::TokenSinkResult::Plaintext);
                 },
                 ProcessResult::ToRawData(k) => {
                     assert!(more_tokens.is_empty());
-                    return tokenizer::TokenSinkResult::RawData(k);
+                    return Ok(tokenizer::TokenSinkResult::RawData(k));
                 },
                 ProcessResult::EncodingIndicator(encoding) => {
-                    return tokenizer::TokenSinkResult::EncodingIndicator(encoding);
+                    return Ok(tokenizer::TokenSinkResult::EncodingIndicator(encoding));
                 },
             }
         }
@@ -417,7 +461,7 @@ where
     fn appropriate_place_for_insertion(
         &self,
         override_target: Option<Handle>,
-    ) -> InsertionPoint<Handle> {
+    ) -> Result<InsertionPoint<Handle>, A::Error> {
         use self::tag_sets::*;
 
         declare_tag_set!(foster_target = "table" "tbody" "tfoot" "thead" "tr");
@@ -426,10 +470,10 @@ where
             if self.html_elem_named(&target, local_name!("template")) {
                 // No foster parenting (inside template).
                 let contents = self.sink.get_template_contents(&target);
-                return InsertionPoint::LastChild(contents);
+                return Ok(InsertionPoint::LastChild(contents));
             } else {
                 // No foster parenting (the common case).
-                return InsertionPoint::LastChild(target);
+                return Ok(InsertionPoint::LastChild(target));
             }
         }
 
@@ -437,118 +481,97 @@ where
         let open_elems = self.open_elems.borrow();
         let mut iter = open_elems.iter().rev().peekable();
         while let Some(elem) = iter.next() {
+            self.work(1)?;
             if self.html_elem_named(elem, local_name!("template")) {
                 let contents = self.sink.get_template_contents(elem);
-                return InsertionPoint::LastChild(contents);
+                return Ok(InsertionPoint::LastChild(contents));
             } else if self.html_elem_named(elem, local_name!("table")) {
-                return InsertionPoint::TableFosterParenting {
+                return Ok(InsertionPoint::TableFosterParenting {
                     element: elem.clone(),
                     prev_element: (*iter.peek().unwrap()).clone(),
-                };
+                });
             }
         }
         let html_elem = self.html_elem();
-        InsertionPoint::LastChild(html_elem.clone())
+        Ok(InsertionPoint::LastChild(html_elem.clone()))
     }
 
-    fn insert_at(&self, insertion_point: InsertionPoint<Handle>, child: NodeOrText<Handle>) {
+    fn insert_at(
+        &self,
+        insertion_point: InsertionPoint<Handle>,
+        child: NodeOrText<Handle>,
+    ) -> Result<(), A::Error> {
         match insertion_point {
-            InsertionPoint::LastChild(parent) => self.sink.append(&parent, child),
+            InsertionPoint::LastChild(parent) => self.checked_append(&parent, child)?,
             InsertionPoint::BeforeSibling(sibling) => {
-                self.sink.append_before_sibling(&sibling, child)
+                self.checked_append_before_sibling(&sibling, child)?
             },
             InsertionPoint::TableFosterParenting {
                 element,
                 prev_element,
-            } => self
-                .sink
-                .append_based_on_parent_node(&element, &prev_element, child),
+            } => self.checked_append_based_on_parent_node(&element, &prev_element, child)?,
         }
+        Ok(())
     }
 }
 
-impl<Handle, Sink> TokenSink for TreeBuilder<Handle, Sink>
+impl<Handle, Sink, A: Admission<Sink>> TokenSink for TreeBuilder<Handle, Sink, A>
 where
     Handle: Clone,
     Sink: TreeSink<Handle = Handle>,
 {
     type Handle = Handle;
 
-    fn process_token(&self, token: tokenizer::Token, line_number: u64) -> TokenSinkResult<Handle> {
-        if line_number != self.current_line.get() {
-            self.sink.set_current_line(line_number);
+    fn process_error(&self, message: fmt::Arguments<'_>, line: u64) -> bool {
+        if line != self.current_line.get() {
+            self.sink.set_current_line(line);
+            self.current_line.set(line);
         }
-        let ignore_lf = self.ignore_lf.take();
+        self.result().is_ok() && self.record(self.checked_parse_error_fmt(message))
+    }
 
-        // Handle `ParseError` and `DoctypeToken`; convert everything else to the local `Token` type.
-        let token = match token {
-            tokenizer::ParseError(e) => {
-                self.sink.parse_error(e);
-                return tokenizer::TokenSinkResult::Continue;
+    fn process_token(&self, token: tokenizer::Token, line_number: u64) -> TokenSinkResult<Handle> {
+        if self.result().is_err() {
+            return TokenSinkResult::Abort;
+        }
+        match self.process_token_admitted(token, line_number) {
+            Ok(result) => result,
+            Err(error) => {
+                self.record(Err(error));
+                TokenSinkResult::Abort
             },
+        }
+    }
 
-            tokenizer::DoctypeToken(dt) => {
-                if self.mode.get() == InsertionMode::Initial {
-                    let (err, quirk) = data::doctype_error_and_quirks(&dt, self.opts.iframe_srcdoc);
-                    if err {
-                        self.sink.parse_error(if self.opts.exact_errors {
-                            Cow::from(format!("Bad DOCTYPE: {dt:?}"))
-                        } else {
-                            Cow::from("Bad DOCTYPE")
-                        });
-                    }
-                    let Doctype {
-                        name,
-                        public_id,
-                        system_id,
-                        force_quirks: _,
-                    } = dt;
-                    if !self.opts.drop_doctype {
-                        self.sink.append_doctype_to_document(
-                            name.unwrap_or(StrTendril::new()),
-                            public_id.unwrap_or(StrTendril::new()),
-                            system_id.unwrap_or(StrTendril::new()),
-                        );
-                    }
-                    self.set_quirks_mode(quirk);
+    fn is_aborted(&self) -> bool {
+        self.failure.borrow().is_some()
+    }
 
-                    self.mode.set(InsertionMode::BeforeHtml);
-                    return tokenizer::TokenSinkResult::Continue;
-                } else {
-                    self.sink.parse_error(if self.opts.exact_errors {
-                        Cow::from(format!("DOCTYPE in insertion mode {:?}", self.mode.get()))
-                    } else {
-                        Cow::from("DOCTYPE in body")
-                    });
-                    return tokenizer::TokenSinkResult::Continue;
-                }
-            },
+    fn before_step(&self) -> bool {
+        self.result().is_ok() && self.record(self.admission.check(Operation::TokenizerStep))
+    }
 
-            tokenizer::TagToken(x) => Token::Tag(x),
-            tokenizer::CommentToken(x) => Token::Comment(x),
-            tokenizer::ProcessingInstructionToken(target, data) => {
-                Token::ProcessingInstruction(target, data)
-            },
-            tokenizer::NullCharacterToken => Token::NullCharacter,
-            tokenizer::EOFToken => Token::Eof,
+    fn before_buffer(&self, buffer: &mut StrTendril, additional: usize) -> bool {
+        self.result().is_ok() && self.record(self.admission.reserve_buffer(buffer, additional))
+    }
 
-            tokenizer::CharacterTokens(mut x) => {
-                if ignore_lf && x.starts_with("\n") {
-                    x.pop_front(1);
-                }
-                if x.is_empty() {
-                    return tokenizer::TokenSinkResult::Continue;
-                }
-                Token::Characters(SplitStatus::NotSplit, x)
-            },
-        };
+    fn before_attribute(&self, name: &str, count: usize) -> bool {
+        self.result().is_ok()
+            && self.record(self.admission.check(Operation::Name(name)))
+            && self.record(self.admission.check(Operation::TokenAttribute(name, count)))
+    }
 
-        self.process_to_completion(token)
+    fn before_work(&self, count: usize) -> bool {
+        self.result().is_ok() && self.record(self.work(count))
+    }
+
+    fn reserve<T>(&self, values: &mut Storage<T>, additional: usize) -> bool {
+        self.result().is_ok() && self.record(self.admission.reserve(values, additional))
     }
 
     fn end(&self) {
-        for elem in self.open_elems.borrow_mut().drain(..).rev() {
-            self.sink.pop(&elem);
+        if self.result().is_ok() {
+            self.record(self.end_admitted());
         }
     }
 
@@ -563,7 +586,7 @@ pub fn html_elem<Handle>(open_elems: &[Handle]) -> &Handle {
 }
 
 struct ActiveFormattingView<'a, Handle: 'a> {
-    data: Ref<'a, Vec<FormatEntry<Handle>>>,
+    data: Ref<'a, Storage<FormatEntry<Handle>>>,
 }
 
 impl<'a, Handle: 'a> ActiveFormattingView<'a, Handle> {
@@ -616,22 +639,22 @@ macro_rules! qualname {
 }
 
 #[doc(hidden)]
-impl<Handle, Sink> TreeBuilder<Handle, Sink>
+impl<Handle, Sink, A: Admission<Sink>> TreeBuilder<Handle, Sink, A>
 where
     Handle: Clone,
     Sink: TreeSink<Handle = Handle>,
 {
-    fn unexpected<T: fmt::Debug>(&self, _thing: &T) -> ProcessResult<Handle> {
-        self.sink.parse_error(if self.opts.exact_errors {
-            Cow::from(format!(
+    fn unexpected<T: fmt::Debug>(&self, _thing: &T) -> Result<ProcessResult<Handle>, A::Error> {
+        if self.opts.exact_errors {
+            self.checked_parse_error_fmt(format_args!(
                 "Unexpected token {} in insertion mode {:?}",
-                to_escaped_string(_thing),
+                EscapedDebug(_thing),
                 self.mode.get()
-            ))
+            ))?;
         } else {
-            Cow::from("Unexpected token")
-        });
-        ProcessResult::Done
+            self.checked_parse_error(Cow::from("Unexpected token"))?;
+        }
+        Ok(ProcessResult::Done)
     }
 
     fn assert_named(&self, node: &Handle, name: LocalName) {
@@ -646,14 +669,16 @@ where
         }
     }
 
-    fn position_in_active_formatting(&self, element: &Handle) -> Option<usize> {
-        self.active_formatting
-            .borrow()
-            .iter()
-            .position(|n| match n {
-                FormatEntry::Marker => false,
-                FormatEntry::Element(ref handle, _) => self.sink.same_node(handle, element),
-            })
+    fn position_in_active_formatting(&self, element: &Handle) -> Result<Option<usize>, A::Error> {
+        Ok(self
+            .find(
+                self.active_formatting.borrow().iter().enumerate(),
+                |(_, n)| match n {
+                    FormatEntry::Marker => false,
+                    FormatEntry::Element(ref handle, _) => self.sink.same_node(handle, element),
+                },
+            )?
+            .map(|(i, _)| i))
     }
 
     fn set_quirks_mode(&self, mode: QuirksMode) {
@@ -677,9 +702,9 @@ where
     }
 
     // The generic raw text / RCDATA parsing algorithm.
-    fn parse_raw_data(&self, tag: Tag, k: RawKind) -> ProcessResult<Handle> {
-        self.insert_element_for(tag);
-        self.to_raw_text_mode(k)
+    fn parse_raw_data(&self, tag: Tag, k: RawKind) -> Result<ProcessResult<Handle>, A::Error> {
+        self.insert_element_for(tag)?;
+        Ok(self.to_raw_text_mode(k))
     }
     //§ END
 
@@ -708,82 +733,88 @@ where
     }
 
     // Insert at the "appropriate place for inserting a node".
-    fn insert_appropriately(&self, child: NodeOrText<Handle>, override_target: Option<Handle>) {
-        let insertion_point = self.appropriate_place_for_insertion(override_target);
-        self.insert_at(insertion_point, child);
+    fn insert_appropriately(
+        &self,
+        child: NodeOrText<Handle>,
+        override_target: Option<Handle>,
+    ) -> Result<(), A::Error> {
+        let insertion_point = self.appropriate_place_for_insertion(override_target)?;
+        self.insert_at(insertion_point, child)?;
+        Ok(())
     }
 
-    fn adoption_agency(&self, subject: LocalName) {
+    fn adoption_agency(&self, subject: LocalName) -> Result<(), A::Error> {
         // 1.
         if self.current_node_named(subject.clone())
             && self
-                .position_in_active_formatting(&self.current_node())
+                .position_in_active_formatting(&self.current_node())?
                 .is_none()
         {
-            self.pop();
-            return;
+            self.pop()?;
+            return Ok(());
         }
 
         // 2. 3. 4.
         for _ in 0..8 {
+            self.work(1)?;
             // 5.
             // We clone the Handle and Tag so they don't cause an immutable borrow of self.
             let maybe_fmt_entry = self
-                .active_formatting_end_to_marker()
-                .iter()
-                .find(|&(_, _, tag)| tag.name == subject)
-                .map(|(i, h, t)| (i, h.clone(), t.clone()));
+                .find(
+                    self.active_formatting_end_to_marker().iter(),
+                    |&(_, _, tag)| tag.name == subject,
+                )?
+                .map(|(i, h, t)| self.clone_tag(t).map(|tag| (i, h.clone(), tag)))
+                .transpose()?;
 
             let Some((fmt_elem_index, fmt_elem, fmt_elem_tag)) = maybe_fmt_entry else {
                 return self.process_end_tag_in_body(Tag {
                     kind: EndTag,
                     name: subject,
                     self_closing: false,
-                    attrs: vec![],
+                    attrs: Default::default(),
                     had_duplicate_attributes: false,
                 });
             };
 
-            let Some(fmt_elem_stack_index) = self
-                .open_elems
-                .borrow()
-                .iter()
-                .rposition(|n| self.sink.same_node(n, &fmt_elem))
+            let Some((fmt_elem_stack_index, _)) = self.find(
+                self.open_elems.borrow().iter().enumerate().rev(),
+                |(_, n)| self.sink.same_node(n, &fmt_elem),
+            )?
             else {
-                self.sink
-                    .parse_error(Borrowed("Formatting element not open"));
-                self.active_formatting.borrow_mut().remove(fmt_elem_index);
-                return;
+                self.checked_parse_error(Borrowed("Formatting element not open"))?;
+                self.remove_from(&self.active_formatting, fmt_elem_index)?;
+                return Ok(());
             };
 
             // 7.
-            if !self.in_scope(default_scope, |n| self.sink.same_node(&n, &fmt_elem)) {
-                self.sink
-                    .parse_error(Borrowed("Formatting element not in scope"));
-                return;
+            if !self.in_scope(default_scope, |n| self.sink.same_node(&n, &fmt_elem))? {
+                self.checked_parse_error(Borrowed("Formatting element not in scope"))?;
+                return Ok(());
             }
 
             // 8.
             if !self.sink.same_node(&self.current_node(), &fmt_elem) {
-                self.sink
-                    .parse_error(Borrowed("Formatting element not current node"));
+                self.checked_parse_error(Borrowed("Formatting element not current node"))?;
             }
 
             // 9.
             let maybe_furthest_block = self
-                .open_elems
-                .borrow()
-                .iter()
-                .enumerate()
-                .skip(fmt_elem_stack_index)
-                .find(|&(_, open_element)| self.elem_in(open_element, special_tag))
+                .find(
+                    self.open_elems
+                        .borrow()
+                        .iter()
+                        .enumerate()
+                        .skip(fmt_elem_stack_index),
+                    |&(_, open_element)| self.elem_in(open_element, special_tag),
+                )?
                 .map(|(i, h)| (i, h.clone()));
 
             let Some((furthest_block_index, furthest_block)) = maybe_furthest_block else {
                 // 10.
                 self.open_elems.borrow_mut().truncate(fmt_elem_stack_index);
-                self.active_formatting.borrow_mut().remove(fmt_elem_index);
-                return;
+                self.remove_from(&self.active_formatting, fmt_elem_index)?;
+                return Ok(());
             };
 
             // 11.
@@ -800,6 +831,7 @@ where
             // 13.1.
             let mut inner_counter = 0;
             loop {
+                self.work(1)?;
                 // 13.2.
                 inner_counter += 1;
 
@@ -814,15 +846,16 @@ where
 
                 // 13.5.
                 if inner_counter > 3 {
-                    self.position_in_active_formatting(&node)
-                        .map(|position| self.active_formatting.borrow_mut().remove(position));
-                    self.open_elems.borrow_mut().remove(node_index);
+                    if let Some(position) = self.position_in_active_formatting(&node)? {
+                        self.remove_from(&self.active_formatting, position)?;
+                    }
+                    self.remove_from(&self.open_elems, node_index)?;
                     continue;
                 }
 
-                let Some(node_formatting_index) = self.position_in_active_formatting(&node) else {
+                let Some(node_formatting_index) = self.position_in_active_formatting(&node)? else {
                     // 13.6.
-                    self.open_elems.borrow_mut().remove(node_index);
+                    self.remove_from(&self.open_elems, node_index)?;
                     continue;
                 };
 
@@ -830,18 +863,17 @@ where
                 let tag = match self.active_formatting.borrow()[node_formatting_index] {
                     FormatEntry::Element(ref h, ref t) => {
                         assert!(self.sink.same_node(h, &node));
-                        t.clone()
+                        self.clone_tag(t)?
                     },
                     FormatEntry::Marker => panic!("Found marker during adoption agency"),
                 };
                 // FIXME: Is there a way to avoid cloning the attributes twice here (once on their
-                // own, once as part of t.clone() above)?
-                let new_element = create_element_with_flags(
-                    &self.sink,
+                // own, once as part of the tag copy above)?
+                let new_element = self.checked_create_element(
                     QualName::new(None, ns!(html), tag.name.clone()),
-                    tag.attrs.clone(),
+                    self.clone_attrs(&tag.attrs)?,
                     tag.had_duplicate_attributes,
-                );
+                )?;
                 self.open_elems.borrow_mut()[node_index] = new_element.clone();
                 self.active_formatting.borrow_mut()[node_formatting_index] =
                     FormatEntry::Element(new_element.clone(), tag);
@@ -853,8 +885,8 @@ where
                 }
 
                 // 13.9.
-                self.sink.remove_from_parent(&last_node);
-                self.sink.append(&node, AppendNode(last_node.clone()));
+                self.checked_remove(&last_node)?;
+                self.checked_append(&node, AppendNode(last_node.clone()))?;
 
                 // 13.10.
                 last_node = node.clone();
@@ -863,26 +895,24 @@ where
             }
 
             // 14.
-            self.sink.remove_from_parent(&last_node);
-            self.insert_appropriately(AppendNode(last_node.clone()), Some(common_ancestor));
+            self.checked_remove(&last_node)?;
+            self.insert_appropriately(AppendNode(last_node.clone()), Some(common_ancestor))?;
 
             // 15.
             // FIXME: Is there a way to avoid cloning the attributes twice here (once on their own,
-            // once as part of t.clone() above)?
-            let new_element = create_element_with_flags(
-                &self.sink,
+            // once as part of the tag copy above)?
+            let new_element = self.checked_create_element(
                 QualName::new(None, ns!(html), fmt_elem_tag.name.clone()),
-                fmt_elem_tag.attrs.clone(),
+                self.clone_attrs(&fmt_elem_tag.attrs)?,
                 fmt_elem_tag.had_duplicate_attributes,
-            );
+            )?;
             let new_entry = FormatEntry::Element(new_element.clone(), fmt_elem_tag);
 
             // 16.
-            self.sink.reparent_children(&furthest_block, &new_element);
+            self.checked_reparent_children(&furthest_block, &new_element)?;
 
             // 17.
-            self.sink
-                .append(&furthest_block, AppendNode(new_element.clone()));
+            self.checked_append(&furthest_block, AppendNode(new_element.clone()))?;
 
             // 18.
             // FIXME: We could probably get rid of the position_in_active_formatting() calls here
@@ -890,94 +920,93 @@ where
             match bookmark {
                 Bookmark::Replace(to_replace) => {
                     let index = self
-                        .position_in_active_formatting(&to_replace)
+                        .position_in_active_formatting(&to_replace)?
                         .expect("bookmark not found in active formatting elements");
                     self.active_formatting.borrow_mut()[index] = new_entry;
                 },
                 Bookmark::InsertAfter(previous) => {
                     let index = self
-                        .position_in_active_formatting(&previous)
+                        .position_in_active_formatting(&previous)?
                         .expect("bookmark not found in active formatting elements")
                         + 1;
-                    self.active_formatting.borrow_mut().insert(index, new_entry);
+                    self.insert_into(&self.active_formatting, index, new_entry)?;
                     let old_index = self
-                        .position_in_active_formatting(&fmt_elem)
+                        .position_in_active_formatting(&fmt_elem)?
                         .expect("formatting element not found in active formatting elements");
-                    self.active_formatting.borrow_mut().remove(old_index);
+                    self.remove_from(&self.active_formatting, old_index)?;
                 },
             }
 
             // 19.
-            self.remove_from_stack(&fmt_elem);
-            let new_furthest_block_index = self
-                .open_elems
-                .borrow()
-                .iter()
-                .position(|n| self.sink.same_node(n, &furthest_block))
+            self.remove_from_stack(&fmt_elem)?;
+            let (new_furthest_block_index, _) = self
+                .find(self.open_elems.borrow().iter().enumerate(), |(_, n)| {
+                    self.sink.same_node(n, &furthest_block)
+                })?
                 .expect("furthest block missing from open element stack");
-            self.open_elems
-                .borrow_mut()
-                .insert(new_furthest_block_index + 1, new_element);
+            self.insert_into(&self.open_elems, new_furthest_block_index + 1, new_element)?;
 
             // 20.
         }
+        Ok(())
     }
 
-    fn push(&self, elem: &Handle) {
-        self.open_elems.borrow_mut().push(elem.clone());
+    fn push(&self, elem: &Handle) -> Result<(), A::Error> {
+        self.push_into(&self.open_elems, elem.clone())
     }
 
-    fn pop(&self) -> Handle {
+    fn pop(&self) -> Result<Handle, A::Error> {
         let elem = self
             .open_elems
             .borrow_mut()
             .pop()
             .expect("no current element");
 
-        self.sink.pop(&elem);
-        elem
+        self.checked_pop(&elem)?;
+        Ok(elem)
     }
 
-    fn remove_from_stack(&self, elem: &Handle) {
+    fn remove_from_stack(&self, elem: &Handle) -> Result<(), A::Error> {
         let position = self
-            .open_elems
-            .borrow()
-            .iter()
-            .rposition(|x| self.sink.same_node(elem, x));
+            .find(
+                self.open_elems.borrow().iter().enumerate().rev(),
+                |(_, x)| self.sink.same_node(elem, x),
+            )?
+            .map(|(i, _)| i);
         if let Some(position) = position {
-            self.open_elems.borrow_mut().remove(position);
-            self.sink.pop(elem);
+            self.remove_from(&self.open_elems, position)?;
+            self.checked_pop(elem)?;
         }
+        Ok(())
     }
 
-    fn is_marker_or_open(&self, entry: &FormatEntry<Handle>) -> bool {
-        match *entry {
+    fn is_marker_or_open(&self, entry: &FormatEntry<Handle>) -> Result<bool, A::Error> {
+        Ok(match *entry {
             FormatEntry::Marker => true,
             FormatEntry::Element(ref node, _) => self
-                .open_elems
-                .borrow()
-                .iter()
-                .rev()
-                .any(|n| self.sink.same_node(n, node)),
-        }
+                .find(self.open_elems.borrow().iter().rev(), |n| {
+                    self.sink.same_node(n, node)
+                })?
+                .is_some(),
+        })
     }
 
     /// <https://html.spec.whatwg.org/#reconstruct-the-active-formatting-elements>
-    fn reconstruct_active_formatting_elements(&self) {
+    fn reconstruct_active_formatting_elements(&self) -> Result<(), A::Error> {
         {
             let active_formatting = self.active_formatting.borrow();
 
             // Step 1. If there are no entries in the list of active formatting elements,
             // then there is nothing to reconstruct; stop this algorithm.
             let Some(last) = active_formatting.last() else {
-                return;
+                return Ok(());
             };
 
             // Step 2. If the last (most recently added) entry in the list of active formatting elements is a marker,
             // or if it is an element that is in the stack of open elements, then there is nothing to reconstruct;
             // stop this algorithm.
-            if self.is_marker_or_open(last) {
-                return;
+            if self.is_marker_or_open(last)? {
+                return Ok(());
             }
         }
 
@@ -985,6 +1014,7 @@ where
         // NOTE: We track the index of the element instead
         let mut entry_index = self.active_formatting.borrow().len() - 1;
         loop {
+            self.work(1)?;
             // Step 4. Rewind: If there are no entries before entry in the list of active formatting elements,
             // then jump to the step labeled create.
             if entry_index == 0 {
@@ -998,31 +1028,32 @@ where
             // go to the step labeled rewind.
             // Step 7. Advance: Let entry be the element one later than entry in the list
             // of active formatting elements.
-            if self.is_marker_or_open(&self.active_formatting.borrow()[entry_index]) {
+            if self.is_marker_or_open(&self.active_formatting.borrow()[entry_index])? {
                 entry_index += 1;
                 break;
             }
         }
 
         loop {
+            self.work(1)?;
             // Step 8. Create: Insert an HTML element for the token for which the element entry was created,
             // to obtain new element.
             let tag = match self.active_formatting.borrow()[entry_index] {
-                FormatEntry::Element(_, ref t) => t.clone(),
+                FormatEntry::Element(_, ref t) => self.clone_tag(t)?,
                 FormatEntry::Marker => {
                     panic!("Found marker during formatting element reconstruction")
                 },
             };
 
             // FIXME: Is there a way to avoid cloning the attributes twice here (once on their own,
-            // once as part of t.clone() above)?
+            // once as part of the tag copy above)?
             let new_element = self.insert_element(
                 PushFlag::Push,
                 ns!(html),
                 tag.name.clone(),
-                tag.attrs.clone(),
+                self.clone_attrs(&tag.attrs)?,
                 tag.had_duplicate_attributes,
-            );
+            )?;
 
             // Step 9. Replace the entry for entry in the list with an entry for new element.
             self.active_formatting.borrow_mut()[entry_index] =
@@ -1035,6 +1066,7 @@ where
             }
             entry_index += 1;
         }
+        Ok(())
     }
 
     /// Get the first element on the stack, which will be the <html> element.
@@ -1058,13 +1090,14 @@ where
 
     /// Signal an error depending on the state of the stack of open elements at
     /// the end of the body.
-    fn check_body_end(&self) {
+    fn check_body_end(&self) -> Result<(), A::Error> {
         declare_tag_set!(body_end_ok =
             "dd" "dt" "li" "optgroup" "option" "p" "rp" "rt" "tbody" "td" "tfoot" "th"
             "thead" "tr" "body" "html");
 
         for elem in self.open_elems.borrow().iter() {
-            let error = {
+            self.work(1)?;
+            {
                 let elem_name = self.sink.elem_name(elem);
                 let name = elem_name.expanded();
                 if body_end_ok(name) {
@@ -1072,35 +1105,38 @@ where
                 }
 
                 if self.opts.exact_errors {
-                    Cow::from(format!("Unexpected open tag {name:?} at end of body"))
+                    self.checked_parse_error_fmt(format_args!(
+                        "Unexpected open tag {name:?} at end of body"
+                    ))?;
                 } else {
-                    Cow::from("Unexpected open tag at end of body")
+                    self.checked_parse_error(Cow::from("Unexpected open tag at end of body"))?;
                 }
-            };
-            self.sink.parse_error(error);
+            }
             // FIXME: Do we keep checking after finding one bad tag?
             // The spec suggests not.
-            return;
+            return Ok(());
         }
+        Ok(())
     }
 
-    fn in_scope<TagSet, Pred>(&self, scope: TagSet, pred: Pred) -> bool
+    fn in_scope<TagSet, Pred>(&self, scope: TagSet, pred: Pred) -> Result<bool, A::Error>
     where
         TagSet: Fn(ExpandedName) -> bool,
         Pred: Fn(Handle) -> bool,
     {
         for node in self.open_elems.borrow().iter().rev() {
+            self.work(1)?;
             if pred(node.clone()) {
-                return true;
+                return Ok(true);
             }
             if scope(self.sink.elem_name(node).expanded()) {
-                return false;
+                return Ok(false);
             }
         }
 
         // supposed to be impossible, because <html> is always in scope
 
-        false
+        Ok(false)
     }
 
     fn elem_in<TagSet>(&self, elem: &Handle, set: TagSet) -> bool
@@ -1115,18 +1151,19 @@ where
         *elem_name.ns() == ns!(html) && *elem_name.local_name() == name
     }
 
-    fn in_html_elem_named(&self, name: LocalName) -> bool {
-        self.open_elems
-            .borrow()
-            .iter()
-            .any(|elem| self.html_elem_named(elem, name.clone()))
+    fn in_html_elem_named(&self, name: LocalName) -> Result<bool, A::Error> {
+        Ok(self
+            .find(self.open_elems.borrow().iter(), |elem| {
+                self.html_elem_named(elem, name.clone())
+            })?
+            .is_some())
     }
 
     fn current_node_named(&self, name: LocalName) -> bool {
         self.html_elem_named(&self.current_node(), name)
     }
 
-    fn in_scope_named<TagSet>(&self, scope: TagSet, name: LocalName) -> bool
+    fn in_scope_named<TagSet>(&self, scope: TagSet, name: LocalName) -> Result<bool, A::Error>
     where
         TagSet: Fn(ExpandedName) -> bool,
     {
@@ -1134,54 +1171,60 @@ where
     }
 
     /// <https://html.spec.whatwg.org/#generate-implied-end-tags>
-    fn generate_implied_end_tags<TagSet>(&self, set: TagSet)
+    fn generate_implied_end_tags<TagSet>(&self, set: TagSet) -> Result<(), A::Error>
     where
         TagSet: Fn(ExpandedName) -> bool,
     {
         loop {
+            self.work(1)?;
             {
                 let open_elems = self.open_elems.borrow();
                 let Some(elem) = open_elems.last() else {
-                    return;
+                    return Ok(());
                 };
                 let elem_name = self.sink.elem_name(elem);
                 if !set(elem_name.expanded()) {
-                    return;
+                    return Ok(());
                 }
             }
-            self.pop();
+            self.pop()?;
         }
     }
 
-    fn generate_implied_end_except(&self, except: LocalName) {
+    fn generate_implied_end_except(&self, except: LocalName) -> Result<(), A::Error> {
         self.generate_implied_end_tags(|p| {
             if *p.ns == ns!(html) && *p.local == except {
                 false
             } else {
                 cursory_implied_end(p)
             }
-        });
+        })?;
+        Ok(())
     }
     //§ END
 
     // Pop elements until the current element is in the set.
-    fn pop_until_current<TagSet>(&self, tag_set: TagSet)
+    fn pop_until_current<TagSet>(&self, tag_set: TagSet) -> Result<(), A::Error>
     where
         TagSet: Fn(ExpandedName) -> bool,
     {
         while !self.current_node_in(&tag_set) {
+            self.admission.check(Operation::TreeStep)?;
             self.open_elems.borrow_mut().pop();
         }
+        Ok(())
     }
 
     // Pop elements until an element from the set has been popped.  Returns the
     // number of elements popped.
-    fn pop_until<P>(&self, pred: P) -> usize
+    fn pop_until<P>(&self, pred: P) -> Result<usize, A::Error>
     where
         P: Fn(ExpandedName) -> bool,
     {
         let mut n = 0;
         loop {
+            self.work(1)?;
+            self.admission.check(Operation::TreeStep)?;
             n += 1;
             match self.open_elems.borrow_mut().pop() {
                 None => break,
@@ -1192,82 +1235,84 @@ where
                 },
             }
         }
-        n
+        Ok(n)
     }
 
     /// Pop element until an element with the given name has been popped.
-    fn pop_until_named(&self, name: LocalName) -> usize {
+    fn pop_until_named(&self, name: LocalName) -> Result<usize, A::Error> {
         self.pop_until(|p| *p.ns == ns!(html) && *p.local == name)
     }
 
     /// Pop elements until one with the specified name has been popped.
     /// Signal an error if it was not the first one.
-    fn expect_to_close(&self, name: LocalName) {
-        if self.pop_until_named(name.clone()) != 1 {
-            self.sink.parse_error(if self.opts.exact_errors {
-                Cow::from(format!("Unexpected open element while closing {name:?}"))
+    fn expect_to_close(&self, name: LocalName) -> Result<(), A::Error> {
+        if self.pop_until_named(name.clone())? != 1 {
+            if self.opts.exact_errors {
+                self.checked_parse_error_fmt(format_args!(
+                    "Unexpected open element while closing {name:?}"
+                ))?;
             } else {
-                Cow::from("Unexpected open element")
-            });
+                self.checked_parse_error(Cow::from("Unexpected open element"))?;
+            }
         }
+        Ok(())
     }
 
-    fn close_p_element(&self) {
+    fn close_p_element(&self) -> Result<(), A::Error> {
         declare_tag_set!(implied = [cursory_implied_end] - "p");
-        self.generate_implied_end_tags(implied);
-        self.expect_to_close(local_name!("p"));
+        self.generate_implied_end_tags(implied)?;
+        self.expect_to_close(local_name!("p"))?;
+        Ok(())
     }
 
-    fn close_p_element_in_button_scope(&self) {
-        if self.in_scope_named(button_scope, local_name!("p")) {
-            self.close_p_element();
+    fn close_p_element_in_button_scope(&self) -> Result<(), A::Error> {
+        if self.in_scope_named(button_scope, local_name!("p"))? {
+            self.close_p_element()?;
         }
+        Ok(())
     }
 
     // Check <input> tags for type=hidden
-    fn is_type_hidden(&self, tag: &Tag) -> bool {
-        match tag
-            .attrs
-            .iter()
-            .find(|&at| at.name.expanded() == expanded_name!("", "type"))
-        {
-            None => false,
-            Some(at) => at.value.eq_ignore_ascii_case("hidden"),
-        }
+    fn is_type_hidden(&self, tag: &Tag) -> Result<bool, A::Error> {
+        let attr = self.find(tag.attrs.iter(), |at| {
+            at.name.expanded() == expanded_name!("", "type")
+        })?;
+        Ok(attr.is_some_and(|at| at.value.eq_ignore_ascii_case("hidden")))
     }
 
-    fn foster_parent_in_body(&self, token: Token) -> ProcessResult<Handle> {
+    fn foster_parent_in_body(&self, token: Token) -> Result<ProcessResult<Handle>, A::Error> {
         warn!("foster parenting not implemented");
         self.foster_parenting.set(true);
-        let res = self.step(InsertionMode::InBody, token);
+        let res = self.step(InsertionMode::InBody, token)?;
         // FIXME: what if res is Reprocess?
         self.foster_parenting.set(false);
-        res
+        Ok(res)
     }
 
-    fn process_chars_in_table(&self, token: Token) -> ProcessResult<Handle> {
+    fn process_chars_in_table(&self, token: Token) -> Result<ProcessResult<Handle>, A::Error> {
         declare_tag_set!(table_outer = "table" "tbody" "tfoot" "thead" "tr");
-        if self.current_node_in(table_outer) {
+        Ok(if self.current_node_in(table_outer) {
             assert!(self.pending_table_text.borrow().is_empty());
             self.orig_mode.set(Some(self.mode.get()));
             ProcessResult::Reprocess(InsertionMode::InTableText, token)
         } else {
-            self.sink.parse_error(if self.opts.exact_errors {
-                Cow::from(format!(
+            if self.opts.exact_errors {
+                self.checked_parse_error_fmt(format_args!(
                     "Unexpected characters {} in table",
-                    to_escaped_string(&token)
-                ))
+                    EscapedDebug(&token)
+                ))?;
             } else {
-                Cow::from("Unexpected characters in table")
-            });
-            self.foster_parent_in_body(token)
-        }
+                self.checked_parse_error(Cow::from("Unexpected characters in table"))?;
+            }
+            self.foster_parent_in_body(token)?
+        })
     }
 
     // https://html.spec.whatwg.org/multipage/#reset-the-insertion-mode-appropriately
-    fn reset_insertion_mode(&self) -> InsertionMode {
+    fn reset_insertion_mode(&self) -> Result<InsertionMode, A::Error> {
         let open_elems = self.open_elems.borrow();
         for (i, mut node) in open_elems.iter().enumerate().rev() {
+            self.work(1)?;
             let last = i == 0usize;
             let context_elem = self.context_elem.borrow();
             if let (true, Some(ctx)) = (last, context_elem.as_ref()) {
@@ -1283,101 +1328,115 @@ where
             };
             match *name {
                 local_name!("td") | local_name!("th") if !last => {
-                    return InsertionMode::InCell;
+                    return Ok(InsertionMode::InCell);
                 },
-                local_name!("tr") => return InsertionMode::InRow,
+                local_name!("tr") => return Ok(InsertionMode::InRow),
                 local_name!("tbody") | local_name!("thead") | local_name!("tfoot") => {
-                    return InsertionMode::InTableBody;
+                    return Ok(InsertionMode::InTableBody);
                 },
-                local_name!("caption") => return InsertionMode::InCaption,
-                local_name!("colgroup") => return InsertionMode::InColumnGroup,
-                local_name!("table") => return InsertionMode::InTable,
-                local_name!("template") => return *self.template_modes.borrow().last().unwrap(),
+                local_name!("caption") => return Ok(InsertionMode::InCaption),
+                local_name!("colgroup") => return Ok(InsertionMode::InColumnGroup),
+                local_name!("table") => return Ok(InsertionMode::InTable),
+                local_name!("template") => {
+                    return Ok(*self.template_modes.borrow().last().unwrap())
+                },
                 local_name!("head") => {
                     if !last {
-                        return InsertionMode::InHead;
+                        return Ok(InsertionMode::InHead);
                     }
                 },
-                local_name!("body") => return InsertionMode::InBody,
-                local_name!("frameset") => return InsertionMode::InFrameset,
+                local_name!("body") => return Ok(InsertionMode::InBody),
+                local_name!("frameset") => return Ok(InsertionMode::InFrameset),
                 local_name!("html") => match *self.head_elem.borrow() {
-                    None => return InsertionMode::BeforeHead,
-                    Some(_) => return InsertionMode::AfterHead,
+                    None => return Ok(InsertionMode::BeforeHead),
+                    Some(_) => return Ok(InsertionMode::AfterHead),
                 },
 
                 _ => (),
             }
         }
-        InsertionMode::InBody
+        Ok(InsertionMode::InBody)
     }
 
-    fn close_the_cell(&self) {
-        self.generate_implied_end_tags(cursory_implied_end);
-        if self.pop_until(td_th) != 1 {
-            self.sink
-                .parse_error(Borrowed("expected to close <td> or <th> with cell"));
+    fn close_the_cell(&self) -> Result<(), A::Error> {
+        self.generate_implied_end_tags(cursory_implied_end)?;
+        if self.pop_until(td_th)? != 1 {
+            self.checked_parse_error(Borrowed("expected to close <td> or <th> with cell"))?;
         }
-        self.clear_active_formatting_to_marker();
+        self.clear_active_formatting_to_marker()?;
+        Ok(())
     }
 
-    fn append_text(&self, text: StrTendril) -> ProcessResult<Handle> {
-        self.insert_appropriately(AppendText(text), None);
-        ProcessResult::Done
+    fn append_text(&self, text: StrTendril) -> Result<ProcessResult<Handle>, A::Error> {
+        self.insert_appropriately(AppendText(text), None)?;
+        Ok(ProcessResult::Done)
     }
 
-    fn append_comment(&self, text: StrTendril) -> ProcessResult<Handle> {
-        let comment = self.sink.create_comment(text);
-        self.insert_appropriately(AppendNode(comment), None);
-        ProcessResult::Done
+    fn append_comment(&self, text: StrTendril) -> Result<ProcessResult<Handle>, A::Error> {
+        let comment = self.checked_create_comment(text)?;
+        self.insert_appropriately(AppendNode(comment), None)?;
+        Ok(ProcessResult::Done)
     }
 
     /// KaminIDE patch: инструкция обработки на место текущей вставки.
-    fn append_pi(&self, target: StrTendril, data: StrTendril) -> ProcessResult<Handle> {
-        let pi = self.sink.create_pi(target, data);
-        self.insert_appropriately(AppendNode(pi), None);
-        ProcessResult::Done
+    fn append_pi(
+        &self,
+        target: StrTendril,
+        data: StrTendril,
+    ) -> Result<ProcessResult<Handle>, A::Error> {
+        let pi = self.checked_create_pi(target, data)?;
+        self.insert_appropriately(AppendNode(pi), None)?;
+        Ok(ProcessResult::Done)
     }
 
     /// KaminIDE patch: инструкция обработки в сам документ (до `<html>`).
-    fn append_pi_to_doc(&self, target: StrTendril, data: StrTendril) -> ProcessResult<Handle> {
-        let pi = self.sink.create_pi(target, data);
-        self.sink.append(&self.doc_handle, AppendNode(pi));
-        ProcessResult::Done
+    fn append_pi_to_doc(
+        &self,
+        target: StrTendril,
+        data: StrTendril,
+    ) -> Result<ProcessResult<Handle>, A::Error> {
+        let pi = self.checked_create_pi(target, data)?;
+        self.checked_append(&self.doc_handle, AppendNode(pi))?;
+        Ok(ProcessResult::Done)
     }
 
     /// KaminIDE patch: инструкция обработки в корневой `<html>`.
-    fn append_pi_to_html(&self, target: StrTendril, data: StrTendril) -> ProcessResult<Handle> {
+    fn append_pi_to_html(
+        &self,
+        target: StrTendril,
+        data: StrTendril,
+    ) -> Result<ProcessResult<Handle>, A::Error> {
         let open_elems = self.open_elems.borrow();
         let elem = html_elem(&open_elems);
-        let pi = self.sink.create_pi(target, data);
-        self.sink.append(elem, AppendNode(pi));
-        ProcessResult::Done
+        let pi = self.checked_create_pi(target, data)?;
+        self.checked_append(elem, AppendNode(pi))?;
+        Ok(ProcessResult::Done)
     }
 
-    fn append_comment_to_doc(&self, text: StrTendril) -> ProcessResult<Handle> {
-        let comment = self.sink.create_comment(text);
-        self.sink.append(&self.doc_handle, AppendNode(comment));
-        ProcessResult::Done
+    fn append_comment_to_doc(&self, text: StrTendril) -> Result<ProcessResult<Handle>, A::Error> {
+        let comment = self.checked_create_comment(text)?;
+        self.checked_append(&self.doc_handle, AppendNode(comment))?;
+        Ok(ProcessResult::Done)
     }
 
-    fn append_comment_to_html(&self, text: StrTendril) -> ProcessResult<Handle> {
+    fn append_comment_to_html(&self, text: StrTendril) -> Result<ProcessResult<Handle>, A::Error> {
         let open_elems = self.open_elems.borrow();
         let target = html_elem(&open_elems);
-        let comment = self.sink.create_comment(text);
-        self.sink.append(target, AppendNode(comment));
-        ProcessResult::Done
+        let comment = self.checked_create_comment(text)?;
+        self.checked_append(target, AppendNode(comment))?;
+        Ok(ProcessResult::Done)
     }
 
     //§ creating-and-inserting-nodes
-    fn create_root(&self, attrs: Vec<Attribute>) {
-        let elem = create_element(
-            &self.sink,
+    fn create_root(&self, attrs: Storage<Attribute>) -> Result<(), A::Error> {
+        let elem = self.checked_create_element_default(
             QualName::new(None, ns!(html), local_name!("html")),
             attrs,
-        );
-        self.push(&elem);
-        self.sink.append(&self.doc_handle, AppendNode(elem));
+        )?;
+        self.push(&elem)?;
+        self.checked_append(&self.doc_handle, AppendNode(elem))?;
         // FIXME: application cache selection algorithm
+        Ok(())
     }
 
     /// <https://html.spec.whatwg.org/multipage/#create-an-element-for-the-token>
@@ -1386,9 +1445,9 @@ where
         push: PushFlag,
         ns: Namespace,
         name: LocalName,
-        attrs: Vec<Attribute>,
+        attrs: Storage<Attribute>,
         had_duplicate_attributes: bool,
-    ) -> Handle {
+    ) -> Result<Handle, A::Error> {
         declare_tag_set!(form_associatable =
             "button" "fieldset" "input" "object"
             "output" "select" "textarea" "img");
@@ -1396,7 +1455,7 @@ where
         declare_tag_set!(listed = [form_associatable] - "img");
 
         // Step 7.
-        let insertion_point = self.appropriate_place_for_insertion(None);
+        let insertion_point = self.appropriate_place_for_insertion(None)?;
         let (node1, node2) = match insertion_point {
             InsertionPoint::LastChild(ref p) | InsertionPoint::BeforeSibling(ref p) => {
                 (p.clone(), None)
@@ -1409,9 +1468,10 @@ where
 
         // Step 12.
         let qname = QualName::new(None, ns, name);
+        self.work(attrs.len())?;
         let form_is_associatable = form_associatable(qname.expanded())
             && self.form_elem.borrow().is_some()
-            && !self.in_html_elem_named(local_name!("template"))
+            && !self.in_html_elem_named(local_name!("template"))?
             && !(listed(qname.expanded())
                 && attrs
                     .iter()
@@ -1419,7 +1479,7 @@ where
 
         // By checking whether the form is associatable first, then creating the element
         // we can avoid cloning the attributes.
-        let elem = create_element_with_flags(&self.sink, qname, attrs, had_duplicate_attributes);
+        let elem = self.checked_create_element(qname, attrs, had_duplicate_attributes)?;
 
         if form_is_associatable {
             let form = self.form_elem.borrow().as_ref().unwrap().clone();
@@ -1427,17 +1487,19 @@ where
                 .associate_with_form(&elem, &form, (&node1, node2.as_ref()));
         }
 
-        self.insert_at(insertion_point, AppendNode(elem.clone()));
+        self.insert_at(insertion_point, AppendNode(elem.clone()))?;
 
         match push {
-            PushFlag::Push => self.push(&elem),
+            PushFlag::Push => self.push(&elem)?,
             PushFlag::NoPush => (),
         }
-        // FIXME: Remove from the stack if we can't append?
-        elem
+        Ok(
+            // FIXME: Remove from the stack if we can't append?
+            elem,
+        )
     }
 
-    fn insert_element_for(&self, tag: Tag) -> Handle {
+    fn insert_element_for(&self, tag: Tag) -> Result<Handle, A::Error> {
         self.insert_element(
             PushFlag::Push,
             ns!(html),
@@ -1447,7 +1509,7 @@ where
         )
     }
 
-    fn insert_and_pop_element_for(&self, tag: Tag) -> Handle {
+    fn insert_and_pop_element_for(&self, tag: Tag) -> Result<Handle, A::Error> {
         self.insert_element(
             PushFlag::NoPush,
             ns!(html),
@@ -1457,8 +1519,8 @@ where
         )
     }
 
-    fn insert_phantom(&self, name: LocalName) -> Handle {
-        self.insert_element(PushFlag::Push, ns!(html), name, vec![], false)
+    fn insert_phantom(&self, name: LocalName) -> Result<Handle, A::Error> {
+        self.insert_element(PushFlag::Push, ns!(html), name, Storage::default(), false)
     }
 
     /// <https://html.spec.whatwg.org/multipage/parsing.html#insert-an-element-at-the-adjusted-insertion-location>
@@ -1467,27 +1529,25 @@ where
         tag: Tag,
         ns: Namespace,
         only_add_to_element_stack: bool,
-    ) -> Handle {
-        let adjusted_insertion_location = self.appropriate_place_for_insertion(None);
+    ) -> Result<Handle, A::Error> {
+        let adjusted_insertion_location = self.appropriate_place_for_insertion(None)?;
         let qname = QualName::new(None, ns, tag.name.clone());
-        let elem =
-            create_element_with_flags(&self.sink, qname, tag.attrs, tag.had_duplicate_attributes);
+        let elem = self.checked_create_element(qname, tag.attrs, tag.had_duplicate_attributes)?;
 
         if !only_add_to_element_stack {
-            self.insert_at(adjusted_insertion_location, AppendNode(elem.clone()));
+            self.insert_at(adjusted_insertion_location, AppendNode(elem.clone()))?;
         }
 
-        self.push(&elem);
-
-        elem
+        self.push(&elem)?;
+        Ok(elem)
     }
     //§ END
 
     /// <https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead>
     ///
     /// A start tag whose tag name is "template"
-    fn should_attach_declarative_shadow(&self, tag: &Tag) -> bool {
-        let adjusted_insertion_location = self.appropriate_place_for_insertion(None);
+    fn should_attach_declarative_shadow(&self, tag: &Tag) -> Result<bool, A::Error> {
+        let adjusted_insertion_location = self.appropriate_place_for_insertion(None)?;
 
         let (intended_parent, _node2) = match adjusted_insertion_location {
             InsertionPoint::LastChild(ref p) | InsertionPoint::BeforeSibling(ref p) => {
@@ -1500,6 +1560,7 @@ where
         };
 
         // template start tag's shadowrootmode is not in the none state
+        self.work(tag.attrs.len())?;
         let is_shadow_root_mode = tag.attrs.iter().any(|attr| {
             attr.name.local == local_name!("shadowrootmode")
                 && (attr.value.as_ref() == "open" || attr.value.as_ref() == "closed")
@@ -1523,7 +1584,9 @@ where
             None => true,
         };
 
-        is_shadow_root_mode && allow_declarative_shadow_roots && adjusted_current_node_not_topmost
+        Ok(is_shadow_root_mode
+            && allow_declarative_shadow_roots
+            && adjusted_current_node_not_topmost)
     }
 
     /// <https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead>
@@ -1534,97 +1597,106 @@ where
         tag: &Tag,
         shadow_host: &Handle,
         template: &Handle,
-    ) -> bool {
-        self.sink
-            .attach_declarative_shadow(shadow_host, template, &tag.attrs)
+    ) -> Result<bool, A::Error> {
+        self.checked_attach_declarative_shadow(shadow_host, template, &tag.attrs)
     }
 
-    fn create_formatting_element_for(&self, tag: Tag) -> Handle {
+    fn create_formatting_element_for(&self, tag: Tag) -> Result<Handle, A::Error> {
         // FIXME: This really wants unit tests.
         let mut first_match = None;
         let mut matches = 0usize;
         for (i, _, old_tag) in self.active_formatting_end_to_marker().iter() {
-            if tag.equiv_modulo_attr_order(old_tag) {
+            self.work(1)?;
+            if self.equivalent_tags(&tag, old_tag)? {
                 first_match = Some(i);
                 matches += 1;
             }
         }
 
         if matches >= 3 {
-            self.active_formatting
-                .borrow_mut()
-                .remove(first_match.expect("matches with no index"));
+            self.remove_from(
+                &self.active_formatting,
+                first_match.expect("matches with no index"),
+            )?;
         }
 
         let elem = self.insert_element(
             PushFlag::Push,
             ns!(html),
             tag.name.clone(),
-            tag.attrs.clone(),
+            self.clone_attrs(&tag.attrs)?,
             tag.had_duplicate_attributes,
-        );
-        self.active_formatting
-            .borrow_mut()
-            .push(FormatEntry::Element(elem.clone(), tag));
-        elem
+        )?;
+        self.push_into(
+            &self.active_formatting,
+            FormatEntry::Element(elem.clone(), tag),
+        )?;
+        Ok(elem)
     }
 
-    fn clear_active_formatting_to_marker(&self) {
+    fn clear_active_formatting_to_marker(&self) -> Result<(), A::Error> {
         loop {
+            self.work(1)?;
+            self.admission.check(Operation::TreeStep)?;
             match self.active_formatting.borrow_mut().pop() {
                 None | Some(FormatEntry::Marker) => break,
                 _ => (),
             }
         }
+        Ok(())
     }
 
-    fn process_end_tag_in_body(&self, tag: Tag) {
+    fn process_end_tag_in_body(&self, tag: Tag) -> Result<(), A::Error> {
         // Look back for a matching open element.
         let mut match_idx = None;
         for (i, elem) in self.open_elems.borrow().iter().enumerate().rev() {
+            self.work(1)?;
             if self.html_elem_named(elem, tag.name.clone()) {
                 match_idx = Some(i);
                 break;
             }
 
             if self.elem_in(elem, special_tag) {
-                self.sink
-                    .parse_error(Borrowed("Found special tag while closing generic tag"));
-                return;
+                self.checked_parse_error(Borrowed("Found special tag while closing generic tag"))?;
+                return Ok(());
             }
         }
 
         let Some(match_idx) = match_idx else {
             // I believe this is impossible, because the root
             // <html> element is in special_tag.
-            self.unexpected(&tag);
-            return;
+            self.unexpected(&tag)?;
+            return Ok(());
         };
 
-        self.generate_implied_end_except(tag.name.clone());
+        self.generate_implied_end_except(tag.name.clone())?;
 
         if match_idx != self.open_elems.borrow().len() - 1 {
             // mis-nested tags
-            self.unexpected(&tag);
+            self.unexpected(&tag)?;
         }
         self.open_elems.borrow_mut().truncate(match_idx);
+        Ok(())
     }
 
-    fn handle_misnested_a_tags(&self, tag: &Tag) {
+    fn handle_misnested_a_tags(&self, tag: &Tag) -> Result<(), A::Error> {
         let Some(node) = self
-            .active_formatting_end_to_marker()
-            .iter()
-            .find(|&(_, n, _)| self.html_elem_named(n, local_name!("a")))
+            .find(
+                self.active_formatting_end_to_marker().iter(),
+                |&(_, n, _)| self.html_elem_named(n, local_name!("a")),
+            )?
             .map(|(_, n, _)| n.clone())
         else {
-            return;
+            return Ok(());
         };
 
-        self.unexpected(tag);
-        self.adoption_agency(local_name!("a"));
-        self.position_in_active_formatting(&node)
-            .map(|index| self.active_formatting.borrow_mut().remove(index));
-        self.remove_from_stack(&node);
+        self.unexpected(tag)?;
+        self.adoption_agency(local_name!("a"))?;
+        if let Some(index) = self.position_in_active_formatting(&node)? {
+            self.remove_from(&self.active_formatting, index)?;
+        }
+        self.remove_from_stack(&node)?;
+        Ok(())
     }
 
     //§ tree-construction
@@ -1688,22 +1760,27 @@ where
     }
     //§ END
 
-    fn enter_foreign(&self, mut tag: Tag, ns: Namespace) -> ProcessResult<Handle> {
+    fn enter_foreign(
+        &self,
+        mut tag: Tag,
+        ns: Namespace,
+    ) -> Result<ProcessResult<Handle>, A::Error> {
+        self.work(tag.attrs.len())?;
+        self.work(tag.attrs.len())?;
         match ns {
             ns!(mathml) => self.adjust_mathml_attributes(&mut tag),
             ns!(svg) => self.adjust_svg_attributes(&mut tag),
             _ => (),
         }
         self.adjust_foreign_attributes(&mut tag);
-
-        if tag.self_closing {
+        Ok(if tag.self_closing {
             self.insert_element(
                 PushFlag::NoPush,
                 ns,
                 tag.name,
                 tag.attrs,
                 tag.had_duplicate_attributes,
-            );
+            )?;
             ProcessResult::DoneAckSelfClosing
         } else {
             self.insert_element(
@@ -1712,9 +1789,9 @@ where
                 tag.name,
                 tag.attrs,
                 tag.had_duplicate_attributes,
-            );
+            )?;
             ProcessResult::Done
-        }
+        })
     }
 
     fn adjust_svg_tag_name(&self, tag: &mut Tag) {
@@ -1860,7 +1937,9 @@ where
         });
     }
 
-    fn foreign_start_tag(&self, mut tag: Tag) -> ProcessResult<Handle> {
+    fn foreign_start_tag(&self, mut tag: Tag) -> Result<ProcessResult<Handle>, A::Error> {
+        self.work(tag.attrs.len())?;
+        self.work(tag.attrs.len())?;
         let current_ns = self
             .sink
             .elem_name(&self.adjusted_current_node())
@@ -1875,7 +1954,7 @@ where
             _ => (),
         }
         self.adjust_foreign_attributes(&mut tag);
-        if tag.self_closing {
+        Ok(if tag.self_closing {
             // FIXME(#118): <script /> in SVG
             self.insert_element(
                 PushFlag::NoPush,
@@ -1883,7 +1962,7 @@ where
                 tag.name,
                 tag.attrs,
                 tag.had_duplicate_attributes,
-            );
+            )?;
             ProcessResult::DoneAckSelfClosing
         } else {
             self.insert_element(
@@ -1892,18 +1971,110 @@ where
                 tag.name,
                 tag.attrs,
                 tag.had_duplicate_attributes,
-            );
+            )?;
             ProcessResult::Done
-        }
+        })
     }
 
-    fn unexpected_start_tag_in_foreign_content(&self, tag: Tag) -> ProcessResult<Handle> {
-        self.unexpected(&tag);
+    fn unexpected_start_tag_in_foreign_content(
+        &self,
+        tag: Tag,
+    ) -> Result<ProcessResult<Handle>, A::Error> {
+        self.unexpected(&tag)?;
         while !self.current_node_in(|n| {
             *n.ns == ns!(html) || mathml_text_integration_point(n) || svg_html_integration_point(n)
         }) {
-            self.pop();
+            self.pop()?;
         }
         self.step(self.mode.get(), Token::Tag(tag))
+    }
+}
+
+impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
+    TreeBuilder<Handle, Sink, A>
+{
+    fn process_token_admitted(
+        &self,
+        token: tokenizer::Token,
+        line_number: u64,
+    ) -> Result<TokenSinkResult<Handle>, A::Error> {
+        if line_number != self.current_line.get() {
+            self.sink.set_current_line(line_number);
+        }
+        let ignore_lf = self.ignore_lf.take();
+
+        // Handle `ParseError` and `DoctypeToken`; convert everything else to the local `Token` type.
+        let token = match token {
+            tokenizer::ParseError(e) => {
+                self.checked_parse_error(e)?;
+                return Ok(tokenizer::TokenSinkResult::Continue);
+            },
+
+            tokenizer::DoctypeToken(dt) => {
+                if self.mode.get() == InsertionMode::Initial {
+                    self.work(data::doctype_work())?;
+                    let (err, quirk) = data::doctype_error_and_quirks(&dt, self.opts.iframe_srcdoc);
+                    if err {
+                        if self.opts.exact_errors {
+                            self.checked_parse_error_fmt(format_args!("Bad DOCTYPE: {dt:?}"))?;
+                        } else {
+                            self.checked_parse_error(Cow::from("Bad DOCTYPE"))?;
+                        }
+                    }
+                    let Doctype {
+                        name,
+                        public_id,
+                        system_id,
+                        force_quirks: _,
+                    } = dt;
+                    if !self.opts.drop_doctype {
+                        self.checked_append_doctype_to_document(
+                            name.unwrap_or(StrTendril::new()),
+                            public_id.unwrap_or(StrTendril::new()),
+                            system_id.unwrap_or(StrTendril::new()),
+                        )?;
+                    }
+                    self.set_quirks_mode(quirk);
+
+                    self.mode.set(InsertionMode::BeforeHtml);
+                    return Ok(tokenizer::TokenSinkResult::Continue);
+                } else {
+                    if self.opts.exact_errors {
+                        self.checked_parse_error_fmt(format_args!(
+                            "DOCTYPE in insertion mode {:?}",
+                            self.mode.get()
+                        ))?;
+                    } else {
+                        self.checked_parse_error(Cow::from("DOCTYPE in body"))?;
+                    }
+                    return Ok(tokenizer::TokenSinkResult::Continue);
+                }
+            },
+
+            tokenizer::TagToken(x) => Token::Tag(x),
+            tokenizer::CommentToken(x) => Token::Comment(x),
+            tokenizer::ProcessingInstructionToken(target, data) => {
+                Token::ProcessingInstruction(target, data)
+            },
+            tokenizer::NullCharacterToken => Token::NullCharacter,
+            tokenizer::EOFToken => Token::Eof,
+
+            tokenizer::CharacterTokens(mut x) => {
+                if ignore_lf && x.starts_with("\n") {
+                    x.pop_front(1);
+                }
+                if x.is_empty() {
+                    return Ok(tokenizer::TokenSinkResult::Continue);
+                }
+                Token::Characters(SplitStatus::NotSplit, x)
+            },
+        };
+        self.process_to_completion(token)
+    }
+    fn end_admitted(&self) -> Result<(), A::Error> {
+        for elem in self.open_elems.borrow_mut().drain(..).rev() {
+            self.checked_pop(&elem)?;
+        }
+        Ok(())
     }
 }

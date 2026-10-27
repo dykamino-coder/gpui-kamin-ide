@@ -10,10 +10,8 @@ impl DocState {
     /// Committed или собираемая ревизия. Состояние без Document (фикстуры, вложенные
     /// документы без ревизии родителя) использует конечный профиль своего хранилища картинок.
     pub(crate) fn revision_budget(&self) -> RevisionBudget {
-        self.budget
-            .borrow_mut()
-            .get_or_insert_with(|| self.images.borrow().budget().clone())
-            .clone()
+        let installed = self.budget.borrow().clone();
+        installed.unwrap_or_else(|| self.images.borrow().budget().clone())
     }
 
     /// Установить ревизию сборки до первого прохода, списывающего её work.

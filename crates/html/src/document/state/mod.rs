@@ -120,7 +120,6 @@ impl DocState {
             frame_owner: Cell::new(arena::new_owner()),
             ..Self::default()
         });
-        doc.revision_budget();
         doc.install_font_facts(None);
         doc.root.borrow_mut().resolve_units(doc.values());
         doc

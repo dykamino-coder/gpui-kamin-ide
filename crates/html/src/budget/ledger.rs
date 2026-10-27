@@ -53,12 +53,12 @@ impl std::error::Error for BudgetError {}
 
 pub(super) struct Ledger {
     pub scope: BudgetScope,
-    pub caps: [u64; 12],
-    used: [AtomicU64; 12],
+    pub caps: [u64; BudgetKind::COUNT],
+    used: [AtomicU64; BudgetKind::COUNT],
 }
 
 impl Ledger {
-    pub fn new(scope: BudgetScope, caps: [u64; 12]) -> Arc<Self> {
+    pub fn new(scope: BudgetScope, caps: [u64; BudgetKind::COUNT]) -> Arc<Self> {
         Arc::new(Self {
             scope,
             caps,
