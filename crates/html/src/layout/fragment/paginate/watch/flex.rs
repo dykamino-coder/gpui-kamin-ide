@@ -31,14 +31,13 @@ impl Watched {
 
     /// Разбиение на линии предшествует фрагментации (css-flexbox-1 §10): рост
     /// содержимого элемента колонки разрывом не переносит его в другую линию.
-    /// Линии берутся из раскладки до первого роста.
+    /// Линии берутся из раскладки до первого роста; номер — native-индекс
+    /// final metadata (`FlexLine::index`), а не порядок вдоль блочной оси.
+    /// Колонка с переносом, пока занимающая одну линию, тоже закрепляется:
+    /// рост элемента разрывом не открывает новую линию.
     pub(crate) fn pin_flex_lines(&self, laid: &crate::layout::fragment::flow::blocks::Laid) {
         let mut pins = self.flex_lines.borrow_mut();
-        for frame in laid
-            .flexes
-            .values()
-            .filter(|f| f.column && f.lines.len() > 1)
-        {
+        for frame in laid.flexes.values().filter(|f| f.column) {
             if frame
                 .lines
                 .iter()
