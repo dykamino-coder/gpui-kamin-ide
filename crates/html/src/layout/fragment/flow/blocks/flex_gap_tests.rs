@@ -66,3 +66,31 @@ fn forced_boundaries_keep_their_own_break() {
     let (b, laid) = rows(true);
     assert!(gaps(&b, &laid, 0.0, 55.0).is_empty());
 }
+
+#[test]
+fn a_line_still_growing_from_a_forced_break_inside_keeps_its_gap() {
+    let (mut b, mut laid) = rows(false);
+    let inner = BlockBox {
+        id: 1,
+        kids: [(11, false), (12, true)]
+            .map(|(id, force_before)| BlockKid {
+                id,
+                force_before,
+                adjoins: true,
+                ..Default::default()
+            })
+            .to_vec(),
+        ..Default::default()
+    };
+    let item = &mut b.flex.as_mut().unwrap().items[0];
+    item.monolith = false;
+    item.inner = Some(inner);
+    laid.boxes.insert(11, (0.0, 25.0));
+    laid.boxes.insert(12, (25.0, 50.0));
+    let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 50.0, 50.0);
+    assert!(
+        grows.iter().any(|g| g.amount > 0.0 && g.forced),
+        "{grows:?}"
+    );
+    assert!(!grows.iter().any(|g| g.amount < 0.0), "{grows:?}");
+}

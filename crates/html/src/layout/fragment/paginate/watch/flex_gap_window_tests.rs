@@ -23,7 +23,6 @@ fn rows(
     let root = window.request_layout(
         Style {
             display: Display::Flex,
-            flex_wrap: FlexWrap::Wrap,
             ..container
         },
         items.clone(),
@@ -56,7 +55,28 @@ fn negative_line_growth_suppresses_the_gap_after_alignment(cx: &mut gpui::TestAp
         align_content: Some(AlignContent::SpaceBetween),
         ..Style::default()
     };
-    for (style, second, height) in [(auto, 150., 150.), (definite, 250., 300.)] {
+    for (style, second, height) in [(auto, 150., 150.), (definite, 250., 300.)]
+        .into_iter()
+        .flat_map(|(s, a, h)| {
+            [FlexWrap::Wrap, FlexWrap::WrapReverse].map(|flex_wrap| {
+                (
+                    Style {
+                        flex_wrap,
+                        ..s.clone()
+                    },
+                    a,
+                    h,
+                )
+            })
+        })
+    {
+        // Индекс линии — физический: верхняя линия wrap-reverse — последняя
+        // по порядку документа.
+        let (upper, lower) = if style.flex_wrap == FlexWrap::Wrap {
+            (0, 1)
+        } else {
+            (1, 0)
+        };
         cx.draw(
             point(px(0.), px(0.)),
             size(px(400.), px(400.)),
@@ -67,12 +87,12 @@ fn negative_line_growth_suppresses_the_gap_after_alignment(cx: &mut gpui::TestAp
                 );
                 let (root, items) = rows(window, app, style.clone());
                 window.compute_layout(root, space, app);
-                assert_eq!(top(window, items[1]), second);
+                assert_eq!(top(window, items[lower]), second);
                 let (root, items) = rows(window, app, style.clone());
                 window.set_flex_line_fragmentation_growth(root, &[-50.]);
                 window.compute_layout(root, space, app);
-                assert_eq!(top(window, items[0]), 0.);
-                assert_eq!(top(window, items[1]), second - 50.);
+                assert_eq!(top(window, items[upper]), 0.);
+                assert_eq!(top(window, items[lower]), second - 50.);
                 assert_eq!(f32::from(bounds(window, root).size.height), height);
                 gpui::div()
             },
