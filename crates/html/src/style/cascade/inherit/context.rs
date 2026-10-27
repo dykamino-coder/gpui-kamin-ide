@@ -43,13 +43,7 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
         c.line_clamp
             .or(parent.line_clamp.filter(|_| parent.clamp_block_container()))
     );
-    // Фон строчного бокса идёт вниз как текстовое свойство: он принадлежит
-    // строке, а не коробке, и вложенный `<b>` внутри подсветки обязан его
-    // сохранить.
-    set!(c.inline_bg, own.inline_bg.or(parent.inline_bg));
-    set!(c.inline_border, own.inline_border.or(parent.inline_border));
-    set!(c.inline_pad, own.inline_pad.or(parent.inline_pad));
-    set!(c.inline_radius, own.inline_radius.or(parent.inline_radius));
+    c.inline_decoration = c.inline_decoration.under(parent.inline_decoration);
     // css-ui-4 §6.1: `user-select` не наследуется; используемое значение
     // `auto` — `none` под коробкой с используемым `none`, иначе выделяемое
     // (`all` родителя тоже выделяемо).

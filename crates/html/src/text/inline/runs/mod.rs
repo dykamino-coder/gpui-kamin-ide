@@ -107,7 +107,7 @@ pub fn text_and_runs(
                     continue;
                 }
                 text.push_str(t);
-                runs.push(run_for(t, style, base, vcx));
+                runs.push(decorated_run(t, style, style.inline_decoration, base, vcx));
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
             // пробел, а сам он рисуется поверх (см. `overlays`).
@@ -132,6 +132,16 @@ pub fn strut_font(
 pub(super) fn run_for(
     text: &str,
     style: &Computed,
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> TextRun {
+    decorated_run(text, style, Default::default(), base, vcx)
+}
+
+fn decorated_run(
+    text: &str,
+    style: &Computed,
+    inline_decoration: crate::style::inline_decoration::InlineDecoration,
     base: &TextStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TextRun {
@@ -194,7 +204,7 @@ pub(super) fn run_for(
         // A fully transparent band colour only identifies its inline box (see
         // `BORDER_BAND`): it is kept black (lightness 0) so nothing of it can
         // blend into the border edge, with the id in hue and saturation.
-        background_color: style.inline_bg.map(|c| {
+        background_color: inline_decoration.band_color.map(|c| {
             if c.a == 0.0 {
                 gpui::Hsla {
                     h: c.r,
@@ -206,11 +216,14 @@ pub(super) fn run_for(
                 c.to_hsla()
             }
         }),
-        background_border: style
-            .inline_border
+        background_border: inline_decoration
+            .border_stroke
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
-        background_pad: style.inline_pad.unwrap_or_default().map(gpui::px),
-        background_radius: gpui::px(style.inline_radius.unwrap_or(0.0)),
+        background_pad: inline_decoration
+            .physical_padding
+            .unwrap_or_default()
+            .map(gpui::px),
+        background_radius: gpui::px(inline_decoration.corner_radius.unwrap_or(0.0)),
         background_line_gap: true,
         underline: style.underline.unwrap_or(false).then(|| UnderlineStyle {
             thickness: gpui::px(1.),

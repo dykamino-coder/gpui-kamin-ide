@@ -25,6 +25,8 @@ pub struct SharedStyle {
     used: Option<Rc<Computed>>,
     /// Факты коробки в существующем layout-made мосте до A07.
     box_context: Option<Rc<BoxContext<WritingMode, Align>>>,
+    /// Оформление inline в существующем транспорте синтетических коробок.
+    inline_decoration: Option<Rc<crate::style::inline_decoration::InlineDecoration>>,
 }
 
 impl From<Computed> for SharedStyle {
@@ -34,6 +36,7 @@ impl From<Computed> for SharedStyle {
             computed: ComputedSlot::default(),
             used: None,
             box_context: None,
+            inline_decoration: Default::default(),
         }
     }
 }
@@ -46,6 +49,7 @@ impl From<Box<Computed>> for SharedStyle {
             computed: ComputedSlot::default(),
             used: None,
             box_context: None,
+            inline_decoration: Default::default(),
         }
     }
 }
@@ -110,7 +114,14 @@ impl SharedStyle {
             Some(used) => used.clone(),
             None => self.base(),
         };
-        BoxStyleInput::new(style, self.box_context.clone())
+        BoxStyleInput::new(
+            style,
+            self.box_context.clone(),
+            self.inline_decoration
+                .as_deref()
+                .copied()
+                .unwrap_or_default(),
+        )
     }
 
     /// Сохраняет факты существующей синтетической коробки до A07.
@@ -124,12 +135,18 @@ impl SharedStyle {
     ///
     /// TRANSITIONAL(cascade-7b-layout-made): layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle.
     pub(crate) fn layout_made(input: impl Into<BoxStyleInput>) -> Self {
-        let BoxStyleInput { style, context } = input.into();
+        let BoxStyleInput {
+            style,
+            context,
+            inline_decoration,
+        } = input.into();
         Self {
             cascaded: style,
             computed: ComputedSlot::default(),
             used: None,
             box_context: context,
+            inline_decoration: (inline_decoration != Default::default())
+                .then(|| Rc::new(inline_decoration)),
         }
     }
 
