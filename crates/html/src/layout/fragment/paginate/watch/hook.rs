@@ -83,24 +83,37 @@ impl Hooks for Watch {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
-        let mask = if let Slot::Box(id) = self.slot {
-            self.rec
-                .flex_consumed
-                .borrow()
-                .get(&id)
-                .map(|&(consumed, complete)| {
-                    super::axis::consumed_mask(
-                        self.rec.axis(),
-                        window.content_mask(),
-                        bounds,
-                        consumed,
-                        complete,
-                    )
-                })
-        } else {
-            None
+        let id = match self.slot {
+            Slot::Box(id) => Some(id),
+            Slot::Table(..) => None,
         };
-        window.with_content_mask(mask, |window| self.inner.prepaint(window, cx));
+        let consumed = id.and_then(|id| self.rec.flex_consumed.borrow().get(&id).copied());
+        let item = id.and_then(|id| self.rec.item_window(id));
+        let mask = consumed
+            .map(|(consumed, complete)| {
+                super::axis::consumed_mask(
+                    self.rec.axis(),
+                    window.content_mask(),
+                    bounds,
+                    consumed,
+                    complete,
+                )
+            })
+            .or_else(|| {
+                let clip = item?.clip?;
+                let current = window.content_mask().bounds;
+                let bottom = (bounds.top() + gpui::px(clip)).min(current.bottom());
+                Some(ContentMask {
+                    bounds: Bounds::from_corners(
+                        current.origin,
+                        gpui::point(current.right(), bottom.max(current.top())),
+                    ),
+                })
+            });
+        let shift = gpui::point(gpui::px(0.0), gpui::px(item.map_or(0.0, |w| w.shift)));
+        window.with_content_mask(mask, |window| {
+            window.with_element_offset(shift, |window| self.inner.prepaint(window, cx))
+        });
         mask
     }
 

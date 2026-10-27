@@ -5,7 +5,8 @@
 //! после принудительного разрыва сохраняется (css-break-3 §5.2), и Blink рисует такой
 //! элемент над своим фрагментаинером (`GiveItemsFinalPositionAndSizeForFragmentation`
 //! кладёт элемент в смещение его фрагмента). Копия более раннего фрагмента его не рисует,
-//! копия своего фрагмента рисует и его переполнение над окном.
+//! копия своего фрагмента рисует и его переполнение над окном. Элемент сетки, продолженный
+//! со своего расхода, копия сдвигает и обрезает по его окну (`ItemWindow`).
 use super::Watched;
 use gpui::{Bounds, ContentMask, Pixels, point};
 use std::collections::HashMap;
@@ -33,6 +34,22 @@ impl Watched {
     /// Первый фрагмент каждого flex-элемента по плану стопки.
     pub(crate) fn set_flex_owners(&self, owners: HashMap<u64, usize>) {
         *self.paint_owners.borrow_mut() = owners;
+    }
+
+    /// Окна элементов сеток по копиям (`flow::blocks::grid_items`).
+    pub(crate) fn set_item_windows(
+        &self,
+        windows: HashMap<(usize, u64), crate::layout::fragment::flow::blocks::ItemWindow>,
+    ) {
+        *self.item_windows.borrow_mut() = windows;
+    }
+
+    /// Окно элемента `id` в копии этого рекордера.
+    pub(super) fn item_window(
+        &self,
+        id: u64,
+    ) -> Option<crate::layout::fragment::flow::blocks::ItemWindow> {
+        self.item_windows.borrow().get(&(self.part, id)).copied()
     }
 
     /// Маска предка окна фрагмента, заданная перед краской копии.

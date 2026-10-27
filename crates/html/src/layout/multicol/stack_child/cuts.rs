@@ -194,8 +194,12 @@ pub(super) fn stack_child_of(
         // Монолит с верха колонки переполняет её
         // (`layout::fragment::plan` `fill_at`, `overflow_to`) —
         // только при `column-fill: auto` без рядов
-        // и без элементов ряда в поддереве.
-        overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(copy, 4, vcx),
+        // и без элементов ряда в поддереве, кроме элементов сетки: они
+        // продолжаются каждый со своего расхода (column_regrow::items).
+        overflow_top: fixed.is_some()
+            && rows.is_none()
+            && (!parallel_items_inside(copy, 4, vcx)
+                || crate::layout::fragment::flow::blocks::grid_items_resume(copy)),
         // Вложенный многоколоночник — маска режет вбок
         // (`StackChild::nested_cols`).
         nested_cols: multicol_inside(copy, 4),

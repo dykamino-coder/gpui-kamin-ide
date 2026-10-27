@@ -125,6 +125,7 @@ impl Watched {
             ),
             flex_lines: self.flex_lines.clone(),
             paint_owners: self.paint_owners.clone(),
+            item_windows: self.item_windows.clone(),
             paint_outer: self.paint_outer.clone(),
             ..Self::default()
         })

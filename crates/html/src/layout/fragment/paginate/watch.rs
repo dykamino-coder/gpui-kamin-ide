@@ -9,7 +9,7 @@
 //! (`DetailedLayoutInfo::Grid` разложенной сетки, читается у её элемента) и таблицы стопки
 //! кадрами (`table`: коробка таблицы, сетка и дорожки рядов).
 
-use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, MeasuredBreaks};
+use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, ItemWindow, MeasuredBreaks};
 use crate::layout::fragment::geometry::Node;
 use crate::layout::fragment::types::StackAxis;
 use gpui::{LayoutId, Pixels, Point, Size, Window};
@@ -70,6 +70,8 @@ pub(crate) struct Watched {
     part: usize,
     /// Первый фрагмент каждого flex-элемента по плану стопки (`owner`).
     paint_owners: Rc<RefCell<HashMap<u64, usize>>>,
+    /// Окна элементов сеток по копиям: сдвиг на недоступное место и обрезка (`owner`).
+    item_windows: Rc<RefCell<HashMap<(usize, u64), ItemWindow>>>,
     /// Маска предка окна фрагмента на время краски копии (`owner`).
     paint_outer: Rc<RefCell<Option<gpui::ContentMask<Pixels>>>>,
     /// Flex-контейнеры `blocks`: раскладываются в контексте фрагментации.
@@ -139,6 +141,7 @@ impl Watched {
             part: self.part,
             flex_lines: self.flex_lines.clone(),
             paint_owners: self.paint_owners.clone(),
+            item_windows: self.item_windows.clone(),
             paint_outer: self.paint_outer.clone(),
             // Вложенные flex-контейнеры — тоже из стопки родителя.
             flex_ids: self.flex_ids_of().clone().into(),
