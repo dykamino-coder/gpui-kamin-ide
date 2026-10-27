@@ -161,3 +161,21 @@ fn box_whose_containing_block_is_outside_the_multicol_is_not_fragmented() {
     assert_eq!(f32::from(blue[0].origin.y), 10.);
     assert_eq!(f32::from(blue[0].size.height), 100.);
 }
+
+#[test]
+fn nested_box_above_its_containing_block_fragment_starts_in_the_earlier_column() {
+    // The inner box ends 100px below its zero-height containing block at the
+    // top of column 2: it fills column 1 and continues in column 2.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'>\
+<div style='position:relative;height:100px;width:50px'>\
+<div style='position:absolute;width:50px;bottom:0'>\
+<div style='position:absolute;width:50px;bottom:-100px;background:#0000ff'>\
+<div style='height:200px'></div></div></div></div></div>",
+        400.,
+        200.,
+    );
+    assert!(is(top(&found, 25., 50.), 0x0000ff), "first fragment in column 1");
+    assert!(is(top(&found, 75., 50.), 0x0000ff), "continuation in column 2");
+}
