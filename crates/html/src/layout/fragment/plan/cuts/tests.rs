@@ -55,6 +55,25 @@ fn class_a_boundaries_do_not_remove_class_c_breaks_in_overflow() {
 }
 
 #[test]
+fn row_line_preference_does_not_escape_avoid_between_measured_boundaries() {
+    let mut block = kid(150.);
+    block.cuts = vec![(25., 25.), (75., 75.), (100., 100.)];
+    block.keep = vec![(0., 25.), (25., 75.), (75., 100.), (100., 150.)];
+    block.solid = vec![(25., 75.05)];
+    block.avoid = vec![(25., 75.05)];
+    for height in [75.046875, 90., 100. - 1. / 64.] {
+        let (columns, _, plan) = fill_at(&[block.clone()], &|_| height, Space::columns(3));
+        assert_eq!(columns, 3, "height={height}: {:?}", plan.fragments);
+        assert_eq!(plan[0].h, 25.);
+        assert_eq!(plan[1].from, 25.);
+        assert_eq!(plan[1].h, 75.);
+    }
+    let (columns, _, plan) = fill_at(&[block], &|_| 100., Space::columns(2));
+    assert_eq!(columns, 2);
+    assert_eq!((plan[0].h, plan[1].h), (100., 50.));
+}
+
+#[test]
 fn forced_break_skips_margin_and_growth_uses_the_same_plan() {
     let mut k = kid(120.0);
     k.forced = vec![40.0];
