@@ -6,6 +6,7 @@
 
 pub(crate) mod background_paint;
 pub mod box_input;
+pub(crate) mod canvas_background;
 pub mod cascade;
 pub mod computed;
 pub mod css;

@@ -10,6 +10,8 @@ use crate::style::computed::writing_mode::WritingMode;
 pub struct BoxStyleInput {
     pub(crate) style: std::rc::Rc<crate::style::computed::Computed>,
     pub(crate) context: Option<std::rc::Rc<BoxContext<WritingMode, Align>>>,
+    pub(crate) canvas_background:
+        Option<std::rc::Rc<crate::style::canvas_background::CanvasBackground>>,
     pub(crate) background_paint: crate::style::background_paint::BackgroundPaint,
     pub(crate) inline_decoration: crate::style::inline_decoration::InlineDecoration,
 }
@@ -20,19 +22,21 @@ impl BoxStyleInput {
         context: Option<std::rc::Rc<BoxContext<WritingMode, Align>>>,
         inline_decoration: crate::style::inline_decoration::InlineDecoration,
         background_paint: crate::style::background_paint::BackgroundPaint,
+        canvas_background: Option<std::rc::Rc<crate::style::canvas_background::CanvasBackground>>,
     ) -> Self {
         Self {
             style,
             context,
             inline_decoration,
             background_paint,
+            canvas_background,
         }
     }
 }
 
 impl From<std::rc::Rc<crate::style::computed::Computed>> for BoxStyleInput {
     fn from(style: std::rc::Rc<crate::style::computed::Computed>) -> Self {
-        Self::new(style, None, Default::default(), Default::default())
+        Self::new(style, None, Default::default(), Default::default(), None)
     }
 }
 

@@ -29,22 +29,30 @@ pub(crate) fn canvas_layer(
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
-    let canvas_layers = st.bg_layers(vcx);
+    let mut background =
+        st.canvas_background.as_deref().cloned().unwrap_or_else(|| {
+            crate::style::canvas_background::CanvasBackground::from_computed(&st)
+        });
+    if st.canvas_background.is_some() {
+        background.resolve_viewport(&st, opts.viewport, vcx);
+    }
+    let canvas_layers = &background.layers;
     // Градиент корня — картинка (css-images-3 §3): его плитка
     // размещается и мостится от коробки корня (CSS 2.2 §14.2, «sized and
     // positioned relative to the root element»), а не растягивается на
     // весь холст.
     let root_tile = (e.tag == "html"
         && root_filter.is_none()
-        && st.bg_image.is_none()
+        && background.top.image.is_none()
         && canvas_layers.is_none())
-    .then(|| st.gradient_raw.clone())
+    .then(|| background.gradient_image.clone())
     .flatten()
-    .map(|image| Computed {
-        bg_image: Some(image),
-        ..(**st).clone()
+    .map(|image| {
+        let mut top = background.top.clone();
+        top.image = Some(image);
+        top
     });
-    if let Some(g) = st
+    if let Some(g) = background
         .gradient
         .as_ref()
         .filter(|_| canvas_layers.is_none() && root_tile.is_none())
@@ -64,7 +72,7 @@ pub(crate) fn canvas_layer(
             }
         }
         layer = layer.bg(crate::paint::apply::fill(&g));
-    } else if let Some(bg) = st.background {
+    } else if let Some(bg) = background.color {
         let bg = root_filter.map_or(bg, |f| f.apply(bg));
         layer = layer.bg(bg.to_hsla());
     }
@@ -76,11 +84,9 @@ pub(crate) fn canvas_layer(
     let mut layer = layer.into_any_element();
     // Донор — САМ корень: область ОТСЧЁТА плитки это его коробка
     // (§14.2 «sized and positioned relative to the root element's
-    // box»), а красит она весь холст. Донор-тело сюда не входит:
-    // его слой лежит в детях корня, и отсчёт от padding-box корня
-    // получается сам (см. ниже).
+    // box»), а красит она весь холст. Тот же отсчёт получает фон body.
     if e.tag == "html"
-        && (st.bg_image.is_some() || canvas_layers.is_some() || root_tile.is_some())
+        && (background.top.image.is_some() || canvas_layers.is_some() || root_tile.is_some())
         && let Some(tiles) = {
             // Единицы шрифта тоже длина: `html { margin-top: 1em }`
             // роняло отсчёт в ноль, и плитка начиналась с края
@@ -119,22 +125,26 @@ pub(crate) fn canvas_layer(
                 // пишет обёртка тела ниже при подготовке.
                 measured_left: e.style.cascaded().wm().block_rl(),
             };
-            match &canvas_layers {
+            match canvas_layers {
                 // Снизу вверх, каждый слой — своей плиткой от
                 // коробки корня (§14.2).
                 Some(layers) => {
                     let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
                     for l in layers.iter().rev() {
-                        if let Some(t) =
-                            crate::paint::background::canvas_layer(l, area.clone(), vcx)
-                        {
+                        if let Some(t) = crate::paint::background::canvas_layer(
+                            l,
+                            st.style.clone(),
+                            area.clone(),
+                            vcx,
+                        ) {
                             stack = stack.child(t);
                         }
                     }
                     Some(stack.into_any_element())
                 }
                 None => crate::paint::background::canvas_layer(
-                    root_tile.as_ref().unwrap_or(&st),
+                    root_tile.as_ref().unwrap_or(&background.top),
+                    st.style.clone(),
                     area,
                     vcx,
                 ),
@@ -161,11 +171,6 @@ pub(crate) fn canvas_layer(
         // `canvas_layer`, плитка красит весь холст): слой на весь холст
         // перекрывает то, что рисуется выше по потоку
         // (`margin-collapse-020/021`, `block-formatting-contexts-003`).
-        // Перенос фона тела на корень по §14.2 — ни сам по себе, ни вместе
-        // с этим — не спасает: расходится геометрия коробки корня
-        // (`background-position-001`, `background-root-024`), её надо
-        // чинить первой; возвращаться можно, когда кегль тела будет
-        // разрешаться до переноса.
         let side = px_lossy_zero;
         let b = st.borders();
         let mut band = div().absolute().top_0().bottom_0();

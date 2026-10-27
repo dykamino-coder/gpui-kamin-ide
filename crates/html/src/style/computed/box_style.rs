@@ -50,6 +50,8 @@ impl ElementStyle {
 pub struct BoxStyle {
     /// Факты коробки-родителя отдельно от вычисленных значений элемента.
     pub(crate) context: BoxContext<super::writing_mode::WritingMode, super::Align>,
+    /// Собственный источник холста, отдельно от computed CSS.
+    pub(crate) canvas_background: Option<Rc<crate::style::canvas_background::CanvasBackground>>,
     /// Собственный used-фон коробки, отдельно от наследуемого computed CSS.
     pub(crate) background_paint: crate::style::background_paint::BackgroundPaint,
     /// Физическая реализация текущего строчного контекста, отдельно от CSS элемента.
@@ -121,6 +123,7 @@ impl BoxStyle {
             context,
             inline_decoration,
             background_paint,
+            canvas_background,
         } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
@@ -128,6 +131,7 @@ impl BoxStyle {
             context: context.as_deref().cloned().unwrap_or_default(),
             inline_decoration,
             background_paint,
+            canvas_background,
             cb_height_def: style.cb_height_def_hint,
             quirk_pct_base: style.quirk_pct_base_hint,
             style,
@@ -185,6 +189,7 @@ impl From<&BoxStyle> for BoxStyleInput {
             Some(Rc::new(style.context.clone())),
             style.inline_decoration,
             style.background_paint,
+            style.canvas_background.clone(),
         )
     }
 }
@@ -198,6 +203,7 @@ impl From<BoxStyle> for BoxStyleInput {
             Some(context),
             inline_decoration,
             style.background_paint,
+            style.canvas_background.clone(),
         )
     }
 }

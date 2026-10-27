@@ -4,12 +4,12 @@
 //! переносит `overflow` корня или тела на область просмотра (css-overflow-3
 //! §Overflow Viewport Propagation, с учётом обособления по css-contain),
 //! `mark_canvas_background` помечает узел, чей фон красит канвас (CSS 2.2
-//! §14.2: корень, а без его фона — тело, чей фон переезжает на корень целиком).
+//! §14.2: корень, а без его фона — тело. Фон донора передаётся отдельным входом холста).
 //! Здесь же предикаты `any_side` и `any_containment` для соседних проходов.
 
 use crate::dom::Node;
 use crate::style::computed::Computed;
-use crate::style::values::value::{Len, StyleColor};
+use crate::style::values::value::Len;
 
 /// Есть ли у обёртки НЕНУЛЕВОЙ отступ хоть с одной стороны.
 ///
@@ -142,16 +142,12 @@ pub(super) fn mark_canvas_background(
             html.style.cascaded_mut().canvas_bg = true;
             continue;
         }
-        // §14.2: «the propagated values are treated as if they were specified
-        // on the root element». Фон тела ПЕРЕЕЗЖАЕТ на корень целиком, а не
-        // помечается на месте: иначе область отсчёта плитки считалась бы от
-        // полей ТЕЛА.
-        let mut moved: Option<crate::style::computed::Computed> = None;
+        // css-backgrounds-3 §2.11.2: донор задаёт фон холста, но не CSS
+        // корня. Область позиционирования по-прежнему принадлежит корню.
+        let mut moved = None;
         for c in html.children.iter_mut() {
             let Node::Element(body) = c else { continue };
-            // Переезд фона тела НА КОРЕНЬ — это и есть распространение
-            // (CSS 2.1 §14.2, «treated as if they were specified on the root
-            // element»). Любое обособление тела его отменяет.
+            // Обособление body отменяет распространение его фона.
             if body.tag != "body" || !boxed(body) || any_containment(body) {
                 continue;
             }
@@ -165,46 +161,15 @@ pub(super) fn mark_canvas_background(
                 // его computed CSS остаётся источником явного inherit.
                 body.style
                     .set_background_paint(crate::style::background_paint::BackgroundPaint::Initial);
-                let mut take = crate::style::computed::Computed::default();
-                take.background = donor.background;
-                // CSS Backgrounds 3 §2.11.2: цвет берётся у донора, область
-                // позиционирования — у корня. Перенос не меняет currentcolor.
-                take.background_color = donor.background_color.as_ref().map(|color| {
-                    if color.depends_on_current() {
-                        StyleColor::Absolute(donor.used_color(color))
-                    } else {
-                        color.clone()
-                    }
-                });
-                take.gradient = donor.gradient.clone();
-                take.gradient_raw = donor.gradient_raw.clone();
-                take.bg_image = donor.bg_image.clone();
-                take.bg_size = donor.bg_size;
-                take.bg_pos = donor.bg_pos;
-                take.bg_repeat = donor.bg_repeat;
-                take.bg_clip = donor.bg_clip;
-                take.bg_origin = donor.bg_origin;
-                take.bg_fixed = donor.bg_fixed;
-                take.bg_lists = donor.bg_lists.clone();
-                moved = Some(take);
+                moved =
+                    Some(crate::style::canvas_background::CanvasBackground::from_computed(&donor));
                 break;
             }
         }
         if let Some(take) = moved {
-            let s = html.style.cascaded_mut();
-            s.background = take.background;
-            s.background_color = take.background_color;
-            s.gradient = take.gradient;
-            s.gradient_raw = take.gradient_raw;
-            s.bg_image = take.bg_image;
-            s.bg_size = take.bg_size;
-            s.bg_pos = take.bg_pos;
-            s.bg_repeat = take.bg_repeat;
-            s.bg_clip = take.bg_clip;
-            s.bg_origin = take.bg_origin;
-            s.bg_fixed = take.bg_fixed;
-            s.bg_lists = take.bg_lists;
-            s.canvas_bg = true;
+            html.style
+                .set_canvas_background(Some(std::rc::Rc::new(take)));
+            html.style.cascaded_mut().canvas_bg = true;
         }
     }
     nodes
@@ -218,3 +183,6 @@ mod font_tests;
 
 #[cfg(test)]
 mod suppression_tests;
+
+#[cfg(test)]
+mod expression_tests;
