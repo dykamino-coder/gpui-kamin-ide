@@ -75,8 +75,18 @@ fn flex_inside_avoid_moves_then_relaxes_and_keeps_forced_breaks() {
     item.keep = vec![(0.0, 120.0)];
     item.cuts = vec![(40.0, 40.0), (80.0, 80.0)];
     let (_, _, plan) = fill_at(&[kid(30.0), item.clone()], &|_| 100.0, Space::columns(4));
-    assert_eq!((plan[1].col, plan[1].y, plan[1].from), (1, 0.0, 0.0));
-    assert_eq!(plan[1].h, 100.0);
+    // После переноса и ослабления avoid css-break-3 §4.4 сохраняет измеренные
+    // точки: произвольный срез на 100px ещё не нужен. Все 120px продолжаются.
+    assert_eq!(
+        plan.iter()
+            .map(|f| (f.kid, f.col, f.y, f.from, f.h))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, 0, 0.0, 0.0, 30.0),
+            (1, 1, 0.0, 0.0, 80.0),
+            (1, 2, 0.0, 80.0, 40.0)
+        ]
+    );
     item.forced = vec![40.0];
     let (_, _, plan) = fill_at(&[item], &|_| 100.0, Space::columns(4));
     assert_eq!((plan[0].col, plan[0].h), (0, 40.0));
