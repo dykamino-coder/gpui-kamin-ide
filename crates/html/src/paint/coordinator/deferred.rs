@@ -8,6 +8,16 @@ use queue::{Inline, Positioned};
 pub(super) struct PositionedTag;
 static POSITIONED: PositionedTag = PositionedTag;
 
+/// A positioned root replayed from its native record (`paint::continuation`):
+/// its paint needs only the captured window state, so it joins the positioned
+/// phase of its stacking context even behind an opaque consumer.
+pub(crate) struct ReplayTag;
+pub(crate) static REPLAY: ReplayTag = ReplayTag;
+
+pub(super) fn positioned(tag: &dyn std::any::Any) -> bool {
+    tag.is::<PositionedTag>() || tag.is::<ReplayTag>()
+}
+
 pub(crate) struct PaintLast {
     child: Option<AnyElement>,
     key: u64,
@@ -35,7 +45,7 @@ impl PaintInline {
 }
 
 macro_rules! deferred {
-    ($ty:ident, $tag:expr, $enqueue:expr) => {
+    ($ty:ident, $tag:expr, $enqueue:expr, $behind:expr) => {
         impl Hooks for $ty {
             type Layout = ();
             type Prepaint = ();
@@ -77,8 +87,11 @@ macro_rules! deferred {
                     if let Some(child) = self.child.take() {
                         ($enqueue)(self, child, &pass, window);
                     }
-                } else if let Some(child) = self.child.as_mut() {
-                    child.paint(window, cx);
+                } else if let Some(child) = self.child.take() {
+                    if let Err(mut child) = ($behind)(self, child, window) {
+                        child.paint(window, cx);
+                        self.child = Some(child);
+                    }
                 }
             }
         }
@@ -101,6 +114,24 @@ deferred!(
             context: window.paint_ctx(),
         };
         pass.jobs.admit(job);
+    },
+    |this: &PaintLast, child: AnyElement, window: &Window| {
+        // Behind an opaque consumer only a replayed root may still join the
+        // collector of its stacking context, in the same composition scope.
+        let replayed = child
+            .paint_metadata()
+            .is_some_and(|tag| tag.is::<ReplayTag>());
+        let Some(pass) = current(window).filter(|_| replayed) else {
+            return Err(child);
+        };
+        let job = Positioned {
+            key: this.key,
+            child,
+            context: window.paint_ctx(),
+        };
+        pass.jobs
+            .admit_in(&window.paint_scope_id(), job)
+            .map_err(|job| job.child)
     }
 );
 deferred!(
@@ -112,5 +143,6 @@ deferred!(
             context: window.raster_paint_ctx(),
         };
         pass.jobs.admit_inline(job);
-    }
+    },
+    |_: &PaintInline, child: AnyElement, _: &Window| Err::<(), _>(child)
 );

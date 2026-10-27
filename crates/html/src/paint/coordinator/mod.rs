@@ -12,7 +12,7 @@ mod state;
 
 pub(crate) use children::{atomic, box_policy};
 pub(crate) use collector::PaintCollect;
-pub(crate) use deferred::{PaintInline, PaintLast};
+pub(crate) use deferred::{PaintInline, PaintLast, REPLAY};
 pub(crate) use root::roots;
 
 use gpui::{PaintPassId, Window};

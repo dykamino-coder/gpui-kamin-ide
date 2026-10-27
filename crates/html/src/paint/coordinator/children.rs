@@ -75,10 +75,7 @@ fn fallback(
 ) {
     let mut late = Vec::new();
     for child in children {
-        if child
-            .paint_metadata()
-            .is_some_and(|tag| tag.is::<deferred::PositionedTag>())
-        {
+        if child.paint_metadata().is_some_and(deferred::positioned) {
             late.push(child);
         } else {
             child.paint(window, cx);

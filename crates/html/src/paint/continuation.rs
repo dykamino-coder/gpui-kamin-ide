@@ -70,10 +70,11 @@ impl Wrap for Slot {
     fn paint_boundary(&self) -> bool {
         false
     }
-    // The positioned root keeps its paint phase (CSS 2.1 Appendix E): the
-    // replay happens where the copy would have painted the box.
+    // The positioned root keeps its paint phase (CSS 2.1 Appendix E): the replay
+    // joins the positioned phase of the copy's stacking context, after the flow
+    // of every fragmentainer, even behind the copy's opaque consumers.
     fn paint_metadata(&self) -> Option<&dyn std::any::Any> {
-        self.child.paint_metadata()
+        Some(&crate::paint::coordinator::REPLAY)
     }
     fn child(&mut self) -> &mut AnyElement {
         &mut self.child

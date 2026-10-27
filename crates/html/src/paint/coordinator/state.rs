@@ -91,6 +91,20 @@ impl PaintJobQueue {
         });
     }
 
+    /// Admit `job` into the innermost live frame of `scope`, open or not:
+    /// the enclosing stacking context drains it in that scope.
+    pub fn admit_in(&self, scope: &PaintScopeId, job: Positioned) -> Result<(), Positioned> {
+        self.update(
+            |state| match state.frames.iter_mut().rev().find(|f| f.scope == *scope) {
+                Some(frame) => {
+                    frame.push(job);
+                    Ok(())
+                }
+                None => Err(job),
+            },
+        )
+    }
+
     pub fn admit_inline(&self, job: Inline) {
         self.update(|state| {
             state
