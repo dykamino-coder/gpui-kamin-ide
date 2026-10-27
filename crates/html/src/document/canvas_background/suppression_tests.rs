@@ -58,11 +58,19 @@ fn initial_used_background_suppresses_paint_without_erasing_css_or_borders() {
         "blue",
         "blue padding-box",
         "linear-gradient(blue,blue)",
+        "linear-gradient(rgba(0,0,255,.5),rgba(0,0,255,.5)) 0 0 / 100px 100px no-repeat",
+        "linear-gradient(rgba(0,0,255,.5),rgba(0,0,255,.5)),linear-gradient(transparent,transparent)",
         "url(a)",
         "blue border-area",
     ] {
         let mut css = Computed::default();
         css.apply_one("background", background, vcx);
+        let mut background_only = BoxStyle::new(css.clone());
+        background_only.background_paint = BackgroundPaint::Initial;
+        // Начальный фон исключает также плитки из сохранённых CSS-списков.
+        assert!(
+            crate::paint::decorations::decorations(&background_only, true, vcx, None).is_empty()
+        );
         css.apply_one("border", "10px solid red", vcx);
         let mut body = BoxStyle::new(css);
         let source = body.style_rc().clone();

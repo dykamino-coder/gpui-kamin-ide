@@ -190,9 +190,8 @@ pub(crate) async fn paint_element(
     let e = if canvas_paint {
         root_box = canvas_layer(e, opts, out);
         let mut copy = e.clone();
-        copy.style.used_mut().background = None;
-        copy.style.used_mut().gradient = None;
-        copy.style.used_mut().bg_image = None;
+        copy.style
+            .set_background_paint(crate::style::background_paint::BackgroundPaint::Initial);
         canvas_stripped = copy;
         &canvas_stripped
     } else {
