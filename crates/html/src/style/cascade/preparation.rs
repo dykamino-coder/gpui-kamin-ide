@@ -5,6 +5,16 @@ use crate::dom::SharedStyle;
 use crate::style::computed::Computed;
 use std::rc::Rc;
 
+/// Вычисленный CSS для распространения свойств документа до сборки коробок:
+/// фильтры и смешивание текста не меняют цвет исходного элемента.
+pub(crate) fn computed(
+    parent: &Computed,
+    own: &Computed,
+    vcx: ValueCx<'_>,
+) -> crate::style::ComputedHandle {
+    super::compute::compute(parent, own, vcx).handle
+}
+
 /// Цвет подготовки с прежним смешиванием background-clip: text.
 /// Подготовка документа не создаёт контекст форматирования и стиль коробки.
 pub(crate) fn colors(parent: &Computed, own: &SharedStyle, vcx: ValueCx<'_>) -> Rc<Computed> {

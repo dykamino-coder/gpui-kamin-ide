@@ -7,9 +7,9 @@
 //! §14.2: корень, а без его фона — тело, чей фон переезжает на корень целиком).
 //! Здесь же предикаты `any_side` и `any_containment` для соседних проходов.
 
-use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::Node;
-use crate::style::values::value::Len;
+use crate::style::computed::Computed;
+use crate::style::values::value::{Len, StyleColor};
 
 /// Есть ли у обёртки НЕНУЛЕВОЙ отступ хоть с одной стороны.
 ///
@@ -81,15 +81,15 @@ pub(super) fn mark_canvas_background(
     mut nodes: Vec<Node>,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Node> {
-    fn has_bg(e: &crate::dom::Element) -> bool {
+    fn has_bg(style: &Computed) -> bool {
         // Прозрачный цвет — НЕ краска: `html { background: transparent }`
         // отдаёт канвас телу, как и отсутствие объявления.
-        e.style.cascaded().background.is_some_and(|c| c.a > 0.0)
-            || e.style.cascaded().gradient.is_some()
+        style.background.is_some_and(|c| c.a > 0.0)
+            || style.gradient.is_some()
             // Фон-картинка — та же краска канваса (CSS 2.2 §14.2): без
             // пометки она рисовалась коробкой корня и начиналась с его
             // сдвинутого схлопкой верха (background-size-document-root-vrl).
-            || e.style.cascaded().bg_image.is_some()
+            || style.bg_image.is_some()
     }
     for n in nodes.iter_mut() {
         let Node::Element(html) = n else { continue };
@@ -117,13 +117,18 @@ pub(super) fn mark_canvas_background(
                     | Some(crate::style::computed::Display::Contents)
             )
         };
+        let root_style = crate::style::cascade::preparation::computed(
+            &Computed::default(),
+            html.style.cascaded(),
+            vcx,
+        );
         if html.tag != "html" {
             // css-contain-2 §2.1: распространение свойств тела в область
             // просмотра и на канвас глушит ЛЮБОЕ обособление на `html` или
             // `body`, а не только `paint`. Узкая проверка оставляла зелёной
             // одну `contain-{body,html}-bg-002`, где написан именно
             // `contain: paint`; `layout`, `size` и `style` пролезали.
-            if html.tag == "body" && has_bg(html) && boxed(html) && !any_containment(html) {
+            if html.tag == "body" && has_bg(&root_style) && boxed(html) && !any_containment(html) {
                 html.style.cascaded_mut().canvas_bg = true;
             }
             continue;
@@ -133,7 +138,7 @@ pub(super) fn mark_canvas_background(
         if any_containment(html) {
             continue;
         }
-        if has_bg(html) && boxed(html) {
+        if has_bg(&root_style) && boxed(html) {
             html.style.cascaded_mut().canvas_bg = true;
             continue;
         }
@@ -147,49 +152,49 @@ pub(super) fn mark_canvas_background(
             // Переезд фона тела НА КОРЕНЬ — это и есть распространение
             // (CSS 2.1 §14.2, «treated as if they were specified on the root
             // element»). Любое обособление тела его отменяет.
-            if body.tag == "body" && has_bg(body) && boxed(body) && !any_containment(body) {
+            if body.tag != "body" || !boxed(body) || any_containment(body) {
+                continue;
+            }
+            let donor = crate::style::cascade::preparation::computed(
+                &root_style,
+                body.style.cascaded(),
+                vcx,
+            );
+            if has_bg(&donor) {
                 let s = body.style.cascaded_mut();
                 let mut take = crate::style::computed::Computed::default();
-                take.background = s.background.take();
-                take.background_color = s.background_color.take();
-                take.gradient = s.gradient.take();
-                take.gradient_raw = s.gradient_raw.take();
-                take.bg_image = s.bg_image.take();
-                take.bg_size = std::mem::take(&mut s.bg_size);
-                // Шрифтовые единицы позиции решаются по кеглю ТЕЛА, на
-                // котором они написаны: после переезда их посчитали бы от
-                // кегля корня (`background-position-001`: `6.25ex` при 20px
-                // Ahem у тела давало 100 вместо 200).
-                // Не разрешать здесь СВОЙ кегль тела по кеглю корня (`body
-                // { font-size: 2.5ex }` при `html { font: 20px/1 Ahem }` —
-                // 40 точек, от них `6.25ex` = 200): эталон `background-
-                // position-001` таких 200 точек НЕ ждёт — корень пары не в
-                // кегле, а в области отсчёта перенесённого фона.
-                let em = match s.font_size {
-                    Some(crate::style::values::value::Len::Px(v)) => v,
-                    _ => MEDIUM_FONT_SIZE_PX,
-                };
-                let fam = s.font_family.clone().unwrap_or_default();
-                let to_px = |l: Option<crate::style::values::value::Len>| match l {
-                    Some(
-                        crate::style::values::value::Len::Em(_)
-                        | crate::style::values::value::Len::Ex(_)
-                        | crate::style::values::value::Len::Ch(_),
-                    ) => Some(crate::style::values::value::Len::Px(
-                        crate::text::metrics::spacing_px(l, &fam, em, vcx),
-                    )),
-                    other => other,
-                };
-                let mut pos = std::mem::take(&mut s.bg_pos);
-                pos.x = to_px(pos.x);
-                pos.y = to_px(pos.y);
-                take.bg_pos = pos;
-                take.bg_repeat = s.bg_repeat.take();
-                take.bg_clip = s.bg_clip.take();
-                take.bg_origin = s.bg_origin.take();
-                take.bg_fixed = s.bg_fixed.take();
-                // Списки слоёв переезжают вместе с верхним слоем (§14.2).
-                take.bg_lists = std::mem::take(&mut s.bg_lists);
+                take.background = donor.background;
+                // CSS Backgrounds 3 §2.11.2: цвет берётся у донора, область
+                // позиционирования — у корня. Перенос не меняет currentcolor.
+                take.background_color = donor.background_color.as_ref().map(|color| {
+                    if color.depends_on_current() {
+                        StyleColor::Absolute(donor.used_color(color))
+                    } else {
+                        color.clone()
+                    }
+                });
+                take.gradient = donor.gradient.clone();
+                take.gradient_raw = donor.gradient_raw.clone();
+                take.bg_image = donor.bg_image.clone();
+                take.bg_size = donor.bg_size;
+                take.bg_pos = donor.bg_pos;
+                take.bg_repeat = donor.bg_repeat;
+                take.bg_clip = donor.bg_clip;
+                take.bg_origin = donor.bg_origin;
+                take.bg_fixed = donor.bg_fixed;
+                take.bg_lists = donor.bg_lists.clone();
+                let _ = s.background.take();
+                let _ = s.background_color.take();
+                let _ = s.gradient.take();
+                let _ = s.gradient_raw.take();
+                let _ = s.bg_image.take();
+                let _ = std::mem::take(&mut s.bg_size);
+                let _ = std::mem::take(&mut s.bg_pos);
+                let _ = s.bg_repeat.take();
+                let _ = s.bg_clip.take();
+                let _ = s.bg_origin.take();
+                let _ = s.bg_fixed.take();
+                let _ = std::mem::take(&mut s.bg_lists);
                 moved = Some(take);
                 break;
             }
@@ -213,3 +218,9 @@ pub(super) fn mark_canvas_background(
     }
     nodes
 }
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod font_tests;

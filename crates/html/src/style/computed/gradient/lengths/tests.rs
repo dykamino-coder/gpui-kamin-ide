@@ -3,6 +3,8 @@
 use crate::style::computed::{BoxStyle, Computed, GradientShape, RadialSize};
 use crate::style::values::value::Len;
 
+mod background;
+
 #[test]
 fn mixed_font_stops_compute_once_before_inheritance() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
