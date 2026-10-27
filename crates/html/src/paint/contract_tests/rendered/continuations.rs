@@ -373,20 +373,21 @@ fn late_placed_root_carries_its_admission_to_its_static_position() {
 
 #[test]
 fn transformed_root_keeps_a_transform_origin_per_fragment() {
-    // scaleY(2) about each fragment's own bottom: the first fragment (25px)
-    // fills its column, the second (25px) doubles from the top of the next.
+    // css-break transform-021: scaleY(2) about each fragment's own bottom. The
+    // root's fragments in columns 2 and 3 grow above the columns; the nested
+    // box continues into column 4 under a zero-height fragment's transform.
     let found = quads(
         "<style>body{margin:0}</style>\
-<div style='columns:2;gap:0;column-fill:auto;width:100px;height:50px'>\
-<div style='position:relative;height:50px'><div style='position:absolute;transform:scaleY(2);\
-transform-origin:bottom;top:25px;width:100%;height:50px;background:#0000ff'></div></div></div>",
+<div style='display:flow-root;position:relative;width:100px;height:100px'>\
+<div style='columns:4;margin-top:50px;gap:0;column-fill:auto;width:100px;height:50px'>\
+<div style='position:relative;height:50px'>\
+<div style='position:absolute;transform:scaleY(2);transform-origin:bottom;top:50px;width:100%;height:100px'>\
+<div style='position:absolute;top:50px;width:100%;height:75px;background:#0000ff'></div>\
+<div style='height:50px;background:#0000ff'></div></div></div></div></div>",
         400.,
         200.,
     );
-    let blue: Vec<_> = found
-        .iter()
-        .filter(|(_, c)| opaque(*c) == 0x0000ff)
-        .map(|(b, _)| (f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.height)))
-        .collect();
-    assert_eq!(blue, vec![(0., 0., 50.), (50., 0., 25.)]);
+    for (x, y) in [(37., 25.), (37., 75.), (62., 25.), (62., 75.), (87., 75.)] {
+        assert!(is(top(&found, x, y), 0x0000ff), "({x}, {y}): {found:?}");
+    }
 }
