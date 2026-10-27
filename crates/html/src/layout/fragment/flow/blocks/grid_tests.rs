@@ -162,7 +162,7 @@ fn subgrid_rows_are_pushed_on_the_parent_grid() {
         "<div style='display:grid'><div style='display:grid;grid-template-rows:subgrid;grid-row:span 2'><div style='height:50px'></div><div style='height:40px'></div></div></div>",
     );
     let sub = b.grid.as_ref().unwrap().items[0].inner.as_ref().unwrap();
-    assert!(sub.grid.as_ref().unwrap().subgrid_rows);
+    assert!(sub.grid.as_ref().unwrap().inherits_rows);
     let kids: Vec<u64> = sub
         .grid
         .as_ref()

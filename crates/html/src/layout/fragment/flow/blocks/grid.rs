@@ -24,7 +24,7 @@ pub(crate) struct GridBox {
     pub(crate) items: Vec<GridItem>,
     /// Сетка — подсетка родителя по блочной оси с тем же направлением потока: её ряды —
     /// дорожки родителя в том же порядке.
-    pub(crate) subgrid_rows: bool,
+    pub(crate) inherits_rows: bool,
 }
 
 /// Элемент сетки — параллельный поток своего ряда (css-break-3 §3; Blink
@@ -54,7 +54,7 @@ impl GridItem {
             .as_ref()?
             .grid
             .as_ref()
-            .filter(|g| g.subgrid_rows)
+            .filter(|g| g.inherits_rows)
     }
 }
 
@@ -103,7 +103,7 @@ pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBo
         let inner = (!monolith).then(|| {
             let mut inner = collect(k, true, cx, vcx);
             if let Some(g) = inner.grid.as_mut() {
-                g.subgrid_rows = subgrid_rows(e, k);
+                g.inherits_rows = inherits_rows(e, k);
             }
             inner
         });
@@ -124,7 +124,7 @@ pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBo
 
 /// Ряды элемента-сетки `k` — ряды сетки `grid` (`grid-template-rows: subgrid`) при параллельном
 /// письме с тем же направлением блочной оси (css-grid-2 §9).
-fn subgrid_rows(grid: &Element, k: &Element) -> bool {
+fn inherits_rows(grid: &Element, k: &Element) -> bool {
     let (parent, child) = (grid.style.used(), k.style.used());
     grid_container(k)
         && child.subgrid_rows
@@ -162,7 +162,7 @@ impl GridBox {
     /// ряда `i ≥ 1` без зазора перед ним — перенос ряда; точка внутри
     /// элемента — спуск в его стопку.
     pub(super) fn pushed_at(&self, grid: u64, a: f32, laid: &Laid) -> Option<Pushed> {
-        if let Some(rows) = laid.rows(grid).filter(|_| !self.subgrid_rows) {
+        if let Some(rows) = laid.rows(grid).filter(|_| !self.inherits_rows) {
             for i in 1..rows.len() {
                 // Разрыв в зазоре рядов — не перенос ряда: зазор у разрыва
                 // исчезает (css-gaps-1 §fragmentation; Blink

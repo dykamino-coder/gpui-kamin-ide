@@ -6269,10 +6269,10 @@ index 0000000000000000000000000000000000000000..205611669378fa03cbcc3bde26262628
 +}
 diff --git a/vendor/taffy/src/compute/grid/fragmentation_growth.rs b/vendor/taffy/src/compute/grid/fragmentation_growth.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cfaaab46ad55e8f4d0ce6f178209589ce26bffa7
+index 0000000000000000000000000000000000000000..eef4f81ed982209797a23353b0366a8adbf66f44
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/fragmentation_growth.rs
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,240 @@
 +//! KaminIDE patch: block space that a fragmenting caller inserts after grid tracks
 +//! (css-grid-2 §12 Fragmenting Grid Layout: a row pushed into the next fragmentainer moves with
 +//! every following row; Blink `ShiftBreakpointIntoNextFragmentainer`, Gecko continuation row
@@ -6295,15 +6295,21 @@ index 0000000000000000000000000000000000000000..cfaaab46ad55e8f4d0ce6f178209589c
 +    pub(super) resolved: Size<Option<f32>>,
 +    /// Authored preferred border-box size: its content alignment uses the full content box.
 +    pub(super) preferred: Size<Option<f32>>,
++    /// Padding, border and scrollbar gutter in each axis.
 +    pub(super) inset: Size<f32>,
++    /// Border-box min size.
 +    pub(super) min: Size<Option<f32>>,
++    /// Border-box max size.
 +    pub(super) max: Size<Option<f32>>,
++    /// Padding and border: the smallest border box.
 +    pub(super) padding_border: Size<f32>,
 +}
 +
 +/// Growth after each track of both physical axes, in exported track order.
 +pub(super) struct Growth {
++    /// Growth after each track; empty when nothing is inserted.
 +    after: Size<Vec<f32>>,
++    /// Sum of the growth in each axis.
 +    total: Size<f32>,
 +}
 +
@@ -6492,6 +6498,7 @@ index 0000000000000000000000000000000000000000..cfaaab46ad55e8f4d0ce6f178209589c
 +    }
 +}
 +
++/// Move the tracks after each growth towards the axis end (see `Growth::shift`).
 +fn shift_axis(tracks: &mut [GridTrack], after: &[f32], reversed: bool, extra: f32) {
 +    if after.is_empty() {
 +        return;

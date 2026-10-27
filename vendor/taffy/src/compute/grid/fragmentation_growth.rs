@@ -20,15 +20,21 @@ pub(super) struct Limits {
     pub(super) resolved: Size<Option<f32>>,
     /// Authored preferred border-box size: its content alignment uses the full content box.
     pub(super) preferred: Size<Option<f32>>,
+    /// Padding, border and scrollbar gutter in each axis.
     pub(super) inset: Size<f32>,
+    /// Border-box min size.
     pub(super) min: Size<Option<f32>>,
+    /// Border-box max size.
     pub(super) max: Size<Option<f32>>,
+    /// Padding and border: the smallest border box.
     pub(super) padding_border: Size<f32>,
 }
 
 /// Growth after each track of both physical axes, in exported track order.
 pub(super) struct Growth {
+    /// Growth after each track; empty when nothing is inserted.
     after: Size<Vec<f32>>,
+    /// Sum of the growth in each axis.
     total: Size<f32>,
 }
 
@@ -217,6 +223,7 @@ fn nonzero(growth: Vec<f32>) -> Vec<f32> {
     }
 }
 
+/// Move the tracks after each growth towards the axis end (see `Growth::shift`).
 fn shift_axis(tracks: &mut [GridTrack], after: &[f32], reversed: bool, extra: f32) {
     if after.is_empty() {
         return;
