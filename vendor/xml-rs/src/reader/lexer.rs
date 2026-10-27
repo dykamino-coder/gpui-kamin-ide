@@ -20,7 +20,7 @@ pub(crate) enum Token {
     ProcessingInstructionStart,
     /// `?>`
     ProcessingInstructionEnd,
-    /// `<!DOCTYPEвЂ¦`
+    /// `<!DOCTYPE…`
     DoctypeStart,
     /// `<`
     OpeningTagStart,
@@ -565,7 +565,7 @@ impl Lexer {
         )
     }
 
-    /// Encountered '<!вЂ¦' that isn't DOCTYPE or CDATA
+    /// Encountered '<!…' that isn't DOCTYPE or CDATA
     fn markup_declaration(&mut self, c: char) -> Result {
         match c {
             '<' => self.handle_error("<!", c),

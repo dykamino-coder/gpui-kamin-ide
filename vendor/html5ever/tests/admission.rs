@@ -19,7 +19,7 @@ struct Policy {
     calls: Rc<Cell<usize>>,
 }
 
-impl Admission<usize> for Policy {
+impl Admission<Sink> for Policy {
     type Error = Rejected;
     fn check(&self, _: Operation<'_, usize>) -> Result<(), Rejected> {
         let call = self.calls.get() + 1;
@@ -186,7 +186,7 @@ fn every_admission_failure_is_sticky_and_drops_partial_sink() {
 #[test]
 fn rejection_in_data_state_leaves_following_input_unconsumed() {
     struct RejectText;
-    impl Admission<usize> for RejectText {
+    impl Admission<Sink> for RejectText {
         type Error = Rejected;
         fn check(&self, operation: Operation<'_, usize>) -> Result<(), Rejected> {
             if matches!(operation, Operation::Append(_, NodeOrText::AppendText(_))) {
@@ -235,5 +235,114 @@ fn standalone_tokenizer_latches_abort_without_a_sink_side_flag() {
         assert_eq!(input.peek(), remaining);
         assert_eq!(tokenizer.sink.calls.get(), 1);
         assert!(!tokenizer.sink.ended.get());
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NameError {
+    Count,
+    Bytes,
+}
+
+struct Names {
+    admitted: Rc<RefCell<std::collections::BTreeSet<String>>>,
+    count: usize,
+    bytes: usize,
+}
+
+impl Admission<Sink> for Names {
+    type Error = NameError;
+    fn check(&self, operation: Operation<'_, usize>) -> Result<(), NameError> {
+        if let Operation::Name(name) = operation {
+            let mut admitted = self.admitted.borrow_mut();
+            if admitted.contains(name) {
+                return Ok(());
+            }
+            if admitted.len() == self.count {
+                return Err(NameError::Count);
+            }
+            if admitted.iter().map(String::len).sum::<usize>() + name.len() > self.bytes {
+                return Err(NameError::Bytes);
+            }
+            admitted.insert(name.into());
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn names_cover_implied_nodes_templates_adjustments_and_sticky_refusal() {
+    let source = "<template><slot a='KEEP'></slot></template><svg xml:lang='en'><foreignObject><p a='x'>KEEP</p></foreignObject></svg><table><td>KEEP</table>";
+    let admitted = Rc::new(RefCell::new(std::collections::BTreeSet::new()));
+    let mut full = admission::parse_document(
+        Sink::default(),
+        Names {
+            admitted: admitted.clone(),
+            count: usize::MAX,
+            bytes: usize::MAX,
+        },
+        Default::default(),
+    );
+    full.process_str(source).unwrap();
+    full.finish().unwrap();
+    for name in [
+        "html",
+        "head",
+        "body",
+        "template",
+        "slot",
+        "tbody",
+        "tr",
+        "foreignObject",
+        "xml",
+        "lang",
+        "http://www.w3.org/XML/1998/namespace",
+    ] {
+        assert!(admitted.borrow().contains(name), "missing {name}");
+    }
+    let count = admitted.borrow().len();
+    let bytes = admitted.borrow().iter().map(String::len).sum::<usize>();
+    for (kind, boundary) in [(NameError::Count, count), (NameError::Bytes, bytes)] {
+        for cap in [boundary - 1, boundary, boundary + 1] {
+            let seen = Rc::new(RefCell::new(std::collections::BTreeSet::new()));
+            let sink = Sink::default();
+            let dropped = sink.dropped.clone();
+            let finished = sink.finished.clone();
+            let mut parser = admission::parse_document(
+                sink,
+                Names {
+                    admitted: seen.clone(),
+                    count: if kind == NameError::Count {
+                        cap
+                    } else {
+                        usize::MAX
+                    },
+                    bytes: if kind == NameError::Bytes {
+                        cap
+                    } else {
+                        usize::MAX
+                    },
+                },
+                Default::default(),
+            );
+            let result = parser.process_str(source);
+            if cap < boundary {
+                assert_eq!(result, Err(kind));
+                let names = seen.borrow().clone();
+                let next = parser.input_buffer.peek();
+                assert_eq!(parser.process_str("<lost-name>LOST</lost-name>"), Err(kind));
+                assert_eq!(parser.input_buffer.peek(), next);
+                assert_eq!(parser.finish(), Err(kind));
+                assert_eq!(*seen.borrow(), names);
+                assert!(!seen.borrow().contains("lost-name"));
+                assert!(!finished.get());
+            } else {
+                result.unwrap();
+                parser.finish().unwrap();
+                assert_eq!(*seen.borrow(), *admitted.borrow());
+                assert!(finished.get());
+            }
+            assert!(dropped.get());
+        }
     }
 }

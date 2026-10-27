@@ -84,7 +84,7 @@ macro_rules! tag {
 }
 
 #[doc(hidden)]
-impl<Handle, Sink, A: Admission<Handle>> TreeBuilder<Handle, Sink, A>
+impl<Handle, Sink, A: Admission<Sink>> TreeBuilder<Handle, Sink, A>
 where
     Handle: Clone,
     Sink: TreeSink<Handle = Handle>,
@@ -126,7 +126,7 @@ where
             InsertionMode::BeforeHtml => {
                 let anything_else = |token: Token| {
                     Ok({
-                        self.create_root(vec![])?;
+                        self.create_root(Default::default())?;
                         ProcessResult::Reprocess(InsertionMode::BeforeHead, token)
                     })
                 };
@@ -490,7 +490,7 @@ where
                     let Some(body) = self.body_elem().map(|b| b.clone()) else {
                         return Ok(ProcessResult::Done);
                     };
-                    self.sink.remove_from_parent(&body);
+                    self.checked_remove(&body)?;
 
                     // FIXME: can we get here in the fragment case?
                     // What to do with the first element then?
@@ -707,8 +707,7 @@ where
                             .iter()
                             .any(|elem| self.sink.same_node(elem, &option))
                         {
-                            self.sink
-                                .maybe_clone_an_option_into_selectedcontent(&option);
+                            self.checked_selectedcontent(&option)?;
                         }
                     }
 
@@ -822,7 +821,7 @@ where
                         InsertionMode::InBody,
                         Token::Tag(Tag {
                             kind: StartTag,
-                            attrs: vec![],
+                            attrs: Default::default(),
                             ..tag
                         }),
                     )?

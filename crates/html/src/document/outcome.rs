@@ -5,6 +5,8 @@
 pub enum FailureReason {
     XmlSyntax { row: u32, column: u32 },
     Budget(crate::budget::BudgetError),
+    Allocation,
+    CapacityOverflow,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -96,6 +98,8 @@ impl DocumentFailure {
                 "KAMINIDE_BUDGET_EXCEEDED"
             }
             FailureReason::Budget(_) => "KAMINIDE_BUDGET_INVARIANT",
+            FailureReason::Allocation => "KAMINIDE_ALLOCATION_FAILED",
+            FailureReason::CapacityOverflow => "KAMINIDE_CAPACITY_OVERFLOW",
         }
     }
 }
@@ -114,6 +118,8 @@ impl std::fmt::Display for DocumentFailure {
                 write!(f, "{subject}: ошибка XML ({row}:{column})")
             }
             FailureReason::Budget(error) => write!(f, "{subject}: {error}"),
+            FailureReason::Allocation => write!(f, "{subject}: не удалось выделить память"),
+            FailureReason::CapacityOverflow => write!(f, "{subject}: переполнение размера буфера"),
         }
     }
 }

@@ -11,6 +11,7 @@ pub enum BudgetUnit {
     Pixels,
     Tasks,
     Documents,
+    Names,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,10 +36,13 @@ pub enum BudgetKind {
     DecodedPixels,
     PendingTasks,
     Documents,
+    UniqueNames,
+    NameBytes,
 }
 
 impl BudgetKind {
-    pub const ALL: [Self; 12] = [
+    pub const COUNT: usize = Self::NameBytes as usize + 1;
+    pub const ALL: [Self; Self::COUNT] = [
         Self::SourceBytes,
         Self::ResourceBytes,
         Self::ResourceRequests,
@@ -51,6 +55,8 @@ impl BudgetKind {
         Self::DecodedPixels,
         Self::PendingTasks,
         Self::Documents,
+        Self::UniqueNames,
+        Self::NameBytes,
     ];
 
     pub fn unit(self) -> BudgetUnit {
@@ -61,6 +67,7 @@ impl BudgetKind {
             Self::DecodedPixels => BudgetUnit::Pixels,
             Self::PendingTasks => BudgetUnit::Tasks,
             Self::Documents => BudgetUnit::Documents,
+            Self::UniqueNames => BudgetUnit::Names,
             _ => BudgetUnit::Bytes,
         }
     }
@@ -94,10 +101,10 @@ impl std::fmt::Display for InvalidLimit {
 }
 impl std::error::Error for InvalidLimit {}
 
-/// Profile `kaminide-document/1`; значения калиброваны corpus B2.
+/// Profile `kaminide-document/2`; значения калиброваны corpus B2.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentLimits {
-    pub(super) caps: [u64; 12],
+    pub(super) caps: [u64; BudgetKind::COUNT],
 }
 
 impl Default for DocumentLimits {
@@ -116,6 +123,8 @@ impl Default for DocumentLimits {
                 1 << 29,
                 1 << 22,
                 1,
+                1 << 10,
+                1 << 14,
             ],
         }
     }
@@ -123,7 +132,7 @@ impl Default for DocumentLimits {
 
 impl DocumentLimits {
     pub const PROFILE_ID: &'static str = "kaminide-document";
-    pub const VERSION: u32 = 1;
+    pub const VERSION: u32 = 2;
     pub const BOX_DEPTH: usize = 2052;
     pub const LAYOUT_DEPTH: usize = 1026;
     pub const CSS_NESTING: usize = 128;
@@ -155,13 +164,13 @@ impl DocumentLimits {
 /// Четыре document-sized рабочих набора; не глобальный изменяемый singleton.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessLimits {
-    pub(super) caps: [u64; 12],
+    pub(super) caps: [u64; BudgetKind::COUNT],
 }
 
 impl Default for ProcessLimits {
     fn default() -> Self {
         let document = DocumentLimits::default();
-        let mut caps = [0; 12];
+        let mut caps = [0; BudgetKind::COUNT];
         for kind in BudgetKind::ALL {
             if kind.class() == BudgetClass::Live {
                 caps[kind as usize] = document.limit(kind) * 4;

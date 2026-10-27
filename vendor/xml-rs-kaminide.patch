@@ -1,4 +1,4 @@
-# KaminIDE patches вЂ” xml-rs 0.8.29
+# KaminIDE patches — xml-rs 0.8.29
 #
 # 1. Admission: opt-in terminal driver checks canonical lexer and parser work, including queued entity expansion, without synthesizing XML errors or EOF.
 #
@@ -286,12 +286,9 @@ index 0000000000000000000000000000000000000000..ca5a0de7716ea5f8d39273b207f1dd3b
 +    );
 +}
 diff --git a/vendor/xml-rs/src/reader/lexer.rs b/vendor/xml-rs/src/reader/lexer.rs
-index 8cd318e09a3246aff291aa310841b11b9dfc7915..52cf86c7c1897286fce577735a079176973df902
+index 8cd318e09a3246aff291aa310841b11b9dfc7915..c6c7ea20ee81556d2f609fa1c8bd05399c5cad52
 --- a/vendor/xml-rs/src/reader/lexer.rs
 +++ b/vendor/xml-rs/src/reader/lexer.rs
-@@ -23 +23 @@
--    /// `<!DOCTYPE…`
-+    /// `<!DOCTYPEвЂ¦`
 @@ -290,0 +291 @@
 +    #[cfg(test)]
 @@ -292 +293,13 @@
@@ -369,9 +366,6 @@ index 8cd318e09a3246aff291aa310841b11b9dfc7915..52cf86c7c1897286fce577735a079176
 -
 -        self.end_of_stream()
 +        Some(self.end_of_stream())
-@@ -537 +568 @@
--    /// Encountered '<!…' that isn't DOCTYPE or CDATA
-+    /// Encountered '<!вЂ¦' that isn't DOCTYPE or CDATA
 @@ -540,7 +571,13 @@
 -            '<'                        => self.handle_error("<!", c),
 -            '>'                        => Ok(Some(self.move_to_with(self.normal_state, Token::TagEnd))),

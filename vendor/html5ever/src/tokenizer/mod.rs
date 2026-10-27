@@ -158,7 +158,7 @@ pub struct Tokenizer<Sink> {
     current_tag_had_duplicate_attributes: Cell<bool>,
 
     /// Current tag attributes.
-    current_tag_attrs: RefCell<Vec<Attribute>>,
+    current_tag_attrs: RefCell<crate::admission::storage::Storage<Attribute>>,
 
     /// Current attribute name.
     current_attr_name: RefCell<StrTendril>,
@@ -218,7 +218,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             current_tag_name: RefCell::new(StrTendril::new()),
             current_tag_self_closing: Cell::new(false),
             current_tag_had_duplicate_attributes: Cell::new(false),
-            current_tag_attrs: RefCell::new(vec![]),
+            current_tag_attrs: Default::default(),
             current_attr_name: RefCell::new(StrTendril::new()),
             current_attr_value: RefCell::new(StrTendril::new()),
             current_comment: RefCell::new(StrTendril::new()),
@@ -241,6 +241,9 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         }
 
         if self.discard_bom.get() {
+            if !self.admit(self.sink.before_step()) {
+                return TokenizerResult::Done;
+            }
             if let Some(c) = input.peek() {
                 if c == '\u{feff}' {
                     input.next();
@@ -625,7 +628,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         self.current_tag_name.borrow_mut().clear();
         self.current_tag_self_closing.set(false);
         self.current_tag_had_duplicate_attributes.set(false);
-        *self.current_tag_attrs.borrow_mut() = vec![];
+        *self.current_tag_attrs.borrow_mut() = Default::default();
     }
 
     fn create_tag(&self, kind: TagKind, c: char) {
@@ -3578,7 +3581,7 @@ mod test {
                     match t.kind {
                         EndTag => {
                             t.self_closing = false;
-                            t.attrs = vec![];
+                            t.attrs = Default::default();
                         },
                         _ => t.attrs.sort_by(|a1, a2| a1.name.cmp(&a2.name)),
                     }
@@ -3615,7 +3618,7 @@ mod test {
             kind: tagkind,
             name,
             self_closing: false,
-            attrs: vec![],
+            attrs: Default::default(),
             had_duplicate_attributes: false,
         })
     }

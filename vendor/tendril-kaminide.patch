@@ -1,4 +1,4 @@
-# KaminIDE patches вЂ” tendril 0.5.1
+# KaminIDE patches — tendril 0.5.1
 #
 # 1. Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped.
 #

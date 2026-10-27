@@ -1,11 +1,11 @@
 //! Attribute copies are admitted before their backing vectors are allocated.
 
-use super::{Admission, Attribute, Tag, TreeBuilder, TreeSink};
+use super::{Admission, Attribute, Storage, Tag, TreeBuilder, TreeSink};
 
-impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<H>> TreeBuilder<H, S, A> {
+impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<S>> TreeBuilder<H, S, A> {
     pub(super) fn push_into<T>(
         &self,
-        values: &std::cell::RefCell<Vec<T>>,
+        values: &std::cell::RefCell<Storage<T>>,
         value: T,
     ) -> Result<(), A::Error> {
         let mut values = values.borrow_mut();
@@ -16,7 +16,7 @@ impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<H>> TreeBuilder<H, S, A> {
 
     pub(super) fn insert_into<T>(
         &self,
-        values: &std::cell::RefCell<Vec<T>>,
+        values: &std::cell::RefCell<Storage<T>>,
         index: usize,
         value: T,
     ) -> Result<(), A::Error> {
@@ -26,9 +26,9 @@ impl<H: Clone, S: TreeSink<Handle = H>, A: Admission<H>> TreeBuilder<H, S, A> {
         Ok(())
     }
 
-    pub(super) fn clone_attrs(&self, attrs: &[Attribute]) -> Result<Vec<Attribute>, A::Error> {
+    pub(super) fn clone_attrs(&self, attrs: &[Attribute]) -> Result<Storage<Attribute>, A::Error> {
         self.result()?;
-        let mut copy = Vec::new();
+        let mut copy = Storage::default();
         self.admission.reserve(&mut copy, attrs.len())?;
         copy.extend_from_slice(attrs);
         Ok(copy)

@@ -15,6 +15,7 @@ pub use crate::interface::{LimitedQuirks, NoQuirks, Quirks, QuirksMode};
 pub use markup5ever::interface::tree_builder::create_element_with_flags;
 
 use self::types::*;
+use crate::admission::storage::Storage;
 use crate::admission::{Admission, Operation, Unbounded};
 mod admission_buffers;
 mod admission_sink;
@@ -26,9 +27,9 @@ use crate::tokenizer;
 use crate::tokenizer::states as tok_state;
 use crate::tokenizer::{Doctype, EndTag, StartTag, Tag, TokenSink, TokenSinkResult};
 
+use crate::admission::deque::StorageDeque;
 use std::borrow::Cow::{self, Borrowed};
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::VecDeque;
 use std::iter::{Enumerate, Rev};
 use std::{fmt, slice};
 
@@ -84,7 +85,7 @@ impl Default for TreeBuilderOpts {
 }
 
 /// The HTML tree builder.
-pub struct TreeBuilder<Handle, Sink, A: Admission<Handle> = Unbounded> {
+pub struct TreeBuilder<Handle, Sink: TreeSink<Handle = Handle>, A: Admission<Sink> = Unbounded> {
     failure: RefCell<Option<A::Error>>,
     /// Options controlling the behavior of the tree builder.
     opts: TreeBuilderOpts,
@@ -99,10 +100,10 @@ pub struct TreeBuilder<Handle, Sink, A: Admission<Handle> = Unbounded> {
     orig_mode: Cell<Option<InsertionMode>>,
 
     /// Stack of template insertion modes.
-    template_modes: RefCell<Vec<InsertionMode>>,
+    template_modes: RefCell<Storage<InsertionMode>>,
 
     /// Pending table character tokens.
-    pending_table_text: RefCell<Vec<(SplitStatus, StrTendril)>>,
+    pending_table_text: RefCell<Storage<(SplitStatus, StrTendril)>>,
 
     /// Quirks mode as set by the parser.
     /// FIXME: can scripts etc. change this?
@@ -112,12 +113,12 @@ pub struct TreeBuilder<Handle, Sink, A: Admission<Handle> = Unbounded> {
     doc_handle: Handle,
 
     /// Stack of open elements, most recently added at end.
-    open_elems: RefCell<Vec<Handle>>,
+    open_elems: RefCell<Storage<Handle>>,
 
     /// List of active formatting elements.
-    active_formatting: RefCell<Vec<FormatEntry<Handle>>>,
+    active_formatting: RefCell<Storage<FormatEntry<Handle>>>,
 
-    //В§ the-element-pointers
+    //§ the-element-pointers
     /// Head element pointer.
     head_elem: RefCell<Option<Handle>>,
 
@@ -173,9 +174,9 @@ where
         let context_is_template =
             sink.elem_name(&context_elem).expanded() == expanded_name!(html "template");
         let template_modes = if context_is_template {
-            RefCell::new(vec![InsertionMode::InTemplate])
+            RefCell::new(vec![InsertionMode::InTemplate].into())
         } else {
-            RefCell::new(vec![])
+            RefCell::new(Storage::default())
         };
 
         let tb = TreeBuilder {
@@ -204,7 +205,7 @@ where
         // 5. Let root be a new html element with no attributes.
         // 6. Append the element root to the Document node created above.
         // 7. Set up the parser's stack of open elements so that it contains just the single element root.
-        tb.create_root(vec![])
+        tb.create_root(Storage::default())
             .unwrap_or_else(|never| match never {});
         // 10. Reset the parser's insertion mode appropriately.
         let old_insertion_mode = tb.reset_insertion_mode();
@@ -214,7 +215,7 @@ where
     }
 }
 
-impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Handle>>
+impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
     TreeBuilder<Handle, Sink, A>
 {
     pub fn with_admission(sink: Sink, opts: TreeBuilderOpts, admission: A) -> Self {
@@ -371,7 +372,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Handle>>
             .check(crate::admission::Operation::TreeStep)?;
         // Queue of additional tokens yet to be processed.
         // This stays empty in the common case where we don't split whitespace.
-        let mut more_tokens = VecDeque::new();
+        let mut more_tokens = StorageDeque::new();
 
         loop {
             let should_have_acknowledged_self_closing_flag = matches!(
@@ -509,7 +510,7 @@ impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Handle>>
     }
 }
 
-impl<Handle, Sink, A: Admission<Handle>> TokenSink for TreeBuilder<Handle, Sink, A>
+impl<Handle, Sink, A: Admission<Sink>> TokenSink for TreeBuilder<Handle, Sink, A>
 where
     Handle: Clone,
     Sink: TreeSink<Handle = Handle>,
@@ -543,10 +544,11 @@ where
 
     fn before_attribute(&self, name: &str, count: usize) -> bool {
         self.result().is_ok()
+            && self.record(self.admission.check(Operation::Name(name)))
             && self.record(self.admission.check(Operation::TokenAttribute(name, count)))
     }
 
-    fn reserve<T>(&self, values: &mut Vec<T>, additional: usize) -> bool {
+    fn reserve<T>(&self, values: &mut Storage<T>, additional: usize) -> bool {
         self.result().is_ok() && self.record(self.admission.reserve(values, additional))
     }
 
@@ -567,7 +569,7 @@ pub fn html_elem<Handle>(open_elems: &[Handle]) -> &Handle {
 }
 
 struct ActiveFormattingView<'a, Handle: 'a> {
-    data: Ref<'a, Vec<FormatEntry<Handle>>>,
+    data: Ref<'a, Storage<FormatEntry<Handle>>>,
 }
 
 impl<'a, Handle: 'a> ActiveFormattingView<'a, Handle> {
@@ -620,7 +622,7 @@ macro_rules! qualname {
 }
 
 #[doc(hidden)]
-impl<Handle, Sink, A: Admission<Handle>> TreeBuilder<Handle, Sink, A>
+impl<Handle, Sink, A: Admission<Sink>> TreeBuilder<Handle, Sink, A>
 where
     Handle: Clone,
     Sink: TreeSink<Handle = Handle>,
@@ -669,7 +671,7 @@ where
         ProcessResult::Done
     }
 
-    //В§ parsing-elements-that-contain-only-text
+    //§ parsing-elements-that-contain-only-text
     // Switch to `Text` insertion mode, save the old mode, and
     // switch the tokenizer to a raw-data state.
     // The latter only takes effect after the current / next
@@ -685,7 +687,7 @@ where
         self.insert_element_for(tag)?;
         Ok(self.to_raw_text_mode(k))
     }
-    //В§ END
+    //§ END
 
     fn current_node(&self) -> Ref<'_, Handle> {
         Ref::map(self.open_elems.borrow(), |elems| {
@@ -749,7 +751,7 @@ where
                     kind: EndTag,
                     name: subject,
                     self_closing: false,
-                    attrs: vec![],
+                    attrs: Default::default(),
                     had_duplicate_attributes: false,
                 });
             };
@@ -859,7 +861,7 @@ where
                 }
 
                 // 13.9.
-                self.sink.remove_from_parent(&last_node);
+                self.checked_remove(&last_node)?;
                 self.checked_append(&node, AppendNode(last_node.clone()))?;
 
                 // 13.10.
@@ -869,7 +871,7 @@ where
             }
 
             // 14.
-            self.sink.remove_from_parent(&last_node);
+            self.checked_remove(&last_node)?;
             self.insert_appropriately(AppendNode(last_node.clone()), Some(common_ancestor))?;
 
             // 15.
@@ -1169,7 +1171,7 @@ where
         })?;
         Ok(())
     }
-    //В§ END
+    //§ END
 
     // Pop elements until the current element is in the set.
     fn pop_until_current<TagSet>(&self, tag_set: TagSet) -> Result<(), A::Error>
@@ -1344,7 +1346,7 @@ where
         Ok(ProcessResult::Done)
     }
 
-    /// KaminIDE patch: РёРЅСЃС‚СЂСѓРєС†РёСЏ РѕР±СЂР°Р±РѕС‚РєРё РЅР° РјРµСЃС‚Рѕ С‚РµРєСѓС‰РµР№ РІСЃС‚Р°РІРєРё.
+    /// KaminIDE patch: инструкция обработки на место текущей вставки.
     fn append_pi(
         &self,
         target: StrTendril,
@@ -1355,7 +1357,7 @@ where
         Ok(ProcessResult::Done)
     }
 
-    /// KaminIDE patch: РёРЅСЃС‚СЂСѓРєС†РёСЏ РѕР±СЂР°Р±РѕС‚РєРё РІ СЃР°Рј РґРѕРєСѓРјРµРЅС‚ (РґРѕ `<html>`).
+    /// KaminIDE patch: инструкция обработки в сам документ (до `<html>`).
     fn append_pi_to_doc(
         &self,
         target: StrTendril,
@@ -1366,7 +1368,7 @@ where
         Ok(ProcessResult::Done)
     }
 
-    /// KaminIDE patch: РёРЅСЃС‚СЂСѓРєС†РёСЏ РѕР±СЂР°Р±РѕС‚РєРё РІ РєРѕСЂРЅРµРІРѕР№ `<html>`.
+    /// KaminIDE patch: инструкция обработки в корневой `<html>`.
     fn append_pi_to_html(
         &self,
         target: StrTendril,
@@ -1393,8 +1395,8 @@ where
         Ok(ProcessResult::Done)
     }
 
-    //В§ creating-and-inserting-nodes
-    fn create_root(&self, attrs: Vec<Attribute>) -> Result<(), A::Error> {
+    //§ creating-and-inserting-nodes
+    fn create_root(&self, attrs: Storage<Attribute>) -> Result<(), A::Error> {
         let elem = self.checked_create_element_default(
             QualName::new(None, ns!(html), local_name!("html")),
             attrs,
@@ -1411,7 +1413,7 @@ where
         push: PushFlag,
         ns: Namespace,
         name: LocalName,
-        attrs: Vec<Attribute>,
+        attrs: Storage<Attribute>,
         had_duplicate_attributes: bool,
     ) -> Result<Handle, A::Error> {
         declare_tag_set!(form_associatable =
@@ -1485,7 +1487,7 @@ where
     }
 
     fn insert_phantom(&self, name: LocalName) -> Result<Handle, A::Error> {
-        self.insert_element(PushFlag::Push, ns!(html), name, vec![], false)
+        self.insert_element(PushFlag::Push, ns!(html), name, Storage::default(), false)
     }
 
     /// <https://html.spec.whatwg.org/multipage/parsing.html#insert-an-element-at-the-adjusted-insertion-location>
@@ -1506,7 +1508,7 @@ where
         self.push(&elem)?;
         Ok(elem)
     }
-    //В§ END
+    //§ END
 
     /// <https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead>
     ///
@@ -1655,7 +1657,7 @@ where
         Ok(())
     }
 
-    //В§ tree-construction
+    //§ tree-construction
     fn is_foreign(&self, token: &Token) -> bool {
         if let Token::Eof = *token {
             return false;
@@ -1714,7 +1716,7 @@ where
 
         true
     }
-    //В§ END
+    //§ END
 
     fn enter_foreign(
         &self,
@@ -1942,7 +1944,7 @@ where
     }
 }
 
-impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Handle>>
+impl<Handle: Clone, Sink: TreeSink<Handle = Handle>, A: Admission<Sink>>
     TreeBuilder<Handle, Sink, A>
 {
     fn process_token_admitted(

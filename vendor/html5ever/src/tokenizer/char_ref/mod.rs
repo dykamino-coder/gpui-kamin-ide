@@ -380,7 +380,12 @@ impl CharRefTokenizer {
                     self.unconsume_name(input);
                     Status::Done(CharRef::EMPTY)
                 } else {
-                    input.push_front(StrTendril::from_slice(&self.name_buf()[name_len..]));
+                    // Keep the admitted backing allocation when returning a suffix.
+                    // Short suffixes remain inline in tendril's canonical slice API.
+                    input.push_front(
+                        self.name_buf()
+                            .subtendril(name_len as u32, (self.name_buf().len() - name_len) as u32),
+                    );
                     tokenizer.ignore_lf.set(false);
                     Status::Done(CharRef {
                         chars: [from_u32(c1).unwrap(), from_u32(c2).unwrap()],

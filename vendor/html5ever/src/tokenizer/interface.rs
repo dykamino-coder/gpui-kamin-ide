@@ -7,6 +7,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::admission::storage::Storage;
 use markup5ever::ns;
 
 use crate::interface::Attribute;
@@ -50,7 +51,7 @@ pub struct Tag {
     ///
     /// An example of a self closing tag is `<foo />`.
     pub self_closing: bool,
-    pub attrs: Vec<Attribute>,
+    pub attrs: Storage<Attribute>,
     /// Whether duplicate attributes were encountered during tokenization.
     /// This is used for CSP nonce validation - elements with duplicate
     /// attributes are not nonceable per the CSP spec.
@@ -153,7 +154,7 @@ pub trait TokenSink {
     fn before_attribute(&self, _: &str, _: usize) -> bool {
         true
     }
-    fn reserve<T>(&self, values: &mut Vec<T>, additional: usize) -> bool {
+    fn reserve<T>(&self, values: &mut Storage<T>, additional: usize) -> bool {
         values.reserve(additional);
         true
     }
