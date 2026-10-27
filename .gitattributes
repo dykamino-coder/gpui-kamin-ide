@@ -7,3 +7,6 @@ Dockerfile text eol=lf
 # Vendor patches embed Git binary-patch literals and are applied byte for
 # byte; any CRLF conversion on checkout corrupts those sections.
 *.patch -text
+
+# Upstream byte-exact import; vendor patch round-trip verifies the source bytes.
+vendor/xml-rs/src/writer/emitter.rs whitespace=-trailing-space

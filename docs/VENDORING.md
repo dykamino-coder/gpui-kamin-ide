@@ -14,8 +14,14 @@
 | `gpui-component` | crates.io `gpui-component` 0.7.1, тот же commit, `crates/component` |
 | `taffy` | `cargo package` из DioxusLabs/taffy `2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f` (manifest version 0.14.0) |
 | `html5ever` | crates.io `html5ever` 0.40.1 |
+| `tendril` | crates.io `tendril` 0.5.1; неизменённый импорт, пока без path override |
+| `xml-rs` | crates.io `xml-rs` 0.8.29; неизменённый импорт, пока без path override |
 | `markup5ever_rcdom` | crates.io `markup5ever_rcdom` 0.39.0+unofficial |
 | `resvg`, `usvg` | crates.io 0.48.1 с заменой `src/` из linebender/resvg commit `77b12f4951a7b75d759c42e8c9497cff7c839c3c` |
+
+Архивные файлы `tendril` и `xml-rs` сохранены целиком, включая исходные
+лицензии MIT/Apache-2.0. Пустой полный патч означает неизменённый импорт;
+регистрация базы сама по себе не подключает fork к графу зависимостей.
 
 Taffy с версией manifest 0.14.0 уже содержит изменения upstream после релиза.
 Релизный архив 0.14.0 не является базой этого форка. Для подготовки базы

@@ -20,7 +20,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/block/struts/through.rs"),
     include_str!("../../layout/writing_mode/mod.rs"),
     include_str!("../../paint/effects/mask/mod.rs"),
-    include_str!("../../paint/effects/mask/context.rs"),
+    include_str!("../../resources/svg_document/masks.rs"),
     include_str!("../../paint/effects/grouped.rs"),
     include_str!("../../paint/effects/grouped/bare_clip.rs"),
     include_str!("../../paint/effects/grouped/wrapper.rs"),

@@ -14,6 +14,16 @@ def document(owner, **entries):
 
 
 class ManifestContract(unittest.TestCase):
+    def test_font_contract_helpers_obey_the_same_dev_only_boundary(self):
+        dependency = {'kamin-font-facts': {'features': ['engine-test-support']}}
+        self.assertEqual(manifest_errors({
+            'lower': document('kamin-font-facts', features={'engine-test-support': []}),
+            'upper': document('kamin-html', **{'dev-dependencies': dependency})}), [])
+        for owner in ('kamin-html', 'kamin-style', 'kamin-layout', 'kamin-paint'):
+            with self.subTest(owner=owner):
+                self.assertTrue(manifest_errors({
+                    'consumer': document(owner, dependencies=dependency)}))
+
     def test_only_upper_dev_dependency_can_activate_support(self):
         allowed = {'features': {'engine-test-support': ['gpui/test-support']}}
         documents = {
