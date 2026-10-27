@@ -57,3 +57,46 @@ fn direct_oof_uses_native_static_anchor_and_keeps_empty_normal_plan(cx: &mut gpu
         gpui::div()
     });
 }
+
+#[gpui::test]
+fn native_source_routes_only_a_stack_on_its_own_axis(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
+    cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
+        let tree = crate::dom::parse(
+            "<section style='writing-mode:vertical-rl;direction:rtl;position:relative;height:100px'><aside style='position:absolute;width:20px;height:30px'></aside></section>",
+            "",
+        );
+        let mut opts = RenderOpts {
+            viewport: (400., 400.),
+            normal_line_height: 1.2,
+            text: Default::default(),
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+        opts.cx.values.viewport = opts.viewport;
+        crate::style::cascade::materialize::materialize(
+            &tree, opts.root_style().style_rc(), opts.cx.vcx(),
+        );
+        let mut pending: Vec<_> = tree.iter().filter_map(|n| match n {
+            Node::Element(e) => Some(e), _ => None,
+        }).collect();
+        let host = loop {
+            let e = pending.pop().unwrap();
+            if e.tag == "section" { break e; }
+            pending.extend(e.children.iter().filter_map(|n| match n {
+                Node::Element(e) => Some(e), _ => None,
+            }));
+        };
+        let kids: Vec<_> = host.children.iter().filter_map(|n| match n {
+            Node::Element(e) => Some(e.clone()), _ => None,
+        }).collect();
+        let geometry = crate::layout::positioned::containing_block::metrics::layout::collect(
+            &kids, &crate::style::computed::BoxStyle::shared(host.style.used()), 100., &opts, window, app,
+        );
+        // The vertical `direction: rtl` columns run on the horizontal stack axis.
+        assert!(geometry.native_along(true).is_some());
+        assert!(geometry.native_along(false).is_none());
+        gpui::div()
+    });
+}

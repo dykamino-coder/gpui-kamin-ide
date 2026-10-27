@@ -32,7 +32,7 @@ pub(super) fn new(
         .position
         .geometry
         .as_ref()
-        .filter(|g| g.native_oof().is_some() && g.host == merged.self_node)
+        .filter(|g| g.native_along(col_vert).is_some() && g.host == merged.self_node)
         .map(|g| g.continued_roots());
     let positioning = opts.cx.position.state.retain();
     let merged = merged.clone();

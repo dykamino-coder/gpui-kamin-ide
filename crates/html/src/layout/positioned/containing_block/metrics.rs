@@ -57,6 +57,8 @@ pub(crate) struct Snapshot {
     pub(crate) native: Option<std::rc::Rc<layout::Native>>,
     /// Fragmentation host whose children the source lays out (0: a page area).
     pub(crate) host: u64,
+    /// Fragmentation axis the source laid its flows out along.
+    pub(crate) axis: Option<crate::layout::fragment::types::StackAxis>,
 }
 
 impl Snapshot {
@@ -64,6 +66,14 @@ impl Snapshot {
     /// floats are recorded for geometry but stay in their owner's normal flow.
     pub(crate) fn native_oof(&self) -> Option<&std::rc::Rc<layout::Native>> {
         self.native.as_ref().filter(|_| !self.flows.is_empty())
+    }
+
+    /// The native source of a stack fragmenting along `vertical`: a stack laid
+    /// out on another axis (the vertical `direction: rtl` column path) cannot
+    /// route the source's continuations, which its own copies keep painting.
+    pub(crate) fn native_along(&self, vertical: bool) -> Option<&std::rc::Rc<layout::Native>> {
+        self.native_oof()
+            .filter(|_| self.axis.is_some_and(|axis| axis.is_vertical() == vertical))
     }
 
     /// Outermost roots of the continued flows: the boxes whose legacy copies

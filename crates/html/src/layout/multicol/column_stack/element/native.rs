@@ -14,7 +14,7 @@ impl ColumnStack {
     pub(crate) fn copy_records(&self) -> Option<crate::hooks::BareRecords> {
         self.oof
             .geometry
-            .native_oof()
+            .native_along(self.axis.is_vertical())
             .map(|_| self.oof.records.borrow().1.clone())
     }
 
@@ -25,7 +25,7 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
-        let Some(native) = self.oof.geometry.native_oof().cloned() else {
+        let Some(native) = self.oof.geometry.native_along(self.axis.is_vertical()).cloned() else {
             return Ok(());
         };
         let snapshot = self.oof.geometry.clone();
@@ -146,7 +146,7 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<(), PaintRecordError> {
-        let Some(native) = self.oof.geometry.native_oof() else {
+        let Some(native) = self.oof.geometry.native_along(self.axis.is_vertical()) else {
             return Ok(());
         };
         let (records, bare) = native.record(window, cx)?;

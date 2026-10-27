@@ -5,6 +5,7 @@ use super::*;
 impl Recorder {
     pub(crate) fn fragment_snapshot(&self, snapshot: &mut Snapshot, window: &mut Window) {
         let axis = self.flows.axis;
+        snapshot.axis = Some(axis);
         let mut contexts = Vec::with_capacity(self.flows.flows.len());
         let mut roots: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
         let mut outside = Vec::with_capacity(self.flows.flows.len());
