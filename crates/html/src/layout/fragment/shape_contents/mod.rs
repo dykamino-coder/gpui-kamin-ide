@@ -1,7 +1,7 @@
 //! TRANSITIONAL(F2-7): DOM-dispatch строит preplan до раскладки форматирующих контекстов; удалить в P22 после перевода всех readers на child resume в P21.
 //! Мера содержимого коробки для фрагментации (`shape_contents`, вход `shape_full`): по DOM и
 //! стилю без раскладки — высота, поля, точки разреза, принудительные разрывы и монолиты.
-//! Выбор ветки: коробка из одних флоатов, таблица (`table_bands`), многострочный flex-ряд
+//! Выбор ветки: коробка из одних флоатов, таблица (у колонок — отказ), многострочный flex-ряд
 //! (`flex_lines`), строчный набор по строкам (`line_shape`), иначе стопка детей
 //! (`kids`, `kid_shapes`, `lines`, `height`, `cuts`): схлопнутые поля, `row-gap` flex и сетки,
 //! ряд без переноса как параллельные потоки, дотяг внепоточных потомков. Коробки с флоатами
@@ -16,7 +16,7 @@ use crate::layout::float::{float_only_box, has_float};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::line_shape::{inline_content, line_run_shape};
 use crate::layout::fragment::oof_reach::Measure;
-use crate::layout::fragment::table_bands::{table_box, table_shape};
+use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Display, LenCx};
 use crate::style::values::value::Len;
 mod kids;
@@ -92,21 +92,13 @@ pub(super) fn shape_contents(
     if has_float(c, 3) {
         return None;
     }
-    // Таблица — своя мера: ряды стопкой, зазоры `border-spacing`, точки
-    // класса A между рядами (css-break-4 §possible-breaks). Неизмеримая
-    // (сросшиеся рамки, `rowspan`, подпись, заданная высота) идёт прежним
-    // путём — стопкой блоков по тегу: `return None` здесь отнимал у КОЛОНОК
-    // точки внутри такой таблицы (`border-collapse-001`).
-    // У колонок неизмеримая таблица по-прежнему `None`: сквозной путь по тегу
-    // хранит перенос принудительного разрыва ячейки на таблицу
-    // (`break-after-table-cell`, `-child` без гейта ломаются). Страницы —
-    // стопкой блоков.
-    if table_box(c) {
-        match table_shape(c, depth, cx, vcx) {
-            Some(s) => return Some(none(s)),
-            None if !cx.paged => return None,
-            None => {}
-        }
+    // Таблицу не оценивает никто: её подписи, коробку, ряды и ячейки кладёт
+    // и записывает только раскладка (`flow::blocks::table`; css-tables-3
+    // §fragmentation: ряды сохраняют исходную сетку, подписи — соседи коробки
+    // в обёртке). У колонок таблица — отказ меры, её меряет раскладка копии;
+    // страницы идут прежней стопкой блоков по тегу.
+    if table_box(c) && !cx.paged {
+        return None;
     }
     let b = c.style.used().borders();
     let mt = px_or(&c.style.used().margin.top, false)?;

@@ -83,16 +83,10 @@ impl TableBox {
             if cap.tag != "caption" && cap.style.used().is_caption != Some(true) {
                 continue;
             }
-            // Сторона — с самой подписи, при пустоте — с таблицы (как
-            // `layout::table::finish::collect_captions`).
+            // Сторона — computed `caption-side` самой подписи, как у
+            // рисователя (`layout::table::finish::collect_captions`).
             let kid = caption_kid(cap, cx, vcx);
-            if cap
-                .style
-                .cascaded()
-                .caption_bottom
-                .or(e.style.cascaded().caption_bottom)
-                == Some(true)
-            {
+            if crate::dom::table_boxes::caption_at_bottom(cap) {
                 out.caps_bot.push(kid);
             } else {
                 out.caps_top.push(kid);

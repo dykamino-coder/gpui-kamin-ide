@@ -5,6 +5,8 @@ use crate::layout::fragment::flow::FlowGeometry;
 use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed, TableFrame};
 use crate::style::computed::Display;
 
+mod captions;
+
 /// Стопка первой таблицы документа (`display: table`) и номера узлов блоков
 /// `<p>` в её ячейках в порядке документа.
 fn table(html: &str) -> (BlockBox, Vec<u64>) {
