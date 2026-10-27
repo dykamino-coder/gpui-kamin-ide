@@ -3,6 +3,7 @@
 
 mod record;
 mod vector_transform;
+pub(crate) mod affine_transform;
 pub(crate) mod segments;
 
 use schemars::JsonSchema;

@@ -8,6 +8,7 @@ mod placement;
 mod primitives;
 mod scopes;
 mod segments;
+mod affine_presentation;
 mod vector_transform;
 
 fn draw<E: gpui::Element>(make: impl FnOnce() -> E) {

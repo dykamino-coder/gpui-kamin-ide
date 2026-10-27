@@ -74,6 +74,7 @@ mod frame_capture;
 mod paint_scope;
 mod paint_record;
 mod hit_transform;
+pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
     PaintScopeDescriptor, PaintGroupDescriptor};
 mod paint_snapshot;
@@ -1024,6 +1025,9 @@ pub(crate) struct Frame {
     pub(crate) hitboxes: Vec<Hitbox>,
     /// KaminIDE patch: inverse-matrix scopes of hitboxes inserted under a transform.
     pub(crate) hitbox_scopes: FxHashMap<HitboxId, Rc<hit_transform::HitScope>>,
+    /// KaminIDE patch: scopes of single segment placements (index in `hitboxes`),
+    /// overriding the scope of their hitbox id.
+    pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
@@ -1081,6 +1085,7 @@ impl Frame {
             scene: Scene::default(),
             hitboxes: Vec::new(),
             hitbox_scopes: FxHashMap::default(),
+            hitbox_entry_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
             deferred_draws: Vec::new(),
             input_handlers: Vec::new(),
@@ -1112,6 +1117,7 @@ impl Frame {
         self.cursor_styles.clear();
         self.hitboxes.clear();
         self.hitbox_scopes.clear();
+        self.hitbox_entry_scopes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
         self.tab_stops.clear();
@@ -1148,8 +1154,12 @@ impl Frame {
     pub(crate) fn hit_test(&self, position: Point<Pixels>) -> HitTest {
         let mut set_hover_hitbox_count = false;
         let mut hit_test = HitTest::default();
-        for hitbox in self.hitboxes.iter().rev() {
-            if hit_transform::HitScope::hitbox_contains(self.hitbox_scopes.get(&hitbox.id), hitbox, position) {
+        for (index, hitbox) in self.hitboxes.iter().enumerate().rev() {
+            let scope = match self.hitbox_entry_scopes.get(&index) {
+                Some(scope) => scope.as_ref(),
+                None => self.hitbox_scopes.get(&hitbox.id),
+            };
+            if hit_transform::HitScope::hitbox_contains(scope, hitbox, position) {
                 hit_test.ids.push(hitbox.id);
                 if !set_hover_hitbox_count
                     && hitbox.behavior == HitboxBehavior::BlockMouseExceptScroll
@@ -4090,6 +4100,13 @@ impl Window {
                 self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
             }
         }
+        let shift = self.next_frame.hitboxes.len();
+        for index in range.start.hitboxes_index..range.end.hitboxes_index {
+            if let Some(scope) = self.rendered_frame.hitbox_entry_scopes.get(&index) {
+                let entry = shift + index - range.start.hitboxes_index;
+                self.next_frame.hitbox_entry_scopes.insert(entry, scope.clone());
+            }
+        }
         self.next_frame.hitboxes.extend(
             self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
                 .iter()
@@ -4526,6 +4543,7 @@ impl Window {
         let result = f(self);
         if result.is_err() {
             self.next_frame.hitboxes.truncate(index.hitboxes_index);
+            self.next_frame.hitbox_entry_scopes.retain(|entry, _| *entry < index.hitboxes_index);
             self.next_frame
                 .tooltip_requests
                 .truncate(index.tooltips_index);

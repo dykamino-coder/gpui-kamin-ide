@@ -3,25 +3,27 @@
 
 use gpui::{
     AnyElement, AvailableSpace, Bounds, Context, Hsla, IntoElement, ParentElement, Pixels, Render,
-    Scene, Styled, TestAppContext, Window, canvas, point, px, size,
+    ScaledPixels, Scene, Styled, TestAppContext, Window, canvas, point, px, size,
 };
 use std::{cell::RefCell, rc::Rc};
 
-type Quads = Rc<RefCell<Vec<(Bounds<Pixels>, Hsla)>>>;
+/// Visible quads with the paint group holding each (0: no group).
+type Quads = Rc<RefCell<Vec<(Bounds<Pixels>, Hsla, usize)>>>;
 
-/// One explicit frame inside a real view (element state needs a current view).
+/// The document's frame inside a real view (element state needs a current view);
+/// every redraw builds the document element again.
 struct Frame {
-    root: Rc<RefCell<Option<AnyElement>>>,
+    build: Rc<dyn Fn() -> AnyElement>,
     sink: Quads,
     size: (f32, f32),
 }
 
 impl Render for Frame {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let (root, sink, (w, h)) = (self.root.clone(), self.sink.clone(), self.size);
+        let (build, sink, (w, h)) = (self.build.clone(), self.sink.clone(), self.size);
         canvas(
             move |_, window, cx| {
-                let mut root = root.borrow_mut().take()?;
+                let mut root = build();
                 root.layout_as_root(
                     size(
                         AvailableSpace::Definite(px(w)),
@@ -31,19 +33,27 @@ impl Render for Frame {
                     cx,
                 );
                 root.prepaint_at(point(px(0.), px(0.)), window, cx);
-                Some(root)
+                root
             },
-            move |_, root, window, cx| {
-                let Some(mut root) = root else { return };
+            move |_, mut root, window, cx| {
                 let extent = Bounds::new(point(px(0.), px(0.)), size(px(w), px(h)));
                 let (_, record) = window
                     .record_paint(extent, cx, |window, cx| root.paint(window, cx))
                     .expect("document paint");
-                collect(
-                    record.scene(),
-                    window.scale_factor(),
-                    &mut sink.borrow_mut(),
-                );
+                let mut sink = sink.borrow_mut();
+                sink.clear();
+                collect(record.scene(), window.scale_factor(), &mut sink);
+                // The frame shows what was recorded.
+                window
+                    .paint_plan(
+                        &gpui::PaintPlan::record(record),
+                        gpui::PaintPlacement {
+                            source: point(px(0.), px(0.)),
+                            destination: point(px(0.), px(0.)),
+                            clip: extent,
+                        },
+                    )
+                    .expect("document replay");
             },
         )
         .size_full()
@@ -52,20 +62,56 @@ impl Render for Frame {
 
 /// Visible solid quads of `html` laid out in a `w × h` viewport, in paint order.
 pub(crate) fn quads(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
-    draw(html, false, w, h)
+    plain(open(html, false, w, h, |_, sink| sink.take()))
+}
+
+/// Visible quads with their paint group (one per effect instance; 0: none).
+pub(crate) fn grouped(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla, usize)> {
+    open(html, false, w, h, |_, sink| sink.take())
+}
+
+fn plain(found: Vec<(Bounds<Pixels>, Hsla, usize)>) -> Vec<(Bounds<Pixels>, Hsla)> {
+    found.into_iter().map(|(b, c, _)| (b, c)).collect()
 }
 
 /// The same for a print document on the default WPT page box (5in × 3in sheet,
 /// 0.5in margins): sheets laid out by the page stack in a `w × h` window.
 pub(crate) fn printed(html: &str, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
-    draw(html, true, w, h)
+    plain(open(html, true, w, h, |_, sink| sink.take()))
 }
 
-fn draw(html: &str, print: bool, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> {
-    let document = crate::Document::builder(html, crate::BROWSER_CSS)
-        .print(print)
-        .build()
-        .expect("test document");
+/// The cursor chosen by the frame's hit test at each window point.
+pub(crate) fn cursors(
+    html: &str,
+    print: bool,
+    w: f32,
+    h: f32,
+    points: &[(f32, f32)],
+) -> Vec<gpui::CursorStyle> {
+    open(html, print, w, h, |vcx, _| {
+        points
+            .iter()
+            .map(|&(x, y)| {
+                vcx.simulate_mouse_move(point(px(x), px(y)), None, Default::default());
+                vcx.update(|window, _| window.hit_test_cursor_style())
+            })
+            .collect()
+    })
+}
+
+fn open<R>(
+    html: &str,
+    print: bool,
+    w: f32,
+    h: f32,
+    inspect: impl FnOnce(&mut gpui::VisualTestContext, &Quads) -> R,
+) -> R {
+    let document = Rc::new(
+        crate::Document::builder(html, crate::BROWSER_CSS)
+            .print(print)
+            .build()
+            .expect("test document"),
+    );
     let (sheet, margin) = ((480., 288.), 48.);
     let area = (sheet.0 - 2. * margin, sheet.1 - 2. * margin);
     let options = crate::layout::options::RenderOpts {
@@ -75,66 +121,80 @@ fn draw(html: &str, print: bool, w: f32, h: f32) -> Vec<(Bounds<Pixels>, Hsla)> 
         cx: Default::default(),
         frag: Default::default(),
     };
-    let root = Rc::new(RefCell::new(None));
+    let build: Rc<dyn Fn() -> AnyElement> = Rc::new(move || {
+        if print {
+            let geom_for: crate::layout::page::page_stack::PageGeomFn =
+                Rc::new(
+                    move |_, _: &str| crate::layout::page::page_stack::PageGeom {
+                        size: sheet,
+                        margin: [margin; 4],
+                        border: (0., gpui::black()),
+                        outline: (0., 0., gpui::black()),
+                        padding: [0.; 4],
+                        bg: gpui::white(),
+                        canvas: None,
+                        area,
+                        turn: 0,
+                    },
+                );
+            let stack = crate::layout::page::paged::render_paged_select(
+                document.nodes(),
+                &document.frame_opts(&options),
+                geom_for,
+                None,
+                None,
+            );
+            gpui::div()
+                .w(px(w))
+                .h(px(h))
+                .child(document.scoped(stack))
+                .into_any_element()
+        } else {
+            gpui::div()
+                .children(document.render(&options))
+                .into_any_element()
+        }
+    });
     let sink: Quads = Rc::default();
     let mut cx = TestAppContext::single();
     let (_, vcx) = cx.add_window_view(|_, _| Frame {
-        root: root.clone(),
+        build,
         sink: sink.clone(),
         size: (w, h),
     });
-    sink.borrow_mut().clear();
-    let element = if print {
-        let geom_for: crate::layout::page::page_stack::PageGeomFn =
-            Rc::new(
-                move |_, _: &str| crate::layout::page::page_stack::PageGeom {
-                    size: sheet,
-                    margin: [margin; 4],
-                    border: (0., gpui::black()),
-                    outline: (0., 0., gpui::black()),
-                    padding: [0.; 4],
-                    bg: gpui::white(),
-                    canvas: None,
-                    area,
-                    turn: 0,
-                },
-            );
-        let stack = crate::layout::page::paged::render_paged_select(
-            document.nodes(),
-            &document.frame_opts(&options),
-            geom_for,
-            None,
-            None,
-        );
-        gpui::div()
-            .w(px(w))
-            .h(px(h))
-            .child(document.scoped(stack))
-            .into_any_element()
-    } else {
-        gpui::div()
-            .children(document.render(&options))
-            .into_any_element()
-    };
-    *root.borrow_mut() = Some(element);
     vcx.update(|window, app| {
         window.refresh();
         window.draw(app).clear(app);
     });
-    sink.take()
+    inspect(vcx, &sink)
 }
 
-fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, Hsla)>) {
-    let mut pending = vec![scene];
-    while let Some(scene) = pending.pop() {
+fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, Hsla, usize)>) {
+    let mut pending = vec![(scene, 0)];
+    let mut groups = 0;
+    while let Some((scene, group)) = pending.pop() {
         for quad in &scene.quads {
             let Some(color) = quad.background.as_solid().filter(|c| c.a > 0.) else {
                 continue;
             };
-            let t = quad.transformation.translation;
-            let mut b = quad.bounds;
-            b.origin.x.0 += t[0];
-            b.origin.y.0 += t[1];
+            // Device bounds of the transformed quad (four corners).
+            let m = quad.transformation;
+            let q = quad.bounds;
+            let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            for (x, y) in [
+                (q.origin.x.0, q.origin.y.0),
+                (q.origin.x.0 + q.size.width.0, q.origin.y.0),
+                (q.origin.x.0, q.origin.y.0 + q.size.height.0),
+                (q.origin.x.0 + q.size.width.0, q.origin.y.0 + q.size.height.0),
+            ] {
+                let p = m.apply(point(px(x), px(y)));
+                let (px_, py_) = (f32::from(p.x), f32::from(p.y));
+                (x0, y0, x1, y1) = (x0.min(px_), y0.min(py_), x1.max(px_), y1.max(py_));
+            }
+            let b = Bounds::new(
+                point(ScaledPixels(x0), ScaledPixels(y0)),
+                size(ScaledPixels(x1 - x0), ScaledPixels(y1 - y0)),
+            );
             let visible = b.intersect(&quad.content_mask.bounds);
             if visible.size.width.0 <= 0. || visible.size.height.0 <= 0. {
                 continue;
@@ -149,9 +209,12 @@ fn collect(scene: &Scene, scale: f32, out: &mut Vec<(Bounds<Pixels>, Hsla)>) {
                     px(visible.size.height.0 / scale),
                 ),
             );
-            out.push((logical, color));
+            out.push((logical, color, group));
         }
-        pending.extend(scene.groups.iter().rev().map(|group| &group.scene));
+        for inner in scene.groups.iter().rev() {
+            groups += 1;
+            pending.push((&inner.scene, groups));
+        }
     }
 }
 

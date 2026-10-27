@@ -49,6 +49,7 @@ impl Window {
             placed.bounds.origin += delta;
             placed.content_mask = ContentMask { bounds: clip };
             if !placed.bounds.intersect(&clip).is_empty() {
+                self.note_segment_hit_scope(route);
                 self.next_frame.hitboxes.push(placed);
             }
         }

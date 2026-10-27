@@ -200,7 +200,6 @@ impl ColumnStack {
                 crate::paint::continuation::with_copy_segment(
                     segment,
                     records.as_ref(),
-                    None,
                     window,
                     |window| el.paint(window, cx),
                 )

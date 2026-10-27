@@ -45,11 +45,17 @@ impl PageStack {
                 .clone()
                 .ok_or(PaintRecordError::InvalidGeometry)?;
             let routing = admission.finish(&snapshot);
+            // Placements replayed by a slot are hit through that copy's scope
+            // (its sheet matrix and its own CSS transforms).
+            let scopes = self.oof.slot_scopes.scopes(&routing.roots);
             window.with_hitbox_transform(hits, |window| {
-                native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
+                window.with_prepaint_segment_hit_scopes(scopes, |window| {
+                    native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
+                })
             })?;
             natives.push(native);
         }
+        self.oof.slot_scopes.clear();
         *self.oof.natives.borrow_mut() = natives;
         Ok(())
     }

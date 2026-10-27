@@ -212,7 +212,6 @@ impl ColumnStack {
                                 crate::paint::continuation::with_copy_segment(
                                     gpui::PaintSegmentId(f.col as u64),
                                     records.as_ref(),
-                                    None,
                                     window,
                                     |window| el.paint(window, cx),
                                 )
@@ -224,7 +223,6 @@ impl ColumnStack {
                 crate::paint::continuation::with_copy_segment(
                     gpui::PaintSegmentId(f.col as u64),
                     records.as_ref(),
-                    None,
                     window,
                     |window| el.paint(window, cx),
                 );

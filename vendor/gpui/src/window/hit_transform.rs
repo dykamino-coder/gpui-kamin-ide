@@ -94,6 +94,41 @@ impl Window {
     }
 }
 
+/// The hit scope active at a prepaint point (e.g. inside a transformed copy that
+/// replays a segment record); segment placements can be tested through it.
+#[derive(Clone, Default)]
+pub struct PaintHitScope(Option<Rc<HitScope>>);
+
+struct SegmentHitScopes(Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>);
+
+impl Window {
+    /// The hit scope of the current prepaint position.
+    pub fn paint_hit_scope(&self) -> PaintHitScope {
+        PaintHitScope(self.hit_scope.clone())
+    }
+
+    /// Inside `with_prepaint_segments`, test the listed placements (segment,
+    /// ordinal) through the given scopes instead of the current one: a placement
+    /// replayed under a transformed copy is hit through that copy's matrix.
+    pub fn with_prepaint_segment_hit_scopes<R>(
+        &mut self,
+        scopes: Rc<[(crate::PaintSegmentId, u32, PaintHitScope)]>,
+        prepaint: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let _scopes = self.render_contexts.enter(Some(Rc::new(SegmentHitScopes(scopes))));
+        prepaint(self)
+    }
+
+    /// Record the scope of the placement `route` about to be pushed.
+    pub(crate) fn note_segment_hit_scope(&mut self, route: crate::PaintSegment) {
+        let Some(scopes) = self.render_contexts.get::<SegmentHitScopes>() else { return };
+        if let Some((_, _, scope)) = scopes.0.iter().find(|(id, ordinal, _)| *id == route.id && *ordinal == route.ordinal) {
+            let entry = self.next_frame.hitboxes.len();
+            self.next_frame.hitbox_entry_scopes.insert(entry, scope.0.clone());
+        }
+    }
+}
+
 impl HitScope {
     /// Whether `hitbox`, inserted under `scope`, covers the window point `position`.
     pub(crate) fn hitbox_contains(scope: Option<&Rc<HitScope>>, hitbox: &Hitbox, position: Point<Pixels>) -> bool {

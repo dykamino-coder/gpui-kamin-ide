@@ -23,6 +23,8 @@ pub(super) struct State {
     pub(super) repeat_snapshots: RefCell<Vec<(usize, usize, Rc<Snapshot>)>>,
     pub(super) natives: RefCell<Vec<Rc<Native>>>,
     pub(super) records: RefCell<super::native::Records>,
+    /// Hit scopes of the slots in the sheets' copies, read by the native prepaint.
+    pub(super) slot_scopes: crate::paint::continuation::SlotScopes,
 }
 
 #[cfg(test)]

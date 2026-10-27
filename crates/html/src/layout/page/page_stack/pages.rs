@@ -76,6 +76,10 @@ impl PageStack {
                     full_h,
                 )
             };
+            // The copy is hit through its sheet's matrix; its slots report it.
+            let sheet = self.sheet_matrix(bounds, f.col);
+            let segment = gpui::PaintSegmentId(f.col as u64);
+            let scopes = self.oof.slot_scopes.clone();
             let kid = &mut self.kids[f.kid];
             if let Some(r) = kid.repeat.as_mut() {
                 r.place_bands(f, |el, at| {
@@ -110,11 +114,15 @@ impl PageStack {
                 window,
                 cx,
             );
-            el.prepaint_at(
-                point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y)),
-                window,
-                cx,
-            );
+            window.with_hitbox_transform(sheet, |window| {
+                crate::paint::continuation::with_copy_hits(segment, &scopes, window, |window| {
+                    el.prepaint_at(
+                        point(bounds.origin.x + px(sx + x), bounds.origin.y + px(sy + y)),
+                        window,
+                        cx,
+                    )
+                })
+            });
         }
         // Слой ICB поднят на сумму предшествующих area: непрерывный поток
         // абсолютов разрезается страницами с их действительными размерами.
@@ -122,15 +130,22 @@ impl PageStack {
         for p in 0..pages.min(self.icb.len()) {
             let (sx, sy) = self.sheet_origin(p);
             let (ax, ay) = geoms[p].area_origin();
+            let sheet = self.sheet_matrix(bounds, p);
+            let scopes = self.oof.slot_scopes.clone();
             for el in &mut self.icb[p] {
-                el.prepaint_at(
-                    point(
-                        bounds.origin.x + px(sx + ax),
-                        bounds.origin.y + px(sy + ay - lift),
-                    ),
-                    window,
-                    cx,
-                );
+                window.with_hitbox_transform(sheet, |window| {
+                    let segment = gpui::PaintSegmentId(p as u64);
+                    crate::paint::continuation::with_copy_hits(segment, &scopes, window, |window| {
+                        el.prepaint_at(
+                            point(
+                                bounds.origin.x + px(sx + ax),
+                                bounds.origin.y + px(sy + ay - lift),
+                            ),
+                            window,
+                            cx,
+                        )
+                    })
+                });
             }
             lift += self.area_logical(&geoms[p]).1;
         }
@@ -143,12 +158,19 @@ impl PageStack {
             // повторяет на каждом листе (`fixedpos-010-print`: `right: -100px`
             // при листе 400 — за краем, на листах 500 — в правом нижнем углу).
             let (ax, ay) = geoms[p].area_origin();
+            let sheet = self.sheet_matrix(bounds, p);
+            let scopes = self.oof.slot_scopes.clone();
             for el in &mut self.fixed[p] {
-                el.prepaint_at(
-                    point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
-                    window,
-                    cx,
-                );
+                window.with_hitbox_transform(sheet, |window| {
+                    let segment = gpui::PaintSegmentId(p as u64);
+                    crate::paint::continuation::with_copy_hits(segment, &scopes, window, |window| {
+                        el.prepaint_at(
+                            point(bounds.origin.x + px(sx + ax), bounds.origin.y + px(sy + ay)),
+                            window,
+                            cx,
+                        )
+                    })
+                });
             }
         }
     }

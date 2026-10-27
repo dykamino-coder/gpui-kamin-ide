@@ -29,7 +29,6 @@ impl PageStack {
                 translation: [sheet.translation[0] * k, sheet.translation[1] * k],
             };
             let records = self.copy_records();
-            let presentation = self.sheet_matrix(bounds, i);
             let plan_i: Vec<Frag> = plan.iter().copied().filter(|f| f.col == i).collect();
             window.with_transformation_masked(m, |window| {
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
@@ -78,7 +77,6 @@ impl PageStack {
                         crate::paint::continuation::with_copy_segment(
                             gpui::PaintSegmentId(f.col as u64),
                             records.as_ref(),
-                            Some(presentation),
                             window,
                             |window| el.paint(window, cx),
                         )
@@ -92,7 +90,6 @@ impl PageStack {
                                 crate::paint::continuation::with_copy_segment(
                                     gpui::PaintSegmentId(i as u64),
                                     records.as_ref(),
-                                    Some(presentation),
                                     window,
                                     |window| el.paint(window, cx),
                                 )
@@ -108,7 +105,6 @@ impl PageStack {
                                 crate::paint::continuation::with_copy_segment(
                                     gpui::PaintSegmentId(i as u64),
                                     records.as_ref(),
-                                    Some(presentation),
                                     window,
                                     |window| el.paint(window, cx),
                                 )

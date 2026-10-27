@@ -69,14 +69,40 @@ impl VectorTransform {
     }
 }
 
-struct Presentation(VectorTransform);
+/// Logical image of `b` under the device presentation `m`.
+pub(crate) fn presented_bounds(m: TransformationMatrix, b: Bounds<Pixels>, density: f32) -> Bounds<Pixels> {
+    if let Some(exact) = VectorTransform::from_matrix(m) {
+        return exact.bounds(b, density);
+    }
+    let d = crate::scene::affine_transform::placed(b.scale(density), &m);
+    Bounds::new(
+        point(px(d.origin.x.0 / density), px(d.origin.y.0 / density)),
+        size(px(d.size.width.0 / density), px(d.size.height.0 / density)),
+    )
+}
+
+/// A frozen scene under the device presentation `m` (non-singular).
+pub(crate) fn present(scene: Scene, m: TransformationMatrix) -> Scene {
+    match (VectorTransform::from_matrix(m), m.inverse()) {
+        (Some(exact), _) => scene.transform_vector(exact),
+        (None, Some(inverse)) => scene.transform_affine(m, inverse),
+        (None, None) => scene,
+    }
+}
+
+/// Device-space presentation matrix (non-singular).
+struct Presentation(TransformationMatrix);
 
 impl Window {
     /// Replay immutable records inside `paint` under `matrix` (logical pixels): the
-    /// presentation transform of a page sheet. Only `paint_plan` reads it; live paint
-    /// and capture are unaffected. Nested scopes compose (outer after inner). The
-    /// matrix must be an exact axis-preserving similarity (uniform scale and
-    /// quarter-turns), otherwise nothing is entered and `InvalidGeometry` is returned.
+    /// presentation transform of a page sheet, or the transform of the copy that
+    /// replays a record. Only `paint_plan` reads it; live paint and capture are
+    /// unaffected, and without this scope a caller's transform is never applied.
+    /// Nested scopes compose (outer after inner). An exact axis-preserving similarity
+    /// moves every vector command exactly; any other affine matrix is applied with
+    /// live-paint parity (primitives compose it like `with_transformation`, masks move
+    /// only when the axes are kept, like `with_transformation_masked`). A singular or
+    /// non-finite matrix enters nothing and returns `InvalidGeometry`.
     pub fn with_paint_presentation<R>(
         &mut self,
         matrix: TransformationMatrix,
@@ -88,15 +114,19 @@ impl Window {
             translation: [matrix.translation[0] * scale, matrix.translation[1] * scale],
         };
         let device = match self.paint_presentation() {
-            Some(outer) => outer.matrix().compose(device),
+            Some(outer) => outer.compose(device),
             None => device,
         };
-        let transform = VectorTransform::from_matrix(device).ok_or(PaintRecordError::InvalidGeometry)?;
-        let _scope = self.render_contexts.enter(Some(Rc::new(Presentation(transform))));
+        if !device.translation.iter().chain(device.rotation_scale.iter().flatten()).all(|v| v.is_finite())
+            || device.inverse().is_none()
+        {
+            return Err(PaintRecordError::InvalidGeometry);
+        }
+        let _scope = self.render_contexts.enter(Some(Rc::new(Presentation(device))));
         Ok(paint(self))
     }
 
-    pub(crate) fn paint_presentation(&self) -> Option<VectorTransform> {
+    pub(crate) fn paint_presentation(&self) -> Option<TransformationMatrix> {
         self.render_contexts.get::<Presentation>().map(|value| value.0)
     }
 }

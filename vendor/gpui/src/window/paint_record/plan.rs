@@ -1,7 +1,7 @@
 //! Плоское неизменяемое дерево команд и переоткрываемых механических scopes.
 
 use super::*;
-use crate::window::vector_transform::VectorTransform;
+use crate::window::vector_transform::{present, presented_bounds};
 
 /// Inputs to the existing group compositor, in source coordinates.
 /// The host chooses effect policy and which records share one group.
@@ -83,7 +83,7 @@ impl PaintPlan {
     }
 
     pub(super) fn validate(
-        &self, window: &Window, presentation: Option<VectorTransform>,
+        &self, window: &Window, presentation: Option<TransformationMatrix>,
     ) -> Result<Bounds<Pixels>, PaintRecordError> {
         if !window.scale_factor().is_finite() || window.scale_factor() <= 0.0 {
             return Err(PaintRecordError::InvalidGeometry);
@@ -94,7 +94,7 @@ impl PaintPlan {
                 Command::Record(record) => {
                     record.check(window)?;
                     match presentation {
-                        Some(transform) => transform.bounds(record.0.clip, window.scale_factor()),
+                        Some(matrix) => presented_bounds(matrix, record.0.clip, window.scale_factor()),
                         None => record.0.clip,
                     }
                 }
@@ -113,7 +113,7 @@ impl PaintPlan {
         Ok(extent)
     }
 
-    pub(super) fn paint(&self, window: &mut Window, presentation: Option<VectorTransform>) {
+    pub(super) fn paint(&self, window: &mut Window, presentation: Option<TransformationMatrix>) {
         enum Frame<'a> {
             Clip,
             Group(Box<Scene>, Vec<ContentMask<Pixels>>, &'a PaintGroupDescriptor),
@@ -125,8 +125,7 @@ impl PaintPlan {
                 Command::Record(record) => {
                     let mask = window.content_mask().scale(window.scale_factor());
                     let scene = match presentation {
-                        Some(transform) => record.0.scene.copy_record(Point::default(), None)
-                            .transform_vector(transform)
+                        Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
                             .copy_record(Point::default(), Some(mask.bounds)),
                         None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
                     };

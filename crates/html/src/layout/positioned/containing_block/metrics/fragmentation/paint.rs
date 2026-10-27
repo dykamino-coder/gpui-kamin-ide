@@ -27,6 +27,7 @@ struct Own {
 pub(crate) struct Admission {
     ordinals: HashMap<PaintSegmentId, u32>,
     hits: Vec<PaintSegment>,
+    hit_roots: Vec<(PaintSegmentId, u32, u64)>,
     hit_families: HashMap<u64, Vec<PaintSegmentSlice>>,
     own: Vec<(u64, Own)>,
 }
@@ -35,6 +36,8 @@ pub(crate) struct Admission {
 pub(crate) struct Routing {
     pub(crate) hits: (Rc<[PaintSegment]>, SourceSlices),
     pub(crate) paint: (Rc<[PaintSegment]>, SourceSlices),
+    /// Hit placements (segment, ordinal) and the outermost root they belong to.
+    pub(crate) roots: Vec<(PaintSegmentId, u32, u64)>,
 }
 
 /// One fragment of a continued flow.
@@ -83,6 +86,7 @@ impl Admission {
             source_clip: p.decoration,
         };
         self.hits.push(placement);
+        self.hit_roots.push((p.segment, placement.ordinal, p.root));
         self.hit_families.entry(p.family).or_default().push(slice);
         let index = match self.own.iter().position(|(root, _)| *root == p.root) {
             Some(index) => index,
@@ -167,6 +171,7 @@ impl Admission {
         Routing {
             hits: (Rc::from(self.hits), hits),
             paint: (Rc::from(orphan_routes), paint),
+            roots: self.hit_roots,
         }
     }
 }

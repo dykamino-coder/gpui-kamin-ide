@@ -113,7 +113,6 @@ impl PageStack {
         // фрагмента до края листа (`block-page-break-inside-avoid-7`).
         let records = self.copy_records();
         for f in plan.iter().copied() {
-            let presentation = self.sheet_matrix(bounds, f.col);
             if self.geom(f.col).turn % 2 == 1 {
                 continue;
             }
@@ -177,7 +176,6 @@ impl PageStack {
                     crate::paint::continuation::with_copy_segment(
                         gpui::PaintSegmentId(f.col as u64),
                         records.as_ref(),
-                        Some(presentation),
                         window,
                         |window| el.paint(window, cx),
                     )
@@ -191,14 +189,12 @@ impl PageStack {
             let Some(mask) = masks.get(p).cloned() else {
                 continue;
             };
-            let presentation = self.sheet_matrix(bounds, p);
             for el in &mut self.icb[p] {
                 window.with_content_mask(Some(mask), |window| {
                     window.with_mask_scale(bounds.origin, s, |window| {
                         crate::paint::continuation::with_copy_segment(
                             gpui::PaintSegmentId(p as u64),
                             records.as_ref(),
-                            Some(presentation),
                             window,
                             |window| el.paint(window, cx),
                         )
@@ -213,14 +209,12 @@ impl PageStack {
             let Some(mask) = masks.get(p).cloned() else {
                 continue;
             };
-            let presentation = self.sheet_matrix(bounds, p);
             for el in &mut self.fixed[p] {
                 window.with_content_mask(Some(mask), |window| {
                     window.with_mask_scale(bounds.origin, s, |window| {
                         crate::paint::continuation::with_copy_segment(
                             gpui::PaintSegmentId(p as u64),
                             records.as_ref(),
-                            Some(presentation),
                             window,
                             |window| el.paint(window, cx),
                         )

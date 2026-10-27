@@ -1,5 +1,5 @@
-//! Явный презентационный scope листа (масштаб и четверть оборота) переносит векторные
-//! команды записи при воспроизведении; без него вызывающий transform не применяется.
+//! Явный презентационный scope (лист страницы, transform копии) переносит команды записи
+//! при воспроизведении; без него вызывающий transform не применяется.
 
 use super::*;
 use gpui::{
@@ -14,7 +14,7 @@ fn page() -> TransformationMatrix {
     }
 }
 
-fn source(window: &mut Window) {
+pub(super) fn source(window: &mut Window) {
     window.with_content_mask(
         Some(ContentMask {
             bounds: rect(2., 4., 20., 30.),
@@ -125,23 +125,22 @@ fn presentation_scope_leaves_live_paint_capture_and_host_scopes_alone() {
 }
 
 #[test]
-fn presentation_scope_rejects_a_matrix_that_does_not_keep_the_axes() {
+fn presentation_scope_rejects_a_singular_matrix() {
     draw(|| {
         canvas(
             |_, _, _| (),
             |_, (), window, _| {
-                let (cos, sin) = (30f32.to_radians().cos(), 30f32.to_radians().sin());
                 for matrix in [
                     TransformationMatrix {
-                        rotation_scale: [[cos, -sin], [sin, cos]],
-                        translation: [0., 0.],
-                    },
-                    TransformationMatrix {
-                        rotation_scale: [[2., 0.], [0., 1.]],
-                        translation: [0., 0.],
-                    },
-                    TransformationMatrix {
                         rotation_scale: [[0., 0.], [0., 0.]],
+                        translation: [0., 0.],
+                    },
+                    TransformationMatrix {
+                        rotation_scale: [[1., 2.], [2., 4.]],
+                        translation: [0., 0.],
+                    },
+                    TransformationMatrix {
+                        rotation_scale: [[f32::NAN, 0.], [0., 1.]],
                         translation: [0., 0.],
                     },
                 ] {

@@ -4,17 +4,70 @@
 
 use crate::hooks::{BareRecords, IntoHooked, Wrap};
 use gpui::{
-    AnyElement, App, Bounds, PaintPlacement, PaintPlan, PaintSegmentId, Pixels,
+    AnyElement, App, Bounds, PaintHitScope, PaintPlacement, PaintPlan, PaintSegmentId, Pixels,
     TransformationMatrix, Window, point, px,
 };
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
+
+/// Hit scopes of the slots met while prepainting the copies, by (segment, root).
+#[derive(Clone, Default)]
+pub(crate) struct SlotScopes(Rc<RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>>>);
+
+impl SlotScopes {
+    fn push(&self, segment: PaintSegmentId, root: u64, scope: PaintHitScope) {
+        let cell: &RefCell<Vec<_>> = &self.0;
+        cell.borrow_mut().push((segment, root, scope));
+    }
+
+    /// Forget the slots of the previous prepaint.
+    pub(crate) fn clear(&self) {
+        let cell: &RefCell<Vec<_>> = &self.0;
+        cell.borrow_mut().clear();
+    }
+
+    /// Scopes of the placements `(segment, ordinal, root)` that a slot replays.
+    pub(crate) fn scopes(
+        &self,
+        placements: &[(PaintSegmentId, u32, u64)],
+    ) -> Rc<[(PaintSegmentId, u32, PaintHitScope)]> {
+        let cell: &RefCell<Vec<_>> = &self.0;
+        let slots = cell.borrow();
+        placements
+            .iter()
+            .filter_map(|&(segment, ordinal, root)| {
+                let (_, _, scope) = slots
+                    .iter()
+                    .rev()
+                    .find(|(s, r, _)| *s == segment && *r == root)?;
+                Some((segment, ordinal, scope.clone()))
+            })
+            .collect()
+    }
+}
+
+struct CopyHits {
+    segment: PaintSegmentId,
+    scopes: SlotScopes,
+}
+
+/// Prepaint a legacy copy for `segment`: its slots report their hit scope.
+pub(crate) fn with_copy_hits<R>(
+    segment: PaintSegmentId,
+    scopes: &SlotScopes,
+    window: &mut Window,
+    prepaint: impl FnOnce(&mut Window) -> R,
+) -> R {
+    let context = CopyHits {
+        segment,
+        scopes: scopes.clone(),
+    };
+    window.with_render_context(Some(Rc::new(context)), prepaint)
+}
 
 /// The segment painted by the legacy copy being painted and its own records.
 pub(crate) struct CopySegment {
     pub(crate) segment: PaintSegmentId,
     pub(crate) records: BareRecords,
-    /// Presentation of the copy relative to the source capture (a page sheet).
-    pub(crate) presentation: Option<TransformationMatrix>,
 }
 
 /// Paint a legacy copy for `segment`; deferred positioned paint keeps this
@@ -22,7 +75,6 @@ pub(crate) struct CopySegment {
 pub(crate) fn with_copy_segment(
     segment: PaintSegmentId,
     records: Option<&BareRecords>,
-    presentation: Option<TransformationMatrix>,
     window: &mut Window,
     paint: impl FnOnce(&mut Window),
 ) {
@@ -31,7 +83,6 @@ pub(crate) fn with_copy_segment(
             Some(Rc::new(CopySegment {
                 segment,
                 records: records.clone(),
-                presentation,
             })),
             paint,
         ),
@@ -60,6 +111,11 @@ impl Wrap for Slot {
     }
 
     fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // The native placement replayed here is hit through this copy's scope.
+        if let Some(copy) = window.render_context::<CopyHits>() {
+            copy.scopes
+                .push(copy.segment, self.id, window.paint_hit_scope());
+        }
         // Layout stays with the copy; its hitboxes live at the native placements
         // only (a singular matrix makes this copy's own ones unreachable).
         let hidden = TransformationMatrix {
@@ -71,45 +127,33 @@ impl Wrap for Slot {
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, _: &mut App) {
         let Some(copy) = window.render_context::<CopySegment>() else {
-            eprintln!("P08DBG slot {} no copy context", self.id);
             return;
         };
-        eprintln!(
-            "P08DBG slot {} seg {:?} found {}",
-            self.id,
-            copy.segment,
-            copy.records.get(copy.segment, self.id).is_some()
-        );
-        let record = copy.records.get(copy.segment, self.id);
-        if let Some(record) = record {
-            let origin = point(px(0.), px(0.));
-            let placement = PaintPlacement {
-                source: origin,
-                destination: origin,
-                clip: window.content_mask().bounds,
+        let Some(record) = copy.records.get(copy.segment, self.id) else {
+            return;
+        };
+        let origin = point(px(0.), px(0.));
+        let placement = PaintPlacement {
+            source: origin,
+            destination: origin,
+            clip: window.content_mask().bounds,
+        };
+        let plan = PaintPlan::record(record);
+        // The copy's own transform (CSS transforms of the copied ancestors, the
+        // page sheet) is the explicit presentation of the replayed record.
+        let device = window.current_transformation();
+        // A stale or foreign record is rejected without output.
+        let _ = if device == TransformationMatrix::unit() {
+            window.paint_plan(&plan, placement).map(|_| ())
+        } else {
+            let k = window.scale_factor();
+            let matrix = TransformationMatrix {
+                rotation_scale: device.rotation_scale,
+                translation: [device.translation[0] / k, device.translation[1] / k],
             };
-            eprintln!(
-                "P08DBG slot replay mask {:?} quads {:?}",
-                window.content_mask().bounds,
-                record
-                    .scene()
-                    .quads
-                    .iter()
-                    .map(|q| (
-                        q.bounds,
-                        q.content_mask.bounds,
-                        q.transformation.translation
-                    ))
-                    .collect::<Vec<_>>()
-            );
-            let plan = PaintPlan::record(record);
-            // A stale or foreign record is rejected without output.
-            let _ = match copy.presentation {
-                Some(matrix) => window
-                    .with_paint_presentation(matrix, |window| window.paint_plan(&plan, placement))
-                    .map(|_| ()),
-                None => window.paint_plan(&plan, placement).map(|_| ()),
-            };
-        }
+            window
+                .with_paint_presentation(matrix, |window| window.paint_plan(&plan, placement))
+                .and_then(|result| result.map(|_| ()))
+        };
     }
 }

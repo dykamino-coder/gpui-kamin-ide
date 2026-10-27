@@ -119,7 +119,12 @@ impl ColumnStack {
         drop(sources);
         drop(oof);
         let routing = admission.finish(&snapshot);
-        native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
+        // Placements replayed by a slot are hit through that copy's scope.
+        let scopes = self.oof.slot_scopes.scopes(&routing.roots);
+        self.oof.slot_scopes.clear();
+        window.with_prepaint_segment_hit_scopes(scopes, |window| {
+            native.prepaint(routing.hits.0, routing.hits.1, routing.paint, window, cx)
+        })
     }
 
     /// A normal kid owning `owner` has a legacy copy in `col`.

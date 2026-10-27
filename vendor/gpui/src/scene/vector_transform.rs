@@ -128,7 +128,7 @@ fn primitive(p: &mut Primitive, t: VectorTransform, m: TransformationMatrix) {
     }
 }
 
-fn conjugate(h: [f32; 9], m: TransformationMatrix, inverse: TransformationMatrix) -> [f32; 9] {
+pub(super) fn conjugate(h: [f32; 9], m: TransformationMatrix, inverse: TransformationMatrix) -> [f32; 9] {
     let expand = |m: TransformationMatrix| [m.rotation_scale[0][0], m.rotation_scale[0][1], m.translation[0],
         m.rotation_scale[1][0], m.rotation_scale[1][1], m.translation[1], 0., 0., 1.];
     let multiply = |a: [f32; 9], b: [f32; 9]| {
