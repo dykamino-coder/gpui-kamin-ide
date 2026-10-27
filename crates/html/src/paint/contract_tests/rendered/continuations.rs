@@ -244,3 +244,19 @@ fn statically_positioned_box_is_routed_from_its_laid_out_place_and_paints_above_
     );
     assert!(is(top(&found, 75., 50.), 0x0000ff), "{found:?}");
 }
+
+#[test]
+fn fixed_layer_inside_a_continued_root_keeps_the_pages_painting() {
+    // The fixed box paints in its own layer, outside its root's capture: its
+    // decoration layer must not be admitted into that capture's placements.
+    let found = printed(
+        "<style>body{margin:0}</style>\
+<div style='position:absolute;height:300vh;width:100px'>\
+<div style='position:fixed;bottom:0;width:40px;height:20px;\
+background:linear-gradient(red, blue)'></div></div>",
+        800.,
+        600.,
+    );
+    let sheets = found.iter().filter(|(_, c)| opaque(*c) == 0xffffff).count();
+    assert!(sheets >= 3, "three sheets painted: {found:?}");
+}

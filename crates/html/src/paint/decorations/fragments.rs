@@ -86,10 +86,19 @@ impl Hooks for Fragments {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Prepaint laid out every placement; this record admits only its own
+        // (a box painted outside its root's capture has none).
+        let admitted = crate::paint::coordinator::segments::decorations(self.node, window);
         for (geometry, child) in fragments {
-            crate::paint::coordinator::segments::decoration(*geometry, window, |window| {
-                child.paint(window, cx)
+            let own = admitted.iter().any(|g| {
+                g.slice.placement.id == geometry.slice.placement.id
+                    && g.slice.placement.ordinal == geometry.slice.placement.ordinal
             });
+            if own {
+                crate::paint::coordinator::segments::decoration(*geometry, window, |window| {
+                    child.paint(window, cx)
+                });
+            }
         }
     }
 }
