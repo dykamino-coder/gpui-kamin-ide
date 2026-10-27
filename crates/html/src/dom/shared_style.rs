@@ -142,7 +142,7 @@ impl SharedStyle {
     /// Собственный источник холста, не computed CSS корня и не наследуемый фон.
     pub(crate) fn set_canvas_background(
         &mut self,
-        canvas: Option<Rc<crate::style::canvas_background::CanvasBackground>>,
+        canvas: Option<crate::style::canvas_background::CanvasBackgroundSource>,
     ) {
         let mut decoration = self.decoration.as_deref().cloned().unwrap_or_default();
         decoration.canvas = canvas;
