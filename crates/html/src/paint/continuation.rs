@@ -88,6 +88,20 @@ impl Wrap for Slot {
                 destination: origin,
                 clip: window.content_mask().bounds,
             };
+            eprintln!(
+                "P08DBG slot replay mask {:?} quads {:?}",
+                window.content_mask().bounds,
+                record
+                    .scene()
+                    .quads
+                    .iter()
+                    .map(|q| (
+                        q.bounds,
+                        q.content_mask.bounds,
+                        q.transformation.translation
+                    ))
+                    .collect::<Vec<_>>()
+            );
             let plan = PaintPlan::record(record);
             // A stale or foreign record is rejected without output.
             let _ = match copy.presentation {

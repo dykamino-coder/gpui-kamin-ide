@@ -50,6 +50,9 @@ pub(crate) struct Snapshot {
     pub(crate) flows: Vec<fragmentation::Source>,
     pub(crate) families: HashMap<u64, u64>,
     pub(crate) normal: HashMap<u64, Bounds<Pixels>>,
+    /// Accumulated used relative displacement of each painted box (zero omitted):
+    /// the source paints there, the normal geometry above excludes it.
+    pub(crate) relative: HashMap<u64, Point<Pixels>>,
     pub(crate) cloned_boxes: HashMap<u64, (crate::layout::fragment::types::StackAxis, f32, f32)>,
     pub(crate) native: Option<std::rc::Rc<layout::Native>>,
     /// Fragmentation host whose children the source lays out (0: a page area).

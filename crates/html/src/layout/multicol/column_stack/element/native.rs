@@ -101,13 +101,16 @@ impl ColumnStack {
                 f.from - if first { spill } else { 0. },
                 extent + if first { spill } else { 0. } + if last { spill } else { 0. },
             );
+            // The plan placed normal geometry; relative positioning of the box and its
+            // ancestors is a paint displacement on top (CSS 2.1 §9.4.3).
+            let shift = snapshot.relative.get(&flow.id).copied().unwrap_or_default();
             let copied = self.owner_copy(flow.owner, f.col, plan);
             admission.insert(Placement {
                 family: id,
                 root: flow.root,
                 segment: PaintSegmentId(f.col as u64),
                 source,
-                destination,
+                destination: destination + shift,
                 clip,
                 decoration,
                 copied,

@@ -131,6 +131,9 @@ impl PageStack {
                 f.from - if first { spill } else { 0. },
                 extent + if first { spill } else { 0. } + if last { spill } else { 0. },
             );
+            // The plan placed normal geometry; relative positioning of the box and its
+            // ancestors is a paint displacement on top (CSS 2.1 §9.4.3).
+            let shift = snapshot.relative.get(&flow.id).copied().unwrap_or_default();
             let copied = normal.iter().any(|g| g.kid == *owner && g.col == f.col);
             let index = match entries.iter().position(|e| Rc::ptr_eq(&e.1, snapshot)) {
                 Some(index) => index,
@@ -144,7 +147,7 @@ impl PageStack {
                 root: flow.root,
                 segment: PaintSegmentId(f.col as u64),
                 source: from,
-                destination: to,
+                destination: to + shift,
                 clip,
                 decoration,
                 copied,

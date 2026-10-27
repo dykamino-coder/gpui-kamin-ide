@@ -92,7 +92,12 @@ impl Hooks for ColumnStack {
             self.paint_axis(bounds, window, cx);
             return;
         }
-        if self.oof.plan.borrow().failure.is_some() || self.record_native(window, cx).inspect_err(|e| eprintln!("P08DBG record {e:?}")).is_err() {
+        if self.oof.plan.borrow().failure.is_some()
+            || self
+                .record_native(window, cx)
+                .inspect_err(|e| eprintln!("P08DBG record {e:?}"))
+                .is_err()
+        {
             return;
         }
         let plan = self.plan.borrow().clone();

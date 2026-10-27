@@ -92,6 +92,11 @@ impl Recorder {
             .iter()
             .filter_map(|(&id, entry)| Some((id, entry.node.bounds(window)?)))
             .collect();
+        snapshot.relative = nodes
+            .iter()
+            .filter_map(|(&id, entry)| Some((id, entry.node.read(window)?.relative_offset)))
+            .filter(|(_, offset)| *offset != gpui::Point::default())
+            .collect();
         for (&id, entry) in nodes.iter().filter(|(_, e)| e.positioned) {
             let Some(cb) = nodes.get(&entry.cb) else {
                 continue;
