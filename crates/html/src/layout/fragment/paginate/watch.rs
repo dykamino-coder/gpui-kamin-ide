@@ -25,6 +25,8 @@ pub(crate) use hook::wrap;
 use hook::{Slot, Watch};
 mod flex;
 mod flex_flows;
+#[cfg(test)]
+mod flex_gap_window_tests;
 mod flex_geometry;
 #[cfg(test)]
 mod flex_geometry_tests;

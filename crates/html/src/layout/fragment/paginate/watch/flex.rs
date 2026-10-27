@@ -54,8 +54,10 @@ impl Watched {
         }
     }
 
+    /// Рост линии ряда: положительный — продолжение линии до края фрагментаинера,
+    /// отрицательный — погашенная у разрыва часть промежутка после неё.
     pub(crate) fn grow_flex_line(&self, id: u64, line: usize, growth: f32) -> bool {
-        if !growth.is_finite() || growth <= 0.0 {
+        if !growth.is_finite() || growth == 0.0 {
             return false;
         }
         let mut all = self.flex_growth.borrow_mut();

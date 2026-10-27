@@ -1,9 +1,9 @@
 //! Перенос коробок на следующий фрагмент распорками роста (`grow_pushed`): по точке разреза
 //! `a` от верха ребёнка стопки ищется самая внешняя коробка, начинающаяся ровно там
 //! (`pushed_box_at`), и перед ней встаёт распорка. Смещения детей считаются той же
-//! арифметикой, что в `shape_full`: схлопнутые поля, зазоры flex и сетки, строки flex-ряда
-//! (`row`); таблицу этот щуп не спускает — её ряды и ячейки растит записанная раскладка
-//! (`measured`); текст и строчное среди детей — отказ от спуска.
+//! арифметикой, что в `shape_full`: схлопнутые поля, зазоры flex и сетки; таблицу этот щуп
+//! не спускает — её ряды и ячейки растит записанная раскладка (`measured`); текст и
+//! строчное среди детей — отказ от спуска.
 //! Подмодуль `spacer` — сама распорка и монолит `break-inside: avoid`.
 
 use crate::document::state::ValueCx;
@@ -19,7 +19,6 @@ use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod cell;
-mod row;
 mod spacer;
 pub(crate) use spacer::avoid_only_monolith;
 pub(crate) use spacer::grow_pushed;
@@ -45,9 +44,6 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     }
     let lines = crate::layout::fragment::LineCx::child(c, vcx);
     let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
-    if let Some(found) = row::pushed_row_at(c, a, depth, forced, vcx) {
-        return found;
-    }
     if table_box(c) {
         return None;
     }

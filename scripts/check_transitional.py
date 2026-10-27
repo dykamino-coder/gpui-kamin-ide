@@ -15,11 +15,13 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rust_layer_paths import TOKEN
+from html_source_inventory import PACKAGES, read as html_sources
 
 
 REPO = Path(__file__).resolve().parent.parent
 REGISTRY = 'scripts/transitional_registry.json'
-ROOTS = ('crates/html', 'vendor')
+ROOTS = (*dict.fromkeys(str(PurePosixPath(prefix).parent)
+                        for prefix in PACKAGES.values()), 'vendor')
 TASK = r'[A-Za-z0-9][A-Za-z0-9_.-]*'
 MARKER = re.compile(rf'\bTRANSITIONAL\(({TASK})\):[ \t]*([^\n]+)')
 
@@ -88,15 +90,21 @@ def markers(source):
 
 def inventory(root):
     found = []
-    # Scan all vendor Rust so adapter moves/renames cannot silently escape.
+    sources = html_sources(root)
+    files = {name: item.text for name, item in sources.items()}
+    physical = {item.physical for item in sources.values()}
+    # Preserve examples and all vendor Rust in addition to phase sources.
     for folder in ROOTS:
         for filename in sorted((root / folder).rglob('*.rs')):
             relative = filename.relative_to(root).as_posix()
-            try:
-                for task, reason, line in markers(filename.read_text(encoding='utf-8')):
-                    found.append((relative, task, reason, line))
-            except ValueError as error:
-                raise ValueError(f'{relative}: {error}') from error
+            if relative not in physical:
+                files[relative] = filename.read_text(encoding='utf-8')
+    for relative, text in sorted(files.items()):
+        try:
+            for task, reason, line in markers(text):
+                found.append((relative, task, reason, line))
+        except ValueError as error:
+            raise ValueError(f'{relative}: {error}') from error
     return found
 
 
@@ -148,6 +156,8 @@ def growth(root, base, current):
 def installation(root, revision, current):
     """A first registry may label old code, never introduce a temporary path."""
     errors = []
+    before = html_sources(root, revision)
+    now = html_sources(root)
     for file in sorted({file for file, _, _ in current}):
         present = subprocess.check_output(
             ['git', '-C', str(root), 'ls-tree', '--name-only', revision, '--', file],
@@ -156,8 +166,11 @@ def installation(root, revision, current):
         previous = subprocess.check_output(
             ['git', '-C', str(root), 'show', f'{revision}:{file}'], encoding='utf-8',
         ) if present else ''
+        if file in before:
+            present, previous = file, before[file].text
         old_lines = {line.strip() for line in previous.splitlines() if line.strip()}
-        source = (root / file).read_text(encoding='utf-8') if (root / file).exists() else ''
+        source = now[file].text if file in now else (
+            (root / file).read_text(encoding='utf-8') if (root / file).exists() else '')
         following = anchors(source)
         for task, reason, line in markers(source):
             if ((file, task, reason) in current
@@ -208,3 +221,5 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
+# KaminIDE crate-split guard adapter schema 1
