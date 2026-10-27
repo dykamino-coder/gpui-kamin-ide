@@ -45,7 +45,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     crate::style::cascade::materialize::materialize(nodes, root.style_rc(), vcx);
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
-    crate::interactive::frame::frame_sanitize(vcx);
+    crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `BoxConstraints::avail_w` вычитает поля/рамки/отступы `html` и `body`.
@@ -92,7 +92,7 @@ fn render_block_inner(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option
     let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
     crate::document::image_values::prepare(std::slice::from_ref(node), vcx);
-    crate::interactive::frame::frame_sanitize(vcx);
+    crate::interactive::frame::frame_sanitize(&opts.cx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let root = opts.root_style();
     // Вычисленные стили блока — до сборки его коробок (как у `render`).

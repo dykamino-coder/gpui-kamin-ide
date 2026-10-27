@@ -1,11 +1,11 @@
 //! Сброс состояния документа, живущего один кадр: счётчики вхождений вертикальных замеров
-//! (`VerticalMeasures::begin_frame`) и реестры якорей (`anchor::reset`: реестры кадра
+//! (`ParagraphState::begin_frame`) и реестры якорей (`anchor::reset`: реестры кадра
 //! очищаются вместе с содержащими блоками). Вызывается в начале сборки
 //! дерева (`render`, постраничная раскладка), чтобы кадр не наследовал счётчики и реестры.
 
-pub fn frame_sanitize(vcx: crate::document::state::ValueCx<'_>) {
-    vcx.doc.vertical_measures.begin_frame();
+pub fn frame_sanitize(cx: &crate::layout::cx::LayoutCx) {
+    cx.paragraph().begin_frame();
     // Реестр якорей — расходник кадра того же рода: пишется на подготовке,
     // читается там же, к следующей сборке дерева обязан быть пуст.
-    crate::layout::positioned::anchor::reset(vcx);
+    crate::layout::positioned::anchor::reset(cx.vcx());
 }

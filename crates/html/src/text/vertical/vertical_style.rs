@@ -23,7 +23,7 @@ impl VerticalText {
             first_line: None,
             layout_id: None,
             turn: None,
-            values: None,
+            measures: None,
         }
     }
 
@@ -60,9 +60,10 @@ impl VerticalText {
 
     /// Включить двухкадровый замер: заявка ширины уточняется фактом
     /// прошлого кадра (перенос строк меняет число колонок).
-    pub fn keyed(mut self, key: u64, vcx: crate::document::state::ValueCx<'_>) -> Self {
-        self.key = Some(vcx.doc.vertical_measures.next_key(key));
-        self.values = Some(vcx.keep());
+    pub fn keyed(mut self, key: u64, cx: &crate::layout::cx::LayoutCx) -> Self {
+        let measures = &cx.paragraph().vertical;
+        self.key = Some(measures.next_key(key));
+        self.measures = Some(measures.clone());
         self
     }
 
