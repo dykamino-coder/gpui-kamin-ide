@@ -1,8 +1,9 @@
 //! Перенос коробок на следующий фрагмент распорками роста (`grow_pushed`): по точке разреза
 //! `a` от верха ребёнка стопки ищется самая внешняя коробка, начинающаяся ровно там
 //! (`pushed_box_at`), и перед ней встаёт распорка. Смещения детей считаются той же
-//! арифметикой, что в `shape_full`: схлопнутые поля, зазоры flex и сетки, ряды таблицы
-//! (`cell`), строки flex-ряда (`row`); текст и строчное среди детей — отказ от спуска.
+//! арифметикой, что в `shape_full`: схлопнутые поля, зазоры flex и сетки, строки flex-ряда
+//! (`row`); таблицу этот щуп не спускает — её ряды и ячейки растит записанная раскладка
+//! (`measured`); текст и строчное среди детей — отказ от спуска.
 //! Подмодуль `spacer` — сама распорка и монолит `break-inside: avoid`.
 
 use crate::document::state::ValueCx;
@@ -19,7 +20,6 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod cell;
 mod row;
-use cell::pushed_cell_at;
 mod spacer;
 pub(crate) use spacer::avoid_only_monolith;
 pub(crate) use spacer::grow_pushed;
@@ -35,8 +35,8 @@ pub(crate) use measured::{Growth, Regrow, measured_push, measured_tree, recorded
 // арифметикой, что в `shape_full`: `lead` = схлопнутое поле, у первого
 // без отбивки поле уходит сквозь верх, внепоточный — нулевая запись, ряд
 // flex без переноса — все дети с верха. Сетка, таблица, ряды — без
-// спуска, как там; таблица по тегу — рядами `table_shape`
-// (`pushed_cell_at`). Текст или строчный среди детей — у `shape_full`
+// спуска, как там; таблица по тегу — тоже (ряды ей даёт только раскладка).
+// Текст или строчный среди детей — у `shape_full`
 // отказ от спуска, и здесь тоже.
 // `forced` — щуп ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
 fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>) -> Option<u64> {
@@ -49,7 +49,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
         return found;
     }
     if table_box(c) {
-        return pushed_cell_at(c, a, depth, forced, vcx);
+        return None;
     }
     // Сетка-стопка спускается ровно как в `shape_full` — иначе распорка
     // роста до ряда сетки не добирается, отдаёт `None`, и фон

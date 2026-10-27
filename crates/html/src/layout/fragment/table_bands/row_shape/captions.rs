@@ -1,9 +1,8 @@
 //! Мера обёртки таблицы с подписями (`caption_slots_shape`): верхние подписи, коробка рядов и
 //! нижние подписи складываются стопкой со схлопыванием полей (CSS 2.1 §8.3.1; поле первого
 //! уходит сквозь верх обёртки), точки разреза и принудительные разрывы между ними,
-//! монолитная подпись — сплошной диапазон; полосы секций переводятся в координаты обёртки.
+//! монолитная подпись — сплошной диапазон.
 
-use super::super::TableBands;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
@@ -17,13 +16,10 @@ use crate::tolerance::COORD_EPS;
 pub(crate) fn caption_slots_shape(
     depth: u8,
     cx: ShapeCx,
-    bands: &mut TableBands,
     mt: f32,
     mb: f32,
     caps_top: Vec<&Element>,
     caps_bot: Vec<&Element>,
-    mut cuts: Vec<(f32, f32)>,
-    mut forced: Vec<f32>,
     mut solid: Vec<(f32, f32)>,
     h_box: f32,
     vcx: ValueCx<'_>,
@@ -48,8 +44,8 @@ pub(crate) fn caption_slots_shape(
                 h_box,
                 0.0,
                 0.0,
-                std::mem::take(&mut cuts),
-                std::mem::take(&mut forced),
+                Vec::new(),
+                Vec::new(),
                 std::mem::take(&mut solid),
                 false,
                 false,
@@ -101,15 +97,6 @@ pub(crate) fn caption_slots_shape(
         }
         wforce_next = ifa;
         let start = wy + lead;
-        // Полосы секций — в координаты обёртки: коробка рядов стоит под
-        // верхними подписями.
-        if slot.is_none() {
-            for s in [&mut bands.head, &mut bands.foot].into_iter().flatten() {
-                s.0 += start;
-            }
-            bands.box_top += start;
-            bands.box_end += start;
-        }
         wcuts.extend(
             icuts
                 .into_iter()

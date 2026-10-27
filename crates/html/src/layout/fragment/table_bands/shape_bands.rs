@@ -1,15 +1,12 @@
 //! TRANSITIONAL(F2-5): Полосы секций и повторов вычисляет рекурсивный estimator; удалить в P18 после продолжений секций и ячеек из P17.
-//! Полосы формы таблицы: группы, ряды, шапки и подвалы (table_shape_bands).
+//! Мера таблицы без рядов (table_shape_bands): подписи, рамка с отбивкой, заданная высота.
 
-use super::TableBands;
 use super::parts::{cell_settings, is_row, ordered_parts};
-use super::row_cuts::RowRef;
 use super::row_shape::row_band_shape;
 use crate::document::state::ValueCx;
+use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
-use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
-use crate::layout::fragment::flow::blocks::table::{row_avoid, row_force};
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::table::anon::fixup_table_children;
 use crate::style::values::value::Len;
@@ -18,10 +15,9 @@ pub(super) fn table_shape_bands(
     c: &Element,
     depth: u8,
     cx: ShapeCx,
-    bands: &mut TableBands,
     vcx: ValueCx<'_>,
 ) -> Option<Shape> {
-    // Повтор секций вызывает оценку напрямую, минуя fragment_size::measure.
+    // Вход оценки таблицы виден отдельно от общей меры.
     #[cfg(feature = "wpt-harness")]
     if let Some(probe) = cx
         .probe
@@ -64,7 +60,7 @@ pub(super) fn table_shape_bands(
     let mb = px_of(&c.style.used().margin.bottom).unwrap_or(0.0);
     let top = px_of(&c.style.used().padding.top)? + px_of(&b.top)?;
     let bot = px_of(&c.style.used().padding.bottom)? + px_of(&b.bottom)?;
-    let (spacing, cell_cx) = cell_settings(c, cx)?;
+    let (spacing, _) = cell_settings(c, cx)?;
     // Дети чинятся ТЕМ ЖЕ `fixup_table_children`, которым их чинит рисователь
     // `layout::table::table` (css-tables-3 §3 fixup): бесхозная ячейка,
     // блок или текст прямо в таблице получают анонимный ряд, не-ячейка внутри
@@ -110,45 +106,14 @@ pub(super) fn table_shape_bands(
         }
         false
     })?;
-    let mut rows: Vec<RowRef> = Vec::new();
-    for (gi, (_, e)) in parts.iter().enumerate() {
-        if is_row(e) {
-            rows.push(RowRef {
-                row: e,
-                group: gi,
-                avoid: false,
-                fb: row_force(e, false, vcx),
-                fa: row_force(e, true, vcx),
-                ab: row_avoid(e, false, vcx),
-                aa: row_avoid(e, true, vcx),
-            });
-            continue;
-        }
-        let inner: Vec<&Element> = e
-            .children
-            .iter()
-            .filter(|n| !is_blank(n))
-            .map(|n| match n {
-                Node::Element(r) if is_row(r) => Some(r),
-                _ => None,
-            })
-            .collect::<Option<Vec<_>>>()?;
-        let last = inner.len().saturating_sub(1);
-        for (i, r) in inner.iter().enumerate() {
-            rows.push(RowRef {
-                row: r,
-                group: gi,
-                avoid: e.style.used().break_inside_avoid,
-                fb: row_force(r, false, vcx) || (i == 0 && e.style.used().break_before_force),
-                fa: row_force(r, true, vcx) || (i == last && e.style.used().break_after_force),
-                // Край ГРУППЫ — тот же перенос, что у принудительных выше:
-                // `break-before: avoid` группы действует на её ПЕРВОМ ряду,
-                // `break-after: avoid` — на ПОСЛЕДНЕМ (css-break-4 §break-between,
-                // «Applies to: … table row groups, table rows»).
-                ab: row_avoid(r, false, vcx) || (i == 0 && e.style.used().break_before_avoid),
-                aa: row_avoid(r, true, vcx) || (i == last && e.style.used().break_after_avoid),
-            });
-        }
+    // Ряды и содержимое ячеек кладёт только раскладка таблицы: их точки и
+    // высоты даёт записанная сетка (`flow::blocks::table`), а не оценка ячеек.
+    // Здесь меряются лишь подписи и коробка без рядов.
+    if parts
+        .iter()
+        .any(|(_, e)| is_row(e) || e.children.iter().any(|n| !is_blank(n)))
+    {
+        return None;
     }
     // Таблица ИЗ ОДНИХ ПОДПИСЕЙ мерится: коробка рядов у неё пуста (только
     // рамка и отбивка), но обёртка несёт подписи и их точки разреза.
@@ -159,16 +124,67 @@ pub(super) fn table_shape_bands(
     // (`specified-block-size-002`: пустая `display: table; height: 400px` =
     // ровно 4 колонки по 100; `table-border-007`: рамка 10 + 180 + 10 = 200 =
     // две колонки по 100 — проба `p-tb-007` = 0.00).
-    if rows.is_empty()
-        && caps_top.is_empty()
-        && caps_bot.is_empty()
-        && spec_h.is_none()
-        && spec_min_h.is_none()
-    {
+    if caps_top.is_empty() && caps_bot.is_empty() && spec_h.is_none() && spec_min_h.is_none() {
         return None;
     }
     row_band_shape(
-        c, depth, cx, bands, spec_h, spec_min_h, mt, mb, top, bot, spacing, cell_cx, caps_top,
-        caps_bot, parts, rows, vcx,
+        c, depth, cx, spec_h, spec_min_h, mt, mb, top, bot, spacing, caps_top, caps_bot, vcx,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    //! The estimate measures only a table without rows; rows come from the laid-out table.
+
+    use crate::dom::Node;
+    use crate::layout::fragment::ShapeCx;
+
+    fn table(nodes: &[Node]) -> Option<&crate::dom::Element> {
+        nodes.iter().find_map(|n| match n {
+            Node::Element(e) if e.tag == "table" => Some(e),
+            Node::Element(e) => table(&e.children),
+            _ => None,
+        })
+    }
+
+    fn shape(html: &str) -> Option<crate::layout::fragment::Shape> {
+        let tree = crate::dom::parse(html, "");
+        let t = table(&tree).expect("table");
+        super::super::table_shape(t, 4, ShapeCx::COLUMNS, tree.values())
+    }
+
+    #[test]
+    fn rows_and_cells_are_never_estimated() {
+        for body in [
+            "<tr><td><div style='height:50px'></div></td></tr>",
+            "<tbody><tr><td rowspan=2>x</td></tr><tr></tr></tbody>",
+            "<tr></tr>",
+        ] {
+            let html = format!("<table style='border-spacing:0'>{body}</table>");
+            assert!(shape(&html).is_none(), "{body}");
+        }
+    }
+
+    #[test]
+    fn a_table_without_rows_keeps_its_box_and_captions() {
+        let s = shape(
+            "<table style='border-spacing:0;height:100px;border-top:10px solid;border-bottom:10px solid'></table>",
+        )
+        .expect("box only");
+        assert_eq!(s.height, 100.0);
+        assert_eq!(s.solid, vec![(0.0, 10.0), (90.0, 100.0)]);
+        let bare = shape("<table style='height:4px'></table>").expect("box");
+        let s = shape(
+            "<table style='height:4px'><caption><div style='height:30px'></div></caption></table>",
+        )
+        .expect("caption only");
+        // The wrapper stacks the caption box above the table box.
+        assert!(
+            s.height >= bare.height + 30.0,
+            "{} {}",
+            s.height,
+            bare.height
+        );
+        assert!(s.cuts.iter().any(|&(need, _)| need >= 30.0));
+    }
 }

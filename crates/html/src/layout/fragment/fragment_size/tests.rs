@@ -56,20 +56,15 @@ fn cloned_table_captions_keep_their_height_until_f2_continuations() {
         Vec::new(),
     );
     caption.tag = "caption".into();
-    let mut row = element(
-        Computed {
-            height: Some(Len::Px(20.0)),
-            ..Default::default()
-        },
-        Vec::new(),
-    );
-    row.tag = "tr".into();
+    // Rows come only from the laid-out table; the estimate keeps the wrapper
+    // of captions around a table box sized by its specified height.
     let mut table = element(
         Computed {
             bdb_clone: true,
+            height: Some(Len::Px(20.0)),
             ..Default::default()
         },
-        vec![Node::Element(caption), Node::Element(row)],
+        vec![Node::Element(caption)],
     );
     table.tag = "table".into();
     assert!(!independent_copy(&table));
