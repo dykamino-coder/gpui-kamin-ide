@@ -7,6 +7,7 @@ use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::real_inline;
 use crate::layout::positioned::static_position::at_static_position;
+use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::materialize::box_style_unpainted;
 use crate::style::values::value::{Len, px_strict};
 
@@ -57,8 +58,9 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
                     // Hoisting changes the layout parent, never the CSS
                     // inheritance parent (CSS Cascade 4 §7). Resolve inherited
                     // values before passing through the inline ancestor.
-                    k.style = crate::dom::SharedStyle::layout_made(box_style_unpainted(
-                        &parent, &k.style, vcx,
+                    k.set_layout_box(LayoutBoxInput::new(
+                        BoxOrigin::Moved,
+                        box_style_unpainted(&parent, &k.style, vcx),
                     ));
                     out.push(Node::Element(k));
                 }
@@ -200,3 +202,6 @@ pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
