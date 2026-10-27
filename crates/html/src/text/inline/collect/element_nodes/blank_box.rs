@@ -102,6 +102,7 @@ pub(super) fn blank_box(
         sized.position = None;
         physical_sides::project_box(inherited, copy.style.used_mut());
         physical_sides::project_box(inherited, &mut sized);
+        sized.project_border_paint(physical_sides::project(inherited, [0, 1, 2, 3]));
         let boxel = cx
             .contracts
             .build

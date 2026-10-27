@@ -12,7 +12,20 @@ use crate::style::values::value::{Len, px_lossy_zero};
 impl Computed {
     /// Use the group mask for elliptical, shaped, or oversized nonuniform corners.
     pub fn radius_masked(&self, vcx: ValueCx<'_>) -> bool {
-        if crate::style::computed::single_corner::eligible(self) {
+        self.radius_masked_with(
+            crate::style::computed::single_corner::eligible(self),
+            self.shadows.is_empty(),
+            vcx,
+        )
+    }
+
+    pub(crate) fn radius_masked_with(
+        &self,
+        single_corner: bool,
+        shadows_empty: bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
+        if single_corner {
             return false;
         }
         // CSS Backgrounds 3 §5.1: each percentage resolves against its own
@@ -84,7 +97,7 @@ impl Computed {
             None => None,
         };
         if self.contain_paint == Some(true)
-            && self.shadows.is_empty()
+            && shadows_empty
             && self.shadow_raw.is_none()
             && self.outline.is_none()
             && !self.scroller

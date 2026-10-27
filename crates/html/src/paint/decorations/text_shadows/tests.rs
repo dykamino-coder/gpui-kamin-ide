@@ -75,7 +75,12 @@ fn nested_currentcolor_and_none_keep_independent_shadow_groups() {
         )),
     ];
     let mut groups = Vec::new();
-    collect_groups(&nodes, &ShadowStyle::new(&parent), &mut groups, vcx);
+    collect_groups(
+        &nodes,
+        &ShadowStyle::new(&parent, parent.color),
+        &mut groups,
+        vcx,
+    );
     assert_eq!(groups.len(), 2);
     assert_eq!(groups[0][0].color, Color::parse("red", vcx).unwrap().into());
     assert_eq!(
@@ -94,7 +99,7 @@ fn mask_keeps_decoration_records_and_original_text_color() {
     owner.apply_one("text-decoration", "underline blue", vcx);
     owner.apply_one("text-shadow", "2px 3px green", vcx);
     let owner = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &owner, vcx);
-    let context = ShadowStyle::new(&owner);
+    let context = ShadowStyle::new(&owner, owner.color);
     let group = context.resolved();
     let nodes = vec![Node::Element(span(
         (owner.clone()).into_computed(),

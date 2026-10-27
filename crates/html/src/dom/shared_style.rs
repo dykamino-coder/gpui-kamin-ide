@@ -126,6 +126,7 @@ impl SharedStyle {
                 .map(|d| d.background_paint)
                 .unwrap_or_default(),
             self.decoration.as_deref().and_then(|d| d.canvas.clone()),
+            self.decoration.as_deref().and_then(|d| d.paint.clone()),
         )
     }
 
@@ -166,6 +167,7 @@ impl SharedStyle {
             inline_decoration,
             background_paint,
             canvas_background,
+            paint,
         } = input.into();
         Self {
             cascaded: style,
@@ -176,6 +178,7 @@ impl SharedStyle {
                 inline: inline_decoration,
                 background_paint,
                 canvas: canvas_background,
+                paint,
             }))
             .filter(|d| **d != Default::default()),
         }

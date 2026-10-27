@@ -136,9 +136,14 @@ mod tests {
                     c.apply_one("background-color", "transparent", vcx);
                     c.apply_one("border-radius", radius, vcx);
                     c.bg_clip = Some(clip);
-                    assert!(!c.gradient_as_tile());
+                    assert!(
+                        !crate::style::background_paint::BackgroundValues::from_computed(&c)
+                            .gradient_as_tile()
+                    );
+                    let background =
+                        crate::style::background_paint::BackgroundValues::from_computed(&c);
                     let super::super::fill::Fill::Linear(_, positioning) =
-                        super::super::fill::Fill::new(&c, area, vcx).unwrap()
+                        super::super::fill::Fill::new(&c, &background, area, vcx).unwrap()
                     else {
                         panic!("transparent bottom color must preserve the gradient image");
                     };
@@ -161,7 +166,11 @@ mod tests {
                     assert_eq!(original.to, mapped.to);
                     for origin in ["border-box", "padding-box", "content-box"] {
                         c.apply_one("background-origin", origin, vcx);
-                        assert_eq!(c.gradient_as_tile(), origin != "padding-box");
+                        assert_eq!(
+                            crate::style::background_paint::BackgroundValues::from_computed(&c)
+                                .gradient_as_tile(),
+                            origin != "padding-box"
+                        );
                     }
                 }
             }

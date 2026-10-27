@@ -1,6 +1,6 @@
 //! Постоянные цвета фона и заливки клипа, вычисленные из CSS-значений и фактов об изображении.
 
-use crate::style::computed::{BgRepeat, Computed, Tiling};
+use crate::style::computed::{BgRepeat, Tiling};
 use crate::style::values::{composite::over, value::Color};
 
 mod stack;
@@ -24,22 +24,22 @@ pub(crate) trait BackgroundImageValues {
 /// одноцветный градиент или одноцветный растр, мощённый без зазоров.
 /// `None` — фон узорный (или его нет вовсе).
 pub(crate) fn flat_fill(
-    c: &Computed,
+    c: &crate::style::background_paint::BackgroundValues,
     images: &dyn BackgroundImageValues,
 ) -> Option<crate::style::values::value::Color> {
-    if c.gradient.is_some() && c.bg_image.is_some() {
+    if c.gradient.is_some() && c.top.image.is_some() {
         return None;
     }
-    let mut fill = c.background.unwrap_or_default();
+    let mut fill = c.color.unwrap_or_default();
     if let Some(g) = &c.gradient {
         let one = g.from;
-        let repeat = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
+        let repeat = c.top.repeat.unwrap_or(BgRepeat::Repeat);
         let covers = |t| matches!(t, Tiling::Repeat | Tiling::Round);
-        let complete = c.bg_size == crate::style::computed::BgSize::Auto
+        let complete = c.top.size == crate::style::computed::BgSize::Auto
             && ((covers(repeat.axis(true)) && covers(repeat.axis(false)))
                 || (repeat == BgRepeat::NoRepeat
-                    && c.bg_pos == Default::default()
-                    && c.bg_origin.is_none()));
+                    && c.top.position == Default::default()
+                    && c.top.origin.is_none()));
         let flat = complete
             && (g.hue != 1
                 || matches!(
@@ -59,8 +59,8 @@ pub(crate) fn flat_fill(
         }
         fill = over(one, fill);
     }
-    if let Some(src) = &c.bg_image {
-        let rep = c.bg_repeat.unwrap_or(BgRepeat::Repeat);
+    if let Some(src) = &c.top.image {
+        let rep = c.top.repeat.unwrap_or(BgRepeat::Repeat);
         let covers = |t: Tiling| matches!(t, Tiling::Repeat | Tiling::Round);
         if !covers(rep.axis(true)) || !covers(rep.axis(false)) {
             return None;
@@ -76,13 +76,13 @@ pub(crate) fn flat_fill(
 /// повторное слияние стилей (`style::cascade::inherit` зовётся цепочкой) даёт тот же
 /// цвет — смешение не копится.
 pub(crate) fn text_clip_fill(
-    c: &Computed,
+    c: &crate::style::background_paint::BackgroundValues,
     images: &dyn BackgroundImageValues,
 ) -> Option<crate::style::values::value::Color> {
-    if let Some(fill) = c.flat_text_background {
-        return Some(fill);
+    if let Some(stack) = c.flat {
+        return (stack[1] != stack[0] && stack[1].a == 1.0).then_some(stack[1]);
     }
-    if c.bg_clip != Some(crate::style::computed::BgClip::Text) {
+    if c.top.clip != Some(crate::style::computed::BgClip::Text) {
         return None;
     }
     flat_fill(c, images).filter(|f| f.a >= 1.0)

@@ -113,15 +113,17 @@ fn suppressed_background_does_not_supply_a_drop_shadow_silhouette() {
     let body_box = box_style(&root_box, &body.style, vcx);
     let child_box = box_style(&body_box, &child.style, vcx);
     assert!(body_box.drop_shadow.is_some());
-    assert!(body_box.shadows.is_empty());
+    assert!(body_box.paint_shadows().is_empty());
+    assert_eq!(body_box.shadows, body.style.computed().shadows);
     let ordinary = box_style(
         &root_box,
         &crate::dom::SharedStyle::from(body.style.cascaded().clone()),
         vcx,
     );
-    assert_eq!(ordinary.shadows.len(), 1);
+    assert_eq!(ordinary.paint_shadows().len(), 1);
+    assert_eq!(ordinary.shadows, body.style.computed().shadows);
     assert_eq!(child_box.background_paint, BackgroundPaint::Css);
-    assert_eq!(body_box.text_clip_fill, None);
+    assert_eq!(body_box.foreground_paint().fill, None);
     assert_eq!(
         body.style.computed().background,
         child.style.computed().background
@@ -138,10 +140,10 @@ fn initial_background_does_not_supply_text_clip_fill_or_change_corner_geometry()
     let mut input = crate::dom::SharedStyle::from(css);
     let parent = BoxStyle::default();
     let ordinary = box_style(&parent, &input, vcx);
-    assert!(ordinary.text_clip_fill.is_some());
+    assert!(ordinary.foreground_paint().fill.is_some());
     input.set_background_paint(BackgroundPaint::Initial);
     let suppressed = box_style(&parent, &input, vcx);
-    assert_eq!(suppressed.text_clip_fill, None);
+    assert_eq!(suppressed.foreground_paint().fill, None);
     assert_eq!(suppressed.color, input.computed().color);
 
     let mut css = Computed::default();

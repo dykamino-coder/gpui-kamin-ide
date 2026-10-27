@@ -38,3 +38,31 @@ impl BoxStyle {
         }
     }
 }
+
+impl From<&BoxStyle> for crate::style::box_input::BoxStyleInput {
+    fn from(style: &BoxStyle) -> Self {
+        Self::new(
+            std::rc::Rc::clone(style.style_rc()),
+            Some(std::rc::Rc::new(style.context.clone())),
+            style.inline_decoration,
+            style.background_paint,
+            style.canvas_background.clone(),
+            style.paint.clone(),
+        )
+    }
+}
+
+impl From<BoxStyle> for crate::style::box_input::BoxStyleInput {
+    fn from(style: BoxStyle) -> Self {
+        let context = std::rc::Rc::new(style.context.clone());
+        let inline_decoration = style.inline_decoration;
+        Self::new(
+            style.style,
+            Some(context),
+            inline_decoration,
+            style.background_paint,
+            style.canvas_background,
+            style.paint,
+        )
+    }
+}

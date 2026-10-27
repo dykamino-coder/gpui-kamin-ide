@@ -29,7 +29,7 @@ pub(crate) fn computed_source(
         }),
         ImageSource::Filter { image, program } => Some(Source::Filtered {
             image: Box::new(computed_source(image, orient, vcx)?),
-            list: program.clone(),
+            list: Box::new(program.clone()),
         }),
         _ => Some(Source::Gradient {
             image: std::sync::Arc::new(image.clone()),

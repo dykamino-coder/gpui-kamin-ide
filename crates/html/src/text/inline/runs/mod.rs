@@ -102,7 +102,14 @@ pub fn text_and_runs(
                     continue;
                 }
                 text.push_str(t);
-                runs.push(decorated_run(t, style, style.inline_decoration, base, vcx));
+                runs.push(decorated_run(
+                    t,
+                    style,
+                    style.inline_decoration,
+                    style.ink(),
+                    base,
+                    vcx,
+                ));
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
             // пробел, а сам он рисуется поверх (см. `overlays`).
@@ -130,13 +137,14 @@ pub(super) fn run_for(
     base: &TextStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TextRun {
-    decorated_run(text, style, Default::default(), base, vcx)
+    decorated_run(text, style, Default::default(), style.color, base, vcx)
 }
 
 fn decorated_run(
     text: &str,
     style: &Computed,
     inline_decoration: crate::style::inline_decoration::InlineDecoration,
+    ink: Option<Color>,
     base: &TextStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TextRun {
@@ -179,7 +187,7 @@ fn decorated_run(
     } else {
         style
             .text_shadow_ink
-            .or(style.color)
+            .or(ink)
             .map(Color::to_hsla)
             .unwrap_or(base.color)
     };

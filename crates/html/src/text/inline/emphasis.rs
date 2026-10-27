@@ -80,7 +80,8 @@ pub(crate) fn emphasis_spans(
                     color.map(|color| {
                         let color = style.used_color(color);
                         style
-                            .text_clip_fill
+                            .foreground_paint()
+                            .fill
                             .map_or(color, |fill| {
                                 crate::style::values::composite::over(color, fill)
                             })

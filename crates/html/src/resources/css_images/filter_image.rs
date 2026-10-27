@@ -63,12 +63,15 @@ pub(crate) fn apply(
             return None;
         }
         for px in out.chunks_exact_mut(4) {
-            let c = f.apply(crate::style::values::value::Color {
-                r: px[2] as f32 / 255.0,
-                g: px[1] as f32 / 255.0,
-                b: px[0] as f32 / 255.0,
-                a: px[3] as f32 / 255.0,
-            });
+            let c = f.apply_operations(
+                &style.operations,
+                crate::style::values::value::Color {
+                    r: px[2] as f32 / 255.0,
+                    g: px[1] as f32 / 255.0,
+                    b: px[0] as f32 / 255.0,
+                    a: px[3] as f32 / 255.0,
+                },
+            );
             let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
             px.copy_from_slice(&[q(c.b), q(c.g), q(c.r), q(c.a)]);
         }
@@ -97,10 +100,12 @@ mod tests {
         own.apply_one("background-image", raw, vcx);
         own.apply_one("filter", "invert(1)", vcx);
         let rendered = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
-        let image = super::super::computed_source(rendered.bg_image.as_ref().unwrap(), true, vcx)
-            .unwrap()
-            .raster((7.0, 5.0), vcx)
-            .unwrap();
+        let background = rendered.paint_background();
+        let image =
+            super::super::computed_source(background.top.image.as_ref().unwrap(), true, vcx)
+                .unwrap()
+                .raster((7.0, 5.0), vcx)
+                .unwrap();
         let operand =
             crate::style::computed::ImageSource::parse(&format!("filter({raw}, invert(1))"), vcx)
                 .unwrap();
@@ -109,6 +114,8 @@ mod tests {
             .raster((7.0, 5.0), vcx)
             .unwrap();
         assert_eq!(image.bytes.as_ref(), expected.bytes.as_ref());
-        assert!(rendered.gradient.is_none());
+        assert!(background.gradient.is_none());
+        assert_eq!(rendered.gradient, own.gradient);
+        assert_eq!(rendered.bg_image, own.bg_image);
     }
 }

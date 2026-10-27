@@ -16,6 +16,12 @@ use crate::style::computed::{BgRepeat, Computed};
 use crate::style::values::value::Len;
 use gpui::{Bounds, Pixels, px};
 
+/// Краска рамки задаёт перекрытые стороны независимо от CSS-геометрии слоя.
+pub(super) struct LayerPaint<'a> {
+    pub layer: &'a crate::style::computed::BgLayer,
+    pub opaque_borders: [bool; 4],
+}
+
 /// Нарисовать плитки: `area` задаёт РАЗМЕР и НАЧАЛО ОТСЧЁТА, `canvas` — что
 /// именно закрашивается.
 ///
@@ -43,7 +49,10 @@ pub(super) fn paint_tiles_in(
     vcx: ValueCx<'_>,
 ) {
     paint_layer_in(
-        &crate::style::computed::BgLayer::from_computed(c),
+        LayerPaint {
+            layer: &crate::style::computed::BgLayer::from_computed(c),
+            opaque_borders: std::array::from_fn(|i| c.used_border_color(i).a >= 1.0),
+        },
         c,
         bounds,
         canvas,
@@ -55,7 +64,7 @@ pub(super) fn paint_tiles_in(
 
 /// Операнды фона и геометрия элемента имеют разных владельцев у холста.
 pub(super) fn paint_layer_in(
-    layer: &crate::style::computed::BgLayer,
+    paint: LayerPaint<'_>,
     c: &Computed,
     bounds: Bounds<Pixels>,
     canvas: Option<Bounds<Pixels>>,
@@ -63,6 +72,7 @@ pub(super) fn paint_layer_in(
     geometry: Option<super::exact_layer::PaintGeometry>,
     vcx: ValueCx<'_>,
 ) {
+    let layer = paint.layer;
     let positioning = geometry.map_or(bounds, |geometry| geometry.positioning(bounds));
     let Some(src) = layer.image.clone() else {
         return;
@@ -185,7 +195,7 @@ pub(super) fn paint_layer_in(
             // полупрозрачная рамка пропускают фон — там border-box целиком
             // (`background-repeat-001`, `c548-ln-ht-001`, `margin-shorthand-001`).
             let covers = |i: usize| {
-                let opaque = c.used_border_color(i).a >= 1.0;
+                let opaque = paint.opaque_borders[i];
                 // solid / inset / outset / groove / ridge — сплошная краска.
                 matches!(c.border_side_styles[i], Some(3..=6) | Some(9)) && opaque
             };

@@ -200,6 +200,6 @@ impl Muted for gpui::Div {
 }
 
 /// Авторский цвет акцента формы, общий для выбора и индикаторов.
-pub(super) fn control_accent(style: &Computed) -> Option<crate::style::values::value::Color> {
+pub(super) fn control_accent(style: &BoxStyle) -> Option<crate::style::values::value::Color> {
     style.used_accent_color()
 }

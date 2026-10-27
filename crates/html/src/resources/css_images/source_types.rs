@@ -20,7 +20,7 @@ pub(crate) enum Source {
     /// Filter after resolving the input image at its concrete object size.
     Filtered {
         image: Box<Source>,
-        list: crate::style::computed::ImageFilter,
+        list: Box<crate::style::computed::ImageFilter>,
     },
     Vector {
         markup: String,
