@@ -187,6 +187,11 @@ pub(crate) fn place_element(
     } else {
         built
     };
+    // The native source places a percentage-sized box off the static probe
+    // from its laid-out flow; a probe of its own records its static position.
+    if !(to_icb || to_cb) {
+        static_source_probe(e, inherited, x_set, y_set, out, opts);
+    }
     // Абсолютная коробка с ОТРИЦАТЕЛЬНЫМ `z-index` не идёт ни в слой
     // ICB, ни в верхний слой: её место ПОД потоком (§9.9 шаг 3). Но
     // пустая ось у неё считается от СТАТИЧЕСКОЙ позиции, а гибкая
@@ -221,4 +226,38 @@ pub(crate) fn place_element(
         record_root,
         opts,
     )
+}
+
+fn static_source_probe(
+    e: &crate::dom::Element,
+    inherited: &BoxStyle,
+    x_set: bool,
+    y_set: bool,
+    out: &mut Vec<AnyElement>,
+    opts: &RenderOpts,
+) {
+    use crate::layout::positioned::containing_block::{Spot, SpotCell, spot_probe};
+    let Some(recorder) = &opts.cx.position.geometry_record else {
+        return;
+    };
+    if !crate::layout::positioned::static_position::static_place_in_flow_only(&e.style.used()) {
+        return;
+    }
+    let spot = SpotCell::default();
+    spot.set(Spot {
+        fixed_axes: (x_set, y_set),
+        rtl: inherited.wm().rtl(),
+        vertical: inherited.wm().vertical(),
+        vertical_rl: inherited.wm().block_rl(),
+        own_vertical: e.style.cascaded().wm().vertical(),
+        ..Default::default()
+    });
+    out.push(spot_probe(spot.clone(), true, None, &opts.cx));
+    recorder.spot(
+        e.node_id,
+        &spot,
+        opts.cx.position.line_box.clone(),
+        &e.style.used(),
+        opts.cx.vcx(),
+    );
 }

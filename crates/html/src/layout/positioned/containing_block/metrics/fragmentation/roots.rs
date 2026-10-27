@@ -24,10 +24,7 @@ pub(crate) fn continuation_roots<'a>(kids: impl Iterator<Item = &'a Element>) ->
 }
 
 /// The source cannot resolve `e`'s place itself (`Flow::follows`): an anchor
-/// laid out elsewhere places it, or the flow of a percentage-sized box off
-/// the static position probe. Its record follows the copy that resolved it.
+/// laid out elsewhere places it. Its record follows the copy that resolved it.
 pub(super) fn follows(e: &Element) -> bool {
-    let used = e.style.used();
-    crate::layout::positioned::anchor::resolve::needs_deferred(&used)
-        || crate::layout::positioned::static_position::static_place_in_flow_only(&used)
+    crate::layout::positioned::anchor::resolve::needs_deferred(&e.style.used())
 }
