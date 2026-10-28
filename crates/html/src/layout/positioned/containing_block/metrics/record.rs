@@ -13,6 +13,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 mod static_position;
 use static_position::StaticPosition;
 mod element;
+mod settle;
+pub(crate) use settle::{Settling, settled_offset};
 mod margin;
 use margin::margin_offset;
 
@@ -21,6 +23,10 @@ pub(crate) struct Recorder {
     nodes: RefCell<HashMap<u64, Entry>>,
     spots: RefCell<HashMap<u64, StaticPosition>>,
     pub(super) flows: super::fragmentation::Recording,
+    /// Anchored offsets found by the settling pass (`record::settle`).
+    pub(super) offsets: RefCell<HashMap<u64, gpui::Point<Pixels>>>,
+    /// Anchored boxes the settling pass could not anchor (`record::settle`).
+    pub(crate) unsettled: RefCell<std::collections::HashSet<u64>>,
 }
 
 struct Entry {
@@ -92,6 +98,13 @@ impl Recorder {
             .iter()
             .filter_map(|(&id, entry)| Some((id, entry.node.bounds(window)?)))
             .collect();
+        let settled = self.settled();
+        snapshot.settled.clone_from(&settled);
+        for (id, bounds) in snapshot.normal.iter_mut() {
+            if let Some(d) = settled.get(&self.flows.families.get(id).copied().unwrap_or(*id)) {
+                bounds.origin += *d;
+            }
+        }
         snapshot.relative = nodes
             .iter()
             .filter_map(|(&id, entry)| Some((id, entry.node.read(window)?.relative_offset)))
@@ -116,6 +129,10 @@ impl Recorder {
                 }
                 None => (layout.normal, None, None),
             };
+            let mut normal = normal;
+            if let Some(d) = settled.get(&id) {
+                normal.origin += *d;
+            }
             let original_cb_rect = cb.padding(cb_layout.normal);
             snapshot
                 .containing_blocks

@@ -73,6 +73,16 @@ impl PageStack {
             plan.incomplete();
         }
         *self.oof.plan.borrow_mut() = plan;
+        // The sheets' slots replay the roots these sources continue.
+        let snapshots = self.oof.snapshots.borrow();
+        let repeats = self.oof.repeat_snapshots.borrow();
+        let roots = snapshots
+            .iter()
+            .map(|(_, s)| s)
+            .chain(repeats.iter().map(|(_, _, s)| s))
+            .filter(|s| s.native_oof().is_some())
+            .flat_map(|s| s.continued_roots().to_vec());
+        self.oof.slot_scopes.natives().set(roots);
     }
 
     fn resume_oof(

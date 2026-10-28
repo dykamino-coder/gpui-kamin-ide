@@ -32,6 +32,7 @@ pub(super) fn slices(
         placed: None,
         origins: HashMap::new(),
         presented: Default::default(),
+        elsewhere: Default::default(),
     }
 }
 

@@ -60,7 +60,7 @@ pub(crate) fn collect(
 pub(crate) fn collect_paged(
     kids: &[Node],
     parent: &BoxStyle,
-    page: ((f32, f32), Div),
+    page: ((f32, f32), &dyn Fn() -> Div),
     opts: &RenderOpts,
     window: &mut Window,
     cx: &mut App,
@@ -106,7 +106,7 @@ fn collect_in(
     kids: Children<'_>,
     parent: &BoxStyle,
     width: f32,
-    page: Option<(f32, Div)>,
+    page: Option<(f32, &dyn Fn() -> Div)>,
     opts: &RenderOpts,
     window: &mut Window,
     cx: &mut App,
@@ -114,6 +114,75 @@ fn collect_in(
     if !kids.elements().any(contains_positioned) {
         return Rc::default();
     }
+    let is_page = page.is_some();
+    // Anchor-positioned boxes take their place from anchors published on
+    // prepaint: a settling pass places them before the snapshot records their
+    // flows (css-anchor-position-1 §3: anchors are laid out first), then rolls
+    // its prepaint back; the source that paints is built afresh.
+    let settle = kids.elements().any(contains_anchored);
+    let (recorder, mut root, layout, root_size) =
+        build(&kids, parent, width, page, opts, window, cx);
+    if settle {
+        let settling = Rc::new(super::super::record::Settling(recorder.clone()));
+        let vcx = opts.cx.vcx();
+        let missed = crate::layout::positioned::anchor::misses_of(vcx, || {
+            let _ = window.transact(|window| {
+                window.with_render_context(Some(settling), |window| {
+                    root.prepaint_at(gpui::point(px(0.), px(0.)), window, cx)
+                });
+                Err::<(), ()>(())
+            });
+        });
+        *recorder.unsettled.borrow_mut() = missed;
+    }
+    let mut snapshot = recorder.snapshot(window);
+    snapshot.host = if is_page { 0 } else { parent.self_node };
+    recorder.fragment_snapshot(&mut snapshot, window);
+    let (root, layout, root_size) = if settle {
+        let (_, root, layout, size) = build(&kids, parent, width, page, opts, window, cx);
+        (root, layout, size)
+    } else {
+        (root, layout, root_size)
+    };
+    let extent = snapshot.normal.values().copied().fold(
+        Bounds::new(gpui::point(px(0.), px(0.)), root_size),
+        |extent, bounds| extent.union(&bounds),
+    );
+    snapshot.native = Some(Rc::new(super::Native::new(root, layout, extent)));
+    Rc::new(snapshot)
+}
+
+/// An anchor-positioned box (`anchor::resolve::needs_deferred`) in the subtree.
+fn contains_anchored(e: &Element) -> bool {
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if crate::layout::positioned::anchor::resolve::needs_deferred(&e.style.used()) {
+            return true;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            crate::dom::Node::Element(c) => Some(c),
+            _ => None,
+        }));
+    }
+    false
+}
+
+/// One source tree laid out at `width` with its own recorder.
+#[allow(clippy::too_many_arguments)]
+fn build(
+    kids: &Children<'_>,
+    parent: &BoxStyle,
+    width: f32,
+    page: Option<(f32, &dyn Fn() -> Div)>,
+    opts: &RenderOpts,
+    window: &mut Window,
+    cx: &mut App,
+) -> (
+    Rc<Recorder>,
+    gpui::AnyElement,
+    crate::layout::fragment::geometry::Node,
+    gpui::Size<gpui::Pixels>,
+) {
     let recorder = Rc::new(Recorder::for_fragments(kids.elements(), parent, opts));
     let mut opts = opts.clone();
     opts.cx.position = Default::default();
@@ -133,7 +202,7 @@ fn collect_in(
     let children = kids.build(parent, &opts);
     let is_page = page.is_some();
     let mut frame = match page {
-        Some((height, frame)) => frame
+        Some((height, frame)) => frame()
             .relative()
             .w(px(width))
             .h(px(height))
@@ -165,13 +234,5 @@ fn collect_in(
         window,
         cx,
     );
-    let mut snapshot = recorder.snapshot(window);
-    snapshot.host = if is_page { 0 } else { parent.self_node };
-    recorder.fragment_snapshot(&mut snapshot, window);
-    let extent = snapshot.normal.values().copied().fold(
-        Bounds::new(gpui::point(px(0.), px(0.)), root_size),
-        |extent, bounds| extent.union(&bounds),
-    );
-    snapshot.native = Some(Rc::new(super::Native::new(root, layout, extent)));
-    Rc::new(snapshot)
+    (recorder, root, layout, root_size)
 }

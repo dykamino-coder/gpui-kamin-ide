@@ -13,8 +13,8 @@ use gpui::{Bounds, Pixels, Window};
 use std::{cell::Cell, rc::Rc};
 pub(crate) mod paint;
 mod roots;
+use roots::anchored;
 pub(crate) use roots::continuation_roots;
-use roots::held;
 mod snapshot;
 
 #[derive(Clone)]
@@ -50,8 +50,8 @@ struct Flow {
     policy: Cell<FixedPolicy>,
     fixed: Cell<bool>,
     static_block: Cell<bool>,
-    /// Anchor-positioned: its copies place it (`roots::held`).
-    held: bool,
+    /// Anchor-positioned: the settling pass places it (`layout::source`).
+    anchored: bool,
     transform: Option<crate::style::computed::FlatTransform>,
 }
 
@@ -72,6 +72,21 @@ impl Default for Recording {
 }
 
 impl Recording {
+    /// Flows at or inside an anchor-positioned flow: prepaint settles them.
+    /// With the enclosing flow, in tree order.
+    pub(super) fn settling(&self) -> Vec<(u64, Option<u64>)> {
+        let mut inside: Vec<bool> = Vec::with_capacity(self.flows.len());
+        let mut out = Vec::new();
+        for flow in &self.flows {
+            let settles = flow.anchored || flow.parent.is_some_and(|parent| inside[parent]);
+            inside.push(settles);
+            if settles {
+                out.push((flow.id, flow.parent.map(|parent| self.flows[parent].id)));
+            }
+        }
+        out
+    }
+
     pub(super) fn policy(&self, id: u64, style: &BoxStyle) {
         if let Some(flow) = self.flows.iter().find(|f| f.id == id) {
             flow.fixed.set(style.position == Some(Position::Fixed));
@@ -149,7 +164,7 @@ impl Recorder {
                     policy: Cell::new(FixedPolicy::Fragment),
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
-                    held: held(e),
+                    anchored: anchored(e),
                     transform: crate::style::computed::FlatTransform::of(&e.style.used()),
                 });
                 parent = Some(index);

@@ -28,8 +28,8 @@ impl Paint<'_> {
         let first = self.first;
         let vertical = self.vertical;
         Some(Rc::new(move |area, window, cx| {
-            let frame = super::frame::wrap(padding, area.1, first, vertical);
-            layout::collect_paged(&nodes, &root, (area, frame), &opts, window, cx)
+            let frame = || super::frame::wrap(padding, area.1, first, vertical);
+            layout::collect_paged(&nodes, &root, (area, &frame), &opts, window, cx)
         }))
     }
 }

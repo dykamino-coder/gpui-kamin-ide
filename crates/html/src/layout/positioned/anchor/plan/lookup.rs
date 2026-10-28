@@ -21,7 +21,7 @@ impl AnchorPlan {
                 .max_by_key(|(_, seq, _)| *seq)
                 .map(|(_, _, rec)| *rec)
         };
-        match name {
+        let found = match name {
             Some(n) => named(n),
             None => match &self.default_anchor {
                 Some(DefaultAnchor::Named(n)) => named(n),
@@ -33,7 +33,11 @@ impl AnchorPlan {
                     .filter(|r| self.acceptable(r)),
                 None => None,
             },
+        };
+        if found.is_none() {
+            f.misses.borrow_mut().insert(self.key);
         }
+        found
     }
 
     pub(in crate::layout::positioned::anchor) fn rec_current(

@@ -199,7 +199,8 @@ impl PageStack {
             }
             records.bare.absorb(&bare);
         }
-        *self.oof.records.borrow_mut() = Records { orphans, ..records };
+        let bare = records.bare.with_natives(self.oof.slot_scopes.natives());
+        *self.oof.records.borrow_mut() = Records { orphans, bare };
         Ok(())
     }
 

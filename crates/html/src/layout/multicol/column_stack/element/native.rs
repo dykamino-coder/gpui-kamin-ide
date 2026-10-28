@@ -160,6 +160,7 @@ impl ColumnStack {
             return Ok(());
         };
         let (records, bare) = native.record(window, cx)?;
+        let bare = bare.with_natives(self.oof.slot_scopes.natives());
         *self.oof.records.borrow_mut() = (records.into_records(), bare);
         Ok(())
     }

@@ -73,7 +73,7 @@ fn actual_page_cb_repeats_fixed_through_the_last_absolute_fragment(cx: &mut gpui
         let root = opts.root_style();
         let source: PageSource = Rc::new(move |area, window, app| {
             crate::layout::positioned::containing_block::metrics::layout::collect_paged(
-                &nodes, &root, (area, gpui::div()), &opts, window, app,
+                &nodes, &root, (area, &gpui::div), &opts, window, app,
             )
         });
         let stack = PageStack::new(vec![kid(source)], Rc::new(|i, _| geom(i)), Vec::new(), Vec::new(), None);

@@ -164,6 +164,10 @@ pub(crate) fn node(
         paint(window, cx);
         return;
     };
+    // Its own instance outside the source paints it (`SourceSlices::elsewhere`).
+    if source.slices.elsewhere.contains(&id) {
+        return;
+    }
     // A continued root placed elsewhere than its admission's layout (a late
     // static position) carries its family's admission along.
     match source

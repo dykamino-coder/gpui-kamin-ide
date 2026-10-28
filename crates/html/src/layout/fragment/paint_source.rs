@@ -24,6 +24,10 @@ pub(crate) struct SourceSlices {
     /// Roots presented per fragment under their own flat transform: their
     /// transformed element paints untransformed inside the source.
     pub(crate) presented: std::collections::HashSet<u64>,
+    /// Boxes laid out by a containing block outside the source: their own
+    /// instance (static position from the copies' probes) paints them, the
+    /// source neither prepaints nor paints its instance.
+    pub(crate) elsewhere: Rc<std::collections::HashSet<u64>>,
 }
 
 /// Own continuation capture of an outermost absolute/fixed root and the flows
@@ -51,7 +55,24 @@ type Table = RefCell<HashMap<(PaintSegmentId, u64), Vec<Replay>>>;
 /// native source that paints part of a root (a page-repeated layer of it, say)
 /// adds its record; the slot replays them in source order.
 #[derive(Clone, Default)]
-pub(crate) struct BareRecords(Rc<Table>);
+pub(crate) struct BareRecords(Rc<Table>, Natives);
+
+/// Roots whose native sources replay them; a slot of any other root paints
+/// its copy as before (a family the source cannot settle stays with it).
+#[derive(Clone, Default)]
+pub(crate) struct Natives(Rc<RefCell<std::collections::HashSet<u64>>>);
+
+impl Natives {
+    pub(crate) fn set(&self, roots: impl IntoIterator<Item = u64>) {
+        let cell: &RefCell<std::collections::HashSet<u64>> = &self.0;
+        *cell.borrow_mut() = roots.into_iter().collect();
+    }
+
+    pub(crate) fn contains(&self, root: u64) -> bool {
+        let cell: &RefCell<std::collections::HashSet<u64>> = &self.0;
+        cell.borrow().contains(&root)
+    }
+}
 
 impl BareRecords {
     fn table(&self) -> &Table {
@@ -89,16 +110,34 @@ impl BareRecords {
     pub(crate) fn is_empty(&self) -> bool {
         self.table().borrow().is_empty()
     }
+
+    /// The roots these records replay (`Natives`).
+    pub(crate) fn natives(&self) -> &Natives {
+        &self.1
+    }
+
+    /// The same records replaying the roots of `natives`.
+    pub(crate) fn with_natives(self, natives: &Natives) -> Self {
+        Self(self.0, natives.clone())
+    }
 }
 
 /// Hit scopes of the slots met while prepainting the copies, by (segment, root).
 #[derive(Clone, Default)]
-pub(crate) struct SlotScopes(Rc<RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>>>);
+pub(crate) struct SlotScopes(
+    Rc<RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>>>,
+    Natives,
+);
 
 impl SlotScopes {
     pub(crate) fn push(&self, segment: PaintSegmentId, root: u64, scope: PaintHitScope) {
         let cell: &RefCell<Vec<(PaintSegmentId, u64, PaintHitScope)>> = &self.0;
         cell.borrow_mut().push((segment, root, scope));
+    }
+
+    /// The roots replayed by the native sources of this stack.
+    pub(crate) fn natives(&self) -> &Natives {
+        &self.1
     }
 
     /// Forget the slots of the previous prepaint.

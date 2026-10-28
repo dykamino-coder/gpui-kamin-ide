@@ -53,6 +53,11 @@ pub(crate) struct Snapshot {
     /// Accumulated used relative displacement of each painted box (zero omitted):
     /// the source paints there, the normal geometry above excludes it.
     pub(crate) relative: HashMap<u64, Point<Pixels>>,
+    /// Anchored displacement the source applies on prepaint inside a box's
+    /// own record (`record::settle`): the normal geometry above includes it.
+    pub(crate) settled: HashMap<u64, Point<Pixels>>,
+    /// Flows laid out by a containing block outside the source.
+    pub(crate) elsewhere: std::collections::HashSet<u64>,
     pub(crate) cloned_boxes: HashMap<u64, (crate::layout::fragment::types::StackAxis, f32, f32)>,
     pub(crate) native: Option<std::rc::Rc<layout::Native>>,
     /// Fragmentation host whose children the source lays out (0: a page area).

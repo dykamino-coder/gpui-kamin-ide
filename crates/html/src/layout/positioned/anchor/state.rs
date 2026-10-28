@@ -36,4 +36,6 @@ pub(crate) struct AnchorState {
     /// 0 — базовые стили, k — k-й элемент списка. Живёт между кадрами,
     /// удаляется после кадра без коробки и при сборке нового документа.
     pub(super) chosen: RefCell<HashMap<u64, super::trials::Chosen>>,
+    /// Boxes whose anchor lookup found no acceptable anchor in this frame.
+    pub(super) misses: RefCell<std::collections::HashSet<u64>>,
 }

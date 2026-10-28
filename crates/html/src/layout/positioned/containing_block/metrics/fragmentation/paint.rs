@@ -143,8 +143,10 @@ impl Admission {
     pub(crate) fn finish(mut self, snapshot: &Snapshot) -> Routing {
         let families = Rc::new(snapshot.families.clone());
         let mut hits = slices(snapshot, &self.hit_families, families.clone());
+        hits.elsewhere = Rc::new(snapshot.elsewhere.clone());
         let mut paint = SourceSlices {
             families,
+            elsewhere: hits.elsewhere.clone(),
             ..Default::default()
         };
         let mut orphan_routes = Vec::new();
@@ -155,7 +157,10 @@ impl Admission {
                 .get(root)
                 .map(|b| b.origin)
                 .unwrap_or_default()
-                + snapshot.relative.get(root).copied().unwrap_or_default();
+                + snapshot.relative.get(root).copied().unwrap_or_default()
+                // The root's record sits where layout put it; the anchored
+                // offset applies inside it.
+                - snapshot.settled.get(root).copied().unwrap_or_default();
             paint.origins.insert(*root, origin);
             hits.origins.insert(*root, origin);
         }

@@ -82,9 +82,16 @@ impl Wrap for Slot {
 
     fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         // The native placement replayed here is hit through this copy's scope.
-        if let Some(copy) = window.render_context::<CopyHits>() {
-            copy.scopes
-                .push(copy.segment, self.id, window.paint_hit_scope());
+        match window.render_context::<CopyHits>() {
+            Some(copy) if copy.scopes.natives().contains(self.id) => {
+                copy.scopes
+                    .push(copy.segment, self.id, window.paint_hit_scope());
+            }
+            // A root no native source replays stays with its copy.
+            _ => {
+                self.child.prepaint(window, cx);
+                return;
+            }
         }
         // Layout stays with the copy; its hitboxes live at the native placements
         // only (a singular matrix makes this copy's own ones unreachable).
@@ -95,8 +102,10 @@ impl Wrap for Slot {
         window.with_hitbox_transform(hidden, |window| self.child.prepaint(window, cx));
     }
 
-    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, _: &mut App) {
-        let Some(copy) = window.render_context::<CopySegment>() else {
+    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let copy = window.render_context::<CopySegment>();
+        let Some(copy) = copy.filter(|copy| copy.records.natives().contains(self.id)) else {
+            self.child.paint(window, cx);
             return;
         };
 
