@@ -12,7 +12,10 @@ use gpui::{AnyElement, Pixels};
 
 pub struct Transformed {
     pub(crate) child: AnyElement,
-    pub(crate) values: crate::document::state::ValueDoc,
+    /// Deferred paint owner of the render tree that built the transform.
+    pub(crate) paint: Option<std::rc::Rc<crate::layout::cx::deferred::Deferred>>,
+    /// Layout state whose anchor transform stack the flat matrix enters on prepaint.
+    pub(crate) layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
     /// Поворот в радианах, масштаб по осям, сдвиг в точках.
     pub rotate: f32,
     /// Скос по осям в радианах (`transform: skew`).
@@ -135,10 +138,11 @@ pub(super) fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatr
 }
 
 impl Transformed {
-    pub fn new(child: AnyElement, vcx: crate::document::state::ValueCx<'_>) -> Self {
+    pub(crate) fn new(child: AnyElement, frame: crate::layout::cx::FrameCx<'_>) -> Self {
         Transformed {
             child,
-            values: vcx.keep(),
+            paint: frame.paint.cloned(),
+            layout: frame.layout.clone(),
             rotate: 0.0,
             skew: (0.0, 0.0),
             scale: (1.0, 1.0),

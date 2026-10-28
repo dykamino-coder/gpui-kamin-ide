@@ -3,6 +3,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 
@@ -35,8 +36,9 @@ pub(crate) fn block_group(
     el: AnyElement,
     e: &Element,
     inherited: &BoxStyle,
-    vcx: ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
+    let vcx = frame.values;
     let style = group_style(&e.style, inherited, vcx);
     if crate::paint::stacking::stacking_context(&e.style.used())
         && e.style.used().isolate != Some(true)
@@ -44,9 +46,9 @@ pub(crate) fn block_group(
     {
         let mut iso = style;
         iso.isolate = Some(true);
-        return super::grouped(el, &iso, vcx);
+        return super::grouped(el, &iso, frame);
     }
-    super::grouped(el, &style, vcx)
+    super::grouped(el, &style, frame)
 }
 
 /// The paint group of block `e` around `container`, a container of its
@@ -57,15 +59,16 @@ pub(crate) fn paint_group(
     container: gpui::Div,
     e: &Element,
     inherited: &BoxStyle,
-    vcx: ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
+    let vcx = frame.values;
     let el = crate::paint::apply::static_shift(container, &e.style.used());
     let el = crate::paint::apply::apply_opacity(el, &BoxStyle::shared(e.style.used()), vcx);
     let el = crate::paint::effects::transform::transformed(
         gpui::IntoElement::into_any_element(el),
         &e.style.used(),
         inherited,
-        vcx,
+        frame,
     );
-    block_group(el, e, inherited, vcx)
+    block_group(el, e, inherited, frame)
 }

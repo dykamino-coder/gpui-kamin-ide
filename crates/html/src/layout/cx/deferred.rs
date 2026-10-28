@@ -47,9 +47,13 @@ mod tests {
         let doc = DocState::new(Default::default());
         let owner = Rc::new(Deferred::default());
         let other = Deferred::default();
-        let retained = doc.values().with_paint(Some(&owner)).keep();
+        let frame = crate::layout::cx::FrameCx {
+            paint: Some(&owner),
+            ..crate::layout::cx::FrameCx::new(doc.values())
+        };
+        let retained = frame.keep();
         drop(owner);
-        let owner = retained.vcx().paint.unwrap();
+        let owner = retained.frame().paint.unwrap();
         let bounds = Bounds {
             origin: point(px(10.0), px(20.0)),
             size: size(px(30.0), px(40.0)),

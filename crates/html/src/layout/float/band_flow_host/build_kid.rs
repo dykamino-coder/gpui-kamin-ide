@@ -32,7 +32,8 @@ pub(super) fn build_band_kid(
     >,
     height: Option<f32>,
 ) -> AnyElement {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
+    let vcx = frame.values;
     // Ширина содержащего блока — та, что намерил хост: замещаемым
     // без размеров (§10.3.2) и долям внутри (`BoxConstraints::cb_width`), блочным
     // детям куска — ширина окна (`BoxConstraints::avail_w`).
@@ -238,7 +239,7 @@ pub(super) fn build_band_kid(
             opts.cx
                 .contracts
                 .build
-                .effects(el, Effect::group(&copy.style.used(), vcx))
+                .effects(el, Effect::group(&copy.style.used(), frame))
         } else {
             opts.cx
                 .contracts

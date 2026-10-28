@@ -1,7 +1,7 @@
 //! Сгруппированная покраска (непрозрачность, обрезка).
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 mod bare_clip;
 pub(super) use bare_clip::bare_clip;
 
@@ -33,17 +33,18 @@ pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
 /// Таких случаев три: размытие поддерева (`filter: blur`), смешивание с
 /// кадром по формулам CSS (`mix-blend-mode`) и изоляция (`isolation`), где
 /// поддерево обязано сложиться отдельно, прежде чем попасть в кадр.
-pub(crate) fn grouped(el: AnyElement, c: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
-    grouped_with(el, c, None, vcx)
+pub(crate) fn grouped(el: AnyElement, c: &BoxStyle, frame: FrameCx<'_>) -> AnyElement {
+    grouped_with(el, c, None, frame)
 }
 
 pub(super) fn grouped_with(
     el: AnyElement,
     c: &BoxStyle,
     ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
-    vcx: ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
-    let el = crate::paint::decorations::outline_phase::context(el, c, vcx.paint);
+    let vcx = frame.values;
+    let el = crate::paint::decorations::outline_phase::context(el, c, frame.paint);
     let blur = c.paint_filter().map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
@@ -218,7 +219,7 @@ pub(super) fn grouped_with(
     // смешивания, ни маски, ни обрезки. Такой буфер коробкой не режется
     // (`paint::effects::grouped_element::Grouped::spill`).
     grouped_wrapper(
-        blur, blend, polygon, mask, clip_rect, clip_inset, c, el, bare_round, ring_over, vcx,
+        blur, blend, polygon, mask, clip_rect, clip_inset, c, el, bare_round, ring_over, frame,
     )
 }
 

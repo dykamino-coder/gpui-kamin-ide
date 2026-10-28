@@ -1,8 +1,8 @@
 //! Настройка состояния Grouped после вычисления геометрии клипа.
 
 use super::rounded_rect_clip;
-use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
+use crate::layout::cx::FrameCx;
 use crate::paint::effects::mask::mask_geometry;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
@@ -20,8 +20,9 @@ pub(crate) fn grouped_wrapper(
     el: AnyElement,
     bare_round: Option<Len>,
     ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
-    vcx: ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
+    let vcx = frame.values;
     let values = vcx.keep();
     let pure_isolation = blur <= 0.0
         && blend == 0
@@ -31,7 +32,7 @@ pub(crate) fn grouped_wrapper(
         && clip_inset.is_none()
         && c.clip_edges.is_none()
         && c.clip_xywh.is_none();
-    let mut wrapper = crate::paint::effects::grouped_element::Grouped::new(el, vcx);
+    let mut wrapper = crate::paint::effects::grouped_element::Grouped::new(el, frame);
     wrapper.spill = pure_isolation || mask_geometry::unclipped(c);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
@@ -50,7 +51,7 @@ pub(crate) fn grouped_wrapper(
         let shadows = c.resolved_shadows(false);
         let values = values.clone();
         wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
-            let vcx = values.vcx();
+            let frame = values.vcx();
             crate::paint::background::border_shape_shadow_scene(
                 (bs.outer.as_str(), outer_out),
                 inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
@@ -63,7 +64,7 @@ pub(crate) fn grouped_wrapper(
                 st,
                 aw,
                 ah,
-                vcx,
+                frame,
             )
         }));
     }
@@ -82,7 +83,7 @@ pub(crate) fn grouped_wrapper(
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
             let values = values.clone();
             wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
-                let vcx = values.vcx();
+                let frame = values.vcx();
                 crate::paint::background::border_shape_ring_scene(
                     (bs.outer.as_str(), outer_out),
                     inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
@@ -94,7 +95,7 @@ pub(crate) fn grouped_wrapper(
                     st,
                     aw,
                     ah,
-                    vcx,
+                    frame,
                 )
             }));
         }
@@ -115,7 +116,7 @@ pub(crate) fn grouped_wrapper(
             .as_ref()
             .is_some_and(|o| o.style == Some(crate::style::computed::OUTLINE_DOUBLE));
         wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
-            let vcx = values.vcx();
+            let frame = values.vcx();
             crate::paint::background::border_shape_outline_scene(
                 (bs.outer.as_str(), outer_out),
                 single,
@@ -130,7 +131,7 @@ pub(crate) fn grouped_wrapper(
                 st,
                 aw,
                 ah,
-                vcx,
+                frame,
             )
         }));
     }
@@ -208,7 +209,7 @@ pub(crate) fn grouped_wrapper(
     wrapper.corner_clip = crate::paint::effects::corner_clip::new(
         c,
         wrapper.mask.as_ref().and_then(|m| m.geometry()),
-        vcx,
+        frame,
     );
     if wrapper.corner_clip.is_some() {
         wrapper.opacity = c.opacity.unwrap_or(1.0);

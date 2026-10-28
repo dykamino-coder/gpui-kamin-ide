@@ -68,7 +68,8 @@ fn atom_piece_in(
     in_inline_cb: bool,
     ruby: &AtomRuby,
 ) -> Option<inline::Piece> {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
+    let vcx = frame.values;
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized = crate::layout::replaced::media::resolve(
@@ -245,5 +246,5 @@ fn atom_piece_in(
     let opts = &*atom_cx::atom_opts(opts, ruby, &line_box, &offer);
     let built = atom_element(e, inherited, opts);
     let abs_cb = offer.as_ref().is_some_and(|o| o.taken());
-    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box, vcx))
+    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box, frame))
 }

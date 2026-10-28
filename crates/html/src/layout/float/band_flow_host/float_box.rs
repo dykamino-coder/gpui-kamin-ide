@@ -28,7 +28,8 @@ pub(super) async fn float_box_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
+    let vcx = frame.values;
     let mut merged = box_style(inherited, &copy.style, vcx);
     merged.self_node = copy.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(copy);
@@ -102,6 +103,6 @@ pub(super) async fn float_box_stack(
     };
     // CSS Transforms 1 section 3: placement keeps the untransformed rectangle.
     let build = opts.cx.contracts.build;
-    let el = build.effects(el, Effect::transform(&merged, inherited, vcx));
-    build.effects(el, Effect::group(&copy.style.used(), vcx))
+    let el = build.effects(el, Effect::transform(&merged, inherited, frame));
+    build.effects(el, Effect::group(&copy.style.used(), frame))
 }

@@ -229,9 +229,9 @@ impl ChildBuild {
         container: gpui::Div,
         e: &Element,
         inherited: &BoxStyle,
-        vcx: ValueCx<'_>,
+        frame: crate::layout::cx::FrameCx<'_>,
     ) -> AnyElement {
-        self.effects.paint_group(container, e, inherited, vcx)
+        self.effects.paint_group(container, e, inherited, frame)
     }
 
     /// Prepares the paint resources of the document `nodes` (the `<mask>`,

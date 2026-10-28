@@ -24,7 +24,8 @@ pub(super) fn atom_element_raw(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
+    let vcx = frame.values;
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized = crate::layout::replaced::media::resolve(
@@ -60,7 +61,7 @@ pub(super) fn atom_element_raw(
     if let Some(el) = build.control(e, &box_style(inherited, &e.style, vcx), opts) {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, vcx)));
+        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, frame)));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -89,7 +90,7 @@ pub(super) fn atom_element_raw(
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(build.effects(math, Effect::group(&e.style.used(), vcx)));
+        return Some(build.effects(math, Effect::group(&e.style.used(), frame)));
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
@@ -237,7 +238,7 @@ pub(super) fn atom_element_raw(
                 el,
                 Effect::GroupReplaced {
                     style: e.style.used(),
-                    vcx,
+                    frame,
                 },
             )
         } else {
