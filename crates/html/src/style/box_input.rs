@@ -15,6 +15,11 @@ pub struct BoxStyleInput {
     pub(crate) canvas_background: Option<crate::style::canvas_background::CanvasBackgroundSource>,
     pub(crate) background_paint: crate::style::background_paint::BackgroundPaint,
     pub(crate) inline_decoration: crate::style::inline_decoration::InlineDecoration,
+    /// The element style whose cascade the `@position-try` variants recompute,
+    /// when the box values come from a box stage of that element: the rule's
+    /// declarations join the element's own cascade in the position fallback
+    /// origin (css-anchor-position-1 §fallback-rule).
+    pub(crate) try_source: Option<crate::dom::SharedStyle>,
 }
 
 impl BoxStyleInput {
@@ -33,6 +38,7 @@ impl BoxStyleInput {
             inline_decoration,
             background_paint,
             canvas_background,
+            try_source: None,
         }
     }
 }

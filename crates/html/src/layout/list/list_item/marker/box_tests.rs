@@ -76,3 +76,30 @@ fn author_marker_bidi_and_numeric_variant_win_over_ua_rules() {
     assert_eq!(used.bidi_plaintext, Some(true));
     assert!(!used.font_features.iter().any(|(t, _)| t == "tnum"));
 }
+
+#[test]
+fn marker_box_colors_pass_the_subtree_filter_once() {
+    use crate::style::cascade::materialize::{box_style, materialize};
+    let parsed = crate::dom::parse(
+        r#"<ul id="list" style="filter: invert(1)"><li id="item" style="list-style: square inside; color: rgb(0, 128, 0)">x</li></ul>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &std::rc::Rc::new(Computed::default()), vcx);
+    let find = |id| {
+        crate::dom::test_support::find(&parsed.nodes, &|e: &Element| e.attr("id") == Some(id))
+            .unwrap()
+    };
+    let list = box_style(&BoxStyle::default(), &find("list").style, vcx);
+    let li = find("item");
+    let merged = box_style(&list, &li.style, vcx);
+    let marker = resolve(li, &merged, &merged, vcx).expect("a marker");
+    let Node::Element(span) = node(li, &merged, marker) else {
+        panic!("the marker is an element box")
+    };
+    // Filter Effects 1 §5: the marker inherits the list item's colour, which
+    // passed the list's filter once; re-entering the marker box keeps it.
+    let marker_box = box_style(&merged, &span.style, vcx);
+    let (marker, item) = (marker_box.paint.unwrap(), merged.paint.clone().unwrap());
+    assert_eq!(marker.foreground.color, item.foreground.color);
+}

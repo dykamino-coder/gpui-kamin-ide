@@ -24,7 +24,7 @@ pub struct SharedStyle {
     /// Layout's used values: a copy of the computed style that layout edited.
     used: Option<Rc<Computed>>,
     /// Факты коробки в существующем layout-made мосте до A07.
-    box_context: Option<Rc<BoxContext<WritingMode, Align>>>,
+    box_facts: Option<Rc<BoxFacts>>,
     /// Оформление inline в существующем транспорте синтетических коробок.
     decoration: Option<Rc<crate::style::background_paint::DecorationInput>>,
 }
@@ -35,7 +35,7 @@ impl From<Computed> for SharedStyle {
             cascaded: Rc::new(style),
             computed: ComputedSlot::default(),
             used: None,
-            box_context: None,
+            box_facts: None,
             decoration: Default::default(),
         }
     }
@@ -48,7 +48,7 @@ impl From<Box<Computed>> for SharedStyle {
             cascaded: Rc::from(style),
             computed: ComputedSlot::default(),
             used: None,
-            box_context: None,
+            box_facts: None,
             decoration: Default::default(),
         }
     }
@@ -114,20 +114,24 @@ impl SharedStyle {
             Some(used) => used.clone(),
             None => self.base(),
         };
-        BoxStyleInput::new(
-            style,
-            self.box_context.clone(),
-            self.decoration
-                .as_deref()
-                .map(|d| d.inline)
-                .unwrap_or_default(),
-            self.decoration
-                .as_deref()
-                .map(|d| d.background_paint)
-                .unwrap_or_default(),
-            self.decoration.as_deref().and_then(|d| d.canvas.clone()),
-            self.decoration.as_deref().and_then(|d| d.paint.clone()),
-        )
+        let facts = self.box_facts.as_deref();
+        BoxStyleInput {
+            try_source: facts.and_then(|f| f.try_source.clone()),
+            ..BoxStyleInput::new(
+                style,
+                facts.and_then(|f| f.context.clone()),
+                self.decoration
+                    .as_deref()
+                    .map(|d| d.inline)
+                    .unwrap_or_default(),
+                self.decoration
+                    .as_deref()
+                    .map(|d| d.background_paint)
+                    .unwrap_or_default(),
+                self.decoration.as_deref().and_then(|d| d.canvas.clone()),
+                self.decoration.as_deref().and_then(|d| d.paint.clone()),
+            )
+        }
     }
 
     /// Только собственный фон; потомки наследуют computed CSS, а не этот вход.
@@ -152,7 +156,9 @@ impl SharedStyle {
 
     /// Сохраняет факты существующей синтетической коробки до A07.
     pub(crate) fn set_box_context(&mut self, context: Rc<BoxContext<WritingMode, Align>>) {
-        self.box_context = Some(context);
+        let mut facts = self.box_facts.as_deref().cloned().unwrap_or_default();
+        facts.context = Some(context);
+        self.box_facts = Some(Rc::new(facts));
     }
 
     /// The style of an element that layout made from a box style (a copy styled
@@ -168,12 +174,18 @@ impl SharedStyle {
             background_paint,
             canvas_background,
             paint,
+            try_source,
         } = input.into();
         Self {
             cascaded: style,
             computed: ComputedSlot::default(),
             used: None,
-            box_context: context,
+            box_facts: (context.is_some() || try_source.is_some()).then(|| {
+                Rc::new(BoxFacts {
+                    context,
+                    try_source,
+                })
+            }),
             decoration: Some(Rc::new(crate::style::background_paint::DecorationInput {
                 inline: inline_decoration,
                 background_paint,
@@ -206,6 +218,14 @@ impl SharedStyle {
     fn base(&self) -> Rc<Computed> {
         self.computed.any().unwrap_or_else(|| self.cascaded.clone())
     }
+}
+
+/// Факты коробки, созданной раскладкой: контекст коробки-родителя и стиль
+/// элемента, чей каскад пересчитывают варианты `position-try`.
+#[derive(Clone, Debug, Default)]
+struct BoxFacts {
+    context: Option<Rc<BoxContext<WritingMode, Align>>>,
+    try_source: Option<SharedStyle>,
 }
 
 #[cfg(test)]
