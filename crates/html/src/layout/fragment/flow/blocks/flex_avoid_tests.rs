@@ -60,7 +60,8 @@ fn oversized_avoid_chain_keeps_item_boundaries_available() {
         .finish(FlowGeometry::default(), 174.0);
     assert!(m.cuts.contains(&(72.0, 72.0)), "{m:?}");
     assert!(!m.solid.iter().any(|&(a, b)| a == 60.0 && b > 82.0));
-    let growths = crate::layout::fragment::push::flex_flow::growths(&root, &laid, 0.0, 87.0, 90.0);
+    let growths =
+        crate::layout::fragment::push::flex_flow::growths(&root, &laid, 0.0, 87.0, 90.0, false);
     assert_eq!(growths.len(), 1);
     assert_eq!(
         (growths[0].target.clone(), growths[0].amount),
@@ -76,7 +77,8 @@ fn later_avoid_chain_retreats_to_unrestricted_boundary() {
         .breaks(174.0, &laid)
         .finish(FlowGeometry::default(), 174.0);
     assert!(m.avoid.iter().any(|&(a, b)| a == 42.0 && b > 122.0));
-    let growths = crate::layout::fragment::push::flex_flow::growths(&root, &laid, 0.0, 87.0, 90.0);
+    let growths =
+        crate::layout::fragment::push::flex_flow::growths(&root, &laid, 0.0, 87.0, 90.0, false);
     assert_eq!(growths.len(), 1);
     assert_eq!(
         (growths[0].target.clone(), growths[0].amount),
@@ -136,12 +138,30 @@ fn avoided_empty_item_boundary_moves_its_predecessor() {
         line.end = 400.0;
         line.items = vec![1, 2, 3];
         let grows = crate::layout::fragment::push::flex_flow::growths;
-        let growth = grows(&root, &laid, 0.0, 100.0, 100.0);
+        let growth = grows(&root, &laid, 0.0, 100.0, 100.0, false);
         assert_eq!(growth.len(), 1, "break-after={after}");
         assert_eq!(growth[0].target, Pushed::Box(2));
         assert_eq!(growth[0].amount, 50.0);
         // Внутри пустого хвоста разрез допустим; avoid закрывает границу соседей.
-        assert!(grows(&root, &laid, 0.0, 75.0, 75.0).is_empty());
-        assert!(grows(&root, &laid, 50.0, 150.0, 150.0).is_empty());
+        assert!(grows(&root, &laid, 0.0, 75.0, 75.0, false).is_empty());
+        assert!(grows(&root, &laid, 50.0, 150.0, 150.0, false).is_empty());
     }
+}
+
+#[test]
+fn open_row_column_pushes_unbreakable_content_from_its_top() {
+    let (root, laid) = column();
+    let grows = crate::layout::fragment::push::flex_flow::growths;
+    // Верх фрагмента на начале монолитной части элемента 3: в колонке у начала
+    // внешнего фрагментаинера она режется, в открытом ряду переносится дальше.
+    assert!(
+        !grows(&root, &laid, 82.0, 92.0, 92.0, false)
+            .iter()
+            .any(|g| g.at == 82.0)
+    );
+    let open = grows(&root, &laid, 82.0, 92.0, 92.0, true);
+    assert!(
+        open.iter().any(|g| g.at == 82.0 && g.amount == 10.0),
+        "{open:?}"
+    );
 }

@@ -5,13 +5,16 @@ use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed};
 use crate::tolerance::COORD_EPS;
 
 /// Точка роста относится к одному потоку: соседний flex-item с той же координатой
-/// не должен получить его распорку или принудительный разрыв.
+/// не должен получить его распорку или принудительный разрыв. `open` — фрагмент
+/// начинается с верха колонки ряда не с начала внешнего фрагментаинера: неделимое и
+/// пожелания с его верха переносятся туда, где места больше (Blink `LayoutRow`).
 pub(crate) fn growths(
     blocks: &BlockBox,
     laid: &Laid,
     from: f32,
     end: f32,
     edge: f32,
+    open: bool,
 ) -> Vec<Growth> {
     let mut flows = Vec::new();
     blocks.flex_flows(laid, &mut flows);
@@ -30,7 +33,7 @@ pub(crate) fn growths(
     }
     let mut gaps = Vec::new();
     blocks.suppressed_row_gaps(laid, from, end, edge, &mut gaps);
-    flow_growths(&flows, laid, from, end, edge, &mut out);
+    flow_growths(&flows, laid, from, end, edge, open, &mut out);
     // Линия, чей элемент сам растёт в этом фрагменте (принудительный разрыв
     // внутри, перенос монолита), ещё не кончилась: промежуток после неё лежит
     // за её продолжением, а не у этого края (css-flexbox-1 §10).
@@ -69,10 +72,13 @@ fn flow_growths(
     from: f32,
     end: f32,
     edge: f32,
+    open: bool,
     out: &mut Vec<Growth>,
 ) {
+    let after_start = |a: f32| a > from + COORD_EPS || (open && a > from - COORD_EPS);
     for flow in flows {
-        if let Some(growth) = pushed_past_edge(&flow, laid, from, edge) {
+        // В открытом ряду перенос за край — в следующий ряд, не к этому краю.
+        if let Some(growth) = pushed_past_edge(&flow, laid, from, edge).filter(|_| !open) {
             out.push(growth);
             continue;
         }
@@ -116,7 +122,7 @@ fn flow_growths(
             .chain(avoid.iter().filter(|_| boundary))
             .filter(|&&(a, b)| {
                 overflow_edge
-                    && a > from + COORD_EPS
+                    && after_start(a)
                     && a <= end + COORD_EPS
                     && a < edge - COORD_EPS
                     && b > edge + COORD_EPS
@@ -129,7 +135,7 @@ fn flow_growths(
                     .iter()
                     .chain(&avoid)
                     .filter(|&&(a, b)| {
-                        a > from + COORD_EPS && a < point - COORD_EPS && point < b - COORD_EPS
+                        after_start(a) && a < point - COORD_EPS && point < b - COORD_EPS
                     })
                     .map(|p| p.0)
                     .min_by(f32::total_cmp);
