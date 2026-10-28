@@ -59,6 +59,18 @@ const h = vi.hoisted(() => {
     options: null as any,
   }
 })
+// The server suite installs only server dependencies; dashboard rendering is mocked.
+vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
+vi.mock('preact/jsx-runtime', () => ({
+  jsx: (type: unknown, props: unknown) => ({ type, props }),
+  jsxs: (type: unknown, props: unknown) => ({ type, props }),
+  jsxDEV: (type: unknown, props: unknown) => ({ type, props }),
+}))
+vi.mock('preact/jsx-dev-runtime', () => ({
+  jsx: (type: unknown, props: unknown) => ({ type, props }),
+  jsxs: (type: unknown, props: unknown) => ({ type, props }),
+  jsxDEV: (type: unknown, props: unknown) => ({ type, props }),
+}))
 vi.mock('preact/hooks', () => ({
   useRef: () => ({ current: h.refs++ === 0 ? h.container : null }),
   useState: (value: unknown) => [value, vi.fn()],
