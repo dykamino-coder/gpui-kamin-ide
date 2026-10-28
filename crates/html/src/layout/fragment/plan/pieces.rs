@@ -112,11 +112,9 @@ pub(super) fn fill_pieces_inner(
         // класса A, иначе срезом по краю. Так делает Blink: сначала
         // перенос, и только на пустой странице разрыв внутри
         // (`block-page-break-inside-avoid-7/-15-print`).
-        // Колонка не с начала фрагментаинера (`Space::not_at_start`: ряд
-        // вложенного многоколоночника под содержимым внешней колонки) верхом
-        // не считается: разрыв хуже уже принятых уводит содержимое дальше
-        // (Blink `ColumnLayoutAlgorithm::LayoutRow`, `min_break_appeal` при
-        // `may_have_more_space_in_next_outer_fragmentainer`).
+        // Колонка ряда, начатого под содержимым внешней колонки
+        // (`Space::not_at_start`), верхом не считается: разрыв хуже принятых
+        // уводит содержимое дальше (Blink `LayoutRow`, `min_break_appeal`).
         let at_start = cur <= 0.01 && *col >= not_top;
         let mono = k.monolith && !((paged || k.par.avoid_only) && flow > target + 0.01 && at_start);
         // Точка разреза `a` с усечением поля по классу A (`nf`).
@@ -143,11 +141,7 @@ pub(super) fn fill_pieces_inner(
         // `FinishFragmentation`: «If intrinsic block-size is larger than
         // space left, it means that we have some tall unbreakable child
         // content … this fragment will be allowed to take up more space …
-        // to encompass the unbreakable content»). Прежде ветка ниже отдавала
-        // `None` при `a <= from`, и ребёнок резался по краю колонки прямо
-        // сквозь монолит: `monolithic-overflow-003…005.tentative` (два
-        // `contain: size` по 100 в колонках по 60), `tall-line-in-short-
-        // fragmentainer-000/001` (строка `inline-block` 100 в колонке 50).
+        // to encompass the unbreakable content»; `monolithic-overflow-003`).
         // «Верх колонки» — пустая колонка, нулевой курсор (перед нами только
         // коробки нулевой высоты: разрыв перед монолитом прогресса не даёт,
         // `tall-line-…-000`) либо ПЕРВЫЙ кусок коробки с заданной высотой,
