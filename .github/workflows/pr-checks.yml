@@ -417,6 +417,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -j 4 -- -D warnings
       - run: cargo clippy -p kamin-html --all-targets --features wpt-harness -j 4 -- -D warnings
+      - name: Check the opt-in engine benchmark host
+        run: cargo check -p engine-bench --all-targets --features engine-bench -j 4
       - name: Keep engine test helpers out of ordinary builds
         run: python scripts/check_engine_test_support.py --features kamin-html/wpt-harness
 

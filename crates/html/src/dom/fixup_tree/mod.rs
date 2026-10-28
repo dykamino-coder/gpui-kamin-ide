@@ -28,24 +28,13 @@ use crate::style::values::value::Len;
 /// доходил (`float-percentage-resolution-quirks-mode`,
 /// `intrinsic-percent-replaced-003`). `base` — высота содержимого опоры для
 /// детей; гибкий/сеточный/табличный предок с `auto` и абсолют цепочку рвут.
-pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
-    if let [Node::Element(html)] = nodes
-        && html.tag == "html"
-    {
-        html.marks.quirks_fill = html.style.cascaded().float.is_none_or(|f| f == 0);
-        if let Some(Node::Element(body)) = html
-            .children
-            .iter_mut()
-            .find(|n| matches!(n, Node::Element(e) if e.tag == "body" || e.tag == "frameset"))
-            && body.tag == "body"
-        {
-            // Float layout clears `float` on the box it puts into a row.
-            // Preserve the fill exclusion before that tree rewrite.
-            body.marks.quirks_fill = body.style.cascaded().float.is_none_or(|f| f == 0);
-        }
-    }
-    for n in nodes.iter_mut() {
-        let Node::Element(e) = n else { continue };
+pub(super) fn quirks_percent_heights(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+    base: Option<f32>,
+) -> Result<(), crate::budget::admission::Error> {
+    mark_quirks_fill(nodes);
+    crate::dom::traversal::preorder(admission, nodes, base, |e, &base| {
         let st = e.style.cascaded_mut();
         let out_of_flow = crate::style::flow::absolutely_positioned(st.position);
         let blockish = matches!(
@@ -74,8 +63,9 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
             None | Some(Len::Auto) if blockish && !out_of_flow && e.tag != "html" => base,
             _ => None,
         };
-        quirks_percent_heights(&mut e.children, child_base);
-    }
+        mark_quirks_fill(&mut e.children);
+        Some(child_base)
+    })
 }
 
 /// `filter: url(#id)` дешёвым слоем рисуется только у коробки БЕЗ содержимого
@@ -83,9 +73,11 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
 /// Решается здесь, пока дерево целое — при сборке абсолютные дети уже
 /// вынесены в свои слои, и родитель выглядит пустым
 /// (`filter-region-transformed-composited-child-001`).
-pub(super) fn filter_ref_only_empty(nodes: &mut [Node]) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
+pub(super) fn filter_ref_only_empty(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(admission, nodes, (), |el, _| {
         if el.style.cascaded().filter_ref.is_some()
             && el.children.iter().any(|c| match c {
                 Node::Element(_) => true,
@@ -94,6 +86,24 @@ pub(super) fn filter_ref_only_empty(nodes: &mut [Node]) {
         {
             el.style.cascaded_mut().filter_ref = None;
         }
-        filter_ref_only_empty(&mut el.children);
+        Some(())
+    })
+}
+
+fn mark_quirks_fill(nodes: &mut [Node]) {
+    if let [Node::Element(html)] = nodes
+        && html.tag == "html"
+    {
+        html.marks.quirks_fill = html.style.cascaded().float.is_none_or(|f| f == 0);
+        if let Some(Node::Element(body)) = html
+            .children
+            .iter_mut()
+            .find(|n| matches!(n, Node::Element(e) if e.tag == "body" || e.tag == "frameset"))
+            && body.tag == "body"
+        {
+            // Float layout clears `float` on the box it puts into a row.
+            // Preserve the fill exclusion before that tree rewrite.
+            body.marks.quirks_fill = body.style.cascaded().float.is_none_or(|f| f == 0);
+        }
     }
 }

@@ -7,7 +7,7 @@ mod calc;
 mod comparison;
 pub(crate) use comparison::MqCmp;
 mod custom;
-pub(crate) use custom::custom_media_of;
+pub(crate) use custom::{custom_media_of, resolve_custom_media};
 mod features;
 mod query;
 use features::{mq_and, mq_base, mq_or};

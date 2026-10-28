@@ -51,7 +51,8 @@ pub(super) fn scroll_marker_pass(
     attrs: &[(String, String)],
     children: &mut Vec<Node>,
     vcx: ValueCx<'_>,
-) -> ScrollPseudos {
+) -> Result<ScrollPseudos, crate::budget::admission::Error> {
+    let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
     use crate::style::computed::Overflow;
     let mut out = ScrollPseudos {
         group_before: None,
@@ -142,16 +143,16 @@ pub(super) fn scroll_marker_pass(
     let scroller = tag == "html" || scrolls(style.overflow_x) || scrolls(style.overflow_y);
     let Some(before) = style.scroll_marker_group else {
         if scroller {
-            purge_scroll_markers(children);
+            purge_scroll_markers(&admission, children)?;
         }
-        return out;
+        return Ok(out);
     };
     // Группа — только у скролл-контейнера (§scroll-marker-group-property:
     // «on a scroll container … generates a ::scroll-marker-group»; Blink
     // `CanGeneratePseudoElement`: `IsScrollContainer()`); у `div` без
     // overflow свойство молчит (`scroll-marker-group-010`).
     if !scroller {
-        return out;
+        return Ok(out);
     }
     let mut markers = vec![];
     {
@@ -159,7 +160,7 @@ pub(super) fn scroll_marker_pass(
         let fixed_ok = style.transform.is_some()
             || style.contain_layout == Some(true)
             || style.contain_paint == Some(true);
-        collect_scroll_markers(children, abs_ok, fixed_ok, &mut markers);
+        collect_scroll_markers(&admission, children, abs_ok, fixed_ok, &mut markers)?;
     }
     let matched: Vec<&Rule> = rules
         .iter()
@@ -168,7 +169,7 @@ pub(super) fn scroll_marker_pass(
         .collect();
     let mut gstyle = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
     if gstyle.display == Some(Display::None) {
-        return out;
+        return Ok(out);
     }
     gstyle.display = match gstyle.display {
         Some(Display::InlineBlock) => Some(Display::Block),
@@ -203,5 +204,5 @@ pub(super) fn scroll_marker_pass(
     } else {
         out.group_after = Some(group);
     }
-    out
+    Ok(out)
 }

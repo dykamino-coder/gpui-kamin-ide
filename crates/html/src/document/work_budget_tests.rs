@@ -65,4 +65,53 @@ fn background_resource_aggregate_rejects_the_candidate_and_keeps_the_previous_re
     assert_eq!(doc.salt(), salt);
     // Новая попытка — новая ревизия со своим work, а не продолжение исчерпанной.
     assert_eq!(doc.revision_budget().used(BudgetKind::ResourceBytes), 0);
+    assert_eq!(
+        doc.update("<p>a</p>", "").unwrap().status,
+        RevisionStatus::Unchanged
+    );
+    assert!(doc.last_failure().is_none());
+}
+
+#[test]
+fn generated_value_refusal_stays_terminal_after_diagnostics_and_unchanged_update() {
+    let mut doc = Document::builder("<p>KEEP</p>", "").build().unwrap();
+    let failure = DocumentFailure::new(FailureReason::Allocation);
+    doc.revision_budget().reject(failure);
+    let observed = doc.last_failure().unwrap();
+    assert_eq!(observed.reason, FailureReason::Allocation);
+    assert_eq!(doc.report().status, RevisionStatus::Rejected);
+    assert_eq!(doc.take_diagnostics().terminal, Some(observed));
+    assert_eq!(doc.take_diagnostics().terminal, Some(observed));
+    assert_eq!(doc.update("<p>KEEP</p>", ""), Err(observed));
+    doc.update("<p>RECOVER</p>", "").unwrap();
+    assert!(doc.last_failure().is_none());
+}
+
+#[test]
+fn generated_counter_exhaustion_uses_the_build_failure_channel() {
+    let html = "<style>@counter-style x { system: symbolic; symbols: 'x' }</style><p>KEEP</p>";
+    let mut doc = Document::builder(html, "").build().unwrap();
+    let revision = doc.revision_budget();
+    let left = revision
+        .document()
+        .limits()
+        .limit(BudgetKind::SubstitutionBytes)
+        - revision.used(BudgetKind::SubstitutionBytes);
+    revision
+        .consume(BudgetKind::SubstitutionBytes, left)
+        .unwrap();
+    crate::style::generated::counter_style_rules::custom_repr(
+        1501,
+        "x",
+        Default::default(),
+        doc.state.values(),
+    );
+    let failure = doc
+        .last_failure()
+        .expect("generated value failure is terminal");
+    assert!(revision_exceeded(&failure, BudgetKind::SubstitutionBytes));
+    assert_eq!(doc.take_diagnostics().terminal, Some(failure));
+    assert_eq!(doc.update(html, ""), Err(failure));
+    doc.update("<p>RECOVER</p>", "").unwrap();
+    assert!(doc.last_failure().is_none());
 }

@@ -149,8 +149,7 @@ impl Document {
         state.traversal.retain(input);
         // Исчерпание aggregate ревизии в ранних проходах (ресурсы, подстановки) терминально:
         // кандидат не публикуется, даже если операции вернули штатный fallback.
-        if let Some(error) = state.revision_budget().exhausted() {
-            let mut failure = DocumentFailure::new(FailureReason::Budget(error));
+        if let Some(mut failure) = state.revision_budget().failure() {
             failure.report.revision = Some(key);
             return Err(failure);
         }
