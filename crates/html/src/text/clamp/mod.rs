@@ -1,6 +1,6 @@
 //! Планирование line-clamp пробной раскладкой и применение в том же кадре.
 mod host;
-pub(crate) use host::ClampHost;
+pub(crate) use host::{ClampFlow, ClampHost};
 mod plan;
 pub(crate) use plan::{ClampInput, ClampPlan};
 mod measure;

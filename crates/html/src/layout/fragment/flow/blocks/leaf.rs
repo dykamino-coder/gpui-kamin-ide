@@ -81,7 +81,6 @@ impl Leaf {
                     .is_some()
                 || !token.oof.is_empty()
                 || !state.float_exclusions.is_empty()
-                || token.clamp.is_some()
                 || token.monolithic_overflow != 0.0
                 || token.flags.repeated
                 || token.flags.by_spanner

@@ -92,14 +92,30 @@ pub(super) fn automatic_para(
                     entries
                         .iter()
                         .any(|e| e.seq == Some(s) && e.clamped.is_some())
-                }) || !empties.iter().any(|e| {
+                }) || !(empties.iter().any(|e| {
                     let y0 = f32::from(e.bounds.origin.y);
                     e.empty
                         && f32::from(e.bounds.size.height) <= LINE_FIT_EPS
                         && y0 >= *bottom - LINE_FIT_EPS
                         && y0 <= c + LINE_FIT_EPS
-                })
+                }) || entries.iter().any(|e| intervenes(e, *bottom, c)))
             })
             .and_then(|(_, seq, k)| seq.map(|s| (s, k)))
     })
+}
+
+/// An in-flow box laid out entirely between a line box and the clamp point
+/// separates them: that line no longer immediately precedes the point and
+/// takes no block ellipsis (css-overflow-4 §block-ellipsis: only intervening
+/// absolutely positioned boxes and element closing boundaries are ignored;
+/// floats are out of flow). Ancestors of the line start above it.
+fn intervenes(e: &ClampEntry, line_bottom: f32, cut: f32) -> bool {
+    let y0 = f32::from(e.bounds.origin.y) - e.bt_before;
+    let y1 = f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height);
+    e.line == 0.0
+        && !e.positioned
+        && !e.float
+        && y1 > y0
+        && y0 >= line_bottom - LINE_FIT_EPS
+        && y1 <= cut + LINE_FIT_EPS
 }

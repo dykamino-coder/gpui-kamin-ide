@@ -1,5 +1,7 @@
 //! Состояние, общее для контекстов: продолжение абсолютно позиционированных потомков через
-//! фрагментаинеры (`OofResume`) и бюджет строк `line-clamp` (`ClampBudget`).
+//! фрагментаинеры (`OofResume`). Счёт строк `line-clamp` в токен не входит: clamp-контейнер
+//! раскладывается целиком своим хостом (`text::clamp::ClampFlow`), и фрагменты режут эту одну
+//! раскладку, не начиная счёт заново.
 
 use super::TokenId;
 
@@ -23,25 +25,4 @@ pub(crate) struct OofResume {
     pub(crate) repeat_fixed: bool,
     /// Токен самого потомка, если он уже начат.
     pub(crate) token: Option<TokenId>,
-}
-
-/// Бюджет строк `line-clamp` (css-overflow-4 §5 `max-lines`, `continue`):
-/// счёт строк сквозной для всех фрагментаинеров и вложенных BFC.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ClampBudget {
-    /// Сколько считаемых строк ещё можно показать.
-    pub(crate) lines_left: u32,
-    /// `continue: discard` — содержимое после точки среза выбрасывается
-    /// (иначе `collapse`, `line-clamp` по умолчанию).
-    pub(crate) discard: bool,
-}
-
-impl ClampBudget {
-    /// Израсходовать до `lines` строк: сколько реально взято и исчерпан ли
-    /// бюджет (последняя взятая строка несёт знак обрыва).
-    pub(crate) fn take(&mut self, lines: u32) -> (u32, bool) {
-        let taken = lines.min(self.lines_left);
-        self.lines_left -= taken;
-        (taken, self.lines_left == 0)
-    }
 }
