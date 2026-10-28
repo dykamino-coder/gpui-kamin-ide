@@ -1,9 +1,9 @@
 //! Разрывы и запреты на кромках детей: break-before/after и avoid между соседями.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::flex_lines::class_a_box;
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::table::is_cell;
@@ -24,7 +24,7 @@ use crate::style::computed::Display;
 /// колоночного флекса. Через крайнего ребёнка ни тот, ни другой не проходит,
 /// и обе пары остаются нетронутыми. Перенос «бок о бок» для запретов —
 /// отдельный шаг с отдельным замером.
-pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
+pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     if vcx
         .subtrees
         .is_some_and(|facts| facts.borrow_mut().breaks_absent(e))
@@ -79,7 +79,7 @@ pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
 /// 'break-after' value on a last in-flow child box»; Blink
 /// `BoxFragmentBuilder::SetInitialBreakBefore`). Текст или строчный на краю
 /// — анонимная коробка без разрыва, пропагация останавливается.
-pub(crate) fn edge_break(e: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
+pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     if vcx
         .subtrees
         .is_some_and(|facts| facts.borrow_mut().breaks_absent(e))

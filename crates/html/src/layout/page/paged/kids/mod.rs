@@ -46,7 +46,7 @@ pub(super) fn page_kids_from_groups(
     groups: Vec<Vec<Node>>,
     vertical: Option<bool>,
 ) {
-    let vcx = opts.cx.vcx();
+    let vcx = opts.cx.frame();
     for group in &groups {
         let n = &group[0];
         if let Node::Element(e) = n

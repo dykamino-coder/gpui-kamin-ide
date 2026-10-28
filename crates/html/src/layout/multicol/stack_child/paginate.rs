@@ -19,7 +19,7 @@ pub(super) fn paginate_of(
     merged: &BoxStyle,
     copy: &Element,
 ) -> Option<Paginate> {
-    let vcx = opts.cx.vcx();
+    let vcx = opts.cx.frame();
     if col_vert || !copy.marks.paginate {
         return None;
     }

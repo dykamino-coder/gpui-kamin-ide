@@ -46,14 +46,14 @@ impl Recipe {
             laid::pending_vertical(
                 &prepared,
                 merged,
-                opts.cx.vcx(),
+                opts.cx.frame(),
                 axis == crate::layout::fragment::types::StackAxis::VerticalRl,
             )?;
         } else {
-            laid::pending(&prepared, merged, opts.cx.vcx()).or_else(|| {
+            laid::pending(&prepared, merged, opts.cx.frame()).or_else(|| {
                 (!opts.frag.in_stack_copy && rows.is_none_or(|r| r.cap))
                     .then(|| {
-                        super::measure::native_float::pending(&prepared, merged, opts.cx.vcx())
+                        super::measure::native_float::pending(&prepared, merged, opts.cx.frame())
                     })
                     .flatten()
             })?;

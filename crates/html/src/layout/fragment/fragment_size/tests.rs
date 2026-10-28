@@ -4,6 +4,7 @@ mod continuation;
 
 use super::*;
 use crate::dom::Node;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::Computed;
 
 fn constrained(
@@ -20,7 +21,7 @@ fn constrained(
         decoration,
         viewport,
         overflow_extent,
-        doc.values(),
+        FrameCx::new(doc.values()),
     )
 }
 
@@ -74,14 +75,14 @@ fn tables_and_their_captions_are_never_estimated() {
         );
         table.tag = "table".into();
         assert!(!independent_copy(&table));
-        assert!(shape_full(&table, 4, ShapeCx::COLUMNS, doc.values()).is_none());
+        assert!(shape_full(&table, 4, ShapeCx::COLUMNS, FrameCx::new(doc.values())).is_none());
     }
 }
 
 #[test]
 fn positioned_descendants_keep_their_balancing_extent() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = FrameCx::new(doc.values());
     use crate::style::computed::Position;
     let child = element(
         Computed {
@@ -110,7 +111,7 @@ fn positioned_descendants_keep_their_balancing_extent() {
 #[test]
 fn measured_box_and_parallel_flow_keep_distinct_sizes_and_break_ranges() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = FrameCx::new(doc.values());
     let child = element(
         Computed {
             height: Some(Len::Px(206.0)),
@@ -168,7 +169,7 @@ fn minimum_wins_over_maximum_in_both_flow_modes() {
 #[test]
 fn border_box_constraints_include_decoration_once() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = FrameCx::new(doc.values());
     let measure = |style: Computed| {
         shape_full(&element(style, Vec::new()), 4, ShapeCx::COLUMNS, vcx)
             .unwrap()
@@ -219,7 +220,7 @@ fn estimate_probe_records_the_shape_caller_without_double_counting() {
     };
     let root = element(Computed::default(), Vec::new());
     let call_line = line!() + 1;
-    assert!(shape_full(&root, 4, cx, doc.values()).is_some());
+    assert!(shape_full(&root, 4, cx, FrameCx::new(doc.values())).is_some());
     let counters = probe.take();
     let measured = &counters["columns.estimate"];
     assert_eq!(measured.estimate_calls, 1);

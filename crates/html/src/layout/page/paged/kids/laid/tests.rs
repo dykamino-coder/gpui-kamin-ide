@@ -1,6 +1,7 @@
 //! Независимые печатные группы: native dispatch и физические поля.
 
 use super::*;
+use crate::layout::cx::FrameCx;
 use crate::style::values::value::Len;
 
 #[test]
@@ -16,7 +17,7 @@ fn empty_page_grid_uses_native_group_without_estimated_shape() {
         120.0,
         0.0,
         (false, false),
-        tree.values(),
+        FrameCx::new(tree.values()),
     )
     .unwrap();
     assert!(p.blocks);
@@ -26,7 +27,7 @@ fn empty_page_grid_uses_native_group_without_estimated_shape() {
     let blocks = crate::layout::fragment::flow::blocks::BlockBox::collect(
         e,
         crate::layout::fragment::ShapeCx::COLUMNS,
-        tree.values(),
+        FrameCx::new(tree.values()),
     );
     assert!(!blocks.is_empty());
     assert!(blocks.grid.as_ref().unwrap().items.is_empty());
@@ -56,7 +57,7 @@ fn monolithic_page_float_keeps_its_measured_margin_box() {
         120.0,
         15.0,
         (false, false),
-        tree.values(),
+        FrameCx::new(tree.values()),
     )
     .expect("native monolithic float");
     assert!(!p.blocks);
@@ -79,7 +80,7 @@ fn flowing_page_float_records_its_own_children_and_inline_continuation() {
         120.0,
         0.0,
         (false, false),
-        tree.values(),
+        FrameCx::new(tree.values()),
     )
     .unwrap();
     assert!(p.blocks);
@@ -103,7 +104,7 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
         120.0,
         0.0,
         (false, false),
-        tree.values(),
+        FrameCx::new(tree.values()),
     )
     .unwrap();
     assert!(p.blocks && p.float_extent);
@@ -129,7 +130,7 @@ fn nonempty_float_extent_stops_at_an_inner_bfc() {
             120.,
             0.,
             (false, false),
-            tree.values(),
+            FrameCx::new(tree.values()),
         )
         .unwrap();
         assert_eq!(p.float_extent, expected);

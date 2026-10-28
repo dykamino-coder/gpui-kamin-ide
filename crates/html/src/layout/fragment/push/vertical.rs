@@ -1,7 +1,7 @@
 //! Рост разложенного вертикального блока по логической блочной оси.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::types::StackAxis;
 use crate::style::values::value::{Len, px_lossy_zero};
 
@@ -11,7 +11,7 @@ pub(super) fn push(
     grow: f32,
     forced: bool,
     axis: StackAxis,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> bool {
     let reverse = axis == StackAxis::VerticalRl;
     if let Some(at) = parent
@@ -99,7 +99,14 @@ mod tests {
                 panic!("child")
             };
             let id = child.node_id;
-            assert!(push(&mut host, id, 11.0, false, axis, tree.values()));
+            assert!(push(
+                &mut host,
+                id,
+                11.0,
+                false,
+                axis,
+                crate::layout::cx::FrameCx::new(tree.values())
+            ));
             let Node::Element(child) = &host.children[0] else {
                 panic!("child")
             };
@@ -130,7 +137,14 @@ mod tests {
                 panic!("next")
             };
             let id = next.node_id;
-            assert!(push(&mut host, id, 13.0, true, axis, tree.values()));
+            assert!(push(
+                &mut host,
+                id,
+                13.0,
+                true,
+                axis,
+                crate::layout::cx::FrameCx::new(tree.values())
+            ));
             let Node::Element(previous) = &host.children[0] else {
                 panic!("previous")
             };

@@ -108,7 +108,7 @@ impl Recorder {
                         viewport: Some(opts.viewport),
                         ..ShapeCx::COLUMNS
                     },
-                    opts.cx.vcx(),
+                    opts.cx.frame(),
                 );
                 let index = flows.len();
                 flows.push(Flow {

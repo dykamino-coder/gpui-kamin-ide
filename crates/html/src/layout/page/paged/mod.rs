@@ -62,7 +62,7 @@ pub fn render_paged_select(
             cx.deferred.paint = Default::default();
         }
     });
-    let vcx = opts.cx.vcx();
+    let vcx = opts.cx.frame();
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
     let mut none = false;
@@ -71,7 +71,7 @@ pub fn render_paged_select(
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize(&opts.cx);
-    opts.cx.contracts.build.paint_resources(nodes, vcx);
+    opts.cx.contracts.build.paint_resources(nodes, vcx.values);
     // CSS2 §10: сохраняем цепочку CB до снятия html/body и named wrappers.
     let (mut nodes, percentages) =
         crate::layout::fragment::flow::page_percentages(nodes, &root, opts);
@@ -87,7 +87,7 @@ pub fn render_paged_select(
         &mut right,
         &mut top,
         &mut root_page,
-        vcx,
+        vcx.values,
     );
     fill_used_page(&mut nodes, &root_page);
     // Обёртка в ином режиме письма — ортогональный поток, монолит (css-break-3
@@ -96,7 +96,7 @@ pub fn render_paged_select(
         hoist_named_wrappers(&mut nodes, vcx);
     }
     // Вычисленные стили элементов — до сборки листов (как у `render::render`).
-    crate::style::cascade::materialize::materialize(&nodes, root.style_rc(), vcx);
+    crate::style::cascade::materialize::materialize(&nodes, root.style_rc(), vcx.values);
     let geom_for: crate::layout::page::page_stack::PageGeomFn =
         std::rc::Rc::new(move |i, name: &str| {
             let mut g = geom_for(i, name);

@@ -1,9 +1,9 @@
 //! Пустую grid измеряет laid::group; разрываемый float — отдельный поток F2-1.
 //! Форма группы корневых узлов на листе: поля и вырезы.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::style::computed::Computed;
@@ -16,7 +16,7 @@ pub(crate) fn group_shape(
     group: &[Node],
     n: &Node,
     pad_top: f32,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> (
     (f32, f32, f32),
     Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,

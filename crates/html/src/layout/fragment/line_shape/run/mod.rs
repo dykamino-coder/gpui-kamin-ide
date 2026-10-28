@@ -1,9 +1,9 @@
 //! Форма строчного прогона: текст строки, обрезка по разрывам, сдвиги.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
 use crate::layout::block::sizing::BoxDimensions;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::Shape;
 use crate::style::values::value::Len;
 use crate::text::fonts::style_font::measure_font;
@@ -27,7 +27,7 @@ pub(crate) fn line_run_shape(
     bot: f32,
     mt: f32,
     mb: f32,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Shape> {
     // Высота в точках — коробка своей высоты, строки внутри неё режутся так
     // же (css-break-3 §4.3); строки ниже её низа — переполнение, точек там нет.

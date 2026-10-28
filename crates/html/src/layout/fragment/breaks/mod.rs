@@ -4,7 +4,7 @@
 //! (`oof_reach`): до какой глубины абсолют с `top`/`bottom` в `vh` и его переполнение
 //! требуют листов (Blink `BlockBreakToken::monolithic_overflow_`, crbug 1402540).
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -23,12 +23,12 @@ pub(crate) use edges::edge_break;
 /// добавляет страницы, пока оно не кончится, crbug 1402540;
 /// `monolithic-overflow-027`: абсолют `contain:size` 4in с ребёнком 8in —
 /// «four green pages»). Обрезка `overflow-y` переполнение гасит (`-028`).
-pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
+pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> f32 {
     // `vh`/`vw` — от page area; `bottom: -200vh` тянет низ коробки на две
     // area ниже листа (эталоны `fixedpos-001..009`: копии `bottom: -N00vh` и
     // `top: N00vh` — досягаемость была нулевой, лист один).
     let lens = crate::style::computed::LenCx::box_viewport(cx.viewport, &e.style.used());
-    let len = |l: &Option<Len>| lens.px_strict(*l, vcx);
+    let len = |l: &Option<Len>| lens.px_strict(*l, vcx.values);
     let top = len(&e.style.used().inset.top).unwrap_or(0.0);
     let from_bottom = len(&e.style.used().inset.bottom)
         .and_then(|b| cx.viewport.map(|v| v.1 - b))

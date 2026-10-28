@@ -3,8 +3,8 @@
 //! Сумма размеров потомков не выражает блочный размер этих контекстов: у таблицы
 //! высоты рядов, охваты и ячейки даёт только её раскладка (css-tables-3 §fragmentation).
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::Shape;
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::{BoxStyle, Display, Position};
@@ -47,12 +47,12 @@ pub(super) fn own_layout_gate(c: &Element, fits: bool, w: Option<f32>) -> bool {
 pub(super) fn measured(
     c: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
     w: f32,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<(Element, Shape)> {
     let c = resolved_lengths(c, merged, vcx);
-    let c = crate::layout::block::margins::fragment_box(c, w, vcx);
+    let c = crate::layout::block::margins::fragment_box(c, w, vcx.values);
     let (margin_top, margin_bottom) = crate::layout::block::margins::fragment_margins(&c)?;
     measured_kids.borrow_mut().push((c.node_id, w));
     Some((

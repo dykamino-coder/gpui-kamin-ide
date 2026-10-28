@@ -27,7 +27,7 @@ fn collected(doc: &crate::dom::Parsed) -> (BlockBox, Vec<u64>) {
     let b = BlockBox::collect(
         root,
         crate::layout::fragment::ShapeCx::COLUMNS,
-        doc.values(),
+        crate::layout::cx::FrameCx::new(doc.values()),
     );
     fn paragraphs(e: &Element, out: &mut Vec<u64>) {
         for k in &e.children {

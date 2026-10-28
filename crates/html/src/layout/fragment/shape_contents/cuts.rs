@@ -1,9 +1,9 @@
 //! Вырезы формы: финальная обрезка по высоте, нижняя кромка, сквозной верх.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::grid_bands::{grid_row_forced, grid_row_gaps};
 use crate::layout::fragment::oof_reach::{Measure, Reach};
 use crate::layout::fragment::probe::forced_opaque;
@@ -30,7 +30,7 @@ pub(crate) fn finish_shape_cuts(
     h: f32,
     mt: f32,
     mb: f32,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Measure> {
     let own_h = h;
     let (reach_end, up) = oof_reach.finish(c, cx);

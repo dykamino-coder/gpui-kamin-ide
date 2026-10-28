@@ -5,9 +5,9 @@
 //! Исходная позиция в содержащем блоке разрешается ДО вставки места под разрывы: рост
 //! абсолютной коробки авто-высоты не должен заново разрешать её нижнюю вставку.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::push::grow_pushed;
@@ -20,7 +20,7 @@ use crate::tolerance::COORD_EPS;
 mod block;
 use block::{block, zero};
 
-fn measure_fragment_and_own_height(c: &Element, vcx: ValueCx<'_>) -> Option<(Shape, f32)> {
+fn measure_fragment_and_own_height(c: &Element, vcx: FrameCx<'_>) -> Option<(Shape, f32)> {
     // TRANSITIONAL(F2-2): Прямой measure смешивает оценку normal size с OOF reach; удалить в P08 после исходного CB/static rect и emitted OOF child fragments.
     let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS, vcx)?;
     let own = Measure::own_size(m.own, m.shape.height);
@@ -34,7 +34,7 @@ fn positioned(
     h: f32,
     count: usize,
     copies: usize,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> bool {
     if c.style.used().position != Some(Position::Absolute)
         || !block(c)
@@ -88,7 +88,7 @@ fn grow_positioned_descendants(
     h: f32,
     count: usize,
     copies: usize,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> bool {
     if !block(c) {
         return false;
@@ -113,7 +113,7 @@ pub(super) fn grow(
     count: usize,
     copies: usize,
     geometry: Option<&Snapshot>,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) {
     let Some(geometry) = geometry else { return };
     for (c, s) in kids {

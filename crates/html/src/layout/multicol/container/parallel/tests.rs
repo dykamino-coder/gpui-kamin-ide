@@ -1,6 +1,7 @@
 //! Рост фрагментов сохраняет исходное положение и размер содержащего блока.
 
 use super::*;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::Computed;
 
 fn element(style: Computed, children: Vec<Node>) -> Element {
@@ -61,7 +62,7 @@ fn bottom_position_is_resolved_before_auto_height_grows(cx: &mut gpui::TestAppCo
         gpui::size(gpui::px(400.), gpui::px(400.)),
         |window, app| {
             let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-            let vcx = doc.values();
+            let vcx = FrameCx::new(doc.values());
             let mut cb = containing_block();
             let geometry = original(&cb, window, app);
             assert!(grow_positioned_descendants(
@@ -91,7 +92,7 @@ fn independent_breaks_use_the_containing_blocks_fragmentainer_phase(cx: &mut gpu
         gpui::size(gpui::px(400.), gpui::px(400.)),
         |window, app| {
             let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-            let vcx = doc.values();
+            let vcx = FrameCx::new(doc.values());
             let mut cb = containing_block();
             cb.style.used_mut().margin.top = Some(Len::Px(80.));
             cb.style.used_mut().inset.top = Some(Len::Px(33.));

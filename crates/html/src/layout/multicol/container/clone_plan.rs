@@ -1,7 +1,7 @@
 //! План клонов (box-decoration-break: clone) по колонкам.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::{clone_dec, solid_box};
 use crate::layout::multicol::spanner::parallel_items_inside;
@@ -17,7 +17,7 @@ pub(super) fn clone_plan_of(
     kid_par: &[crate::layout::fragment::types::Par],
     kids: &[(Element, crate::layout::fragment::Shape)],
     prepared: &[crate::layout::multicol::stack_child::Prepared],
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Vec<Vec<(f32, f32)>> {
     let clone_plan: Vec<Vec<(f32, f32)>> =
         if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
@@ -48,7 +48,7 @@ pub(super) fn clone_plan_of(
                         // иначе план соседа разошёлся бы с укладкой.
                         overflow_top: fixed.is_some()
                             && rows.is_none()
-                            && !parallel_items_inside(c, 4, vcx),
+                            && !parallel_items_inside(c, 4, vcx.values),
                         repeat: Default::default(),
                         par: kid_par[pi],
                     }
