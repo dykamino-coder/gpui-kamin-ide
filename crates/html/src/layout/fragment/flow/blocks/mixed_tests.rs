@@ -129,3 +129,37 @@ fn flex_in_table_cells_and_captions_has_frames_and_flows() {
         assert!(b.edge(true, &laid).1);
     }
 }
+
+/// `block-in-inline-000`: a block after lines (an anonymous block) breaks at
+/// that class A point; so does `break-after` before trailing lines. A first
+/// block without lines before it hands its break to the parent.
+#[test]
+fn breaks_next_to_anonymous_line_blocks_are_class_a_points() {
+    let doc = crate::dom::parse(
+        "<div><div style='break-before:column;height:10px'></div>x<br><div style='break-before:column;break-after:column;height:20px'></div>y</div>",
+        "",
+    );
+    let root = authored(&doc);
+    let b = BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(doc.values()));
+    let ids: Vec<u64> = b.kids.iter().map(|k| k.id).collect();
+    assert_eq!(ids.len(), 2);
+    let laid = Laid::of_boxes(&[
+        (root.node_id, 0.0, 66.0),
+        (ids[0], 0.0, 10.0),
+        (ids[1], 28.0, 48.0),
+    ]);
+    let m = b.breaks(66.0, &laid).finish(FlowGeometry::default(), 66.0);
+    assert_eq!(m.forced, vec![28.0, 48.0]);
+}
+
+/// CSS 2.1 §9.2.2: an inline-block is line content, not a block of the stack.
+#[test]
+fn atomic_inline_level_boxes_are_line_content() {
+    let doc = crate::dom::parse(
+        "<div><div style='display:inline-block;width:10px;height:10px'></div><div style='height:20px'></div></div>",
+        "",
+    );
+    let b = BlockBox::collect(authored(&doc), ShapeCx::COLUMNS, FrameCx::new(doc.values()));
+    assert_eq!(b.kids.len(), 1);
+    assert_eq!(b.kids[0].lines_around, (true, false));
+}

@@ -136,7 +136,7 @@ pub(super) fn build_copy(
         part,
         &mut kids,
     ) {
-        return super::vertical::wrap(value, copy, col_vert, col_rl, line_col_w);
+        return super::vertical::wrap(value, copy, merged, col_vert, col_rl, line_col_w);
     }
     // Абсолютный потомок ищет ближайшего
     // позиционированного предка (CSS 2.1
@@ -206,7 +206,11 @@ pub(super) fn build_copy(
         )
     });
     let child_build = &child_opts.cx.contracts.build;
-    let mut body = child_build.blocks(&kids, src_inner, &child_opts);
+    // CSS 2 §5.12: the copy's content gets the first-line/first-letter layers
+    // (and an initial-letter float) as on the ordinary block path.
+    let mut kids_style = src_inner.clone();
+    crate::layout::box_tree::pseudo_line_layers::install(src, &mut kids_style, vcx);
+    let mut body = child_build.blocks(&kids, &kids_style, &child_opts);
     if let Some(layer) = frag_cb_layer {
         body.extend(layer.finish());
     }
@@ -242,5 +246,5 @@ pub(super) fn build_copy(
     } else {
         el
     };
-    super::vertical::wrap(el, copy, col_vert, col_rl, line_col_w)
+    super::vertical::wrap(el, copy, merged, col_vert, col_rl, line_col_w)
 }

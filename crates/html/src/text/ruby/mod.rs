@@ -17,7 +17,9 @@ use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 
+mod base_edges;
 pub(crate) mod container;
+pub(crate) use base_edges::base_edges;
 pub(crate) mod layers;
 mod ruby_hiding;
 pub(crate) mod ruby_transform;

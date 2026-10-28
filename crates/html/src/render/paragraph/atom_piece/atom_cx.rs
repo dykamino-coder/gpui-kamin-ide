@@ -24,7 +24,12 @@ impl AtomRuby {
     /// A fresh collection for atom `e`.
     pub(crate) fn for_atom(e: &Element) -> Self {
         AtomRuby {
-            extents: Rc::new(RefCell::new(Some(RubyExtents::default()))),
+            extents: Rc::new(RefCell::new(Some(RubyExtents {
+                base_edges: (crate::text::ruby::ruby_role(e)
+                    == Some(crate::style::computed::RubyRole::Container))
+                .then(|| crate::text::ruby::base_edges(e)),
+                ..Default::default()
+            }))),
             independent: replaced_tag(e)
                 || matches!(
                     e.style.used().display,

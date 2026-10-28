@@ -32,6 +32,10 @@ pub(crate) struct BlockBreaks {
     pub(crate) avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    /// Line groups held by orphans/widows (rule 3, css-break-3 §4.4): part of
+    /// `keep`, and the balancer keeps them whole when it can (Blink
+    /// `tallest_unbreakable_block_size`).
+    pub(crate) line_keep: Vec<(f32, f32)>,
     pub(crate) avoid_inside: Vec<(f32, f32)>,
     /// Ряды таблиц под правилом «not freely fragmentable» (`RowKeep`).
     pub(crate) table_rows: Vec<crate::layout::fragment::types::RowKeep>,
@@ -54,6 +58,10 @@ pub(crate) struct MeasuredBreaks {
     pub(crate) avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    /// Line groups held by orphans/widows (rule 3, css-break-3 §4.4): part of
+    /// `keep`, and the balancer keeps them whole when it can (Blink
+    /// `tallest_unbreakable_block_size`).
+    pub(crate) line_keep: Vec<(f32, f32)>,
     pub(crate) avoid_inside: Vec<(f32, f32)>,
     /// Ряды таблиц под правилом «not freely fragmentable» (`RowKeep`).
     pub(crate) table_rows: Vec<crate::layout::fragment::types::RowKeep>,
@@ -125,31 +133,22 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
 fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut BlockBreaks) {
     if let Some(flow) = laid.flows.get(&b.id) {
         out.cuts.extend_from_slice(&flow.cuts);
-        let lines = laid.content.get(&b.id).map_or(&[][..], |l| l.as_slice());
-        for &(top, bottom) in &flow.solid {
-            let inside: Vec<_> = lines
-                .iter()
-                .filter(|l| l.top >= top - COORD_EPS && l.bottom <= bottom + COORD_EPS)
-                .collect();
-            if inside.len() < 2 {
-                out.solid.push((top, bottom));
-                continue;
-            }
-            // Строки, сведённые `orphans`/`widows` (`FlowGeometry::keep_lines`),
-            // — пожелание, а не монолит: правило 3 css-break-3 §4.4 снимается,
-            // если иначе содержимое не помещается во фрагментаинер (Blink
-            // `kBreakAppealViolatingOrphansAndWidows`).
-            out.keep.push((top, bottom));
-            for pair in inside.windows(2) {
-                out.cuts
-                    .push((pair[0].bottom + pair[1].consumed_before, pair[1].top));
-            }
-            out.solid.extend(
-                inside
-                    .iter()
-                    .map(|l| (l.top.max(top), l.bottom.min(bottom))),
-            );
-        }
+        // Paragraph lines (with the space consumed before each) and the line
+        // boxes of atom rows, which have no content address.
+        let lines: Vec<(f32, f32, f32)> = laid
+            .content
+            .get(&b.id)
+            .into_iter()
+            .flatten()
+            .map(|l| (l.top, l.bottom, l.consumed_before))
+            .chain(flow.line_boxes.iter().map(|&(t, b)| (t, b, 0.0)))
+            .collect();
+        // Строки, сведённые `orphans`/`widows`, — пожелание (`soft_keep`).
+        let soft = crate::layout::fragment::flow::soft_keep::soften(&flow.solid, &lines);
+        out.solid.extend(soft.solid);
+        out.cuts.extend(soft.cuts);
+        out.line_keep.extend_from_slice(&soft.keep);
+        out.keep.extend(soft.keep);
     }
     if let Some(t) = &b.table {
         t.walk(top, laid, out);

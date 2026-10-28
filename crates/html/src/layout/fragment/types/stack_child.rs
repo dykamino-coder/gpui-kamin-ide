@@ -84,6 +84,8 @@ pub struct StackChild {
     pub(crate) avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    /// Orphans/widows line groups among `keep` (`MeasuredBreaks::line_keep`).
+    pub(crate) line_keep: Vec<(f32, f32)>,
     /// Ряды таблиц под правилом «not freely fragmentable» (`Kid::table_rows`).
     pub(crate) table_rows: Vec<super::RowKeep>,
     pub h: f32,
@@ -166,6 +168,7 @@ impl StackChild {
             float_min: self.regrow.as_ref().map_or(0.0, |r| r.float_min()),
             avoid: self.avoid.clone(),
             keep: self.keep.clone(),
+            line_keep: self.line_keep.clone(),
             table_rows: self.table_rows.clone(),
             span: self.span,
             over: self.over,

@@ -44,7 +44,9 @@ pub(super) fn place_flow(
     bands.set_walls(walls.0, walls.1);
     let (bw, bh) = probe(kid, cbw, avail, Some(shapes.clone()), p);
     slots[k] = Slot {
-        x: x0 + ml,
+        // CSS 2.1 §10.3.3: an over-constrained box drops its end margin; in an
+        // rtl containing block it stands at the right edge.
+        x: inline_start(x0 + ml, x1 - mr, bw, kid.rtl),
         y: top,
         avail,
         shapes: Some(shapes),
@@ -55,6 +57,13 @@ pub(super) fn place_flow(
         ..Slot::default()
     };
     *y = top + bh + mb;
+}
+
+/// Start of a box `width` wide between the edges `x0`..`x1` of its
+/// containing block (CSS 2.1 §10.3.3: over-constrained margins drop the end
+/// one, so the box stands at the inline-start — the right edge in rtl).
+pub(super) fn inline_start(x0: f32, x1: f32, width: f32, rtl: bool) -> f32 {
+    if rtl { x1 - width } else { x0 }
 }
 
 /// Внутренний размер контекста: min-content / max-content.
@@ -140,4 +149,13 @@ pub(super) fn intrinsic_width(kids: &[Kid], max: bool, p: &mut Probe) -> f32 {
         }
     }
     if max { max_size } else { min_size }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn narrow_boxes_stand_at_the_inline_start_of_their_containing_block() {
+        assert_eq!(super::inline_start(10., 400., 230., false), 10.);
+        assert_eq!(super::inline_start(10., 400., 230., true), 170.);
+    }
 }

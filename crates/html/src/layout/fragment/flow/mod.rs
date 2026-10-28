@@ -15,6 +15,8 @@ pub(crate) mod inline;
 mod line_growth;
 mod measurements;
 mod normalize;
+mod row_lines;
+pub(crate) mod soft_keep;
 pub(crate) use continuation::ContentLine;
 pub(crate) use line_growth::LinePush;
 mod stack;
@@ -55,6 +57,9 @@ pub(crate) struct FlowGeometry {
     pub(crate) inline: Vec<inline::Inline>,
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) solid: Vec<(f32, f32)>,
+    /// Line boxes without a content address (rows of atomic inlines): like
+    /// paragraph lines, `orphans`/`widows` groups over them relax before avoid.
+    pub(crate) line_boxes: Vec<(f32, f32)>,
     /// Original float identities and boxes, never temporary LayoutIds.
     pub(crate) floats: Vec<FloatGeometry>,
 }
@@ -130,6 +135,12 @@ impl FlowGeometry {
             .extend(other.cuts.iter().map(|&(a, b)| (a + offset, b + offset)));
         self.solid
             .extend(other.solid.iter().map(|&(a, b)| (a + offset, b + offset)));
+        self.line_boxes.extend(
+            other
+                .line_boxes
+                .iter()
+                .map(|&(a, b)| (a + offset, b + offset)),
+        );
     }
 
     /// Keep the first `orphans` and the last `widows` line boxes of one inline

@@ -49,6 +49,7 @@ impl ColumnStack {
         // Ранние разрывы ВНУТРИ предыдущего ребёнка: `(ребёнок, точка)`.
         let mut early: Vec<(usize, f32)> = Vec::new();
         let mut early_tried: Vec<usize> = Vec::new();
+        let mut late_tried: Vec<usize> = Vec::new();
         // Недолаз нарушенной границы переживает перенос разрыва выше: в новом
         // плане он не возникнет (Blink SetupRelayoutData повторяет
         // MinimalSpaceShortage прохода, нашедшего ранний разрыв).
@@ -92,23 +93,46 @@ impl ColumnStack {
             // следом квадрат с `break-before: avoid` в колонке 160 → разрыв
             // между вторым и третьим квадратом. Сначала самая поздняя точка;
             // принимается та, что снимает нарушение на этой границе.
-            if flow == usize::MAX && !early_tried.contains(&bad) && !kids[bad - 1].monolith {
-                early_tried.push(bad);
-                let pk = &kids[bad - 1];
-                let cands: Vec<f32> = pk
+            //
+            // Затем правило 3 (orphans/widows) снимается раньше правил 1, 2
+            // и 4 (css-break-3 §4.4; Blink `kBreakAppealViolatingOrphansAndWidows`
+            // выше `kBreakAppealViolatingBreakAvoid`): строки, удержанные
+            // orphans/widows в ребёнке после запретной границы, рвутся между
+            // собой (`break-between-avoid-004`).
+            let attempts = [
+                (bad - 1, !early_tried.contains(&bad), false),
+                (bad, !late_tried.contains(&bad), true),
+            ];
+            early_tried.push(bad);
+            late_tried.push(bad);
+            for (kid, fresh, kept) in attempts {
+                let k = &kids[kid];
+                if flow != usize::MAX || !fresh || k.monolith {
+                    continue;
+                }
+                let cands: Vec<f32> = k
                     .cuts
                     .iter()
                     .rev()
                     .map(|&(need, _)| need)
                     .filter(|&n| {
                         n > COORD_EPS
-                            && n < pk.h - COORD_EPS
-                            && !pk.forced.iter().any(|&f| (f - n).abs() < COORD_EPS)
+                            && n < k.h - COORD_EPS
+                            && !k.forced.iter().any(|&f| (f - n).abs() < COORD_EPS)
+                            && (!kept
+                                || (k.keep
+                                    .iter()
+                                    .any(|&(a, b)| a + COORD_EPS < n && n < b - COORD_EPS)
+                                    // A row that is not freely fragmentable
+                                    // keeps its lines (css-tables-3).
+                                    && !k.table_rows.iter().any(|r| {
+                                        r.start + COORD_EPS < n && n < r.end - COORD_EPS
+                                    })))
                     })
                     .collect();
                 for at in cands {
                     let mut e2 = early.clone();
-                    e2.push((bad - 1, at));
+                    e2.push((kid, at));
                     let cand = plan::fill_at(&build(&marks, &e2), target_at, space);
                     let still = Self::avoid_violation_where(kids, &cand.2, &|i| {
                         stuck.contains(&flow_of(i)) || i < bad
@@ -135,5 +159,35 @@ impl ColumnStack {
             marks.push((flow, next));
             best = plan::fill_at(&build(&marks, &early), target_at, space);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `break-between-avoid-004`: orphans/widows give way before break-avoid.
+    #[test]
+    fn kept_lines_break_before_an_avoided_boundary() {
+        let boxed = |h: f32| Kid {
+            h,
+            over: h,
+            avoid_before: true,
+            avoid_after: true,
+            solid: vec![(0., h)],
+            ..Default::default()
+        };
+        let lines = Kid {
+            cuts: vec![(50., 50.)],
+            solid: vec![(0., 50.), (50., 100.)],
+            keep: vec![(0., 100.)],
+            ..boxed(100.)
+        };
+        let kids = [boxed(50.), lines, boxed(50.)];
+        let (_, _, plan) = ColumnStack::fill_avoiding(&kids, &|_| 120., Space::columns(2));
+        let second: Vec<_> = plan.iter().filter(|f| f.kid == 1).collect();
+        assert_eq!(second.len(), 2);
+        assert_eq!((second[0].col, second[0].h), (0, 50.));
+        assert_eq!((second[1].col, second[1].from), (1, 50.));
     }
 }
