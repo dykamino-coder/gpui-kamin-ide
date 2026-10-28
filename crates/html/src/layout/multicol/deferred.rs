@@ -111,7 +111,9 @@ impl Recipe {
                 .max(stack.count);
         }
         for i in 0..stack.children.len() {
-            stack.lay_out_main(i, window, cx);
+            if !stack.resume_nested(i, window, cx) {
+                stack.lay_out_main(i, window, cx);
+            }
         }
         stack.regrow_children(window, cx);
         stack.paginate_children(window, cx);

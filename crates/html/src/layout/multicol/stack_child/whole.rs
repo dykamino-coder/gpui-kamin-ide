@@ -51,6 +51,7 @@ pub(super) fn copy_whole_box(
     whole: bool,
     part: usize,
     kids: &mut Vec<Node>,
+    report: &crate::layout::fragment::token::space::sequence::NestReport,
 ) -> Option<gpui::AnyElement> {
     if let Some(hh) = nest_row {
         let mut mc = copy.clone();
@@ -89,6 +90,14 @@ pub(super) fn copy_whole_box(
                         },
                     )
                     .nested(0, nest_phase_k)
+                    .map(|nested| {
+                        std::rc::Rc::new(
+                            crate::layout::fragment::token::space::sequence::Nested {
+                                first_row: report.clone(),
+                                ..(*nested).clone()
+                            },
+                        )
+                    })
                     .expect("resolved outer column constraints"),
                 ),
             ),

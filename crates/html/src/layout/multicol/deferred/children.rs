@@ -82,7 +82,6 @@ impl Recipe {
             reverse,
             (Some(width), Some(width)),
             self.rows,
-            plan.nested_auto,
             plan.nested_whole,
             measured,
             copies,

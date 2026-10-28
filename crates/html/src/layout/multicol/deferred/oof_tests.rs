@@ -40,7 +40,7 @@ fn absolute_continuation_and_balance_preserve_the_normal_neighbour(cx: &mut gpui
         }).collect();
         let children = crate::layout::multicol::container::kids::stack_children(
             host, &merged, &opts, 2, false, false, (Some(100.), Some(100.)), None,
-            measured.nested_auto, measured.nested_whole, measured.measured_kids,
+            measured.nested_whole, measured.measured_kids,
             2, Some(70.), parents, parallel, kids, prepared,
         );
         assert_eq!(children.len(), 2);

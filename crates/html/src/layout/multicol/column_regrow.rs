@@ -10,6 +10,8 @@ use gpui::{App, AvailableSpace, Window, point, px, size};
 mod copies;
 mod extent;
 mod items;
+mod nest;
+pub(crate) use nest::first_row_overflow;
 mod owners;
 mod progress;
 mod trial;

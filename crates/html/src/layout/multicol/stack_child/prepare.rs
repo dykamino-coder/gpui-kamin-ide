@@ -7,6 +7,7 @@ use crate::layout::fragment::shape_contents::strip_through_top;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 
+#[derive(Clone)]
 pub(in crate::layout::multicol) struct Prepared {
     pub(super) copy: Element,
     pub(super) empty_floats: bool,

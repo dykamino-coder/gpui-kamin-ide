@@ -8,7 +8,8 @@ use crate::layout::positioned::relative::hoist_relative;
 use crate::style::computed::BoxStyle;
 mod factory;
 mod finish;
-use finish::{finish_stack_child, nest_row_of};
+use finish::finish_stack_child;
+pub(in crate::layout::multicol) use finish::nest_candidate;
 mod cuts;
 use cuts::stack_child_of;
 mod prepare;
@@ -45,10 +46,7 @@ pub(super) fn multicol_stack_child(
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
-    fixed_nest: Option<f32>,
-    balanced_frag: Option<f32>,
-    nest_at: &[Option<f32>],
-    nested_auto: &std::cell::RefCell<Vec<u64>>,
+    nest: Option<(f32, f32)>,
     nested_whole: &std::cell::RefCell<Vec<u64>>,
     measured_kids: &std::cell::RefCell<Vec<(u64, f32)>>,
 ) -> crate::layout::fragment::types::StackChild {
@@ -84,26 +82,16 @@ pub(super) fn multicol_stack_child(
     if copy.marks.host_trim_end {
         copy.style.used_mut().text_box_trim_end = true;
     }
-    // Вложенный многоколоночник с ВЕРХА внешней колонки
-    // (первый ребёнок без поля) и заданной высотой —
-    // рядами во внешний фрагментаинер (`FragCx::outer_space`).
-    // С верха колонки граница k-го ряда — ровно k·H, и
-    // внешняя стопка режет коробку краем колонки
-    // (`fill_at`, не монолит) точно по рядам; мера
-    // коробки — её заданная высота. Сдвинутый вниз
-    // (первый ряд = остаток колонки) — следующий шаг.
-    let nest_row = nest_row_of(
-        ix,
-        kid_par,
-        col_vert,
-        rows,
-        fixed_nest,
-        balanced_frag,
-        nest_at,
-        nested_auto,
-        &copy,
-    );
-    let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
+    // Вложенный многоколоночник режут ряды внешних колонок (`nest_candidate`):
+    // ряд — внешний фрагментаинер высоты `hh`, первый ряд — его остаток от места
+    // ребёнка `phase` (`ColumnStack::resume_nested`). Внешняя стопка режет коробку
+    // краем колонки (`fill_at`, не монолит) точно по рядам.
+    let nest_row = nest
+        .filter(|_| nest_candidate(ix, kid_par, col_vert, &copy))
+        .map(|n| n.0)
+        .filter(|hh| *hh > 0.0);
+    let nest_phase_k = nest.map_or(0.0, |n| n.1);
+    let report: crate::layout::fragment::token::space::sequence::NestReport = Default::default();
     let mut inner = box_style(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
     inner.fragment_clip_ancestor = false;
@@ -139,6 +127,7 @@ pub(super) fn multicol_stack_child(
         inner,
         whole,
         watched.clone(),
+        report.clone(),
     );
     // CSS Break 3 section 4.1: scroll containers, replaced and atomic boxes
     // are monolithic. Measured line edges provide breaks for ordinary flow.
@@ -197,5 +186,7 @@ pub(super) fn multicol_stack_child(
         && !merged.wm().vertical()
         && copy.style.cascaded().wm().rtl()
         && !copy.style.cascaded().wm().vertical();
+    child.nest = nest_row.map(|hh| (hh, nest_phase_k));
+    child.nest_report = nest_row.map(|_| report);
     child
 }

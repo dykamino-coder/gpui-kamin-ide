@@ -81,6 +81,9 @@ pub(super) fn place_oof_statics(
             paginate: None,
             clone_frags: None,
             copier: None,
+            nest: None,
+            nest_report: None,
+            resume: None,
             positioned: false,
         };
         // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).
@@ -109,6 +112,7 @@ pub(super) fn column_stack_div(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
+    nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
     fixed: Option<f32>,
     gap_items: &Option<crate::layout::multicol::gap_rules::GapItems>,
     children: Vec<crate::layout::fragment::types::StackChild>,
@@ -152,6 +156,7 @@ pub(super) fn column_stack_div(
             opts.cx.deferred.paint.clone(),
         )
         .with_deferred(deferred)
+        .with_nest_report(nest_report)
         .with_row_extent(if nest_rows.is_some() {
             crate::layout::multicol::measure::RowExtent::Content
         } else {

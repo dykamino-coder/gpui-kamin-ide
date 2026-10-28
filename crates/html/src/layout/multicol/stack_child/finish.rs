@@ -6,7 +6,6 @@ use crate::layout::cx::FrameCx;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
 use crate::style::values::value::Len;
-use crate::tolerance::COORD_EPS;
 
 mod monolith;
 use monolith::copy_monolith;
@@ -45,7 +44,7 @@ pub(super) fn finish_stack_child(
     let (measure, monolith) =
         measured_monolith(measured_kids, copy, nest_row, whole, scrolls, monolith);
     let span = copy.style.used().column_span == Some(true) && !copy.inline;
-    // Число копий — по измеренной протяжённости (eserve_overflow_copies\).
+    // Число копий — по измеренной протяжённости (`reserve_overflow_copies`).
     let kid_copies = copies;
     let mut child = stack_child_of(
         ix,
@@ -75,37 +74,18 @@ pub(super) fn finish_stack_child(
     child
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn nest_row_of(
+/// Вложенный многоколоночник, которого режут ряды внешних колонок
+/// (css-multicol-1 §8, css-break-3 §2: вложенный контекст фрагментации): его ряд
+/// получает остаток внешнего фрагментаинера от места, где ребёнок начался
+/// (`StackChild::nest`), а это место знает только раскладка предшествующих
+/// детей (`ColumnStack::resume_nested`).
+pub(in crate::layout::multicol) fn nest_candidate(
     ix: usize,
     kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
-    rows: Option<crate::layout::fragment::types::Rows>,
-    fixed_nest: Option<f32>,
-    balanced_frag: Option<f32>,
-    nest_at: &[Option<f32>],
-    nested_auto: &std::cell::RefCell<Vec<u64>>,
     copy: &Element,
-) -> Option<f32> {
-    fixed_nest.filter(|hh| {
-        *hh > 0.0
-            && (rows.is_none() || balanced_frag.is_some())
-            && !col_vert
-            && kid_par.get(ix).is_none_or(|p| p.group == 0)
-            && nested_rows_box(copy)
-            && match nest_at.get(ix).copied().flatten() {
-                // С верха колонки — и заданная высота, и
-                // `auto` с мерой рядами.
-                Some(y0) if y0 < COORD_EPS => {
-                    matches!(copy.style.used().height, Some(Len::Px(_)))
-                        || nested_auto.borrow().contains(&copy.node_id)
-                }
-                // Ниже верха — только заданная высота: мера
-                // коробки от рядов не зависит.
-                Some(_) => matches!(copy.style.used().height, Some(Len::Px(_))),
-                None => false,
-            }
-    })
+) -> bool {
+    !col_vert && kid_par.get(ix).is_none_or(|p| p.group == 0) && nested_rows_box(copy)
 }
 
 pub(super) fn measured_monolith(

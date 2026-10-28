@@ -150,6 +150,15 @@ pub struct StackChild {
     /// Построитель копии `part` (0 — главная): число копий решает план по
     /// измеренной протяжённости ребёнка, а не предварительная оценка.
     pub(crate) copier: Option<std::rc::Rc<dyn Fn(usize) -> AnyElement>>,
+    /// Ряды вложенного многоколоночника во внешних колонках: `(высота ряда,
+    /// начало ребёнка во внешнем фрагментаинере)`.
+    pub(crate) nest: Option<(f32, f32)>,
+    /// Отчёт рядов вложенного многоколоночника (`Nested::first_row`).
+    pub(crate) nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    /// Сборка того же ребёнка в другом внешнем пространстве (`nest`): его
+    /// начало решает раскладка предшествующих детей.
+    #[allow(clippy::type_complexity)]
+    pub(crate) resume: Option<std::rc::Rc<dyn Fn(Option<(f32, f32)>) -> StackChild>>,
 }
 
 /// Фрагменты `clone` знают свои `(from, h)` только из итогового плана укладки:

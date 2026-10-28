@@ -31,7 +31,6 @@ pub(crate) fn measure_children(
     last_flow: Option<*const Node>,
     outer_frag: Option<f32>,
     (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
-    nested_auto: &RefCell<Vec<u64>>,
     whole_ok: bool,
     nested_whole: &RefCell<Vec<u64>>,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
@@ -58,7 +57,6 @@ pub(crate) fn measure_children(
             {
                 let c = resolved_lengths(c, merged, vcx);
                 let (mt, mb) = measured_margins(&c)?;
-                nested_auto.borrow_mut().push(c.node_id);
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((
                     c,

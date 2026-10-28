@@ -22,6 +22,7 @@ pub(super) fn new(
     inner: BoxStyle,
     whole: bool,
     watched: Rc<Watched>,
+    report: crate::layout::fragment::token::space::sequence::NestReport,
 ) -> Builder {
     let opts = opts.clone();
     // Under a native source of this multicol every continued absolute/fixed
@@ -78,6 +79,7 @@ pub(super) fn new(
             first,
             part,
             band,
+            &report,
         ))
     })
 }
@@ -151,6 +153,7 @@ mod tests {
             inner,
             false,
             watch.clone(),
+            Default::default(),
         );
         let (el, _, handles) = fragments(build, copy, false, 1);
         let fixed_host = layer.finish();

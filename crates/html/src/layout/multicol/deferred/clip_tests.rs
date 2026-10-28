@@ -99,7 +99,6 @@ fn measured_stack(
         false,
         (Some(100.), Some(100.)),
         None,
-        measured.nested_auto,
         measured.nested_whole,
         measured.measured_kids,
         count as usize,

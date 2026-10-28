@@ -1,11 +1,9 @@
 //! Дети стопки колонок: копии детей при заданной высоте и элементы StackChild.
 
 use crate::dom::Element;
-use crate::layout::fragment::breaks::edge_break;
-use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed, measured_push};
 use crate::layout::multicol::measure::kid_layout_w;
-use crate::layout::multicol::stack_child::multicol_stack_child;
+use crate::layout::multicol::stack_child::{multicol_stack_child, nest_candidate};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
@@ -53,6 +51,59 @@ pub(in crate::layout::multicol) fn column_kids(
     (kid_parent, kid_starts, kid_par, kids)
 }
 
+/// Общие входы детей одной стопки: каждый ребёнок собирается из них заново,
+/// когда раскладка предшествующих детей решает его внешнее пространство.
+struct Shared {
+    e: Element,
+    merged: BoxStyle,
+    opts: RenderOpts,
+    col_vert: bool,
+    col_rl: bool,
+    widths: (Option<f32>, Option<f32>),
+    rows: Option<crate::layout::fragment::types::Rows>,
+    copies: usize,
+    fixed: Option<f32>,
+    kid_parent: Vec<Option<BoxStyle>>,
+    kid_par: Vec<crate::layout::fragment::types::Par>,
+    nested_whole: std::cell::RefCell<Vec<u64>>,
+    measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
+}
+
+impl Shared {
+    fn build(
+        &self,
+        ix: usize,
+        c: &Element,
+        prepared: &crate::layout::multicol::stack_child::Prepared,
+        (mt, mb): (f32, f32),
+        nest: Option<(f32, f32)>,
+    ) -> crate::layout::fragment::types::StackChild {
+        let (line_col_w, layout_col_w) = self.widths;
+        multicol_stack_child(
+            ix,
+            c.clone(),
+            prepared.clone(),
+            mt,
+            mb,
+            &self.e,
+            &self.merged,
+            &self.opts,
+            &self.kid_parent,
+            &self.kid_par,
+            self.col_vert,
+            self.col_rl,
+            line_col_w,
+            kid_layout_w(c, line_col_w, layout_col_w),
+            self.rows,
+            self.copies,
+            self.fixed,
+            nest,
+            &self.nested_whole,
+            &self.measured_kids,
+        )
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 // The stack is assembled from the same measured child/callback records.
 #[allow(clippy::type_complexity)]
@@ -63,9 +114,8 @@ pub(in crate::layout::multicol) fn stack_children(
     cols: u16,
     col_vert: bool,
     col_rl: bool,
-    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
+    widths: (Option<f32>, Option<f32>),
     rows: Option<crate::layout::fragment::types::Rows>,
-    nested_auto: std::cell::RefCell<Vec<u64>>,
     nested_whole: std::cell::RefCell<Vec<u64>>,
     measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
     copies: usize,
@@ -75,93 +125,45 @@ pub(in crate::layout::multicol) fn stack_children(
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
     prepared: Vec<crate::layout::multicol::stack_child::Prepared>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
-    let vcx = opts.cx.frame();
-    let balanced_frag: Option<f32> =
-        (fixed.is_none() && rows.is_none_or(|r| r.cap) && cols > 1 && kids.len() == 1)
-            .then(|| {
-                let (c, s) = &kids[0];
-                (nested_rows_box(c)
-                    && matches!(c.style.used().height, Some(Len::Px(_)))
-                    && s.cuts.is_empty()
-                    && s.margin_top.abs() < COORD_EPS)
-                    .then(|| {
-                        let per = s.height / cols as f32;
-                        rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
-                    })
-            })
-            .flatten()
-            .filter(|h| *h > 1.0);
-    let fixed_nest = fixed.or(balanced_frag);
-    let nest_at: Vec<Option<f32>> = {
-        let mut v = Vec::with_capacity(kids.len());
-        let (mut y, mut prev_mb, mut ok) = (0.0f32, 0.0f32, true);
-        for (i, (c, s)) in kids.iter().enumerate() {
-            let lead = if i == 0 {
-                s.margin_top
-            } else {
-                prev_mb.max(s.margin_top)
-            };
-            let hh = fixed_nest.unwrap_or(0.0);
-            v.push((ok && fixed_nest.is_some() && y + lead < hh - COORD_EPS).then_some(y + lead));
-            if edge_break(c, false, vcx)
-                || edge_break(c, true, vcx)
-                || kid_par.get(i).is_some_and(|p| p.group != 0)
-                || y + lead + s.height > hh + COORD_EPS
-            {
-                ok = false;
-            }
-            y += lead + s.height;
-            prev_mb = s.margin_bottom;
-        }
-        v
-    };
-    let children: Vec<crate::layout::fragment::types::StackChild> = kids
-        .into_iter()
+    // Единственный вложенный многоколоночник заданной высоты в балансируемых
+    // колонках делит их на ряды своей высоты (`ColumnStack::resume_nested`).
+    let balanced = fixed.is_none() && rows.is_none_or(|r| r.cap) && cols > 1 && kids.len() == 1;
+    let shared = std::rc::Rc::new(Shared {
+        e: e.clone(),
+        merged: merged.clone(),
+        opts: opts.clone(),
+        col_vert,
+        col_rl,
+        widths,
+        rows,
+        copies,
+        fixed,
+        kid_parent,
+        kid_par,
+        nested_whole,
+        measured_kids,
+    });
+    kids.into_iter()
         .zip(prepared)
         .enumerate()
-        .map(
-            |(
-                ix,
-                (
-                    (
-                        c,
-                        crate::layout::fragment::Shape {
-                            margin_top: mt,
-                            margin_bottom: mb,
-                            ..
-                        },
-                    ),
-                    prepared,
-                ),
-            )| {
-                let kid_w = kid_layout_w(&c, line_col_w, layout_col_w);
-                multicol_stack_child(
-                    ix,
-                    c,
-                    prepared,
-                    mt,
-                    mb,
-                    e,
-                    merged,
-                    opts,
-                    &kid_parent,
-                    &kid_par,
-                    col_vert,
-                    col_rl,
-                    line_col_w,
-                    kid_w,
-                    rows,
-                    copies,
-                    fixed,
-                    fixed_nest,
-                    balanced_frag,
-                    &nest_at,
-                    &nested_auto,
-                    &nested_whole,
-                    &measured_kids,
-                )
-            },
-        )
-        .collect();
-    children
+        .map(|(ix, ((c, s), prepared))| {
+            let margins = (s.margin_top, s.margin_bottom);
+            let candidate = nest_candidate(ix, &shared.kid_par, col_vert, &c)
+                && if balanced {
+                    matches!(c.style.used().height, Some(Len::Px(_)))
+                        && s.margin_top.abs() < COORD_EPS
+                } else {
+                    fixed.is_some_and(|h| h > 0.0) && rows.is_none()
+                };
+            let nest = fixed.filter(|_| candidate).map(|hh| (hh, 0.0));
+            let mut child = shared.build(ix, &c, &prepared, margins, nest);
+            if candidate {
+                let shared = shared.clone();
+                child.resume = Some(std::rc::Rc::new(move |nest| {
+                    shared.build(ix, &c, &prepared, margins, nest)
+                }));
+            }
+            child
+        })
+        .collect()
 }

@@ -228,6 +228,9 @@ pub(super) fn stack_child_of(
         paginate: None,
         clone_frags: None,
         copier: None,
+        nest: None,
+        nest_report: None,
+        resume: None,
         // Повтор шапки/подвала — копии flow::Repeat, полосы по разложенным секциям.
         repeat: repeat
             .filter(|_| !span && !col_vert)

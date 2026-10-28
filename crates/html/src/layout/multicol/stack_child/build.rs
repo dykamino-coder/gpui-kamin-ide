@@ -41,6 +41,7 @@ pub(super) fn build_copy(
     first: bool,
     part: usize,
     band: bool,
+    report: &crate::layout::fragment::token::space::sequence::NestReport,
 ) -> gpui::AnyElement {
     let vcx = opts.cx.vcx();
     let build = &opts.cx.contracts.build;
@@ -135,6 +136,7 @@ pub(super) fn build_copy(
         whole,
         part,
         &mut kids,
+        report,
     ) {
         return super::vertical::wrap(value, col_vert, col_rl, line_col_w);
     }

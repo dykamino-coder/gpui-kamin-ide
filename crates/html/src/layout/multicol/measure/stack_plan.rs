@@ -18,7 +18,6 @@ pub(crate) struct StackPlan {
     pub(crate) layout_col_w: Option<f32>,
     pub(crate) direct_oof: Vec<Element>,
     pub(crate) oof_static: Vec<(usize, Element)>,
-    pub(crate) nested_auto: std::cell::RefCell<Vec<u64>>,
     pub(crate) nested_whole: std::cell::RefCell<Vec<u64>>,
     pub(crate) measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
     pub(crate) stackable: Option<Vec<(Element, Shape)>>,
@@ -132,8 +131,6 @@ pub(crate) fn plan_at(
         .iter()
         .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
         .map(|n| n as *const Node);
-    // Чью меру дала `nested_rows_shape` — только их копии рядами.
-    let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
     // Вложенный многоколоночник `height: auto` под БАЛАНСОМ внешнего
     // (`nested_whole`): одна сбалансированная строка колонок целиком.
     // css-multicol-1 §2: вложенный многоколоночник — сам мультиколонный
@@ -226,7 +223,6 @@ pub(crate) fn plan_at(
                 last_flow,
                 outer_frag,
                 (line_col_w, layout_col_w),
-                &nested_auto,
                 whole_ok,
                 &nested_whole,
                 &measured_kids,
@@ -242,7 +238,6 @@ pub(crate) fn plan_at(
         layout_col_w,
         direct_oof,
         oof_static,
-        nested_auto,
         nested_whole,
         measured_kids,
         stackable,

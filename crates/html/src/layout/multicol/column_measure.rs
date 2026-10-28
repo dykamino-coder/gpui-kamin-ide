@@ -16,7 +16,9 @@ impl ColumnStack {
     ) -> (LayoutId, LayoutId) {
         if self.deferred.is_none() {
             for i in 0..self.children.len() {
-                self.lay_out_main(i, window, cx);
+                if !self.resume_nested(i, window, cx) {
+                    self.lay_out_main(i, window, cx);
+                }
             }
             self.regrow_children(window, cx);
             self.paginate_children(window, cx);
@@ -129,6 +131,7 @@ impl ColumnStack {
         });
         let paint = self.paint.clone();
         let deferred = self.deferred.clone();
+        let nest_report = self.nest_report.clone();
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
@@ -156,6 +159,7 @@ impl ColumnStack {
                     col_w: std::cell::Cell::new(0.0),
                     lines_plan: std::cell::RefCell::new(Vec::new()),
                     spans_plan: std::cell::RefCell::new(Vec::new()),
+                    nest_report: None,
                 };
                 // Вертикальное письмо: место под прогрессию колонок — по
                 // СТРОЧНОЙ оси, то есть высота коробки (css-multicol-1 §2), а
@@ -196,6 +200,9 @@ impl ColumnStack {
                     .col_w
                     .set(((w - gap * (count as f32 - 1.)) / count as f32).max(1.));
                 let (height, lines, plan, spans) = probe.balance(&heights);
+                if let Some(report) = &nest_report {
+                    report.set(crate::layout::multicol::column_regrow::first_row_overflow(&lines, &plan, count));
+                }
                 let height = row_extent.block_size(height, &lines, &spans, &plan, count, &heights);
                 let (first, last) = baselines.as_mut().map_or((None, None), |baselines| {
                     baselines.measure(&probe, &heights, w, &lines, &plan, &spans, window, cx)
