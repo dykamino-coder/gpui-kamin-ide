@@ -50,14 +50,30 @@ use paint::inherit_paint;
 // (`style::zoom::resolve`), а не через самую горячую функцию крейта.
 pub fn inherit(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx).legacy;
-    box_stage(parent, own, own, computed, None, true, vcx)
+    box_stage(
+        BoxParents::same(parent),
+        own,
+        own,
+        computed,
+        None,
+        true,
+        vcx,
+    )
 }
 
 /// Document preparation propagates style; Filter Effects 1 §5 applies colors
 /// only when the renderer builds the element, never while removing wrappers.
 pub(crate) fn inherit_unpainted(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx).legacy;
-    box_stage(parent, own, own, computed, None, false, vcx)
+    box_stage(
+        BoxParents::same(parent),
+        own,
+        own,
+        computed,
+        None,
+        false,
+        vcx,
+    )
 }
 
 /// Каскад ребёнка снятой обёртки `<html>`/`<body>` (подготовка документа):
@@ -74,11 +90,35 @@ pub(crate) fn inherit_unwrapped(wrapper: &BoxStyle, own: &Computed, vcx: ValueCx
     merged
 }
 
-/// Стиль коробки из вычисленного стиля `c` элемента под коробкой-родителем
-/// со стилем `parent`: `own` — вычисленный стиль элемента с used-значениями
-/// раскладки, `declared` — его каскадный стиль (заданы ли свои цвета).
+/// Родители коробки на стадии коробки. У коробки, которую раскладка перенесла
+/// под другую коробку (флоат из строчного, поднятый абсолют), они различаются:
+/// `layout` — новая коробка-родитель, её содержащий блок и контекст
+/// форматирования и выравнивания (CSS 2 §9.5, §10.1); `tree` — коробка
+/// родителя элемента по дереву элементов, от которой идёт распространяемое по
+/// этому дереву: окраска поддерева фильтром (Filter Effects 1 §5), используемый
+/// `user-select` (css-ui-4 §6.1), руби, повёрнутая строка, чернила тени и линии
+/// оформления (css-text-decor-3 §2.1).
+#[derive(Clone, Copy)]
+pub(crate) struct BoxParents<'a> {
+    pub(crate) layout: &'a BoxStyle,
+    pub(crate) tree: &'a BoxStyle,
+}
+
+impl<'a> BoxParents<'a> {
+    /// Коробка на своём месте: родитель по дереву коробок и по дереву элементов один.
+    pub(crate) fn same(parent: &'a BoxStyle) -> Self {
+        Self {
+            layout: parent,
+            tree: parent,
+        }
+    }
+}
+
+/// Стиль коробки из вычисленного стиля `c` элемента под родителями `parents`:
+/// `own` — вычисленный стиль элемента с used-значениями раскладки,
+/// `declared` — его каскадный стиль (заданы ли свои цвета).
 pub(crate) fn box_stage(
-    parent: &BoxStyle,
+    parents: BoxParents<'_>,
     declared: &Computed,
     own: &Computed,
     computed: impl Into<crate::style::box_input::BoxStyleInput>,
@@ -86,19 +126,20 @@ pub(crate) fn box_stage(
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) -> BoxStyle {
+    let BoxParents { layout, tree } = parents;
     let mut c = BoxStyle::shared(computed);
     c.element_style = element;
-    c.set_parent_context(parent);
-    context::inherit_context(parent, own, &mut c);
-    inherit_containing(parent, own, &mut c, vcx);
-    quirks::percentage_height(parent, own, &mut c, vcx);
+    c.set_parent_context(layout);
+    context::inherit_context(parents, own, &mut c);
+    inherit_containing(parents, own, &mut c, vcx);
+    quirks::percentage_height(layout, own, &mut c, vcx);
     let applicability = c.context.applicability;
     self_align::self_alignment(applicability, own, &mut c);
-    flow_align::resolve(parent, &mut c);
-    inherit_paint(parent, declared, own, &mut c, paint_filter, vcx);
-    let parent_px = super::compute::parent_font_px(parent);
+    flow_align::resolve(layout, &mut c);
+    inherit_paint(tree, declared, own, &mut c, paint_filter, vcx);
+    let parent_px = super::compute::parent_font_px(tree);
     let own_px = super::compute::own_font_px(&c, parent_px);
-    let decoration = parent.decoration_inputs(own);
+    let decoration = tree.decoration_inputs(own);
     decorate(decoration, own, &mut c, own_px, vcx);
     c
 }
