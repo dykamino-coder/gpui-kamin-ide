@@ -20,7 +20,8 @@ fn base() -> BoxStyle {
 #[test]
 fn original_indices_survive_missing_rules_and_remember_only_selected_properties() {
     let doc = DocState::new(Default::default());
-    doc.try_rules
+    doc.values
+        .try_rules
         .borrow_mut()
         .insert("--fit".into(), parse_decls("height: 71px; width: 29px"));
     let c = base();
@@ -41,7 +42,8 @@ fn original_indices_survive_missing_rules_and_remember_only_selected_properties(
         Options::new(&changed, &c, doc.values(), &doc.layout).styles[0].0,
         0
     );
-    doc.try_rules
+    doc.values
+        .try_rules
         .borrow_mut()
         .insert("--fit".into(), parse_decls("height: 72px"));
     assert_eq!(
@@ -142,7 +144,8 @@ fn candidate_style_changes_only_accepted_properties() {
 #[test]
 fn transposed_inherit_keeps_the_value_of_the_original_axis() {
     let doc = DocState::new(Default::default());
-    doc.try_rules
+    doc.values
+        .try_rules
         .borrow_mut()
         .insert("--fit".into(), parse_decls("width: inherit"));
     let mut c = base();

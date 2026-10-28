@@ -97,7 +97,7 @@ impl Element for Transition {
                 st.progress += step * (target - st.progress).signum();
             }
             if st.progress != target {
-                self.doc.defer_frame();
+                self.doc.values.defer_frame();
                 window.request_animation_frame();
             }
 
@@ -138,7 +138,7 @@ impl Element for Transition {
         window.with_element_state::<State, _>(global_id, |state, window| {
             let mut st = state.unwrap_or_default();
             if st.hovered != hovered {
-                self.doc.defer_frame();
+                self.doc.values.defer_frame();
                 st.hovered = hovered;
                 window.request_animation_frame();
             }

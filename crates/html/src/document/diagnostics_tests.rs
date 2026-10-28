@@ -109,12 +109,12 @@ fn embedded_records_reach_the_owner_with_their_scope_and_bounded_counts() {
         root.begin_frame();
         let child = state::DocState::new(Default::default());
         let grandchild = state::DocState::new(Default::default());
-        grandchild.record_diagnostic((&failure).into());
-        child.observe_child(grandchild);
-        root.observe_child(child);
-        let _ = root.take_diagnostics();
+        grandchild.values.record_diagnostic((&failure).into());
+        child.values.observe_child(grandchild.values.clone());
+        root.values.observe_child(child.values.clone());
+        let _ = root.values.take_diagnostics();
     }
-    let (records, suppressed) = root.diagnostics_snapshot();
+    let (records, suppressed) = root.values.diagnostics_snapshot();
     let [record] = records.as_slice() else {
         panic!("{records:?}")
     };

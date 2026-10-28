@@ -68,7 +68,7 @@ mod tests {
             for (k, v) in descs.iter() {
                 d.push(*k, *v, false);
             }
-            register(&doc, name, &d);
+            register(&doc.values, name, &d);
         }
         f(doc.values());
     }

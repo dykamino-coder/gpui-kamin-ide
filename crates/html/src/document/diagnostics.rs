@@ -10,13 +10,13 @@ impl Document {
     /// последнего кадра. Отказ update приходит в `terminal` при каждой выдаче,
     /// пока следующая ревизия не будет принята.
     pub fn take_diagnostics(&self) -> DiagnosticBatch {
-        let (records, suppressed) = self.state.take_diagnostics();
+        let (records, suppressed) = self.state.values.take_diagnostics();
         self.batch(records, suppressed)
     }
 
     /// Все записи текущей ревизии без сдвига курсора выдачи (панель диагностики).
     pub fn diagnostics(&self) -> DiagnosticBatch {
-        let (records, suppressed) = self.state.diagnostics_snapshot();
+        let (records, suppressed) = self.state.values.diagnostics_snapshot();
         self.batch(records, suppressed)
     }
 
@@ -43,7 +43,7 @@ impl Document {
         if first_limit.is_none() && embedded_failure.is_none() {
             return DisplayStatus::Complete;
         }
-        let (records, suppressed) = self.state.diagnostics_snapshot();
+        let (records, suppressed) = self.state.values.diagnostics_snapshot();
         DisplayStatus::Degraded {
             first_limit,
             embedded_failure,

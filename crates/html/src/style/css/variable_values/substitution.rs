@@ -48,7 +48,7 @@ impl<'a> Work<'a> {
 
     /// Записать первый предел области в журнал документа (invalid at computed time
     /// со штатной семантикой уже применён вызывающим).
-    pub(crate) fn finish(self, doc: &crate::document::state::DocState) {
+    pub(crate) fn finish(self, doc: &crate::document::state::DocumentValues) {
         if let Some(limit) = self.first.get() {
             doc.record_observed(diagnostic(limit));
         }

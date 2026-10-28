@@ -7,10 +7,10 @@ pub(crate) fn rejected(
     failure: crate::dom::outcome::DocumentFailure,
     opts: &RenderOpts,
 ) -> AnyElement {
-    if opts.cx.doc().embedded_failure.get().is_none() {
-        opts.cx.doc().embedded_failure.set(Some(failure));
+    if opts.cx.doc().values.embedded_failure.get().is_none() {
+        opts.cx.doc().values.embedded_failure.set(Some(failure));
     }
-    opts.cx.doc().record_diagnostic((&failure).into());
+    opts.cx.doc().values.record_diagnostic((&failure).into());
     gpui::div().child(failure.to_string()).into_any_element()
 }
 
@@ -24,7 +24,10 @@ pub(crate) fn build_embedded(
     opts: &RenderOpts,
     prepare: impl FnOnce(Vec<crate::dom::Node>) -> Vec<crate::dom::Node>,
 ) -> Vec<AnyElement> {
-    opts.cx.doc().observe_child(embedded.state.clone());
+    opts.cx
+        .doc()
+        .values
+        .observe_child(embedded.state.values.clone());
     let nodes = prepare(embedded.nodes);
     let mut sub = opts.clone();
     sub.viewport = viewport;
@@ -50,7 +53,7 @@ pub(crate) fn build_embedded(
         .build
         .blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(icb_layer.finish());
-    if let Some(limit) = embedded.state.traversal_limit() {
+    if let Some(limit) = embedded.state.values.traversal_limit() {
         kids.insert(0, gpui::div().child(limit.to_string()).into_any_element());
     }
     kids.into_iter()
