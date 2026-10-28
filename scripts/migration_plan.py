@@ -4,6 +4,7 @@ The input checkout must already satisfy the semantic ownership contracts.
 The generated diff still requires compiler, visibility and behavioral checks.
 """
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
@@ -27,6 +28,39 @@ ROOT_OWNERS = {
 }
 RANK = {'kamin-font-facts': 0, 'kamin-style': 1, 'kamin-layout': 2,
         'kamin-paint': 3, 'kamin-html': 4}
+
+
+# Staged extraction: packages ranked above the stage stay in the facade package.
+FACADE_PATHS = [False]
+
+
+@contextmanager
+def stage(through):
+    """Extract only the packages ranked up to `through`; higher phases stay in kamin-html.
+
+    Facade code keeps its `crate::<root>` paths: the root declarations become
+    reexports of the extracted packages, so only extracted sources move and are
+    rewritten. The full ownership table and ranks are restored on exit.
+    """
+    if through not in RANK or through == 'kamin-html':
+        raise ValueError(f'Unknown extraction stage: {through}')
+    owners, ranks = dict(ROOT_OWNERS), dict(RANK)
+    limit = RANK[through]
+    for root, package in owners.items():
+        if RANK[package] > limit:
+            ROOT_OWNERS[root] = 'kamin-html'
+    for package, rank in ranks.items():
+        if rank > limit and package != 'kamin-html':
+            del RANK[package]
+    FACADE_PATHS[0] = True
+    try:
+        yield
+    finally:
+        ROOT_OWNERS.clear()
+        ROOT_OWNERS.update(owners)
+        RANK.clear()
+        RANK.update(ranks)
+        FACADE_PATHS[0] = False
 
 
 @dataclass(frozen=True)
@@ -204,6 +238,8 @@ def plan(sources, existing_files, physical=None, crate_roots=None):
         package = owner(filename)
         if filename == 'lib.rs':
             after = facade(source, declarations)
+        elif package == 'kamin-html' and FACADE_PATHS[0]:
+            after = source
         else:
             after = rewrite(source, filename, package, ROOT_OWNERS, resolve,
                             module_path=file_modules[filename])
