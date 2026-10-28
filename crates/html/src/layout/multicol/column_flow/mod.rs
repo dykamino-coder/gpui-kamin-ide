@@ -30,6 +30,8 @@ use std::rc::Rc;
 
 mod sizing;
 pub(crate) use sizing::{column_flow, column_flow_with_dimensions};
+#[cfg(test)]
+mod tests;
 
 /// `whole` — текст пришёл рекурсией из единственного ребёнка-МОНОЛИТА
 /// (`size_monolith`; css-contain-2 §containment-size: «Size containment boxes
@@ -60,6 +62,15 @@ fn column_flow_in(
             Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
         ))
     }) {
+        return None;
+    }
+    // Текстовый путь режет СХЛОПНУТЫЙ текст с мягкими переносами по ширине
+    // колонки. Сохранённые переводы строк и запрет переноса (`white-space:
+    // pre*`, `nowrap`; css-text-3 §3) он не выражает: строки `pre` сливались
+    // в абзац, и разрезы мерились не по тем строкам, что рисуются
+    // (`line-clamp-fragmentation-001-ref`: 5/5/2 вместо 4/4/4 в `height: 4lh`).
+    // Такой поток идёт стопкой, где строки раскладывает сам абзац.
+    if inherited.preserve_newlines == Some(true) || inherited.nowrap == Some(true) {
         return None;
     }
     let all_inline = e.children.iter().all(|n| match n {
