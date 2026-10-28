@@ -17,6 +17,7 @@ import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId, modelCom
 import { waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
+import { readJsonlLines } from './jsonl-lines'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import { registerWsRoute } from '../server/ws'
 import { resolveToken } from '../auth/tokens'
@@ -58,9 +59,9 @@ const DOWNLOAD_CHUNK_CHARS = 1_000_000
  *  сессии начнут БРОСАТЬСЯ. */
 const DOWNLOAD_DRAIN = { limit: 4 * 1024 * 1024, pollMs: 25, timeoutMs: 60_000 }
 
-/** Yield to the event loop every N lines while parsing a whole transcript for a
- *  segment load, so the shared server stays responsive to other sessions. */
-const SEGMENT_PARSE_YIELD_EVERY = 2_000
+/** Source bytes one segment response may carry. The reply is a single frame by
+ *  protocol and must stay well under the 16 MiB per-connection send cap. */
+const SEGMENT_RESPONSE_MAX_BYTES = 8 * 1024 * 1024
 
 const sessionWsMap = new Map<string, WS>()
 
@@ -1034,23 +1035,25 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           const { fromTs, toTs } = msg // WsMsgJsonlSegmentRequest — already narrowed
           const segPath = getSession(authenticatedSessionId)?.jsonlWatcher?.getFilePath()
           const records: JsonlEntry[] = []
+          let truncated = false
           if (segPath) {
+            // Streamed and cancellable: the transcript is never held as one
+            // string or line array, the reader yields to the event loop, and
+            // the read stops when the requesting socket closes. The response
+            // stays one frame by protocol, so its source bytes are capped well
+            // under the per-connection send cap; past it the reply says so.
+            const abort = new AbortController()
+            let bytes = 0
             try {
-              const content = await fsp.readFile(segPath, 'utf-8')
-              const lines = content.split('\n')
-              // A full-transcript parse (tens of MB) must NOT run as one unbroken
-              // sync loop: this server is shared, and a non-yielding 34k-line
-              // JSON.parse burst stalls the event loop for EVERY session (the
-              // same class the watcher's chunked reader avoids). Yield every
-              // YIELD_EVERY lines so other sockets keep flowing. Rare path (a
-              // click on an archived segment), so the extra ticks cost nothing.
-              for (let i = 0; i < lines.length; i++) {
-                if (i % SEGMENT_PARSE_YIELD_EVERY === 0) await new Promise<void>((r) => setImmediate(r))
-                const line = lines[i]!
-                if (!line.trim() || line.includes(SKIP_LINE_MARKER)) continue
+              for await (const line of readJsonlLines(segPath, { signal: abort.signal })) {
+                if (ws.readyState !== ws.OPEN) {
+                  abort.abort()
+                  break
+                }
+                if (line.text.includes(SKIP_LINE_MARKER)) continue
                 let r: JsonlEntry
                 try {
-                  r = JSON.parse(line) as JsonlEntry
+                  r = JSON.parse(line.text) as JsonlEntry
                 } catch {
                   continue
                 }
@@ -1059,13 +1062,27 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 if ((r as { subtype?: string }).subtype === 'compact_boundary') continue
                 if (fromTs && ts < fromTs) continue
                 if (toTs && ts >= toTs) continue
+                bytes += line.end - line.start
+                if (bytes > SEGMENT_RESPONSE_MAX_BYTES) {
+                  truncated = true
+                  break
+                }
                 records.push(r)
               }
             } catch {
               /* fall through — empty result tells the client to reset the view */
             }
           }
-          ws.send(JSON.stringify({ type: 'jsonl:segment-response', fromTs, toTs, records }))
+          if (ws.readyState !== ws.OPEN) break
+          ws.send(
+            JSON.stringify({
+              type: 'jsonl:segment-response',
+              fromTs,
+              toTs,
+              records,
+              ...(truncated ? { truncated } : {}),
+            }),
+          )
           break
         }
 
