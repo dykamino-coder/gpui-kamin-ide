@@ -29,7 +29,12 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
             Default::default(),
             vec![Node::Element(float)],
         );
-        let collapsed = collapse_margins(&[Node::Element(block)], false, None, doc.values());
+        let collapsed = collapse_margins(
+            &[Node::Element(block)],
+            false,
+            None,
+            crate::layout::block::margins::MarginCx::new(doc.values()),
+        );
         let Node::Element(block) = &collapsed[0] else {
             panic!("block")
         };

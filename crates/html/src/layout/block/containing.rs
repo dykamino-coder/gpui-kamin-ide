@@ -1,6 +1,6 @@
 //! Ширина содержимого коробки как содержащий блок её детей на спуске схлопывания полей.
 
-use crate::document::state::ValueCx;
+use crate::layout::block::margins::MarginCx;
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::box_kind::in_flow;
 use crate::style::computed::Computed;
@@ -40,8 +40,8 @@ fn inner_width_px(c: &Computed, sizes: &BoxDimensions, cb: Option<f32>) -> Optio
 #[cfg(test)]
 pub(super) fn with_inner_cb<'a, T>(
     c: &Computed,
-    vcx: ValueCx<'a>,
-    f: impl FnOnce(ValueCx<'a>) -> T,
+    vcx: MarginCx<'a>,
+    f: impl FnOnce(MarginCx<'a>) -> T,
 ) -> T {
     with_inner_dimensions(c, &BoxDimensions::from_computed(c), vcx, f)
 }
@@ -49,8 +49,8 @@ pub(super) fn with_inner_cb<'a, T>(
 pub(super) fn with_inner_dimensions<'a, T>(
     c: &Computed,
     sizes: &BoxDimensions,
-    vcx: ValueCx<'a>,
-    f: impl FnOnce(ValueCx<'a>) -> T,
+    vcx: MarginCx<'a>,
+    f: impl FnOnce(MarginCx<'a>) -> T,
 ) -> T {
     let level = vcx.collapse.width;
     // Кегль уровня — тоже от спуска: поля детей в `em` без своего кегля (и
@@ -76,12 +76,12 @@ pub(super) fn with_inner_dimensions<'a, T>(
 mod tests {
     use super::*;
     use crate::document::state::DocState;
-    use crate::layout::block::margins::CollapseInputs;
+    use crate::layout::block::margins::{CollapseInputs, MarginCx};
 
     #[test]
     fn descent_changes_only_child_length_inputs() {
         let doc = DocState::new(Default::default());
-        let parent = doc.values().with_collapse(CollapseInputs {
+        let parent = MarginCx::new(doc.values()).with_collapse(CollapseInputs {
             font: 20.0,
             width: Some(200.0),
             height_def: true,
@@ -114,14 +114,20 @@ mod tests {
                 assert_eq!(grandchild.collapse.font, 20.0);
                 assert_eq!(grandchild.collapse.width, Some(100.0));
             });
-            child.keep()
+            child.collapse
         });
-        assert_eq!(snapshot.vcx().collapse.font, 40.0);
+        assert_eq!(snapshot.font, 40.0);
         assert_eq!(parent.collapse.font, 20.0);
         assert_eq!(parent.collapse.width, Some(200.0));
-        assert_eq!(doc.values().collapse, CollapseInputs::default());
+        assert_eq!(
+            MarginCx::new(doc.values()).collapse,
+            CollapseInputs::default()
+        );
         let other = DocState::new(Default::default());
-        assert_eq!(other.values().collapse, CollapseInputs::default());
+        assert_eq!(
+            MarginCx::new(other.values()).collapse,
+            CollapseInputs::default()
+        );
     }
 
     #[test]
@@ -133,6 +139,6 @@ mod tests {
         assert!(top_edge_open_at(&e, Some(0.0)));
         assert!(!top_edge_open_at(&e, Some(100.0)));
         assert!(!top_edge_open(&e));
-        assert_eq!(doc.values().collapse.width, None);
+        assert_eq!(MarginCx::new(doc.values()).collapse.width, None);
     }
 }

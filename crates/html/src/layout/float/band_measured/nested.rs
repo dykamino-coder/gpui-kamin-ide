@@ -96,7 +96,12 @@ pub(crate) fn band_nest_ok(
         return false;
     };
     let Some(seq) = band_seq(
-        collapse_margins(&c.children, false, cb, vcx),
+        collapse_margins(
+            &c.children,
+            false,
+            cb,
+            crate::layout::block::margins::MarginCx::new(vcx),
+        ),
         inner_em,
         wm,
         cb,
