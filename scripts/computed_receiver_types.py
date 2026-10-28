@@ -656,9 +656,9 @@ class ReceiverTypes:
         if root in self.local_aliases[path]:
             if (path, root) in seen: return [()]
             return [p for alias in self.local_alias_values[path, root] for p in self._project(alias, field, path, seen + ((path, root),))]
-        if root in ('Rc', 'Arc', 'Box', 'Pin') and self._standard(value, path) is not None and '<' in value:
-            start = value.index('<')
-            return self._project(value[start + 1:closing(value, start)], field, path, seen)
+        pointer = self._pointee(value, path)
+        if pointer is not None:
+            return self._project(pointer, field, path, seen)
         # Unresolved generic substitutions cannot prove a non-style receiver.
         if '<' in value:
             start = value.index('<')
@@ -711,6 +711,15 @@ class ReceiverTypes:
             values = [part for value in values for part in self._project(value, tail[1], path)]
             tail = tail[2:]
         return values
+
+    def _pointee(self, value, path):
+        # Field access autoderefs a standard smart pointer, spelled by its
+        # imported name or by its full std path.
+        if value[0] not in ('Rc', 'Arc', 'Box', 'Pin', 'std') or '<' not in value: return None
+        standard = self._standard(value, path)
+        if standard is None or standard[0] not in ('Rc', 'Arc', 'Box', 'Pin') or standard[1:2] != ['<']: return None
+        if closing(standard, 1) != len(standard) - 1: return None
+        return standard[2:-1]
 
     def _standard(self, value, path, seen=()):
         path = getattr(value, 'path', path)
@@ -801,9 +810,9 @@ class ReceiverTypes:
         if value[:1] == ["'"] and len(value) > 1: value = value[2:]
         while value[:1] == ['mut']: value = value[1:]
         if not value or any(name in STYLE for name in names(value)): return False
-        if value[0] in ('Rc', 'Arc', 'Box', 'Pin') and self._standard(value, path) is not None and '<' in value:
-            start = value.index('<')
-            return self._unrelated_field(value[start + 1:closing(value, start)], field, path, seen)
+        pointer = self._pointee(value, path)
+        if pointer is not None:
+            return self._unrelated_field(pointer, field, path, seen)
         at = value.index('<') if '<' in value else len(value)
         resolution = self._resolve(path, tuple(value[:at:2]))
         if resolution is None: return False

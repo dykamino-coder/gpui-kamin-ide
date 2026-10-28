@@ -308,6 +308,18 @@ class ReceiverTests(unittest.TestCase):
         self.assertEqual(0, escapes('struct State(Rc<Vec<u8>>); impl State { fn f(&mut self) { Rc::make_mut(&mut self.0); } }', 'make_mut'))
         self.assertEqual(1, escapes('struct State { style: RefCell<Computed> } impl State { fn f(&self) { self.style.borrow_mut(); } }'))
 
+    def test_field_projection_through_qualified_std_pointers(self):
+        for pointer in ('std::rc::Rc', 'std::sync::Arc', 'std::boxed::Box'):
+            for payload, expected in (('Vec<u8>', 0), ('Computed', 1)):
+                source = (f'struct Inner {{ cache: RefCell<{payload}> }} struct Outer {{ inner: {pointer}<Inner> }} '
+                          'impl Outer { fn f(&self) { let f = &self.inner; f.cache.borrow_mut(); self.inner.cache.borrow_mut(); } }')
+                with self.subTest(pointer=pointer, payload=payload):
+                    self.assertEqual(2 * expected, escapes(source))
+        # A shadowed std is not the standard library.
+        shadowed = ('mod std { pub mod rc { pub struct Rc<T>(T); } } struct Inner { cache: RefCell<Vec<u8>> } '
+                    'struct Outer { inner: std::rc::Rc<Inner> } impl Outer { fn f(&self) { self.inner.cache.borrow_mut(); } }')
+        self.assertEqual(1, escapes(shadowed))
+
     def test_same_name_type_in_other_module_does_not_hide_local_definition(self):
         extra = {PREFIX+'dom/other.rs': 'struct State { cache: RefCell<Computed> }'}
         self.assertEqual(0, escapes('struct State { cache: RefCell<Vec<u8>> } impl State { fn f(&self) { self.cache.borrow_mut(); } }', extra=extra))
