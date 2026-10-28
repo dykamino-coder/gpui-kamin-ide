@@ -8,24 +8,8 @@ use std::collections::HashMap;
 
 /// Paragraph probe `seq` of `lines` lines of 10px at `y`.
 fn paragraph(seq: u32, y: f32, lines: u32) -> ClampEntry {
-    ClampEntry {
-        bounds: Bounds::new(point(px(0.), px(y)), size(px(100.), px(10. * lines as f32))),
-        line: 10.,
-        skip_count: false,
-        fixed_height: false,
-        bp_after: 0.,
-        end_margin: 0.,
-        min_end: 0.,
-        capped: false,
-        node: 0,
-        seq: Some(seq),
-        clamped: None,
-        empty: false,
-        span: None,
-        bt_before: 0.,
-        positioned: false,
-        float: false,
-    }
+    let bounds = Bounds::new(point(px(0.), px(y)), size(px(100.), px(10. * lines as f32)));
+    ClampEntry::paragraph(bounds, 10., seq)
 }
 
 /// Box probe of an independent formatting context root from `y0` to `y1`.

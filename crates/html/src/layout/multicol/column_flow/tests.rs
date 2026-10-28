@@ -35,7 +35,7 @@ fn preserved_line_breaks_and_nowrap_leave_the_text_path() {
         ("white-space:nowrap", false),
     ] {
         let doc = crate::document::state::DocState::new(Default::default());
-        let (only, _) = styled(child, vec![Node::Text(lines.join("\n").into())]);
+        let (only, _) = styled(child, vec![Node::Text(lines.join("\n"))]);
         let (multicol, style) = styled("columns:3 10em;height:4lh", vec![Node::Element(only)]);
         let merged =
             crate::style::cascade::inherit::inherit(&BoxStyle::default(), &style, doc.values());
