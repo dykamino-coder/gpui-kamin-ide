@@ -15,36 +15,97 @@ import { DuckDBInstance, DuckDBConnection } from '@duckdb/node-api'
 import path from 'path'
 import fs from 'fs'
 import { initSchema } from './schema'
-import { warnLog, debugLog } from '../../logging'
+import { warnLog, debugLog, infoLog } from '../../logging'
+import { withStatsWrite } from './write-lock'
+import { duckDbBudget } from './memory-budget'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 const SQLITE_PATH = path.join(DATA_DIR, 'proxy.db')
 const SQLITE_BACKUP_PATH = path.join(DATA_DIR, 'proxy.db.pre-duckdb-backup')
 const DUCKDB_PATH = path.join(DATA_DIR, 'proxy.duckdb')
 
-export function getDataDir(): string { return DATA_DIR }
-export function getDuckDbPath(): string { return DUCKDB_PATH }
-
-// Maintenance gate: while a compaction is swapping the DB file, new getDb()
-// callers park on this promise so no query races the file rename. Writers all
-// take a connection per-call (verified: sweeper per-run, otlp/api_errors/
-// session_tokens/settings per-call), so gating acquisition is enough to
-// quiesce — no long-held connection can straddle the swap.
-let maintenanceGate: Promise<void> | null = null
-let releaseMaintenance: (() => void) | null = null
-
-/** Begin a maintenance window — subsequent getDb()/getDbByIndex() calls block
- *  until endMaintenance(). Idempotent-safe: throws if already open. */
-export function beginMaintenance(): void {
-  if (maintenanceGate) throw new Error('Maintenance already in progress')
-  maintenanceGate = new Promise<void>((resolve) => { releaseMaintenance = resolve })
+export function getDataDir(): string {
+  return DATA_DIR
+}
+export function getDuckDbPath(): string {
+  return DUCKDB_PATH
 }
 
-/** End the maintenance window — unblocks parked getDb() callers. */
+// Exclusive maintenance window.
+//
+// CHECKPOINT, retention and compaction need a point where NO other write
+// transaction is open and no query runs on a connection about to be closed.
+// Parking new getDb() callers alone is not that point: callers keep the handle
+// they got (the sweeper holds one per worker for a whole file), and a query
+// already in flight keeps running. So every connection handed out is a stable
+// lease handle that (a) parks each call while a window is open, (b) counts
+// calls in flight, and (c) resolves the CURRENT pool connection per call, so a
+// handle held across a compaction reopen keeps working. A window is entered
+// only after (1) taking the stats write lock — no BEGIN…COMMIT of ours is open
+// — (2) closing admission, and (3) draining every in-flight call. If the drain
+// does not finish in time the maintenance is abandoned, never forced.
+let maintenanceGate: Promise<void> | null = null
+let releaseMaintenance: (() => void) | null = null
+let inFlight = 0
+let drainWaiters: Array<() => void> = []
+
+/** Begin a maintenance window — subsequent calls on any handle park until
+ *  endMaintenance(). Prefer `withExclusiveDb`, which also drains. */
+export function beginMaintenance(): void {
+  if (maintenanceGate) throw new Error('Maintenance already in progress')
+  maintenanceGate = new Promise<void>((resolve) => {
+    releaseMaintenance = resolve
+  })
+}
+
+/** End the maintenance window — unblocks parked callers. */
 export function endMaintenance(): void {
   releaseMaintenance?.()
   maintenanceGate = null
   releaseMaintenance = null
+}
+
+/** Calls currently executing on pool connections (diagnostics/tests). */
+export function dbCallsInFlight(): number {
+  return inFlight
+}
+
+function callDone(): void {
+  inFlight--
+  if (inFlight === 0) for (const w of drainWaiters.splice(0)) w()
+}
+
+function waitDrained(timeoutMs: number): Promise<void> {
+  if (inFlight === 0) return Promise.resolve()
+  return new Promise<void>((resolve, reject) => {
+    const t = setTimeout(() => {
+      drainWaiters = drainWaiters.filter((w) => w !== done)
+      reject(new Error(`DB maintenance: ${String(inFlight)} call(s) still running after ${String(timeoutMs)} ms`))
+    }, timeoutMs)
+    const done = (): void => {
+      clearTimeout(t)
+      resolve()
+    }
+    drainWaiters.push(done)
+  })
+}
+
+/** Run `fn` with exclusive use of the database: no other write transaction of
+ *  this process is open and no other call is executing or can start until it
+ *  returns. `fn` receives a raw connection that bypasses the gate. */
+export async function withExclusiveDb<T>(
+  fn: (conn: DuckDBConnection) => Promise<T>,
+  opts: { drainTimeoutMs?: number } = {},
+): Promise<T> {
+  return withStatsWrite(async () => {
+    beginMaintenance()
+    try {
+      await waitDrained(opts.drainTimeoutMs ?? 30_000)
+      return await fn(await getDbForMaintenance())
+    } finally {
+      endMaintenance()
+    }
+  })
 }
 
 // Connection pool size. DuckDB allows N independent connections to the
@@ -61,8 +122,61 @@ const pool: DuckDBConnection[] = []
 let nextConn = 0
 let initPromise: Promise<DuckDBConnection> | null = null
 
+// Promise-returning connection methods that go through the lease.
+const LEASED = new Set([
+  'run',
+  'runAndRead',
+  'runAndReadAll',
+  'runAndReadUntil',
+  'stream',
+  'streamAndRead',
+  'streamAndReadAll',
+  'streamAndReadUntil',
+  'prepare',
+  'extractStatements',
+  'start',
+  'startStream',
+])
+const handles: DuckDBConnection[] = []
+
+async function ensurePool(): Promise<void> {
+  while (pool.length === 0) {
+    if (!initPromise) initPromise = initDb()
+    await initPromise
+  }
+}
+
+async function leasedCall(index: number, method: string, args: unknown[]): Promise<unknown> {
+  while (maintenanceGate) await maintenanceGate
+  await ensurePool()
+  const conn = pool[index % pool.length] as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>
+  inFlight++
+  try {
+    return await conn[method]!(...args)
+  } finally {
+    callDone()
+  }
+}
+
+/** Stable lease handle for pool slot `index` (see the window comment above). */
+function handle(index: number): DuckDBConnection {
+  const slot = index % POOL_SIZE
+  return (handles[slot] ??= new Proxy({} as DuckDBConnection, {
+    get(_target, prop) {
+      // Not a thenable: `await getDb()` must resolve to the handle itself.
+      if (prop === 'then') return undefined
+      if (typeof prop === 'string' && LEASED.has(prop)) {
+        return (...args: unknown[]) => leasedCall(slot, prop, args)
+      }
+      const conn = pool[slot % (pool.length || 1)] as unknown as Record<string | symbol, unknown> | undefined
+      const v = conn?.[prop]
+      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(conn) : v
+    },
+  }))
+}
+
 /** Round-robin connection acquisition. Each `await getDb()` returns the
- *  NEXT connection in the pool. JS is single-threaded so two getDb()
+ *  NEXT pool slot's lease handle. JS is single-threaded so two getDb()
  *  calls within the same microtask burst get distinct connections —
  *  safe to issue concurrent queries via Promise.all when each branch
  *  calls getDb() inside it.
@@ -73,14 +187,9 @@ let initPromise: Promise<DuckDBConnection> | null = null
  *  concurrently which DuckDB serialises and may error). Always call
  *  getDb() inside each parallel branch. */
 export async function getDb(): Promise<DuckDBConnection> {
-  if (maintenanceGate) await maintenanceGate
-  if (pool.length === 0) {
-    if (!initPromise) initPromise = initDb()
-    await initPromise
-  }
-  // Modulo with pre-increment is atomic in single-threaded JS.
-  const idx = nextConn++ % pool.length
-  return pool[idx]!
+  while (maintenanceGate) await maintenanceGate
+  await ensurePool()
+  return handle(nextConn++ % pool.length)
 }
 
 /** Synchronous accessor — only valid AFTER `await initStatsDb()` has
@@ -88,7 +197,7 @@ export async function getDb(): Promise<DuckDBConnection> {
  *  hot paths that can't be made async (none currently). */
 export function getDbSync(): DuckDBConnection {
   if (pool.length === 0) throw new Error('DuckDB not initialized — call await initStatsDb() at boot')
-  return pool[0]!
+  return handle(0)
 }
 
 /** Eager initializer — call once during server startup. */
@@ -113,12 +222,9 @@ export async function getDbForMaintenance(): Promise<DuckDBConnection> {
  *  to avoid issuing concurrent queries against the same DuckDB conn —
  *  which DuckDB serialises and can error. Index is taken mod pool size. */
 export async function getDbByIndex(idx: number): Promise<DuckDBConnection> {
-  if (maintenanceGate) await maintenanceGate
-  if (pool.length === 0) {
-    if (!initPromise) initPromise = initDb()
-    await initPromise
-  }
-  return pool[idx % pool.length]!
+  while (maintenanceGate) await maintenanceGate
+  await ensurePool()
+  return handle(idx)
 }
 
 /** Pool size — exposed so worker counts can size themselves. */
@@ -150,7 +256,11 @@ async function initDb(): Promise<DuckDBConnection> {
   // at this same path — a cached handle would come back closed/stale. We're
   // single-process and closeDb() fully drains the previous instance before a
   // reopen, so a fresh create never races a second live handle.
-  instance = await DuckDBInstance.create(DUCKDB_PATH)
+  // Explicit budget: DuckDB's defaults (80% of RAM, one thread per core)
+  // ignore the V8 heap, Buffers and the CLI children sharing this process.
+  const budget = duckDbBudget()
+  instance = await DuckDBInstance.create(DUCKDB_PATH, { memory_limit: budget.memory_limit, threads: budget.threads })
+  infoLog('DuckDB resource budget', { ...budget })
   for (let i = 0; i < POOL_SIZE; i++) {
     pool.push(await instance.connect())
   }
@@ -182,16 +292,20 @@ async function migrateFromSqlite(): Promise<void> {
     await conn.run(`ATTACH '${SQLITE_PATH.replace(/'/g, "''")}' AS legacy (TYPE SQLITE, READ_ONLY)`)
     // Discover SQLite tables (only those that also exist in DuckDB
     // post-initSchema — legacy/dropped tables are skipped).
-    const sqliteRows = (await conn.runAndReadAll(
-      `SELECT table_name AS name FROM information_schema.tables
-       WHERE table_catalog = 'legacy' AND table_schema = 'main'`
-    )).getRowObjects()
-    const sqliteTables = sqliteRows.map(r => String((r as any).name))
-    const duckRows = (await conn.runAndReadAll(
-      `SELECT table_name AS name FROM information_schema.tables
-       WHERE table_catalog = current_catalog() AND table_schema = 'main'`
-    )).getRowObjects()
-    const duckTables = new Set(duckRows.map(r => String((r as any).name)))
+    const sqliteRows = (
+      await conn.runAndReadAll(
+        `SELECT table_name AS name FROM information_schema.tables
+       WHERE table_catalog = 'legacy' AND table_schema = 'main'`,
+      )
+    ).getRowObjects()
+    const sqliteTables = sqliteRows.map((r) => String((r as any).name))
+    const duckRows = (
+      await conn.runAndReadAll(
+        `SELECT table_name AS name FROM information_schema.tables
+       WHERE table_catalog = current_catalog() AND table_schema = 'main'`,
+      )
+    ).getRowObjects()
+    const duckTables = new Set(duckRows.map((r) => String((r as any).name)))
 
     for (const t of sqliteTables) {
       if (!duckTables.has(t)) {
@@ -199,24 +313,28 @@ async function migrateFromSqlite(): Promise<void> {
         continue
       }
       // Match column lists — INSERT only the columns DuckDB knows about.
-      const duckColsRows = (await conn.runAndReadAll(
-        `SELECT column_name FROM information_schema.columns
+      const duckColsRows = (
+        await conn.runAndReadAll(
+          `SELECT column_name FROM information_schema.columns
          WHERE table_catalog = current_catalog() AND table_schema = 'main' AND table_name = ?`,
-        [t]
-      )).getRowObjects()
-      const duckCols = duckColsRows.map(r => String((r as any).column_name))
-      const sqliteColsRows = (await conn.runAndReadAll(
-        `SELECT column_name FROM information_schema.columns
+          [t],
+        )
+      ).getRowObjects()
+      const duckCols = duckColsRows.map((r) => String((r as any).column_name))
+      const sqliteColsRows = (
+        await conn.runAndReadAll(
+          `SELECT column_name FROM information_schema.columns
          WHERE table_catalog = 'legacy' AND table_schema = 'main' AND table_name = ?`,
-        [t]
-      )).getRowObjects()
-      const sqliteCols = new Set(sqliteColsRows.map(r => String((r as any).column_name)))
-      const sharedCols = duckCols.filter(c => sqliteCols.has(c))
+          [t],
+        )
+      ).getRowObjects()
+      const sqliteCols = new Set(sqliteColsRows.map((r) => String((r as any).column_name)))
+      const sharedCols = duckCols.filter((c) => sqliteCols.has(c))
       if (sharedCols.length === 0) {
         debugLog(`skip "${t}" — no common columns with legacy`)
         continue
       }
-      const colList = sharedCols.map(c => `"${c}"`).join(', ')
+      const colList = sharedCols.map((c) => `"${c}"`).join(', ')
       // ON CONFLICT DO NOTHING — initSchema may have seeded sentinel
       // rows (e.g. `settings.session_meta_v1_seeded`); legacy SQLite
       // may have its own row for the same key. Skip duplicates.
@@ -230,23 +348,37 @@ async function migrateFromSqlite(): Promise<void> {
     debugLog('SQLite → DuckDB migration complete; SQLite renamed to .pre-duckdb-backup')
   } catch (err) {
     warnLog('SQLite → DuckDB migration FAILED, rolling back', { error: String(err) })
-    try { conn?.disconnectSync?.() } catch {}
-    try { inst?.closeSync?.() } catch {}
-    try { fs.rmSync(DUCKDB_PATH, { force: true }) } catch {}
+    try {
+      conn?.disconnectSync?.()
+    } catch {}
+    try {
+      inst?.closeSync?.()
+    } catch {}
+    try {
+      fs.rmSync(DUCKDB_PATH, { force: true })
+    } catch {}
     throw err
   } finally {
-    try { conn?.disconnectSync?.() } catch {}
-    try { inst?.closeSync?.() } catch {}
+    try {
+      conn?.disconnectSync?.()
+    } catch {}
+    try {
+      inst?.closeSync?.()
+    } catch {}
   }
 }
 
 export async function closeDb(): Promise<void> {
   // Drain pool: close every connection first, then the instance.
   for (const c of pool) {
-    try { c.disconnectSync?.() } catch {}
+    try {
+      c.disconnectSync?.()
+    } catch {}
   }
   pool.length = 0
-  try { instance?.closeSync?.() } catch {}
+  try {
+    instance?.closeSync?.()
+  } catch {}
   instance = null
   initPromise = null
   nextConn = 0

@@ -89,6 +89,9 @@ ENV ANTHROPIC_MODEL=claude-opus-5-5
 # threads, fs.createReadStream readers can starve and never emit. Must be
 # set BEFORE any native module loads, hence at process env level.
 ENV UV_THREADPOOL_SIZE=16
+# Lifecycle diagnostics live on the persistent data volume, so they survive a
+# container re-creation even when only /app/data is mounted.
+ENV BRIDGE_LIFECYCLE_LOG_DIR=/app/data/logs/lifecycle
 
 EXPOSE 3456
 
