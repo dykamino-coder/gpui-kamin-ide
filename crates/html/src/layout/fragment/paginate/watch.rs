@@ -77,6 +77,9 @@ pub(crate) struct Watched {
     /// Flex-контейнеры `blocks`: раскладываются в контексте фрагментации.
     flex_ids: std::cell::OnceCell<HashSet<u64>>,
     monolithic_ids: std::cell::OnceCell<HashSet<u64>>,
+    /// Абсолютные коробки, чей содержащий блок внутри копии: их протяжённость —
+    /// продолжение потока ребёнка (`positioned_end`).
+    positioned: Rc<Vec<u64>>,
 }
 
 impl Watched {
@@ -147,6 +150,7 @@ impl Watched {
             flex_ids: self.flex_ids_of().clone().into(),
             axis: self.axis,
             monolithic_ids: self.monolithic_ids_of().clone().into(),
+            positioned: self.positioned.clone(),
         })
     }
 
@@ -168,6 +172,16 @@ impl Watched {
     pub(crate) fn space(&self, window: &Window) -> Option<gpui::LayoutSpace> {
         let root = self.blocks.as_ref()?;
         Some(self.seen.borrow().get(&root.id)?.read(window)?.space)
+    }
+
+    /// Конец по блочной оси копии, разложенной от начала координат, её
+    /// абсолютных коробок (`with_positioned`).
+    pub(crate) fn positioned_end(&self, vertical: bool, window: &Window) -> Option<f32> {
+        self.positioned
+            .iter()
+            .filter_map(|&id| self.normal(id, window))
+            .map(|b| f32::from(if vertical { b.right() } else { b.bottom() }))
+            .reduce(f32::max)
     }
 
     pub(crate) fn normal(&self, id: u64, window: &Window) -> Option<gpui::Bounds<Pixels>> {

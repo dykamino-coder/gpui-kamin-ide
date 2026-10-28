@@ -20,6 +20,9 @@ impl ColumnStack {
     /// Раскладка главной копии ребёнка `i` в колонку до укладки.
     pub(crate) fn lay_out_main(&mut self, i: usize, window: &mut Window, cx: &mut App) {
         let (axis, fixed) = (self.axis, self.fixed_height);
+        // Колонки переполнения (css-multicol-1 §8.2) есть только у стопки без
+        // балансировки: заданная высота колонок или ряды внешнего фрагментаинера.
+        let fills = fixed.is_some() || self.rows.is_some_and(|r| !r.cap);
         let c = &mut self.children[i];
         let measured_size;
         if let Some(w) = c.measure {
@@ -39,7 +42,7 @@ impl ColumnStack {
                 sz.height
             });
             c.h = h;
-            extent::measure(c, h, content, sz, axis, window);
+            extent::measure(c, h, content, sz, (axis, fills), window);
             if c.regrow.is_some() {
                 c.cuts.clear();
                 c.forced.clear();

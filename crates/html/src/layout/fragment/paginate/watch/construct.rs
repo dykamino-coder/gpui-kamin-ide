@@ -47,6 +47,20 @@ impl Watched {
         })
     }
 
+    /// Наблюдать и абсолютные коробки копии с содержащим блоком внутри неё.
+    pub(crate) fn with_positioned(mut self: Rc<Self>, ids: Vec<u64>) -> Rc<Self> {
+        if ids.is_empty() {
+            return self;
+        }
+        if let Some(watched) = Rc::get_mut(&mut self) {
+            let mut all = (*watched.ids).clone();
+            all.extend(ids.iter().copied());
+            watched.ids = Rc::new(all);
+            watched.positioned = Rc::new(ids);
+        }
+        self
+    }
+
     pub(crate) fn for_lines() -> Rc<Self> {
         Self::with_flow(Rc::new(FlowMeasure::for_lines()))
     }

@@ -30,6 +30,62 @@ pub(super) fn recorder(
     own_plan: bool,
     empty_floats: bool,
 ) -> (Rc<Watched>, Option<BreaksAt>) {
+    let (watched, breaks_w) = recorder_of(
+        copy,
+        measured_kids,
+        opts,
+        col_vert,
+        col_rl,
+        line_col_w,
+        own_plan,
+        empty_floats,
+    );
+    (watched.with_positioned(positioned_in(copy)), breaks_w)
+}
+
+/// Абсолютные коробки, чей содержащий блок — сам ребёнок или его потомок:
+/// их продолжения — поток этого ребёнка (css-position-3 §abspos-breaking;
+/// css-multicol-1 §8.2: содержимое создаёт колонки переполнения).
+fn positioned_in(copy: &Element) -> Vec<u64> {
+    fn walk(e: &Element, contained: bool, out: &mut Vec<u64>) {
+        for n in e.children.iter() {
+            let crate::dom::Node::Element(k) = n else {
+                continue;
+            };
+            let style = k.style.used();
+            if contained
+                && matches!(
+                    style.position,
+                    Some(crate::style::computed::Position::Absolute)
+                )
+            {
+                out.push(k.node_id);
+            }
+            let contains =
+                contained || crate::style::computed::box_predicates::establishes_cb(&style);
+            walk(k, contains, out);
+        }
+    }
+    let mut out = Vec::new();
+    walk(
+        copy,
+        crate::style::computed::box_predicates::establishes_cb(&copy.style.used()),
+        &mut out,
+    );
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn recorder_of(
+    copy: &Element,
+    measured_kids: &RefCell<Vec<(u64, f32)>>,
+    opts: &RenderOpts,
+    col_vert: bool,
+    col_rl: bool,
+    line_col_w: Option<f32>,
+    own_plan: bool,
+    empty_floats: bool,
+) -> (Rc<Watched>, Option<BreaksAt>) {
     let logical = if col_vert {
         if own_plan || !crate::layout::fragment::flow::vertical_copy(copy, col_rl) {
             return (Watched::new(&[]), None);
