@@ -59,11 +59,16 @@ def assemble(root):
         path = PACKAGES[package].removesuffix('/src/') + '/Cargo.toml'
         if (root / path).is_file():
             manifests[path] = (root / path).read_bytes().decode('utf-8')
-    original = original_contract(manifests)
-    for name, text in generate(original, package_sources, result.edges).items():
-        before = manifests.get(name, '')
-        if before != text:
-            result.changes.append(Change(name, name, before, text))
+    # A staged extraction keeps the reviewed manifests of the packages it
+    # touches (the extracted ones are written with the step, like
+    # kamin-font-facts); the final full split regenerates all of them.
+    from migration_plan import FACADE_PATHS
+    if not FACADE_PATHS[0]:
+        original = original_contract(manifests)
+        for name, text in generate(original, package_sources, result.edges).items():
+            before = manifests.get(name, '')
+            if before != text:
+                result.changes.append(Change(name, name, before, text))
     result.changes.extend(guard_plan(root))
     return result
 
