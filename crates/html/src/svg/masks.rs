@@ -1,6 +1,6 @@
 //! CSS-маски на детях `<svg>`: срезы разметки по порядку отрисовки и слои.
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 mod units;
 use units::Rect;
 use units::Unit;
@@ -25,8 +25,9 @@ pub(super) fn masked_layers(
     h: f32,
     rw: f32,
     rh: f32,
-    vcx: ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> Option<AnyElement> {
+    let vcx = frame.values;
     use gpui::{ParentElement as _, Styled as _};
     let units = masked_units(e, w, h)?;
     // Пользовательская единица в CSS-точках (та же, что у `masked_units`).
@@ -157,7 +158,7 @@ pub(super) fn masked_layers(
             .w(gpui::px(*bw))
             .h(gpui::px(*bh))
             .into_any_element();
-        let layer = crate::paint::effects::grouped::grouped(layer, style, vcx);
+        let layer = crate::paint::effects::grouped::grouped(layer, style, frame);
         root = root.child(
             gpui::div()
                 .absolute()

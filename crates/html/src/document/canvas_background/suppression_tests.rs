@@ -57,7 +57,7 @@ fn donor_computed_background_remains_the_source_for_explicit_inheritance() {
 fn initial_used_background_suppresses_paint_without_erasing_css_or_borders() {
     use gpui::Styled;
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = crate::layout::cx::FrameCx::new(doc.values());
     for background in [
         "blue",
         "blue padding-box",
@@ -68,22 +68,22 @@ fn initial_used_background_suppresses_paint_without_erasing_css_or_borders() {
         "blue border-area",
     ] {
         let mut css = Computed::default();
-        css.apply_one("background", background, vcx);
+        css.apply_one("background", background, vcx.values);
         let mut background_only = BoxStyle::new(css.clone());
         background_only.background_paint = BackgroundPaint::Initial;
         // Начальный фон исключает также плитки из сохранённых CSS-списков.
         assert!(
             crate::paint::decorations::decorations(&background_only, true, vcx, None).is_empty()
         );
-        css.apply_one("border", "10px solid red", vcx);
+        css.apply_one("border", "10px solid red", vcx.values);
         let mut body = BoxStyle::new(css);
         let source = body.style_rc().clone();
         body.background_paint = BackgroundPaint::Initial;
-        let mut painted = crate::paint::apply::apply_paint(gpui::div(), &body, vcx);
+        let mut painted = crate::paint::apply::apply_paint(gpui::div(), &body, vcx.values);
         assert!(painted.style().background.is_none(), "{background}");
-        assert!(crate::paint::background::color_layer(&body, vcx).is_none());
+        assert!(crate::paint::background::color_layer(&body, vcx.values).is_none());
         assert_eq!(
-            crate::paint::background::border_paint(&body, body.used_border_color(0), vcx),
+            crate::paint::background::border_paint(&body, body.used_border_color(0), vcx.values),
             body.used_border_color(0)
         );
         assert!(Rc::ptr_eq(&source, body.style_rc()));
@@ -91,7 +91,7 @@ fn initial_used_background_suppresses_paint_without_erasing_css_or_borders() {
         let descendant = BoxStyle::shared(source);
         assert_eq!(descendant.background_paint, BackgroundPaint::Css);
         if background == "blue" {
-            painted = crate::paint::apply::apply_paint(gpui::div(), &descendant, vcx);
+            painted = crate::paint::apply::apply_paint(gpui::div(), &descendant, vcx.values);
             assert!(painted.style().background.is_some());
         }
     }

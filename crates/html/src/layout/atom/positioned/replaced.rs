@@ -19,7 +19,7 @@ pub(super) fn replaced_abs_atom(
     inline_cb: bool,
     stretched: bool,
 ) -> Option<AnyElement> {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
     let mut copy = e.clone();
     copy.style.used_mut().image_orient_none = merged.image_orient_none;
     copy.style.used_mut().position = None;
@@ -55,7 +55,7 @@ pub(super) fn replaced_abs_atom(
             holder,
             Effect::GroupReplaced {
                 style: merged.into(),
-                vcx,
+                frame,
             },
         )
     } else {

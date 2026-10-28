@@ -16,7 +16,7 @@ use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::layout::atom::atom_element;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::layout::replaced::{replaced_content, svg_percentage_size};
+use crate::layout::replaced::replaced_content;
 use crate::layout::writing_mode::rotated_atom;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
@@ -68,17 +68,9 @@ fn atom_piece_in(
     in_inline_cb: bool,
     ruby: &AtomRuby,
 ) -> Option<inline::Piece> {
-    let vcx = opts.cx.vcx();
-    let svg_sized = svg_percentage_size::resolve(e, inherited);
-    let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized = crate::layout::replaced::media::resolve(
-        e,
-        inherited,
-        opts.viewport,
-        opts.cx.constraints.avail_w,
-        vcx,
-    );
-    let e = media_sized.as_ref().unwrap_or(e);
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
+    let sized = crate::layout::replaced::media::sized(e, inherited, opts, vcx);
+    let e = &*sized;
     // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
     // before solving absolute insets; an empty frame is still replaced.
     let iframe_sized = (replaced_content::default_iframe(e)
@@ -245,5 +237,5 @@ fn atom_piece_in(
     let opts = &*atom_cx::atom_opts(opts, ruby, &line_box, &offer);
     let built = atom_element(e, inherited, opts);
     let abs_cb = offer.as_ref().is_some_and(|o| o.taken());
-    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box, vcx))
+    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box, frame))
 }

@@ -48,11 +48,11 @@ pub(super) fn group_wrap(
     let (c, inherited, values, build) = (
         c.clone(),
         inherited.clone(),
-        cx.vcx().keep(),
+        cx.frame().keep(),
         cx.contracts.build,
     );
     std::rc::Rc::new(move |container: gpui::Div| {
-        build.paint_group(container, &c, &inherited, values.vcx())
+        build.paint_group(container, &c, &inherited, values.frame())
     })
 }
 

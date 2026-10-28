@@ -87,16 +87,16 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
     match effect {
         Effect::OutlineScope(owner) => outline_phase::scope(child, Some(owner)),
         Effect::OutlineFlow(owner) => outline_phase::flow_phase(child, Some(owner)),
-        Effect::Group { style, vcx } => grouped::grouped(child, &BoxStyle::shared(style), vcx),
-        Effect::GroupReplaced { style, vcx } => {
-            grouped::grouped_replaced(child, &BoxStyle::shared(style), vcx)
+        Effect::Group { style, frame } => grouped::grouped(child, &BoxStyle::shared(style), frame),
+        Effect::GroupReplaced { style, frame } => {
+            grouped::grouped_replaced(child, &BoxStyle::shared(style), frame)
         }
         Effect::Transform {
             style,
             parent,
             ref_box,
-            vcx,
-        } => transform::transformed_with(child, style, parent, ref_box, vcx),
+            frame,
+        } => transform::transformed_with(child, style, parent, ref_box, frame),
         Effect::Underlay => Underlay::new(child).hooked(),
         Effect::PaintLast(key) => stacking::paint_last(child, key),
     }

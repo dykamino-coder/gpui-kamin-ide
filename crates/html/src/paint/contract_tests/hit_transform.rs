@@ -66,11 +66,11 @@ fn clicks<E: IntoElement + 'static>(
     hits
 }
 
-fn test_vcx() -> crate::document::state::ValueCx<'static> {
+fn test_frame() -> crate::layout::cx::FrameCx<'static> {
     let doc = Box::leak(Box::new(crate::document::state::DocState::new(
         crate::style::css::Media::default(),
     )));
-    doc.values()
+    crate::layout::cx::FrameCx::new(doc.values())
 }
 
 fn transformed(lin: [[f32; 2]; 2], clicked: Rc<RefCell<Vec<Point<Pixels>>>>) -> gpui::Div {
@@ -81,7 +81,7 @@ fn transformed(lin: [[f32; 2]; 2], clicked: Rc<RefCell<Vec<Point<Pixels>>>>) -> 
     .w(px(40.))
     .h(px(20.))
     .into_any_element();
-    let mut group = Transformed::new(child, test_vcx());
+    let mut group = Transformed::new(child, test_frame());
     group.lin = lin;
     div().size(px(100.)).child(group.hooked())
 }

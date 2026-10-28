@@ -11,7 +11,7 @@ use crate::layout::positioned::predicates::has_own_box;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
-use crate::layout::replaced::{replaced_content, svg_percentage_size};
+use crate::layout::replaced::replaced_content;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
@@ -24,17 +24,9 @@ pub(super) fn atom_element_raw(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let vcx = opts.cx.vcx();
-    let svg_sized = svg_percentage_size::resolve(e, inherited);
-    let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized = crate::layout::replaced::media::resolve(
-        e,
-        inherited,
-        opts.viewport,
-        opts.cx.constraints.avail_w,
-        vcx,
-    );
-    let e = media_sized.as_ref().unwrap_or(e);
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
+    let sized = crate::layout::replaced::media::sized(e, inherited, opts, vcx);
+    let e = &*sized;
     // Строчный атом — независимый контекст форматирования: строки внутри
     // `inline-block` в бюджет `line-clamp` не входят (css-overflow-4 §5.3),
     // иначе строка атома считалась ВТОРОЙ поверх строки абзаца
@@ -60,7 +52,7 @@ pub(super) fn atom_element_raw(
     if let Some(el) = build.control(e, &box_style(inherited, &e.style, vcx), opts) {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, vcx)));
+        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, frame)));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -89,7 +81,7 @@ pub(super) fn atom_element_raw(
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(build.effects(math, Effect::group(&e.style.used(), vcx)));
+        return Some(build.effects(math, Effect::group(&e.style.used(), frame)));
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
@@ -237,7 +229,7 @@ pub(super) fn atom_element_raw(
                 el,
                 Effect::GroupReplaced {
                     style: e.style.used(),
-                    vcx,
+                    frame,
                 },
             )
         } else {

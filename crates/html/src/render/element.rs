@@ -19,7 +19,6 @@ pub(super) use dispatch::dispatch_element;
 
 use crate::dom::Element;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
-use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
 use crate::paint::effects::transform::transformed;
 use crate::style::cascade::materialize::box_style;
@@ -67,17 +66,9 @@ async fn element_inner(
 ) -> AnyElement {
     let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
-    let vcx = opts.cx.vcx();
-    let svg_sized = svg_percentage_size::resolve(e, inherited);
-    let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized = crate::layout::replaced::media::resolve(
-        e,
-        inherited,
-        opts.viewport,
-        opts.cx.constraints.avail_w,
-        vcx,
-    );
-    let e = media_sized.as_ref().unwrap_or(e);
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
+    let sized = crate::layout::replaced::media::sized(e, inherited, opts, vcx);
+    let e = &*sized;
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_space`).
     let (outer_space, inner_opts) = opts.take_outer_space();
     let opts = inner_opts.as_deref().unwrap_or(opts);
@@ -168,7 +159,7 @@ async fn element_inner(
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
-        let el = transformed(el, &merged, inherited, vcx);
+        let el = transformed(el, &merged, inherited, frame);
         let el = match geometry {
             Some(geometry) => geometry.wrap(el),
             None => el,
