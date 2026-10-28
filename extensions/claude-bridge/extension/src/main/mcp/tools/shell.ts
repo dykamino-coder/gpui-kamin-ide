@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { runForegroundCommand } from './shell-foreground'
 import path from 'node:path'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
@@ -14,7 +15,7 @@ async function shellEnv(): Promise<NodeJS.ProcessEnv> {
   }
 }
 
-export type McpResult = { content: Array<{ type: string; text: string }> }
+export type McpResult = { isError?: boolean; content: Array<{ type: string; text: string }> }
 
 function textResult(text: string): McpResult {
   return { content: [{ type: 'text', text }] }
@@ -23,8 +24,6 @@ function textResult(text: string): McpResult {
 function errorResult(message: string): McpResult {
   return { content: [{ type: 'text', text: `Error: ${message}` }] }
 }
-
-const MAX_OUTPUT_BYTES = 100 * 1024 // 100 KB
 
 /**
  * Shim functions prepended to every bash command on Windows. Certain CLI
@@ -295,101 +294,4 @@ async function resolvePowerShell(): Promise<string> {
     return cachedPwsh
   })()
   return pwshLookupInFlight
-}
-
-function runForegroundCommand(command: string, shell: string, timeout: number, shellFlags: string[] = ['-c'], env: NodeJS.ProcessEnv = process.env): Promise<McpResult> {
-  return new Promise((resolve) => {
-    const stdoutChunks: Buffer[] = []
-    const stderrChunks: Buffer[] = []
-    let totalBytes = 0
-    let stderrBytes = 0
-    let truncated = false
-    let timedOut = false
-
-    const child = spawn(shell, [...shellFlags, command], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-      // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
-      // identifies our session so plugins/scripts can adapt. See CLI's
-      // `utils/Shell.ts` — same two flags.
-      env,
-    })
-
-    const timer = setTimeout(() => {
-      timedOut = true
-      // Kill the whole process TREE, not just the shell — a timed-out command
-      // like `npm run dev` spawns grandchildren that a bare child.kill() leaves
-      // orphaned. Windows: taskkill /T; POSIX: SIGTERM then SIGKILL fallback.
-      if (process.platform === 'win32' && child.pid) {
-        try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }) } catch { /* fall through */ }
-      }
-      child.kill('SIGTERM')
-      // Force kill after 5 seconds if SIGTERM didn't work
-      setTimeout(() => {
-        if (!child.killed) child.kill('SIGKILL')
-      }, 5000)
-    }, timeout)
-
-    child.stdout?.on('data', (chunk: Buffer) => {
-      if (truncated) return
-      totalBytes += chunk.length
-      if (totalBytes > MAX_OUTPUT_BYTES) {
-        truncated = true
-        // Take only what fits
-        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length)
-        if (remaining > 0) {
-          stdoutChunks.push(chunk.subarray(0, remaining))
-        }
-      } else {
-        stdoutChunks.push(chunk)
-      }
-    })
-
-    child.stderr?.on('data', (chunk: Buffer) => {
-      // Cap stderr on its OWN byte counter — the old check gated on the stdout
-      // counter but never incremented for stderr, so a command with tiny stdout
-      // and huge stderr (a noisy compiler, `yes 1>&2`) buffered without bound.
-      if (stderrBytes >= MAX_OUTPUT_BYTES) return
-      const remaining = MAX_OUTPUT_BYTES - stderrBytes
-      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk)
-      stderrBytes += chunk.length
-    })
-
-    child.on('error', (err) => {
-      clearTimeout(timer)
-      resolve(errorResult(`Failed to execute command: ${err.message}`))
-    })
-
-    child.on('close', (code) => {
-      clearTimeout(timer)
-
-      const stdout = Buffer.concat(stdoutChunks).toString('utf8')
-      const stderr = Buffer.concat(stderrChunks).toString('utf8')
-
-      const parts: string[] = []
-
-      if (stdout) {
-        parts.push(stdout)
-      }
-
-      if (stderr) {
-        parts.push(`\n--- stderr ---\n${stderr}`)
-      }
-
-      if (truncated) {
-        parts.push(`\n[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB limit]`)
-      }
-
-      if (timedOut) {
-        parts.push(`\n[Command timed out after ${timeout}ms]`)
-      }
-
-      if (code !== null && code !== 0) {
-        parts.push(`\n[Exit code: ${code}]`)
-      }
-
-      const result = parts.join('') || `Command completed with exit code ${code ?? 0}`
-      resolve(textResult(result))
-    })
-  })
 }

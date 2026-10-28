@@ -271,6 +271,9 @@ export interface WsMsgJsonlSegmentResponse {
   fromTs: string
   toTs: string
   records: JsonlEntry[]
+  /** Set when the segment exceeded the one-frame byte budget; `records` then
+   *  holds its oldest part only. */
+  truncated?: boolean
 }
 
 /** Server sends elicitation request to the client (show widget) */

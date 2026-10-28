@@ -20,11 +20,13 @@
 // module exists to prevent.
 
 import fs from 'fs'
+import fsp from 'fs/promises'
 import os from 'os'
 import path from 'path'
 
 import { getDataDir } from '../stats/database/lifecycle'
 import { debugLog, warnLog } from '../logging'
+import { readRange } from './jsonl-lines'
 
 /** Conversation ids come from the CLI and from client messages. The id becomes
  *  a directory name, so anything that is not a plain token is refused rather
@@ -65,24 +67,88 @@ export function archivedTranscriptPath(conversationId: string): string | null {
 
 /** A transcript is usable for resume only if it is non-empty JSONL. Checking
  *  the first and last records catches both an empty copy and a torn tail from a
- *  copy that raced a write — cheap enough to run on every restore. */
-export function looksResumable(file: string): boolean {
-  let text: string
+ *  copy that raced a write. Only the first and the last record are read — a
+ *  bounded, asynchronous probe, not a whole-file load on the event loop. */
+export async function looksResumable(file: string): Promise<boolean> {
+  let size: number
   try {
-    text = fs.readFileSync(file, 'utf8')
+    size = (await fsp.stat(file)).size
   } catch {
     return false
   }
-  const lines = text.split('\n').filter((l) => l.trim().length > 0)
-  if (lines.length === 0) return false
-  for (const line of [lines[0]!, lines[lines.length - 1]!]) {
-    try {
-      JSON.parse(line)
-    } catch {
-      return false
-    }
+  if (size === 0) return false
+  try {
+    const first = await firstRecord(file, size)
+    const last = await lastRecord(file, size)
+    if (first === null || last === null) return false
+    JSON.parse(first)
+    JSON.parse(last)
+    return true
+  } catch {
+    return false
   }
-  return true
+}
+
+const PROBE = 64 * 1024
+
+const isBlank = (b: number): boolean => b === 0x0a || b === 0x0d || b === 0x20
+
+async function firstRecord(file: string, size: number): Promise<string | null> {
+  // Skip leading blank bytes, then take the first line.
+  for (let pos = 0; pos < size;) {
+    const chunk = await readRange(file, pos, Math.min(size, pos + PROBE))
+    let i = 0
+    while (i < chunk.length && isBlank(chunk[i]!)) i++
+    if (i < chunk.length) return readFromOffset(file, size, pos + i)
+    pos += chunk.length
+  }
+  return null
+}
+
+async function readFromOffset(file: string, size: number, from: number): Promise<string | null> {
+  const parts: Buffer[] = []
+  for (let pos = from; pos < size; pos += PROBE) {
+    const chunk = await readRange(file, pos, Math.min(size, pos + PROBE))
+    const nl = chunk.indexOf(0x0a)
+    if (nl !== -1) {
+      parts.push(chunk.subarray(0, nl))
+      break
+    }
+    parts.push(chunk)
+  }
+  const text = Buffer.concat(parts).toString('utf8')
+  return text.trim() ? text : null
+}
+
+async function lastRecord(file: string, size: number): Promise<string | null> {
+  // Walk back from EOF until a whole non-blank record is enclosed.
+  let end = size
+  // Trailing newline(s) / blanks are not a record.
+  for (;;) {
+    const from = Math.max(0, end - PROBE)
+    const chunk = await readRange(file, from, end)
+    let i = chunk.length
+    while (i > 0 && isBlank(chunk[i - 1]!)) i--
+    if (i > 0) {
+      end = from + i
+      break
+    }
+    if (from === 0) return null
+    end = from
+  }
+  const parts: Buffer[] = []
+  for (let stop = end; stop > 0;) {
+    const from = Math.max(0, stop - PROBE)
+    const chunk = await readRange(file, from, stop)
+    const nl = chunk.lastIndexOf(0x0a)
+    if (nl !== -1) {
+      parts.unshift(chunk.subarray(nl + 1))
+      break
+    }
+    parts.unshift(chunk)
+    stop = from
+  }
+  return Buffer.concat(parts).toString('utf8')
 }
 
 /**
@@ -91,13 +157,13 @@ export function looksResumable(file: string): boolean {
  * file means a fork or a truncation, and overwriting with it would throw away
  * history the archive still has.
  */
-export function archiveTranscript(jsonlPath: string, conversationId: string): boolean {
+export async function archiveTranscript(jsonlPath: string, conversationId: string): Promise<boolean> {
   if (!archivingEnabled()) return false
   const dir = entryDir(conversationId)
   if (dir === null) return false
   let size: number
   try {
-    size = fs.statSync(jsonlPath).size
+    size = (await fsp.stat(jsonlPath)).size
   } catch {
     return false
   }
@@ -105,19 +171,22 @@ export function archiveTranscript(jsonlPath: string, conversationId: string): bo
 
   const target = path.join(dir, 'transcript.jsonl')
   try {
-    if (fs.existsSync(target) && fs.statSync(target).size >= size) return false
-    fs.mkdirSync(dir, { recursive: true })
+    const existing = await fsp.stat(target).catch(() => null)
+    if (existing && existing.size >= size) return false
+    await fsp.mkdir(dir, { recursive: true })
     // tmp + rename: a crash mid-copy must not leave a half transcript that the
     // restore path would happily hand to the CLI.
+    // Asynchronous copy: a 100+ MiB transcript copied with copyFileSync froze
+    // every session on this server for the duration of the copy.
     const tmp = `${target}.tmp`
-    fs.copyFileSync(jsonlPath, tmp)
-    fs.renameSync(tmp, target)
+    await fsp.copyFile(jsonlPath, tmp)
+    await fsp.rename(tmp, target)
     const meta: ArchiveMeta = {
       slug: path.basename(path.dirname(jsonlPath)),
       bytes: size,
       archivedAt: new Date().toISOString(),
     }
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2))
+    await fsp.writeFile(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2))
     debugLog('Transcript archived', { conversationId, bytes: size })
     return true
   } catch (e) {
@@ -144,12 +213,12 @@ export function readArchiveMeta(conversationId: string): ArchiveMeta | null {
  * nothing to restore, the copy fails its integrity check, or a live transcript
  * already exists — the live file always wins.
  */
-export function restoreArchivedTranscript(projectsDir: string, conversationId: string): string | null {
+export async function restoreArchivedTranscript(projectsDir: string, conversationId: string): Promise<string | null> {
   const source = archivedTranscriptPath(conversationId)
   const meta = readArchiveMeta(conversationId)
   if (source === null || meta === null) return null
   if (!fs.existsSync(source)) return null
-  if (!looksResumable(source)) {
+  if (!(await looksResumable(source))) {
     warnLog('Archived transcript failed its integrity check; not restoring', { conversationId })
     return null
   }
@@ -158,10 +227,10 @@ export function restoreArchivedTranscript(projectsDir: string, conversationId: s
   const target = path.join(targetDir, `${conversationId}.jsonl`)
   try {
     if (fs.existsSync(target)) return null
-    fs.mkdirSync(targetDir, { recursive: true })
+    await fsp.mkdir(targetDir, { recursive: true })
     const tmp = `${target}.restore-tmp`
-    fs.copyFileSync(source, tmp)
-    fs.renameSync(tmp, target)
+    await fsp.copyFile(source, tmp)
+    await fsp.rename(tmp, target)
     debugLog('Transcript restored from the Bridge archive', { conversationId, slug: meta.slug })
     return target
   } catch (e) {
@@ -191,7 +260,7 @@ export function dropArchivedTranscript(conversationId: string): boolean {
  *  directory name from. Called when a session ends — a conversation that is
  *  never reopened must survive the sweep too, and the resume path alone would
  *  never have taken a copy of it. */
-export function archiveTranscriptForSession(settingsDir: string, conversationId: string): boolean {
+export async function archiveTranscriptForSession(settingsDir: string, conversationId: string): Promise<boolean> {
   if (!settingsDir || !conversationId) return false
   const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
   const jsonl = path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`)

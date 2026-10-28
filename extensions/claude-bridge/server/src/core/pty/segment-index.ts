@@ -38,18 +38,38 @@ export interface SegmentIndex {
 // divergence only mis-counts a badge — it can't affect what renders. If strict
 // sync is ever needed, add a cross-package diff-test rather than sharing the literal.
 const NON_RENDERING = new Set<string>([
-  'last-prompt', 'permission-mode', 'queue-operation', 'file-history-snapshot',
-  'ai-title', 'custom-title', 'agent-name', 'summary', 'mode', 'todo-snapshot',
-  'compact-summary', 'tool-call-error', 'attribution-snapshot', 'agent-color',
-  'agent-setting', 'tag', 'task-summary', 'pr-link', 'worktree-state',
-  'content-replacement', 'progress', 'speculation-accept',
+  'last-prompt',
+  'permission-mode',
+  'queue-operation',
+  'file-history-snapshot',
+  'ai-title',
+  'custom-title',
+  'agent-name',
+  'summary',
+  'mode',
+  'todo-snapshot',
+  'compact-summary',
+  'tool-call-error',
+  'attribution-snapshot',
+  'agent-color',
+  'agent-setting',
+  'tag',
+  'task-summary',
+  'pr-link',
+  'worktree-state',
+  'content-replacement',
+  'progress',
+  'speculation-accept',
 ])
 
 // CLI-synthesised placeholder texts that never render as a bubble (mirrors
 // SYNTHETIC_USER_TEXTS). A lone-synthetic turn is invisible.
 const SYNTHETIC_TEXTS = new Set<string>([
-  '[Request interrupted by user]', '[Request interrupted by user for tool use]',
-  '[Skipped by user]', 'No response requested.', '(no content)',
+  '[Request interrupted by user]',
+  '[Request interrupted by user for tool use]',
+  '[Skipped by user]',
+  'No response requested.',
+  '(no content)',
   '[Tool result missing due to internal error]',
 ])
 
@@ -164,4 +184,31 @@ export function buildSegmentIndex(all: JsonlEntry[], boundaryIdx: number[]): Seg
   }
   counts.push(current) // the final (newest) segment
   return { boundaries, counts }
+}
+
+/** Streaming form of `buildSegmentIndex`: fed entries in file order, holds
+ *  only the running counts — never the entries themselves. Produces the same
+ *  index as `buildSegmentIndex(all, boundaryIdx)` for the same sequence. */
+export class SegmentIndexBuilder {
+  private boundaries: { ts: string }[] = []
+  private counts: number[] = []
+  private current = 0
+
+  add(e: JsonlEntry): void {
+    if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') {
+      const ts = String(e.timestamp ?? '')
+      if (ts) {
+        this.counts.push(this.current)
+        this.boundaries.push({ ts })
+        this.current = 0
+      }
+      // ts-less divider: no split — the next segment folds into this slot.
+      return
+    }
+    if (isVisibleEntry(e)) this.current++
+  }
+
+  build(): SegmentIndex {
+    return { boundaries: [...this.boundaries], counts: [...this.counts, this.current] }
+  }
 }
