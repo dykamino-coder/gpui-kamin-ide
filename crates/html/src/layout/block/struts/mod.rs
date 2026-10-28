@@ -17,10 +17,10 @@ pub(crate) use through::through_strut;
 pub(super) use through::through_strut_no_clear;
 mod chains;
 pub(super) use chains::leading_chain;
-pub(crate) use chains::margin_px;
 pub(super) use chains::pin_inherited_margins;
 pub(super) use chains::trailing_chain;
 pub(super) use chains::{ZeroPaths, zero_paths};
+pub(crate) use chains::{margin_px, margin_px_in};
 
 /// Первый (по направлению итератора) IN-FLOW блочный ребёнок: плавающие,
 /// абсолютные и пустые строчные пропускаются, непробельный текст и строчный
@@ -164,10 +164,10 @@ pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
 pub(super) fn margin_or_bail(
     l: Option<Len>,
     style: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<f32> {
     match l {
         None => Some(0.0),
-        Some(_) => margin_px(l, style, vcx),
+        Some(_) => margin_px_in(l, style, vcx),
     }
 }

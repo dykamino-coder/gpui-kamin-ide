@@ -31,13 +31,15 @@ pub(crate) fn children(
         // `margin-right: 4em` at 20px collapsed as 64px).
         let base = match parent.font_size {
             Some(crate::style::values::value::Len::Px(v)) => v,
-            _ => vcx.collapse.font,
+            _ => crate::layout::block::margins::CollapseInputs::default().font,
         };
-        let vcx = vcx.with_collapse(crate::layout::block::margins::CollapseInputs {
-            font: base,
-            ..vcx.collapse
-        });
-        crate::layout::block::margins::collapse_flow_margins(children, reverse, lead, vcx)
+        let mcx = crate::layout::block::margins::MarginCx::new(vcx).with_collapse(
+            crate::layout::block::margins::CollapseInputs {
+                font: base,
+                ..Default::default()
+            },
+        );
+        crate::layout::block::margins::collapse_flow_margins(children, reverse, lead, mcx)
     }
 }
 

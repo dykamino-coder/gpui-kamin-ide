@@ -21,7 +21,6 @@ pub struct ValueCx<'a> {
     pub(crate) viewport: (f32, f32),
     pub(crate) lines: Option<&'a Rc<crate::layout::fragment::LineCx>>,
     pub(crate) paint: Option<&'a Rc<crate::layout::cx::deferred::Deferred>>,
-    pub(crate) collapse: crate::layout::block::margins::CollapseInputs,
     pub(crate) scheme: crate::style::values::value::Scheme,
 }
 
@@ -36,7 +35,6 @@ impl DocState {
             frame: false,
             lengths: None,
             subtrees: None,
-            collapse: Default::default(),
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
@@ -51,7 +49,6 @@ impl DocState {
             frame: true,
             lengths: None,
             subtrees: None,
-            collapse: Default::default(),
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
@@ -76,7 +73,6 @@ pub struct ValueDoc {
     viewport: (f32, f32),
     lines: Option<Rc<crate::layout::fragment::LineCx>>,
     paint: Option<Rc<crate::layout::cx::deferred::Deferred>>,
-    collapse: crate::layout::block::margins::CollapseInputs,
     scheme: crate::style::values::value::Scheme,
 }
 
@@ -90,7 +86,6 @@ impl ValueDoc {
             lengths: self.lengths.as_ref(),
             subtrees: self.subtrees.as_ref(),
             viewport: self.viewport,
-            collapse: self.collapse,
             scheme: self.scheme,
         }
     }
@@ -132,14 +127,6 @@ impl<'a> ValueCx<'a> {
         self
     }
 
-    pub(crate) fn with_collapse(
-        mut self,
-        inputs: crate::layout::block::margins::CollapseInputs,
-    ) -> Self {
-        self.collapse = inputs;
-        self
-    }
-
     /// The same context storing into the document arenas: values that outlive
     /// the frame (materialized computed styles) must not hold frame records.
     pub(crate) fn persistent(mut self) -> Self {
@@ -166,7 +153,6 @@ impl<'a> ValueCx<'a> {
             lengths: self.lengths.cloned(),
             subtrees: self.subtrees.cloned(),
             viewport: self.viewport,
-            collapse: self.collapse,
             scheme: self.scheme,
             lines: self.lines.cloned(),
             paint: self.paint.cloned(),

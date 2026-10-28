@@ -37,7 +37,7 @@ pub(crate) fn zero_paths(
     children: &mut [Node],
     paths: &ZeroPaths,
     top: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     // Повторное схлопывание уже обнулённой цепочки не должно отделять
     // все её списки COW и копировать стили каждого потомка заново.

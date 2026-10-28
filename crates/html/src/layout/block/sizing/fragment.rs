@@ -61,8 +61,14 @@ mod tests {
             Some(120.)
         );
         let doc = crate::document::state::DocState::new(Default::default());
-        assert!(!margin_height::raises(&e, doc.values()));
-        assert!(!margin_height::lowers(&e, doc.values()));
+        assert!(!margin_height::raises(
+            &e,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
+        assert!(!margin_height::lowers(
+            &e,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
         assert_eq!(e.style.used().min_height, Some(Len::Px(150.)));
         assert_eq!(e.style.used().max_height, Some(Len::Px(180.)));
         assert_eq!(e.style.used().border_box, Some(true));
