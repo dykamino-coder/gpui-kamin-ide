@@ -8,15 +8,14 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 /// Вложенный многоколоночник, который внешняя стопка ведёт РЯДАМИ (`nest_row`):
-/// обычный блок с колонками, высотой в точках, без своих рядов,
-/// внепоточных и вертикального письма.
+/// обычный блок с колонками, высотой в точках, без вертикального письма; свои
+/// ряды (`column-height`) режет внешний фрагментаинер (`Rows::outer`).
 pub(crate) fn nested_rows_box(c: &Element) -> bool {
     let s = &c.style.used();
     let sizes = BoxDimensions::for_element(c, s);
     multicol_container(s)
         && (s.column_count.is_some_and(|n| n > 1) || s.column_width.is_some())
-        && s.column_height.is_none()
-        && s.column_wrap.is_none()
+        && matches!(s.column_height, None | Some(Len::Px(_)))
         && (matches!(s.height, Some(Len::Px(h)) if h > 0.0)
             || (matches!(s.height, None | Some(Len::Auto))
                 && sizes.minimum[1].is_none()

@@ -107,6 +107,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                                 gap: 10.0,
                                 wrap: true,
                                 cap: false,
+                                outer: None,
                             }),
                         ] {
                             let mut opts = opts();

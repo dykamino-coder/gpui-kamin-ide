@@ -55,6 +55,7 @@ fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &m
         gap: 10.0,
         wrap: true,
         cap: false,
+        outer: None,
     };
     let recipe = Recipe::new(
         host(&tree),

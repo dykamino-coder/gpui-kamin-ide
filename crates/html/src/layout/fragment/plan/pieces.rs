@@ -112,8 +112,13 @@ pub(super) fn fill_pieces_inner(
         // класса A, иначе срезом по краю. Так делает Blink: сначала
         // перенос, и только на пустой странице разрыв внутри
         // (`block-page-break-inside-avoid-7/-15-print`).
-        let mono =
-            k.monolith && !((paged || k.par.avoid_only) && flow > target + 0.01 && cur <= 0.01);
+        // Колонка не с начала фрагментаинера (`Space::not_at_start`: ряд
+        // вложенного многоколоночника под содержимым внешней колонки) верхом
+        // не считается: разрыв хуже уже принятых уводит содержимое дальше
+        // (Blink `ColumnLayoutAlgorithm::LayoutRow`, `min_break_appeal` при
+        // `may_have_more_space_in_next_outer_fragmentainer`).
+        let at_start = cur <= 0.01 && *col >= not_top;
+        let mono = k.monolith && !((paged || k.par.avoid_only) && flow > target + 0.01 && at_start);
         // Точка разреза `a` с усечением поля по классу A (`nf`).
         let at = |a: f32| -> (f32, f32) {
             let nf = k
@@ -151,7 +156,7 @@ pub(super) fn fill_pieces_inner(
         // MustStayInCurrentFragmentainer`; `tall-content-inside-constrained-
         // block-000…002`: коробка 25 в остатке 25, внутри `contain: size` 50).
         let at_top =
-            !*placed || cur <= 0.01 || (flow > k.h + 0.01 && from <= 0.01 && k.h <= room + 0.01);
+            !*placed || at_start || (flow > k.h + 0.01 && from <= 0.01 && k.h <= room + 0.01);
         // Под повторяемой шапкой таблицы содержимое тоже стоит «с верха»:
         // Blink кладёт неповторяемые секции со смещением фрагментаинера за
         // вычетом шапки (`table_layout_algorithm.cc:1325-1354`
