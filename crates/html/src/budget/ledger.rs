@@ -2,7 +2,7 @@
 
 use super::{BudgetClass, BudgetKind, BudgetUnit};
 use std::sync::{
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicU64, Ordering},
 };
 
@@ -55,6 +55,7 @@ pub(super) struct Ledger {
     pub scope: BudgetScope,
     pub caps: [u64; BudgetKind::COUNT],
     used: [AtomicU64; BudgetKind::COUNT],
+    pub(super) terminal: OnceLock<crate::dom::outcome::DocumentFailure>,
 }
 
 impl Ledger {
@@ -62,6 +63,7 @@ impl Ledger {
         Arc::new(Self {
             scope,
             caps,
+            terminal: OnceLock::new(),
             used: std::array::from_fn(|_| AtomicU64::new(0)),
         })
     }

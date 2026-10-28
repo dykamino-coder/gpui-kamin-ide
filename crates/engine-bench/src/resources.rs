@@ -1,7 +1,10 @@
 //! Подготовка локального входа хостом; её стоимость отделена от HTML→DOM движка.
 
 use super::stylesheet;
-use html5ever::tendril::TendrilSink;
+use html5ever::{
+    tendril::TendrilSink,
+    tree_builder::{NodeOrText, TreeSink},
+};
 use markup5ever_rcdom::{Handle, Node, NodeData, RcDom, SerializableHandle};
 use std::{cell::RefCell, path::Path, rc::Rc};
 use url::Url;
@@ -76,14 +79,10 @@ pub(super) fn read(path: &Path) -> Result<String> {
                 let text = Node::new(NodeData::Text {
                     contents: RefCell::new(css.into()),
                 });
-                text.parent.set(Some(Rc::downgrade(&style)));
-                style.children.borrow_mut().push(text);
-                let parent = node
-                    .parent
-                    .take()
-                    .and_then(|p| p.upgrade())
-                    .ok_or("orphan link")?;
-                style.parent.set(Some(Rc::downgrade(&parent)));
+                dom.append(&style, NodeOrText::AppendNode(text));
+                let parent_handle = node.parent.take().ok_or("orphan link")?;
+                let parent = parent_handle.upgrade().ok_or("orphan link")?;
+                style.parent.set(Some(parent_handle));
                 for child in parent.children.borrow_mut().iter_mut() {
                     if Rc::ptr_eq(child, &node) {
                         *child = style.clone();

@@ -74,7 +74,7 @@ pub(super) fn cascade_element(
         .map(|&(i, _)| &rules[i])
         .chain(restricted.iter())
         .collect();
-    let math_defaults = crate::dom::mathml::defaults(handle, spot.index);
+    let math_defaults = crate::dom::mathml::defaults(handle, spot.index, vcx);
     matched.extend(math_defaults.iter());
     let slotted = tree.slotted_rules_of(handle);
     matched.extend(slotted.iter());
@@ -152,7 +152,7 @@ pub(super) fn cascade_element(
         .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
     style.mathml = crate::dom::mathml::is_mathml(handle);
     style.svg_no_css_box = super::ancestor::svg_no_css_box(handle);
-    if crate::dom::mathml_routing::enabled(handle) {
+    if crate::dom::mathml_routing::enabled(handle, vcx) {
         if let Some(display) = style.math_layout {
             style.display = Some(display);
         }
