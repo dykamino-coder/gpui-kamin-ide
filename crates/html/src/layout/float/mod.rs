@@ -102,19 +102,6 @@ pub(super) fn float_only_box(c: &Element) -> Option<f32> {
     ((left != 0 || right != 0) && left <= 1 && right <= 1).then_some(tall)
 }
 
-pub(super) fn has_float(n: &Element, depth: u8) -> bool {
-    if depth == 0 {
-        return false;
-    }
-    n.children.iter().any(|k| match k {
-        Node::Element(e) => {
-            (e.style.used().float.unwrap_or(0) != 0 && !block_like_float(&e.style.used()))
-                || has_float(e, depth - 1)
-        }
-        _ => false,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

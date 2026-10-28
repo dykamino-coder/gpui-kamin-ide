@@ -137,7 +137,13 @@ pub(crate) fn vertical_children(
         .filter(|n| !is_blank(n))
         .map(|n| {
             let Node::Element(c) = n else { return None };
-            vertical_kid(resolved_lengths(c, merged, vcx), vcx, width, reverse, measured)
+            vertical_kid(
+                resolved_lengths(c, merged, vcx),
+                vcx,
+                width,
+                reverse,
+                measured,
+            )
         })
         .collect()
 }

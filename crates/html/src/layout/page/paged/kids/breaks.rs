@@ -8,7 +8,9 @@ use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, grid_tree, stacked_tree, table_tree};
+use crate::layout::fragment::flow::blocks::{
+    BlockBox, flex_tree, grid_tree, stacked_tree, table_tree,
+};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::style::computed::Position;
 use std::rc::Rc;

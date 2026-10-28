@@ -48,15 +48,10 @@ impl Watched {
     }
 
     /// Наблюдать и абсолютные коробки копии с содержащим блоком внутри неё.
-    pub(crate) fn with_positioned(mut self: Rc<Self>, ids: Vec<u64>) -> Rc<Self> {
-        if ids.is_empty() {
-            return self;
-        }
-        if let Some(watched) = Rc::get_mut(&mut self) {
-            let mut all = (*watched.ids).clone();
-            all.extend(ids.iter().copied());
-            watched.ids = Rc::new(all);
-            watched.positioned = Rc::new(ids);
+    pub(crate) fn with_positioned(self: Rc<Self>, ids: Vec<u64>) -> Rc<Self> {
+        if !ids.is_empty() {
+            // Рекордер только что создан для этой копии: список задаётся один раз.
+            let _ = self.positioned.set(ids);
         }
         self
     }

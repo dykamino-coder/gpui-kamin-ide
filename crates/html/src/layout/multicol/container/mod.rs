@@ -16,8 +16,10 @@ use gpui::{AnyElement, ParentElement};
 pub(super) mod kids;
 use kids::{column_kids, stack_children};
 mod oof;
-pub(in crate::layout::multicol) use oof::insert_static_probes;
-use oof::{column_stack_div, finish_column_stack, place_oof_statics};
+mod static_probes;
+use oof::{column_stack_div, finish_column_stack};
+pub(in crate::layout::multicol) use static_probes::insert_static_probes;
+use static_probes::place_oof_statics;
 mod spanner;
 pub(crate) use spanner::multicol_spanner_segments;
 mod fixed_height;
@@ -70,7 +72,6 @@ pub(crate) fn multicol_column_stack(
         opts,
         move |opts| {
             let (e, inherited, opts) = (&e, &inherited, &opts);
-            let vcx = opts.cx.frame();
             let copies = match rows {
                 Some(r) => {
                     let per = r.h.unwrap_or(f32::MAX).max(1.0);
@@ -86,46 +87,18 @@ pub(crate) fn multicol_column_stack(
             };
             let deferred = (line_col_w.is_none() && nest_rows.is_none())
                 .then(|| {
-                    super::deferred::Recipe::new(
-                        e, &merged, opts, cols, used_gap, fixed, col_axis, rows,
-                    )
+                    super::deferred::Recipe::new(e, &merged, opts, cols, fixed, col_axis, rows)
                 })
                 .flatten();
             let (kid_parent, kid_starts, kid_par, kids) = if deferred.is_some() {
                 (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             } else {
-                crate::layout::fragment::with_lines(&merged, line_col_w, opts, |opts| {
-                    column_kids(
-                        &merged,
-                        kids,
-                        cols,
-                        used_gap,
-                        col_vert,
-                        rows,
-                        copies,
-                        fixed,
-                        (line_col_w, layout_col_w),
-                        opts,
-                    )
-                })
+                column_kids(kids)
             };
             let prepared: Vec<_> = kids
                 .iter()
-                .enumerate()
-                .map(|(ix, (c, s))| {
-                    crate::layout::multicol::stack_child::prepare(
-                        ix,
-                        c,
-                        s,
-                        kid_parent[ix].as_ref().unwrap_or(&merged),
-                        opts,
-                        &kid_par,
-                        col_vert,
-                        col_rl,
-                        line_col_w,
-                        fixed,
-                        &measured_kids,
-                    )
+                .map(|(c, s)| {
+                    crate::layout::multicol::stack_child::prepare(c, s, opts, col_vert, col_rl)
                 })
                 .collect();
             // All column rules use the canonical gap painter, including vertical writing modes.
@@ -142,7 +115,6 @@ pub(crate) fn multicol_column_stack(
                 Vec::new()
             } else {
                 stack_children(
-                    e,
                     &merged,
                     opts,
                     cols,

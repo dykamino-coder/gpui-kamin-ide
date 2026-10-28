@@ -4,16 +4,27 @@
 //! ширину решает содержимое, и пробная балансировка, дающая размер коробки и базовые линии.
 
 use crate::layout::fragment::plan::Plan;
-use crate::layout::fragment::types::{BreaksAt, Intrinsic};
+use crate::layout::fragment::types::Intrinsic;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{AnyElement, App, LayoutId, Window, px, size};
 
+mod breaks;
+
 impl ColumnStack {
+    /// Раскладка детей идёт отдельным малым кадром: копия ребёнка может сама
+    /// нести многоколоночник, чья раскладка вложена в эту, и большой кадр
+    /// запроса меры (`request_measured`) на это время на стеке не лежит.
     pub(crate) fn request_column_layout(
         &mut self,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
+        self.lay_out_children(window, cx);
+        self.request_measured(window, cx)
+    }
+
+    #[inline(never)]
+    fn lay_out_children(&mut self, window: &mut Window, cx: &mut App) {
         if self.deferred.is_none() {
             for i in 0..self.children.len() {
                 if !self.resume_nested(i, window, cx) {
@@ -24,6 +35,10 @@ impl ColumnStack {
             self.paginate_children(window, cx);
             self.reserve_overflow_copies();
         }
+    }
+
+    #[inline(never)]
+    fn request_measured(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, LayoutId) {
         // Распорки роста по раскладке копий — до разметки по сетке: её рамки
         // берут план с уже выросшими соседями.
         let heights = self.kid_geoms();
@@ -201,7 +216,9 @@ impl ColumnStack {
                     .set(((w - gap * (count as f32 - 1.)) / count as f32).max(1.));
                 let (height, lines, plan, spans) = probe.balance(&heights);
                 if let Some(report) = &nest_report {
-                    report.set(crate::layout::multicol::column_regrow::first_row_overflow(&lines, &plan, count));
+                    report.set(crate::layout::multicol::column_regrow::first_row_overflow(
+                        &lines, &plan, count,
+                    ));
                 }
                 let height = row_extent.block_size(height, &lines, &spans, &plan, count, &heights);
                 let (first, last) = baselines.as_mut().map_or((None, None), |baselines| {
@@ -211,42 +228,5 @@ impl ColumnStack {
             },
         );
         (id, id)
-    }
-
-    /// Измеренные точки разрыва детей, чья колонка до раскладки коробки
-    /// стопки неизвестна (`BreaksAt::Column`): главная копия раскладывается
-    /// шириной `col_w`, и её строки и блочная стопка заменяют оценку. Только
-    /// при высоте колонки, заданной до меры детей (`fixed_height`): высоту
-    /// балансируемой коробки решила мера при запросе раскладки.
-    pub(crate) fn column_breaks(&mut self, col_w: f32, window: &mut Window, cx: &mut App) {
-        if self.fixed_height.is_none() {
-            return;
-        }
-        for c in self.children.iter_mut() {
-            if c.measure.is_some() || c.span || c.breaks_w != Some(BreaksAt::Column) {
-                continue;
-            }
-            let sz = c.el.layout_as_root(
-                gpui::size(
-                    gpui::AvailableSpace::Definite(px(col_w)),
-                    gpui::AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
-            #[cfg(feature = "wpt-harness")]
-            if c.probe_pending && c.watched.is_some() {
-                c.probe.height(
-                    "columns.column",
-                    c.h,
-                    f32::from(if self.axis.is_vertical() {
-                        sz.width
-                    } else {
-                        sz.height
-                    }),
-                );
-            }
-            c.replace_breaks(sz, self.axis, window);
-        }
     }
 }

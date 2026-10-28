@@ -5,19 +5,6 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::probe::size_monolith;
 use crate::style::computed::Display;
 
-/// A monolithic descendant overflows its fragmentainer instead of taking
-/// space in the flow (css-break-3 §4.1), so the unfragmented height no
-/// longer counts the columns the content needs.
-pub(super) fn has_monolith(c: &Element, depth: u8) -> bool {
-    depth > 0
-        && c.children.iter().any(|n| match n {
-            Node::Element(k) => {
-                crate::layout::fragment::clone::monolith_box(k) || has_monolith(k, depth - 1)
-            }
-            _ => false,
-        })
-}
-
 pub(super) fn copy_monolith(
     copy: &Element,
     cuts: &[(f32, f32)],

@@ -214,15 +214,17 @@ fn empty_grid_keeps_native_tracks_and_their_break_boundaries() {
         ..Default::default()
     };
     for height in [50.0, 61.0, 100.0] {
-        assert!(
-            crate::layout::multicol::column_stack::ColumnStack::growths(
-                std::slice::from_ref(&kid),
-                2,
-                Some(height),
-                None,
-                8,
-            )
-            .is_empty()
+        let mut stack = crate::layout::multicol::column_stack::ColumnStack::new(
+            Vec::new(),
+            2,
+            0.0,
+            Some(height),
+            None,
+            None,
+            None,
+            Default::default(),
         );
+        stack.copies = 8;
+        assert!(stack.grow_points(std::slice::from_ref(&kid)).is_empty());
     }
 }

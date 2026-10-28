@@ -59,39 +59,14 @@ fn measured_stack(
         &source, &merged, 100., &opts, window, app,
     );
     opts.cx.position.geometry = Some(geometry.clone());
-    let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(
-        &merged,
-        kids,
-        count,
-        0.,
-        false,
-        None,
-        count as usize,
-        Some(height),
-        (Some(100.), Some(100.)),
-        &opts,
-    );
+    let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(kids);
     let prepared = kids
         .iter()
-        .enumerate()
-        .map(|(i, (e, shape))| {
-            crate::layout::multicol::stack_child::prepare(
-                i,
-                e,
-                shape,
-                parents[i].as_ref().unwrap_or(&merged),
-                &opts,
-                &parallel,
-                false,
-                false,
-                Some(100.),
-                Some(height),
-                &measured.measured_kids,
-            )
+        .map(|(e, shape)| {
+            crate::layout::multicol::stack_child::prepare(e, shape, &opts, false, false)
         })
         .collect();
     let children = crate::layout::multicol::container::kids::stack_children(
-        host,
         &merged,
         &opts,
         count,

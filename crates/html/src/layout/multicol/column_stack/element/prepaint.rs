@@ -56,6 +56,87 @@ impl ColumnStack {
         }
     }
 
+    /// План колонок по итоговым мерам детей: линии, OOF, владельцы и клоны.
+    #[inline(never)]
+    pub(super) fn plan_columns(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        col_w: f32,
+    ) -> (crate::layout::fragment::plan::Plan, Vec<(usize, f32)>) {
+        self.col_w.set(col_w);
+        self.settle_clone_kids();
+        let heights = self.kid_geoms();
+        let (_, lines, mut plan, spans) = self.balance(&heights);
+        plan.check_copies(|kid| self.children[kid].frags.len() + 1);
+        *self.lines_plan.borrow_mut() = lines;
+        self.plan_oof(&plan, bounds);
+        self.assign_flex_owners(&plan);
+        self.assign_grid_items(&plan);
+        self.apply_clone_frags(&plan);
+        (plan, spans)
+    }
+
+    /// Спаннеры во всю ширину коробки, первой копией (запасных у них нет:
+    /// между колонками они не режутся), и границы линеек промежутков.
+    #[inline(never)]
+    pub(super) fn prepaint_spanners(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        col_w: f32,
+        plan: crate::layout::fragment::plan::Plan,
+        spans: Vec<(usize, f32)>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        for &(kid, sy) in &spans {
+            let kid = &mut self.children[kid];
+            let h = kid.h;
+            kid.el.layout_as_root_at(
+                point(bounds.origin.x, bounds.origin.y + px(sy)),
+                size(
+                    gpui::AvailableSpace::Definite(bounds.size.width),
+                    gpui::AvailableSpace::Definite(px(h)),
+                ),
+                window,
+                cx,
+            );
+            kid.el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+        }
+        // Границы для линеек промежутков (css-gaps-1 §gap-multicol): коробки
+        // ЗАНЯТЫХ колонок каждой линии (как Blink `AddCrossGap` на колонку
+        // ряда; в третьем ряду `column-height-009` линейка одна) и спаннеры
+        // во всю ширину — они обрывают линейки колонок.
+        self.collect_gap_geometry(bounds, col_w, &plan, &spans);
+        *self.plan.borrow_mut() = plan;
+        *self.spans_plan.borrow_mut() = spans;
+    }
+
+    /// Места статических координат кусков плана (`static_coordinates`).
+    #[inline(never)]
+    fn record_places(&self, bounds: Bounds<Pixels>, plan: &[Frag], step: f32) {
+        use crate::layout::fragment::static_coordinates::Place;
+        let Some(places) = &self.static_places else {
+            return;
+        };
+        let mut entries = places.borrow_mut();
+        entries.clear();
+        entries.extend(plan.iter().map(|part| {
+            let (column, row_y) = self.place(part.col);
+            let child = &self.children[part.kid];
+            Place {
+                kid: part.kid,
+                from: part.from,
+                origin: point(
+                    bounds.origin.x + px(column as f32 * step + child.rel.0 + child.par.dx),
+                    bounds.origin.y + px(row_y + part.y + child.rel.1 - part.from),
+                ),
+            }
+        }));
+    }
+
+    /// Копии кусков плана: каждая раскладывается и проходит prepaint на своём
+    /// месте. Копия может нести вложенный многоколоночник, и его prepaint идёт
+    /// внутри этого кадра — он держится малым.
     pub(super) fn prepaint_frags(
         &mut self,
         window: &mut Window,
@@ -65,24 +146,9 @@ impl ColumnStack {
         plan: &[Frag],
         step: f32,
     ) {
-        use crate::layout::fragment::static_coordinates::{self, Place};
+        use crate::layout::fragment::static_coordinates;
+        self.record_places(bounds, plan, step);
         let places = self.static_places.clone();
-        if let Some(places) = &places {
-            let mut entries = places.borrow_mut();
-            entries.clear();
-            entries.extend(plan.iter().map(|part| {
-                let (column, row_y) = self.place(part.col);
-                let child = &self.children[part.kid];
-                Place {
-                    kid: part.kid,
-                    from: part.from,
-                    origin: point(
-                        bounds.origin.x + px(column as f32 * step + child.rel.0 + child.par.dx),
-                        bounds.origin.y + px(row_y + part.y + child.rel.1 - part.from),
-                    ),
-                }
-            }));
-        }
         for f in plan {
             // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
             // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
@@ -103,18 +169,7 @@ impl ColumnStack {
             // Копия та же полная таблица, поднятая так, что её полоса
             // совпадает с местом во фрагменте; видимой полосу делает маска.
             if let Some(r) = kid.repeat.as_mut() {
-                r.place_bands(f, |el, at| {
-                    el.layout_as_root_at(
-                        point(x, y + px(at)),
-                        size(
-                            gpui::AvailableSpace::Definite(px(col_w)),
-                            gpui::AvailableSpace::Definite(px(full_h)),
-                        ),
-                        window,
-                        cx,
-                    );
-                    el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-                });
+                prepaint_bands(r, f, point(x, y), (col_w, full_h), window, cx);
             }
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
@@ -150,4 +205,28 @@ impl ColumnStack {
             kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
         }
     }
+}
+
+/// Полосы повтора таблицы — своими копиями (`Repeat::place_bands`).
+#[inline(never)]
+fn prepaint_bands(
+    r: &mut crate::layout::fragment::types::Repeat,
+    f: &Frag,
+    at: gpui::Point<Pixels>,
+    (col_w, full_h): (f32, f32),
+    window: &mut Window,
+    cx: &mut App,
+) {
+    r.place_bands(f, |el, band| {
+        el.layout_as_root_at(
+            point(at.x, at.y + px(band)),
+            size(
+                gpui::AvailableSpace::Definite(px(col_w)),
+                gpui::AvailableSpace::Definite(px(full_h)),
+            ),
+            window,
+            cx,
+        );
+        el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+    });
 }

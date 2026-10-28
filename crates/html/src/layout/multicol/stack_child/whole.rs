@@ -91,12 +91,10 @@ pub(super) fn copy_whole_box(
                     )
                     .nested(0, nest_phase_k)
                     .map(|nested| {
-                        std::rc::Rc::new(
-                            crate::layout::fragment::token::space::sequence::Nested {
-                                first_row: report.clone(),
-                                ..(*nested).clone()
-                            },
-                        )
+                        std::rc::Rc::new(crate::layout::fragment::token::space::sequence::Nested {
+                            first_row: report.clone(),
+                            ..(*nested).clone()
+                        })
                     })
                     .expect("resolved outer column constraints"),
                 ),

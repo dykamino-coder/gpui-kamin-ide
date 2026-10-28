@@ -127,9 +127,7 @@ impl Regrow {
                 id,
                 grow,
             ),
-            Pushed::Box(id) if forced => {
-                spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.frame())
-            }
+            Pushed::Box(id) if forced => spacer_before_laid(&mut self.dom, id, grow),
             Pushed::Box(id) => grow_before(&mut self.dom, id, grow),
             Pushed::Row(row) => self.watched.grow_grid_row(row.grid, row.track, grow),
             Pushed::Flex(line) => self.watched.grow_flex_line(line.container, line.line, grow),

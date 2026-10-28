@@ -17,6 +17,8 @@ impl Recipe {
         self.recorded_children(width, window, cx).0
     }
 
+    // Сборка детей — свой кадр: раскладка их копий в `prepare` вложена глубже.
+    #[inline(never)]
     pub(super) fn recorded_children(
         &self,
         width: f32,
@@ -42,39 +44,14 @@ impl Recipe {
         let measured = plan.measured_kids;
         let kids = plan.stackable.unwrap_or_default();
         let copies = self.count.max(1) as usize;
-        let (parents, _, parallel, kids) = column_kids(
-            &self.merged,
-            kids,
-            self.count,
-            self.gap,
-            vertical,
-            self.rows,
-            copies,
-            self.fixed,
-            (Some(width), Some(width)),
-            &opts,
-        );
+        let (parents, _, parallel, kids) = column_kids(kids);
         let prepared = kids
             .iter()
-            .enumerate()
-            .map(|(ix, (c, s))| {
-                crate::layout::multicol::stack_child::prepare(
-                    ix,
-                    c,
-                    s,
-                    parents[ix].as_ref().unwrap_or(&self.merged),
-                    &opts,
-                    &parallel,
-                    vertical,
-                    reverse,
-                    Some(width),
-                    self.fixed,
-                    &measured,
-                )
+            .map(|(c, s)| {
+                crate::layout::multicol::stack_child::prepare(c, s, &opts, vertical, reverse)
             })
             .collect();
         let children = stack_children(
-            &host,
             &self.merged,
             &opts,
             self.count,

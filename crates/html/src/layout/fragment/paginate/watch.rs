@@ -79,7 +79,7 @@ pub(crate) struct Watched {
     monolithic_ids: std::cell::OnceCell<HashSet<u64>>,
     /// Абсолютные коробки, чей содержащий блок внутри копии: их протяжённость —
     /// продолжение потока ребёнка (`positioned_end`).
-    positioned: Rc<Vec<u64>>,
+    positioned: std::cell::OnceCell<Vec<u64>>,
 }
 
 impl Watched {
@@ -178,10 +178,17 @@ impl Watched {
     /// абсолютных коробок (`with_positioned`).
     pub(crate) fn positioned_end(&self, vertical: bool, window: &Window) -> Option<f32> {
         self.positioned
-            .iter()
+            .get()
+            .into_iter()
+            .flatten()
             .filter_map(|&id| self.normal(id, window))
             .map(|b| f32::from(if vertical { b.right() } else { b.bottom() }))
             .reduce(f32::max)
+    }
+
+    /// Наблюдает ли рекордер коробку `id`: стопку или абсолютную коробку копии.
+    pub(crate) fn watches(&self, id: u64) -> bool {
+        self.ids.contains(&id) || self.positioned.get().is_some_and(|p| p.contains(&id))
     }
 
     pub(crate) fn normal(&self, id: u64, window: &Window) -> Option<gpui::Bounds<Pixels>> {

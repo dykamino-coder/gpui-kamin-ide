@@ -41,6 +41,13 @@ pub struct Kid {
     /// повторяемое в КАЖДОМ фрагменте (css-break-4 §break-decoration).
     /// `None` — `slice`, прежний путь до последней строки.
     pub clone_dec: Option<(f32, f32)>,
+    /// `clone` у коробки с ЗАДАННЫМ border-box блочным размером: фрагменты
+    /// делят этот размер, повторённые края его не растят (Blink
+    /// `UpdateBorderPaddingForClonedBoxDecorations` множит края на число
+    /// фрагментов в разрешении размера; `grid_layout_algorithm.cc`: «a fixed
+    /// block-size item can grow if box decorations are cloned (as long as
+    /// box-sizing is content-box)»).
+    pub clone_fixed: bool,
     /// См. `StackChild::overflow_top`; у страниц — `false`.
     pub overflow_top: bool,
     /// Повтор секций таблицы (`RepeatGeom`): место шапки сверху у

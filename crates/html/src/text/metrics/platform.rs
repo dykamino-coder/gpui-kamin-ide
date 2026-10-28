@@ -110,7 +110,6 @@ impl FontContext {
     pub(crate) fn install(&self, fonts: &crate::text::text_fonts::TextFonts, vcx: ValueCx<'_>) {
         fonts.metrics.platform.replace(self.clone());
         vcx.doc.set_installed_fonts(self.installed.clone());
-        *fonts.metrics.wrap.borrow_mut() = None;
         *fonts.metrics.space.borrow_mut() = None;
         if let Some(system) = &self.system {
             super::text_system::bind_measurements(system.clone(), fonts, vcx);

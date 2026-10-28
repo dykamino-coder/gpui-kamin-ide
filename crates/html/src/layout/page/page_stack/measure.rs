@@ -194,6 +194,7 @@ pub(super) fn measure(
             // Страницы: `box-decoration-break` пока `slice` — весь
             // кластер `clone` в колонках.
             clone_dec: None,
+            clone_fixed: false,
             // У страниц своё правило переполнения монолита (`fill_at`,
             // ветка `paged && placed && cur > target`, crbug 1402540).
             overflow_top: false,

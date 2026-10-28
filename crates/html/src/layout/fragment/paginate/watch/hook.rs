@@ -11,7 +11,7 @@ use std::rc::Rc;
 /// Wrap `el` when the build's recorder watches `id` (identity otherwise).
 pub(crate) fn wrap(id: u64, el: AnyElement, opts: &RenderOpts) -> AnyElement {
     match &opts.frag.watch {
-        Some(rec) if rec.ids.contains(&id) => Watch {
+        Some(rec) if rec.watches(id) => Watch {
             slot: Slot::Box(id),
             inner: el,
             rec: rec.clone(),

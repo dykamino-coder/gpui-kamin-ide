@@ -5,6 +5,7 @@ use crate::dom::Element;
 use crate::layout::cx::FrameCx;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
+use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 mod monolith;
@@ -15,7 +16,6 @@ pub(super) fn finish_stack_child(
     ix: usize,
     mt: f32,
     mb: f32,
-    e: &Element,
     kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
     rows: Option<crate::layout::fragment::types::Rows>,
@@ -107,6 +107,18 @@ pub(super) fn measured_monolith(
         nest_row.is_none()
             && (size_monolith(copy)
                 || copy.style.used().break_inside_avoid
+                // Атомарная строчная коробка стоит в строке, а строка
+                // неделима (css-break-3 §4.1, §4.3 class B — только между
+                // строками; Blink `LayoutBox::IsMonolithic`: `IsInline()`).
+                || matches!(
+                    copy.style.used().display,
+                    Some(
+                        Display::InlineBlock
+                            | Display::InlineTable
+                            | Display::InlineFlex
+                            | Display::InlineGrid
+                    )
+                )
                 // css-break-3 §4.1 допускает монолитный overflow:hidden
                 // с auto block size; сохраняем выбор старого пути для строк.
                 || (monolith

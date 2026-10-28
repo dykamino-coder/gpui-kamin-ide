@@ -87,6 +87,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/multicol/stack_child/mod.rs"),
     include_str!("../../layout/multicol/stack_child/build.rs"),
     include_str!("../../layout/multicol/stack_child/cuts.rs"),
+    include_str!("../../layout/multicol/stack_child/through_top.rs"),
     include_str!("../../layout/multicol/stack_child/finish.rs"),
     include_str!("../../layout/multicol/stack_child/fixed.rs"),
     include_str!("../../layout/multicol/stack_child/frag_div.rs"),

@@ -9,13 +9,8 @@ use crate::layout::block::margins::fragment_margins as measured_margins;
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
-use crate::layout::fragment::flow::blocks::table_tree;
-use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::fragment::line_shape::{
-    inline_content, nested_rows_box, resolved_lengths, transpose_tree,
-};
-use crate::layout::fragment::probe::forced_inside;
-use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::fragment::Shape;
+use crate::layout::fragment::line_shape::{inline_content, nested_rows_box, resolved_lengths};
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;

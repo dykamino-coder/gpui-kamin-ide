@@ -78,19 +78,13 @@ pub(super) fn build_copy(
             cx.deferred.gap_items = Some(items.clone());
         }
     });
-    // css-break-3 §5.5: «Fragmentation … occurs
-    // before relative positioning, transforms,
-    // and any other graphical effects. Such
-    // effects are applied per fragment». Разрезы
-    // трансформ не двигают (`shape_full` его и не
-    // читает), но САМ трансформ обязан быть на
-    // каждом фрагменте. Общий путь вешает его
-    // через `transformed()`; узкая ветка копии шла мимо
-    // всех трёх, и `transform` у ребёнка
-    // многоколоночника пропадал целиком
-    // (`transform-000…005`: `translateX(60px)`
-    // контейнера гасил `left:-60px` потомков, а
-    // без него содержимое уезжало из колонки).
+    // css-break-3 §5.5: «Fragmentation … occurs before relative positioning,
+    // transforms, and any other graphical effects. Such effects are applied per
+    // fragment». Разрезы трансформ не двигают, но САМ трансформ обязан быть на
+    // каждом фрагменте. Общий путь вешает его через `transformed()`; узкая
+    // ветка копии шла мимо всех трёх, и `transform` у ребёнка многоколоночника
+    // пропадал целиком (`transform-000…005`: `translateX(60px)` контейнера
+    // гасил `left:-60px` потомков, а без него содержимое уезжало из колонки).
     // Начало отсчёта пока общее на всю коробку,
     // а не своё на фрагмент, — для `translate`
     // это точно, для `rotate`/`scale` нет.

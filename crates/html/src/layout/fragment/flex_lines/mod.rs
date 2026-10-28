@@ -1,7 +1,5 @@
-//! Остаток оценки flex для меры формы и старого пути распорок (переход F1-6).
+//! Края разрыва строк flex-ряда и признаки элементов для разрывов класса A.
 //! Членство flex-линий фрагментации даёт DetailedLayoutInfo::Flex через Watched.
-mod column;
-pub(super) use column::flex_gap_rules;
 mod row;
 pub(crate) use row::row_break_edge;
 mod items;

@@ -1,36 +1,26 @@
 //! Дети стопки колонок: копии детей при заданной высоте и элементы StackChild.
 
 use crate::dom::Element;
-use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed, measured_push};
+use crate::layout::fragment::push::avoid_only_monolith;
+use crate::layout::multicol::column_regrow::fragmentainer_extent;
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::multicol::stack_child::{multicol_stack_child, nest_candidate};
-use crate::layout::multicol::column_regrow::fragmentainer_extent;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::tolerance::COORD_EPS;
 
-#[allow(clippy::too_many_arguments)]
+/// Родители и группы детей стопки: каждый ребёнок — своя копия в колонке.
 // Child records keep their layout and paint callbacks with measured geometry.
 #[allow(clippy::type_complexity)]
 pub(in crate::layout::multicol) fn column_kids(
-    _merged: &BoxStyle,
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
-    cols: u16,
-    _used_gap: f32,
-    col_vert: bool,
-    rows: Option<crate::layout::fragment::types::Rows>,
-    copies: usize,
-    fixed: Option<f32>,
-    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
-    opts: &RenderOpts,
 ) -> (
     Vec<Option<BoxStyle>>,
     Vec<usize>,
     Vec<crate::layout::fragment::types::Par>,
     Vec<(Element, crate::layout::fragment::Shape)>,
 ) {
-    let vcx = opts.cx.frame();
     // Линии остаются в Taffy-дереве контейнера; копия сохраняет flex sizing,
     // фон и static position. Regrow читает их после layout.
     let n = kids.len();
@@ -48,14 +38,12 @@ pub(in crate::layout::multicol) fn column_kids(
             p.clears = c.style.used().clear.is_some();
         }
     }
-    let _ = (cols, rows, copies, fixed, line_col_w, layout_col_w, col_vert, vcx);
     (kid_parent, kid_starts, kid_par, kids)
 }
 
 /// Общие входы детей одной стопки: каждый ребёнок собирается из них заново,
 /// когда раскладка предшествующих детей решает его внешнее пространство.
 struct Shared {
-    e: Element,
     merged: BoxStyle,
     opts: RenderOpts,
     col_vert: bool,
@@ -86,7 +74,6 @@ impl Shared {
             prepared.clone(),
             mt,
             mb,
-            &self.e,
             &self.merged,
             &self.opts,
             &self.kid_parent,
@@ -109,7 +96,6 @@ impl Shared {
 // The stack is assembled from the same measured child/callback records.
 #[allow(clippy::type_complexity)]
 pub(in crate::layout::multicol) fn stack_children(
-    e: &Element,
     merged: &BoxStyle,
     opts: &RenderOpts,
     cols: u16,
@@ -130,7 +116,6 @@ pub(in crate::layout::multicol) fn stack_children(
     // колонках делит их на ряды своей высоты (`ColumnStack::resume_nested`).
     let balanced = fixed.is_none() && rows.is_none_or(|r| r.cap) && cols > 1 && kids.len() == 1;
     let shared = std::rc::Rc::new(Shared {
-        e: e.clone(),
         merged: merged.clone(),
         opts: opts.clone(),
         col_vert,

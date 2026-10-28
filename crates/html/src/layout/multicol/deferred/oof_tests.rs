@@ -28,18 +28,17 @@ fn absolute_continuation_and_balance_preserve_the_normal_neighbour(cx: &mut gpui
             &source, &merged, 100., &opts, window, app,
         );
         opts.cx.position.geometry = Some(geometry.clone());
-        let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(
-            &merged, kids, 2, 10., false, None, 2, Some(70.),
-            (Some(100.), Some(100.)), &opts,
-        );
-        let prepared = kids.iter().enumerate().map(|(i, (e, shape))| {
+        let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(kids);
+        let prepared = kids.iter().map(|(e, shape)| {
             crate::layout::multicol::stack_child::prepare(
-                i, e, shape, parents[i].as_ref().unwrap_or(&merged), &opts,
-                &parallel, false, false, Some(100.), Some(70.), &measured.measured_kids,
+                e,
+                shape,
+                &opts,
+                false,
+                false,
             )
         }).collect();
-        let children = crate::layout::multicol::container::kids::stack_children(
-            host, &merged, &opts, 2, false, false, (Some(100.), Some(100.)), None,
+        let children = crate::layout::multicol::container::kids::stack_children(&merged, &opts, 2, false, false, (Some(100.), Some(100.)), None,
             measured.nested_whole, measured.measured_kids,
             2, Some(70.), parents, parallel, kids, prepared,
         );

@@ -12,13 +12,11 @@ use std::rc::Rc;
 pub(crate) struct LineFrame {
     pub(crate) inh: BoxStyle,
     pub(crate) w: Option<f32>,
-    pub(crate) anon: bool,
     pub(crate) items: u8,
 }
 
 #[derive(Clone)]
 pub(crate) struct LineCx {
-    pub(crate) opts: RenderOpts,
     pub(crate) frames: Vec<LineFrame>,
 }
 
@@ -30,12 +28,9 @@ pub(crate) fn with_lines<T>(
 ) -> T {
     let child = opts.inner(|cx| {
         cx.fragmentation.lines = Some(Rc::new(LineCx {
-            // Retain the parent options, avoiding a cycle through this new owner.
-            opts: opts.clone(),
             frames: vec![LineFrame {
                 inh: base.clone(),
                 w,
-                anon: false,
                 items: 0,
             }],
         }));
@@ -59,7 +54,6 @@ impl LineCx {
         child.frames.push(LineFrame {
             inh,
             w,
-            anon: c.tag == "anon-block",
             items: items_kind(c),
         });
         Some(Rc::new(child))

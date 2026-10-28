@@ -104,8 +104,11 @@ impl Flow {
         // the next fragmentainer still begins where it is positioned; its first
         // fragment holds only its own decorations to the fragmentainer end (Blink
         // lays the box out there with a break before its first child).
-        let leading =
-            fragment.is_none() && previous.is_none() && start > 0. && !kid.monolith && !cursor.complete;
+        let leading = fragment.is_none()
+            && previous.is_none()
+            && start > 0.
+            && !kid.monolith
+            && !cursor.complete;
         let next = if cursor.complete {
             None
         } else {

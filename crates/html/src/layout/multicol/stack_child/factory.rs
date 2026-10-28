@@ -199,7 +199,12 @@ mod tests {
 }
 
 /// Отложенная копия part (0 — главная) того же рецепта, что у ragments.
-pub(super) fn copy(build: Builder, copy: &Element, vertical: bool, part: usize) -> gpui::AnyElement {
+pub(super) fn copy(
+    build: Builder,
+    copy: &Element,
+    vertical: bool,
+    part: usize,
+) -> gpui::AnyElement {
     let copy = copy.clone();
     crate::layout::fragment::types::FragmentHandle::new(move || {
         crate::layout::fragment::line_shape::side_margin_wrap(

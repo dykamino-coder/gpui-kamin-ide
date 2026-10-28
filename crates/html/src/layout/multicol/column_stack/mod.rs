@@ -142,7 +142,10 @@ impl ColumnStack {
     }
 
     /// Отчёт первого ряда внешней стопке (`Nested::first_row`).
-    pub(crate) fn with_nest_report(mut self, report: Option<crate::layout::fragment::token::space::sequence::NestReport>) -> Self {
+    pub(crate) fn with_nest_report(
+        mut self,
+        report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    ) -> Self {
         self.nest_report = report;
         self
     }

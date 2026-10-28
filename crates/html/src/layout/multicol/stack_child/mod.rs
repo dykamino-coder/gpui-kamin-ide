@@ -24,6 +24,7 @@ use whole::{copy_kids, copy_whole_box};
 mod frag_div;
 mod paginate;
 mod regrow;
+mod through_top;
 use crate::style::cascade::materialize::box_style;
 use frag_div::frag_box_div;
 
@@ -34,7 +35,6 @@ pub(super) fn multicol_stack_child(
     prepared: Prepared,
     mt: f32,
     mb: f32,
-    e: &Element,
     merged: &BoxStyle,
     opts: &RenderOpts,
     kid_parent: &[Option<BoxStyle>],
@@ -68,7 +68,6 @@ pub(super) fn multicol_stack_child(
         solid,
         h,
         over,
-        no_reach,
     } = prepared;
     // Относительный сдвиг — не коробке, а фрагменту
     // (css-break-3 §5.5): его кладёт `ColumnStack`
@@ -136,7 +135,6 @@ pub(super) fn multicol_stack_child(
         ix,
         mt,
         mb,
-        e,
         kid_par,
         col_vert,
         rows,
@@ -167,7 +165,7 @@ pub(super) fn multicol_stack_child(
         watched,
         breaks_w,
         own,
-        laid_h: no_reach && !float_zero,
+        laid_h: !float_zero,
         push_w: kid_w,
     };
     measured.attach(

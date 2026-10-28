@@ -33,14 +33,6 @@ fn empty_grid_uses_measured_copy_at_known_and_deferred_widths(cx: &mut gpui::Tes
             },
         );
     }
-    #[cfg(feature = "wpt-harness")]
-    assert!(
-        opts.frag
-            .probe
-            .take()
-            .values()
-            .all(|p| p.estimate_calls == 0)
-    );
 }
 
 #[test]

@@ -1,12 +1,9 @@
 //! Вложенные ряды: допустимость native-раскладки и ширина коробки в колонке.
 
-use super::nested_kid::oof_in_plain_kids;
+use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
-use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
-use crate::layout::box_kind::out_of_flow;
 use crate::layout::multicol::spanner::multicol_container;
-use crate::layout::positioned::predicates::carries_abspos;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
@@ -43,12 +40,6 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
                 && (auto || (zero(&s.padding.bottom) && zero(&b.bottom)))
         }
         && c.children.iter().any(|n| !is_blank(n))
-}
-
-pub(super) fn oof_descendant(e: &Element) -> bool {
-    e.children
-        .iter()
-        .any(|n| matches!(n, Node::Element(k) if out_of_flow(&k.style.used()) || oof_descendant(k)))
 }
 
 /// Ширина коробки (`width` по её `box-sizing`) ребёнка в колонке `cw`.

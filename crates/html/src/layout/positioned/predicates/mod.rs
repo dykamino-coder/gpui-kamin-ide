@@ -1,55 +1,12 @@
-//! Предикаты позиционирования для сборки дерева: несёт ли поддерево абсолют, дотягивающий
-//! меру фрагментации (`carries_abspos`), остаётся ли дальше по разметке позиционированный
+//! Предикаты позиционирования для сборки дерева: остаётся ли дальше по разметке позиционированный
 //! сосед, с которым вынос в слой нарушил бы порядок шага 8 CSS 2.1 §9.9 (`positioned_later`,
 //! `stays_positioned`), задан ли край (`edge_set`) и есть ли своя коробка (`has_own_box`).
 
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::block_level_in_flow;
-use crate::layout::multicol::spanner::multicol_container;
-use crate::layout::page::paged::visible_overflow;
 use crate::style::values::value::Len;
 mod own_box;
 pub(crate) use own_box::has_own_box;
-
-// Несёт ли поддерево АБСОЛЮТНОГО потомка, чей низ `shape_full` сворачивает
-// в меру коробки (дотяг `oof_reach`). Только такому ребёнку стопки колонок
-// переполняющие колонки нужны ради внепоточного (css-position-3
-// §abspos-breaking: «The box may subsequently be broken over several
-// fragmentation containers»; Blink рождает их от внепоточного —
-// `column_layout_algorithm.cc` `num_new_columns`). Спуск не идёт внутрь
-// коробки, обрезающей переполнение (абсолют за ней в колонках не виден:
-// `out-of-flow-in-multicolumn-107`, `overflow: clip` над абсолютом
-// 100000px), и внутрь вложенного многоколоночника (у его абсолютов свои
-// колонки). Глубина — та же, что у меры стопки (`shape_full(c, 4, ..)`).
-pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
-    fn walk(c: &Element, depth: u8, fixed_cb: bool) -> bool {
-        depth > 0
-            && c.children.iter().any(|n| match n {
-                Node::Element(k) => {
-                    k.style.used().position == Some(crate::style::computed::Position::Absolute)
-                        || (fixed_cb
-                            && k.style.used().position
-                                == Some(crate::style::computed::Position::Fixed))
-                        || (visible_overflow(&k.style.used())
-                            && !multicol_container(&k.style.used())
-                            && walk(
-                                k,
-                                depth - 1,
-                                fixed_cb
-                                    || crate::style::computed::stacking::fixed_cb_layer_box(
-                                        &k.style.used(),
-                                    ),
-                            ))
-                }
-                _ => false,
-            })
-    }
-    walk(
-        c,
-        depth,
-        crate::style::computed::stacking::fixed_cb_layer_box(&c.style.used()),
-    )
-}
 
 /// Рисуется ли ДАЛЬШЕ по разметке позиционированное содержимое первым
 /// проходом родителя — тогда `PaintLast` перевернул бы порядок шага 8.

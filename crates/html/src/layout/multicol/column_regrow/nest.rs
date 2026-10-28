@@ -50,7 +50,7 @@ impl ColumnStack {
     fn place_nested(
         &mut self,
         i: usize,
-        resume: &std::rc::Rc<dyn Fn(Option<(f32, f32)>) -> crate::layout::fragment::types::StackChild>,
+        resume: &crate::layout::fragment::types::ResumeChild,
         nest: Option<(f32, f32)>,
         window: &mut Window,
         cx: &mut App,
@@ -90,7 +90,8 @@ impl ColumnStack {
 pub(crate) fn first_row_overflow(
     lines: &[(f32, f32)],
     plan: &crate::layout::fragment::plan::Plan,
-    count: usize) -> Option<f32> {
+    count: usize,
+) -> Option<f32> {
     let row = lines.first()?.1;
     let end = plan
         .iter()

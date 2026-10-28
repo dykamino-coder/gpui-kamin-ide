@@ -112,6 +112,8 @@ pub struct StackChild {
     /// высоты (`render.rs::clone_fragment`): её не поднимают на срез и не
     /// режут маской.
     pub clone_dec: Option<(f32, f32)>,
+    /// См. `Kid::clone_fixed`.
+    pub clone_fixed: bool,
     /// Монолит-ПОТОМОК, начатый на верху колонки, переполняет её, а не режется
     /// краем (`fill_at`, `overflow_to`). Только `column-fill: auto` без рядов и
     /// только ребёнку без элементов ряда (`render::parallel_items_inside`):
@@ -161,9 +163,11 @@ pub struct StackChild {
     pub(crate) nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
     /// Сборка того же ребёнка в другом внешнем пространстве (`nest`): его
     /// начало решает раскладка предшествующих детей.
-    #[allow(clippy::type_complexity)]
-    pub(crate) resume: Option<std::rc::Rc<dyn Fn(Option<(f32, f32)>) -> StackChild>>,
+    pub(crate) resume: Option<ResumeChild>,
 }
+
+/// Сборка ребёнка заново в пространстве `(высота фрагментаинера, фаза)`.
+pub(crate) type ResumeChild = std::rc::Rc<dyn Fn(Option<(f32, f32)>) -> StackChild>;
 
 /// Фрагменты `clone` знают свои `(from, h)` только из итогового плана укладки:
 /// мера ребёнка — раскладка всей коробки, а копия фрагмента — коробка своей
@@ -198,6 +202,7 @@ impl StackChild {
             span: self.span,
             over: self.over,
             clone_dec: self.clone_dec,
+            clone_fixed: self.clone_fixed,
             overflow_top: self.overflow_top,
             repeat: self
                 .repeat
