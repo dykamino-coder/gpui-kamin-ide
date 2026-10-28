@@ -152,15 +152,17 @@ impl Admission {
         let mut orphan_routes = Vec::new();
         let mut presented = Vec::new();
         for (root, _) in &self.own {
-            let origin = snapshot
-                .normal
-                .get(root)
-                .map(|b| b.origin)
-                .unwrap_or_default()
-                + snapshot.relative.get(root).copied().unwrap_or_default()
-                // The root's record sits where layout put it; the anchored
-                // offset applies inside it.
-                - snapshot.settled.get(root).copied().unwrap_or_default();
+            let origin = match snapshot.settled.get(root) {
+                Some(record) => *record,
+                None => {
+                    snapshot
+                        .normal
+                        .get(root)
+                        .map(|b| b.origin)
+                        .unwrap_or_default()
+                        + snapshot.relative.get(root).copied().unwrap_or_default()
+                }
+            };
             paint.origins.insert(*root, origin);
             hits.origins.insert(*root, origin);
         }

@@ -142,23 +142,20 @@ impl ColumnStack {
         })
     }
 
-    /// The clip of fragmentainer `col` under the stack's own clip: continued
-    /// roots replayed in a sliced copy overflow its slice, not the column (ink
-    /// still spills sideways and above, like the copy's own).
-    pub(super) fn fragmentainer_area(
+    /// Fragmentainer `col` with the copies' ink spill sideways and above:
+    /// continued roots replayed in a sliced copy overflow its slice, not the
+    /// column.
+    pub(super) fn fragmentainer_band(
         &self,
         col: usize,
         bounds: Bounds<Pixels>,
         spill: Pixels,
-        window: &mut Window,
-    ) -> Option<gpui::ContentMask<Pixels>> {
+    ) -> Option<Bounds<Pixels>> {
         let rect = self.fragmentainer(col, bounds).ok()?.rect;
-        let band = Bounds {
+        Some(Bounds {
             origin: point(rect.origin.x - spill, rect.origin.y - spill),
             size: gpui::size(rect.size.width + spill + spill, rect.size.height + spill),
-        };
-        let band = crate::layout::fragment::fragment_mask::snap(band, window.scale_factor());
-        Some(window.with_content_mask(Some(band), |window| window.content_mask()))
+        })
     }
 
     /// A normal kid owning `owner` has a legacy copy in `col`.

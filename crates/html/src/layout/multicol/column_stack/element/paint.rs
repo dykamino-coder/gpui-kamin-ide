@@ -65,7 +65,7 @@ impl ColumnStack {
             } else {
                 bounds.size.width
             };
-            let area = self.fragmentainer_area(f.col, bounds, spill, window);
+            let band = self.fragmentainer_band(f.col, bounds, spill);
             let k0 = &self.children[f.kid];
             let (nested_cols, over) = (k0.nested_cols, k0.over);
             // Таблица и вложенная фрагментация задают свои границы. Одна
@@ -187,6 +187,11 @@ impl ColumnStack {
                     origin: point(x - spill, y - px(up)),
                     size: size(px(col_w) + spill + spill, px(f.h + up + down)),
                 };
+                // Continued roots replay under the column and the copy's own slice.
+                let area = band.map(|band| {
+                    let area = fragment_mask::snap(band.union(&clip), window.scale_factor());
+                    window.with_content_mask(Some(area), |window| window.content_mask())
+                });
                 let mask = fragment_mask::snap(clip, window.scale_factor());
                 window.with_content_mask(Some(mask), |window| {
                     let cut = f32::from(y) + f.h;

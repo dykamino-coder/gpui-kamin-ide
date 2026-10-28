@@ -25,6 +25,8 @@ pub(crate) struct Recorder {
     pub(super) flows: super::fragmentation::Recording,
     /// Anchored offsets found by the settling pass (`record::settle`).
     pub(super) offsets: RefCell<HashMap<u64, gpui::Point<Pixels>>>,
+    /// Where the settling pass prepainted each box's own record.
+    pub(super) records: RefCell<HashMap<u64, gpui::Point<Pixels>>>,
     /// Anchored boxes the settling pass could not anchor (`record::settle`).
     pub(crate) unsettled: RefCell<std::collections::HashSet<u64>>,
 }
@@ -98,8 +100,12 @@ impl Recorder {
             .iter()
             .filter_map(|(&id, entry)| Some((id, entry.node.bounds(window)?)))
             .collect();
-        let settled = self.settled();
-        snapshot.settled.clone_from(&settled);
+        let settled = self.settled(&nodes, window);
+        let records = self.records.borrow();
+        snapshot.settled = settled
+            .keys()
+            .filter_map(|id| Some((*id, *records.get(id)?)))
+            .collect();
         for (id, bounds) in snapshot.normal.iter_mut() {
             if let Some(d) = settled.get(&self.flows.families.get(id).copied().unwrap_or(*id)) {
                 bounds.origin += *d;

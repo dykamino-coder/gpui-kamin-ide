@@ -101,3 +101,60 @@ fn fixed_box_nested_in_a_continued_root_takes_its_static_position_from_the_colum
     let green = found.iter().filter(|(_, c)| opaque(*c) == 0x00ff00).count();
     assert_eq!(green, 1, "painted once: {found:?}");
 }
+
+#[test]
+fn anchored_box_settles_with_the_position_try_fallback_it_chose() {
+    // position-try-fallbacks-multicol-001: the flipped candidate (below and
+    // right of the anchor) lands in the second column, at x 20 there.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='position:relative;columns:2;width:100px;height:100px;column-fill:auto;gap:0'>\
+<div style='position:relative;height:200px'>\
+<div style='width:20px;height:100px;anchor-name:--a'></div>\
+<div style='position:absolute;position-anchor:--a;bottom:anchor(top);right:anchor(left);width:30px;height:100px;position-try-fallbacks:flip-inline flip-block;background:#00ff00'></div>\
+</div></div>",
+        400.,
+        200.,
+    );
+    let green: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x00ff00)
+        .collect();
+    assert_eq!(green.len(), 1, "{found:?}");
+    assert_eq!(
+        (
+            f32::from(green[0].0.origin.x),
+            f32::from(green[0].0.origin.y)
+        ),
+        (70., 0.)
+    );
+}
+
+#[test]
+fn anchored_box_in_a_grid_area_settles_at_its_anchor_across_columns() {
+    // anchor-position-grid-001: the box follows its anchor in the second grid
+    // row, which the columns split at 100px.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='column-count:3;column-fill:auto;column-gap:10px;width:620px;height:100px'>\
+<div style='height:10px'></div>\
+<div style='position:relative;display:grid;grid-template-columns:repeat(2,100px);grid-template-rows:50px 100px'>\
+<div style='anchor-name:--a1;grid-column:2;grid-row:2;background:#008000'></div>\
+<div style='position:absolute;grid-column:2;grid-row:2;left:anchor(--a1 left);top:anchor(--a1 top);width:8px;height:anchor-size(--a1 height);background:#00ff00'></div>\
+</div></div>",
+        800.,
+        200.,
+    );
+    let lime: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| opaque(*c) == 0x00ff00)
+        .map(|(b, _)| {
+            (
+                f32::from(b.origin.x),
+                f32::from(b.origin.y),
+                f32::from(b.size.height),
+            )
+        })
+        .collect();
+    assert_eq!(lime, vec![(100., 60., 40.), (310., 0., 60.)], "{found:?}");
+}

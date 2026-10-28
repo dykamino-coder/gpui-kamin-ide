@@ -7,6 +7,7 @@ impl Recording {
         Record {
             geometry: self,
             child,
+            node: None,
         }
         .hooked()
     }
@@ -15,6 +16,7 @@ impl Recording {
 struct Record {
     geometry: Box<Recording>,
     child: AnyElement,
+    node: Option<Node>,
 }
 
 impl Wrap for Record {
@@ -26,21 +28,27 @@ impl Wrap for Record {
     }
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         let id = self.child.request_layout(window, cx);
-        let geometry = &self.geometry;
-        geometry.recorder.nodes.borrow_mut().insert(
-            geometry.id,
-            Entry {
-                node: Node::capture(id, window),
-                cb: geometry.cb,
-                positioned: geometry.positioned,
-                border: geometry.border,
-                clone_edges: geometry.clone_edges,
-            },
-        );
+        let node = Node::capture(id, window);
+        self.node = Some(node);
+        self.geometry.remember(node);
         id
     }
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // A settling pass keeps the instance prepaint placed: of the candidate
+        // boxes `position-try` lays out, only the chosen one is prepainted.
+        if let Some(node) = self.node
+            && window
+                .render_context::<super::Settling>()
+                .is_some_and(|s| Rc::ptr_eq(&s.0, &self.geometry.recorder))
+        {
+            self.geometry.remember(node);
+            let recorder = &self.geometry.recorder;
+            recorder
+                .records
+                .borrow_mut()
+                .insert(self.geometry.id, bounds.origin);
+        }
         let geometry = &self.geometry;
         crate::hooks::paint_source_node(
             geometry.id,
@@ -63,6 +71,21 @@ impl Wrap for Record {
             window,
             cx,
             |window, cx| self.child.paint(window, cx),
+        );
+    }
+}
+
+impl Recording {
+    fn remember(&self, node: Node) {
+        self.recorder.nodes.borrow_mut().insert(
+            self.id,
+            Entry {
+                node,
+                cb: self.cb,
+                positioned: self.positioned,
+                border: self.border,
+                clone_edges: self.clone_edges,
+            },
         );
     }
 }

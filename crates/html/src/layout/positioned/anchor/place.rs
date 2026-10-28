@@ -115,7 +115,7 @@ pub(crate) fn place_one(
     }
     crate::layout::positioned::containing_block::metrics::record::settled_offset(
         plans.key,
-        gpui::point(px(p.dx), px(p.dy)),
+        bounds.origin + gpui::point(px(p.dx), px(p.dy)),
         window,
     );
     window.with_exact_element_offset(gpui::point(px(p.dx), px(p.dy)), |window| {
