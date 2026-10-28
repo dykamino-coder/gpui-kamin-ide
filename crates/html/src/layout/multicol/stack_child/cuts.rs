@@ -198,7 +198,7 @@ pub(super) fn stack_child_of(
         // продолжаются каждый со своего расхода (column_regrow::items).
         overflow_top: fixed.is_some()
             && rows.is_none()
-            && (!parallel_items_inside(copy, 4, vcx)
+            && (!parallel_items_inside(copy, 4)
                 || crate::layout::fragment::flow::blocks::grid_items_resume(copy)),
         // Вложенный многоколоночник — маска режет вбок
         // (`StackChild::nested_cols`).

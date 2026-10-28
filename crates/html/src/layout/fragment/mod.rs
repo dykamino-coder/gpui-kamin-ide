@@ -1,5 +1,6 @@
 //! Фрагментация: формы, полосы, переносимые коробки.
 
+pub(crate) mod axis_slice;
 pub mod breaks;
 pub mod clone;
 pub mod flex_lines;
@@ -18,6 +19,8 @@ pub(crate) mod static_coordinates;
 pub mod table_bands;
 // Модель токенов вводится раньше потребителей: укладка читает из неё
 // `Space`, остальное подключают шаги перехода на токены.
+pub(crate) mod decoration;
+pub(crate) mod paint_source;
 #[cfg_attr(
     not(test),
     expect(dead_code, reason = "break-token model lands before its consumers")

@@ -146,10 +146,14 @@ pub(crate) fn box_style_unpainted(
 
 fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> BoxStyle {
     let cascaded = own.cascaded();
+    // Перенесённая раскладкой коробка остаётся ребёнком своего родителя по
+    // дереву элементов (css-cascade-5 §7.2); `parent` — её новая коробка-родитель.
+    let moved = own.moved_from();
+    let tree = moved.as_deref().unwrap_or(parent);
     let element = own.slot().with_parent().map(|(original, element_parent)| {
         // Только новая computed-стадия родителя-элемента (например, источник
         // position-try) требует вычислить ребёнка заново. Used-копия её не меняет.
-        let context = parent.element_style.as_ref();
+        let context = tree.element_style.as_ref();
         let computed = context
             .and_then(|p| p.variant_for(&element_parent))
             .map(|p| own.slot().compute(p, cascaded, vcx).legacy)
@@ -180,7 +184,10 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         None => &*view,
     };
     let mut boxed = super::inherit::box_stage(
-        parent,
+        super::inherit::BoxParents {
+            layout: parent,
+            tree,
+        },
         declared,
         &view,
         crate::style::box_input::BoxStyleInput {
@@ -192,7 +199,10 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         vcx,
     );
     if !boxed.position_try_fallbacks.is_empty() {
-        boxed.try_style = Some(own.clone());
+        // Варианты коробки, созданной раскладкой из стадии элемента, пересчитывают
+        // каскад этого элемента под его родителем-элементом (css-anchor-position-1
+        // §fallback-rule, css-cascade-5 §7.3.1), а не значения коробки под коробкой-родителем.
+        boxed.try_style = Some(view.try_source.clone().unwrap_or_else(|| own.clone()));
     }
     boxed
 }

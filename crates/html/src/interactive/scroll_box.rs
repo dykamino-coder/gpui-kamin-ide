@@ -220,7 +220,8 @@ pub(crate) fn resizable(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    if e.style.cascaded().pointer_events_none == Some(true) {
+    // `pointer-events` наследуется: читать вычисленное значение, не каскад.
+    if e.style.used().pointer_events_none == Some(true) {
         return None;
     }
     let (horizontal, vertical) = e.style.used().resize?;

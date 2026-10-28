@@ -68,12 +68,14 @@ mod prompts;
 mod image_sampling;
 mod natural_image;
 mod absolute_transformation;
+pub(crate) mod vector_transform;
 mod scene_capture;
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
 mod hit_transform;
-pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan,
+pub use hit_transform::PaintHitScope;
+pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
     PaintScopeDescriptor, PaintGroupDescriptor};
 mod paint_snapshot;
 mod raster_frame;
@@ -1023,6 +1025,9 @@ pub(crate) struct Frame {
     pub(crate) hitboxes: Vec<Hitbox>,
     /// KaminIDE patch: inverse-matrix scopes of hitboxes inserted under a transform.
     pub(crate) hitbox_scopes: FxHashMap<HitboxId, Rc<hit_transform::HitScope>>,
+    /// KaminIDE patch: scopes of single segment placements (index in `hitboxes`),
+    /// overriding the scope of their hitbox id.
+    pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
@@ -1080,6 +1085,7 @@ impl Frame {
             scene: Scene::default(),
             hitboxes: Vec::new(),
             hitbox_scopes: FxHashMap::default(),
+            hitbox_entry_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
             deferred_draws: Vec::new(),
             input_handlers: Vec::new(),
@@ -1111,6 +1117,7 @@ impl Frame {
         self.cursor_styles.clear();
         self.hitboxes.clear();
         self.hitbox_scopes.clear();
+        self.hitbox_entry_scopes.clear();
         self.window_control_hitboxes.clear();
         self.deferred_draws.clear();
         self.tab_stops.clear();
@@ -1147,8 +1154,12 @@ impl Frame {
     pub(crate) fn hit_test(&self, position: Point<Pixels>) -> HitTest {
         let mut set_hover_hitbox_count = false;
         let mut hit_test = HitTest::default();
-        for hitbox in self.hitboxes.iter().rev() {
-            if hit_transform::HitScope::hitbox_contains(self.hitbox_scopes.get(&hitbox.id), hitbox, position) {
+        for (index, hitbox) in self.hitboxes.iter().enumerate().rev() {
+            let scope = match self.hitbox_entry_scopes.get(&index) {
+                Some(scope) => scope.as_ref(),
+                None => self.hitbox_scopes.get(&hitbox.id),
+            };
+            if hit_transform::HitScope::hitbox_contains(scope, hitbox, position) {
                 hit_test.ids.push(hitbox.id);
                 if !set_hover_hitbox_count
                     && hitbox.behavior == HitboxBehavior::BlockMouseExceptScroll
@@ -4089,6 +4100,13 @@ impl Window {
                 self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
             }
         }
+        let shift = self.next_frame.hitboxes.len();
+        for index in range.start.hitboxes_index..range.end.hitboxes_index {
+            if let Some(scope) = self.rendered_frame.hitbox_entry_scopes.get(&index) {
+                let entry = shift + index - range.start.hitboxes_index;
+                self.next_frame.hitbox_entry_scopes.insert(entry, scope.clone());
+            }
+        }
         self.next_frame.hitboxes.extend(
             self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index]
                 .iter()
@@ -4248,7 +4266,7 @@ impl Window {
         if let Some(text) = style.text_style() {
             self.push_text_style_ref(text);
         }
-        self.push_content_mask(style.overflow_mask_snapped(bounds, self));
+        let _clip_scope = self.push_content_mask(style.overflow_mask_snapped(bounds, self));
         self.with_restore(depth, |window, depth| {
             window.text_style_stack.truncate(depth.0);
             window.content_mask_stack.truncate(depth.1);
@@ -4305,13 +4323,13 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
         let depth = self.content_mask_stack.len();
-        self.push_content_mask(mask);
+        let _clip_scope = self.push_content_mask(mask);
         self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
     }
 
     // Prepare mask temporaries before entering the recursive child traversal.
     #[inline(never)]
-    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> bool {
+    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
         if let Some(mask) = mask {
             // KaminIDE patch: под `with_transformation_masked` маска ребёнка
             // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -4321,12 +4339,12 @@ impl Window {
             let mask = match self.mask_map {
                 Some(m) => self.mapped_mask(mask, &m),
                 None => self.scaled_mask(mask),
-            }
-            .intersect(&self.content_mask());
-            self.content_mask_stack.push(mask);
-            true
+            };
+            let scope = self.segment_clip_scope(mask, false);
+            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
+            scope
         } else {
-            false
+            None
         }
     }
 
@@ -4342,6 +4360,23 @@ impl Window {
     ) -> R {
         self.invalidator.debug_assert_paint_or_prepaint();
         let mask = self.scaled_mask(mask);
+        let _clip_scope = self.segment_clip_scope(mask, true);
+        let depth = self.content_mask_stack.len();
+        self.content_mask_stack.push(mask);
+        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
+    }
+
+    /// KaminIDE patch: восстановить маску, прочитанную `content_mask` (уже в
+    /// итоговых координатах окна), без пересечения с текущей и без повторного
+    /// масштаба стопки страниц. Продолжение OOF в копии фрагмента режет его
+    /// фрагментаинер, а не срез копии (`paint::continuation`).
+    pub fn with_content_mask_exact<R>(
+        &mut self,
+        mask: ContentMask<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+        let _clip_scope = self.segment_clip_scope(mask, true);
         let depth = self.content_mask_stack.len();
         self.content_mask_stack.push(mask);
         self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -4524,6 +4559,7 @@ impl Window {
         let result = f(self);
         if result.is_err() {
             self.next_frame.hitboxes.truncate(index.hitboxes_index);
+            self.next_frame.hitbox_entry_scopes.retain(|entry, _| *entry < index.hitboxes_index);
             self.next_frame
                 .tooltip_requests
                 .truncate(index.tooltips_index);
@@ -4660,6 +4696,7 @@ impl Window {
     /// Obtain the current content mask. This method should only be called during element drawing.
     pub fn content_mask(&self) -> ContentMask<Pixels> {
         self.invalidator.debug_assert_paint_or_prepaint();
+        if let Some(mask) = self.segment_capture_mask() { return mask; }
         self.content_mask_stack
             .last()
             .cloned()
@@ -5811,7 +5848,7 @@ impl Window {
             fragment: 0,
         };
         if hoist && self.next_frame.scene.in_group {
-            self.next_frame.scene.hoisted_backdrops.push(surface);
+            self.next_frame.scene.hoist_backdrop(surface);
         } else {
             self.next_frame.scene.insert_primitive(surface);
         }
@@ -5880,7 +5917,7 @@ impl Window {
         inner.finish();
         // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
         // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
-        let hoisted = std::mem::take(&mut inner.hoisted_backdrops);
+        let hoisted = inner.take_backdrops();
         // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
         // их номера были местными, поэтому сдвигаются на длину списка.
         let mut nested = std::mem::take(&mut inner.groups);
@@ -5914,14 +5951,9 @@ impl Window {
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
         // копирует кадр, уже нарисованный под элементом, а буфер группы
         // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.
-        if self.next_frame.scene.in_group {
-            self.next_frame.scene.hoisted_backdrops.extend(hoisted);
-        } else {
-            for surface in hoisted {
-                self.next_frame.scene.insert_primitive(surface);
-            }
-        }
-        self.next_frame.scene.insert_primitive(PaintSurface {
+        self.next_frame.scene.adopt_backdrops(hoisted);
+        let unbounded = self.content_mask_stack.len() == 1;
+        self.next_frame.scene.insert_group_surface(PaintSurface {
             order: 0,
             bounds: scaled,
             content_mask,
@@ -5931,7 +5963,7 @@ impl Window {
             opacity,
             color_matrix: None,
             fragment: 0,
-        });
+        }, unbounded);
         result
     }
 
@@ -6386,7 +6418,9 @@ impl Window {
         if let Some(scope) = &self.hit_scope {
             self.next_frame.hitbox_scopes.insert(id, scope.clone());
         }
-        self.next_frame.hitboxes.push(hitbox.clone());
+        if !self.insert_segment_hitbox(&hitbox) {
+            self.next_frame.hitboxes.push(hitbox.clone());
+        }
         hitbox
     }
 

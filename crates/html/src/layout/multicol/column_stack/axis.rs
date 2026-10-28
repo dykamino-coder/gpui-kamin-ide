@@ -31,6 +31,10 @@ impl ColumnStack {
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         self.plan_oof(&plan, bounds);
+        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
+            plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
+            plan.incomplete();
+        }
         let step = col_w + self.gap;
         let rl = axis == StackAxis::VerticalRl;
         for f in &plan {
@@ -119,6 +123,9 @@ impl ColumnStack {
 
     /// Отрисовка вертикальной стопки (пара к `prepaint_axis`).
     pub(crate) fn paint_axis(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        if self.oof.plan.borrow().failure.is_some() || self.record_native(window, cx).is_err() {
+            return;
+        }
         let axis = self.axis;
         let (_, block_avail) = self.axis_sizes(bounds);
         let col_w = self.col_w.get();
@@ -130,6 +137,7 @@ impl ColumnStack {
             parts[f.kid] += 1;
         }
         let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
+        let records = self.copy_records();
         for f in plan {
             let (c, ry) = self.place(f.col);
             let rel = self.children[f.kid].rel;
@@ -187,15 +195,22 @@ impl ColumnStack {
             else {
                 continue;
             };
+            let segment = gpui::PaintSegmentId(f.col as u64);
+            let mut paint = |window: &mut Window| {
+                crate::hooks::with_copy_segment(segment, records.as_ref(), window, |window| {
+                    el.paint(window, cx)
+                })
+            };
             if split {
-                window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+                window.with_content_mask(Some(mask), paint);
             } else {
-                el.paint(window, cx);
+                paint(window);
             }
         }
         let spans = self.spans_plan.borrow().clone();
         for (kid, _) in spans {
             self.children[kid].el.paint(window, cx);
         }
+        let _ = self.paint_orphans(window);
     }
 }

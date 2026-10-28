@@ -15,16 +15,6 @@
     "reason": "used_mut() меняет единственную стадию нематериализованного стиля; удалить fallback после разделения стадий у всех синтетических коробок."
   },
   {
-    "file": "crates/html/src/layout/fragment/breaks/mod.rs",
-    "task": "F2-2",
-    "reason": "OOF reach оценивает полный border box; удалить в P08 после разделения normal size и продолжения OOF."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/breaks/mod.rs",
-    "task": "F2-2",
-    "reason": "Static position получает sibling offsets суммой оценок высоты и полей; удалить в P08 после измеренного normal-flow static rect."
-  },
-  {
     "file": "crates/html/src/layout/fragment/clone/mod.rs",
     "task": "F2-7",
     "reason": "Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование."
@@ -105,16 +95,6 @@
     "reason": "Смешанный clone/nested/OOF preplan исключён из роста копий; удалить общий gate в P21 после recorded child resume поверх P05/P08/P10."
   },
   {
-    "file": "crates/html/src/layout/multicol/container/parallel.rs",
-    "task": "F2-2",
-    "reason": "После роста OOF форма всего ребёнка оценивается заново; удалить в P08 после независимого OOF resume и live Reach с исходным CB/static rect."
-  },
-  {
-    "file": "crates/html/src/layout/multicol/container/parallel.rs",
-    "task": "F2-2",
-    "reason": "Прямой measure смешивает оценку normal size с OOF reach; удалить в P08 после исходного CB/static rect и emitted OOF child fragments."
-  },
-  {
     "file": "crates/html/src/layout/multicol/measure/children.rs",
     "task": "F2-4",
     "reason": "Вертикальная смешанная группа оценивается через временный root; удалить в P21 после child resume в логических осях и OOF поверх P08/P10/P16."
@@ -138,11 +118,6 @@
     "file": "crates/html/src/layout/multicol/stack_child/prepare.rs",
     "task": "F2-4",
     "reason": "Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10."
-  },
-  {
-    "file": "crates/html/src/layout/page/paged/kids/mod.rs",
-    "task": "F2-2",
-    "reason": "Reach ребёнка страницы оценивается как полная unclamped форма; удалить в P08 после child token и разделения normal size и OOF reach."
   },
   {
     "file": "crates/html/src/layout/page/paged/kids/shape.rs",

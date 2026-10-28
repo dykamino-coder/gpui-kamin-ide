@@ -2,6 +2,9 @@
 #![cfg_attr(windows, allow(dead_code))]
 
 mod record;
+mod vector_transform;
+pub(crate) mod affine_transform;
+pub(crate) mod segments;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -99,6 +102,7 @@ pub struct PaintGroup {
 #[derive(Default)]
 #[expect(missing_docs)]
 pub struct Scene {
+    pub(crate) segment_capture: Option<Box<segments::Capture>>,
     pub(crate) paint_operations: Vec<PaintOperation>,
     /// KaminIDE patch: группы, нарисованные в отдельные буферы.
     ///
@@ -302,6 +306,7 @@ impl Scene {
     }
 
     pub fn clear(&mut self) {
+        self.segment_capture = None;
         self.paint_operations.clear();
         self.groups.clear();
         self.primitive_bounds.clear();
@@ -508,6 +513,9 @@ impl Scene {
         }
         self.paint_operations
             .push(PaintOperation::Primitive(primitive));
+        if let Some(capture) = self.segment_capture.as_mut() {
+            capture.primitive();
+        }
     }
 
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
@@ -1290,6 +1298,8 @@ pub struct Path<P: Clone + Debug + Default + PartialEq> {
     pub content_mask: ContentMask<P>,
     pub vertices: Vec<PathVertex<P>>,
     pub color: Background,
+    /// Original color coordinates and destination-to-source matrix for vector presentation.
+    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
     start: Point<P>,
     current: Point<P>,
     contour_count: usize,
@@ -1310,6 +1320,7 @@ impl Path<Pixels> {
             },
             content_mask: Default::default(),
             color: Default::default(),
+            color_mapping: None,
             contour_count: 0,
         }
     }
@@ -1330,6 +1341,12 @@ impl Path<Pixels> {
             current: self.current.scale(factor),
             contour_count: self.contour_count,
             color: self.color,
+            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
+                let mut matrix = *matrix;
+                matrix.translation[0] *= factor;
+                matrix.translation[1] *= factor;
+                (bounds.scale(factor), matrix)
+            }),
         }
     }
 

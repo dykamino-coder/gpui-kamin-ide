@@ -1,0 +1,119 @@
+//! Завершённая исходная геометрия OOF-потоков без вклада в normal flow.
+
+use super::*;
+
+impl Recorder {
+    pub(crate) fn fragment_snapshot(&self, snapshot: &mut Snapshot, window: &mut Window) {
+        let axis = self.flows.axis;
+        snapshot.axis = Some(axis);
+        let mut contexts = Vec::with_capacity(self.flows.flows.len());
+        let mut roots: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
+        let outside = self.outside(snapshot);
+        let unsettled = self.held();
+        // An anchored box whose anchor the source cannot settle keeps its whole
+        // family in the root's legacy copies. The plan keeps the family (column
+        // balancing counts it); only the paint owner changes.
+        let mut held = std::collections::HashSet::new();
+        let mut walk: Vec<u64> = Vec::with_capacity(self.flows.flows.len());
+        for flow in &self.flows.flows {
+            let root = flow.parent.map_or(flow.id, |parent| walk[parent]);
+            walk.push(root);
+            if unsettled.contains(&flow.id) {
+                held.insert(root);
+            }
+        }
+        for (index, flow) in self.flows.flows.iter().enumerate() {
+            let (parent_repeat, parent_fixed) = flow
+                .parent
+                .map_or((false, false), |parent| contexts[parent]);
+            let repeated = parent_repeat || flow.policy.get() == FixedPolicy::RepeatPages;
+            let fixed_content = parent_fixed || flow.fixed.get();
+            contexts.push((repeated, fixed_content));
+            let root = flow.parent.map_or(flow.id, |parent| roots[parent]);
+            roots.push(root);
+            // A box laid out by a block outside the source is no flow of it.
+            if outside[index] {
+                snapshot.elsewhere.insert(flow.id);
+                continue;
+            }
+            let native = !held.contains(&root);
+            let Some(metrics) = snapshot.get(flow.id).copied() else {
+                continue;
+            };
+            let Some(owner_rect) = self.normal(flow.owner, window) else {
+                continue;
+            };
+            let rect = metrics.normal_rect();
+            let h = f32::from(if axis.is_vertical() {
+                rect.size.width
+            } else {
+                rect.size.height
+            });
+            let geometry = flow.watch.flow.at(rect.origin, rect.size, axis, window);
+            let blocks = flow.watch.blocks().expect("OOF owns a block recorder");
+            let laid = flow
+                .watch
+                .laid_axis(rect.origin, rect.size, axis, window)
+                .with_flow(&geometry);
+            let over = crate::layout::fragment::flow::flow_end(blocks, &laid).unwrap_or(h);
+            let breaks = flow
+                .watch
+                .breaks(rect.origin, rect.size, over, axis, window);
+            snapshot.flows.push(Source {
+                id: flow.id,
+                owner: flow.owner,
+                owner_rect,
+                metrics,
+                kid: Kid {
+                    h,
+                    over,
+                    monolith: flow.monolith || blocks.inside_avoid,
+                    cuts: breaks.cuts,
+                    forced: breaks.forced,
+                    solid: breaks.solid,
+                    avoid: breaks.avoid,
+                    keep: breaks.keep,
+                    clone_dec: flow.clone_dec.then_some((blocks.head, blocks.tail)),
+                    par: crate::layout::fragment::types::Par {
+                        avoid_only: !flow.monolith && blocks.inside_avoid,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                inline: Geometry {
+                    floats: geometry.float_contexts,
+                    paragraphs: geometry.inline,
+                    barriers: breaks.barriers,
+                    keep: breaks.avoid_inside,
+                },
+                policy: if repeated {
+                    FixedPolicy::RepeatPages
+                } else {
+                    FixedPolicy::Fragment
+                },
+                fixed: flow.fixed.get(),
+                inside_fixed: parent_fixed,
+                static_block: flow.static_block.get(),
+                root,
+                native,
+                transform: flow.transform,
+            });
+        }
+    }
+
+    /// Flows laid out by a block outside the multicol, not fragmented by its
+    /// columns (css-multicol-1 §2, css-break-3 §2); descendants follow them.
+    fn outside(&self, snapshot: &Snapshot) -> Vec<bool> {
+        let mut outside: Vec<bool> = Vec::with_capacity(self.flows.flows.len());
+        for flow in &self.flows.flows {
+            let escapes = flow.parent.is_some_and(|parent| outside[parent])
+                || snapshot.get(flow.id).is_some_and(|m| {
+                    snapshot.host != 0
+                        && m.cb_id != snapshot.host
+                        && !self.flows.families.contains_key(&m.cb_id)
+                });
+            outside.push(escapes);
+        }
+        outside
+    }
+}

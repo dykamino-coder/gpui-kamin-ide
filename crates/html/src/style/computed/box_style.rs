@@ -130,6 +130,7 @@ impl BoxStyle {
             background_paint,
             canvas_background,
             paint,
+            try_source,
         } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
@@ -139,6 +140,7 @@ impl BoxStyle {
             background_paint,
             canvas_background,
             paint,
+            try_style: try_source,
             cb_height_def: style.cb_height_def_hint,
             quirk_pct_base: style.quirk_pct_base_hint,
             style,

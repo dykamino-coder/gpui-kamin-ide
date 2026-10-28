@@ -85,9 +85,7 @@ pub(crate) fn grow_pushed(
                 clone_dec: clone_dec(c),
                 // Тот же предикат, что у `StackChild` в сборке стопки: иначе
                 // распорки легли бы по другому плану, чем укладка.
-                overflow_top: fixed.is_some()
-                    && rows.is_none()
-                    && !parallel_items_inside(c, 4, vcx),
+                overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
                 repeat: Default::default(),
                 par: par.get(i).copied().unwrap_or_default(),
             })

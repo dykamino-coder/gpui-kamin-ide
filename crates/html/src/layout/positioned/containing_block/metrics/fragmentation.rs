@@ -11,6 +11,11 @@ use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Position};
 use gpui::{Bounds, Pixels, Window};
 use std::{cell::Cell, rc::Rc};
+pub(crate) mod paint;
+mod roots;
+use roots::anchored;
+pub(crate) use roots::continuation_roots;
+mod snapshot;
 
 #[derive(Clone)]
 pub(crate) struct Source {
@@ -25,6 +30,14 @@ pub(crate) struct Source {
     pub(crate) fixed: bool,
     pub(crate) inside_fixed: bool,
     pub(crate) static_block: bool,
+    /// Outermost enclosing absolute/fixed flow (itself at the top): its own
+    /// capture paints every nested continuation once (`paint::continuation`).
+    pub(crate) root: u64,
+    /// The native source paints it; otherwise its legacy copies do (a box laid
+    /// out outside the source, or held, and every flow of its family).
+    pub(crate) native: bool,
+    /// Its own flat transform, resolved against each of its fragments.
+    pub(crate) transform: Option<crate::style::computed::FlatTransform>,
 }
 
 struct Flow {
@@ -37,11 +50,15 @@ struct Flow {
     policy: Cell<FixedPolicy>,
     fixed: Cell<bool>,
     static_block: Cell<bool>,
+    /// Anchor-positioned: the settling pass places it (`layout::source`).
+    anchored: bool,
+    transform: Option<crate::style::computed::FlatTransform>,
 }
 
 pub(super) struct Recording {
     flows: Vec<Flow>,
     axis: StackAxis,
+    pub(super) families: std::collections::HashMap<u64, u64>,
 }
 
 impl Default for Recording {
@@ -49,11 +66,27 @@ impl Default for Recording {
         Self {
             flows: Vec::new(),
             axis: StackAxis::Horizontal,
+            families: Default::default(),
         }
     }
 }
 
 impl Recording {
+    /// Flows at or inside an anchor-positioned flow: prepaint settles them.
+    /// With the enclosing flow, in tree order.
+    pub(super) fn settling(&self) -> Vec<(u64, Option<u64>)> {
+        let mut inside: Vec<bool> = Vec::with_capacity(self.flows.len());
+        let mut out = Vec::new();
+        for flow in &self.flows {
+            let settles = flow.anchored || flow.parent.is_some_and(|parent| inside[parent]);
+            inside.push(settles);
+            if settles {
+                out.push((flow.id, flow.parent.map(|parent| self.flows[parent].id)));
+            }
+        }
+        out
+    }
+
     pub(super) fn policy(&self, id: u64, style: &BoxStyle) {
         if let Some(flow) = self.flows.iter().find(|f| f.id == id) {
             flow.fixed.set(style.position == Some(Position::Fixed));
@@ -80,10 +113,10 @@ impl Recorder {
         kids: impl Iterator<Item = &'a Element>,
         parent: &BoxStyle,
         opts: &RenderOpts,
-        paged: bool,
     ) -> Self {
         let axis = StackAxis::of(parent.wm());
         let mut flows = Vec::new();
+        let mut families = std::collections::HashMap::new();
         let mut pending: Vec<_> = kids
             .map(|e| {
                 (
@@ -94,22 +127,32 @@ impl Recorder {
                         e.node_id
                     },
                     None,
+                    false,
                 )
             })
             .collect();
         pending.reverse();
-        while let Some((e, owner, mut parent)) = pending.pop() {
-            let is_positioned = positioned(e.style.used().position);
+        while let Some((e, owner, mut parent, nested)) = pending.pop() {
+            // A nested multicol fragments its own absolute/fixed descendants: they
+            // stay plain nodes of the enclosing family here (css-multicol-1 §2).
+            let is_positioned = !nested && positioned(e.style.used().position);
             if is_positioned {
-                let blocks = BlockBox::collect(
+                let mut blocks = BlockBox::collect(
                     e,
+                    // Named pages propagate through class A break points of the
+                    // root's normal flow only: an absolute box's content never
+                    // changes the page (css-page-3 §4.1, Blink).
                     ShapeCx {
-                        paged,
+                        paged: false,
                         viewport: Some(opts.viewport),
                         ..ShapeCx::COLUMNS
                     },
                     opts.cx.vcx(),
                 );
+                // css-break-3 §3.1/§3.2: break-before/after/inside do not apply
+                // to absolutely positioned boxes; their content still breaks.
+                blocks.own_breaks = (false, false, false, false);
+                blocks.inside_avoid = false;
                 let index = flows.len();
                 flows.push(Flow {
                     id: e.node_id,
@@ -121,88 +164,26 @@ impl Recorder {
                     policy: Cell::new(FixedPolicy::Fragment),
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
+                    anchored: anchored(e),
+                    transform: crate::style::computed::FlatTransform::of(&e.style.used()),
                 });
                 parent = Some(index);
             }
+            let inner =
+                nested || crate::layout::multicol::spanner::multicol_container(&e.style.used());
             pending.extend(e.children.iter().rev().filter_map(|n| match n {
-                Node::Element(c) => Some((c, owner, parent)),
+                Node::Element(c) => Some((c, owner, parent, inner)),
                 _ => None,
             }));
+            families.insert(e.node_id, parent.map_or(owner, |index| flows[index].id));
         }
         let mut recorder = Self::default();
-        recorder.flows = Recording { flows, axis };
+        recorder.flows = Recording {
+            flows,
+            axis,
+            families,
+        };
         recorder
-    }
-
-    pub(super) fn fragment_snapshot(&self, snapshot: &mut Snapshot, window: &mut Window) {
-        let axis = self.flows.axis;
-        let mut contexts = Vec::with_capacity(self.flows.flows.len());
-        for flow in &self.flows.flows {
-            let (parent_repeat, parent_fixed) = flow
-                .parent
-                .map_or((false, false), |parent| contexts[parent]);
-            let repeated = parent_repeat || flow.policy.get() == FixedPolicy::RepeatPages;
-            let fixed_content = parent_fixed || flow.fixed.get();
-            contexts.push((repeated, fixed_content));
-            let Some(&metrics) = snapshot.get(flow.id) else {
-                continue;
-            };
-            let Some(owner_rect) = self.normal(flow.owner, window) else {
-                continue;
-            };
-            let rect = metrics.normal_rect();
-            let h = f32::from(if axis.is_vertical() {
-                rect.size.width
-            } else {
-                rect.size.height
-            });
-            let geometry = flow.watch.flow.at(rect.origin, rect.size, axis, window);
-            let blocks = flow.watch.blocks().expect("OOF owns a block recorder");
-            let laid = flow
-                .watch
-                .laid_axis(rect.origin, rect.size, axis, window)
-                .with_flow(&geometry);
-            let over = crate::layout::fragment::flow::flow_end(blocks, &laid).unwrap_or(h);
-            let breaks = flow
-                .watch
-                .breaks(rect.origin, rect.size, over, axis, window);
-            snapshot.flows.push(Source {
-                id: flow.id,
-                owner: flow.owner,
-                owner_rect,
-                metrics,
-                kid: Kid {
-                    h,
-                    over,
-                    monolith: flow.monolith || blocks.inside_avoid,
-                    cuts: breaks.cuts,
-                    forced: breaks.forced,
-                    solid: breaks.solid,
-                    avoid: breaks.avoid,
-                    keep: breaks.keep,
-                    clone_dec: flow.clone_dec.then_some((blocks.head, blocks.tail)),
-                    par: crate::layout::fragment::types::Par {
-                        avoid_only: !flow.monolith && blocks.inside_avoid,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                inline: Geometry {
-                    floats: geometry.float_contexts,
-                    paragraphs: geometry.inline,
-                    barriers: breaks.barriers,
-                    keep: breaks.avoid_inside,
-                },
-                policy: if repeated {
-                    FixedPolicy::RepeatPages
-                } else {
-                    FixedPolicy::Fragment
-                },
-                fixed: flow.fixed.get(),
-                inside_fixed: parent_fixed,
-                static_block: flow.static_block.get(),
-            });
-        }
     }
 }
 
