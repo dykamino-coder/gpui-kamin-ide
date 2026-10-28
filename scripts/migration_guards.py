@@ -5,11 +5,14 @@ snapshot or debt baseline is embedded. Unknown input shapes fail before writes.
 """
 import ast
 import hashlib
+import sys
 from pathlib import Path
 from migration_plan import Change
 GUARDS = ('check_computed.py', 'check_layer_imports.py', 'check_transitional.py', 'check_conventions.py', 'computed_manifest.py')
 HELPERS = ('html_source_inventory.py', 'html_guard_paths.py')
 MARKER = '# KaminIDE crate-split guard adapter schema 1\n'
+# Python 3.13 omits empty AST fields by default; the structure hash keeps the 3.12 form.
+AST_DUMP = {'show_empty': True} if sys.version_info >= (3, 13) else {}
 
 def replace_once(source, old, new):
     if source.count(old) != 1:
@@ -48,7 +51,7 @@ def transform(inputs):
     at = source.index('\ndef git(')
     source = source[:at] + '\nsys.path.insert(0, str(Path(__file__).resolve().parent))\nfrom html_source_inventory import texts, PREFIX\nfrom html_guard_paths import logical_path, normalize\n\n' + source[at:]
     start, end = (source.index('def tree_sources('), source.index('\n\nRULES ='))
-    tree = ast.dump(ast.parse(source[start:end]), include_attributes=False)
+    tree = ast.dump(ast.parse(source[start:end]), include_attributes=False, **AST_DUMP)
     if hashlib.sha256(tree.encode()).hexdigest() != '0e39820697399bf37336423696913b96b096d69008a2b60e342e7cd1558df3df':
         raise ValueError('Conventions tree_sources structure changed; review adapter')
     source = source[:start] + 'def tree_sources(revision):\n    """Use phase identities so a crate move does not reset inherited debt."""\n    return {name: normalize(text) for name, text in texts(REPO, revision).items()}\n\n\ndef convention_diff(base, head, old, now):\n    """Preserve other crates/vendor; diff engine files by stable phase identity."""\n    skip = False\n    for line in git("diff", "-U0", f"{base}..{head}", "--", "crates", "vendor").decode(\n            "utf-8", "replace").splitlines():\n        if line.startswith("diff --git "):\n            names = line.split()[2:4]\n            skip = any(logical_path(name[2:]).startswith(PREFIX) for name in names)\n        if not skip:\n            yield line\n    for name in sorted(old.keys() | now.keys()):\n        if old.get(name) == now.get(name):\n            continue\n        yield from difflib.unified_diff(old.get(name, "").splitlines(),\n                                        now.get(name, "").splitlines(),\n                                        fromfile="a/" + name, tofile="b/" + name, n=0)\n' + source[end:]
