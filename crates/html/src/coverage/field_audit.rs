@@ -54,9 +54,32 @@ const ACCESSORS: &[(&str, &str)] = &[
     ("clamp_auto", "clamp_by_height()"),
 ];
 
+/// Поля `Computed`, видимые до выделения `kamin-style` только внутри крейта
+/// (`pub(crate)`): аудит их не проверял и не проверяет. Список только сокращается.
+const CRATE_INTERNAL: &[&str] = &[
+    "decl_order",
+    "side_order",
+    "font_weight_step",
+    "bidi_inherit",
+    "cq_size",
+    "quirk_pct_base_hint",
+    "stretch_size",
+    "will_change_root",
+    "backdrop_filter_set",
+    "vt_name",
+    "color_initial",
+    "math_depth",
+    "math_font_size",
+    "declaration_parse",
+    "css_wide_value",
+    "mask_border",
+    "mask_border_luminance",
+    "clamp_continue",
+];
+
 /// Поля разрешённого стиля, которые никто не читает.
 pub fn dead_fields() -> Vec<String> {
-    let source = include_str!("../style/computed/fields.rs");
+    let source = include_str!("../../../html-style/src/style/computed/fields.rs");
     let start = match source.find("pub struct Computed {") {
         Some(i) => i,
         None => return vec![],
@@ -74,6 +97,7 @@ pub fn dead_fields() -> Vec<String> {
         .filter_map(|l| l.split(':').next())
         .map(|f| f.trim().to_string())
         .filter(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+        .filter(|f| !CRATE_INTERNAL.contains(&f.as_str()))
         .filter(|f| !CONSUMERS.iter().any(|src| reads_field(src, f)))
         .filter(|f| {
             !ACCESSORS

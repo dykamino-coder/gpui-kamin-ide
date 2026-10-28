@@ -135,7 +135,28 @@ SVG; `loader` и `images` не импортируют фазы, `render` или 
 шрифтов (`font_facts`), без GPUI, CSS, DOM и без зависимостей. `kamin-html`
 реэкспортирует модуль (`pub use kamin_font_facts::font_facts`), поэтому
 `kamin_html::font_facts` и внутренние пути `crate::font_facts` прежние.
-Загрузка шрифтов и метрики платформы остаются в `text/fonts`. Проверки
+Загрузка шрифтов и метрики платформы остаются в `text/fonts`.
+
+Второй — `crates/html-style` (`kamin-style`): `dom`, `style`, `resources`,
+`css_syntax`, `color`, `cache`, `defaults`, `tolerance`, `box_facts`,
+`budget`, `diagnostics` и нижние данные документа `values` (`DocumentValues`,
+`ValueCx`/`ValueDoc`, арены значений, at-правила, готовность кадра,
+публикация фактов картинок, шрифтовые факты ADR3). Верхний
+`document::state::DocState` держит `DocumentValues` рядом с состояниями фаз
+раскладки и текста и выбирает провайдер шрифтовых фактов (бэкенд text);
+`DocumentValues::detached` строит нижние данные без бэкенда (провайдер
+`Detached`, запасные значения CSS) — для нижних тестов и освобождаемого
+документа. Разбор, создающий документ целиком (`kamin_html::parse`,
+`Parsed`), живёт в фасаде (`document::parsed`) и разбирает в нижние данные
+через `dom::parse_into`. `kamin-html` реэкспортирует корни
+(`pub(crate) use kamin_style::style` и т. д.), так что внутренние пути
+`crate::<корень>` и внешние `kamin_html::dom`/`css`/`value` прежние.
+Нижние тестовые помощники, которые зовут тесты `kamin-html`, открыты
+признаком `engine-test-support` только через его dev-dependency.
+Выделение ведёт `python scripts/split_crates.py --through <крейт>`: переносит и
+переписывает только исходники выделяемых крейтов, пути фасада остаются.
+
+Проверки
 исходников (`check_layer_imports`, `check_conventions`, `check_transitional`,
 `check_computed`) читают выделенные крейты через
 `scripts/html_source_inventory.py` по логическим путям `crates/html/src/…`,

@@ -1,0 +1,199 @@
+//! Вычисленный стиль узла: что получилось после каскада, до применения к GPUI.
+//!
+//! Промежуточная структура нужна по двум причинам. Во-первых, её видно в
+//! тестах без окна и рендера — а `gpui::Style` собрать в тесте нельзя.
+//! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
+//! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
+
+use crate::values::ValueCx;
+#[macro_use]
+mod declaration_parse;
+pub use declaration_parse::{ParseResult, css_wide_keyword};
+mod calc_basis;
+pub use calc_basis::CalcSizeBasis;
+mod appearance;
+pub mod flat_background;
+pub mod formatting_context;
+pub mod math_style;
+pub mod shape_kind;
+pub mod single_corner;
+pub mod stacking;
+pub use appearance::Appearance;
+mod background_position;
+mod bidi_properties;
+pub mod box_predicates;
+pub mod font_alternates;
+pub mod font_family;
+mod font_kerning;
+mod font_request;
+pub(super) mod font_weight;
+pub mod image_function;
+mod image_operands;
+mod image_source;
+pub use image_source::ConicGradient;
+pub use image_source::{ImageFilter, ImageSource};
+mod container_type;
+mod content_functions;
+mod counters;
+pub use container_type::ContainerType;
+mod mask_shorthand;
+mod mask_size;
+pub mod orthogonal;
+mod radius_mask;
+mod radius_parse;
+mod size_range;
+pub mod writing_mode;
+pub use content_functions::parse_content;
+mod outline_style;
+use crate::style::computed::outline_style::parse as outline_style_of;
+pub use outline_style::DOUBLE as OUTLINE_DOUBLE;
+pub use props::border::values::line_style_ok;
+pub use props::mask_clip::mask_border::initial_mask_border;
+pub(super) mod props;
+pub use props::display_flex::values::alignment as alignment_value;
+pub use props::font::values::GROUP_TAGS as FONT_VARIANT_GROUPS;
+pub use props::grid::values::area_name as grid_area_name;
+pub use props::inherited::MarkerType;
+mod queries;
+mod resolve;
+pub use resolve::{FontCx, LenCx, ViewportCx};
+
+use crate::style::values::value::Len;
+mod box_style;
+mod fields;
+pub mod scroll;
+pub mod snap;
+mod used_color;
+pub use crate::style::computed::box_style::BoxStyle;
+pub use crate::style::computed::box_style::{ElementStyle, InlineFormat};
+pub use crate::style::computed::fields::*;
+pub(super) mod transform;
+pub use crate::style::computed::transform::*;
+mod filter;
+pub use crate::style::computed::filter::*;
+pub(super) mod gradient;
+pub use crate::style::computed::gradient::*;
+pub use gradient::stops::place_stops;
+pub(super) mod grid_tracks;
+pub use crate::style::computed::grid_tracks::*;
+pub(super) mod types;
+pub use crate::style::computed::types::*;
+pub(super) mod parse_util;
+pub use crate::style::computed::parse_util::*;
+
+/// Четыре стороны: `top right bottom left`, как в CSS.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Sides {
+    pub top: Option<Len>,
+    pub right: Option<Len>,
+    pub bottom: Option<Len>,
+    pub left: Option<Len>,
+}
+
+impl Sides {
+    /// Раскрытие сокращённой записи: 1 значение — все стороны, 2 — верт/гориз,
+    /// 3 — верх/гориз/низ, 4 — по часовой.
+    pub fn shorthand(raw: &str, vcx: ValueCx<'_>) -> Sides {
+        // Разрез — по пробелам ВНЕ скобок: `calc(10px + 1%) 0 0 0` — четыре
+        // значения, а не шесть обрывков (`calc-margin-block-1`). Смесь с долей
+        // доживает индексом (`parse_mixed`) — раскладка складывает её сама.
+        let v: Vec<Option<Len>> = split_outside_parens(raw)
+            .iter()
+            .map(|t| Len::parse_mixed(t, vcx))
+            .collect();
+        match v.len() {
+            1 => Sides {
+                top: v[0],
+                right: v[0],
+                bottom: v[0],
+                left: v[0],
+            },
+            2 => Sides {
+                top: v[0],
+                right: v[1],
+                bottom: v[0],
+                left: v[1],
+            },
+            3 => Sides {
+                top: v[0],
+                right: v[1],
+                bottom: v[2],
+                left: v[1],
+            },
+            4 => Sides {
+                top: v[0],
+                right: v[1],
+                bottom: v[2],
+                left: v[3],
+            },
+            _ => Sides::default(),
+        }
+    }
+}
+
+/// Четыре угла скругления.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Corners {
+    pub tl: Option<Len>,
+    pub tr: Option<Len>,
+    pub br: Option<Len>,
+    pub bl: Option<Len>,
+}
+
+pub mod inh {
+    pub const Z_INDEX: u32 = 1 << 1;
+    pub const DISPLAY: u32 = 1 << 3;
+    pub const CLIP: u32 = 1 << 6;
+    pub const TRANSFORM: u32 = 1 << 10;
+    pub const TRANSFORM_ORIGIN: u32 = 1 << 11;
+    /// `overflow-clip-margin: inherit` — коробка отсчёта и поле родителя.
+    pub const CLIP_MARGIN: u32 = 1 << 15;
+    /// `corner-shape: inherit` — параметры углов родителя.
+    pub const CORNER_SHAPE: u32 = 1 << 18;
+    /// `border-radius: inherit` — радиусы углов родителя.
+    pub const RADIUS: u32 = 1 << 19;
+}
+
+/// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,
+/// которая свойство только ОБЕЩАЕТ. «If any non-initial value of a property
+/// would create a stacking context on the element, specifying that property
+/// in will-change must create a stacking context on the element» — и то же
+/// дословно про содержащий блок для `absolute` и для `fixed`.
+/// filter-effects-1 §5 «A computed value of other than none results in the
+/// creation of a containing block for absolute and fixed positioned
+/// descendants»; то же для `backdrop-filter` (filter-effects-2 §3). Blink:
+/// `ComputedStyle::CanContainFixedPositionObjects` (`HasNonInitialFilter`,
+/// `HasNonInitialBackdropFilter`).
+pub fn filter_contains_fixed(c: &Computed) -> bool {
+    c.filter.is_some()
+        || c.filter_ref.is_some()
+        || c.backdrop_blur.is_some()
+        || c.backdrop_color.is_some()
+}
+
+pub mod wc {
+    /// Содержащий блок для `position: absolute`.
+    pub const CB_ABS: u8 = 1 << 0;
+    /// Содержащий блок для `position: fixed`.
+    pub const CB_FIXED: u8 = 1 << 1;
+    /// Контекст наложения.
+    pub const STACK: u8 = 1 << 2;
+    /// `z-index`: контекст только там, где `z-index` действует
+    /// (позиционированная коробка, элемент flex/grid) — решает
+    /// `style::cascade::inherit`, где известен вид родителя.
+    pub const STACK_Z: u8 = 1 << 3;
+    /// Обещано свойство семьи `transform` или `contain`: к строчной
+    /// НЕатомарной коробке они не применяются (css-transforms-1
+    /// «transformable element»), поэтому три разряда выше ставит `dom::walk`,
+    /// когда вид коробки уже известен (`will-change-transform-inline`).
+    pub const BOX: u8 = 1 << 4;
+}
+
+#[cfg(test)]
+mod border_image_tests;
+#[cfg(test)]
+mod gradient_tests;
+#[cfg(test)]
+mod tests;
+#[cfg(test)]
+mod used_color_tests;

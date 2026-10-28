@@ -1,0 +1,120 @@
+//! Правила `@counter-style` документа (css-counter-styles-3 §3).
+//!
+//! Разбор стилевых листов кладёт дескрипторы каждого действительного
+//! правила (`register`) в реестр текущего документа (`values`):
+//! у рамки свой документ и свои правила. Представление значения строится по алгоритму спеки
+//! §counter-style-generate: диапазон → резерв, начальное представление по
+//! системе, дополнение `pad`, знак `negative`. Предопределённые стили
+//! описаны в `counter_style::builtin`; без правил документа путь
+//! предопределённых стилей не меняется вовсе.
+
+use crate::style::generated::counter_style::{
+    Context, builtin, builtin_initial, builtin_repr_in, normalize_name,
+};
+use std::collections::HashMap;
+
+mod generate;
+mod math;
+mod parse;
+mod resolve;
+mod tokens;
+use generate::anonymous;
+pub use generate::{custom_marker, custom_repr, valid_symbols_fn};
+use math::{Math, is_math_fn};
+pub use parse::register;
+use resolve::{Algo, in_range, resolve_counter_style, uses_negative};
+use tokens::{Tok, tokenize};
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum System {
+    Cyclic,
+    Numeric,
+    Alphabetic,
+    Symbolic,
+    Additive,
+    Fixed(i64),
+    Extends(String),
+}
+
+/// Дескрипторы одного правила, как они заданы (незаданное — `None`).
+#[derive(Clone, Debug, Default)]
+pub struct Raw {
+    system: Option<System>,
+    symbols: Option<Vec<String>>,
+    additive: Option<Vec<(u64, String)>>,
+    negative: Option<(String, String)>,
+    prefix: Option<String>,
+    suffix: Option<String>,
+    /// `Some(None)` — `auto`.
+    range: Option<Option<Vec<(i64, i64)>>>,
+    pad: Option<(usize, String)>,
+    fallback: Option<String>,
+}
+
+/// Реестр правил документа: имя (с исходным регистром) → дескрипторы.
+pub type CounterStyles = HashMap<String, Raw>;
+
+#[cfg(test)]
+mod tests {
+    //! Тесты правил @counter-style: разбор дескрипторов, системы, запасные стили.
+
+    use super::*;
+    use crate::values::ValueCx;
+
+    fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce(ValueCx<'_>)) {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        for (name, descs) in css {
+            let mut d = crate::style::css::DeclBlock::new();
+            for (k, v) in descs.iter() {
+                d.push(*k, *v, false);
+            }
+            register(&doc, name, &d);
+        }
+        f(doc.values());
+    }
+
+    #[test]
+    fn systems_follow_spec() {
+        with(
+            &[
+                ("a", &[("system", "cyclic"), ("symbols", "\\2020  \\2021")]),
+                (
+                    "b",
+                    &[
+                        ("system", "extends upper-roman"),
+                        ("range", "infinite 5"),
+                        ("pad", "3 '*'"),
+                    ],
+                ),
+                (
+                    "c",
+                    &[
+                        ("system", "additive"),
+                        ("additive-symbols", "3 \"a\", 2 \"b\""),
+                    ],
+                ),
+                ("d", &[("system", "numeric"), ("symbols", "'0' '1' '2'")]),
+            ],
+            |vcx| {
+                // css-counter-styles-3 §cyclic: index `(value - 1) mod N` with a
+                // non-negative modulo, so -2 with two symbols is index 1.
+                assert_eq!(
+                    custom_repr(-2, "a", Context::default(), vcx).unwrap(),
+                    "\u{2021}"
+                );
+                assert_eq!(
+                    custom_repr(-1, "b", Context::default(), vcx).unwrap(),
+                    "-*I"
+                );
+                assert_eq!(custom_repr(0, "b", Context::default(), vcx).unwrap(), "0");
+                assert_eq!(custom_repr(6, "b", Context::default(), vcx).unwrap(), "6");
+                assert_eq!(custom_repr(1, "c", Context::default(), vcx).unwrap(), "1");
+                assert_eq!(custom_repr(5, "c", Context::default(), vcx).unwrap(), "ab");
+                assert_eq!(
+                    custom_repr(-4, "d", Context::default(), vcx).unwrap(),
+                    "-11"
+                );
+            },
+        );
+    }
+}
