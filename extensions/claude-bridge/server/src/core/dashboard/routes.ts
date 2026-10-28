@@ -16,6 +16,7 @@ import { registerTokenRoutes } from './controllers/tokens'
 import { registerSessionRoutes } from './controllers/sessions'
 import { registerUserRoutes } from './controllers/users'
 import { registerTranscriptExportRoutes } from './controllers/transcripts-export'
+import { registerMcpReportRoutes } from './controllers/mcp-report'
 
 export function createDashboardRoutes(): Hono {
   const api = new Hono()
@@ -37,6 +38,7 @@ export function createDashboardRoutes(): Hono {
   registerSessionRoutes(api)
   registerUserRoutes(api)
   registerTranscriptExportRoutes(api)
+  registerMcpReportRoutes(api)
 
   return api
 }

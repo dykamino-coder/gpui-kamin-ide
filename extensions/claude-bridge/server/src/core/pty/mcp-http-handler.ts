@@ -27,6 +27,7 @@ import { matchesResourceTemplate } from './resource-template'
 import { notifyTaskChanged, openToolNotificationStream } from './mcp-tool-notify'
 import { PROJECT_SESSION_TOOLS, isProjectSessionTool, projectSessionToolsEnabled } from '../project-sessions/tools'
 import { runForSession } from '../project-sessions/session-glue'
+import { observeMcpCatalog, observeMcpCall } from '../stats/mcp-catalog'
 
 export { MCP_TOOLS } from './mcp-tools-defs'
 
@@ -579,6 +580,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           inputSchema: t.inputSchema,
         }))
       const toolList = [...MCP_TOOLS, ...serverTools, ...externalTools]
+      observeMcpCatalog(session, toolList)
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
       debugLog('tools/list response', {
@@ -609,6 +611,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       // never reach the client host. Same SSE envelope and size cap as forwarded
       // tools; scope comes from the authenticated session, not the arguments.
       if (isProjectSessionTool(toolName) && projectSessionToolsEnabled()) {
+        observeMcpCall(session, toolName)
         return sseStreamResponse(body.id ?? null, async () => {
           const result = await runForSession(session, toolName, toolInput)
           logMcpRequest(
@@ -630,6 +633,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         logMcpRequest(session, `tools/call:${toolName}`, 'error', `Unknown tool: ${toolName}`)
         return jsonResponse(jsonRpcError(body.id, -32602, `Unknown tool: ${toolName}`), 400)
       }
+      observeMcpCall(session, toolName)
 
       if (
         modern &&

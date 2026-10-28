@@ -1,0 +1,26 @@
+.note {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.scroll {
+  max-height: 340px;
+  overflow: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+.table th,
+.table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border-primary);
+  overflow-wrap: anywhere;
+}
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary);
+}
