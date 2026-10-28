@@ -128,8 +128,12 @@ pub(super) fn place_cut(
         // §unforced-breaks: «must place at least some content on each
         // fragmentainer»; `tall-break-inside-avoid-at-start`: пустой
         // `div`, затем `break-inside: avoid` 200 в колонке 100). У
-        // страниц — прежнее правило.
-        None if *placed && (*cur > 0.01 || paged) => {
+        // страниц — прежнее правило. Колонка ряда, начатого не с верха
+        // фрагментаинера (`Space::not_at_start`), кроме первой, его началом не
+        // считается: первая принимает переполнение, и ряд целиком уходит дальше
+        // (Blink `LayoutRow`: «Breaking before is better»), прочие отдают
+        // монолит следующему ряду.
+        None if *placed && (*cur > 0.01 || paged || (*col > 0 && *col < not_top)) => {
             // Из непустой колонки — в следующую целиком; поле на
             // границе колонки съедается.
             next_column(col, cur, placed, not_top, float_hold);

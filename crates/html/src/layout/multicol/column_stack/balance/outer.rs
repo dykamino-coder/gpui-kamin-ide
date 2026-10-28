@@ -48,6 +48,8 @@ pub(crate) fn outer_lines(phase: f32, outer: f32, row: f32, gap: f32, n: usize) 
 
 impl ColumnStack {
     /// Укладка по линиям `outer_lines`; последняя при балансе — по содержимому.
+    // Тот же итог, что у `balance`: высота, линии, план, спаннеры.
+    #[allow(clippy::type_complexity)]
     pub(super) fn balance_outer_rows(
         &self,
         kids: &[Kid],

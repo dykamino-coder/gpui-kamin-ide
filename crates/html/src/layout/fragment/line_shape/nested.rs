@@ -1,7 +1,7 @@
 //! Вложенные ряды: допустимость native-раскладки и ширина коробки в колонке.
 
-use crate::dom::Element;
 use crate::dom::whitespace::is_blank;
+use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::style::computed::Display;
@@ -15,7 +15,14 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
     let sizes = BoxDimensions::for_element(c, s);
     multicol_container(s)
         && (s.column_count.is_some_and(|n| n > 1) || s.column_width.is_some())
-        && matches!(s.column_height, None | Some(Len::Px(_)))
+        // Свои ряды (`column-height`, `column-wrap`) — без спаннеров: линии
+        // между спаннерами идут сеткой рядов самой коробки (`Rows::outer`
+        // спаннеров не несёт).
+        && (s.column_height.is_none() && s.column_wrap.is_none()
+            || matches!(s.column_height, None | Some(Len::Px(_)))
+                && !c.children.iter().any(
+                    |n| matches!(n, Node::Element(k) if crate::layout::multicol::spanner::spanner_box(k)),
+                ))
         && (matches!(s.height, Some(Len::Px(h)) if h > 0.0)
             || (matches!(s.height, None | Some(Len::Auto))
                 && sizes.minimum[1].is_none()
