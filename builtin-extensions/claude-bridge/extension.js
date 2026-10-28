@@ -18996,6 +18996,118 @@ var init_file_system = __esm({
   }
 });
 
+// src/main/mcp/tools/shell-foreground.ts
+function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env) {
+  return new Promise((resolve) => {
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let totalBytes = 0;
+    let stderrBytes = 0;
+    let truncated = false;
+    let timedOut = false;
+    let settled = false;
+    let forceTimer;
+    const finish = (code, failure) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(forceTimer);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      if (failure) {
+        resolve(errorResult3(failure));
+        return;
+      }
+      const parts = [];
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      if (stdout) parts.push(stdout);
+      if (stderr) parts.push(`
+--- stderr ---
+${stderr}`);
+      if (truncated || stderrBytes > MAX_OUTPUT_BYTES) parts.push(`
+[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB per stream]`);
+      if (timedOut) parts.push(`
+[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`);
+      if (code !== null && code !== 0) parts.push(`
+[Exit code: ${code}]`);
+      const result = textResult3(parts.join("") || `Command completed with exit code ${code ?? 0}`);
+      if (timedOut) result.isError = true;
+      resolve(result);
+    };
+    const child = (0, import_node_child_process4.spawn)(shell2, [...shellFlags, command], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
+      // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
+      // identifies our session so plugins/scripts can adapt. See CLI's
+      // `utils/Shell.ts` — same two flags.
+      env: env4
+    });
+    const signalTree = (signal) => {
+      if (process.platform !== "win32" && child.pid) {
+        try {
+          process.kill(-child.pid, signal);
+          return;
+        } catch {
+        }
+      }
+      try {
+        child.kill(signal);
+      } catch {
+      }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      forceTimer = setTimeout(() => {
+        signalTree("SIGKILL");
+        finish(child.exitCode);
+      }, TERMINATION_GRACE_MS);
+      if (process.platform === "win32" && child.pid) {
+        try {
+          const killer = (0, import_node_child_process4.spawn)("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+          killer.on("error", () => {
+          });
+        } catch {
+        }
+      }
+      signalTree("SIGTERM");
+    }, timeout);
+    child.stdout?.on("data", (chunk) => {
+      if (truncated) return;
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_OUTPUT_BYTES) {
+        truncated = true;
+        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length);
+        if (remaining > 0) {
+          stdoutChunks.push(chunk.subarray(0, remaining));
+        }
+      } else {
+        stdoutChunks.push(chunk);
+      }
+    });
+    child.stderr?.on("data", (chunk) => {
+      if (stderrBytes >= MAX_OUTPUT_BYTES) return;
+      const remaining = MAX_OUTPUT_BYTES - stderrBytes;
+      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
+      stderrBytes += chunk.length;
+    });
+    child.on("error", (err) => finish(null, `Failed to execute command: ${err.message}`));
+    child.on("close", (code) => finish(code));
+  });
+}
+var import_node_child_process4, MAX_OUTPUT_BYTES, TERMINATION_GRACE_MS, textResult3, errorResult3;
+var init_shell_foreground = __esm({
+  "src/main/mcp/tools/shell-foreground.ts"() {
+    "use strict";
+    import_node_child_process4 = require("node:child_process");
+    MAX_OUTPUT_BYTES = 100 * 1024;
+    TERMINATION_GRACE_MS = 1e3;
+    textResult3 = (text) => ({ content: [{ type: "text", text }] });
+    errorResult3 = (message) => textResult3(`Error: ${message}`);
+  }
+});
+
 // src/main/mcp/tools/shell-snapshot.ts
 function buildSnapshotScript() {
   return [
@@ -19085,10 +19197,10 @@ async function shellEnv() {
     CLAUDECODE: "1"
   };
 }
-function textResult3(text) {
+function textResult4(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult3(message) {
+function errorResult4(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
 function evictOldBackgroundOutput() {
@@ -19109,19 +19221,19 @@ async function findBashAsync() {
 }
 async function powerShellExecute(input) {
   const command = input.command;
-  if (!command) return errorResult3("command is required");
+  if (!command) return errorResult4("command is required");
   const timeout = typeof input.timeout === "number" ? Math.min(input.timeout, 18e5) : 15e5;
   let pwshPath;
   try {
     pwshPath = await resolvePowerShell();
   } catch (err) {
-    return errorResult3(err instanceof Error ? err.message : String(err));
+    return errorResult4(err instanceof Error ? err.message : String(err));
   }
   return runForegroundCommand(command, pwshPath, timeout, ["-c"], await shellEnv());
 }
 async function bashExecute(input) {
   const command = input.command;
-  if (!command) return errorResult3("command is required");
+  if (!command) return errorResult4("command is required");
   const timeout = typeof input.timeout === "number" ? Math.min(input.timeout, 18e5) : 15e5;
   const runInBackground = input.run_in_background === true;
   const description = input.description || "";
@@ -19129,7 +19241,7 @@ async function bashExecute(input) {
   try {
     shell2 = await findBashAsync();
   } catch (err) {
-    return errorResult3(err instanceof Error ? err.message : String(err));
+    return errorResult4(err instanceof Error ? err.message : String(err));
   }
   const snapshot2 = await getOrCreateSnapshot(shell2);
   const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot2);
@@ -19158,7 +19270,7 @@ function appendBounded(chunks, lengthRef, chunk) {
 function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"], env4 = process.env) {
   evictOldBackgroundOutput();
   const bgId = nextBgId++;
-  const child = (0, import_node_child_process4.spawn)(shell2, [...shellFlags, command], {
+  const child = (0, import_node_child_process5.spawn)(shell2, [...shellFlags, command], {
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
     // Suppress any child-console window flashing on Windows. Modal dialogs
@@ -19201,7 +19313,7 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
     });
     child.unref();
   }
-  return textResult3(
+  return textResult4(
     `Background process started (bash_id: ${bgId}, pid: ${child.pid || "unknown"}).
 ` + (description ? `Description: ${description}
 ` : "") + `The command is running in the background. Read its output with BashOutput (bash_id: ${bgId}) and stop it with KillShell.`
@@ -19210,9 +19322,9 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
 async function readBackgroundOutput(input) {
   const raw = input.bash_id ?? input.shell_id ?? input.id;
   const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult3("bash_id is required (the numeric id from run_in_background)");
+  if (!Number.isFinite(bgId)) return errorResult4("bash_id is required (the numeric id from run_in_background)");
   const out = backgroundOutput.get(bgId);
-  if (!out) return errorResult3(`No background shell with bash_id ${bgId} (it may have been evicted).`);
+  if (!out) return errorResult4(`No background shell with bash_id ${bgId} (it may have been evicted).`);
   let newStdout = out.stdout.slice(out.stdoutCursor);
   const newStderr = out.stderr.slice(out.stderrCursor);
   out.stdoutCursor = out.stdout.length;
@@ -19236,17 +19348,17 @@ ${newStdout}
 ${newStderr}
 </stderr>`);
   if (!newStdout && !newStderr) parts.push(out.running ? "\n(no new output yet)" : "\n(no more output)");
-  return textResult3(parts.join(""));
+  return textResult4(parts.join(""));
 }
 async function killBackgroundShell(input) {
   const raw = input.shell_id ?? input.bash_id ?? input.id;
   const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult3("shell_id is required (the numeric id from run_in_background)");
+  if (!Number.isFinite(bgId)) return errorResult4("shell_id is required (the numeric id from run_in_background)");
   const child = backgroundProcesses.get(bgId);
   const out = backgroundOutput.get(bgId);
-  if (!child && !out) return errorResult3(`No background shell with bash_id ${bgId}.`);
+  if (!child && !out) return errorResult4(`No background shell with bash_id ${bgId}.`);
   if (!child || child.killed || out && !out.running) {
-    return textResult3(`Background shell ${bgId} already exited (code ${out?.exitCode ?? "unknown"}).`);
+    return textResult4(`Background shell ${bgId} already exited (code ${out?.exitCode ?? "unknown"}).`);
   }
   try {
     if (typeof child.pid === "number" && process.platform !== "win32") {
@@ -19259,9 +19371,9 @@ async function killBackgroundShell(input) {
       child.kill();
     }
   } catch (e) {
-    return errorResult3(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`);
+    return errorResult4(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`);
   }
-  return textResult3(`Killed background shell ${bgId}.`);
+  return textResult4(`Killed background shell ${bgId}.`);
 }
 async function resolvePowerShell() {
   if (cachedPwsh) return cachedPwsh;
@@ -19272,98 +19384,16 @@ async function resolvePowerShell() {
   })();
   return pwshLookupInFlight;
 }
-function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env) {
-  return new Promise((resolve) => {
-    const stdoutChunks = [];
-    const stderrChunks = [];
-    let totalBytes = 0;
-    let stderrBytes = 0;
-    let truncated = false;
-    let timedOut = false;
-    const child = (0, import_node_child_process4.spawn)(shell2, [...shellFlags, command], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
-      // identifies our session so plugins/scripts can adapt. See CLI's
-      // `utils/Shell.ts` — same two flags.
-      env: env4
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      if (process.platform === "win32" && child.pid) {
-        try {
-          (0, import_node_child_process4.spawn)("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
-        } catch {
-        }
-      }
-      child.kill("SIGTERM");
-      setTimeout(() => {
-        if (!child.killed) child.kill("SIGKILL");
-      }, 5e3);
-    }, timeout);
-    child.stdout?.on("data", (chunk) => {
-      if (truncated) return;
-      totalBytes += chunk.length;
-      if (totalBytes > MAX_OUTPUT_BYTES) {
-        truncated = true;
-        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length);
-        if (remaining > 0) {
-          stdoutChunks.push(chunk.subarray(0, remaining));
-        }
-      } else {
-        stdoutChunks.push(chunk);
-      }
-    });
-    child.stderr?.on("data", (chunk) => {
-      if (stderrBytes >= MAX_OUTPUT_BYTES) return;
-      const remaining = MAX_OUTPUT_BYTES - stderrBytes;
-      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
-      stderrBytes += chunk.length;
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      resolve(errorResult3(`Failed to execute command: ${err.message}`));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-      const stderr = Buffer.concat(stderrChunks).toString("utf8");
-      const parts = [];
-      if (stdout) {
-        parts.push(stdout);
-      }
-      if (stderr) {
-        parts.push(`
---- stderr ---
-${stderr}`);
-      }
-      if (truncated) {
-        parts.push(`
-[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB limit]`);
-      }
-      if (timedOut) {
-        parts.push(`
-[Command timed out after ${timeout}ms]`);
-      }
-      if (code !== null && code !== 0) {
-        parts.push(`
-[Exit code: ${code}]`);
-      }
-      const result = parts.join("") || `Command completed with exit code ${code ?? 0}`;
-      resolve(textResult3(result));
-    });
-  });
-}
-var import_node_child_process4, import_node_path7, MAX_OUTPUT_BYTES, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var import_node_child_process5, import_node_path7, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
   "src/main/mcp/tools/shell.ts"() {
     "use strict";
-    import_node_child_process4 = require("node:child_process");
+    import_node_child_process5 = require("node:child_process");
+    init_shell_foreground();
     import_node_path7 = __toESM(require("node:path"), 1);
     init_shell_snapshot();
     init_plugin_helpers();
     init_command_runtime();
-    MAX_OUTPUT_BYTES = 100 * 1024;
     WINDOWS_MODAL_SHIM = process.platform === "win32" ? `nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells \u2014 use fnm, volta, or a direct Node installer" >&2; return 127; }
 ` : "";
     backgroundProcesses = /* @__PURE__ */ new Map();
@@ -36683,10 +36713,10 @@ var require_turndown_cjs = __commonJS({
 });
 
 // src/main/mcp/tools/web.ts
-function textResult4(text) {
+function textResult5(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult4(message) {
+function errorResult5(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
 function htmlToText(html) {
@@ -36828,11 +36858,11 @@ async function fetchGuarded(start, headers, signal) {
   let current = start;
   for (let hop = 0; ; hop++) {
     const reason = await blockReason(current);
-    if (reason) return errorResult4(`URL targets a blocked address (${reason})`);
+    if (reason) return errorResult5(`URL targets a blocked address (${reason})`);
     const resp = await fetch(current.toString(), { headers, signal, redirect: "manual" });
     const isRedirect = resp.status >= 300 && resp.status < 400 && resp.headers.get("location");
     if (!isRedirect) return resp;
-    if (hop >= MAX_REDIRECTS) return errorResult4(`Too many redirects fetching ${start.toString()}`);
+    if (hop >= MAX_REDIRECTS) return errorResult5(`Too many redirects fetching ${start.toString()}`);
     try {
       await resp.body?.cancel();
     } catch {
@@ -36840,7 +36870,7 @@ async function fetchGuarded(start, headers, signal) {
     try {
       current = new URL(resp.headers.get("location"), current);
     } catch {
-      return errorResult4("Invalid redirect location");
+      return errorResult5("Invalid redirect location");
     }
   }
 }
@@ -36850,7 +36880,7 @@ function isLikelyIntranetHost(hostname) {
 }
 async function webFetch(input) {
   const url = input.url;
-  if (!url) return errorResult4("url is required");
+  if (!url) return errorResult5("url is required");
   const prompt = input.prompt || "Extract the main content from this page";
   const allowHttp = input.allow_http === true;
   try {
@@ -36858,7 +36888,7 @@ async function webFetch(input) {
     try {
       parsedUrl = new URL(url);
     } catch {
-      return errorResult4(`Invalid URL: ${url}`);
+      return errorResult5(`Invalid URL: ${url}`);
     }
     if (parsedUrl.protocol === "http:" && !allowHttp && !isLikelyIntranetHost(parsedUrl.hostname.toLowerCase())) {
       parsedUrl.protocol = "https:";
@@ -36870,11 +36900,11 @@ async function webFetch(input) {
     if (!(fetched instanceof Response)) return fetched;
     const response = fetched;
     if (!response.ok) {
-      return errorResult4(`HTTP ${response.status} ${response.statusText} for ${url}`);
+      return errorResult5(`HTTP ${response.status} ${response.statusText} for ${url}`);
     }
     const declaredLen = Number(response.headers.get("content-length") || "0");
     if (declaredLen > MAX_RAW_HTML_BYTES * 4) {
-      return errorResult4(`Response too large (${Math.round(declaredLen / 1024 / 1024)} MB) for ${url} \u2014 fetch a more specific URL.`);
+      return errorResult5(`Response too large (${Math.round(declaredLen / 1024 / 1024)} MB) for ${url} \u2014 fetch a more specific URL.`);
     }
     const contentType = response.headers.get("content-type") || "";
     const body = await readCapped(response, MAX_RAW_HTML_BYTES);
@@ -36889,7 +36919,7 @@ async function webFetch(input) {
 
 [Content truncated at ${Math.round(MAX_CONTENT_BYTES / 1024)}KB]`;
     }
-    return textResult4(
+    return textResult5(
       `URL: ${parsedUrl.toString()}
 Prompt: ${prompt}
 
@@ -36899,9 +36929,9 @@ ${content}`
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("AbortError") || msg.includes("timeout")) {
-      return errorResult4(`Request timed out fetching ${url}`);
+      return errorResult5(`Request timed out fetching ${url}`);
     }
-    return errorResult4(`Failed to fetch ${url}: ${msg}`);
+    return errorResult5(`Failed to fetch ${url}: ${msg}`);
   }
 }
 var import_turndown, import_promises6, import_node_net, MAX_CONTENT_BYTES, MAX_RAW_HTML_BYTES, MAX_REDIRECTS;
@@ -36918,15 +36948,15 @@ var init_web = __esm({
 });
 
 // src/main/mcp/tools/git.ts
-function textResult5(text) {
+function textResult6(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult5(message) {
+function errorResult6(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
 function runGitLocal(args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const proc = (0, import_node_child_process5.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const proc = (0, import_node_child_process6.spawn)("git", args, { cwd: opts.cwd, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     const timer = opts.timeoutMs ? setTimeout(() => {
       try {
@@ -36962,60 +36992,60 @@ async function getGitRoot(cwd) {
 }
 async function exitWorktree(input) {
   const worktreePath = input.path;
-  if (!worktreePath) return errorResult5("path is required");
+  if (!worktreePath) return errorResult6("path is required");
   const worktreeName = import_node_path8.default.basename(worktreePath);
   if (!/^[a-zA-Z0-9_-]+$/.test(worktreeName)) {
-    return errorResult5("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
+    return errorResult6("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot();
-    if (!gitRoot) return errorResult5("Not inside a git repository.");
+    if (!gitRoot) return errorResult6("Not inside a git repository.");
     if (!import_node_fs6.default.existsSync(worktreePath)) {
-      return errorResult5(`Worktree path does not exist: ${worktreePath}`);
+      return errorResult6(`Worktree path does not exist: ${worktreePath}`);
     }
     await runGitLocal(["worktree", "remove", worktreePath, "--force"], { cwd: gitRoot, timeoutMs: 3e4 });
-    return textResult5(`Removed worktree: ${worktreePath}`);
+    return textResult6(`Removed worktree: ${worktreePath}`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return errorResult5(`Failed to remove worktree: ${msg}`);
+    return errorResult6(`Failed to remove worktree: ${msg}`);
   }
 }
 async function enterWorktree(input) {
   const name = input.name || `worktree-${import_node_crypto3.default.randomBytes(4).toString("hex")}`;
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    return errorResult5("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
+    return errorResult6("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot();
     if (!gitRoot) {
-      return errorResult5("Not inside a git repository. Cannot create worktree.");
+      return errorResult6("Not inside a git repository. Cannot create worktree.");
     }
     const worktreesDir = import_node_path8.default.join(gitRoot, ".claude", "worktrees");
     import_node_fs6.default.mkdirSync(worktreesDir, { recursive: true });
     const worktreePath = import_node_path8.default.join(worktreesDir, name);
     if (import_node_fs6.default.existsSync(worktreePath)) {
-      return errorResult5(`Worktree already exists at ${worktreePath}`);
+      return errorResult6(`Worktree already exists at ${worktreePath}`);
     }
     const branchName = `worktree/${name}`;
     await runGitLocal(["worktree", "add", "-b", branchName, worktreePath, "HEAD"], { cwd: gitRoot, timeoutMs: 3e4 });
     if (!import_node_fs6.default.existsSync(worktreePath)) {
-      return errorResult5("Worktree creation command succeeded but directory was not found");
+      return errorResult6("Worktree creation command succeeded but directory was not found");
     }
-    return textResult5(
+    return textResult6(
       `Created worktree at: ${worktreePath}
 Branch: ${branchName}
 Based on: HEAD`
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return errorResult5(`Failed to create worktree: ${msg}`);
+    return errorResult6(`Failed to create worktree: ${msg}`);
   }
 }
-var import_node_child_process5, import_node_path8, import_node_fs6, import_node_crypto3;
+var import_node_child_process6, import_node_path8, import_node_fs6, import_node_crypto3;
 var init_git = __esm({
   "src/main/mcp/tools/git.ts"() {
     "use strict";
-    import_node_child_process5 = require("node:child_process");
+    import_node_child_process6 = require("node:child_process");
     import_node_path8 = __toESM(require("node:path"), 1);
     import_node_fs6 = __toESM(require("node:fs"), 1);
     import_node_crypto3 = __toESM(require("node:crypto"), 1);
@@ -37487,11 +37517,11 @@ function matchLspLanguage(extensionToLanguage, file) {
   }
   return null;
 }
-var import_node_child_process6, import_node_fs7, import_node_os3, import_node_path9, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
+var import_node_child_process7, import_node_fs7, import_node_os3, import_node_path9, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
   "src/main/plugin-lsp.ts"() {
     "use strict";
-    import_node_child_process6 = require("node:child_process");
+    import_node_child_process7 = require("node:child_process");
     import_node_fs7 = __toESM(require("node:fs"), 1);
     import_node_os3 = __toESM(require("node:os"), 1);
     import_node_path9 = __toESM(require("node:path"), 1);
@@ -37619,7 +37649,7 @@ var init_plugin_lsp = __esm({
           CLAUDE_PROJECT_DIR: this.projectRoot,
           PATH: [import_node_fs7.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path9.default.delimiter)
         };
-        this.child = (0, import_node_child_process6.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
+        this.child = (0, import_node_child_process7.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
           cwd,
           env: env4,
           stdio: ["pipe", "pipe", "pipe"],
@@ -37906,10 +37936,10 @@ var init_plugin_lsp = __esm({
 });
 
 // src/main/mcp/tools/lsp.ts
-function errorResult6(message) {
+function errorResult7(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
-function textResult6(text) {
+function textResult7(text) {
   return { content: [{ type: "text", text }] };
 }
 function requireAbsolutePath(input, key2 = "file") {
@@ -37919,7 +37949,7 @@ function requireAbsolutePath(input, key2 = "file") {
 }
 async function lspDiagnostics(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const diags = vscode3.languages.getDiagnostics(vscode3.Uri.file(file));
   let pluginDiags = [];
   try {
@@ -37927,7 +37957,7 @@ async function lspDiagnostics(input, context) {
   } catch {
   }
   const combined = [...diags ?? [], ...pluginDiags];
-  if (combined.length === 0) return textResult6(`No diagnostics for ${file}.`);
+  if (combined.length === 0) return textResult7(`No diagnostics for ${file}.`);
   const sev = ["Error", "Warning", "Info", "Hint"];
   const lines = combined.map((d) => {
     const line = (d.range?.start?.line ?? 0) + 1;
@@ -37937,7 +37967,7 @@ async function lspDiagnostics(input, context) {
     const code = d.code != null ? ` [${typeof d.code === "object" ? JSON.stringify(d.code) : String(d.code)}]` : "";
     return `[${label}] ${file}:${line}:${col} ${d.message ?? ""}${src}${code}`;
   });
-  return textResult6(lines.join("\n"));
+  return textResult7(lines.join("\n"));
 }
 async function execCmd(command, ...args) {
   return Promise.race([
@@ -37955,23 +37985,23 @@ function hoverText(contents) {
 }
 async function lspHover(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const line = parseLine(input), character = parseChar(input);
   const uri = vscode3.Uri.file(file);
   const pos = new vscode3.Position(line, character);
   try {
     const pluginResults = await pluginLspManager.request(file, "textDocument/hover", { position: { line, character } }, context?.tabId);
     const pluginBody = pluginResults.map((result) => hoverText(result?.contents)).filter(Boolean).join("\n\n");
-    if (pluginBody) return textResult6(`Hover at ${file}:${line + 1}:${character + 1}
+    if (pluginBody) return textResult7(`Hover at ${file}:${line + 1}:${character + 1}
 
 ${pluginBody}`);
   } catch {
   }
   const hovers = await execCmd("vscode.executeHoverProvider", uri, pos);
-  if (!hovers || hovers.length === 0) return errorResult6(NO_SERVER);
+  if (!hovers || hovers.length === 0) return errorResult7(NO_SERVER);
   const body = hovers.map((h) => (h.contents ?? []).join("\n")).filter(Boolean).join("\n\n");
-  if (!body.trim()) return errorResult6(NO_SERVER);
-  return textResult6(`Hover at ${file}:${line + 1}:${character + 1}
+  if (!body.trim()) return errorResult7(NO_SERVER);
+  return textResult7(`Hover at ${file}:${line + 1}:${character + 1}
 
 ${body}`);
 }
@@ -38015,7 +38045,7 @@ function normalizePluginLocations(results) {
 }
 async function lspDefinition(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const line = parseLine(input), character = parseChar(input);
   let locs = [];
   try {
@@ -38023,12 +38053,12 @@ async function lspDefinition(input, context) {
   } catch {
   }
   if (locs.length === 0) locs = await locations("vscode.executeDefinitionProvider", file, line, character);
-  if (locs.length === 0) return errorResult6(NO_SERVER);
-  return textResult6(formatLocations(locs));
+  if (locs.length === 0) return errorResult7(NO_SERVER);
+  return textResult7(formatLocations(locs));
 }
 async function lspReferences(input, context) {
   const file = requireAbsolutePath(input);
-  if (!file) return errorResult6("file must be an absolute path");
+  if (!file) return errorResult7("file must be an absolute path");
   const line = parseLine(input), character = parseChar(input);
   let locs = [];
   try {
@@ -38039,8 +38069,8 @@ async function lspReferences(input, context) {
   } catch {
   }
   if (locs.length === 0) locs = await locations("vscode.executeReferenceProvider", file, line, character);
-  if (locs.length === 0) return errorResult6(NO_SERVER);
-  return textResult6(formatLocations(locs));
+  if (locs.length === 0) return errorResult7(NO_SERVER);
+  return textResult7(formatLocations(locs));
 }
 var import_path5, vscode3, parseLine, parseChar, NO_SERVER, LSP_TIMEOUT_MS;
 var init_lsp = __esm({
@@ -40959,6 +40989,12 @@ var JsonlBatcher = class {
   }
 };
 
+// src/main/ws/mcp-diagnostics.ts
+function mcpDiagnostic(phase, metadata) {
+  if (process.env.KAMIN_BRIDGE_MCP_DIAGNOSTICS !== "1") return;
+  console.info("[bridge:mcp]", JSON.stringify({ timestamp: Date.now(), phase, ...metadata }));
+}
+
 // src/main/ws/mcp-result-outbox.ts
 var MCP_RESULT_LIMITS = { count: 64, bytes: 16 * 1024 * 1024, frameBytes: 4 * 1024 * 1024, lifetimeMs: 12e4, retryMs: 1e3 };
 var McpResultOutbox = class {
@@ -40973,14 +41009,26 @@ var McpResultOutbox = class {
   deliver(sessionId, outcome) {
     const existing = this.slots.get(outcome.requestId);
     if (existing) return existing.sessionId === sessionId ? existing.promise : Promise.reject(new Error("MCP result session mismatch"));
+    if (this.slots.size >= MCP_RESULT_LIMITS.count) return Promise.reject(new Error("MCP result delivery count capacity exceeded"));
     let frame;
+    const payloadBudget = MCP_RESULT_LIMITS.bytes - MCP_RESULT_LIMITS.count * 1024;
+    const failure = (reason) => ({
+      type: "mcp:response",
+      requestId: outcome.requestId,
+      result: { isError: true, content: [{ type: "text", text: `Error: ${reason}. The tool may already have completed; inspect its effects before retrying. For reads, request a smaller range or narrower query.` }] }
+    });
     try {
       frame = JSON.stringify({ ...outcome, sessionId });
     } catch {
-      return Promise.reject(new Error("MCP result cannot be serialized"));
+      outcome = failure("Tool result cannot be serialized");
+      frame = JSON.stringify({ ...outcome, sessionId });
+    }
+    if (Buffer.byteLength(frame) > MCP_RESULT_LIMITS.frameBytes || this.bytes + Buffer.byteLength(frame) > payloadBudget) {
+      outcome = failure("Tool result exceeds the bounded delivery byte budget");
+      frame = JSON.stringify({ ...outcome, sessionId });
     }
     const bytes = Buffer.byteLength(frame);
-    if (bytes > MCP_RESULT_LIMITS.frameBytes || this.bytes + bytes > MCP_RESULT_LIMITS.bytes || this.slots.size >= MCP_RESULT_LIMITS.count) {
+    if (bytes > MCP_RESULT_LIMITS.frameBytes || this.bytes + bytes > MCP_RESULT_LIMITS.bytes) {
       return Promise.reject(new Error("MCP result delivery capacity exceeded"));
     }
     let resolve;
@@ -40991,6 +41039,7 @@ var McpResultOutbox = class {
     });
     this.slots.set(outcome.requestId, { sessionId, frame, bytes, expires: Date.now() + MCP_RESULT_LIMITS.lifetimeMs, promise, resolve, reject });
     this.bytes += bytes;
+    mcpDiagnostic("result-queued", { requestId: outcome.requestId, sessionId, bytes, queuedBytes: this.bytes, queuedCount: this.slots.size });
     this.timer ??= setInterval(() => this.flush(), MCP_RESULT_LIMITS.retryMs);
     this.timer.unref?.();
     this.flush();
@@ -40998,12 +41047,15 @@ var McpResultOutbox = class {
   }
   attach(sessionId) {
     this.sessionId = sessionId;
+    mcpDiagnostic("transport-attached", { sessionId, queuedCount: this.slots.size, queuedBytes: this.bytes });
     for (const [id, slot] of this.slots) {
       if (slot.sessionId !== sessionId) this.finish(id, new Error("MCP result belongs to an ended server session"));
+      else slot.lastSentAt = void 0;
     }
     this.flush();
   }
   detach() {
+    mcpDiagnostic("transport-detached", { sessionId: this.sessionId ?? void 0, queuedCount: this.slots.size, queuedBytes: this.bytes });
     this.sessionId = null;
   }
   acknowledge(sessionId, requestId, accepted) {
@@ -41022,8 +41074,11 @@ var McpResultOutbox = class {
         continue;
       }
       if (this.sessionId !== slot.sessionId) continue;
+      if (slot.lastSentAt !== void 0 && Date.now() - slot.lastSentAt < MCP_RESULT_LIMITS.retryMs) continue;
       try {
-        this.sendFrame(slot.frame);
+        const enqueued = this.sendFrame(slot.frame);
+        mcpDiagnostic(enqueued ? "result-enqueued" : "result-backpressured", { requestId: id, sessionId: slot.sessionId, bytes: slot.bytes });
+        if (enqueued) slot.lastSentAt = Date.now();
       } catch {
       }
     }
@@ -41031,6 +41086,7 @@ var McpResultOutbox = class {
   finish(id, error) {
     const slot = this.slots.get(id);
     if (!slot) return;
+    mcpDiagnostic(error ? "result-delivery-failed" : "result-acknowledged", { requestId: id, sessionId: slot.sessionId });
     this.slots.delete(id);
     this.bytes -= slot.bytes;
     if (this.slots.size === 0 && this.timer) {
@@ -41038,7 +41094,7 @@ var McpResultOutbox = class {
       this.timer = null;
     }
     if (error) slot.reject(error);
-    else slot.resolve();
+    else slot.resolve(JSON.parse(slot.frame));
   }
 };
 
@@ -42058,6 +42114,8 @@ async function handleHookExecute(ctx, msg) {
 }
 async function handleMcpCall(ctx, msg) {
   if (ctx.pendingMcpCalls.has(msg.requestId)) return;
+  const correlation = { requestId: msg.requestId, toolName: msg.toolName };
+  mcpDiagnostic("request-received", correlation);
   ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input });
   ctx.window.webContents.send("mcp-activity", ctx.tabId, {
     requestId: msg.requestId,
@@ -42067,11 +42125,13 @@ async function handleMcpCall(ctx, msg) {
     status: "pending"
   });
   const allowed = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input);
+  mcpDiagnostic(allowed ? "permission-allowed" : "permission-denied", correlation);
   if (!allowed) {
     ctx.denyMcp(msg.requestId, "User denied permission");
     return;
   }
   const start = Date.now();
+  mcpDiagnostic("execution-started", correlation);
   let result;
   try {
     const { executeTool: executeTool2 } = await Promise.resolve().then(() => (init_executor2(), executor_exports2));
@@ -42079,9 +42139,13 @@ async function handleMcpCall(ctx, msg) {
   } catch (err) {
     result = `Error: ${err instanceof Error ? err.message : String(err)}`;
   }
+  mcpDiagnostic("execution-finished", { ...correlation, durationMs: Date.now() - start });
   if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
   try {
-    await ctx.deliverResult({ type: "mcp:response", requestId: msg.requestId, result });
+    const delivery = ctx.deliverResult({ type: "mcp:response", requestId: msg.requestId, result });
+    result = void 0;
+    const delivered = await delivery;
+    result = delivered.type === "mcp:response" ? delivered.result : delivered.reason;
     if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
     ctx.window.webContents.send("mcp-activity", ctx.tabId, {
       requestId: msg.requestId,
@@ -42235,7 +42299,7 @@ var ConnectionManager = class _ConnectionManager {
   recentMcpCalls = /* @__PURE__ */ new Map();
   mcpSessionId = null;
   mcpResults = new McpResultOutbox((frame) => {
-    if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount > 4 * 1024 * 1024) return false;
+    if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024) return false;
     this.ws.send(frame);
     return true;
   });
@@ -42771,7 +42835,7 @@ var ConnectionManager = class _ConnectionManager {
   async deliverMcpResult(outcome) {
     if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return;
     try {
-      await this.mcpResults.deliver(this.mcpSessionId, outcome);
+      outcome = await this.mcpResults.deliver(this.mcpSessionId, outcome);
       if (!this.pendingMcpCalls.has(outcome.requestId)) return;
       this.window.webContents.send("mcp-activity", this.tabId, {
         requestId: outcome.requestId,

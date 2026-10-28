@@ -20,6 +20,11 @@ permission mode, effective matcher and execution host. The audit source
 [hook documentation](https://code.claude.com/docs/en/hooks#pretooluse-decision-control)
 is a reference, not evidence that the pinned binary behaves identically.
 
+The current image pins CLI `2.1.312`; the versioned upgrade audit and its
+bounded runtime gate are in
+[CLI compatibility](../extensions/claude-bridge/server/CLAUDE_CODE_COMPATIBILITY.md).
+That upgrade does not close the permission acceptance matrix below.
+
 ## Three different consent boundaries
 
 | Boundary | Owner | What its acceptance establishes |

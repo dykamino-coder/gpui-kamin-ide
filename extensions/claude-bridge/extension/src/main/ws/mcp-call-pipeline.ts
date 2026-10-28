@@ -5,6 +5,8 @@
 
 import type { BrowserWindow } from '@kaminide/host-compat'
 import type { PermissionDecision } from '../../shared/types'
+import { mcpDiagnostic } from './mcp-diagnostics'
+import type { McpOutcome } from './mcp-result-outbox'
 import type { ClientMessage } from '../../shared/mcp-protocol'
 import type { PermissionManager } from '../mcp/permission-manager'
 import type { PermissionMode } from './connection-manager'
@@ -14,7 +16,7 @@ export interface McpCallCtx {
   tabId: string
   send: (msg: ClientMessage) => void
   reportDeliveryFailure: () => void
-  deliverResult: (outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>) => Promise<void>
+  deliverResult: (outcome: McpOutcome) => Promise<McpOutcome>
   pendingMcpCalls: Map<string, { toolName: string; input: Record<string, unknown> }>
   pendingPermissions: Map<string, (decision: PermissionDecision) => void>
   permissionMode: () => PermissionMode
@@ -106,6 +108,8 @@ export async function handleMcpCall(
   msg: { requestId: string; toolName: string; input: Record<string, unknown> },
 ): Promise<void> {
   if (ctx.pendingMcpCalls.has(msg.requestId)) return
+  const correlation = { requestId: msg.requestId, toolName: msg.toolName }
+  mcpDiagnostic('request-received', correlation)
   ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input })
 
   ctx.window.webContents.send('mcp-activity', ctx.tabId, {
@@ -117,12 +121,14 @@ export async function handleMcpCall(
   })
 
   const allowed = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input)
+  mcpDiagnostic(allowed ? 'permission-allowed' : 'permission-denied', correlation)
   if (!allowed) {
     ctx.denyMcp(msg.requestId, 'User denied permission')
     return
   }
 
   const start = Date.now()
+  mcpDiagnostic('execution-started', correlation)
   let result: unknown
   try {
     const { executeTool } = await import('../mcp/executor')
@@ -130,9 +136,14 @@ export async function handleMcpCall(
   } catch (err) {
     result = `Error: ${err instanceof Error ? err.message : String(err)}`
   }
+  mcpDiagnostic('execution-finished', { ...correlation, durationMs: Date.now() - start })
   if (!ctx.pendingMcpCalls.has(msg.requestId)) return
   try {
-    await ctx.deliverResult({ type: 'mcp:response', requestId: msg.requestId, result })
+    const delivery = ctx.deliverResult({ type: 'mcp:response', requestId: msg.requestId, result })
+    // The outbox owns its bounded serialized frame while awaiting an ack.
+    result = undefined
+    const delivered = await delivery
+    result = delivered.type === 'mcp:response' ? delivered.result : delivered.reason
     if (!ctx.pendingMcpCalls.has(msg.requestId)) return
     ctx.window.webContents.send('mcp-activity', ctx.tabId, {
       requestId: msg.requestId, toolName: msg.toolName, input: msg.input,

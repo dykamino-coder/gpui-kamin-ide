@@ -86,7 +86,7 @@ export function clearInputThrottle(sessionId: string): void {
 // OOM that kills EVERY session on the box. Past the cap we DROP the frame:
 // streaming self-heals (boundary snapshots + the JSONL watcher re-deliver), and
 // dropping one connection's frames is far better than crashing the process.
-const WS_SEND_MAX_BUFFER = 16 * 1024 * 1024 // 16 MB
+export const WS_SEND_MAX_BUFFER = 16 * 1024 * 1024 // 16 MB
 
 export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
   return trySendToClient(ws, msg) === 'sent'
