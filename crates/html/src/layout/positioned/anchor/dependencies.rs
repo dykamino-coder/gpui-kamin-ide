@@ -16,12 +16,17 @@ struct Inputs {
 }
 
 impl Dependencies {
-    pub(crate) fn of(c: &BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) -> Self {
-        let styles = super::trials::Options::new(c, inherited, vcx).styles;
+    pub(crate) fn of(
+        c: &BoxStyle,
+        inherited: &BoxStyle,
+        vcx: ValueCx<'_>,
+        layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
+    ) -> Self {
+        let styles = super::trials::Options::new(c, inherited, vcx, layout).styles;
         Self(
             styles
                 .iter()
-                .map(|(_, c)| Inputs::of(c, inherited, vcx))
+                .map(|(_, c)| Inputs::of(c, inherited, vcx, layout))
                 .collect(),
         )
     }
@@ -37,16 +42,22 @@ impl Dependencies {
             .unwrap_or(0)
     }
 
-    pub(crate) fn values(&self) -> Option<crate::document::state::ValueDoc> {
+    /// Layout state of the document the dependent plans read.
+    pub(crate) fn layout(&self) -> Option<std::rc::Rc<crate::layout::layout_state::LayoutState>> {
         self.0
             .iter()
-            .find_map(|i| i.plan.as_ref().map(|p| p.values.clone()))
+            .find_map(|i| i.plan.as_ref().map(|p| p.layout.clone()))
     }
 }
 
 impl Inputs {
-    fn of(c: &BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) -> Self {
-        let plan = AnchorPlan::of(c, inherited, vcx);
+    fn of(
+        c: &BoxStyle,
+        inherited: &BoxStyle,
+        vcx: ValueCx<'_>,
+        layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
+    ) -> Self {
+        let plan = AnchorPlan::of(c, inherited, vcx, layout);
         let mut names = Vec::new();
         if plan
             .as_ref()

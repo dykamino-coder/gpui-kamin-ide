@@ -110,7 +110,7 @@ impl Paragraph {
 impl Paragraph {
     /// Measurement owner shared with other paragraphs in this document.
     pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
-        self.anchor_values = Some(cx.vcx().keep());
+        self.anchor_values = Some((cx.vcx().keep(), cx.layout().clone()));
         self.measures = cx.paragraph().paragraphs.clone();
         self.paint_context = cx.deferred.vertical_paint.clone();
         self.inline_measure = cx.inline.inline_measure.clone();

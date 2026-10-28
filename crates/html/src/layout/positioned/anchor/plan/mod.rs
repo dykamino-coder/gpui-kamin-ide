@@ -30,7 +30,7 @@ impl AnchorPlan {
     /// приближение: берётся отображённая.
     fn lookup(&self, name: Option<&str>) -> Option<Bounds<Pixels>> {
         self.rec(name).map(|r| {
-            if r.tf_top == 0 || tf_under(r.tf_top, self.values.vcx()) {
+            if r.tf_top == 0 || tf_under(r.tf_top, &self.layout.anchors) {
                 r.rect
             } else {
                 r.rect_tf

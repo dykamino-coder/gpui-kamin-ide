@@ -74,7 +74,7 @@ impl Hooks for Transformed {
             let translation = [ox - a * ox - b * oy + sx, oy - c * ox - d * oy + sy];
             crate::layout::positioned::anchor::tf_push(
                 [[a, b, translation[0]], [c, d, translation[1]]],
-                self.values.vcx(),
+                &self.values.vcx().doc.layout.anchors,
             );
             // The same flat matrix maps the pointer back into the subtree's
             // untransformed hitboxes (css-transforms-1 §transform-rendering:
@@ -93,7 +93,7 @@ impl Hooks for Transformed {
             }
         }
         if flat {
-            crate::layout::positioned::anchor::tf_pop(self.values.vcx());
+            crate::layout::positioned::anchor::tf_pop(&self.values.vcx().doc.layout.anchors);
         }
     }
 

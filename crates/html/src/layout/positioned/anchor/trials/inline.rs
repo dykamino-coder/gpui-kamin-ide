@@ -86,7 +86,7 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
     own.anchor_key = super::super::key_of(&source);
     own.anchor_seq = build_opts.cx.anchor_seq_for(&source);
     let cb_node = own.cb_node;
-    let dependencies = super::super::Dependencies::of(&own, &inherited, vcx);
+    let dependencies = super::super::Dependencies::of(&own, &inherited, vcx, opts.cx.layout());
     let kid = OofKid::Trials(
         Box::new(move |bounds, spot, place, window, cx| {
             let vcx = build_opts.cx.vcx();
@@ -95,7 +95,7 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
             base.anchor_key = super::super::key_of(&source);
             base.anchor_seq = build_opts.cx.anchor_seq_for(&source);
             base.resolve_viewport(build_opts.viewport, vcx);
-            let options = super::Options::new(&base, &inherited, vcx);
+            let options = super::Options::new(&base, &inherited, vcx, build_opts.cx.layout());
             super::run(
                 bounds,
                 spot,
@@ -112,7 +112,12 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
                     opts.cx.position.oof_sizes = Some((
                         base.anchor_key,
                         super::super::resolve::current_inputs(
-                            style, &inherited, bounds, window, vcx,
+                            style,
+                            &inherited,
+                            bounds,
+                            window,
+                            vcx,
+                            build_opts.cx.layout(),
                         ),
                     ));
                     let mut candidate = source.clone();
@@ -146,7 +151,7 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
             .cx
             .position
             .state
-            .local_oof(spot, kid, cb_node, opts.cx.vcx().keep());
+            .local_oof(spot, kid, cb_node, opts.cx.layout().clone());
         if inline_cb {
             Some(host)
         } else {

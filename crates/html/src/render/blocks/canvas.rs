@@ -103,6 +103,7 @@ pub(crate) fn canvas_layer(
                 _ => 0.0,
             };
             let b = st.borders();
+            let root_left = e.style.cascaded().wm().block_rl();
             let area = crate::paint::background::RootArea {
                 measured,
                 left: side(st.margin.left) + side(b.left),
@@ -122,7 +123,7 @@ pub(crate) fn canvas_layer(
                 // содержимому у правого края (css-writing-modes-4
                 // §7, auto block-size): левый край его коробки
                 // пишет обёртка тела ниже при подготовке.
-                measured_left: e.style.cascaded().wm().block_rl(),
+                measured_left: root_left.then(|| opts.cx.layout().clone()),
             };
             match canvas_layers {
                 // Снизу вверх, каждый слой — своей плиткой от
