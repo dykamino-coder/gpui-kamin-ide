@@ -178,6 +178,30 @@ def crate_attributes(source):
     return result
 
 
+LINT = re.compile(r'#\[\s*(?:cfg_attr\s*\(.*,\s*)?(?:allow|expect|warn|deny)\s*\(', re.S)
+
+
+def module_attributes(attrs):
+    """Attributes a facade declaration hands to the extracted module.
+
+    Lint levels on the facade item (`allow`/`expect`/`warn`/`deny`, also under
+    `cfg_attr`) configure the facade reexport only, so they stay in the facade.
+    """
+    kept, index = [], 0
+    while (start := attrs.find('#[', index)) >= 0:
+        depth, stop = 0, start + 1
+        while stop < len(attrs):
+            depth += (attrs[stop] == '[') - (attrs[stop] == ']')
+            stop += 1
+            if not depth:
+                break
+        item = attrs[start:stop]
+        if not LINT.match(item):
+            kept.append(item)
+        index = stop
+    return '\n'.join(kept)
+
+
 def lower_root(package, declarations, source):
     lines = ['//! Внутренняя фаза HTML/CSS: явные контракты конвейера.',
              '', *crate_attributes(source), '']
@@ -188,7 +212,7 @@ def lower_root(package, declarations, source):
         if module.declaration_file != 'lib.rs':
             raise ValueError(f'Unexpected root declaration: {path}')
         match = DECL.match(mask, module.declaration_start)
-        attrs = source[match.start('attrs'):match.end('attrs')].strip()
+        attrs = module_attributes(source[match.start('attrs'):match.end('attrs')])
         if attrs:
             lines.append(attrs)
         lines.append(f'pub mod {path[0]};')
