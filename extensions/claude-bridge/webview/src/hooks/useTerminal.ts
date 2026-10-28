@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { stripMouseTracking } from '../lib/strip-mouse-tracking'
+import { CONSOLE_SCROLLBACK, configureTerminalInteraction } from '../lib/terminal-interaction'
 import { buildTerminalTheme } from '../theme/terminal-theme'
 import { resolvedTheme, themeNonce } from '../theme/apply-theme'
 import { useBridge } from './useBridge'
@@ -100,11 +100,9 @@ export function useTerminal(tabId: string): TerminalRefs {
       cursorStyle: 'block',
       theme: buildTerminalTheme(),
       allowProposedApi: true,
-      // No scrollback (owner, 2026-10-13): the console is a full-screen TUI that
-      // must always fit the panel height and never scroll. Scrollback only kept
-      // stale copies of earlier screens (e.g. the CLI banner twice) behind a
-      // square scrollbar, and FitAddon reserved a scrollbar column for it.
-      scrollback: 0,
+      // Normal-screen history is bounded; xterm's alternate buffer has no
+      // scrollback. FitAddon reserves the real scrollbar width inside the panel.
+      scrollback: CONSOLE_SCROLLBACK,
     })
 
     const fitAddon = new FitAddon()
@@ -115,6 +113,7 @@ export function useTerminal(tabId: string): TerminalRefs {
     const serializeAddon = new SerializeAddon()
     terminal.loadAddon(serializeAddon)
     terminal.open(container)
+    const disposeInteraction = configureTerminalInteraction(terminal, container)
     fitAddon.fit()
 
     // Clear the "Connecting…" overlay only once the terminal has REAL visible
@@ -133,9 +132,8 @@ export function useTerminal(tabId: string): TerminalRefs {
     // Document recreation/restart starts fresh; reconnect clears this cache.
     try {
       const stored = terminalSnapshots.get(tabId)
-      // Snapshots taken before the mouse-tracking filter landed may still
-      // carry the DECSET that disables drag-selection — strip on restore too.
-      if (stored) terminal.write(stripMouseTracking(stored))
+      // Restore application mouse modes together with the screen contents.
+      if (stored) terminal.write(stored)
     } catch { /* malformed historical snapshot */ }
 
     const disposeRenderer = enableTerminalRenderer(terminal)
@@ -230,6 +228,8 @@ export function useTerminal(tabId: string): TerminalRefs {
     // Context menu (right-click): copy / paste
     container.addEventListener('contextmenu', (e) => {
       e.preventDefault()
+      // An application with mouse reporting owns ordinary right-clicks too.
+      if (terminal.modes.mouseTrackingMode !== 'none' && !e.shiftKey) return
       const sel = terminal.getSelection()
 
       // Remove existing menu if any
@@ -368,7 +368,7 @@ export function useTerminal(tabId: string): TerminalRefs {
     fitAddonRef.current = fitAddon
 
     // Register in global registry for bridge.onOutput routing
-    terminalRegistry.set(tabId, { terminal, fitAddon, needsClear: false, pendingOutput: [], rafHandle: null, outputCarry: '' })
+    terminalRegistry.set(tabId, { terminal, fitAddon, needsClear: false, pendingOutput: [], rafHandle: null })
 
     // Send initial size
     bridge.resize(tabId, terminal.cols, terminal.rows)
@@ -391,6 +391,7 @@ export function useTerminal(tabId: string): TerminalRefs {
       // immediately so a fast tab-recreate doesn't pile up zombie GL
       // contexts.
       disposeRenderer()
+      disposeInteraction()
       try { serializeAddon.dispose() } catch { /* ignore */ }
       terminal.dispose()
       terminalRef.current = null

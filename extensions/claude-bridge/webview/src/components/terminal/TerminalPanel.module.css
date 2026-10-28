@@ -32,21 +32,14 @@
   height: 100%;
 }
 
-/* The console never scrolls (scrollback 0): hide the viewport scrollbar xterm
-   still lays out, so no square track shows next to the TUI. */
-.xtermContainer :global(.xterm-viewport) {
-  overflow-y: hidden !important;
-  scrollbar-width: none;
+/* xterm 6 owns its scrollbar and hit testing. Keep it visible when history
+   exists; its zero-sized alternate-screen thumb needs no outer panel scroll. */
+.xtermContainer :global(.xterm-scrollable-element > .scrollbar.vertical) {
+  opacity: 1;
+  pointer-events: auto;
 }
-.xtermContainer :global(.xterm-viewport)::-webkit-scrollbar {
-  display: none;
-}
-/* xterm 5 draws its OWN scrollbar (VS Code's `.xterm-scrollable-element >
-   .scrollbar > .slider`, a square div), not a native one, so the rounded
-   `::-webkit-scrollbar-thumb` theme rules never reached it. The console has
-   nothing to scroll; hide that bar outright. */
-.xtermContainer :global(.xterm-scrollable-element > .scrollbar) {
-  display: none !important;
+.xtermContainer :global(.xterm-scrollable-element > .scrollbar > .slider) {
+  border-radius: 999px;
 }
 
 /* "Connecting to session…" cover shown until the terminal gets its first

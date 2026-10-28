@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const h = vi.hoisted(() => ({ effects: [] as Array<() => void>, ref: 0, serialize: vi.fn(() => 'screen'), terminals: [] as any[], writes: vi.fn(), container: { querySelector: () => null, addEventListener: () => {} } }))
+const h = vi.hoisted(() => ({ effects: [] as Array<() => void>, ref: 0, serialize: vi.fn(() => 'screen'), terminals: [] as any[], writes: vi.fn(), container: { querySelector: () => null, addEventListener: () => {}, removeEventListener: () => {} } }))
 vi.mock('preact/hooks', () => ({ useRef: () => ({ current: h.ref++ % 3 === 0 ? h.container : null }), useState: () => [false, () => {}], useEffect: (fn: () => (() => void) | undefined) => { const end=fn(); if(end) h.effects.push(end) } }))
 vi.mock('@bridge/storage', () => ({ storage: { getItem: () => null, setItem: h.writes, removeItem: () => {} } }))
 vi.mock('./useBridge', () => ({ useBridge: () => ({ resize: () => {}, sendInput: () => {} }) }))
@@ -8,7 +8,7 @@ vi.mock('../theme/apply-theme', () => ({ resolvedTheme: { value: 'dark' }, theme
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   callbacks = new Set<() => void>(); cols=80; rows=24; options={}; buffer={ active: { length: 1, viewportY:0, baseY:0, getLine:()=>({translateToString:()=> 'screen'}) } };
   constructor(){h.terminals.push(this)}
-  loadAddon(){} open(){} attachCustomKeyEventHandler(){} onData(){} onResize(){} onScroll(){} onRender(){} dispose(){}
+  loadAddon(){} open(){} attachCustomKeyEventHandler(){} attachCustomWheelEventHandler(){} onData(){} onResize(){} onScroll(){} onRender(){} dispose(){}
   onWriteParsed(callback:()=>void){this.callbacks.add(callback);return {dispose:()=>this.callbacks.delete(callback)}}
   write(){for(const callback of [...this.callbacks]) callback()}
 } }))
