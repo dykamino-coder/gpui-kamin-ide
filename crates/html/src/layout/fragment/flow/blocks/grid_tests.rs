@@ -8,7 +8,7 @@ use crate::layout::fragment::flow::FlowGeometry;
 use crate::layout::fragment::flow::blocks::MeasuredBreaks;
 
 /// Сетка — первый `div` документа; номера её элементов по порядку.
-fn grid(html: &str) -> (BlockBox, Vec<u64>) {
+pub(super) fn grid(html: &str) -> (BlockBox, Vec<u64>) {
     let doc = crate::dom::parse(html, "");
     fn div(n: &Node) -> Option<&crate::dom::Element> {
         let Node::Element(e) = n else { return None };

@@ -1,6 +1,5 @@
-//! Стопка сетки (рядами в один столбец) и рост дорожки при переносе.
+//! Стопка сетки (рядами в один столбец).
 
-use super::super::grid_px_row_bands;
 use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
 use crate::style::computed::Display;
@@ -102,56 +101,4 @@ pub(crate) fn grid_stack(c: &Element) -> bool {
         }
         _ => false,
     })
-}
-
-/// «Сдвиг ряда» сетки с рядами в точках (Blink `row_offset_adjustments`,
-/// grid_layout_algorithm.cc:2304-2337: ряд, начатый в следующем
-/// фрагментаинере, сдвигается на остаток предыдущего): разрез ровно на начале
-/// ряда `i ≥ 1` (монолитный ряд или перенесённый `break-*`) растит дорожку
-/// `i−1` на `grow`. Высота `auto` вырастает на то же (`grid_rows_px`),
-/// заданная — нет, и ряд `i` всё равно встаёт на край колонки
-/// (`grid-item-oof-004`: абсолют `align-self: end` в ряду 2 — в колонке 2).
-/// Только без `row-gap`: при зазоре эталоны css-gaps держат ряд прежней
-/// высоты (`grid-gap-decorations-fragmentation-011`). Прямой ребёнок стопки;
-/// вложенная сетка — как прежде, без роста.
-pub(crate) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
-    use crate::style::computed::{Track, TrackSize};
-    if grid_stack(c)
-        || !matches!(
-            c.style.used().display,
-            Some(Display::Grid) | Some(Display::InlineGrid)
-        )
-    {
-        return false;
-    }
-    let gap0 = match c.style.used().gap {
-        None | Some((None, _)) => true,
-        Some((Some(Len::Px(v)), _)) => v.abs() < 0.01,
-        _ => false,
-    };
-    if !gap0 {
-        return false;
-    }
-    let Some(bands) = grid_px_row_bands(&c.style.used()) else {
-        return false;
-    };
-    let px_of = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-    let top = px_of(&c.style.used().padding.top) + px_of(&c.style.used().borders().top);
-    let Some(i) = bands.iter().position(|b| (top + b.0 - at).abs() < 0.01) else {
-        return false;
-    };
-    if i == 0 {
-        return false;
-    }
-    let Some(TrackSize::Single(Track::Px(v))) = c
-        .style
-        .used_mut()
-        .grid_rows
-        .as_mut()
-        .and_then(|r| r.get_mut(i - 1))
-    else {
-        return false;
-    };
-    *v += grow;
-    true
 }
