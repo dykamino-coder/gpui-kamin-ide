@@ -4,9 +4,11 @@ use crate::layout::fragment::token::space::sequence::Nested;
 use crate::layout::multicol::dimensions::MulticolDimensions;
 use crate::layout::options::RenderOpts;
 use std::rc::Rc;
+mod clamp_scope;
+use clamp_scope::ClampScope;
 mod spanners;
 mod stack;
-pub(super) use stack::stack_box;
+use stack::stack_box;
 
 use crate::dom::{Element, Node};
 use crate::layout::multicol::column_flow::{column_flow, column_flow_with_dimensions};
@@ -34,7 +36,10 @@ pub(crate) fn multicol_box(
     outer_space: Option<Rc<Nested>>,
     lone_span: bool,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
+    let scope = ClampScope::enter(opts);
+    let opts = scope.as_ref().map_or(opts, ClampScope::opts);
     if has_deep_spanner(e) {
+        let d = ClampScope::close(scope.as_ref(), d, e, &merged);
         return Err(d
             .child(spanners::deferred(e, &merged, inherited, opts, outer_space))
             .into_any_element());
@@ -56,6 +61,7 @@ pub(crate) fn multicol_box(
         lone_span,
         None,
         None,
+        scope.as_ref(),
     )
 }
 
@@ -77,6 +83,7 @@ fn settled(
     lone_span: bool,
     rest_h: Option<f32>,
     dimensions: Option<(MulticolDimensions, MulticolDimensions)>,
+    scope: Option<&ClampScope>,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     // Сплошной текст режется на колонки по строкам, а не по детям:
     // один длинный абзац иначе оставался в первой колонке целиком.
@@ -102,6 +109,7 @@ fn settled(
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
     let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
     if e.children.iter().any(&is_span) && !unified {
+        let d = ClampScope::close(scope, d, e, &merged);
         return Err(multicol_spanner_segments(
             d, e, merged, opts, col_w_px, want, lone_span, rest_h, span_prev, seg_open, is_span,
         ));
@@ -119,6 +127,7 @@ fn settled(
     if let Some(el) = flow.filter(|_| !trim_host) {
         // Коробка элемента остаётся своей: отступы и фон
         // принадлежат ей, поток живёт внутри.
+        let d = ClampScope::close(scope, d, e, &merged);
         return Err(d.child(el).into_any_element());
     }
     if cols == 0 {
@@ -167,6 +176,7 @@ fn settled(
             rows,
             nest_rows,
             nest_phase,
+            scope,
         );
     }
     Ok((d, merged))

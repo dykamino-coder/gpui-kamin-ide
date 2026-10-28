@@ -13,7 +13,7 @@ use gpui::{AnyElement, Styled, px};
 mod tests;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn stack_box(
+pub(super) fn stack_box(
     mut d: gpui::Div,
     e: &Element,
     merged: BoxStyle,
@@ -32,6 +32,7 @@ pub(crate) fn stack_box(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
+    scope: Option<&super::ClampScope>,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     let StackPlan {
         line_col_w,
@@ -58,6 +59,7 @@ pub(crate) fn stack_box(
         nest_rows,
     );
     if let Some(kids) = stackable.filter(|k| !k.is_empty()) {
+        let d = super::ClampScope::close(scope, d, e, &merged);
         return Err(multicol_column_stack(
             d,
             e,

@@ -63,6 +63,9 @@ pub struct ClampEntry {
     /// Absolutely positioned box: not hidden by the clamp (Blink keeps
     /// out-of-flow boxes painted), its overflow stays visible.
     pub positioned: bool,
+    /// Floated box: out of flow, it never separates a line box from the
+    /// clamp point (css-overflow-4 §block-ellipsis).
+    pub float: bool,
 }
 
 /// End edges of a box probe beyond its padding box (see `ClampEntry`).

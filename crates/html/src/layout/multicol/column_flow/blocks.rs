@@ -51,6 +51,12 @@ pub(super) fn non_inline_columns(
         if nested_rows_box(only) {
             return Some(None);
         }
+        // Clamp-контейнер — независимый BFC со своей точкой среза (css-overflow-4
+        // §line-clamp-containers): его строки считает и прячет хост, а не поток
+        // колонок; коробка с декорациями остаётся своей.
+        if crate::layout::box_kind::clamp_host(only, &only.style.used()) {
+            return Some(None);
+        }
         let inside = box_style(inherited, &only.style, vcx);
         return Some(column_flow_in(
             only,
