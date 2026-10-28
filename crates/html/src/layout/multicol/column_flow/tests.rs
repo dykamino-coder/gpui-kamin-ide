@@ -51,3 +51,35 @@ fn preserved_line_breaks_nowrap_and_first_letter_leave_the_text_path() {
         assert_eq!(flow.is_some(), text_path, "{child}");
     }
 }
+
+/// css-multicol-1 §7.1, §8.2: a balanced multicol never makes a column taller
+/// than its definite height; lines that do not fit `count` columns go to
+/// overflow columns (`discard-multicol-001`: 7 lines, 3 columns, `2lh`).
+#[test]
+fn balanced_columns_stop_at_the_box_height_and_overflow_inline() {
+    use super::measure::column_ends;
+    assert_eq!(column_ends(7, 3, 10., None, None, (1, 1)), (vec![3, 6], 3));
+    assert_eq!(
+        column_ends(7, 3, 10., None, Some(20.), (1, 1)),
+        (vec![2, 4, 6], 2)
+    );
+    // Content that fits keeps its balanced split.
+    assert_eq!(
+        column_ends(5, 3, 10., None, Some(20.), (1, 1)),
+        (vec![2, 4], 2)
+    );
+}
+
+/// css-overflow-4 §continue: `discard` parses; the other keywords clear it.
+#[test]
+fn continue_discard_is_its_own_computed_value() {
+    for (css, discard) in [
+        ("continue:discard", Some(true)),
+        ("continue:collapse", Some(false)),
+        ("continue:normal", Some(false)),
+        ("", None),
+    ] {
+        let (_, style) = styled(css, vec![]);
+        assert_eq!(style.clamp_discard, discard, "{css}");
+    }
+}

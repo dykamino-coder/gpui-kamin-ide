@@ -31,6 +31,9 @@ pub struct ColumnFlow {
     /// `column-fill: auto` с заданной высотой: колонки заполняются подряд до
     /// этой высоты, а не делятся поровну (css-multicol-1 §3.3).
     pub(super) fill_height: Option<f32>,
+    /// Высота содержимого коробки при `column-fill: balance`: сбалансированная
+    /// колонка не выше неё, остаток — переполняющие колонки (`measure_columns`).
+    pub(super) cap: Option<f32>,
     /// Текст — единственного ребёнка-монолита (`render::column_flow_in`): в
     /// узкой колонке его строки не режутся (`measure_columns`).
     pub(super) whole: bool,
@@ -65,10 +68,17 @@ impl ColumnFlow {
             font_size,
             line_height,
             fill_height,
+            cap: None,
             whole,
             line_breaks: (1, 1),
             cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.), 1))),
         }
+    }
+
+    /// Высота содержимого коробки для `column-fill: balance` (`cap`).
+    pub(crate) fn capped(mut self, cap: Option<f32>) -> Self {
+        self.cap = cap;
+        self
     }
 
     pub(crate) fn in_outer(
@@ -114,6 +124,7 @@ impl Hooks for ColumnFlow {
                 self.font_size,
                 self.line_height,
                 self.fill_height,
+                self.cap,
                 self.whole,
                 self.line_breaks,
                 bounds.size.width,
