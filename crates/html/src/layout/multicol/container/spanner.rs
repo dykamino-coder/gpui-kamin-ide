@@ -36,7 +36,8 @@ pub(crate) fn multicol_spanner_segments(
     // Отрисованная — первая `legend` в потоке.
     let (legend, kids) = legend_and_kids(e);
     if let Some(legend) = legend {
-        d = d.children(opts.cx.contracts.build.blocks(&[legend], &merged, opts));
+        let band = crate::layout::block::legend::legend_band(legend, &merged);
+        d = d.children(opts.cx.contracts.build.blocks(&[band], &merged, opts));
     }
     // Свой исходный OOF-источник у каждого ряда (`row_sources`).
     let row_geometry = opts

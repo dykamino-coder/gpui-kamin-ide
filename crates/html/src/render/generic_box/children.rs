@@ -33,13 +33,15 @@ pub(crate) async fn generic_children(
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let makes_bfc = formatting_context::independent(&merged, &e.tag);
-    let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
+    let borrowed = super::child_borrow::borrowed(e, &merged).filter(|_| e.tag != "fieldset");
+    let children = if let Some(children) = borrowed {
         Cow::Borrowed(children)
     } else {
         let children = match &e.style.used().grid_areas {
             Some(areas) => place_named_areas(areas, e.children.to_vec()),
             None => e.children.to_vec(),
         };
+        let children = crate::layout::block::legend::with_rendered_legend(e, &merged, children);
         // Resolve physical margins before preparing the vertical formatting context.
         let children = if merged.wm().vertical() {
             // Поле самого контейнера по ведущей стороне оси потока —
