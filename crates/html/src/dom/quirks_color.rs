@@ -11,19 +11,23 @@ use crate::style::cascade::preparation::Colors;
 use crate::style::cascade::preparation::colors;
 use crate::style::values::value::Color;
 
-pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
+pub(super) fn resolve(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+    vcx: ValueCx<'_>,
+) -> Result<(), crate::budget::admission::Error> {
     let Some(Node::Element(root)) = nodes.iter().find(|n| matches!(n, Node::Element(_))) else {
-        return;
+        return Ok(());
     };
     if root.tag != "html" {
-        return;
+        return Ok(());
     }
     let parent = colors(&Colors::default(), &root.style, vcx);
     let Some(body) = root.children.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
     }) else {
-        return;
+        return Ok(());
     };
     let color = colors(&parent, &body.style, vcx)
         .foreground
@@ -34,17 +38,20 @@ pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
             b: 0.0,
             a: 1.0,
         });
-    apply(nodes, color);
+    apply(admission, nodes, color)
 }
 
-fn apply(nodes: &mut [Node], color: Color) {
-    for node in nodes {
-        let Node::Element(e) = node else { continue };
+fn apply(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+    color: Color,
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(admission, nodes, (), |e, _| {
         if e.tag == "table" && e.style.cascaded().color_initial {
             e.style.cascaded_mut().color = Some(color);
         }
-        apply(&mut e.children, color);
-    }
+        Some(())
+    })
 }
 
 #[cfg(test)]

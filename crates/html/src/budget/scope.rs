@@ -4,7 +4,7 @@ use super::ledger::Ledger;
 use super::{
     BudgetClass, BudgetError, BudgetKind, BudgetScope, DocumentLimits, ProcessLimits, Reservation,
 };
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 /// Равенство и hash — идентичность host-домена учёта, а не равенство квот.
 #[derive(Clone)]
@@ -95,7 +95,6 @@ impl DocumentBudget {
         RevisionBudget {
             document: self.clone(),
             ledger: Ledger::new(BudgetScope::Revision, self.owner.limits.caps),
-            exhausted: Arc::default(),
         }
     }
     pub fn reserve(&self, kind: BudgetKind, amount: u64) -> Result<LiveReservation, BudgetError> {
@@ -123,7 +122,6 @@ impl DocumentBudget {
 pub struct RevisionBudget {
     document: DocumentBudget,
     ledger: Arc<Ledger>,
-    exhausted: Arc<OnceLock<BudgetError>>,
 }
 
 impl RevisionBudget {
@@ -153,10 +151,22 @@ impl RevisionBudget {
     }
     /// Первая терминальная причина ревизии; поздние отказы её не заменяют.
     pub fn exhausted(&self) -> Option<BudgetError> {
-        self.exhausted.get().copied()
+        match self.failure()?.reason {
+            crate::dom::outcome::FailureReason::Budget(error) => Some(error),
+            _ => None,
+        }
+    }
+    /// Первый терминальный отказ, включая allocation рабочего стека стиля.
+    pub(crate) fn failure(&self) -> Option<crate::dom::outcome::DocumentFailure> {
+        self.ledger.terminal.get().copied()
+    }
+    pub(crate) fn reject(&self, failure: crate::dom::outcome::DocumentFailure) {
+        let _ = self.ledger.terminal.set(failure);
     }
     fn terminate(&self, error: BudgetError) {
-        let _ = self.exhausted.set(error);
+        self.reject(crate::dom::outcome::DocumentFailure::new(
+            crate::dom::outcome::FailureReason::Budget(error),
+        ));
     }
     pub(crate) fn source(&self, html: &str, theme: &str) -> Result<(), BudgetError> {
         self.consume(BudgetKind::SourceBytes, html.len() as u64)?;

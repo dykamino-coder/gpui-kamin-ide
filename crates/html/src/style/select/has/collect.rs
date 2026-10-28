@@ -1,49 +1,106 @@
-//! `:has()`: сбор аргументов из селектора до построения паспортов узлов —
-//! рекурсивно через `:is()`/`:not()`/`:host()`/`:nth-*(... of S)` и
-//! комбинаторы, включая аргументы, вычисляемые в другой области дерева.
-//! Вложенный `:has()` делает селектор негодным.
+//! Сбор аргументов :has() в прежнем порядке: псевдоклассы, предок, сосед.
+//! Вложенный :has() — синтаксическая ошибка; отказ worklist — отдельный Result.
 
-use crate::style::css::{Selector, default_ns, nth_of_parts, split_selector_list};
+use crate::budget::admission::{Admission, Buffer, Error};
+use crate::style::css::{Selector, TypeNamespace, default_ns, nth_of_parts, split_selector_list};
 
-/// Reject nested `:has()` and register every argument before building node passports.
-pub(crate) fn collect_has_args(sel: &Selector, out: &mut Vec<String>) -> bool {
-    for p in sel.pseudo.iter().chain(&sel.also) {
-        let Some((name, arg)) = p.split_once('(') else {
-            continue;
-        };
-        let Some(arg) = arg.strip_suffix(')') else {
-            continue;
-        };
-        if name == "has" {
-            if arg.to_ascii_lowercase().contains("has(") {
-                return false;
+enum Task {
+    Selector(Selector),
+    Pseudo(String, TypeNamespace),
+}
+
+pub(crate) fn retain_valid_rules(
+    admission: &Admission,
+    rules: &mut Vec<crate::style::css::Rule>,
+    out: &mut Vec<String>,
+) -> Result<(), Error> {
+    let mut failure = None;
+    rules.retain(|rule| {
+        if failure.is_some() {
+            return false;
+        }
+        match collect_has_args(admission, &rule.sel, out) {
+            Ok(valid) => valid,
+            Err(error) => {
+                failure = Some(error);
+                false
             }
-            if !out.iter().any(|a| a == arg) {
-                out.push(arg.to_string());
+        }
+    });
+    failure.map_or(Ok(()), Err)
+}
+
+pub(crate) fn collect_has_args(
+    admission: &Admission,
+    sel: &Selector,
+    out: &mut Vec<String>,
+) -> Result<bool, Error> {
+    let mut stack = Buffer::default();
+    stack.push(Task::Selector(sel.clone()), admission)?;
+    while let Some(task) = stack.pop() {
+        admission.work(1)?;
+        match task {
+            Task::Selector(mut sel) => {
+                if let Some(prev) = sel.prev.take() {
+                    stack.push(Task::Selector(prev.0), admission)?;
+                }
+                if let Some(ancestor) = sel.ancestor.take() {
+                    stack.push(Task::Selector(ancestor.0), admission)?;
+                }
+                for pseudo in sel.pseudo.into_iter().chain(sel.also).rev() {
+                    stack.push(Task::Pseudo(pseudo, sel.argument_namespace), admission)?;
+                }
             }
-        } else {
-            let list = match name {
-                "is" | "where" | "matches" | "any" => {
-                    default_ns::is_args(arg, sel.argument_namespace)
+            Task::Pseudo(pseudo, namespace) => {
+                let Some((name, arg)) = pseudo.split_once('(') else {
+                    continue;
+                };
+                let Some(arg) = arg.strip_suffix(')') else {
+                    continue;
+                };
+                if name == "has" {
+                    if arg.to_ascii_lowercase().contains("has(") {
+                        return Ok(false);
+                    }
+                    admission.work(out.len())?;
+                    if !out.iter().any(|a| a == arg) {
+                        out.push(arg.to_string());
+                    }
+                    continue;
                 }
-                "not" | "host" | "host-context" | "slotted" | "has-slotted" => {
-                    split_selector_list(arg)
-                        .into_iter()
-                        .filter_map(Selector::parse)
-                        .collect()
+                let list = match name {
+                    "is" | "where" | "matches" | "any" => default_ns::is_args(arg, namespace),
+                    "not" | "host" | "host-context" | "slotted" | "has-slotted" => {
+                        split_selector_list(arg)
+                            .into_iter()
+                            .filter_map(Selector::parse)
+                            .collect()
+                    }
+                    _ => nth_of_parts(arg).map_or_else(Vec::new, |(_, list)| list),
+                };
+                for sel in list.into_iter().rev() {
+                    stack.push(Task::Selector(sel), admission)?;
                 }
-                _ => nth_of_parts(arg).map_or_else(Vec::new, |(_, list)| list),
-            };
-            if !list.iter().all(|s| collect_has_args(s, out)) {
-                return false;
             }
         }
     }
-    sel.ancestor
-        .as_ref()
-        .is_none_or(|a| collect_has_args(&a.0, out))
-        && sel
-            .prev
-            .as_ref()
-            .is_none_or(|p| collect_has_args(&p.0, out))
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compound_then_ancestor_then_previous_and_nested_lists_keep_order() {
+        let mut selector = Selector::parse(":has(.own)").unwrap();
+        selector.ancestor = Some(Box::new((
+            Selector::parse(":is(:has(.a),:has(.b))").unwrap(),
+            false,
+        )));
+        selector.prev = Some(Box::new((Selector::parse(":has(.prev)").unwrap(), false)));
+        let mut out = Vec::new();
+        assert!(collect_has_args(&Admission::default(), &selector, &mut out).unwrap());
+        assert_eq!(out, [".own", ".a", ".b", ".prev"]);
+    }
 }

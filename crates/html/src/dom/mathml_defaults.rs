@@ -5,14 +5,18 @@ use markup5ever_rcdom::{Handle, NodeData};
 
 /// UA visibility is resolved before tree construction, and remains overridable
 /// by author CSS. Unlike deleting alternatives, this preserves the cascade.
-pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
+pub(super) fn defaults(
+    handle: &Handle,
+    index: usize,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<Rule> {
     let parent = handle.parent.take();
     let hides = index > 1 && parent.as_ref().and_then(|parent| parent.upgrade())
         .is_some_and(|parent| is_mathml(&parent) && matches!(&parent.data,
             NodeData::Element { name, .. } if matches!(name.local.as_ref(), "semantics" | "maction")));
     handle.parent.set(parent);
     let mut rules = vec![];
-    if super::mathml_routing::enabled(handle) {
+    if super::mathml_routing::enabled(handle, vcx) {
         let mut css = "display: block math";
         if let NodeData::Element { name, attrs, .. } = &handle.data {
             css = match name.local.as_ref() {
@@ -39,7 +43,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             link: crate::style::css::LinkMatch::Any,
         });
     }
-    if super::mathml_routing::enabled(handle) {
+    if super::mathml_routing::enabled(handle, vcx) {
         let mut decls = parse_decls("font-size: math");
         if let NodeData::Element { name, .. } = &handle.data
             && &*name.local == "math"

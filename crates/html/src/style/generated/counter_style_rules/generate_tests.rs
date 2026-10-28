@@ -5,16 +5,29 @@ use super::*;
 use crate::document::state::ValueCx;
 
 fn initial(algo: &Algo, v: i128) -> Option<String> {
-    super::initial(algo, v, Context::default())
+    super::super::initial::initial(
+        algo,
+        v,
+        Context::default(),
+        &crate::budget::admission::Admission::default(),
+    )
+    .unwrap()
 }
 fn generate(
     rules: &HashMap<String, Raw>,
     v: i64,
     name: &str,
-    depth: usize,
+    _depth: usize,
     vcx: ValueCx<'_>,
 ) -> String {
-    super::generate(rules, v, name, depth, Context::default(), vcx)
+    super::generate(
+        rules,
+        v,
+        name,
+        Context::default(),
+        &crate::budget::admission::Admission::new(vcx.doc.revision_budget()),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -47,7 +60,7 @@ fn systems_cover_negative_fixed_and_full_width_values() {
         initial(&algo(System::Symbolic), 120).unwrap(),
         "b".repeat(60)
     );
-    assert_eq!(initial(&algo(System::Symbolic), 121), None);
+    assert_eq!(initial(&algo(System::Symbolic), 121), Some("a".repeat(61)));
     let add = Algo::Own(
         System::Additive,
         vec![],
@@ -119,16 +132,56 @@ fn disclosure_context_survives_extends_and_fallback() {
         with_inherited
     };
     let rtl = Context::new(&style, Context::default());
-    assert_eq!(super::generate(&rules, 2, "alias", 0, rtl, vcx), "◂");
-    assert_eq!(super::generate(&rules, 2, "limited", 0, rtl, vcx), "◂");
+    assert_eq!(
+        super::generate(
+            &rules,
+            2,
+            "alias",
+            rtl,
+            &crate::budget::admission::Admission::new(vcx.doc.revision_budget())
+        )
+        .unwrap(),
+        "◂"
+    );
+    assert_eq!(
+        super::generate(
+            &rules,
+            2,
+            "limited",
+            rtl,
+            &crate::budget::admission::Admission::new(vcx.doc.revision_budget())
+        )
+        .unwrap(),
+        "◂"
+    );
     style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
         true,
         style.wm().block_rl(),
         style.wm().sideways(),
     ));
     let vertical = Context::new(&style, Context::default());
-    assert_eq!(super::generate(&rules, 2, "limited", 0, vertical, vcx), "▴");
-    assert_eq!(super::generate(&rules, -2, "alias", 0, vertical, vcx), "▴");
+    assert_eq!(
+        super::generate(
+            &rules,
+            2,
+            "limited",
+            vertical,
+            &crate::budget::admission::Admission::new(vcx.doc.revision_budget())
+        )
+        .unwrap(),
+        "▴"
+    );
+    assert_eq!(
+        super::generate(
+            &rules,
+            -2,
+            "alias",
+            vertical,
+            &crate::budget::admission::Admission::new(vcx.doc.revision_budget())
+        )
+        .unwrap(),
+        "▴"
+    );
 }
 
 #[test]

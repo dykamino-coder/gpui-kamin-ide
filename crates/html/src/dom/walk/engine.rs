@@ -5,6 +5,7 @@ use super::{
     pending::{Pending, Restore},
     sibling_survey::{Survey, Visit},
 };
+use crate::budget::admission::{Buffer, Error};
 use crate::document::state::ValueCx;
 use crate::dom::outcome::TraversalKind;
 use crate::dom::{Node, shadow::Scope, tree_index::TreeIndex};
@@ -23,39 +24,41 @@ fn visits<'a>(
     preserve: bool,
     depth: usize,
     vcx: ValueCx<'a>,
-) -> Vec<Visit<'a>> {
+) -> Result<Buffer<Visit<'a>>, Error> {
+    let mut jobs = Buffer::default();
+    let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
     let mut pos = 0;
-    (0..survey.nodes.len())
-        .map(|index| {
-            let visit = Visit {
-                survey: survey.clone(),
-                index,
-                pos,
-                scope: scope.clone(),
-                vars: vars.clone(),
-                preserve,
-                depth,
-                vcx,
-            };
-            pos += usize::from(survey.spots[index].index != 0);
-            visit
-        })
-        .collect()
+    for index in 0..survey.nodes.len() {
+        let visit = Visit {
+            survey: survey.clone(),
+            index,
+            pos,
+            scope: scope.clone(),
+            vars: vars.clone(),
+            preserve,
+            depth,
+            vcx,
+        };
+        pos += usize::from(survey.spots[index].index != 0);
+        jobs.push(visit, &admission)?;
+    }
+    Ok(jobs)
 }
 fn descend<'a>(
     p: &Pending<'a>,
     tree: &TreeIndex,
     path: &mut Vec<Ancestor>,
-) -> (Vec<Visit<'a>>, Restore) {
+) -> Result<(Buffer<Visit<'a>>, Restore), Error> {
+    let admission = tree.admission();
     let restore = Restore::Truncate(path.len());
     let keep = p.style.preserve_newlines.unwrap_or(p.visit.preserve);
     if p.hidden && p.style.col_role != Some(1) {
-        return (vec![], restore);
+        return Ok((Buffer::default(), restore));
     }
     if !p.hidden {
         if let Some(shadow) = &p.shadow {
             let old = std::mem::replace(path, vec![shadow.marker.clone()]);
-            return (
+            return Ok((
                 visits(
                     Survey::children(&shadow.root, tree),
                     shadow.scope.clone(),
@@ -63,9 +66,9 @@ fn descend<'a>(
                     keep,
                     p.visit.depth + 1,
                     p.visit.vcx,
-                ),
+                )?,
                 Restore::Replace(old),
-            );
+            ));
         }
         if let Some(slot) = tree
             .slot_of(p.visit.handle())
@@ -77,25 +80,27 @@ fn descend<'a>(
                 spots: slot.light_spots.clone(),
                 all: slot.light_all.clone(),
             });
-            let jobs = slot
-                .assigned
-                .iter()
-                .map(|s| Visit {
-                    survey: survey.clone(),
-                    index: s.light_idx,
-                    pos: s.elem_pos,
-                    scope: slot.outer.clone(),
-                    vars: p.vars.clone(),
-                    preserve: keep,
-                    depth: p.visit.depth + 1,
-                    vcx: p.visit.vcx,
-                })
-                .collect();
-            return (jobs, Restore::Replace(old));
+            let mut jobs = Buffer::default();
+            for s in &slot.assigned {
+                jobs.push(
+                    Visit {
+                        survey: survey.clone(),
+                        index: s.light_idx,
+                        pos: s.elem_pos,
+                        scope: slot.outer.clone(),
+                        vars: p.vars.clone(),
+                        preserve: keep,
+                        depth: p.visit.depth + 1,
+                        vcx: p.visit.vcx,
+                    },
+                    &admission,
+                )?;
+            }
+            return Ok((jobs, Restore::Replace(old)));
         }
     }
     path.push(p.me.clone());
-    (
+    Ok((
         visits(
             Survey::children(p.visit.handle(), tree),
             p.visit.scope.clone(),
@@ -103,9 +108,9 @@ fn descend<'a>(
             keep,
             p.visit.depth + 1,
             p.visit.vcx,
-        ),
+        )?,
         restore,
-    )
+    ))
 }
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn walk_children(
@@ -119,18 +124,25 @@ pub(crate) fn walk_children(
     preserve: bool,
     out: &mut Vec<Node>,
     vcx: ValueCx<'_>,
-) {
-    let jobs = visits(
+) -> Result<(), crate::budget::admission::Error> {
+    let admission = tree.admission();
+    let mut jobs = visits(
         Survey::children(handle, tree),
         scope.clone(),
         Rc::new(vars.clone()),
         preserve,
         1,
         vcx,
-    );
-    let mut work: Vec<_> = jobs.into_iter().rev().map(Work::Visit).collect();
-    let mut output = vec![std::mem::take(out)];
+    )?;
+    let mut work = Buffer::default();
+    while let Some(job) = jobs.pop() {
+        work.push(Work::Visit(job), &admission)?;
+    }
+    drop(jobs);
+    let mut output = Buffer::default();
+    output.push(std::mem::take(out), &admission)?;
     while let Some(next) = work.pop() {
+        admission.work(1)?;
         match next {
             Work::Leave(p, restore) => {
                 restore.apply(path);
@@ -142,7 +154,7 @@ pub(crate) fn walk_children(
                     counters,
                     children,
                     output.last_mut().expect("parent output"),
-                );
+                )?;
             }
             Work::Visit(v) => {
                 let limit = crate::document::state::MAX_DEPTH;
@@ -173,26 +185,31 @@ pub(crate) fn walk_children(
                             path,
                             output.last_mut().expect("output"),
                         ) {
-                            let (children, restore) = descend(&p, tree, path);
-                            output.push(std::mem::take(&mut p.children));
-                            work.push(Work::Leave(p, restore));
-                            work.extend(children.into_iter().rev().map(Work::Visit));
+                            let (mut children, restore) = descend(&p, tree, path)?;
+                            output.push(std::mem::take(&mut p.children), &admission)?;
+                            work.push(Work::Leave(p, restore), &admission)?;
+                            while let Some(job) = children.pop() {
+                                work.push(Work::Visit(job), &admission)?;
+                            }
                         }
                     }
                     _ => {
-                        let jobs = visits(
+                        let mut jobs = visits(
                             Survey::children(v.handle(), tree),
                             v.scope.clone(),
                             v.vars.clone(),
                             v.preserve,
                             v.depth,
                             v.vcx,
-                        );
-                        work.extend(jobs.into_iter().rev().map(Work::Visit));
+                        )?;
+                        while let Some(job) = jobs.pop() {
+                            work.push(Work::Visit(job), &admission)?;
+                        }
                     }
                 }
             }
         }
     }
     *out = output.pop().expect("root output");
+    Ok(())
 }
