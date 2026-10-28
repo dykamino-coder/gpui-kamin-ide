@@ -61,6 +61,8 @@ export interface JsonlEntryData {
   result?: string
   cost_usd?: number
   duration_ms?: number
+  /** CLI system/turn_duration elapsed time. */
+  durationMs?: number
 
   // Renderer-side runtime annotations set by JsonlViewer / ToolGroup logic.
   // Optional so wire-format entries from the watcher don't need to carry

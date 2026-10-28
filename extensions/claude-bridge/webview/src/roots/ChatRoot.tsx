@@ -21,6 +21,7 @@ import { ConversationSegmentTabs } from '../components/jsonl-viewer/Conversation
 import { NoSessionEmptyContent, RestoringContent } from '../components/layout/EmptyState'
 import { JsonlViewer } from '../components/jsonl-viewer/JsonlViewer'
 import { ToolCounterToast } from '../components/titlebar/ToolCounterToast'
+import { LiveLoopWarning } from '../components/titlebar/LoopWarning'
 import { ActivityStrip } from '../components/chat-header/ActivityStrip'
 import { WidgetsPanel } from '../components/widgets/WidgetsPanel'
 import { InputBar } from '../components/input-bar/InputBar'
@@ -104,6 +105,7 @@ export function ChatRoot(): JSX.Element {
           terminalPanel={null}
         />
         <ActivityStrip />
+        <LiveLoopWarning bridge={bridge} tabId={tabId} />
         <WidgetsPanel />
         <InputBar />
       </div>
