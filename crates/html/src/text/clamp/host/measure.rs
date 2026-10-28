@@ -67,7 +67,11 @@ pub(super) fn measure(
                 plan = Rc::new(next);
                 continue;
             }
-            if let Some(fragment) = fragment {
+            // Only a layout at the used inline size gives the container's
+            // lines; intrinsic-size probes at min/max-content do not.
+            let used_width =
+                known.width.is_some() || matches!(available.width, AvailableSpace::Definite(_));
+            if let Some(fragment) = fragment.filter(|_| used_width) {
                 fragment.publish(measured, window);
             }
             drop(applied_flow);
