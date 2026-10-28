@@ -1,8 +1,8 @@
 //! Подготовка независимой печатной копии без предварительной оценки геометрии.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::{fragment_box, fragment_margins};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::flow::{copy_flow, empty_floats, exports_floats, regrow_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::BoxStyle;
@@ -22,7 +22,7 @@ pub(super) fn vertical_group(
     inline: f32,
     head: f32,
     rl: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Group> {
     use crate::layout::fragment::flow::{logical_copy, vertical_copy};
     let [Node::Element(e)] = nodes else {
@@ -35,7 +35,7 @@ pub(super) fn vertical_group(
         resolved_lengths(e, root, vcx),
         inline,
         rl,
-        vcx,
+        vcx.values,
     );
     let logical = logical_copy(&e, rl)?;
     let (mt, mb) = fragment_margins(&logical)?;
@@ -61,7 +61,7 @@ pub(super) fn group(
     width: f32,
     top: f32,
     breaks: (bool, bool),
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Group> {
     // Общий пробег обтекания — одна измеряемая копия, как у колонок.
     // Одиночный float сохраняет собственный корень и независимый поток.
@@ -92,7 +92,7 @@ pub(super) fn group(
     if !eligible {
         return None;
     }
-    let e: Element = fragment_box(resolved_lengths(e, root, vcx), width, vcx);
+    let e: Element = fragment_box(resolved_lengths(e, root, vcx), width, vcx.values);
     let (mt, mb) = fragment_margins(&e)?;
     let blocks = !floated || !crate::layout::fragment::clone::content_monolith_blockified(&e);
     Some(Group {

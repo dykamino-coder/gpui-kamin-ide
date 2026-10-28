@@ -117,7 +117,7 @@ impl Regrow {
                 grow,
                 forced,
                 self.axis,
-                self.opts.cx.vcx(),
+                self.opts.cx.frame(),
             );
         }
         match pushed {
@@ -128,7 +128,7 @@ impl Regrow {
                 grow,
             ),
             Pushed::Box(id) if forced => {
-                spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.vcx())
+                spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.frame())
             }
             Pushed::Box(id) => grow_before(&mut self.dom, id, grow),
             Pushed::Row(row) => self.watched.grow_grid_row(row.grid, row.track, grow),

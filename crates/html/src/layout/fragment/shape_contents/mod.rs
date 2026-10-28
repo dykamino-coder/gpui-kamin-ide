@@ -7,7 +7,7 @@
 //! ряд без переноса как параллельные потоки, дотяг внепоточных потомков. Коробки с флоатами
 //! внутри меры не имеют (`None`).
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -47,7 +47,7 @@ pub(super) fn shape_contents(
     c: &Element,
     depth: u8,
     cx: ShapeCx,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Measure> {
     let sizes = BoxDimensions::for_element(c, &c.style.used());
     let none = Measure::plain;
@@ -59,9 +59,9 @@ pub(super) fn shape_contents(
     let lens = LenCx::box_viewport(cx.viewport, &c.style.used());
     let px_or = |l: &Option<Len>, strict: bool| {
         if strict {
-            lens.px_missing_zero(*l, vcx)
+            lens.px_missing_zero(*l, vcx.values)
         } else {
-            Some(lens.px_lossy_zero(*l, vcx))
+            Some(lens.px_lossy_zero(*l, vcx.values))
         }
     };
     // Коробка из одних флоатов (`float_only_box`): мера — высота их ряда,

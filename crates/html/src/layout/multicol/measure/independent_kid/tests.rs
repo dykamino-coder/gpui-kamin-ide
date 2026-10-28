@@ -51,8 +51,14 @@ fn percent_margins_use_the_copy_inline_size() {
     );
     let c = host(&tree);
     let registry = RefCell::default();
-    let (_, shape) =
-        measured(c, &BoxStyle::default(), tree.values(), 120.0, &registry).expect("copy");
+    let (_, shape) = measured(
+        c,
+        &BoxStyle::default(),
+        crate::layout::cx::FrameCx::new(tree.values()),
+        120.0,
+        &registry,
+    )
+    .expect("copy");
     assert_eq!((shape.margin_top, shape.margin_bottom), (12.0, 6.0));
     assert_eq!(shape.height, 0.0);
     assert_eq!(*registry.borrow(), vec![(c.node_id, 120.0)]);

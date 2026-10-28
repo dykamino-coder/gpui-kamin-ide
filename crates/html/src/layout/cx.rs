@@ -14,6 +14,7 @@ mod constraints;
 mod contracts;
 pub(crate) mod deferred;
 mod fragmentation;
+mod frame;
 mod inline;
 mod position;
 mod ruby;
@@ -27,6 +28,7 @@ pub(crate) use constraints::{BoxConstraints, FragmentConstraints};
 pub(crate) use contracts::BuildContext;
 pub use deferred::DeferredPaintContext;
 pub(crate) use fragmentation::FragmentationContext;
+pub(crate) use frame::FrameCx;
 pub(crate) use inline::InlineContext;
 pub(crate) use position::PositioningContext;
 pub(crate) use ruby::RubyContext;
@@ -111,11 +113,19 @@ impl LayoutCx {
             .doc
             .0
             .frame_values()
-            .with_lines(self.fragmentation.lines.as_ref())
-            .with_lengths(&self.contracts.lengths)
-            .with_subtrees(&self.contracts.subtrees)
             .with_viewport(self.values.viewport)
             .with_paint(Some(&self.deferred.paint))
+    }
+
+    /// Values of the build with its frame facts: the nearest fragmented ancestor's line
+    /// measure and the memoized length and subtree facts.
+    pub(crate) fn frame(&self) -> FrameCx<'_> {
+        FrameCx {
+            values: self.vcx(),
+            lines: self.fragmentation.lines.as_ref(),
+            lengths: Some(&self.contracts.lengths),
+            subtrees: Some(&self.contracts.subtrees),
+        }
     }
 
     /// The next step-8 paint key: taken on entering an element, before its

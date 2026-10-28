@@ -11,9 +11,9 @@
 //! с перестроением копий (`Rebuild`). Подмодули: гейт (`gate`), распорки (`apply`),
 //! решатель (`solve`), наблюдение (`watch`).
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::Display;
 mod candidates;
 mod gate;
@@ -71,7 +71,7 @@ fn layout_parent(s: &crate::style::computed::Computed) -> bool {
 /// Collect the candidates of `c`'s subtree, or `None` when the subtree holds
 /// content whose measured geometry is unavailable (tables or nested
 /// fragmentation contexts). Lines remain in the measured flow geometry.
-pub(crate) fn candidates(c: &Element, vcx: ValueCx<'_>) -> Option<Vec<(u64, Cand)>> {
+pub(crate) fn candidates(c: &Element, vcx: FrameCx<'_>) -> Option<Vec<(u64, Cand)>> {
     let mut out = Vec::new();
     candidates::walk(c, &mut out, vcx)?;
     Some(out)
