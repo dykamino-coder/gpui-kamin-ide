@@ -20,8 +20,11 @@ fn deep_shared_subtrees_drop_on_a_small_stack() {
         .spawn(|| {
             let mut nodes = vec![Node::Text("leaf".into())];
             for _ in 0..10_000 {
-                nodes = vec![Node::Element(crate::layout::table::anon::anon_element(
-                    "div", nodes,
+                nodes = vec![Node::Element(crate::dom::Element::synthetic(
+                    "div",
+                    Default::default(),
+                    Default::default(),
+                    nodes,
                 ))];
             }
             let copy = nodes.clone();

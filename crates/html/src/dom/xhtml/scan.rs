@@ -2,7 +2,7 @@
 
 use crate::{
     budget::{BudgetKind, RevisionBudget},
-    document::FailureReason,
+    dom::outcome::FailureReason,
 };
 
 pub(super) struct Scan<'a>(pub &'a RevisionBudget);

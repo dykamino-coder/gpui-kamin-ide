@@ -31,6 +31,10 @@ mod report {
         assert!((0.0..=100.0).contains(&mapped_pct()));
     }
 }
+#[cfg(test)]
+mod css_wide_tests;
+#[cfg(test)]
+mod invalid_tests;
 mod sources;
 #[cfg(test)]
 mod tests {

@@ -45,7 +45,7 @@ pub(super) fn is_xhtml(
     document: &markup5ever_rcdom::Handle,
     budget: &crate::budget::RevisionBudget,
 ) -> Result<bool, crate::dom::outcome::FailureReason> {
-    use crate::{budget::BudgetKind, document::FailureReason};
+    use crate::{budget::BudgetKind, dom::outcome::FailureReason};
     for node in document.children.borrow().iter() {
         budget
             .consume(BudgetKind::TraversalVisits, 1)

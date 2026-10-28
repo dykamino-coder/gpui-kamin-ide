@@ -162,7 +162,7 @@ mod tests {
             Default::default(),
             vec![],
         );
-        crate::document::image_values::prepare(&[crate::dom::Node::Element(node)], vcx);
+        crate::values::image_values::prepare(&[crate::dom::Node::Element(node)], vcx);
         let css = c.style_rc().clone();
         let mut result = crate::style::background_paint::BackgroundValues::from_computed(&c);
         collapse(

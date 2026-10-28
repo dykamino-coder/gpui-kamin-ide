@@ -13,7 +13,7 @@ pub(crate) fn prepare(nodes: &[Node], vcx: ValueCx<'_>) {
     publish(urls, vcx);
 }
 
-pub(super) fn refresh(vcx: ValueCx<'_>) {
+pub(crate) fn refresh(vcx: ValueCx<'_>) {
     publish(HashSet::new(), vcx);
 }
 
@@ -103,15 +103,15 @@ impl ValueCx<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::state::DocState;
     use crate::resources::images::tests_support::data_png_url;
     use crate::style::computed::flat_background::{BackgroundImageValues, ImageAvailability};
     use crate::style::values::value::Color;
+    use crate::values::DocumentValues;
     use std::rc::Rc;
 
     #[test]
     fn pending_operand_survives_style_until_preparation_and_old_view_stays_pending() {
-        let doc = DocState::new(crate::style::css::Media::default());
+        let doc = DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let raw = data_png_url();
         let image = ImageSource::Url(raw.clone());
@@ -119,11 +119,11 @@ mod tests {
         own.apply_one("background-image", &format!("url('{raw}')"), vcx);
         own.apply_one("background-clip", "text", vcx);
         let pending = vcx.background_images();
-        let revision = doc.values.images.borrow().snapshot().revision();
+        let revision = doc.images.borrow().snapshot().revision();
         let before = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
         assert_eq!(before.bg_image.as_ref(), Some(&image));
-        assert_eq!(doc.values.images.borrow().snapshot().revision(), revision);
-        assert!(doc.values.images.borrow_mut().take_jobs().is_empty());
+        assert_eq!(doc.images.borrow().snapshot().revision(), revision);
+        assert!(doc.images.borrow_mut().take_jobs().is_empty());
 
         let node = crate::dom::Element::synthetic("div", own.clone(), Default::default(), vec![]);
         prepare(&[Node::Element(node)], vcx);
@@ -136,7 +136,7 @@ mod tests {
             pending.image_available(&image, true),
             ImageAvailability::Pending
         );
-        let revision = doc.values.images.borrow().snapshot().revision();
+        let revision = doc.images.borrow().snapshot().revision();
         let after = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
         assert!(after.paint_background().top.image.is_none());
         assert_eq!(after.bg_image.as_ref(), Some(&image));
@@ -144,13 +144,13 @@ mod tests {
             after.paint_background().flat.map(|v| v[1]),
             ready.uniform_image_color(&image)
         );
-        assert_eq!(doc.values.images.borrow().snapshot().revision(), revision);
+        assert_eq!(doc.images.borrow().snapshot().revision(), revision);
         assert_eq!(own.bg_image.as_ref(), Some(&image));
     }
 
     #[test]
     fn prepare_visits_layers_pseudo_styles_animation_and_nested_operands() {
-        let doc = DocState::new(crate::style::css::Media::default());
+        let doc = DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let raw = |n| format!("data:,invalid-{n}");
         let with_url = |n| Computed {
@@ -204,7 +204,7 @@ mod tests {
                 "operand {n}"
             );
         }
-        assert!(doc.values.images.borrow_mut().take_jobs().is_empty());
+        assert!(doc.images.borrow_mut().take_jobs().is_empty());
     }
 
     #[test]
@@ -214,7 +214,7 @@ mod tests {
         let file = dir.write("color.png", &png_bytes([255, 0, 0, 255]));
         let raw = url::Url::from_file_path(file).unwrap().to_string();
         let image = ImageSource::Url(raw);
-        let doc = DocState::new(crate::style::css::Media::default());
+        let doc = DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let own = Computed {
             bg_image: Some(image.clone()),
@@ -224,7 +224,8 @@ mod tests {
         prepare(&[Node::Element(node)], vcx);
         let red = vcx.background_images();
         dir.write("color.png", &png_sized(2, 1, [0, 0, 255, 255]));
-        doc.begin_frame();
+        doc.begin_frame_inputs();
+        doc.reset_painted_frame();
         refresh(vcx);
         assert_eq!(red.uniform_image_color(&image), Color::parse("red", vcx));
         assert_eq!(

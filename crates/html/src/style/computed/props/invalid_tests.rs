@@ -20,8 +20,8 @@ fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
 }
 
 fn styled(html: &str, id: &str) -> Computed {
-    let doc = crate::Document::builder(html, "").build().unwrap();
-    Computed::clone(find(doc.nodes(), id).expect("element").style.cascaded())
+    let doc = crate::dom::parse(html, "");
+    Computed::clone(find(&doc.nodes, id).expect("element").style.cascaded())
 }
 
 fn one(css: &str) -> Computed {
@@ -93,47 +93,6 @@ fn f05_box_sizing_invalid_keyword_is_not_supported() {
         format!("{r:?}"),
         "Invalid",
         "@supports(box-sizing: banana) истинно"
-    );
-}
-
-#[test]
-fn invalid_value_preserves_computed_for_every_registered_property() {
-    let st = crate::values::DocumentValues::detached(crate::style::css::Media::default());
-    let mut seed = Computed::default();
-    for prop in crate::coverage::PROPERTIES {
-        seed.apply_one(prop.name, prop.sample, st.values());
-    }
-    let mut failures = Vec::new();
-    for prop in crate::coverage::PROPERTIES {
-        for invalid in [
-            "invalid()",
-            "invalid(0)",
-            "0 invalid()",
-            "invalid() 0",
-            "initial invalid()",
-        ] {
-            if Computed::declaration_result(prop.name, invalid, st.values())
-                == crate::style::computed::ParseResult::Accepted
-            {
-                failures.push(format!("@supports({}: {invalid})", prop.name));
-            }
-            for mut c in [Computed::default(), seed.clone()] {
-                c.apply_one(prop.name, prop.sample, st.values());
-                let before = format!("{c:?}");
-                let seq = c.decl_order;
-                c.apply_one(prop.name, invalid, st.values());
-                // Счётчик входных деклараций сам по себе не является значением свойства.
-                c.decl_order = seq;
-                if before != format!("{c:?}") {
-                    failures.push(format!("{}: {invalid}", prop.name));
-                    break;
-                }
-            }
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "invalid declaration changed Computed or was accepted: {failures:?}"
     );
 }
 

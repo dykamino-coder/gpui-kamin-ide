@@ -32,11 +32,11 @@ pub(super) fn resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{image_values, state::DocState};
     use crate::dom::Element;
     use crate::style::cascade::inherit::inherit;
     use crate::style::computed::BoxStyle;
     use crate::style::css::parse_decls;
+    use crate::{document::state::DocState, values::image_values};
 
     fn item(css: &str, vcx: ValueCx<'_>) -> Element {
         let mut style = Computed::default();

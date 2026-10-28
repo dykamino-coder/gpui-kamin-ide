@@ -54,15 +54,15 @@ pub(crate) fn embedding_dark_scheme(vcx: ValueCx<'_>) -> bool {
 mod tests {
     use super::*;
     use crate::style::values::value::Color;
-    use crate::{document::state::DocState, style::css::Media};
+    use crate::{style::css::Media, values::DocumentValues};
 
     #[test]
     fn inherited_schemes_and_retained_values_do_not_share_mutable_state() {
-        let first = DocState::new(Media {
+        let first = DocumentValues::detached(Media {
             dark: true,
             ..Media::default()
         });
-        let second = DocState::new(Media {
+        let second = DocumentValues::detached(Media {
             dark: false,
             ..Media::default()
         });

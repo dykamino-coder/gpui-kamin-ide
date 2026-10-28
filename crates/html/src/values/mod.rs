@@ -13,6 +13,7 @@ mod arena;
 mod budget;
 mod diagnostics;
 mod font_facts;
+pub(crate) mod image_values;
 mod property_registry;
 mod readiness;
 mod synthetic_ids;

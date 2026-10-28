@@ -40,7 +40,6 @@ pub use crate::dom::outcome::{
 pub use builder::DocumentBuilder;
 mod canvas_background;
 mod embedded;
-pub(crate) mod image_values;
 mod logical_properties;
 mod prepare;
 #[cfg(test)]
