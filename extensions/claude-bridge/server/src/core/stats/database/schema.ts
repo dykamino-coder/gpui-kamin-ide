@@ -11,6 +11,7 @@
 // ALTER for additive migrations.
 
 import type { DuckDBConnection } from '@duckdb/node-api'
+import { initAccountingSchema } from './accounting-schema'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
   try { await db.run(sql) } catch { /* idempotent migration — swallow */ }
@@ -125,6 +126,9 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   await tryExec(db, 'ALTER TABLE jsonl_events DROP COLUMN day')
   await tryExec(db, 'ALTER TABLE jsonl_events DROP COLUMN hour')
 
+  await tryExec(db, 'ALTER TABLE jsonl_events ADD COLUMN cache_write_1h_tokens INTEGER DEFAULT 0')
+  await initAccountingSchema(db)
+
   // ── session_tokens: bridge-managed conversation index, soft-delete,
   //    persisted per-session metadata (title, last_context, compacts...)
   await db.run(`
@@ -236,6 +240,13 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
 
   // CHECKPOINT replaces SQLite VACUUM in DuckDB — flushes WAL to main file.
   await tryExec(db, 'CHECKPOINT')
+
+  // One bounded rescan recovers cache TTL wherever the source JSONL survives.
+  const ttlSeed = (await db.runAndReadAll("SELECT value FROM settings WHERE key = 'cache_ttl_v1_seeded'")).getRowObjects()
+  if (ttlSeed.length === 0) {
+    await db.run('DELETE FROM jsonl_offsets')
+    await db.run("INSERT INTO settings (key, value) VALUES ('cache_ttl_v1_seeded', '1') ON CONFLICT DO NOTHING")
+  }
 
   // One-shot post-migration: reset offsets so sweeper re-scans every
   // JSONL once and populates new metadata columns. Idempotent via flag.

@@ -297,7 +297,12 @@ export class EntrySynthesizer {
     if (!this.current) return
     if (evt.delta.stop_reason) this.current.message.stop_reason = evt.delta.stop_reason
     if (evt.usage) {
-      const merged: AnthropicUsage = { ...(this.current.message.usage ?? {}), ...evt.usage }
+      const previous = this.current.message.usage ?? {}
+      const merged: AnthropicUsage = { ...previous, ...evt.usage,
+        ...((previous.cache_creation || evt.usage.cache_creation) ? {
+          cache_creation: { ...previous.cache_creation, ...evt.usage.cache_creation },
+        } : {}),
+      }
       this.current.message.usage = merged
       this.current.usage = merged
     }

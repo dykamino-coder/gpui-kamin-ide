@@ -191,7 +191,7 @@ export async function getUserTimeSeries(
         e.message_id as message_id,
         MAX(COALESCE(e.input_tokens,0) + COALESCE(e.cache_write_tokens,0)) as input_tokens,
         MAX(COALESCE(e.output_tokens,0)) as output_tokens
-      FROM jsonl_events e
+      FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       ${where} AND e.type = 'assistant' AND e.message_id IS NOT NULL

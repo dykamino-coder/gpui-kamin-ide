@@ -1,3 +1,4 @@
+import { createProxyUsageRecorder } from '../stats/proxy-usage'
 // ============================================================================
 // PTY Session Manager core — spawns and manages Claude CLI sessions
 // ============================================================================
@@ -275,6 +276,9 @@ async function createAdmittedSession(
   // messages. JsonlViewer renders the live entry until JSONL watcher
   // delivers the final one with the same message.id.
   let streamingProxy: { port: number; caCertPath: string; stop: () => Promise<void>; interrupt: () => void } | undefined
+  const usageRecorder = createProxyUsageRecorder({ tokenId, userName },
+    (err) => warnLog('Proxy usage accounting failed', { error: String(err) }))
+  if (config.resumeConversationId) usageRecorder.bind(config.resumeConversationId)
   try {
     const settings = await getStreamingSettings(tokenId)
     if (settings.enabled && !developmentCli) {
@@ -308,6 +312,7 @@ async function createAdmittedSession(
       }
       const proxy = await startNativeMitm({
         ptySessionId: sessionId,
+        onUsage: usageRecorder.record,
         cliConversationId: config.resumeConversationId ?? undefined,
         upstreamProxyUrl: upstream && !upstream.startsWith('http://127.0.0.1') ? upstream : undefined,
         // Without the user's chosen model, the side-quest heuristic classifies
@@ -548,6 +553,7 @@ async function createAdmittedSession(
         recordCompactLink(prev, conversationId)
       }
       session.cliConversationId = conversationId
+      usageRecorder.bind(conversationId)
       // INC-2026-0070: every identity the client is told to adopt, old→new.
       // `discovered` with previousRef equal to conversationRef confirms the
       // resumed id; a fresh session's first discovery has no previousRef.
