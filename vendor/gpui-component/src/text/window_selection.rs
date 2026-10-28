@@ -2174,6 +2174,11 @@ mod tests {
     /// subsequent drag.
     fn settle(cx: &mut VisualTestContext) {
         cx.executor().advance_clock(Duration::from_millis(500));
+        // KaminIDE patch: GPUI 0.3.8 runs unsynced element animations off the
+        // wall clock (see `popover` tests), so the modal's slide-in is waited
+        // out as well as stepped; under a loaded test run it was still moving
+        // while the drag hit-tested its text.
+        std::thread::sleep(Duration::from_millis(500));
         cx.update(|window, cx| {
             let _ = window.draw(cx);
         });

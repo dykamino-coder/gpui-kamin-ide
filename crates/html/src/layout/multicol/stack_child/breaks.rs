@@ -54,7 +54,7 @@ pub(super) fn recorder(
     if !(measured || plain || rows) {
         return (Watched::new(&[]), None);
     }
-    let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.vcx());
+    let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.frame());
     let breaks_w = (!measured).then(|| line_col_w.map_or(BreaksAt::Column, BreaksAt::Width));
     // Независимая измеренная копия сохраняет и корневую коробку: она нужна
     // для пересборки дополнительных видов после реальной меры рядов.

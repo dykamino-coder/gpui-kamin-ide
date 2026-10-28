@@ -166,7 +166,7 @@ pub(super) fn multicol_stack_child(
         whole,
         build.clone(),
         measured_table,
-        opts.cx.vcx(),
+        opts.cx.frame(),
     );
     child.clone_frags = dec.map(|_| frag_geom);
     let source = copy.clone();

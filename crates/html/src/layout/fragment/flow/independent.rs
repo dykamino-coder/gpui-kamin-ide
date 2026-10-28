@@ -173,7 +173,11 @@ mod tests {
                 assert!(physical.style.used().wm().vertical());
                 assert_eq!(logical.style.used().height, physical.style.used().width);
                 assert_eq!(logical.style.used().width, physical.style.used().height);
-                let blocks = BlockBox::collect(&logical, ShapeCx::COLUMNS, tree.values());
+                let blocks = BlockBox::collect(
+                    &logical,
+                    ShapeCx::COLUMNS,
+                    crate::layout::cx::FrameCx::new(tree.values()),
+                );
                 if body.starts_with("<table") {
                     assert_eq!(blocks.table_keys().len(), 1);
                 } else {

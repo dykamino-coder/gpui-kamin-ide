@@ -417,6 +417,8 @@ impl Element for EditorText {
                 background_color: None,
                 underline: None,
                 strikethrough: None,
+                // KaminIDE patch: the fork's runs carry CSS text metrics.
+                ..Default::default()
             };
             vec![
                 window
@@ -435,6 +437,8 @@ impl Element for EditorText {
                         background_color: None,
                         underline: None,
                         strikethrough: None,
+                        // KaminIDE patch: the fork's runs carry CSS text metrics.
+                        ..Default::default()
                     };
                     window
                         .text_system()

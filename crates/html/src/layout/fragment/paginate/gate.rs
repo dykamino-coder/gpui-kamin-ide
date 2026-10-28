@@ -5,9 +5,9 @@
 //! `refusal` называет причину отказа.
 
 use super::candidates;
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::clone::monolith_box;
 use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
@@ -15,7 +15,7 @@ use crate::style::computed::Display;
 /// Gate of the path: a block-level, non-monolithic child of a horizontal
 /// multicol containing a flex container, measured floats or forced breaks.
 /// Everything else keeps the shape-estimate path.
-pub(crate) fn gate(c: &Element, col_w: Option<f32>, auto_fill: bool, vcx: ValueCx<'_>) -> bool {
+pub(crate) fn gate(c: &Element, col_w: Option<f32>, auto_fill: bool, vcx: FrameCx<'_>) -> bool {
     refusal(c, col_w, auto_fill, vcx).is_none()
 }
 
@@ -24,7 +24,7 @@ pub(crate) fn refusal(
     c: &Element,
     _col_w: Option<f32>,
     _auto_fill: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<&'static str> {
     // TRANSITIONAL(F2-7): Распорки DOM не усекают зазоры flex/grid у разрыва (ряды flex гасят их ростом линий измеренного пути); удалить отказ вместе с распорками в P22.
     fn gapped(e: &Element) -> bool {
@@ -98,7 +98,12 @@ mod tests {
                 // распорки DOM его не усекают и такой ряд не берут.
                 let gapped = flow.contains("row-gap");
                 assert_eq!(
-                    refusal(parent, Some(80.0), false, tree.values()),
+                    refusal(
+                        parent,
+                        Some(80.0),
+                        false,
+                        crate::layout::cx::FrameCx::new(tree.values())
+                    ),
                     gapped.then_some("gap"),
                     "{html}"
                 );
@@ -118,7 +123,12 @@ mod tests {
             let Node::Element(parent) = &tree[0] else {
                 panic!("table container")
             };
-            assert!(!gate(parent, Some(50.0), false, tree.values()));
+            assert!(!gate(
+                parent,
+                Some(50.0),
+                false,
+                crate::layout::cx::FrameCx::new(tree.values())
+            ));
         }
     }
 
@@ -131,13 +141,19 @@ mod tests {
         let Node::Element(parent) = &tree[0] else {
             panic!("block")
         };
-        let candidates = super::candidates(parent, tree.values()).expect("candidates");
+        let candidates = super::candidates(parent, crate::layout::cx::FrameCx::new(tree.values()))
+            .expect("candidates");
         assert!(
             candidates
                 .iter()
                 .any(|(_, c)| matches!(c, crate::layout::fragment::paginate::Cand::Float { .. }))
         );
-        assert!(gate(parent, Some(50.0), true, tree.values()));
+        assert!(gate(
+            parent,
+            Some(50.0),
+            true,
+            crate::layout::cx::FrameCx::new(tree.values())
+        ));
     }
 
     #[test]
@@ -149,7 +165,8 @@ mod tests {
         let Node::Element(parent) = &tree[0] else {
             panic!("block")
         };
-        let candidates = super::candidates(parent, tree.values()).expect("candidates");
+        let candidates = super::candidates(parent, crate::layout::cx::FrameCx::new(tree.values()))
+            .expect("candidates");
         assert!(
             candidates
                 .iter()
@@ -157,7 +174,12 @@ mod tests {
         );
         // CSS Break 3 section 3.1: forced breaks apply to ordinary block flow;
         // they do not require a flex or float formatting context.
-        assert!(gate(parent, Some(9.0), true, tree.values()));
+        assert!(gate(
+            parent,
+            Some(9.0),
+            true,
+            crate::layout::cx::FrameCx::new(tree.values())
+        ));
     }
     #[test]
     fn deep_float_and_forced_candidates_keep_native_geometry() {
@@ -175,7 +197,12 @@ mod tests {
             let Node::Element(parent) = &tree[0] else {
                 panic!("block")
             };
-            assert!(gate(parent, None, true, tree.values()));
+            assert!(gate(
+                parent,
+                None,
+                true,
+                crate::layout::cx::FrameCx::new(tree.values())
+            ));
         }
         let html = format!(
             "<div>{}<div style='display:flex;gap:10%'><div>gap</div></div>{}</div>",
@@ -186,6 +213,14 @@ mod tests {
         let Node::Element(parent) = &tree[0] else {
             panic!("block")
         };
-        assert_eq!(refusal(parent, None, true, tree.values()), Some("gap"));
+        assert_eq!(
+            refusal(
+                parent,
+                None,
+                true,
+                crate::layout::cx::FrameCx::new(tree.values())
+            ),
+            Some("gap")
+        );
     }
 }

@@ -331,7 +331,10 @@ where
         } else {
             1.0
         };
-        let duration = policy.duration.mul_f32(reversing_factor);
+        // KaminIDE patch: f32 duration arithmetic made a full-length transition
+        // a few nanoseconds longer than its policy, so it still reported
+        // `Running` (and requested a frame) once its duration had elapsed.
+        let duration = policy.duration.mul_f64(f64::from(reversing_factor));
         state.update(cx, |state, _| {
             state.from = sampled.clone();
             state.target = target.clone();

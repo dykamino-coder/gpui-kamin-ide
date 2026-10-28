@@ -1,8 +1,8 @@
 //! Сборка StackChild ребёнка стопки колонок: вложенный ряд, монолитность, число копий.
 
 use super::stack_child_of;
-use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
 use crate::style::values::value::Len;
@@ -35,7 +35,7 @@ pub(super) fn finish_stack_child(
     whole: bool,
     build: super::factory::Builder,
     measured_table: Option<(bool, bool)>,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     let (scrolls, monolith) = copy_monolith(copy, &cuts, nest_row);
     // Высоту меряет раскладка копии (`StackChild::measure`):

@@ -75,6 +75,9 @@ impl LayoutMeasurement {
 
     /// Measure logical CSS size and content baseline sets without paint rounding.
     /// Callbacks have the same restrictions as ordinary native layout callbacks.
+    // KaminIDE patch: native measure callbacks are stack-safe values; enter the
+    // stack-safe context like `TaffyLayoutEngine::compute_layout`.
+    #[cfg_attr(feature = "stacker", stacksafe::stacksafe)]
     pub fn measure(
         &mut self,
         available: Size<AvailableSpace>,

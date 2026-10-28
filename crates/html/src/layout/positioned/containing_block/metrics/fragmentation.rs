@@ -147,7 +147,7 @@ impl Recorder {
                         viewport: Some(opts.viewport),
                         ..ShapeCx::COLUMNS
                     },
-                    opts.cx.vcx(),
+                    opts.cx.frame(),
                 );
                 // css-break-3 §3.1/§3.2: break-before/after/inside do not apply
                 // to absolutely positioned boxes; their content still breaks.

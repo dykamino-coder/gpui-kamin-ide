@@ -31,7 +31,7 @@ pub(in crate::layout::multicol) fn column_kids(
     Vec<crate::layout::fragment::types::Par>,
     Vec<(Element, crate::layout::fragment::Shape)>,
 ) {
-    let vcx = opts.cx.vcx();
+    let vcx = opts.cx.frame();
     // Линии остаются в Taffy-дереве контейнера; копия сохраняет flex sizing,
     // фон и static position. Regrow читает их после layout.
     let n = kids.len();
@@ -75,7 +75,7 @@ pub(in crate::layout::multicol) fn stack_children(
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
     prepared: Vec<crate::layout::multicol::stack_child::Prepared>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
-    let vcx = opts.cx.vcx();
+    let vcx = opts.cx.frame();
     let balanced_frag: Option<f32> =
         (fixed.is_none() && rows.is_none_or(|r| r.cap) && cols > 1 && kids.len() == 1)
             .then(|| {

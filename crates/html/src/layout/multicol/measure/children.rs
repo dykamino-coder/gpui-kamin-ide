@@ -40,7 +40,7 @@ pub(crate) fn measure_children(
     measure_ok: bool,
     pag_ok: bool,
 ) -> Option<Vec<(Element, Shape)>> {
-    let vcx = opts.cx.vcx();
+    let vcx = opts.cx.frame();
     ge.children
         .iter()
         .filter(|n| !is_blank(n))
@@ -168,7 +168,7 @@ pub(crate) fn measure_children(
                     super::laid::vertical_kid(c, vcx, line_col_w?, col_rl, measured_kids)
                 } else {
                     let w = kid_layout_w(&c, line_col_w, layout_col_w)?;
-                    let c = crate::layout::block::margins::fragment_box(c, w, vcx);
+                    let c = crate::layout::block::margins::fragment_box(c, w, vcx.values);
                     let (mt, mb) = measured_margins(&c)?;
                     measured_kids.borrow_mut().push((c.node_id, w));
                     Some((

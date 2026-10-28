@@ -1,8 +1,8 @@
 //! Распорки перед перенесённым и рост перенесённой коробки; поля абзаца.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::style::computed::Display;
@@ -16,18 +16,18 @@ pub(crate) use grow::grow_pushed;
 /// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, потом
 /// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
 /// новый поточный сосед.
-pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>) -> bool {
+pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>) -> bool {
     insert_spacer(c, id, grow, vcx, true)
 }
 
 /// Распорка по РАЗЛОЖЕННОЙ копии (`push::Regrow`): заданная высота хозяина не
 /// растёт — прирост от фрагментации засчитывается в неё (css-break-3
 /// §box-splitting, примечание), содержимое за ней — его переполнение.
-pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>) -> bool {
+pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>) -> bool {
     insert_spacer(c, id, grow, vcx, false)
 }
 
-fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>, fixed_grows: bool) -> bool {
+fn insert_spacer(c: &mut Element, id: u64, grow: f32, vcx: FrameCx<'_>, fixed_grows: bool) -> bool {
     // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
     // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
     // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
@@ -162,9 +162,18 @@ mod tests {
             })
         }
         let mut root = find(&tree).unwrap().clone();
-        let blocks = BlockBox::collect(&root, ShapeCx::COLUMNS, tree.values());
+        let blocks = BlockBox::collect(
+            &root,
+            ShapeCx::COLUMNS,
+            crate::layout::cx::FrameCx::new(tree.values()),
+        );
         let (first, next) = (blocks.kids[0].id, blocks.kids[1].id);
-        assert!(spacer_before_laid(&mut root, next, 80.0, tree.values()));
+        assert!(spacer_before_laid(
+            &mut root,
+            next,
+            80.0,
+            crate::layout::cx::FrameCx::new(tree.values())
+        ));
         let strut = root
             .children
             .iter()

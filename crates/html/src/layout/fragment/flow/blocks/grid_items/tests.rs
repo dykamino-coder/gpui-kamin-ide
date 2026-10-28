@@ -22,7 +22,7 @@ fn an_item_belongs_to_the_fragment_where_its_margin_box_starts() {
     let b = BlockBox::collect(
         root,
         crate::layout::fragment::ShapeCx::COLUMNS,
-        doc.values(),
+        crate::layout::cx::FrameCx::new(doc.values()),
     );
     let ids: Vec<u64> = b
         .grid

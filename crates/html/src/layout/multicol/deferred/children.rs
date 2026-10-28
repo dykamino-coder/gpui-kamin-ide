@@ -31,7 +31,7 @@ impl Recipe {
         let host = self.resolved_host(width);
         let opts = self.geometry_options(&host, width, window, cx);
         let geometry = opts.cx.position.geometry.clone().unwrap_or_default();
-        let vcx = opts.cx.vcx();
+        let vcx = opts.cx.frame();
         let kids = if vertical {
             laid::vertical_children(&host, &self.merged, vcx, width, reverse, &measured)
         } else {

@@ -1,16 +1,16 @@
 //! Обход кандидатов для общего решателя измеренной фрагментации.
 
 use super::{Cand, avoid_row, column_flex, row_flex};
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::clone::{monolith_box, solid_box};
 use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 use crate::style::values::value::px_auto_zero;
 
-pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: ValueCx<'_>) -> Option<()> {
+pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: FrameCx<'_>) -> Option<()> {
     // Native table rows use the table planner's geometry and break expansion;
     // they are not ordinary block boxes observed by the measured solver.
     if crate::layout::fragment::table_bands::table_box(p) {

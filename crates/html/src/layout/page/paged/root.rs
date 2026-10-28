@@ -102,7 +102,7 @@ pub(super) fn group_runs(
     inline_level: impl Fn(&Node) -> bool,
     floated: impl Fn(&Node) -> bool,
     groups: &mut Vec<Vec<Node>>,
-    vcx: ValueCx<'_>,
+    vcx: crate::layout::cx::FrameCx<'_>,
 ) {
     let mut run = Run::None;
     let mut previous_page = None;

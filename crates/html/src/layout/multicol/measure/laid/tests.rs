@@ -1,5 +1,11 @@
 //! Геометрия копий не требует предварительных высот и сохраняет поля потока.
 
+use crate::layout::cx::FrameCx;
+
+/// The frame of a parsed fixture: its values, no fragmented ancestor.
+fn frame(tree: &crate::dom::Parsed) -> FrameCx<'_> {
+    FrameCx::new(tree.values())
+}
 use super::*;
 
 fn root(nodes: &[Node]) -> &Element {
@@ -23,7 +29,7 @@ fn copies_export_collapsed_margins_before_root_layout() {
     let kids = children(
         root(&tree),
         &BoxStyle::default(),
-        tree.values(),
+        frame(&tree),
         100.0,
         &measured,
     )
@@ -55,7 +61,7 @@ fn sibling_with_its_own_fragment_state_keeps_the_whole_preplan() {
             children(
                 root(&tree),
                 &BoxStyle::default(),
-                tree.values(),
+                frame(&tree),
                 100.0,
                 &measured
             )
@@ -73,13 +79,13 @@ fn pending_tree_waits_for_width_without_resolving_percentages() {
         "",
     );
     let host = root(&tree);
-    let pending = pending(host, &BoxStyle::default(), tree.values()).expect("deferred tree");
+    let pending = pending(host, &BoxStyle::default(), frame(&tree)).expect("deferred tree");
     assert_eq!(
         pending[0].0.style.used().margin.top,
         Some(crate::style::values::value::Len::Pct(0.1))
     );
     let measured = RefCell::default();
-    let kids = children(host, &BoxStyle::default(), tree.values(), 120.0, &measured)
+    let kids = children(host, &BoxStyle::default(), frame(&tree), 120.0, &measured)
         .expect("definite width");
     assert_eq!(kids[0].1.margin_top, 12.0);
     assert_eq!(kids[0].1.height, 0.0);
@@ -104,7 +110,7 @@ fn vertical_copies_export_logical_margins_without_estimating_width() {
         let kids = vertical_children(
             &host,
             &BoxStyle::default(),
-            tree.values(),
+            frame(&tree),
             100.0,
             reverse,
             &measured,
@@ -123,10 +129,10 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
         "<div><div style='float:left;width:100%;height:20px'>float</div></div>",
         "",
     );
-    let host = super::super::block_floats(root(&tree), |_| false, Some(100.0), tree.values())
+    let host = super::super::block_floats(root(&tree), |_| false, Some(100.0), frame(&tree))
         .expect("full-width float is a block in the stack");
     let measured = RefCell::default();
-    let kids = children(&host, &BoxStyle::default(), tree.values(), 100.0, &measured)
+    let kids = children(&host, &BoxStyle::default(), frame(&tree), 100.0, &measured)
         .expect("converted float has one ordinary block flow");
     assert!(kids[0].0.marks.float_block);
     assert!(kids[0].0.style.used().float.is_none());
@@ -141,14 +147,14 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
         "",
     );
     let host = root(&tree);
-    let pending = pending(host, &BoxStyle::default(), tree.values()).expect("deferred calc");
+    let pending = pending(host, &BoxStyle::default(), frame(&tree)).expect("deferred calc");
     assert!(matches!(
         pending[0].0.style.used().margin.top,
         Some(crate::style::values::value::Len::Calc(_))
     ));
     for width in [100.0, 200.0] {
         let measured = RefCell::default();
-        let kids = children(host, &BoxStyle::default(), tree.values(), width, &measured)
+        let kids = children(host, &BoxStyle::default(), frame(&tree), width, &measured)
             .expect("definite calc basis");
         assert_eq!(kids[0].1.margin_top, width * 0.2 + 7.0);
         assert_eq!(kids[0].1.height, 0.0);
@@ -172,7 +178,7 @@ fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
             "",
         );
         let host = root(&tree);
-        let pending = pending_vertical(host, &BoxStyle::default(), tree.values(), reverse)
+        let pending = pending_vertical(host, &BoxStyle::default(), frame(&tree), reverse)
             .expect("deferred vertical calc");
         assert!(matches!(
             pending[0].0.style.used().margin.left,
@@ -182,7 +188,7 @@ fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
         let kids = vertical_children(
             host,
             &BoxStyle::default(),
-            tree.values(),
+            frame(&tree),
             100.0,
             reverse,
             &measured,
@@ -202,19 +208,19 @@ fn cross_copy_clearance_shares_the_float_exclusion_context() {
     let host = root(&tree);
     let merged = BoxStyle::default();
     let measured = RefCell::default();
-    let kids = children(host, &merged, tree.values(), 100.0, &measured).unwrap();
+    let kids = children(host, &merged, frame(&tree), 100.0, &measured).unwrap();
     assert_eq!(kids.len(), 1);
     assert_eq!(kids[0].0.children.len(), 2);
     assert_eq!(kids[0].1.margin_top, 0.0);
-    assert_eq!(pending(host, &merged, tree.values()).unwrap().len(), 1);
+    assert_eq!(pending(host, &merged, frame(&tree)).unwrap().len(), 1);
     assert_eq!(
-        super::super::native_float::children(host, &merged, tree.values(), 100.0, &measured)
+        super::super::native_float::children(host, &merged, frame(&tree), 100.0, &measured)
             .unwrap()
             .len(),
         1
     );
     assert_eq!(
-        super::super::native_float::pending(host, &merged, tree.values())
+        super::super::native_float::pending(host, &merged, frame(&tree))
             .unwrap()
             .len(),
         1

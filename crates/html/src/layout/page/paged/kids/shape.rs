@@ -1,8 +1,8 @@
 //! Поля группы корневых узлов листа, чью высоту и разрывы даёт раскладка её копии.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
 
 /// Поля ребёнка листа: копия рисуется со смещением на верхнее поле, и маска
@@ -17,7 +17,7 @@ pub(crate) fn group_margins(
     group: &[Node],
     n: &Node,
     pad_top: f32,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> (f32, f32, f32) {
     let positioned = |e: &Element| {
         matches!(

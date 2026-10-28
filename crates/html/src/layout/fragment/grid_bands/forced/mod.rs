@@ -1,10 +1,10 @@
 //! Принудительные разрывы рядов сетки и стопка сетки.
 
 use super::grid_px_row_bands;
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::probe::size_monolith;
 use crate::style::computed::Display;
@@ -31,7 +31,7 @@ pub(crate) use stack::grid_stack;
 /// по колонкам, `grid-column: N / span M` занимает M колонок и при
 /// необходимости пинает курсор вперёд; не влезающий в остаток ряда элемент
 /// начинает новый ряд. Любая непонятная форма — пустой список, а не догадка.
-pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(f32, f32)>) {
+pub(crate) fn grid_row_forced(c: &Element, vcx: FrameCx<'_>) -> (Vec<f32>, Vec<(f32, f32)>) {
     use crate::style::computed::{AutoFlow, Placement};
     let s = &*c.style.used();
     if matches!(

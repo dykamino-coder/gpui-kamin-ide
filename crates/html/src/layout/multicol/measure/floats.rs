@@ -11,7 +11,7 @@ pub(crate) fn block_floats(
     ge: &Element,
     positioned: impl Fn(&Computed) -> bool,
     col_w: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::cx::FrameCx<'_>,
 ) -> Option<Element> {
     if vcx
         .subtrees

@@ -4,9 +4,9 @@
 //! записываются и при атомарном строчном содержимом: оно не отменяет разрыв
 //! класса A между содержащими его блоками (css-break-3 §4.1, §4.3).
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, grid_tree, stacked_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
@@ -19,7 +19,7 @@ pub(super) fn recorder(
     vertical: Option<bool>,
     measured: bool,
     cx: ShapeCx,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Rc<Watched> {
     let single = group.iter().filter(|g| !is_blank(g)).count() == 1;
     match n {
@@ -94,7 +94,7 @@ mod tests {
             None,
             false,
             ShapeCx::COLUMNS,
-            tree.values(),
+            crate::layout::cx::FrameCx::new(tree.values()),
         );
         assert_eq!(watched.blocks().unwrap().kids.len(), 1);
     }
@@ -114,7 +114,7 @@ mod tests {
             None,
             false,
             ShapeCx::COLUMNS,
-            tree.values(),
+            crate::layout::cx::FrameCx::new(tree.values()),
         );
         let blocks = watched
             .blocks()
