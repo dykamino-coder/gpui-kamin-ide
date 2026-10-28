@@ -25,6 +25,8 @@ export function setExternalMcpManager(manager: typeof externalManager): void {
 export interface ToolCallContext {
   /** Source tab that issued this MCP call. Used to route UI widgets back to the right chat. */
   tabId?: string | null
+  /** Cancellation requested by the owning MCP task or session. */
+  signal?: AbortSignal
 }
 
 export async function executeTool(

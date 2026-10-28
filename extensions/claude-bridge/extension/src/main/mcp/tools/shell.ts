@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { runForegroundCommand } from './shell-foreground'
 import path from 'node:path'
+import type { ToolCallContext } from '../executor'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
 import { findBashExecutable, findPowerShellExecutable } from '../../utils/command-runtime'
@@ -98,7 +99,7 @@ async function findBashAsync(): Promise<string> {
 /**
  * PowerShell tool — Windows preview. Uses pwsh or powershell.exe.
  */
-export async function powerShellExecute(input: Record<string, unknown>): Promise<McpResult> {
+export async function powerShellExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const command = input.command as string
   if (!command) return errorResult('command is required')
 
@@ -106,7 +107,7 @@ export async function powerShellExecute(input: Record<string, unknown>): Promise
   // long commands like `npm install` / `podman build` / test suites that
   // legitimately run for many minutes. Cap matches HEAVY_TOOL_TIMEOUT_MS
   // and BASH_MAX_TIMEOUT_MS so we don't get cut off by either layer.
-  const timeout = typeof input.timeout === 'number' ? Math.min(input.timeout, 1_800_000) : 1_500_000
+  const timeout = typeof input.timeout === 'number' && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 1_800_000)) : 1_500_000
 
   let pwshPath: string
   try {
@@ -114,10 +115,10 @@ export async function powerShellExecute(input: Record<string, unknown>): Promise
   } catch (err) {
     return errorResult(err instanceof Error ? err.message : String(err))
   }
-  return runForegroundCommand(command, pwshPath, timeout, ['-c'], await shellEnv())
+  return runForegroundCommand(command, pwshPath, timeout, ['-c'], await shellEnv(), context?.signal)
 }
 
-export async function bashExecute(input: Record<string, unknown>): Promise<McpResult> {
+export async function bashExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const command = input.command as string
   if (!command) return errorResult('command is required')
 
@@ -125,7 +126,7 @@ export async function bashExecute(input: Record<string, unknown>): Promise<McpRe
   // long commands like `npm install` / `podman build` / test suites that
   // legitimately run for many minutes. Cap matches HEAVY_TOOL_TIMEOUT_MS
   // and BASH_MAX_TIMEOUT_MS so we don't get cut off by either layer.
-  const timeout = typeof input.timeout === 'number' ? Math.min(input.timeout, 1_800_000) : 1_500_000
+  const timeout = typeof input.timeout === 'number' && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 1_800_000)) : 1_500_000
   const runInBackground = input.run_in_background === true
   const description = (input.description as string) || ''
 
@@ -150,7 +151,7 @@ export async function bashExecute(input: Record<string, unknown>): Promise<McpRe
     return runBackgroundCommand(wrapped, shell, description, shellFlags, env)
   }
 
-  return runForegroundCommand(wrapped, shell, timeout, shellFlags, env)
+  return runForegroundCommand(wrapped, shell, timeout, shellFlags, env, context?.signal)
 }
 
 const BG_OUTPUT_CAP = 100 * 1024

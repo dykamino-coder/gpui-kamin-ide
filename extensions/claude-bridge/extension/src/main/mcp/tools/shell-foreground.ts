@@ -7,7 +7,8 @@ const TERMINATION_GRACE_MS = 1000
 const textResult = (text: string): McpResult => ({ content: [{ type: 'text', text }] })
 const errorResult = (message: string): McpResult => textResult(`Error: ${message}`)
 
-export function runForegroundCommand(command: string, shell: string, timeout: number, shellFlags: string[] = ['-c'], env: NodeJS.ProcessEnv = process.env): Promise<McpResult> {
+export function runForegroundCommand(command: string, shell: string, timeout: number, shellFlags: string[] = ['-c'], env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal): Promise<McpResult> {
+  if (signal?.aborted) return Promise.resolve({ ...errorResult('Command cancelled'), isError: true })
   return new Promise((resolve) => {
     const stdoutChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []
@@ -15,6 +16,7 @@ export function runForegroundCommand(command: string, shell: string, timeout: nu
     let stderrBytes = 0
     let truncated = false
     let timedOut = false
+    let cancelled = false
     let settled = false
     let forceTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -22,7 +24,8 @@ export function runForegroundCommand(command: string, shell: string, timeout: nu
       if (settled) return
       settled = true
       clearTimeout(timer)
-      clearTimeout(forceTimer)
+      if (!timedOut && !cancelled) clearTimeout(forceTimer)
+      signal?.removeEventListener('abort', abort)
       child.stdout?.destroy()
       child.stderr?.destroy()
       if (failure) { resolve(errorResult(failure)); return }
@@ -32,10 +35,11 @@ export function runForegroundCommand(command: string, shell: string, timeout: nu
       if (stdout) parts.push(stdout)
       if (stderr) parts.push(`\n--- stderr ---\n${stderr}`)
       if (truncated || stderrBytes > MAX_OUTPUT_BYTES) parts.push(`\n[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB per stream]`)
+      if (cancelled) parts.push('\n[Command cancelled; termination requested]')
       if (timedOut) parts.push(`\n[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`)
       if (code !== null && code !== 0) parts.push(`\n[Exit code: ${code}]`)
       const result = textResult(parts.join('') || `Command completed with exit code ${code ?? 0}`)
-      if (timedOut) result.isError = true
+      if (timedOut || cancelled) result.isError = true
       resolve(result)
     }
 
@@ -55,8 +59,8 @@ export function runForegroundCommand(command: string, shell: string, timeout: nu
       }
       try { child.kill(signal) } catch { /* close/exit race */ }
     }
-    const timer = setTimeout(() => {
-      timedOut = true
+    const terminate = (): void => {
+      if (forceTimer) return
       // Do not depend on close: descendants can keep inherited pipes open
       // after the shell exits, and .killed only means a signal was sent.
       forceTimer = setTimeout(() => {
@@ -70,7 +74,11 @@ export function runForegroundCommand(command: string, shell: string, timeout: nu
         } catch { /* bounded settlement still runs */ }
       }
       signalTree('SIGTERM')
-    }, timeout)
+    }
+    const abort = (): void => { cancelled = true; terminate() }
+    const timer = setTimeout(() => { timedOut = true; terminate() }, timeout)
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
 
     child.stdout?.on('data', (chunk: Buffer) => {
       if (truncated) return

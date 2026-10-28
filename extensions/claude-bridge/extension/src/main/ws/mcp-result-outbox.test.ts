@@ -114,3 +114,42 @@ describe('INC-2026-0080 oversized outcomes', () => {
     await pending
   })
 })
+
+describe('task outcomes across replacement PTYs', () => {
+  it('retains an unacknowledged task and rebinds it only to the same owner', async () => {
+    open = true
+    outbox.attach('old', 'owner')
+    const pending = outbox.deliver('old', { type: 'mcp:response', requestId: 'task', taskOwner: 'owner', result: 'once' })
+    outbox.detach()
+    vi.advanceTimersByTime(MCP_RESULT_LIMITS.lifetimeMs + 1000)
+    expect(frames).toHaveLength(1)
+    outbox.attach('replacement', 'owner')
+    expect(JSON.parse(frames.at(-1)!)).toMatchObject({ sessionId: 'replacement', taskOwner: 'owner', result: 'once' })
+    outbox.acknowledge('old', 'task', true)
+    expect(vi.getTimerCount()).toBe(1)
+    outbox.acknowledge('replacement', 'task', true)
+    await expect(pending).resolves.toMatchObject({ sessionId: 'replacement', result: 'once' })
+  })
+
+  it('binds a result that finishes after reattach and preserves owner on compact errors', async () => {
+    open = true
+    outbox.attach('replacement', 'owner')
+    const pending = outbox.deliver('old', { type: 'mcp:response', requestId: 'task', taskOwner: 'owner', result: 'x'.repeat(MCP_RESULT_LIMITS.frameBytes) })
+    expect(JSON.parse(frames[0]!)).toMatchObject({ sessionId: 'replacement', taskOwner: 'owner', result: { isError: true } })
+    outbox.acknowledge('replacement', 'task', true)
+    await pending
+    await expect(outbox.deliver('old', { type: 'mcp:response', requestId: 'foreign', taskOwner: 'other', result: 1 })).rejects.toThrow('owner mismatch')
+  })
+
+  it('drops a task on owner replacement and expires a disconnected task after 24 hours', async () => {
+    outbox.attach('old', 'owner')
+    const foreign = expect(outbox.deliver('old', { type: 'mcp:response', requestId: 'task', taskOwner: 'owner', result: 1 })).rejects.toThrow('ended server session')
+    outbox.attach('other', 'other-owner')
+    await foreign
+    const expired = expect(outbox.deliver('other', { type: 'mcp:response', requestId: 'expiry', taskOwner: 'other-owner', result: 1 })).rejects.toThrow('timed out')
+    outbox.detach()
+    vi.advanceTimersByTime(86_400_000)
+    await expired
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})

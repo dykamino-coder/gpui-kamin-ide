@@ -2,6 +2,7 @@
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
 
+import { settleMcpTask } from './mcp-tasks'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
 import type { Server as HttpServer } from 'http'
@@ -244,6 +245,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 JSON.stringify({
                   type: 'session:created',
                   sessionId: session.id,
+                  mcpTaskOwner: session.mcpEndpoint?.id,
                   effort: session.effort,
                   model: session.model,
                   settingsDir: session.settingsDir,
@@ -326,7 +328,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         case 'mcp:response':
         case 'mcp:denied': {
           if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
-          const accepted = settleMcpResult(authenticatedSessionId, msg)
+          let accepted: boolean
+          try {
+            const session = getSession(authenticatedSessionId)
+            accepted = msg.taskOwner
+              ? msg.sessionId === authenticatedSessionId && !!session && (await settleMcpTask(session, msg))
+              : settleMcpResult(authenticatedSessionId, msg)
+          } catch {
+            break
+          } // no ack until durable settlement; outbox retries
           sendToClient(ws, {
             type: 'mcp:result-ack',
             sessionId: authenticatedSessionId,
@@ -449,6 +459,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 JSON.stringify({
                   type: 'session:created',
                   sessionId: live.id,
+                  mcpTaskOwner: live.mcpEndpoint?.id,
                   effort: live.effort,
                   model: live.model,
                   settingsDir: live.settingsDir,
@@ -527,6 +538,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 JSON.stringify({
                   type: 'session:created',
                   sessionId: session.id,
+                  mcpTaskOwner: session.mcpEndpoint?.id,
                   effort: session.effort,
                   model: session.model,
                   settingsDir: session.settingsDir,
@@ -681,6 +693,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               JSON.stringify({
                 type: 'session:restarted',
                 sessionId: newSession.id,
+                mcpTaskOwner: newSession.mcpEndpoint?.id,
                 effort: newSession.effort || msg.effort,
                 model: newSession.model,
               }),
@@ -797,6 +810,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               JSON.stringify({
                 type: 'session:restarted',
                 sessionId: newSession.id,
+                mcpTaskOwner: newSession.mcpEndpoint?.id,
                 effort: newSession.effort,
                 model: newSession.model || msg.model,
               }),
