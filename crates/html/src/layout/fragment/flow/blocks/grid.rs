@@ -7,10 +7,10 @@
 //! родителя (css-grid-2 §9): их перенос принадлежит родительской сетке.
 
 use super::{BlockBox, Laid, collect};
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_blockified;
@@ -90,7 +90,7 @@ pub(crate) fn grid_container(e: &Element) -> bool {
 }
 
 /// Все элементы сетки `e`, записываемые native рекордером.
-pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBox {
+pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> GridBox {
     let mut out = GridBox::default();
     for k in children(&e.children).filter(|n| !is_blank(n)) {
         let Node::Element(k) = k else { continue };
@@ -98,7 +98,7 @@ pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBo
             continue;
         }
         let lens = LenCx::box_viewport(cx.viewport, &k.style.used());
-        let px = |l| lens.px_lossy_zero(l, vcx);
+        let px = |l| lens.px_lossy_zero(l, vcx.values);
         let monolith = monolith_blockified(k);
         let inner = (!monolith).then(|| {
             let mut inner = collect(k, true, cx, vcx);

@@ -1,10 +1,10 @@
 //! Стопка, всю геометрию которой даёт раскладка копий до балансировки.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::fragment_box;
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::Shape;
 use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
@@ -16,7 +16,7 @@ use std::cell::RefCell;
 pub(crate) fn children(
     host: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
@@ -42,7 +42,7 @@ pub(crate) fn children(
         })
         .map(|c| {
             let c = resolved_lengths(c, merged, vcx);
-            let c = fragment_box(c, width, vcx);
+            let c = fragment_box(c, width, vcx.values);
             let (margin_top, margin_bottom) = crate::layout::block::margins::fragment_margins(&c)?;
             Some((
                 c,
@@ -66,7 +66,7 @@ pub(crate) fn children(
 pub(crate) fn pending(
     host: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Vec<(Element, Shape)>> {
     if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
@@ -91,7 +91,7 @@ pub(crate) fn pending(
 pub(crate) fn vertical_children(
     host: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
     width: f32,
     reverse: bool,
     measured: &RefCell<Vec<(u64, f32)>>,
@@ -109,7 +109,8 @@ pub(crate) fn vertical_children(
                 return None;
             }
             let c = resolved_lengths(c, merged, vcx);
-            let c = crate::layout::block::margins::vertical_fragment_box(c, width, reverse, vcx);
+            let c =
+                crate::layout::block::margins::vertical_fragment_box(c, width, reverse, vcx.values);
             let margin = |l| match l {
                 None | Some(crate::style::values::value::Len::Auto) => Some(0.0),
                 Some(crate::style::values::value::Len::Px(v)) => Some(v),
@@ -141,7 +142,7 @@ pub(crate) fn vertical_children(
 pub(crate) fn pending_vertical(
     host: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
     reverse: bool,
 ) -> Option<Vec<(Element, Shape)>> {
     if merged.text_box_trim_start || merged.text_box_trim_end {

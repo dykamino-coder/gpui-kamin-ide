@@ -40,7 +40,7 @@ pub(crate) fn measure_children(
     measure_ok: bool,
     pag_ok: bool,
 ) -> Option<Vec<(Element, Shape)>> {
-    let vcx = opts.cx.vcx();
+    let vcx = opts.cx.frame();
     ge.children
         .iter()
         .filter(|n| !is_blank(n))

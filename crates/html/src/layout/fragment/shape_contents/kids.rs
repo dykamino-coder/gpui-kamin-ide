@@ -1,9 +1,9 @@
 //! Форма содержимого по детям: флаги разрывов детей и сборка формы из их вырезов.
 
 use super::{finish_shape_cuts, kid_shapes, shaped_height};
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::flex_lines::{class_a_box, item_container};
@@ -40,7 +40,7 @@ pub(super) fn shape_from_kids(
     grid_rows_stack: bool,
     row_gap: f32,
     no_descent: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Measure> {
     let inner = kid_shapes(c, depth, &px_or, cx, &kids, flex_col, no_descent, vcx);
     let mut cuts: Vec<(f32, f32)> = Vec::new();
@@ -110,7 +110,7 @@ pub(super) fn kid_break_flags(
     cx: ShapeCx,
     kids: &Vec<&Node>,
     flex_items: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> (
     Vec<bool>,
     Vec<bool>,

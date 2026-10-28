@@ -1,5 +1,6 @@
 //! Общий BFC печатного float-пробега сохраняет рекордер и адреса роста.
 use super::*;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::{ShapeCx, flow};
 
 #[test]
@@ -15,7 +16,7 @@ fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
         384.,
         0.,
         (false, false),
-        tree.values(),
+        FrameCx::new(tree.values()),
     )
     .expect("shared measured float run");
     assert!(p.blocks && p.float_extent);
@@ -32,7 +33,7 @@ fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
         false,
         p.blocks,
         ShapeCx::COLUMNS,
-        tree.values(),
+        FrameCx::new(tree.values()),
     );
     let blocks = watched.blocks().expect("measured block boundaries");
     assert_eq!(blocks.kids.len(), 1);
@@ -54,7 +55,7 @@ fn unrelated_inline_run_does_not_acquire_a_block_copy() {
             384.,
             0.,
             (false, false),
-            tree.values()
+            FrameCx::new(tree.values())
         )
         .is_none()
     );
@@ -90,7 +91,7 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
         |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
         &source[..2],
         &source[0],
-        tree.values(),
+        FrameCx::new(tree.values()),
     );
     let p = group(
         &source[..2],
@@ -98,7 +99,7 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
         384.,
         0.,
         (false, after),
-        tree.values(),
+        FrameCx::new(tree.values()),
     )
     .unwrap();
     let Node::Element(root) = &p.nodes[0] else {
@@ -106,7 +107,8 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
     };
     assert_eq!(root.style.used().height, None);
     assert_eq!(height(&root.children[1]), height(&source[1]));
-    let blocks = flow::blocks::BlockBox::collect(root, ShapeCx::COLUMNS, tree.values());
+    let blocks =
+        flow::blocks::BlockBox::collect(root, ShapeCx::COLUMNS, FrameCx::new(tree.values()));
     assert!(blocks.edge(true, &Default::default()).0);
     let mut resumed = root.clone();
     contexts.refresh(

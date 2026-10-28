@@ -1,6 +1,7 @@
 //! The middle visible X line comes from scaled final geometry, not endpoint interpolation.
 
 use super::*;
+use crate::taffy::node_measure;
 use crate::{MeasuredContent, px};
 use std::{cell::RefCell, rc::Rc};
 use taffy::style_helpers::TaffyMaxContent;

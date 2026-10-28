@@ -1,7 +1,7 @@
 //! Длины коробки в точках для клона поддерева вложенных рядов.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
@@ -12,7 +12,7 @@ use crate::style::values::value::Len;
 /// нулём (нестрогий `px_or`), а `height: 4em` — отказом всей стопки, хотя
 /// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
 /// трогаются: число в `line-height` наследуется множителем.
-pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Element {
+pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: FrameCx<'_>) -> Element {
     if vcx
         .lengths
         .is_some_and(|facts| facts.borrow_mut().unchanged(c))
@@ -26,7 +26,8 @@ pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: ValueCx<'_>)
         next: usize,
     }
     let enter = |source: &Element, parent: &BoxStyle| {
-        let style = crate::style::cascade::materialize::box_style(parent, &source.style, vcx);
+        let style =
+            crate::style::cascade::materialize::box_style(parent, &source.style, vcx.values);
         let mut output = source.clone();
         if relative(&source.style.used()) {
             resolve(&mut output, &style);
@@ -189,7 +190,7 @@ mod tests {
         let copy = resolved_lengths(
             &root,
             &BoxStyle::default(),
-            doc.values().with_lengths(&cache),
+            crate::layout::cx::FrameCx::new(doc.values()).with_lengths(&cache),
         );
         let Node::Element(child) = &copy.children[0] else {
             unreachable!()

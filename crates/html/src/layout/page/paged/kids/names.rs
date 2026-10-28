@@ -1,8 +1,8 @@
 //! Имена страниц на разрывах между группами детей стопки страниц.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::{edge_break, page_monolith};
 use crate::layout::fragment::flex_lines::{class_a_box, inline_display};
 use crate::layout::page::names::page_names;
@@ -13,7 +13,7 @@ pub(super) fn group_break_names(
     floated: impl Fn(&Node) -> bool,
     group: &[Node],
     n: &Node,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> (bool, bool, bool, bool, String) {
     let (monolith, fb, mut fa, names) = match n {
         Node::Element(e) if class_a_box(e) => (
@@ -104,7 +104,7 @@ mod tests {
             |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
             group,
             &group[0],
-            tree.values(),
+            crate::layout::cx::FrameCx::new(tree.values()),
         );
         assert!(after);
     }

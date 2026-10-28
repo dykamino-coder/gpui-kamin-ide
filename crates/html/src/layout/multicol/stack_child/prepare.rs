@@ -72,7 +72,7 @@ pub(in crate::layout::multicol) fn prepare(
                 || (copy.marks.paginate
                     && crate::layout::multicol::measure::native_float::float_copy(
                         &copy,
-                        opts.cx.vcx(),
+                        opts.cx.frame(),
                     ))
         });
     let (cuts, forced, solid, h, over, no_reach) = if laid {

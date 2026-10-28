@@ -25,7 +25,7 @@ fn independent_oof_root_records_only_its_own_lines(cx: &mut gpui::TestAppContext
                 pending.extend(&e.children);
             }
         };
-        let blocks = BlockBox::collect(owner, ShapeCx::COLUMNS, opts.cx.vcx());
+        let blocks = BlockBox::collect(owner, ShapeCx::COLUMNS, opts.cx.frame());
         let watch = Watched::for_blocks_axis(blocks, StackAxis::Horizontal, true);
         opts.frag.watch = Some(watch.clone());
         let mut root = div().block().w(px(100.)).child(element(owner, &opts.root_style(), &opts)).into_any_element();

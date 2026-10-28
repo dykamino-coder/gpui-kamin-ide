@@ -1,7 +1,7 @@
 //! Разрезы и высота StackChild для копий ребёнка многоколоночника.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::measure;
@@ -80,7 +80,7 @@ pub(super) fn line_cuts(
     Option<(f32, f32)>,
 ) {
     let measured = with_lines(merged, line_col_w, opts, |opts| {
-        let vcx = opts.cx.vcx();
+        let vcx = opts.cx.frame();
         // TRANSITIONAL(F2-4): Разрезы копии читаются через estimator; удалить в P21 после recorded cuts и child resume поверх P05/P08/P10.
         measure(
             copy_m.as_ref().unwrap_or(copy),
@@ -149,7 +149,7 @@ pub(super) fn stack_child_of(
     span: bool,
     kid_copies: usize,
     measured_table: Option<(bool, bool)>,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     let repeat = repeat_bands(copy, fixed, rows, measured_table);
     let (el, frags, fragment_builders) = super::factory::fragments(

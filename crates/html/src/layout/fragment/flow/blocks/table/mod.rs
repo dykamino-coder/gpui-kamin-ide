@@ -9,9 +9,9 @@
 //! разложенная сетка (`geometry`).
 
 use super::{BlockBox, BlockKid};
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_box;
@@ -75,7 +75,7 @@ impl TableBox {
     }
 
     /// Устройство таблицы `e` и все потоки её ячеек и подписей.
-    pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> Self {
         let mut out = TableBox {
             key: table_key(e),
             collapsed: e.style.used().border_collapse == Some(true),
@@ -191,7 +191,7 @@ impl TableBox {
 
 /// Подпись — блочная коробка обёртки таблицы (CSS 2.1 §17.4: блочный
 /// контейнер), сосед коробки таблицы и других подписей.
-fn caption_kid(cap: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockKid {
+fn caption_kid(cap: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> BlockKid {
     let monolith = monolith_box(cap);
     BlockKid {
         id: cap.node_id,
@@ -212,7 +212,7 @@ fn caption_kid(cap: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockKid {
 /// «parallel layout»), их значения сливаются в значение ряда (Blink
 /// `table_row_layout_algorithm.cc` `JoinFragmentainerBreakValues`); с крайнего
 /// ребёнка ячейки значение переносит `edge_avoid`.
-pub(crate) fn row_avoid(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
+pub(crate) fn row_avoid(row: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     edge_avoid(row, last, vcx)
         || row.children.iter().filter(|n| !is_blank(n)).any(
             |n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last, vcx)),
@@ -222,7 +222,7 @@ pub(crate) fn row_avoid(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
 /// Принудительные `break-before`/`break-after` ряда — тем же слиянием с
 /// ячейками (`break-before-expansion-001`: ячейка второго ряда с
 /// `break-before: column`).
-pub(crate) fn row_force(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
+pub(crate) fn row_force(row: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     (if last {
         row.style.used().break_after_force
     } else {

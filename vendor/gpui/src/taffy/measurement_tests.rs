@@ -1,6 +1,7 @@
 //! Independent subtree measurement keeps native layout caches and callbacks separate.
 
 use super::*;
+use crate::taffy::node_measure;
 use std::{cell::RefCell, rc::Rc};
 use taffy::style_helpers::TaffyMaxContent;
 

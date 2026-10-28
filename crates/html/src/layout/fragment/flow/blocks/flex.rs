@@ -1,8 +1,8 @@
 //! Flex-элементы и реальные линии решателя: стиль задаёт запреты, Taffy — членство и геометрию.
 use super::{BlockBox, BlockKid, Laid, Pushed, collect};
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::content_monolith_blockified;
@@ -50,7 +50,7 @@ pub(crate) fn flex_container(e: &Element) -> bool {
     )
 }
 
-pub(super) fn collect_flex(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> FlexBox {
+pub(super) fn collect_flex(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> FlexBox {
     let column = matches!(
         e.style.used().flex_dir,
         Some(crate::style::computed::FlexDir::Col | crate::style::computed::FlexDir::ColReverse)
