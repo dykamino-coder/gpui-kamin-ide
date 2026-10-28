@@ -136,6 +136,7 @@ pub(crate) fn fill_resumed(
         let rg = k.repeat;
         fill_pieces(
             target_at,
+            &|col| space_at(col).inline_size,
             limit,
             paged,
             &mut col,

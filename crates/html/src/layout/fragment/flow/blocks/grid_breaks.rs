@@ -74,6 +74,7 @@ impl GridBox {
             // абзацев ослабляются внутри самого элемента (`flex_flow`).
             out.keep.extend_from_slice(&flow.avoid_inside);
             out.avoid_inside.extend(flow.avoid_inside);
+            out.table_rows.extend(flow.table_rows);
             last = Some(last.map_or(b + it.mb, |l: f32| l.max(b + it.mb)));
             if let Some((r0, r1)) = placement {
                 placed.push((it, r0, r1));

@@ -11,6 +11,7 @@ pub(crate) fn cut_at(
     room: f32,
     edge: f32,
     mono: bool,
+    (block, inline_size): (f32, Option<f32>),
     at: impl Fn(f32) -> (f32, f32),
     overflow_to: Option<f32>,
     shortage: &mut f32,
@@ -91,6 +92,18 @@ pub(crate) fn cut_at(
     let Some((mut point, mut next)) = cut else {
         return Ok(None);
     };
+    // css-tables-3 §breaking-rules: первый не влезший ряд, который не freely fragmentable,
+    // уходит в следующий фрагментаинер целиком (`RowKeep`); самый внешний — самая ранняя
+    // граница. Пожелания `break-inside: avoid` объемлющих коробок уводят разрыв ещё выше.
+    if let Some(open) = k
+        .table_rows
+        .iter()
+        .filter(|r| r.holds(point, from, block, inline_size))
+        .map(|r| r.open)
+        .min_by(f32::total_cmp)
+    {
+        (point, next) = at(open);
+    }
     // Inline-селектор уже перепроверил строки после отката avoid.
     let keep: &[(f32, f32)] = if candidate.is_some() { &[] } else { &k.keep };
     for _ in 0..keep.len() {
