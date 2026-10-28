@@ -192,7 +192,10 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         vcx,
     );
     if !boxed.position_try_fallbacks.is_empty() {
-        boxed.try_style = Some(own.clone());
+        // Варианты коробки, созданной раскладкой из стадии элемента, пересчитывают
+        // каскад этого элемента под его родителем-элементом (css-anchor-position-1
+        // §fallback-rule, css-cascade-5 §7.3.1), а не значения коробки под коробкой-родителем.
+        boxed.try_style = Some(view.try_source.clone().unwrap_or_else(|| own.clone()));
     }
     boxed
 }
