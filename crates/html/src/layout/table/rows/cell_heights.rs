@@ -134,35 +134,7 @@ pub(super) fn resolve_cell_heights(
     // растит ячейку, а не режется. `height: 20px` с блоком в 300
     // прятал всё под обрезкой.
     if let Some(Len::Px(h)) = cell.style.used().height {
-        // Процентная высота ПРЯМОГО ребёнка решается от ЗАДАННОЙ
-        // высоты ячейки (CSS 2.1 §10.5): раскладка под нами при
-        // auto-росте ячейки трактует долю как auto, и ребёнок с
-        // overflow и height:100% раздувался содержимым вместо
-        // прокрутки в заданных ста точках.
-        for child in cell.children.iter_mut() {
-            if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.used().height
-            {
-                el.style.used_mut().height = Some(Len::Px(h * k));
-            }
-            // Пороги той же долей — от той же заданной высоты ячейки
-            // (CSS 2.1 §10.7: доля `max-height`/`min-height` считается
-            // как у `height`). Нерешённая доля у нас отбрасывается, и
-            // заменяемый ребёнок шёл природным размером: `<canvas
-            // 200×200 max-height: 100%>` в ячейке высотой 100 давал
-            // 200×200 вместо 100×100
-            // (`percent-height-replaced-in-percent-cell-002`).
-            if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.used().max_height
-            {
-                el.style.used_mut().max_height = Some(Len::Px(h * k));
-            }
-            if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.used().min_height
-            {
-                el.style.used_mut().min_height = Some(Len::Px(h * k));
-            }
-        }
+        resolve_child_percents(cell, h);
         cell.style.used_mut().height = None;
         let floor = match cell.style.used().min_height {
             Some(Len::Px(v)) => v.max(h),
@@ -205,3 +177,49 @@ pub(super) fn resolve_cell_heights(
         cell.style.used_mut().max_height = None;
     }
 }
+
+/// Доли прямых детей ячейки с заданной высотой `h`.
+fn resolve_child_percents(cell: &mut Element, h: f32) {
+    // Процентная высота ПРЯМОГО ребёнка заранее решается от ЗАДАННОЙ
+    // высоты ячейки только у замещаемого и у прокручиваемого ребёнка
+    // (Blink `length_utils.cc`: replaced descendants of a fixed-height
+    // cell; css-tables-3 §row-layout: scrollable percentage children of a
+    // restricted cell). Остальные доли в замере ряда — auto («percentages
+    // being considered 0px», css-tables-3 §computing-the-table-height) и
+    // решаются от итоговой высоты ячейки при раскладке: заранее решённые
+    // 200% растили ряд вдвое (`table-cell-expansion-002`).
+    for child in cell.children.iter_mut() {
+        if let Node::Element(el) = child
+            && let Some(Len::Pct(k)) = el.style.used().height
+            && (scrollable(el) || crate::layout::box_kind::replaced_tag(el))
+        {
+            el.style.used_mut().height = Some(Len::Px(h * k));
+        }
+        // Пороги той же долей — от той же заданной высоты ячейки
+        // (CSS 2.1 §10.7: доля `max-height`/`min-height` считается
+        // как у `height`). Нерешённая доля у нас отбрасывается, и
+        // заменяемый ребёнок шёл природным размером: `<canvas
+        // 200×200 max-height: 100%>` в ячейке высотой 100 давал
+        // 200×200 вместо 100×100
+        // (`percent-height-replaced-in-percent-cell-002`).
+        if let Node::Element(el) = child
+            && let Some(Len::Pct(k)) = el.style.used().max_height
+        {
+            el.style.used_mut().max_height = Some(Len::Px(h * k));
+        }
+        if let Node::Element(el) = child
+            && let Some(Len::Pct(k)) = el.style.used().min_height
+        {
+            el.style.used_mut().min_height = Some(Len::Px(h * k));
+        }
+    }
+}
+
+/// Прокручиваемый ребёнок: `overflow-y: auto | scroll` (Blink
+/// `SetIsRestrictedBlockSizeTableCellChild`; `hidden`/`clip` не в счёт).
+fn scrollable(el: &Element) -> bool {
+    el.style.used().overflow_y == Some(crate::style::computed::Overflow::Scroll)
+}
+
+#[cfg(test)]
+mod tests;
