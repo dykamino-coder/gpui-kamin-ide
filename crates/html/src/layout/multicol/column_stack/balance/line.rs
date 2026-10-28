@@ -69,7 +69,14 @@ impl ColumnStack {
                         0.0
                     }
                 } else {
-                    k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
+                    // Line groups held by orphans/widows are kept whole when the
+                    // balance allows (css-break-3 §4.4 rule 3 relaxes only when
+                    // content would not fit; Blink
+                    // `tallest_unbreakable_block_size`).
+                    k.solid
+                        .iter()
+                        .chain(&k.line_keep)
+                        .fold(0.0f32, |m, &(a, b)| m.max(b - a))
                 };
                 normal.max(k.float_min)
             })

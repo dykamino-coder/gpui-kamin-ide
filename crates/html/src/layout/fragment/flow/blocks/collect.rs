@@ -61,16 +61,14 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
     if !stacks {
         return out;
     }
-    let mut adjoins = false;
-    push_kids(
-        &e.children,
-        &mut out.kids,
-        &mut adjoins,
-        &mut false,
-        cx,
-        vcx,
-    );
+    stack_kids(e, &mut out, cx, vcx);
     out
+}
+
+/// The in-flow block children of `e` into `out` (`push_kids` from the start
+/// of its content: nothing adjoins, no lines yet).
+pub(super) fn stack_kids(e: &Element, out: &mut BlockBox, cx: ShapeCx, vcx: ValueCx<'_>) {
+    push_kids(&e.children, &mut out.kids, &mut false, &mut false, cx, vcx);
 }
 
 /// Коробка `e` без детей: рамка с отбивкой у краёв и корень контекста.
@@ -127,7 +125,16 @@ pub(super) fn push_kids(
             Node::Element(k) if matches!(k.style.used().display, Some(Display::None)) => {
                 continue;
             }
-            Node::Element(k) if !k.inline && k.style.used().display != Some(Display::Contents) => k,
+            // An atomic inline-level box (inline-block, inline-flex/grid/table)
+            // sits in a line box of an anonymous block (CSS 2.1 §9.2.2), not
+            // in the block stack: it falls to the line content below.
+            Node::Element(k)
+                if !k.inline
+                    && k.style.used().display != Some(Display::Contents)
+                    && !crate::layout::fragment::flex_lines::inline_display(k) =>
+            {
+                k
+            }
             Node::Element(k) if k.inline && k.style.used().display.is_none() && holds_blocks(k) => {
                 push_kids(&k.children, out, adjoins, lines, cx, vcx);
                 continue;
@@ -168,7 +175,11 @@ fn edges(e: &Element) -> (Option<u64>, Option<u64>) {
         !matches!(n, Node::Element(k) if out_of_flow(&k.style.used()) || k.style.used().display == Some(Display::None))
     }).collect();
     let block = |n: &&Node| match n {
-        Node::Element(k) if !k.inline => Some(k.node_id),
+        Node::Element(k)
+            if !k.inline && !crate::layout::fragment::flex_lines::inline_display(k) =>
+        {
+            Some(k.node_id)
+        }
         _ => None,
     };
     (nodes.first().and_then(block), nodes.last().and_then(block))

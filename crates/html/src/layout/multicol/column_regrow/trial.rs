@@ -37,6 +37,7 @@ impl Snapshot {
         child.solid = k.solid.clone();
         child.avoid = k.avoid.clone();
         child.keep = k.keep.clone();
+        child.line_keep = k.line_keep.clone();
         child.force_before = k.force_before;
         child.force_after = k.force_after;
         child.avoid_before = k.avoid_before;

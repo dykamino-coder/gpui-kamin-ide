@@ -150,3 +150,15 @@ fn breaks_next_to_anonymous_line_blocks_are_class_a_points() {
     let m = b.breaks(66.0, &laid).finish(FlowGeometry::default(), 66.0);
     assert_eq!(m.forced, vec![28.0, 48.0]);
 }
+
+/// CSS 2.1 §9.2.2: an inline-block is line content, not a block of the stack.
+#[test]
+fn atomic_inline_level_boxes_are_line_content() {
+    let doc = crate::dom::parse(
+        "<div><div style='display:inline-block;width:10px;height:10px'></div><div style='height:20px'></div></div>",
+        "",
+    );
+    let b = BlockBox::collect(authored(&doc), ShapeCx::COLUMNS, doc.values());
+    assert_eq!(b.kids.len(), 1);
+    assert_eq!(b.kids[0].lines_around, (true, false));
+}

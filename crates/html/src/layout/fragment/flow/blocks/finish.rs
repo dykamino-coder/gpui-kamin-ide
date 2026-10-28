@@ -44,6 +44,8 @@ impl BlockBreaks {
         let soft = crate::layout::fragment::flow::soft_keep::soften(&lines.solid, &line_boxes);
         g.solid.extend(soft.solid);
         g.cuts.extend(soft.cuts);
+        let mut line_keep = self.line_keep;
+        line_keep.extend_from_slice(&soft.keep);
         keep.extend(soft.keep);
         let mut avoid_inside = self.avoid_inside;
         for p in self.pending {
@@ -145,6 +147,7 @@ impl BlockBreaks {
             barriers,
             avoid,
             keep,
+            line_keep,
             avoid_inside,
             sections: self.sections,
         }

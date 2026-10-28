@@ -13,7 +13,7 @@ use crate::layout::fragment::ShapeCx;
 mod collect;
 pub(crate) mod leaf;
 mod registry;
-use collect::{collect, frame, push_kids};
+use collect::{collect, frame};
 mod column_avoid;
 mod finish;
 mod geometry;
@@ -192,15 +192,7 @@ impl BlockBox {
     /// бы значение `display` ни несла коробка.
     pub(crate) fn container(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
         let mut out = frame(e, cx, vcx);
-        let mut adjoins = false;
-        push_kids(
-            &e.children,
-            &mut out.kids,
-            &mut adjoins,
-            &mut false,
-            cx,
-            vcx,
-        );
+        collect::stack_kids(e, &mut out, cx, vcx);
         out
     }
 }

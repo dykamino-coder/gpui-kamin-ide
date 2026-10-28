@@ -43,6 +43,7 @@ impl ColumnStack {
                 c.forced.clear();
                 c.solid.clear();
                 c.keep.clear();
+                c.line_keep.clear();
             }
             let sections = c.measure_breaks(sz, axis, window);
             c.refresh_repeat(sections, fixed);

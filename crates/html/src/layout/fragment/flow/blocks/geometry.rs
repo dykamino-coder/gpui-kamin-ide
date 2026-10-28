@@ -32,6 +32,10 @@ pub(crate) struct BlockBreaks {
     pub(crate) avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    /// Line groups held by orphans/widows (rule 3, css-break-3 §4.4): part of
+    /// `keep`, and the balancer keeps them whole when it can (Blink
+    /// `tallest_unbreakable_block_size`).
+    pub(crate) line_keep: Vec<(f32, f32)>,
     pub(crate) avoid_inside: Vec<(f32, f32)>,
     /// Секции повтора, если корень стопки — таблица.
     pub(super) sections: Option<TableSections>,
@@ -52,6 +56,10 @@ pub(crate) struct MeasuredBreaks {
     pub(crate) avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    /// Line groups held by orphans/widows (rule 3, css-break-3 §4.4): part of
+    /// `keep`, and the balancer keeps them whole when it can (Blink
+    /// `tallest_unbreakable_block_size`).
+    pub(crate) line_keep: Vec<(f32, f32)>,
     pub(crate) avoid_inside: Vec<(f32, f32)>,
     /// Разложенные секции повтора таблицы-корня (css-tables-3
     /// §repeated-headers).
@@ -135,6 +143,7 @@ fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut Blo
         let soft = crate::layout::fragment::flow::soft_keep::soften(&flow.solid, &lines);
         out.solid.extend(soft.solid);
         out.cuts.extend(soft.cuts);
+        out.line_keep.extend_from_slice(&soft.keep);
         out.keep.extend(soft.keep);
     }
     if let Some(t) = &b.table {

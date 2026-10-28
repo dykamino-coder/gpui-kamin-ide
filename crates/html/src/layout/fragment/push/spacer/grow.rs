@@ -71,6 +71,7 @@ pub(crate) fn grow_pushed(
                 float_min: 0.0,
                 avoid: Vec::new(),
                 keep: Vec::new(),
+                line_keep: Vec::new(),
                 span: c.style.used().column_span == Some(true) && !c.inline,
                 // Щуп роста параллельного потока не знает: распорка
                 // (`spacer_before`) — про в-поточную высоту, а поток высоты

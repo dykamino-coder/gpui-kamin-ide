@@ -183,6 +183,7 @@ pub(super) fn stack_child_of(
         solid,
         avoid: Vec::new(),
         keep: Vec::new(),
+        line_keep: Vec::new(),
         h,
         mt,
         mb,
