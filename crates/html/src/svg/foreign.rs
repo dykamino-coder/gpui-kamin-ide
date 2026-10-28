@@ -16,8 +16,8 @@ pub(super) fn contains(e: &Element) -> bool {
 }
 
 pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-    let vcx = opts.cx.vcx();
-    let values = vcx.keep();
+    let frame = opts.cx.frame();
+    let values = frame.values.keep();
     let (w, h) = crate::layout::replaced::svg_size::size_of(e);
     if w <= 0.0 || h <= 0.0 {
         return None;
@@ -87,6 +87,6 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     Some(crate::paint::effects::grouped::grouped(
         element,
         &crate::style::computed::BoxStyle::new(style),
-        vcx,
+        frame,
     ))
 }

@@ -43,7 +43,7 @@ pub(super) fn build_copy(
     band: bool,
     report: &crate::layout::fragment::token::space::sequence::NestReport,
 ) -> gpui::AnyElement {
-    let vcx = opts.cx.vcx();
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let build = &opts.cx.contracts.build;
     // `box-decoration-break: clone`: копия — САМ
     // фрагмент (`clone_fragment`), и корень, и
@@ -138,7 +138,7 @@ pub(super) fn build_copy(
         &mut kids,
         report,
     ) {
-        return super::vertical::wrap(value, col_vert, col_rl, line_col_w);
+        return super::vertical::wrap(value, merged, col_vert, col_rl, line_col_w);
     }
     // Абсолютный потомок ищет ближайшего
     // позиционированного предка (CSS 2.1
@@ -208,7 +208,11 @@ pub(super) fn build_copy(
         )
     });
     let child_build = &child_opts.cx.contracts.build;
-    let mut body = child_build.blocks(&kids, src_inner, &child_opts);
+    // CSS 2 §5.12: the copy's content gets the first-line/first-letter layers
+    // (and an initial-letter float) as on the ordinary block path.
+    let mut kids_style = src_inner.clone();
+    crate::layout::box_tree::pseudo_line_layers::install(src, &mut kids_style, vcx);
+    let mut body = child_build.blocks(&kids, &kids_style, &child_opts);
     if let Some(layer) = frag_cb_layer {
         body.extend(layer.finish());
     }
@@ -232,7 +236,7 @@ pub(super) fn build_copy(
         d.children(body).into_any_element(),
         opts,
     );
-    let el = build.effects(root, Effect::transform(inner, merged, vcx));
+    let el = build.effects(root, Effect::transform(inner, merged, frame));
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
     let el = if inner.clip_inset.is_some()
@@ -240,9 +244,9 @@ pub(super) fn build_copy(
         || inner.clip_polygon.is_some()
         || inner.mask_image.is_some()
     {
-        build.effects(el, Effect::group(inner, vcx))
+        build.effects(el, Effect::group(inner, frame))
     } else {
         el
     };
-    super::vertical::wrap(el, col_vert, col_rl, line_col_w)
+    super::vertical::wrap(el, merged, col_vert, col_rl, line_col_w)
 }

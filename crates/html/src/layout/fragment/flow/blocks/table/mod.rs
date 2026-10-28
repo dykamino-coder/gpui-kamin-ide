@@ -196,6 +196,7 @@ fn caption_kid(cap: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> BlockKid {
     BlockKid {
         id: cap.node_id,
         adjoins: true,
+        lines_around: (false, false),
         force_before: edge_break(cap, false, vcx),
         force_after: edge_break(cap, true, vcx),
         avoid_before: edge_avoid(cap, false, vcx),

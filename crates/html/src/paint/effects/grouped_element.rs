@@ -4,7 +4,7 @@
 //! `clip: rect()`, подложки и накладки `border-shape`/`corner-shape`. Здесь параметры группы и
 //! разбор источников маски; жизненный цикл элемента — в `lifecycle`.
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 
 mod lifecycle;
 mod mask_sources;
@@ -137,6 +137,8 @@ pub struct Grouped {
     pub ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
     /// Values of the document the group's mask and clip lengths come from.
     pub(crate) values: crate::document::state::ValueDoc,
+    /// Deferred paint owner of the render tree that built the group.
+    pub(crate) paint: Option<std::rc::Rc<crate::layout::cx::deferred::Deferred>>,
 }
 
 /// Слой заливок: записи `pathdef:` в точках слоя и их цвета.
@@ -155,9 +157,10 @@ pub(crate) type FillLayer = Box<
 >;
 
 impl Grouped {
-    pub fn new(child: AnyElement, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn new(child: AnyElement, frame: FrameCx<'_>) -> Self {
         Grouped {
-            values: vcx.keep(),
+            values: frame.values.keep(),
+            paint: frame.paint.cloned(),
             under: None,
             over: Vec::new(),
             deco_ext: [0.0; 4],
@@ -174,7 +177,7 @@ impl Grouped {
             polygon_evenodd: false,
             poly_expand: [0.0; 4],
             mask: None,
-            mask_defs: vcx.doc.masks.definitions(),
+            mask_defs: frame.values.doc.masks.definitions(),
             corner_clip: None,
             mask_size: None,
             mask_fit: 0,

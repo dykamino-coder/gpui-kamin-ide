@@ -22,6 +22,32 @@ pub(crate) fn empty(e: &Element) -> bool {
     }
 }
 
+/// The element as replaced sizing sees it: SVG percentage sizes resolved
+/// against the parent (`svg_percentage_size`), then the default media size
+/// under the constraints of `opts`.
+pub(crate) fn sized<'a>(
+    e: &'a Element,
+    inherited: &Computed,
+    opts: &RenderOpts,
+    vcx: ValueCx<'_>,
+) -> std::borrow::Cow<'a, Element> {
+    use std::borrow::Cow;
+    let svg = super::svg_percentage_size::resolve(e, inherited);
+    let avail_w = opts.cx.constraints.avail_w;
+    let media = resolve(
+        svg.as_ref().unwrap_or(e),
+        inherited,
+        opts.viewport,
+        avail_w,
+        vcx,
+    );
+    match (media, svg) {
+        (Some(media), _) => Cow::Owned(media),
+        (None, Some(svg)) => Cow::Owned(svg),
+        (None, None) => Cow::Borrowed(e),
+    }
+}
+
 /// HTML 15.4.1 and CSS Images 3 default sizing: fallback dimensions are
 /// separate from a natural aspect ratio and disappear under size containment.
 /// `avail_w` — доступная ширина блока (`BoxConstraints::avail_w`) для долей.

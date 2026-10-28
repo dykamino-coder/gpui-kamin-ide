@@ -21,6 +21,10 @@ pub struct RubyExtents {
     /// What the line needs to let the annotation overhang its neighbours
     /// (`ruby_overhang_probe`, css-ruby-1 §4.4); `None` for non-ruby atoms.
     pub overhang: Option<RubyOverhangInfo>,
+    /// First and last base-level characters of a ruby container atom
+    /// (`text::ruby::base_edges`): its line break opportunities come from
+    /// them, not from an object replacement character; `None` otherwise.
+    pub(crate) base_edges: Option<(Option<char>, Option<char>)>,
 }
 
 impl RubyExtents {

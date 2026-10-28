@@ -74,6 +74,7 @@ impl Flow {
         let mut shortage = f32::MAX;
         let cursor = fill_pieces_inner(
             &|_| size,
+            &|_| space.inline_size,
             usize::MAX,
             space.is_paginated(),
             &mut col,

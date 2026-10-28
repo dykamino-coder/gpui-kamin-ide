@@ -3,8 +3,10 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::block::sizing::BoxDimensions;
+use crate::layout::fragment::types::StackChild;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::options::RenderOpts;
+use crate::layout::positioned::containing_block::SpotCell;
 use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
@@ -15,13 +17,9 @@ pub(super) fn place_oof_statics(
     opts: &RenderOpts,
     oof_static: &[(usize, Element)],
     kid_starts: Vec<usize>,
-    children: Vec<crate::layout::fragment::types::StackChild>,
-) -> (
-    Vec<crate::layout::fragment::types::StackChild>,
-    Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
-) {
-    let oof_spots: Vec<crate::layout::positioned::containing_block::SpotCell> =
-        oof_static.iter().map(|_| Default::default()).collect();
+    children: Vec<StackChild>,
+) -> (Vec<StackChild>, Vec<SpotCell>) {
+    let oof_spots: Vec<SpotCell> = oof_static.iter().map(|_| Default::default()).collect();
     let children = insert_static_probes(merged, opts, oof_static, &oof_spots, &kid_starts, children);
     (children, oof_spots)
 }
@@ -32,10 +30,10 @@ pub(in crate::layout::multicol) fn insert_static_probes(
     merged: &Computed,
     opts: &RenderOpts,
     oof_static: &[(usize, Element)],
-    oof_spots: &[crate::layout::positioned::containing_block::SpotCell],
+    oof_spots: &[SpotCell],
     kid_starts: &[usize],
-    children: Vec<crate::layout::fragment::types::StackChild>,
-) -> Vec<crate::layout::fragment::types::StackChild> {
+    children: Vec<StackChild>,
+) -> Vec<StackChild> {
     let mut children = children;
     for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
         // Щуп правит только пустую ось; заданную считает CB (CSS 2.1 §10.3.7), как fixed_axes.
@@ -50,7 +48,7 @@ pub(in crate::layout::multicol) fn insert_static_probes(
             own_vertical: oof.style.cascaded().wm().vertical(),
             ..Default::default()
         });
-        let probe = crate::layout::fragment::types::StackChild {
+        let probe = StackChild {
             #[cfg(feature = "wpt-harness")]
             probe_pending: false,
             #[cfg(feature = "wpt-harness")]
@@ -79,6 +77,8 @@ pub(in crate::layout::multicol) fn insert_static_probes(
             solid: Vec::new(),
             avoid: Vec::new(),
             keep: Vec::new(),
+            line_keep: Vec::new(),
+            table_rows: Vec::new(),
             h: 0.0,
             mt: 0.0,
             mb: 0.0,
@@ -188,9 +188,8 @@ pub(super) fn column_stack_div(
                 && matches!(e.style.used().height, None | Some(Len::Auto)),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
-        // Линейки последней линии — до блочного конца содержимого коробки
-        // заданного размера (Blink `PaintColumnRules`), без
-        // спаннеров и рядов (`multicol-rule-nested-balancing-001`).
+        // Линейки последней линии — до блочного конца содержимого коробки заданного размера
+        // (Blink `PaintColumnRules`), без спаннеров и рядов (`multicol-rule-nested-balancing-001`).
         .with_rule_stretch(
             match if col_vert {
                 merged.width

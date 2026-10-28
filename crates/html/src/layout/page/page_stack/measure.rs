@@ -59,6 +59,8 @@ pub(super) fn measure(
     // ребёнок — цельный кусок измеренной высоты.
     let mut avoid = Vec::new();
     let mut keep = Vec::new();
+    let mut line_keep = Vec::new();
+    let mut table_rows = Vec::new();
     let (mut h, mut cuts, mut forced, mut solid) = match &k.shape {
         Some((h, cuts, forced, solid)) => (*h, cuts.clone(), forced.clone(), solid.clone()),
         // Копия поднята на `inner_top` (поле уже в `Kid.mt`): высота ребёнка —
@@ -149,12 +151,14 @@ pub(super) fn measure(
                 if flex || k.shape.is_none() {
                     avoid = m.avoid;
                     keep = m.keep;
+                    line_keep = m.line_keep;
                 }
                 #[cfg(feature = "wpt-harness")]
                 if k.shape.is_some() {
                     k.probe.breaks("pages.breaks", &cuts, &m.cuts);
                 }
                 (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
+                table_rows = m.table_rows;
                 k.refresh_repeat(m.sections, ah);
             }
             None => {
@@ -182,6 +186,8 @@ pub(super) fn measure(
             solid,
             avoid,
             keep,
+            line_keep,
+            table_rows,
             span: false,
             over: h.max(over),
             float_min: 0.0,

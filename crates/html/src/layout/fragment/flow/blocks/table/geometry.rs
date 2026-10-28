@@ -16,6 +16,7 @@
 use super::TableBox;
 use crate::layout::fragment::flow::blocks::geometry::{Pending, walk};
 use crate::layout::fragment::flow::blocks::{BlockBreaks, BlockKid, Laid, Pushed, TableFrame};
+use crate::layout::fragment::types::RowKeep;
 use crate::tolerance::COORD_EPS;
 
 /// Ребёнок обёртки таблицы: подпись или коробка таблицы.
@@ -98,6 +99,8 @@ impl TableBox {
         let mut prev_open = table_top;
         let mut prev_avoid_after = false;
         let mut force_next = false;
+        // Последний ряд, до которого тянутся уже начатые ячейки.
+        let mut spanned = 0usize;
         for (i, r) in self.rows.iter().enumerate() {
             let Some(&(start, end)) = f.rows.get(i) else {
                 break;
@@ -148,6 +151,20 @@ impl TableBox {
             for (span, cell) in &r.cells {
                 let bottom = f.rows.get(i + span.saturating_sub(1)).map_or(end, |r| r.1);
                 walk(cell, start, bottom, laid, out);
+            }
+            // css-tables-3 §breaking-rules: ряд без охвата ниже себя (`RowKeep`).
+            spanned = r
+                .cells
+                .iter()
+                .map(|(span, _)| i + span.saturating_sub(1))
+                .fold(spanned, usize::max);
+            if i > 0 && spanned <= i {
+                out.table_rows.push(RowKeep {
+                    prev: f.rows[i - 1].0,
+                    open: y,
+                    start,
+                    end,
+                });
             }
             y = end;
         }

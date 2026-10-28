@@ -28,6 +28,11 @@ pub struct Kid {
     pub avoid: Vec<(f32, f32)>,
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
+    /// Orphans/widows line groups among `keep`: the balancer keeps them whole.
+    pub(crate) line_keep: Vec<(f32, f32)>,
+    /// Ряды таблиц, которые при выполненном условии фрагментаинера не рвутся
+    /// (`RowKeep`, css-tables-3 §breaking-rules).
+    pub(crate) table_rows: Vec<super::RowKeep>,
     pub span: bool,
     /// Низ параллельного потока от верха коробки (`StackChild::over`); `h`,
     /// когда потока нет.

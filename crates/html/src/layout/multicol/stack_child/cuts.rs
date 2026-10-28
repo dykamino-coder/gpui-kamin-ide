@@ -9,6 +9,7 @@ use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::line_shape::{slack_fill, transpose_tree};
 use crate::layout::fragment::probe::{plain_block_tree, stacked_flex_tree};
 use crate::layout::fragment::table_bands::{repeat_bands, table_box};
+use crate::layout::fragment::types::{Par, Repeat, Rows, StackChild};
 use crate::layout::fragment::{ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
 use crate::layout::options::RenderOpts;
@@ -23,7 +24,7 @@ pub(super) fn copy_cuts_and_height(
     forced: Vec<f32>,
     solid: Vec<(f32, f32)>,
     opts: &RenderOpts,
-    kid_par: &[crate::layout::fragment::types::Par],
+    kid_par: &[Par],
     col_vert: bool,
     col_rl: bool,
     line_col_w: Option<f32>,
@@ -131,9 +132,9 @@ pub(super) fn stack_child_of(
     ix: usize,
     mt: f32,
     mb: f32,
-    kid_par: &[crate::layout::fragment::types::Par],
+    kid_par: &[Par],
     col_vert: bool,
-    rows: Option<crate::layout::fragment::types::Rows>,
+    rows: Option<Rows>,
     fixed: Option<f32>,
     dec: Option<(f32, f32)>,
     copy: &Element,
@@ -150,7 +151,7 @@ pub(super) fn stack_child_of(
     kid_copies: usize,
     measured_table: Option<(bool, bool)>,
     vcx: FrameCx<'_>,
-) -> crate::layout::fragment::types::StackChild {
+) -> StackChild {
     let repeat = repeat_bands(copy, fixed, rows, measured_table);
     let (el, frags, fragment_builders) = super::factory::fragments(
         build.clone(),
@@ -158,7 +159,7 @@ pub(super) fn stack_child_of(
         col_vert,
         if span { 1 } else { kid_copies },
     );
-    crate::layout::fragment::types::StackChild {
+    StackChild {
         #[cfg(feature = "wpt-harness")]
         probe_pending: measure.is_none(),
         #[cfg(feature = "wpt-harness")]
@@ -183,6 +184,8 @@ pub(super) fn stack_child_of(
         solid,
         avoid: Vec::new(),
         keep: Vec::new(),
+        line_keep: Vec::new(),
+        table_rows: Vec::new(),
         h,
         mt,
         mb,
@@ -234,21 +237,19 @@ pub(super) fn stack_child_of(
         // Повтор шапки/подвала — копии flow::Repeat, полосы по разложенным секциям.
         repeat: repeat
             .filter(|_| !span && !col_vert)
-            .map(
-                |(head, foot, geom)| crate::layout::fragment::types::Repeat {
-                    head,
-                    foot,
-                    geom,
-                    row_ends: Vec::new(),
-                    head_els: match head {
-                        Some(_) => (1..kid_copies).map(|i| build(false, i, true)).collect(),
-                        None => Vec::new(),
-                    },
-                    foot_els: match foot {
-                        Some(_) => (0..kid_copies).map(|i| build(false, i, true)).collect(),
-                        None => Vec::new(),
-                    },
+            .map(|(head, foot, geom)| Repeat {
+                head,
+                foot,
+                geom,
+                row_ends: Vec::new(),
+                head_els: match head {
+                    Some(_) => (1..kid_copies).map(|i| build(false, i, true)).collect(),
+                    None => Vec::new(),
                 },
-            ),
+                foot_els: match foot {
+                    Some(_) => (0..kid_copies).map(|i| build(false, i, true)).collect(),
+                    None => Vec::new(),
+                },
+            }),
     }
 }

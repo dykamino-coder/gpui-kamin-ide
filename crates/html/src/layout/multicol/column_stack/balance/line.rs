@@ -1,7 +1,7 @@
 //! Балансировка по строкам: строка баланса, avoid на пределе, прогон.
 
+use crate::layout::fragment::plan;
 use crate::layout::fragment::plan::Plan;
-use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::Kid;
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
@@ -14,11 +14,11 @@ impl ColumnStack {
         if let Some(h) = self.fixed_height {
             // При заданной высоте ранний разрыв выбирает место переноса;
             // при балансе ниже его план ещё проверяется поиском высоты.
-            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, Space::columns(limit));
+            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, self.column_space(limit));
             return (h, slots);
         }
         if let Some(h) = self.forced_h {
-            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, Space::columns(usize::MAX));
+            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, self.column_space(usize::MAX));
             return (h, slots);
         }
         // Нижнее поле ПОСЛЕДНЕГО ребёнка не примыкает к разрыву — многоколоночник
@@ -69,7 +69,14 @@ impl ColumnStack {
                         0.0
                     }
                 } else {
-                    k.solid.iter().fold(0.0f32, |m, &(a, b)| m.max(b - a))
+                    // Line groups held by orphans/widows are kept whole when the
+                    // balance allows (css-break-3 §4.4 rule 3 relaxes only when
+                    // content would not fit; Blink
+                    // `tallest_unbreakable_block_size`).
+                    k.solid
+                        .iter()
+                        .chain(&k.line_keep)
+                        .fold(0.0f32, |m, &(a, b)| m.max(b - a))
                 };
                 normal.max(k.float_min)
             })
@@ -84,7 +91,7 @@ impl ColumnStack {
         let result = super::search::search(start, ceiling, cap.is_some(), |height| {
             // Число запасных paint-копий не ограничивает измерительную пробу.
             let (cols, shortage, slots) =
-                Self::fill_avoiding(kids, &|_| height, Space::columns(usize::MAX));
+                Self::fill_avoiding(kids, &|_| height, self.column_space(usize::MAX));
             let avoid = (forced_columns < self.count)
                 .then(|| Self::first_avoid_violation(kids, &slots))
                 .flatten()

@@ -24,7 +24,7 @@ pub(crate) fn static_overlay(
     if let Some(child) = anchor::trials::inline::defer(e, inherited, opts) {
         return Some(inline::Piece::Overlay(child, inline::OverlayAt::default()));
     }
-    let vcx = opts.cx.vcx();
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
@@ -60,7 +60,7 @@ pub(crate) fn static_overlay(
         // `clip: rect(...)` и маска у картинки живут в буфере группы:
         // путь наложения идёт мимо `grouped`, и без обёртки картинка
         // рисовалась бы целиком (`clip-rect-v*`).
-        grouped(image(&copy, &opts.cx), &group_style, vcx)
+        grouped(image(&copy, &opts.cx), &group_style, frame)
     } else {
         // Тот же буфер группы, что и у картинки: маска, обрезка и
         // фильтр иначе не доходят до коробки на статической позиции.
@@ -69,7 +69,7 @@ pub(crate) fn static_overlay(
                 .children(blocks(&e.children, &merged, opts))
                 .into_any_element(),
             &group_style,
-            vcx,
+            frame,
         )
     };
     let inner = if physical {
@@ -87,7 +87,7 @@ pub(crate) fn static_overlay(
     // Transform the actual out-of-flow box before anchoring it; the
     // paragraph overlay has zero advance and is not a transform reference box.
     let inner =
-        crate::paint::effects::transform::transformed(inner, &e.style.used(), inherited, vcx);
+        crate::paint::effects::transform::transformed(inner, &e.style.used(), inherited, frame);
     // Сторона, которой коробка вешается на статическую точку. При
     // `direction: ltr` — левый край (текстовый путь так и кладёт,
     // `lines.rs: prepaint_at(origin)`), при `rtl` — ПРАВЫЙ:

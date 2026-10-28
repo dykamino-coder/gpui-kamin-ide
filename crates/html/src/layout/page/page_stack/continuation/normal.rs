@@ -6,7 +6,9 @@ use crate::tolerance::COORD_EPS;
 pub(super) enum Cursor {
     Parallel(Vec<Self>),
     Before(u64),
-    Line(Vec<usize>, usize, usize),
+    /// Line address and the distance sliced into a line taller than the
+    /// fragmentainer (css-break-3 §4.4 monolithic breaking).
+    Line(Vec<usize>, usize, usize, f32),
     Block(u64, f32),
 }
 
@@ -74,7 +76,12 @@ impl Cursor {
             .flat_map(|p| p.lines.iter().map(|l| (&p.scope, l)))
             .find(|(_, l)| l.top <= from + COORD_EPS && l.bottom > from + COORD_EPS)
         {
-            Self::Line(scope.clone(), line.paragraph, line.state.text_pos)
+            Self::Line(
+                scope.clone(),
+                line.paragraph,
+                line.state.text_pos,
+                (from - line.top).max(0.0),
+            )
         } else {
             // Оставшаяся definite/min-height существует и после последней строки.
             Self::Block(id, (from - top).max(0.0))
@@ -88,12 +95,12 @@ impl Cursor {
                 .filter_map(|cursor| cursor.offset(new, inline))
                 .min_by(f32::total_cmp),
             Self::Before(id) => Some(new.at(*id)?.0),
-            Self::Line(scope, paragraph, byte) => inline
+            Self::Line(scope, paragraph, byte, sliced) => inline
                 .iter()
                 .filter(|p| &p.scope == scope)
                 .flat_map(|p| &p.lines)
                 .find(|l| l.paragraph == *paragraph && l.state.text_pos == *byte)
-                .map(|l| l.top),
+                .map(|l| l.top + sliced),
             Self::Block(id, consumed) => {
                 let (top, bottom) = new.at(*id)?;
                 Some(top + consumed.min((bottom - top).max(0.0)))

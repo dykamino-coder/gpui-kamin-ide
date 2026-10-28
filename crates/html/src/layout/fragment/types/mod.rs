@@ -21,6 +21,8 @@ pub(crate) use lazy::{FragmentHandle, FragmentMeasurement};
 pub(crate) use stack_child::{BreaksAt, CloneGeom};
 mod repeat;
 pub use repeat::{Repeat, RepeatGeom};
+mod row_keep;
+pub(crate) use row_keep::RowKeep;
 pub use stack_child::StackChild;
 
 /// Ребёнок потока: элемент и его известный размер.

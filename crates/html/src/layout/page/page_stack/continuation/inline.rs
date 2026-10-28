@@ -21,7 +21,14 @@ pub(super) fn resume(
         .collect()
 }
 
-pub(super) fn offset(addresses: &[(Vec<usize>, ContentLine)], fresh: &[Inline]) -> Option<f32> {
+/// A break inside a line box only slices a line taller than the fragmentainer
+/// (css-break-3 §4.4 monolithic breaking): the continuation keeps the sliced
+/// distance into that line.
+pub(super) fn offset(
+    addresses: &[(Vec<usize>, ContentLine)],
+    fresh: &[Inline],
+    from: f32,
+) -> Option<f32> {
     addresses
         .iter()
         .filter_map(|(scope, address)| {
@@ -32,7 +39,7 @@ pub(super) fn offset(addresses: &[(Vec<usize>, ContentLine)], fresh: &[Inline]) 
                 .find(|l| {
                     l.paragraph == address.paragraph && l.state.text_pos == address.state.text_pos
                 })
-                .map(|l| l.top)
+                .map(|l| l.top + (from - address.top).max(0.0))
         })
         .min_by(f32::total_cmp)
 }
@@ -50,4 +57,26 @@ pub(super) fn float_offset(
                 .offset(next, &fresh.paragraphs)
         })
         .min_by(f32::total_cmp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sliced_tall_line_keeps_the_distance_into_it() {
+        let line = |top, bottom| ContentLine {
+            top,
+            bottom,
+            ..Default::default()
+        };
+        let fresh = vec![Inline {
+            lines: vec![line(4., 676.)],
+            ..Default::default()
+        }];
+        let addresses = vec![(Vec::new(), line(0., 672.))];
+        assert_eq!(offset(&addresses, &fresh, 192.), Some(196.));
+        // A break at the line's top keeps the line's own position.
+        assert_eq!(offset(&addresses, &fresh, 0.), Some(4.));
+    }
 }

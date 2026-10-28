@@ -5,6 +5,7 @@
 //! чистый px-сдвиг уже учтён раскладкой. На вход — собранный элемент, свой и родительский стиль.
 
 use crate::hooks::IntoHooked;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
@@ -37,9 +38,9 @@ pub(crate) fn transformed(
     el: AnyElement,
     c: &Computed,
     parent: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
-    transformed_with(el, c, parent, None, vcx)
+    transformed_with(el, c, parent, None, frame)
 }
 
 /// `transformed` of DOM node `node`: a continued root presented per fragment
@@ -49,9 +50,9 @@ pub(crate) fn transformed_node(
     c: &Computed,
     parent: &Computed,
     node: u64,
-    vcx: crate::document::state::ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
-    transformed_inner(el, c, parent, None, Some(node), vcx)
+    transformed_inner(el, c, parent, None, Some(node), frame)
 }
 
 /// `transformed` with a shared reference box (`transformed_element::Transformed::ref_box`):
@@ -61,9 +62,9 @@ pub(crate) fn transformed_with(
     c: &Computed,
     parent: &Computed,
     ref_box: Option<crate::layout::build_contracts::RefBox>,
-    vcx: crate::document::state::ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
-    transformed_inner(el, c, parent, ref_box, None, vcx)
+    transformed_inner(el, c, parent, ref_box, None, frame)
 }
 
 fn transformed_inner(
@@ -72,7 +73,7 @@ fn transformed_inner(
     parent: &Computed,
     ref_box: Option<crate::layout::build_contracts::RefBox>,
     node: Option<u64>,
-    vcx: crate::document::state::ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
     // §inherit: «the property's specified and computed values are the
@@ -132,7 +133,7 @@ fn transformed_inner(
     if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
         return el;
     }
-    let mut wrapper = crate::paint::effects::transformed_element::Transformed::new(el, vcx);
+    let mut wrapper = crate::paint::effects::transformed_element::Transformed::new(el, frame);
     wrapper.ref_box = ref_box;
     wrapper.node = node;
     wrapper.under_3d = under_3d;

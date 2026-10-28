@@ -164,8 +164,14 @@ pub(super) fn place_nest(
         kid.start_open && adjoining0 && (*y - y0).abs() < COORD_EPS,
     );
     let (bx0, bx1) = (x0 + ml, x1 - mr);
+    // CSS 2.1 §10.3.3: a box narrower than its containing block stands at the
+    // block's inline-start — the right edge when it is rtl.
     let (ix0, ix1) = match nest.width {
-        Some(w) => (bx0 + il, bx0 + il + w.at(cbw)),
+        Some(w) => {
+            let w = w.at(cbw);
+            let start = super::flow_kid::inline_start(bx0 + il, bx1 - ir, w, kid.rtl);
+            (start, start + w)
+        }
         None => (bx0 + il, bx1 - ir),
     };
     let walls = bands.set_walls(ix0, ix1);
@@ -178,7 +184,7 @@ pub(super) fn place_nest(
     let clamp = super::clamp::nest(kid, cbw, (bx1 - bx0).max(0.0), h, p);
     slots[k] = Slot {
         clamp,
-        x: bx0,
+        x: ix0 - il,
         y: top,
         avail: (bx1 - bx0).max(0.0),
         i: (ix1 - ix0 + il + ir).max(0.0),

@@ -13,7 +13,7 @@ use crate::layout::fragment::ShapeCx;
 mod collect;
 pub(crate) mod leaf;
 mod registry;
-use collect::{collect, frame, push_kids};
+use collect::{collect, frame};
 mod column_avoid;
 mod finish;
 mod geometry;
@@ -111,6 +111,9 @@ pub(crate) struct BlockKid {
     /// Граница с предыдущим ребёнком — граница соседей-блоков (класс A).
     /// Ложно, если между ними строчное содержимое или коробка без записи.
     pub(crate) adjoins: bool,
+    /// Строчное содержимое (анонимный блок, CSS 2.1 §9.2.1.1) прямо перед
+    /// ребёнком и прямо после него: граница с ним — точка класса A.
+    pub(crate) lines_around: (bool, bool),
     /// Принудительные разрывы и запреты на краях с переносом с крайних
     /// потомков (css-break-3 §3.1 break propagation: `edge_break`,
     /// `edge_avoid`).
@@ -189,8 +192,7 @@ impl BlockBox {
     /// бы значение `display` ни несла коробка.
     pub(crate) fn container(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> Self {
         let mut out = frame(e, cx, vcx.values);
-        let mut adjoins = false;
-        push_kids(&e.children, &mut out.kids, &mut adjoins, cx, vcx);
+        collect::stack_kids(e, &mut out, cx, vcx);
         out
     }
 }

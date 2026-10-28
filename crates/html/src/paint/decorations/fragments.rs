@@ -51,7 +51,7 @@ impl Hooks for Fragments {
         boxes
             .iter()
             .map(|geometry| {
-                let vcx = self.cx.vcx();
+                let frame = self.cx.frame();
                 let own = &self.style;
                 // Контейнер несёт border-box, поэтому абсолютные слои общего painter
                 // отсчитываются от того же padding-box, что и у обычной коробки.
@@ -65,7 +65,7 @@ impl Hooks for Fragments {
                     .border_r(px(length(border.right)))
                     .border_b(px(length(border.bottom)))
                     .border_l(px(length(border.left)))
-                    .children(super::decorations(own, self.empty, vcx, Some(&self.cx)));
+                    .children(super::decorations(own, self.empty, frame, Some(&self.cx)));
                 let mut child = gpui::IntoElement::into_any_element(child);
                 child.layout_as_root(
                     geometry.bounds.size.map(gpui::AvailableSpace::Definite),

@@ -40,11 +40,11 @@ impl Hooks for ColumnStack {
             recipe.prepare(self, col_w, window, cx);
         }
         self.column_breaks(col_w, window, cx);
+        self.col_w.set(col_w);
         self.settle_clone_kids();
         let heights = self.kid_geoms();
         let (_, lines, mut plan, spans) = self.balance(&heights);
         plan.check_copies(|kid| self.children[kid].frags.len() + 1);
-        self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         self.plan_oof(&plan, bounds);
         let step = col_w + self.gap;

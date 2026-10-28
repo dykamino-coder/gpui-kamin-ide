@@ -17,7 +17,7 @@ pub(super) fn paint_body(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let paint = group.values.vcx().paint.cloned();
+    let paint = group.paint.clone();
     if group.placed {
         crate::paint::decorations::outline_phase::scoped(
             paint.as_ref(),

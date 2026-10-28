@@ -1,6 +1,6 @@
 //! Украшения коробки: тени, рамки по форме, слои градиентов.
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
 mod borders;
 mod fragments;
@@ -33,15 +33,16 @@ pub(crate) mod text_shadows;
 pub(crate) fn decorations(
     c: &BoxStyle,
     empty: bool,
-    vcx: ValueCx<'_>,
+    frame: FrameCx<'_>,
     cx: Option<&crate::layout::cx::LayoutCx>,
 ) -> Vec<AnyElement> {
+    let vcx = frame.values;
     if crate::paint::effects::corner_clip::insets(c, vcx).is_some() {
         return Vec::new();
     }
     let mut out: Vec<AnyElement> = vec![];
 
-    outer_shadows(c, &mut out, vcx);
+    outer_shadows(c, &mut out, frame);
     if let Some(layer) = crate::paint::background::single_corner::layer(c) {
         out.push(layer);
     }
@@ -124,7 +125,7 @@ pub(crate) fn decorations(
         }
     }
 
-    inset_shadows(c, &mut out, vcx);
+    inset_shadows(c, &mut out, frame);
 
     // Рамка ПОВЕРХ слоя картинки (css-backgrounds-3 §3.7, прим.: «The
     // background is always drawn behind the border»; CSS 2.2 Прил. E; Blink
@@ -149,7 +150,7 @@ pub(crate) fn decorations(
         gradient_stripes(c, &mut out);
     }
 
-    out.extend(outline::decorations(c, vcx));
+    out.extend(outline::decorations(c, frame));
 
     // Разные цвета сторон рамки: у GPUI цвет рамки один на элемент, поэтому
     // несовпадающие стороны дорисовываются полосами поверх.

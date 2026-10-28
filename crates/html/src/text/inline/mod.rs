@@ -182,6 +182,7 @@ pub fn collect(
             layout: cx.clone(),
             inline_parents: Vec::new(),
             inline_cb_depth: 0,
+            ruby_space: false,
         },
     )
 }

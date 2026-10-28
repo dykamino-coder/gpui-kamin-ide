@@ -59,7 +59,7 @@ pub(crate) async fn paint_element(
             el,
             &e.style.used(),
             inherited,
-            opts.cx.vcx(),
+            opts.cx.frame(),
         );
         out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
         return;

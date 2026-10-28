@@ -15,6 +15,8 @@ mod clip_tests;
 mod geometry;
 #[cfg(test)]
 mod oof_tests;
+#[cfg(test)]
+mod table_row_tests;
 
 /// Исходное дерево, без LayoutId и изменяемых рекордеров от пробной раскладки.
 pub(crate) struct Recipe {

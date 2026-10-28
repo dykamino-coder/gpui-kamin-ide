@@ -123,6 +123,10 @@ pub(crate) fn route_pieces(
     // (`flexbox.rs:405`). Кусок заявляет 1.0em, атом — 0.8em: атом тонет на
     // спуск шрифта, а короб строки растёт до 1.2em вместо `line-height`
     // (§10.8): при `font: 100px/1 Ahem` короб 120, атом на +20.
+    // Во фрагментации линии ряда — его line boxes (`row_record`).
+    let record = super::row_record::RowRecord::for_row(inherited, opts);
+    let pieces = super::row_record::pieces(record.as_ref(), pieces);
+    let text_record = record.clone();
     let mut render_text = |t: String, style: &BoxStyle| -> AnyElement {
         // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
         // CJK): набор идёт вертикальными формами шрифта — возможность `vert`
@@ -148,7 +152,10 @@ pub(crate) fn route_pieces(
         let d = apply(div(), &style.text_paint_style(), vcx)
             .max_w_full()
             .child(SharedString::from(t));
-        d.into_any_element()
+        match &text_record {
+            Some(r) => r.piece(d.into_any_element()),
+            None => d.into_any_element(),
+        }
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево
     // означает ПРАВЫЙ край. Без этого ряд из слов оставался слева, и строка
@@ -159,7 +166,7 @@ pub(crate) fn route_pieces(
             .unwrap_or(crate::style::computed::TextAlign::Start)
             .physical(inherited.wm().rtl())
     });
-    inline::as_wrapped_row(
+    let row = inline::as_wrapped_row(
         pieces,
         inherited.vertical_align,
         Some(align),
@@ -172,7 +179,11 @@ pub(crate) fn route_pieces(
         !inherited.wm().vertical() && !inherited.wm().turned(),
         (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
         &opts.cx,
-    )
+    );
+    match record {
+        Some(r) => r.row(row),
+        None => row,
+    }
 }
 
 #[cfg(test)]

@@ -114,7 +114,6 @@ impl LayoutCx {
             .0
             .frame_values()
             .with_viewport(self.values.viewport)
-            .with_paint(Some(&self.deferred.paint))
     }
 
     /// Values of the build with its frame facts: the nearest fragmented ancestor's line
@@ -125,6 +124,8 @@ impl LayoutCx {
             lines: self.fragmentation.lines.as_ref(),
             lengths: Some(&self.contracts.lengths),
             subtrees: Some(&self.contracts.subtrees),
+            paint: Some(&self.deferred.paint),
+            layout: self.layout(),
         }
     }
 

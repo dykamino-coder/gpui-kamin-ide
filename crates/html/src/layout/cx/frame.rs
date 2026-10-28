@@ -1,12 +1,15 @@
 //! Frame facts of a build next to the document's values (`FrameCx`): the line-measure owner
 //! of the nearest fragmented ancestor (`LineCx`) and the build's memoized subtree and length
-//! facts. Layout algorithms that read these facts take the frame context; calls into style,
-//! text and the value arenas receive its `values` projection.
+//! facts, the deferred paint owner of its render tree and its layout state. Layout and paint
+//! code that reads these facts takes the frame context; calls into style, text and the value
+//! arenas receive its `values` projection.
 
-use crate::document::state::ValueCx;
+use crate::document::state::{ValueCx, ValueDoc};
+use crate::layout::cx::deferred::Deferred;
 use crate::layout::cx::subtree::SubtreeFacts;
 use crate::layout::fragment::LineCx;
 use crate::layout::fragment::line_shape::LengthFacts;
+use crate::layout::layout_state::LayoutState;
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone, Copy)]
@@ -19,10 +22,14 @@ pub(crate) struct FrameCx<'a> {
     pub(crate) lengths: Option<&'a Rc<RefCell<LengthFacts>>>,
     /// Break and float facts already proven absent for subtrees of this build.
     pub(crate) subtrees: Option<&'a Rc<RefCell<SubtreeFacts>>>,
+    /// Deferred paint owner of the render tree being built.
+    pub(crate) paint: Option<&'a Rc<Deferred>>,
+    /// Layout state of the document (anchors under transforms).
+    pub(crate) layout: &'a Rc<LayoutState>,
 }
 
 impl<'a> FrameCx<'a> {
-    /// Values only: no fragmented ancestor and no memoized facts.
+    /// Values only: no fragmented ancestor, no memoized facts and no deferred paint owner.
     #[cfg(test)]
     pub(crate) fn new(values: ValueCx<'a>) -> Self {
         Self {
@@ -30,6 +37,19 @@ impl<'a> FrameCx<'a> {
             lines: None,
             lengths: None,
             subtrees: None,
+            paint: None,
+            layout: &values.doc.layout,
+        }
+    }
+
+    /// Retain the frame's values, deferred paint owner and layout state for effects built
+    /// after the build (a positioned group's wrapper). Fragmentation and memoized facts
+    /// belong to the build and are not retained.
+    pub(crate) fn keep(self) -> FrameDoc {
+        FrameDoc {
+            values: self.values.keep(),
+            paint: self.paint.cloned(),
+            layout: self.layout.clone(),
         }
     }
 
@@ -53,5 +73,26 @@ impl std::fmt::Debug for FrameCx<'_> {
             .field("values", &self.values)
             .field("lines", &self.lines.is_some())
             .finish()
+    }
+}
+
+/// Owned frame facts that outlive the build: values, deferred paint owner and layout state.
+#[derive(Clone)]
+pub(crate) struct FrameDoc {
+    values: ValueDoc,
+    paint: Option<Rc<Deferred>>,
+    layout: Rc<LayoutState>,
+}
+
+impl FrameDoc {
+    pub(crate) fn frame(&self) -> FrameCx<'_> {
+        FrameCx {
+            values: self.values.vcx(),
+            lines: None,
+            lengths: None,
+            subtrees: None,
+            paint: self.paint.as_ref(),
+            layout: &self.layout,
+        }
     }
 }

@@ -109,7 +109,7 @@ impl ColumnStack {
             // «Never become taller than used column-height»), лишние
             // колонки — вбок (§8.2 уровня 1; `column-height-005/030`).
             let plan = match self.fixed_height {
-                Some(_) => Self::fill_avoiding(kids, &|_| cap, Space::columns(limit)).2,
+                Some(_) => Self::fill_avoiding(kids, &|_| cap, self.column_space(limit)).2,
                 None => self.balance_line(kids, limit, Some(cap)).1,
             };
             return (h, vec![(0.0, h)], plan, Vec::new());

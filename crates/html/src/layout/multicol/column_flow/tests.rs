@@ -19,7 +19,7 @@ fn styled(css: &str, children: Vec<Node>) -> (Element, Computed) {
 /// multicol keeps its twelve lines; the text path would merge them into one
 /// wrapped paragraph and cut 5/5/2 instead of 4/4/4.
 #[test]
-fn preserved_line_breaks_and_nowrap_leave_the_text_path() {
+fn preserved_line_breaks_nowrap_and_first_letter_leave_the_text_path() {
     let opts = RenderOpts {
         text: Default::default(),
         viewport: (800., 600.),
@@ -30,12 +30,20 @@ fn preserved_line_breaks_and_nowrap_leave_the_text_path() {
     let lines = (1..=12).map(|i| format!("Line {i}")).collect::<Vec<_>>();
     for (child, text_path) in [
         ("", true),
+        ("::first-letter", false),
         ("white-space:pre", false),
         ("white-space:pre-line", false),
         ("white-space:nowrap", false),
     ] {
         let doc = crate::document::state::DocState::new(Default::default());
-        let (only, _) = styled(child, vec![Node::Text(lines.join("\n"))]);
+        let (mut only, _) = styled(
+            child.trim_start_matches(':'),
+            vec![Node::Text(lines.join("\n"))],
+        );
+        // `::first-letter` styles part of the first line: the text path paints raw text.
+        if child.starts_with(':') {
+            only.first_letter = Some(Computed::default().into());
+        }
         let (multicol, style) = styled("columns:3 10em;height:4lh", vec![Node::Element(only)]);
         let merged =
             crate::style::cascade::inherit::inherit(&BoxStyle::default(), &style, doc.values());

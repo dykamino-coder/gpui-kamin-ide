@@ -19,7 +19,7 @@ pub(crate) fn paint_3d(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let paint = group.values.vcx().paint.cloned();
+    let paint = group.paint.clone();
     use crate::style::computed::{Transform, det4, mul4};
     let sf = scale_factor;
     // Из css-точек в точки устройства — подобие S·M·S⁻¹, S = diag(sf, sf,

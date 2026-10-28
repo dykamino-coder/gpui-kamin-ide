@@ -19,6 +19,7 @@ pub(super) struct Cursor {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn fill_pieces(
     target_at: &dyn Fn(usize) -> f32,
+    inline_at: &dyn Fn(usize) -> Option<f32>,
     limit: usize,
     paged: bool,
     col: &mut usize,
@@ -39,6 +40,7 @@ pub(super) fn fill_pieces(
 ) -> Result<(), Error> {
     super::pieces::fill_pieces_inner(
         target_at,
+        inline_at,
         limit,
         paged,
         col,

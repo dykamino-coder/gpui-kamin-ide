@@ -90,6 +90,27 @@ fn normal_line_uses_content_address_after_rewrap() {
 }
 
 #[test]
+fn line_taller_than_the_page_continues_its_slice() {
+    let blocks = BlockBox {
+        id: 1,
+        ..Default::default()
+    };
+    let old = Laid::of_boxes(&[(1, 0., 690.)]);
+    let mut inline = vec![Inline {
+        lines: vec![ContentLine {
+            top: 0.,
+            bottom: 672.,
+            ..Default::default()
+        }],
+        ..Default::default()
+    }];
+    // The copy re-lays the monolithic line at 10; the page edge sliced it at 192.
+    let cursor = Cursor::at(&blocks, &old, &inline, 192.).unwrap();
+    inline[0].lines[0].top = 10.;
+    assert_eq!(cursor.offset(&old, &inline), Some(202.));
+}
+
+#[test]
 fn nested_flex_keeps_its_independent_item_cursors() {
     let blocks = BlockBox {
         id: 1,
