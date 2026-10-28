@@ -28,7 +28,7 @@ pub(crate) fn prepared(
     }
     let grouped_e = group_inline_runs(&boxed);
     let ge: &Element = grouped_e.as_ref().unwrap_or(&boxed);
-    let floats_blocked = super::block_floats(ge, positioned, width, opts.cx.vcx());
+    let floats_blocked = super::block_floats(ge, positioned, width, opts.cx.frame());
     let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
     // Обёртка flex/сетки с ЕДИНСТВЕННЫМ элементом-`clone`
     // (`clone_wrapper_item`): по блочной оси такая обёртка

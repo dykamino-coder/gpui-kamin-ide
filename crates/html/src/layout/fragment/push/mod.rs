@@ -6,7 +6,7 @@
 //! строчное среди детей — отказ от спуска.
 //! Подмодуль `spacer` — сама распорка и монолит `break-inside: avoid`.
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -37,7 +37,7 @@ pub(crate) use measured::{Growth, Regrow, measured_push, measured_tree, recorded
 // Текст или строчный среди детей — у `shape_full`
 // отказ от спуска, и здесь тоже.
 // `forced` — щуп ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
-fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>) -> Option<u64> {
+fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: FrameCx<'_>) -> Option<u64> {
     if depth == 0 {
         return None;
     }

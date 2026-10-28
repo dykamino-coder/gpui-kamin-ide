@@ -3,9 +3,9 @@
 use super::super::cell::grow_before;
 use super::super::pushed_box_at;
 use super::spacer_before;
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::{clone_dec, solid_box};
 use crate::layout::fragment::fragment_size::shape_full;
@@ -41,7 +41,7 @@ pub(crate) fn grow_pushed(
     copies: usize,
     par: &[crate::layout::fragment::types::Par],
     measured: &dyn Fn(&Element) -> bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Vec<(Element, Shape)> {
     if kids.iter().all(|(c, _)| c.marks.paginate || measured(c)) {
         return kids;

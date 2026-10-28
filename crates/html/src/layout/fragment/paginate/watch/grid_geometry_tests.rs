@@ -30,7 +30,7 @@ fn recorder(axis: StackAxis) -> std::rc::Rc<Watched> {
     let mut grid: GridBox = BlockBox::collect(
         root,
         crate::layout::fragment::ShapeCx::COLUMNS,
-        doc.values(),
+        crate::layout::cx::FrameCx::new(doc.values()),
     )
     .grid
     .expect("grid items");

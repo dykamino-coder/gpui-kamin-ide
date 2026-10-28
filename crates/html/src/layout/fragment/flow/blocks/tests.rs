@@ -18,7 +18,7 @@ fn tree(html: &str) -> (BlockBox, Vec<u64>) {
     let b = BlockBox::collect(
         root,
         crate::layout::fragment::ShapeCx::COLUMNS,
-        doc.values(),
+        crate::layout::cx::FrameCx::new(doc.values()),
     );
     // Without the root: the root is not recorded and stands at zero.
     let ids = b.ids()[1..].to_vec();

@@ -1,8 +1,8 @@
 //! Формы детей (KidShape): рекурсивный замер вырезов каждого ребёнка.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::float::block_like_float;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_break;
@@ -22,7 +22,7 @@ pub(super) fn kid_shapes(
     kids: &Vec<&Node>,
     flex_col: bool,
     no_descent: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<
     Vec<(
         f32,

@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -29,7 +30,7 @@ fn element(style: Computed, children: Vec<Node>) -> Element {
 #[test]
 fn positioned_reach_crosses_static_wrappers_without_moving_siblings() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = FrameCx::new(doc.values());
     use crate::style::computed::Position;
     let abs = element(
         Computed {
@@ -63,7 +64,7 @@ fn positioned_reach_crosses_static_wrappers_without_moving_siblings() {
 #[test]
 fn explicit_top_uses_continuous_containing_block_origin_in_columns() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = FrameCx::new(doc.values());
     use crate::style::computed::Position;
     let first = element(
         Computed {
@@ -99,7 +100,7 @@ fn explicit_top_uses_continuous_containing_block_origin_in_columns() {
 #[test]
 fn contained_fixed_reach_passes_relative_boxes_to_its_own_cb() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = FrameCx::new(doc.values());
     use crate::style::computed::Position;
     let mut fixed = element(
         Computed {
@@ -135,7 +136,7 @@ fn contained_fixed_reach_passes_relative_boxes_to_its_own_cb() {
 #[test]
 fn measure_hands_the_positioned_reach_up_as_a_value() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let vcx = FrameCx::new(doc.values());
     use crate::layout::fragment::fragment_size::measure;
     use crate::style::computed::Position;
     let abs = element(

@@ -49,7 +49,11 @@ fn deep_native_groups_record_the_innermost_box() {
                     })
                     .unwrap_or(e.node_id)
             }
-            let b = BlockBox::collect(&logical, ShapeCx::COLUMNS, tree.values());
+            let b = BlockBox::collect(
+                &logical,
+                ShapeCx::COLUMNS,
+                crate::layout::cx::FrameCx::new(tree.values()),
+            );
             assert!(b.ids().contains(&last(&logical)), "{mode}: {body}");
             assert!(b.ids().len() > 24, "{mode}: {body}");
         }

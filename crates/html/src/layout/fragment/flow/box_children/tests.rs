@@ -57,7 +57,11 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
                 assert!(vertical_copy(&e, mode == "vertical-rl"), "{mode}: {body}");
                 crate::layout::fragment::flow::logical_copy(&e, mode == "vertical-rl").unwrap()
             };
-            let b = BlockBox::collect(&logical, ShapeCx::COLUMNS, tree.values());
+            let b = BlockBox::collect(
+                &logical,
+                ShapeCx::COLUMNS,
+                crate::layout::cx::FrameCx::new(tree.values()),
+            );
             let ids = b.ids();
             assert!(!ids.contains(&contents.node_id));
             assert!(!ids.contains(&hidden_id));

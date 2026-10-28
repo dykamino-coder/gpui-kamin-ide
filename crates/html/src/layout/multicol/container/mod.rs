@@ -71,7 +71,7 @@ pub(crate) fn multicol_column_stack(
         opts,
         move |opts| {
             let (e, inherited, opts) = (&e, &inherited, &opts);
-            let vcx = opts.cx.vcx();
+            let vcx = opts.cx.frame();
             let copies = match rows {
                 Some(r) => {
                     let per = r.h.unwrap_or(f32::MAX).max(1.0);

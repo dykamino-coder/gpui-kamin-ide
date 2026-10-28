@@ -1,9 +1,9 @@
 //! Гейт многострочного flex-ряда для сбора краёв (`row_container`) и его главный размер
 //! (`main_size`): из кадра меры строк (`ValueCx::lines`) или из ширины в точках.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::block::sizing::BoxDimensions;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::{Align, Display, FlexDir, Justify};
 use crate::style::values::value::{Len, px_auto_zero};
 
@@ -28,7 +28,7 @@ pub(crate) fn row_container(c: &Element) -> bool {
         )
 }
 
-pub(crate) fn main_size(c: &Element, vcx: ValueCx<'_>) -> Option<f32> {
+pub(crate) fn main_size(c: &Element, vcx: FrameCx<'_>) -> Option<f32> {
     vcx.lines
         .and_then(|cx| cx.frames.last())
         .and_then(|f| f.w)

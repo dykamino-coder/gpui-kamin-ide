@@ -147,10 +147,16 @@ pub(crate) fn stack_plan(
     let laid = line_col_w
         .filter(|_| !col_vert && nest_rows.is_none())
         .and_then(|w| {
-            super::laid::children(ge, merged, opts.cx.vcx(), w, &measured_kids).or_else(|| {
+            super::laid::children(ge, merged, opts.cx.frame(), w, &measured_kids).or_else(|| {
                 pag_ok
                     .then(|| {
-                        super::native_float::children(ge, merged, opts.cx.vcx(), w, &measured_kids)
+                        super::native_float::children(
+                            ge,
+                            merged,
+                            opts.cx.frame(),
+                            w,
+                            &measured_kids,
+                        )
                     })
                     .flatten()
             })
@@ -158,11 +164,11 @@ pub(crate) fn stack_plan(
     let pending = (line_col_w.is_none() && nest_rows.is_none())
         .then(|| {
             if col_vert {
-                super::laid::pending_vertical(ge, merged, opts.cx.vcx(), col_rl)
+                super::laid::pending_vertical(ge, merged, opts.cx.frame(), col_rl)
             } else {
-                super::laid::pending(ge, merged, opts.cx.vcx()).or_else(|| {
+                super::laid::pending(ge, merged, opts.cx.frame()).or_else(|| {
                     pag_ok
-                        .then(|| super::native_float::pending(ge, merged, opts.cx.vcx()))
+                        .then(|| super::native_float::pending(ge, merged, opts.cx.frame()))
                         .flatten()
                 })
             }
@@ -171,7 +177,7 @@ pub(crate) fn stack_plan(
     let vertical = line_col_w
         .filter(|_| col_vert && nest_rows.is_none())
         .and_then(|w| {
-            super::laid::vertical_children(ge, merged, opts.cx.vcx(), w, col_rl, &measured_kids)
+            super::laid::vertical_children(ge, merged, opts.cx.frame(), w, col_rl, &measured_kids)
         });
     // Native-копии copy_flow уже содержат прямые флоаты в анонимном блоке.
     // Повторный сосед стопки увеличил бы её высоту второй margin-box.

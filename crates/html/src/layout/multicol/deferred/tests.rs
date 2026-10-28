@@ -59,7 +59,7 @@ fn deferred_children_resolve_percentages_from_original_content_box() {
         };
         assert_eq!(child.style.used().height, Some(Len::Px(170.0)));
         let measured = RefCell::default();
-        let kids = laid::children(&resolved, &merged, opts.cx.vcx(), width, &measured)
+        let kids = laid::children(&resolved, &merged, opts.cx.frame(), width, &measured)
             .expect("resolved measured tree");
         let child = kids[0].0.style.used();
         assert_eq!(child.height, Some(Len::Px(170.0)));
