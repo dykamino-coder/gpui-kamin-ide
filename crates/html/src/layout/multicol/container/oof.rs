@@ -20,9 +20,23 @@ pub(super) fn place_oof_statics(
     Vec<crate::layout::fragment::types::StackChild>,
     Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
 ) {
-    let mut children = children;
     let oof_spots: Vec<crate::layout::positioned::containing_block::SpotCell> =
         oof_static.iter().map(|_| Default::default()).collect();
+    let children = insert_static_probes(merged, opts, oof_static, &oof_spots, &kid_starts, children);
+    (children, oof_spots)
+}
+
+/// Щупы статической позиции прямых позиционированных детей — нулевые дети стопки
+/// на их месте в потоке; отложенная стопка ставит их после меры детей.
+pub(in crate::layout::multicol) fn insert_static_probes(
+    merged: &Computed,
+    opts: &RenderOpts,
+    oof_static: &[(usize, Element)],
+    oof_spots: &[crate::layout::positioned::containing_block::SpotCell],
+    kid_starts: &[usize],
+    children: Vec<crate::layout::fragment::types::StackChild>,
+) -> Vec<crate::layout::fragment::types::StackChild> {
+    let mut children = children;
     for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
         // Щуп правит только пустую ось; заданную считает CB (CSS 2.1 §10.3.7), как fixed_axes.
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
@@ -94,7 +108,7 @@ pub(super) fn place_oof_statics(
             .min(children.len());
         children.insert(at, probe);
     }
-    (children, oof_spots)
+    children
 }
 
 #[allow(clippy::too_many_arguments)]

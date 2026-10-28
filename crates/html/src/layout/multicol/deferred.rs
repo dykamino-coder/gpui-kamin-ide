@@ -26,6 +26,12 @@ pub(crate) struct Recipe {
     pub(crate) fixed: Option<f32>,
     pub(crate) axis: crate::layout::fragment::types::StackAxis,
     pub(crate) rows: Option<crate::layout::fragment::types::Rows>,
+    /// Прямые позиционированные дети с местом в потоке и их щупы.
+    #[allow(clippy::type_complexity)]
+    pub(crate) statics: std::cell::RefCell<(
+        Vec<(usize, Element)>,
+        Vec<crate::layout::positioned::containing_block::SpotCell>,
+    )>,
 }
 
 impl Recipe {
@@ -54,6 +60,7 @@ impl Recipe {
             fixed,
             axis,
             rows,
+            statics: Default::default(),
         }))
     }
 

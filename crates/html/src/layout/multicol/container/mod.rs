@@ -16,6 +16,7 @@ use gpui::{AnyElement, ParentElement};
 pub(super) mod kids;
 use kids::{column_kids, stack_children};
 mod oof;
+pub(in crate::layout::multicol) use oof::insert_static_probes;
 use oof::{column_stack_div, finish_column_stack, place_oof_statics};
 mod spanner;
 pub(crate) use spanner::multicol_spanner_segments;
@@ -161,6 +162,11 @@ pub(crate) fn multicol_column_stack(
             };
             let (children, oof_spots) =
                 place_oof_statics(&merged, opts, &oof_static, kid_starts, children);
+            // Отложенная стопка собирает детей при известной ширине: её щупы
+            // статической позиции ставятся туда же (`Recipe::statics`).
+            if let Some(recipe) = &deferred {
+                *recipe.statics.borrow_mut() = (oof_static.clone(), oof_spots.clone());
+            }
             let painter = gap_items.clone().zip(gap_spec);
             let d = d.children(painter.map(|(b, s)| {
                 opts.cx

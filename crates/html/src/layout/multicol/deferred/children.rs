@@ -91,6 +91,16 @@ impl Recipe {
             kids,
             prepared,
         );
+        let (statics, spots) = &*self.statics.borrow();
+        let kid_starts: Vec<usize> = (0..=children.len()).collect();
+        let children = crate::layout::multicol::container::insert_static_probes(
+            &self.merged,
+            &opts,
+            statics,
+            spots,
+            &kid_starts,
+            children,
+        );
         (children, geometry)
     }
 }
