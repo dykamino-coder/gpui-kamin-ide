@@ -597,7 +597,12 @@ async function createAdmittedSession(
       })()
     },
     (agentName, entries, agentId) =>
-      sendToClient(session.ws, { type: 'jsonl:subagent-entries', agentName, agentId, entries: leanEntries(entries) }),
+      trySendToClient(session.ws, {
+        type: 'jsonl:subagent-entries',
+        agentName,
+        agentId,
+        entries: leanEntries(entries),
+      }),
     () => resetJsonlStats(session),
     (entry) => accumulateJsonlStats(session, entry),
     // Bulk replay only goes out while the CURRENT socket (reattach swaps it)

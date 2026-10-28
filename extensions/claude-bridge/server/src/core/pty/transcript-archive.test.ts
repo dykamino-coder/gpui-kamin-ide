@@ -142,15 +142,45 @@ describe('INC-2026-0054: беседа резюмируется, пока её н
     expect(fs.readFileSync(jsonl, 'utf8')).toContain('"uuid":"u2"')
   })
 
-  it('более короткий живой файл не затирает более длинный архив', async () => {
+  it('более короткое текущее поколение становится вершиной, а длинное остаётся версией', async () => {
     const { jsonl } = seedConversation(['{"type":"user","uuid":"u1"}', '{"type":"assistant","uuid":"u2"}'])
     const archive = await freshArchive()
     await archive.archiveTranscript(jsonl, CONV)
 
-    // Форк или обрезание: расшифровка стала короче. Архив обязан устоять.
+    // Ремонт или форк: расшифровка законно стала короче (INC-2026-0078, F11).
+    // Длина не порядок версий: вершиной становится текущее поколение, а прежнее
+    // не теряется — оно сохраняется как версия.
     fs.writeFileSync(jsonl, '{"type":"user","uuid":"u1"}\n')
     await archive.archiveTranscript(jsonl, CONV)
 
+    expect(fs.readFileSync(archive.archivedTranscriptPath(CONV)!, 'utf8')).not.toContain('"uuid":"u2"')
+    const versions = archive.archivedVersions(CONV)
+    expect(versions).toHaveLength(1)
+    expect(fs.readFileSync(versions[0]!, 'utf8')).toContain('"uuid":"u2"')
+  })
+
+  it('перезапись той же длины тоже создаёт новое поколение', async () => {
+    const { jsonl } = seedConversation(['{"type":"user","uuid":"aa"}'])
+    const archive = await freshArchive()
+    await archive.archiveTranscript(jsonl, CONV)
+    const later = new Date(Date.now() + 5000)
+    fs.writeFileSync(jsonl, '{"type":"user","uuid":"bb"}\n')
+    fs.utimesSync(jsonl, later, later)
+    expect(await archive.archiveTranscript(jsonl, CONV)).toBe(true)
+    expect(fs.readFileSync(archive.archivedTranscriptPath(CONV)!, 'utf8')).toContain('"uuid":"bb"')
+    // The unchanged generation is not copied again.
+    expect(await archive.archiveTranscript(jsonl, CONV)).toBe(false)
+  })
+
+  it('дописывание того же поколения обновляет вершину без новой версии, рваный хвост не архивируется', async () => {
+    const { jsonl } = seedConversation(['{"type":"user","uuid":"u1"}'])
+    const archive = await freshArchive()
+    await archive.archiveTranscript(jsonl, CONV)
+    fs.appendFileSync(jsonl, '{"type":"assistant","uuid":"u2"}\n')
+    await archive.archiveTranscript(jsonl, CONV)
+    expect(archive.archivedVersions(CONV)).toHaveLength(0)
+    fs.appendFileSync(jsonl, '{"type":"assis')
+    expect(await archive.archiveTranscript(jsonl, CONV)).toBe(false)
     expect(fs.readFileSync(archive.archivedTranscriptPath(CONV)!, 'utf8')).toContain('"uuid":"u2"')
   })
 

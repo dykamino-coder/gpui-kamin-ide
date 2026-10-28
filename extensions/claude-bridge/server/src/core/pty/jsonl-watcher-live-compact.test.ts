@@ -43,30 +43,32 @@ describe('JsonlWatcher — live /compact rebuilds the segment index', () => {
         assistant('a1', '2026-07-24T00:02:00.000Z', 'hi'),
     )
 
-    const w = new JsonlWatcher(Date.now(), () => true, (s) => { statuses.push(s) })
+    const w = new JsonlWatcher(
+      Date.now(),
+      () => true,
+      (s) => {
+        statuses.push(s)
+      },
+    )
     watchers.push(w)
     ;(w as unknown as { filePath: string }).filePath = file
 
     w.replayAll()
-    await new Promise((r) => setTimeout(r, 150))
-
     // Initial replay: index carries exactly the one existing boundary.
-    expect(lastIndex(statuses)?.boundaries).toHaveLength(1)
+    await expect.poll(() => lastIndex(statuses)?.boundaries.length, { timeout: 5000 }).toBe(1)
 
     // A live /compact: append a SECOND boundary + its summary turn, then let the
     // tail read it (drive checkForNewContent directly — no poll-timing flake).
     appendFileSync(
       file,
-      boundary('b2', '2026-07-24T01:00:00.000Z') +
-        assistant('a2', '2026-07-24T01:01:00.000Z', 'after compact'),
+      boundary('b2', '2026-07-24T01:00:00.000Z') + assistant('a2', '2026-07-24T01:01:00.000Z', 'after compact'),
     )
     statuses.length = 0
     await (w as unknown as { checkForNewContent(): Promise<void> }).checkForNewContent()
-    await new Promise((r) => setTimeout(r, 150)) // rebuild is fire-and-forget
-
+    // The rebuild is fire-and-forget: wait for it rather than a fixed sleep.
     // The strip's source now reflects BOTH boundaries — this is the fix.
+    await expect.poll(() => lastIndex(statuses)?.boundaries.length, { timeout: 5000 }).toBe(2)
     const after = lastIndex(statuses)
-    expect(after?.boundaries).toHaveLength(2)
     // counts.length === boundaries.length + 1 (pre + one per segment).
     expect(after?.counts).toHaveLength(3)
   })
@@ -78,12 +80,18 @@ describe('JsonlWatcher — live /compact rebuilds the segment index', () => {
     const file = join(dir, 'conv.jsonl')
     writeFileSync(file, user('u1', '2026-07-24T00:00:00.000Z', 'hello'))
 
-    const w = new JsonlWatcher(Date.now(), () => true, (s) => { statuses.push(s) })
+    const w = new JsonlWatcher(
+      Date.now(),
+      () => true,
+      (s) => {
+        statuses.push(s)
+      },
+    )
     watchers.push(w)
     ;(w as unknown as { filePath: string }).filePath = file
 
     w.replayAll()
-    await new Promise((r) => setTimeout(r, 150))
+    await expect.poll(() => statuses.some((s) => s.replayComplete), { timeout: 5000 }).toBe(true)
 
     // A plain assistant turn — no boundary, so no segmentIndex resend.
     appendFileSync(file, assistant('a1', '2026-07-24T00:01:00.000Z', 'hi'))

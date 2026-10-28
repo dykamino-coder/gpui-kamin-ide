@@ -15,7 +15,7 @@ import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
 import { rememberModelSelection } from './model-selection'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId, modelCommand } from './live-switch'
-import { waitForDrain, type DrainOutcome } from './download-backpressure'
+import { streamFileChunks, waitForDrain, type DrainOutcome } from './download-backpressure'
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
 import { readJsonlLines } from './jsonl-lines'
@@ -51,10 +51,10 @@ import { replaceRegisteredTools } from './mcp-tool-notify'
  * Map: sessionId → WS client.
  * Used by MCP HTTP handler to find the correct KaminIDE client.
  */
-/** Transcript download chunk size, in characters. Small enough that each frame
+/** Transcript download chunk size, in bytes. Small enough that each frame
  *  serialises quickly and progress moves visibly; large enough that a 36MB
  *  transcript is ~36 frames rather than thousands. */
-const DOWNLOAD_CHUNK_CHARS = 1_000_000
+const DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 /** Порог обратного давления выгрузки — вчетверо ниже общего предела 16 МиБ:
  *  выгрузка не должна подводить соединение к границе, за которой обычные кадры
  *  сессии начнут БРОСАТЬСЯ. */
@@ -971,18 +971,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return
           }
           try {
-            // Async: a transcript is tens of MB and readFileSync blocked the
-            // shared event loop for the whole read — stalling every OTHER
-            // session on this server while one user clicked download.
-            const content = await fsp.readFile(filePath, 'utf-8')
+            // Streamed: the transcript (often 100+ MiB) is never held whole —
+            // one bounded chunk is read, decoded and sent at a time, under the
+            // same drain gate. `total`/`sent` are BYTES of the file snapshot
+            // taken now (the client only uses them for progress); a UTF-8
+            // character split by a chunk edge is carried by the decoder.
             const fileName = path.basename(filePath)
-            // Chunked, not one 36MB frame. A single message meant one huge
-            // JSON.stringify here and one huge parse on the client, with the
-            // whole transcript materialised twice in each — and no way to show
-            // progress, so the UI could only spin. Chunks keep each frame small
-            // and let the client report real percentages.
-            const total = content.length
-            if (total <= DOWNLOAD_CHUNK_CHARS) {
+            const total = (await fsp.stat(filePath)).size
+            if (total <= DOWNLOAD_CHUNK_BYTES) {
+              const content = await fsp.readFile(filePath, 'utf-8')
               ws.send(JSON.stringify({ type: 'jsonl:download-response', content, fileName }))
             } else {
               ws.send(JSON.stringify({ type: 'jsonl:download-begin', fileName, total }))
@@ -993,22 +990,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // `sendToClient` за пределом, здесь нельзя — у выгрузки нет
               // повторной доставки, и брошенный кусок означает молча
               // испорченный файл.
-              let aborted: DrainOutcome | null = null
-              for (let sent = 0; sent < total; sent += DOWNLOAD_CHUNK_CHARS) {
-                const gate = await waitForDrain(ws, DOWNLOAD_DRAIN)
-                if (gate !== 'ready') {
-                  aborted = gate
-                  break
-                }
-                ws.send(
-                  JSON.stringify({
-                    type: 'jsonl:download-chunk',
-                    chunk: content.slice(sent, sent + DOWNLOAD_CHUNK_CHARS),
-                    sent: Math.min(sent + DOWNLOAD_CHUNK_CHARS, total),
-                    total,
-                  }),
-                )
-              }
+              const aborted = await streamFileChunks(ws, filePath, total, DOWNLOAD_CHUNK_BYTES, DOWNLOAD_DRAIN)
               if (aborted === null) {
                 ws.send(JSON.stringify({ type: 'jsonl:download-end', fileName, total }))
               } else if (aborted === 'timeout' && ws.readyState === ws.OPEN) {
