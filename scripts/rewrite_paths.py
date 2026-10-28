@@ -71,8 +71,11 @@ def rewrite(source, filename, current, owners, resolve=None, module_path=None):
         if not full or full[0] not in owners:
             raise ValueError(f'{filename}: unassigned local path {"::".join(path)}')
         owner = owners[full[0]]
-        root = 'crate' if owner == current else owner.replace('-', '_')
-        return render((root, *full))
+        if owner == current:
+            # The module tree is preserved inside a package: a path that stays in
+            # it is still valid as written, including relative and aliased forms.
+            return None
+        return render((owner.replace('-', '_'), *full))
 
     index = 0
     while index < len(words):
