@@ -10,7 +10,7 @@ export default {
     },
   },
   test: {
-    include: ['src/**/*.{test,spec}.ts'],
+    include: ['src/**/*.{test,spec}.ts', 'acceptance/**/*.test.ts'],
     exclude: ['node_modules', 'dist'],
     silent: 'passed-only',
   },
