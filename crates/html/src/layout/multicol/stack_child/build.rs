@@ -42,8 +42,7 @@ pub(super) fn build_copy(
     part: usize,
     band: bool,
 ) -> gpui::AnyElement {
-    let frame = opts.cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let build = &opts.cx.contracts.build;
     // `box-decoration-break: clone`: копия — САМ
     // фрагмент (`clone_fragment`), и корень, и

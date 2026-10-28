@@ -15,8 +15,7 @@ pub(super) fn own_box_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let frame = opts.cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let mut merged = box_style(inherited, &e.style, vcx);
     // Atomic containers publish the same node/order keys as block containers.
     merged.self_node = e.node_id;
