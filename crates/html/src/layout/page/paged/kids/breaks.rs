@@ -93,7 +93,7 @@ mod tests {
             false,
             false,
             ShapeCx::COLUMNS,
-            crate::layout::cx::FrameCx::new(tree.values()),
+            crate::layout::cx::FrameCx::new(&tree.doc),
         );
         assert_eq!(watched.blocks().unwrap().kids.len(), 1);
     }
@@ -115,7 +115,7 @@ mod tests {
             false,
             false,
             ShapeCx::COLUMNS,
-            crate::layout::cx::FrameCx::new(tree.values()),
+            crate::layout::cx::FrameCx::new(&tree.doc),
         );
         let blocks = watched
             .blocks()

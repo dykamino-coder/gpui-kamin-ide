@@ -70,13 +70,13 @@ impl DocumentValues {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::document::state::DocState;
 
     #[test]
     fn nested_terminal_failure_is_visible_to_the_root_document() {
-        let root = crate::document::state::DocState::new(Default::default());
-        let child = crate::document::state::DocState::new(Default::default());
-        let grandchild = crate::document::state::DocState::new(Default::default());
+        let root = DocState::new(Default::default());
+        let child = DocState::new(Default::default());
+        let grandchild = DocState::new(Default::default());
         let mut failure =
             crate::document::DocumentFailure::new(crate::document::FailureReason::XmlSyntax {
                 row: 1,
@@ -91,9 +91,9 @@ mod tests {
 
     #[test]
     fn nested_traversal_limit_reaches_the_root_without_rejecting_it() {
-        let root = crate::document::state::DocState::new(Default::default());
-        let child = crate::document::state::DocState::new(Default::default());
-        let grandchild = crate::document::state::DocState::new(Default::default());
+        let root = DocState::new(Default::default());
+        let child = DocState::new(Default::default());
+        let grandchild = DocState::new(Default::default());
         grandchild.values.traversal.set_embedded();
         grandchild
             .values
@@ -108,8 +108,8 @@ mod tests {
 
     #[test]
     fn paint_and_all_nested_work_must_finish() {
-        let doc = crate::document::state::DocState::new(Default::default());
-        let child = crate::document::state::DocState::new(Default::default());
+        let doc = DocState::new(Default::default());
+        let child = DocState::new(Default::default());
         assert!(!doc.values.frame_ready());
         doc.values.painted.set(true);
         assert!(doc.values.frame_ready());

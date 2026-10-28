@@ -102,7 +102,7 @@ mod tests {
                         parent,
                         Some(80.0),
                         false,
-                        crate::layout::cx::FrameCx::new(tree.values())
+                        crate::layout::cx::FrameCx::new(&tree.doc)
                     ),
                     gapped.then_some("gap"),
                     "{html}"
@@ -127,7 +127,7 @@ mod tests {
                 parent,
                 Some(50.0),
                 false,
-                crate::layout::cx::FrameCx::new(tree.values())
+                crate::layout::cx::FrameCx::new(&tree.doc)
             ));
         }
     }
@@ -141,7 +141,7 @@ mod tests {
         let Node::Element(parent) = &tree[0] else {
             panic!("block")
         };
-        let candidates = super::candidates(parent, crate::layout::cx::FrameCx::new(tree.values()))
+        let candidates = super::candidates(parent, crate::layout::cx::FrameCx::new(&tree.doc))
             .expect("candidates");
         assert!(
             candidates
@@ -152,7 +152,7 @@ mod tests {
             parent,
             Some(50.0),
             true,
-            crate::layout::cx::FrameCx::new(tree.values())
+            crate::layout::cx::FrameCx::new(&tree.doc)
         ));
     }
 
@@ -165,7 +165,7 @@ mod tests {
         let Node::Element(parent) = &tree[0] else {
             panic!("block")
         };
-        let candidates = super::candidates(parent, crate::layout::cx::FrameCx::new(tree.values()))
+        let candidates = super::candidates(parent, crate::layout::cx::FrameCx::new(&tree.doc))
             .expect("candidates");
         assert!(
             candidates
@@ -178,7 +178,7 @@ mod tests {
             parent,
             Some(9.0),
             true,
-            crate::layout::cx::FrameCx::new(tree.values())
+            crate::layout::cx::FrameCx::new(&tree.doc)
         ));
     }
     #[test]
@@ -201,7 +201,7 @@ mod tests {
                 parent,
                 None,
                 true,
-                crate::layout::cx::FrameCx::new(tree.values())
+                crate::layout::cx::FrameCx::new(&tree.doc)
             ));
         }
         let html = format!(
@@ -218,7 +218,7 @@ mod tests {
                 parent,
                 None,
                 true,
-                crate::layout::cx::FrameCx::new(tree.values())
+                crate::layout::cx::FrameCx::new(&tree.doc)
             ),
             Some("gap")
         );

@@ -49,7 +49,7 @@ mod tests {
         let other = Deferred::default();
         let frame = crate::layout::cx::FrameCx {
             paint: Some(&owner),
-            ..crate::layout::cx::FrameCx::new(doc.values())
+            ..crate::layout::cx::FrameCx::new(&doc)
         };
         let retained = frame.keep();
         drop(owner);
