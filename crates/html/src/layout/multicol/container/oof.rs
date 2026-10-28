@@ -118,6 +118,7 @@ pub(super) fn finish_column_stack(
     merged: BoxStyle,
     opts: &RenderOpts,
     col_vert: bool,
+    native: &[u64],
     oof_static: Vec<(usize, Element)>,
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
@@ -144,6 +145,9 @@ pub(super) fn finish_column_stack(
         })
         .flatten();
     for (i, (_, oof)) in oof_static.iter().enumerate() {
+        if native.contains(&oof.node_id) {
+            continue;
+        }
         let mut oof = oof.clone();
         if let Some(ch) = cb_h
             && oof.style.used().position == Some(crate::style::computed::Position::Absolute)
@@ -165,4 +169,21 @@ pub(super) fn finish_column_stack(
         ));
     }
     d.into_any_element()
+}
+
+/// Прямые OOF хоста, которые рисует исходная native-раскладка его колонок.
+pub(super) fn native_flows(opts: &RenderOpts, merged: &BoxStyle, col_vert: bool) -> Vec<u64> {
+    opts.cx
+        .position
+        .geometry
+        .as_ref()
+        .filter(|g| g.native_along(col_vert).is_some() && g.host == merged.self_node)
+        .map(|g| {
+            g.flows
+                .iter()
+                .filter(|s| s.owner == 0 && s.native)
+                .map(|s| s.id)
+                .collect()
+        })
+        .unwrap_or_default()
 }

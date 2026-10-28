@@ -52,6 +52,7 @@ pub(in crate::layout::multicol) fn insert_static_probes(
             probe: opts.frag.probe.clone(),
             fragment_builders: Vec::new(),
             source: None,
+            static_of: Some((oof.node_id, block_start_margin(merged, oof))),
             watched: None,
             breaks_w: None,
             regrow: None,
@@ -108,4 +109,21 @@ pub(in crate::layout::multicol) fn insert_static_probes(
         children.insert(at, probe);
     }
     children
+}
+
+/// Блочное начальное поле OOF в точках (`Len::Px`; прочее — ноль).
+fn block_start_margin(merged: &Computed, oof: &Element) -> f32 {
+    let wm = merged.wm();
+    let margin = oof.style.used().margin;
+    let side = if !wm.vertical() {
+        margin.top
+    } else if wm.block_rl() {
+        margin.right
+    } else {
+        margin.left
+    };
+    match side {
+        Some(crate::style::values::value::Len::Px(v)) => v,
+        _ => 0.0,
+    }
 }

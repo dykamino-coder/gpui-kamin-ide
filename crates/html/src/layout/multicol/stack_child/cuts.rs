@@ -47,6 +47,7 @@ pub(super) fn stack_child_of(
         #[cfg(feature = "wpt-harness")]
         probe: Default::default(),
         source: Some(copy.node_id),
+        static_of: None,
         watched: None,
         breaks_w: None,
         regrow: None,

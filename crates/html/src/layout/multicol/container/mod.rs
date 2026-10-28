@@ -21,7 +21,7 @@ use oof::{column_stack_div, finish_column_stack};
 pub(in crate::layout::multicol) use static_probes::insert_static_probes;
 use static_probes::place_oof_statics;
 mod spanner;
-pub(crate) use spanner::multicol_spanner_segments;
+pub(crate) use spanner::{multicol_spanner_segments, row_bodies};
 mod fixed_height;
 use fixed_height::fixed_column_height;
 
@@ -170,10 +170,13 @@ pub(crate) fn multicol_column_stack(
             if let Some(layer) = fixed_layer {
                 d = d.children(layer.finish());
             }
-            for oof in &direct_oof {
+            // Прямой OOF, чей поток ведёт исходная native-раскладка, рисует она
+            // (`ColumnStack::prepaint_native`); заместитель его не повторяет.
+            let native = oof::native_flows(opts, &merged, col_vert);
+            for oof in direct_oof.iter().filter(|o| !native.contains(&o.node_id)) {
                 d = d.child(opts.cx.contracts.build.element(oof, &merged, opts));
             }
-            finish_column_stack(e, merged, opts, col_vert, oof_static, oof_spots, d)
+            finish_column_stack(e, merged, opts, col_vert, &native, oof_static, oof_spots, d)
         },
     )
 }

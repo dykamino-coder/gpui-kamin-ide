@@ -21,6 +21,10 @@ pub struct StackChild {
     pub(crate) fragment_builders: Vec<super::FragmentHandle>,
     /// Исходный normal-владелец OOF, независимо от вида рекордера.
     pub(crate) source: Option<u64>,
+    /// Щуп статической позиции прямого OOF с этим id (`static_probes`): место его
+    /// заместителя во фрагментированном потоке; второе — блочное начальное поле
+    /// OOF (от края поля до border box).
+    pub(crate) static_of: Option<(u64, f32)>,
     /// Первый замер сравнивается с оценкой до замены геометрии на измеренную.
     #[cfg(feature = "wpt-harness")]
     pub(crate) probe_pending: bool,
