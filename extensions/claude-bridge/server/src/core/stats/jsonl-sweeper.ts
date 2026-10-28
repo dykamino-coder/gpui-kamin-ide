@@ -555,7 +555,20 @@ async function processOneFileUnguarded(
         for (const b of content) {
           if (b?.type === 'tool_use' && b.name) {
             const toolUuid = `${uuid}#tool${toolIdx++}`
-            buffer.push([toolUuid, sessionId, tsStr, 'tool_use', model || null, 0, 0, 0, 0, b.name, messageId ?? null, 0])
+            buffer.push([
+              toolUuid,
+              sessionId,
+              tsStr,
+              'tool_use',
+              model || null,
+              0,
+              0,
+              0,
+              0,
+              b.name,
+              messageId ?? null,
+              0,
+            ])
           }
         }
       }

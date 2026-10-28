@@ -24,8 +24,11 @@ beforeAll(async () => {
   await lc.initStatsDb()
   const db = await lc.getDb()
   for (const id of ['main', 'child']) {
-    await db.run(`INSERT INTO session_tokens (session_id, token_id, user_name, created_at, deleted)
-      VALUES (?, ?, ?, ?, 0)`, [id, owner.tokenId, owner.userName, timestamp])
+    await db.run(
+      `INSERT INTO session_tokens (session_id, token_id, user_name, created_at, deleted)
+      VALUES (?, ?, ?, ?, 0)`,
+      [id, owner.tokenId, owner.userName, timestamp],
+    )
   }
   app = new Hono()
   ;(await import('../dashboard/controllers/users')).registerUserRoutes(app)
@@ -37,25 +40,39 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-function assistant(id: string, usage = { input_tokens: 2, output_tokens: 4,
-  cache_creation_input_tokens: 57871, cache_read_input_tokens: 0,
-  cache_creation: { ephemeral_1h_input_tokens: 57871 } }): SynthAssistantEntry {
-  return { type: 'assistant', uuid: id, timestamp, parentUuid: null, isSidechain: false,
-    __streaming: false, message: { id, role: 'assistant', model: 'claude-haiku-5-5', content: [], usage } }
+function assistant(
+  id: string,
+  usage = {
+    input_tokens: 2,
+    output_tokens: 4,
+    cache_creation_input_tokens: 57871,
+    cache_read_input_tokens: 0,
+    cache_creation: { ephemeral_1h_input_tokens: 57871 },
+  },
+): SynthAssistantEntry {
+  return {
+    type: 'assistant',
+    uuid: id,
+    timestamp,
+    parentUuid: null,
+    isSidechain: false,
+    __streaming: false,
+    message: { id, role: 'assistant', model: 'claude-haiku-5-5', content: [], usage },
+  }
 }
 
 async function sweepEntries(sessionId: string, entries: unknown[]): Promise<void> {
   const folder = join(dir, 'projects', 'slug')
   mkdirSync(folder, { recursive: true })
   const path = join(folder, `${sessionId}.jsonl`)
-  writeFileSync(path, entries.map(e => JSON.stringify(e)).join('\n') + '\n')
+  writeFileSync(path, entries.map((e) => JSON.stringify(e)).join('\n') + '\n')
   await sweep.sweepOneByPath(path)
 }
 
 async function summary(): Promise<{ tokens: { input: number; output: number; cacheCreation: number }; cost: number }> {
   const res = await app.request('/api/dashboard/users')
   expect(res.status).toBe(200)
-  return (await res.json() as Array<any>).find(r => r.userName === 'alice')
+  return ((await res.json()) as Array<any>).find((r) => r.userName === 'alice')
 }
 
 describe('durable cost accounting across CLI/proxy/subagent paths', () => {
@@ -70,7 +87,11 @@ describe('durable cost accounting across CLI/proxy/subagent paths', () => {
     recorder.bind('discovered')
     expect(persist).toHaveBeenCalledTimes(1)
     expect(persist.mock.calls[0]).toEqual([
-      { timestamp, isSidechain: false, message: { id: 'startup', model: entry.message.model, usage: entry.message.usage } },
+      {
+        timestamp,
+        isSidechain: false,
+        message: { id: 'startup', model: entry.message.model, usage: entry.message.usage },
+      },
       { ...owner, sessionId: 'discovered' },
     ])
     recorder.bind('compacted')
@@ -82,8 +103,16 @@ describe('durable cost accounting across CLI/proxy/subagent paths', () => {
     await record(entry, owner)
     expect((await summary()).cost).toBeCloseTo(0.0115764, 10)
     await sweepEntries('main', [
-      { ...entry, uuid: 'split-1', message: { ...entry.message, usage: { ...entry.message.usage, output_tokens: 0, cache_creation: undefined } } },
-      { ...entry, uuid: 'split-2', message: { ...entry.message, usage: { ...entry.message.usage, output_tokens: 0, cache_creation: undefined } } },
+      {
+        ...entry,
+        uuid: 'split-1',
+        message: { ...entry.message, usage: { ...entry.message.usage, output_tokens: 0, cache_creation: undefined } },
+      },
+      {
+        ...entry,
+        uuid: 'split-2',
+        message: { ...entry.message, usage: { ...entry.message.usage, output_tokens: 0, cache_creation: undefined } },
+      },
     ])
     const result = await summary()
     expect(result.cost).toBeCloseTo(0.0115764, 10)

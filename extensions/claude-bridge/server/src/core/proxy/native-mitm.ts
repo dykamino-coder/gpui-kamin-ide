@@ -577,12 +577,25 @@ async function handleRequest(
           const message = JSON.parse(Buffer.concat(chunks).toString('utf8'))
           if (message.type !== 'message' || typeof message.id !== 'string' || !message.usage) return
           opts.onUsage?.({
-            type: 'assistant', uuid: message.id, timestamp: new Date().toISOString(), parentUuid: null,
-            isSidechain: true, __streaming: false,
-            message: { id: message.id, role: 'assistant', model: String(message.model ?? ''), content: [], usage: message.usage },
+            type: 'assistant',
+            uuid: message.id,
+            timestamp: new Date().toISOString(),
+            parentUuid: null,
+            isSidechain: true,
+            __streaming: false,
+            message: {
+              id: message.id,
+              role: 'assistant',
+              model: String(message.model ?? ''),
+              content: [],
+              usage: message.usage,
+            },
           })
-        } catch { /* Accounting must never affect response delivery. */ }
-        finally { chunks = [] }
+        } catch {
+          /* Accounting must never affect response delivery. */
+        } finally {
+          chunks = []
+        }
       })
     }
     // pipe() auto-destroys res on source error, but an unhandled 'error' on

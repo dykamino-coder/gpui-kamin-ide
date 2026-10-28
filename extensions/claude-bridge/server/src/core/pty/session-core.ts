@@ -276,8 +276,9 @@ async function createAdmittedSession(
   // messages. JsonlViewer renders the live entry until JSONL watcher
   // delivers the final one with the same message.id.
   let streamingProxy: { port: number; caCertPath: string; stop: () => Promise<void>; interrupt: () => void } | undefined
-  const usageRecorder = createProxyUsageRecorder({ tokenId, userName },
-    (err) => warnLog('Proxy usage accounting failed', { error: String(err) }))
+  const usageRecorder = createProxyUsageRecorder({ tokenId, userName }, (err) =>
+    warnLog('Proxy usage accounting failed', { error: String(err) }),
+  )
   if (config.resumeConversationId) usageRecorder.bind(config.resumeConversationId)
   try {
     const settings = await getStreamingSettings(tokenId)

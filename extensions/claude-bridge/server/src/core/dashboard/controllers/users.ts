@@ -141,8 +141,12 @@ export function registerUserRoutes(api: Hono): void {
     for (const r of costRows) {
       const base = tierForModel(r.model)
       const multiplier = r.model.includes('haiku-5') && r.long_prompt ? 5 : 1
-      const tier = { input: base.input * multiplier, output: base.output * multiplier,
-        cacheRead: base.cacheRead * multiplier, cacheWrite: base.cacheWrite * multiplier }
+      const tier = {
+        input: base.input * multiplier,
+        output: base.output * multiplier,
+        cacheRead: base.cacheRead * multiplier,
+        cacheWrite: base.cacheWrite * multiplier,
+      }
       const usd =
         (Number(r.input_tokens ?? 0) * tier.input +
           Number(r.output_tokens ?? 0) * tier.output +

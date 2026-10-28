@@ -14,7 +14,11 @@ import type { DuckDBConnection } from '@duckdb/node-api'
 import { initAccountingSchema } from './accounting-schema'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
-  try { await db.run(sql) } catch { /* idempotent migration — swallow */ }
+  try {
+    await db.run(sql)
+  } catch {
+    /* idempotent migration — swallow */
+  }
 }
 
 export async function initSchema(db: DuckDBConnection): Promise<void> {
@@ -198,8 +202,8 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   `)
 
   // Drop legacy tables that aren't used in PTY mode.
-  await tryExec(db, 'DROP TABLE IF EXISTS sessions')          // old SDK session table
-  await tryExec(db, 'DROP TABLE IF EXISTS pty_sessions')       // unused under new sweeper
+  await tryExec(db, 'DROP TABLE IF EXISTS sessions') // old SDK session table
+  await tryExec(db, 'DROP TABLE IF EXISTS pty_sessions') // unused under new sweeper
   await tryExec(db, 'DROP TABLE IF EXISTS counters')
 
   // ── OTel telemetry — metrics + events from Claude Code CLI via OTLP receiver
@@ -242,7 +246,9 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   await tryExec(db, 'CHECKPOINT')
 
   // One bounded rescan recovers cache TTL wherever the source JSONL survives.
-  const ttlSeed = (await db.runAndReadAll("SELECT value FROM settings WHERE key = 'cache_ttl_v1_seeded'")).getRowObjects()
+  const ttlSeed = (
+    await db.runAndReadAll("SELECT value FROM settings WHERE key = 'cache_ttl_v1_seeded'")
+  ).getRowObjects()
   if (ttlSeed.length === 0) {
     await db.run('DELETE FROM jsonl_offsets')
     await db.run("INSERT INTO settings (key, value) VALUES ('cache_ttl_v1_seeded', '1') ON CONFLICT DO NOTHING")
@@ -251,10 +257,17 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   // One-shot post-migration: reset offsets so sweeper re-scans every
   // JSONL once and populates new metadata columns. Idempotent via flag.
   try {
-    const rows = (await db.runAndReadAll(`SELECT value FROM settings WHERE key = 'session_meta_v1_seeded'`)).getRowObjects()
+    const rows = (
+      await db.runAndReadAll(`SELECT value FROM settings WHERE key = 'session_meta_v1_seeded'`)
+    ).getRowObjects()
     if (rows.length === 0) {
       await db.run('DELETE FROM jsonl_offsets')
-      await db.run(`INSERT INTO settings (key, value) VALUES ('session_meta_v1_seeded', ?) ON CONFLICT DO UPDATE SET value = excluded.value`, [new Date().toISOString()])
+      await db.run(
+        `INSERT INTO settings (key, value) VALUES ('session_meta_v1_seeded', ?) ON CONFLICT DO UPDATE SET value = excluded.value`,
+        [new Date().toISOString()],
+      )
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
