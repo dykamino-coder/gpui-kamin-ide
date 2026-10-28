@@ -91,7 +91,11 @@ pub(crate) fn resolve_content_attributes(
     html_attrs: bool,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<crate::style::computed::ContentItem>> {
-    let out = substitute_attributes(items, attrs, html_attrs, vcx)?;
+    let revision = vcx.doc.revision_budget();
+    let work = crate::style::css::variable_values::Work::new(&revision);
+    let out = substitute_attributes(items, attrs, html_attrs, vcx, &work);
+    work.finish(vcx.doc);
+    let out = out?;
     (!out.is_empty()).then_some(out)
 }
 
@@ -100,34 +104,46 @@ fn substitute_attributes(
     attrs: &[(String, String)],
     html_attrs: bool,
     vcx: ValueCx<'_>,
+    work: &crate::style::css::variable_values::Work<'_>,
 ) -> Option<Vec<crate::style::computed::ContentItem>> {
     use crate::style::computed::ContentItem;
     let mut out = Vec::new();
-    for item in items {
+    let mut stack = crate::budget::admission::Buffer::default();
+    work.admit(stack.push(
+        (std::borrow::Cow::Borrowed(items), 0, false),
+        work.admission(),
+    ))
+    .ok()?;
+    while let Some((items, next, tainted)) = stack.last_mut() {
+        work.spend(1).ok()?;
+        let Some(item) = items.get(*next).cloned() else {
+            stack.pop();
+            continue;
+        };
+        *next += 1;
         if let ContentItem::Attr(name, fallback) = item {
             if let Some((_, value)) = attrs
                 .iter()
-                .find(|(key, _)| key == name || (html_attrs && key.eq_ignore_ascii_case(name)))
+                .find(|(key, _)| key == &name || (html_attrs && key.eq_ignore_ascii_case(&name)))
             {
                 out.push(ContentItem::Str(value.clone()));
             } else {
                 let fallback = fallback.as_deref()?;
-                if fallback.is_empty() {
-                    continue;
+                if !fallback.is_empty() {
+                    work.spend(fallback.len().saturating_mul(8)).ok()?;
+                    let parsed = crate::style::computed::parse_content(fallback, vcx)?;
+                    work.admit(
+                        stack.push((std::borrow::Cow::Owned(parsed), 0, true), work.admission()),
+                    )
+                    .ok()?;
                 }
-                let parsed = crate::style::computed::parse_content(fallback, vcx)?;
-                let resolved = substitute_attributes(&parsed, attrs, html_attrs, vcx)?;
-                // §8.7.2: attr-tainted values cannot be used as URLs.
-                if resolved
-                    .iter()
-                    .any(|item| matches!(item, ContentItem::Image(_)))
-                {
-                    return None;
-                }
-                out.extend(resolved);
             }
         } else {
-            out.push(item.clone());
+            // §8.7.2: даже через несколько запасов attr-tainted URL негоден.
+            if *tainted && matches!(item, ContentItem::Image(_)) {
+                return None;
+            }
+            out.push(item);
         }
     }
     Some(out)

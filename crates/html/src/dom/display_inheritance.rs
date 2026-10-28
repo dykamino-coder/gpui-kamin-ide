@@ -28,9 +28,12 @@ type DisplayOf = (
 /// с красным фоном и рамкой внутри анонимной ячейки, а не рядом без ячеек
 /// (`empty-cells-applies-to-017`). Explicit values retain that early
 /// resolution; implicit values are recovered from HTML box metadata.
-pub(super) fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
+pub(super) fn resolve_display_inherit(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+    parent: DisplayOf,
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(admission, nodes, parent, |el, parent| {
         if el.style.cascaded().inherit_bits & crate::style::computed::inh::DISPLAY != 0 {
             el.style.cascaded_mut().display = parent.0;
             el.style.cascaded_mut().inline_display = parent.1;
@@ -40,8 +43,8 @@ pub(super) fn resolve_display_inherit(nodes: &mut [Node], parent: DisplayOf) {
             el.style.cascaded_mut().inherit_bits &= !crate::style::computed::inh::DISPLAY;
         }
         let own = display_of(el);
-        resolve_display_inherit(&mut el.children, own);
-    }
+        Some(own)
+    })
 }
 
 fn display_of(el: &Element) -> DisplayOf {

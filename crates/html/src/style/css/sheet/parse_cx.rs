@@ -89,20 +89,15 @@ impl SelectorCx {
     }
 }
 
-/// `@custom-media` aliases visible to a media query evaluation, with the
-/// substitution depth that stops cyclic aliases (mediaqueries-5 §5.1).
+/// Вычисленные псевдонимы таблицы (mediaqueries-5 §5.1).
 #[derive(Clone, Copy)]
 pub(crate) struct CustomMedia<'a> {
-    pub(crate) aliases: Option<&'a HashMap<String, String>>,
-    pub(crate) depth: u8,
+    pub(crate) aliases: Option<&'a HashMap<String, crate::style::css::SupTri>>,
 }
 
 impl CustomMedia<'_> {
-    /// Outside a stylesheet there are no aliases: `(--name)` is false.
-    pub(crate) const NONE: CustomMedia<'static> = CustomMedia {
-        aliases: None,
-        depth: 0,
-    };
+    /// Outside a stylesheet every alias is an unknown media feature.
+    pub(crate) const NONE: CustomMedia<'static> = CustomMedia { aliases: None };
 }
 
 /// One stylesheet being parsed.
@@ -114,14 +109,13 @@ pub(crate) struct SheetCx<'a> {
     /// Layer of the current parse position: full name and path.
     pub(super) layer_now: (String, Vec<u32>),
     pub(crate) selectors: SelectorCx,
-    pub(crate) custom_media: HashMap<String, String>,
+    pub(crate) custom_media: HashMap<String, crate::style::css::SupTri>,
 }
 
 impl SheetCx<'_> {
     pub(crate) fn custom(&self) -> CustomMedia<'_> {
         CustomMedia {
             aliases: Some(&self.custom_media),
-            depth: 0,
         }
     }
 

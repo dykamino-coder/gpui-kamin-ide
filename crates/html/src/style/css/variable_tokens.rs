@@ -8,71 +8,70 @@ pub(super) use crate::css_syntax::escape_end;
 /// CSS Variables §2.1 and §3: invalid var() syntax invalidates the declaration,
 /// even when the variable exists and its fallback would never be substituted.
 pub(super) fn valid(value: &str) -> bool {
-    sequence(value, false, 0)
+    sequence(value)
 }
 
-fn sequence(raw: &str, fallback: bool, depth: usize) -> bool {
-    if depth > crate::budget::DocumentLimits::CSS_NESTING {
-        return false;
-    }
-    let mut at = 0;
-    while at < raw.len() {
-        // CDO is a token, not the top-level ! delimiter forbidden in a fallback.
-        if raw[at..].starts_with("<!--") {
-            at += 4;
-            continue;
-        }
-        let c = raw[at..].chars().next().unwrap();
-        if raw[at..].starts_with("/*") {
-            at += raw[at + 2..].find("*/").map_or(raw.len() - at, |n| n + 4);
-            continue;
-        }
-        if matches!(c, '\'' | '"') {
-            let Some(end) = string_end(raw, at, c) else {
-                return false;
-            };
-            at = end;
-            continue;
-        }
-        if matches!(c, ')' | ']' | '}') || fallback && matches!(c, '!' | ';') {
-            return false;
-        }
-        let start = at;
-        if c == '\\' || c == '-' || c == '_' || c.is_alphanumeric() || c >= '\u{80}' {
-            while at < raw.len() {
-                let ch = raw[at..].chars().next().unwrap();
-                if ch == '\\' {
-                    at = escape_end(raw, at);
-                } else if ch.is_alphanumeric() || matches!(ch, '-' | '_') || ch >= '\u{80}' {
-                    at += ch.len_utf8();
-                } else {
-                    break;
-                }
+fn sequence(raw: &str) -> bool {
+    let mut stack = vec![(raw, false, 0usize)];
+    while let Some((raw, fallback, mut at)) = stack.pop() {
+        while at < raw.len() {
+            // CDO is a token, not the top-level ! delimiter forbidden in a fallback.
+            if raw[at..].starts_with("<!--") {
+                at += 4;
+                continue;
             }
-        }
-        let is_var = at > start && super::unescape(&raw[start..at]).eq_ignore_ascii_case("var");
-        let ch = raw[at..].chars().next();
-        if let Some(open @ ('(' | '[' | '{')) = ch {
-            let Some(end) = block_end(raw, at, open) else {
-                return false;
-            };
-            let inner = &raw[at + 1..end];
-            if is_var && open == '(' {
-                let clean = super::strip_comments(inner);
-                let args = super::split_top_level(&clean, ',');
-                // css-variables-2 §3: the argument grammar is
-                // `var( <declaration-value> , <declaration-value>? )`; the
-                // name is checked against <custom-property-name> only at
-                // substitution time (`var(1px)`, `var(--)` parse fine).
-                if args[0].trim().is_empty() || !sequence(inner, true, depth + 1) {
+            let c = raw[at..].chars().next().unwrap();
+            if raw[at..].starts_with("/*") {
+                at += raw[at + 2..].find("*/").map_or(raw.len() - at, |n| n + 4);
+                continue;
+            }
+            if matches!(c, '\'' | '"') {
+                let Some(end) = string_end(raw, at, c) else {
                     return false;
-                }
-            } else if !sequence(inner, false, depth + 1) {
+                };
+                at = end;
+                continue;
+            }
+            if matches!(c, ')' | ']' | '}') || fallback && matches!(c, '!' | ';') {
                 return false;
             }
-            at = (end + 1).min(raw.len());
-        } else if at == start {
-            at += c.len_utf8();
+            let start = at;
+            if c == '\\' || c == '-' || c == '_' || c.is_alphanumeric() || c >= '\u{80}' {
+                while at < raw.len() {
+                    let ch = raw[at..].chars().next().unwrap();
+                    if ch == '\\' {
+                        at = escape_end(raw, at);
+                    } else if ch.is_alphanumeric() || matches!(ch, '-' | '_') || ch >= '\u{80}' {
+                        at += ch.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            let is_var = at > start && super::unescape(&raw[start..at]).eq_ignore_ascii_case("var");
+            let ch = raw[at..].chars().next();
+            if let Some(open @ ('(' | '[' | '{')) = ch {
+                let Some(end) = block_end(raw, at, open) else {
+                    return false;
+                };
+                let inner = &raw[at + 1..end];
+                if is_var && open == '(' {
+                    let clean = super::strip_comments(inner);
+                    let args = super::split_top_level(&clean, ',');
+                    // css-variables-2 §3: the argument grammar is
+                    // `var( <declaration-value> , <declaration-value>? )`; the
+                    // name is checked against <custom-property-name> only at
+                    // substitution time (`var(1px)`, `var(--)` parse fine).
+                    if args[0].trim().is_empty() {
+                        return false;
+                    }
+                }
+                stack.push((raw, fallback, (end + 1).min(raw.len())));
+                stack.push((inner, is_var && open == '(', 0));
+                break;
+            } else if at == start {
+                at += c.len_utf8();
+            }
         }
     }
     true

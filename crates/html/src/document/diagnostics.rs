@@ -29,14 +29,18 @@ impl Document {
             revision: Some(self.key),
             records,
             suppressed,
-            terminal: self.last_failure,
+            terminal: self.last_failure(),
         }
     }
 
     /// Что показано пользователю и почему.
     pub fn display_status(&self) -> DisplayStatus {
-        if let Some(failure) = self.last_failure {
-            return DisplayStatus::Stale(failure);
+        if let Some(failure) = self.last_failure() {
+            return if failure.report.retained_revision.is_some() {
+                DisplayStatus::Stale(failure)
+            } else {
+                DisplayStatus::Failed(failure)
+            };
         }
         let first_limit = self.traversal_limit();
         let embedded_failure = self.embedded_failure();

@@ -11,6 +11,8 @@ mod ownership_tests;
 mod profile;
 mod scope;
 #[cfg(test)]
+mod terminal_tests;
+#[cfg(test)]
 mod tests;
 pub use ledger::{BudgetError, BudgetExceeded, BudgetScope, Reservation};
 pub use ownership::{AdmittedStorage, SharedStorage, StorageError};
