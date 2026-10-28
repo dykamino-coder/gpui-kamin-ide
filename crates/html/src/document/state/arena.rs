@@ -11,7 +11,7 @@
 //! только до его краски. Документ ручки приходит с контекстом значения
 //! (`ValueCx`).
 
-use super::{DocState, ValueCx};
+use super::{DocumentValues, ValueCx};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -62,7 +62,11 @@ pub(super) fn new_owner() -> u32 {
 
 /// Записать значение в арену документа контекста: на сборке кадра — в
 /// область кадра, иначе — в область документа.
-pub(crate) fn store<T>(vcx: ValueCx<'_>, pick: fn(&DocState) -> &Arena<T>, value: T) -> ArenaKey {
+pub(crate) fn store<T>(
+    vcx: ValueCx<'_>,
+    pick: fn(&DocumentValues) -> &Arena<T>,
+    value: T,
+) -> ArenaKey {
     let doc = vcx.doc;
     let (owner, list) = if vcx.frame {
         (doc.frame_owner.get(), &pick(doc).frame)
@@ -83,7 +87,7 @@ pub(crate) fn store<T>(vcx: ValueCx<'_>, pick: fn(&DocState) -> &Arena<T>, value
 /// не прячет.
 pub(crate) fn load<T: Clone>(
     vcx: ValueCx<'_>,
-    pick: fn(&DocState) -> &Arena<T>,
+    pick: fn(&DocumentValues) -> &Arena<T>,
     key: ArenaKey,
 ) -> Option<T> {
     let doc = vcx.doc;

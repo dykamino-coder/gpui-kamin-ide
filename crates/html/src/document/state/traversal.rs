@@ -1,6 +1,6 @@
 //! Защита рекурсивных проходов представления; исходный DOM принадлежит revision.
 
-use super::DocState;
+use super::DocumentValues;
 use crate::document::{FailureScope, TraversalKind, TraversalLimit};
 use crate::dom::input::Admitted;
 use markup5ever_rcdom::Handle;
@@ -55,7 +55,7 @@ impl TraversalState {
     }
 }
 
-impl DocState {
+impl DocumentValues {
     pub(crate) fn input_context(&self) -> Option<crate::dom::input::Context> {
         self.traversal
             .source
