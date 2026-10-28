@@ -30,6 +30,10 @@ pub struct ColumnStack {
     /// FragmentainerSpaceLeftForChildren() − line_offset`). Ставится
     /// `with_row_phase`; ноль — ряды от верха.
     pub(crate) row_phase: f32,
+    /// Блочный размер содержимого вложенного многоколоночника (`height`/
+    /// `max-height` в точках): ряды во внешних фрагментаинерах не идут за него
+    /// (Blink `ConstrainColumnBlockSize`). Ставится `with_row_limit`.
+    pub(crate) row_limit: Option<f32>,
     pub(crate) row_extent: super::measure::RowExtent,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
@@ -122,6 +126,7 @@ impl ColumnStack {
             rows,
             axis: StackAxis::Horizontal,
             row_phase: 0.0,
+            row_limit: None,
             row_extent: Default::default(),
             copies,
             gap_items,
@@ -168,6 +173,11 @@ impl ColumnStack {
 
     pub(crate) fn with_row_extent(mut self, extent: super::measure::RowExtent) -> Self {
         self.row_extent = extent;
+        self
+    }
+
+    pub(crate) fn with_row_limit(mut self, limit: Option<f32>) -> Self {
+        self.row_limit = limit;
         self
     }
 

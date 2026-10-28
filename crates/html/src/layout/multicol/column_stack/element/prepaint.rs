@@ -51,8 +51,8 @@ impl ColumnStack {
             }
             *clone.borrow_mut() = split;
             let count = c.frags.len() + 1;
-            c.el = copier(0);
-            c.frags = (1..count).map(|part| copier(part)).collect();
+            c.el = copier(0, false);
+            c.frags = (1..count).map(|part| copier(part, false)).collect();
             c.fragment_builders.clear();
         }
     }

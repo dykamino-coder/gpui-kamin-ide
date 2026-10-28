@@ -53,12 +53,41 @@ fn reserve(c: &mut StackChild, copies: usize) {
         let el = if let Some(r) = c.regrow.as_ref() {
             (r.build)(&r.dom, part, false, &r.opts)
         } else if let Some(copier) = c.copier.as_ref() {
-            copier(part)
+            copier(part, false)
         } else {
             return;
         };
         c.fragment_builders.clear();
         c.frags.push(el);
+    }
+    reserve_bands(c);
+}
+
+/// Полосы повтора шапки/подвала (css-tables-3 §repeated-headers) — на каждую
+/// копию: шапка у продолжений (`head_els[c − 1]`), подвал у всех (`foot_els[c]`).
+fn reserve_bands(c: &mut StackChild) {
+    let copies = c.frags.len() + 1;
+    let copier = c.copier.clone();
+    let band = |c: &StackChild, part: usize| match (c.regrow.as_ref(), copier.as_ref()) {
+        (Some(r), _) => Some((r.build)(&r.dom, part, true, &r.opts)),
+        (None, Some(copier)) => Some(copier(part, true)),
+        (None, None) => None,
+    };
+    let Some(r) = c.repeat.as_ref() else { return };
+    let (head, foot) = (r.head.is_some(), r.foot.is_some());
+    let (mut heads, mut feet) = (r.head_els.len(), r.foot_els.len());
+    let mut more = (Vec::new(), Vec::new());
+    while head && heads + 1 < copies {
+        heads += 1;
+        more.0.extend(band(c, heads));
+    }
+    while foot && feet < copies {
+        more.1.extend(band(c, feet));
+        feet += 1;
+    }
+    if let Some(r) = c.repeat.as_mut() {
+        r.head_els.extend(more.0);
+        r.foot_els.extend(more.1);
     }
 }
 
