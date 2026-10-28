@@ -59,6 +59,7 @@ pub(crate) use tf_stack::tf_pop;
 pub(crate) use tf_stack::tf_push;
 use tf_stack::{tf_map, tf_under};
 mod frame;
+pub(crate) use frame::misses_of;
 pub(crate) use frame::next_seq;
 pub(crate) use frame::reset;
 

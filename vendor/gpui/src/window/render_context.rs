@@ -45,7 +45,7 @@ impl PartialEq for Snapshot {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct RenderContexts(Rc<RefCell<Values>>);
 
 impl RenderContexts {

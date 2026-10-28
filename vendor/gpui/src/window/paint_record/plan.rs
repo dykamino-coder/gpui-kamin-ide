@@ -1,6 +1,7 @@
 //! Плоское неизменяемое дерево команд и переоткрываемых механических scopes.
 
 use super::*;
+use crate::window::vector_transform::{present, presented_bounds};
 
 /// Inputs to the existing group compositor, in source coordinates.
 /// The host chooses effect policy and which records share one group.
@@ -81,7 +82,9 @@ impl PaintPlan {
         Self(commands.into())
     }
 
-    pub(super) fn validate(&self, window: &Window) -> Result<Bounds<Pixels>, PaintRecordError> {
+    pub(super) fn validate(
+        &self, window: &Window, presentation: Option<TransformationMatrix>,
+    ) -> Result<Bounds<Pixels>, PaintRecordError> {
         if !window.scale_factor().is_finite() || window.scale_factor() <= 0.0 {
             return Err(PaintRecordError::InvalidGeometry);
         }
@@ -90,8 +93,14 @@ impl PaintPlan {
             let bounds = match command {
                 Command::Record(record) => {
                     record.check(window)?;
-                    record.0.clip
+                    match presentation {
+                        Some(matrix) => presented_bounds(matrix, record.0.clip, window.scale_factor()),
+                        None => record.0.clip,
+                    }
                 }
+                // Host scopes are source-space descriptors; a presentation scope
+                // transforms frozen records only.
+                Command::Begin(_) if presentation.is_some() => return Err(PaintRecordError::InvalidGeometry),
                 Command::Begin(descriptor) => descriptor.validate(window.scale_factor())?,
                 Command::End => continue,
             };
@@ -104,7 +113,7 @@ impl PaintPlan {
         Ok(extent)
     }
 
-    pub(super) fn paint(&self, window: &mut Window) {
+    pub(super) fn paint(&self, window: &mut Window, presentation: Option<TransformationMatrix>) {
         enum Frame<'a> {
             Clip,
             Group(Box<Scene>, Vec<ContentMask<Pixels>>, &'a PaintGroupDescriptor),
@@ -115,7 +124,11 @@ impl PaintPlan {
             match command {
                 Command::Record(record) => {
                     let mask = window.content_mask().scale(window.scale_factor());
-                    let scene = record.0.scene.copy_record(Point::default(), Some(mask.bounds));
+                    let scene = match presentation {
+                        Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
+                            .copy_record(Point::default(), Some(mask.bounds)),
+                        None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
+                    };
                     let scene = window.adopt_scene(scene);
                     window.next_frame.scene.replay(0..scene.paint_operations.len(), &scene);
                 }
@@ -127,6 +140,7 @@ impl PaintPlan {
                     }
                     PaintScopeDescriptor::Group(group) => {
                         let mut inner = Scene::default();
+                        inner.inherit_segments(&window.next_frame.scene);
                         inner.in_group = true;
                         // Ancestor clips apply to the group output, not its filter input.
                         let masks = mem::replace(&mut window.content_mask_stack, vec![input_mask]);

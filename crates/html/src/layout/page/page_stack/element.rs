@@ -60,14 +60,6 @@ impl Hooks for PageStack {
             self.canvas_els.clear();
             return;
         };
-        // Абсолюты корня добавляют листы, пока не кончится их досягаемость
-        // (Blink: «If overflowed by monolithic overflow, we need more pages»,
-        // box_fragment_builder.h). Потолок — число копий слоя.
-        let icb_pages = if self.icb.is_empty() {
-            0
-        } else {
-            ((self.icb_reach / ah).ceil().max(0.0) as usize).min(self.icb.len())
-        };
         // Monolithic overflow reserves pages past the box (`PageKid::reach`).
         let block = self.area_logical(&g).1.max(1.0);
         let reach_pages = plan
@@ -80,7 +72,7 @@ impl Hooks for PageStack {
             .max()
             .unwrap_or(0)
             .min(self.kids.first().map_or(1, |k| k.frags.len() + 1));
-        let pages = pages.max(icb_pages).max(reach_pages).max(1);
+        let pages = pages.max(reach_pages).max(1);
         self.spill_overflow(&mut plan, pages, block);
         // Листы сверх плана (досягаемость абсолютов) — с именем последнего.
         let tail = names.last().cloned().unwrap_or_default();
@@ -99,6 +91,14 @@ impl Hooks for PageStack {
             window,
             cx,
         );
+        // Independent OOF continuations need their own sheets (css-break-3
+        // parallel flows): the stream plan, not an estimate, owns the count.
+        let oof_pages = self.oof.plan.borrow().iter().map(|f| f.col + 1).max();
+        let pages = pages.max(oof_pages.unwrap_or(0));
+        while geoms.len() < pages {
+            let i = geoms.len();
+            geoms.push((self.geom_for)(i, &tail));
+        }
         // 2. Сетка листов и масштаб до вмещения в коробку стопки.
         let (ww, wh) = (
             f32::from(bounds.size.width).max(1.0),
@@ -136,6 +136,12 @@ impl Hooks for PageStack {
         plan.check_copies(|kid| self.kids[kid].frags.len() + 1);
         self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
         self.prepaint_canvas(bounds, window, cx, &geoms);
+        *self.geoms.borrow_mut() = geoms.clone();
+        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
+            let mut oof = self.oof.plan.borrow_mut();
+            oof.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
+            oof.incomplete();
+        }
         // Марджин-боксы — после листов: `counter(pages)` знает их число.
         self.margin_els.clear();
         self.prepaint_margins(bounds, window, cx, &geoms, names, pages, tail);
@@ -152,7 +158,11 @@ impl Hooks for PageStack {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if !self.has_complete_plan() {
+        if !self.has_complete_plan() || self.oof.plan.borrow().failure.is_some() {
+            return;
+        }
+        // Each native source is painted exactly once; sheets replay its records.
+        if self.record_native(window, cx).is_err() {
             return;
         }
         let s = self.grid.get().1;
@@ -192,6 +202,6 @@ impl Hooks for PageStack {
         // `O`); маски детей и фрагментов заданы в его непреобразованных
         // точках и едут вместе с ним (`with_transformation_masked`: поворот на
         // четверть оборота оси сохраняет).
-        self.paint_page_contents(bounds, window, cx, s, pages, k, plan.fragments, rect);
+        self.paint_page_contents(bounds, window, cx, pages, k, plan.fragments, rect);
     }
 }

@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn bounds(mut bounds: Bounds<ScaledPixels>, offset: Point<ScaledPixels>) -> Bounds<ScaledPixels> {
+pub(in crate::scene) fn bounds(mut bounds: Bounds<ScaledPixels>, offset: Point<ScaledPixels>) -> Bounds<ScaledPixels> {
     bounds.origin += offset;
     bounds
 }
@@ -19,7 +19,7 @@ fn transform(matrix: &mut TransformationMatrix, offset: Point<ScaledPixels>) {
     matrix.translation[1] += offset.y.0;
 }
 
-pub(super) fn primitive(primitive: &mut Primitive, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) {
+pub(in crate::scene) fn primitive(primitive: &mut Primitive, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) {
     match primitive {
         Primitive::Quad(p) => {
             transform(&mut p.transformation, offset);
@@ -51,6 +51,9 @@ pub(super) fn primitive(primitive: &mut Primitive, offset: Point<ScaledPixels>, 
             mask(&mut p.content_mask, offset, clip);
         }
         Primitive::Path(p) => {
+            if let Some((_, inverse)) = &mut p.color_mapping {
+                *inverse = inverse.compose(TransformationMatrix::unit().translate(point(ScaledPixels(-offset.x.0), ScaledPixels(-offset.y.0))));
+            }
             p.bounds = bounds(p.bounds, offset);
             p.start += offset;
             p.current += offset;
@@ -63,7 +66,7 @@ pub(super) fn primitive(primitive: &mut Primitive, offset: Point<ScaledPixels>, 
     }
 }
 
-/// Both frame and offscreen coordinates move: H' = T H T^-1.
+/// Перенос затрагивает координаты кадра и буфера: H' = T H T^-1.
 pub(super) fn projection(m: [f32; 9], offset: Point<ScaledPixels>) -> [f32; 9] {
     let (x, y) = (offset.x.0, offset.y.0);
     let a = m[0] + x * m[6];

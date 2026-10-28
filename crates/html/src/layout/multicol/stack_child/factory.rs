@@ -25,11 +25,25 @@ pub(super) fn new(
     watched: Rc<Watched>,
 ) -> Builder {
     let opts = opts.clone();
+    // Under a native source of this multicol every continued absolute/fixed
+    // root replays its own continuation record (paint::continuation).
+    let slots = opts
+        .cx
+        .position
+        .geometry
+        .as_ref()
+        .filter(|g| g.native_along(col_vert).is_some() && g.host == merged.self_node)
+        .map(|g| g.continued_roots());
     let positioning = opts.cx.position.state.retain();
     let merged = merged.clone();
     let copy = copy.clone();
     std::rc::Rc::new(move |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
+        // A repeated header/footer band clones its monolithic content, absolute
+        // boxes included: they repeat with the band instead of continuing.
+        opts.cx
+            .position
+            .continue_in_slots(slots.clone().filter(|_| !band));
         // Копия строится после закрытия слоёв предков. Измерительные деревья
         // изолированы; только prepaint публикует OOF в исходный containing block.
         let (state, escaped) = positioning.isolate();

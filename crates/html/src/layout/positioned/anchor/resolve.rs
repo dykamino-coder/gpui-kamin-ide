@@ -7,7 +7,7 @@ use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 
 mod current;
 mod insets;
-pub(crate) use current::{SizeInputs, current_inputs, needs_host, prepare};
+pub(crate) use current::{SizeInputs, current_inputs, needs_deferred, needs_host, prepare};
 mod try_rule;
 use insets::fill_anchor_pairs;
 pub(crate) use try_rule::try_rule_onto;

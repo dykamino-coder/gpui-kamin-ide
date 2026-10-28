@@ -7,6 +7,7 @@ use crate::hooks::Hooks;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px, size};
+mod native;
 mod paint;
 mod prepaint;
 
@@ -49,6 +50,10 @@ impl Hooks for ColumnStack {
         self.assign_flex_owners(&plan);
         self.assign_grid_items(&plan);
         self.prepaint_frags(window, cx, bounds, col_w, &plan, step);
+        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
+            plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
+            plan.incomplete();
+        }
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
         for &(kid, sy) in &spans {
@@ -88,6 +93,9 @@ impl Hooks for ColumnStack {
             self.paint_axis(bounds, window, cx);
             return;
         }
+        if self.oof.plan.borrow().failure.is_some() || self.record_native(window, cx).is_err() {
+            return;
+        }
         let plan = self.plan.borrow().clone();
         let col_w = self.col_w.get();
         let step = col_w + self.gap;
@@ -114,5 +122,7 @@ impl Hooks for ColumnStack {
         for (kid, _) in spans {
             self.children[kid].el.paint(window, cx);
         }
+        // Positioned continuations without a column copy of their ancestors.
+        let _ = self.paint_orphans(window);
     }
 }

@@ -14,11 +14,13 @@ mod continuation;
 mod element;
 mod kids;
 mod measure;
+mod native;
 mod oof;
 mod pages;
 mod planning;
 mod regrow;
 mod resume;
+mod sheet;
 mod sheets;
 mod spaces;
 
@@ -117,10 +119,6 @@ pub struct PageStack {
     /// 350vh — в середине четвёртой страницы). Повтор `position: fixed` на
     /// каждой странице без сдвига — шаг 3.
     pub(crate) icb: Vec<Vec<AnyElement>>,
-    /// Досягаемость абсолютов корня — низ самого дальнего (с переполнением
-    /// монолитов, как Blink `ReserveSpaceForMonolithicOverflow`): листов не
-    /// меньше, чем нужно, чтобы её показать.
-    pub(crate) icb_reach: f32,
     /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига (Blink
     /// `IsMonolithic`: fixed при печати повторяется на каждой странице).
     pub(crate) fixed: Vec<Vec<AnyElement>>,
@@ -144,7 +142,6 @@ impl PageStack {
         kids: Vec<PageKid>,
         geom_for: PageGeomFn,
         icb: Vec<Vec<AnyElement>>,
-        icb_reach: f32,
         fixed: Vec<Vec<AnyElement>>,
         margin_for: Option<MarginFn>,
     ) -> Self {
@@ -159,7 +156,6 @@ impl PageStack {
             margin_for,
             margin_els: Vec::new(),
             icb,
-            icb_reach,
             fixed,
             plan: std::cell::RefCell::new(Plan::default()),
             oof: Default::default(),

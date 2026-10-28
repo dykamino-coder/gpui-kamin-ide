@@ -174,6 +174,7 @@ fn recording_requires_final_membership_and_both_constraints(cx: &mut gpui::TestA
             recorder.nodes.borrow_mut().insert(
                 1,
                 Entry {
+                    clone_edges: None,
                     node: Node::capture(root, window),
                     cb: 0,
                     border: [0.; 4],
@@ -183,6 +184,7 @@ fn recording_requires_final_membership_and_both_constraints(cx: &mut gpui::TestA
             recorder.nodes.borrow_mut().insert(
                 2,
                 Entry {
+                    clone_edges: None,
                     node: Node::capture(child, window),
                     cb: 1,
                     border: [0.; 4],

@@ -4,7 +4,9 @@ use crate::layout::options::RenderOpts;
 use crate::layout::order::paint_last_ok;
 use crate::style::computed::BoxStyle;
 mod route;
+mod static_probe;
 pub(super) use route::layer_route;
+use static_probe::static_source_probe;
 
 use super::finish_element;
 use crate::hooks::IntoHooked;
@@ -187,6 +189,11 @@ pub(crate) fn place_element(
     } else {
         built
     };
+    // The native source places a percentage-sized box off the static probe
+    // from its laid-out flow; a probe of its own records its static position.
+    if !(to_icb || to_cb) {
+        static_source_probe(e, inherited, x_set, y_set, out, opts);
+    }
     // Абсолютная коробка с ОТРИЦАТЕЛЬНЫМ `z-index` не идёт ни в слой
     // ICB, ни в верхний слой: её место ПОД потоком (§9.9 шаг 3). Но
     // пустая ось у неё считается от СТАТИЧЕСКОЙ позиции, а гибкая

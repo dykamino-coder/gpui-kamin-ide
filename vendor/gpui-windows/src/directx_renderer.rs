@@ -1449,6 +1449,8 @@ impl DirectXRenderer {
                 st_position: v.st_position,
                 color: path.color,
                 bounds: path.clipped_bounds(),
+                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
+                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
             }));
         }
 
@@ -2587,6 +2589,8 @@ struct PathRasterizationSprite {
     st_position: Point<f32>,
     color: Background,
     bounds: Bounds<ScaledPixels>,
+    color_bounds: Bounds<ScaledPixels>,
+    color_transform: TransformationMatrix,
 }
 
 #[derive(Clone, Copy)]

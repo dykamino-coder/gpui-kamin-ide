@@ -1097,6 +1097,8 @@ struct PathRasterizationSprite {
     float2 st_position;
     Background color;
     Bounds bounds;
+    Bounds color_bounds;
+    TransformationMatrix color_transform;
 };
 
 StructuredBuffer<PathRasterizationSprite> path_rasterization_sprites: register(t1);
@@ -1132,7 +1134,7 @@ float4 path_rasterization_fragment(PathFragmentInput input): SV_Target {
     PathRasterizationSprite sprite = path_rasterization_sprites[input.vertex_id];
 
     Background background = sprite.color;
-    Bounds bounds = sprite.bounds;
+    Bounds bounds = sprite.color_bounds;
 
     float alpha;
     if (length(float2(dx.x, dy.x))) {
@@ -1147,7 +1149,9 @@ float4 path_rasterization_fragment(PathFragmentInput input): SV_Target {
     GradientColor gradient = prepare_gradient_color(
         background.tag, background.color_space, background.solid, background.colors);
 
-    float4 color = gradient_color(background, input.position.xy, bounds,
+    float2 color_position = mul(input.position.xy, sprite.color_transform.rotation_scale)
+        + sprite.color_transform.translation;
+    float4 color = gradient_color(background, color_position, bounds,
         gradient.solid, gradient.color0, gradient.color1);
     return float4(color.rgb * color.a * alpha, alpha * color.a);
 }
@@ -1246,14 +1250,21 @@ float4 underline_fragment(UnderlineFragmentInput input): SV_Target {
         float half_thickness = underline.thickness * 0.5;
         float2 origin = underline.bounds.origin;
 
-        float2 st = ((input.position.xy - origin) / underline.bounds.size.y) - float2(0., 0.5);
-        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / underline.bounds.size.y;
-        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / underline.bounds.size.y;
+        float2 local = input.position.xy - origin;
+        float2 extent = underline.bounds.size;
+        uint turn = underline.pad & 3u;
+        if (turn == 1u) { local = float2(local.y, extent.x - local.x); }
+        if (turn == 2u) { local = extent - local; }
+        if (turn == 3u) { local = float2(extent.y - local.y, local.x); }
+        float height = (turn & 1u) ? extent.x : extent.y;
+        float2 st = (local / height) - float2(0., 0.5);
+        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / height;
+        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / height;
 
         float sine = sin(st.x * frequency) * amplitude;
         float dSine = cos(st.x * frequency) * amplitude * frequency;
         float distance = (st.y - sine) / sqrt(1. + dSine * dSine);
-        float distance_in_pixels = distance * underline.bounds.size.y;
+        float distance_in_pixels = distance * height;
         float distance_from_top_border = distance_in_pixels - half_thickness;
         float distance_from_bottom_border = distance_in_pixels + half_thickness;
         float alpha = saturate(
@@ -1703,6 +1714,10 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         if (q.pad2.x > 0.5) {
             float2 mt = (input.position.xy - q.mask_rect.xy) / q.mask_rect.zw;
             uint norep = uint(q.pad2.y + 0.5);
+            uint turn = (norep >> 3u) & 3u;
+            if (turn == 1u) { mt = float2(mt.y, 1.0 - mt.x); }
+            if (turn == 2u) { mt = 1.0 - mt; }
+            if (turn == 3u) { mt = float2(1.0 - mt.y, mt.x); }
             float inside = 1.0;
             if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
             if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
