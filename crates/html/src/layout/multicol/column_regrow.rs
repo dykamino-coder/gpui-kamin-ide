@@ -9,6 +9,7 @@ use gpui::{App, AvailableSpace, Window, point, px, size};
 
 mod copies;
 mod extent;
+mod items;
 mod owners;
 mod progress;
 mod trial;
@@ -209,16 +210,20 @@ impl ColumnStack {
             }
         }
         for (kid, list) in tagged.into_iter().enumerate() {
+            // Независимые потоки flex и сетки растут по одному фрагменту за проход.
             let flex = self.children[kid]
                 .regrow
                 .as_ref()
-                .is_some_and(|r| !r.laid.flexes.is_empty());
+                .is_some_and(|r| !r.laid.flexes.is_empty() || !r.laid.placements.is_empty());
             let first = list.iter().map(|g| g.0).min();
             local_grows[kid].extend(
                 list.into_iter()
                     .filter(|g| !flex || Some(g.0) == first)
                     .map(|g| g.1),
             );
+        }
+        for (kid, grows) in local_grows.iter_mut().enumerate() {
+            grows.extend(self.item_growths(kid, &plan, &lines));
         }
         for (index, grows) in local_grows.into_iter().enumerate() {
             if let Some(r) = self.children[index].regrow.as_mut() {

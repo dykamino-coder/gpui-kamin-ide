@@ -47,6 +47,7 @@ impl Hooks for ColumnStack {
         self.plan_oof(&plan, bounds);
         let step = col_w + self.gap;
         self.assign_flex_owners(&plan);
+        self.assign_grid_items(&plan);
         self.prepaint_frags(window, cx, bounds, col_w, &plan, step);
         // Спаннер — во всю ширину коробки, первой копией (запасных у него
         // нет: между колонками он не режется).
