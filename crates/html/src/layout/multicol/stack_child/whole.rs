@@ -124,7 +124,7 @@ pub(super) fn copy_whole_box(
         let opts = col.as_deref().unwrap_or(opts);
         return Some(opts.cx.contracts.build.effects(
             table(&tc, inner, opts),
-            Effect::transform(inner, merged, opts.cx.vcx()),
+            Effect::transform(inner, merged, opts.cx.frame()),
         ));
     }
     None

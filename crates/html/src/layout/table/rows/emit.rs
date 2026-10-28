@@ -104,14 +104,14 @@ fn push_cell_wrapped(
     opts: &RenderOpts,
 ) {
     let CellContent { cell, inside, d } = content;
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
     let mut built = d.children(inside).into_any_element();
     // Also without own transform: a `preserve-3d` cell or one under a
     // 3D row needs its wrapper for the context chain.
     let build = &opts.cx.contracts.build;
     built = build.effects(
         built,
-        Effect::transform(&cell.style.used(), &row_state.row_style, vcx),
+        Effect::transform(&cell.style.used(), &row_state.row_style, frame),
     );
     let pure_shift = |t: &crate::style::computed::Transform| {
         !t.has_3d
@@ -144,7 +144,7 @@ fn push_cell_wrapped(
             style: &row_state.row.style.used(),
             parent: row_state.inherited,
             ref_box: rb,
-            vcx,
+            frame,
         },
     );
     if let Some(g) = row_state.carry.group {
@@ -161,7 +161,7 @@ fn push_cell_wrapped(
                 style: &g.style.used(),
                 parent: geom.inherited,
                 ref_box: rb,
-                vcx,
+                frame,
             },
         );
     }

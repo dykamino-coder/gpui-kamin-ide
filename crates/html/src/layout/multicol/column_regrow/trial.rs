@@ -3,7 +3,7 @@
 use super::ColumnStack;
 use super::copies::rebuild;
 use crate::layout::fragment::paginate::watch::Watched;
-use crate::layout::fragment::plan::{self, Space};
+use crate::layout::fragment::plan;
 use crate::layout::fragment::push::Regrow;
 use crate::layout::fragment::token::Error;
 use crate::layout::fragment::types::{Kid, StackChild};
@@ -38,6 +38,7 @@ impl Snapshot {
         child.avoid = k.avoid.clone();
         child.keep = k.keep.clone();
         child.line_keep = k.line_keep.clone();
+        child.table_rows = k.table_rows.clone();
         child.force_before = k.force_before;
         child.force_after = k.force_after;
         child.avoid_before = k.avoid_before;
@@ -88,7 +89,7 @@ impl ColumnStack {
             let settled = self.settle(window, cx);
             let kids = self.kid_geoms();
             let (cols, shortage, plan) =
-                Self::fill_avoiding(&kids, &|_| height, Space::columns(usize::MAX));
+                Self::fill_avoiding(&kids, &|_| height, self.column_space(usize::MAX));
             let avoid = (forced < self.count)
                 .then(|| Self::first_avoid_violation(&kids, &plan))
                 .flatten()

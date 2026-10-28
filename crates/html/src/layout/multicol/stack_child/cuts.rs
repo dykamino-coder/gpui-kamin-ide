@@ -184,6 +184,7 @@ pub(super) fn stack_child_of(
         avoid: Vec::new(),
         keep: Vec::new(),
         line_keep: Vec::new(),
+        table_rows: Vec::new(),
         h,
         mt,
         mb,

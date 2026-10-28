@@ -43,6 +43,7 @@ pub(super) fn clone_plan_of(
                     avoid: Vec::new(),
                     keep: Vec::new(),
                     line_keep: Vec::new(),
+                    table_rows: Vec::new(),
                     span: c.style.used().column_span == Some(true) && !c.inline,
                     over: geometry.over,
                     clone_dec: clone_dec(c),

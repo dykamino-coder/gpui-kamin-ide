@@ -25,10 +25,10 @@ impl ColumnStack {
         if let Some(recipe) = self.deferred.clone() {
             recipe.prepare(self, col_w, window, cx);
         }
+        self.col_w.set(col_w);
         let heights = self.kid_geoms();
         let (_, lines, mut plan, spans) = self.balance(&heights);
         plan.check_copies(|kid| self.children[kid].frags.len() + 1);
-        self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         self.plan_oof(&plan, bounds);
         if self.prepaint_native(bounds, &plan, window, cx).is_err() {

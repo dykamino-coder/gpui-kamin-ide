@@ -26,6 +26,7 @@ impl StackChild {
         self.avoid.extend(m.avoid);
         self.keep = m.keep;
         self.line_keep = m.line_keep;
+        self.table_rows = m.table_rows;
         self.cuts
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
         self.forced.sort_by(f32::total_cmp);
@@ -55,6 +56,7 @@ impl StackChild {
         self.avoid = m.avoid;
         self.keep = m.keep;
         self.line_keep = m.line_keep;
+        self.table_rows = m.table_rows;
         m.sections
     }
 

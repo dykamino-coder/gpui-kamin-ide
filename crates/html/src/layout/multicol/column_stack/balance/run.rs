@@ -3,6 +3,12 @@ use super::{ColumnStack, Plan, Space, failed, plan, search};
 use crate::layout::fragment::types::Kid;
 
 impl ColumnStack {
+    /// Колонки стопки: `limit` фрагментаинеров шириной в колонку (строчный размер
+    /// фрагментаинера читает выбор разрыва).
+    pub(crate) fn column_space(&self, limit: usize) -> Space {
+        Space::columns(limit).with_inline_size(self.col_w.get())
+    }
+
     /// Пробег линий колонок между спаннерами: первая линия высотой `first`
     /// (остаток текущего ряда), остальные — `cap`; последняя при
     /// `balance_last` балансируется (Blink балансирует КАЖДУЮ линию и режет
@@ -20,7 +26,9 @@ impl ColumnStack {
         not_at_start: usize,
     ) -> (usize, Plan, f32) {
         let count = self.count;
-        let space = Space::columns(usize::MAX).with_not_at_start(not_at_start);
+        let space = self
+            .column_space(usize::MAX)
+            .with_not_at_start(not_at_start);
         let line_h = |l: usize| if l == 0 { first } else { cap };
         let (cols, _, plan) = plan::fill_at(kids, &|c| line_h(c / count), space);
         let n = cols.div_ceil(count).max(1);

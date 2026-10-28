@@ -149,6 +149,11 @@ impl BlockBreaks {
             keep,
             line_keep,
             avoid_inside,
+            table_rows: self
+                .table_rows
+                .into_iter()
+                .filter(|r| r.start < end - 0.01)
+                .collect(),
             sections: self.sections,
         }
     }

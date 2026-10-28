@@ -120,9 +120,14 @@ impl ColumnStack {
                             && n < k.h - COORD_EPS
                             && !k.forced.iter().any(|&f| (f - n).abs() < COORD_EPS)
                             && (!kept
-                                || k.keep
+                                || (k.keep
                                     .iter()
-                                    .any(|&(a, b)| a + COORD_EPS < n && n < b - COORD_EPS))
+                                    .any(|&(a, b)| a + COORD_EPS < n && n < b - COORD_EPS)
+                                    // A row that is not freely fragmentable
+                                    // keeps its lines (css-tables-3).
+                                    && !k.table_rows.iter().any(|r| {
+                                        r.start + COORD_EPS < n && n < r.end - COORD_EPS
+                                    })))
                     })
                     .collect();
                 for at in cands {

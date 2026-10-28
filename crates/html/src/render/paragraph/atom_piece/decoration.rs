@@ -1,8 +1,8 @@
 //! Обёртки atomic inline для transform, выравнивания и порядка краски.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::box_kind::replaced_tag;
+use crate::layout::cx::FrameCx;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
@@ -20,8 +20,9 @@ pub(crate) fn decorate_atom(
     original_margin: crate::style::computed::Sides,
     abs_cb: bool,
     line_box: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
-    vcx: ValueCx<'_>,
+    frame: FrameCx<'_>,
 ) -> inline::Piece {
+    let vcx = frame.values;
     // `mix-blend-mode` на ЗАМЕЩАЕМОМ атоме строки: блочный путь,
     // атом с коробкой и флоат смешивают через `grouped`, а `<svg>`,
     // `<iframe>`, `<img>` в строке шли мимо, и режим пропадал
@@ -34,7 +35,7 @@ pub(crate) fn decorate_atom(
             blend: e.style.used().blend,
             ..Default::default()
         };
-        grouped(el, &crate::style::computed::BoxStyle::new(only), vcx)
+        grouped(el, &crate::style::computed::BoxStyle::new(only), frame)
     } else {
         el
     };
@@ -55,7 +56,7 @@ pub(crate) fn decorate_atom(
     ) {
         el
     } else {
-        transformed(el, &e.style.used(), inherited, vcx)
+        transformed(el, &e.style.used(), inherited, frame)
     };
     // `vertical-align` НА САМОМ куске (`img { vertical-align: top }`):
     // ряд строит базовую линию, а кускам с top/middle/bottom нужен

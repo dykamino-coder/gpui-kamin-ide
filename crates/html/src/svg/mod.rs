@@ -12,8 +12,8 @@
 //! Плата за такой подход — растр: при увеличении масштаба картинка не
 //! пересчитывается. Поэтому рисуем с запасом по плотности.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::replaced::svg_size::size_of;
 use clip::{shape_box, translate_only};
 use gpui::{AnyElement, IntoElement};
@@ -38,11 +38,11 @@ pub(crate) fn element_with_html(
     e: &Element,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
     if foreign::contains(e) {
         foreign::element(e, opts)
     } else {
-        element(e, vcx)
+        element(e, frame)
     }
 }
 
@@ -51,7 +51,8 @@ pub(crate) fn shape_reference_box(e: &Element, stroke: bool) -> Option<(f32, f32
     clip::reference_box(e, stroke)
 }
 
-pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
+pub(crate) fn element(e: &Element, frame: FrameCx<'_>) -> Option<AnyElement> {
+    let vcx = frame.values;
     let (w, h) = size_of(e);
     // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):
     // растр расширяется до содержимого по свободной оси, а коробка остаётся
@@ -136,7 +137,7 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
         (h + clip_margin).min(child_extent(false).max(h))
     };
     // CSS-маски на детях рисунка — слоями (см. `masked_layers`).
-    if let Some(layers) = masked_layers(e, w, h, rw, rh, vcx) {
+    if let Some(layers) = masked_layers(e, w, h, rw, rh, frame) {
         return Some(layers);
     }
     // Переполнение ВЛЕВО и ВВЕРХ (SVG 2 §overflow, `overflow: visible`):

@@ -66,7 +66,7 @@ pub(super) fn paint(
 }
 
 fn child(group: &mut Grouped, border_box: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-    let paint = group.values.vcx().paint.cloned();
+    let paint = group.paint.clone();
     crate::paint::decorations::outline_phase::scoped(paint.as_ref(), window, cx, |window, cx| {
         group.child.paint(window, cx);
     });

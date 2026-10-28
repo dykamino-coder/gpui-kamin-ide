@@ -34,5 +34,11 @@ impl BlockBreaks {
         self.avoid_inside
             .extend(inner.avoid_inside.into_iter().filter_map(clip));
         self.avoid.extend(inner.avoid.into_iter().filter_map(clip));
+        self.table_rows.extend(
+            inner
+                .table_rows
+                .into_iter()
+                .filter(|r| r.prev >= top - COORD_EPS && r.end <= bottom + COORD_EPS),
+        );
     }
 }

@@ -17,7 +17,7 @@ pub(super) async fn collect_captions(
     caps_top: &mut Vec<AnyElement>,
     caps_bot: &mut Vec<AnyElement>,
 ) {
-    let vcx = opts.cx.vcx();
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     for c in &e.children {
         if let Node::Element(cap) = c
             && (cap.tag == "caption" || cap.style.used().is_caption == Some(true))
@@ -50,11 +50,10 @@ pub(super) async fn collect_captions(
             // A caption is a transformable block box (css-transforms-1
             // §transformable-element); its `transform` was dropped
             // (`transform-transformed-caption-contains-fixed-position`).
-            let built = opts
-                .cx
-                .contracts
-                .build
-                .effects(built, Effect::transform(&cap.style.used(), inherited, vcx));
+            let built = opts.cx.contracts.build.effects(
+                built,
+                Effect::transform(&cap.style.used(), inherited, frame),
+            );
             // Подпись — сосед коробки таблицы в стопке обёртки: её border box
             // читает фрагментация (`watch::wrap`).
             let built = crate::layout::fragment::paginate::watch::wrap(cap.node_id, built, opts);
