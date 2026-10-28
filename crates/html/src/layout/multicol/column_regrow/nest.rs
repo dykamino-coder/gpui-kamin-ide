@@ -19,7 +19,7 @@ impl ColumnStack {
         let Some(resume) = self.children[i].resume.clone() else {
             return false;
         };
-        match self.fixed_height.filter(|_| self.rows.is_none()) {
+        match fragmentainer_extent(self.fixed_height, self.rows) {
             Some(hh) => {
                 let start = self.start_in_fragmentainer(i, hh);
                 self.place_nested(i, &resume, Some((hh, start)), window, cx);
@@ -98,4 +98,18 @@ pub(crate) fn first_row_overflow(
         .map(|f| f.y + f.h)
         .fold(0.0f32, f32::max);
     (end > row + crate::tolerance::COORD_EPS).then_some(end)
+}
+
+/// Блочный размер фрагментаинера стопки без балансировки: заданная высота колонок
+/// либо ряд внешнего фрагментаинера (`Rows` с переносом без потолка).
+pub(crate) fn fragmentainer_extent(
+    fixed: Option<f32>,
+    rows: Option<crate::layout::fragment::types::Rows>,
+) -> Option<f32> {
+    match rows {
+        None => fixed,
+        Some(r) if r.wrap && !r.cap => r.h,
+        Some(_) => None,
+    }
+    .filter(|h| *h > 0.0)
 }

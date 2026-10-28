@@ -11,7 +11,7 @@ mod copies;
 mod extent;
 mod items;
 mod nest;
-pub(crate) use nest::first_row_overflow;
+pub(crate) use nest::{first_row_overflow, fragmentainer_extent};
 mod owners;
 mod progress;
 mod trial;

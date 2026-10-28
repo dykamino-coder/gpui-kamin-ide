@@ -4,6 +4,7 @@ use crate::dom::Element;
 use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed, measured_push};
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::multicol::stack_child::{multicol_stack_child, nest_candidate};
+use crate::layout::multicol::column_regrow::fragmentainer_extent;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
@@ -153,9 +154,11 @@ pub(in crate::layout::multicol) fn stack_children(
                     matches!(c.style.used().height, Some(Len::Px(_)))
                         && s.margin_top.abs() < COORD_EPS
                 } else {
-                    fixed.is_some_and(|h| h > 0.0) && rows.is_none()
+                    fragmentainer_extent(fixed, rows).is_some()
                 };
-            let nest = fixed.filter(|_| candidate).map(|hh| (hh, 0.0));
+            let nest = fragmentainer_extent(fixed, rows)
+                .filter(|_| candidate)
+                .map(|hh| (hh, 0.0));
             let mut child = shared.build(ix, &c, &prepared, margins, nest);
             if candidate {
                 let shared = shared.clone();
