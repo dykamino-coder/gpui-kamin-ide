@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
+import type { ToolCallContext } from '../executor'
 import { getOrCreateSnapshot, wrapCommandWithSnapshot, shouldUseLoginShell } from './shell-snapshot'
 import { listEnabledPluginBinDirs } from '../../plugin-helpers'
 import { findBashExecutable, findPowerShellExecutable } from '../../utils/command-runtime'
@@ -99,7 +100,7 @@ async function findBashAsync(): Promise<string> {
 /**
  * PowerShell tool — Windows preview. Uses pwsh or powershell.exe.
  */
-export async function powerShellExecute(input: Record<string, unknown>): Promise<McpResult> {
+export async function powerShellExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const command = input.command as string
   if (!command) return errorResult('command is required')
 
@@ -107,7 +108,12 @@ export async function powerShellExecute(input: Record<string, unknown>): Promise
   // long commands like `npm install` / `podman build` / test suites that
   // legitimately run for many minutes. Cap matches HEAVY_TOOL_TIMEOUT_MS
   // and BASH_MAX_TIMEOUT_MS so we don't get cut off by either layer.
-  const timeout = typeof input.timeout === 'number' ? Math.min(input.timeout, 1_800_000) : 1_500_000
+  const timeout =
+    typeof input.timeout === 'number'
+      ? Number.isFinite(input.timeout)
+        ? Math.max(1, Math.min(input.timeout, 1_800_000))
+        : 1_500_000
+      : 1_500_000
 
   let pwshPath: string
   try {
@@ -115,10 +121,10 @@ export async function powerShellExecute(input: Record<string, unknown>): Promise
   } catch (err) {
     return errorResult(err instanceof Error ? err.message : String(err))
   }
-  return runForegroundCommand(command, pwshPath, timeout, ['-c'], await shellEnv())
+  return runForegroundCommand(command, pwshPath, timeout, ['-c'], await shellEnv(), context?.signal)
 }
 
-export async function bashExecute(input: Record<string, unknown>): Promise<McpResult> {
+export async function bashExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const command = input.command as string
   if (!command) return errorResult('command is required')
 
@@ -126,7 +132,12 @@ export async function bashExecute(input: Record<string, unknown>): Promise<McpRe
   // long commands like `npm install` / `podman build` / test suites that
   // legitimately run for many minutes. Cap matches HEAVY_TOOL_TIMEOUT_MS
   // and BASH_MAX_TIMEOUT_MS so we don't get cut off by either layer.
-  const timeout = typeof input.timeout === 'number' ? Math.min(input.timeout, 1_800_000) : 1_500_000
+  const timeout =
+    typeof input.timeout === 'number'
+      ? Number.isFinite(input.timeout)
+        ? Math.max(1, Math.min(input.timeout, 1_800_000))
+        : 1_500_000
+      : 1_500_000
   const runInBackground = input.run_in_background === true
   const description = (input.description as string) || ''
 
@@ -151,7 +162,7 @@ export async function bashExecute(input: Record<string, unknown>): Promise<McpRe
     return runBackgroundCommand(wrapped, shell, description, shellFlags, env)
   }
 
-  return runForegroundCommand(wrapped, shell, timeout, shellFlags, env)
+  return runForegroundCommand(wrapped, shell, timeout, shellFlags, env, context?.signal)
 }
 
 const BG_OUTPUT_CAP = 100 * 1024
@@ -297,7 +308,15 @@ async function resolvePowerShell(): Promise<string> {
   return pwshLookupInFlight
 }
 
-function runForegroundCommand(command: string, shell: string, timeout: number, shellFlags: string[] = ['-c'], env: NodeJS.ProcessEnv = process.env): Promise<McpResult> {
+export function runForegroundCommand(
+  command: string,
+  shell: string,
+  timeout: number,
+  shellFlags: string[] = ['-c'],
+  env: NodeJS.ProcessEnv = process.env,
+  signal?: AbortSignal,
+): Promise<McpResult> {
+  if (signal?.aborted) return Promise.resolve(errorResult('Command cancelled'))
   return new Promise((resolve) => {
     const stdoutChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []
@@ -305,30 +324,58 @@ function runForegroundCommand(command: string, shell: string, timeout: number, s
     let stderrBytes = 0
     let truncated = false
     let timedOut = false
+    let cancelled = false
+    let closed = false
+    let escalation: ReturnType<typeof setTimeout> | undefined
 
     const child = spawn(shell, [...shellFlags, command], {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      detached: process.platform !== 'win32',
       // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
       // identifies our session so plugins/scripts can adapt. See CLI's
       // `utils/Shell.ts` — same two flags.
       env,
     })
 
-    const timer = setTimeout(() => {
-      timedOut = true
+    const terminate = (): void => {
       // Kill the whole process TREE, not just the shell — a timed-out command
       // like `npm run dev` spawns grandchildren that a bare child.kill() leaves
       // orphaned. Windows: taskkill /T; POSIX: SIGTERM then SIGKILL fallback.
       if (process.platform === 'win32' && child.pid) {
         try { spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }) } catch { /* fall through */ }
       }
-      child.kill('SIGTERM')
-      // Force kill after 5 seconds if SIGTERM didn't work
-      setTimeout(() => {
-        if (!child.killed) child.kill('SIGKILL')
-      }, 5000)
+      if (process.platform !== 'win32' && child.pid) {
+        try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') }
+      } else child.kill('SIGTERM')
+      // Escalate after one second if SIGTERM did not stop the process tree.
+      escalation ??= setTimeout(() => {
+        if (process.platform !== 'win32' && child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGKILL')
+          } catch {
+            /* tree exited */
+          }
+        } else if (!closed) child.kill('SIGKILL')
+      }, 1000)
+    }
+    const abort = (): void => {
+      cancelled = true
+      terminate()
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      terminate()
     }, timeout)
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
+    const cleanup = (): void => {
+      closed = true
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+      // Keep group escalation after shell close: descendants can ignore TERM.
+      if (!timedOut && !cancelled && escalation) clearTimeout(escalation)
+    }
 
     child.stdout?.on('data', (chunk: Buffer) => {
       if (truncated) return
@@ -356,12 +403,12 @@ function runForegroundCommand(command: string, shell: string, timeout: number, s
     })
 
     child.on('error', (err) => {
-      clearTimeout(timer)
+      cleanup()
       resolve(errorResult(`Failed to execute command: ${err.message}`))
     })
 
     child.on('close', (code) => {
-      clearTimeout(timer)
+      cleanup()
 
       const stdout = Buffer.concat(stdoutChunks).toString('utf8')
       const stderr = Buffer.concat(stderrChunks).toString('utf8')
@@ -380,6 +427,7 @@ function runForegroundCommand(command: string, shell: string, timeout: number, s
         parts.push(`\n[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB limit]`)
       }
 
+      if (cancelled) parts.push('\n[Command cancelled]')
       if (timedOut) {
         parts.push(`\n[Command timed out after ${timeout}ms]`)
       }

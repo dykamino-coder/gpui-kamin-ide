@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { devCli, waitForDevCliStartup } from './dev-cli'
+import { mcpIdentity, startMcpTaskDelivery } from './mcp-tasks'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import { ResumeNotFoundError } from './session-resume-not-found'
@@ -234,7 +235,8 @@ async function createAdmittedSession(
 
   // Create session directory + settings (overwrites existing on restart)
   fs.mkdirSync(settingsDir, { recursive: true })
-  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash)
+  const mcpEndpoint = await mcpIdentity(tokenId, settingsDir)
+  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash, mcpEndpoint)
 
   // Write CLAUDE.md with user's real working directory info
   const userCwd = config.cwd
@@ -476,6 +478,7 @@ async function createAdmittedSession(
     mcpInitialized: false,
     mcpLastError: null,
     mcpToken,
+    mcpEndpoint,
     outputBuffer: [],
     outputBufferBytes: 0,
     lastResizeAt: Date.now(),
@@ -500,6 +503,7 @@ async function createAdmittedSession(
   }
 
   sessions.set(sessionId, session)
+  startMcpTaskDelivery(() => [...sessions.values()])
   registered(session)
 
   // Auto-answer interactive startup prompts:
@@ -1203,10 +1207,15 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number): v
  * Send an MCP tool call to Electron via WebSocket. Resolves when Electron
  * responds (or rejects on timeout/denial).
  */
-export function sendMcpCall(sessionId: string, toolName: string, input: Record<string, unknown>): Promise<unknown> {
+export function sendMcpCall(
+  sessionId: string,
+  toolName: string,
+  input: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const session = sessions.get(sessionId)
   if (!session) return Promise.reject(new Error(`Session ${sessionId} not found`))
-  return sendMcpCallToSession(session, toolName, input)
+  return sendMcpCallToSession(session, toolName, input, signal)
 }
 
 // ---------------------------------------------------------------------------

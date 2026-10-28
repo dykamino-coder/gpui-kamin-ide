@@ -9,13 +9,28 @@ import type { ClientMessage } from '../../shared/mcp-protocol'
 import type { PermissionManager } from '../mcp/permission-manager'
 import type { PermissionMode } from './connection-manager'
 
+export interface PendingMcpExecution {
+  toolName: string
+  input: Record<string, unknown>
+  taskOwner?: string
+  controller?: AbortController
+}
+
+export function cancelMcpCall(ctx: McpCallCtx, requestId: string, taskOwner?: string): void {
+  const call = ctx.pendingMcpCalls.get(requestId)
+  if (!call || call.taskOwner !== taskOwner) return
+  call.controller?.abort()
+  ctx.pendingPermissions.get(requestId)?.('deny')
+  ctx.pendingPermissions.delete(requestId)
+}
+
 export interface McpCallCtx {
   window: BrowserWindow
   tabId: string
   send: (msg: ClientMessage) => void
   reportDeliveryFailure: () => void
   deliverResult: (outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>) => Promise<void>
-  pendingMcpCalls: Map<string, { toolName: string; input: Record<string, unknown> }>
+  pendingMcpCalls: Map<string, PendingMcpExecution>
   pendingPermissions: Map<string, (decision: PermissionDecision) => void>
   permissionMode: () => PermissionMode
   permissionManager: PermissionManager
@@ -103,10 +118,16 @@ export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void
  *  pending → completed/denied so the renderer can paint the call row. */
 export async function handleMcpCall(
   ctx: McpCallCtx,
-  msg: { requestId: string; toolName: string; input: Record<string, unknown> },
+  msg: { requestId: string; toolName: string; input: Record<string, unknown>; taskOwner?: string },
 ): Promise<void> {
   if (ctx.pendingMcpCalls.has(msg.requestId)) return
-  ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input })
+  const controller = new AbortController()
+  ctx.pendingMcpCalls.set(msg.requestId, {
+    toolName: msg.toolName,
+    input: msg.input,
+    taskOwner: msg.taskOwner,
+    controller,
+  })
 
   ctx.window.webContents.send('mcp-activity', ctx.tabId, {
     requestId: msg.requestId,
@@ -117,7 +138,7 @@ export async function handleMcpCall(
   })
 
   const allowed = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input)
-  if (!allowed) {
+  if (!allowed || controller.signal.aborted) {
     ctx.denyMcp(msg.requestId, 'User denied permission')
     return
   }
@@ -126,13 +147,21 @@ export async function handleMcpCall(
   let result: unknown
   try {
     const { executeTool } = await import('../mcp/executor')
-    result = await executeTool(msg.toolName, msg.input, { tabId: ctx.tabId })
+    result = await executeTool(msg.toolName, msg.input, {
+      tabId: ctx.tabId,
+      signal: controller.signal,
+    })
   } catch (err) {
     result = `Error: ${err instanceof Error ? err.message : String(err)}`
   }
   if (!ctx.pendingMcpCalls.has(msg.requestId)) return
   try {
-    await ctx.deliverResult({ type: 'mcp:response', requestId: msg.requestId, result })
+    await ctx.deliverResult({
+      type: 'mcp:response',
+      requestId: msg.requestId,
+      result,
+      taskOwner: msg.taskOwner,
+    })
     if (!ctx.pendingMcpCalls.has(msg.requestId)) return
     ctx.window.webContents.send('mcp-activity', ctx.tabId, {
       requestId: msg.requestId, toolName: msg.toolName, input: msg.input,

@@ -97,13 +97,10 @@ export function buildSessionEnv(sessionId: string, userName: string): Record<str
   // Per-CLI cost trims for the headless multi-session pool (verified against the
   // real 2.1.202 binary — every flag's read-site + gated feature grep-confirmed):
   //
-  // NONESSENTIAL_TRAFFIC → "essential-traffic" mode: kills the per-session
-  //   version-check, MCP-registry/directory fetch, Grove settings, Claude
-  //   Projects, DesignSync, asset fetch and error-reporting (Sentry). Verified it
-  //   sits on a SEPARATE branch from telemetry ("no-telemetry" is a different
-  //   enum) and does NOT touch OTEL export, streaming, resume, MCP tool routing,
-  //   or the terminal title — all of which we depend on.
-  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+  // MCP Tasks beta negotiation fetches the account feature flags in 2.1.312.
+  // Essential-only mode suppresses that fetch and silently disables Tasks.
+  delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
+  delete env.DISABLE_NONESSENTIAL_TRAFFIC
   // Memory subsystem: we already run with auto-memory off, so kill its two
   // background costs too — the 60-min periodic resync timer and the startup
   // multi-store bulk inflate.

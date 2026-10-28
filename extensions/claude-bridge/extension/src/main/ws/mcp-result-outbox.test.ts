@@ -92,3 +92,53 @@ describe('bounded acknowledged MCP outcomes', () => {
     await result
   })
 })
+describe('task results across PTY replacement', () => {
+  it('rebinds only the same authenticated task owner and retries until ack', async () => {
+    open = true
+    outbox.attach('old', 'owner')
+    const result = outbox.deliver('old', {
+      type: 'mcp:response',
+      requestId: 'task',
+      taskOwner: 'owner',
+      result: 'done',
+    })
+    outbox.detach()
+    vi.advanceTimersByTime(120_001)
+    outbox.attach('new', 'owner')
+    expect(JSON.parse(frames.at(-1)!)).toMatchObject({
+      sessionId: 'new',
+      taskOwner: 'owner',
+      result: 'done',
+    })
+    outbox.acknowledge('old', 'task', true)
+    outbox.acknowledge('new', 'task', true)
+    await result
+  })
+  it('binds a surviving execution that finishes after the PTY changed', async () => {
+    open = true
+    outbox.attach('new', 'owner')
+    const result = outbox.deliver('old', {
+      type: 'mcp:response',
+      requestId: 'task',
+      taskOwner: 'owner',
+      result: 'late',
+    })
+    expect(JSON.parse(frames.at(-1)!)).toHaveProperty('sessionId', 'new')
+    outbox.acknowledge('new', 'task', true)
+    await result
+  })
+  it('never migrates output to another conversation', async () => {
+    outbox.attach('old', 'owner')
+    const result = outbox.deliver('old', {
+      type: 'mcp:response',
+      requestId: 'task',
+      taskOwner: 'owner',
+      result: 'private',
+    })
+    const rejected = expect(result).rejects.toThrow('ended server session')
+    open = true
+    outbox.attach('new', 'other')
+    await rejected
+    expect(frames).toEqual([])
+  })
+})
