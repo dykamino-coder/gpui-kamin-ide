@@ -133,7 +133,7 @@ fn collect_in(
                 Err::<(), ()>(())
             });
         });
-        *recorder.unsettled.borrow_mut() = missed;
+        recorder.unsettled.replace(missed);
     }
     let mut snapshot = recorder.snapshot(window);
     snapshot.host = if is_page { 0 } else { parent.self_node };

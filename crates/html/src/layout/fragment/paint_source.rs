@@ -65,7 +65,7 @@ pub(crate) struct Natives(Rc<RefCell<std::collections::HashSet<u64>>>);
 impl Natives {
     pub(crate) fn set(&self, roots: impl IntoIterator<Item = u64>) {
         let cell: &RefCell<std::collections::HashSet<u64>> = &self.0;
-        *cell.borrow_mut() = roots.into_iter().collect();
+        cell.replace(roots.into_iter().collect());
     }
 
     pub(crate) fn contains(&self, root: u64) -> bool {

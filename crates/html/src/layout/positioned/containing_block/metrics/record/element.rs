@@ -43,11 +43,11 @@ impl Wrap for Record {
                 .is_some_and(|s| Rc::ptr_eq(&s.0, &self.geometry.recorder))
         {
             self.geometry.remember(node);
-            let recorder = &self.geometry.recorder;
-            recorder
-                .records
-                .borrow_mut()
-                .insert(self.geometry.id, bounds.origin);
+            super::settle::note(
+                &self.geometry.recorder.records,
+                self.geometry.id,
+                bounds.origin,
+            );
         }
         let geometry = &self.geometry;
         crate::hooks::paint_source_node(

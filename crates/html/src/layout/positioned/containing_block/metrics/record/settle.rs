@@ -14,8 +14,17 @@ pub(crate) struct Settling(pub(crate) Rc<Recorder>);
 /// settling pass, if one runs.
 pub(crate) fn settled_offset(key: u64, placed: Point<Pixels>, window: &Window) {
     if let Some(settling) = window.render_context::<Settling>() {
-        settling.0.offsets.borrow_mut().insert(key, placed);
+        note(&settling.0.offsets, key, placed);
     }
+}
+
+/// Note a settled point of `id`.
+pub(super) fn note(
+    points: &std::cell::RefCell<HashMap<u64, Point<Pixels>>>,
+    id: u64,
+    at: Point<Pixels>,
+) {
+    points.borrow_mut().insert(id, at);
 }
 
 impl Recorder {

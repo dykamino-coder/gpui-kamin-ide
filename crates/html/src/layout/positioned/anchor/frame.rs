@@ -8,7 +8,7 @@ pub(crate) fn reset(f: &AnchorState) {
     f.cb.borrow_mut().clear();
     f.cb_parent.borrow_mut().clear();
     f.out_of_flow.borrow_mut().clear();
-    f.misses.borrow_mut().clear();
+    f.misses.take();
     let present = f.present.take();
     f.chosen.borrow_mut().retain(|key, _| present.contains(key));
     f.seq.set(0);
@@ -27,9 +27,9 @@ pub(crate) fn next_seq(anchors: &AnchorState) -> u32 {
 /// failed) and return them; the frame keeps every miss.
 pub(crate) fn misses_of(anchors: &AnchorState, f: impl FnOnce()) -> std::collections::HashSet<u64> {
     let misses = &anchors.misses;
-    let before = std::mem::take(&mut *misses.borrow_mut());
+    let before = misses.take();
     f();
-    let during = std::mem::replace(&mut *misses.borrow_mut(), before);
+    let during = misses.replace(before);
     misses.borrow_mut().extend(during.iter().copied());
     during
 }
