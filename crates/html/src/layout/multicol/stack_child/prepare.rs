@@ -2,7 +2,6 @@
 
 use super::through_top::strip_through_top;
 use crate::dom::Element;
-use crate::layout::fragment::Shape;
 use crate::layout::options::RenderOpts;
 
 #[derive(Clone)]
@@ -10,29 +9,16 @@ pub(in crate::layout::multicol) struct Prepared {
     pub(super) copy: Element,
     pub(super) empty_floats: bool,
     pub(super) float_zero: bool,
-    pub(in crate::layout::multicol) cuts: Vec<(f32, f32)>,
-    pub(in crate::layout::multicol) forced: Vec<f32>,
-    pub(in crate::layout::multicol) solid: Vec<(f32, f32)>,
-    pub(in crate::layout::multicol) h: f32,
-    pub(in crate::layout::multicol) over: f32,
 }
 
-/// Каждый ребёнок стопки измерен своей копией (`measure_children`): высоту,
-/// переполнение и разрывы заменяет `lay_out_main` до плана.
+/// Копия ребёнка стопки без собственных блочных полей (их кладёт стопка). Высоту,
+/// переполнение и разрывы даёт раскладка копии (`lay_out_main`) до плана.
 pub(in crate::layout::multicol) fn prepare(
     c: &Element,
-    shape: &Shape,
     opts: &RenderOpts,
     col_vert: bool,
     col_rl: bool,
 ) -> Prepared {
-    let Shape {
-        height: h,
-        cuts,
-        forced,
-        solid,
-        ..
-    } = shape.clone();
     let mut copy = c.clone();
     // Поля кладёт укладка колонок, не коробка. В
     // вертикальном письме блочные поля — левое и
@@ -55,10 +41,5 @@ pub(in crate::layout::multicol) fn prepare(
         copy,
         empty_floats,
         float_zero,
-        cuts,
-        forced,
-        solid,
-        h,
-        over: h,
     }
 }

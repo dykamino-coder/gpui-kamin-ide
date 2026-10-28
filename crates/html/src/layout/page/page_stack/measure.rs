@@ -49,37 +49,22 @@ pub(super) fn measure(
     } else {
         sz
     };
-    #[cfg(feature = "wpt-harness")]
-    if let Some((h, ..)) = &k.shape
-        && k.watched.is_some()
-    {
-        k.probe.height("pages", *h, f32::from(sz.height));
-    }
-    // Мера поддерева даёт точки разреза внутри ребёнка; без неё
-    // ребёнок — цельный кусок измеренной высоты.
+    // Точки разреза внутри ребёнка даёт раскладка его копии (рекордер блочной
+    // стопки); без неё ребёнок — цельный кусок измеренной высоты.
     let mut avoid = Vec::new();
     let mut keep = Vec::new();
     let mut line_keep = Vec::new();
     let mut table_rows = Vec::new();
-    let (mut h, mut cuts, mut forced, mut solid) = match &k.shape {
-        Some((h, cuts, forced, solid)) => (*h, cuts.clone(), forced.clone(), solid.clone()),
-        // Копия поднята на `inner_top` (поле уже в `Kid.mt`): высота ребёнка —
-        // его border box, без поля над ним.
-        None => (
-            (f32::from(sz.height) - k.inner_top).max(0.0),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        ),
-    };
+    // Копия поднята на `inner_top` (поле уже в `Kid.mt`): высота ребёнка — его
+    // border box, без поля над ним.
+    let mut h = (f32::from(sz.height) - k.inner_top).max(0.0);
+    let (mut cuts, mut forced, mut solid) = (Vec::new(), Vec::new(), Vec::new());
     let mut over = h;
     if let Some(flow) = measured_flow {
         // CSS Break 3 section 3.1: root floats participate in page
         // fragmentation. Their anonymous normal-flow wrapper can
         // have zero height, unlike the measured float border box.
-        if k.shape.is_none()
-            && let Some(id) = k.float_id
-        {
+        if let Some(id) = k.float_id {
             h = flow
                 .floats
                 .iter()
@@ -109,12 +94,7 @@ pub(super) fn measure(
                 let geometry = w
                     .laid_axis(origin, frame, axis, window)
                     .with_flow(&local_flow);
-                let flex = !geometry.flexes.is_empty();
-                let regrown = k.regrow.as_ref().is_some_and(|r| r.laid_h);
-                if let Some(root) = w
-                    .blocks()
-                    .filter(|b| k.shape.is_none() || b.table.is_some() || flex || regrown)
-                    && k.float_id.is_none()
+                if let Some(root) = w.blocks().filter(|_| k.float_id.is_none())
                     && let Some((_, bottom)) = geometry.at(root.id)
                 {
                     h = bottom;
@@ -130,7 +110,7 @@ pub(super) fn measure(
                 if visible && k.float_extent {
                     over = float_extent(&flow, lift, over);
                 }
-                if k.shape.is_none() && k.regrow.is_some() {
+                if k.regrow.is_some() {
                     // Реальное переполнение копии резервирует последующие листы.
                     let reach = f32::from(if vertical {
                         content.width
@@ -148,15 +128,9 @@ pub(super) fn measure(
                 let m = w.breaks(origin, frame, h.max(over) + lift, axis, window);
                 inline.barriers = m.barriers;
                 inline.keep = m.avoid_inside;
-                if flex || k.shape.is_none() {
-                    avoid = m.avoid;
-                    keep = m.keep;
-                    line_keep = m.line_keep;
-                }
-                #[cfg(feature = "wpt-harness")]
-                if k.shape.is_some() {
-                    k.probe.breaks("pages.breaks", &cuts, &m.cuts);
-                }
+                avoid = m.avoid;
+                keep = m.keep;
+                line_keep = m.line_keep;
                 (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
                 table_rows = m.table_rows;
                 k.refresh_repeat(m.sections, ah);

@@ -117,7 +117,7 @@ fn settled(
     }
     // Текстовый путь `text-box-trim` не знает (ни у краёв колонок, ни у
     // первой/последней строки) — такой многоколоночник идёт стопкой
-    // со строками (`line_run_shape`; `text-box-trim-multicol-009/010`).
+    // со строками (`text-box-trim-multicol-009/010`).
     let trim_host = merged.text_box_trim_start || merged.text_box_trim_end;
     let flow = match dimensions {
         Some((dimensions, _)) => {

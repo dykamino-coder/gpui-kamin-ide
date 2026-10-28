@@ -137,7 +137,7 @@ pub(super) fn items_kind(c: &Element) -> u8 {
 }
 
 /// Сплошной строчный набор (без блочных детей) — монолит в стопке, ПОКА его
-/// строки не измерены (`line_run_shape` дала точки разреза).
+/// строки не измерены раскладкой копии (точки разреза).
 pub(crate) fn inline_content(k: &Element) -> bool {
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)

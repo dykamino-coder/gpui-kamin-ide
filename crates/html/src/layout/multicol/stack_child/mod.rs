@@ -64,12 +64,11 @@ pub(super) fn multicol_stack_child(
         mut copy,
         empty_floats,
         float_zero,
-        cuts,
-        forced,
-        solid,
-        h,
-        over,
     } = prepared;
+    // До раскладки копии у ребёнка нет ни высоты, ни точек разрыва: их даёт
+    // `ColumnStack::lay_out_main` (мера ребёнка — раскладка его копии).
+    let (h, over) = (0.0, 0.0);
+    let (cuts, forced, solid) = (Vec::new(), Vec::new(), Vec::new());
     // Относительный сдвиг — не коробке, а фрагменту
     // (css-break-3 §5.5): его кладёт `ColumnStack`
     // вместе со срезом.

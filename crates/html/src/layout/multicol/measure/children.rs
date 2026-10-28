@@ -9,7 +9,7 @@ use crate::layout::block::margins::fragment_margins as measured_margins;
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
-use crate::layout::fragment::Shape;
+use crate::layout::fragment::FlowMargins;
 use crate::layout::fragment::line_shape::{inline_content, nested_rows_box, resolved_lengths};
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::options::RenderOpts;
@@ -33,7 +33,7 @@ pub(crate) fn measure_children(
     col_rl: bool,
     measure_ok: bool,
     pag_ok: bool,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     let vcx = opts.cx.frame();
     ge.children
         .iter()
@@ -55,17 +55,15 @@ pub(crate) fn measure_children(
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((
                     c,
-                    Shape {
+                    FlowMargins {
                         margin_top: mt,
                         margin_bottom: mb,
-                        ..Shape::default()
                     },
                 ))
             }
             // Вложенный многоколоночник `height: auto` во внешних колонках с
             // заданной высотой: его блочный размер — СБАЛАНСИРОВАННЫЕ колонки
-            // (css-multicol-1 §7.1), а не сумма детей, которую даёт
-            // `shape_full`. Высоту даёт раскладка копии (`StackChild::
+            // (css-multicol-1 §7.1), а не сумма детей. Высоту даёт раскладка копии (`StackChild::
             // measure`), разрез — краем внешней колонки (`multicol-nested-
             // 022…024`: внутренний 200 в двух колонках — коробка 100, а не 200,
             // и следующий за ним блок уезжал в третью внешнюю колонку).
@@ -89,8 +87,7 @@ pub(crate) fn measure_children(
                     && nested_rows_box(c) =>
             {
                 // Высоту даёт раскладка самой копии (`StackChild::measure`):
-                // внутренний многоколоночник балансирует себя сам, и мера
-                // `shape_full` его колонок не видит (сумма детей).
+                // внутренний многоколоночник балансирует себя сам.
                 let c = resolved_lengths(c, merged, vcx);
                 measured_nested(&c, line_col_w?, measured_kids, nested_whole)
             }
@@ -113,10 +110,9 @@ pub(crate) fn measure_children(
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((
                     c,
-                    Shape {
+                    FlowMargins {
                         margin_top: mt,
                         margin_bottom: mb,
-                        ..Shape::default()
                     },
                 ))
             }
@@ -166,10 +162,9 @@ pub(crate) fn measure_children(
                     measured_kids.borrow_mut().push((c.node_id, w));
                     Some((
                         c,
-                        Shape {
+                        FlowMargins {
                             margin_top: mt,
                             margin_bottom: mb,
-                            ..Shape::default()
                         },
                     ))
                 }
@@ -185,16 +180,15 @@ fn measured_nested(
     w: f32,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
     nested_whole: &RefCell<Vec<u64>>,
-) -> Option<(Element, Shape)> {
+) -> Option<(Element, FlowMargins)> {
     let (mt, mb) = measured_margins(c)?;
     nested_whole.borrow_mut().push(c.node_id);
     measured_kids.borrow_mut().push((c.node_id, w));
     Some((
         c.clone(),
-        Shape {
+        FlowMargins {
             margin_top: mt,
             margin_bottom: mb,
-            ..Shape::default()
         },
     ))
 }

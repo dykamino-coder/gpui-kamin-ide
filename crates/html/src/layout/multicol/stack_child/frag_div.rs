@@ -79,8 +79,8 @@ pub(super) fn frag_box_div(
     // Одна лишь полная ширина flex-копии ломает
     // `row-gap` и разваливает страницы
     // `multi-line-*-flex-fragmentation-*`; её
-    // закрывает мера гибкой стопки (`flex_items`
-    // в `shape_full`) — держать их вместе.
+    // закрывает раскладка гибкой стопки — держать
+    // их вместе.
     if matches!(copy.style.used().width, None | Some(Len::Auto))
         && matches!(
             copy.style.used().display,

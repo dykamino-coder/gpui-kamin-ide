@@ -52,6 +52,5 @@ fn percent_margins_use_the_copy_inline_size() {
     )
     .expect("copy");
     assert_eq!((shape.margin_top, shape.margin_bottom), (12.0, 6.0));
-    assert_eq!(shape.height, 0.0);
     assert_eq!(*registry.borrow(), vec![(c.node_id, 120.0)]);
 }

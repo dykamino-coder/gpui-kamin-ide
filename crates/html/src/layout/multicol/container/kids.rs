@@ -14,12 +14,12 @@ use crate::tolerance::COORD_EPS;
 // Child records keep their layout and paint callbacks with measured geometry.
 #[allow(clippy::type_complexity)]
 pub(in crate::layout::multicol) fn column_kids(
-    kids: Vec<(Element, crate::layout::fragment::Shape)>,
+    kids: Vec<(Element, crate::layout::fragment::FlowMargins)>,
 ) -> (
     Vec<Option<BoxStyle>>,
     Vec<usize>,
     Vec<crate::layout::fragment::types::Par>,
-    Vec<(Element, crate::layout::fragment::Shape)>,
+    Vec<(Element, crate::layout::fragment::FlowMargins)>,
 ) {
     // Линии остаются в Taffy-дереве контейнера; копия сохраняет flex sizing,
     // фон и static position. Regrow читает их после layout.
@@ -109,7 +109,7 @@ pub(in crate::layout::multicol) fn stack_children(
     fixed: Option<f32>,
     kid_parent: Vec<Option<BoxStyle>>,
     kid_par: Vec<crate::layout::fragment::types::Par>,
-    kids: Vec<(Element, crate::layout::fragment::Shape)>,
+    kids: Vec<(Element, crate::layout::fragment::FlowMargins)>,
     prepared: Vec<crate::layout::multicol::stack_child::Prepared>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
     // Единственный вложенный многоколоночник заданной высоты в балансируемых

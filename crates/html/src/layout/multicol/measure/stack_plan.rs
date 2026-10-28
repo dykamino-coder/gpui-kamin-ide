@@ -5,7 +5,7 @@ use super::{column_layout_width, column_measure_width, measure_children};
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
-use crate::layout::fragment::{Shape, with_lines};
+use crate::layout::fragment::{FlowMargins, with_lines};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed, Position};
 use crate::style::values::value::Len;
@@ -20,7 +20,7 @@ pub(crate) struct StackPlan {
     pub(crate) oof_static: Vec<(usize, Element)>,
     pub(crate) nested_whole: std::cell::RefCell<Vec<u64>>,
     pub(crate) measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
-    pub(crate) stackable: Option<Vec<(Element, Shape)>>,
+    pub(crate) stackable: Option<Vec<(Element, FlowMargins)>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -213,26 +213,27 @@ pub(crate) fn plan_at(
             .then(|| super::laid::pending_mixed(ge, merged, opts.cx.frame()))
             .flatten()
     });
-    let stackable: Option<Vec<(Element, Shape)>> = laid.or(pending).or(vertical).or_else(|| {
-        with_lines(merged, line_col_w, opts, |opts| {
-            measure_children(
-                ge,
-                merged,
-                opts,
-                first_flow,
-                last_flow,
-                outer_frag,
-                (line_col_w, layout_col_w),
-                whole_ok,
-                &nested_whole,
-                &measured_kids,
-                col_vert,
-                col_rl,
-                measure_ok,
-                pag_ok,
-            )
-        })
-    });
+    let stackable: Option<Vec<(Element, FlowMargins)>> =
+        laid.or(pending).or(vertical).or_else(|| {
+            with_lines(merged, line_col_w, opts, |opts| {
+                measure_children(
+                    ge,
+                    merged,
+                    opts,
+                    first_flow,
+                    last_flow,
+                    outer_frag,
+                    (line_col_w, layout_col_w),
+                    whole_ok,
+                    &nested_whole,
+                    &measured_kids,
+                    col_vert,
+                    col_rl,
+                    measure_ok,
+                    pag_ok,
+                )
+            })
+        });
     StackPlan {
         line_col_w,
         layout_col_w,

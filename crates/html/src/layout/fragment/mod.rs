@@ -30,8 +30,8 @@ pub(super) mod fragment_mask;
 pub(crate) mod gap_fragment;
 mod row_element;
 
-mod shape;
-pub(crate) use shape::Shape;
+mod flow_margins;
+pub(crate) use flow_margins::FlowMargins;
 
 /// Условия записи разрывов: `paged` — стопка страниц (монолитом считается и
 /// `contain: size`, см. `solid_box`); `viewport` — размер области просмотра

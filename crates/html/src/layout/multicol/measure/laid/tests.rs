@@ -35,7 +35,6 @@ fn copies_export_collapsed_margins_before_root_layout() {
     )
     .expect("all copies are recorded");
     assert_eq!(kids[0].1.margin_top, 7.0);
-    assert_eq!(kids[0].1.height, 0.0);
     let Node::Element(inner) = &kids[0].0.children[0] else {
         panic!("inner")
     };
@@ -88,7 +87,6 @@ fn pending_tree_waits_for_width_without_resolving_percentages() {
     let kids = children(host, &BoxStyle::default(), frame(&tree), 120.0, &measured)
         .expect("definite width");
     assert_eq!(kids[0].1.margin_top, 12.0);
-    assert_eq!(kids[0].1.height, 0.0);
 }
 
 #[test]
@@ -116,7 +114,6 @@ fn vertical_copies_export_logical_margins_without_estimating_width() {
             &measured,
         )
         .expect("vertical copy");
-        assert_eq!(kids[0].1.height, 0.0);
         assert_eq!(kids[0].1.margin_top, if reverse { 7.0 } else { 3.0 });
         assert_eq!(kids[0].1.margin_bottom, if reverse { 3.0 } else { 7.0 });
         assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
@@ -136,7 +133,6 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
         .expect("converted float has one ordinary block flow");
     assert!(kids[0].0.marks.float_block);
     assert!(kids[0].0.style.used().float.is_none());
-    assert_eq!(kids[0].1.height, 0.0);
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
 }
 
@@ -169,7 +165,6 @@ fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
         let kids = children(host, &BoxStyle::default(), frame(&tree), width, &measured)
             .expect("definite calc basis");
         assert_eq!(kids[0].1.margin_top, width * 0.2 + 7.0);
-        assert_eq!(kids[0].1.height, 0.0);
         let Node::Element(inner) = &kids[0].0.children[0] else {
             panic!("inner")
         };

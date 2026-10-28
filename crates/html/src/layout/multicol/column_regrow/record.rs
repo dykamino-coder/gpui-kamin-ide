@@ -69,7 +69,7 @@ impl ColumnStack {
                 .as_ref()
                 .is_some_and(|w| w.blocks().is_some_and(|b| b.clips_block));
             if clipped {
-                // Shape-оценка может включать содержимое за clip box. Только
+                // Обрезанное содержимое за clip box не продолжается: только
                 // измеренный border box участвует в продолжении колонок.
                 c.h = f32::from(if axis.is_vertical() {
                     sz.width

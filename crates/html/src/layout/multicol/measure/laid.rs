@@ -5,7 +5,7 @@ use crate::dom::{Element, Node};
 use crate::layout::block::margins::fragment_box;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::cx::FrameCx;
-use crate::layout::fragment::Shape;
+use crate::layout::fragment::FlowMargins;
 use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::BoxStyle;
@@ -19,7 +19,7 @@ pub(crate) fn children(
     vcx: FrameCx<'_>,
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
@@ -46,10 +46,9 @@ pub(crate) fn children(
             let (margin_top, margin_bottom) = crate::layout::block::margins::fragment_margins(&c)?;
             Some((
                 c,
-                Shape {
+                FlowMargins {
                     margin_top,
                     margin_bottom,
-                    ..Shape::default()
                 },
             ))
         })
@@ -68,7 +67,7 @@ pub(crate) fn pending_mixed(
     host: &Element,
     merged: &BoxStyle,
     vcx: FrameCx<'_>,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     host.children
         .iter()
         .filter(|n| !is_blank(n))
@@ -83,7 +82,7 @@ pub(crate) fn pending_mixed(
                     None | Some(crate::style::computed::Position::Relative)
                 )
                 && (used.float.unwrap_or(0) == 0 || crate::layout::float::block_like_float(&used));
-            block.then(|| (resolved_lengths(c, merged, vcx), Shape::default()))
+            block.then(|| (resolved_lengths(c, merged, vcx), FlowMargins::default()))
         })
         .collect()
 }
@@ -94,7 +93,7 @@ pub(crate) fn pending(
     host: &Element,
     merged: &BoxStyle,
     vcx: FrameCx<'_>,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
@@ -108,7 +107,7 @@ pub(crate) fn pending(
                 return None;
             }
             let c = resolved_lengths(c, merged, vcx);
-            Some((c, Shape::default()))
+            Some((c, FlowMargins::default()))
         })
         .collect()
 }
@@ -122,7 +121,7 @@ pub(crate) fn vertical_children(
     width: f32,
     reverse: bool,
     measured: &RefCell<Vec<(u64, f32)>>,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
@@ -156,7 +155,7 @@ pub(crate) fn vertical_kid(
     width: f32,
     reverse: bool,
     measured: &RefCell<Vec<(u64, f32)>>,
-) -> Option<(Element, Shape)> {
+) -> Option<(Element, FlowMargins)> {
     let c = crate::layout::block::margins::vertical_fragment_box(c, width, reverse, vcx.values);
     let margin = |l| match l {
         None | Some(crate::style::values::value::Len::Auto) => Some(0.0),
@@ -168,10 +167,9 @@ pub(crate) fn vertical_kid(
     } else {
         (c.style.used().margin.left, c.style.used().margin.right)
     };
-    let shape = Shape {
+    let shape = FlowMargins {
         margin_top: margin(start)?,
         margin_bottom: margin(end)?,
-        ..Shape::default()
     };
     measured.borrow_mut().push((c.node_id, width));
     Some((c, shape))
@@ -183,7 +181,7 @@ pub(crate) fn pending_vertical(
     merged: &BoxStyle,
     vcx: FrameCx<'_>,
     reverse: bool,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
@@ -197,7 +195,7 @@ pub(crate) fn pending_vertical(
                 return None;
             }
             let c = resolved_lengths(c, merged, vcx);
-            Some((c, Shape::default()))
+            Some((c, FlowMargins::default()))
         })
         .collect()
 }

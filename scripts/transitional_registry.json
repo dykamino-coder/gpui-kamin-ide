@@ -45,11 +45,6 @@
     "reason": "Rebuild повторно строит полные копии с распорками вместо продолжения; удалить callback в P22 после перевода consumers P13–P21 на child tokens."
   },
   {
-    "file": "crates/html/src/layout/fragment/shape.rs",
-    "task": "F2-7",
-    "reason": "Shape объединяет оценочную высоту и synthetic cuts/forced/solid; удалить оценочную роль в P22 после P21, сохранив только реальные geometry types."
-  },
-  {
     "file": "crates/html/src/layout/fragment/types/scope.rs",
     "task": "F2-7",
     "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."

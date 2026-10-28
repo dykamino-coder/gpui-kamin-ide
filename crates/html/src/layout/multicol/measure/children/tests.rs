@@ -127,10 +127,6 @@ fn wrapped_multicol_uses_its_laid_height_instead_of_summing_inner_columns() {
     .expect("independently laid-out multicol descendant");
     assert_eq!(kids.len(), 1);
     assert!(!kids[0].0.marks.paginate);
-    assert_eq!(
-        kids[0].1.height, 0.0,
-        "height is deferred to the copy layout"
-    );
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
 }
 

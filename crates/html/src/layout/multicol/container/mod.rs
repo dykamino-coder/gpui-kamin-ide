@@ -1,4 +1,4 @@
-//! Многоколоночная ветвь `element()`: из готовых мер детей `(Element, Shape)` собирает
+//! Многоколоночная ветвь `element()`: из готовых мер детей `(Element, FlowMargins)` собирает
 //! `ColumnStack` контейнера. Здесь число копий, высота заливки при `column-fill: auto`,
 //! план `box-decoration-break: clone`, линейка или спецификация линеек промежутков для
 //! `GapRulePainter`, щупы статической позиции внепоточных детей и их заместители после
@@ -6,7 +6,7 @@
 
 use crate::dom::Element;
 use crate::layout::build_contracts::Layer;
-use crate::layout::fragment::Shape;
+use crate::layout::fragment::FlowMargins;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::stacking::fixed_cb_layer_box;
@@ -32,7 +32,7 @@ pub(crate) fn multicol_column_stack(
     inherited: &Computed,
     merged: BoxStyle,
     opts: &RenderOpts,
-    kids: Vec<(Element, Shape)>,
+    kids: Vec<(Element, FlowMargins)>,
     cols: u16,
     column_width: Option<Len>,
     used_gap: f32,
@@ -72,17 +72,10 @@ pub(crate) fn multicol_column_stack(
         opts,
         move |opts| {
             let (e, inherited, opts) = (&e, &inherited, &opts);
+            // Копии под ряды внешнего фрагментаинера добавляет укладка по
+            // измеренной протяжённости (`reserve_row_copies`).
             let copies = match rows {
-                Some(r) => {
-                    let per = r.h.unwrap_or(f32::MAX).max(1.0);
-                    let span = kids
-                        .iter()
-                        .filter(|(c, _)| c.style.used().column_span != Some(true))
-                        .map(|(_, s)| (s.height / per).ceil() as usize)
-                        .max()
-                        .unwrap_or(0);
-                    span.saturating_add(cols as usize).saturating_add(1)
-                }
+                Some(_) => (cols as usize).saturating_add(1),
                 None => cols.max(1) as usize,
             };
             let deferred = (line_col_w.is_none() && nest_rows.is_none())
@@ -97,8 +90,8 @@ pub(crate) fn multicol_column_stack(
             };
             let prepared: Vec<_> = kids
                 .iter()
-                .map(|(c, s)| {
-                    crate::layout::multicol::stack_child::prepare(c, s, opts, col_vert, col_rl)
+                .map(|(c, _)| {
+                    crate::layout::multicol::stack_child::prepare(c, opts, col_vert, col_rl)
                 })
                 .collect();
             // All column rules use the canonical gap painter, including vertical writing modes.

@@ -20,8 +20,8 @@ pub(super) fn copy_monolith(
         matches!(n, Node::Element(k)
             if !k.inline || k.style.used().display == Some(Display::Block))
     };
-    // Size containment uses the same monolith predicate as fragment
-    // measurement and grow_pushed. Nested row copies remain fragmentable.
+    // Size containment uses the shared monolith predicate. Nested row copies
+    // remain fragmentable.
     let monolith = nest_row.is_none()
         && (size_monolith(copy)
         || copy.style.used().break_inside_avoid
@@ -53,7 +53,7 @@ pub(super) fn copy_monolith(
         // высоте (css-break-4 §4.2; корень A3).
         || (copy.children.iter().any(|n| !is_blank(n))
             && !copy.children.iter().any(block_kid)
-            // Строки измерены (`line_run_shape`) — режется
+            // Строки измерены раскладкой копии — режется
             // между строк, не монолит.
             && cuts.is_empty()));
     (scrolls, monolith)

@@ -33,8 +33,8 @@ pub struct StackChild {
     /// Recorder of the main copy (`Watched::for_blocks`): measured breaks.
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
-    /// (`Some(ширина колонки)`), а не мера `render::shape_full`: та ребёнка не
-    /// выразила (флоаты, внепоточные потомки …). Ставится в
+    /// (`Some(ширина колонки)`): флоаты, внепоточные потомки и строки ребёнка
+    /// выражает только она. Ставится в
     /// `request_column_layout` до укладки. BandFlow добавляет измеренные границы
     /// строк; без них ребёнок режется краем колонки.
     pub measure: Option<f32>,
@@ -148,9 +148,7 @@ pub struct StackChild {
     /// фрагментаинера не тянутся, а коробка таблицы — тянется (css-break-3
     /// §box-splitting; Blink `table_layout_algorithm.cc` — фрагмент таблицы
     /// занимает остаток, `fragmentation_utils.cc:563` «Consumed block-size …
-    /// is always stretched to the fragmentainers»). Распорка роста
-    /// (`grow_pushed`) в пустой ячейке коробки не находит, и в хвосте было
-    /// пусто. Хвост красится цветом фона по ширине разложенной копии.
+    /// is always stretched to the fragmentainers»). Хвост красится цветом фона по ширине разложенной копии.
     pub slack: Option<gpui::Hsla>,
     /// Ширина разложенной копии (для `slack`), ставится в `prepaint`.
     pub laid_w: std::cell::Cell<f32>,

@@ -47,8 +47,8 @@ impl Recipe {
         let (parents, _, parallel, kids) = column_kids(kids);
         let prepared = kids
             .iter()
-            .map(|(c, s)| {
-                crate::layout::multicol::stack_child::prepare(c, s, &opts, vertical, reverse)
+            .map(|(c, _)| {
+                crate::layout::multicol::stack_child::prepare(c, &opts, vertical, reverse)
             })
             .collect();
         let children = stack_children(

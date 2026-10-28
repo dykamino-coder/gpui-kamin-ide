@@ -130,7 +130,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                             let kids = plan.stackable.unwrap_or_else(|| panic!("{mode}: {body}"));
                             assert!(!kids.is_empty(), "{mode}: {body}");
                             assert!(
-                                kids.iter().all(|(_, shape)| shape.height == 0.0),
+                                kids.iter().all(|(_, m)| m.margin_top.is_finite()),
                                 "{mode}, auto={auto}, width={width:?}, rows={}: {body}",
                                 rows.is_some()
                             );
@@ -189,7 +189,6 @@ fn clone_and_fixed_height_overflow_children_are_measured_by_their_copies() {
             );
         }
         let kids = plan.stackable.expect("measured children");
-        assert!(kids.iter().all(|(_, shape)| shape.height == 0.0), "{body}");
         assert_eq!(plan.measured_kids.borrow().len(), kids.len(), "{body}");
     }
 }

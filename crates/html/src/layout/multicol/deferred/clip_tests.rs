@@ -62,9 +62,7 @@ fn measured_stack(
     let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(kids);
     let prepared = kids
         .iter()
-        .map(|(e, shape)| {
-            crate::layout::multicol::stack_child::prepare(e, shape, &opts, false, false)
-        })
+        .map(|(e, _)| crate::layout::multicol::stack_child::prepare(e, &opts, false, false))
         .collect();
     let children = crate::layout::multicol::container::kids::stack_children(
         &merged,

@@ -139,8 +139,6 @@ pub(super) fn page_kids_from_groups(
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.
         kids.push(crate::layout::page::page_stack::PageKid {
-            #[cfg(feature = "wpt-harness")]
-            probe: opts.frag.probe.clone(),
             // Повтор шапки и подвала — только у таблицы, чьи секции записала
             // раскладка копии: полосы решаются по ним (`page_stack::kid`).
             repeat: measured_table
@@ -174,7 +172,6 @@ pub(super) fn page_kids_from_groups(
             force_before: fb || renamed,
             renamed,
             force_after: fa,
-            shape: None,
             page: start_name,
             mt: margins.0,
             mb: margins.1,

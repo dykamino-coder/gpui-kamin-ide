@@ -173,8 +173,8 @@ fn recorded(empty: bool, measured: bool, flow_lines: bool) -> Recorded {
 
 /// Строки копии срезаются `text-box-trim` у разрывов колонок (css-inline-3
 /// §4.2; csswg-drafts#5335): срез многоколоночника или коробки копии.
-/// Измеренные строки абзаца несут свои края без среза у разрыва, и точки
-/// такой копии остаются у оценки строк (`line_run_shape`).
+/// Измеренные строки абзаца несут свои края без среза у разрыва: точки такой
+/// копии сдвигает срез (`StackChild::line_trim`).
 pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::Computed) -> bool {
     fn trims(e: &Element, depth: u8) -> bool {
         e.style.used().text_box_trim_start

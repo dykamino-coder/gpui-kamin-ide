@@ -51,8 +51,6 @@ fn table_rows_and_cells_come_from_the_laid_copy() {
         )
         .expect("table child");
         assert_eq!(kids.len(), 1);
-        assert_eq!(kids[0].1.height, 0.0, "height comes from layout");
-        assert!(kids[0].1.cuts.is_empty() && kids[0].1.solid.is_empty());
         assert_eq!(*measured.borrow(), vec![(table.node_id, 50.0)]);
     }
 }
@@ -120,6 +118,5 @@ fn nested_columns_preserve_the_roots_fragmentation_dispatch() {
         // Каждый ребёнок измеряется раскладкой своей копии, как бы его ни
         // фрагментировали дальше.
         assert_eq!(*measured.borrow(), vec![(root.node_id, 80.0)], "{style}");
-        assert_eq!(kids[0].1.height, 0.0, "height comes from layout");
     }
 }
