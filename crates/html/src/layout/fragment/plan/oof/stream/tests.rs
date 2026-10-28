@@ -128,7 +128,13 @@ fn unfragmented_box_at_its_anchor_column_end_stays_whole_there() {
     whole.unfragmented = true;
     // A fragmented box anchored at the very same end starts in the next column.
     let mut streams = Streams::new(vec![whole, input(1, 18., 16., false)]).unwrap();
-    assert!(streams.resume(0, columns(18.), false).unwrap().fragments.is_empty());
+    assert!(
+        streams
+            .resume(0, columns(18.), false)
+            .unwrap()
+            .fragments
+            .is_empty()
+    );
     let batch = streams.resume(1, columns(18.), false).unwrap();
     assert_eq!(
         batch
