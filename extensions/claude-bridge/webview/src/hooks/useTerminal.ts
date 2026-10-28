@@ -3,7 +3,9 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { stripMouseTracking } from '../lib/strip-mouse-tracking'
+import { CONSOLE_SCROLLBACK, CONSOLE_OVERVIEW_RULER, configureTerminalInteraction } from '../lib/terminal-interaction'
+import { configureTerminalClipboard } from '../lib/terminal-clipboard'
+import '../lib/terminal-console.css'
 import { buildTerminalTheme } from '../theme/terminal-theme'
 import { resolvedTheme, themeNonce } from '../theme/apply-theme'
 import { useBridge } from './useBridge'
@@ -39,45 +41,6 @@ export interface TerminalRefs {
   hasOutput: boolean
 }
 
-function copyText(bridge: { writeClipboard?: (t: string) => unknown } | undefined, text: string): void {
-  // Sandboxed webview iframe (opaque origin): navigator.clipboard.writeText AND
-  // document.execCommand('copy') are both blocked, so terminal copy silently did
-  // nothing. Route through the host clipboard (vscode.env.clipboard via the
-  // `write-clipboard` channel) — same path the chat copy button uses.
-  if (bridge?.writeClipboard) { void bridge.writeClipboard(text); return }
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
-  } else {
-    fallbackCopy(text)
-  }
-}
-
-function fallbackCopy(text: string): void {
-  const ta = document.createElement('textarea')
-  ta.value = text
-  ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
-  document.body.appendChild(ta)
-  ta.select()
-  document.execCommand('copy')
-  document.body.removeChild(ta)
-}
-
-async function pasteToTerminal(
-  bridge: { sendInput(tabId: string, text: string): void; readClipboard?: () => Promise<string> },
-  tabId: string,
-): Promise<void> {
-  try {
-    // navigator.clipboard.readText is denied inside the sandboxed iframe (focus is
-    // in the iframe, not the top document) — same reason copy routes through the
-    // host. Read via the host clipboard (native arboard); fall back to navigator
-    // only outside the webview (dashboard), where it works.
-    const text = bridge.readClipboard ? await bridge.readClipboard() : await navigator.clipboard.readText()
-    if (text) bridge.sendInput(tabId, text)
-  } catch {
-    // clipboard unavailable / denied — ignore
-  }
-}
-
 export function useTerminal(tabId: string): TerminalRefs {
   const bridge = useBridge()
   // Preact useRef with explicit null initial value — cast to avoid undefined in type
@@ -100,11 +63,11 @@ export function useTerminal(tabId: string): TerminalRefs {
       cursorStyle: 'block',
       theme: buildTerminalTheme(),
       allowProposedApi: true,
-      // No scrollback (owner, 2026-10-13): the console is a full-screen TUI that
-      // must always fit the panel height and never scroll. Scrollback only kept
-      // stale copies of earlier screens (e.g. the CLI banner twice) behind a
-      // square scrollbar, and FitAddon reserved a scrollbar column for it.
-      scrollback: 0,
+      // Normal-screen history is bounded; xterm's alternate buffer has no
+      // scrollback. FitAddon reserves the real scrollbar width inside the panel.
+      scrollback: CONSOLE_SCROLLBACK,
+      overviewRuler: CONSOLE_OVERVIEW_RULER,
+      macOptionClickForcesSelection: true,
     })
 
     const fitAddon = new FitAddon()
@@ -115,6 +78,7 @@ export function useTerminal(tabId: string): TerminalRefs {
     const serializeAddon = new SerializeAddon()
     terminal.loadAddon(serializeAddon)
     terminal.open(container)
+    const disposeInteraction = configureTerminalInteraction(terminal, container)
     fitAddon.fit()
 
     // Clear the "Connecting…" overlay only once the terminal has REAL visible
@@ -133,164 +97,40 @@ export function useTerminal(tabId: string): TerminalRefs {
     // Document recreation/restart starts fresh; reconnect clears this cache.
     try {
       const stored = terminalSnapshots.get(tabId)
-      // Snapshots taken before the mouse-tracking filter landed may still
-      // carry the DECSET that disables drag-selection — strip on restore too.
-      if (stored) terminal.write(stripMouseTracking(stored))
+      // Restore application mouse modes together with the screen contents.
+      if (stored) terminal.write(stored)
     } catch { /* malformed historical snapshot */ }
 
     const disposeRenderer = enableTerminalRenderer(terminal)
 
-    // Clipboard: paste via native paste event on xterm's textarea
-    const xtermTextarea = container.querySelector('textarea')
-    if (xtermTextarea) {
-      xtermTextarea.addEventListener('paste', (e) => {
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        const text = (e as ClipboardEvent).clipboardData?.getData('text/plain')
-        if (text) {
-          bridge.sendInput(tabId, text)
-        } else {
-          pasteToTerminal(bridge, tabId).catch(() => { console.warn('[terminal] Paste failed') })
+    const disposeClipboard = configureTerminalClipboard(terminal, container, {
+      writeText: text => bridge.writeClipboard(text),
+      readText: () => bridge.readClipboard(),
+      handleKey: (ev: KeyboardEvent): boolean => {
+        // CEF keydown uses the initial layout; printable input arrives through
+        // keypress with the Unicode character supplied by the native shell.
+        if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) return false
+
+        // Escape → block xterm from forwarding \x1b to the CLI ONLY when the
+        // bridge is actually going to cancel (active turn or queued messages).
+        // In that case useGlobalEscapeCancel sends \x03 + restores the local
+        // queue, so we mustn't also let CLI's Esc handler run
+        // `popAllCommandsFromQueue` (it would rehydrate ITS input first).
+        //
+        // When the CLI is IDLE with no queue, useGlobalEscapeCancel is a no-op,
+        // so blocking \x1b here would swallow Esc entirely — breaking every
+        // native CLI use of Escape (close a permission/model menu, dismiss the
+        // `/` autocomplete, clear the prompt line). Forward it instead.
+        if (ev.code === 'Escape' && !ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey) {
+          const tabId = activeTabId.value
+          const queued = tabId ? (localQueue.value.get(tabId) ?? []) : []
+          const isBusy = tabId ? !(tabPromptReady.value.get(tabId) ?? true) : false
+          const bridgeWillCancel = !!tabId && (isBusy || queued.length > 0)
+          return bridgeWillCancel ? false : true
         }
-      }, true)
-    }
 
-    // Key handler: use ev.code (physical key) — works with any keyboard layout
-    terminal.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
-      if (ev.type !== 'keydown') return true
-
-      // Печатный символ без модификаторов: НЕ отдавать xterm'у keydown —
-      // offscreen-рендерер CEF не получает смену раскладки (нет
-      // WM_INPUTLANGCHANGE), и keydown-трансляция VK→символ залипает на
-      // стартовом языке («ввод в консоли не переключается на русский»).
-      // keypress придёт следом с готовым юникодом из CHAR-события шелла
-      // (там раскладка юзера учтена) — его xterm и обработает.
-      if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
-        return false
-      }
-
-      // Ctrl+Shift+C → always copy selection
-      if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC') {
-        const sel = terminal.getSelection()
-        if (sel) {
-          copyText(bridge, sel)
-          terminal.clearSelection()
-        }
-        return false
-      }
-
-      // Ctrl+Shift+V / Ctrl+V → block xterm, let paste event handle it
-      if (ev.ctrlKey && ev.code === 'KeyV') {
-        return false
-      }
-
-      // Ctrl+C → copy if selection, else send SIGINT
-      if (ev.ctrlKey && !ev.shiftKey && ev.code === 'KeyC') {
-        const sel = terminal.getSelection()
-        if (sel) {
-          copyText(bridge, sel)
-          terminal.clearSelection()
-          return false
-        }
-        return true // let xterm send ^C
-      }
-
-      // Escape → block xterm from forwarding \x1b to the CLI ONLY when the
-      // bridge is actually going to cancel (active turn or queued messages).
-      // In that case useGlobalEscapeCancel sends \x03 + restores the local
-      // queue, so we mustn't also let CLI's Esc handler run
-      // `popAllCommandsFromQueue` (it would rehydrate ITS input first).
-      //
-      // When the CLI is IDLE with no queue, useGlobalEscapeCancel is a no-op,
-      // so blocking \x1b here would swallow Esc entirely — breaking every
-      // native CLI use of Escape (close a permission/model menu, dismiss the
-      // `/` autocomplete, clear the prompt line). Forward it instead.
-      if (ev.code === 'Escape' && !ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey) {
-        const tabId = activeTabId.value
-        const queued = tabId ? (localQueue.value.get(tabId) ?? []) : []
-        const isBusy = tabId ? !(tabPromptReady.value.get(tabId) ?? true) : false
-        const bridgeWillCancel = !!tabId && (isBusy || queued.length > 0)
-        return bridgeWillCancel ? false : true
-      }
-
-      // Ctrl+X → copy selection (cut)
-      if (ev.ctrlKey && ev.code === 'KeyX') {
-        const sel = terminal.getSelection()
-        if (sel) {
-          copyText(bridge, sel)
-          terminal.clearSelection()
-          return false
-        }
         return true
-      }
-
-      return true
-    })
-
-    // Context menu (right-click): copy / paste
-    container.addEventListener('contextmenu', (e) => {
-      e.preventDefault()
-      const sel = terminal.getSelection()
-
-      // Remove existing menu if any
-      document.querySelector('.terminal-context-menu')?.remove()
-
-      const menu = document.createElement('div')
-      menu.className = 'terminal-context-menu'
-      menu.style.cssText = `
-        position: fixed; left: ${e.clientX}px; top: ${e.clientY}px;
-        background: var(--bg-surface); border: 1px solid var(--bg-overlay); border-radius: var(--radius-sm);
-        padding: 4px 0; z-index: 99999; min-width: 140px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4); font-size: 13px;
-      `
-
-      const itemStyle = `
-        padding: 6px 14px; color: var(--text-primary); cursor: pointer;
-        display: flex; align-items: center; gap: 10px;
-      `
-      const hoverIn = (el: HTMLElement) => { el.style.background = 'var(--bg-overlay)' }
-      const hoverOut = (el: HTMLElement) => { el.style.background = 'transparent' }
-
-      if (sel) {
-        const copyItem = document.createElement('div')
-        copyItem.style.cssText = itemStyle
-        copyItem.innerHTML = '<i class="fas fa-copy" style="width:16px;text-align:center;color:var(--text-muted)"></i> Copy'
-        copyItem.onmouseenter = () => hoverIn(copyItem)
-        copyItem.onmouseleave = () => hoverOut(copyItem)
-        copyItem.onclick = () => { copyText(bridge, sel); terminal.clearSelection(); menu.remove() }
-        menu.appendChild(copyItem)
-      }
-
-      const pasteItem = document.createElement('div')
-      pasteItem.style.cssText = itemStyle
-      pasteItem.innerHTML = '<i class="fas fa-paste" style="width:16px;text-align:center;color:var(--text-muted)"></i> Paste'
-      pasteItem.onmouseenter = () => hoverIn(pasteItem)
-      pasteItem.onmouseleave = () => hoverOut(pasteItem)
-      pasteItem.onclick = () => {
-        pasteToTerminal(bridge, tabId).catch(() => { console.warn('[terminal] Paste failed') })
-        menu.remove()
-      }
-      menu.appendChild(pasteItem)
-
-      if (sel) {
-        const selectAllItem = document.createElement('div')
-        selectAllItem.style.cssText = itemStyle
-        selectAllItem.innerHTML = '<i class="fas fa-check-double" style="width:16px;text-align:center;color:var(--text-muted)"></i> Select All'
-        selectAllItem.onmouseenter = () => hoverIn(selectAllItem)
-        selectAllItem.onmouseleave = () => hoverOut(selectAllItem)
-        selectAllItem.onclick = () => { terminal.selectAll(); menu.remove() }
-        menu.appendChild(selectAllItem)
-      }
-
-      document.body.appendChild(menu)
-
-      const dismiss = (ev: MouseEvent) => {
-        if (!menu.contains(ev.target as Node)) {
-          menu.remove()
-          document.removeEventListener('mousedown', dismiss)
-        }
-      }
-      setTimeout(() => document.addEventListener('mousedown', dismiss), 0)
+      },
     })
 
     // Forward terminal input to server
@@ -368,7 +208,7 @@ export function useTerminal(tabId: string): TerminalRefs {
     fitAddonRef.current = fitAddon
 
     // Register in global registry for bridge.onOutput routing
-    terminalRegistry.set(tabId, { terminal, fitAddon, needsClear: false, pendingOutput: [], rafHandle: null, outputCarry: '' })
+    terminalRegistry.set(tabId, { terminal, fitAddon, needsClear: false, pendingOutput: [], rafHandle: null })
 
     // Send initial size
     bridge.resize(tabId, terminal.cols, terminal.rows)
@@ -391,6 +231,8 @@ export function useTerminal(tabId: string): TerminalRefs {
       // immediately so a fast tab-recreate doesn't pile up zombie GL
       // contexts.
       disposeRenderer()
+      disposeInteraction()
+      disposeClipboard()
       try { serializeAddon.dispose() } catch { /* ignore */ }
       terminal.dispose()
       terminalRef.current = null
