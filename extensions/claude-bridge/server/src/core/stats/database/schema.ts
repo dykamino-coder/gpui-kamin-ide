@@ -22,6 +22,16 @@ async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
 }
 
 export async function initSchema(db: DuckDBConnection): Promise<void> {
+  await db.run(`CREATE TABLE IF NOT EXISTS mcp_tool_observations (
+    bridge_session_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    project TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    schema_bytes INTEGER NOT NULL,
+    timestamp TEXT NOT NULL,
+    calls BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (bridge_session_id, tool_name)
+  )`)
   await db.run(`
     CREATE TABLE IF NOT EXISTS requests (
       id TEXT PRIMARY KEY,
