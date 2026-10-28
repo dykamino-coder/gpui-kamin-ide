@@ -26,7 +26,6 @@ pub(super) async fn table_finish(
     opts: &RenderOpts,
 ) -> AnyElement {
     let px_of = |l| geom.px_of(l, opts);
-    let vcx = opts.cx.vcx();
     let mut grid_children = std::mem::take(&mut out.under);
     if layers.paint_layers {
         grid_children.push(
@@ -85,7 +84,6 @@ pub(super) async fn table_finish(
         &geom.row_elements,
         tracks,
         table_tall,
-        vcx,
     );
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки

@@ -19,50 +19,49 @@ pub(super) fn clone_plan_of(
     prepared: &[crate::layout::multicol::stack_child::Prepared],
     vcx: ValueCx<'_>,
 ) -> Vec<Vec<(f32, f32)>> {
-    let clone_plan: Vec<Vec<(f32, f32)>> =
-        if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
-            let probe: Vec<crate::layout::fragment::types::Kid> = kids
-                .iter()
-                .zip(prepared)
-                .enumerate()
-                .map(|(pi, ((c, s), geometry))| {
-                    crate::layout::fragment::types::Kid {
-                        h: geometry.h,
-                        mt: s.margin_top,
-                        mb: s.margin_bottom,
-                        monolith: solid_box(c),
-                        cuts: geometry.cuts.clone(),
-                        force_before: edge_break(c, false, vcx),
-                        force_after: edge_break(c, true, vcx),
-                        avoid_before: edge_avoid(c, false, vcx),
-                        avoid_after: edge_avoid(c, true, vcx),
-                        forced: geometry.forced.clone(),
-                        solid: geometry.solid.clone(),
-                        float_min: 0.0,
-                        avoid: Vec::new(),
-                        keep: Vec::new(),
-                        span: c.style.used().column_span == Some(true) && !c.inline,
-                        over: geometry.over,
-                        clone_dec: clone_dec(c),
-                        // Тот же предикат, что у `StackChild` ниже:
-                        // иначе план соседа разошёлся бы с укладкой.
-                        overflow_top: fixed.is_some()
-                            && rows.is_none()
-                            && !parallel_items_inside(c, 4, vcx),
-                        repeat: Default::default(),
-                        par: kid_par[pi],
-                    }
-                })
-                .collect();
-            crate::layout::multicol::column_stack::ColumnStack::frags_of(
-                &probe,
-                cols as usize,
-                fixed,
-                rows,
-                copies,
-            )
-        } else {
-            Vec::new()
-        };
+    let clone_plan: Vec<Vec<(f32, f32)>> = if !col_vert
+        && kids.iter().any(|(c, _)| clone_dec(c).is_some())
+    {
+        let probe: Vec<crate::layout::fragment::types::Kid> = kids
+            .iter()
+            .zip(prepared)
+            .enumerate()
+            .map(|(pi, ((c, s), geometry))| {
+                crate::layout::fragment::types::Kid {
+                    h: geometry.h,
+                    mt: s.margin_top,
+                    mb: s.margin_bottom,
+                    monolith: solid_box(c),
+                    cuts: geometry.cuts.clone(),
+                    force_before: edge_break(c, false, vcx),
+                    force_after: edge_break(c, true, vcx),
+                    avoid_before: edge_avoid(c, false, vcx),
+                    avoid_after: edge_avoid(c, true, vcx),
+                    forced: geometry.forced.clone(),
+                    solid: geometry.solid.clone(),
+                    float_min: 0.0,
+                    avoid: Vec::new(),
+                    keep: Vec::new(),
+                    span: c.style.used().column_span == Some(true) && !c.inline,
+                    over: geometry.over,
+                    clone_dec: clone_dec(c),
+                    // Тот же предикат, что у `StackChild` ниже:
+                    // иначе план соседа разошёлся бы с укладкой.
+                    overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(c, 4),
+                    repeat: Default::default(),
+                    par: kid_par[pi],
+                }
+            })
+            .collect();
+        crate::layout::multicol::column_stack::ColumnStack::frags_of(
+            &probe,
+            cols as usize,
+            fixed,
+            rows,
+            copies,
+        )
+    } else {
+        Vec::new()
+    };
     clone_plan
 }

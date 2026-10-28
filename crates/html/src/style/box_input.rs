@@ -75,8 +75,9 @@ impl std::ops::Deref for BoxStyleInput {
 pub(crate) enum BoxOrigin {
     /// An element's own box that layout placed under another box parent
     /// (a hoisted absolutely positioned box, a float lifted out of an inline).
-    /// The element stays its own CSS inheritance parent's child (CSS Cascade 5
-    /// §7.2, CSS 2 §9.5 and §10.1).
+    /// The element keeps its own cascaded and computed style and stays its CSS
+    /// inheritance parent's child (CSS Cascade 5 §7.2, CSS 2 §9.5 and §10.1);
+    /// it carries no layout-made input (`dom::Element::set_moved_box`).
     Moved,
     /// The generated `::marker` box of a list item (CSS Lists 3 §3.1,
     /// CSS Pseudo 4 §3.3).
@@ -87,9 +88,10 @@ pub(crate) enum BoxOrigin {
     EmbeddedRoot,
 }
 
-/// The box input of a layout-made box and the reason layout made it. Its
-/// computed values were resolved under the box's CSS parent box; the element
-/// that carries it re-enters box construction under its new box parent.
+/// The box input of a box layout generated (`BoxOrigin::Marker`,
+/// `BoxOrigin::EmbeddedRoot`) and the reason layout made it. Its computed
+/// values were resolved under the box's CSS parent box; the element that
+/// carries it re-enters box construction under its new box parent.
 #[derive(Clone, Debug)]
 pub(crate) struct LayoutBoxInput {
     pub(crate) origin: BoxOrigin,

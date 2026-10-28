@@ -95,7 +95,7 @@ impl TableBox {
                 out.caps_top.push(kid);
             }
         }
-        grid_rows(e, vcx, |rows| {
+        grid_rows(e, |rows| {
             let mut group = 0usize;
             for (i, r) in rows.iter().enumerate() {
                 let same = |j: usize| {

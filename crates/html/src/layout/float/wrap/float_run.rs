@@ -66,7 +66,8 @@ fn floats_alone(
         .map(|n| match n {
             Node::Element(f) if !is_blank(n) && band_float_m(f, em).is_none() => {
                 let mut f = f.clone();
-                let font = f.style.cascaded().font_cx(vcx).family.to_owned();
+                // Семейство наследуется: `ex`/`ch` полей — по вычисленному шрифту.
+                let font = f.style.used().font_cx(vcx).family.to_owned();
                 let font = crate::style::computed::FontCx::new(&font, em);
                 let m = &mut f.style.used_mut().margin;
                 for side in [&mut m.top, &mut m.right, &mut m.bottom, &mut m.left] {
