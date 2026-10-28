@@ -243,6 +243,7 @@ impl ColumnStack {
             self.lay_out_main(i, window, cx);
         }
         self.reserve_row_copies();
+        self.reserve_overflow_copies();
         true
     }
 }
