@@ -3,7 +3,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
-use crate::style::computed::{Align, BoxStyle, Computed, Display, Justify, Sides, TextAlign};
+use crate::style::computed::{BoxStyle, Display, Justify, TextAlign};
 use crate::style::values::value::Len;
 
 /// Дети `fieldset` с отрисованной легендой — первой `legend` в потоке — в полосе
@@ -65,18 +65,8 @@ fn band(legend: Node, border: f32, pad: f32) -> Element {
         },
         _ => None,
     };
-    let style = Computed {
-        display: Some(Display::Flex),
-        align_items: Some(Align::Center),
-        justify_content: justify,
-        min_height: Some(Len::Px(border)),
-        margin: Sides {
-            top: Some(Len::Px(-(border + pad))),
-            bottom: Some(Len::Px(pad)),
-            ..Default::default()
-        },
-        ..Default::default()
-    };
+    let style = crate::style::computed::legend_band::legend_band(border, pad, justify);
+
     let node_id = match &legend {
         Node::Element(l) => l.node_id ^ LEGEND_BAND_ID,
         _ => 0,
