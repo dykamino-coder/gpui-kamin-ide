@@ -5,8 +5,10 @@ export type ClientMessage =
   | { type: 'session:interrupt' }
   | { type: 'session:submitText'; data: string }
   | { type: 'session:resize'; cols: number; rows: number }
-  | { type: 'mcp:response'; sessionId?: string; requestId: string; result: unknown }
-  | { type: 'mcp:denied'; sessionId?: string; requestId: string; reason: string }
+  | { type: 'mcp:response'; taskOwner?: string
+      sessionId?: string; requestId: string; result: unknown }
+  | { type: 'mcp:denied'; taskOwner?: string
+      sessionId?: string; requestId: string; reason: string }
   | { type: 'elicitation:response'; requestId: string; action: 'accept' | 'deny' | 'dismiss'; content?: Record<string, unknown> }
   | { type: 'session:resume'; noSpawnOnNotFound?: boolean; token: string; conversationId: string; cwd?: string; cols?: number; rows?: number; protocolVersion?: number }
   | { type: 'session:change-effort'; effort: string }
@@ -17,20 +19,24 @@ export type ClientMessage =
 
 // Server → VSIX bridge host
 export type ServerMessage =
+  | { type: 'mcp:cancel'; requestId: string; taskOwner?: string }
   | { type: 'mcp:result-ack'; sessionId: string; requestId: string; accepted: boolean }
   | { type: 'session:resume-not-found' }
-  | { type: 'session:created'; resumeNotFound?: boolean; sessionId: string; effort?: string; model?: string; settingsDir?: string }
+  | { type: 'session:created'; mcpTaskOwner?: string
+      resumeNotFound?: boolean; sessionId: string; effort?: string; model?: string; settingsDir?: string }
   | { type: 'session:output'; data: string }
   | { type: 'session:exit'; code: number; sessionId: string }
   | { type: 'session:error'; error: string; fatal?: boolean }
-  | { type: 'mcp:call'; requestId: string; toolName: string; input: Record<string, unknown> }
+  | { type: 'mcp:call'; taskOwner?: string
+      requestId: string; toolName: string; input: Record<string, unknown> }
   | { type: 'jsonl:entries'; entries: unknown[] }
   | { type: 'jsonl:status'; status: string; filePath?: string; error?: string; compacted?: boolean; replayComplete?: boolean; fileHead?: string; fileSize?: number; replayProgress?: { sent: number; total: number }; segmentIndex?: { boundaries: { ts: string }[]; counts: number[] } }
   | { type: 'jsonl:segment-response'; fromTs: string; toTs: string; records: unknown[] }
   | { type: 'elicitation:request'; requestId: string; toolName: string; message: string; requestedSchema?: Record<string, unknown> }
   | { type: 'session:agent-spawned'; parentSessionId: string; childSessionId: string; agentName: string; description: string }
   | { type: 'session:tree-update'; tree: unknown[] }
-  | { type: 'session:restarted'; sessionId: string; effort?: string; model?: string }
+  | { type: 'session:restarted'; mcpTaskOwner?: string
+      sessionId: string; effort?: string; model?: string }
   // Горячая смена модели (/model в живой PTY) — sessionId прежний, без реплея.
   | {
       type: 'session:model-changed'

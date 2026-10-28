@@ -42,7 +42,8 @@ import type { ToolDefinition } from './types'
 
 export const KEEPALIVE_MS = 25_000
 /** Frames the stream may hold for a slow reader (headers flush + one change +
- *  keepalives). Nothing is enqueued beyond it: changes coalesce instead. */
+ *  keepalives). Changes coalesce at this limit; controlled subscription shutdown
+ *  may append one final response before closing. */
 export const STREAM_QUEUE_FRAMES = 4
 /** Consecutive keepalive ticks with a full queue before the reader counts as
  *  stalled and the stream is closed. */
@@ -62,6 +63,7 @@ interface NotificationStream {
   readonly id: number
   /** Announce a change: send now if the reader has room, else coalesce. */
   notify(): 'sent' | 'coalesced' | 'closed'
+  task(task: Record<string, unknown>): void
   close(): void
 }
 
@@ -97,13 +99,28 @@ function markPending(sessionId: string, reason: string): 'pending' | 'dropped' {
  * outlives its session even if the teardown hook is missed; `signal` (the
  * request's abort signal) ends it as soon as the client goes away.
  */
-export function openToolNotificationStream(sessionId: string, isAlive: () => boolean, signal?: AbortSignal): Response {
+export function openToolNotificationStream(
+  sessionId: string,
+  isAlive: () => boolean,
+  signal?: AbortSignal,
+  subscription?: { id: string | number; toolsListChanged: boolean; taskIds?: string[] },
+): Response {
   streams.get(sessionId)?.close()
 
+  const listFrame = subscription
+    ? encoder.encode(
+        frame({
+          jsonrpc: '2.0',
+          method: TOOLS_LIST_CHANGED,
+          params: { _meta: { 'io.modelcontextprotocol/subscriptionId': subscription.id } },
+        }),
+      )
+    : LIST_CHANGED_FRAME
   const id = nextStreamId++
   let closed = false
   // A change the reader has not received yet (queue was full). At most one.
   let dirty = false
+  const taskUpdates = new Map<string, Uint8Array>()
   let stalledTicks = 0
   let timer: ReturnType<typeof setInterval> | null = null
   let ctrl: ReadableStreamDefaultController<Uint8Array> | null = null
@@ -140,6 +157,13 @@ export function openToolNotificationStream(sessionId: string, isAlive: () => boo
     closed = true
     detach()
     try {
+      // Controlled shutdown completes the subscriptions/listen request. A
+      // disconnected/stalled reader instead reconnects and fetches task state.
+      if (subscription && ['session-gone', 'replaced-or-teardown'].includes(reason)) {
+        ctrl?.enqueue(
+          encoder.encode(frame({ jsonrpc: '2.0', id: subscription.id, result: { resultType: 'complete' } })),
+        )
+      }
       ctrl?.close()
     } catch {
       /* consumer already gone */
@@ -151,12 +175,26 @@ export function openToolNotificationStream(sessionId: string, isAlive: () => boo
     id,
     notify() {
       if (closed) return 'closed'
-      if (offer(LIST_CHANGED_FRAME)) {
+      if (subscription && !subscription.toolsListChanged) return 'sent'
+      if (offer(listFrame)) {
         dirty = false
         return 'sent'
       }
       dirty = true
       return 'coalesced'
+    },
+    task(task) {
+      const taskId = String(task.taskId)
+      if (!subscription?.taskIds?.includes(taskId) || closed) return
+      const bytes = encoder.encode(
+        frame({
+          jsonrpc: '2.0',
+          method: 'notifications/tasks',
+          params: { ...task, _meta: { 'io.modelcontextprotocol/subscriptionId': subscription.id } },
+        }),
+      )
+      if (offer(bytes)) taskUpdates.delete(taskId)
+      else taskUpdates.set(taskId, bytes)
     },
     close: () => finish('replaced-or-teardown'),
   }
@@ -166,9 +204,25 @@ export function openToolNotificationStream(sessionId: string, isAlive: () => boo
       start(controller) {
         ctrl = controller
         // First bytes flush headers so the client's fetch resolves immediately.
-        offer(OPEN_FRAME)
-        if (pending.delete(sessionId)) dirty = true
-        if (dirty && offer(LIST_CHANGED_FRAME)) dirty = false
+        offer(
+          subscription
+            ? encoder.encode(
+                frame({
+                  jsonrpc: '2.0',
+                  method: 'notifications/subscriptions/acknowledged',
+                  params: {
+                    _meta: { 'io.modelcontextprotocol/subscriptionId': subscription.id },
+                    notifications: {
+                      ...(subscription.toolsListChanged ? { toolsListChanged: true } : {}),
+                      ...(subscription.taskIds?.length ? { taskIds: subscription.taskIds } : {}),
+                    },
+                  },
+                }),
+              )
+            : OPEN_FRAME,
+        )
+        if (pending.delete(sessionId) && (!subscription || subscription.toolsListChanged)) dirty = true
+        if (dirty && offer(listFrame)) dirty = false
         timer = setInterval(() => {
           if (!isAlive()) {
             finish('session-gone')
@@ -188,7 +242,11 @@ export function openToolNotificationStream(sessionId: string, isAlive: () => boo
       pull() {
         // The reader drained the queue: deliver the coalesced change, once.
         stalledTicks = 0
-        if (dirty && offer(LIST_CHANGED_FRAME)) dirty = false
+        if (dirty && offer(listFrame)) dirty = false
+        for (const [taskId, bytes] of taskUpdates) {
+          if (!offer(bytes)) break
+          taskUpdates.delete(taskId)
+        }
       },
       cancel() {
         if (closed) return
@@ -214,7 +272,7 @@ export function openToolNotificationStream(sessionId: string, isAlive: () => boo
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
-      'Mcp-Session-Id': sessionId,
+      ...(!subscription ? { 'Mcp-Session-Id': sessionId } : {}),
     },
   })
 }
@@ -223,6 +281,10 @@ export function openToolNotificationStream(sessionId: string, isAlive: () => boo
  *  `sent` — written to the live stream; `coalesced` — the reader is behind and
  *  already owes one notification; `pending` — no stream, flushed when the next
  *  one opens; `dropped` — no stream and the pending cap is reached (logged). */
+export function notifyTaskChanged(sessionId: string, task: Record<string, unknown>): void {
+  streams.get(sessionId)?.task(task)
+}
+
 export function notifyToolListChanged(sessionId: string): NotifyResult {
   const result = streams.get(sessionId)?.notify()
   if (result === 'sent' || result === 'coalesced') {
