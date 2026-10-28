@@ -96,7 +96,7 @@ describe('INC-2026-0070: reverseSlugToPath keeps the real token directory', () =
     // The token's other sessions survived; this session's own directory did not.
     fs.mkdirSync(path.join(SESSIONS_BASE, tokenDir, 'sibling'), { recursive: true })
 
-    expect(helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
     expect(fs.readdirSync(SESSIONS_BASE)).toEqual([tokenDir])
   })
 })

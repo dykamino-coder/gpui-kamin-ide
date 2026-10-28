@@ -22,7 +22,21 @@ import type { JsonlEntry, JsonlStatus } from '../../shared/jsonl-types'
 import { SubagentJsonlWatcher } from './subagent-jsonl-watcher'
 import { compactionScanner, type CompactionSub } from './compaction-scanner'
 import { fingerprintTranscript } from './jsonl-fingerprint'
-import { buildSegmentIndex, type SegmentIndex } from './segment-index'
+import { SegmentIndexBuilder, type SegmentIndex } from './segment-index'
+import { readJsonlLines, readRange } from './jsonl-lines'
+import {
+  RecordIndex,
+  REPLAY_BATCH_BYTES,
+  REPLAY_BATCH_RECORDS,
+  batchBackward,
+  batchForward,
+  batchSpan,
+  loadBatch,
+  normalizeOutcome,
+  oversizedStub,
+  type SendOutcome,
+  type Tagged,
+} from './jsonl-replay'
 import { debugLog } from '../logging'
 
 // Cheap pre-filter before JSON.parse — skips ~60-80% of lines on sessions
@@ -75,7 +89,12 @@ const TAIL_BACKPRESSURE_RETRY_MS = 400
 // FS that drops inotify events, so it can be slow. (Without fs.watch we fall to
 // the aggressive TAIL_POLL_MS for streaming responsiveness.)
 const WATCH_SAFETY_POLL_MS = 10_000
-const INITIAL_BATCH_SIZE = 200
+// Live tail: complete records read per pass (a longer single record is read
+// whole). Further growth is picked up by an immediate follow-up pass.
+const TAIL_BATCH_BYTES = 4 * 1024 * 1024
+// First re-check delay while the client socket is over the replay high-water
+// mark; doubles up to REPLAY_BACKPRESSURE_RETRY_MS.
+const DRAIN_POLL_MS = 25
 const INITIAL_BATCH_DELAY_MS = 10
 // Pause-and-retry the SAME replay batch when the client socket is backpressured
 // (sendEntries → false, bufferedAmount past the 16MB cap). Without this the
@@ -148,7 +167,12 @@ export class JsonlWatcher {
   // этому флагу НЕ двигает курсор зеркала: tail-preview шлёт хвост файла первым,
   // и курсор прыгал на конец — недосланный резюмом промежуток фильтровался как
   // «дубль» навсегда (прод-дыра 7092-7116, «сообщение не отрисовалось»).
-  private sendEntries: (entries: JsonlEntry[], replay?: boolean) => boolean
+  private sendEntries: (entries: JsonlEntry[], replay?: boolean) => boolean | SendOutcome
+  /** True when the client socket can take another frame (open and under the
+   *  replay high-water mark). Absent = always writable (tests). */
+  private writable?: () => boolean
+  /** Aborts the reads of the running replay generation. */
+  private replayAbort: AbortController | null = null
   private sendStatus: (status: JsonlStatus) => void
   private onUserEntry?: (entry: JsonlEntry) => void
   private onConversationId?: (conversationId: string) => void
@@ -215,7 +239,7 @@ export class JsonlWatcher {
    */
   constructor(
     sessionCreatedAt: number,
-    sendEntries: (entries: JsonlEntry[], replay?: boolean) => boolean,
+    sendEntries: (entries: JsonlEntry[], replay?: boolean) => boolean | SendOutcome,
     sendStatus: (status: JsonlStatus) => void,
     onUserEntry?: (entry: JsonlEntry) => void,
     settingsDir?: string,
@@ -223,7 +247,9 @@ export class JsonlWatcher {
     sendSubagentEntries?: (agentName: string, entries: JsonlEntry[], agentId?: string) => boolean | void,
     onReplayReset?: () => void,
     onStatsEntry?: (entry: JsonlEntry) => void,
+    writable?: () => boolean,
   ) {
+    this.writable = writable
     this.sessionCreatedAt = sessionCreatedAt
     this.sendEntries = sendEntries
     this.sendStatus = sendStatus
@@ -414,39 +440,76 @@ export class JsonlWatcher {
     return this.filePath
   }
 
-  /** Stream everything from a byte offset to the end, in the same bounded,
+  /** Stream everything from a byte offset to the end, in the same byte-bounded,
    *  backpressure-aware batches the initial replay uses.
    *
    *  This is the whole point of tagging entries with `_pos`: a client that
    *  mirrors the transcript locally reconnects with "I have up to N bytes" and
-   *  gets only the tail, instead of the entire 85MB file being re-read, re-sent
-   *  and re-parsed on every restart. The caller MUST have verified the file's
+   *  gets only the tail, instead of the entire file being re-read, re-sent and
+   *  re-parsed on every restart. The caller MUST have verified the file's
    *  fingerprint first — resuming into a rewritten file would splice new records
-   *  onto stale ones. */
+   *  onto stale ones.
+   *
+   *  Returns the boundary just past the last DELIVERED record. The live stats
+   *  hooks are not fired: this is a client top-up, the session's own replay and
+   *  tail already counted these records. */
   async streamFrom(offset: number, live: () => boolean): Promise<number> {
     if (!this.filePath) return offset
-    return this.readEntriesStreaming(
-      this.filePath,
-      offset,
-      async (batch) => {
-        for (let i = 0; i < batch.length;) {
-          if (!live()) return
-          const slice = batch.slice(i, i + INITIAL_BATCH_SIZE)
-          if (this.sendEntries(slice, true) === false) {
-            await delay(REPLAY_BACKPRESSURE_RETRY_MS)
-            continue
-          }
-          i += INITIAL_BATCH_SIZE
-          await delay(INITIAL_BATCH_DELAY_MS)
+    const filePath = this.filePath
+    let delivered = offset
+    let readTo = offset
+    let batch: JsonlEntry[] = []
+    let batchBytes = 0
+    const flush = async (): Promise<boolean> => {
+      if (batch.length === 0) return true
+      const ok = await this.deliver(batch, true, live)
+      batch = []
+      batchBytes = 0
+      if (!ok) return false
+      delivered = readTo
+      await delay(INITIAL_BATCH_DELAY_MS)
+      return true
+    }
+    const abort = new AbortController()
+    try {
+      for await (const line of readJsonlLines(filePath, { start: offset, signal: abort.signal })) {
+        if (!live()) {
+          abort.abort()
+          break
         }
-      },
-      live,
-    )
+        if (line.text.includes(SKIP_LINE_MARKER)) {
+          readTo = line.end
+          if (batch.length === 0) delivered = readTo
+          continue
+        }
+        let parsed: Tagged
+        try {
+          parsed = JSON.parse(line.text) as Tagged
+        } catch {
+          if (!line.terminated) break // torn tail — the live tail delivers it
+          readTo = line.end
+          if (batch.length === 0) delivered = readTo
+          continue
+        }
+        parsed._pos = line.start
+        parsed._posEnd = line.end
+        batch.push(parsed)
+        batchBytes += line.end - line.start
+        readTo = line.end
+        if (batch.length >= REPLAY_BATCH_RECORDS || batchBytes >= REPLAY_BATCH_BYTES) {
+          if (!(await flush())) return delivered
+        }
+      }
+      await flush()
+    } catch {
+      /* aborted or unreadable — report what was delivered */
+    }
+    return delivered
   }
 
   stop(): void {
     this.stopped = true
-    this.replayGen++ // cancel any in-flight initial replay
+    this.cancelReplay() // cancel any in-flight replay, including its reads
     if (this.discoveryTimer) {
       clearInterval(this.discoveryTimer)
       this.discoveryTimer = null
@@ -694,11 +757,9 @@ export class JsonlWatcher {
   /** Rebuild the compact-segment index from the CURRENT file and push it to the
    *  client, so a live /compact updates the segment strip without a reload.
    *
-   *  Deliberately a fresh FULL parse (same as readInitialContent's), not an
-   *  incremental patch: buildSegmentIndex counts VISIBLE entries per segment,
-   *  which needs every record, and compaction is rare enough that the re-read
-   *  cost is a non-issue. It does NOT resend entries or touch globalOrdCounter —
-   *  only boundaries + counts are needed — so it can't perturb entry ordering.
+   *  A streaming pass that keeps only the running counts (SegmentIndexBuilder),
+   *  never the parsed records. It does NOT resend entries or touch
+   *  globalOrdCounter — only boundaries + counts are needed.
    *
    *  Coalesced: a boundary arriving mid-rebuild sets a re-run flag rather than
    *  overlapping two parses (which could deliver stale-then-fresh out of order). */
@@ -714,27 +775,21 @@ export class JsonlWatcher {
         this.rebuildIndexAgain = false
         const filePath = this.filePath
         if (!filePath || this.stopped) return
-        const all: JsonlEntry[] = []
         const gen = this.replayGen
+        const signal = this.replayAbort?.signal
         const live = () => !this.stopped && this.filePath === filePath && this.replayGen === gen
+        const builder = new SegmentIndexBuilder()
         try {
-          await this.readEntriesStreaming(
-            filePath,
-            0,
-            async (batch) => {
-              all.push(...batch)
-            },
-            live,
-          )
+          for await (const line of readJsonlLines(filePath, { signal })) {
+            if (!live()) return
+            const parsed = parseJsonlLine(line.text)
+            if (parsed) builder.add(parsed)
+          }
         } catch {
           return
         }
         if (!live()) return
-        const bounds: number[] = []
-        all.forEach((e, i) => {
-          if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') bounds.push(i)
-        })
-        this.sendStatus({ status: 'watching', filePath, segmentIndex: buildSegmentIndex(all, bounds) })
+        this.sendStatus({ status: 'watching', filePath, segmentIndex: builder.build() })
       } while (this.rebuildIndexAgain && !this.stopped)
     } finally {
       this.rebuildingIndex = false
@@ -744,12 +799,9 @@ export class JsonlWatcher {
 
   /** Paint the newest turns BEFORE the full parse.
    *
-   *  `readInitialContent` reads and JSON-parses the WHOLE transcript into
-   *  memory before it emits its first batch — on a 15MB session that measured
-   *  17.3s of empty load-cover, with even the progress percent not appearing
-   *  until then (the streaming reader's batches were all accumulated, never
-   *  forwarded). The user only ever looks at the tail first, and the tail is a
-   *  bounded read: seek near the end, parse a few hundred records, send.
+   *  The full replay is two streaming passes over the whole transcript; the user
+   *  only ever looks at the tail first, and the tail is a bounded read: seek
+   *  near the end, parse a few hundred records, send.
    *
    *  Safety, since the authoritative pass re-sends these same records:
    *   - Only records WITH a uuid are previewed. The client dedups those by
@@ -764,7 +816,7 @@ export class JsonlWatcher {
    *     is as valid as the authoritative one.
    *   - Stats hooks are deliberately NOT fired: the full pass counts these
    *     records, and firing here would double them. */
-  private async emitTailPreview(size: number, live: () => boolean): Promise<void> {
+  private async emitTailPreview(size: number, live: () => boolean, signal: AbortSignal): Promise<void> {
     const PREVIEW_BYTES = 512 * 1024
     const PREVIEW_MAX_RECORDS = 200
     // Below the window the full parse is already fast; a preview would only add
@@ -772,39 +824,35 @@ export class JsonlWatcher {
     if (!this.filePath || size <= PREVIEW_BYTES) return
 
     const start = size - PREVIEW_BYTES
-    let text: string
-    const fd = await fsp.open(this.filePath, 'r')
-    try {
-      const buf = Buffer.alloc(PREVIEW_BYTES)
-      const { bytesRead } = await fd.read(buf, 0, PREVIEW_BYTES, start)
-      text = buf.toString('utf8', 0, bytesRead)
-    } finally {
-      await fd.close()
-    }
+    const buf = await readRange(this.filePath, start, size)
     if (!live()) return
 
     // The window almost certainly cuts through a record; its bytes belong to a
-    // line we cannot parse, so skip to the first newline.
-    const firstNl = text.indexOf('\n')
+    // line we cannot parse, so skip to the first newline. Framing is on bytes,
+    // so a multi-byte character can never be split.
+    const firstNl = buf.indexOf(0x0a)
     if (firstNl === -1) return
-    let lineStart = start + Buffer.byteLength(text.slice(0, firstNl + 1), 'utf8')
 
     const base = globalOrdCounter
     const out: JsonlEntry[] = []
-    for (const line of text.slice(firstNl + 1).split('\n')) {
-      const thisLineStart = lineStart
-      lineStart += Buffer.byteLength(line, 'utf8') + 1
-      if (!line.trim() || line.includes(SKIP_LINE_MARKER)) continue
+    for (let a = firstNl + 1; a < buf.length;) {
+      const nl = buf.indexOf(0x0a, a)
+      if (nl === -1) break // torn last line — the full pass decides about it
+      const thisLineStart = start + a
+      const lineEnd = start + nl + 1
+      const text = buf.toString('utf8', a, nl)
+      a = nl + 1
+      if (!text.trim() || text.includes(SKIP_LINE_MARKER)) continue
       let parsed: JsonlEntry
       try {
-        parsed = JSON.parse(line) as JsonlEntry
+        parsed = JSON.parse(text) as JsonlEntry
       } catch {
         continue
       }
       if (!parsed.uuid) continue
-      const tagged = parsed as JsonlEntry & { _pos?: number; _posEnd?: number; _ord?: number }
+      const tagged = parsed as Tagged
       tagged._pos = thisLineStart
-      tagged._posEnd = lineStart
+      tagged._posEnd = lineEnd
       tagged._ord = base + thisLineStart
       out.push(parsed)
     }
@@ -814,16 +862,67 @@ export class JsonlWatcher {
     const tail = out.slice(-PREVIEW_MAX_RECORDS)
     if (tail.length === 0) return
 
-    // Deliver it, don't just fire it. `sendEntries` returns false when the frame
-    // went nowhere — and right after a resume the client's socket is often not
-    // attached yet, because the tab was created milliseconds ago. Ignoring that
-    // made the preview a coin toss: measured, it left the server at 126ms while
-    // the chat stayed empty until the FULL parse landed 14.6s later, since
-    // nothing re-sent it. Retry on the same cadence the bulk replay uses.
+    // Deliver it, don't just fire it: right after a resume the client's socket
+    // is often not attached yet. Retry a bounded number of times.
     for (let attempt = 0; attempt < PREVIEW_SEND_ATTEMPTS; attempt++) {
-      if (!live()) return
-      if (this.sendEntries(tail, true) !== false) return
+      if (!live() || signal.aborted) return
+      if (this.writable && !this.writable()) {
+        await delay(REPLAY_BACKPRESSURE_RETRY_MS)
+        continue
+      }
+      const r = normalizeOutcome(this.sendEntries(tail, true))
+      if (r === 'sent' || r === 'oversized') return
       await delay(REPLAY_BACKPRESSURE_RETRY_MS)
+    }
+  }
+
+  /** Invalidate any running replay: bump the generation and abort its I/O. */
+  private cancelReplay(): void {
+    this.replayGen++
+    this.replayAbort?.abort()
+    this.replayAbort = null
+  }
+
+  /** Wait until the client socket can take another frame (or the caller is no
+   *  longer live). Polls a cheap probe — nothing is re-read or re-serialised. */
+  private async waitWritable(live: () => boolean): Promise<boolean> {
+    let wait = DRAIN_POLL_MS
+    while (live()) {
+      if (!this.writable || this.writable()) return true
+      await delay(wait)
+      wait = Math.min(REPLAY_BACKPRESSURE_RETRY_MS, wait * 2)
+    }
+    return false
+  }
+
+  /** Deliver a batch with backpressure. Temporary pressure waits for drain;
+   *  a frame that can never fit is split by halves, and a single record that
+   *  can never fit is replaced by an explicit stub — never retried forever. */
+  private async deliver(entries: JsonlEntry[], replay: boolean, live: () => boolean): Promise<boolean> {
+    if (entries.length === 0) return true
+    for (;;) {
+      if (!(await this.waitWritable(live))) return false
+      const r = normalizeOutcome(this.sendEntries(entries, replay))
+      if (r === 'sent') return true
+      if (r === 'oversized') {
+        if (entries.length > 1) {
+          const mid = entries.length >> 1
+          return (
+            (await this.deliver(entries.slice(0, mid), replay, live)) && this.deliver(entries.slice(mid), replay, live)
+          )
+        }
+        const e = entries[0] as Tagged
+        const bytes =
+          typeof e._pos === 'number' && typeof e._posEnd === 'number'
+            ? e._posEnd - e._pos
+            : Buffer.byteLength(JSON.stringify(e), 'utf8')
+        console.warn('[jsonl] record too large for one frame; sending a stub', { uuid: e.uuid, bytes })
+        const stub = normalizeOutcome(this.sendEntries([oversizedStub(e, bytes)], replay))
+        if (stub === 'sent' || stub === 'oversized') return true
+        continue // the stub met ordinary pressure: wait and retry the record
+      }
+      // backpressured / closed: wait for drain (closed → live() decides).
+      await delay(DRAIN_POLL_MS)
     }
   }
 
@@ -831,12 +930,13 @@ export class JsonlWatcher {
     if (this.stopped || !this.filePath) return
     const filePath = this.filePath
     // Capture the generation: any switchToFile/stop/replayAll after this point
-    // invalidates this run at the next await boundary.
-    const gen = ++this.replayGen
+    // invalidates this run at the next await boundary and aborts its reads.
+    this.cancelReplay()
+    const gen = this.replayGen
+    const abort = new AbortController()
+    this.replayAbort = abort
+    const signal = abort.signal
     const live = () => !this.stopped && gen === this.replayGen
-    // Built from the full parse below and handed to the client with
-    // replayComplete — the authoritative compact-segment index (every segment +
-    // visible counts), which the client's bounded mirror cannot produce.
     let segmentIndex: SegmentIndex | undefined
 
     // Full replay restarts the live dashboard counters from zero — the reads
@@ -844,50 +944,63 @@ export class JsonlWatcher {
     this.onReplayReset?.()
 
     try {
-      const stat = await fsp.stat(this.filePath)
+      const stat = await fsp.stat(filePath)
       this.timing('readInitialContent.stat', `${String(Math.round(stat.size / 1024))}KB`)
       if (!live()) return
       this.fileIdentity = `${stat.dev}:${stat.ino}`
       if (stat.size === 0) {
         this.lastOffset = 0
         this.startPolling()
-        // An empty transcript still has to SAY it finished. `replayComplete` is
-        // the client's only signal that the chat is done loading — it binds the
-        // tab, drops the load-cover and enables the composer on it. Returning
-        // silently left a brand-new session (whose file is empty by definition)
-        // covered until the client's 20s give-up watchdog, with the phase
-        // timeline reading "waiting on replay-status". There is nothing to
-        // replay, which is an ANSWER, not a reason to stay quiet.
-        this.sendStatus({ status: 'watching', filePath: this.filePath, replayComplete: true })
+        // An empty transcript still has to SAY it finished: `replayComplete` is
+        // the client's only signal that the chat is done loading.
+        this.sendStatus({ status: 'watching', filePath, replayComplete: true })
         return
       }
 
-      // Show the newest turns now, instead of after the whole file is parsed.
+      // Show the newest turns now, instead of after the whole file is indexed.
       // Best-effort: a failure here must not cost the real replay.
       try {
-        await this.emitTailPreview(stat.size, live)
+        await this.emitTailPreview(stat.size, live, signal)
         this.timing('tailPreview.done')
       } catch (err) {
+        if (!live()) return
         console.warn('[jsonl] tail preview failed (continuing with full replay)', err)
       }
       if (!live()) return
 
-      // Reverse-segment replay: paint the CURRENT (post-last-compact) dialog
-      // FIRST, then stream older segments newest→oldest in the background so a
-      // long session doesn't block on parsing its whole history. Each entry
-      // carries `_ord` (its position in file order) so the client keeps them
-      // chronological regardless of this out-of-order delivery.
-      const all: JsonlEntry[] = []
-      const endPos = await this.readEntriesStreaming(
-        this.filePath,
-        0,
-        async (batch) => {
-          all.push(...batch)
-        },
-        live,
-      )
+      // Pass 1 — index. One forward read; each record is parsed once for the
+      // stats hooks (which need file order) and the segment index, and only
+      // its byte range is kept.
+      const idx = new RecordIndex()
+      const builder = new SegmentIndexBuilder()
+      const bounds: number[] = []
+      let endPos = 0
+      for await (const line of readJsonlLines(filePath, { signal, end: stat.size })) {
+        if (line.text.includes(SKIP_LINE_MARKER)) {
+          endPos = line.end
+          continue
+        }
+        let parsed: JsonlEntry
+        try {
+          parsed = JSON.parse(line.text) as JsonlEntry
+        } catch {
+          // A torn LAST line stays unconsumed so the tail re-reads it whole;
+          // a malformed line in the middle is skipped for good.
+          if (line.terminated) endPos = line.end
+          continue
+        }
+        endPos = line.end
+        if (parsed.type === 'system' && (parsed as { subtype?: string }).subtype === 'compact_boundary') {
+          bounds.push(idx.length)
+        }
+        idx.push(line.start, line.end)
+        builder.add(parsed)
+        if (!live()) return
+        this.onStatsEntry?.(parsed)
+        if (parsed.type === 'user' && this.onUserEntry) this.onUserEntry(parsed)
+      }
       if (!live()) return
-      // An atomic replacement can happen while the old descriptor is parsed.
+      // An atomic replacement can happen while the old descriptor is read.
       // Never commit its offset as the cursor of the replacement file.
       const currentStat = await fsp.stat(filePath)
       if (!live()) return
@@ -895,105 +1008,65 @@ export class JsonlWatcher {
         this.replayRewrittenFile(filePath)
         return
       }
-      this.timing('fullParse.done', `${String(all.length)} records`)
+      this.timing('index.done', `${String(idx.length)} records`)
       const base = globalOrdCounter
-      all.forEach((e, i) => {
-        ;(e as JsonlEntry & { _ord?: number })._ord = base + i
-      })
-      globalOrdCounter = base + all.length
+      globalOrdCounter = base + idx.length
       // The tail picks up from where THIS read actually stopped — not from a
       // pre-read stat.size, which raced with concurrent CLI appends.
       this.lastOffset = endPos
-      // Split into segments at each compact boundary.
-      const bounds: number[] = []
-      all.forEach((e, i) => {
-        if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') bounds.push(i)
-      })
-      // Same pass, same data: the full compact-segment index for the strip.
-      segmentIndex = buildSegmentIndex(all, bounds)
+      segmentIndex = builder.build()
       const ranges: Array<[number, number]> = []
       let segStart = 0
       for (const b of bounds) {
         ranges.push([segStart, b])
         segStart = b
       }
-      ranges.push([segStart, all.length])
+      ranges.push([segStart, idx.length])
+
       // Byte-progress of the replay, for the client's "loading history … N%".
-      // `total` is the file size; `sentBytes` accumulates the byte span of every
-      // batch actually delivered. Delivery is newest-first and out of order, but
-      // the records don't overlap, so summing each batch's own byte span gives
-      // honest monotonic coverage regardless of order — the same reason `_ord`
-      // makes out-of-order delivery safe. Emitted per batch (a few hundred tiny
-      // messages over a multi-second replay), skipped for a file small enough to
-      // arrive in one batch (nothing to show progress for).
+      // Records don't overlap, so summing each delivered batch's own byte span
+      // is honest monotonic coverage regardless of delivery order.
       const total = stat.size
       let sentBytes = 0
-      const batchSpan = (batch: JsonlEntry[]): number => {
-        let span = 0
-        for (const e of batch) {
-          const r = e as JsonlEntry & { _pos?: number; _posEnd?: number }
-          if (typeof r._pos === 'number' && typeof r._posEnd === 'number') span += r._posEnd - r._pos
-        }
-        return span
+      const emitProgress = (from: number, to: number): void => {
+        if (idx.length <= REPLAY_BATCH_RECORDS) return // single batch — no bar
+        sentBytes = Math.min(total, sentBytes + batchSpan(idx, from, to))
+        this.sendStatus({ status: 'watching', filePath, replayProgress: { sent: sentBytes, total } })
       }
-      const emitProgress = (batch: JsonlEntry[]): void => {
-        if (all.length <= INITIAL_BATCH_SIZE) return // single batch — no bar
-        sentBytes = Math.min(total, sentBytes + batchSpan(batch))
-        this.sendStatus({ status: 'watching', filePath: this.filePath!, replayProgress: { sent: sentBytes, total } })
+      // Pass 2 — emit, one byte-bounded batch in memory at a time.
+      const emitBatch = async (from: number, to: number): Promise<boolean> => {
+        if (!live()) return false
+        const batch = await loadBatch(filePath, idx, from, to, base)
+        if (!live()) return false
+        if (!(await this.deliver(batch, true, live))) return false
+        emitProgress(from, to)
+        await delay(INITIAL_BATCH_DELAY_MS)
+        return true
       }
-      const emitRange = async ([s, e]: [number, number]): Promise<void> => {
+      const emitRange = async ([s, e]: [number, number]): Promise<boolean> => {
         for (let i = s; i < e;) {
-          if (!live()) return
-          const batch = all.slice(i, Math.min(e, i + INITIAL_BATCH_SIZE))
-          // Honor backpressure (mirrors checkForNewContent / the #78 tail fix):
-          // if the socket is over the cap, DON'T advance — wait for it to drain
-          // and resend the same batch. Flooding regardless dropped frames + OOM'd
-          // the renderer. Bounded by the session lifecycle: a truly dead socket
-          // closes → stop() → live() false ends the loop.
-          const delivered = this.sendEntries(batch, true)
-          if (delivered === false) {
-            await delay(REPLAY_BACKPRESSURE_RETRY_MS)
-            continue
-          }
-          emitProgress(batch)
-          i += INITIAL_BATCH_SIZE
-          await delay(INITIAL_BATCH_DELAY_MS)
+          const to = batchForward(idx, i, e)
+          if (!(await emitBatch(i, to))) return false
+          i = to
         }
+        return true
       }
-      /** Emit a range from its END backwards, newest batch first.
-       *
-       *  `emitRange` walks a segment from its start, so the CURRENT segment's
-       *  own tail — the turns from a minute ago — was the last thing sent of
-       *  it. Until then the chat's bottom showed the segment's oldest part, and
-       *  on a session compacted days ago that reads as "the chat jumped back
-       *  four days" (it recovers when the walk finishes, which is why it looked
-       *  intermittent). On a congested socket the backpressure retry stretches
-       *  that window badly.
-       *
-       *  Out-of-order delivery is safe by construction: every entry carries
-       *  `_ord` (its position in the file) and the client sorts on it — the same
-       *  property the newest→oldest segment order already relies on. */
-      const emitRangeFromEnd = async ([s, e]: [number, number]): Promise<void> => {
-        for (let end = e; end > s; end -= INITIAL_BATCH_SIZE) {
-          if (!live()) return
-          const start = Math.max(s, end - INITIAL_BATCH_SIZE)
-          const batch = all.slice(start, end)
-          const delivered = this.sendEntries(batch, true)
-          if (delivered === false) {
-            await delay(REPLAY_BACKPRESSURE_RETRY_MS)
-            end += INITIAL_BATCH_SIZE
-            continue
-          }
-          emitProgress(batch)
-          await delay(INITIAL_BATCH_DELAY_MS)
+      /** Emit a range from its END backwards, newest batch first: the current
+       *  segment's own tail is what the user looks at. Out-of-order delivery
+       *  is safe by construction — every entry carries `_ord`. */
+      const emitRangeFromEnd = async ([s, e]: [number, number]): Promise<boolean> => {
+        for (let end = e; end > s;) {
+          const from = batchBackward(idx, end, s)
+          if (!(await emitBatch(from, end))) return false
+          end = from
         }
+        return true
       }
       // Tail can start as soon as offset is known — emit replay concurrently.
       this.startPolling()
-      await emitRangeFromEnd(ranges[ranges.length - 1]!) // current dialog, newest turns first
+      if (!(await emitRangeFromEnd(ranges[ranges.length - 1]!))) return // current dialog first
       for (let s = ranges.length - 2; s >= 0; s--) {
-        if (!live()) break
-        await emitRange(ranges[s]!) // older segments, newest → oldest, in background
+        if (!(await emitRange(ranges[s]!))) return // older segments, newest → oldest
       }
       if (!live()) return
     } catch (err) {
@@ -1003,22 +1076,20 @@ export class JsonlWatcher {
         error: `Failed to read initial content: ${String(err)}`,
       })
       this.startPolling()
-      this.sendStatus({ status: 'watching', filePath: this.filePath!, replayComplete: true })
+      this.sendStatus({ status: 'watching', filePath, replayComplete: true })
       return
+    } finally {
+      if (this.replayAbort === abort) this.replayAbort = null
     }
 
     // Signal that all historical entries have been sent — and hand over the
-    // file's fingerprint. A client mirroring the transcript stores it beside
-    // the records; on the next launch it offers that fingerprint back and the
-    // server can tell "you hold a prefix of this same file, here is the rest"
-    // from "this file was rewritten, drop what you have". Without it the mirror
-    // has nothing to prove its copy is still valid, so it could never be
-    // trusted — and would be pointless.
+    // file's fingerprint, so a client mirroring the transcript can later prove
+    // its copy is a prefix of this same file.
     const fp = await fingerprintTranscript(filePath)
     if (!live()) return
     this.sendStatus({
       status: 'watching',
-      filePath: this.filePath!,
+      filePath,
       replayComplete: true,
       ...(fp ? { fileHead: fp.head, fileSize: fp.size } : {}),
       ...(segmentIndex ? { segmentIndex } : {}),
@@ -1163,6 +1234,7 @@ export class JsonlWatcher {
     const filePath = this.filePath
     const gen = this.replayGen
     const live = () => !this.stopped && this.filePath === filePath && this.replayGen === gen
+    let more = false
 
     try {
       const stat = await fsp.stat(filePath)
@@ -1173,7 +1245,11 @@ export class JsonlWatcher {
       }
       if (stat.size <= this.lastOffset) return
 
-      const { entries, endPos } = await this.readEntriesFromOffset(filePath, this.lastOffset)
+      // Bounded read: at most TAIL_BATCH_BYTES of complete records per pass
+      // (a single longer record is still read whole). A client that was frozen
+      // while the CLI wrote tens of MiB no longer costs one giant Buffer, one
+      // giant string and one giant frame.
+      const { entries, endPos, truncated } = await this.readEntriesFromOffset(filePath, this.lastOffset, stat.size)
       if (!live()) return
       const currentStat = await fsp.stat(filePath)
       if (!live()) return
@@ -1186,29 +1262,22 @@ export class JsonlWatcher {
       }
 
       if (entries.length === 0) {
-        // Only a torn trailing line (no complete entries yet) — advance past the
+        // Only skipped/torn lines (no complete entries yet) — advance past the
         // clean prefix and wait for the rest.
         this.lastOffset = Math.max(this.lastOffset, endPos)
+        more = truncated
         return
       }
 
-      // Try to deliver BEFORE advancing the offset. `sendEntries` returns false
-      // when the WS dropped the frame (bufferedAmount past the 16MB cap, or a
-      // slow/frozen client) — advancing then would strand these lines forever
-      // (they're in the file, but the tail never re-reads a consumed range). On a
-      // drop: keep the offset, don't fire per-entry side effects, and retry soon.
-      const delivered = this.sendEntries(entries)
-      if (delivered === false) {
-        if (this.tailRetryTimer) clearTimeout(this.tailRetryTimer)
-        this.tailRetryTimer = setTimeout(() => {
-          this.tailRetryTimer = null
-          if (!this.stopped && !this.reading) void this.checkForNewContent()
-        }, TAIL_BACKPRESSURE_RETRY_MS)
-        return
-      }
+      // Deliver BEFORE advancing the offset: if the socket cannot take the
+      // frame, wait for it to drain (no re-read, no re-serialise); the offset
+      // only moves past entries the client actually got, so a slow client can
+      // never lose transcript lines.
+      if (!(await this.deliver(entries, false, live))) return
       // Delivered — commit the offset and fire the per-entry hooks (stats +
       // user-entry) exactly once, now that the range won't be re-read.
       this.lastOffset = Math.max(this.lastOffset, endPos)
+      more = truncated
       let sawBoundary = false
       for (const parsed of entries) {
         this.onStatsEntry?.(parsed)
@@ -1217,163 +1286,55 @@ export class JsonlWatcher {
           sawBoundary = true
       }
       // A live /compact appends a compact_boundary to the SAME file, so it rides
-      // the tail — not switchToFile (a NEW file, which re-runs readInitialContent
-      // and rebuilds the index anyway). The segment strip is driven by the
-      // server's authoritative segmentIndex, built ONCE at replayComplete; without
-      // this the strip kept showing the pre-compact "Current" segment (stale count,
-      // no new segment) until a reload. Rebuild + resend it now.
+      // the tail — rebuild + resend the segment index now.
       if (sawBoundary) void this.rebuildSegmentIndex()
     } catch {
       // File might be temporarily unavailable, ignore
     } finally {
-      if (live()) this.reading = false
+      if (live()) {
+        this.reading = false
+        if (more) setImmediate(() => void this.checkForNewContent())
+      }
     }
   }
 
+  /** Read complete records from `offset`, stopping once TAIL_BATCH_BYTES of
+   *  them are collected. A torn trailing line is left unconsumed. */
   private async readEntriesFromOffset(
     filePath: string,
     offset: number,
-  ): Promise<{ entries: JsonlEntry[]; endPos: number }> {
-    // Buffered tail-read instead of fs.createReadStream + readline — the
-    // streaming variant hangs silently on Linux when the libuv threadpool
-    // is contended (DuckDB native + node-pty + crypto). Tail is bounded
-    // by lastOffset, typically <100KB per poll, so one-shot read is fine.
-    const stat = await fsp.stat(filePath)
-    if (stat.size <= offset) return { entries: [], endPos: offset }
-    const fd = await fsp.open(filePath, 'r')
-    let chunkText: string
-    try {
-      const buf = Buffer.alloc(stat.size - offset)
-      await fd.read(buf, 0, buf.length, offset)
-      chunkText = buf.toString('utf8')
-    } finally {
-      await fd.close()
-    }
+    size: number,
+  ): Promise<{ entries: JsonlEntry[]; endPos: number; truncated: boolean }> {
     const entries: JsonlEntry[] = []
-    const lines = chunkText.split('\n')
-    // A non-empty final element means the chunk ended mid-line (torn write) —
-    // exclude those bytes from endPos so the next poll re-reads the full line.
-    const tail = lines[lines.length - 1]!
-    let endPos = stat.size
-    let parseable = lines
-    if (tail.trim()) {
-      try {
-        JSON.parse(tail)
-      } catch {
-        endPos = stat.size - Buffer.byteLength(tail, 'utf8')
-        parseable = lines.slice(0, -1)
-      }
-    }
-    for (const line of parseable) {
-      if (!line.trim()) continue
-      if (line.includes(SKIP_LINE_MARKER)) continue
-      try {
-        // Parse only — the stats + user-entry hooks fire in checkForNewContent
-        // AFTER a successful send, so a backpressure re-read can't double-count.
-        entries.push(JSON.parse(line) as JsonlEntry)
-      } catch {
-        /* skip malformed */
-      }
-    }
-    return { entries, endPos }
-  }
-
-  /**
-   * Streaming variant: emits entry batches while parsing, keeps memory bounded
-   * on large initial files. onBatch is awaited between batches to give the
-   * event loop (and the WS send queue) time to drain.
-   * Returns the file position where reading stopped — the caller uses it as
-   * the tail offset (a pre-read stat.size races with concurrent appends).
-   */
-  private async readEntriesStreaming(
-    filePath: string,
-    offset: number,
-    onBatch: (batch: JsonlEntry[]) => Promise<void>,
-    // When provided, stat accumulation stops the moment this replay is
-    // superseded (a newer replay/switch bumped replayGen) — otherwise two
-    // overlapping full parses both fold entries into the same counters.
-    isLive?: () => boolean,
-  ): Promise<number> {
-    // Manual chunked read replaces createReadStream + readline (the
-    // async-iterator variant hangs under libuv threadpool contention).
-    // We still stream — large initial JSONL files (tens of MB on long
-    // sessions) can't be fully buffered — but use repeated fd.read into
-    // a fixed-size buffer and split lines ourselves, carrying the partial
-    // tail across chunks. await onBatch(...) yields between batches.
-    const CHUNK_SIZE = 1024 * 1024 // 1MB per read
-    const fd = await fsp.open(filePath, 'r')
-    try {
-      let pos = offset
-      let leftover = ''
-      let batch: JsonlEntry[] = []
-      const buf = Buffer.alloc(CHUNK_SIZE)
-      // Byte offset of the line being parsed. This is the ONLY cursor that
-      // survives a replay: `_ord` is a per-process counter and gets re-tagged
-      // every time the file is read again, so a client storing it could never
-      // ask "send me everything after what I already hold".
-      let lineStart = offset
-      while (true) {
-        const { bytesRead } = await fd.read(buf, 0, CHUNK_SIZE, pos)
-        if (bytesRead === 0) break
-        pos += bytesRead
-        const text = leftover + buf.toString('utf8', 0, bytesRead)
-        const lines = text.split('\n')
-        // Last element is a partial line if the chunk didn't end on \n.
-        leftover = lines.pop() ?? ''
-        for (const line of lines) {
-          const thisLineStart = lineStart
-          lineStart += Buffer.byteLength(line, 'utf8') + 1 // + the \n we split on
-          if (!line.trim()) continue
-          if (line.includes(SKIP_LINE_MARKER)) continue
-          try {
-            const parsed = JSON.parse(line) as JsonlEntry
-            // `_pos` is where this record STARTS; `_posEnd` is the boundary just
-            // past it. A client resumes from `_posEnd` — resuming from `_pos + 1`
-            // lands one byte INSIDE the record and the server then streams a
-            // truncated first line. Caught on a real 30 971-record transcript:
-            // 10 972 records came back where 10 971 were due, the extra one being
-            // that fragment. Counting records would not have shown it; comparing
-            // offsets did.
-            ;(parsed as JsonlEntry & { _pos?: number; _posEnd?: number })._pos = thisLineStart
-            ;(parsed as JsonlEntry & { _pos?: number; _posEnd?: number })._posEnd = lineStart
-            batch.push(parsed)
-            if (!isLive || isLive()) this.onStatsEntry?.(parsed)
-            if (parsed.type === 'user' && this.onUserEntry) {
-              this.onUserEntry(parsed)
-            }
-            if (batch.length >= INITIAL_BATCH_SIZE) {
-              await onBatch(batch)
-              batch = []
-            }
-          } catch {
-            /* skip malformed */
-          }
-        }
-      }
-      // Trailing partial line — file may have been mid-write. Try to parse;
-      // if it fails (truncated JSON), leave its bytes OUT of the returned
-      // offset so the next tail poll re-reads the completed line.
-      let consumedLeftover = true
-      if (leftover.trim() && !leftover.includes(SKIP_LINE_MARKER)) {
+    let endPos = offset
+    let truncated = false
+    for await (const line of readJsonlLines(filePath, { start: offset, end: size })) {
+      if (line.text.includes(SKIP_LINE_MARKER)) {
+        endPos = line.end
+      } else {
+        let parsed: JsonlEntry | null
         try {
-          const parsed = JSON.parse(leftover) as JsonlEntry
-          ;(parsed as JsonlEntry & { _pos?: number; _posEnd?: number })._pos = lineStart
-          ;(parsed as JsonlEntry & { _pos?: number; _posEnd?: number })._posEnd =
-            lineStart + Buffer.byteLength(leftover, 'utf8') + 1
-          batch.push(parsed)
-          if (!isLive || isLive()) this.onStatsEntry?.(parsed)
-          if (parsed.type === 'user' && this.onUserEntry) {
-            this.onUserEntry(parsed)
-          }
+          parsed = JSON.parse(line.text) as JsonlEntry
         } catch {
-          consumedLeftover = false /* truncated — tail will retry */
+          parsed = null
+        }
+        if (parsed === null) {
+          // Torn write: leave its bytes for the next poll. A malformed line
+          // that IS terminated will never complete — skip it.
+          if (!line.terminated) break
+          endPos = line.end
+        } else {
+          // Live records stay untagged (unchanged wire contract for the tail).
+          entries.push(parsed)
+          endPos = line.end
         }
       }
-      if (batch.length > 0) await onBatch(batch)
-      return consumedLeftover ? pos : pos - Buffer.byteLength(leftover, 'utf8')
-    } finally {
-      await fd.close()
+      if (endPos - offset >= TAIL_BATCH_BYTES && endPos < size) {
+        truncated = true
+        break
+      }
     }
+    return { entries, endPos, truncated }
   }
 }
 

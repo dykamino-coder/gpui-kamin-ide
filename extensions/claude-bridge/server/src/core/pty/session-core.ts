@@ -18,6 +18,8 @@ import { JsonlWatcher } from './jsonl-watcher'
 import { leanEntries } from './jsonl-projection'
 import {
   sendToClient,
+  trySendToClient,
+  socketWritable,
   writeInputToSession,
   submitTextToSession,
   resizeSessionTerminal,
@@ -162,12 +164,12 @@ async function createAdmittedSession(
     // Same repair as the find-path below — the restart path used to skip it,
     // so a transcript corrupted mid-turn kept 400-ing after model/effort change.
     if (config.resumeConversationId) {
-      repairTranscriptForResume(settingsDir, config.resumeConversationId)
+      await repairTranscriptForResume(settingsDir, config.resumeConversationId)
     }
   } else if (config.resumeConversationId) {
     // Resume from UI: find or recreate the settingsDir whose slug matches
     // the one in ~/.claude/projects/ containing <conversationId>.jsonl.
-    const found = findOrRecreateSettingsDir(config.resumeConversationId, tokenId)
+    const found = await findOrRecreateSettingsDir(config.resumeConversationId, tokenId)
     if (found) {
       settingsDir = found
       settingsDirSource = 'found'
@@ -207,12 +209,12 @@ async function createAdmittedSession(
   // старой точки — «после перезагрузки пропал кусок чата и консоли». Резюмим
   // самый свежий файл цепочки — ровно тот, что будет тейлить watcher.
   if (config.resumeConversationId) {
-    const newest = resolveNewestInChain(settingsDir, config.resumeConversationId)
+    const newest = await resolveNewestInChain(settingsDir, config.resumeConversationId)
     if (newest && newest !== config.resumeConversationId) {
       infoLog('Resume: newer file in chain — resuming tip', { requested: config.resumeConversationId, tip: newest })
       recordCompactLink(config.resumeConversationId, newest) // самолечение карты
       config.resumeConversationId = newest
-      repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
+      await repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
     }
   }
 
@@ -522,7 +524,7 @@ async function createAdmittedSession(
     // `replay: true` — батч истории/превью вне файла-порядка: клиент не должен
     // двигать по нему курсор зеркала (прод-дыра «сообщение не отрисовалось»).
     (entries, replay) =>
-      sendToClient(session.ws, {
+      trySendToClient(session.ws, {
         type: 'jsonl:entries',
         entries: leanEntries(entries),
         ...(replay ? { replay: true } : {}),
@@ -594,6 +596,9 @@ async function createAdmittedSession(
       sendToClient(session.ws, { type: 'jsonl:subagent-entries', agentName, agentId, entries: leanEntries(entries) }),
     () => resetJsonlStats(session),
     (entry) => accumulateJsonlStats(session, entry),
+    // Bulk replay only goes out while the CURRENT socket (reattach swaps it)
+    // is open and under the replay high-water mark.
+    () => socketWritable(session.ws),
   )
   session.jsonlWatcher = jsonlWatcher
   jsonlWatcher.start()
@@ -908,15 +913,16 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   const chainDir = session.settingsDir
   if (chainBase && chainDir) {
     setTimeout(() => {
-      try {
-        const tip = resolveNewestInChain(chainDir, chainBase)
-        if (tip && tip !== chainBase) {
-          infoLog('Post-kill chain scan: recording missed edge', { from: chainBase, tip })
-          recordCompactLink(chainBase, tip)
-        }
-      } catch {
-        /* best-effort */
-      }
+      void resolveNewestInChain(chainDir, chainBase)
+        .then((tip) => {
+          if (tip && tip !== chainBase) {
+            infoLog('Post-kill chain scan: recording missed edge', { from: chainBase, tip })
+            recordCompactLink(chainBase, tip)
+          }
+        })
+        .catch(() => {
+          /* best-effort */
+        })
     }, KILL_ESCALATE_MS + 2000)
   }
   // Backstop: a CLI that never fires SessionEnd (no hook, or it died first)
@@ -973,7 +979,7 @@ function finalizeTeardownFor(
   // резюма не скопировал бы никогда, и уборка CLI унесла бы её вместе с
   // возможностью резюма (INC-2026-0054).
   if (session.cliConversationId) {
-    archiveTranscriptForSession(session.settingsDir, session.cliConversationId)
+    void archiveTranscriptForSession(session.settingsDir, session.cliConversationId)
   }
   cancelSessionLocalExecs(sessionId)
   clearHookSession(sessionId)
