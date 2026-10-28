@@ -7,7 +7,6 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 
@@ -89,7 +88,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     if (!transparent(e) && !margin_fragment) || !e.children.iter().any(contains_float) {
         return vec![node];
     }
-    let style = box_style(parent, &e.style, vcx);
+    let style = std::rc::Rc::new(box_style(parent, &e.style, vcx));
     let children = lift(e.children.to_vec(), &style, vcx);
     if !children.iter().any(floated) {
         return vec![node];
@@ -142,13 +141,10 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
                 // floated возвращает true только для Node::Element.
                 unreachable!()
             };
-            // CSS 2 sections 9.5 and 10.1: the block remains the containing
-            // block, while inherited text properties come through the inline.
-            let containing = box_style(parent, &float.style, vcx);
-            let mut lifted = box_style(&style, &float.style, vcx);
-            lifted.cb_height_def_hint = containing.cb_height_def;
-            lifted.quirk_pct_base_hint = containing.quirk_pct_base;
-            float.set_layout_box(LayoutBoxInput::new(BoxOrigin::Moved, lifted));
+            // CSS 2 sections 9.5 and 10.1: the block becomes the box parent
+            // and stays the containing block; the element keeps its style and
+            // the inline stays its parent in the element tree.
+            float.set_moved_box(style.clone());
             output.push(Node::Element(float));
         } else {
             pending.push(child);

@@ -5,7 +5,6 @@
 //! глубже, в подписях и содержимом ячеек (`parallel`); `None` — таблица не последовательна.
 
 use super::table_box;
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::fixup_table_children;
@@ -15,12 +14,11 @@ pub(crate) fn serial_table_parallel(
     table: &Element,
     depth: u8,
     parallel: impl Fn(&Element, u8) -> bool,
-    vcx: ValueCx<'_>,
 ) -> Option<bool> {
     if depth == 0 || !table_box(table) {
         return None;
     }
-    let fixed = fixup_table_children(&table.children, vcx);
+    let fixed = fixup_table_children(&table.children);
     let mut rows = Vec::new();
     let mut nested = false;
     for n in fixed.iter().filter(|n| !is_blank(n)) {
@@ -93,25 +91,18 @@ mod tests {
 
     #[test]
     fn anonymous_cell_flow_is_serial_but_multiple_cells_are_parallel() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
         let serial = table(vec![block(), block()]);
-        assert_eq!(
-            serial_table_parallel(&serial, 4, |_, _| false, vcx),
-            Some(false)
-        );
+        assert_eq!(serial_table_parallel(&serial, 4, |_, _| false), Some(false));
         let cells = vec![
             Node::Element(anon_element("td", vec![block()])),
             Node::Element(anon_element("td", vec![block()])),
         ];
         let parallel = table(vec![Node::Element(anon_element("tr", cells))]);
-        assert_eq!(serial_table_parallel(&parallel, 4, |_, _| false, vcx), None);
+        assert_eq!(serial_table_parallel(&parallel, 4, |_, _| false), None);
     }
 
     #[test]
     fn rowspans_can_overlap_cells_from_later_rows() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
         let mut spanning = anon_element("td", vec![block()]);
         spanning.attrs.push(("rowspan".into(), "2".into()));
         let table = table(vec![
@@ -121,23 +112,17 @@ mod tests {
                 vec![Node::Element(anon_element("td", vec![block()]))],
             )),
         ]);
-        assert_eq!(serial_table_parallel(&table, 4, |_, _| false, vcx), None);
+        assert_eq!(serial_table_parallel(&table, 4, |_, _| false), None);
     }
 
     #[test]
     fn parallel_descendants_of_a_serial_cell_still_block_shared_overflow() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
         let mut grid = anon_element("div", vec![]);
         grid.style.used_mut().display = Some(Display::Grid);
         let table = table(vec![Node::Element(grid)]);
         assert_eq!(
-            serial_table_parallel(
-                &table,
-                4,
-                |e, _| e.style.used().display == Some(Display::Grid),
-                vcx
-            ),
+            serial_table_parallel(&table, 4, |e, _| e.style.used().display
+                == Some(Display::Grid),),
             Some(true)
         );
     }

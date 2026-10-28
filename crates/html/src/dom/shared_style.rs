@@ -10,7 +10,7 @@ use crate::style::ComputedHandle;
 use crate::style::box_input::BoxStyleInput;
 use crate::style::cascade::materialize::ComputedSlot;
 use crate::style::computed::writing_mode::WritingMode;
-use crate::style::computed::{Align, Computed};
+use crate::style::computed::{Align, BoxStyle, Computed};
 use std::rc::Rc;
 
 /// The style of an element by value stage. Copies of an element share all
@@ -154,6 +154,20 @@ impl SharedStyle {
         self.decoration = Some(Rc::new(decoration)).filter(|d| **d != Default::default());
     }
 
+    /// Коробка родителя элемента по дереву элементов, когда раскладка перенесла
+    /// коробку элемента под другую коробку-родителя (`dom::Marks::box_origin`).
+    pub(crate) fn moved_from(&self) -> Option<Rc<BoxStyle>> {
+        self.box_facts.as_deref().and_then(|f| f.moved_from.clone())
+    }
+
+    /// Запомнить коробку родителя по дереву элементов перенесённой коробки.
+    /// Повторный перенос (флоат, поднятый через несколько строчных) её не меняет.
+    pub(crate) fn set_moved_from(&mut self, tree: Rc<BoxStyle>) {
+        let mut facts = self.box_facts.as_deref().cloned().unwrap_or_default();
+        facts.moved_from.get_or_insert(tree);
+        self.box_facts = Some(Rc::new(facts));
+    }
+
     /// Сохраняет факты существующей синтетической коробки до A07.
     pub(crate) fn set_box_context(&mut self, context: Rc<BoxContext<WritingMode, Align>>) {
         let mut facts = self.box_facts.as_deref().cloned().unwrap_or_default();
@@ -161,38 +175,32 @@ impl SharedStyle {
         self.box_facts = Some(Rc::new(facts));
     }
 
-    /// The style of an element that layout made from a box style (a copy styled
-    /// for a fragment, a dissolved `display: contents` child): its values are
-    /// computed already and become its only stage.
+    /// The style of an element whose box layout generated from a box style (a
+    /// `::marker` box, the `foreignObject` viewport root): its values are
+    /// computed already and become its only stage. Moved element boxes keep
+    /// their own style (`Element::set_moved_box`).
     ///
     /// TRANSITIONAL(cascade-7b-layout-made): layout_made() выдаёт computed box values за cascade при повторном входе через Element; удалить после сохранения исходного style handle и отдельной передачи BoxStyle.
     pub(crate) fn layout_made(input: impl Into<BoxStyleInput>) -> Self {
-        let BoxStyleInput {
-            style,
-            context,
-            inline_decoration,
-            background_paint,
-            canvas_background,
-            paint,
-            try_source,
-        } = input.into();
+        let input: BoxStyleInput = input.into();
+        let facts = BoxFacts {
+            context: input.context,
+            try_source: input.try_source,
+            moved_from: None,
+        };
+        let decoration = crate::style::background_paint::DecorationInput {
+            inline: input.inline_decoration,
+            background_paint: input.background_paint,
+            canvas: input.canvas_background,
+            paint: input.paint,
+        };
         Self {
-            cascaded: style,
+            cascaded: input.style,
             computed: ComputedSlot::default(),
             used: None,
-            box_facts: (context.is_some() || try_source.is_some()).then(|| {
-                Rc::new(BoxFacts {
-                    context,
-                    try_source,
-                })
-            }),
-            decoration: Some(Rc::new(crate::style::background_paint::DecorationInput {
-                inline: inline_decoration,
-                background_paint,
-                canvas: canvas_background,
-                paint,
-            }))
-            .filter(|d| **d != Default::default()),
+            box_facts: (facts.context.is_some() || facts.try_source.is_some())
+                .then(|| Rc::new(facts)),
+            decoration: Some(Rc::new(decoration)).filter(|d| **d != Default::default()),
         }
     }
 
@@ -220,12 +228,14 @@ impl SharedStyle {
     }
 }
 
-/// Факты коробки, созданной раскладкой: контекст коробки-родителя и стиль
-/// элемента, чей каскад пересчитывают варианты `position-try`.
+/// Факты коробки, созданной или перенесённой раскладкой: контекст
+/// коробки-родителя, стиль элемента, чей каскад пересчитывают варианты
+/// `position-try`, и коробка родителя по дереву элементов перенесённой коробки.
 #[derive(Clone, Debug, Default)]
 struct BoxFacts {
     context: Option<Rc<BoxContext<WritingMode, Align>>>,
     try_source: Option<SharedStyle>,
+    moved_from: Option<Rc<BoxStyle>>,
 }
 
 #[cfg(test)]

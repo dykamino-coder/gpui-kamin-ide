@@ -76,15 +76,15 @@ fn layout_box_names_its_origin_and_keeps_the_box_values() {
     });
     let mut moved = crate::dom::table_boxes::anon_element("div", vec![]);
     moved.node_id = 7;
-    moved.set_layout_box(LayoutBoxInput::new(BoxOrigin::Moved, boxed.clone()));
-    assert_eq!(moved.marks.box_origin, Some(BoxOrigin::Moved));
+    moved.set_layout_box(LayoutBoxInput::new(BoxOrigin::Marker, boxed.clone()));
+    assert_eq!(moved.marks.box_origin, Some(BoxOrigin::Marker));
     assert_eq!(moved.node_id, 7);
     // The box values are shared, not copied, and publish no computed stage.
     assert!(Rc::ptr_eq(&moved.style.cascaded, boxed.style_rc()));
     assert!(moved.style.published().is_none());
     assert_eq!(moved.style.used().width, Some(Len::Px(7.0)));
     // Copies of the element keep the origin; author elements have none.
-    assert_eq!(moved.clone().marks.box_origin, Some(BoxOrigin::Moved));
+    assert_eq!(moved.clone().marks.box_origin, Some(BoxOrigin::Marker));
     let parsed = crate::dom::parse("<p>a</p>", "");
     let p = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "p").unwrap();
     assert_eq!(p.marks.box_origin, None);

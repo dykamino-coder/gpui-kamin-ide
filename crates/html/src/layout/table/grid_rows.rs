@@ -7,7 +7,6 @@
 
 use super::anon::{RowCarry, collect_rows, fixup_table_children};
 use super::setup::{row_span_in_group, rows_left_and_cols, table_rows_fixed};
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 
 /// Ряд таблицы в порядке дорожек сетки.
@@ -24,12 +23,8 @@ pub(crate) struct GridRow<'a> {
 }
 
 /// Ряды таблицы `e` в порядке дорожек её сетки.
-pub(crate) fn grid_rows<R>(
-    e: &Element,
-    vcx: ValueCx<'_>,
-    f: impl FnOnce(&[GridRow<'_>]) -> R,
-) -> R {
-    let fixed = table_rows_fixed(fixup_table_children(&e.children, vcx));
+pub(crate) fn grid_rows<R>(e: &Element, f: impl FnOnce(&[GridRow<'_>]) -> R) -> R {
+    let fixed = table_rows_fixed(fixup_table_children(&e.children));
     let kind_of = |g: &Element| match g.tag.as_str() {
         "thead" => Some(0u8),
         "tbody" => Some(1),

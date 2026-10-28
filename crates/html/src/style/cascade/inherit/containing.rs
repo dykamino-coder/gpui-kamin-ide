@@ -7,12 +7,14 @@ use crate::style::computed::{BoxStyle, Display as D, Overflow};
 mod identity;
 
 pub(super) fn inherit_containing(
-    parent: &BoxStyle,
+    parents: super::BoxParents<'_>,
     own: &Computed,
     c: &mut BoxStyle,
     vcx: ValueCx<'_>,
 ) {
-    let excluded = own.first_letter_excluded || parent.first_letter_excluded;
+    let parent = parents.layout;
+    // Исключение из `::first-letter` идёт по дереву элементов (потомки маркера).
+    let excluded = own.first_letter_excluded || parents.tree.first_letter_excluded;
     set!(c.first_letter_excluded, excluded);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));

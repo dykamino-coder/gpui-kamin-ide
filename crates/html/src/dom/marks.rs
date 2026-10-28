@@ -78,6 +78,16 @@ impl super::Element {
         self.style = super::SharedStyle::layout_made(input.style);
         self.marks.box_origin = Some(input.origin);
     }
+
+    /// Layout placed the element's own box under another box parent (a float
+    /// lifted out of an inline, a hoisted absolutely positioned box). The
+    /// element keeps its cascaded and computed style: it stays the child of its
+    /// element-tree parent for inheritance (CSS Cascade 5 §7.2), whose box `tree`
+    /// is kept for the values that box hands down (`BoxParents::tree`).
+    pub(crate) fn set_moved_box(&mut self, tree: std::rc::Rc<crate::style::computed::BoxStyle>) {
+        self.style.set_moved_from(tree);
+        self.marks.box_origin = Some(crate::style::box_input::BoxOrigin::Moved);
+    }
 }
 
 /// Synthetic band host: floats of one run and the content they wrap.
