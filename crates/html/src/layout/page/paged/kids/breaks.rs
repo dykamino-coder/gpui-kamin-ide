@@ -83,8 +83,7 @@ mod tests {
         let e = authored(&tree);
         assert!(stacked_tree(e));
         assert!(crate::layout::fragment::flow::regrow_copy(e));
-        // Atomic inline lines are line boxes of the recorded flow (`row_lines`).
-        assert!(crate::layout::fragment::push::measured_tree(e));
+        assert!(!crate::layout::fragment::push::measured_tree(e));
         let group = [Node::Element(e.clone())];
         let watched = recorder(
             &group,
@@ -106,8 +105,7 @@ mod tests {
         );
         let e = authored(&tree);
         let group = [Node::Element(e.clone())];
-        // Atomic inline lines are line boxes of the recorded flow (`row_lines`).
-        assert!(crate::layout::fragment::push::measured_tree(e));
+        assert!(!crate::layout::fragment::push::measured_tree(e));
         let watched = recorder(
             &group,
             &group[0],

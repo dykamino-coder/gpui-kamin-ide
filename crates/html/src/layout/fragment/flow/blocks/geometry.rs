@@ -121,11 +121,20 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
 fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut BlockBreaks) {
     if let Some(flow) = laid.flows.get(&b.id) {
         out.cuts.extend_from_slice(&flow.cuts);
-        let lines = laid.content.get(&b.id).map_or(&[][..], |l| l.as_slice());
+        // Paragraph lines (with the space consumed before each) and the line
+        // boxes of atom rows, which have no content address.
+        let lines: Vec<(f32, f32, f32)> = laid
+            .content
+            .get(&b.id)
+            .into_iter()
+            .flatten()
+            .map(|l| (l.top, l.bottom, l.consumed_before))
+            .chain(flow.line_boxes.iter().map(|&(t, b)| (t, b, 0.0)))
+            .collect();
         for &(top, bottom) in &flow.solid {
             let inside: Vec<_> = lines
                 .iter()
-                .filter(|l| l.top >= top - COORD_EPS && l.bottom <= bottom + COORD_EPS)
+                .filter(|l| l.0 >= top - COORD_EPS && l.1 <= bottom + COORD_EPS)
                 .collect();
             if inside.len() < 2 {
                 out.solid.push((top, bottom));
@@ -137,14 +146,10 @@ fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut Blo
             // `kBreakAppealViolatingOrphansAndWidows`).
             out.keep.push((top, bottom));
             for pair in inside.windows(2) {
-                out.cuts
-                    .push((pair[0].bottom + pair[1].consumed_before, pair[1].top));
+                out.cuts.push((pair[0].1 + pair[1].2, pair[1].0));
             }
-            out.solid.extend(
-                inside
-                    .iter()
-                    .map(|l| (l.top.max(top), l.bottom.min(bottom))),
-            );
+            out.solid
+                .extend(inside.iter().map(|l| (l.0.max(top), l.1.min(bottom))));
         }
     }
     if let Some(t) = &b.table {

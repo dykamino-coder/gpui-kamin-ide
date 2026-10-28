@@ -166,11 +166,10 @@ pub(crate) fn measured_push(c: &Element, line_col_w: Option<f32>, col_vert: bool
         }
 }
 
-/// Поддерево, чью геометрию полностью записывает раскладка копии: границы
-/// блоков — рекордер блочной стопки, строки (и строки из атомарных коробок —
-/// их line boxes, `flow::row_lines`) — поток строк.
+/// Поддерево, чью геометрию полностью записывает раскладка копии.
 pub(crate) fn measured_tree(c: &Element) -> bool {
-    recorded_tree(c)
+    // TRANSITIONAL(F2-6): Atomic inline лежит внутри строки, а measured_tree знает стопку блоков; удалить отказ в P20 после токена строки с конечным краем поверх P03.
+    recorded_tree(c) && !atomic_inline_flow(c)
 }
 
 /// Геометрия границ блоков доступна и при атомарном содержимом их строк.
@@ -180,5 +179,23 @@ pub(crate) fn recorded_tree(c: &Element) -> bool {
         && clone_dec(c).is_none()
         && (stacked_tree(c) || table_tree(c) || grid_tree(c) || flex_tree(c))
 }
+
+fn atomic_inline_flow(e: &Element) -> bool {
+    use crate::dom::Node;
+    use crate::layout::fragment::flow::blocks::{flex_container, grid_container};
+    if grid_container(e) || flex_container(e) || crate::layout::fragment::table_bands::table_box(e)
+    {
+        return false;
+    }
+    crate::layout::fragment::flow::box_children::children(&e.children).any(|n| match n {
+        Node::Element(k) if crate::layout::box_kind::out_of_flow(&k.style.used()) => false,
+        Node::Element(k) => {
+            crate::layout::fragment::flex_lines::inline_display(k)
+                || (!crate::layout::fragment::clone::monolith_box(k) && atomic_inline_flow(k))
+        }
+        _ => false,
+    })
+}
+
 #[cfg(test)]
 mod inline_tests;

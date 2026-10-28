@@ -80,6 +80,7 @@ fn lines(mut ranges: Vec<(f32, f32)>, (orphans, widows): (usize, usize)) -> Flow
         end = b;
         geometry.cuts.push((b, b));
     }
+    geometry.line_boxes = merged;
     geometry.keep_lines(orphans, widows);
     geometry
 }
@@ -104,5 +105,7 @@ mod tests {
         // orphans/widows 2 keep the first two and the last two together.
         let g = lines(vec![(0., 20.), (20., 40.), (40., 60.)], (2, 2));
         assert_eq!(g.solid, [(0., 60.)]);
+        // The lines stay known, so the keep can relax before break-avoid.
+        assert_eq!(g.line_boxes, [(0., 20.), (20., 40.), (40., 60.)]);
     }
 }

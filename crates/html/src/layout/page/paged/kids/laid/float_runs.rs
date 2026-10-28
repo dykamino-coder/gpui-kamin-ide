@@ -24,7 +24,7 @@ fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
     };
     assert!(!crate::layout::box_kind::own_context(root));
     assert!(flow::regrow_copy(root));
-    assert!(flow::independent_copy(root));
+    assert!(!flow::independent_copy(root));
     let watched = super::super::breaks::recorder(
         &p.nodes,
         &p.nodes[0],

@@ -1,4 +1,4 @@
-//! Строки атомарных inline — line boxes записанного потока; блокификация сетки — свой рекордер.
+//! Атомарный inline сохраняет Class B продолжение; блокификация сетки — свой рекордер.
 use super::*;
 use crate::dom::{Element, Node};
 
@@ -23,13 +23,13 @@ fn atomic_inline_and_blockified_grid_items_keep_distinct_routes() {
             "",
         );
         let e = root(&tree);
-        assert!(measured_tree(e), "{display}");
+        assert!(!measured_tree(e), "{display}");
         assert!(crate::layout::fragment::flow::regrow_copy(e), "{display}");
         assert!(
-            crate::layout::fragment::flow::independent_copy(e),
+            !crate::layout::fragment::flow::independent_copy(e),
             "{display}"
         );
-        assert!(measured_push(e, Some(100.0), false), "{display}");
+        assert!(!measured_push(e, Some(100.0), false), "{display}");
     }
     for body in [
         "<div><div style='height:20px'></div></div>",
