@@ -472,6 +472,8 @@ impl Element for TextElement {
             background_color: None,
             underline: None,
             strikethrough: None,
+            // KaminIDE patch: the fork's runs carry CSS text metrics.
+            ..Default::default()
         };
         let runs = if let Some(marked_range) = input.marked_range.as_ref() {
             vec![
