@@ -13,7 +13,7 @@ pub(crate) fn place_in_context(
     inherited: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
-    let Some(mut first) = AnchorPlan::of(own, inherited, cx.vcx()) else {
+    let Some(mut first) = AnchorPlan::of(own, inherited, cx.vcx(), cx.layout()) else {
         return el;
     };
     if let Some((key, inputs)) = cx.position.oof_sizes
@@ -34,6 +34,7 @@ pub(crate) fn place_in_context(
         key: own.anchor_key,
         visibility: own.position_visibility,
         values: vcx.keep(),
+        layout: cx.layout().clone(),
     };
     Placed { child: el, plans }.hooked()
 }
@@ -88,11 +89,10 @@ pub(crate) fn place_one(
     window: &mut Window,
     cx: &mut App,
 ) -> bool {
-    let vcx = plans.values.vcx();
     let own = geometry::logical_own(layout, bounds, window);
     let (k, p) = plans.choose(own, window, plans.values.vcx());
     let plan = &plans.plans[k];
-    vcx.doc.anchor_frame.present.borrow_mut().insert(plans.key);
+    plans.layout.anchors.present.borrow_mut().insert(plans.key);
     let mut hidden = false;
     // §position-visibility. anchor-valid: якорь по умолчанию нужен, но не
     // разрешается. anchor-visible: якорь невидим либо целиком обрезан

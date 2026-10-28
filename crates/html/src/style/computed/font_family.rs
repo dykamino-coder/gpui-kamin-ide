@@ -72,7 +72,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     //
     // Доступность даёт не только система. Список установленных —
     // это снимок `all_font_names()`, снятый ОДИН РАЗ на старте
-    // (`metrics::use_text_system`), и шрифт, принесённый самой
+    // (`FontContext::install`), и шрифт, принесённый самой
     // страницей через `@font-face`, в него не попадает никогда.
     // Без учёта подмен список семейств не доходил до второго
     // имени: `font-family: "WOFF Test", "WOFF Test CFF Fallback"`

@@ -9,7 +9,7 @@
 //! (`DetailedLayoutInfo::Grid` разложенной сетки, читается у её элемента) и таблицы стопки
 //! кадрами (`table`: коробка таблицы, сетка и дорожки рядов).
 
-use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, MeasuredBreaks};
+use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, ItemWindow, MeasuredBreaks};
 use crate::layout::fragment::geometry::Node;
 use crate::layout::fragment::types::StackAxis;
 use gpui::{LayoutId, Pixels, Point, Size, Window};
@@ -34,6 +34,8 @@ mod flex_geometry_tests;
 mod flex_pin_tests;
 mod geometry;
 mod grid;
+#[cfg(test)]
+mod grid_geometry_tests;
 mod owner;
 mod table;
 use table::TableNodes;
@@ -57,6 +59,8 @@ pub(crate) struct Watched {
     independent: bool,
     axis: Option<StackAxis>,
     flex_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
+    /// Рост после дорожек блочной оси сеток по номеру контейнера (`grid`).
+    grid_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
     flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
     flex_consumed: Rc<RefCell<HashMap<u64, (f32, bool)>>>,
     item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasure>>>,
@@ -66,6 +70,8 @@ pub(crate) struct Watched {
     part: usize,
     /// Первый фрагмент каждого flex-элемента по плану стопки (`owner`).
     paint_owners: Rc<RefCell<HashMap<u64, usize>>>,
+    /// Окна элементов сеток по копиям: сдвиг на недоступное место и обрезка (`owner`).
+    item_windows: Rc<RefCell<HashMap<(usize, u64), ItemWindow>>>,
     /// Маска предка окна фрагмента на время краски копии (`owner`).
     paint_outer: Rc<RefCell<Option<gpui::ContentMask<Pixels>>>>,
     /// Flex-контейнеры `blocks`: раскладываются в контексте фрагментации.
@@ -126,6 +132,7 @@ impl Watched {
             tables: self.tables.clone(),
             table_nodes: self.table_nodes.clone(),
             flex_growth: self.flex_growth.clone(),
+            grid_growth: self.grid_growth.clone(),
             flex_offsets: self.flex_offsets.clone(),
             flex_consumed: self.flex_consumed.clone(),
             item_flows: self.item_flows.clone(),
@@ -134,6 +141,7 @@ impl Watched {
             part: self.part,
             flex_lines: self.flex_lines.clone(),
             paint_owners: self.paint_owners.clone(),
+            item_windows: self.item_windows.clone(),
             paint_outer: self.paint_outer.clone(),
             // Вложенные flex-контейнеры — тоже из стопки родителя.
             flex_ids: self.flex_ids_of().clone().into(),

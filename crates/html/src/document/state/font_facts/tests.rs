@@ -129,7 +129,7 @@ fn two_live_documents_keep_facts_across_other_document_bootstrap_reset_and_updat
     assert_eq!(unit(&b.state, "ch"), 30.0);
     // Разбор и повторный bootstrap сбрасывают только реестры/кэши своего документа.
     b.state.reset_font_alternates();
-    FontContext::default().install(b.state.values());
+    FontContext::default().install(&b.state.text, b.state.values());
     drop(b);
     let fresh = DocState::new(Default::default());
     assert_ne!(snapshot.environment, fresh.font_snapshot().environment);
@@ -170,7 +170,7 @@ fn backend_rejects_foreign_stale_and_expired_document_snapshots() {
         Err(FontFactsError::WrongEnvironment)
     );
     let old = a.font_snapshot();
-    metrics::install_probe(|_, size| (size, size, size, size), a.values());
+    metrics::install_probe(|_, size| (size, size, size, size), &a.text, a.values());
     assert_eq!(
         backend.metrics(request, &old),
         Err(FontFactsError::StaleSnapshot)
@@ -197,9 +197,14 @@ fn adapter_retains_exact_metrics_and_normal_rounding() {
     let vcx = doc.values();
     metrics::install_probe(
         |_, size| (size * 0.63, size * 0.47, size * 1.17, size * 1.03),
+        &doc.text,
         vcx,
     );
-    metrics::install_vprobe(|_, size| (size * 0.89, size * 0.22, size * 0.71), vcx);
+    metrics::install_vprobe(
+        |_, size| (size * 0.89, size * 0.22, size * 0.71),
+        &doc.text,
+        vcx,
+    );
     for family in ["Face", "", "Other, serif"] {
         for size in [0.0, 16.0, 19.3, 40.0] {
             let request = FontRequest::new(family, size);
@@ -207,21 +212,23 @@ fn adapter_retains_exact_metrics_and_normal_rounding() {
                 .font_provider()
                 .metrics(request, &doc.font_snapshot())
                 .unwrap();
-            let (ch, ex) = metrics::ch_ex_px(family, size, vcx);
+            let (ch, ex) = metrics::ch_ex_px(family, size, &doc.text, vcx);
             assert_eq!(facts.zero_advance.unwrap().px.to_bits(), ch.to_bits());
             assert_eq!(facts.x_height.unwrap().px.to_bits(), ex.to_bits());
             assert_eq!(
                 facts.cap_height.unwrap().px.to_bits(),
-                metrics::vmetrics_px(family, size, vcx).2.to_bits()
+                metrics::vmetrics_px(family, size, &doc.text, vcx)
+                    .2
+                    .to_bits()
             );
             assert_eq!(
                 facts.ideographic_advance.unwrap().px.to_bits(),
-                metrics::ic_px(family, size, vcx).to_bits()
+                metrics::ic_px(family, size, &doc.text, vcx).to_bits()
             );
-            let fraction = metrics::normal_line(family, vcx);
+            let fraction = metrics::normal_line(family, &doc.text, vcx);
             assert_eq!(
                 root_normal_line_px(family, size, vcx).to_bits(),
-                metrics::normal_px(fraction, size, vcx).to_bits()
+                metrics::normal_px(fraction, size, &doc.text).to_bits()
             );
         }
     }

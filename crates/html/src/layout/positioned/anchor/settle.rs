@@ -64,9 +64,6 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
             settle(&mut e.children, known, &me, vcx);
         }
     }
-    // Новый документ: выбор `position-try` прошлого документа с теми же
-    // `node_id` не должен пережить сборку.
-    vcx.doc.anchor_frame.chosen.borrow_mut().clear();
     let mut known = HashSet::new();
     names(nodes, &mut known);
     settle(nodes, &known, &None, vcx);

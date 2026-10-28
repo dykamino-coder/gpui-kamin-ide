@@ -73,7 +73,7 @@ pub(super) fn line_inner_kids(
     line_inner
 }
 
-pub(super) fn row_axis_flags(c: &Element) -> (bool, bool, f32, bool) {
+pub(crate) fn row_axis_flags(c: &Element) -> (bool, bool, f32, bool) {
     let is_flex = matches!(
         c.style.used().display,
         Some(Display::Flex) | Some(Display::InlineFlex)

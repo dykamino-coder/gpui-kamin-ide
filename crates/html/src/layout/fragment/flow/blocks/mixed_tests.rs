@@ -1,6 +1,7 @@
 //! Разрывы сетки в ячейке таблицы читают дорожки вложенной раскладки.
 
-use super::{BlockBox, Laid, Pushed, RowPush, TableFrame};
+use super::grid::RowPush;
+use super::{BlockBox, Laid, Pushed, TableFrame};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flow::{FlowGeometry, independent_copy};
@@ -37,6 +38,8 @@ fn table_cell_grid_uses_laid_tracks_for_breaks_and_growth() {
         (items[1], 61.0, 137.0),
     ]);
     laid.grids.insert(*grid, vec![(0.0, 61.0), (61.0, 137.0)]);
+    laid.placements.insert(items[0], (0, 0));
+    laid.placements.insert(items[1], (1, 1));
     laid.tables.insert(
         b.table.as_ref().expect("table").key,
         TableFrame {
@@ -56,7 +59,6 @@ fn table_cell_grid_uses_laid_tracks_for_breaks_and_growth() {
         Some(Pushed::Row(RowPush {
             grid: *grid,
             track: 0,
-            items: vec![items[0]],
         }))
     );
     let mut descendants = std::collections::HashMap::new();

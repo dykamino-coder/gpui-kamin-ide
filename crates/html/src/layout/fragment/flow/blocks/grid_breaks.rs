@@ -1,7 +1,9 @@
 //! Возможности разрыва разложенной сетки (css-grid-1 §12 Fragmenting Grid Layout; Blink
 //! `GridLayoutAlgorithm::PlaceGridItemsForFragmentation`). Элементы — параллельные потоки
-//! своих рядов: их точки и монолиты объединяются. Разрыв перед элементом, чьё первое
-//! содержимое не делится, — это перенос его РЯДА: такие диапазоны начинаются с начала ряда.
+//! своих рядов (css-grid-2 §12: разрыв внутри элемента не разрывает соседей): сетке
+//! принадлежат их точки и первая неделимая часть каждого, остальное — потоку элемента, чей
+//! рост считает `push::flex_flow`. Разрыв перед элементом, чьё первое содержимое не делится,
+//! — это перенос его РЯДА: такие диапазоны начинаются с начала ряда.
 //! Принудительные разрывы элементов переходят на границы их рядов (`break-before` — на начало
 //! первого ряда, `break-after` — на конец последнего), разрыв съедает зазор перед рядом
 //! (css-gaps-1 §fragmentation: зазор, совпавший с разрывом, исчезает). Граница рядов под
@@ -10,7 +12,8 @@
 //! ряд с `EBreakBetween::kAuto`, пока смещение ряда во фрагменте положительно).
 
 use super::geometry::{BlockBreaks, walk};
-use super::{GridBox, Laid, item_rows};
+use super::{GridBox, Laid};
+use crate::layout::fragment::flow::FlowGeometry;
 use crate::tolerance::COORD_EPS;
 
 /// Граница рядов: что на ней требуют элементы.
@@ -38,30 +41,43 @@ impl GridBox {
             let Some((t, b)) = laid.at(it.id) else {
                 continue;
             };
-            let (r0, r1) = rows
-                .as_deref()
-                .map_or((0, 0), |r| item_rows(r, t - it.mt, b + it.mb, it.span));
-            let mark = out.solid.len();
-            let barrier_mark = out.barriers.len();
+            let placement = laid.item_rows(it.id);
+            let mut flow = BlockBreaks::default();
             if it.monolith {
-                out.hold((t, b));
+                flow.hold((t, b));
             } else if let Some(inner) = &it.inner {
-                walk(inner, t, b, laid, out);
+                walk(inner, t, b, laid, &mut flow);
             }
             // Первое содержимое элемента не делится: разрыв перед ним
             // переносит ряд целиком (`MovePastBreakpoint` → breakpoint row).
-            if let Some(row_top) = rows.as_deref().and_then(|r| r.get(r0)).map(|r| r.0) {
-                for s in out.solid[mark..]
-                    .iter_mut()
-                    .chain(&mut out.barriers[barrier_mark..])
-                {
-                    if s.0 <= t + COORD_EPS && row_top < s.0 {
-                        s.0 = row_top;
-                    }
+            // Монолиты элемента разрезать нельзя никаким разрывом сетки: при
+            // переполнении ими растягивается фрагмент сетки. Строки, принудительные
+            // разрывы и запреты — потока самого элемента (css-grid-2 §12: разрыв
+            // внутри элемента не разрывает соседей); его рост считает Regrow элемента.
+            let row_top = placement
+                .and_then(|(r0, _)| rows.as_deref()?.get(r0).map(|r| r.0))
+                .unwrap_or(t);
+            let flow = flow.finish(FlowGeometry::default(), f32::MAX);
+            let start = |s: (f32, f32)| {
+                if s.0 <= t + COORD_EPS {
+                    (row_top.min(s.0), s.1)
+                } else {
+                    s
                 }
-            }
+            };
+            let first = |s: &(f32, f32)| (s.0 <= t + COORD_EPS).then(|| start(*s));
+            out.solid.extend(flow.solid.iter().filter_map(first));
+            out.solid.extend(flow.barriers.iter().map(|&s| start(s)));
+            out.barriers.extend(flow.barriers.iter().map(|&s| start(s)));
+            out.cuts.extend(flow.cuts);
+            // `break-inside: avoid` внутри элемента переносит ряд, а orphans/widows его
+            // абзацев ослабляются внутри самого элемента (`flex_flow`).
+            out.keep.extend_from_slice(&flow.avoid_inside);
+            out.avoid_inside.extend(flow.avoid_inside);
             last = Some(last.map_or(b + it.mb, |l: f32| l.max(b + it.mb)));
-            placed.push((it, r0, r1));
+            if let Some((r0, r1)) = placement {
+                placed.push((it, r0, r1));
+            }
         }
         let Some(rows) = rows.filter(|r| !r.is_empty()) else {
             return last;
@@ -85,9 +101,11 @@ impl GridBox {
         }
         for i in 1..rows.len() {
             let (prev, next) = (rows[i - 1], rows[i]);
-            if next.0 > prev.1 + COORD_EPS {
-                out.cuts.push((prev.1, next.0));
-                out.hold((prev.1, next.0 + 0.05));
+            // Место переноса ряда (рост фрагментации) — не промежуток: его не усекают.
+            let gap = prev.1 + laid.growth_after(grid, i - 1);
+            if next.0 > gap + COORD_EPS {
+                out.cuts.push((gap, next.0));
+                out.hold((gap, next.0 + 0.05));
             }
             match between[i] {
                 Between::Forced => out.forced.push(next.0),

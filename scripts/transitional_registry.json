@@ -30,11 +30,6 @@
     "reason": "Полные копии дерева обслуживают preplan фрагментации; удалить эту роль в P22 после child tokens и краёв фрагментов P04–P21, сохранив обычное клонирование."
   },
   {
-    "file": "crates/html/src/layout/fragment/flow/blocks/grid_tree.rs",
-    "task": "F2-4",
-    "reason": "Таблица внутри grid item исключена без параллельных row/cell resume; удалить отказ в P16 после item tokens и табличных metrics из P17."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/independent.rs",
     "task": "F2-3",
     "reason": "Vertical copy допускает только один поток без ортогонального resume; удалить ограничение в P10 после отдельных logical Space и child tokens."
@@ -58,11 +53,6 @@
     "file": "crates/html/src/layout/fragment/fragment_size.rs",
     "task": "F2-7",
     "reason": "Estimator применяет ограничения к гипотетической форме; удалить в P22 после удаления всех production readers в P21, сохранив реальные geometry types."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/grid_bands/auto_rows/pass.rs",
-    "task": "F2-4",
-    "reason": "Grid preplan оценивает items без consumed, clone edges и OOF anchors; удалить в P16 после recorded tracks и item tokens поверх P04/P08."
   },
   {
     "file": "crates/html/src/layout/fragment/oof_reach.rs",
@@ -92,11 +82,6 @@
   {
     "file": "crates/html/src/layout/fragment/push/spacer/grow.rs",
     "task": "F2-4",
-    "reason": "После мутации grid track геометрия оценивается заново; удалить в P16 после track growth result и StaticPosition из P08 без переписывания authored tracks."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/push/spacer/grow.rs",
-    "task": "F2-4",
     "reason": "После распорки форма ребёнка оценивается заново; удалить в P21 после continuation placement без мутации spacer поверх P05/P08/P10."
   },
   {
@@ -118,16 +103,6 @@
     "file": "crates/html/src/layout/fragment/shape_contents/mod.rs",
     "task": "F2-7",
     "reason": "DOM-dispatch строит preplan до раскладки форматирующих контекстов; удалить в P22 после перевода всех readers на child resume в P21."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/table_bands/row_shape/captions.rs",
-    "task": "F2-5",
-    "reason": "Подпись таблицы оценивается целиком в clone preplan; удалить в P18 после caption token с consumed и decoration edges поверх P04."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/table_bands/shape_bands.rs",
-    "task": "F2-5",
-    "reason": "Полосы секций и повторов вычисляет рекурсивный estimator; удалить в P18 после продолжений секций и ячеек из P17."
   },
   {
     "file": "crates/html/src/layout/fragment/types/scope.rs",
@@ -183,11 +158,6 @@
     "file": "crates/html/src/layout/page/paged/kids/shape.rs",
     "task": "F2-6",
     "reason": "Группа листа оценивается целиком без PageIdentity и clamp scope продолжения; удалить в P21 после typed child resume поверх P05/P08/P10/P16."
-  },
-  {
-    "file": "crates/html/src/layout/table/finish/captions.rs",
-    "task": "F2-5",
-    "reason": "Сторона подписи читается из cascaded подписи/таблицы вместо собственного computed контекста; удалить обход в P18 после caption token с исходным стилем и владельцем таблицы."
   },
   {
     "file": "crates/html/src/style/cascade/compute/fonts.rs",

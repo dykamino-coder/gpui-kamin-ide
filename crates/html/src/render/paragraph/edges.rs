@@ -64,7 +64,11 @@ pub(crate) fn edge_pieces(
         {
             let size = style.used_font(opts.base_size(), opts.cx.vcx()).size_px;
             let h = style.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
-                crate::text::metrics::normal_px(normal_fraction(style, opts), size, opts.cx.vcx())
+                crate::text::metrics::normal_px(
+                    normal_fraction(style, opts),
+                    size,
+                    opts.cx.text_fonts(),
+                )
             });
             match out.last_mut() {
                 // Соседние куски одного края — одна коробка (`<span>` с

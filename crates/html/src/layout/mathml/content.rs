@@ -6,7 +6,8 @@ use crate::hooks::Hooks;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px, size};
 
 pub(super) struct Content {
-    pub values: crate::document::state::ValueDoc,
+    /// Text backend font state of the document: MATH tables for stretched glyphs.
+    pub fonts: std::rc::Rc<crate::text::text_fonts::TextFonts>,
     pub children: Vec<AnyElement>,
     pub kind: Kind,
     pub factories: Vec<Option<(u8, super::stretch::Factory)>>,
@@ -64,7 +65,7 @@ impl Hooks for Content {
                     target.length,
                     target.vertical,
                     window,
-                    self.values.vcx(),
+                    &self.fonts,
                 );
                 if let Some(glyph) = &self.glyph {
                     self.children.clear();
@@ -81,7 +82,7 @@ impl Hooks for Content {
                     base.ascent + base.descent + p.gap + p.rule,
                     true,
                     window,
-                    self.values.vcx(),
+                    &self.fonts,
                 );
                 let surd = self
                     .glyph

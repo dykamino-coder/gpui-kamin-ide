@@ -30,7 +30,7 @@ impl LayoutCx {
             .as_ref()
             .and_then(|ids| source_key(e).and_then(|key| ids.0.get(&key)))
             .map(|id| id.1)
-            .unwrap_or_else(|| super::next_seq(self.vcx()))
+            .unwrap_or_else(|| super::next_seq(&self.layout().anchors))
     }
 
     pub(crate) fn retain_oof_identities(&self, e: &Element, paint_key: u64) -> Rc<Identities> {
@@ -45,7 +45,7 @@ impl LayoutCx {
                 ids.0.entry(key).or_insert_with(|| {
                     (
                         paint.unwrap_or_else(|| cx.next_paint_key()),
-                        super::next_seq(cx.vcx()),
+                        super::next_seq(&cx.layout().anchors),
                     )
                 });
             }

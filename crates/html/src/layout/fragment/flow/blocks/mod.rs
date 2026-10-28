@@ -29,9 +29,11 @@ pub(crate) mod table;
 use table::TableBox;
 mod grid;
 mod grid_breaks;
-pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container, item_rows};
+mod grid_items;
+pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container};
+pub(crate) use grid_items::{ItemFrame, ItemResume, ItemWindow, resume_items};
 mod grid_tree;
-pub(crate) use grid_tree::grid_tree;
+pub(crate) use grid_tree::{grid_items_resume, grid_tree};
 mod flex;
 mod flex_breaks;
 mod flex_edges;
@@ -55,6 +57,8 @@ mod flex_line_start_tests;
 mod flex_overflow_tests;
 #[cfg(test)]
 mod flex_tests;
+#[cfg(test)]
+mod grid_flow_tests;
 #[cfg(test)]
 mod grid_tests;
 #[cfg(test)]

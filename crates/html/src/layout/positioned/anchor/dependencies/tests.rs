@@ -37,21 +37,23 @@ fn waits_for_later_inflow_anchor_and_all_candidate_dependencies() {
         "--other".into(),
         parse_decls("width: anchor-size(--other width, 2px)"),
     );
-    let deps = Dependencies::of(&c, &BoxStyle::default(), vcx);
+    let deps = Dependencies::of(&c, &BoxStyle::default(), vcx, &doc.layout);
     assert!(!deps.ready());
-    doc.anchor_frame
+    doc.layout
+        .anchors
         .named_seq
         .borrow_mut()
         .push(("--base".into(), 4, record(4, 0)));
     assert!(!deps.ready());
-    doc.anchor_frame
+    doc.layout
+        .anchors
         .named_seq
         .borrow_mut()
         .push(("--other".into(), 5, record(5, 0)));
     assert!(deps.ready());
     c.position_try_fallbacks.clear();
-    assert!(Dependencies::of(&c, &BoxStyle::default(), vcx).ready());
-    doc.anchor_frame.named_seq.borrow_mut().clear();
+    assert!(Dependencies::of(&c, &BoxStyle::default(), vcx, &doc.layout).ready());
+    doc.layout.anchors.named_seq.borrow_mut().clear();
     assert!(!deps.ready());
 }
 
@@ -66,25 +68,26 @@ fn later_oof_or_own_descendant_does_not_break_dependency_cycle() {
     });
     c.anchor_key = 3;
     c.anchor_seq = 3;
-    let deps = Dependencies::of(&c, &BoxStyle::default(), vcx);
-    doc.anchor_frame
+    let deps = Dependencies::of(&c, &BoxStyle::default(), vcx, &doc.layout);
+    doc.layout
+        .anchors
         .named_seq
         .borrow_mut()
         .push(("--a".into(), 4, record(4, 0)));
-    doc.anchor_frame.out_of_flow.borrow_mut().insert(4, 4);
+    doc.layout.anchors.out_of_flow.borrow_mut().insert(4, 4);
     assert!(!deps.ready());
-    doc.anchor_frame.out_of_flow.borrow_mut().clear();
-    doc.anchor_frame.named_seq.borrow_mut()[0].2.cb = 3;
+    doc.layout.anchors.out_of_flow.borrow_mut().clear();
+    doc.layout.anchors.named_seq.borrow_mut()[0].2.cb = 3;
     assert!(!deps.ready());
-    doc.anchor_frame.named_seq.borrow_mut()[0].2.cb = 7;
-    doc.anchor_frame.cb_parent.borrow_mut().insert(7, 8);
-    doc.anchor_frame.cb_parent.borrow_mut().insert(8, 7);
+    doc.layout.anchors.named_seq.borrow_mut()[0].2.cb = 7;
+    doc.layout.anchors.cb_parent.borrow_mut().insert(7, 8);
+    doc.layout.anchors.cb_parent.borrow_mut().insert(8, 7);
     assert!(!deps.ready());
-    doc.anchor_frame.cb_parent.borrow_mut().insert(8, 0);
+    doc.layout.anchors.cb_parent.borrow_mut().insert(8, 0);
     assert!(deps.ready());
     for cb in 8..108 {
-        doc.anchor_frame.cb_parent.borrow_mut().insert(cb, cb + 1);
+        doc.layout.anchors.cb_parent.borrow_mut().insert(cb, cb + 1);
     }
-    doc.anchor_frame.cb_parent.borrow_mut().insert(108, 0);
+    doc.layout.anchors.cb_parent.borrow_mut().insert(108, 0);
     assert!(deps.ready());
 }

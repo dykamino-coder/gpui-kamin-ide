@@ -27,7 +27,11 @@ mod tests {
     fn ic_spacing_uses_the_measured_ideographic_advance() {
         let doc = crate::document::state::DocState::new(Default::default());
         let vcx = doc.values();
-        super::super::install_probe(|_, size| (size * 0.25, size * 0.75, size, size * 1.5), vcx);
+        super::super::install_probe(
+            |_, size| (size * 0.25, size * 0.75, size, size * 1.5),
+            &doc.text,
+            vcx,
+        );
         assert_eq!(spacing_px(Some(Len::Ic(1.0)), "Probe", 20.0, vcx), 30.0);
         assert_eq!(spacing_px(Some(Len::Ic(0.5)), "Probe", 40.0, vcx), 30.0);
         assert_eq!(spacing_px(Some(Len::Ic(-1.0)), "Probe", 20.0, vcx), -30.0);
