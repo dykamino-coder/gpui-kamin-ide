@@ -144,7 +144,23 @@ pub struct StackChild {
     /// Paginated by its own layout (`fragment::paginate`): the stack lays the
     /// copy out against the fragmentainer grid and rebuilds it with struts.
     pub paginate: Option<crate::layout::fragment::paginate::Paginate>,
+    /// Геометрия копий `box-decoration-break: clone` по итоговому плану
+    /// (`CloneGeom`).
+    pub(crate) clone_frags: Option<CloneGeom>,
+    /// Построитель копии `part` (0 — главная): число копий решает план по
+    /// измеренной протяжённости ребёнка, а не предварительная оценка.
+    pub(crate) copier: Option<std::rc::Rc<dyn Fn(usize) -> AnyElement>>,
 }
+
+/// Фрагменты `clone` знают свои `(from, h)` только из итогового плана укладки:
+/// мера ребёнка — раскладка всей коробки, а копия фрагмента — коробка своей
+/// высоты со своими краями (css-break-3 §5.4). `None` — план коробку не
+/// разрезал; иначе декорация `(верх, низ)`, `(from, h)` каждой копии и конец
+/// видимого потока коробки для последнего фрагмента. План меняет геометрию —
+/// копии строятся заново.
+#[allow(clippy::type_complexity)]
+pub(crate) type CloneGeom =
+    std::rc::Rc<std::cell::RefCell<Option<((f32, f32), Vec<(f32, f32)>, f32)>>>;
 
 impl StackChild {
     /// Геометрия ребёнка для укладки (`Kid`).

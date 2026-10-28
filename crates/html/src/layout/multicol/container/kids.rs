@@ -49,22 +49,7 @@ pub(in crate::layout::multicol) fn column_kids(
             p.clears = c.style.used().clear.is_some();
         }
     }
-    let kids = if col_vert {
-        kids
-    } else {
-        let measured =
-            |c: &Element| measured_push(c, kid_layout_w(c, line_col_w, layout_col_w), col_vert);
-        grow_pushed(
-            kids,
-            cols as usize,
-            fixed,
-            rows,
-            copies,
-            &kid_par,
-            &measured,
-            vcx,
-        )
-    };
+    let _ = (cols, rows, copies, fixed, line_col_w, layout_col_w, col_vert, vcx);
     (kid_parent, kid_starts, kid_par, kids)
 }
 
@@ -88,7 +73,6 @@ pub(in crate::layout::multicol) fn stack_children(
     kid_parent: Vec<Option<BoxStyle>>,
     kid_par: Vec<crate::layout::fragment::types::Par>,
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
-    clone_plan: Vec<Vec<(f32, f32)>>,
     prepared: Vec<crate::layout::multicol::stack_child::Prepared>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
     let vcx = opts.cx.vcx();
@@ -160,7 +144,6 @@ pub(in crate::layout::multicol) fn stack_children(
                     e,
                     merged,
                     opts,
-                    &clone_plan,
                     &kid_parent,
                     &kid_par,
                     col_vert,

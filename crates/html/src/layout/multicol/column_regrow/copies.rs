@@ -1,18 +1,13 @@
-//! Запас копий для рядов после измерения детей; геометрия не оценивается.
+//! Запас копий после измерения детей: число копий ребёнка — число фрагментов его
+//! измеренной протяжённости в плане; геометрия не оценивается.
 
+use crate::layout::fragment::types::StackChild;
 use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
     /// Высоту для числа копий даёт главная разложенная копия, включая распорки роста.
     pub(super) fn reserve_row_copies(&mut self) {
-        // TRANSITIONAL(F2-4): Смешанный clone/nested/OOF preplan исключён из роста копий; удалить общий gate в P21 после recorded child resume поверх P05/P08/P10.
-        if self.rows.is_some()
-            && self
-                .children
-                .iter()
-                .filter(|c| !c.span)
-                .any(|c| c.measure.is_none() || c.regrow.is_none())
-        {
+        if self.rows.is_none() {
             return;
         }
         let old = self.copies;
@@ -25,19 +20,45 @@ impl ColumnStack {
             .enumerate()
             .filter(|(_, c)| !c.span)
         {
-            let Some(r) = c.regrow.as_ref() else { continue };
             let copies = plan
                 .iter()
                 .filter(|f| f.kid == index)
                 .map(|f| f.copy + 1)
                 .max()
                 .unwrap_or(1);
-            while c.frags.len() + 1 < copies {
-                c.fragment_builders.clear();
-                c.frags
-                    .push((r.build)(&r.dom, c.frags.len() + 1, false, &r.opts));
-            }
+            reserve(c, copies);
         }
+    }
+
+    /// Переполняющие колонки (css-multicol-1 §8.2: при заданной высоте колонок
+    /// содержимое, которому не хватило колонок, создаёт новые в строчном
+    /// направлении): копий у ребёнка — сколько колонок займёт его измеренный
+    /// поток, включая продолжения внепоточных потомков в его копиях.
+    pub(crate) fn reserve_overflow_copies(&mut self) {
+        let (Some(per), None) = (self.fixed_height.filter(|h| *h > 0.0), self.rows) else {
+            return;
+        };
+        for c in self.children.iter_mut().filter(|c| !c.span) {
+            let need = (c.h.max(c.over) / per).ceil() as usize + 1;
+            reserve(c, need);
+            self.copies = self.copies.max(c.frags.len() + 1);
+        }
+    }
+}
+
+/// Достроить копии ребёнка до `copies`: выросшее дерево (`Regrow`) или его рецепт.
+fn reserve(c: &mut StackChild, copies: usize) {
+    while c.frags.len() + 1 < copies {
+        let part = c.frags.len() + 1;
+        let el = if let Some(r) = c.regrow.as_ref() {
+            (r.build)(&r.dom, part, false, &r.opts)
+        } else if let Some(copier) = c.copier.as_ref() {
+            copier(part)
+        } else {
+            return;
+        };
+        c.fragment_builders.clear();
+        c.frags.push(el);
     }
 }
 

@@ -18,7 +18,7 @@ mod lazy;
 mod stack_child;
 use crate::tolerance::COORD_EPS;
 pub(crate) use lazy::{FragmentHandle, FragmentMeasurement};
-pub(crate) use stack_child::BreaksAt;
+pub(crate) use stack_child::{BreaksAt, CloneGeom};
 mod repeat;
 pub use repeat::{Repeat, RepeatGeom};
 pub use stack_child::StackChild;

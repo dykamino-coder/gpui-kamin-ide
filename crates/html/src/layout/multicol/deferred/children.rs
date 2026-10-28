@@ -95,7 +95,6 @@ impl Recipe {
             parents,
             parallel,
             kids,
-            Vec::new(),
             prepared,
         );
         (children, geometry)

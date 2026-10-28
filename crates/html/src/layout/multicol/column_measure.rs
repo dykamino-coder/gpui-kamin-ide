@@ -20,6 +20,7 @@ impl ColumnStack {
             }
             self.regrow_children(window, cx);
             self.paginate_children(window, cx);
+            self.reserve_overflow_copies();
         }
         // Распорки роста по раскладке копий — до разметки по сетке: её рамки
         // берут план с уже выросшими соседями.

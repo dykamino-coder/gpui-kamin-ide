@@ -81,7 +81,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/table/finish/outer.rs"),
     include_str!("../../layout/table/finish/tracks.rs"),
     include_str!("../../layout/multicol/container/mod.rs"),
-    include_str!("../../layout/multicol/container/clone_plan.rs"),
     include_str!("../../layout/multicol/container/kids.rs"),
     include_str!("../../layout/multicol/container/oof.rs"),
     include_str!("../../layout/multicol/container/spanner.rs"),

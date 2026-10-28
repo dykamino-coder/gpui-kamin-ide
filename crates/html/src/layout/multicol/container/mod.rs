@@ -15,8 +15,6 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, ParentElement};
 pub(super) mod kids;
 use kids::{column_kids, stack_children};
-mod clone_plan;
-use clone_plan::clone_plan_of;
 mod oof;
 use oof::{column_stack_div, finish_column_stack, place_oof_statics};
 mod spanner;
@@ -129,9 +127,6 @@ pub(crate) fn multicol_column_stack(
                     )
                 })
                 .collect();
-            let clone_plan = clone_plan_of(
-                cols, col_vert, rows, copies, fixed, &kid_par, &kids, &prepared, vcx,
-            );
             // All column rules use the canonical gap painter, including vertical writing modes.
             let gap_spec = multicol_gap_rule_spec(e, &merged, opts, used_gap, row_gap);
             let gap_items = gap_spec
@@ -162,7 +157,6 @@ pub(crate) fn multicol_column_stack(
                     kid_parent,
                     kid_par,
                     kids,
-                    clone_plan,
                     prepared,
                 )
             };

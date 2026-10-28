@@ -40,6 +40,7 @@ impl Hooks for ColumnStack {
             recipe.prepare(self, col_w, window, cx);
         }
         self.column_breaks(col_w, window, cx);
+        self.settle_clone_kids();
         let heights = self.kid_geoms();
         let (_, lines, mut plan, spans) = self.balance(&heights);
         plan.check_copies(|kid| self.children[kid].frags.len() + 1);
@@ -49,6 +50,7 @@ impl Hooks for ColumnStack {
         let step = col_w + self.gap;
         self.assign_flex_owners(&plan);
         self.assign_grid_items(&plan);
+        self.apply_clone_frags(&plan);
         self.prepaint_frags(window, cx, bounds, col_w, &plan, step);
         if self.prepaint_native(bounds, &plan, window, cx).is_err() {
             plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);

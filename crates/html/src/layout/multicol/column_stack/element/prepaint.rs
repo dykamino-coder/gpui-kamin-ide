@@ -5,6 +5,57 @@ use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
+    /// Коробка `clone`, которую план не разрезал, остаётся целой (`slice` того же
+    /// вида): её переполнение продолжается параллельным потоком, а не клонами
+    /// коробки (css-break-3 §5.4 применяет декорации к фрагментам самой коробки).
+    pub(super) fn settle_clone_kids(&mut self) {
+        if !self.children.iter().any(|c| c.clone_dec.is_some()) {
+            return;
+        }
+        let (_, _, plan, _) = self.balance(&self.kid_geoms());
+        for (kid, c) in self.children.iter_mut().enumerate() {
+            if c.clone_dec.is_some() && plan.iter().filter(|f| f.kid == kid).count() < 2 {
+                c.clone_dec = None;
+            }
+        }
+    }
+
+    /// Копии `box-decoration-break: clone` — фрагменты итогового плана
+    /// (`CloneGeom`): каждая получает свои `(from, h)` и края коробки.
+    pub(super) fn apply_clone_frags(&mut self, plan: &[Frag]) {
+        for (kid, c) in self.children.iter_mut().enumerate() {
+            let (Some(clone), Some(copier)) = (c.clone_frags.clone(), c.copier.clone()) else {
+                continue;
+            };
+            let mut geom: Vec<(f32, f32)> = Vec::new();
+            for f in plan.iter().filter(|f| f.kid == kid) {
+                if geom.len() <= f.copy {
+                    geom.resize(f.copy + 1, (0.0, 0.0));
+                }
+                geom[f.copy] = (f.from, f.h);
+            }
+            // Видимый поток за нижним краем коробки (css-break-3 §3) продолжает
+            // последний фрагмент: его край отсчитывается от начала содержимого,
+            // как будто коробка кончалась ниже — с её нижней декорацией.
+            let split = c.clone_dec.filter(|_| geom.len() > 1).map(|dec| {
+                let end = if c.over > c.h + crate::tolerance::COORD_EPS {
+                    c.over + dec.1
+                } else {
+                    c.h
+                };
+                (dec, geom, end)
+            });
+            if *clone.borrow() == split {
+                continue;
+            }
+            *clone.borrow_mut() = split;
+            let count = c.frags.len() + 1;
+            c.el = copier(0);
+            c.frags = (1..count).map(|part| copier(part)).collect();
+            c.fragment_builders.clear();
+        }
+    }
+
     pub(super) fn prepaint_frags(
         &mut self,
         window: &mut Window,

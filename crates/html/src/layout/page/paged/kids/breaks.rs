@@ -8,7 +8,7 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, stacked_tree, table_tree};
+use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, grid_tree, stacked_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::style::computed::Position;
 use std::rc::Rc;
@@ -17,7 +17,6 @@ pub(super) fn recorder(
     group: &[Node],
     n: &Node,
     vertical: Option<bool>,
-    shaped: bool,
     measured: bool,
     cx: ShapeCx,
     vcx: ValueCx<'_>,
@@ -32,7 +31,11 @@ pub(super) fn recorder(
                     e.style.used().position,
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
-                && (measured || stacked_tree(e) || (shaped && (table_tree(e) || flex_tree(e)))) =>
+                && (measured
+                    || stacked_tree(e)
+                    || table_tree(e)
+                    || flex_tree(e)
+                    || grid_tree(e)) =>
         {
             let logical = vertical.map(|rl| {
                 crate::layout::fragment::flow::logical_copy(e, rl)
@@ -90,7 +93,6 @@ mod tests {
             &group[0],
             None,
             false,
-            false,
             ShapeCx::COLUMNS,
             tree.values(),
         );
@@ -110,7 +112,6 @@ mod tests {
             &group,
             &group[0],
             None,
-            false,
             false,
             ShapeCx::COLUMNS,
             tree.values(),

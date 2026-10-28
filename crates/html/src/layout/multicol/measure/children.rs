@@ -164,53 +164,21 @@ pub(crate) fn measure_children(
                         c.marks.host_trim_end = true;
                     }
                 }
-                let c = &c;
                 if col_vert {
-                    let t = transpose_tree(c, col_rl)?;
-                    // TRANSITIONAL(F2-4): Вертикальная смешанная группа оценивается через временный root; удалить в P21 после child resume в логических осях и OOF поверх P08/P10/P16.
-                    shape_full(&t, 4, ShapeCx::COLUMNS, vcx).map(|h| ((*c).clone(), h))
+                    super::laid::vertical_kid(c, vcx, line_col_w?, col_rl, measured_kids)
                 } else {
-                    // TRANSITIONAL(F2-6): Смешанная горизонтальная группа попадает в preplan без clamp scope и child resume; удалить в P21 после typed dispatch поверх P05/P08/P10/P16.
-                    shape_full(c, 4, ShapeCx::COLUMNS, vcx)
-                        .map(|h| ((*c).clone(), h))
-                        .or_else(|| {
-                            // Мера `shape_full` не выразила ребёнка (флоаты,
-                            // внепоточные потомки, таблица со сросшимися
-                            // рамками …). Прежде отказ ОДНОГО ребёнка
-                            // отправлял весь многоколоночник в сетку без
-                            // фрагментации — содержимое вовсе не переходило
-                            // в следующую колонку. css-break-3 §4: любая
-                            // блочная коробка фрагментируема; её высоту даёт
-                            // сама раскладка копии в колонку (`StackChild::
-                            // measure`, Blink меряет ребёнка тем же
-                            // алгоритмом, что и кладёт), а разрез — по краю
-                            // колонки (`slice`, без точек класса A).
-                            // Только колонки с заданной высотой
-                            // (`column-fill: auto`): у баланса высота
-                            // коробки сама зависит от меры, а раскладка
-                            // копии флоаты в высоту не берёт (а коробка
-                            // многоколоночника — корень контекста — берёт).
-                            // Принудительного разрыва внутри мера без
-                            // точек тоже не видит.
-                            // Таблицу из обычных блоков мерит раскладка копии
-                            // целиком, с её принудительными разрывами
-                            // (`flow::blocks::table`).
-                            let table = table_tree(c);
-                            if !measure_ok || (forced_inside(c, 6) && !table) {
-                                return None;
-                            }
-                            let w = kid_layout_w(c, line_col_w, layout_col_w)?;
-                            let (mt, mb) = measured_margins(c)?;
-                            measured_kids.borrow_mut().push((c.node_id, w));
-                            Some((
-                                (*c).clone(),
-                                Shape {
-                                    margin_top: mt,
-                                    margin_bottom: mb,
-                                    ..Shape::default()
-                                },
-                            ))
-                        })
+                    let w = kid_layout_w(&c, line_col_w, layout_col_w)?;
+                    let c = crate::layout::block::margins::fragment_box(c, w, vcx);
+                    let (mt, mb) = measured_margins(&c)?;
+                    measured_kids.borrow_mut().push((c.node_id, w));
+                    Some((
+                        c,
+                        Shape {
+                            margin_top: mt,
+                            margin_bottom: mb,
+                            ..Shape::default()
+                        },
+                    ))
                 }
             }
             _ => None,

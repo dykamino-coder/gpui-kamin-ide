@@ -12,8 +12,7 @@ pub(super) fn new(
     col_vert: bool,
     col_rl: bool,
     kid_w: Option<f32>,
-    frag_geom: Vec<(f32, f32)>,
-    dec: Option<(f32, f32)>,
+    frag_geom: crate::layout::fragment::types::CloneGeom,
     merged: &BoxStyle,
     copy: &Element,
     h: f32,
@@ -56,6 +55,10 @@ pub(super) fn new(
             Some(watched.for_part(part))
         } else {
             None
+        };
+        let (dec, frag_geom, over) = match &*frag_geom.borrow() {
+            Some((dec, geom, end)) => (Some(*dec), geom.clone(), *end),
+            None => (None, Vec::new(), over),
         };
         escaped.wrap(build::build_copy(
             &opts,
@@ -138,8 +141,7 @@ mod tests {
             false,
             false,
             Some(50.),
-            vec![],
-            None,
+            Default::default(),
             &merged,
             copy,
             20.,
@@ -191,6 +193,19 @@ mod tests {
             },
         );
     }
+}
+
+/// Отложенная копия part (0 — главная) того же рецепта, что у ragments.
+pub(super) fn copy(build: Builder, copy: &Element, vertical: bool, part: usize) -> gpui::AnyElement {
+    let copy = copy.clone();
+    crate::layout::fragment::types::FragmentHandle::new(move || {
+        crate::layout::fragment::line_shape::side_margin_wrap(
+            build(part == 0, part, false),
+            &copy,
+            vertical,
+        )
+    })
+    .element()
 }
 
 /// Построители разделяют DOM по COW, но у каждой копии собственные элементы и layout-id.

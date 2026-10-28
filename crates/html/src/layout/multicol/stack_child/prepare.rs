@@ -58,23 +58,10 @@ pub(in crate::layout::multicol) fn prepare(
     }
     let (empty_floats, float_zero) =
         super::floats::normalize(&mut copy, col_vert, col_rl, opts.cx.vcx());
-    // TRANSITIONAL(F2-4): Clone/nested/OOF и ортогональные копии используют старую меру при общем отказе laid; удалить в P21 после per-child resume поверх P05/P08/P10.
     let laid = measured_kids
         .borrow()
         .iter()
-        .any(|&(id, _)| id == copy.node_id)
-        && (if col_vert {
-            crate::layout::fragment::flow::vertical_copy(&copy, col_rl)
-        } else {
-            crate::layout::fragment::flow::independent_copy(&copy)
-                || crate::layout::fragment::line_shape::nested_rows_box(&copy)
-                || empty_floats
-                || (copy.marks.paginate
-                    && crate::layout::multicol::measure::native_float::float_copy(
-                        &copy,
-                        opts.cx.vcx(),
-                    ))
-        });
+        .any(|&(id, _)| id == copy.node_id);
     let (cuts, forced, solid, h, over, no_reach) = if laid {
         // Высоту, переполнение и разрывы заменяет lay_out_main до плана.
         (cuts, forced, solid, h, h, true)

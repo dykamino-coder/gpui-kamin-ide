@@ -79,6 +79,8 @@ pub(super) fn place_oof_statics(
             slack: None,
             laid_w: Default::default(),
             paginate: None,
+            clone_frags: None,
+            copier: None,
             positioned: false,
         };
         // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).

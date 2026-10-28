@@ -107,7 +107,6 @@ fn measured_stack(
         parents,
         parallel,
         kids,
-        Vec::new(),
         prepared,
     );
     let mut stack = ColumnStack::new(

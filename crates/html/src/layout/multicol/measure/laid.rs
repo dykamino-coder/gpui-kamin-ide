@@ -100,41 +100,48 @@ pub(crate) fn vertical_children(
         return None;
     }
     let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
-    let kids: Option<Vec<_>> = nodes
+    if !nodes.iter().filter(|n| !is_blank(n)).all(|n| {
+        matches!(n, Node::Element(c) if crate::layout::fragment::flow::vertical_copy(c, reverse))
+    }) {
+        return None;
+    }
+    nodes
         .iter()
         .filter(|n| !is_blank(n))
         .map(|n| {
             let Node::Element(c) = n else { return None };
-            if !crate::layout::fragment::flow::vertical_copy(c, reverse) {
-                return None;
-            }
-            let c = resolved_lengths(c, merged, vcx);
-            let c = crate::layout::block::margins::vertical_fragment_box(c, width, reverse, vcx);
-            let margin = |l| match l {
-                None | Some(crate::style::values::value::Len::Auto) => Some(0.0),
-                Some(crate::style::values::value::Len::Px(v)) => Some(v),
-                _ => None,
-            };
-            let (start, end) = if reverse {
-                (c.style.used().margin.right, c.style.used().margin.left)
-            } else {
-                (c.style.used().margin.left, c.style.used().margin.right)
-            };
-            Some((
-                c,
-                Shape {
-                    margin_top: margin(start)?,
-                    margin_bottom: margin(end)?,
-                    ..Shape::default()
-                },
-            ))
+            vertical_kid(resolved_lengths(c, merged, vcx), vcx, width, reverse, measured)
         })
-        .collect();
-    let kids = kids?;
-    measured
-        .borrow_mut()
-        .extend(kids.iter().map(|(c, _)| (c.node_id, width)));
-    Some(kids)
+        .collect()
+}
+
+/// Ребёнок вертикальной стопки, чью высоту и разрывы даёт раскладка его копии;
+/// поля — по блочной оси письма колонок.
+pub(crate) fn vertical_kid(
+    c: Element,
+    vcx: ValueCx<'_>,
+    width: f32,
+    reverse: bool,
+    measured: &RefCell<Vec<(u64, f32)>>,
+) -> Option<(Element, Shape)> {
+    let c = crate::layout::block::margins::vertical_fragment_box(c, width, reverse, vcx);
+    let margin = |l| match l {
+        None | Some(crate::style::values::value::Len::Auto) => Some(0.0),
+        Some(crate::style::values::value::Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let (start, end) = if reverse {
+        (c.style.used().margin.right, c.style.used().margin.left)
+    } else {
+        (c.style.used().margin.left, c.style.used().margin.right)
+    };
+    let shape = Shape {
+        margin_top: margin(start)?,
+        margin_bottom: margin(end)?,
+        ..Shape::default()
+    };
+    measured.borrow_mut().push((c.node_id, width));
+    Some((c, shape))
 }
 
 /// Вертикальное исходное дерево до определения строчного размера.

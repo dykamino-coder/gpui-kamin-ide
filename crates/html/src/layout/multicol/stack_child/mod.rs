@@ -36,7 +36,6 @@ pub(super) fn multicol_stack_child(
     e: &Element,
     merged: &BoxStyle,
     opts: &RenderOpts,
-    clone_plan: &[Vec<(f32, f32)>],
     kid_parent: &[Option<BoxStyle>],
     kid_par: &[crate::layout::fragment::types::Par],
     col_vert: bool,
@@ -53,13 +52,11 @@ pub(super) fn multicol_stack_child(
     nested_whole: &std::cell::RefCell<Vec<u64>>,
     measured_kids: &std::cell::RefCell<Vec<(u64, f32)>>,
 ) -> crate::layout::fragment::types::StackChild {
-    // `box-decoration-break: clone` — фрагменты ЭТОГО
-    // ребёнка по плану. Неразрезанная коробка идёт
-    // `slice`: вид тот же, а её переполнение остаётся
-    // параллельным потоком (`clone-003`: ребёнок 185
-    // в коробке 70 продолжается во второй колонке).
-    let frag_geom: Vec<(f32, f32)> = clone_plan.get(ix).cloned().unwrap_or_default();
-    let dec = clone_dec(&c).filter(|_| frag_geom.len() > 1 && !col_vert);
+    // `box-decoration-break: clone` — фрагменты ЭТОГО ребёнка по итоговому плану
+    // укладки (`CloneGeom`). Пока план коробку не разрезал, копия — вся коробка:
+    // вид тот же, а её переполнение остаётся параллельным потоком (`clone-003`).
+    let frag_geom: crate::layout::fragment::types::CloneGeom = Default::default();
+    let dec = clone_dec(&c).filter(|_| !col_vert);
     // Элемент строки flex (`split_flex_lines`) наследует от
     // СВОЕГО контейнера, а не от многоколоночника.
     let merged_k = kid_parent.get(ix).cloned().flatten();
@@ -132,8 +129,7 @@ pub(super) fn multicol_stack_child(
         col_vert,
         col_rl,
         kid_w,
-        frag_geom,
-        dec,
+        frag_geom.clone(),
         merged,
         &copy,
         h,
@@ -168,10 +164,15 @@ pub(super) fn multicol_stack_child(
         rel,
         nest_row,
         whole,
-        build,
+        build.clone(),
         measured_table,
         opts.cx.vcx(),
     );
+    child.clone_frags = dec.map(|_| frag_geom);
+    let source = copy.clone();
+    child.copier = Some(std::rc::Rc::new(move |part| {
+        factory::copy(build.clone(), &source, col_vert, part)
+    }));
     let measured = regrow::Measured {
         paginate,
         watched,
