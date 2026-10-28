@@ -15,6 +15,7 @@ fn input(first: usize, start: f32, h: f32, fixed: bool) -> Input {
         inline_start: 7.,
         repeat_fixed: fixed,
         fixed_content: fixed,
+        unfragmented: false,
     }
 }
 
@@ -115,4 +116,37 @@ fn fresh_oof_trials_report_shortage_and_do_not_share_tokens() {
             assert!(!batch.needs_space);
         }
     }
+}
+
+#[test]
+fn unfragmented_box_at_its_anchor_column_end_stays_whole_there() {
+    let columns = |h: f32| Space {
+        block_size: Some(h),
+        ..Space::columns()
+    };
+    let mut whole = input(1, 18., 16., false);
+    whole.unfragmented = true;
+    // A fragmented box anchored at the very same end starts in the next column.
+    let mut streams = Streams::new(vec![whole, input(1, 18., 16., false)]).unwrap();
+    assert!(streams.resume(0, columns(18.), false).unwrap().fragments.is_empty());
+    let batch = streams.resume(1, columns(18.), false).unwrap();
+    assert_eq!(
+        batch
+            .fragments
+            .iter()
+            .map(|(id, f)| (*id, f.col, f.y, f.h))
+            .collect::<Vec<_>>(),
+        [(0, 1, 18., 16.)]
+    );
+    assert!(batch.needs_space);
+    let batch = streams.resume(2, columns(18.), true).unwrap();
+    assert_eq!(
+        batch
+            .fragments
+            .iter()
+            .map(|(id, f)| (*id, f.col, f.y, f.h))
+            .collect::<Vec<_>>(),
+        [(1, 2, 0., 16.)]
+    );
+    assert!(!batch.needs_space);
 }

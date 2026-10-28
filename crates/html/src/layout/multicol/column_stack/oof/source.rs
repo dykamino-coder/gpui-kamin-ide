@@ -91,6 +91,9 @@ impl ColumnStack {
                 }),
                 repeat_fixed: false,
                 fixed_content: source.fixed || source.inside_fixed,
+                // CB и блок статического места — сам многоколоночник: его
+                // колонки не дробят коробку, место на конце колонки остаётся в ней.
+                unfragmented: source.owner == 0,
             });
         }
         Ok((ids, inputs))
