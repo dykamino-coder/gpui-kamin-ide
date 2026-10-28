@@ -996,8 +996,13 @@ export class JsonlWatcher {
         idx.push(line.start, line.end)
         builder.add(parsed)
         if (!live()) return
+        // Stats are reset per replay and re-accumulated, so they fold every
+        // record. `onUserEntry` is NOT fired for history: it records a NEW
+        // user input (a request row + inputCount), and firing it on every
+        // replay re-inserted one fresh request row per historical prompt on
+        // each resume/reattach — thousands of unawaited DuckDB writes per
+        // replay of a large transcript, and an ever-growing requests table.
         this.onStatsEntry?.(parsed)
-        if (parsed.type === 'user' && this.onUserEntry) this.onUserEntry(parsed)
       }
       if (!live()) return
       // An atomic replacement can happen while the old descriptor is read.

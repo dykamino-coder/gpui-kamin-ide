@@ -179,6 +179,27 @@ describe('bounded replay pipeline', () => {
     expect(final.segmentIndex).toEqual(buildSegmentIndex(rows as unknown as JsonlEntry[], bounds))
   })
 
+  it('records user inputs only for live appends, never for replayed history', async () => {
+    const rows = Array.from({ length: 40 }, (_, i) => row(i, `m${i}`))
+    const file = transcript(rows)
+    const inputs: string[] = []
+    const statuses: JsonlStatus[] = []
+    const w = new JsonlWatcher(
+      Date.now(),
+      () => 'sent',
+      (s) => statuses.push(s),
+      (e) => inputs.push(String(e.uuid)),
+    )
+    watchers.push(w)
+    ;(w as unknown as { filePath: string }).filePath = file
+    w.replayAll()
+    await expect.poll(() => statuses.some((s) => s.replayComplete), { timeout: 5000 }).toBe(true)
+    expect(inputs).toEqual([])
+    writeFileSync(file, JSON.stringify(row(100, 'live')) + '\n', { flag: 'a' })
+    await (w as unknown as { checkForNewContent(): Promise<void> }).checkForNewContent()
+    expect(inputs).toEqual(['u-100'])
+  })
+
   it('streamFrom resumes exactly at a byte boundary in byte-bounded batches', async () => {
     const rows = Array.from({ length: 300 }, (_, i) => row(i, 'q'.repeat(10_000)))
     const file = transcript(rows)

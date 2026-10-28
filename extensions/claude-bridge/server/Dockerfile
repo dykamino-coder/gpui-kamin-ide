@@ -95,7 +95,7 @@ ENV BRIDGE_LIFECYCLE_LOG_DIR=/app/data/logs/lifecycle
 
 EXPOSE 3456
 
-VOLUME ["/app/data", "/home/bridge/.claude", "/app/logs/lifecycle"]
+VOLUME ["/app/data", "/home/bridge/.claude", "/app/logs"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["npx", "tsx", "bin/claude-bridge.ts"]
