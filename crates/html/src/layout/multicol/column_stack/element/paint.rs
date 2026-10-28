@@ -61,6 +61,7 @@ impl ColumnStack {
                 bounds.size.width
             };
             let band = self.fragmentainer_band(f.col, bounds, spill);
+            let wraps = self.wraps();
             let k0 = &self.children[f.kid];
             let (nested_cols, over) = (k0.nested_cols, k0.over);
             // Таблица и вложенная фрагментация задают свои границы. Одна
@@ -91,11 +92,7 @@ impl ColumnStack {
                     .iter()
                     .any(|g| g.kid == f.kid && g.copy == f.copy + 1)
             {
-                let line = if matches!(self.rows, Some(r) if r.wrap) {
-                    f.col / self.count
-                } else {
-                    0
-                };
+                let line = if wraps { f.col / self.count } else { 0 };
                 let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
                 let band = kid
                     .repeat
@@ -143,11 +140,7 @@ impl ColumnStack {
             // Маска и режет: копия нарисована во всю свою высоту, видна
             // только полоса своей колонки (css-break-3 §4, вид `slice`).
             if split {
-                let line = if matches!(self.rows, Some(r) if r.wrap) {
-                    f.col / self.count
-                } else {
-                    0
-                };
+                let line = if wraps { f.col / self.count } else { 0 };
                 let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
                 let continued = plan_all
                     .iter()

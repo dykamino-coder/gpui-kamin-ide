@@ -72,7 +72,7 @@ impl ColumnStack {
         col: usize,
         bounds: Bounds<Pixels>,
     ) -> Result<Fragmentainer, Error> {
-        let wrap = self.rows.is_some_and(|r| r.wrap);
+        let wrap = self.wraps();
         let lines = self.lines_plan.borrow();
         let &(at, h) = lines
             .get(if wrap { col / self.count } else { 0 })
@@ -139,9 +139,7 @@ impl ColumnStack {
         while index < count || streams.needs_space() {
             // Ряды выдаёт владелец ColumnStack. Незавершённый OOF сохраняется,
             // пока владелец не предоставит следующий реальный ряд (P11).
-            if self.rows.is_some_and(|r| r.wrap)
-                && index / self.count >= self.lines_plan.borrow().len()
-            {
+            if self.wraps() && index / self.count >= self.lines_plan.borrow().len() {
                 *self.oof.pending.borrow_mut() = Some(streams);
                 result.incomplete();
                 return Ok(());
