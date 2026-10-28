@@ -66,3 +66,42 @@ pub(super) fn column_item(laid: &Laid, id: u64) -> bool {
         .values()
         .any(|f| f.column && f.lines.iter().any(|l| l.items.contains(&id)))
 }
+
+/// Открытый ряд (`growths`, `open`): линия ряда flex с верха колонки не переносится,
+/// и неделимый элемент этой линии (монолит или `break-inside: avoid`), не
+/// вмещающийся до края, переносится сам — ранний разрыв перед элементом (Blink).
+pub(super) fn open_row_items(
+    b: &BlockBox,
+    laid: &Laid,
+    from: f32,
+    edge: f32,
+    out: &mut Vec<Growth>,
+) {
+    if let Some(flex) = &b.flex
+        && laid.flexes.get(&b.id).is_some_and(|f| !f.column)
+    {
+        for item in &flex.items {
+            let Some((top, bottom)) = laid.at(item.id) else {
+                continue;
+            };
+            let whole = item.monolith || item.inner.as_ref().is_some_and(|i| i.inside_avoid);
+            if whole && (top - from).abs() < COORD_EPS && bottom > edge + COORD_EPS {
+                out.push(Growth {
+                    target: Pushed::Box(item.id),
+                    at: top,
+                    amount: edge - top,
+                    forced: false,
+                });
+            }
+        }
+    }
+    let flex_items = b.flex.iter().flat_map(|f| &f.items);
+    for inner in b
+        .kids
+        .iter()
+        .chain(flex_items)
+        .filter_map(|k| k.inner.as_ref())
+    {
+        open_row_items(inner, laid, from, edge, out);
+    }
+}

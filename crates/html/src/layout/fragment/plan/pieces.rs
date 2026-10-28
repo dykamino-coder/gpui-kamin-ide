@@ -189,7 +189,7 @@ pub(super) fn fill_pieces_inner(
         }
         let cut = cut_at(
             paged,
-            *placed,
+            (*placed, cur <= 0.01),
             k,
             from,
             room,

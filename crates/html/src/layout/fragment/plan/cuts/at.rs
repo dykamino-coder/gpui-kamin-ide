@@ -5,7 +5,7 @@ use crate::layout::fragment::types::Kid;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn cut_at(
     paged: bool,
-    placed: bool,
+    (placed, fresh): (bool, bool),
     k: &Kid,
     from: f32,
     room: f32,
@@ -113,8 +113,11 @@ pub(crate) fn cut_at(
             .map(|p| p.0)
             .min_by(f32::total_cmp);
         let Some(start) = start else { break };
+        // Пожелание с верха пустой колонки переносом не исполнить у самого
+        // ребёнка (Blink: ряд flex у начала фрагментаинера не переносится);
+        // открытый ряд переносит элемент сам (`flex_flow::growths`).
         if start <= from + 0.01 {
-            if placed {
+            if placed && !fresh {
                 return Ok(None);
             }
             break;

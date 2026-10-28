@@ -165,3 +165,45 @@ fn open_row_column_pushes_unbreakable_content_from_its_top() {
         "{open:?}"
     );
 }
+
+#[test]
+fn open_row_pushes_its_unbreakable_line_item_alone() {
+    let root = BlockBox {
+        id: 10,
+        flex: Some(FlexBox {
+            items: vec![
+                BlockKid {
+                    id: 1,
+                    monolith: true,
+                    ..Default::default()
+                },
+                BlockKid {
+                    id: 2,
+                    ..Default::default()
+                },
+            ],
+            main_gap: 0.0,
+        }),
+        ..Default::default()
+    };
+    let mut laid = Laid::of_boxes(&[(10, 0.0, 200.0), (1, 0.0, 200.0), (2, 0.0, 50.0)]);
+    laid.flexes.insert(
+        10,
+        FlexFrame {
+            column: false,
+            lines: vec![FlexLine {
+                start: 0.0,
+                end: 200.0,
+                items: vec![1, 2],
+                ..Default::default()
+            }],
+        },
+    );
+    let grows = crate::layout::fragment::push::flex_flow::growths;
+    let pushed = |g: &Vec<crate::layout::fragment::push::Growth>| {
+        g.iter()
+            .any(|g| g.target == Pushed::Box(1) && g.amount == 30.0)
+    };
+    assert!(!pushed(&grows(&root, &laid, 0.0, 30.0, 30.0, false)));
+    assert!(pushed(&grows(&root, &laid, 0.0, 30.0, 30.0, true)));
+}

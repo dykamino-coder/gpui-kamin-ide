@@ -4,7 +4,7 @@ use crate::layout::fragment::flow::FlowGeometry;
 use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed};
 use crate::tolerance::COORD_EPS;
 mod items;
-use items::{column_item, pushed_past_edge, row_item_line_start, row_item_top};
+use items::{column_item, open_row_items, pushed_past_edge, row_item_line_start, row_item_top};
 
 /// Точка роста относится к одному потоку: соседний flex-item с той же координатой
 /// не должен получить его распорку или принудительный разрыв. `open` — фрагмент
@@ -36,6 +36,9 @@ pub(crate) fn growths(
     let mut gaps = Vec::new();
     blocks.suppressed_row_gaps(laid, from, end, edge, &mut gaps);
     flow_growths(&flows, laid, from, end, edge, open, &mut out);
+    if open {
+        open_row_items(blocks, laid, from, edge, &mut out);
+    }
     // Линия, чей элемент сам растёт в этом фрагменте (принудительный разрыв
     // внутри, перенос монолита), ещё не кончилась: промежуток после неё лежит
     // за её продолжением, а не у этого края (css-flexbox-1 §10).
@@ -160,9 +163,11 @@ fn flow_growths(
         if let Some(top) = row_item_top(laid, flow.id)
             && point <= top + COORD_EPS
         {
-            // Элемент, выровненный ниже начала линии, переносится сам.
+            // Элемент, выровненный ниже начала линии, переносится сам; в открытом
+            // ряду линию с верха колонки не перенести — тоже сам (Blink: ряд у начала
+            // фрагментаинера не переносится, ранний разрыв — перед элементом).
             if let Some(start) = row_item_line_start(laid, flow.id)
-                && laid.margin_box(flow.id).map_or(top, |m| m.0) > start + COORD_EPS
+                && (open || laid.margin_box(flow.id).map_or(top, |m| m.0) > start + COORD_EPS)
                 && edge > point + COORD_EPS
             {
                 out.push(Growth {
