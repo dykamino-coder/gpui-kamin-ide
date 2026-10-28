@@ -146,6 +146,8 @@ impl RenderOnce for Specimen {
                     AbsoluteLength::Pixels(absolute_len) => absolute_len.into(),
                 },
                 DefiniteLength::Fraction(value) => value,
+                // KaminIDE patch: the fork's `calc()` lengths; this example never sets them.
+                DefiniteLength::Calc(..) => line_height,
             };
         }
 
@@ -377,9 +379,9 @@ fn run_example() {
             items: vec![],
         }]);
 
-        let fonts = [include_bytes!(
-            "../../../assets/fonts/lilex/Lilex-Regular.ttf"
-        )]
+        // KaminIDE patch: the zed monorepo asset is not in the package; the same
+        // upstream font is bundled in tests/fonts (see its README).
+        let fonts = [include_bytes!("../tests/fonts/Lilex-Regular.ttf")]
         .iter()
         .map(|b| Cow::Borrowed(&b[..]))
         .collect();

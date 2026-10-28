@@ -165,6 +165,9 @@ struct InlineFlowTypography {
     text_style: TextStyle,
     rem_size: Pixels,
     line_height: Pixels,
+    // KaminIDE patch: fragment line heights are snapped to device pixels
+    // (`plain_line_height`), so a layout from another scale factor is stale.
+    scale_factor: f32,
 }
 
 #[derive(Default)]
@@ -338,6 +341,7 @@ impl Element for InlineFlow {
             text_style: window.text_style(),
             rem_size: window.rem_size(),
             line_height: window.line_height(),
+            scale_factor: window.scale_factor(),
         };
         let image_sizes = measure_items
             .iter()
