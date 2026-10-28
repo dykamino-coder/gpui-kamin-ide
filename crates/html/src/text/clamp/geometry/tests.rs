@@ -22,6 +22,7 @@ fn paragraph(seq: u32, y: f32, h: f32) -> ClampEntry {
         span: None,
         bt_before: 0.0,
         positioned: false,
+        float: false,
     }
 }
 

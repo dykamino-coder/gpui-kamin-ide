@@ -63,8 +63,35 @@ pub struct ClampEntry {
     /// Absolutely positioned box: not hidden by the clamp (Blink keeps
     /// out-of-flow boxes painted), its overflow stays visible.
     pub positioned: bool,
+    /// Floated box: out of flow, it never separates a line box from the
+    /// clamp point (css-overflow-4 §block-ellipsis).
+    pub float: bool,
 }
 
+#[cfg(test)]
+impl ClampEntry {
+    /// Paragraph probe `seq` over `bounds` with line boxes of `line` points.
+    pub(crate) fn paragraph(bounds: Bounds<Pixels>, line: f32, seq: u32) -> Self {
+        ClampEntry {
+            bounds,
+            line,
+            skip_count: false,
+            fixed_height: false,
+            bp_after: 0.,
+            end_margin: 0.,
+            min_end: 0.,
+            capped: false,
+            node: 0,
+            seq: Some(seq),
+            clamped: None,
+            empty: false,
+            span: None,
+            bt_before: 0.,
+            positioned: false,
+            float: false,
+        }
+    }
+}
 /// End edges of a box probe beyond its padding box (see `ClampEntry`).
 #[derive(Clone, Copy, Default)]
 pub struct BoxEnds {

@@ -40,6 +40,20 @@ pub(crate) fn own_context(e: &Element) -> bool {
             && !multicol_container(&e.style.used()))
 }
 
+/// Line-clamp container with a clamp point to place (css-overflow-4
+/// §line-clamp-containers): its whole content is laid out by its clamp host,
+/// which alone knows the clamp point. `max-lines: auto` needs a block-size
+/// limit (`c` — the box style with resolved lengths); on a multicol container
+/// `continue: collapse` behaves as `auto` (§continue).
+pub(crate) fn clamp_host(e: &Element, c: &crate::style::computed::Computed) -> bool {
+    let used = e.style.used();
+    (used.clamp_lines().is_some()
+        || (used.clamp_by_height()
+            && used.clamp_block_container()
+            && crate::layout::replaced::limits::auto_clamp_limit(c).is_some()))
+        && !multicol_container(&used)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,6 +82,23 @@ mod tests {
         assert!(bfc_root(float));
         float.marks.float_block = false;
         assert!(!own_context(float));
+    }
+
+    #[test]
+    fn clamp_host_needs_a_clamp_point_and_a_block_container_that_is_not_multicol() {
+        for (css, host) in [
+            ("line-clamp:2", true),
+            ("line-clamp:auto;max-height:40px", true),
+            ("line-clamp:auto", false),
+            ("line-clamp:2;columns:2", false),
+            ("display:-webkit-box;-webkit-line-clamp:2", false),
+        ] {
+            let doc = crate::document::state::DocState::new(Default::default());
+            let mut style = crate::style::computed::Computed::default();
+            style.apply_decls(&crate::style::css::parse_decls(css), doc.values());
+            let e = Element::synthetic("div", style, Default::default(), Vec::new());
+            assert_eq!(clamp_host(&e, &e.style.used()), host, "{css}");
+        }
     }
 }
 

@@ -12,7 +12,7 @@ pub(crate) mod resume;
 pub(crate) mod space;
 
 use fc::FcState;
-use resume::{ClampBudget, OofResume};
+use resume::OofResume;
 pub(crate) use space::Space;
 
 /// Ссылка на токен в `TokenStore`.
@@ -49,8 +49,6 @@ pub(crate) struct Token {
     pub(crate) fc: FcState,
     /// Абсолютно позиционированные потомки, продолжающиеся через фрагментаинеры.
     pub(crate) oof: Vec<OofResume>,
-    /// Бюджет строк `line-clamp`, общий для всех фрагментаинеров.
-    pub(crate) clamp: Option<ClampBudget>,
     /// Содержимое кончилось, остались padding/border конца коробки или
     /// параллельные потоки (Blink `IsAtBlockEnd`).
     pub(crate) at_block_end: bool,
@@ -68,7 +66,6 @@ impl Token {
             seq: 1,
             fc,
             oof: Vec::new(),
-            clamp: None,
             at_block_end: false,
             monolithic_overflow: 0.0,
             flags: TokenFlags::default(),
@@ -99,7 +96,6 @@ impl Token {
             seq,
             fc,
             oof,
-            clamp: self.clamp,
             at_block_end: false,
             monolithic_overflow: 0.0,
             flags: TokenFlags::default(),

@@ -151,9 +151,12 @@ pub(crate) fn child_probes(
                 None,
                 span,
                 side(e.style.used().borders().top),
-                matches!(
-                    merged.position,
-                    Some(crate::style::computed::Position::Absolute)
+                (
+                    matches!(
+                        merged.position,
+                        Some(crate::style::computed::Position::Absolute)
+                    ),
+                    merged.float.is_some_and(|f| f != 0),
                 ),
             ));
         } else if !is_clamp

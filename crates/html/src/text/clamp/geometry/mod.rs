@@ -7,6 +7,8 @@ mod fit;
 mod geometry;
 mod paragraph;
 #[cfg(test)]
+mod scope_tests;
+#[cfg(test)]
 mod tests;
 
 use super::ClampEntry;
