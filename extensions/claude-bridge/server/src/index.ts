@@ -69,7 +69,37 @@ process.setMaxListeners(50)
 
 let server: ReturnType<typeof serve> | null = null
 
+/** While the stats database opens (a large WAL left by a crash can take a
+ *  minute or more to replay), answer every request with `503 starting` on the
+ *  real port instead of refusing connections, so health checks and clients see
+ *  a live, starting server rather than a dead one. Returns the closer. */
+async function listenWhileStarting(): Promise<() => Promise<void>> {
+  const { createServer } = await import('node:http')
+  const boot = createServer((_req, res) => {
+    res.writeHead(503, { 'content-type': 'application/json', 'retry-after': '5' })
+    res.end('{"status":"starting"}')
+  })
+  boot.on('upgrade', (_req, socket) => {
+    socket.end('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nConnection: close\r\n\r\n')
+  })
+  try {
+    await new Promise<void>((resolve, reject) => {
+      boot.once('error', reject)
+      boot.listen(config.port, config.host, () => resolve())
+    })
+  } catch (e) {
+    console.warn(`[bridge] starting listener unavailable: ${e instanceof Error ? e.message : e}`)
+    return async () => {}
+  }
+  return () =>
+    new Promise<void>((resolve) => {
+      boot.close(() => resolve())
+      boot.closeAllConnections()
+    })
+}
+
 async function startup(): Promise<void> {
+  const stopStartingListener = await listenWhileStarting()
   // Initialize DuckDB (migrates from SQLite proxy.db on first boot).
   try {
     const { initStatsDb } = await import('./core/stats/database/lifecycle')
@@ -96,6 +126,7 @@ async function startup(): Promise<void> {
 
   // Create HTTP server
   const app = createApp()
+  await stopStartingListener()
 
   const nodeServer = serve({
     fetch: app.fetch,
@@ -145,6 +176,10 @@ async function startup(): Promise<void> {
   try {
     const { startDbMaintenance } = await import('./core/stats/database/maintenance')
     startDbMaintenance()
+    // One-time removal of user-input rows duplicated by transcript replay
+    // (INC-2026-0078); runs in the exclusive maintenance window, off boot path.
+    const { runRequestsDedupeAtBoot } = await import('./core/stats/database/requests-dedupe')
+    void runRequestsDedupeAtBoot()
   } catch (e) {
     console.warn(`[bridge] db-maintenance unavailable: ${e instanceof Error ? e.message : e}`)
   }

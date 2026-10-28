@@ -24,7 +24,10 @@ services:
     ports:
       - '${BRIDGE_PORT:-3456}:3456'
     volumes:
-      # Persist only allowlisted lifecycle metadata, never legacy raw logs.
+      # Server logs (errors/sessions) survive a container re-creation.
+      - bridge-logs:/app/logs
+      # Legacy lifecycle volume; lifecycle metadata now lives on bridge-data
+      # (BRIDGE_LIFECYCLE_LOG_DIR=/app/data/logs/lifecycle in the image).
       - bridge-lifecycle-logs:/app/logs/lifecycle
       - bridge-data:/app/data
       - claude-auth:/home/bridge/.claude
@@ -62,6 +65,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  bridge-logs:
+    driver: local
   bridge-lifecycle-logs:
     driver: local
   bridge-data:

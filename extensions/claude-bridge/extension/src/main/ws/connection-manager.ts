@@ -227,7 +227,7 @@ export class ConnectionManager {
   private readonly recentMcpCalls = new Map<string, number>()
   private mcpSessionId: string | null = null
   private readonly mcpResults = new McpResultOutbox(frame => {
-    if (this.ws?.readyState !== WebSocket.OPEN || this.ws.bufferedAmount > 4 * 1024 * 1024) return false
+    if (this.ws?.readyState !== WebSocket.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024) return false
     this.ws.send(frame)
     return true
   })
@@ -835,7 +835,7 @@ export class ConnectionManager {
   private async deliverMcpResult(outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>): Promise<void> {
     if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return
     try {
-      await this.mcpResults.deliver(this.mcpSessionId, outcome)
+      outcome = await this.mcpResults.deliver(this.mcpSessionId, outcome)
       if (!this.pendingMcpCalls.has(outcome.requestId)) return
       this.window.webContents.send('mcp-activity', this.tabId, {
         requestId: outcome.requestId, toolName: '', input: {}, timestamp: Date.now(),

@@ -13,6 +13,9 @@
 // ждём, пока буфер опустеет, а если он не опустеет — выгрузка честно
 // прекращается с ошибкой.
 
+import fsp from 'fs/promises'
+import { StringDecoder } from 'string_decoder'
+
 export interface DrainableSocket {
   readonly readyState: number
   readonly bufferedAmount: number
@@ -55,5 +58,42 @@ export async function waitForDrain(ws: DrainableSocket, opts: DrainOptions): Pro
     if (ws.bufferedAmount <= opts.limit) return 'ready'
     if (now() >= deadline) return 'timeout'
     await sleep(opts.pollMs)
+  }
+}
+
+export interface ChunkSocket extends DrainableSocket {
+  send(data: string): void
+}
+
+/**
+ * Stream `[0, total)` of a file to the socket as `jsonl:download-chunk` frames
+ * of at most `chunkBytes` source bytes, waiting for drain before each. Only one
+ * chunk is in memory; a UTF-8 character split by a chunk edge is carried over
+ * by the decoder. Returns null when every chunk was sent, else why it stopped.
+ */
+export async function streamFileChunks(
+  ws: ChunkSocket,
+  filePath: string,
+  total: number,
+  chunkBytes: number,
+  drain: DrainOptions,
+): Promise<DrainOutcome | null> {
+  const decoder = new StringDecoder('utf8')
+  const fh = await fsp.open(filePath, 'r')
+  try {
+    const buf = Buffer.allocUnsafe(chunkBytes)
+    for (let sent = 0; sent < total;) {
+      const gate = await waitForDrain(ws, drain)
+      if (gate !== 'ready') return gate
+      const { bytesRead } = await fh.read(buf, 0, Math.min(chunkBytes, total - sent), sent)
+      if (bytesRead === 0) break
+      sent += bytesRead
+      let chunk = decoder.write(buf.subarray(0, bytesRead))
+      if (sent >= total) chunk += decoder.end()
+      ws.send(JSON.stringify({ type: 'jsonl:download-chunk', chunk, sent, total }))
+    }
+    return null
+  } finally {
+    await fh.close()
   }
 }

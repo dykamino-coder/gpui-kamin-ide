@@ -7,6 +7,7 @@ import type { PtySession } from './types'
 import { eventBus } from '../events/bus'
 import { debugLog } from '../logging'
 import { setSessionPromptReady, submitCoordinatedText, writeCoordinatedInput } from './session-input-coordinator'
+import type { SendOutcome } from './jsonl-replay'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -85,24 +86,50 @@ export function clearInputThrottle(sessionId: string): void {
 // OOM that kills EVERY session on the box. Past the cap we DROP the frame:
 // streaming self-heals (boundary snapshots + the JSONL watcher re-deliver), and
 // dropping one connection's frames is far better than crashing the process.
-const WS_SEND_MAX_BUFFER = 16 * 1024 * 1024 // 16 MB
+export const WS_SEND_MAX_BUFFER = 16 * 1024 * 1024 // 16 MB
 
 export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
-  if (ws.readyState !== 1 /* WS.OPEN */) return false
-  if ((ws.bufferedAmount ?? 0) > WS_SEND_MAX_BUFFER) return false
+  return trySendToClient(ws, msg) === 'sent'
+}
+
+/** Outcome of one guarded send. `oversized` = the frame alone exceeds the
+ *  per-connection cap, so waiting for drain can never make it fit — callers
+ *  that redeliver must split or replace it instead of retrying. */
+export type { SendOutcome } from './jsonl-replay'
+
+export function trySendToClient(ws: WS, msg: Record<string, unknown>): SendOutcome {
+  if (ws.readyState !== 1 /* WS.OPEN */) return 'closed'
+  // Checked BEFORE serialising: a congested socket costs no JSON.stringify.
+  if ((ws.bufferedAmount ?? 0) > WS_SEND_MAX_BUFFER) return 'backpressured'
   // Guard the widest chokepoint: JSON.stringify throws on a circular/BigInt value
   // (a malformed synthesized entry) and ws.send can throw on a racing socket
   // state. Many callers run inside pty.onData / setTimeout / onExit callbacks
   // where a throw would escape to uncaughtException — dropping this one frame is
   // always better than that.
+  let frame: string
   try {
-    const frame = JSON.stringify(msg)
-    if ((ws.bufferedAmount ?? 0) + Buffer.byteLength(frame, 'utf8') > WS_SEND_MAX_BUFFER) return false
-    ws.send(frame)
-    return true
+    frame = JSON.stringify(msg)
   } catch {
-    return false
+    // Unserialisable now means unserialisable forever: never a retry case.
+    return 'oversized'
   }
+  const bytes = Buffer.byteLength(frame, 'utf8')
+  if (bytes > WS_SEND_MAX_BUFFER) return 'oversized'
+  if ((ws.bufferedAmount ?? 0) + bytes > WS_SEND_MAX_BUFFER) return 'backpressured'
+  try {
+    ws.send(frame)
+    return 'sent'
+  } catch {
+    return 'closed'
+  }
+}
+
+/** Replay/sync high-water mark: bulk history is only sent while the socket's
+ *  outbound buffer is below this, leaving the rest of the cap to live traffic. */
+export const REPLAY_HIGH_WATER = 4 * 1024 * 1024
+
+export function socketWritable(ws: WS): boolean {
+  return ws.readyState === 1 && (ws.bufferedAmount ?? 0) <= REPLAY_HIGH_WATER
 }
 
 // ---------------------------------------------------------------------------
