@@ -54,14 +54,17 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
   terminal.attachCustomKeyEventHandler(event => {
     if (event.type !== 'keydown') return true
     if (event.ctrlKey && !event.altKey && !event.metaKey) {
-      if (event.code === 'KeyC' || event.code === 'KeyX') {
-        if (copySelection() || (event.code === 'KeyC' && event.shiftKey)) {
+      // CEF can omit code when native input has no scan code. Its Windows
+      // virtual key remains layout independent even when key is Cyrillic.
+      const code = event.code || ({ 67: 'KeyC', 86: 'KeyV', 88: 'KeyX' } as Record<number, string>)[event.keyCode]
+      if (code === 'KeyC' || code === 'KeyX') {
+        if (copySelection() || (code === 'KeyC' && event.shiftKey)) {
           event.preventDefault()
           event.stopPropagation()
           return false
         }
       }
-      if (event.code === 'KeyV') return false
+      if (code === 'KeyV') return false
     }
     return options.handleKey?.(event) ?? true
   })

@@ -51,6 +51,19 @@ function fixture() {
 }
 
 describe('console clipboard and context menu', () => {
+  it('uses the virtual key for CEF input without a scan code, across layouts', () => {
+    const f = fixture()
+    f.select('native CEF selection')
+    expect(f.key({ code: '', key: 'с', keyCode: 67 }).allowed).toBe(false)
+    expect(f.writeText).toHaveBeenCalledExactlyOnceWith('native CEF selection')
+    expect(f.key({ code: '', key: 'с', keyCode: 67 }).allowed).toBe(true)
+    expect(f.key({ code: '', key: 'м', keyCode: 86 }).allowed).toBe(false)
+    f.select('unrelated shortcut')
+    expect(f.key({ code: 'KeyA', keyCode: 67 }).allowed).toBe(true)
+    expect(f.writeText).toHaveBeenCalledOnce()
+    f.dispose()
+  })
+
   it('copies Ctrl+C selection using the physical key, and otherwise leaves ^C to xterm', () => {
     const f = fixture()
     f.select('selected text')
