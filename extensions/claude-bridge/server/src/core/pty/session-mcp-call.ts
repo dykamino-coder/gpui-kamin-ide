@@ -52,7 +52,13 @@ export function hasInflightMcpCall(sessionId: string): boolean {
   return false
 }
 
-export function sendMcpCall(session: PtySession, toolName: string, input: Record<string, unknown>): Promise<unknown> {
+export function sendMcpCall(
+  session: PtySession,
+  toolName: string,
+  input: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  if (signal?.aborted) return Promise.reject(new Error('MCP request cancelled'))
   const requestId = randomUUID()
   session.mcpCallCount++
   session.lastActivityAt = new Date()
@@ -75,7 +81,19 @@ export function sendMcpCall(session: PtySession, toolName: string, input: Record
     return Promise.reject(new Error(`MCP request cannot be serialized: ${toolName}`))
   }
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolveRaw, rejectRaw) => {
+    const resolve = (value: unknown): void => {
+      signal?.removeEventListener('abort', abort)
+      resolveRaw(value)
+    }
+    const reject = (error: Error): void => {
+      signal?.removeEventListener('abort', abort)
+      rejectRaw(error)
+    }
+    const abort = (): void => {
+      sendToClient(session.ws, { type: 'mcp:cancel', requestId })
+      handleMcpDenied(requestId, 'MCP request cancelled')
+    }
     // Interactive tools (AskUserQuestion, ExitPlanMode) wait indefinitely —
     // user may think forever. Heavy fs/shell tools get 30 min because on
     // big repos they legitimately can run that long. Everything else: 2 min.
@@ -121,6 +139,8 @@ export function sendMcpCall(session: PtySession, toolName: string, input: Record
     trySendMcpCall(session, requestId, pending)
     const delivered = pending.delivered
 
+    signal?.addEventListener('abort', abort, { once: true })
+    if (signal?.aborted) abort()
     debugLog('MCP call sent to client host', { sessionId: session.id, requestId, toolName, delivered })
   })
 }

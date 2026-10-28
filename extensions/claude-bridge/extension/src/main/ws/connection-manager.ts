@@ -6,6 +6,7 @@ import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../.
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import { JsonlBatcher } from './jsonl-batcher'
+import { cancelMcpCall, type PendingMcpExecution } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
 import { TranscriptMirror } from './transcript-mirror'
 import { toRendererConnectionState } from './connection-state'
@@ -226,6 +227,7 @@ export class ConnectionManager {
 
   private readonly recentMcpCalls = new Map<string, number>()
   private mcpSessionId: string | null = null
+  private mcpTaskOwner: string | undefined
   private readonly mcpResults = new McpResultOutbox(frame => {
     if (this.ws?.readyState !== WebSocket.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024) return false
     this.ws.send(frame)
@@ -233,7 +235,7 @@ export class ConnectionManager {
   })
 
   // Pending MCP calls (requestId → { toolName, input })
-  private pendingMcpCalls = new Map<string, { toolName: string; input: Record<string, unknown> }>()
+  private pendingMcpCalls = new Map<string, PendingMcpExecution>()
 
   // Permission responses waiting to be resolved
   private pendingPermissions = new Map<string, (decision: PermissionDecision) => void>()
@@ -758,6 +760,7 @@ export class ConnectionManager {
       this.mcpResults.dispose()
       this.mcpSessionId = null
       this.recentMcpCalls.clear()
+      for (const call of this.pendingMcpCalls.values()) call.controller?.abort()
       this.pendingMcpCalls.clear()
     }
     // Осиротевшие permission-промисы резолвим отказом, иначе handleMcpCall
@@ -835,7 +838,7 @@ export class ConnectionManager {
   private async deliverMcpResult(outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>): Promise<void> {
     if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return
     try {
-      outcome = await this.mcpResults.deliver(this.mcpSessionId, outcome)
+      outcome = await this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner })
       if (!this.pendingMcpCalls.has(outcome.requestId)) return
       this.window.webContents.send('mcp-activity', this.tabId, {
         requestId: outcome.requestId, toolName: '', input: {}, timestamp: Date.now(),
@@ -1118,6 +1121,11 @@ export class ConnectionManager {
     if (msg.type === 'session:output' && this.state.status !== 'authenticated') return
     if (this.identityHold && msg.type !== 'session:created' && msg.type !== 'session:error') return
 
+    if (msg.type === 'session:created' || msg.type === 'session:restarted') this.mcpTaskOwner = msg.mcpTaskOwner
+    if (msg.type === 'mcp:cancel') {
+      cancelMcpCall(this.mcpCallCtx(), msg.requestId, msg.taskOwner)
+      return
+    }
     if (msg.type === 'mcp:call') {
       for (const [id, expires] of this.recentMcpCalls) {
         if (Date.now() >= expires) this.recentMcpCalls.delete(id)
@@ -1271,7 +1279,7 @@ export class ConnectionManager {
       send: (m) => this.send(m),
       reportDeliveryFailure: () => this.reportMcpDeliveryFailure(),
       deliverResult: (outcome) => this.mcpSessionId
-        ? this.mcpResults.deliver(this.mcpSessionId, outcome)
+        ? this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner })
         : Promise.reject(new Error('MCP server session ended')),
       pendingMcpCalls: this.pendingMcpCalls,
       pendingPermissions: this.pendingPermissions,
@@ -1308,11 +1316,16 @@ export class ConnectionManager {
       this.clearEstablishTimer(); this.establishFailures = 0
       if (state.sessionId) {
         if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
-          this.pendingMcpCalls.clear()
+          for (const [id, call] of this.pendingMcpCalls) {
+            if (!call.taskOwner || call.taskOwner !== this.mcpTaskOwner) {
+              call.controller?.abort()
+              this.pendingMcpCalls.delete(id)
+            }
+          }
           this.recentMcpCalls.clear()
         }
         this.mcpSessionId = state.sessionId
-        this.mcpResults.attach(state.sessionId)
+        this.mcpResults.attach(state.sessionId, this.mcpTaskOwner)
       }
     } else this.mcpResults.detach()
     const rendererState = this.getState()

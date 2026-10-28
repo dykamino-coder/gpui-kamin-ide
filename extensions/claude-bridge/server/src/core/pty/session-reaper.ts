@@ -6,6 +6,7 @@ import { eventBus } from '../events/bus'
 import { lifecycleLog } from '../logging/lifecycle'
 import { debugLog, warnLog } from '../logging'
 import { sessions, destroySession } from './session-core'
+import { mcpTasks } from './mcp-tasks'
 import { hasInflightMcpCall } from './session-mcp-call'
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,7 @@ export type ReapReason = 'startup_timeout' | 'idle_timeout' | 'max_lifetime' | n
 export interface ReapableSession {
   id: string
   state: string
+  mcpEndpoint?: { id: string }
   isSubAgent?: boolean
   createdAt: Date
   lastActivityAt: Date
@@ -90,7 +92,8 @@ export function decideReap(
   // so without this guard a 5-min build inside a sub-agent would be
   // killed at the 10-min sub-agent ceiling, or a 35-min `podman build`
   // in the main session would die at the 30-min idle limit.
-  if (hasInflightCall(session.id)) return null
+  if (hasInflightCall(session.id) || (session.mcpEndpoint && mcpTasks.hasWorkingOwner(session.mcpEndpoint.id)))
+    return null
 
   const idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MIN * 60_000
   const effectiveIdleMs = session.isSubAgent ? SUB_AGENT_IDLE_TIMEOUT_MS : idleTimeoutMs
