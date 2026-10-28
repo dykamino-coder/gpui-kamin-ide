@@ -44,6 +44,7 @@ export function tierForModel(modelId: string | undefined | null): CostTier {
     if (m.includes('opus-4-5') || m.includes('opus-4-6') || m.includes('opus-4-7') || m.includes('opus-4-8')) return TIER_5_25
     return TIER_15_75
   }
+  if (m.includes('sonnet-5-5')) return { ...TIER_2_10, cacheRead: 0.1 }
   if (m.includes('sonnet-5')) return TIER_2_10
   return TIER_3_15
 }
@@ -72,6 +73,7 @@ export interface UsageBlock {
   output_tokens?: number
   cache_read_input_tokens?: number
   cache_creation_input_tokens?: number
+  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
 }
 
 export function costForUsage(usage: UsageBlock, base: CostTier): number {
@@ -80,10 +82,11 @@ export function costForUsage(usage: UsageBlock, base: CostTier): number {
   const cacheRead = usage.cache_read_input_tokens ?? 0
   const cacheWrite = usage.cache_creation_input_tokens ?? 0
   const tier = base.above && inTok + cacheRead + cacheWrite > base.above.tokens ? base.above.tier : base
+  const hourWrite = Math.max(0, Math.min(cacheWrite, usage.cache_creation?.ephemeral_1h_input_tokens ?? 0))
   return (
     (inTok * tier.input +
       outTok * tier.output +
-      cacheWrite * tier.cacheWrite +
+      cacheWrite * tier.cacheWrite + hourWrite * (2 * tier.input - tier.cacheWrite) +
       cacheRead * tier.cacheRead) / 1_000_000
   )
 }
@@ -157,11 +160,11 @@ export function computeContextStats(
   let latestUsage: UsageBlock | null = null
   let latestUsedTokens = -1
   let latestModel: string | null = null
-  const seenMessages = new Set<string>()
+  const messageCosts = new Map<string, number>()
   let lastCompact: { postTokens?: number } | null = null
 
   for (const e of entries) {
-    if (e.isSidechain || e.subagentId) continue
+    if ((e.isSidechain || e.subagentId) && e.type !== 'assistant') continue
     if (isLiveSegment && e.type === 'system' && e.subtype === 'compact_boundary') {
       // A completed compact invalidates previous Current occupancy immediately.
       // Synthetic summaries and hook errors are not newer model usage.
@@ -171,18 +174,19 @@ export function computeContextStats(
       continue
     }
     if (e.type !== 'assistant') continue
-    // Субагентские ходы имеют СВОЁ окно контекста — включённые в общий стор
-    // (canonical sidechain-строки + живые streaming-стабы) они дёргали главный
-    // бар: он снапался к окну субагента и прыгал обратно (жалоба юзера).
-    if (e.isSidechain || e.subagentId) continue
     const model = e.model ?? e.message?.model
     if (model === '<synthetic>') continue
     const usage = e.usage ?? e.message?.usage
     if (!usage) continue
     const messageId = e.message?.id
-    const shouldCount = !messageId || !seenMessages.has(messageId)
-    if (messageId) seenMessages.add(messageId)
-    if (shouldCount) cumulativeCost += costForUsage(usage, tierForModel(typeof model === 'string' ? model : null))
+    const cost = costForUsage(usage, tierForModel(typeof model === 'string' ? model : null))
+    if (messageId) {
+      const previous = messageCosts.get(messageId) ?? 0
+      cumulativeCost += Math.max(previous, cost) - previous
+      messageCosts.set(messageId, Math.max(previous, cost))
+    } else cumulativeCost += cost
+    // Стоимость включает субагентов, их отдельное окно не меняет главный бар.
+    if (e.isSidechain || e.subagentId) continue
     const used = effectiveInputTokens(usage)
     if (used > peakUsedTokens) {
       peakUsedTokens = used

@@ -5,12 +5,12 @@
 // usage shape, same model. Dedup happens downstream by message.id.
 // ============================================================================
 
-import { randomUUID } from "node:crypto"
-import type { AnthropicSseEvent, AnthropicUsage } from "./sse-parser"
+import { randomUUID } from 'node:crypto'
+import type { AnthropicSseEvent, AnthropicUsage } from './sse-parser'
 
 /** Identical shape to what jsonl-watcher emits for `type:'assistant'`. */
 export interface SynthAssistantEntry {
-  type: "assistant"
+  type: 'assistant'
   uuid: string
   timestamp: string
   parentUuid: string | null
@@ -25,7 +25,7 @@ export interface SynthAssistantEntry {
   usage?: AnthropicUsage
   message: {
     id: string
-    role: "assistant"
+    role: 'assistant'
     model: string
     content: SynthContentBlock[]
     stop_reason?: string | null
@@ -36,10 +36,10 @@ export interface SynthAssistantEntry {
 }
 
 export type SynthContentBlock =
-  | { type: "text"; text: string }
-  | { type: "thinking"; thinking: string }
-  | { type: "tool_use"; id: string; name: string; input: any }
-  | { type: "redacted_thinking"; data: string }
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; thinking: string }
+  | { type: 'tool_use'; id: string; name: string; input: any }
+  | { type: 'redacted_thinking'; data: string }
 
 export interface SynthCallbacks {
   /** Fires on every state change (after each delta) and on finalize. This is
@@ -53,7 +53,7 @@ export interface SynthCallbacks {
   /** Fires on each text/thinking delta with just the appended slice — the
    *  NEW-client incremental path. NOT emitted for tool input_json_delta (tool
    *  args ride the boundary snapshot's static "preparing args…" placeholder). */
-  onDelta?: (d: { msgId: string; blockIdx: number; appendText: string; kind: "text" | "thinking" }) => void
+  onDelta?: (d: { msgId: string; blockIdx: number; appendText: string; kind: 'text' | 'thinking' }) => void
 }
 
 /** Per-PTY-session synthesizer. Each `feed` call processes one or more SSE
@@ -120,7 +120,7 @@ export class EntrySynthesizer {
   // block. On a NORMAL close (hard=false) we must NOT latch: res 'close' fires on
   // every turn-end and races the async tee 'data'/'end' events, so latching there
   // would drop the tail of a healthy response (broke streaming — regression).
-  abort(reason: string = "aborted", hard = false): void {
+  abort(reason: string = 'aborted', hard = false): void {
     if (hard) this.aborted = true
     if (!this.current) return
     this.current.message.stop_reason = reason
@@ -134,29 +134,29 @@ export class EntrySynthesizer {
   private handleOne(evt: AnthropicSseEvent): void {
     try {
       switch (evt.type) {
-        case "message_start":
+        case 'message_start':
           this.onMessageStart(evt)
           break
-        case "content_block_start":
+        case 'content_block_start':
           this.onContentBlockStart(evt)
           break
-        case "content_block_delta":
+        case 'content_block_delta':
           this.onContentBlockDelta(evt)
           break
-        case "content_block_stop":
+        case 'content_block_stop':
           this.onContentBlockStop(evt)
           break
-        case "message_delta":
+        case 'message_delta':
           this.onMessageDelta(evt)
           break
-        case "message_stop":
+        case 'message_stop':
           this.onMessageStop()
           break
-        case "error":
+        case 'error':
           this.onError(evt)
           break
-        case "ping":
-        case "unknown":
+        case 'ping':
+        case 'unknown':
         default:
           break
       }
@@ -165,7 +165,7 @@ export class EntrySynthesizer {
     }
   }
 
-  private onMessageStart(evt: Extract<AnthropicSseEvent, { type: "message_start" }>): void {
+  private onMessageStart(evt: Extract<AnthropicSseEvent, { type: 'message_start' }>): void {
     const msg = evt.message
     // Side-quest detection. CLI side-quests (title generator, classifier,
     // sideQuery) run on HAIKU with short prompts; a real main turn runs on the
@@ -182,15 +182,13 @@ export class EntrySynthesizer {
     // user's own model → never a side-quest by input size.
     const u = msg.usage as any | undefined
     const inputCtx = (u?.input_tokens ?? 0) + (u?.cache_read_input_tokens ?? 0) + (u?.cache_creation_input_tokens ?? 0)
-    const respFam = (msg.model || "").toLowerCase()
-    const mainFam = (this.mainModel || "").toLowerCase()
-    const isHaiku = respFam.includes("haiku")
-    const userChoseHaiku = mainFam.includes("haiku")
-    const sidechain = this.markSidechain
-      || (isHaiku && !userChoseHaiku)
-      || (isHaiku && inputCtx > 0 && inputCtx < 3000)
+    const respFam = (msg.model || '').toLowerCase()
+    const mainFam = (this.mainModel || '').toLowerCase()
+    const isHaiku = respFam.includes('haiku')
+    const userChoseHaiku = mainFam.includes('haiku')
+    const sidechain = this.markSidechain || (isHaiku && !userChoseHaiku) || (isHaiku && inputCtx > 0 && inputCtx < 3000)
     this.current = {
-      type: "assistant",
+      type: 'assistant',
       uuid: `stream-${msg.id}`,
       timestamp: new Date().toISOString(),
       parentUuid: null,
@@ -201,7 +199,7 @@ export class EntrySynthesizer {
       usage: msg.usage,
       message: {
         id: msg.id,
-        role: "assistant",
+        role: 'assistant',
         model: msg.model,
         content: [],
         usage: msg.usage,
@@ -212,53 +210,53 @@ export class EntrySynthesizer {
     this.emitSnapshot()
   }
 
-  private onContentBlockStart(evt: Extract<AnthropicSseEvent, { type: "content_block_start" }>): void {
+  private onContentBlockStart(evt: Extract<AnthropicSseEvent, { type: 'content_block_start' }>): void {
     if (!this.current) return
     const cb = evt.content_block
     const idx = evt.index
     let block: SynthContentBlock
-    if (cb.type === "text") {
-      block = { type: "text", text: cb.text ?? "" }
-    } else if (cb.type === "thinking") {
-      block = { type: "thinking", thinking: cb.thinking ?? "" }
-    } else if (cb.type === "tool_use") {
+    if (cb.type === 'text') {
+      block = { type: 'text', text: cb.text ?? '' }
+    } else if (cb.type === 'thinking') {
+      block = { type: 'thinking', thinking: cb.thinking ?? '' }
+    } else if (cb.type === 'tool_use') {
       block = {
-        type: "tool_use",
+        type: 'tool_use',
         id: cb.id,
         name: cb.name,
         // Mark as streaming until input_json_delta finalizes — UI shows placeholder.
-        input: { __streaming: true, __partial: "" },
+        input: { __streaming: true, __partial: '' },
       }
-      this.partialJson.set(idx, "")
-    } else if ((cb as any).type === "redacted_thinking") {
-      block = { type: "redacted_thinking", data: (cb as any).data ?? "" }
+      this.partialJson.set(idx, '')
+    } else if ((cb as any).type === 'redacted_thinking') {
+      block = { type: 'redacted_thinking', data: (cb as any).data ?? '' }
     } else {
       // Unknown content type (e.g. a future server_tool_use / web_search
       // block). Insert an EMPTY text placeholder rather than skipping —
       // skipping left a hole at content[idx], which JSON.stringify turns into
       // `null`, and the client's renderContentBlocks did `block.type` on it →
       // TypeError crash. A dense array keeps the render safe.
-      block = { type: "text", text: "" }
+      block = { type: 'text', text: '' }
     }
     this.current.message.content[idx] = block
     this.current.__streamingActiveBlock = idx
     this.emitSnapshot()
   }
 
-  private onContentBlockDelta(evt: Extract<AnthropicSseEvent, { type: "content_block_delta" }>): void {
+  private onContentBlockDelta(evt: Extract<AnthropicSseEvent, { type: 'content_block_delta' }>): void {
     if (!this.current) return
     const idx = evt.index
     const block = this.current.message.content[idx]
     if (!block) return
     const delta = evt.delta
-    if (delta.type === "text_delta" && block.type === "text") {
+    if (delta.type === 'text_delta' && block.type === 'text') {
       block.text += delta.text
-      this.cb.onDelta?.({ msgId: this.current.message.id, blockIdx: idx, appendText: delta.text, kind: "text" })
-    } else if (delta.type === "thinking_delta" && block.type === "thinking") {
+      this.cb.onDelta?.({ msgId: this.current.message.id, blockIdx: idx, appendText: delta.text, kind: 'text' })
+    } else if (delta.type === 'thinking_delta' && block.type === 'thinking') {
       block.thinking += delta.thinking
-      this.cb.onDelta?.({ msgId: this.current.message.id, blockIdx: idx, appendText: delta.thinking, kind: "thinking" })
-    } else if (delta.type === "input_json_delta" && block.type === "tool_use") {
-      const prev = this.partialJson.get(idx) ?? ""
+      this.cb.onDelta?.({ msgId: this.current.message.id, blockIdx: idx, appendText: delta.thinking, kind: 'thinking' })
+    } else if (delta.type === 'input_json_delta' && block.type === 'tool_use') {
+      const prev = this.partialJson.get(idx) ?? ''
       const next = prev + delta.partial_json
       // Cap per-block partial JSON at 1MB to guard against malformed streams.
       // The FULL accumulation stays in partialJson (onContentBlockStop parses
@@ -275,13 +273,13 @@ export class EntrySynthesizer {
     this.cb.onUpdate(this.current)
   }
 
-  private onContentBlockStop(evt: Extract<AnthropicSseEvent, { type: "content_block_stop" }>): void {
+  private onContentBlockStop(evt: Extract<AnthropicSseEvent, { type: 'content_block_stop' }>): void {
     if (!this.current) return
     const idx = evt.index
     const block = this.current.message.content[idx]
     if (!block) return
-    if (block.type === "tool_use") {
-      const raw = this.partialJson.get(idx) ?? ""
+    if (block.type === 'tool_use') {
+      const raw = this.partialJson.get(idx) ?? ''
       try {
         const parsed = raw ? JSON.parse(raw) : {}
         block.input = parsed
@@ -293,11 +291,20 @@ export class EntrySynthesizer {
     this.emitSnapshot()
   }
 
-  private onMessageDelta(evt: Extract<AnthropicSseEvent, { type: "message_delta" }>): void {
+  private onMessageDelta(evt: Extract<AnthropicSseEvent, { type: 'message_delta' }>): void {
     if (!this.current) return
     if (evt.delta.stop_reason) this.current.message.stop_reason = evt.delta.stop_reason
     if (evt.usage) {
-      const merged: AnthropicUsage = { ...(this.current.message.usage ?? {}), ...evt.usage }
+      const previous = this.current.message.usage ?? {}
+      const merged: AnthropicUsage = {
+        ...previous,
+        ...evt.usage,
+        ...(previous.cache_creation || evt.usage.cache_creation
+          ? {
+              cache_creation: { ...previous.cache_creation, ...evt.usage.cache_creation },
+            }
+          : {}),
+      }
       this.current.message.usage = merged
       this.current.usage = merged
     }
@@ -313,22 +320,22 @@ export class EntrySynthesizer {
     this.partialJson.clear()
   }
 
-  private onError(evt: Extract<AnthropicSseEvent, { type: "error" }>): void {
+  private onError(evt: Extract<AnthropicSseEvent, { type: 'error' }>): void {
     if (!this.current) {
       // Error without active message — synthesize a minimal one so UI shows it.
       this.current = {
-        type: "assistant",
+        type: 'assistant',
         uuid: `stream-error-${randomUUID()}`,
         timestamp: new Date().toISOString(),
         parentUuid: null,
         isSidechain: this.markSidechain,
-        model: "unknown",
+        model: 'unknown',
         message: {
           id: `msg_err_${randomUUID().slice(0, 12)}`,
-          role: "assistant",
-          model: "unknown",
-          content: [{ type: "text", text: `[API Error: ${evt.error.type}] ${evt.error.message}` }],
-          stop_reason: "error",
+          role: 'assistant',
+          model: 'unknown',
+          content: [{ type: 'text', text: `[API Error: ${evt.error.type}] ${evt.error.message}` }],
+          stop_reason: 'error',
         },
         __streaming: false,
       }
@@ -337,8 +344,8 @@ export class EntrySynthesizer {
       return
     }
     const errText = `[API Error: ${evt.error.type}] ${evt.error.message}`
-    this.current.message.content.push({ type: "text", text: errText })
-    this.current.message.stop_reason = "error"
+    this.current.message.content.push({ type: 'text', text: errText })
+    this.current.message.stop_reason = 'error'
     this.current.__streaming = false
     this.current.__streamingActiveBlock = undefined
     this.emitSnapshot()

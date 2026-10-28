@@ -47,7 +47,7 @@ async function listTables(db: Awaited<ReturnType<typeof getDb>>): Promise<string
   const rows = (
     await db.runAndReadAll(
       `SELECT table_name FROM information_schema.tables
-     WHERE table_catalog = current_catalog() AND table_schema = 'main'
+     WHERE table_catalog = current_catalog() AND table_schema = 'main' AND table_type = 'BASE TABLE'
      ORDER BY table_name`,
     )
   ).getRowObjects()
