@@ -153,8 +153,11 @@ version = "1.12.0"
 [dependencies.web-time]
 version = "1"
 
+# KaminIDE patch: gpui's bench harness (`bench-support`, gpui-pre 0.3.8) is
+# built on criterion 0.8; the benches pass its measurement to this criterion,
+# so both must be the same major version (0.7.1 pinned 0.5).
 [dev-dependencies.criterion]
-version = "0.5"
+version = "0.8.2"
 
 [dev-dependencies.gpui]
 version = "=0.3.8"
@@ -178,9 +181,9 @@ package = "gpui-pre-platform"
 [dev-dependencies.indoc]
 version = "2"
 
-[dev-dependencies.reqwest_client]
-version = "=0.3.8"
-package = "gpui-pre-reqwest-client"
+# KaminIDE patch: upstream's reqwest_client dev-dependency has no consumer in
+# this package; its rustls stack builds the native aws-lc-sys crypto crate in
+# standalone test builds, so it is not declared.
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies.smol]
 version = "2"

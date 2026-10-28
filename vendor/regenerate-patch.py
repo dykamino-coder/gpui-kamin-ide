@@ -60,7 +60,8 @@ FIXES = {
         "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
         "Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.",
-        "Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.",
+        "Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.",
+        "Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.",
     ],
     "gpui-windows": [
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
@@ -81,12 +82,16 @@ FIXES = {
         "Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.",
         "Expose editor integration hooks without duplicating Base's input implementation; use explicit application-owned prepaint instrumentation.",
         "Tests: use crate-local markdown and initialize extended GPUI font/run fields so standalone regressions compile.",
+        "Standalone targets: the benches use GPUI's criterion 0.8 bench harness; the unused network client dev-dependency (native aws-lc-sys) is not declared.",
+        "Inline flows: the retained flow layout is keyed by the scale factor its device-snapped line heights depend on.",
+        "Motion: a full-length transition lasts exactly its policy duration (f64 instead of f32 duration arithmetic), so it finishes and stops requesting frames on time.",
     ],
     "gpui-component": [
         "Highlighter: share immutable captures on hits; bound retained capture bytes and entry count (including empty results), evict FIFO without sorting and bypass oversize entries.",
         "Highlighter: resolve styles afresh so mutable/reused theme resolvers cannot return stale colors; invalidate captures after text/tree changes.",
         "Tests: retain exact upstream fixtures so published-crate tests do not depend on the original monorepo layout.",
         "Editor integration: root overlays and WebView hosting; expose a scrollbar policy hook so product geometry belongs to the application.",
+        "Tests: modal text-selection tests wait out the wall-clock modal animation as well as stepping the test clock.",
     ],
     "taffy": [
         "Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.",

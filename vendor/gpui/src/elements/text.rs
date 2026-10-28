@@ -725,6 +725,10 @@ impl TextLayout {
                     && text_layout.break_ligatures == break_ligatures
                     && text_layout.size.is_some()
                     && wrap_width == text_layout.wrap_width
+                    // KaminIDE patch: the line height is snapped to device
+                    // pixels; a retained layout from another scale factor or
+                    // text style has another height.
+                    && text_layout.line_height == line_height
                     // upstream: усечённую раскладку повторно не берём — при
                     // `truncate_width` раскладка пересчитывается заново.
                     && truncate_width.is_none()

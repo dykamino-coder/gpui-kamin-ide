@@ -122,7 +122,7 @@ jobs:
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/check_(event_routing|conventions|engine_test_support)\.py$|(clippy|rustfmt)\.toml$)'
           set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
           set_scope vendor_taffy '^(vendor/taffy/|vendor/taffy-kaminide\.patch$|rust-toolchain\.toml$)'
-          set_scope vendor_gpui '^(vendor/(gpui|gpui-windows|taffy|resvg|usvg|tendril|xml-rs)/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|scripts/check_vendor_gpui\.py$)'
+          set_scope vendor_gpui '^(vendor/(gpui|gpui-windows|gpui-base|gpui-component|taffy|resvg|usvg|tendril|xml-rs)/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|scripts/check_vendor_gpui\.py$)'
           set_scope release_pipeline '^(\.github/workflows/docker\.yml$|scripts/release/|extensions/claude-bridge/server/)'
 
           {
@@ -715,7 +715,7 @@ jobs:
           cargo test --manifest-path vendor/taffy/Cargo.toml --locked -j 6
 
   vendor-gpui:
-    name: vendor GPUI standalone targets
+    name: vendor GPUI forks standalone targets
     needs: scope
     if: needs.scope.outputs.vendor_gpui == 'true'
     runs-on: windows-latest
@@ -742,10 +742,10 @@ jobs:
             windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-
             windows-vendor-gpui-v1-
 
-      # GPUI is excluded from the root workspace: workspace clippy/test never
-      # compile its unit tests and examples, and its dev-dependencies resolve
-      # only when it is the root package. Build all its targets and run its tests.
-      - name: Build all GPUI targets and run its tests standalone
+      # GPUI, gpui-base and gpui-component are excluded from the root workspace:
+      # workspace clippy/test never compile their tests, benches and examples,
+      # and their dev-dependencies resolve only when each is the root package.
+      - name: Build all GPUI fork targets and run their tests standalone
         run: python scripts/check_vendor_gpui.py --jobs 4
 
       - name: Save the standalone GPUI cache from main

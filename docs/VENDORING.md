@@ -106,14 +106,20 @@ StackSafe. Для component передавать также список tree-si
 `workspace.dependencies.gpui-component`, иначе проверки подсветки могут не
 попасть в сборку.
 
-Для GPUI это делает `python scripts/check_vendor_gpui.py`: сборка всех целей
-(`--all-targets`, включая примеры) и unit/integration tests с корневыми
-patches, на копии корневого `Cargo.lock`, которую скрипт удаляет. CI запускает
-его отдельным job `vendor GPUI standalone targets` при изменениях GPUI, его
-платформы и зависимых форков. Архив crates.io `gpui-pre` 0.3.8 не содержит
-upstream `[dev-dependencies]` (они были path-зависимостями монорепозитория),
-хотя сохраняет примеры; форк восстанавливает их опубликованными крейтами того
-же snapshot (`gpui-pre-platform`, `gpui-pre-reqwest-client` и др.).
+Для GPUI, gpui-base и gpui-component это делает
+`python scripts/check_vendor_gpui.py [crate ...]`: сборка всех целей
+(`--all-targets`: tests, benches, примеры) и unit/integration tests с этими
+features и корневыми patches, на копии корневого `Cargo.lock`, которую скрипт
+удаляет. CI запускает его отдельным job `vendor GPUI forks standalone targets`
+при изменениях этих форков, платформы и зависимых форков. Архив crates.io
+`gpui-pre` 0.3.8 не содержит upstream `[dev-dependencies]` (они были
+path-зависимостями монорепозитория), хотя сохраняет примеры; форк
+восстанавливает их опубликованными крейтами того же snapshot
+(`gpui-pre-platform` и др.). Сетевой клиент (`gpui-pre-reqwest-client`)
+собирает нативный `aws-lc-sys`, поэтому он не объявлен: два сетевых примера
+GPUI требуют feature `http-examples`, неиспользуемая dev-зависимость
+gpui-base удалена. Standalone-сборки не добавляют `-sys`-крейтов сверх
+продуктовой сборки.
 
 ## Taffy: поддерживаемый форк
 
