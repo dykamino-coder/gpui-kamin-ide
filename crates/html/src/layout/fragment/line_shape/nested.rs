@@ -27,7 +27,6 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
         && matches!(s.display, None | Some(Display::Block))
         && !s.wm().vertical()
         && s.float.unwrap_or(0) == 0
-        && (!carries_abspos(c, 4) || oof_in_plain_kids(c))
         // Ряды считаются от верха СОДЕРЖИМОГО: блочные рамка и отбивка (и их
         // повтор у `box-decoration-break: clone`) сдвинули бы границы рядов с
         // границ внешних колонок (`box-decoration-break-clone-010`).
@@ -44,9 +43,6 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
                 && (auto || (zero(&s.padding.bottom) && zero(&b.bottom)))
         }
         && c.children.iter().any(|n| !is_blank(n))
-        // Внепоточный потомок — содержащий блок и дотяг рядами не выражены
-        // (`out-of-flow-in-multicolumn-019`).
-        && (!oof_descendant(c) || oof_in_plain_kids(c))
 }
 
 pub(super) fn oof_descendant(e: &Element) -> bool {
