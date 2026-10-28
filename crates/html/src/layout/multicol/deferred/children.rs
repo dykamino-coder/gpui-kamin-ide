@@ -3,10 +3,8 @@
 use super::Recipe;
 use crate::layout::fragment::types::StackChild;
 use crate::layout::multicol::container::kids::{column_kids, stack_children};
-use crate::layout::multicol::measure::laid;
 use crate::layout::positioned::containing_block::metrics::Snapshot;
 use gpui::{App, Window};
-use std::cell::RefCell;
 
 impl Recipe {
     #[cfg(test)]
@@ -25,27 +23,24 @@ impl Recipe {
         window: &mut Window,
         cx: &mut App,
     ) -> (Vec<StackChild>, std::rc::Rc<Snapshot>) {
-        let measured = RefCell::default();
         let vertical = self.axis.is_vertical();
         let reverse = self.axis == crate::layout::fragment::types::StackAxis::VerticalRl;
         let host = self.resolved_host(width);
         let opts = self.geometry_options(&host, width, window, cx);
         let geometry = opts.cx.position.geometry.clone().unwrap_or_default();
-        let vcx = opts.cx.frame();
-        let kids = if vertical {
-            laid::vertical_children(&host, &self.merged, vcx, width, reverse, &measured)
-        } else {
-            laid::children(&host, &self.merged, vcx, width, &measured).or_else(|| {
-                crate::layout::multicol::measure::native_float::children(
-                    &host,
-                    &self.merged,
-                    vcx,
-                    width,
-                    &measured,
-                )
-            })
-        };
-        let kids = kids.expect("deferred recipe preserves the measured-tree contract");
+        // Тот же dispatch по каждому ребёнку, что у стопки известной ширины.
+        let plan = crate::layout::multicol::measure::plan_at(
+            &self.host,
+            &self.merged,
+            &opts,
+            (Some(width), Some(width)),
+            (vertical, reverse),
+            (self.fixed, None),
+            self.rows,
+            None,
+        );
+        let measured = plan.measured_kids;
+        let kids = plan.stackable.unwrap_or_default();
         let copies = self.count.max(1) as usize;
         let (parents, _, parallel, kids) = column_kids(
             &self.merged,
@@ -87,8 +82,8 @@ impl Recipe {
             reverse,
             (Some(width), Some(width)),
             self.rows,
-            RefCell::default(),
-            RefCell::default(),
+            plan.nested_auto,
+            plan.nested_whole,
             measured,
             copies,
             self.fixed,

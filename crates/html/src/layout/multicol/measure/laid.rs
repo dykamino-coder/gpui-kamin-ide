@@ -61,6 +61,33 @@ pub(crate) fn children(
     Some(kids)
 }
 
+/// Смешанные поточные дети до определения ширины: запись на каждого ребёнка,
+/// чью меру и разрывы при известной ширине даст раскладка его копии
+/// (`plan_at`); внепоточные остаются соседями стопки.
+pub(crate) fn pending_mixed(
+    host: &Element,
+    merged: &BoxStyle,
+    vcx: FrameCx<'_>,
+) -> Option<Vec<(Element, Shape)>> {
+    host.children
+        .iter()
+        .filter(|n| !is_blank(n))
+        .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
+        .map(|n| {
+            let Node::Element(c) = n else { return None };
+            // Те же дети, что меряет `measure_children` при известной ширине.
+            let used = c.style.used();
+            let block = !c.inline
+                && matches!(
+                    used.position,
+                    None | Some(crate::style::computed::Position::Relative)
+                )
+                && (used.float.unwrap_or(0) == 0 || crate::layout::float::block_like_float(&used));
+            block.then(|| (resolved_lengths(c, merged, vcx), Shape::default()))
+        })
+        .collect()
+}
+
 /// До определения ширины сохраняется исходное дерево для intrinsic sizing.
 /// Числовые поля этой записи не участвуют в плане: deferred строит её заново.
 pub(crate) fn pending(

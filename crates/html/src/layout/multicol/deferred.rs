@@ -42,22 +42,9 @@ impl Recipe {
         rows: Option<crate::layout::fragment::types::Rows>,
     ) -> Option<std::rc::Rc<Self>> {
         let prepared = super::measure::prepared(host, merged, opts, axis.is_vertical(), None);
-        if axis.is_vertical() {
-            laid::pending_vertical(
-                &prepared,
-                merged,
-                opts.cx.frame(),
-                axis == crate::layout::fragment::types::StackAxis::VerticalRl,
-            )?;
-        } else {
-            laid::pending(&prepared, merged, opts.cx.frame()).or_else(|| {
-                (!opts.frag.in_stack_copy && rows.is_none_or(|r| r.cap))
-                    .then(|| {
-                        super::measure::native_float::pending(&prepared, merged, opts.cx.frame())
-                    })
-                    .flatten()
-            })?;
-        }
+        // Каждый поточный ребёнок получает запись: при известной ширине его меру
+        // даёт раскладка копии (`plan_at`).
+        laid::pending_mixed(&prepared, merged, opts.cx.frame())?;
         Some(std::rc::Rc::new(Self {
             host: host.clone(),
             merged: merged.clone(),
@@ -128,6 +115,7 @@ impl Recipe {
         }
         stack.regrow_children(window, cx);
         stack.paginate_children(window, cx);
+        stack.reserve_overflow_copies();
     }
 
     pub(crate) fn measure(

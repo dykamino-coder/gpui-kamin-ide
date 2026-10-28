@@ -40,8 +40,6 @@ pub(crate) fn stack_plan(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
 ) -> StackPlan {
-    let positioned =
-        |s: &Computed| matches!(s.position, Some(Position::Absolute | Position::Fixed));
     let line_col_w = column_measure_width(
         e,
         inherited,
@@ -51,6 +49,42 @@ pub(crate) fn stack_plan(
         cols,
         used_gap,
     );
+    let layout_col_w = column_layout_width(
+        e,
+        inherited,
+        merged,
+        col_inline_size,
+        col_vert,
+        cols,
+        used_gap,
+    );
+    plan_at(
+        e,
+        merged,
+        opts,
+        (line_col_w, layout_col_w),
+        (col_vert, col_rl),
+        (col_h, box_h),
+        rows,
+        nest_rows,
+    )
+}
+
+/// Дети стопки при известной (или ещё неизвестной) ширине колонки: каждый
+/// поточный ребёнок получает свою запись, меру даёт раскладка его копии.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn plan_at(
+    e: &Element,
+    merged: &BoxStyle,
+    opts: &RenderOpts,
+    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
+    (col_vert, col_rl): (bool, bool),
+    (col_h, box_h): (Option<f32>, Option<f32>),
+    rows: Option<crate::layout::fragment::types::Rows>,
+    nest_rows: Option<f32>,
+) -> StackPlan {
+    let positioned =
+        |s: &Computed| matches!(s.position, Some(Position::Absolute | Position::Fixed));
     let prepared = super::prepared(e, merged, opts, col_vert, line_col_w);
     let ge = &prepared;
     // Прямые флоаты legacy-пути — не в стопку,
@@ -93,15 +127,6 @@ pub(crate) fn stack_plan(
     let outer_frag = (e.style.used().column_fill_auto == Some(true) && rows.is_none() && !col_vert)
         .then(|| col_h.or(box_h))
         .flatten();
-    let layout_col_w = column_layout_width(
-        e,
-        inherited,
-        merged,
-        col_inline_size,
-        col_vert,
-        cols,
-        used_gap,
-    );
     let first_flow = ge
         .children
         .iter()
@@ -184,6 +209,13 @@ pub(crate) fn stack_plan(
     if laid.is_some() || pending.is_some() || vertical.is_some() {
         direct_oof.clear();
     }
+    // Смешанные дети при ещё неизвестной ширине: каждого меряет раскладка его
+    // копии, когда ширину решит раскладка коробки (`deferred::Recipe`).
+    let pending = pending.or_else(|| {
+        (line_col_w.is_none() && nest_rows.is_none())
+            .then(|| super::laid::pending_mixed(ge, merged, opts.cx.frame()))
+            .flatten()
+    });
     let stackable: Option<Vec<(Element, Shape)>> = laid.or(pending).or(vertical).or_else(|| {
         with_lines(merged, line_col_w, opts, |opts| {
             measure_children(
