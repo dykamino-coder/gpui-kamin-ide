@@ -97,7 +97,7 @@ describe('INC-2026-0054: беседа резюмируется, пока её н
     const { settingsDir } = seedConversation()
     const helpers = await freshHelpers()
 
-    expect(helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
 
     const { archivedTranscriptPath } = await import('./transcript-archive')
     expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(true)
@@ -106,38 +106,38 @@ describe('INC-2026-0054: беседа резюмируется, пока её н
   it('после выметания расшифровки беседа всё ещё резюмируется', async () => {
     const { settingsDir, jsonl } = seedConversation()
     const helpers = await freshHelpers()
-    expect(helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
 
     // Ровно то, что делает уборка CLI по `cleanupPeriodDays`.
     fs.rmSync(jsonl)
     expect(fs.existsSync(jsonl)).toBe(false)
 
-    expect(helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
     expect(fs.existsSync(jsonl)).toBe(true)
     expect(fs.readFileSync(jsonl, 'utf8')).toContain('"uuid":"u1"')
   })
 
   it('перезапуск сервера восстановлению не мешает', async () => {
     const { settingsDir, jsonl } = seedConversation()
-    ;(await freshHelpers()).findOrRecreateSettingsDir(CONV, TOKEN)
+    await (await freshHelpers()).findOrRecreateSettingsDir(CONV, TOKEN)
     fs.rmSync(jsonl)
 
     // Новый экземпляр модулей = новый процесс: состояние только на диске.
     const afterRestart = await freshHelpers()
 
-    expect(afterRestart.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
+    expect(await afterRestart.findOrRecreateSettingsDir(CONV, TOKEN)).toBe(settingsDir)
     expect(fs.existsSync(jsonl)).toBe(true)
   })
 
   it('живая расшифровка всегда сильнее архива', async () => {
     const { jsonl } = seedConversation()
-    ;(await freshHelpers()).findOrRecreateSettingsDir(CONV, TOKEN)
+    await (await freshHelpers()).findOrRecreateSettingsDir(CONV, TOKEN)
 
     // Беседу продолжили: живой файл длиннее архива и не имеет права быть
     // затёртым устаревшей копией.
     fs.appendFileSync(jsonl, '{"type":"assistant","uuid":"u2"}\n')
     const helpers = await freshHelpers()
-    helpers.findOrRecreateSettingsDir(CONV, TOKEN)
+    await helpers.findOrRecreateSettingsDir(CONV, TOKEN)
 
     expect(fs.readFileSync(jsonl, 'utf8')).toContain('"uuid":"u2"')
   })
@@ -145,11 +145,11 @@ describe('INC-2026-0054: беседа резюмируется, пока её н
   it('более короткий живой файл не затирает более длинный архив', async () => {
     const { jsonl } = seedConversation(['{"type":"user","uuid":"u1"}', '{"type":"assistant","uuid":"u2"}'])
     const archive = await freshArchive()
-    archive.archiveTranscript(jsonl, CONV)
+    await archive.archiveTranscript(jsonl, CONV)
 
     // Форк или обрезание: расшифровка стала короче. Архив обязан устоять.
     fs.writeFileSync(jsonl, '{"type":"user","uuid":"u1"}\n')
-    archive.archiveTranscript(jsonl, CONV)
+    await archive.archiveTranscript(jsonl, CONV)
 
     expect(fs.readFileSync(archive.archivedTranscriptPath(CONV)!, 'utf8')).toContain('"uuid":"u2"')
   })
@@ -157,11 +157,11 @@ describe('INC-2026-0054: беседа резюмируется, пока её н
   it('битый архив не восстанавливается', async () => {
     const { jsonl } = seedConversation()
     const archive = await freshArchive()
-    archive.archiveTranscript(jsonl, CONV)
+    await archive.archiveTranscript(jsonl, CONV)
     fs.writeFileSync(archive.archivedTranscriptPath(CONV)!, 'это не jsonl\n')
     fs.rmSync(jsonl)
 
-    expect(archive.restoreArchivedTranscript(projectsDir(), CONV)).toBeNull()
+    expect(await archive.restoreArchivedTranscript(projectsDir(), CONV)).toBeNull()
     expect(fs.existsSync(jsonl)).toBe(false)
   })
 
@@ -173,10 +173,10 @@ describe('INC-2026-0054: беседа резюмируется, пока её н
     try {
       const { jsonl } = seedConversation()
       const helpers = await freshHelpers()
-      helpers.findOrRecreateSettingsDir(CONV, TOKEN)
+      await helpers.findOrRecreateSettingsDir(CONV, TOKEN)
       fs.rmSync(jsonl)
 
-      expect(helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBeNull()
+      expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBeNull()
     } finally {
       delete process.env.KAMIN_TRANSCRIPT_ARCHIVE
     }
@@ -185,7 +185,7 @@ describe('INC-2026-0054: беседа резюмируется, пока её н
   it('идентификатор с выходом за каталог отвергается, а не чистится', async () => {
     const archive = await freshArchive()
     expect(archive.archivedTranscriptPath('../../etc/passwd')).toBeNull()
-    expect(archive.restoreArchivedTranscript(projectsDir(), '../../etc/passwd')).toBeNull()
+    expect(await archive.restoreArchivedTranscript(projectsDir(), '../../etc/passwd')).toBeNull()
     expect(archive.dropArchivedTranscript('../../etc/passwd')).toBe(false)
   })
 })
@@ -208,7 +208,8 @@ describe('INC-2026-0054: беседа, которую больше не откр
 
     finalizeSessionTeardown('s-1', 'pty-exit', 0)
 
-    expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(true)
+    // The copy is asynchronous now (no copyFileSync on the event loop).
+    await expect.poll(() => fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(true)
     sessions.delete('s-1')
   })
 })
@@ -217,7 +218,7 @@ describe('INC-2026-0054: явное удаление делает беседу �
   it('удаление сносит и долговечную копию, так что выметание её не воскресит', async () => {
     const { jsonl } = seedConversation()
     const helpers = await freshHelpers()
-    helpers.findOrRecreateSettingsDir(CONV, TOKEN)
+    await helpers.findOrRecreateSettingsDir(CONV, TOKEN)
     const { archivedTranscriptPath } = await import('./transcript-archive')
     expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(true)
 
@@ -226,7 +227,7 @@ describe('INC-2026-0054: явное удаление делает беседу �
 
     expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(false)
     expect(fs.existsSync(jsonl)).toBe(false)
-    expect(helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBeNull()
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBeNull()
   })
 
   it('удаление снимает копию и тогда, когда живой расшифровки уже нет', async () => {
@@ -234,7 +235,7 @@ describe('INC-2026-0054: явное удаление делает беседу �
     // Обход каталогов возвращается на первом совпадении и до архива не дошёл бы.
     const { jsonl } = seedConversation()
     const helpers = await freshHelpers()
-    helpers.findOrRecreateSettingsDir(CONV, TOKEN)
+    await helpers.findOrRecreateSettingsDir(CONV, TOKEN)
     fs.rmSync(jsonl)
 
     const { deleteSessionByConversationId } = await import('./session-core')
@@ -242,7 +243,7 @@ describe('INC-2026-0054: явное удаление делает беседу �
 
     const { archivedTranscriptPath } = await import('./transcript-archive')
     expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(false)
-    expect(helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBeNull()
+    expect(await helpers.findOrRecreateSettingsDir(CONV, TOKEN)).toBeNull()
   })
 })
 
@@ -255,7 +256,7 @@ describe('AB-01 delete namespace isolation', () => {
         fs.mkdirSync(path.join(home, '.claude', 'bridge-sessions', tokenId, 'own-session'), { recursive: true })
       await freshHelpers()
       const archive = await import('./transcript-archive')
-      archive.archiveTranscript(jsonl, CONV)
+      await archive.archiveTranscript(jsonl, CONV)
       const { deleteSessionByConversationId } = await import('./session-core')
       const logging = await import('../logging')
       const refusal = vi.spyOn(logging, 'warnLog')
@@ -285,7 +286,7 @@ describe('AB-01 delete namespace isolation', () => {
     const { sanitizeDirName } = await import('./session-settings')
     const { settingsDir, jsonl } = seedConversation(undefined, `${TOKEN}-${sanitizeDirName(cwd)}`)
     const archive = await import('./transcript-archive')
-    archive.archiveTranscript(jsonl, CONV)
+    await archive.archiveTranscript(jsonl, CONV)
     if (expired) fs.rmSync(jsonl)
     const { deleteSessionByConversationId } = await import('./session-core')
 

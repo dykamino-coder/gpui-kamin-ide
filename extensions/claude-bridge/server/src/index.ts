@@ -145,6 +145,10 @@ async function startup(): Promise<void> {
   try {
     const { startDbMaintenance } = await import('./core/stats/database/maintenance')
     startDbMaintenance()
+    // One-time removal of user-input rows duplicated by transcript replay
+    // (INC-2026-0078); runs in the exclusive maintenance window, off boot path.
+    const { runRequestsDedupeAtBoot } = await import('./core/stats/database/requests-dedupe')
+    void runRequestsDedupeAtBoot()
   } catch (e) {
     console.warn(`[bridge] db-maintenance unavailable: ${e instanceof Error ? e.message : e}`)
   }
