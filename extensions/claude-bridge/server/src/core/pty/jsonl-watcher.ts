@@ -179,7 +179,11 @@ export class JsonlWatcher {
   // `boolean | void`, NOT void: the subagent watcher must see a dropped frame to
   // avoid advancing its offset past lines the client never got (the 6.3.25 rule).
   // Typing this `void` silently discarded that signal all the way down.
-  private sendSubagentEntries?: (agentName: string, entries: JsonlEntry[], agentId?: string) => boolean | void
+  private sendSubagentEntries?: (
+    agentName: string,
+    entries: JsonlEntry[],
+    agentId?: string,
+  ) => boolean | void | SendOutcome
   // Live dashboard-stat hooks: onReplayReset fires once at the start of every
   // full replay; onStatsEntry fires for every parsed entry (replay + tail).
   private onReplayReset?: () => void
@@ -244,7 +248,7 @@ export class JsonlWatcher {
     onUserEntry?: (entry: JsonlEntry) => void,
     settingsDir?: string,
     onConversationId?: (conversationId: string) => void,
-    sendSubagentEntries?: (agentName: string, entries: JsonlEntry[], agentId?: string) => boolean | void,
+    sendSubagentEntries?: (agentName: string, entries: JsonlEntry[], agentId?: string) => boolean | void | SendOutcome,
     onReplayReset?: () => void,
     onStatsEntry?: (entry: JsonlEntry) => void,
     writable?: () => boolean,

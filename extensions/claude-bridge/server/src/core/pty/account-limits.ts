@@ -3,11 +3,13 @@
 //
 // Why: Claude Code fills `rate_limits` only from the response headers of the
 // CURRENT process. Its startup quota probe (`probeQuotaStatus`, a 1-token
-// request) is skipped in `essential-traffic` mode, which Bridge enables with
+// request) was skipped in `essential-traffic` mode, which Bridge previously enabled with
 // CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC (verified in the 2.1.296 binary:
 // `probeQuotaStatus` returns null when that mode is on). So every fresh,
 // resumed or respawned CLI reports only the context fill until its first model
 // response, and the row under the chat input lost 5h/7d after each reconnect.
+// Bridge now permits feature discovery for MCP Tasks; retaining known limits
+// still covers offline startup and CLI versions that omit the quota probe.
 //
 // The limits belong to the account, and all sessions of the container run
 // under the same CLI login. The newest windows any session's CLI reported are

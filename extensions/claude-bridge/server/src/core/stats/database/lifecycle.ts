@@ -16,7 +16,7 @@ import path from 'path'
 import fs from 'fs'
 import { initSchema } from './schema'
 import { warnLog, debugLog, infoLog } from '../../logging'
-import { withStatsWrite } from './write-lock'
+import { insideStatsWrite, trackWriteCall, withStatsWrite } from './write-lock'
 import { duckDbBudget } from './memory-budget'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
@@ -146,14 +146,29 @@ async function ensurePool(): Promise<void> {
   }
 }
 
+// Statements that write. Every one of them runs as (or inside) a turn of the
+// single stats writer, whoever issues it — the guarantee no longer depends on
+// each call site remembering to take the lock.
+const WRITE_SQL =
+  /^\s*(?:--[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(?:INSERT|UPDATE|DELETE|MERGE|UPSERT|REPLACE|CREATE|ALTER|DROP|TRUNCATE|BEGIN|COMMIT|ROLLBACK|CHECKPOINT|FORCE|VACUUM|COPY|ATTACH|DETACH|INSTALL|LOAD)\b/i
+
+export function isWriteSql(sql: unknown): boolean {
+  return typeof sql === 'string' && WRITE_SQL.test(sql)
+}
+
 async function leasedCall(index: number, method: string, args: unknown[]): Promise<unknown> {
+  if (!insideStatsWrite() && isWriteSql(args[0])) {
+    return withStatsWrite(() => leasedCall(index, method, args), { label: String(args[0]).trim().slice(0, 40) })
+  }
   while (maintenanceGate) await maintenanceGate
   await ensurePool()
   const conn = pool[index % pool.length] as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>
   inFlight++
+  const untrack = trackWriteCall(conn as unknown as { interrupt(): void })
   try {
     return await conn[method]!(...args)
   } finally {
+    untrack()
     callDone()
   }
 }

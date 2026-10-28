@@ -129,9 +129,10 @@ export function writeSessionSettings(
   mcpToken: string,
   userCwd?: string,
   bearerHash?: string,
+  mcpEndpoint?: { id: string; token: string },
 ): void {
   const port = config.port
-  const mcpUrl = `http://127.0.0.1:${port}/mcp/${sessionId}`
+  const mcpUrl = `http://127.0.0.1:${port}/mcp/${mcpEndpoint?.id ?? sessionId}`
 
   // ─── 1. MCP server config → .mcp.json (project root) ───
   const mcpConfig = {
@@ -139,7 +140,7 @@ export function writeSessionSettings(
       'user-tools': {
         type: 'http',
         url: mcpUrl,
-        headers: { Authorization: `Bearer ${mcpToken}` },
+        headers: { Authorization: `Bearer ${mcpEndpoint?.token ?? mcpToken}` },
       },
     },
   }

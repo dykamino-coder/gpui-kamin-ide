@@ -106,4 +106,19 @@ describe('jsonl sweeper — streamed, bounded, durable', { timeout: 120_000 }, (
     await sweeper.sweepOneByPath(p)
     expect(await rows('s3')).toBe(3000)
   })
+
+  it('does not re-update rows whose attribution is still unknown (F10)', async () => {
+    const p = transcript('s4', userText('s4', 'one') + userText('s4', 'two'))
+    await sweeper.sweepOneByPath(p)
+    const db = await lc.getDb()
+    const apply = (token: string | null, user: string | null) =>
+      db.run(sweeper.SQL_APPLY_TOKEN_AND_SUBAGENT, [token, user, 0, null, 's4'])
+    // Unknown token/user (NULL or empty): nothing to change, nothing selected.
+    expect((await apply(null, null)).rowsChanged).toBe(0)
+    expect((await apply('', '')).rowsChanged).toBe(0)
+    // A real attribution fills the rows once…
+    expect((await apply('tok-1', 'alice')).rowsChanged).toBe(2)
+    // …and repeating it is a no-op.
+    expect((await apply('tok-1', 'alice')).rowsChanged).toBe(0)
+  })
 })
