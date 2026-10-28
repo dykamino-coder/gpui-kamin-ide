@@ -8,9 +8,8 @@ use crate::style::values::value::Len;
 /// Клон поддерева с длинами коробки в ТОЧКАХ: `em`/`ch`/`ex`/`rem` в
 /// размерах, полях, отбивках, рамках и вставках разрешены по кеглю своего
 /// элемента (тем же `style::cascade::inherit` → `Computed::resolve_em`, что и при
-/// отрисовке). `shape_full` читает голый стиль, и `margin-top: 2em` мерился
-/// нулём (нестрогий `px_or`), а `height: 4em` — отказом всей стопки, хотя
-/// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
+/// отрисовке): поля и размеры стопки читаются в тех же точках, в которых
+/// их кладёт рисунок. Наследуемые (`font-size`, `line-height`) не
 /// трогаются: число в `line-height` наследуется множителем.
 pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: FrameCx<'_>) -> Element {
     if vcx

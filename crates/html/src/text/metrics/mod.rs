@@ -61,30 +61,6 @@ const FALLBACK: (f32, f32, f32, f32) = (0.5, 0.5, FALLBACK_NORMAL_LINE_HEIGHT, 1
 mod normal_px;
 pub(crate) use normal_px::{content_px, normal_px};
 
-/// Щуп переноса строк: сколько строк займёт текст шрифтом `font` кеглем `size`
-/// при ширине `width`. `\n` — принудительный разрыв.
-type WrapProbe = Box<dyn Fn(&gpui::Font, f32, &str, f32) -> usize>;
-
-/// Число строк текста при сборке дерева — для фрагментации ПО СТРОКАМ
-/// (css-break-3 §4.3: «Between line boxes» — законная точка разрыва). Перенос
-/// тот же, что у текстового пути колонок (`float.rs` `measure_columns`):
-/// переносчик GPUI, аварийный разрыв внутри слова отбрасывается (строка его не
-/// рвёт, `overflow-wrap: normal`). `None` — щуп не поставлен.
-pub(crate) fn line_count(
-    font: &gpui::Font,
-    size: f32,
-    text: &str,
-    width: f32,
-    fonts: &crate::text::text_fonts::TextFonts,
-) -> Option<usize> {
-    fonts
-        .metrics
-        .wrap
-        .borrow()
-        .as_ref()
-        .map(|f| f(font, size, text, width))
-}
-
 /// Поставить щуп вертикальных метрик. Зовётся оттуда же, откуда `install_probe`.
 #[cfg(test)]
 pub(crate) fn install_vprobe(

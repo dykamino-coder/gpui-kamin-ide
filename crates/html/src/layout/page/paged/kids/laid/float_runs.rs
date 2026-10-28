@@ -30,7 +30,6 @@ fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
         &p.nodes,
         &p.nodes[0],
         None,
-        false,
         p.blocks,
         ShapeCx::COLUMNS,
         FrameCx::new(tree.values()),

@@ -42,7 +42,6 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source(cx: &mut gpui::TestA
                 &BoxStyle::default(),
                 &opts,
                 4,
-                0.0,
                 Some(100.0),
                 StackAxis::Horizontal,
                 None,

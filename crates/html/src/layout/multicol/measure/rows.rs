@@ -78,6 +78,7 @@ pub(crate) fn row_plan_in(
         gap: row_gap,
         wrap,
         cap: false,
+        outer: None,
     });
     // Потолок баланса (`Rows::cap`): СОБСТВЕННАЯ высота коробки в
     // точках. Внешний потолок во ВЛОЖЕННЫЕ многоколоночники без
@@ -120,23 +121,34 @@ pub(crate) fn row_plan_in(
     // «wrap … if we're participating in an outer fragmentation
     // context»). Последний ряд балансируется (css-multicol-1 §7.1
     // «only the last fragment is balanced»).
-    let outer_space = outer_space
-        .filter(|_| col_h.is_none() && e.style.used().column_wrap.is_none() && !col_vert);
-    let nest_phase = outer_space.as_ref().map_or(0., |r| r.offset);
-    let nest_rows = outer_space.as_ref().map(|r| {
+    // Свои ряды (`column-height`, `column-wrap`) вложенного многоколоночника
+    // режет внешний фрагментаинер: линия — остаток ряда, но не дальше его края
+    // (`Rows::outer`); колонки переносятся в новый ряд и при `nowrap` — Blink
+    // переносит всякий раз, когда содержимое продолжается во внешнем следующем.
+    let own_rows = col_h.is_some() || e.style.used().column_wrap.is_some();
+    let nested = outer_space.filter(|_| !col_vert);
+    let nest_phase = nested.as_ref().map_or(0., |r| r.offset);
+    let nest_rows = nested.as_ref().map(|r| {
         r.outer_at(0)
             .expect("validated outer Space")
             .block_size
             .unwrap()
     });
-    let rows = match nest_rows {
-        Some(hh) => Some(crate::layout::fragment::types::Rows {
+    let outer_space = nested.filter(|_| !own_rows);
+    let rows = match (nest_rows, rows) {
+        (Some(hh), Some(own)) if own_rows => Some(crate::layout::fragment::types::Rows {
+            wrap: true,
+            outer: Some(hh),
+            ..own
+        }),
+        (Some(hh), _) => Some(crate::layout::fragment::types::Rows {
             h: Some(hh),
             gap: 0.0,
             wrap: true,
             cap: false,
+            outer: None,
         }),
-        None => rows,
+        (None, rows) => rows,
     };
     let rows = rows.or_else(|| {
         (cap_h.is_some()
@@ -147,6 +159,7 @@ pub(crate) fn row_plan_in(
                 gap: row_gap,
                 wrap: false,
                 cap: true,
+                outer: None,
             })
     });
     RowPlan {

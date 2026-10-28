@@ -34,15 +34,19 @@ pub(crate) fn multicol_spanner_segments(
     // занимала колонку (`multicol-span-all-fieldset-001…003`:
     // эталон — `fieldset > legend + div.inner` с колонками).
     // Отрисованная — первая `legend` в потоке.
-    let mut kids = e.children.clone();
-    if e.tag == "fieldset"
-        && let Some(i) = kids.iter().position(
-            |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style.used())),
-        )
-    {
-        let legend = kids.remove(i);
-        d = d.children(opts.cx.contracts.build.blocks(&[legend], &merged, opts));
+    let (legend, kids) = legend_and_kids(e);
+    if let Some(legend) = legend {
+        let band = crate::layout::block::legend::legend_band(legend, &merged);
+        d = d.children(opts.cx.contracts.build.blocks(&[band], &merged, opts));
     }
+    // Свой исходный OOF-источник у каждого ряда (`row_sources`).
+    let row_geometry = opts
+        .cx
+        .position
+        .row_geometry
+        .clone()
+        .filter(|(host, _)| *host == merged.self_node);
+    let mut row = 0usize;
     for chunk in kids.split_inclusive(&is_span) {
         let (body, span) = match chunk.split_last() {
             Some((last, head)) if is_span(last) => (head, Some(last)),
@@ -63,6 +67,13 @@ pub(crate) fn multicol_spanner_segments(
             // спускается в единственного ребёнка и теряет коробку фрагмента
             // (multicol-span-all-children-height-005/008).
             let row_style = box_style(&merged, &sub.style, vcx);
+            let mut row_opts = opts.clone();
+            row_opts.cx.position.row_geometry = None;
+            if let Some((_, rows)) = &row_geometry {
+                row_opts.cx.position.geometry = rows.get(row).cloned().flatten();
+            }
+            row += 1;
+            let opts = &row_opts;
             let flow = (!lone_span)
                 .then(|| column_flow(&sub, &row_style, opts, want, col_w_px, None))
                 .flatten();
@@ -124,4 +135,78 @@ pub(crate) fn multicol_spanner_segments(
     // форматирования (CSS 2.1 §8.3.1).
     d = d.child(div().flex());
     return d.into_any_element();
+}
+
+/// Отрисованная легенда `<fieldset>` (первая `legend` в потоке; HTML §15.3.13)
+/// и остальные дети хоста — содержимое рядов и спаннеры.
+pub(crate) fn legend_and_kids(e: &Element) -> (Option<Node>, Vec<Node>) {
+    let mut kids = e.children.to_vec();
+    let legend = (e.tag == "fieldset")
+        .then(|| {
+            kids.iter().position(
+                |n| matches!(n, Node::Element(c) if c.tag == "legend" && !out_of_flow(&c.style.used())),
+            )
+        })
+        .flatten()
+        .map(|i| kids.remove(i));
+    (legend, kids)
+}
+
+/// Непустые ряды колонок между спаннерами в порядке рядов
+/// `multicol_spanner_segments`.
+pub(crate) fn row_bodies(e: &Element, is_span: impl Fn(&Node) -> bool) -> Vec<Vec<Node>> {
+    let (_, kids) = legend_and_kids(e);
+    kids.split_inclusive(&is_span)
+        .map(|chunk| match chunk.split_last() {
+            Some((last, head)) if is_span(last) => head,
+            _ => chunk,
+        })
+        .filter(|body| body.iter().any(|n| !is_blank(n)))
+        .map(|body| body.to_vec())
+        .collect()
+}
+#[cfg(test)]
+mod tests {
+    use super::row_bodies;
+    use crate::dom::{Element, Node};
+    use crate::style::computed::Computed;
+
+    fn el(tag: &str) -> Node {
+        Node::Element(Element::synthetic(
+            tag,
+            Computed::default(),
+            Default::default(),
+            vec![],
+        ))
+    }
+
+    #[test]
+    fn rows_skip_the_rendered_legend_and_split_at_spanners() {
+        let host = Element::synthetic(
+            "fieldset",
+            Computed::default(),
+            Default::default(),
+            vec![
+                el("legend"),
+                el("div"),
+                el("h3"),
+                el("p"),
+                el("p"),
+                el("h3"),
+            ],
+        );
+        let rows = row_bodies(&host, |n| matches!(n, Node::Element(e) if e.tag == "h3"));
+        let tags: Vec<Vec<String>> = rows
+            .iter()
+            .map(|r| {
+                r.iter()
+                    .filter_map(|n| match n {
+                        Node::Element(e) => Some(e.tag.to_string()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .collect();
+        assert_eq!(tags, vec![vec!["div"], vec!["p", "p"]]);
+    }
 }

@@ -122,13 +122,21 @@ pub(super) fn apply(
         }
     } else if known.main(dir).is_none() {
         let growth = main_growth(tree, lines);
-        constants.fragmentation_main_growth = growth;
-        constants
-            .container_size
-            .set_main(dir, constants.container_size.main(dir) + growth);
+        // Space consumed by breaks belongs to the box's block size, which max-height
+        // still limits: content beyond it overflows the last fragment (Blink clamps
+        // the fragmented box after fragmentation growth).
+        let size = constants.container_size.main(dir);
+        let grown = if growth > 0.0 {
+            f32_max((size + growth).maybe_min(constants.max_size.main(dir)), size)
+        } else {
+            size + growth
+        };
+        let applied = grown - size;
+        constants.fragmentation_main_growth = applied;
+        constants.container_size.set_main(dir, grown);
         constants
             .inner_container_size
-            .set_main(dir, constants.inner_container_size.main(dir) + growth);
+            .set_main(dir, constants.inner_container_size.main(dir) + applied);
     }
 }
 

@@ -25,9 +25,15 @@ pub(super) fn fill_clone_dec(
 ) -> Option<LoopStep> {
     if let Some((dt, db)) = k.clone_dec.filter(|_| !k.monolith) {
         let dec = dt + db;
-        let content = (k.h - dec).max(0.0);
+        // Заданный border-box делят все фрагменты: содержимого в нём тем
+        // меньше, чем больше повторённых краёв (`Kid::clone_fixed`).
+        let content = if k.clone_fixed {
+            (k.h - dec * (*copy as f32 + 1.0)).max(0.0)
+        } else {
+            (k.h - dec).max(0.0)
+        };
         let croom = room - dec;
-        let rest = content - *from;
+        let rest = (content - *from).max(0.0);
         let edge = *from + croom.max(0.0);
         // Принудительный разрыв внутри содержимого: `k.forced` — в
         // координатах КОРОБКИ, содержимое начинается с `dt`.

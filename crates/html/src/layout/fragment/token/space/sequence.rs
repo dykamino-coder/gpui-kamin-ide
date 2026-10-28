@@ -46,6 +46,7 @@ impl Sequence {
             outer: self,
             start,
             offset,
+            first_row: Default::default(),
         }))
     }
 }
@@ -56,7 +57,15 @@ pub(crate) struct Nested {
     pub(crate) outer: Sequence,
     pub(crate) start: usize,
     pub(crate) offset: f32,
+    /// Ряд, который не уместился в остатке внешнего фрагментаинера, сообщает
+    /// протяжённость своего начала (Blink `ColumnLayoutAlgorithm::LayoutRow`:
+    /// «This line didn't fit nicely in the outer fragmentation context.
+    /// Breaking before is better»).
+    pub(crate) first_row: NestReport,
 }
+
+/// Отчёт вложенного многоколоночника внешней стопке (`Nested::first_row`).
+pub(crate) type NestReport = Rc<std::cell::Cell<Option<f32>>>;
 
 impl Nested {
     pub(crate) fn outer_at(&self, row: usize) -> Result<Space, Error> {

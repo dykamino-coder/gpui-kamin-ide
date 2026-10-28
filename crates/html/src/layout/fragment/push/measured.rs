@@ -6,7 +6,6 @@
 //! (перенос ряда — рост решателя после дорожки, `Watched::grow_grid_row`), а новую высоту и
 //! точки разрыва — повторная раскладка копии, собранной заново из правленого дерева
 //! (`Regrow::build`).
-//! Оценка формы (`pushed_box_at`, `shape_full`) здесь не участвует.
 
 use super::cell::grow_before;
 use super::spacer::spacer_before_laid;
@@ -127,9 +126,7 @@ impl Regrow {
                 id,
                 grow,
             ),
-            Pushed::Box(id) if forced => {
-                spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.frame())
-            }
+            Pushed::Box(id) if forced => spacer_before_laid(&mut self.dom, id, grow),
             Pushed::Box(id) => grow_before(&mut self.dom, id, grow),
             Pushed::Row(row) => self.watched.grow_grid_row(row.grid, row.track, grow),
             Pushed::Flex(line) => self.watched.grow_flex_line(line.container, line.line, grow),
@@ -149,8 +146,8 @@ impl Regrow {
     }
 }
 
-/// Ребёнок стопки колонок, чьи распорки роста ставит раскладка копии, а не
-/// оценка `grow_pushed`: поддерево обычных блоков, чьи точки разрыва даёт
+/// Ребёнок стопки колонок, чьи распорки роста ставит раскладка копии:
+/// поддерево обычных блоков, чьи точки разрыва даёт
 /// раскладка главной копии (`StackChild::breaks_w`), без своего плана фрагментов
 /// (`box-decoration-break: clone`) и не спаннер; каждую его коробку видит
 /// рекордер блочной стопки (`stacked_tree`, таблица — рядами и ячейками,

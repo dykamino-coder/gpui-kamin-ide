@@ -110,15 +110,6 @@ impl<'a> LenCx<'a> {
         self.px(l?, vcx)
     }
 
-    /// Отсутствие значения — ноль, нерешённое (включая `auto`) —
-    /// НЕПРОХОДИМО (`None`).
-    pub fn px_missing_zero(self, l: Option<Len>, vcx: ValueCx<'_>) -> Option<f32> {
-        match l {
-            None => Some(0.0),
-            Some(l) => self.px(l, vcx),
-        }
-    }
-
     /// Точки или ноль С ПОТЕРЕЙ: отсутствие значения и всё нерешённое —
     /// ноль. Законно там, где нерешённое по смыслу ничего не добавляет.
     pub fn px_lossy_zero(self, l: Option<Len>, vcx: ValueCx<'_>) -> f32 {

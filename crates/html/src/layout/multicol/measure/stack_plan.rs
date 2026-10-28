@@ -5,7 +5,7 @@ use super::{column_layout_width, column_measure_width, measure_children};
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
-use crate::layout::fragment::{Shape, with_lines};
+use crate::layout::fragment::{FlowMargins, with_lines};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed, Position};
 use crate::style::values::value::Len;
@@ -18,10 +18,9 @@ pub(crate) struct StackPlan {
     pub(crate) layout_col_w: Option<f32>,
     pub(crate) direct_oof: Vec<Element>,
     pub(crate) oof_static: Vec<(usize, Element)>,
-    pub(crate) nested_auto: std::cell::RefCell<Vec<u64>>,
     pub(crate) nested_whole: std::cell::RefCell<Vec<u64>>,
     pub(crate) measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
-    pub(crate) stackable: Option<Vec<(Element, Shape)>>,
+    pub(crate) stackable: Option<Vec<(Element, FlowMargins)>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -40,8 +39,6 @@ pub(crate) fn stack_plan(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
 ) -> StackPlan {
-    let positioned =
-        |s: &Computed| matches!(s.position, Some(Position::Absolute | Position::Fixed));
     let line_col_w = column_measure_width(
         e,
         inherited,
@@ -51,6 +48,42 @@ pub(crate) fn stack_plan(
         cols,
         used_gap,
     );
+    let layout_col_w = column_layout_width(
+        e,
+        inherited,
+        merged,
+        col_inline_size,
+        col_vert,
+        cols,
+        used_gap,
+    );
+    plan_at(
+        e,
+        merged,
+        opts,
+        (line_col_w, layout_col_w),
+        (col_vert, col_rl),
+        (col_h, box_h),
+        rows,
+        nest_rows,
+    )
+}
+
+/// Дети стопки при известной (или ещё неизвестной) ширине колонки: каждый
+/// поточный ребёнок получает свою запись, меру даёт раскладка его копии.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn plan_at(
+    e: &Element,
+    merged: &BoxStyle,
+    opts: &RenderOpts,
+    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
+    (col_vert, col_rl): (bool, bool),
+    (col_h, box_h): (Option<f32>, Option<f32>),
+    rows: Option<crate::layout::fragment::types::Rows>,
+    nest_rows: Option<f32>,
+) -> StackPlan {
+    let positioned =
+        |s: &Computed| matches!(s.position, Some(Position::Absolute | Position::Fixed));
     let prepared = super::prepared(e, merged, opts, col_vert, line_col_w);
     let ge = &prepared;
     // Прямые флоаты legacy-пути — не в стопку,
@@ -93,22 +126,11 @@ pub(crate) fn stack_plan(
     let outer_frag = (e.style.used().column_fill_auto == Some(true) && rows.is_none() && !col_vert)
         .then(|| col_h.or(box_h))
         .flatten();
-    let layout_col_w = column_layout_width(
-        e,
-        inherited,
-        merged,
-        col_inline_size,
-        col_vert,
-        cols,
-        used_gap,
-    );
     let first_flow = ge
         .children
         .iter()
         .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
         .map(|n| n as *const Node);
-    // Чью меру дала `nested_rows_shape` — только их копии рядами.
-    let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
     // Вложенный многоколоночник `height: auto` под БАЛАНСОМ внешнего
     // (`nested_whole`): одна сбалансированная строка колонок целиком.
     // css-multicol-1 §2: вложенный многоколоночник — сам мультиколонный
@@ -184,33 +206,39 @@ pub(crate) fn stack_plan(
     if laid.is_some() || pending.is_some() || vertical.is_some() {
         direct_oof.clear();
     }
-    let stackable: Option<Vec<(Element, Shape)>> = laid.or(pending).or(vertical).or_else(|| {
-        with_lines(merged, line_col_w, opts, |opts| {
-            measure_children(
-                ge,
-                merged,
-                opts,
-                first_flow,
-                last_flow,
-                outer_frag,
-                (line_col_w, layout_col_w),
-                &nested_auto,
-                whole_ok,
-                &nested_whole,
-                &measured_kids,
-                col_vert,
-                col_rl,
-                measure_ok,
-                pag_ok,
-            )
-        })
+    // Смешанные дети при ещё неизвестной ширине: каждого меряет раскладка его
+    // копии, когда ширину решит раскладка коробки (`deferred::Recipe`).
+    let pending = pending.or_else(|| {
+        (line_col_w.is_none() && nest_rows.is_none())
+            .then(|| super::laid::pending_mixed(ge, merged, opts.cx.frame()))
+            .flatten()
     });
+    let stackable: Option<Vec<(Element, FlowMargins)>> =
+        laid.or(pending).or(vertical).or_else(|| {
+            with_lines(merged, line_col_w, opts, |opts| {
+                measure_children(
+                    ge,
+                    merged,
+                    opts,
+                    first_flow,
+                    last_flow,
+                    outer_frag,
+                    (line_col_w, layout_col_w),
+                    whole_ok,
+                    &nested_whole,
+                    &measured_kids,
+                    col_vert,
+                    col_rl,
+                    measure_ok,
+                    pag_ok,
+                )
+            })
+        });
     StackPlan {
         line_col_w,
         layout_col_w,
         direct_oof,
         oof_static,
-        nested_auto,
         nested_whole,
         measured_kids,
         stackable,

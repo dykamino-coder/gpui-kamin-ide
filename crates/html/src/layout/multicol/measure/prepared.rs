@@ -18,9 +18,12 @@ pub(crate) fn prepared(
     // Строчные прогоны среди блоков — анонимными блоками (CSS 2.1
     // §9.2.1.1); неизвестная ширина разрешается в deferred layout.
     let mut boxed = e.clone();
-    boxed.children =
-        crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx())
-            .into();
+    // Ячейка или ряд прямо в многоколоночнике — в анонимной таблице (CSS 2.1
+    // §17.2.1): ребёнок стопки — таблица, её ряды и ячейки видит рекордер.
+    boxed.children = crate::layout::table::anon::wrap_anon_tables(
+        &crate::layout::fragment::flow::box_children::projected(&e.children, merged, opts.cx.vcx()),
+    )
+    .into();
     if !vertical {
         boxed.children =
             crate::layout::fragment::flow::column_percentages(&boxed.children, merged, width, opts)
