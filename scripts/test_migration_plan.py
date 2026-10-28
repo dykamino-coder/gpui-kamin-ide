@@ -45,6 +45,15 @@ class MigrationPlanTests(unittest.TestCase):
             self.assertIn(attributes, source)
             self.assertEqual(source.count('#![forbid(unsafe_code)]'), 1)
 
+    def test_facade_lint_levels_stay_on_the_facade_item(self):
+        from migration_plan import module_attributes
+        self.assertEqual(module_attributes('#[cfg(test)]\n#[expect(unused_imports, reason = "x")]\n'),
+                         '#[cfg(test)]')
+        self.assertEqual(module_attributes('#[cfg_attr(\n    not(test),\n    expect(unused_imports)\n)]\n'
+                                           '#[path = "a.rs"]'), '#[path = "a.rs"]')
+        self.assertEqual(module_attributes('#[cfg_attr(feature = "x", path = "b.rs")]'),
+                         '#[cfg_attr(feature = "x", path = "b.rs")]')
+
     def test_inner_module_attributes_do_not_become_crate_attributes(self):
         from migration_plan import crate_attributes
         source = ('#![forbid(unsafe_code)]\n'
