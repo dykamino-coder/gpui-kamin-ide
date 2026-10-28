@@ -63,10 +63,6 @@ impl FontContext {
         })
     }
 
-    pub(crate) fn installed_names(&self) -> Rc<HashSet<String>> {
-        self.installed.clone()
-    }
-
     /// Снять список семейств после регистрации встроенных шрифтов приложения.
     pub fn new(system: Arc<gpui::TextSystem>) -> Self {
         let installed = Rc::new(
@@ -111,16 +107,17 @@ impl FontContext {
         self
     }
 
-    pub(crate) fn install(&self, vcx: ValueCx<'_>) {
-        vcx.doc.metrics.platform.replace(self.clone());
-        *vcx.doc.metrics.wrap.borrow_mut() = None;
-        *vcx.doc.metrics.space.borrow_mut() = None;
+    pub(crate) fn install(&self, fonts: &crate::text::text_fonts::TextFonts, vcx: ValueCx<'_>) {
+        fonts.metrics.platform.replace(self.clone());
+        vcx.doc.set_installed_fonts(self.installed.clone());
+        *fonts.metrics.wrap.borrow_mut() = None;
+        *fonts.metrics.space.borrow_mut() = None;
         if let Some(system) = &self.system {
-            super::text_system::bind_measurements(system.clone(), vcx);
+            super::text_system::bind_measurements(system.clone(), fonts, vcx);
         }
-        vcx.doc.metrics.cache.borrow_mut().clear();
-        vcx.doc.metrics.vcache.borrow_mut().clear();
-        vcx.doc.metrics.parts.borrow_mut().clear();
+        fonts.metrics.cache.borrow_mut().clear();
+        fonts.metrics.vcache.borrow_mut().clear();
+        fonts.metrics.parts.borrow_mut().clear();
         vcx.doc
             .install_font_facts(self.facts_factory.as_ref().map(|factory| factory()));
     }

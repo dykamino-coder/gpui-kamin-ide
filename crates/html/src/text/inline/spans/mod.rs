@@ -77,6 +77,7 @@ pub fn line_height_spans(
     inherited: &Computed,
     base_size: f32,
     normal: f32,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
@@ -102,7 +103,7 @@ pub fn line_height_spans(
                     gpui::px(crate::text::metrics::normal_px(
                         normal,
                         style.used_font(base_size, vcx).size_px,
-                        vcx,
+                        fonts,
                     )),
                 )),
             }

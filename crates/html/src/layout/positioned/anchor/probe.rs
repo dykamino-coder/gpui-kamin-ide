@@ -1,8 +1,8 @@
 //! Проба якорного элемента: ключ, неявный якорь, регистрация (probe_for).
 
-use super::{AnchorRec, tf_map};
-use crate::document::state::ValueCx;
+use super::{AnchorRec, AnchorState, tf_map};
 use crate::dom::Node;
+use crate::layout::layout_state::LayoutState;
 use crate::style::computed::{BoxStyle, Computed, PositionAnchor};
 use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, px};
@@ -38,7 +38,7 @@ pub fn probe_for(
     e: &crate::dom::Element,
     c: &BoxStyle,
     hidden: bool,
-    vcx: ValueCx<'_>,
+    layout: &std::rc::Rc<LayoutState>,
 ) -> Option<AnyElement> {
     let names: Vec<String> = e.style.used().anchor_name.clone().unwrap_or_default();
     let implicit = e.node_id != 0
@@ -57,8 +57,8 @@ pub fn probe_for(
         c.position,
         Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
     ) {
-        vcx.doc
-            .anchor_frame
+        layout
+            .anchors
             .out_of_flow
             .borrow_mut()
             .insert(id, c.anchor_seq);
@@ -71,18 +71,14 @@ pub fn probe_for(
     let bw = px_lossy_zero;
     let b = e.style.used().borders();
     let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
-    let values = vcx.keep();
+    let layout = layout.clone();
     Some(
         gpui::canvas_with_unrounded_bounds(
             move |bounds: Bounds<Pixels>, window: &mut Window, _: &mut App| {
-                let vcx = values.vcx();
+                let anchors = &layout.anchors;
                 if cb {
-                    vcx.doc.anchor_frame.cb.borrow_mut().insert(id, bounds);
-                    vcx.doc
-                        .anchor_frame
-                        .cb_parent
-                        .borrow_mut()
-                        .insert(id, own_cb);
+                    anchors.cb.borrow_mut().insert(id, bounds);
+                    anchors.cb_parent.borrow_mut().insert(id, own_cb);
                 }
                 if names.is_empty() && !implicit {
                     return;
@@ -108,7 +104,7 @@ pub fn probe_for(
                     },
                     outer,
                     window,
-                    vcx,
+                    anchors,
                 );
             },
             |_, _, _, _| {},
@@ -138,7 +134,7 @@ pub(crate) fn record(
     who: Entry,
     outer: Bounds<Pixels>,
     window: &mut Window,
-    vcx: ValueCx<'_>,
+    anchors: &AnchorState,
 ) {
     let Entry {
         id,
@@ -154,7 +150,7 @@ pub(crate) fn record(
     // по стеку предков (`tf_map`), выбирает её цель (`lookup`):
     // `transform-001/002/009` — якорь с `translate(-200px, -100px)
     // scale(2)` обязан стоять там, где нарисован.
-    let (rect_tf, tf_top) = tf_map(outer, vcx);
+    let (rect_tf, tf_top) = tf_map(outer, anchors);
     let rec = AnchorRec {
         rect: outer,
         clip: window.content_mask().bounds,
@@ -165,13 +161,13 @@ pub(crate) fn record(
         tf_top,
     };
     {
-        let v = &vcx.doc.anchor_frame.named_seq;
+        let v = &anchors.named_seq;
         let mut v = v.borrow_mut();
         for n in names {
             v.push((n.clone(), seq, rec));
         }
     };
     if implicit {
-        vcx.doc.anchor_frame.implicit.borrow_mut().insert(id, rec);
+        anchors.implicit.borrow_mut().insert(id, rec);
     }
 }

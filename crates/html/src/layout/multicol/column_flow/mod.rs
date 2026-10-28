@@ -121,7 +121,11 @@ fn column_flow_in(
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) => size * k,
-        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size, opts.cx.vcx()),
+        _ => crate::text::metrics::normal_px(
+            normal_fraction(inherited, opts),
+            size,
+            opts.cx.text_fonts(),
+        ),
     };
     // Промежуток — ВЫЧИСЛЕННОЕ значение (css-values-4 §5): `em` в точки переводит
     // `Computed::resolve_em`, а он живёт в наследовании, то есть в `inherited`

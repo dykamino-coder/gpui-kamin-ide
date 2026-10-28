@@ -12,4 +12,5 @@ pub(crate) mod raster;
 pub mod ruby;
 pub(crate) mod shadow_text;
 pub mod text_box;
+pub(crate) mod text_fonts;
 pub mod vertical;

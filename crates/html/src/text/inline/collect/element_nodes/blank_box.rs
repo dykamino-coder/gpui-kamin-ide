@@ -71,15 +71,16 @@ pub(super) fn blank_box(
                 String::new()
             }
         });
-        let (asc, desc, _) = crate::text::metrics::vmetrics_px(&family, size, cx.vcx());
+        let (asc, desc, _) =
+            crate::text::metrics::vmetrics_px(&family, size, cx.text_fonts(), cx.vcx());
         let content = if asc + desc > 0.0 { asc + desc } else { size };
         let line = merged
             .numeric_line_px(MEDIUM_FONT_SIZE_PX)
             .unwrap_or_else(|| {
                 crate::text::metrics::normal_px(
-                    crate::text::metrics::normal_line(&family, cx.vcx()),
+                    crate::text::metrics::normal_line(&family, cx.text_fonts(), cx.vcx()),
                     size,
-                    cx.vcx(),
+                    cx.text_fonts(),
                 )
             });
         // Коробка стоит на области содержимого: она в середине

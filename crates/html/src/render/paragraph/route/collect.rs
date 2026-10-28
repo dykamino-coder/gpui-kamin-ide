@@ -144,7 +144,14 @@ pub(crate) fn paragraph_pieces_routed(
     } else {
         inline::trim_edge_spaces(&mut pieces);
     }
-    pieces = style_pieces(pieces, inherited, first_line_at, first_line, opts.cx.vcx());
+    pieces = style_pieces(
+        pieces,
+        inherited,
+        first_line_at,
+        first_line,
+        opts.cx.text_fonts(),
+        opts.cx.vcx(),
+    );
     // Межсловный интервал и отступ первой строки требуют строки из слов, а
     // единый текстовый блок их не умеет — поэтому решение принимается ДО
     // сборки блока, иначе оба свойства молча пропадали.

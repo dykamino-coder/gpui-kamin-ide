@@ -51,14 +51,18 @@ pub(super) fn range_has_space(value: Option<&str>) -> bool {
 }
 
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
-///
-pub fn load_faces(css: &str, vcx: ValueCx<'_>) -> Result<(), crate::dom::outcome::DocumentFailure> {
+#[cfg(test)]
+pub(crate) fn load_faces(
+    css: &str,
+    fonts: &crate::text::text_fonts::TextFonts,
+    vcx: ValueCx<'_>,
+) -> Result<(), crate::dom::outcome::DocumentFailure> {
     let admission = admit(css, vcx)?;
-    clear(vcx);
-    Ok(load_faces_into(css, None, vcx, &admission)?)
+    clear(fonts, vcx);
+    Ok(load_faces_into(css, None, fonts, vcx, &admission)?)
 }
 
-fn clear(vcx: ValueCx<'_>) {
+fn clear(fonts: &crate::text::text_fonts::TextFonts, vcx: ValueCx<'_>) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     vcx.doc.font_faces.aliases.borrow_mut().clear();
@@ -68,26 +72,16 @@ fn clear(vcx: ValueCx<'_>) {
     vcx.doc.font_faces.size_adjust.borrow_mut().clear();
     super::metric_overrides::clear(vcx);
     vcx.doc.font_faces.romn.borrow_mut().clear();
-    super::math::clear_aliases(vcx);
-}
-
-/// Дозагрузка БЕЗ сброса подмен: вложенный документ (`<iframe>`) разбирается
-/// посреди отрисовки внешнего — сброс крал бы шрифты хозяина, и весь текст
-/// после рамки падал в подстановочный шрифт.
-pub fn load_faces_additive(
-    css: &str,
-    vcx: ValueCx<'_>,
-) -> Result<(), crate::dom::outcome::DocumentFailure> {
-    let admission = admit(css, vcx)?;
-    Ok(load_faces_into(css, None, vcx, &admission)?)
+    super::math::clear_aliases(fonts);
 }
 
 pub(crate) fn load_faces_sheets(
     sheets: &[impl AsRef<str>],
     base: Option<&url::Url>,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: ValueCx<'_>,
 ) -> Result<(), Error> {
-    clear(vcx);
+    clear(fonts, vcx);
     let admission = vcx
         .doc
         .budget
@@ -96,11 +90,12 @@ pub(crate) fn load_faces_sheets(
         .map(Admission::new)
         .unwrap_or_default();
     for css in sheets {
-        load_faces_into(css.as_ref(), base, vcx, &admission)?;
+        load_faces_into(css.as_ref(), base, fonts, vcx, &admission)?;
     }
     Ok(())
 }
 
+#[cfg(test)]
 fn admit(css: &str, vcx: ValueCx<'_>) -> Result<Admission, Error> {
     let revision = vcx.doc.budget.borrow().clone();
     if let Some(revision) = revision {
@@ -115,6 +110,7 @@ fn admit(css: &str, vcx: ValueCx<'_>) -> Result<Admission, Error> {
 pub(super) fn load_faces_into(
     css: &str,
     base: Option<&url::Url>,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: ValueCx<'_>,
     admission: &Admission,
 ) -> Result<(), Error> {
@@ -128,14 +124,14 @@ pub(super) fn load_faces_into(
             Some(hit) => hit,
             None => {
                 let loaded = read_font(&src, vcx.doc).and_then(|bytes| {
-                    super::math::remember(&src, &bytes, vcx);
+                    super::math::remember(&src, &bytes, fonts);
                     let romn = sfnt_romn_baseline(&bytes);
                     vcx.doc
                         .font_faces
                         .romn_by_src
                         .borrow_mut()
                         .insert(src.clone(), romn);
-                    crate::text::metrics::load_font(bytes, vcx)
+                    crate::text::metrics::load_font(bytes, fonts)
                 });
                 vcx.doc
                     .font_faces
@@ -146,7 +142,7 @@ pub(super) fn load_faces_into(
             }
         };
         if let Some(real) = real {
-            super::math::register(&src, &real, vcx);
+            super::math::register(&src, &real, fonts);
             let name = family.trim_matches(is_quote).to_ascii_lowercase();
             if let Some(Some(v)) = vcx.doc.font_faces.romn_by_src.borrow().get(&src).copied() {
                 vcx.doc.font_faces.romn.borrow_mut().insert(name.clone(), v);

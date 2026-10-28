@@ -169,7 +169,7 @@ impl Document {
 
     /// Платформенная конфигурация для нового документа того же хоста.
     pub fn font_context(&self) -> crate::text::metrics::FontContext {
-        self.state.metrics.font_context()
+        self.state.text.metrics.font_context()
     }
 
     /// Текстовый стиль страницы (`html`/`body`): им набирается текст, у

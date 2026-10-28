@@ -18,10 +18,11 @@ impl Paragraph {
         bounds: Bounds<Pixels>,
         window: &mut Window,
     ) {
-        let Some(values) = &self.anchor_values else {
+        let Some((values, layout)) = &self.anchor_values else {
             return;
         };
         let vcx = values.vcx();
+        let anchors = &layout.anchors;
         let s = (at as isize + b.start).max(0) as usize;
         let e = (at as isize + b.end).max(0) as usize;
         let shift = |r: Bounds<Pixels>| Bounds {
@@ -35,7 +36,7 @@ impl Paragraph {
                 info.node,
                 info.own_cb,
                 shift(r),
-                vcx,
+                anchors,
             );
         }
         if !info.names.is_empty() {
@@ -71,7 +72,7 @@ impl Paragraph {
                     },
                     shift(r),
                     window,
-                    vcx,
+                    anchors,
                 );
             }
         }

@@ -73,7 +73,7 @@ pub(crate) fn route_pieces(
                         crate::text::metrics::normal_px(
                             normal_fraction(inherited, &opts),
                             biggest,
-                            vcx,
+                            opts.cx.text_fonts(),
                         )
                     }),
             )

@@ -63,7 +63,7 @@ fn inherited_emphasis_resolves_the_childs_typographic_context() {
         text: "試験".into(),
         style: child,
     }];
-    let spans = super::emphasis_spans(&pieces, 16.0, 1.2, Some(false), None, vcx);
+    let spans = super::emphasis_spans(&pieces, 16.0, 1.2, Some(false), None, &doc.text, vcx);
     assert_eq!(spans[0].mark, "\u{fe46}");
     assert!(!spans[0].under);
 
@@ -73,7 +73,7 @@ fn inherited_emphasis_resolves_the_childs_typographic_context() {
         text: "你好".into(),
         style: child,
     }];
-    let spans = super::emphasis_spans(&pieces, 16.0, 1.2, None, None, vcx);
+    let spans = super::emphasis_spans(&pieces, 16.0, 1.2, None, None, &doc.text, vcx);
     assert_eq!(spans[0].mark, "\u{25cb}");
     assert!(spans[0].under);
 }
@@ -101,5 +101,5 @@ fn explicit_emphasis_none_and_position_override_the_parent() {
         text: "text".into(),
         style: child,
     }];
-    assert!(super::emphasis_spans(&pieces, 16.0, 1.2, None, None, vcx).is_empty());
+    assert!(super::emphasis_spans(&pieces, 16.0, 1.2, None, None, &doc.text, vcx).is_empty());
 }

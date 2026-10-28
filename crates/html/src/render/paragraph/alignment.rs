@@ -170,7 +170,7 @@ pub(crate) fn atom_line_align(
                         crate::text::metrics::normal_px(
                             normal_fraction(&merged, opts),
                             own_size(&merged, opts),
-                            vcx,
+                            opts.cx.text_fonts(),
                         )
                     });
                     AtomAlign::Shift(-k * own)

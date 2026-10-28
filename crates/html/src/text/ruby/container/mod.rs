@@ -51,9 +51,14 @@ pub(crate) fn ruby_container_atom(
     let base_half = {
         let size = merged.used_font(opts.base_size(), vcx).size_px;
         let font = crate::text::inline::strut_font(&merged, &opts.text, opts.cx.vcx());
-        let (asc, desc) = crate::text::metrics::font_extents(&font, size, vcx);
+        let (asc, desc) =
+            crate::text::metrics::font_extents(&font, size, opts.cx.text_fonts(), vcx);
         let line = merged.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
-            crate::text::metrics::normal_px(normal_fraction(&merged, opts), size, vcx)
+            crate::text::metrics::normal_px(
+                normal_fraction(&merged, opts),
+                size,
+                opts.cx.text_fonts(),
+            )
         });
         (line - (asc + desc)) / 2.0
     };

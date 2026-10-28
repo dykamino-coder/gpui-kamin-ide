@@ -8,7 +8,7 @@ impl AnchorPlan {
         &self,
         name: Option<&str>,
     ) -> Option<AnchorRec> {
-        let f = &self.values.vcx().doc.anchor_frame;
+        let f = &self.layout.anchors;
         let named = |name: &str| {
             f.named_seq
                 .borrow()
@@ -58,7 +58,7 @@ impl AnchorPlan {
             return true;
         }
         let mut n = r.cb;
-        let f = &self.values.vcx().doc.anchor_frame;
+        let f = &self.layout.anchors;
         let mut visited = std::collections::HashSet::new();
         while visited.insert(n) {
             if n == self.key && n != 0
@@ -75,16 +75,7 @@ impl AnchorPlan {
             if n == 0 {
                 return false;
             }
-            match self
-                .values
-                .vcx()
-                .doc
-                .anchor_frame
-                .cb_parent
-                .borrow()
-                .get(&n)
-                .copied()
-            {
+            match f.cb_parent.borrow().get(&n).copied() {
                 Some(p) => n = p,
                 None => return true,
             }

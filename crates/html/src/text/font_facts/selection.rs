@@ -12,7 +12,7 @@ impl Backend {
         request: FontRequest<'_>,
         snapshot: &FontRegistrySnapshot,
     ) -> Result<SelectedFaceFacts, FontFactsError> {
-        let doc = self.document(snapshot)?;
+        self.document(snapshot)?;
         if request.family_list.contains(',') {
             return Err(FontFactsError::UnsupportedRequest);
         }
@@ -32,7 +32,8 @@ impl Backend {
         };
         let descriptor = snapshot.matching_face(request.family_list, request);
         let font = font(request, snapshot);
-        let (backend_key, units_per_em) = doc
+        let (backend_key, units_per_em) = self
+            .fonts
             .metrics
             .font_context()
             .native_face(&font)

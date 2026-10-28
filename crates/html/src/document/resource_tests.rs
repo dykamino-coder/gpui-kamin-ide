@@ -104,7 +104,7 @@ fn interleaved_documents_keep_their_font_face_descriptors() {
     assert_eq!(fonts::size_adjust("Shared", 0, b), 0.75);
     assert!(!fonts::covers_space("Shared", a));
     assert!(fonts::covers_space("Shared", b));
-    fonts::load_faces("", b).unwrap();
+    fonts::load_faces("", &second.state.text, b).unwrap();
     assert_eq!(fonts::alias("Shared", b), None);
     assert_eq!(fonts::alias("Shared", a).as_deref(), Some("Face49"));
     assert_eq!(fonts::size_adjust("Shared", 0, a), 1.5);

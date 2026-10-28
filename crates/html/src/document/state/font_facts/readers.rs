@@ -42,7 +42,11 @@ impl FontFactsProvider for Facts {
 
 fn document(scale: f32) -> Rc<DocState> {
     let doc = DocState::new(Default::default());
-    crate::text::metrics::install_probe(|_, _| panic!("CSS bypassed provider"), doc.values());
+    crate::text::metrics::install_probe(
+        |_, _| panic!("CSS bypassed provider"),
+        &doc.text,
+        doc.values(),
+    );
     doc.install_font_facts(Some(Rc::new(Facts(scale))));
     doc
 }

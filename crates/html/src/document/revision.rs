@@ -42,7 +42,7 @@ impl Document {
             });
         }
         let media = self.state.media();
-        let fonts = self.state.metrics.font_context();
+        let fonts = self.state.text.metrics.font_context();
         let candidate = Self::build(
             html,
             theme_css,

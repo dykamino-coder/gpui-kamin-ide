@@ -119,7 +119,14 @@ pub(super) fn defer(
         own.anchor_key = key_of(source);
         own.anchor_seq = build_opts.cx.anchor_seq_for(source);
         own.resolve_viewport(build_opts.viewport, vcx);
-        let inputs = resolve::current_inputs(&own, &inherited, bounds, window, vcx);
+        let inputs = resolve::current_inputs(
+            &own,
+            &inherited,
+            bounds,
+            window,
+            vcx,
+            build_opts.cx.layout(),
+        );
         build_opts.cx.position.oof_sizes = Some((own.anchor_key, inputs));
         build_opts.cx.position.oof_trial = probe.map(|p| (own.anchor_key, p));
         build_opts.cx.position.oof_computed = style
@@ -173,6 +180,7 @@ pub(super) fn defer(
         &dependency_style,
         &base_inherited,
         vcx,
+        opts.cx.layout(),
     );
     let kid = if e.style.used().position_try_fallbacks.is_empty() {
         OofKid::Deferred(
@@ -194,6 +202,7 @@ pub(super) fn defer(
                     &base,
                     &base_inherited,
                     vcx,
+                    base_opts.cx.layout(),
                 );
                 trials::run(
                     bounds,
