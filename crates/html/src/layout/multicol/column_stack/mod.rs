@@ -11,6 +11,7 @@ mod axis;
 pub mod balance;
 pub mod element;
 mod gap_geometry;
+mod lead;
 pub(crate) mod oof;
 mod paginate;
 
@@ -67,6 +68,8 @@ pub struct ColumnStack {
     pub(crate) spans_plan: std::cell::RefCell<Vec<(usize, f32)>>,
     /// Отчёт рядов внешней стопке, когда эта стопка — вложенный ряд (`Nested`).
     pub(crate) nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    /// Рекордер копии, в которой лежит эта стопка, и id её коробки (`lead`).
+    pub(crate) lead_report: Option<lead::LeadReport>,
 }
 
 impl ColumnStack {
@@ -130,6 +133,7 @@ impl ColumnStack {
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
             nest_report: None,
+            lead_report: None,
         }
     }
 

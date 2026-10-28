@@ -104,17 +104,14 @@ fn copy_breaks(
     let flow = watched.flow.at(origin, size, axis, window);
     regrow.floats = super::empty_floats::separate(&flow);
     regrow.float_leads = flow.float_leads.clone();
-    watched
+    let laid = watched
+        .laid_axis(origin, size, axis, window)
+        .with_flow(&flow);
+    let mut blocks = watched
         .blocks()
-        .map_or_else(Default::default, |blocks| {
-            blocks.breaks(
-                end,
-                &watched
-                    .laid_axis(origin, size, axis, window)
-                    .with_flow(&flow),
-            )
-        })
-        .finish(flow, end)
+        .map_or_else(Default::default, |blocks| blocks.breaks(end, &laid));
+    watched.hold_leads(&mut blocks, &laid);
+    blocks.finish(flow, end)
 }
 
 /// Точки разрыва строк со срезом `text-box-trim` (css-inline-3 §4.2; csswg-drafts#5335):

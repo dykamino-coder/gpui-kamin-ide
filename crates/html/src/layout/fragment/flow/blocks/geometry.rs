@@ -99,7 +99,7 @@ pub(super) enum Pending {
 }
 
 impl BlockBreaks {
-    pub(super) fn hold(&mut self, range: (f32, f32)) {
+    pub(crate) fn hold(&mut self, range: (f32, f32)) {
         self.solid.push(range);
         self.barriers.push(range);
     }

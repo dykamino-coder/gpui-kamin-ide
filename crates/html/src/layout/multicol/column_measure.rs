@@ -34,6 +34,7 @@ impl ColumnStack {
             self.regrow_children(window, cx);
             self.paginate_children(window, cx);
             self.reserve_overflow_copies();
+            self.report_lead();
         }
     }
 
@@ -147,6 +148,7 @@ impl ColumnStack {
         let paint = self.paint.clone();
         let deferred = self.deferred.clone();
         let nest_report = self.nest_report.clone();
+        let lead_report = self.lead_report.clone();
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
@@ -175,6 +177,7 @@ impl ColumnStack {
                     lines_plan: std::cell::RefCell::new(Vec::new()),
                     spans_plan: std::cell::RefCell::new(Vec::new()),
                     nest_report: None,
+                    lead_report: lead_report.clone(),
                 };
                 // Вертикальное письмо: место под прогрессию колонок — по
                 // СТРОЧНОЙ оси, то есть высота коробки (css-multicol-1 §2), а

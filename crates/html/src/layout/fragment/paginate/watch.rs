@@ -80,6 +80,9 @@ pub(crate) struct Watched {
     /// Абсолютные коробки, чей содержащий блок внутри копии: их протяжённость —
     /// продолжение потока ребёнка (`positioned_end`).
     positioned: std::cell::OnceCell<Vec<u64>>,
+    /// Ведущая неделимая протяжённость вложенных многоколоночников копии по id
+    /// их коробки (`ColumnStack::report_lead`).
+    leads: Rc<RefCell<HashMap<u64, f32>>>,
 }
 
 impl Watched {
@@ -107,13 +110,34 @@ impl Watched {
         window: &mut Window,
     ) -> MeasuredBreaks {
         let lines = self.flow.at(origin, size, axis, window);
-        let blocks = self.blocks.as_ref().map_or_else(BlockBreaks::default, |b| {
-            b.breaks(
-                end,
-                &self.laid_axis(origin, size, axis, window).with_flow(&lines),
-            )
-        });
+        let laid = self.laid_axis(origin, size, axis, window).with_flow(&lines);
+        let mut blocks = self
+            .blocks
+            .as_ref()
+            .map_or_else(BlockBreaks::default, |b| b.breaks(end, &laid));
+        self.hold_leads(&mut blocks, &laid);
         blocks.finish(lines, end)
+    }
+
+    /// Вложенный многоколоночник не рвётся внутри своего ведущего неделимого
+    /// содержимого: оно открывает его первую колонку (css-break-3 §4.4; Blink:
+    /// ряд колонок без места под первую строку уводит разрыв перед контейнером).
+    pub(crate) fn hold_leads(
+        &self,
+        blocks: &mut BlockBreaks,
+        laid: &crate::layout::fragment::flow::blocks::Laid,
+    ) {
+        for (&id, &lead) in self.leads.borrow().iter() {
+            if let Some((top, _)) = laid.at(id) {
+                blocks.hold((top, top + lead));
+            }
+        }
+    }
+
+    /// Ведущая неделимая протяжённость `lead` вложенного многоколоночника `id`
+    /// (первый ряд стопки: ряды между спаннерами — того же хоста).
+    pub(crate) fn report_lead(&self, id: u64, lead: f32) {
+        self.leads.borrow_mut().entry(id).or_insert(lead);
     }
 
     /// Block stack watched by the recorder (`for_blocks`).
@@ -151,6 +175,7 @@ impl Watched {
             axis: self.axis,
             monolithic_ids: self.monolithic_ids_of().clone().into(),
             positioned: self.positioned.clone(),
+            leads: self.leads.clone(),
         })
     }
 
@@ -164,6 +189,7 @@ impl Watched {
         self.seen.borrow_mut().clear();
         self.table_nodes.borrow_mut().clear();
         self.flow.reset();
+        self.leads.borrow_mut().clear();
         for flow in self.item_flows.values() {
             flow.reset();
         }

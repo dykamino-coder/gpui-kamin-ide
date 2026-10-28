@@ -69,6 +69,7 @@ pub(super) fn column_stack_div(
         )
         .with_deferred(deferred)
         .with_nest_report(nest_report)
+        .with_lead_report(opts.frag.watch.clone().map(|w| (w, e.node_id)))
         .with_row_extent(if nest_rows.is_some() {
             crate::layout::multicol::measure::RowExtent::Content
         } else {

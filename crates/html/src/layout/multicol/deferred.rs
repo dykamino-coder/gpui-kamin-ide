@@ -124,6 +124,7 @@ impl Recipe {
         stack.regrow_children(window, cx);
         stack.paginate_children(window, cx);
         stack.reserve_overflow_copies();
+        stack.report_lead();
     }
 
     pub(crate) fn measure(
