@@ -205,6 +205,48 @@ function streamResponse(body: ReadableStream<Uint8Array>, contentType = 'text/ev
 }
 
 it.each(['text/event-stream', 'application/json'])(
+  'accounts usage independently of UI visibility for %s',
+  async (contentType) => {
+    const { startNativeMitm } = await import('./native-mitm')
+    const onUsage = vi.fn()
+    await startNativeMitm({ ptySessionId: 'usage', onEntryUpdate: () => {}, onUsage })
+    const message = {
+      type: 'message',
+      id: 'msg-usage',
+      model: 'claude-haiku-5-5',
+      role: 'assistant',
+      content: [],
+      usage: {
+        input_tokens: 2,
+        cache_creation_input_tokens: 100,
+        cache_creation: { ephemeral_1h_input_tokens: 100 },
+        output_tokens: 4,
+      },
+    }
+    const raw =
+      contentType === 'application/json'
+        ? JSON.stringify(message)
+        : `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message })}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n`
+    mocks.fetch.mockResolvedValue(
+      streamResponse(
+        new ReadableStream({
+          start(c) {
+            c.enqueue(Buffer.from(raw))
+            c.close()
+          },
+        }),
+        contentType,
+      ),
+    )
+    const res = request()
+    await waitFor(() => expect(res.writableFinished).toBe(true))
+    expect(Buffer.concat(res.chunks).toString()).toBe(raw)
+    expect(onUsage).toHaveBeenCalledTimes(1)
+    expect(onUsage.mock.calls[0]![0].message.usage.cache_creation.ephemeral_1h_input_tokens).toBe(100)
+  },
+)
+
+it.each(['text/event-stream', 'application/json'])(
   'ignores a late old %s stream reset after CA replacement',
   async (contentType) => {
     const { startNativeMitm, resetExtraTrustRoots } = await import('./native-mitm')

@@ -42,7 +42,7 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
         };
         rule.decls.set(property, value);
     }
-    if super::mathml_routing::enabled(handle)
+    if super::mathml_routing::enabled(handle, vcx)
         && let NodeData::Element { name, .. } = &handle.data
     {
         if &*name.local == "mspace" {
@@ -57,7 +57,7 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
     }
     for (name, value) in attrs
         .iter()
-        .filter(|_| super::mathml_routing::enabled(handle))
+        .filter(|_| super::mathml_routing::enabled(handle, vcx))
     {
         if name == "displaystyle" && matches!(value.as_str(), "true" | "false") {
             rule.decls.set(

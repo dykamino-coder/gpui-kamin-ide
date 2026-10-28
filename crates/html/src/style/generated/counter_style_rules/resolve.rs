@@ -40,61 +40,67 @@ pub(super) fn builtin_resolved(name: &str) -> Resolved {
     }
 }
 
-/// Входит ли имя в цикл `extends` (§extends-system: все стили цикла ведут
-/// себя как `extends decimal`).
-fn in_cycle(rules: &HashMap<String, Raw>, name: &str) -> bool {
-    let mut cur = name.to_string();
-    for _ in 0..=rules.len() {
-        let Some(System::Extends(next)) = rules.get(&cur).and_then(|r| r.system.clone()) else {
-            return false;
-        };
-        if next == name {
-            return true;
-        }
-        cur = next;
-    }
-    false
-}
-
+/// Цепочка extends вычисляется снизу вверх. Каждый участник цикла наследует
+/// decimal непосредственно; входящий в цикл стиль наследует его ближайшего участника.
 pub(super) fn resolve_counter_style(
     rules: &HashMap<String, Raw>,
     name: &str,
-    depth: usize,
-) -> Option<Resolved> {
-    let anon;
-    let raw = match rules.get(name) {
-        Some(raw) => raw,
-        None => {
-            anon = anonymous(name)?;
-            &anon
-        }
+    admission: &crate::budget::admission::Admission,
+) -> Result<Option<Resolved>, crate::budget::admission::Error> {
+    use crate::budget::admission::Buffer;
+    let anon = anonymous(name);
+    let Some(first) = rules.get(name).or(anon.as_ref()) else {
+        return Ok(None);
     };
-    let mut r = match raw.system.clone().unwrap_or(System::Symbolic) {
-        System::Extends(target) => {
-            if depth > 32 || in_cycle(rules, name) {
-                builtin_resolved("decimal")
-            } else if rules.contains_key(&target) {
-                resolve_counter_style(rules, &target, depth + 1)
-                    .unwrap_or_else(|| builtin_resolved("decimal"))
-            } else {
-                // Незнакомое имя — `extends decimal`.
-                builtin_resolved(&target)
+    let mut path = Buffer::default();
+    let mut seen = HashMap::new();
+    let mut current = name;
+    let mut raw = first;
+    let mut cycle = None;
+    let mut result = loop {
+        admission.work(1)?;
+        seen.insert(current.to_string(), path.len());
+        path.push(raw, admission)?;
+        match raw.system.as_ref().unwrap_or(&System::Symbolic) {
+            System::Extends(target) => {
+                if let Some(&at) = seen.get(target) {
+                    cycle = Some(at);
+                    break builtin_resolved("decimal");
+                }
+                if let Some(next) = rules.get(target) {
+                    current = target;
+                    raw = next;
+                } else {
+                    break builtin_resolved(target);
+                }
+            }
+            sys => {
+                break Resolved {
+                    algo: Algo::Own(
+                        sys.clone(),
+                        raw.symbols.clone().unwrap_or_default(),
+                        raw.additive.clone().unwrap_or_default(),
+                    ),
+                    negative: ("-".into(), String::new()),
+                    prefix: String::new(),
+                    suffix: ". ".into(),
+                    range: None,
+                    pad: None,
+                    fallback: "decimal".into(),
+                };
             }
         }
-        sys => Resolved {
-            algo: Algo::Own(
-                sys,
-                raw.symbols.clone().unwrap_or_default(),
-                raw.additive.clone().unwrap_or_default(),
-            ),
-            negative: ("-".to_string(), String::new()),
-            prefix: String::new(),
-            suffix: ". ".to_string(),
-            range: None,
-            pad: None,
-            fallback: "decimal".to_string(),
-        },
     };
+    while let Some(raw) = path.pop() {
+        if cycle.is_some_and(|at| path.len() >= at) {
+            result = builtin_resolved("decimal");
+        }
+        overlay(&mut result, raw);
+    }
+    Ok(Some(result))
+}
+
+fn overlay(r: &mut Resolved, raw: &Raw) {
     if let Some(v) = &raw.negative {
         r.negative = v.clone();
     }
@@ -113,7 +119,6 @@ pub(super) fn resolve_counter_style(
     if let Some(v) = &raw.fallback {
         r.fallback = v.clone();
     }
-    Some(r)
 }
 
 pub(super) fn uses_negative(algo: &Algo) -> bool {

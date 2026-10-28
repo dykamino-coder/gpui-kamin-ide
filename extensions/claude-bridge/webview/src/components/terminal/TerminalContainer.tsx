@@ -8,8 +8,8 @@ import { LoadingCue } from '../common/LoadingCue'
 interface TerminalContainerProps {
   tabId: string
   active: boolean
-  /** Bridge Console tool: inset the xterm host like the native terminal
-   *  `.session`. The terminal has no scrollback, so no scrollbar gutter. */
+  /** Inset the xterm host like the native terminal `.session`; FitAddon
+   *  includes the normal-screen scrollbar inside these symmetric bounds. */
   fill?: boolean
 }
 

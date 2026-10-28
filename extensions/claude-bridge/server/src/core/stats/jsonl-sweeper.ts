@@ -56,6 +56,7 @@ interface UsageBlock {
   output_tokens?: number
   cache_read_input_tokens?: number
   cache_creation_input_tokens?: number
+  cache_creation?: { ephemeral_1h_input_tokens?: number }
 }
 
 /** All time-grouping (heatmap, peakHour, streaks, daily timeseries) is
@@ -73,9 +74,10 @@ const INSERT_CHUNK_ROWS = 100
 const insertEventsSql = (rows: number): string => `
   INSERT INTO jsonl_events
     (uuid, session_id, timestamp, type, model, input_tokens, output_tokens,
-     cache_read_tokens, cache_write_tokens, tool_name, message_id)
-  VALUES ${Array.from({ length: rows }, () => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
-  ON CONFLICT (uuid) DO NOTHING
+     cache_read_tokens, cache_write_tokens, tool_name, message_id, cache_write_1h_tokens)
+  VALUES ${Array.from({ length: rows }, () => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
+  ON CONFLICT (uuid) DO UPDATE SET cache_write_1h_tokens = excluded.cache_write_1h_tokens
+  WHERE excluded.cache_write_1h_tokens > jsonl_events.cache_write_1h_tokens
 `
 
 const SQL_GET_OFFSET = `
@@ -500,7 +502,7 @@ async function processOneFileUnguarded(
         const toolUseId = Array.isArray(c)
           ? (c.find((b: any) => b?.type === 'tool_result') as any)?.tool_use_id
           : undefined
-        buffer.push([uuid, sessionId, tsStr, 'tool_result', null, 0, 0, 0, 0, null, toolUseId ?? null])
+        buffer.push([uuid, sessionId, tsStr, 'tool_result', null, 0, 0, 0, 0, null, toolUseId ?? null, 0])
         continue
       }
       const text =
@@ -529,7 +531,7 @@ async function processOneFileUnguarded(
       }
       // model left NULL — backfilled per-session below from next assistant.
       // hour/day are NULL — clients group by local TZ from `timestamp`.
-      buffer.push([uuid, sessionId, tsStr, 'user', null, 0, 0, 0, 0, null, null])
+      buffer.push([uuid, sessionId, tsStr, 'user', null, 0, 0, 0, 0, null, null, 0])
     } else {
       // assistant — store raw token components separately so SQL doesn't
       // double-count when summing input + cache_read + cache_write.
@@ -553,7 +555,20 @@ async function processOneFileUnguarded(
         for (const b of content) {
           if (b?.type === 'tool_use' && b.name) {
             const toolUuid = `${uuid}#tool${toolIdx++}`
-            buffer.push([toolUuid, sessionId, tsStr, 'tool_use', model || null, 0, 0, 0, 0, b.name, messageId ?? null])
+            buffer.push([
+              toolUuid,
+              sessionId,
+              tsStr,
+              'tool_use',
+              model || null,
+              0,
+              0,
+              0,
+              0,
+              b.name,
+              messageId ?? null,
+              0,
+            ])
           }
         }
       }
@@ -569,6 +584,7 @@ async function processOneFileUnguarded(
         cacheW,
         null,
         messageId ?? null,
+        Math.max(0, Math.min(cacheW, usage?.cache_creation?.ephemeral_1h_input_tokens ?? 0)),
       ])
     }
   }

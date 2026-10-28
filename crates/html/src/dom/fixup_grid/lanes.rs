@@ -46,15 +46,16 @@ pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
 /// детей идут тем же путём: срез им режет `subgrid_takes_parent_tracks`
 /// ровно как у сетки-эталона; интрин-дорожки в `repeat(auto-*)` считает
 /// taffy (css-grid-3 §7.2.1).
-pub(crate) fn lanes_as_grid(nodes: &mut [Node]) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
-        lanes_as_grid(&mut el.children);
+pub(crate) fn lanes_as_grid(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::postorder(admission, nodes, |el| {
         if el.style.cascaded().display != Some(Display::GridLanes) {
-            continue;
+            return;
         }
         lanes_to_grid(el.style.cascaded_mut());
-    }
+    })
 }
 
 /// Перевод контейнера лунок на путь сетки (см. `lanes_as_grid`).

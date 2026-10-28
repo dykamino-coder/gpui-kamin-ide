@@ -25,11 +25,14 @@ use crate::style::computed::{Display, Position};
 /// настоящий контейнер выше, такие дети не трогаются; корневой уровень тоже.
 ///
 /// TRANSITIONAL(cascade-7b-R06): Авторский align-self гасится в cascaded из-за общего поля с командами layout; удалить гашение после переноса команд в used values и проверки применимости в block layout.
-pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
+pub(crate) fn align_self_from_dom_parent(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+    parent: Option<&ParentAlign>,
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(admission, nodes, parent.map(|p| p.block), |el, parent| {
         let s = el.style.cascaded_mut();
-        if parent.is_some_and(|p| p.block)
+        if parent == &Some(true)
             && s.align_self.is_some()
             && s.align_self_decl == Some(s.align_self)
             && !matches!(s.position, Some(Position::Absolute) | Some(Position::Fixed))
@@ -37,17 +40,15 @@ pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&Par
             s.align_self = None;
             s.align_self_normal = false;
         }
-        let me = ParentAlign {
-            block: matches!(
-                s.display,
-                None | Some(Display::Block)
-                    | Some(Display::ListItem)
-                    | Some(Display::InlineBlock)
-                    | Some(Display::TableCell)
-            ) && s.webkit_box != Some(true),
-        };
-        align_self_from_dom_parent(&mut el.children, Some(&me));
-    }
+        let block = matches!(
+            s.display,
+            None | Some(Display::Block)
+                | Some(Display::ListItem)
+                | Some(Display::InlineBlock)
+                | Some(Display::TableCell)
+        ) && s.webkit_box != Some(true);
+        Some(Some(block))
+    })
 }
 
 /// Что дети берут у родителя в `align_self_from_dom_parent`.
@@ -72,21 +73,22 @@ pub(crate) struct ParentAlign {
 /// потоковый ребёнок (внепоточный элементом сетки не является,
 /// css-grid-1 §9), только когда контейнер не задал своего `align-items`
 /// и автор не задал `align-self` — чужое выравнивание не перебиваем.
-pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
-        grid_table_items_keep_stretch(&mut el.children);
+pub(crate) fn grid_table_items_keep_stretch(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::postorder(admission, nodes, |el| {
         if !matches!(
             el.style.cascaded().display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
-            continue;
+            return;
         }
         if !matches!(
             el.style.cascaded().align_items,
             None | Some(crate::style::computed::Align::Stretch)
         ) {
-            continue;
+            return;
         }
         for child in el.children.iter_mut() {
             let Node::Element(child) = child else {
@@ -108,5 +110,5 @@ pub(crate) fn grid_table_items_keep_stretch(nodes: &mut [Node]) {
                     Some(crate::style::computed::Align::Stretch);
             }
         }
-    }
+    })
 }

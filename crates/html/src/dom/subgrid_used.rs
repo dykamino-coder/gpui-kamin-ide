@@ -14,49 +14,61 @@ struct GridContext {
     lanes_rows: Option<bool>,
 }
 
-pub(super) fn adjust(nodes: &mut [Node]) {
-    walk(nodes, None, false);
+pub(super) fn adjust(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    walk(admission, nodes, None, false)
 }
 
-fn walk(nodes: &mut [Node], parent: Option<GridContext>, inherited_vertical: bool) {
-    for node in nodes {
-        let Node::Element(element) = node else {
-            continue;
-        };
-        let style = element.style.cascaded_mut();
-        let vertical = style.vertical_decl().unwrap_or(inherited_vertical);
-        let linked_rows = parent.and_then(|grid| {
-            grid.lanes_rows.map(|rows| {
-                if grid.vertical == vertical {
-                    rows
-                } else {
-                    !rows
-                }
-            })
-        });
-        let grid = matches!(style.display, Some(Display::Grid | Display::InlineGrid));
-        let independent = !grid || super::fixup_grid::subgrid_inhibited(style);
-        if style.subgrid_cols && (parent.is_none() || independent || linked_rows == Some(true)) {
-            clear_columns(style);
-        }
-        if style.subgrid_rows && (parent.is_none() || independent || linked_rows == Some(false)) {
-            clear_rows(style);
-        }
-        style.subgrid = style.subgrid_cols || style.subgrid_rows;
-        let next = if style.display == Some(Display::Contents) {
-            parent
-        } else if grid {
-            Some(GridContext {
-                vertical,
-                lanes_rows: style
-                    .lanes_taffy
-                    .then(|| super::fixup_grid::lanes_row_dir(style)),
-            })
-        } else {
-            None
-        };
-        walk(&mut element.children, next, vertical);
-    }
+fn walk(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+    parent: Option<GridContext>,
+    inherited_vertical: bool,
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(
+        admission,
+        nodes,
+        (parent, inherited_vertical),
+        |element, &(parent, inherited_vertical)| {
+            let style = element.style.cascaded_mut();
+            let vertical = style.vertical_decl().unwrap_or(inherited_vertical);
+            let linked_rows = parent.and_then(|grid| {
+                grid.lanes_rows.map(|rows| {
+                    if grid.vertical == vertical {
+                        rows
+                    } else {
+                        !rows
+                    }
+                })
+            });
+            let grid = matches!(style.display, Some(Display::Grid | Display::InlineGrid));
+            let independent = !grid || super::fixup_grid::subgrid_inhibited(style);
+            if style.subgrid_cols && (parent.is_none() || independent || linked_rows == Some(true))
+            {
+                clear_columns(style);
+            }
+            if style.subgrid_rows && (parent.is_none() || independent || linked_rows == Some(false))
+            {
+                clear_rows(style);
+            }
+            style.subgrid = style.subgrid_cols || style.subgrid_rows;
+            let next = if style.display == Some(Display::Contents) {
+                parent
+            } else if grid {
+                Some(GridContext {
+                    vertical,
+                    lanes_rows: style
+                        .lanes_taffy
+                        .then(|| super::fixup_grid::lanes_row_dir(style)),
+                })
+            } else {
+                None
+            };
+            Some((next, vertical))
+        },
+    )
 }
 
 fn clear_columns(style: &mut Computed) {
