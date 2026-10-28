@@ -28,8 +28,7 @@ pub(super) async fn float_box_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    let frame = opts.cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let mut merged = box_style(inherited, &copy.style, vcx);
     merged.self_node = copy.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(copy);

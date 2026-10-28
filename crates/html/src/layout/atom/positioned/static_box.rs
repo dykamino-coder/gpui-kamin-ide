@@ -18,8 +18,7 @@ pub(in crate::layout::atom) fn static_position_atom(
     if let Some(child) = anchor::trials::inline::defer(e, inherited, opts) {
         return Some(child);
     }
-    let frame = opts.cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     let positioned = merged.clone();

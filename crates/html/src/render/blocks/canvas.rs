@@ -19,8 +19,7 @@ pub(crate) fn canvas_layer(
     let st = BoxStyle::shared(e.style.used().style);
     let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
     let measurement = measured.clone();
-    let frame = opts.cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     // Фон холста входит в группу корня (css-compositing-1 §pagebackdrop).
     // Соседний слой получает собственный фильтр корня отдельно.
     let root_filter = st.filter;

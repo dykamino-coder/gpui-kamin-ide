@@ -36,8 +36,7 @@ pub(crate) fn styled_div_with_dimensions(
     cx: &crate::layout::cx::LayoutCx,
     dimensions: Option<BoxDimensions>,
 ) -> gpui::Div {
-    let frame = cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (cx.frame(), cx.vcx());
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
     // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
     // уносит и потомка (`visufx/visibility-005`).

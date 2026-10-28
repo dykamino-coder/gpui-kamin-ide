@@ -17,8 +17,7 @@ pub(super) async fn collect_captions(
     caps_top: &mut Vec<AnyElement>,
     caps_bot: &mut Vec<AnyElement>,
 ) {
-    let frame = opts.cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     for c in &e.children {
         if let Node::Element(cap) = c
             && (cap.tag == "caption" || cap.style.used().is_caption == Some(true))

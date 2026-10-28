@@ -24,8 +24,7 @@ pub(crate) fn static_overlay(
     if let Some(child) = anchor::trials::inline::defer(e, inherited, opts) {
         return Some(inline::Piece::Overlay(child, inline::OverlayAt::default()));
     }
-    let frame = opts.cx.frame();
-    let vcx = frame.values;
+    let (frame, vcx) = (opts.cx.frame(), opts.cx.vcx());
     let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
