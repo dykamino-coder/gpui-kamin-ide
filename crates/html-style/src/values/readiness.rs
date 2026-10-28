@@ -82,8 +82,8 @@ mod tests {
         );
         failure.scope = crate::dom::outcome::FailureScope::EmbeddedDocument;
         grandchild.embedded_failure.set(Some(failure));
-        child.observe_child(grandchild.clone());
-        root.observe_child(child.clone());
+        child.observe_child(grandchild);
+        root.observe_child(child);
         assert_eq!(root.embedded_failure(), Some(failure));
     }
 
@@ -97,8 +97,8 @@ mod tests {
             .traversal
             .limit(crate::dom::outcome::TraversalKind::BoxBuild, 64, 65);
         let expected = grandchild.traversal_limit();
-        child.observe_child(grandchild.clone());
-        root.observe_child(child.clone());
+        child.observe_child(grandchild);
+        root.observe_child(child);
         assert_eq!(root.child_traversal_limit(), expected);
         assert!(root.embedded_failure().is_none());
     }
