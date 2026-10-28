@@ -12,7 +12,7 @@ use crate::animation::frames::{bake_frozen, sample_at};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::paint::effects::transform::transformed;
+use crate::paint::effects::transform::transformed_node;
 use crate::style::computed::{AnimSpec, BoxStyle, Computed};
 use gpui::{AnyElement, IntoElement};
 
@@ -31,10 +31,11 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 }
 
 fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
-    transformed(
+    transformed_node(
         opts.cx.contracts.build.element(e, inherited, opts),
         &e.style.used(),
         inherited,
+        e.node_id,
         opts.cx.vcx(),
     )
 }
@@ -45,7 +46,7 @@ async fn painted_stack(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    transformed(
+    transformed_node(
         opts.cx
             .contracts
             .build
@@ -53,6 +54,7 @@ async fn painted_stack(
             .await,
         &e.style.used(),
         inherited,
+        e.node_id,
         opts.cx.vcx(),
     )
 }

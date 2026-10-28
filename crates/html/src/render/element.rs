@@ -155,13 +155,26 @@ async fn element_inner(
         .as_ref()
         .map(|p| opts.inner(|cx| cx.scroll.sticky = Some(p.link().clone())));
     let opts = projected_opts.as_deref().unwrap_or(opts);
+    let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
+        e.node_id, &merged, opts,
+    );
+    let slot = opts
+        .cx
+        .position
+        .continuation_slots
+        .as_ref()
+        .is_some_and(|roots| roots.contains(&e.node_id))
+        .then_some(e.node_id);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
-        return crate::interactive::scroll_extent::project(
-            transformed(el, &merged, inherited, vcx),
-            scroll_projection,
-        );
+        let el = transformed(el, &merged, inherited, vcx);
+        let el = match geometry {
+            Some(geometry) => geometry.wrap(el),
+            None => el,
+        };
+        let el = crate::paint::continuation::slot(slot, el);
+        return crate::interactive::scroll_extent::project(el, scroll_projection);
     }
     // Рамка строится ОДИН раз до match: прежний `is_some() => unwrap()`
     // читал файл с диска и разбирал вложенный документ дважды за кадр.
@@ -181,15 +194,15 @@ async fn element_inner(
     } else {
         None
     };
-    let geometry = crate::layout::positioned::containing_block::metrics::record::capture(
-        e.node_id, &merged, opts,
-    );
     let built = dispatch_element(stk, e, merged, inherited, opts, outer_space, built_iframe).await;
     crate::interactive::scroll_extent::project(
-        match geometry {
-            Some(geometry) => geometry.wrap(built),
-            None => built,
-        },
+        crate::paint::continuation::slot(
+            slot,
+            match geometry {
+                Some(geometry) => geometry.wrap(built),
+                None => built,
+            },
+        ),
         scroll_projection,
     )
 }

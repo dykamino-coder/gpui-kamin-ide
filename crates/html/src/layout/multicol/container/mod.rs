@@ -14,7 +14,6 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, ParentElement};
 pub(super) mod kids;
-mod parallel;
 use kids::{column_kids, stack_children};
 mod clone_plan;
 use clone_plan::clone_plan_of;

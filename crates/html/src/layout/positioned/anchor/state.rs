@@ -37,4 +37,6 @@ pub(crate) struct AnchorState {
     /// удаляется после кадра без коробки; новый документ (и `update`)
     /// получает новое состояние, выбор прошлого документа его не переживает.
     pub(super) chosen: RefCell<HashMap<u64, super::trials::Chosen>>,
+    /// Boxes whose anchor lookup found no acceptable anchor in this frame.
+    pub(super) misses: RefCell<std::collections::HashSet<u64>>,
 }

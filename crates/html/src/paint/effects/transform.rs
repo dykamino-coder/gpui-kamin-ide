@@ -42,6 +42,18 @@ pub(crate) fn transformed(
     transformed_with(el, c, parent, None, vcx)
 }
 
+/// `transformed` of DOM node `node`: a continued root presented per fragment
+/// paints untransformed inside its native source.
+pub(crate) fn transformed_node(
+    el: AnyElement,
+    c: &Computed,
+    parent: &Computed,
+    node: u64,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> AnyElement {
+    transformed_inner(el, c, parent, None, Some(node), vcx)
+}
+
 /// `transformed` with a shared reference box (`transformed_element::Transformed::ref_box`):
 /// a table row or row group transform spread over its cells.
 pub(crate) fn transformed_with(
@@ -49,6 +61,17 @@ pub(crate) fn transformed_with(
     c: &Computed,
     parent: &Computed,
     ref_box: Option<crate::layout::build_contracts::RefBox>,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> AnyElement {
+    transformed_inner(el, c, parent, ref_box, None, vcx)
+}
+
+fn transformed_inner(
+    el: AnyElement,
+    c: &Computed,
+    parent: &Computed,
+    ref_box: Option<crate::layout::build_contracts::RefBox>,
+    node: Option<u64>,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
@@ -111,6 +134,7 @@ pub(crate) fn transformed_with(
     }
     let mut wrapper = crate::paint::effects::transformed_element::Transformed::new(el, vcx);
     wrapper.ref_box = ref_box;
+    wrapper.node = node;
     wrapper.under_3d = under_3d;
     wrapper.frame_3d = if keeps_3d { c.frame_3d.clone() } else { None };
     // Перспектива РОДИТЕЛЯ читается объёмным путём (css-transforms-2

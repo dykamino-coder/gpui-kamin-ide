@@ -6,6 +6,13 @@ use crate::layout::positioned::containing_block::metrics::layout::{self, PageSou
 use std::rc::Rc;
 
 impl Paint<'_> {
+    /// The group has OOF boxes; its native source paints them, not the copies.
+    pub(super) fn native_oof(&self) -> bool {
+        self.group
+            .iter()
+            .any(|n| matches!(n, Node::Element(e) if layout::contains_oof_box(e)))
+    }
+
     pub(super) fn oof_source(&self) -> Option<PageSource> {
         if !self
             .group
@@ -21,8 +28,8 @@ impl Paint<'_> {
         let first = self.first;
         let vertical = self.vertical;
         Some(Rc::new(move |area, window, cx| {
-            let frame = super::frame::wrap(padding, area.1, first, vertical);
-            layout::collect_paged(&nodes, &root, (area, frame), &opts, window, cx)
+            let frame = || super::frame::wrap(padding, area.1, first, vertical);
+            layout::collect_paged(&nodes, &root, (area, &frame), &opts, window, cx)
         }))
     }
 }

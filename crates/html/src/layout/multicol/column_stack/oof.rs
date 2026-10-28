@@ -19,7 +19,14 @@ pub(crate) struct State {
     pub(crate) plan: RefCell<Plan>,
     pub(crate) sources: RefCell<Vec<u64>>,
     pub(crate) pending: RefCell<Option<Streams>>,
+    /// Source records without a copy of the ancestors, and own root records.
+    pub(crate) records: RefCell<(
+        Vec<(gpui::PaintSegmentId, gpui::PaintRecord)>,
+        crate::hooks::BareRecords,
+    )>,
     pub(crate) owners: Vec<(u64, usize, f32)>,
+    /// Hit scopes of the slots in this stack's copies, read by the native prepaint.
+    pub(crate) slot_scopes: crate::hooks::SlotScopes,
 }
 
 impl State {
@@ -95,6 +102,14 @@ impl ColumnStack {
     }
 
     pub(crate) fn plan_oof(&self, normal: &Plan, bounds: Bounds<Pixels>) {
+        // The copies' slots replay the roots this stack's source continues.
+        let geometry = &self.oof.geometry;
+        self.oof.slot_scopes.natives().set(
+            geometry
+                .native_along(self.axis.is_vertical())
+                .map(|_| geometry.continued_roots().to_vec())
+                .unwrap_or_default(),
+        );
         let mut plan = Plan::default();
         if let Err(error) = self.resume_oof(normal, bounds, &mut plan) {
             plan.failure = Some(error);

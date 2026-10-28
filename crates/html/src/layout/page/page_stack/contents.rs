@@ -11,7 +11,6 @@ impl PageStack {
         bounds: Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
-        s: f32,
         pages: usize,
         k: f32,
         plan: Vec<Frag>,
@@ -23,36 +22,13 @@ impl PageStack {
                 continue;
             }
             let (sx, sy) = self.sheet_origin(i);
-            let (bx0, by0) = (
-                f32::from(bounds.origin.x) * k,
-                f32::from(bounds.origin.y) * k,
-            );
-            let (ox, oy) = (bx0 + sx * k, by0 + sy * k);
-            let (w, h) = (g.size.0 * k, g.size.1 * k);
-            // p -> O + R(p - O) + сдвиг, затем q -> B + s(q - B).
-            let (rs, t) = if g.turn == 1 {
-                // rotate-right: (x, y) -> (O.x + H - (y - O.y), O.y + (x - O.x)).
-                (
-                    [[0.0, -s], [s, 0.0]],
-                    [
-                        bx0 * (1.0 - s) + s * (ox + h + oy),
-                        by0 * (1.0 - s) + s * (oy - ox),
-                    ],
-                )
-            } else {
-                // rotate-left: (x, y) -> (O.x + (y - O.y), O.y + W - (x - O.x)).
-                (
-                    [[0.0, s], [-s, 0.0]],
-                    [
-                        bx0 * (1.0 - s) + s * (ox - oy),
-                        by0 * (1.0 - s) + s * (oy + w + ox),
-                    ],
-                )
-            };
+            // The sheet matrix (logical) in device pixels, as with_transformation.
+            let sheet = self.sheet_matrix(bounds, i);
             let m = gpui::TransformationMatrix {
-                rotation_scale: rs,
-                translation: t,
+                rotation_scale: sheet.rotation_scale,
+                translation: [sheet.translation[0] * k, sheet.translation[1] * k],
             };
+            let records = self.copy_records();
             let plan_i: Vec<Frag> = plan.iter().copied().filter(|f| f.col == i).collect();
             window.with_transformation_masked(m, |window| {
                 window.paint_quad(gpui::fill(rect(sx, sy, g.size.0, g.size.1), g.bg));
@@ -97,13 +73,27 @@ impl PageStack {
                     ) else {
                         continue;
                     };
-                    window.with_content_mask(Some(mask), |window| el.paint(window, cx));
+                    window.with_content_mask(Some(mask), |window| {
+                        crate::hooks::with_copy_segment(
+                            gpui::PaintSegmentId(f.col as u64),
+                            records.as_ref(),
+                            window,
+                            |window| el.paint(window, cx),
+                        )
+                    });
                 }
                 if let Some(layer) = self.icb.get_mut(i) {
                     for el in layer {
                         window.with_content_mask(
                             Some(gpui::ContentMask { bounds: area }),
-                            |window| el.paint(window, cx),
+                            |window| {
+                                crate::hooks::with_copy_segment(
+                                    gpui::PaintSegmentId(i as u64),
+                                    records.as_ref(),
+                                    window,
+                                    |window| el.paint(window, cx),
+                                )
+                            },
                         );
                     }
                 }
@@ -111,10 +101,19 @@ impl PageStack {
                     for el in layer {
                         window.with_content_mask(
                             Some(gpui::ContentMask { bounds: area }),
-                            |window| el.paint(window, cx),
+                            |window| {
+                                crate::hooks::with_copy_segment(
+                                    gpui::PaintSegmentId(i as u64),
+                                    records.as_ref(),
+                                    window,
+                                    |window| el.paint(window, cx),
+                                )
+                            },
                         );
                     }
                 }
+                let clip = self.presented_area(bounds, i);
+                let _ = self.paint_native(bounds, i, clip, window);
                 let sheet = rect(sx, sy, g.size.0, g.size.1);
                 for (p, el) in &mut self.margin_els {
                     if *p == i {
@@ -127,4 +126,30 @@ impl PageStack {
             });
         }
     }
+}
+
+/// Paint a sheet's copy under its page-area mask and the stack scale; its slots
+/// replay the sheet's own continuation records.
+pub(super) fn paint_copy(
+    (records, origin, scale): (
+        Option<&crate::hooks::BareRecords>,
+        gpui::Point<gpui::Pixels>,
+        f32,
+    ),
+    page: usize,
+    mask: gpui::ContentMask<gpui::Pixels>,
+    el: &mut gpui::AnyElement,
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+) {
+    window.with_content_mask(Some(mask), |window| {
+        window.with_mask_scale(origin, scale, |window| {
+            crate::hooks::with_copy_segment(
+                gpui::PaintSegmentId(page as u64),
+                records,
+                window,
+                |window| el.paint(window, cx),
+            )
+        })
+    });
 }

@@ -10,6 +10,7 @@ mod raster;
 mod raster_background;
 mod raster_depth;
 mod record;
+pub(crate) mod rendered;
 mod scope;
 mod snapshot_abort;
 mod snapshot_scope;
