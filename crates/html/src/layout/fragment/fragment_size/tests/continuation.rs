@@ -17,12 +17,12 @@ fn continuation_uses_content_edges_without_original_height_bounds() {
         vec![],
     );
     assert_eq!(
-        constrain(100.0, &e, 20.0, None, false, FrameCx::new(doc.values())),
+        constrain(100.0, &e, 20.0, None, false, FrameCx::new(&doc)),
         150.0
     );
     e.marks.spanner_content_box = true;
     assert_eq!(
-        constrain(100.0, &e, 20.0, None, false, FrameCx::new(doc.values())),
+        constrain(100.0, &e, 20.0, None, false, FrameCx::new(&doc)),
         100.0
     );
     assert_eq!(

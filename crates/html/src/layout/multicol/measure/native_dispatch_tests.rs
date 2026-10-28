@@ -190,7 +190,7 @@ fn clone_uses_estimates_while_fixed_height_overflow_uses_measured_continuations(
                 super::laid::children(
                     root,
                     &BoxStyle::shared(root.style.used()),
-                    crate::layout::cx::FrameCx::new(tree.values()),
+                    crate::layout::cx::FrameCx::new(&tree.doc),
                     120.0,
                     &Default::default()
                 )

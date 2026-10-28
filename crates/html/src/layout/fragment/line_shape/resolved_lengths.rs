@@ -190,7 +190,7 @@ mod tests {
         let copy = resolved_lengths(
             &root,
             &BoxStyle::default(),
-            crate::layout::cx::FrameCx::new(doc.values()).with_lengths(&cache),
+            crate::layout::cx::FrameCx::new(&doc).with_lengths(&cache),
         );
         let Node::Element(child) = &copy.children[0] else {
             unreachable!()

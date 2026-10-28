@@ -4,7 +4,7 @@ use crate::layout::cx::FrameCx;
 
 /// The frame of a parsed fixture: its values, no fragmented ancestor.
 fn frame(tree: &crate::dom::Parsed) -> FrameCx<'_> {
-    FrameCx::new(tree.values())
+    FrameCx::new(&tree.doc)
 }
 use super::*;
 

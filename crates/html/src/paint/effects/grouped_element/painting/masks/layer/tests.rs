@@ -5,7 +5,7 @@ use gpui::IntoElement;
 #[test]
 fn typed_scene_and_path_definition_have_identical_layer_contracts() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = crate::layout::cx::FrameCx::new(doc.values());
+    let vcx = crate::layout::cx::FrameCx::new(&doc);
     let mut group = Grouped::new(gpui::div().into_any_element(), vcx);
     group.mask_repeat_modes = vec![(1, 2)];
     group.mask_composite = vec![1, 3];
@@ -47,7 +47,7 @@ fn typed_scene_and_path_definition_have_identical_layer_contracts() {
 #[test]
 fn none_image_retains_a_transparent_composition_layer() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = crate::layout::cx::FrameCx::new(doc.values());
+    let vcx = crate::layout::cx::FrameCx::new(&doc);
     let mut group = Grouped::new(gpui::div().into_any_element(), vcx);
     group.mask_composite = vec![2, 3];
     let image = crate::style::computed::ImageSource::Invalid;
