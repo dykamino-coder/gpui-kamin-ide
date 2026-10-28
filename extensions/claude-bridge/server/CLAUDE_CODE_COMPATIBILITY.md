@@ -28,8 +28,15 @@
 
 Server: typecheck, lint, полный Vitest; отдельно compatibility fixtures
 live-switch, statusline, plan-usage, discovery и resume. В изолированном
-`kamin-acc-302` проверить фактическую версию CLI, новую сессию, MCP tool round trip,
+временном контейнере из образа этой ветки проверить фактическую версию CLI, новую
+сессию, MCP tool round trip,
 SessionStart/Stop command hooks, sanitized statusline, detach/resume и следующий
 ответ. Сохранять только результаты/счётчики и точные SHA/версии; credentials,
 полный профиль и raw transcripts не публиковать. Не считать эти проверки
 живой Windows/CEF-приёмкой INC-0079 или закрытием BR-07/BR-11.
+
+Authenticated gate для 2.1.312 пройден в отдельном временном Podman-контейнере:
+SessionStart/Stop, ответ новой сессии, MCP round trip, sanitized statusline,
+переподключение к живому PTY и cold resume с последующим ответом. Авторизация
+предоставлена через существующий auth volume; остальные настройки и данные
+сессии изолированы. Этот gate не подтверждает account flag для MCP Tasks.
