@@ -4,8 +4,8 @@ use super::*;
 use crate::text::metrics;
 use std::cell::RefCell;
 
-fn document(log: Rc<RefCell<Vec<char>>>) -> Rc<DocState> {
-    let doc = DocState::new(Default::default());
+fn document(log: Rc<RefCell<Vec<char>>>) -> Rc<crate::document::state::DocState> {
+    let doc = crate::document::state::DocState::new(Default::default());
     let h = log.clone();
     metrics::install_probe(
         move |_, size| {
@@ -30,8 +30,8 @@ fn document(log: Rc<RefCell<Vec<char>>>) -> Rc<DocState> {
 fn scoped_queries_preserve_cold_warm_order_and_generation() {
     let log = Rc::new(RefCell::new(Vec::new()));
     let doc = document(log.clone());
-    let provider = doc.font_provider();
-    let snapshot = doc.font_snapshot();
+    let provider = doc.values.font_provider();
+    let snapshot = doc.values.font_snapshot();
     let mut r = FontRequest::new("Ahem", 19.3);
     r.metric_query = FontMetricQuery::Vertical;
     let vertical = provider.metrics(r, &snapshot).unwrap();
@@ -62,7 +62,7 @@ fn scoped_queries_preserve_cold_warm_order_and_generation() {
         provider.metrics(r, &snapshot),
         Err(FontFactsError::StaleSnapshot)
     );
-    let current = doc.font_snapshot();
+    let current = doc.values.font_snapshot();
     assert_ne!(snapshot.generation(), current.generation());
     let replacement = provider.metrics(r, &current).unwrap();
     assert_eq!(replacement.ideographic_advance.unwrap().px, 19.3);
@@ -108,8 +108,8 @@ fn unit_and_normal_readers_remain_bit_exact_in_both_cache_states() {
 #[test]
 fn metric_descriptors_are_immutable_and_document_scoped() {
     use crate::text::fonts::metric_overrides;
-    let a = DocState::new(Default::default());
-    let b = DocState::new(Default::default());
+    let a = crate::document::state::DocState::new(Default::default());
+    let b = crate::document::state::DocState::new(Default::default());
     metric_overrides::register(
         "same",
         0,
@@ -117,8 +117,8 @@ fn metric_descriptors_are_immutable_and_document_scoped() {
         a.values(),
     );
     metric_overrides::register("same", 0, "ascent-override:150%", b.values());
-    let old = a.font_snapshot();
-    let other = b.font_snapshot();
+    let old = a.values.font_snapshot();
+    let other = b.values.font_snapshot();
     assert_eq!(
         old.metric_overrides("same", 0),
         [Some(0.5), None, Some(0.0)]
@@ -126,7 +126,7 @@ fn metric_descriptors_are_immutable_and_document_scoped() {
     assert_eq!(other.metric_overrides("same", 0), [Some(1.5), None, None]);
     metric_overrides::clear(a.values());
     metric_overrides::register("same", 0, "descent-override:25%", a.values());
-    let current = a.font_snapshot();
+    let current = a.values.font_snapshot();
     assert_ne!(old.generation(), current.generation());
     assert_eq!(
         old.metric_features("same", 0),

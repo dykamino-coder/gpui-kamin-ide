@@ -60,9 +60,9 @@ pub(super) fn parse_mode(
     let input = Admitted::with_budget(html, xml, revision.clone())?;
     super::early_admission::admit_sources(&input, extra_css)?;
     let doc = crate::document::state::DocState::new(media);
-    doc.admit_revision(revision, None);
+    doc.values.admit_revision(revision, None);
     let nodes = convert(&input, extra_css, media, &doc)?;
-    doc.traversal.retain(input);
+    doc.values.traversal.retain(input);
     Ok(Parsed { nodes, doc })
 }
 
@@ -84,7 +84,8 @@ pub(crate) fn convert(
     let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
     // DOCTYPE). XML и HTML-адаптер XHTML всегда работают без quirks.
-    doc.quirks
+    doc.values
+        .quirks
         .set(dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks && !xhtml);
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
@@ -104,7 +105,7 @@ pub(crate) fn convert(
     // Лист агента и тема — общие для ВСЕХ областей дерева: каждая тень
     // получает их копию, а правила документа в тень не попадают
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
-    if doc.quirks() {
+    if doc.values.quirks() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers, vcx)
             .into_iter()
@@ -168,7 +169,7 @@ pub(crate) fn convert(
     // Тени (`<template shadowrootmode>`): области стилей и распределение
     // слотов считаются ДО обхода, как отметки `:has`; обход получает их
     // индексом по узлу. Документ без теней предпроход не платит.
-    let mut tree = TreeIndex::new(doc.clone(), xhtml);
+    let mut tree = TreeIndex::new(doc.values.clone(), xhtml);
     let doc = Rc::new(Scope {
         rules,
         frames,

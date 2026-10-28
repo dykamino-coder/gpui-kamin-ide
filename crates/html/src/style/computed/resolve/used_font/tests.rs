@@ -47,7 +47,7 @@ fn styled(css: &str, vcx: ValueCx<'_>) -> Computed {
 }
 fn doc() -> Rc<crate::document::state::DocState> {
     let doc = crate::document::state::DocState::new(Default::default());
-    doc.install_font_facts(Some(Rc::new(Faces)));
+    doc.values.install_font_facts(Some(Rc::new(Faces)));
     doc
 }
 
@@ -183,10 +183,13 @@ fn font_size_adjust_root_rem_and_rex_have_separate_bases() {
         ),
         vcx,
     );
-    crate::style::values::value::set_root_metrics(&doc, 20.0, 30.0);
+    crate::style::values::value::set_root_metrics(&doc.values, 20.0, 30.0);
     let mut request = root.font_request("narrow", root.used_font(16.0, vcx).size_px);
     request.metric_query = FontMetricQuery::Adjustment;
-    doc.root.borrow_mut().resolve_font_units(request, vcx);
+    doc.values
+        .root
+        .borrow_mut()
+        .resolve_font_units(request, vcx);
     assert_eq!(
         crate::style::values::value::calc_pct_px("calc(1rem + 1rex)", vcx),
         Some((0.0, 36.0))

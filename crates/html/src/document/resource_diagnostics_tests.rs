@@ -13,12 +13,12 @@ fn state(kind: BudgetKind, limit: u64) -> std::rc::Rc<state::DocState> {
     let doc = state::DocState::new(Default::default());
     let limits = DocumentLimits::default().lower(kind, limit).unwrap();
     let budget = DocumentBudget::new(limits, ResourceGovernor::default()).unwrap();
-    doc.admit_revision(budget.revision(), None);
+    doc.values.admit_revision(budget.revision(), None);
     doc
 }
 
 fn only(doc: &state::DocState) -> Diagnostic {
-    let (records, suppressed) = doc.take_diagnostics();
+    let (records, suppressed) = doc.values.take_diagnostics();
     let [record] = records.as_slice() else {
         panic!("{records:?}")
     };
@@ -30,7 +30,7 @@ fn only(doc: &state::DocState) -> Diagnostic {
 fn image_budget_refusals_are_one_record_per_key_in_the_document_scope() {
     let doc = state(BudgetKind::ResourceBytes, 1);
     for _ in 0..3 {
-        let mut images = doc.images.borrow_mut();
+        let mut images = doc.values.images.borrow_mut();
         images.begin_generation();
         assert!(
             images
@@ -52,9 +52,10 @@ fn image_budget_refusals_are_one_record_per_key_in_the_document_scope() {
     assert!(matches!(record.measure, Some(Measure::Budget(e))
         if e.kind == BudgetKind::ResourceBytes && e.scope == BudgetScope::Revision));
     let embedded = state(BudgetKind::PendingTasks, 0);
-    embedded.traversal.set_embedded();
+    embedded.values.traversal.set_embedded();
     assert!(
         embedded
+            .values
             .images
             .borrow_mut()
             .resolve_image(PNG, DecodeOptions::default())
@@ -70,7 +71,7 @@ fn image_budget_refusals_are_one_record_per_key_in_the_document_scope() {
 #[test]
 fn cancelled_stale_jobs_are_info_telemetry() {
     let doc = state(BudgetKind::Documents, 1);
-    let mut images = doc.images.borrow_mut();
+    let mut images = doc.values.images.borrow_mut();
     let (url, _) = images.resolve(PNG);
     images.request(crate::resources::images::store::ImageRequest {
         url,
@@ -91,8 +92,9 @@ fn cancelled_stale_jobs_are_info_telemetry() {
 #[test]
 fn synchronous_load_limits_and_substitution_limits_reach_the_journal() {
     let doc = state(BudgetKind::Documents, 1);
-    doc.record_load_failure(&LoadError::TooLarge { limit: 7 });
-    doc.record_load_failure(&LoadError::NotFound);
+    doc.values
+        .record_load_failure(&LoadError::TooLarge { limit: 7 });
+    doc.values.record_load_failure(&LoadError::NotFound);
     let record = only(&doc);
     assert_eq!(
         (record.code, record.phase, record.measure),

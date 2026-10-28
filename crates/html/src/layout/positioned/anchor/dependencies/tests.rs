@@ -33,7 +33,7 @@ fn waits_for_later_inflow_anchor_and_all_candidate_dependencies() {
     });
     c.anchor_key = 3;
     c.anchor_seq = 3;
-    doc.try_rules.borrow_mut().insert(
+    doc.values.try_rules.borrow_mut().insert(
         "--other".into(),
         parse_decls("width: anchor-size(--other width, 2px)"),
     );
