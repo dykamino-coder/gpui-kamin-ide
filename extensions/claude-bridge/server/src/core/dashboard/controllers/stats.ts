@@ -299,7 +299,7 @@ export function registerStatsRoutes(api: Hono): void {
     }
 
     const joinClause = `
-      FROM jsonl_events e
+      FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
     `
@@ -336,10 +336,10 @@ export function registerStatsRoutes(api: Hono): void {
           COALESCE(e.input_tokens,0) + COALESCE(e.cache_read_tokens,0) + COALESCE(e.cache_write_tokens,0),
           e.timestamp
         ) as last_ctx
-        FROM jsonl_events e
+        FROM jsonl_accounting_events e
         INNER JOIN session_tokens st
           ON st.session_id = e.session_id AND st.deleted = 0
-        WHERE e.type = 'assistant' AND (e.model IS NULL OR e.model != '<synthetic>')
+        WHERE e.type = 'assistant' AND COALESCE(e.is_subagent,0) = 0 AND (e.model IS NULL OR e.model != '<synthetic>')
           ${tokenId ? `AND st.user_name = '${tokenId.replace(/'/g, "''")}'` : ''}
         GROUP BY e.session_id
       )
@@ -498,20 +498,20 @@ export function registerStatsRoutes(api: Hono): void {
         -- in the client). This is a snapshot, NOT cumulative.
         (
           SELECT COALESCE(a.input_tokens,0) + COALESCE(a.cache_read_tokens,0) + COALESCE(a.cache_write_tokens,0)
-          FROM jsonl_events a
-          WHERE a.session_id = e.session_id AND a.type = 'assistant'
+          FROM jsonl_accounting_events a
+          WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
           ORDER BY a.timestamp DESC LIMIT 1
         ) as last_context,
         (
-          SELECT a.model FROM jsonl_events a
-          WHERE a.session_id = e.session_id AND a.type = 'assistant'
+          SELECT a.model FROM jsonl_accounting_events a
+          WHERE a.session_id = e.session_id AND a.type = 'assistant' AND COALESCE(a.is_subagent,0) = 0
             AND a.model IS NOT NULL AND a.model != ''
           ORDER BY a.timestamp DESC LIMIT 1
         ) as model,
         (
           SELECT o.file_path FROM jsonl_offsets o WHERE o.file_path LIKE '%/' || e.session_id || '.jsonl' LIMIT 1
         ) as file_path
-      FROM jsonl_events e
+      FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       WHERE st.user_name = ?

@@ -9,7 +9,8 @@ import { getCounter, getCounterString } from './crud'
 export async function getAggregates(): Promise<Aggregates> {
   const d = await getDb()
 
-  const totalsRows = (await d.runAndReadAll(`
+  const totalsRows = (
+    await d.runAndReadAll(`
     SELECT
       COUNT(*) as total,
       SUM(CASE WHEN endpoint = 'anthropic' THEN 1 ELSE 0 END) as anthropic,
@@ -23,15 +24,18 @@ export async function getAggregates(): Promise<Aggregates> {
       MAX(CASE WHEN endpoint = 'openai' THEN timestamp END) as openai_last,
       MAX(CASE WHEN status = 'error' THEN timestamp END) as errors_last
     FROM requests
-  `)).getRowObjects()
+  `)
+  ).getRowObjects()
   const totals = (totalsRows[0] ?? {}) as any
 
-  const pluginRows = (await d.runAndReadAll(`
+  const pluginRows = (
+    await d.runAndReadAll(`
     SELECT plugin_id, COUNT(*) as cnt,
       SUM(CASE WHEN is_user_request = 1 THEN 1 ELSE 0 END) as user_cnt,
       MAX(timestamp) as last_at
     FROM requests GROUP BY plugin_id
-  `)).getRowObjects() as any[]
+  `)
+  ).getRowObjects() as any[]
 
   const pluginRequests: Record<string, number> = {}
   const pluginMessageCounts: Record<string, number> = {}
@@ -43,14 +47,16 @@ export async function getAggregates(): Promise<Aggregates> {
     if (row.last_at) lastRequestTimes[`plugin:${row.plugin_id}`] = String(row.last_at)
   }
 
-  const userRows = (await d.runAndReadAll(`
+  const userRows = (
+    await d.runAndReadAll(`
     SELECT user_name, COUNT(*) as cnt,
       SUM(CASE WHEN is_user_request = 1 THEN 1 ELSE 0 END) as user_cnt,
       SUM(input_tokens + COALESCE(cache_read_tokens, 0) + COALESCE(cache_write_tokens, 0)) as total_input,
       SUM(output_tokens) as total_output,
       MAX(timestamp) as last_at
     FROM requests WHERE user_name IS NOT NULL GROUP BY user_name
-  `)).getRowObjects() as any[]
+  `)
+  ).getRowObjects() as any[]
 
   const userRequests: Record<string, number> = {}
   const userMessageCounts: Record<string, number> = {}
@@ -63,7 +69,8 @@ export async function getAggregates(): Promise<Aggregates> {
   }
 
   // Per-user per-model token breakdown (for cost estimation)
-  const userModelRows = (await d.runAndReadAll(`
+  const userModelRows = (
+    await d.runAndReadAll(`
     SELECT user_name, model,
       SUM(input_tokens) as raw_input,
       SUM(output_tokens) as total_output,
@@ -71,9 +78,13 @@ export async function getAggregates(): Promise<Aggregates> {
       SUM(COALESCE(cache_write_tokens, 0)) as cache_write
     FROM requests WHERE user_name IS NOT NULL AND model IS NOT NULL
     GROUP BY user_name, model
-  `)).getRowObjects() as any[]
+  `)
+  ).getRowObjects() as any[]
 
-  const userModelTokens: Record<string, Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>> = {}
+  const userModelTokens: Record<
+    string,
+    Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>
+  > = {}
   for (const row of userModelRows) {
     if (!userModelTokens[row.user_name]) userModelTokens[row.user_name] = {}
     userModelTokens[row.user_name]![row.model] = {
@@ -146,9 +157,7 @@ export async function getUserTimeSeries(
   if (days > 36500) days = 36500
   const d = await getDb()
 
-  const sinceIso = days > 0
-    ? new Date(Date.now() - days * 86_400_000).toISOString()
-    : null
+  const sinceIso = days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : null
 
   const filters: string[] = ["(e.model IS NULL OR e.model != '<synthetic>')"]
   if (sinceIso) filters.push(`e.timestamp >= '${sinceIso}'`)
@@ -160,9 +169,10 @@ export async function getUserTimeSeries(
   // NB: DuckDB strftime takes (timestamp, format) — argument order is
   // swapped from SQLite's (format, timestamp). Cast TEXT timestamp to
   // TIMESTAMP first.
-  const groupCols = granularity === 'hour'
-    ? `strftime(e.timestamp::TIMESTAMP, '%Y-%m-%d') || ' ' || strftime(e.timestamp::TIMESTAMP, '%H')`
-    : `strftime(e.timestamp::TIMESTAMP, '%Y-%m-%d')`
+  const groupCols =
+    granularity === 'hour'
+      ? `strftime(e.timestamp::TIMESTAMP, '%Y-%m-%d') || ' ' || strftime(e.timestamp::TIMESTAMP, '%H')`
+      : `strftime(e.timestamp::TIMESTAMP, '%Y-%m-%d')`
 
   // Real new tokens per period — what was sent through the API for the
   // FIRST time:
@@ -191,7 +201,7 @@ export async function getUserTimeSeries(
         e.message_id as message_id,
         MAX(COALESCE(e.input_tokens,0) + COALESCE(e.cache_write_tokens,0)) as input_tokens,
         MAX(COALESCE(e.output_tokens,0)) as output_tokens
-      FROM jsonl_events e
+      FROM jsonl_accounting_events e
       INNER JOIN session_tokens st
         ON st.session_id = e.session_id AND st.deleted = 0
       ${where} AND e.type = 'assistant' AND e.message_id IS NOT NULL
@@ -223,7 +233,7 @@ export async function getUserTimeSeries(
     }
     const date = new Date(`${y}-${m}-${d2}T00:00:00`)
     const onejan = new Date(date.getFullYear(), 0, 1)
-    const week = Math.ceil((((date.getTime() - onejan.getTime()) / 86_400_000) + onejan.getDay() + 1) / 7)
+    const week = Math.ceil(((date.getTime() - onejan.getTime()) / 86_400_000 + onejan.getDay() + 1) / 7)
     return `${y}-${String(week).padStart(2, '0')}`
   }
 
