@@ -22,6 +22,7 @@ pub(crate) struct ClampHost {
     children: crate::layout::build_contracts::ChildBuild,
     plan: Cached,
     built: Option<AnyElement>,
+    fragment: Option<ClampFlow>,
 }
 
 impl ClampHost {
@@ -44,10 +45,19 @@ impl ClampHost {
             children,
             plan: Default::default(),
             built: None,
+            fragment: None,
         }
+    }
+
+    /// Хост во внешней фрагментации: его строки — возможности разрыва потока.
+    pub(crate) fn fragment_flow(mut self, flow: Option<ClampFlow>) -> Self {
+        self.fragment = flow;
+        self
     }
 }
 
+mod flow;
+pub(crate) use flow::ClampFlow;
 mod measure;
 use measure::measure;
 
@@ -60,6 +70,7 @@ impl Hooks for ClampHost {
         let geometry = self.geometry.clone();
         let build = self.build.clone();
         let cache = self.plan.clone();
+        let fragment = self.fragment.clone();
         let id = window.request_measured_layout_with_box(
             self.style.clone(),
             move |known, available, used_box, window, cx| {
@@ -74,7 +85,16 @@ impl Hooks for ClampHost {
                     add(available.height, inset.height),
                 );
                 let (size, plan) = measure(
-                    key, &geometry, &build, used_box, border_box, known, available, window, cx,
+                    key,
+                    &geometry,
+                    &build,
+                    used_box,
+                    border_box,
+                    known,
+                    available,
+                    fragment.as_ref(),
+                    window,
+                    cx,
                 );
                 *cache.borrow_mut() = Some((size.width, plan, used_box));
                 // Native leaf ожидает content-box и сам добавит разрешённые края.
@@ -84,6 +104,9 @@ impl Hooks for ClampHost {
                 )
             },
         );
+        if let Some(fragment) = &self.fragment {
+            fragment.record(id, window);
+        }
         (id, id)
     }
 
@@ -121,11 +144,14 @@ impl Hooks for ClampHost {
                     self.border_box,
                     size(Some(extent.width), Some(extent.height)),
                     space,
+                    None,
                     window,
                     cx,
                 )
                 .1
             });
+        // Сборка для краски пишет строки только в свою область записей.
+        let _flow = self.fragment.as_ref().map(ClampFlow::scope);
         let mut el = (self.build)(ClampInput::Apply(plan), Some(extent.width), used_box, true);
         el.layout_as_root_at(origin, space, window, cx);
         el.prepaint_at(point(px(0.), px(0.)), window, cx);

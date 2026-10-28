@@ -1,4 +1,4 @@
-//! Мера сетки, flex, таблицы и обычной обёртки вложенных колонок:
+//! Мера сетки, flex, таблицы, обычной обёртки вложенных колонок и clamp-контейнера:
 //! высоту и точки разрыва даёт раскладка копии (`StackChild::measure`).
 //! Сумма размеров потомков не выражает блочный размер этих контекстов: у таблицы
 //! высоты рядов, охваты и ячейки даёт только её раскладка (css-tables-3 §fragmentation).
@@ -34,12 +34,17 @@ pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
         && (crate::layout::fragment::flow::blocks::grid_tree(c)
             || crate::layout::fragment::flow::blocks::flex_tree(c)
             || crate::layout::fragment::flow::blocks::table_tree(c)
-            || multicol_wrapper(c))
+            || multicol_wrapper(c)
+            || crate::layout::box_kind::clamp_host(c, &c.style.used()))
 }
 
-/// Flex и вложенные колонки сами определяют линии; DOM-пагинация теряет их членство.
+/// Flex, вложенные колонки и clamp-контейнер сами определяют свои строки; DOM-пагинация
+/// теряет членство линий и точку среза.
 pub(super) fn own_layout_gate(c: &Element, fits: bool, w: Option<f32>) -> bool {
-    gate(c, fits, w) && (crate::layout::fragment::flow::blocks::flex_tree(c) || multicol_wrapper(c))
+    gate(c, fits, w)
+        && (crate::layout::fragment::flow::blocks::flex_tree(c)
+            || multicol_wrapper(c)
+            || crate::layout::box_kind::clamp_host(c, &c.style.used()))
 }
 
 /// Запись ребёнка, чью высоту меряет раскладка копии; поля не в точках —

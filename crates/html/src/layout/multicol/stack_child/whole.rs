@@ -99,7 +99,13 @@ pub(super) fn copy_whole_box(
     // Общий рисователь сохраняет маркер; разрезы по-прежнему даёт рекордер.
     // CSS 2.1 §9.4.1: fieldset содержит независимый BFC. Обычный blocks
     // не создаёт его анонимную коробку и выпускает нижнее поле ребёнка наружу.
-    if whole || copy.list_item.is_some() || copy.tag == "fieldset" {
+    // css-overflow-4 §line-clamp: точку среза clamp-контейнера знает только его
+    // хост (`ClampHost`); узкая ветка копии строила бы содержимое без среза.
+    if whole
+        || copy.list_item.is_some()
+        || copy.tag == "fieldset"
+        || crate::layout::box_kind::clamp_host(copy, &copy.style.used())
+    {
         let mut mc = copy.clone();
         mc.children = std::mem::take(kids).into();
         if matches!(mc.style.used().width, None | Some(Len::Auto))

@@ -69,7 +69,7 @@ pub(crate) fn paragraph_probed(
                     budget,
                     None,
                     0.0,
-                    false,
+                    (false, false),
                 )
             }))
             .into_any_element()

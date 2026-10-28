@@ -2,7 +2,9 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::token::space::sequence::Nested;
+use crate::layout::fragment::types::StackAxis;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::style::computed::{BoxStyle, Computed};
@@ -12,11 +14,7 @@ mod frame;
 use std::rc::Rc;
 
 pub(super) fn active(e: &Element, c: &Computed) -> bool {
-    (e.style.used().clamp_lines().is_some()
-        || (e.style.used().clamp_by_height()
-            && e.style.used().clamp_block_container()
-            && auto_clamp_limit(c).is_some()))
-        && !crate::layout::multicol::spanner::multicol_container(&e.style.used())
+    crate::layout::box_kind::clamp_host(e, c)
 }
 
 pub(super) fn build(
@@ -47,9 +45,16 @@ pub(super) fn build(
     let e = e.clone();
     let inherited = inherited.clone();
     let positioning = opts.cx.position.state.retain();
+    // Во фрагментации строки содержимого идут во внешний рекордер одним узлом хоста.
+    let fragment = opts
+        .frag
+        .watch
+        .as_ref()
+        .map(|w| crate::text::clamp::ClampFlow::new(w.flow.clone(), StackAxis::of(c.wm())));
+    let content_watch = fragment.as_ref().map(|f| Watched::with_flow(f.content()));
     let opts = opts.clone();
     let build = Rc::new(move |input: ClampInput, width, used_box, publish| {
-        let opts = opts.inner(|cx| {
+        let mut opts = opts.inner(|cx| {
             cx.clamp.build = cx.clamp.build.container(key);
             cx.clamp.input = Some(input);
             cx.position.state = if publish {
@@ -59,6 +64,9 @@ pub(super) fn build(
             };
             cx.clamp.frame = Some((key, width));
         });
+        if content_watch.is_some() {
+            opts.frag.watch = content_watch.clone();
+        }
         super::generic_box(
             &e,
             frame::resolved_style(&c, used_box, opts.cx.vcx()),
@@ -67,7 +75,9 @@ pub(super) fn build(
             outer_space.clone(),
         )
     });
-    ClampHost::new(key, style, geometry, build, border_box, paint, children).hooked()
+    ClampHost::new(key, style, geometry, build, border_box, paint, children)
+        .fragment_flow(fragment)
+        .hooked()
 }
 
 pub(super) fn frame(d: &mut gpui::Div, width: Option<gpui::Pixels>) {
