@@ -36,11 +36,19 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
     terminal.clearSelection()
     return true
   }
-  const readClipboard = async (): Promise<void> => {
+  const clipboardText = async (): Promise<string> => {
     try {
-      const text = options.readText ? await options.readText() : await clipboard?.readText()
-      if (text && !disposed) terminal.paste(text)
-    } catch { /* Clipboard permission may be denied by the browser. */ }
+      if (options.readText) return await options.readText()
+      // Inspecting a menu must not trigger a browser permission prompt. The
+      // native console supplies the host reader; browser clients can still
+      // paste with the trusted clipboard event when permission is unavailable.
+      const permission = await document.defaultView?.navigator.permissions?.query({ name: 'clipboard-read' as PermissionName })
+      return permission?.state === 'granted' ? await clipboard?.readText() ?? '' : ''
+    } catch { return '' }
+  }
+  const readClipboard = async (): Promise<void> => {
+    const text = await clipboardText()
+    if (text && !disposed) terminal.paste(text)
   }
   let disposed = false
   const paste = (event: ClipboardEvent): void => {
@@ -75,9 +83,12 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
     event.stopImmediatePropagation()
     openMenus.get(document)?.()
     const menu = document.createElement('div')
+    const selection = terminal.hasSelection() ? terminal.getSelection() : ''
+    let closed = false
     menu.className = 'terminal-context-menu'
     menu.setAttribute('role', 'menu')
     const close = (): void => {
+      closed = true
       menu.remove()
       document.removeEventListener('mousedown', outside, true)
       document.removeEventListener('keydown', keydown, true)
@@ -88,13 +99,13 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
       if (!menu.contains(event.target as Node)) close()
     }
     const keydown = (event: KeyboardEvent): void => {
-      if (event.code !== 'Escape') return
+      if ((event.code || event.key) !== 'Escape') return
       event.preventDefault()
       event.stopImmediatePropagation()
       close()
       terminal.focus()
     }
-    const item = (label: string, icon: string, action: () => void, disabled = false): void => {
+    const item = (label: string, icon: string, action: () => void, disabled = false): HTMLButtonElement => {
       const button = document.createElement('button')
       button.type = 'button'
       button.setAttribute('role', 'menuitem')
@@ -105,9 +116,16 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
       button.append(glyph, document.createTextNode(label))
       button.onclick = () => { action(); close(); terminal.focus() }
       menu.appendChild(button)
+      return button
     }
-    item('Copy', 'copy', copySelection, !terminal.hasSelection())
-    item('Paste', 'paste', () => { void readClipboard() })
+    item('Copy', 'copy', () => { if (selection) { copy(selection); terminal.clearSelection() } }, !selection)
+    let pasteText = ''
+    const pasteItem = item('Paste', 'paste', () => { if (pasteText) terminal.paste(pasteText) }, true)
+    void clipboardText().then(text => {
+      if (closed || disposed) return
+      pasteText = text
+      pasteItem.disabled = !text
+    })
     item('Select All', 'check-double', () => terminal.selectAll())
     document.body.appendChild(menu)
     const bounds = menu.getBoundingClientRect()

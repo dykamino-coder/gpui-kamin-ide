@@ -55,8 +55,15 @@ export function configureTerminalInteraction(terminal: Terminal, container: HTML
     event.preventDefault()
     event.stopImmediatePropagation()
   }
+  const mouseMove = (event: MouseEvent): void => {
+    // xterm treats a mouse report as input and clears selection. While text
+    // is selected, hovering must not send reports; clicks/drags and wheel
+    // retain the application's protocol and its declared mouse modes.
+    if (event.buttons === 0 && terminal.hasSelection()) event.stopImmediatePropagation()
+  }
   container.addEventListener('mousedown', mouseDown, true)
   container.addEventListener('mouseup', mouseUp, true)
+  container.addEventListener('mousemove', mouseMove, true)
 
   const syncScreen = (): void => {
     container.dataset.terminalScreen = terminal.buffer.active.type
@@ -83,6 +90,7 @@ export function configureTerminalInteraction(terminal: Terminal, container: HTML
   return () => {
     container.removeEventListener('mousedown', mouseDown, true)
     container.removeEventListener('mouseup', mouseUp, true)
+    container.removeEventListener('mousemove', mouseMove, true)
     subscriptions.forEach(subscription => subscription.dispose())
     container.classList.remove('bridge-console')
     delete container.dataset.terminalScreen

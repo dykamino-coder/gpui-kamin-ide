@@ -18,13 +18,14 @@ function fixture(mode = 'none', screen = 'normal') {
     modes: { mouseTrackingMode: mode },
     buffer: { active: { type: screen, baseY: 0 }, onBufferChange: subscribe('buffer', 0) },
     onWriteParsed: subscribe('write', 1), onScroll: subscribe('scroll', 2), onResize: subscribe('resize', 3),
-    focus: vi.fn(), attachCustomWheelEventHandler: vi.fn(),
+    hasSelection: vi.fn(() => false), focus: vi.fn(), attachCustomWheelEventHandler: vi.fn(),
   }
   const dispose = configureTerminalInteraction(term as unknown as Terminal, container as unknown as HTMLElement)
   return {
     term, container, dispose, callbacks, disposals,
     mouse: container.addEventListener.mock.calls[0][1] as (e: MouseEvent) => void,
     mouseUp: container.addEventListener.mock.calls[1][1] as (e: MouseEvent) => void,
+    mouseMove: container.addEventListener.mock.calls[2][1] as (e: MouseEvent) => void,
     wheel: term.attachCustomWheelEventHandler.mock.calls[0][0] as (e: WheelEvent) => boolean,
   }
 }
@@ -38,6 +39,24 @@ function mouseEvent(shiftKey: boolean, onScreen = true, button = 0) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('console mouse ownership', () => {
+  it.each(['normal', 'alternate'])('preserves %s selection on hover without changing application modes or drag/wheel routing', screen => {
+    const f = fixture('any', screen)
+    f.term.hasSelection.mockReturnValue(true)
+    const hover = { buttons: 0, stopImmediatePropagation: vi.fn() }
+    f.mouseMove(hover as unknown as MouseEvent)
+    expect(hover.stopImmediatePropagation).toHaveBeenCalledOnce()
+    const drag = { buttons: 1, stopImmediatePropagation: vi.fn() }
+    f.mouseMove(drag as unknown as MouseEvent)
+    expect(drag.stopImmediatePropagation).not.toHaveBeenCalled()
+    expect(f.wheel({} as WheelEvent)).toBe(true)
+    f.term.hasSelection.mockReturnValue(false)
+    hover.stopImmediatePropagation.mockClear()
+    f.mouseMove(hover as unknown as MouseEvent)
+    expect(hover.stopImmediatePropagation).not.toHaveBeenCalled()
+    expect(f.term.modes.mouseTrackingMode).toBe('any')
+    f.dispose()
+    expect(f.container.removeEventListener).toHaveBeenCalledWith('mousemove', f.mouseMove, true)
+  })
   it('allows normal-screen selection without Shift and leaves native Shift extension intact', () => {
     const f = fixture()
     for (const shift of [false, true]) {

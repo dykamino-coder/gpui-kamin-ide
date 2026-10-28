@@ -19,7 +19,7 @@ class Node {
   removeEventListener(name: string, handler: EventListener) { if (this.listeners.get(name) === handler) this.listeners.delete(name) }
   getBoundingClientRect() { return { width: 150, height: 90 } }
 }
-function fixture() {
+function fixture(readText = vi.fn(async () => 'clipboard')) {
   const document = Object.assign(new Node(), {
     body: new Node(), createElement: () => new Node(), createTextNode: () => new Node(),
     defaultView: { innerWidth: 800, innerHeight: 600, navigator: {} },
@@ -33,7 +33,6 @@ function fixture() {
     attachCustomKeyEventHandler: (handler: typeof key) => { key = handler },
   }
   const writeText = vi.fn()
-  const readText = vi.fn(async () => 'clipboard')
   const dispose = configureTerminalClipboard(term as unknown as Terminal, container as unknown as HTMLElement, { writeText, readText })
   const emit = (node: Node, type: string, fields = {}) => {
     const event = { type, preventDefault: vi.fn(), stopPropagation: vi.fn(), stopImmediatePropagation: vi.fn(), ...fields }
@@ -51,6 +50,57 @@ function fixture() {
 }
 
 describe('console clipboard and context menu', () => {
+  it.each(['c', 'с'])('copies native Ctrl+C in layout %s without forwarding interrupt', key => {
+    const f = fixture()
+    f.select('exact\r\n  selected text ')
+    expect(f.key({ code: '', key, keyCode: 67 }).allowed).toBe(false)
+    expect(f.writeText).toHaveBeenCalledExactlyOnceWith('exact\r\n  selected text ')
+    expect(f.key({ code: '', key, keyCode: 67 }).allowed).toBe(true)
+    f.dispose()
+  })
+
+  it('takes Copy from the terminal selection, preserving its exact bytes across menu focus changes', () => {
+    const f = fixture()
+    f.select('  terminal\r\nselection  ')
+    f.context()
+    const copy = f.document.body.children[0].children[0]
+    expect(copy.disabled).toBe(false)
+    f.select('')
+    copy.onclick!()
+    expect(f.writeText).toHaveBeenCalledExactlyOnceWith('  terminal\r\nselection  ')
+    f.dispose()
+  })
+
+  it.each(['', 'text'])('enables Paste only after reading nonempty host clipboard (%j), without rereading on click', async text => {
+    const read = vi.fn(async () => text)
+    const f = fixture(read)
+    f.context()
+    const paste = f.document.body.children[0].children[1]
+    expect(paste.disabled).toBe(true)
+    await vi.waitFor(() => expect(paste.disabled).toBe(!text))
+    expect(read).toHaveBeenCalledOnce()
+    paste.onclick!()
+    expect(f.term.paste.mock.calls).toEqual(text ? [[text]] : [])
+    expect(read).toHaveBeenCalledOnce()
+    f.dispose()
+  })
+
+  it('keeps Paste disabled on read failure and ignores a closed menu result', async () => {
+    const f = fixture(vi.fn().mockRejectedValue(new Error('unavailable')))
+    f.context()
+    const paste = f.document.body.children[0].children[1]
+    await Promise.resolve(); await Promise.resolve()
+    expect(paste.disabled).toBe(true)
+    f.dispose()
+    let finish!: (text: string) => void
+    const g = fixture(vi.fn(() => new Promise<string>(resolve => { finish = resolve })))
+    g.context()
+    const stale = g.document.body.children[0].children[1]
+    g.dispose(); finish('stale')
+    await Promise.resolve(); await Promise.resolve()
+    expect(stale.disabled).toBe(true)
+    expect(g.term.paste).not.toHaveBeenCalled()
+  })
   it('uses the virtual key for CEF input without a scan code, across layouts', () => {
     const f = fixture()
     f.select('native CEF selection')
@@ -94,8 +144,10 @@ describe('console clipboard and context menu', () => {
     f.select('menu selection'); f.context()
     f.document.body.children[0].children[0].onclick!()
     expect(f.writeText).toHaveBeenCalledWith('menu selection')
-    f.context(); f.document.body.children[0].children[1].onclick!()
-    await Promise.resolve()
+    f.context()
+    const paste = f.document.body.children[0].children[1]
+    await vi.waitFor(() => expect(paste.disabled).toBe(false))
+    paste.onclick!()
     expect(f.term.paste).toHaveBeenCalledWith('clipboard')
     f.dispose()
   })
@@ -115,7 +167,7 @@ describe('console clipboard and context menu', () => {
     const f = fixture()
     f.context(); f.context()
     expect(f.document.body.children).toHaveLength(1)
-    f.emit(f.document, 'keydown', { code: 'Escape' })
+    f.emit(f.document, 'keydown', { code: '', key: 'Escape' })
     expect(f.document.body.children).toHaveLength(0)
     expect(f.document.listeners.size).toBe(0)
     f.context(); f.emit(f.document, 'mousedown', { target: new Node() })
