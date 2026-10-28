@@ -7,6 +7,7 @@ use crate::layout::fragment::types::{Frag, Kid};
 #[allow(clippy::too_many_arguments)]
 pub(super) fn fill_pieces_inner(
     target_at: &dyn Fn(usize) -> f32,
+    inline_at: &dyn Fn(usize) -> Option<f32>,
     limit: usize,
     paged: bool,
     col: &mut usize,
@@ -195,14 +196,14 @@ pub(super) fn fill_pieces_inner(
             room,
             edge,
             mono,
+            (target, inline_at(*col)),
             at,
             overflow_to,
             shortage,
             tokens,
             &measurement.inline,
         )?;
-        // Недолаз: на сколько не хватило колонки до ближайшего
-        // разреза (или до конца ребёнка).
+        // Недолаз: сколько не хватило колонки до ближайшего разреза (или конца ребёнка).
         let next = k
             .cuts
             .iter()
@@ -218,10 +219,9 @@ pub(super) fn fill_pieces_inner(
             Some(LoopStep::Continue) => continue,
             None => {}
         }
-        // Разрез лёг в поле, и за ним от ребёнка ничего не осталось: поле
-        // на разрыве усечено (css-break-3 §5.2), коробка кончилась в этой
-        // колонке, а поток продолжает следующая с самого верха — пустого
-        // куска нулевой высоты там нет (`trailing-child-margin-000`).
+        // Разрез лёг в поле, и за ним от ребёнка ничего не осталось: поле на разрыве усечено
+        // (css-break-3 §5.2), коробка кончилась в этой колонке, а поток продолжает следующая
+        // с самого верха — пустого куска нулевой высоты там нет (`trailing-child-margin-000`).
         if cut.is_some() && from >= flow - 0.01 {
             *col += 1;
             *y = 0.0;

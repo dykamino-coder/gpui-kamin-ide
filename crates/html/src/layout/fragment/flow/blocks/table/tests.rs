@@ -6,6 +6,7 @@ use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed, TableFrame};
 use crate::style::computed::Display;
 
 mod captions;
+mod rows;
 
 /// Стопка первой таблицы документа (`display: table`) и номера узлов блоков
 /// `<p>` в её ячейках в порядке документа.
