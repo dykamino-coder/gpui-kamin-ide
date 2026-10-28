@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 #[test]
 fn nested_inline_runs_keep_ancestor_band_and_original_css() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<span style="background:red;padding:2px;border-radius:5px">a<b>b</b></span>"#,
         "",
     );
@@ -51,7 +51,7 @@ fn nested_inline_runs_keep_ancestor_band_and_original_css() {
 
 #[test]
 fn inline_border_result_does_not_replace_currentcolor_css() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<span style="color:blue;border:2px solid currentColor;border-radius:4px">ab</span>"#,
         "",
     );
@@ -137,7 +137,7 @@ fn filtered_inline_border_uses_box_colors_once_in_filter_order() {
             for border in ["red", "currentColor"] {
                 let parent_filter = if ancestor { filter } else { "none" };
                 let own_filter = if ancestor { "none" } else { filter };
-                let parsed = crate::dom::parse(
+                let parsed = crate::document::parsed::parse(
                     &format!(
                         r#"<div style="filter:{parent_filter}"><span style="color:red;filter:{own_filter};border:2px solid {border};background:blue">ab</span></div>"#
                     ),
@@ -175,7 +175,7 @@ fn filtered_inline_border_uses_box_colors_once_in_filter_order() {
 
 #[test]
 fn filtered_inline_border_and_band_use_own_result_once() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<span style="color:red;filter:brightness(50%);border:2px solid currentColor;background:blue">ab</span>"#,
         "",
     );

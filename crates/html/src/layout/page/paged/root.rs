@@ -1,11 +1,11 @@
 //! Корень постраничного режима: поля и имя первой страницы, группы строчных прогонов.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 #[derive(PartialEq)]
 enum Run {

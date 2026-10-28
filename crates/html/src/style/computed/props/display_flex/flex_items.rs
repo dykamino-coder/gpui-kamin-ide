@@ -3,7 +3,7 @@
 
 use super::values;
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_flex_items(

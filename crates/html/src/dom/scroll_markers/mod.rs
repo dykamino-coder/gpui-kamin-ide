@@ -7,7 +7,7 @@
 //! `contain: layout` (+ `size` в потоке); без свойства маркеры гасятся.
 //! Порядок коробок в дереве — Blink `kBoxTreeOrder`, вставляет `finish_element`.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod marker_collect;
 use crate::dom::scroll_markers::marker_collect::collect_scroll_markers;
 use crate::dom::scroll_markers::marker_collect::purge_scroll_markers;

@@ -12,8 +12,8 @@
 //! всё остальное срезала маска куска.
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
 use crate::resources::css_images::Source as CpuSource;
+use crate::values::ValueCx;
 mod gradient;
 mod grid;
 mod tiling;

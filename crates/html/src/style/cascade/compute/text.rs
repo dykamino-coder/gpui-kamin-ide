@@ -173,7 +173,7 @@ pub(super) fn inherit_decoration_values(
     own: &Computed,
     c: &mut Computed,
     own_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     use crate::style::computed::DecorLen;
     let family = decor_family(c, vcx);
@@ -196,7 +196,7 @@ pub(super) fn inherit_decoration_values(
 /// которым набран текст.
 pub(in crate::style::cascade) fn decor_family(
     c: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> String {
     c.font_family.clone().unwrap_or_else(|| {
         if c.monospace == Some(true) {
@@ -215,7 +215,7 @@ pub(in crate::style::cascade) fn resolve_decor_len(
     l: crate::style::computed::DecorLen,
     family: &str,
     own_px: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> crate::style::computed::DecorLen {
     use crate::style::computed::{DecorLen, FontCx};
     match l {

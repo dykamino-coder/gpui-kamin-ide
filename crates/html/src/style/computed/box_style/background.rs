@@ -1,8 +1,8 @@
 //! Геометрические решения оформления используют собственный used-фон коробки.
 
 use super::BoxStyle;
-use crate::document::state::ValueCx;
 use crate::style::computed::BgClip;
+use crate::values::ValueCx;
 
 impl BoxStyle {
     pub(crate) fn color_clip(&self, _vcx: ValueCx<'_>) -> Option<BgClip> {

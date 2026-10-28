@@ -6,7 +6,7 @@ use crate::style::computed::BoxStyle;
 
 #[test]
 fn inset_rejects_an_entire_invalid_declaration() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for invalid in [
         "1",
@@ -38,7 +38,7 @@ fn inset_rejects_an_entire_invalid_declaration() {
 
 #[test]
 fn inset_computes_font_lengths_without_resolving_percentages() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut c = computed(
         "font-size: 20px; line-height: 40px; text-decoration-inset: calc(10% + 1em) .5lh",
@@ -53,7 +53,7 @@ fn inset_computes_font_lengths_without_resolving_percentages() {
 
 #[test]
 fn inset_explicitly_inherits_the_computed_parent_value() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     use crate::style::cascade::inherit::inherit_unpainted;
     let parent = inherit_unpainted(

@@ -4,9 +4,9 @@
 //! родителя при наследовании.
 
 use super::values::{self, FontSize as Size, GROUP_TAGS};
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::LonghandId;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_font_longhand(&mut self, id: LonghandId, v: &str, vcx: ValueCx<'_>) {

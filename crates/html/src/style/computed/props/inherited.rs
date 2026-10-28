@@ -6,9 +6,9 @@
 //! родителя слиянием `cascade::inherit`), `initial` — запись начального
 //! значения реестра тем же разбором.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Grammar, LonghandId};
+use crate::values::ValueCx;
 
 mod breaking;
 mod clamp;

@@ -111,7 +111,7 @@ fn last_valid<T>(values: &[String], parse: impl Fn(&[Tok]) -> Option<T>) -> Opti
 /// Правило `@counter-style <имя> { … }`: дескрипторы — объявления блока в
 /// порядке записи; дескриптор с `!important` недействителен.
 pub fn register(
-    doc: &crate::document::state::DocumentValues,
+    doc: &crate::values::DocumentValues,
     name: &str,
     descs: &crate::style::css::DeclBlock,
 ) {

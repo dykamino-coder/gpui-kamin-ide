@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn border_box_clone_subtracts_edges_once_and_does_not_reapply_minimum() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div style='height:100px;min-height:80px;max-height:120px;box-sizing:border-box;padding:10px;box-decoration-break:clone'></div>",
             "",
         );

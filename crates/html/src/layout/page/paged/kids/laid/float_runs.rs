@@ -5,7 +5,7 @@ use crate::layout::fragment::{ShapeCx, flow};
 
 #[test]
 fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><br style='clear:both'><div style='float:left;height:115px;break-inside:avoid'>1</div><div style='height:115px;clear:both'>A<div style='float:left;height:115px;break-inside:avoid'>2</div><span>X<span style='display:inline-block;height:100%;width:1px'></span><br>Y</span></div></div>",
         "",
     );
@@ -46,7 +46,7 @@ fn shared_page_float_run_records_clear_block_with_atomic_inline_content() {
 
 #[test]
 fn unrelated_inline_run_does_not_acquire_a_block_copy() {
-    let tree = crate::dom::parse("<div><span>one</span><span>two</span></div>", "");
+    let tree = crate::document::parsed::parse("<div><span>one</span><span>two</span></div>", "");
     let source = &super::tests::authored(&tree).children;
     assert!(
         group(
@@ -65,7 +65,7 @@ fn unrelated_inline_run_does_not_acquire_a_block_copy() {
 fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
     use crate::layout::options::RenderOpts;
     use crate::style::values::value::Len;
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<!doctype html><html style='height:100%'><body style='height:100%;margin:0'><div style='height:100%'><br><div style='float:left;height:60%;break-after:page'>1</div><div style='clear:both;height:60%'><div style='float:left;height:100%'>2</div><span style='height:10px'><span style='display:inline-block;width:1px;height:100%'></span></span></div></div></body></html>",
         "",
     );

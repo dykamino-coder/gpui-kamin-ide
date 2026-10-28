@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn styles_follow_spec() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(repr(4, "lower-roman", vcx), "iv");
     assert_eq!(repr(4, "upper-roman", vcx), "IV");
@@ -34,7 +34,7 @@ fn styles_follow_spec() {
 
 #[test]
 fn hebrew_and_ethiopic_follow_spec() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // 15 и 16 — особые пары, тысячи — с герешем
     // (`css3-counter-styles-016`).
@@ -63,7 +63,7 @@ fn hebrew_and_ethiopic_follow_spec() {
 
 #[test]
 fn cjk_positional_follows_spec() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Сводная таблица §6.4 (0, 1, 10, 11, 99, 100, 101, 6001).
     assert_eq!(repr(0, "japanese-informal", vcx), "〇");

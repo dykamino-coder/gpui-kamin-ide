@@ -7,13 +7,13 @@
 //! накладкой НАД ним (`Grouped::over`); прежние скруглённые кольца
 //! (`shadows`, `outline`) у такой коробки не ставятся.
 
-use crate::document::state::ValueCx;
 use crate::paint::background::{contour_offset, rrect_spec};
 use crate::paint::effects::grouped_element::FillLayer;
 use crate::style::computed::{BoxStyle, Computed, OUTLINE_DOUBLE};
 use crate::style::values::basic_shape::commands::{Command, Sink};
 use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::*;
+use crate::values::ValueCx;
 
 /// Сцена контуров по размеру коробки (bw, bh), выносу (l, t) и холсту (aw, ah).
 pub(crate) type Layer =

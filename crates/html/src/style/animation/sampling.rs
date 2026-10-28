@@ -1,8 +1,8 @@
 //! Выборка CSS-кадра по времени и фазе заполнения анимации.
 
 use super::interpolation::frame_at;
-use crate::document::state::ValueCx;
 use crate::style::computed::{AnimSpec, Computed};
+use crate::values::ValueCx;
 
 /// A backwards fill holds the endpoint without applying its easing.
 pub(crate) fn sample_at(
@@ -30,7 +30,7 @@ mod tests {
     use super::*;
     #[test]
     fn fill_phases_and_large_negative_delay() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = Computed::default();
         style.apply_one("animation", "a 1s -1e16s infinite paused", vcx);

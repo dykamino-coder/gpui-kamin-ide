@@ -1,10 +1,10 @@
 //! Краска SVG: `fill`, `stroke`, `stroke-width` (css-fill-stroke-3, SVG 2
 //! §13): наследуются, значение — текстом до отрисовки.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::LonghandId;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// `<paint>` (css-fill-stroke-3 §2.1): `none | <color> | <url> |
 /// context-fill | context-stroke`.

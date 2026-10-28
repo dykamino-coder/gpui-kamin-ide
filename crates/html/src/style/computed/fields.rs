@@ -543,7 +543,7 @@ pub struct Computed {
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
     /// Easing also applies when declared on a keyframe.
-    pub animation_easing: Option<crate::animation::easing::Easing>,
+    pub animation_easing: Option<crate::style::animation::easing::Easing>,
     /// `transition` — длительность перехода в секундах.
     pub transition: Option<f32>,
     /// `resize` — по каким осям элемент тянется мышью.

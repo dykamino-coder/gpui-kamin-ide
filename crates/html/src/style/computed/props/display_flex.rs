@@ -6,8 +6,8 @@
 //! метками (`inline_display`, `ruby_role`, `col_role`…) и `flex-direction`;
 //! элементы флекса и щели — в подмодулях, разбор значений реестра — `values`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::values::ValueCx;
 mod flex_items;
 mod gap_place;
 pub(crate) mod values;

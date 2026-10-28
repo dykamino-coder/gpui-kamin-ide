@@ -1,6 +1,6 @@
 //! Целое значение `z-index`.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Целое за пределами i32 КЛАМПИТСЯ, а не падает в auto (z-index-001:
 /// -2147483649 обязан остаться меньше -100).

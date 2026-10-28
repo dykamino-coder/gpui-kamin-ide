@@ -6,7 +6,7 @@ use crate::style::computed::{BoxStyle, Computed};
 
 #[test]
 fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
-    let mut nodes = crate::dom::parse("<span></span>", "");
+    let mut nodes = crate::document::parsed::parse("<span></span>", "");
     let crate::dom::Node::Element(mut element) = nodes.remove(0) else {
         panic!("element")
     };

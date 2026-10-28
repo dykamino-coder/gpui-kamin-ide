@@ -10,7 +10,7 @@ use std::rc::Rc;
 #[test]
 fn own_root_source_survives_box_transport_without_rewriting_or_inheriting_css() {
     for display in ["block", "contents"] {
-        let parsed = crate::dom::parse(
+        let parsed = crate::document::parsed::parse(
             &format!(
                 "<style>html {{ display:{display}; color:red; background:currentColor; border-radius:23px }} body {{ color:blue; background:green }} div {{ background:inherit }}</style><div>x</div>"
             ),
@@ -62,7 +62,7 @@ fn canvas_role_selection_respects_containment_and_box_generation() {
         ("", "background:blue;display:contents", None),
         ("", "", None),
     ] {
-        let parsed = crate::dom::parse(
+        let parsed = crate::document::parsed::parse(
             &format!("<style>html {{{root_css}}} body {{{body_css}}}</style><body>x</body>"),
             "",
         );

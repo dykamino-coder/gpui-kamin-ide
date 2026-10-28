@@ -5,8 +5,8 @@
 //! при разрешении.
 
 use super::{Computed, Corners};
-use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_radius_shorthand(&mut self, raw: &str, vcx: ValueCx<'_>) {

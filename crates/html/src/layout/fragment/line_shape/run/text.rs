@@ -121,7 +121,7 @@ pub(crate) fn trim_amount(
     lh: f32,
     start: bool,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> f32 {
     let family = s.font_family.clone().unwrap_or_default();
     let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size, fonts, vcx);

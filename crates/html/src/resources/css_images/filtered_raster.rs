@@ -6,9 +6,9 @@
 
 use super::Source;
 use crate::cache::{BoundedCache, FloatKey, Hinted, MIB, hint};
-use crate::document::state::ValueCx;
 use crate::resources::images::pixels::optional_bytes as optional_image_bytes;
 use crate::resources::images::types::CpuRaster;
+use crate::values::ValueCx;
 use std::sync::Arc;
 
 use crate::resources::images::identity::RasterIdentity;

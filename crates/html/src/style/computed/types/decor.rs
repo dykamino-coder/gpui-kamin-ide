@@ -1,7 +1,7 @@
 //! Типы оформления текста: линии, положение подчёркивания, стиль/толщина/смещение и их разбор.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Линии украшения (css-text-decor-3 §2.1 `text-decoration-line`).
 pub const DECOR_UNDER: u8 = 1;

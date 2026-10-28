@@ -1,8 +1,8 @@
 //! Обтекание флоатов: `wrap_floats` lowers every float run of a block
 //! container into the shared measured band host.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 
 use crate::dom::Node;
 use crate::layout::float::FloatCb;

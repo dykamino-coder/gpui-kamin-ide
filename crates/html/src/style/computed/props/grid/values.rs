@@ -2,9 +2,9 @@
 //! свойство — им реестр проверяет объявление, им же обработчик пишет поля
 //! стиля.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::css::LonghandId;
+use crate::values::ValueCx;
 
 /// Годится ли значение длинному свойству сетки.
 pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {

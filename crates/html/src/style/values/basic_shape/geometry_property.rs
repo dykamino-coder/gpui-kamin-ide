@@ -1,9 +1,9 @@
 //! Разбор каскадных геометрических свойств SVG 2: длины, `d: path()` и `path-length`.
 //! Значения сохраняются в Computed; SVG-сериализация выбирает применимые атрибуты.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 mod path_length;
 

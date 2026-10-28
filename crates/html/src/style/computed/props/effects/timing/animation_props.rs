@@ -4,7 +4,7 @@
 //! (`steps()`, `cubic-bezier()`) не распадались и не принимались за имена.
 
 mod grammar;
-use crate::animation::easing::Easing;
+use crate::style::animation::easing::Easing;
 use crate::style::computed::split_outside_parens;
 use crate::style::computed::{AnimSpec, Computed};
 
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn functions_and_fill_are_not_animation_names() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = Computed::default();
         style.apply_one(

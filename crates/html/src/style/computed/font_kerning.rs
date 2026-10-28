@@ -19,13 +19,13 @@ mod tests {
     use crate::style::computed::BoxStyle;
     use crate::style::css::parse_decls;
 
-    fn computed(css: &str, vcx: crate::document::state::ValueCx<'_>) -> Computed {
+    fn computed(css: &str, vcx: crate::values::ValueCx<'_>) -> Computed {
         let mut style = Computed::default();
         style.apply_decls_with_vars(&parse_decls(css), &Default::default(), vcx);
         style
     }
 
-    fn kern(style: &Computed, vcx: crate::document::state::ValueCx<'_>) -> Option<u32> {
+    fn kern(style: &Computed, vcx: crate::values::ValueCx<'_>) -> Option<u32> {
         style
             .used_features(vcx)
             .into_iter()
@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn variant_on_child_preserves_inherited_kerning() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let parent = computed("font-kerning: none", vcx);
         let child = computed("font-variant-ligatures: no-common-ligatures", vcx);
@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn child_auto_and_initial_cancel_parent_none() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let parent = computed("font-kerning: none", vcx);
         for keyword in ["auto", "initial"] {
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn low_level_setting_wins_in_either_declaration_order() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for css in [
             "font-feature-settings: 'kern' 1; font-kerning: none",
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn invalid_value_preserves_previous_declaration() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = computed("font-kerning: normal", vcx);
         style.apply_one("font-kerning", "invalid", vcx);
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn font_shorthand_resets_kerning_and_inherit_restores_parent_value() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let parent = computed("font-kerning: none", vcx);
         let reset = computed("font-kerning: none; font: 16px serif", vcx);
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn later_kerning_longhand_and_important_declarations_win() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         assert_eq!(
             kern(&computed("font: 16px serif; font-kerning: none", vcx), vcx),

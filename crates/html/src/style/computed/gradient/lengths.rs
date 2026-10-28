@@ -1,8 +1,8 @@
 //! Разрешает разобранные длины градиента после наследования шрифта, до отрисовки.
 
 use super::{BgSize, Computed, Gradient, GradientShape, Len, RadialSize};
-use crate::document::state::ValueCx;
 use crate::style::values::value::calc_get;
+use crate::values::ValueCx;
 
 impl Gradient {
     pub(crate) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {

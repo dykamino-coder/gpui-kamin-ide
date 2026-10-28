@@ -10,11 +10,11 @@
 //! Размер query container — отдельный вход от адаптера финальной геометрии.
 //! Его изменение инвалидирует материализацию и запускает стиль/layout до paint.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Node, SharedStyle};
 use crate::style::ComputedHandle;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::publication::Published;
+use crate::values::ValueCx;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 

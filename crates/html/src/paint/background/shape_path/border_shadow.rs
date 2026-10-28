@@ -1,8 +1,8 @@
 //! Тени border-shape, собираемые из типизированных путей, luminance-масок и размытия.
 
 use super::border_scene::Contour;
-use crate::document::state::ValueCx;
 use crate::svg::path_scene::*;
+use crate::values::ValueCx;
 
 /// css-borders-4 border-shape-shadow-interaction: expand/contract the caster,
 /// blur at sigma=blur/2, then cut the border. Ordered mask paints preserve

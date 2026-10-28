@@ -17,7 +17,7 @@ pub(super) fn section(nodes: &[Node]) -> &Element {
 
 #[test]
 fn deferred_children_resolve_percentages_from_original_content_box() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<!doctype html><section style='height:400px;box-sizing:border-box;padding:20px;border:10px solid;column-count:2'><div style='height:50%;min-height:25%;max-height:75%'></div></section>",
         "",
     );
@@ -77,7 +77,7 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract(
     cx: &mut gpui::TestAppContext,
 ) {
     let cx = cx.add_empty_window();
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<!doctype html><section style='column-count:2;height:150px'><div style='height:100px'></div><div style='float:left;break-inside:avoid;width:100%;height:100px'><div style='height:60px'></div></div><div style='float:left;width:100%;height:0'><div style='height:40px;margin-top:-40px'></div></div></section>",
         "",
     );

@@ -1,6 +1,6 @@
 //! Явная конфигурация платформенных шрифтов: разделяемые ресурсы без состояния документа.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use std::{collections::HashSet, rc::Rc, sync::Arc};
 
 type FontLoader = Rc<dyn Fn(Vec<u8>) -> Option<String>>;

@@ -2,13 +2,13 @@
 //! `column-rule` раскрыты разбором, и итог не зависит от порядка сокращения и
 //! его длинного свойства в блоке.
 
-use crate::document::state::DocState;
 use crate::style::computed::{Align, Computed, Placement};
 use crate::style::css::{DeclBlock, Media, parse_decls_in};
 use crate::style::values::value::Len;
+use crate::values::DocumentValues;
 
 fn style(css: &str) -> Computed {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let block: DeclBlock = parse_decls_in(css, doc.values());
     let mut c = Computed::default();
     c.apply_decls(&block, doc.values());

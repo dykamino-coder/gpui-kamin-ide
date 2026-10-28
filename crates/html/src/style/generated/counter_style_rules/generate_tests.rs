@@ -2,7 +2,7 @@
 //! `fixed`, …) на всей ширине `i64` и порядок дескрипторов, без раскладки.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 fn initial(algo: &Algo, v: i128) -> Option<String> {
     super::initial(algo, v, Context::default())
@@ -60,7 +60,7 @@ fn systems_cover_negative_fixed_and_full_width_values() {
 
 #[test]
 fn descriptors_apply_range_then_padding_then_negative() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut rules = HashMap::new();
     rules.insert(
@@ -92,7 +92,7 @@ fn descriptors_apply_range_then_padding_then_negative() {
 
 #[test]
 fn disclosure_context_survives_extends_and_fallback() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut rules = HashMap::new();
     rules.insert(
@@ -133,7 +133,7 @@ fn disclosure_context_survives_extends_and_fallback() {
 
 #[test]
 fn extended_builtin_cyclic_styles_accept_negative_values() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for (name, expected) in [("disc", "•"), ("circle", "◦"), ("square", "▪")] {
         let rules = HashMap::from([(
@@ -150,7 +150,7 @@ fn extended_builtin_cyclic_styles_accept_negative_values() {
 
 #[test]
 fn builtin_fallback_keeps_document_style_overrides() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let rules = HashMap::from([
         (

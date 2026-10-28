@@ -4,12 +4,12 @@ use super::content_radii::content_radii;
 use super::holder_ratio;
 use super::piped::piped_image;
 use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::replaced::image::{Picture, PictureSizing};
 use crate::resources::css_images::Source as CpuSource;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
 #[allow(clippy::too_many_arguments)]

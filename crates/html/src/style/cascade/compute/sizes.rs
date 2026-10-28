@@ -2,7 +2,7 @@
 //! `inherit` у `box-shadow`.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod lh_units;
 use lh_units::inherit_lh_units;
 

@@ -9,10 +9,7 @@ pub(super) mod mask_geometry;
 pub(crate) use crate::resources::svg_document::masks::MaskDefinitions;
 
 /// Prepare document definitions while deferred groups retain their previous set.
-pub(crate) fn collect_mask_defs(
-    nodes: &[crate::dom::Node],
-    vcx: crate::document::state::ValueCx<'_>,
-) {
+pub(crate) fn collect_mask_defs(nodes: &[crate::dom::Node], vcx: crate::values::ValueCx<'_>) {
     vcx.doc.masks.prepare(nodes, vcx);
 }
 

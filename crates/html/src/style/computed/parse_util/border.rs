@@ -1,7 +1,7 @@
 //! Разбор рамки и формы: overflow, border-shape, corner-shape, четыре стороны, скругление.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 pub(in crate::style::computed) fn parse_overflow(v: &str) -> Option<Overflow> {
     match v {

@@ -1,7 +1,7 @@
 //! Разбор экспериментального неотрицательного CSS-отображения длины SVG pathLength (Blink).
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::{Len, calc_get};
+use crate::values::ValueCx;
 
 pub(super) fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
     let raw = raw.trim();
@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn length_grammar_and_range() {
-        let doc = crate::document::state::DocState::new(Default::default());
+        let doc = crate::values::DocumentValues::detached(Default::default());
         for raw in ["10px", "0", "1in", "none", "2em", "5vw", "calc(1em + 2px)"] {
             assert!(parse(raw, doc.values()).is_some(), "{raw}");
         }

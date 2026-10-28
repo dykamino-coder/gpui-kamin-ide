@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn at_keyword_is_one_token_and_ascii_case_insensitive() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for condition in [
             "at-rule(@supports)",

@@ -2,7 +2,7 @@
 //! письма и места каскада, начальные значения наследуемых свойств.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn reset_for_all(&mut self, initial: bool, vcx: ValueCx<'_>) {

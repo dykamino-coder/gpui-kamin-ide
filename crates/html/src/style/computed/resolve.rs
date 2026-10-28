@@ -1,9 +1,9 @@
 //! Доводка вычисленного стиля: логические стороны, единицы окна и шрифта, текстовые и смешанные
 //! стили.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
+use crate::values::ValueCx;
 
 mod container_lengths;
 mod container_units;
@@ -85,7 +85,7 @@ impl Computed {
     /// последний: прежде в gpui уходило `liga 0, …, liga 1`, а
     /// `apply_font_features` дописывал после них ещё `liga 0`
     /// (`font-features-across-space-3`).
-    pub fn used_features(&self, vcx: crate::document::state::ValueCx<'_>) -> Vec<(String, u32)> {
+    pub fn used_features(&self, vcx: crate::values::ValueCx<'_>) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> = vcx.doc.font_snapshot().face_features(
             self.font_family.as_deref().unwrap_or(""),

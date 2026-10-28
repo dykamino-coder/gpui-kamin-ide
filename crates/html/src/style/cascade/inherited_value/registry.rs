@@ -4,8 +4,8 @@
 //! родителя (`Property::copy`) вместе с зависимыми полями (радиусы-эллипсы,
 //! кадр перспективы, признак subgrid).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 
 macro_rules! properties {
     ($($id:ident: $name:literal => [$($field:ident $(.$part:ident)*),+];)*) => {

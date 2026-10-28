@@ -12,7 +12,7 @@
 //! equivalent»). Поэтому `svh`/`lvh`/`dvh` — тот же `vh`.
 
 use super::{Len, Sum};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Номер единицы в `Sum::ext`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

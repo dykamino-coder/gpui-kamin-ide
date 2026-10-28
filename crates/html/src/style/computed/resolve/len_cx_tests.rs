@@ -1,9 +1,9 @@
 //! Тесты канонического резолвера `LenCx`.
 
 use super::*;
-use crate::document::state::DocState;
 use crate::style::css::Media;
 use crate::style::values::value::{px_lossy_zero, px_missing_zero, px_strict};
+use crate::values::DocumentValues;
 
 /// Окно без оси письма и контейнера.
 fn window(size: (f32, f32)) -> ViewportCx {
@@ -24,7 +24,7 @@ fn plain(viewport: Option<(f32, f32)>) -> LenCx<'static> {
 
 #[test]
 fn viewport_units_need_a_viewport() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let cx = plain(Some((800.0, 600.0)));
     assert_eq!(cx.px(Len::Vw(0.5), vcx), Some(400.0));
@@ -37,7 +37,7 @@ fn viewport_units_need_a_viewport() {
 
 #[test]
 fn empty_context_matches_the_context_free_contracts() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let cx = LenCx::default();
     for l in [
@@ -56,7 +56,7 @@ fn empty_context_matches_the_context_free_contracts() {
 
 #[test]
 fn to_px_is_the_context_without_viewport() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let font = FontCx::new("", 20.0);
     let cx = LenCx {
@@ -71,7 +71,7 @@ fn to_px_is_the_context_without_viewport() {
 
 #[test]
 fn fold_viewport_resolves_plain_and_calc_units() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let vp = window((800.0, 600.0));
     assert_eq!(Len::Vw(0.5).fold_viewport(vp, vcx), Len::Px(400.0));
@@ -102,7 +102,7 @@ fn viewport_cx_drops_scrollbars_and_reads_the_container() {
 
 #[test]
 fn calc_viewport_terms_fold_with_a_viewport_only() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let l = Len::parse("calc(100vh - 10px)", vcx).unwrap();
     assert_eq!(plain(Some((800.0, 600.0))).px(l, vcx), Some(590.0));
@@ -113,7 +113,7 @@ fn calc_viewport_terms_fold_with_a_viewport_only() {
 
 #[test]
 fn box_viewport_reads_the_writing_axis() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let style = {
         let mut with_inherited = Computed {

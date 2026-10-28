@@ -150,7 +150,7 @@ fn translated_rows_include_inline_box_growth() {
 
 #[test]
 fn table_wrapper_preserves_caption_and_cell_line_geometry() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<table><caption>caption</caption><tr><td>cell</td></tr></table>",
         "",
     );

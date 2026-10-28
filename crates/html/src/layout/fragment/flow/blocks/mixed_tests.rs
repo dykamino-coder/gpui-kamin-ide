@@ -20,7 +20,7 @@ fn authored(nodes: &[Node]) -> &Element {
 
 #[test]
 fn table_cell_grid_uses_laid_tracks_for_breaks_and_growth() {
-    let doc = crate::dom::parse(
+    let doc = crate::document::parsed::parse(
         "<div style='display:table'><div style='display:table-row'><div style='display:table-cell'><div style='display:grid'><div style='height:10px'></div><div style='height:10px;break-before:column'></div></div></div></div></div>",
         "",
     );
@@ -69,7 +69,7 @@ fn table_cell_grid_uses_laid_tracks_for_breaks_and_growth() {
 
 #[test]
 fn block_containing_table_and_grid_has_one_measured_tree() {
-    let doc = crate::dom::parse(
+    let doc = crate::document::parsed::parse(
         "<div><div style='display:table'><div style='display:table-row'><div style='display:table-cell'>table text</div></div></div><div style='display:grid'><div style='height:10px'></div></div></div>",
         "",
     );
@@ -85,7 +85,7 @@ fn flex_in_table_cells_and_captions_has_frames_and_flows() {
         } else {
             format!("<tr><td><div>{flex}</div></td></tr>")
         };
-        let doc = crate::dom::parse(
+        let doc = crate::document::parsed::parse(
             &format!("<div><table style='break-after:avoid'>{body}</table></div>"),
             "",
         );
@@ -135,7 +135,7 @@ fn flex_in_table_cells_and_captions_has_frames_and_flows() {
 /// block without lines before it hands its break to the parent.
 #[test]
 fn breaks_next_to_anonymous_line_blocks_are_class_a_points() {
-    let doc = crate::dom::parse(
+    let doc = crate::document::parsed::parse(
         "<div><div style='break-before:column;height:10px'></div>x<br><div style='break-before:column;break-after:column;height:20px'></div>y</div>",
         "",
     );
@@ -155,7 +155,7 @@ fn breaks_next_to_anonymous_line_blocks_are_class_a_points() {
 /// CSS 2.1 §9.2.2: an inline-block is line content, not a block of the stack.
 #[test]
 fn atomic_inline_level_boxes_are_line_content() {
-    let doc = crate::dom::parse(
+    let doc = crate::document::parsed::parse(
         "<div><div style='display:inline-block;width:10px;height:10px'></div><div style='height:20px'></div></div>",
         "",
     );

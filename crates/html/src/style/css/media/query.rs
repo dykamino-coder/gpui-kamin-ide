@@ -2,7 +2,7 @@
 //! запись.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Media {
     /// Один `<media-query>`: `[not | only]? <media-type> [and <cond>]?`

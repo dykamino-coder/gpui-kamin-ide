@@ -2,8 +2,8 @@
 //! `text-box-edge` (css-inline-3 §4.2–4.3), высота строки для статической позиции,
 //! доля `line-height: normal` по шрифту и пустота текстового узла по CSS.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::blank_text;
+use crate::values::ValueCx;
 
 use crate::dom::Node;
 use crate::layout::box_kind::{
@@ -156,7 +156,7 @@ pub(crate) fn edge_inset(
     size: f32,
     (ascent, descent, cap): (f32, f32, f32),
     start: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> f32 {
     use crate::style::computed::TextEdge;
     let em_box = |part: f32| {

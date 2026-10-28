@@ -1,15 +1,15 @@
 //! Суммы calc() в арене документа (Len::Calc хранит ручку), свёртка простых сумм, интерполяция и числа.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Ручка смешанной суммы `calc()` (`Len::Calc`): тело живёт в арене
-/// документа (`document::state::arena`) и освобождается вместе с ним.
+/// документа (`values::arena`) и освобождается вместе с ним.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CalcId(crate::document::state::ArenaKey);
+pub struct CalcId(crate::values::ArenaKey);
 
 pub fn calc_store(s: Sum, vcx: ValueCx<'_>) -> CalcId {
-    CalcId(crate::document::state::store(vcx, |d| &d.calc, s))
+    CalcId(crate::values::store(vcx, |d| &d.calc, s))
 }
 
 /// Margins and padding resolve percentages against the containing block's
@@ -39,7 +39,7 @@ pub fn fold_zero_percentage(l: Option<Len>, vcx: ValueCx<'_>) -> Option<Len> {
 /// Сумма по ручке. Чужая или устаревшая ручка — ошибка связи
 /// (`debug_assert` в арене); запасное значение — нулевая сумма, явно.
 pub fn calc_get(i: CalcId, vcx: ValueCx<'_>) -> Sum {
-    crate::document::state::load(vcx, |d| &d.calc, i.0).unwrap_or_default()
+    crate::values::load(vcx, |d| &d.calc, i.0).unwrap_or_default()
 }
 
 /// Интерполяция длин РАЗНЫХ природ покомпонентно, как `calc()` (css-values-4

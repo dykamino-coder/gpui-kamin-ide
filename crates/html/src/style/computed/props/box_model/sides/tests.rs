@@ -25,7 +25,7 @@ fn order(pass: u32) -> DeclOrder {
 
 #[test]
 fn physical_sides_keep_values_and_cascade_order() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut style = Computed::default();
     for (index, key) in KEYS.iter().enumerate() {
@@ -40,7 +40,7 @@ fn physical_sides_keep_values_and_cascade_order() {
 
 #[test]
 fn invalid_longhands_keep_the_previous_side_and_order() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for (index, key) in KEYS.iter().enumerate() {
         let mut style = Computed::default();
@@ -74,7 +74,7 @@ fn invalid_longhands_keep_the_previous_side_and_order() {
 
 #[test]
 fn every_padding_longhand_reports_its_parse_result() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for key in KEYS {
         for value in [
@@ -103,7 +103,7 @@ fn every_padding_longhand_reports_its_parse_result() {
 
 #[test]
 fn side_grammars_follow_their_properties() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let ok = |key: &str, value: &str| {
         Computed::declaration_result(key, value, vcx) == ParseResult::Accepted
@@ -122,7 +122,7 @@ fn side_grammars_follow_their_properties() {
 
 #[test]
 fn logical_sides_store_value_inheritance_and_order() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut style = Computed::default();
     style.decl_order = order(3);

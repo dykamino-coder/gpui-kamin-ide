@@ -2,10 +2,10 @@
 //! §line-height): ОДИН разбор на свойство — им реестр проверяет объявление, им
 //! же обработчик пишет поля стиля.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{family_name_ok, split_outside_parens};
 use crate::style::css::LonghandId;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// Годится ли значение длинному свойству шрифта.
 pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {

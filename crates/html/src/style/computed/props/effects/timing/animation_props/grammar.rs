@@ -1,6 +1,6 @@
 //! Грамматика компонентов animation до построения AnimSpec.
 use super::super::time_value;
-use crate::animation::easing::Easing;
+use crate::style::animation::easing::Easing;
 use crate::style::computed::split_outside_parens;
 use crate::style::css::selector_tokens::ident;
 

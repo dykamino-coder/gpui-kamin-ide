@@ -9,7 +9,7 @@ mod children;
 fn empty_grid_uses_measured_copy_at_known_and_deferred_widths(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     use crate::dom::Node;
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='display:grid;grid-template-rows:20px 30px'></div></div>",
         "",
     );
@@ -45,7 +45,7 @@ fn empty_grid_uses_measured_copy_at_known_and_deferred_widths(cx: &mut gpui::Tes
 
 #[test]
 fn percent_margins_use_the_copy_inline_size() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='display:grid;margin-top:10%;margin-bottom:5%'><div>x</div></div>",
         "",
     );

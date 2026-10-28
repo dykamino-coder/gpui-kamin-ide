@@ -1,7 +1,7 @@
 //! color-mix(): смешение в прямоугольных и полярных пространствах, интерполяция оттенка.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// `color-mix(in <пространство> [<дуга> hue]?, <цвет> <доля>?, <цвет> <доля>?)`
 /// (css-color-5 §2).

@@ -1,6 +1,6 @@
 //! Каскад: разрешение, применение объявлений, слои.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 use crate::style::cascade::defaults::initial_value;
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};

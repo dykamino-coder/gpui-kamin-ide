@@ -1,7 +1,7 @@
 //! Разбор списка дорожек grid-template-*: размеры, minmax(), fit-content(), repeat(), счёт дорожек.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Разбор списка дорожек `grid-template-*` в `TrackSize`.
 ///

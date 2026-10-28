@@ -10,7 +10,7 @@ pub(crate) fn children(
     parent: &Computed,
     reverse: bool,
     lead: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Node> {
     if matches!(
         parent.display,

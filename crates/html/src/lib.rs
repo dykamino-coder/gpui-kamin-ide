@@ -71,6 +71,7 @@ pub(crate) mod paint;
 pub(crate) mod resources;
 pub(crate) mod style;
 pub(crate) mod text;
+pub(crate) mod values;
 
 pub use style::ua::BROWSER_CSS;
 
@@ -80,9 +81,10 @@ pub use document::BuildTimings;
 #[cfg(feature = "wpt-harness")]
 pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
 
+pub use document::parsed::{Parsed, try_parse as parse, try_parse_media, try_parse_xml};
 pub use document::{
     BuildReport, Document, DocumentBuilder, DocumentFailure, FailureReason, FailureScope,
     RevisionStatus, TraversalKind, TraversalLimit,
 };
-pub use dom::{Element, Node, try_parse as parse};
+pub use dom::{Element, Node};
 pub use render::{RenderOpts, render, render_block};

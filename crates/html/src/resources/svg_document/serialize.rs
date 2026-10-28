@@ -1,7 +1,7 @@
 //! Обратная сериализация поддерева `<svg>` в разметку для растеризатора.
 
 use crate::defaults::DEFAULT_REPLACED_SIZE_PX;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod transform;
 pub(super) use transform::element_transform;
 

@@ -15,7 +15,7 @@ impl ComputedSlot {
         &self,
         parent: &crate::style::computed::Computed,
         own: &crate::style::computed::Computed,
-        vcx: crate::document::state::ValueCx<'_>,
+        vcx: crate::values::ValueCx<'_>,
     ) -> crate::style::publication::Published {
         let mut computed = super::super::compute::build(parent, own, vcx);
         computed.cq_size = self.1.get();

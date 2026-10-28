@@ -1,8 +1,8 @@
 //! Стадия коробки, режим quirks: опора доли высоты (Quirks Mode §3.5) ищется по предкам-коробкам.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 
 /// Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме
 /// quirks содержащий блок для ДОЛИ высоты ищется циклом — предки с

@@ -2,7 +2,7 @@
 //! контейнера.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Тело авто-повтора СПИСКОМ дорожек: `repeat(auto-fill, max-content
 /// min-content)` → `[Single(MaxContent), Single(MinContent)]`.

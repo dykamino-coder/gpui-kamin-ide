@@ -28,7 +28,7 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
             "<div style='display:flex'><div></div></div>",
             "<table><tr><td><div></div></td></tr></table>",
         ] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!(
                     "<div style='writing-mode:{mode}'><div style='display:contents;box-decoration-break:clone;columns:2'><div style='display:none;writing-mode:horizontal-tb;box-decoration-break:clone'><div style='position:absolute'></div></div>{body}</div></div>"
                 ),
@@ -76,7 +76,7 @@ fn transparent_and_hidden_nodes_do_not_become_recorded_boxes() {
 
 #[test]
 fn promoted_copies_keep_inheritance_without_contents_box_properties() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div><div style='display:contents;font-size:20px;color:green;padding:99px'><div style='display:contents;font-size:150%'>text<div style='font-size:200%;color:inherit'>child</div></div></div></div>",
         "",
     );
@@ -104,7 +104,7 @@ fn promoted_copies_keep_inheritance_without_contents_box_properties() {
 #[test]
 fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
     use crate::style::cascade::inherit::inherit_unpainted;
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='padding:3px;margin:4px;width:5px;font-size:16px'><div style='display:contents;padding:11px;margin:12px;width:13px;background:green;font-size:24px'><div style='display:contents'><div style='padding:inherit;margin:inherit;width:inherit;background:inherit;font-size:larger'>child</div></div></div></div>",
         "",
     );

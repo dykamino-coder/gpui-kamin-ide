@@ -1,8 +1,8 @@
 //! Преобразование CSS-формы в SVG path для профиля обтекания.
 
 use super::ShapeBox;
-use crate::document::state::ValueCx;
 use crate::style::values::basic_shape::commands::{Command, Sink};
+use crate::values::ValueCx;
 
 /// Контур для SVG-растеризатора: polygon / path / shape.
 pub(crate) fn svg_path_of(

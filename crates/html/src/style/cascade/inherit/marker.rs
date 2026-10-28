@@ -1,9 +1,9 @@
 //! Стиль содержимого внешнего маркера, отдельный от главной коробки пункта.
 
 use super::inherit;
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(crate) fn symbol(marker: Option<BoxStyle>, item: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
     let mut style = marker.unwrap_or_else(|| inherit(item, &Computed::default(), vcx));

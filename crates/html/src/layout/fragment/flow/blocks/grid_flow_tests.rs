@@ -167,10 +167,11 @@ fn item_lines_out_of_flow_tables_and_flex_take_the_native_path() {
         "<div><table><tr><td>cell</td></tr></table></div>",
         "<div style='display:flex'><div>a</div></div>",
     ] {
-        let doc = crate::dom::parse(&format!("<div style='display:grid'>{body}</div>"), "");
+        let doc =
+            crate::document::parsed::parse(&format!("<div style='display:grid'>{body}</div>"), "");
         assert!(grid_tree(first_div(&doc).unwrap()), "{body}");
     }
-    let doc = crate::dom::parse(
+    let doc = crate::document::parsed::parse(
         "<div style='display:grid'><div style='columns:2'>a</div></div>",
         "",
     );

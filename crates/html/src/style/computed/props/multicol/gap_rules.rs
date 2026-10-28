@@ -2,7 +2,7 @@
 //! запись их в Computed (set_gap_*).
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Ширина линейки промежутка: ключевые слова css-gaps-1 §width те же, что у
 /// рамок; отрицательная недействительна.
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn dashed_and_dotted_rule_styles_are_kept_per_axis() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("column-rule", "10px dotted pink", vcx);

@@ -3,7 +3,7 @@
 //! (§font-matching, шаг `font-stretch`: при равном расстоянии побеждает объявленное позже).
 
 use super::alias;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Ширина из дескриптора `font-stretch` правила `@font-face` — отрезок в
 /// процентах (css-fonts-4 §font-stretch-desc). Одно значение даёт вырожденный

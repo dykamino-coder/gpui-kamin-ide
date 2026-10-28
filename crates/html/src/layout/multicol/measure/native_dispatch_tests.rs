@@ -79,7 +79,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                 "<div>text</div><div style='display:grid;grid-template-rows:20px 30px'></div>",
             ] {
                 // Явное письмо у детей: StackPlan получает уже унаследованный DOM.
-                let tree = crate::dom::parse(&format!("<div>{body}</div>"), "");
+                let tree = crate::document::parsed::parse(&format!("<div>{body}</div>"), "");
                 let mut root = host(&tree).clone();
                 fn writing(e: &mut Element, mode: &str, rtl: bool) {
                     use crate::style::computed::writing_mode::WritingModeKw;
@@ -163,7 +163,7 @@ fn clone_uses_estimates_while_fixed_height_overflow_uses_measured_continuations(
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",
         "<div><div style='display:flex;height:50px'><div style='height:150px'></div></div></div>",
     ] {
-        let tree = crate::dom::parse(body, "");
+        let tree = crate::document::parsed::parse(body, "");
         let root = host(&tree);
         let opts = opts();
         let plan = stack_plan(

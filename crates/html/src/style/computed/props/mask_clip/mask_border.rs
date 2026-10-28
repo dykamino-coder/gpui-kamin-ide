@@ -5,9 +5,9 @@
 //! начальных значений хранится отсутствием (`None`). Рисование рамки-маски —
 //! отдельная задача; здесь — вычисленное значение.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BorderImage, Computed};
 use crate::style::css::LonghandId;
+use crate::values::ValueCx;
 
 /// Имя части `border-image` с той же грамматикой.
 fn border_image_part(id: LonghandId) -> Option<&'static str> {

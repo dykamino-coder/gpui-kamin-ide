@@ -11,10 +11,10 @@ use super::{
     Scope,
     assignment::{declarative_shadow, shadow_scope},
 };
-use crate::document::state::ValueCx;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::{LayerRegistry, Media};
 use crate::style::select::has::{HasArg, mark_has};
+use crate::values::ValueCx;
 use markup5ever_rcdom::Handle;
 use std::{collections::HashMap, rc::Rc};
 

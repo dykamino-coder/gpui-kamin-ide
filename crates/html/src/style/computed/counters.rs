@@ -5,7 +5,7 @@
 //! `reversed()` допускается только у `counter-reset`.
 
 use super::{Computed, split_outside_parens};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 pub(super) fn apply(style: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) {
     let Some(value) = normalized(value, key == "counter-reset", vcx) else {

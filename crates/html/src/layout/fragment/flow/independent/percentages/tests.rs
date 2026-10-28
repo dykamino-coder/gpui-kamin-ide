@@ -22,7 +22,7 @@ fn definite_and_indefinite_cb_have_distinct_percentage_rules() {
     assert_eq!(indefinite.max_height, None);
 }
 
-fn opts(tree: &crate::dom::Parsed) -> RenderOpts {
+fn opts(tree: &crate::document::parsed::Parsed) -> RenderOpts {
     let mut opts = RenderOpts {
         text: Default::default(),
         viewport: (800.0, 600.0),
@@ -48,7 +48,7 @@ fn target(nodes: &[Node]) -> &Element {
 
 #[test]
 fn original_cb_survives_wrapper_removal_and_changes_with_page_area() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<html style='height:100%'><body style='height:100%;margin:0'><div style='height:50%;box-sizing:border-box;padding:10px'><section style='height:200%;min-height:150%;max-height:250%'></section></div></body></html>",
         "",
     );
@@ -88,7 +88,7 @@ fn original_cb_survives_wrapper_removal_and_changes_with_page_area() {
 
 #[test]
 fn parent_minimum_does_not_supply_a_definite_percentage_cb() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='min-height:400px'><section style='height:50%;min-height:25%;max-height:75%'></section></div>",
         "",
     );
@@ -111,7 +111,7 @@ fn parent_minimum_does_not_supply_a_definite_percentage_cb() {
 
 #[test]
 fn column_cb_is_not_the_remaining_fragment_height() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<section style='height:50%;min-height:25%;max-height:75%'></section>",
         "",
     );
@@ -145,7 +145,7 @@ fn column_cb_is_not_the_remaining_fragment_height() {
 
 #[test]
 fn font_lengths_and_border_box_limits_are_resolved_before_consumption() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<section style='font-size:10px;height:10em;max-height:9em;min-height:8em;box-sizing:border-box;padding:1em;box-decoration-break:clone'></section>",
         "",
     );
@@ -168,7 +168,7 @@ fn font_lengths_and_border_box_limits_are_resolved_before_consumption() {
 
 #[test]
 fn viewport_leaf_limits_and_edges_keep_the_initial_page_basis() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<section style='height:150vh;min-height:110vh;max-height:120vh;box-sizing:border-box;padding:2vh;border:1vh solid'></section>",
         "",
     );
@@ -190,7 +190,7 @@ fn viewport_leaf_limits_and_edges_keep_the_initial_page_basis() {
 
 #[test]
 fn viewport_parent_supplies_a_definite_percentage_containing_block() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='height:50vh'><section style='height:50%'></section></div>",
         "",
     );
@@ -210,7 +210,7 @@ fn viewport_parent_supplies_a_definite_percentage_containing_block() {
 
 #[test]
 fn vertical_inline_percentages_remain_owned_by_vertical_layout() {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='writing-mode:vertical-rl;height:400px'><section style='height:50%;min-height:25%;max-height:75%'></section></div>",
         "",
     );

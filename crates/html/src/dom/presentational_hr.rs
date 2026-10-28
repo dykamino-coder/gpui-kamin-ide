@@ -6,8 +6,8 @@
 //! тексту спеки). Здесь же общие разборы HTML §2.3.4.2 (неотрицательное целое)
 //! и §2.3.6 (устаревший цвет), которыми пользуются другие подсказки.
 
-use crate::document::state::ValueCx;
 use crate::style::css::Rule;
+use crate::values::ValueCx;
 
 fn attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
     attrs

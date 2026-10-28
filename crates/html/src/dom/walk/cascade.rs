@@ -32,7 +32,7 @@ pub(super) fn cascade_element(
     path: &[Ancestor],
     spot: Spot,
     sibs: Sibs,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> (
     Box<Computed>,
     VarMap,

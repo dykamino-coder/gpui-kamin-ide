@@ -1,7 +1,7 @@
 //! Сведения о длинном свойстве реестра по его месту в таблице.
 
 use super::{Grammar, LonghandId, Slot};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl LonghandId {
     pub fn name(self) -> &'static str {

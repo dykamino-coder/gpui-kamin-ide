@@ -3,7 +3,7 @@
 //! опорной коробки, из которого раскладка флоатов строит непрерывный `RoundedBox`.
 
 use super::ShapeBox;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// inset/rect/xywh/слово-коробка → прямоугольник (x,y,w,h) + радиусы.
 // Rounded rectangles pair their bounds with the four corner radii.

@@ -2,7 +2,7 @@
 //! схлопывания полей (`MarginCx`): значения документа плюс входы текущего уровня.
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CollapseInputs {

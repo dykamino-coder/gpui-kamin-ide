@@ -9,7 +9,7 @@ fn authored_height(cx: &mut gpui::TestAppContext, style: &str, content: &str) ->
     let cx = cx.add_empty_window();
     let mut height = 0.;
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-            let tree = crate::dom::parse(&format!("<!doctype html><section style='width:100px;column-count:2;{style}'>{content}</section>"), "");
+            let tree = crate::document::parsed::parse(&format!("<!doctype html><section style='width:100px;column-count:2;{style}'>{content}</section>"), "");
             let mut opts = RenderOpts { viewport: (400., 400.), normal_line_height: 1.2, text: Default::default(), cx: Default::default(), frag: Default::default() };
             opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
             opts.cx.values.viewport = opts.viewport;
@@ -107,7 +107,7 @@ fn float_balance_trials_keep_the_source_and_repeated_layout_stable(cx: &mut gpui
         ),
     ] {
         cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-            let tree = crate::dom::parse(&format!("<section style='width:200px;column-count:2;column-gap:0;{style}'>{content}</section>"), "");
+            let tree = crate::document::parsed::parse(&format!("<section style='width:200px;column-count:2;column-gap:0;{style}'>{content}</section>"), "");
             let mut opts = RenderOpts { viewport: (400., 400.), normal_line_height: 1.2, text: Default::default(), cx: Default::default(), frag: Default::default() };
             opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
             opts.cx.values.viewport = opts.viewport;

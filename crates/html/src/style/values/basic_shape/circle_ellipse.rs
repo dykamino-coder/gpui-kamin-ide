@@ -2,8 +2,8 @@
 //! `at` в одно-, двух- и четырёхзначной записи с `calc()`, радиусы из длин, долей и ключевых
 //! слов `closest-/farthest-side|corner`; хвост с опорной коробкой отбрасывается.
 
-use crate::document::state::ValueCx;
 use crate::style::css::value_tokens::split_top;
+use crate::values::ValueCx;
 
 /// Параметры формы `circle(...)` / `ellipse(...)`: центр и радиусы в
 /// точках растра; `scale` переводит точечные величины записи (CSS) в них.

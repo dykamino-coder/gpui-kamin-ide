@@ -10,7 +10,7 @@
 //! Числа матриц — из спецификации (CSS Color 4, приложение о преобразованиях).
 //! Менять их «на глаз» нельзя: они согласованы между собой и с точками белого.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 pub(crate) use gradient_stop::{
     colour_at as gradient_colour_at, out_of_gamut, parse as interpolation_color,
 };
@@ -169,7 +169,7 @@ mod tests {
     /// Белый и красный обязаны совпасть во всех записях.
     #[test]
     fn known_colors_survive_the_conversion() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         close(
             parse("lab(100% 0 0)", vcx).unwrap(),
@@ -198,7 +198,7 @@ mod tests {
     /// `hwb`: белизна с чернотой в сумме за единицу дают серый.
     #[test]
     fn hwb_mixes_white_and_black() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         close(
             parse("hwb(0 100% 0%)", vcx).unwrap(),
@@ -220,7 +220,7 @@ mod tests {
     /// Доли смешивания приводятся к единице.
     #[test]
     fn color_mix_honours_shares() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         close(
             parse("color-mix(in srgb, white 25%, black 75%)", vcx).unwrap(),

@@ -1,11 +1,11 @@
 //! Фазы вычисления: список фаз, порядок применения и входы `ComputeCx`.
 
 use super::Phase;
-use crate::document::state::DocState;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Media, Origin, Rule, Selector, VarMap, parse_decls, parse_decls_in};
 use crate::style::values::value::Len;
+use crate::values::DocumentValues;
 
 fn rule(css: &str, specificity_selector: &str) -> Rule {
     Rule {
@@ -64,7 +64,7 @@ fn dependencies_come_before_their_consumers() {
 /// письма, а не по порядку блоков.
 #[test]
 fn logical_side_radius_maps_by_the_writing_phase_output() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let r = rule("border-inline-start-radius: 10px", "p");
     let inline = parse_decls_in("direction: rtl", vcx);
@@ -79,7 +79,7 @@ fn logical_side_radius_maps_by_the_writing_phase_output() {
 /// кегля корня (css-values-4 §6.1.4).
 #[test]
 fn root_rem_uses_the_root_font_phase() {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let none = parse_decls_in("", vcx);
     let r = rule("font-size: 2rem; margin-left: 1rem", "html");
@@ -102,7 +102,7 @@ fn root_rem_uses_the_root_font_phase() {
 /// схема, с которой пришёл контекст родителя.
 #[test]
 fn color_scheme_decides_light_dark_of_the_same_element() {
-    let doc = DocState::new(Media {
+    let doc = DocumentValues::detached(Media {
         dark: true,
         ..Media::default()
     });

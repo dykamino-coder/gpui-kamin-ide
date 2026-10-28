@@ -4,9 +4,9 @@
 //! (`x`/`y`, `cx`…), `appearance`, `view-transition-name`. Замыкает цепочку групп; таймлайны
 //! и ограничение — в подмодулях `timing`, `containment`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 mod containment;
 mod filter;
 mod timing;

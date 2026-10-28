@@ -8,7 +8,7 @@ use crate::style::values::value::Len;
 #[test]
 fn vertical_empty_page_floats_keep_bandflow_extent_and_physical_tree() {
     for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             &format!(
                 "<div style='writing-mode:{mode};height:100px'><div style='float:left;width:40px;height:70px'></div><div style='float:right;width:60px;height:70px'></div></div>"
             ),
@@ -39,7 +39,7 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
     use crate::layout::fragment::{ShapeCx, flow::blocks::Laid};
     for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
         for direction in ["ltr", "rtl"] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!(
                     "<div style='writing-mode:{mode};direction:{direction};margin-left:calc(10% + 3px);margin-right:7px;padding:1px'><div style='width:20px'></div><div style='break-before:page;width:30px'></div></div>"
                 ),
@@ -107,7 +107,7 @@ fn vertical_page_grid_table_and_flex_use_native_recorders_without_an_estimate() 
             "<div style='display:flex;flex-direction:row;flex-wrap:wrap'><div>first</div><div>second</div></div>",
             "<div style='display:flex;flex-direction:column-reverse;flex-wrap:wrap-reverse'><div>first</div><div>second</div></div>",
         ] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!("<div style='writing-mode:{mode}'>{body}</div>"),
                 "",
             );

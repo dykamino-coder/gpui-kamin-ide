@@ -2,8 +2,8 @@
 //! (css-text-decor-3 §2.1) с цветом, толщиной, смещением и шрифтом украшающей коробки.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 
 /// Украшения текста (css-text-decor-3 §2.1): линии не наследуются, а
 /// РАСПРОСТРАНЯЮТСЯ на всех потомков в потоке, кроме атомарных строчных

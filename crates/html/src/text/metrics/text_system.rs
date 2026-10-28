@@ -6,7 +6,7 @@
 
 use super::space;
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 pub(crate) fn load_font(
     bytes: Vec<u8>,

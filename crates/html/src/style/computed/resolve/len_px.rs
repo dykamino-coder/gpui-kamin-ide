@@ -6,9 +6,9 @@
 //! окном — `LenCx`, `len_cx.rs`), а `auto`, размеры по содержимому и
 //! `anchor()` — не длины, у них `None`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, calc_get};
+use crate::values::ValueCx;
 
 /// Контекст шрифта для единиц, зависящих от кегля и глифов.
 #[derive(Clone, Copy, Debug)]
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn percentage_needs_a_basis() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         assert_eq!(Len::Pct(0.5).to_px(None, FontCx::FALLBACK, vcx), None);
         assert_eq!(
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn font_units_follow_the_context() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let font = FontCx::new("", 20.0);
         assert_eq!(Len::Em(2.0).to_px(None, font, vcx), Some(40.0));
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn keywords_and_viewport_units_are_not_lengths() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for l in [
             Len::Auto,
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn computed_font_context_reads_size_family_and_line() {
-        let doc = crate::document::state::DocState::new(Default::default());
+        let doc = crate::values::DocumentValues::detached(Default::default());
         let vcx = doc.values();
         let c = {
             let mut with_inherited = Computed {

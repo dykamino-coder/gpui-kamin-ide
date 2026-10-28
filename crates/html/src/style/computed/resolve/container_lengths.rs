@@ -1,7 +1,7 @@
 //! Единицы контейнера в составных computed values: до наследования потомками и paint.
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, DecorLen, ViewportCx};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn resolve_container_other_lengths(&mut self, vp: ViewportCx, vcx: ValueCx<'_>) {

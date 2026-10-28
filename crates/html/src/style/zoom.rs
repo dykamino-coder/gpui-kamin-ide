@@ -41,7 +41,7 @@ pub(crate) fn apply(
     parent: Option<&Computed>,
     eff: f32,
     own: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     // Кегль — первым и отдельно: от него стадия считает все `em` элемента,
     // и в `scale_own` он НЕ входит (иначе множитель лёг бы дважды).

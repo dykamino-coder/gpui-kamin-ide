@@ -1,9 +1,9 @@
 //! План размещения по якорю: вычисление вставок, запасные позиции, переворот сторон.
 
 use super::{AnchorPlan, tf_under};
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{AnchorFn, AnchorSide, Len, anchor_get};
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels};
 mod axis;
 mod compute;

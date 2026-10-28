@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn calc_adds_homogeneous_operands() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(Len::parse("calc(100px + 20px)", vcx), Some(Len::Px(120.0)));
     assert_eq!(Len::parse("calc(100% - 25%)", vcx), Some(Len::Pct(0.75)));
@@ -12,7 +12,7 @@ fn calc_adds_homogeneous_operands() {
 
 #[test]
 fn mixed_calc_with_percent_is_still_dropped() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Долю и точки сложить пока нечем (замерено на gap-003);
     // шрифтовая смесь живёт.
@@ -26,7 +26,7 @@ fn mixed_calc_with_percent_is_still_dropped() {
 
 #[test]
 fn mixed_calc_survives_for_paint_consumers() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Потребители с известным размером коробки просят смесь ЯВНО.
     let Some(Len::Calc(idx)) = Len::parse_mixed("calc(100% - 24px)", vcx) else {
@@ -52,7 +52,7 @@ fn mixed_calc_survives_for_paint_consumers() {
 
 #[test]
 fn calc_sums_many_terms_with_precedence() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Слагаемые сокращаются: `6em - 12em/2` даёт ноль, остаётся чистая доля.
     assert_eq!(
@@ -73,7 +73,7 @@ fn calc_sums_many_terms_with_precedence() {
 
 #[test]
 fn spacing_calc_folds_percent_into_em() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Для интервалов доля и `em` считаются от кегля — их можно сложить.
     assert_eq!(
@@ -86,7 +86,7 @@ fn spacing_calc_folds_percent_into_em() {
 
 #[test]
 fn viewport_units_survive_parsing() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(Len::parse("50vw", vcx), Some(Len::Vw(0.5)));
     assert_eq!(Len::parse("100vh", vcx), Some(Len::Vh(1.0)));
@@ -94,7 +94,7 @@ fn viewport_units_survive_parsing() {
 
 #[test]
 fn pure_percentage_calculation_handles_variadic_and_typed_functions() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(
         calc_pct_px("calc(min(30%, 20%, 10%, 40%) + hypot(3px, 4px, 12px))", vcx),

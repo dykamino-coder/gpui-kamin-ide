@@ -3,7 +3,7 @@
 
 #[test]
 fn var_fallback_with_nested_parens_survives_a_defined_variable() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Конец записи — парная скобка, а запятая ищется на верхнем уровне:
     // иначе при ЗАДАННОЙ переменной оставалась лишняя скобка и значение
@@ -36,7 +36,7 @@ fn var_fallback_with_nested_parens_survives_a_defined_variable() {
 
 #[test]
 fn important_survives_a_later_ordinary_rule() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Важность — самый старший ключ сравнения (CSS Cascade §6.1): важное
     // объявление раннего правила переживает обычное объявление позднего,
@@ -72,7 +72,7 @@ fn important_survives_a_later_ordinary_rule() {
 
 #[test]
 fn author_sheet_beats_user_agent_regardless_of_specificity() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Происхождение старше специфичности (CSS Cascade §6.4.4). Пока обе
     // таблицы сравнивались только специфичностью, `* { margin: 0 }` со
@@ -108,7 +108,7 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
 
 #[test]
 fn font_shorthand_takes_size_with_line_height_and_family() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Пробелы вокруг косой черты допустимы, и семейство начинается ПОСЛЕ
     // высоты строки: раньше «/ 1 Ahem» уезжало в семейство целиком, и
@@ -131,7 +131,7 @@ fn font_shorthand_takes_size_with_line_height_and_family() {
 #[test]
 fn apply_decls_is_deterministic_and_takes_the_cascade_order() {
     use crate::style::values::value::Len;
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut seen = std::collections::BTreeSet::new();
     for _ in 0..64 {
         let mut c = crate::style::computed::Computed::default();
@@ -153,7 +153,7 @@ fn apply_decls_is_deterministic_and_takes_the_cascade_order() {
 #[test]
 fn apply_decls_applies_important_after_normal() {
     use crate::style::values::value::Len;
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut c = crate::style::computed::Computed::default();
     c.apply_decls(
         &crate::style::css::parse_decls("top: 3px !important; top: 1px"),

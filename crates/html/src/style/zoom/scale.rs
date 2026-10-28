@@ -13,7 +13,7 @@ mod structured;
 fn scale_calc(
     i: crate::style::values::value::CalcId,
     k: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Len {
     let mut sum = crate::style::values::value::calc_get(i, vcx);
     if sum.px == 0.0 {
@@ -33,7 +33,7 @@ pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
 /// Собственные длины в точках × `k`. Доли, `auto`, единицы окна, calc-арена
 /// и единицы шрифта не трогаются (§493; шрифтовые считаются от уже
 /// домноженного кегля).
-pub(crate) fn scale_own(c: &mut Computed, k: f32, vcx: crate::document::state::ValueCx<'_>) {
+pub(crate) fn scale_own(c: &mut Computed, k: f32, vcx: crate::values::ValueCx<'_>) {
     rule_widths::scale(c, k);
     let mul = |l: &mut Option<Len>| match *l {
         Some(Len::Px(v)) => *l = Some(Len::Px(v * k)),

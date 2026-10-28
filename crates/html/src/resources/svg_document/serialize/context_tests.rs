@@ -1,9 +1,9 @@
 //! Тесты: сериализация изолирует состояние документа и восстанавливает окружающий viewport.
 
 use super::{serialize, serialize_sized, write_element};
-use crate::document::state::DocState;
 use crate::dom::{Element, Node, parse};
 use crate::style::values::value::Len;
+use crate::values::DocumentValues;
 
 fn find(nodes: &[Node], tag: &str) -> Option<Element> {
     nodes.iter().find_map(|node| match node {
@@ -27,7 +27,7 @@ fn translate_rects(e: &mut Element) {
 
 #[test]
 fn sized_document_does_not_change_independent_serialization() {
-    let doc = DocState::new(Default::default());
+    let doc = DocumentValues::detached(Default::default());
     let large = find(&parse(r#"<svg width="800" height="600"/>"#, ""), "svg").expect("svg");
     let mut rect = find(&parse("<svg><rect/></svg>", ""), "rect").expect("rect");
     translate_rects(&mut rect);
@@ -42,7 +42,7 @@ fn sized_document_does_not_change_independent_serialization() {
 
 #[test]
 fn nested_viewport_does_not_change_following_sibling() {
-    let doc = DocState::new(Default::default());
+    let doc = DocumentValues::detached(Default::default());
     let mut root = find(
         &parse(r#"<svg width="200" height="100"><rect/><svg width="80" height="40"><rect/></svg><rect/></svg>"#, ""),
         "svg",

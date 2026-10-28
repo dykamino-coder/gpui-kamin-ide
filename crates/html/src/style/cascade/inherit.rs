@@ -10,7 +10,7 @@
 //! анонимные коробки, коробки страниц и маркеров, слои псевдоэлементов
 //! (CSS 2.1 §9.2.1.1: анонимная коробка наследует у своей коробки-родителя).
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 use crate::style::computed::box_predicates::{backdrop_root, establishes_cb};
 use crate::style::computed::{BoxStyle, Computed};

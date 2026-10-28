@@ -3,7 +3,8 @@
 mod element_nodes;
 #[cfg(test)]
 mod tests {
-    use crate::dom::{Node, parse};
+    use crate::document::parsed::parse;
+    use crate::dom::Node;
     use crate::layout::cx::{BuildDoc, LayoutCx};
     use crate::style::computed::BoxStyle;
     use crate::text::inline::{self, Piece};

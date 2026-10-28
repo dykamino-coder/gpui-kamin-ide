@@ -2,8 +2,8 @@
 //! слой), mask-repeat и mask-position (по слоям), clip-path.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::props::background::values::coord_box;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_mask_layers(

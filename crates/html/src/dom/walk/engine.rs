@@ -5,10 +5,10 @@ use super::{
     pending::{Pending, Restore},
     sibling_survey::{Survey, Visit},
 };
-use crate::document::state::ValueCx;
 use crate::dom::outcome::TraversalKind;
 use crate::dom::{Node, shadow::Scope, tree_index::TreeIndex};
 use crate::style::{css::VarMap, generated::counters::Counters, select::Ancestor};
+use crate::values::ValueCx;
 use markup5ever_rcdom::{Handle, NodeData};
 use std::rc::Rc;
 
@@ -145,7 +145,7 @@ pub(crate) fn walk_children(
                 );
             }
             Work::Visit(v) => {
-                let limit = crate::document::state::MAX_DEPTH;
+                let limit = crate::values::MAX_DEPTH;
                 if v.depth > limit
                     && matches!(
                         v.handle().data,

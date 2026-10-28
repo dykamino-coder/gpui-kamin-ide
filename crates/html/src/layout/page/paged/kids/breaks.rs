@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn nested_atomic_inline_keeps_the_enclosing_block_recorder() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div><div style='height:100px;clear:both'><div style='float:left;height:100px'></div><span>X<span style='display:inline-block;height:100%'></span><br>Y</span></div></div>",
             "",
         );
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn atomic_inline_content_does_not_hide_forced_break_between_block_parents() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div><div><span style='display:inline-block'>one</span></div><div style='break-before:page'><span style='display:inline-block'>two</span></div></div>",
             "",
         );

@@ -1,8 +1,8 @@
 //! Метрики нативных элементов управления, независимые от UI встраивающего приложения.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BoxStyle, FontCx};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 // Blink html.css / LayoutThemeDefault and WebThemeEngine on Windows.
 pub(crate) enum ControlKind {
@@ -56,7 +56,7 @@ mod tests {
 
     #[test]
     fn text_entry_clamps_only_short_lines() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = {
             let mut with_inherited = Computed {

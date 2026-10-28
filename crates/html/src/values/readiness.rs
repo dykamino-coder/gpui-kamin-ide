@@ -37,7 +37,7 @@ impl DocumentValues {
     }
 
     /// Вложенные failures возникают и при отложенной сборке дочернего кадра.
-    pub(crate) fn embedded_failure(&self) -> Option<crate::document::DocumentFailure> {
+    pub(crate) fn embedded_failure(&self) -> Option<crate::dom::outcome::DocumentFailure> {
         self.embedded_failure.get().or_else(|| {
             self.readiness
                 .children
@@ -47,7 +47,7 @@ impl DocumentValues {
         })
     }
 
-    pub(crate) fn child_traversal_limit(&self) -> Option<crate::document::TraversalLimit> {
+    pub(crate) fn child_traversal_limit(&self) -> Option<crate::dom::outcome::TraversalLimit> {
         self.readiness.children.borrow().iter().find_map(|child| {
             child
                 .traversal_limit()
@@ -70,58 +70,56 @@ impl DocumentValues {
 
 #[cfg(test)]
 mod tests {
-    use crate::document::state::DocState;
+    use crate::values::DocumentValues;
 
     #[test]
     fn nested_terminal_failure_is_visible_to_the_root_document() {
-        let root = DocState::new(Default::default());
-        let child = DocState::new(Default::default());
-        let grandchild = DocState::new(Default::default());
-        let mut failure =
-            crate::document::DocumentFailure::new(crate::document::FailureReason::XmlSyntax {
-                row: 1,
-                column: 2,
-            });
-        failure.scope = crate::document::FailureScope::EmbeddedDocument;
-        grandchild.values.embedded_failure.set(Some(failure));
-        child.values.observe_child(grandchild.values.clone());
-        root.values.observe_child(child.values.clone());
-        assert_eq!(root.values.embedded_failure(), Some(failure));
+        let root = DocumentValues::detached(Default::default());
+        let child = DocumentValues::detached(Default::default());
+        let grandchild = DocumentValues::detached(Default::default());
+        let mut failure = crate::dom::outcome::DocumentFailure::new(
+            crate::dom::outcome::FailureReason::XmlSyntax { row: 1, column: 2 },
+        );
+        failure.scope = crate::dom::outcome::FailureScope::EmbeddedDocument;
+        grandchild.embedded_failure.set(Some(failure));
+        child.observe_child(grandchild.clone());
+        root.observe_child(child.clone());
+        assert_eq!(root.embedded_failure(), Some(failure));
     }
 
     #[test]
     fn nested_traversal_limit_reaches_the_root_without_rejecting_it() {
-        let root = DocState::new(Default::default());
-        let child = DocState::new(Default::default());
-        let grandchild = DocState::new(Default::default());
-        grandchild.values.traversal.set_embedded();
+        let root = DocumentValues::detached(Default::default());
+        let child = DocumentValues::detached(Default::default());
+        let grandchild = DocumentValues::detached(Default::default());
+        grandchild.traversal.set_embedded();
         grandchild
-            .values
             .traversal
-            .limit(crate::document::TraversalKind::BoxBuild, 64, 65);
-        let expected = grandchild.values.traversal_limit();
-        child.values.observe_child(grandchild.values.clone());
-        root.values.observe_child(child.values.clone());
-        assert_eq!(root.values.child_traversal_limit(), expected);
-        assert!(root.values.embedded_failure().is_none());
+            .limit(crate::dom::outcome::TraversalKind::BoxBuild, 64, 65);
+        let expected = grandchild.traversal_limit();
+        child.observe_child(grandchild.clone());
+        root.observe_child(child.clone());
+        assert_eq!(root.child_traversal_limit(), expected);
+        assert!(root.embedded_failure().is_none());
     }
 
     #[test]
     fn paint_and_all_nested_work_must_finish() {
-        let doc = DocState::new(Default::default());
-        let child = DocState::new(Default::default());
-        assert!(!doc.values.frame_ready());
-        doc.values.painted.set(true);
-        assert!(doc.values.frame_ready());
-        doc.values.observe_child(child.values.clone());
-        assert!(!doc.values.frame_ready());
-        child.values.painted.set(true);
-        assert!(doc.values.frame_ready());
-        child.values.defer_frame();
-        assert!(!doc.values.frame_ready());
-        doc.begin_frame();
-        assert!(!doc.values.frame_ready());
-        doc.values.painted.set(true);
-        assert!(doc.values.frame_ready());
+        let doc = DocumentValues::detached(Default::default());
+        let child = DocumentValues::detached(Default::default());
+        assert!(!doc.frame_ready());
+        doc.painted.set(true);
+        assert!(doc.frame_ready());
+        doc.observe_child(child.clone());
+        assert!(!doc.frame_ready());
+        child.painted.set(true);
+        assert!(doc.frame_ready());
+        child.defer_frame();
+        assert!(!doc.frame_ready());
+        doc.begin_frame_inputs();
+        doc.reset_painted_frame();
+        assert!(!doc.frame_ready());
+        doc.painted.set(true);
+        assert!(doc.frame_ready());
     }
 }

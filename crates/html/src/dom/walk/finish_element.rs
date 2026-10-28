@@ -7,9 +7,9 @@
 //! §2.1.2), анонимный руби-контейнер, признаки `block_tag`/`decor_box`,
 //! замена элемента картинкой из `content` (css-content-3 §content-property).
 
-use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
+use crate::values::ValueCx;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_element(

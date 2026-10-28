@@ -1,8 +1,8 @@
 //! Вычисленное выражение background-position и его разрешение шрифта только в каскаде.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::resolve::image_lengths::lengths;
 use crate::style::values::value::LengthExpression;
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PositionExpression {

@@ -43,7 +43,7 @@ pub(in crate::style::computed::props) fn shape_valid(v: &str) -> bool {
 /// CSS 2.1 §11.1.2: четыре auto/length; проценты и смешанные разделители запрещены.
 pub(super) fn clip_rect(
     v: &str,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<Option<[Option<crate::style::values::value::Len>; 4]>> {
     use crate::style::values::value::Len;
     if v == "auto" {

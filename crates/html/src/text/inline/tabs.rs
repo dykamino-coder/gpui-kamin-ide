@@ -15,7 +15,7 @@ pub fn tab_stops(
     block: &Computed,
     base: &gpui::TextStyle,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> TabStops {
     let size = block
         .used_font(

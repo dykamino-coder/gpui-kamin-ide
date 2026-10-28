@@ -1,8 +1,8 @@
 //! Узлы содержимого полевых коробок страницы (content: строки и счётчики).
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::Computed;
+use crate::values::ValueCx;
 
 // CSS Paged Media 3 §populating-margin-boxes uses the ordinary generated
 // content model (CSS Content 3 §2), including quotes and inline images.

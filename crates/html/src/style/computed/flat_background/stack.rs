@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn text_blends_with_lower_backgrounds_but_not_the_page() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = BoxStyle::default();
         c.apply_one(
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn a_tiled_constant_gradient_still_only_colors_glyphs() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = BoxStyle::default();
         c.apply_one("background-image", "linear-gradient(green, green)", vcx);
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn unavailable_lower_image_keeps_the_background_color() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = BoxStyle::default();
         c.apply_one(

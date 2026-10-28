@@ -1,7 +1,7 @@
 //! Правила `@counter-style` документа (css-counter-styles-3 §3).
 //!
 //! Разбор стилевых листов кладёт дескрипторы каждого действительного
-//! правила (`register`) в реестр текущего документа (`document::state`):
+//! правила (`register`) в реестр текущего документа (`values`):
 //! у рамки свой документ и свои правила. Представление значения строится по алгоритму спеки
 //! §counter-style-generate: диапазон → резерв, начальное представление по
 //! системе, дополнение `pad`, знак `negative`. Предопределённые стили
@@ -59,16 +59,16 @@ mod tests {
     //! Тесты правил @counter-style: разбор дескрипторов, системы, запасные стили.
 
     use super::*;
-    use crate::document::state::ValueCx;
+    use crate::values::ValueCx;
 
     fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce(ValueCx<'_>)) {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         for (name, descs) in css {
             let mut d = crate::style::css::DeclBlock::new();
             for (k, v) in descs.iter() {
                 d.push(*k, *v, false);
             }
-            register(&doc.values, name, &d);
+            register(&doc, name, &d);
         }
         f(doc.values());
     }

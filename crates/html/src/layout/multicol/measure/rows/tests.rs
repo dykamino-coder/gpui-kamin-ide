@@ -20,7 +20,8 @@ fn host(nodes: &[Node]) -> &Element {
 
 #[test]
 fn addressed_budget_keeps_first_remainder_and_later_constraints() {
-    let tree = crate::dom::parse("<div style='height:500px; min-height:600px'></div>", "");
+    let tree =
+        crate::document::parsed::parse("<div style='height:500px; min-height:600px'></div>", "");
     let e = host(&tree);
     let opts = RenderOpts {
         text: Default::default(),
@@ -52,7 +53,7 @@ fn addressed_budget_keeps_first_remainder_and_later_constraints() {
     assert_eq!((plan.nest_rows, plan.nest_phase), (Some(100.), 75.));
     assert_eq!(e.style.used().min_height, Some(Len::Px(600.)));
     for property in ["column-height:30px", "column-wrap:nowrap"] {
-        let tree = crate::dom::parse(&format!("<div style='{property}'></div>"), "");
+        let tree = crate::document::parsed::parse(&format!("<div style='{property}'></div>"), "");
         let plan = row_plan(
             host(&tree),
             &Computed::default(),
@@ -69,7 +70,7 @@ fn addressed_budget_keeps_first_remainder_and_later_constraints() {
 #[test]
 fn measured_rows_and_auto_prefix_share_constraints_without_mutating_host() {
     use crate::layout::multicol::dimensions::MulticolDimensions;
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         "<div style='height:500px; max-height:90px; min-height:60px'></div>",
         "",
     );

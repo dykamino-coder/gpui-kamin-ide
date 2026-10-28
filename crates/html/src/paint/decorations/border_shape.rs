@@ -1,6 +1,6 @@
 //! Рамка `border-shape` (css-borders-4 §border-shape) растровым слоем.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 use crate::style::values::value::px_lossy_zero;
 use gpui::{IntoElement, Styled, px};

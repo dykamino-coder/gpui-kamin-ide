@@ -5,7 +5,7 @@ use crate::style::values::value::Len;
 
 #[test]
 fn shape_image_uses_computed_lengths_and_clears_with_none_or_basic_shape() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);
@@ -30,7 +30,7 @@ fn shape_image_uses_computed_lengths_and_clears_with_none_or_basic_shape() {
 
 #[test]
 fn masks_and_backgrounds_share_computed_font_lengths() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for raw in [
         "linear-gradient(red 1em, blue 2lh)",
@@ -58,7 +58,7 @@ fn masks_and_backgrounds_share_computed_font_lengths() {
 
 #[test]
 fn mask_none_clears_the_previous_image() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut style = Computed::default();
     style.apply_one("mask-image", "url(mask.svg)", vcx);
@@ -69,7 +69,7 @@ fn mask_none_clears_the_previous_image() {
 
 #[test]
 fn absent_layers_keep_their_composition_indices() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut style = Computed::default();
     style.apply_one("mask-image", "url(a.svg), none, url(b.svg)", doc.values());
     assert_eq!(
@@ -85,7 +85,7 @@ fn absent_layers_keep_their_composition_indices() {
 #[test]
 fn inherited_mask_uses_own_line_height_before_group_construction() {
     use crate::style::cascade::inherit::inherit;
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut parent = Computed::default();
     parent.apply_one("font-size", "50px", vcx);

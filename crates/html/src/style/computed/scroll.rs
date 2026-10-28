@@ -6,8 +6,8 @@
 //! (CSS Overflow 3 §3) при наследовании.
 
 use super::Computed;
-use crate::document::state::ValueCx;
 use crate::style::values::value::StyleColor;
+use crate::values::ValueCx;
 
 mod inherit;
 pub(crate) use inherit::inherit;
@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn scrollbar_color_inherits_but_geometry_does_not() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("scrollbar-color", "rgb(255, 0, 0) blue", vcx);
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn inherited_scrollbar_current_color_resolves_with_the_child_color() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut declaration = Computed::default();
         declaration.apply_one("color", "red", vcx);
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn invalid_scrollbar_color_preserves_the_last_valid_declaration() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("scrollbar-color", "red blue", vcx);
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn initial_opposite_overflow_axis_computes_to_auto_without_becoming_forced() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         use crate::style::computed::Overflow;
         let mut own = Computed::default();
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn clip_preserves_non_scroll_pairs_and_computes_to_hidden_beside_auto() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         use crate::style::computed::Overflow;
         for (declaration, expected) in [
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn root_used_gutter_suppression_does_not_change_explicit_computed_inheritance() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one("scrollbar-gutter", "both-edges  stable", vcx);

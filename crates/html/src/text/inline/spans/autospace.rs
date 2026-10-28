@@ -31,7 +31,7 @@ use crate::text::inline::*;
 pub fn autospace_spans(
     pieces: &[Piece],
     base_size: f32,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     // Знак перед курсором: его смещение, длина, стиль и кегль куска.

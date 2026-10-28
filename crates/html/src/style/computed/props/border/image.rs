@@ -2,7 +2,7 @@
 //! (Computed::set_border_image).
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Computed {
     /// Разбор всех пяти свойств рамки-картинки в одну запись.

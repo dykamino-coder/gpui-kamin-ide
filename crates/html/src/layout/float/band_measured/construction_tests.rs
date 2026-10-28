@@ -1,7 +1,7 @@
 //! Тесты: построение band-хоста сохраняет порядок float, ширину и продолжение абзаца.
 
 use super::*;
-use crate::dom::parse;
+use crate::document::parsed::parse;
 use crate::layout::float::band_flow_host::band_flow_rest_lift;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -16,7 +16,7 @@ pub(super) fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
 
 pub(super) fn default_host(
     nodes: &[Node],
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     band_host_m(nodes, 0, 16.0, &[], FloatCb::of(&Computed::default()), vcx)
 }

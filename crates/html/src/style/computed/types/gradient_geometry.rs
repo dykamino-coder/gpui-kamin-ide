@@ -1,7 +1,7 @@
 //! Вычисленные направления градиентов и конечные формы радиальных; размер не разрешается.
 
 use super::{BgPos, Len, parse_pos_words};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) enum GradientShape {
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn radial_shape_retains_radii_position_and_extent() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let shape = GradientShape::parse(
             "radial-gradient(ellipse 20px 40% at 25% 75% in oklch longer hue, red, blue)",
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn corners_keep_all_quadrants_until_image_size_is_known() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for (words, x, y, angle) in [
             ("top right", 1.0, -1.0, 26.56505),

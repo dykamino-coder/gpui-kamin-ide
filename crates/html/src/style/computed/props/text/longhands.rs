@@ -5,10 +5,10 @@
 //! `inherited_value` до обработчика.
 
 use super::values;
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, DECOR_THROUGH, DECOR_UNDER};
 use crate::style::css::LonghandId;
 use crate::style::values::value::StyleColor;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(crate) fn apply_text_longhand(&mut self, id: LonghandId, v: &str, vcx: ValueCx<'_>) {

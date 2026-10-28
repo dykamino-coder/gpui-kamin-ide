@@ -19,7 +19,7 @@ fn rule(css: &str, origin: Origin, layer: Vec<u32>, order: usize) -> Rule {
 
 #[test]
 fn repeated_property_wins_at_its_own_position() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut c = Computed::default();
     c.apply_decls(
@@ -31,7 +31,7 @@ fn repeated_property_wins_at_its_own_position() {
 
 #[test]
 fn invalid_winner_yields_to_the_previous_candidate() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Свойство вне реестра проверяется применением: негодный победитель
     // уступает прежнему кандидату.
@@ -46,7 +46,7 @@ fn invalid_winner_yields_to_the_previous_candidate() {
 
 #[test]
 fn invalid_registry_value_never_becomes_a_declaration() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut c = Computed::default();
     c.apply_decls(&parse_decls_in("width: 10px; width: bogus", vcx), vcx);
@@ -70,7 +70,7 @@ fn invalid_registry_value_never_becomes_a_declaration() {
 
 #[test]
 fn shorthand_and_longhand_follow_the_order_of_appearance() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // M02: the shorthand is expanded at parse, so its longhands compete with
     // the earlier longhand by position.
@@ -91,7 +91,7 @@ fn shorthand_and_longhand_follow_the_order_of_appearance() {
 
 #[test]
 fn rollback_reaches_the_user_agent_and_the_previous_layer() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let ua = rule("width: 10px", Origin::UserAgent, vec![u32::MAX], 0);
     let author = rule("width: 20px", Origin::Author, vec![u32::MAX], 0);
@@ -114,7 +114,7 @@ fn rollback_reaches_the_user_agent_and_the_previous_layer() {
 
 #[test]
 fn important_inline_is_below_important_user_agent() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let ua = rule(
         "color: green !important",
@@ -128,7 +128,7 @@ fn important_inline_is_below_important_user_agent() {
 
 #[test]
 fn pseudo_layer_keeps_importance_across_rules() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let a = rule("color: green !important", Origin::Author, vec![u32::MAX], 0);
     let b = rule("color: red", Origin::Author, vec![u32::MAX], 1);
@@ -145,7 +145,7 @@ fn pseudo_layer_keeps_importance_across_rules() {
 
 #[test]
 fn all_initial_resets_earlier_rules_but_not_later_ones() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let a = rule(
         "display: list-item; float: left; letter-spacing: 1em; width: 3px",
@@ -169,7 +169,7 @@ fn all_initial_resets_earlier_rules_but_not_later_ones() {
 
 #[test]
 fn revert_without_agent_rule_keeps_the_implicit_agent_default() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut c = Computed::default();
     c.apply_decls(&parse_decls("display: inline; display: revert"), vcx);
@@ -181,7 +181,7 @@ fn revert_without_agent_rule_keeps_the_implicit_agent_default() {
 
 #[test]
 fn legacy_name_alias_shares_the_cascade_slot_of_its_property() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // `range-percent-intrinsic-size-2`: `-webkit-appearance` is `appearance`
     // at parse time (css-cascade-5 §2.1), so the more specific rule's

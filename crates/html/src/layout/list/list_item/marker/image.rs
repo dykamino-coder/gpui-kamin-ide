@@ -1,12 +1,12 @@
 //! Картинка маркера: сервис изображений документа и default sizing из
 //! css-lists-3 §image-markers / css-images-3 §default-sizing.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::layout::table::anon::anon_element;
 use crate::resources::{css_images::computed_source, images::natural::default_size};
 use crate::style::computed::{Computed, ContentItem};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(super) fn resolve(
     item: &Computed,

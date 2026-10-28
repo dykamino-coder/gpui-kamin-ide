@@ -3,8 +3,8 @@
 //! CSS Values 4 §10.12: `calc()`/`min()`/`max()`/`clamp()` вне диапазона годны
 //! и зажимаются по результату, а голое отрицательное значение негодно.
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(super) fn parse_nonnegative_size(value: &str, vcx: ValueCx<'_>) -> Option<Len> {
     let parsed = Len::parse_mixed(value, vcx)?;

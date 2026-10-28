@@ -4,12 +4,12 @@
 //! `text-emphasis-position` (§3.2), `ruby-position`, `ruby-align`,
 //! `ruby-overhang`, `ruby-merge` (css-ruby-1 §4).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{
     Computed, DecorLen, RubyAlign, RubyOverhang, UPOS_FROM_FONT, UPOS_LEFT, UPOS_RIGHT, UPOS_UNDER,
     box_shadow_valid, has_font_units, parse_decor_length, parse_shadows,
 };
 use crate::style::css::LonghandId;
+use crate::values::ValueCx;
 
 /// `text-shadow: none | <shadow>#` (без `inset`).
 pub(crate) fn text_shadow_ok(v: &str, vcx: ValueCx<'_>) -> bool {

@@ -7,7 +7,7 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::{Color, StyleColor};
 
 fn merged(parent: &Computed, decls: &[(&str, &str)]) -> Computed {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     for (key, value) in decls {

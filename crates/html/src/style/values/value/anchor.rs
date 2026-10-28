@@ -2,7 +2,7 @@
 //! числе внутри min/max/calc).
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Сторона якоря в `anchor()` (css-anchor-position-1 §anchor-fn);
 /// `center` разбирается как `Pct(0.5)` — спека так и определяет.
@@ -55,10 +55,10 @@ pub struct AnchorFn {
 
 /// Ручка `anchor()` (`Len::Anchor`) — как `CalcId`: тело в арене документа.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AnchorId(crate::document::state::ArenaKey);
+pub struct AnchorId(crate::values::ArenaKey);
 
 pub fn anchor_store(f: AnchorFn, vcx: ValueCx<'_>) -> AnchorId {
-    AnchorId(crate::document::state::store(
+    AnchorId(crate::values::store(
         vcx,
         |d| &d.anchor,
         std::rc::Rc::new(f),
@@ -67,7 +67,7 @@ pub fn anchor_store(f: AnchorFn, vcx: ValueCx<'_>) -> AnchorId {
 
 /// Функция по ручке — общим `Rc`, без копии вложенных `alts` на чтение.
 pub fn anchor_get(i: AnchorId, vcx: ValueCx<'_>) -> Option<std::rc::Rc<AnchorFn>> {
-    crate::document::state::load(vcx, |d| &d.anchor, i.0)
+    crate::values::load(vcx, |d| &d.anchor, i.0)
 }
 
 /// Тело `anchor(...)` без скобок: `[<name> || <side>] , <fallback>?`.

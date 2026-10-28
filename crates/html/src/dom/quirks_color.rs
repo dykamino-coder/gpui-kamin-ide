@@ -5,11 +5,11 @@
 //! которых `color_initial` — то есть цвет пришёл из `table { color: initial }`
 //! листа quirks, а не от авторского `inherit`/`currentColor`/значения.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::cascade::preparation::Colors;
 use crate::style::cascade::preparation::colors;
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 
 pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
     let Some(Node::Element(root)) = nodes.iter().find(|n| matches!(n, Node::Element(_))) else {
@@ -56,7 +56,7 @@ mod tests {
         nodes: &[Node],
         tag: &str,
         parent: &Colors,
-        vcx: crate::document::state::ValueCx<'_>,
+        vcx: crate::values::ValueCx<'_>,
     ) -> Option<Color> {
         nodes.iter().find_map(|node| {
             let Node::Element(e) = node else { return None };
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn initial_table_color_uses_body_but_other_initial_colors_do_not() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let doc = "<style>body{color:green}div{color:red}p{color:initial}</style><div><table><tr><td>X</table><p>X";
         let nodes = crate::dom::parse(doc, "");
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn author_inherited_colors_override_the_table_quirk() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for value in ["inherit", "currentColor", "unset", "red"] {
             let doc = format!(

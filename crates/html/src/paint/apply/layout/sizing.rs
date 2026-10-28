@@ -2,9 +2,9 @@
 //! width/height/min/max с учётом border-box, aspect-ratio как автоминимум.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_strict;
+use crate::values::ValueCx;
 
 pub(super) fn layout_sizing(
     mut d: Div,

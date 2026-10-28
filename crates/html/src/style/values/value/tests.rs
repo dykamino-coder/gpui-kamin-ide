@@ -5,7 +5,7 @@ use super::*;
 
 #[test]
 fn lengths() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(Len::parse("12px", vcx), Some(Len::Px(12.0)));
     assert_eq!(Len::parse(" 1.5rem ", vcx), Some(Len::Px(24.0)));
@@ -18,7 +18,7 @@ fn lengths() {
 
 #[test]
 fn root_font_units_parse() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // `rch`/`rex`/`ric`/`rcap` — точки по шрифту корня, а не обрывок `1r`
     // + `ch` (прежде объявление падало целиком).
@@ -32,7 +32,7 @@ fn root_font_units_parse() {
 
 #[test]
 fn colors_hex() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(
         Color::parse("#fff", vcx),
@@ -53,7 +53,7 @@ fn colors_hex() {
 
 #[test]
 fn colors_functions_and_names() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(
         Color::parse("rgb(255, 0, 0)", vcx),

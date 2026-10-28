@@ -2,7 +2,7 @@
 //! (`rgb(from …)`).
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// `color(<пространство> c1 c2 c3[/A])` (§10).
 pub(super) fn color_fn(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {

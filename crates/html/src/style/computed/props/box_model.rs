@@ -6,8 +6,8 @@
 //! проверенными (`values`, тот же разбор `ParsedSize`/`side_len`, что у
 //! применения); общее слово у них решает `apply_wide`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::values::ValueCx;
 
 mod aspect;
 mod sides;

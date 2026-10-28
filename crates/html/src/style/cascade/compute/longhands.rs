@@ -4,10 +4,10 @@
 //! ключевым словом `currentcolor`, его решает цвет ребёнка: css-color-4 §6.4), части контура,
 //! длинные свойства фона, выравнивания и свойства с полями в реестре `inherited_value`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BgListProp, Computed, Sides};
 use crate::style::css::{BoxGroup as G, LonghandId as L, Slot};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// Скопировать в `c` вычисленные значения родителя `p` у свойств множества
 /// `c.inherit_longhands`.

@@ -1,22 +1,23 @@
-//! Сокращения разбора фиксированных тестовых документов; production возвращает Result.
+//! Сокращения разбора фиксированных тестовых документов в нижние данные без
+//! бэкенда шрифтов; production возвращает Result.
 
 use super::*;
 
 // Только тестовые сокращения: production всегда получает Result.
 #[cfg(test)]
 pub(crate) fn parse(html: &str, css: &str) -> Parsed {
-    try_parse(html, css).unwrap()
+    parse_detached(html, css, false)
 }
 #[cfg(test)]
 pub(crate) fn parse_xml(xml: &str, css: &str) -> Parsed {
-    try_parse_xml(xml, css).unwrap()
+    parse_detached(xml, css, true)
 }
 #[cfg(test)]
 pub(crate) fn parse_current(
     html: &str,
     css: &str,
     media: crate::style::css::Media,
-    doc: &std::rc::Rc<crate::document::state::DocState>,
+    doc: &std::rc::Rc<crate::values::DocumentValues>,
 ) -> Vec<Node> {
     convert(
         &input::Admitted::parse(html, false).unwrap(),
@@ -25,4 +26,12 @@ pub(crate) fn parse_current(
         doc,
     )
     .unwrap()
+}
+
+#[cfg(test)]
+fn parse_detached(markup: &str, css: &str, xml: bool) -> Parsed {
+    let media = crate::style::css::Media::default();
+    let doc = crate::values::DocumentValues::detached(media);
+    let nodes = parse_into(markup, css, media, xml, &doc).unwrap();
+    Parsed { nodes, doc }
 }

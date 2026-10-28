@@ -37,7 +37,7 @@ fn rows_reserve_all_child_views_from_measured_overflow(cx: &mut gpui::TestAppCon
 }
 
 fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &mut gpui::App) {
-    let tree = crate::dom::parse(
+    let tree = crate::document::parsed::parse(
         &format!(
             "<div><div style='writing-mode:{mode}'></div><div style='writing-mode:{mode}'>text</div></div>"
         ),
@@ -117,7 +117,7 @@ fn flex_stack_children_bypass_shape_and_direct_measure_calls(cx: &mut gpui::Test
     let cx = cx.add_empty_window();
     for direction in ["row", "row-reverse", "column", "column-reverse"] {
         for wrap in ["nowrap", "wrap", "wrap-reverse"] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!(
                     "<div><div style='display:flex;flex-direction:{direction};flex-wrap:{wrap}'><div style='width:70px;height:20px;order:2;break-after:avoid'></div><div style='width:70px;height:30px;order:-1;break-before:column'></div></div></div>"
                 ),

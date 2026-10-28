@@ -1,11 +1,11 @@
 //! Псевдоэлементы ::before/::after/::marker и др.: коробка, content-картинка.
 
-use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
+use crate::values::ValueCx;
 
 /// Подходит ли значение под синтаксис `@property` (css-properties-values-api-1
 /// §5). Проверяются однозначные типы; значение с `var()` решается позже и

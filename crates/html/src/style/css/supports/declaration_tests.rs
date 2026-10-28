@@ -4,7 +4,7 @@ use crate::style::computed::{Computed, ParseResult};
 
 #[test]
 fn declaration_outcomes_include_values_equal_to_the_initial_state() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for (property, value) in [
         ("column-count", "auto"),
@@ -60,7 +60,7 @@ fn declaration_outcomes_include_values_equal_to_the_initial_state() {
 
 #[test]
 fn invalid_values_and_unsupported_names_have_distinct_results() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(
         Computed::declaration_result("definitely-not-a-property", "initial", vcx),
@@ -88,7 +88,7 @@ fn invalid_values_and_unsupported_names_have_distinct_results() {
 
 #[test]
 fn cascade_bookkeeping_does_not_accept_an_invalid_declaration() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut parser = Computed {
         declaration_parse: ParseResult::Invalid,

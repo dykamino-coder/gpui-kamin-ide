@@ -1,8 +1,8 @@
 //! Размеры mspace из MathML Core: CSS-подсказки и независимо запрошенный ascent.
 
-use crate::document::state::ValueCx;
 use crate::style::css::DeclBlock;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 pub(super) fn hints(attrs: &[(String, String)], vcx: ValueCx<'_>) -> DeclBlock {
     let attr = |name| {
@@ -53,7 +53,7 @@ mod tests {
     use super::*;
     #[test]
     fn total_height_combines_valid_nonpercentage_attributes() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let attrs = vec![
             ("height".into(), "20px".into()),
@@ -72,7 +72,7 @@ mod tests {
     }
     #[test]
     fn length_attributes_reject_percentages_bare_numbers_and_keywords() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for raw in ["20%", "20", "auto", "stretch", "min-content"] {
             assert!(parse_mathml_length(raw, vcx).is_none(), "{raw}");

@@ -1,7 +1,7 @@
 //! Запись числа пользовательским стилем счётчика: начальные системы, графемы, маркеры.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Начальное представление по системе (§cyclic … §additive).
 fn initial(algo: &Algo, v: i128, context: Context) -> Option<String> {

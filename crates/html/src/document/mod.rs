@@ -31,6 +31,7 @@ mod timing;
 mod work_budget_tests;
 #[cfg(feature = "engine-bench")]
 pub use timing::BuildTimings;
+pub mod parsed;
 mod revision;
 pub use crate::dom::outcome::{
     BuildReport, DocumentFailure, FailureReason, FailureScope, RevisionStatus, TraversalKind,

@@ -18,7 +18,7 @@ impl GroupMask {
     }
 }
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 impl Grouped {
     pub(crate) fn mask_image_source(

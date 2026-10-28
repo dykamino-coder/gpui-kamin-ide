@@ -2,10 +2,10 @@
 //! css-text-decor-4 §2-§3): ОДИН разбор на свойство — им реестр проверяет
 //! объявление, им же обработчик пишет поля стиля.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{DecorLen, DecorStyle, parse_decor_style, parse_decor_thickness};
 use crate::style::css::LonghandId;
 use crate::style::values::value::StyleColor;
+use crate::values::ValueCx;
 
 /// Годится ли значение длинному свойству текста или оформления.
 pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {

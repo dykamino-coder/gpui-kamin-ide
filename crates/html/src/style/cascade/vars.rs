@@ -4,7 +4,7 @@
 //! Атрибуты и место среди братьев хозяина ставит `dom::walk` на время каскада
 //! элемента; негодная подстановка делает объявление `unset`.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 use crate::style::css::VarMap;
 use crate::style::values::value::{Color, Len};

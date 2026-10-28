@@ -2,9 +2,9 @@
 //! дорожки сетки.
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::css::DeclBlock;
 use crate::style::css::parse_decls;
+use crate::values::ValueCx;
 
 mod background_cascade;
 mod cascade;
@@ -23,7 +23,7 @@ fn computed(css: &str, vcx: ValueCx<'_>) -> Computed {
 
 #[test]
 fn flex_shorthand_zeroes_the_omitted_basis() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Опущенная основа — 0%, а не ширина элемента.
     let one = computed("flex: 1", vcx);
@@ -51,7 +51,7 @@ fn flex_shorthand_zeroes_the_omitted_basis() {
 
 #[test]
 fn shorthand_sides_expand_like_css() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = computed("padding: 4px 8px", vcx);
     assert_eq!(c.padding.top, Some(Len::Px(4.0)));
@@ -66,7 +66,7 @@ fn shorthand_sides_expand_like_css() {
 
 #[test]
 fn border_shorthand_takes_width_and_color() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = computed("border: 2px solid #ff0000", vcx);
     assert_eq!(c.border_width.top, Some(Len::Px(2.0)));
@@ -82,7 +82,7 @@ fn border_shorthand_takes_width_and_color() {
 
 #[test]
 fn line_height_number_is_a_multiplier() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(
         computed("line-height: 1.5", vcx).line_height,
@@ -96,7 +96,7 @@ fn line_height_number_is_a_multiplier() {
 
 #[test]
 fn gradient_direction_words_become_angles() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let g = computed("background: linear-gradient(to right, #000, #fff)", vcx)
         .gradient
@@ -113,7 +113,7 @@ fn gradient_direction_words_become_angles() {
 
 #[test]
 fn shadows_split_and_skip_inset() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let s = computed(
         "box-shadow: 0 2px 8px rgba(0, 0, 0, .4), inset 0 0 2px red",
@@ -128,7 +128,7 @@ fn shadows_split_and_skip_inset() {
 
 #[test]
 fn grid_tracks_are_counted_both_ways() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(
         computed("grid-template-columns: repeat(3, 1fr)", vcx).grid_cols,
@@ -142,7 +142,7 @@ fn grid_tracks_are_counted_both_ways() {
 
 #[test]
 fn track_list_keeps_the_kind_of_each_track() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let t = computed("grid-template-columns: 120px auto 1fr", vcx)
         .grid_tracks
@@ -159,7 +159,7 @@ fn track_list_keeps_the_kind_of_each_track() {
 
 #[test]
 fn repeat_expands_into_equal_tracks() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let t = computed("grid-template-columns: repeat(3, 1fr)", vcx)
         .grid_tracks
@@ -169,7 +169,7 @@ fn repeat_expands_into_equal_tracks() {
 
 #[test]
 fn minmax_keeps_both_bounds() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     // Обе грани доходят до раскладки: сведение к одной меняло ширину
     // колонки и расходилось с браузером.
@@ -181,7 +181,7 @@ fn minmax_keeps_both_bounds() {
 
 #[test]
 fn content_sized_tracks_are_recognised() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let t = computed("grid-template-columns: min-content max-content", vcx)
         .grid_tracks
@@ -197,7 +197,7 @@ fn content_sized_tracks_are_recognised() {
 
 #[test]
 fn cascade_order_specificity_then_inline() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let rules =
         crate::style::css::parse_stylesheet(".a { color: red } div.a { color: blue }").unwrap();

@@ -9,7 +9,7 @@ use crate::style::{
 
 #[test]
 fn nested_sources_keep_weights_and_filter_program() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let image = ImageSource::parse(
         "cross-fade(red 25%, filter(url(test.png), brightness(50%)))",
         doc.values(),
@@ -31,7 +31,7 @@ fn nested_sources_keep_weights_and_filter_program() {
 
 #[test]
 fn border_radial_lengths_and_current_color_are_computed() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);
@@ -77,7 +77,7 @@ fn border_radial_lengths_and_current_color_are_computed() {
 
 #[test]
 fn conic_retains_angular_hints_and_authored_polar_hues() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let parse = |hue| {
         ImageSource::parse(&format!("conic-gradient(from 90deg at left top in lch decreasing hue, lch(50% 100% {hue}deg), 25%, lch(50% 100% 270deg))"), vcx).unwrap()
@@ -104,7 +104,7 @@ fn conic_retains_angular_hints_and_authored_polar_hues() {
 
 #[test]
 fn arena_dependent_geometry_does_not_enter_global_cache() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let image = ImageSource::parse(
         "radial-gradient(at calc(50% + 3px) 50%, red, blue)",
         doc.values(),
@@ -115,7 +115,7 @@ fn arena_dependent_geometry_does_not_enter_global_cache() {
 
 #[test]
 fn background_layers_inherit_computed_image_lengths_and_current_colors() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);
@@ -141,7 +141,7 @@ fn background_layers_inherit_computed_image_lengths_and_current_colors() {
 
 #[test]
 fn layered_background_geometry_uses_own_line_height() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);
@@ -161,7 +161,7 @@ fn layered_background_geometry_uses_own_line_height() {
 
 #[test]
 fn filtered_gradient_stops_keep_interpolation_without_color_replay() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for (header, space) in [
         ("", super::super::GradSpace::Srgb),
@@ -190,7 +190,7 @@ fn filtered_gradient_stops_keep_interpolation_without_color_replay() {
 }
 #[test]
 fn url_function_names_keep_css_case_and_escape_rules() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for raw in ["UrL(MixedCase.png)", r#"U\r\4c ("MixedCase.png")"#] {
         let decls = crate::style::css::parse_decls(&format!("background: {raw}"));

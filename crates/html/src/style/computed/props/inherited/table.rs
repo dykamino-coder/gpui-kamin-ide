@@ -2,10 +2,10 @@
 //! `caption-side`, `empty-cells` (CSS 2.1 §17.4.1, §17.6, css-tables-3),
 //! `orphans`, `widows` (css-break-3 §3.3).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::LonghandId;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// `<length [0,∞]>` (без долей и слов `<line-width>`).
 fn spacing_length(v: &str, vcx: ValueCx<'_>) -> Option<Len> {

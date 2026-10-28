@@ -5,7 +5,7 @@
 //! свободного места образа (CSS Values 4 §10.2/10.10; Blink `ResolveXPosition`
 //! передаёт доступную ширину, в том числе отрицательную, в вычислитель длин).
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod expressions;
 mod value;
 use super::{Computed, parse_pos_words};
@@ -110,7 +110,7 @@ mod tests {
     use super::*;
     #[test]
     fn negative_free_space_changes_comparison_order_and_axis_overrides() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("background-position", "min(0%, 100%) max(0%, 100%)", vcx);
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn computed_relative_lengths_survive_a_different_inherited_font() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut parent = {
             let mut with_inherited = Computed {
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn layer_position_expressions_resolve_the_owning_line_height() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = {
             let mut with_inherited = Computed {

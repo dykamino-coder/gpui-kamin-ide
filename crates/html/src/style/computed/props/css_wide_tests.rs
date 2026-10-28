@@ -75,7 +75,7 @@ fn fields(style: &Computed) -> Vec<String> {
 }
 
 fn cascade(blocks: &[String]) -> Computed {
-    let state = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let state = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let mut style = Computed::default();
     for block in blocks {
         style.apply_decls_with_vars(&parse_decls(block), &Default::default(), state.values());
@@ -125,7 +125,7 @@ fn resetting_css_wide_keywords_do_not_depend_on_the_previous_value() {
 
 #[test]
 fn css_wide_keywords_are_accepted_by_every_mapped_property() {
-    let state = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let state = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     for property in PROPERTIES.iter().filter(|p| !p.sample.is_empty()) {
         for keyword in KEYWORDS {
             assert_eq!(

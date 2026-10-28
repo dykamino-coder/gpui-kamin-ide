@@ -4,8 +4,8 @@
 use super::*;
 use crate::style::css::{DeclBlock, parse_decls, parse_decls_in};
 
-fn doc() -> std::rc::Rc<crate::document::state::DocState> {
-    crate::document::state::DocState::new(crate::style::css::Media::default())
+fn doc() -> std::rc::Rc<crate::values::DocumentValues> {
+    crate::values::DocumentValues::detached(crate::style::css::Media::default())
 }
 
 fn pairs(block: &DeclBlock) -> Vec<(String, String, u32)> {

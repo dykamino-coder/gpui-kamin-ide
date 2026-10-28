@@ -27,7 +27,7 @@ mod tests;
 mod text_shorthands;
 mod variant_shorthands;
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 pub use grammar::Grammar;
 pub(crate) use layer_shorthands::split_position;
 pub(crate) use layer_words::{Words as LayerWords, layer_list, layer_tokens};

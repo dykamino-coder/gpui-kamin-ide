@@ -5,9 +5,9 @@
 //! `unicode-bidi` и прочие свойства вне реестра — в подмодулях. Наследуемые
 //! свойства строк реестра — в `props::inherited`.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::css::{Grammar, LonghandId};
+use crate::values::ValueCx;
 
 mod longhands;
 mod overflow_case;

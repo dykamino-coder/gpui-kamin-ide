@@ -3,7 +3,7 @@
 use super::Sum;
 use super::calc::{Calc, Val};
 use super::calc_function::{Arguments, Function};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LengthExpression(Node);
@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn comparisons_use_concrete_percentage_lengths() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let expression = LengthExpression::parse("min(0%, 100%)", vcx).unwrap();
         assert_eq!(expression.evaluate(50.0), Some(0.0));
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn nested_calls_and_edge_offsets_preserve_the_expression_tree() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let expression = LengthExpression::parse(
             "calc(2 * min(50%, 20px) + round(up, max(10%, 3px), 2px))",

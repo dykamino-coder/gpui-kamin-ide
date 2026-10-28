@@ -1,8 +1,8 @@
 //! Метрики корня документа для rem/rlh: кегль, высота строки и семейство
-//! корневого элемента — поле состояния документа (`document::state`).
+//! корневого элемента — поле состояния документа (`values`).
 
-use crate::document::state::ValueCx;
 use crate::font_facts::FontRequest;
+use crate::values::ValueCx;
 /// Кегль КОРНЕВОГО элемента — база единицы `rem` (css-values-4 §6.1.4 —
 /// «the computed value of the em unit on the root element»). Постоянные 16
 /// врали на любом документе, где корню задан свой кегль: `:root { font-size:
@@ -73,7 +73,7 @@ fn with_root<R>(vcx: ValueCx<'_>, f: impl FnOnce(&RootMetrics) -> R) -> R {
 }
 
 /// Записать кегль корня, заданный единицей окна (`None` — кегль в точках).
-pub fn set_root_font_view(doc: &crate::document::state::DocumentValues, view: Option<(bool, f32)>) {
+pub fn set_root_font_view(doc: &crate::values::DocumentValues, view: Option<(bool, f32)>) {
     doc.root.borrow_mut().font_view = view;
 }
 
@@ -83,7 +83,7 @@ pub(super) fn root_font_view(vcx: ValueCx<'_>) -> Option<(bool, f32)> {
 
 /// Записать корневые метрики. Зовётся разбором дерева на элементе `html`
 /// (`dom::walk`).
-pub fn set_root_metrics(doc: &crate::document::state::DocumentValues, font_px: f32, line_px: f32) {
+pub fn set_root_metrics(doc: &crate::values::DocumentValues, font_px: f32, line_px: f32) {
     {
         let mut r = doc.root.borrow_mut();
         r.font_px = if font_px > 0.0 { font_px } else { 16.0 };
@@ -107,7 +107,7 @@ pub fn root_line_px(vcx: ValueCx<'_>) -> f32 {
 }
 
 /// Записать семейство корня (пустое — шрифт документа).
-pub fn set_root_family(doc: &crate::document::state::DocumentValues, family: &str) {
+pub fn set_root_family(doc: &crate::values::DocumentValues, family: &str) {
     {
         let mut r = doc.root.borrow_mut();
         r.family.clear();

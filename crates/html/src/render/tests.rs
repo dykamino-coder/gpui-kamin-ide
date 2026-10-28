@@ -1,8 +1,8 @@
 //! Проверки контракта родительского модуля; вынесены для ограничения размера файлов.
 
 use super::*;
+use crate::document::parsed::parse;
 use crate::dom::Element;
-use crate::dom::parse;
 use crate::layout::block::margins::collapse_margins;
 use crate::style::values::value::Len;
 

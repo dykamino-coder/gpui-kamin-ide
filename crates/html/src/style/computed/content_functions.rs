@@ -6,7 +6,7 @@
 //! объявление недействительным целиком, а не печатается литеральным текстом.
 
 use super::{ContentItem, unescape_content};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Разбор значения `content` в список составляющих (css-content-3 §2).
 ///

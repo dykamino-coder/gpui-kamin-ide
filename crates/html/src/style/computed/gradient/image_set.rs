@@ -1,7 +1,7 @@
 //! image-set(): выбор кандидата по типу и плотности, разрешение картинки (`x`/`dppx`/`dpi`).
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Выбор кандидата `image-set()` (css-images-4 §2.5).
 ///

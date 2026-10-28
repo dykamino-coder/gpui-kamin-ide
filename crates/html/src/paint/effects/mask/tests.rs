@@ -4,11 +4,11 @@ use super::*;
 
 #[test]
 fn matching_ids_and_retained_definitions_stay_document_local() {
-    let first = crate::dom::parse(
+    let first = crate::document::parsed::parse(
         r#"<svg><mask id="same"><rect width="10" height="10" fill="red"/></mask></svg>"#,
         "",
     );
-    let second = crate::dom::parse(
+    let second = crate::document::parsed::parse(
         r#"<svg><mask id="same"><circle r="8" fill="blue"/></mask></svg>"#,
         "",
     );
@@ -27,7 +27,7 @@ fn matching_ids_and_retained_definitions_stay_document_local() {
 
 #[test]
 fn alpha_and_clip_definitions_share_the_document_owner() {
-    let parsed = crate::dom::parse(
+    let parsed = crate::document::parsed::parse(
         r#"<svg><mask id="a" style="mask-type:alpha"><rect width="10" height="10"/></mask><clipPath id="c"><circle r="2"/></clipPath></svg>"#,
         "",
     );

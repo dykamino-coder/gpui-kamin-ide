@@ -103,7 +103,7 @@ mod tests {
             "flex-direction:column",
             "flex-direction:row-reverse;flex-wrap:wrap-reverse",
         ] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!(
                     "<div style='display:flex;{css}'><div style='height:20px'></div><div style='height:30px'></div></div>"
                 ),
@@ -120,7 +120,7 @@ mod tests {
             "<div style='max-height:0'><div style='height:150px'></div></div>",
             "<div style='min-height:200px'><div style='height:160px'></div></div>",
         ] {
-            let tree = crate::dom::parse(body, "");
+            let tree = crate::document::parsed::parse(body, "");
             assert!(independent_copy(authored(&tree)), "{body}");
         }
         for body in [
@@ -131,7 +131,7 @@ mod tests {
             "<div style='height:50px;overflow:hidden'><div style='height:150px'></div></div>",
             "<div style='min-height:50px;overflow:hidden'><div style='height:20px'></div></div>",
         ] {
-            let tree = crate::dom::parse(body, "");
+            let tree = crate::document::parsed::parse(body, "");
             assert!(independent_copy(authored(&tree)), "{body}");
         }
     }
@@ -154,7 +154,7 @@ mod tests {
                 "<div style='display:grid;grid-template-rows:20px 30px'><div></div><div></div></div>",
                 "<table><tr><td><div></div></td></tr><tr><td></td></tr></table>",
             ] {
-                let tree = crate::dom::parse(
+                let tree = crate::document::parsed::parse(
                     &format!(
                         "<div style='writing-mode:{mode};width:60px;height:100px'>{body}</div>"
                     ),
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn orthogonal_descendant_requires_its_own_continuation() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div style='writing-mode:vertical-rl'><div style='writing-mode:horizontal-tb'></div></div>",
             "",
         );
@@ -197,7 +197,7 @@ mod tests {
     fn rtl_metadata_projects_sides_without_enabling_the_legacy_line_estimator() {
         use crate::style::values::value::Len;
         for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
-            let tree = crate::dom::parse(
+            let tree = crate::document::parsed::parse(
                 &format!(
                     "<div style='writing-mode:{mode};direction:rtl;margin:1px 2px 3px 4px'><div></div></div>"
                 ),

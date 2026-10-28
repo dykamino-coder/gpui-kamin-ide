@@ -1,10 +1,10 @@
 //! Подготовка фактов фона перед style: обход операндов дерева не сворачивает стили,
 //! а синхронная загрузка завершается до публикации нового снимка документа.
 
-use super::state::ValueCx;
 use crate::dom::Node;
 use crate::resources::css_images::facts::BackgroundImages;
 use crate::style::computed::{Computed, ImageSource};
+use crate::values::ValueCx;
 use std::collections::HashSet;
 
 pub(crate) fn prepare(nodes: &[Node], vcx: ValueCx<'_>) {

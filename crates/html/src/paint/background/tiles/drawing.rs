@@ -1,11 +1,11 @@
 //! Раскладка и окраска плиток после определения областей фона.
 
 use super::{area_corners, origin, rounded, tile_size};
-use crate::document::state::ValueCx;
 use crate::paint::background::*;
 use crate::resources::css_images::Source as CpuSource;
 use crate::style::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{Bounds, Pixels, px};
 
 #[allow(clippy::too_many_arguments)]

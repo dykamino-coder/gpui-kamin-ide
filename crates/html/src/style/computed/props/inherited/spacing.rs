@@ -3,10 +3,10 @@
 //! (§7.2-7.3; их сокращение `text-align` раскрыто разбором), `text-justify`
 //! (§7.4), `text-transform` (§2.1), `tab-size` (§4.2).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, TT_FULL_WIDTH, TT_KANA, TT_MATH, TextAlign, TextTransform};
 use crate::style::css::LonghandId;
 use crate::style::values::value::{Len, css_number};
+use crate::values::ValueCx;
 
 /// Отступ первой строки: длина, `each-line`, `hanging`.
 pub(crate) fn text_indent(v: &str, vcx: ValueCx<'_>) -> Option<(Len, bool, bool)> {

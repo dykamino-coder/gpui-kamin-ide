@@ -5,12 +5,12 @@
 //! свойства слоёв — список через запятую, годный, только когда годен каждый
 //! слой.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{
     BgClip, BgRepeat, BgSize, Computed, ImageSource, ParseResult, Tiling,
 };
 use crate::style::css::LonghandId::{self, *};
 use crate::style::values::value::{Len, StyleColor};
+use crate::values::ValueCx;
 
 /// Годится ли значение длинному свойству фона или маски.
 pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {

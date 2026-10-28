@@ -3,8 +3,8 @@
 //! реестра — в `longhands` (их сокращения раскрыты разбором); углы и
 //! картинка рамки — в подмодулях.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::values::ValueCx;
 
 mod corners;
 mod image;

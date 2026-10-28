@@ -9,7 +9,7 @@ use gpui::{Bounds, point, px, size};
 fn absolute_continuation_and_balance_preserve_the_normal_neighbour(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-        let tree = crate::dom::parse("<section style='column-count:2;column-fill:auto;width:210px;height:70px'><div style='position:relative;height:20px'><div style='position:absolute;top:65px;width:80px;height:85px'></div></div><p style='height:20px;margin:0'></p></section>", "");
+        let tree = crate::document::parsed::parse("<section style='column-count:2;column-fill:auto;width:210px;height:70px'><div style='position:relative;height:20px'><div style='position:absolute;top:65px;width:80px;height:85px'></div></div><p style='height:20px;margin:0'></p></section>", "");
         let mut opts = RenderOpts { viewport: (400., 400.), normal_line_height: 1.2, text: Default::default(), cx: Default::default(), frag: Default::default() };
         opts.cx.values.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
         opts.cx.values.viewport = opts.viewport;

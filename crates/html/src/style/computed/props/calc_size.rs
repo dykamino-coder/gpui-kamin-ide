@@ -1,7 +1,7 @@
 //! Типизированные размеры: все компоненты проверяются до изменения полей стиля.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::values::ValueCx;
 
 impl Computed {
     pub(super) fn apply_physical_size(&mut self, i: usize, value: &str, vcx: ValueCx<'_>) {
@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn keyword_basis_and_maximum_survive_cascade() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("width", "calc-size(min-content, size + 10px)", vcx);

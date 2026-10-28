@@ -4,10 +4,10 @@
 //! §6.2), `scrollbar-color` (css-scrollbars-1 §2), `image-rendering`
 //! (css-images-3 §6.2), `image-orientation` (§5.4), `color-scheme` (css-color-adjust-1 §2.1).
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::LonghandId;
 use crate::style::values::value::{ColorOrAuto, StyleColor};
+use crate::values::ValueCx;
 
 /// `cursor: [<url> [<x> <y>]?,]* <keyword>` (css-ui-4 §6.1.1).
 pub(crate) fn cursor(v: &str) -> Option<String> {

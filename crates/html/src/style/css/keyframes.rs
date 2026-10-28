@@ -4,8 +4,8 @@
 //! (css-animations-1 §3), а наборы внутри ложной группы `@media`/`@supports`
 //! не берутся (css-conditional-3 §2, `in_false_group`).
 
-use crate::document::state::ValueCx;
 use crate::style::css::*;
+use crate::values::ValueCx;
 use std::collections::HashMap;
 
 /// Кадры анимации: доля времени и объявления на этой доле.
@@ -139,7 +139,7 @@ mod keyframe_tests {
 
     #[test]
     fn keyframes_are_read_with_their_stops() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let k = parse_keyframes(
             "@keyframes pulse { from { opacity: 0 } 50% { opacity: 1 } to { opacity: 0 } }",
@@ -153,14 +153,14 @@ mod keyframe_tests {
 
     #[test]
     fn a_stylesheet_without_keyframes_gives_nothing() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         assert!(parse_keyframes(".a { color: red }", vcx).is_empty());
     }
 
     #[test]
     fn reverting_keyframe_declarations_keep_the_underlying_value() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let k = parse_keyframes(
             "@keyframes a { to { width: revert-layer; height: REVERT; opacity: 0 } }",
             doc.values(),

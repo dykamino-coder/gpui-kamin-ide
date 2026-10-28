@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn palette_follows_page_scheme() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         assert_eq!(
             system_color(SystemColor::Field, false),

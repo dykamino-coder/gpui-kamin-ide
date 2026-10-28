@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn basic_defaults_stay_below_author_css() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let base = rule(
             "input",

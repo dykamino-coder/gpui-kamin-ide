@@ -8,12 +8,12 @@
 //! если есть политика; `prepare`/`prepare_embedded` держат один порядок проходов
 //! для начальной, обновлённой и встроенной разметки.
 
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::cascade::inherit::inherit_unpainted;
 use crate::style::computed::{BoxStyle, Computed, Display, Overflow};
 #[cfg(test)]
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 mod wrapper;
 pub(super) use wrapper::wrap;
@@ -188,7 +188,7 @@ mod tests {
                 [0.0, 0.0],
             ),
         ] {
-            let nodes = crate::dom::parse(&format!("<style>{css}</style>"), "");
+            let nodes = crate::document::parsed::parse(&format!("<style>{css}</style>"), "");
             let c = policy(&nodes, vcx).unwrap();
             assert_eq!(c.viewport_unit_insets, Some(expected), "{css}");
             let mut child = inherit_unpainted(
@@ -216,7 +216,7 @@ mod tests {
     fn body_colors_do_not_propagate_to_the_viewport() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let nodes = crate::dom::parse(
+        let nodes = crate::document::parsed::parse(
             "<style>body { scrollbar-color: red blue; overflow: scroll }</style>",
             "",
         );
@@ -234,7 +234,7 @@ mod tests {
     fn root_width_and_computed_color_survive_body_propagation() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let nodes = crate::dom::parse(
+        let nodes = crate::document::parsed::parse(
             "<style>html { color: red; scrollbar-color: currentColor currentColor; scrollbar-width: none } body { color: blue; scrollbar-width: thin; overflow: scroll }</style>",
             "",
         );

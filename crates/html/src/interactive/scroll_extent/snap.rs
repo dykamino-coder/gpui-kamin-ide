@@ -5,10 +5,10 @@
 //! прокрутки и он же решает их логические оси выравнивания.
 
 use super::geometry::{Rect, sides};
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Sides, snap::SnapStyle};
 use crate::style::values::value::{Len, calc_get};
 use crate::tolerance::COORD_EPS;
+use crate::values::ValueCx;
 use gpui::{ScrollHandle, point, px};
 
 #[derive(Clone, Copy)]

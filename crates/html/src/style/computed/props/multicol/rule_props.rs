@@ -3,7 +3,7 @@
 //! columns раскрыты разбором блока. Ветви в исходном порядке после свойств колонок и разрывов.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 mod rule_flags;
 

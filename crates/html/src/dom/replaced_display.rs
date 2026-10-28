@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn internal_roles_are_cleared_before_anonymous_fixup() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for value in [
             "table-cell",
@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn non_replaced_table_cells_and_authored_none_keep_their_roles() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = Computed::default();
         style.apply_one("display", "table-cell", vcx);
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn out_of_flow_replaced_boxes_keep_their_blockified_display() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         for position in [None, Some(Position::Absolute), Some(Position::Fixed)] {
             let mut style = Computed::default();

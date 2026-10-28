@@ -2,7 +2,7 @@
 //! `mask` раскрывает разбор (`style::css::property`).
 
 use super::{ImageSource, split_outside_parens};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Keep absent layers in the list: their indices select geometry and composition.
 pub(crate) fn images(value: &str, vcx: ValueCx<'_>) -> Option<Vec<ImageSource>> {

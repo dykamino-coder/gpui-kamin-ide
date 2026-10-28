@@ -90,7 +90,7 @@ mod media_probe {
     /// молча становилась `<general-enclosed>`.
     #[test]
     fn media_without_space_before_paren() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let m = Media::default();
         assert!(m.matches("@media(min-width:0px)", vcx), "no-space form");

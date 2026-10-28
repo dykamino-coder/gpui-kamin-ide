@@ -38,8 +38,8 @@ mod tests {
     use super::*;
     use crate::style::computed::GapList;
 
-    fn test_vcx() -> crate::document::state::ValueCx<'static> {
-        Box::leak(Box::new(crate::document::state::DocState::new(
+    fn test_vcx() -> crate::values::ValueCx<'static> {
+        Box::leak(Box::new(crate::values::DocumentValues::detached(
             crate::style::css::Media::default(),
         )))
         .values()

@@ -6,7 +6,7 @@ use super::*;
 /// Число верхних и нижних подписей первой таблицы документа после
 /// материализации computed стилей (наследование идёт при ней, как в render).
 fn sides(html: &str) -> (usize, usize) {
-    let doc = crate::dom::parse(html, "");
+    let doc = crate::document::parsed::parse(html, "");
     crate::style::cascade::materialize::materialize(
         &doc,
         &std::rc::Rc::new(crate::style::computed::Computed::default()),

@@ -9,7 +9,7 @@ use gpui::{point, px, size};
 fn direct_oof_uses_native_static_anchor_and_keeps_empty_normal_plan(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<section style='position:relative;width:100px'><div style='height:15px'></div><aside style='position:absolute;left:7px;width:20px;height:30px'></aside></section>",
             "",
         );
@@ -62,7 +62,7 @@ fn direct_oof_uses_native_static_anchor_and_keeps_empty_normal_plan(cx: &mut gpu
 fn native_source_routes_only_a_stack_on_its_own_axis(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<section style='writing-mode:vertical-rl;direction:rtl;position:relative;height:100px'><aside style='position:absolute;width:20px;height:30px'></aside></section>",
             "",
         );
@@ -125,7 +125,7 @@ fn section_snapshot(
     window: &mut gpui::Window,
     app: &mut gpui::App,
 ) -> std::rc::Rc<crate::layout::positioned::containing_block::metrics::Snapshot> {
-    let tree = crate::dom::parse(html, "");
+    let tree = crate::document::parsed::parse(html, "");
     let mut opts = RenderOpts {
         viewport: (400., 400.),
         normal_line_height: 1.2,

@@ -60,7 +60,7 @@ pub(super) fn initial_letter_style(
     indent: f32,
     lead: &str,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Computed {
     let lead_w = if !vert && inherited.keep_spaces == Some(true) && !lead.contains(['\n', '\r']) {
         let space = crate::text::metrics::ch_ex_px(&family, font_px, fonts, vcx).0;

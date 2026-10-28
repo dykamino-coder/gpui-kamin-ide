@@ -1,6 +1,6 @@
 //! Типизированные списки фоновых компонентов и циклическое повторение слоёв.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Фоновое свойство, значение которого — список слоёв через запятую.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,7 +141,7 @@ mod tests {
     }
     #[test]
     fn replacement_keeps_only_new_typed_layers() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut l = BgLists::default();
         l.set(BgListProp::Clip, "border-box, padding-box".into(), vcx);

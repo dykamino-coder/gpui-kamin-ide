@@ -1,7 +1,7 @@
 //! Плитки фона: размер, начало, раскладка и отрисовка (paint_tiles).
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod geometry;
 use geometry::origin;
 pub(super) use geometry::rounded;

@@ -1,8 +1,8 @@
 //! Кегль и высота строки (css-fonts-4 §font-size-prop, css-inline-3
 //! §line-height): разбор, общий для проверки реестром и обработчика.
 
-use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// Кегль (css-fonts-4 §font-size-prop).
 #[derive(Clone, Copy, Debug, PartialEq)]

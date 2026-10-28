@@ -85,7 +85,7 @@ mod tests {
                 let html = format!(
                     "<div style='display:flex;width:80px;{flow};{rules}'><div style='width:40px;height:50px'></div><div style='width:40px;height:50px'></div><div style='width:40px;height:50px'></div></div>"
                 );
-                let tree = crate::dom::parse(&html, "");
+                let tree = crate::document::parsed::parse(&html, "");
                 fn flex(node: &Node) -> Option<&Element> {
                     let Node::Element(e) = node else { return None };
                     if e.style.used().display == Some(Display::Flex) {
@@ -119,7 +119,7 @@ mod tests {
             "<div style='display:table'><div style='break-before:column'>B</div></div>",
             "<div><table><tr style='break-before:column'><td>B</td></tr></table></div>",
         ] {
-            let tree = crate::dom::parse(html, "");
+            let tree = crate::document::parsed::parse(html, "");
             let Node::Element(parent) = &tree[0] else {
                 panic!("table container")
             };
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn inline_content_floats_use_the_measured_entry_strut() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div><div style='float:left;line-height:70px'><br></div></div>",
             "",
         );
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn forced_breaks_use_measured_layout_without_flex_or_float() {
-        let tree = crate::dom::parse(
+        let tree = crate::document::parsed::parse(
             "<div><div style='break-after:column'>A<br>A</div><div>A<br>A</div></div>",
             "",
         );
@@ -193,7 +193,7 @@ mod tests {
                 body,
                 "</div>".repeat(24)
             );
-            let tree = crate::dom::parse(&html, "");
+            let tree = crate::document::parsed::parse(&html, "");
             let Node::Element(parent) = &tree[0] else {
                 panic!("block")
             };
@@ -209,7 +209,7 @@ mod tests {
             "<div>".repeat(24),
             "</div>".repeat(24)
         );
-        let tree = crate::dom::parse(&html, "");
+        let tree = crate::document::parsed::parse(&html, "");
         let Node::Element(parent) = &tree[0] else {
             panic!("block")
         };

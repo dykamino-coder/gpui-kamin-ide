@@ -18,9 +18,7 @@ fn census_preserves_local_name_keys_and_non_element_slots() {
     let (spots, all) = census_of(
         &children,
         &TreeIndex::new(
-            crate::document::state::DocState::new(Default::default())
-                .values
-                .clone(),
+            crate::values::DocumentValues::detached(Default::default()).clone(),
             false,
         ),
     );
@@ -51,9 +49,7 @@ fn census_large_sibling_group_has_forward_and_reverse_positions() {
     let (spots, all) = census_of(
         &root.children.borrow(),
         &TreeIndex::new(
-            crate::document::state::DocState::new(Default::default())
-                .values
-                .clone(),
+            crate::values::DocumentValues::detached(Default::default()).clone(),
             false,
         ),
     );
@@ -72,9 +68,7 @@ fn census_empty_and_non_element_groups_have_no_elements() {
         let (spots, all) = census_of(
             children,
             &TreeIndex::new(
-                crate::document::state::DocState::new(Default::default())
-                    .values
-                    .clone(),
+                crate::values::DocumentValues::detached(Default::default()).clone(),
                 false,
             ),
         );

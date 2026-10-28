@@ -7,7 +7,7 @@ fn generated_scroll_boxes_have_distinct_stable_state_ids() {
     fn generated(
         nodes: &[Node],
         out: &mut Vec<(String, gpui::ElementId)>,
-        vcx: crate::document::state::ValueCx<'_>,
+        vcx: crate::values::ValueCx<'_>,
     ) {
         for node in nodes {
             if let Node::Element(element) = node {
@@ -53,7 +53,7 @@ fn generated_scroll_boxes_have_distinct_stable_state_ids() {
 fn lazy_synthetic_identity_survives_cloning_and_separates_roles_and_authored_ids() {
     use crate::dom::{Element, Marks};
     use crate::style::computed::Computed;
-    let doc = crate::document::state::DocState::new(Default::default());
+    let doc = crate::values::DocumentValues::detached(Default::default());
     let vcx = doc.values();
     let synthetic = || Element::synthetic("div", Computed::default(), Marks::default(), vec![]);
     let first = synthetic();
@@ -83,7 +83,8 @@ fn lazy_synthetic_identity_survives_cloning_and_separates_roles_and_authored_ids
     for (i, key) in keys.iter().enumerate() {
         assert!(!keys[i + 1..].contains(key));
     }
-    doc.begin_frame();
+    doc.begin_frame_inputs();
+    doc.reset_painted_frame();
     assert_eq!(
         first.state_id(roles[0], vcx),
         clone_before_allocation.state_id(roles[0], vcx)

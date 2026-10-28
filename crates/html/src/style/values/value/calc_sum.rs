@@ -5,7 +5,7 @@
 //! другой природой доживает индексом арены до раскладки (`collapse_mixed`).
 
 use super::{Len, calc_get, calc_store};
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 /// Length arithmetic retains each unit until its resolution basis is available.
 #[derive(Clone, Copy, Default, PartialEq, Debug)]

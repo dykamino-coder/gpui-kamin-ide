@@ -1,8 +1,8 @@
 //! Покраска: фон, рамки, двойная рамка, слой рамки (apply_paint).
 
-use crate::document::state::ValueCx;
 use crate::paint::apply::*;
 use crate::style::computed::{Display, Position};
+use crate::values::ValueCx;
 use gpui::{Div, Styled, px};
 
 mod borders;

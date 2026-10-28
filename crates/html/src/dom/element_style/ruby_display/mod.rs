@@ -7,7 +7,7 @@
 //! строчный тег с `float` становится блоком; затем `containment::normalize`
 //! и сброс размеров у неатомарной строчной коробки. Подмодуль `direction`.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod direction;
 pub(crate) use crate::dom::element_style::ruby_display::direction::apply_direction;
 pub(crate) use crate::dom::element_style::ruby_display::direction::inlinify_in_ruby;

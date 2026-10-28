@@ -65,7 +65,7 @@ mod tests {
                 true,
             ),
         ] {
-            let doc = crate::dom::parse(&format!("<div>{body}</div>"), "");
+            let doc = crate::document::parsed::parse(&format!("<div>{body}</div>"), "");
             fn find(nodes: &[Node]) -> Option<&Element> {
                 nodes.iter().find_map(|n| match n {
                     Node::Element(e) if e.tag == "div" => Some(e),

@@ -1,7 +1,7 @@
 //! Тесты математических функций calc(), констант и единиц окна/контейнера.
 
 use super::*;
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 fn px(s: &str, vcx: ValueCx<'_>) -> f32 {
     match Len::parse(s, vcx) {
@@ -25,7 +25,7 @@ fn folded(s: &str, vertical: bool, container: Option<(f32, f32)>, vcx: ValueCx<'
 
 #[test]
 fn round_strategies_follow_values_4() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(px("round(17px, 5px)", vcx), 15.0);
     assert_eq!(px("round(17.5px, 5px)", vcx), 20.0);
@@ -39,7 +39,7 @@ fn round_strategies_follow_values_4() {
 
 #[test]
 fn mod_and_rem_differ_in_sign() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(px("mod(-18px, 5px)", vcx), 2.0);
     assert_eq!(px("rem(-18px, 5px)", vcx), -3.0);
@@ -48,7 +48,7 @@ fn mod_and_rem_differ_in_sign() {
 
 #[test]
 fn trigonometry_takes_angles_and_numbers() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert!(near(number("sin(90deg)", vcx).unwrap(), 1.0));
     assert!(near(number("cos(pi)", vcx).unwrap(), -1.0));
@@ -62,7 +62,7 @@ fn trigonometry_takes_angles_and_numbers() {
 
 #[test]
 fn exponential_functions() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(number("pow(2, 10)", vcx), Some(1024.0));
     assert_eq!(number("calc(sqrt(16) + 1)", vcx), Some(5.0));
@@ -75,7 +75,7 @@ fn exponential_functions() {
 
 #[test]
 fn sign_related_functions() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(px("abs(-5px)", vcx), 5.0);
     assert_eq!(px("calc(1px * (1 + sign(16px - 10px)))", vcx), 2.0);
@@ -85,7 +85,7 @@ fn sign_related_functions() {
 
 #[test]
 fn constants_are_censored_at_top_level() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert!(px("calc(infinity * 1px)", vcx) > 3.0e7);
     assert!(px("calc(-infinity * 1px)", vcx) < -3.0e7);
@@ -101,7 +101,7 @@ fn constants_are_censored_at_top_level() {
 
 #[test]
 fn viewport_size_variants() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     assert_eq!(folded("10vmin", false, None, vcx), 60.0);
     assert_eq!(folded("10vmax", false, None, vcx), 80.0);
@@ -117,7 +117,7 @@ fn viewport_size_variants() {
 
 #[test]
 fn container_units_resolve_against_the_container() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let c = Some((400.0, 300.0));
     assert_eq!(folded("10cqw", false, c, vcx), 40.0);

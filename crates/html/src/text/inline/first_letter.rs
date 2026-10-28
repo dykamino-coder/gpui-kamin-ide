@@ -14,7 +14,7 @@ pub fn split_first_letter(
     pieces: Vec<Piece>,
     style: &Computed,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> Vec<Piece> {
     let mut text = String::new();
     let mut ranges = Vec::with_capacity(pieces.len());
@@ -87,7 +87,7 @@ fn letter_style(
     own: &BoxStyle,
     style: &Computed,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) -> BoxStyle {
     let mut letter = own.clone();
     letter.overlay_font_size(style);
@@ -112,7 +112,7 @@ fn letter_style(
 fn float_band(
     letter: &mut BoxStyle,
     fonts: &crate::text::text_fonts::TextFonts,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::values::ValueCx<'_>,
 ) {
     use crate::style::values::value::Len;
     let Some(Len::Px(computed)) = letter.font_size else {

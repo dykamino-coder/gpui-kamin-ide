@@ -94,7 +94,7 @@ mod tests {
     }
 
     fn compare_samples(raw: &str) {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut own = Computed::default();
         own.apply_one("background-image", raw, vcx);

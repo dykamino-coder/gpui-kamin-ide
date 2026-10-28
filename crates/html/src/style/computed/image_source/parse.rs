@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn selected_light_dark_none_is_a_transparent_image() {
-        let doc = crate::document::state::DocState::new(Default::default());
+        let doc = crate::values::DocumentValues::detached(Default::default());
         for dark in [false, true] {
             let vcx = crate::style::values::value::set_dark_scheme(dark, doc.values());
             let raw = if dark {

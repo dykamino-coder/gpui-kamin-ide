@@ -5,7 +5,6 @@
 use super::table::TableBox;
 use super::trees::{holds_blocks, stacks_blocks};
 use super::{BlockBox, BlockKid, flex, flex_container, grid, grid_container};
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
@@ -18,6 +17,7 @@ use crate::layout::fragment::flow::box_children::children;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::page::names::page_names;
 use crate::style::computed::{Display, LenCx};
+use crate::values::ValueCx;
 
 /// `blockified` — элемент сетки: его `inline-block` — блок (css-display-3 §2.7).
 pub(in crate::layout::fragment::flow::blocks) fn collect(

@@ -7,9 +7,9 @@
 //! по владеющей таблице) и ложится в происхождение подсказок через
 //! [`super::presentational_hints::hint`], ниже всех авторских правил.
 
-use crate::document::state::ValueCx;
 use crate::style::css::Rule;
 use crate::style::select::Ancestor;
+use crate::values::ValueCx;
 
 fn attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
     attrs

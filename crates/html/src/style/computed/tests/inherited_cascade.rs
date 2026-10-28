@@ -4,14 +4,14 @@
 //! значение), негодная подстановка — `unset`, каждое свойство пишет только
 //! свои поля.
 
-use crate::document::state::DocState;
 use crate::style::computed::MarkerType::{Counter, Text};
 use crate::style::computed::{BoxStyle, Computed, MarkerType, TextAlign};
 use crate::style::css::{DeclBlock, Media, VarMap, parse_decls_in};
 use crate::style::values::value::{Color, Len};
+use crate::values::DocumentValues;
 
 fn style_with(css: &str, vars: &VarMap) -> Computed {
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let block: DeclBlock = parse_decls_in(css, doc.values());
     let mut c = Computed::default();
     c.apply_decls_with_vars(&block, vars, doc.values());
@@ -66,7 +66,10 @@ fn inherit_empties_own_fields_and_initial_is_explicit() {
     let c = style("color: red; color: initial");
     assert_eq!(
         c.color,
-        Color::parse("canvastext", DocState::new(Media::default()).values())
+        Color::parse(
+            "canvastext",
+            DocumentValues::detached(Media::default()).values()
+        )
     );
     assert!(c.color_initial);
     let c = style("color: initial; color: inherit");
@@ -206,7 +209,7 @@ fn tab_size_number_and_length_replace_each_other() {
 fn user_select_is_not_inherited_and_auto_follows_the_parent_box() {
     use crate::style::cascade::inherit::inherit;
     use crate::style::computed::UserSelect;
-    let doc = DocState::new(Media::default());
+    let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let none = inherit(&BoxStyle::default(), &style("user-select: none"), vcx);
     assert_eq!(none.user_select, Some(UserSelect::None));

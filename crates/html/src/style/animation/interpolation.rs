@@ -1,8 +1,8 @@
 //! Интерполяция вычисленного CSS-стиля между разрешёнными кадрами.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 /// Интерполяция стиля между кадрами анимации.
 ///

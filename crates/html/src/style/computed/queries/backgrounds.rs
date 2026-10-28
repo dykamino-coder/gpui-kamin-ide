@@ -42,7 +42,7 @@ mod tests {
 
     #[test]
     fn short_lists_repeat_and_color_uses_the_bottom_clip() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("background-image", "url(a), url(b), url(c)", vcx);
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn font_relative_layers_resolve_before_they_are_queried() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = {
             let mut with_inherited = Computed {

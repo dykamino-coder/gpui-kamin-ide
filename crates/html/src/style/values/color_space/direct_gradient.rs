@@ -5,9 +5,9 @@
 //! и способен сдвинуть тон на шве 0/360. Тон не премультиплицируется (§12.3).
 
 use super::*;
-use crate::document::state::ValueCx;
 use crate::style::computed::GradSpace;
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct DirectGradient {
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn equal_authored_hues_produce_identical_pixels() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let render = |start| {
             let raw = format!(
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn polar_stop_preserves_the_authored_zero_hue() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let raw =
             "linear-gradient(in lch decreasing hue, lch(50% 100% 360deg), lch(50% 100% 270deg))";

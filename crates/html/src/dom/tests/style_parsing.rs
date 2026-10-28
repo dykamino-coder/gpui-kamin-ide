@@ -128,7 +128,7 @@ pub(super) fn script_and_style_content_is_dropped() {
 
 #[test]
 pub(super) fn declarative_shadow_scopes_styles_and_slots() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = crate::style::values::value::Color::parse("red", vcx);
     let green = crate::style::values::value::Color::parse("green", vcx);

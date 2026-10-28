@@ -2,7 +2,7 @@
 //! наследование передаёт явно через `ValueCx`, без общего состояния: тёмная ли сейчас, задана
 //! ли явно и какую схему предпочитает окружение; от неё зависят системные цвета и
 //! `light-dark()`. Вложенный документ получает явную схему хозяина либо предпочтение окружения.
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 
 #[derive(Clone, Copy, Default, Debug)]
 pub(crate) struct Scheme {

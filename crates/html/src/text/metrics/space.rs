@@ -3,7 +3,7 @@
 //! глиф нуля в пропорциональных и подстановочных шрифтах ему не равен. Щуп ставит владелец
 //! системы шрифтов; без него или при негодном замере — `None`.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 use gpui::{Font, TextSystem, px};
 use std::sync::Arc;
 

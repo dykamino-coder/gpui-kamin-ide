@@ -1,8 +1,8 @@
 //! Операнды color-mix, проценты и метод интерполяции, сохранённые как числа.
 
 use super::{Color, StyleColor, mix};
-use crate::document::state::ValueCx;
 use crate::style::computed::GradSpace;
+use crate::values::ValueCx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ColorMix {

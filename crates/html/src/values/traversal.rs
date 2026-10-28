@@ -1,8 +1,8 @@
 //! Защита рекурсивных проходов представления; исходный DOM принадлежит revision.
 
 use super::DocumentValues;
-use crate::document::{FailureScope, TraversalKind, TraversalLimit};
 use crate::dom::input::Admitted;
+use crate::dom::outcome::{FailureScope, TraversalKind, TraversalLimit};
 use markup5ever_rcdom::Handle;
 use std::cell::{Cell, RefCell};
 

@@ -9,8 +9,8 @@ use crate::style::computed::{BoxStyle, Computed};
 use crate::style::css::parse_decls_in;
 use crate::style::values::value::{ColorOrAuto, Len, StyleColor};
 
-fn doc() -> std::rc::Rc<crate::document::state::DocState> {
-    crate::document::state::DocState::new(crate::style::css::Media::default())
+fn doc() -> std::rc::Rc<crate::values::DocumentValues> {
+    crate::values::DocumentValues::detached(crate::style::css::Media::default())
 }
 
 fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
@@ -21,7 +21,7 @@ fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
     })
 }
 
-fn styled(css: &str) -> (Computed, std::rc::Rc<crate::document::state::DocState>) {
+fn styled(css: &str) -> (Computed, std::rc::Rc<crate::values::DocumentValues>) {
     let doc = doc();
     let mut c = Computed::default();
     c.apply_decls(&parse_decls_in(css, doc.values()), doc.values());

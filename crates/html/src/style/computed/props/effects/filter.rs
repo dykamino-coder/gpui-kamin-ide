@@ -1,8 +1,8 @@
 //! Каноническая грамматика filter и типизированные операнды длин фильтров изображений.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::parse_util::shadow_values;
 use crate::style::computed::{Computed, Filter, ImageFilter, Len, Shadow};
+use crate::values::ValueCx;
 
 pub(super) struct ParsedFilter {
     pub(super) program: ImageFilter,

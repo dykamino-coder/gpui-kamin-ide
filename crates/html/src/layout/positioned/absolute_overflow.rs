@@ -3,13 +3,13 @@
 //! прямоугольная область flex-родителя (щуп-канвас `probe`), и исходный содержащий блок,
 //! и коробка сдвигается по их объединению (`SafePlace` поверх `absolute_overflow_math`).
 
-use crate::document::state::ValueCx;
 use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::build_contracts::ChildBuild;
 use crate::layout::positioned::absolute_overflow_math::{Span, place};
 use crate::layout::positioned::containing_block::Positioning;
 use crate::style::computed::{Align, BoxStyle, Display, FlexDir, Position};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{AnyElement, App, Bounds, Pixels, Window, point, px};
 use std::rc::Rc;
 
@@ -218,7 +218,7 @@ struct SafePlace {
     child: AnyElement,
     plan: Plan,
     /// Values of the document the plan's lengths come from.
-    values: crate::document::state::ValueDoc,
+    values: crate::values::ValueDoc,
     /// Layout state of the same document: containing-block registry.
     layout: std::rc::Rc<crate::layout::layout_state::LayoutState>,
     build: ChildBuild,

@@ -5,7 +5,7 @@
 //! проверяются первыми, незнакомое имя и выход из диапазона падают на
 //! десятичный. Восточноазиатские стили — расширенный диапазон §7.1.5.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 mod additive_tables;
 mod builtin;
 mod cjk;

@@ -5,9 +5,9 @@
 //! (`Computed::bg_layers` повторяет короткие списки до числа картинок).
 //! Свойство пишет только свой список. `background-color` — один цвет.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::StyleColor;
+use crate::values::ValueCx;
 
 impl Computed {
     /// Список слоёв свойства `prop`: `true` — значение-список разобрано

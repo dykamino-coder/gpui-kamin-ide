@@ -5,7 +5,7 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
-use crate::document::state::ValueCx;
+use crate::values::ValueCx;
 #[macro_use]
 mod declaration_parse;
 pub(crate) use declaration_parse::{ParseResult, css_wide_keyword};

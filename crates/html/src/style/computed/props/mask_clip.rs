@@ -7,9 +7,9 @@
 //! (`style::css::property`); свойство слоёв с одним полем берёт верхний
 //! слой.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 
 mod basic_shape;
 mod clip_mask;

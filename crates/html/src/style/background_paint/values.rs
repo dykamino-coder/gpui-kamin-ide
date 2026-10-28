@@ -1,8 +1,8 @@
 //! Операнды фона без геометрии элемента и без записи в CSS.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{BgLayer, Computed, Gradient, ImageSource};
 use crate::style::values::value::Color;
+use crate::values::ValueCx;
 
 /// css-backgrounds-3 §2.1: компоненты слоёв и цвет фона, разрешённые на
 /// своём элементе. Холст получает эти операнды от донора, обычная коробка —
@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn list_layer_operands_carry_only_their_own_clip_and_image() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("background-color", "red", vcx);

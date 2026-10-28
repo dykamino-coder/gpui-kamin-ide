@@ -10,9 +10,9 @@
 
 use crate::document::box_style::has_box_style;
 use crate::document::state::DocState;
-use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::BoxStyle;
+use crate::values::ValueCx;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -117,10 +117,11 @@ pub(crate) fn parse_embedded_sized(
         .map_err(embedded_failure)?;
     crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx)
         .map_err(embedded_failure)?;
-    let parsed = crate::dom::convert(&input, theme_css, media, &state).map_err(|mut failure| {
-        failure.scope = super::FailureScope::EmbeddedDocument;
-        failure
-    })?;
+    let parsed =
+        crate::dom::convert(&input, theme_css, media, &state.values).map_err(|mut failure| {
+            failure.scope = super::FailureScope::EmbeddedDocument;
+            failure
+        })?;
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark), vcx);
     // HTML's embedding policy also applies when responsive sizing is declined.

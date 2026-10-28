@@ -5,7 +5,7 @@ use crate::style::computed::{BoxStyle, GradSpace};
 
 #[test]
 fn inherited_background_image_resolves_currentcolor_with_the_child_color() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut parent = Computed::default();
     parent.apply_one(
@@ -34,7 +34,7 @@ fn inherited_background_image_resolves_currentcolor_with_the_child_color() {
 
 #[test]
 fn relative_stops_use_the_inherited_element_color() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one(
@@ -71,7 +71,7 @@ fn relative_stops_use_the_inherited_element_color() {
 
 #[test]
 fn cancelled_current_color_image_is_not_reinherited() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for replacement in ["none", "image(red)"] {
         let mut parent = Computed::default();
@@ -91,7 +91,7 @@ fn cancelled_current_color_image_is_not_reinherited() {
 }
 #[test]
 fn typed_stop_colors_preserve_double_positions_without_css() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut parent = Computed::default();
     parent.apply_one(
@@ -124,7 +124,7 @@ fn typed_stop_colors_preserve_double_positions_without_css() {
 
 #[test]
 fn inherited_template_preserves_computed_font_positions() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut own = Computed::default();
     own.apply_one("font-size", "20px", vcx);
@@ -146,7 +146,7 @@ fn inherited_template_preserves_computed_font_positions() {
 }
 #[test]
 fn radial_first_stop_accepts_current_and_relative_colors() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let red = Color::parse("red", vcx).unwrap();
     for token in ["currentcolor", "rgb(from currentcolor r g b)"] {

@@ -3,13 +3,13 @@
 //! снимка кэшируется по хэшу поддерева, стиля и размеров, а узел подменяется на `<image>` с
 //! `data:`-ссылкой на снимок.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{BoxStyle, Display, Overflow, Position};
 use crate::style::values::value::Len;
+use crate::values::ValueCx;
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px};
 use std::hash::{Hash, Hasher};
 
