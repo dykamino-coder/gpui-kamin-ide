@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Terminal } from '@xterm/xterm'
-import { configureTerminalClipboard } from './terminal-clipboard'
+import { configureTerminalClipboard } from '../../../server/src/ui/src/lib/terminal-console/clipboard'
 
 // Minimal document surface: exercises listener ownership and menu actions without
 // emulating xterm's renderer (buffer/protocol coverage uses real headless xterm).

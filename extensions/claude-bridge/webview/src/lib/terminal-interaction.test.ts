@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Terminal } from '@xterm/xterm'
-import { configureTerminalInteraction, CONSOLE_OVERVIEW_RULER } from './terminal-interaction'
+import { configureTerminalInteraction, CONSOLE_OVERVIEW_RULER } from '../../../server/src/ui/src/lib/terminal-console/interaction'
 
 function fixture(mode = 'none', screen = 'normal') {
   const callbacks: Record<string, () => void> = {}

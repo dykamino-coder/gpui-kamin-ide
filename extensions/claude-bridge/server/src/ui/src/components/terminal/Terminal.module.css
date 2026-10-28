@@ -39,11 +39,11 @@
   background: var(--accent-yellow);
 }
 
-.statusDot[data-status="connected"] {
+.statusDot[data-status='connected'] {
   background: var(--accent-green);
 }
 
-.statusDot[data-status="disconnected"] {
+.statusDot[data-status='disconnected'] {
   background: var(--accent-red);
 }
 
@@ -86,7 +86,10 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 
@@ -102,17 +105,8 @@
 
 .terminalWrapper {
   flex: 1;
-  padding: 4px;
+  min-height: 0;
   overflow: hidden;
-}
-
-/* xterm.js container must fill parent */
-.terminalWrapper :global(.xterm) {
-  height: 100%;
-}
-
-.terminalWrapper :global(.xterm-viewport) {
-  overflow-y: auto !important;
 }
 
 .overlay {
