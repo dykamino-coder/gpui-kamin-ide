@@ -65,6 +65,7 @@ pub(super) fn place_oof_statics(
             solid: Vec::new(),
             avoid: Vec::new(),
             keep: Vec::new(),
+            table_rows: Vec::new(),
             h: 0.0,
             mt: 0.0,
             mb: 0.0,
@@ -167,9 +168,8 @@ pub(super) fn column_stack_div(
                 && matches!(e.style.used().height, None | Some(Len::Auto)),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
-        // Линейки последней линии — до блочного конца содержимого коробки
-        // заданного размера (Blink `PaintColumnRules`), без
-        // спаннеров и рядов (`multicol-rule-nested-balancing-001`).
+        // Линейки последней линии — до блочного конца содержимого коробки заданного размера
+        // (Blink `PaintColumnRules`), без спаннеров и рядов (`multicol-rule-nested-balancing-001`).
         .with_rule_stretch(
             match if col_vert {
                 merged.width

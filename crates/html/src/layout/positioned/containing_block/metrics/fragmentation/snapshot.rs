@@ -73,6 +73,7 @@ impl Recorder {
                     solid: breaks.solid,
                     avoid: breaks.avoid,
                     keep: breaks.keep,
+                    table_rows: breaks.table_rows,
                     clone_dec: flow.clone_dec.then_some((blocks.head, blocks.tail)),
                     par: crate::layout::fragment::types::Par {
                         avoid_only: !flow.monolith && blocks.inside_avoid,

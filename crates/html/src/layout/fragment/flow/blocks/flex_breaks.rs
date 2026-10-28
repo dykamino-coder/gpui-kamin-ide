@@ -29,6 +29,7 @@ impl FlexBox {
                     out.barriers.extend(flow.barriers);
                     out.keep.extend(flow.keep);
                     out.avoid_inside.extend(flow.avoid_inside);
+                    out.table_rows.extend(flow.table_rows);
                     out.avoid.extend(flow.avoid);
                     out.pending.extend(flow.pending);
                 } else {
@@ -125,6 +126,7 @@ impl FlexBox {
                 out.cuts.extend(flow.cuts);
                 out.keep.extend(flow.keep);
                 out.avoid_inside.extend(flow.avoid_inside);
+                out.table_rows.extend(flow.table_rows);
             }
         }
         frame.lines.last().map(|l| l.end)

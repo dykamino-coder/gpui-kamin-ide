@@ -33,6 +33,8 @@ pub(crate) struct BlockBreaks {
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
     pub(crate) avoid_inside: Vec<(f32, f32)>,
+    /// Ряды таблиц под правилом «not freely fragmentable» (`RowKeep`).
+    pub(crate) table_rows: Vec<crate::layout::fragment::types::RowKeep>,
     /// Секции повтора, если корень стопки — таблица.
     pub(super) sections: Option<TableSections>,
 }
@@ -53,6 +55,8 @@ pub(crate) struct MeasuredBreaks {
     /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
     pub(crate) keep: Vec<(f32, f32)>,
     pub(crate) avoid_inside: Vec<(f32, f32)>,
+    /// Ряды таблиц под правилом «not freely fragmentable» (`RowKeep`).
+    pub(crate) table_rows: Vec<crate::layout::fragment::types::RowKeep>,
     /// Разложенные секции повтора таблицы-корня (css-tables-3
     /// §repeated-headers).
     pub(crate) sections: Option<TableSections>,
