@@ -1,18 +1,16 @@
 //! Фиксация строчной оси измеряемой вертикальной копии.
 
-use crate::dom::Element;
 use gpui::{IntoElement, ParentElement, Styled};
 
 pub(super) fn wrap(
     element: gpui::AnyElement,
-    copy: &Element,
     vertical: bool,
     reverse: bool,
     inline: Option<f32>,
 ) -> gpui::AnyElement {
-    let Some(inline) =
-        inline.filter(|_| vertical && crate::layout::fragment::flow::vertical_copy(copy, reverse))
-    else {
+    // Строчную ось фиксирует колонка у каждой копии вертикальной стопки: мера
+    // ребёнка — раскладка его копии, независимо от того, что пишет рекордер.
+    let Some(inline) = inline.filter(|_| vertical) else {
         return element;
     };
     let wrapper = gpui::div().flex().h(gpui::px(inline));

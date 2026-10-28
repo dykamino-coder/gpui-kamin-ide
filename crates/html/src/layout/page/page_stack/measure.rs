@@ -61,7 +61,14 @@ pub(super) fn measure(
     let mut keep = Vec::new();
     let (mut h, mut cuts, mut forced, mut solid) = match &k.shape {
         Some((h, cuts, forced, solid)) => (*h, cuts.clone(), forced.clone(), solid.clone()),
-        None => (f32::from(sz.height), Vec::new(), Vec::new(), Vec::new()),
+        // Копия поднята на `inner_top` (поле уже в `Kid.mt`): высота ребёнка —
+        // его border box, без поля над ним.
+        None => (
+            (f32::from(sz.height) - k.inner_top).max(0.0),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        ),
     };
     let mut over = h;
     if let Some(flow) = measured_flow {

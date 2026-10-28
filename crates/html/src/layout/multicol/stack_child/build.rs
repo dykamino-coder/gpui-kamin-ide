@@ -136,7 +136,7 @@ pub(super) fn build_copy(
         part,
         &mut kids,
     ) {
-        return super::vertical::wrap(value, copy, col_vert, col_rl, line_col_w);
+        return super::vertical::wrap(value, col_vert, col_rl, line_col_w);
     }
     // Абсолютный потомок ищет ближайшего
     // позиционированного предка (CSS 2.1
@@ -242,5 +242,5 @@ pub(super) fn build_copy(
     } else {
         el
     };
-    super::vertical::wrap(el, copy, col_vert, col_rl, line_col_w)
+    super::vertical::wrap(el, col_vert, col_rl, line_col_w)
 }
