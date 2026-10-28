@@ -1,10 +1,10 @@
 //! Журнал диагностик ревизии внутри DocState. Продюсеры фаз только пишут в
 //! ограниченный журнал; выдача — по запросу embedder между фазами.
 
-use super::DocState;
+use super::DocumentValues;
 use crate::diagnostics::Diagnostic;
 
-impl DocState {
+impl DocumentValues {
     /// Записать наблюдение; без подписчика журнал остаётся в своих пределах.
     pub(crate) fn record_diagnostic(&self, diagnostic: Diagnostic) {
         self.diagnostics.borrow_mut().record(diagnostic);

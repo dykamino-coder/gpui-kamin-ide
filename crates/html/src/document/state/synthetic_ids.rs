@@ -1,8 +1,8 @@
 //! Монотонные ключи synthetic-коробок документа без переполнения и повторов.
 
-use super::DocState;
+use super::DocumentValues;
 
-impl DocState {
+impl DocumentValues {
     pub(crate) fn next_synthetic_id(&self) -> String {
         // Десятичные цифры от младшей к старшей; пустое состояние означает ноль.
         let mut digits = self.synthetic_id.borrow_mut();
