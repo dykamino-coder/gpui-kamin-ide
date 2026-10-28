@@ -5,7 +5,7 @@
   "description": "Claude Bridge VSIX extension host for KaminIDE. Ports legacy handlers onto the local host-compat and webview postMessage APIs; it has no Electron runtime dependency. Bundles to builtin-extensions/claude-bridge/extension.js — the only artifact that ships.",
   "scripts": {
     "build": "node build.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.acceptance.json",
     "test": "vitest run"
   },
   "dependencies": {

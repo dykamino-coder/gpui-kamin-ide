@@ -1,6 +1,6 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 
-import { pendingMcpCalls, resendUndeliveredMcpCalls, sendMcpCall } from './session-mcp-call.js'
+import { pendingMcpCalls, resendUndeliveredMcpCalls, sendMcpCall, rejectAllPending, rejectPendingForSession, handleMcpResponse } from './session-mcp-call.js'
 import type { PtySession } from './types.js'
 
 /** Сокет, повторяющий поведение настоящего при переполнении буфера: он
@@ -49,14 +49,16 @@ function onlyPending(sessionId: string) {
 
 describe('INC-2026-0011: состояние доставки интерактивного MCP-вызова', () => {
   beforeEach(() => {
-    pendingMcpCalls.clear()
+    vi.useFakeTimers()
   })
+
+  afterEach(() => { rejectAllPending('test cleanup'); vi.useRealTimers() })
 
   it('отброшенный по переполнению буфера вызов НЕ считается доставленным', () => {
     const live = socket({ buffered: OVER_CAP })
     const target = session(live.ws)
 
-    void sendMcpCall(target, 'AskUserQuestion', { questions: [] })
+    void sendMcpCall(target, 'AskUserQuestion', { questions: [] }).catch(() => {})
 
     expect(live.frames).toHaveLength(0)
     expect(onlyPending(target.id).delivered).toBe(false)
@@ -66,7 +68,7 @@ describe('INC-2026-0011: состояние доставки интеракти�
     const live = socket()
     const target = session(live.ws)
 
-    void sendMcpCall(target, 'AskUserQuestion', { questions: [] })
+    void sendMcpCall(target, 'AskUserQuestion', { questions: [] }).catch(() => {})
 
     expect(live.frames).toHaveLength(1)
     expect(onlyPending(target.id).delivered).toBe(true)
@@ -76,7 +78,7 @@ describe('INC-2026-0011: состояние доставки интеракти�
     const live = socket({ throwOnSend: true })
     const target = session(live.ws)
 
-    void sendMcpCall(target, 'AskUserQuestion', { questions: [] })
+    void sendMcpCall(target, 'AskUserQuestion', { questions: [] }).catch(() => {})
 
     expect(onlyPending(target.id).delivered).toBe(false)
   })
@@ -87,7 +89,7 @@ describe('INC-2026-0011: состояние доставки интеракти�
     // ошибочно числился доставленным.
     const stalled = socket({ buffered: OVER_CAP })
     const target = session(stalled.ws)
-    void sendMcpCall(target, 'AskUserQuestion', { questions: [] })
+    void sendMcpCall(target, 'AskUserQuestion', { questions: [] }).catch(() => {})
     expect(stalled.frames).toHaveLength(0)
 
     const fresh = socket()
@@ -103,7 +105,7 @@ describe('INC-2026-0011: состояние доставки интеракти�
   it('повтор в переполненный сокет не помечает вызов доставленным', () => {
     const stalled = socket({ buffered: OVER_CAP })
     const target = session(stalled.ws)
-    void sendMcpCall(target, 'AskUserQuestion', { questions: [] })
+    void sendMcpCall(target, 'AskUserQuestion', { questions: [] }).catch(() => {})
 
     const stillStalled = socket({ buffered: OVER_CAP })
     const reattached = session(stillStalled.ws)
@@ -113,5 +115,64 @@ describe('INC-2026-0011: состояние доставки интеракти�
 
     expect(stillStalled.frames).toHaveLength(0)
     expect(onlyPending(target.id).delivered).toBe(false)
+  })
+})
+
+
+describe('INC-2026-0080 request backpressure', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => { rejectAllPending('test cleanup'); vi.useRealTimers() })
+
+  it('retries after buffer drain without a reconnect, then stops after enqueue', async () => {
+    const live = socket({ buffered: OVER_CAP })
+    const target = session(live.ws)
+    const response = sendMcpCall(target, 'Read', { file_path: 'synthetic' })
+    expect(live.frames).toHaveLength(0)
+    live.ws.bufferedAmount = 0
+    vi.advanceTimersByTime(1000)
+    expect(live.frames).toHaveLength(1)
+    const id = JSON.parse(live.frames[0]!).requestId
+    vi.advanceTimersByTime(3000)
+    expect(live.frames).toHaveLength(1)
+    handleMcpResponse(id, 'done')
+    await expect(response).resolves.toBe('done')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('rejects a permanently oversized request instead of waiting for a tool timeout', async () => {
+    const response = sendMcpCall(session(socket().ws), 'Write', { content: 'x'.repeat(OVER_CAP) })
+    await expect(response).rejects.toThrow('frame limit')
+    expect(pendingMcpCalls.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+
+describe('MCP retry ownership cleanup', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => { rejectAllPending('test cleanup'); vi.useRealTimers() })
+
+  it('clears an undelivered interactive retry when its owning session ends', async () => {
+    const live = socket({ buffered: OVER_CAP })
+    const target = session(live.ws)
+    const response = sendMcpCall(target, 'AskUserQuestion', {})
+    const failure = expect(response).rejects.toThrow('session ended')
+    rejectPendingForSession(target.id, 'session ended')
+    await failure
+    vi.advanceTimersByTime(3000)
+    expect(live.frames).toHaveLength(0)
+    expect(pendingMcpCalls.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('clears transport retries when the owning request deadline expires', async () => {
+    const live = socket({ buffered: OVER_CAP })
+    const response = sendMcpCall(session(live.ws), 'synthetic-default-deadline', {})
+    const failure = expect(response).rejects.toThrow('MCP call timeout')
+    await vi.advanceTimersByTimeAsync(120_000)
+    await failure
+    expect(live.frames).toHaveLength(0)
+    expect(pendingMcpCalls.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

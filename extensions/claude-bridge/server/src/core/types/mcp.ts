@@ -28,6 +28,7 @@ export interface PendingMcpCall {
   resolve: (result: unknown) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout> | null
+  retryTimer?: ReturnType<typeof setInterval>
   toolName: string
   createdAt: number
   /** Session that owns this call — lets the reaper skip sessions with
