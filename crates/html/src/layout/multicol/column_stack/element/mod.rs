@@ -7,9 +7,54 @@ use crate::hooks::Hooks;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px};
+mod copies;
 mod native;
 mod paint;
 mod prepaint;
+
+impl ColumnStack {
+    /// Горизонтальная укладка в колонки. Кадры, живые во время вложенных
+    /// раскладок и prepaint копий (`prepare`, `column_breaks`,
+    /// `prepaint_frags`), держатся малыми: копия может сама нести
+    /// многоколоночник, и его prepaint идёт внутри этого.
+    #[inline(never)]
+    fn prepaint_columns(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let w = f32::from(bounds.size.width);
+        let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        self.measure_columns(col_w, window, cx);
+        let planned = self.plan_columns(bounds, col_w);
+        let step = col_w + self.gap;
+        self.prepaint_frags(window, cx, bounds, col_w, &planned.0, step);
+        self.finish_prepaint(bounds, col_w, planned, window, cx);
+    }
+
+    /// Меры детей по реальной ширине колонки (отложенная стопка и точки разрыва).
+    #[inline(never)]
+    fn measure_columns(&mut self, col_w: f32, window: &mut Window, cx: &mut App) {
+        if let Some(recipe) = self.deferred.clone() {
+            recipe.prepare(self, col_w, window, cx);
+        }
+        self.column_breaks(col_w, window, cx);
+    }
+
+    /// Native OOF, спаннеры и линейки — после prepaint копий.
+    #[inline(never)]
+    fn finish_prepaint(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        col_w: f32,
+        planned: (crate::layout::fragment::plan::Plan, Vec<(usize, f32)>),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let (mut plan, spans) = planned;
+        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
+            plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
+            plan.incomplete();
+        }
+        self.prepaint_spanners(bounds, col_w, plan, spans, window, cx);
+    }
+}
 
 impl Hooks for ColumnStack {
     type Layout = LayoutId;
@@ -34,23 +79,7 @@ impl Hooks for ColumnStack {
             self.prepaint_axis(bounds, window, cx);
             return bounds;
         }
-        // Кадры, живые во время вложенных раскладок копий (`prepare`,
-        // `column_breaks`, `prepaint_frags`), держатся малыми: копия может сама
-        // нести многоколоночник, и его prepaint идёт внутри этого.
-        let w = f32::from(bounds.size.width);
-        let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
-        if let Some(recipe) = self.deferred.clone() {
-            recipe.prepare(self, col_w, window, cx);
-        }
-        self.column_breaks(col_w, window, cx);
-        let (mut plan, spans) = self.plan_columns(bounds, col_w);
-        let step = col_w + self.gap;
-        self.prepaint_frags(window, cx, bounds, col_w, &plan, step);
-        if self.prepaint_native(bounds, &plan, window, cx).is_err() {
-            plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
-            plan.incomplete();
-        }
-        self.prepaint_spanners(bounds, col_w, plan, spans, window, cx);
+        self.prepaint_columns(bounds, window, cx);
         bounds
     }
 

@@ -1,5 +1,6 @@
 //! Предраскладка фрагментов колонок и линеек промежутков.
 
+use super::copies::{layout_frag, prepaint_bands, prepaint_frag};
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
@@ -137,6 +138,7 @@ impl ColumnStack {
     /// Копии кусков плана: каждая раскладывается и проходит prepaint на своём
     /// месте. Копия может нести вложенный многоколоночник, и его prepaint идёт
     /// внутри этого кадра — он держится малым.
+    #[inline(never)]
     pub(super) fn prepaint_frags(
         &mut self,
         window: &mut Window,
@@ -146,7 +148,6 @@ impl ColumnStack {
         plan: &[Frag],
         step: f32,
     ) {
-        use crate::layout::fragment::static_coordinates;
         self.record_places(bounds, plan, step);
         let places = self.static_places.clone();
         for f in plan {
@@ -180,53 +181,23 @@ impl ColumnStack {
             // часть делает маска в отрисовке. Иначе половина коробки просто
             // сжалась бы, а не продолжилась в следующей колонке.
             let at = point(x, if clone { y } else { y - px(f.from) });
-            let avail = size(
-                gpui::AvailableSpace::Definite(px(col_w)),
-                gpui::AvailableSpace::Definite(px(full_h)),
-            );
-            let mut laid = el.layout_as_root_at(at, avail, window, cx);
-            // Корень rtl taffy ставит у правого края колонки; содержащий
-            // блок ltr — вернуть к левому (`Par::rtl_root_in_ltr`).
-            if kid.par.rtl_root_in_ltr && f32::from(laid.width) < col_w {
-                let back = px(col_w - f32::from(laid.width));
-                laid = el.layout_as_root_at(point(at.x - back, at.y), avail, window, cx);
-            }
+            let laid = layout_frag(el, at, (col_w, full_h), kid.par.rtl_root_in_ltr, window, cx);
             let mapping = places
                 .as_ref()
                 .filter(|_| !clone)
                 .map(|places| (f.kid, point(x, y - px(f.from)), places.clone()));
             let segment = gpui::PaintSegmentId(f.col as u64);
-            static_coordinates::with(&self.paint, mapping, || {
-                crate::hooks::with_copy_hits(segment, &self.oof.slot_scopes, window, |window| {
-                    el.prepaint_at(point(px(0.0), px(0.0)), window, cx)
-                });
-            });
+            prepaint_frag(
+                el,
+                &self.paint,
+                &self.oof.slot_scopes,
+                mapping,
+                segment,
+                window,
+                cx,
+            );
             // Retain the actual root width for fragment decoration bounds.
             kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
         }
     }
-}
-
-/// Полосы повтора таблицы — своими копиями (`Repeat::place_bands`).
-#[inline(never)]
-fn prepaint_bands(
-    r: &mut crate::layout::fragment::types::Repeat,
-    f: &Frag,
-    at: gpui::Point<Pixels>,
-    (col_w, full_h): (f32, f32),
-    window: &mut Window,
-    cx: &mut App,
-) {
-    r.place_bands(f, |el, band| {
-        el.layout_as_root_at(
-            point(at.x, at.y + px(band)),
-            size(
-                gpui::AvailableSpace::Definite(px(col_w)),
-                gpui::AvailableSpace::Definite(px(full_h)),
-            ),
-            window,
-            cx,
-        );
-        el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-    });
 }
