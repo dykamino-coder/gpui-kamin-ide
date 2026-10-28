@@ -3,8 +3,10 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::block::sizing::BoxDimensions;
+use crate::layout::fragment::types::StackChild;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::options::RenderOpts;
+use crate::layout::positioned::containing_block::SpotCell;
 use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
@@ -15,14 +17,10 @@ pub(super) fn place_oof_statics(
     opts: &RenderOpts,
     oof_static: &[(usize, Element)],
     kid_starts: Vec<usize>,
-    children: Vec<crate::layout::fragment::types::StackChild>,
-) -> (
-    Vec<crate::layout::fragment::types::StackChild>,
-    Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
-) {
+    children: Vec<StackChild>,
+) -> (Vec<StackChild>, Vec<SpotCell>) {
     let mut children = children;
-    let oof_spots: Vec<crate::layout::positioned::containing_block::SpotCell> =
-        oof_static.iter().map(|_| Default::default()).collect();
+    let oof_spots: Vec<SpotCell> = oof_static.iter().map(|_| Default::default()).collect();
     for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
         // Щуп правит только пустую ось; заданную считает CB (CSS 2.1 §10.3.7), как fixed_axes.
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
@@ -36,7 +34,7 @@ pub(super) fn place_oof_statics(
             own_vertical: oof.style.cascaded().wm().vertical(),
             ..Default::default()
         });
-        let probe = crate::layout::fragment::types::StackChild {
+        let probe = StackChild {
             #[cfg(feature = "wpt-harness")]
             probe_pending: false,
             #[cfg(feature = "wpt-harness")]
