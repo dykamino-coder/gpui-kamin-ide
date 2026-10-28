@@ -16,10 +16,7 @@
 
 import fs from 'fs'
 import path from 'path'
-import {
-  getDb, closeDb, getDbForMaintenance,
-  beginMaintenance, endMaintenance, getDataDir, getDuckDbPath,
-} from './lifecycle'
+import { getDb, closeDb, getDbForMaintenance, withExclusiveDb, getDataDir, getDuckDbPath } from './lifecycle'
 import { infoLog, warnLog, errorLog } from '../../logging'
 
 // Retention windows. Only tables whose old rows are provably never re-read are
@@ -30,7 +27,11 @@ import { infoLog, warnLog, errorLog } from '../../logging'
 const OTEL_EVENTS_RETENTION_DAYS = Number(process.env.OCB_OTEL_EVENTS_DAYS || 30)
 const API_ERRORS_RETENTION_DAYS = Number(process.env.OCB_API_ERRORS_DAYS || 90)
 
-export interface TableDiag { table: string; rows: number; textMB: number }
+export interface TableDiag {
+  table: string
+  rows: number
+  textMB: number
+}
 export interface DbDiag {
   fileMB: number
   tables: TableDiag[]
@@ -38,25 +39,31 @@ export interface DbDiag {
   freeBlockRatio: number | null
 }
 
-function num(v: unknown): number { return typeof v === 'bigint' ? Number(v) : Number(v ?? 0) }
+function num(v: unknown): number {
+  return typeof v === 'bigint' ? Number(v) : Number(v ?? 0)
+}
 
 async function listTables(db: Awaited<ReturnType<typeof getDb>>): Promise<string[]> {
-  const rows = (await db.runAndReadAll(
-    `SELECT table_name FROM information_schema.tables
-     WHERE table_catalog = current_catalog() AND table_schema = 'main'
+  const rows = (
+    await db.runAndReadAll(
+      `SELECT table_name FROM information_schema.tables
+     WHERE table_catalog = current_catalog() AND table_schema = 'main' AND table_type = 'BASE TABLE'
      ORDER BY table_name`,
-  )).getRowObjects()
-  return rows.map(r => String((r as { table_name: unknown }).table_name))
+    )
+  ).getRowObjects()
+  return rows.map((r) => String((r as { table_name: unknown }).table_name))
 }
 
 async function varcharCols(db: Awaited<ReturnType<typeof getDb>>, table: string): Promise<string[]> {
-  const rows = (await db.runAndReadAll(
-    `SELECT column_name FROM information_schema.columns
+  const rows = (
+    await db.runAndReadAll(
+      `SELECT column_name FROM information_schema.columns
      WHERE table_catalog = current_catalog() AND table_schema = 'main'
        AND table_name = ? AND data_type = 'VARCHAR'`,
-    [table],
-  )).getRowObjects()
-  return rows.map(r => String((r as { column_name: unknown }).column_name))
+      [table],
+    )
+  ).getRowObjects()
+  return rows.map((r) => String((r as { column_name: unknown }).column_name))
 }
 
 /** Per-table row counts + VARCHAR text megabytes + file size. Mirrors the
@@ -67,10 +74,10 @@ export async function dbDiag(): Promise<DbDiag> {
   let sumText = 0
   for (const table of await listTables(db)) {
     const cols = await varcharCols(db, table)
-    const lenExpr = cols.length ? cols.map(c => `COALESCE(strlen("${c}"),0)`).join('+') : '0'
-    const row = (await db.runAndReadAll(
-      `SELECT COUNT(*) AS n, COALESCE(SUM(${lenExpr}),0) AS b FROM "${table}"`,
-    )).getRowObjects()[0] as { n: unknown; b: unknown }
+    const lenExpr = cols.length ? cols.map((c) => `COALESCE(strlen("${c}"),0)`).join('+') : '0'
+    const row = (
+      await db.runAndReadAll(`SELECT COUNT(*) AS n, COALESCE(SUM(${lenExpr}),0) AS b FROM "${table}"`)
+    ).getRowObjects()[0] as { n: unknown; b: unknown }
     const mb = num(row.b) / 1048576
     sumText += mb
     out.push({ table, rows: num(row.n), textMB: Math.round(mb) })
@@ -78,7 +85,11 @@ export async function dbDiag(): Promise<DbDiag> {
   out.sort((a, b) => b.textMB - a.textMB)
 
   let fileMB = 0
-  try { fileMB = Math.round(fs.statSync(getDuckDbPath()).size / 1048576) } catch { /* ignore */ }
+  try {
+    fileMB = Math.round(fs.statSync(getDuckDbPath()).size / 1048576)
+  } catch {
+    /* ignore */
+  }
 
   // PRAGMA database_size exposes block accounting → fragmentation signal.
   let freeBlockRatio: number | null = null
@@ -90,7 +101,9 @@ export async function dbDiag(): Promise<DbDiag> {
       const free = num(ds.free_blocks)
       if (total > 0) freeBlockRatio = Math.round((free / total) * 100) / 100
     }
-  } catch { /* PRAGMA shape varies by version — non-fatal */ }
+  } catch {
+    /* PRAGMA shape varies by version — non-fatal */
+  }
 
   return { fileMB, tables: out, sumTextMB: Math.round(sumText), freeBlockRatio }
 }
@@ -98,7 +111,13 @@ export async function dbDiag(): Promise<DbDiag> {
 /** Nightly retention: delete provably-unread old rows, then CHECKPOINT to
  *  release their blocks for reuse (stops growth without a full rewrite). */
 export async function runRetention(): Promise<{ otelEventsDeleted: number; apiErrorsDeleted: number }> {
-  const db = await getDb()
+  // DELETE + CHECKPOINT need a point with no other write transaction open.
+  return withExclusiveDb((db) => retentionOn(db))
+}
+
+async function retentionOn(
+  db: Awaited<ReturnType<typeof getDb>>,
+): Promise<{ otelEventsDeleted: number; apiErrorsDeleted: number }> {
   const otelCut = new Date(Date.now() - OTEL_EVENTS_RETENTION_DAYS * 86400_000).toISOString()
   const errCut = new Date(Date.now() - API_ERRORS_RETENTION_DAYS * 86400_000).toISOString()
 
@@ -106,9 +125,9 @@ export async function runRetention(): Promise<{ otelEventsDeleted: number; apiEr
   // counts uniformly). `table` is a fixed literal below, never user input.
   const ageOut = async (table: string, tsCol: string, cut: string): Promise<number> => {
     try {
-      const before = (await db.runAndReadAll(
-        `SELECT COUNT(*) AS n FROM "${table}" WHERE "${tsCol}" < ?`, [cut],
-      )).getRowObjects()[0] as { n: unknown }
+      const before = (
+        await db.runAndReadAll(`SELECT COUNT(*) AS n FROM "${table}" WHERE "${tsCol}" < ?`, [cut])
+      ).getRowObjects()[0] as { n: unknown }
       const n = num(before.n)
       if (n > 0) await db.run(`DELETE FROM "${table}" WHERE "${tsCol}" < ?`, [cut])
       return n
@@ -122,7 +141,11 @@ export async function runRetention(): Promise<{ otelEventsDeleted: number; apiEr
   const apiErrorsDeleted = await ageOut('api_errors', 'timestamp', errCut)
 
   if (otelEventsDeleted + apiErrorsDeleted > 0) {
-    try { await db.run(`CHECKPOINT`) } catch (err) { warnLog('[db-maint] checkpoint failed', { error: String(err) }) }
+    try {
+      await db.run(`CHECKPOINT`)
+    } catch (err) {
+      warnLog('[db-maint] checkpoint failed', { error: String(err) })
+    }
   }
   infoLog('[db-maint] retention complete', { otelEventsDeleted, apiErrorsDeleted })
   return { otelEventsDeleted, apiErrorsDeleted }
@@ -141,7 +164,13 @@ function paths() {
   }
 }
 
-function rmQuiet(p: string): void { try { fs.rmSync(p, { force: true }) } catch { /* ignore */ } }
+function rmQuiet(p: string): void {
+  try {
+    fs.rmSync(p, { force: true })
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * Recover from a compaction interrupted by a crash. Called at boot BEFORE the
@@ -196,55 +225,76 @@ export async function compactDatabase(): Promise<CompactResult> {
   if (compacting) return { ok: false, beforeMB: 0, afterMB: 0, error: 'Compaction already running' }
   compacting = true
   const p = paths()
-  const beforeMB = (() => { try { return Math.round(fs.statSync(p.main).size / 1048576) } catch { return 0 } })()
+  const beforeMB = (() => {
+    try {
+      return Math.round(fs.statSync(p.main).size / 1048576)
+    } catch {
+      return 0
+    }
+  })()
 
   // Clean any stale intermediates from a prior aborted attempt.
-  rmQuiet(p.tmp); rmQuiet(p.next); rmQuiet(p.old)
+  rmQuiet(p.tmp)
+  rmQuiet(p.next)
+  rmQuiet(p.old)
 
-  beginMaintenance()
   try {
-    // 1. Produce the compacted copy on a live connection (original untouched).
-    //    beginMaintenance already parked NEW getDb() callers; give the last
-    //    in-flight query a beat to finish, then checkpoint + rewrite. We use
-    //    the gate-EXEMPT accessor — getDb() would await our own gate.
-    await new Promise(r => setTimeout(r, 250))
-    const conn = await getDbForMaintenance()
-    await conn.run(`CHECKPOINT`)
-    const esc = (s: string) => s.replace(/'/g, "''")
-    const cat = (await conn.runAndReadAll(`SELECT current_catalog() AS c`)).getRowObjects()[0] as { c: unknown }
-    await conn.run(`ATTACH '${esc(p.tmp)}' AS clean`)
-    await conn.run(`COPY FROM DATABASE "${String(cat.c)}" TO clean`)
-    await conn.run(`DETACH clean`)
+    // Exclusive window: the stats write lock is held (no BEGIN…COMMIT of ours
+    // is open), new calls are parked and every in-flight call has finished —
+    // a fixed sleep cannot prove that, and CHECKPOINT/close/swap under a live
+    // writer is exactly what failed in production.
+    return await withExclusiveDb(async (conn) => {
+      // 1. Produce the compacted copy (original untouched).
+      await conn.run(`CHECKPOINT`)
+      const esc = (s: string) => s.replace(/'/g, "''")
+      const cat = (await conn.runAndReadAll(`SELECT current_catalog() AS c`)).getRowObjects()[0] as { c: unknown }
+      await conn.run(`ATTACH '${esc(p.tmp)}' AS clean`)
+      await conn.run(`COPY FROM DATABASE "${String(cat.c)}" TO clean`)
+      await conn.run(`DETACH clean`)
 
-    // 2. Close the pool → releases the OS lock on proxy.duckdb.
-    await closeDb()
+      // 2. Close the pool → releases the OS lock on proxy.duckdb. Lease handles
+      //    held by other modules resolve to the reopened pool afterwards.
+      await closeDb()
 
-    // 3. Atomic three-step rename (see recover invariant).
-    fs.renameSync(p.tmp, p.next)
-    if (fs.existsSync(p.main)) fs.renameSync(p.main, p.old)
-    rmQuiet(p.wal) // stale WAL belongs to the old file
-    fs.renameSync(p.next, p.main)
+      // 3. Atomic three-step rename (see recover invariant).
+      fs.renameSync(p.tmp, p.next)
+      if (fs.existsSync(p.main)) fs.renameSync(p.main, p.old)
+      rmQuiet(p.wal) // stale WAL belongs to the old file
+      fs.renameSync(p.next, p.main)
 
-    // 4. Reopen + sanity check.
-    const check = await getDbForMaintenance()
-    await check.runAndReadAll(`SELECT COUNT(*) FROM jsonl_events`)
+      // 4. Reopen + sanity check.
+      const check = await getDbForMaintenance()
+      await check.runAndReadAll(`SELECT COUNT(*) FROM jsonl_events`)
 
-    rmQuiet(p.old)
-    const afterMB = (() => { try { return Math.round(fs.statSync(p.main).size / 1048576) } catch { return 0 } })()
-    infoLog('[db-maint] compaction complete', { beforeMB, afterMB })
-    return { ok: true, beforeMB, afterMB }
+      rmQuiet(p.old)
+      const afterMB = (() => {
+        try {
+          return Math.round(fs.statSync(p.main).size / 1048576)
+        } catch {
+          return 0
+        }
+      })()
+      infoLog('[db-maint] compaction complete', { beforeMB, afterMB })
+      return { ok: true, beforeMB, afterMB }
+    })
   } catch (err) {
     errorLog('[db-maint] compaction FAILED — rolling back', { error: String(err) })
     // Roll back: restore the original if the swap didn't complete.
     try {
       if (!fs.existsSync(p.main) && fs.existsSync(p.old)) fs.renameSync(p.old, p.main)
-    } catch (e) { errorLog('[db-maint] rollback rename failed', { error: String(e) }) }
-    rmQuiet(p.tmp); rmQuiet(p.next)
+    } catch (e) {
+      errorLog('[db-maint] rollback rename failed', { error: String(e) })
+    }
+    rmQuiet(p.tmp)
+    rmQuiet(p.next)
     // Make sure the pool is usable again.
-    try { await getDbForMaintenance() } catch { /* boot path will retry */ }
+    try {
+      await getDbForMaintenance()
+    } catch {
+      /* boot path will retry */
+    }
     return { ok: false, beforeMB, afterMB: beforeMB, error: err instanceof Error ? err.message : String(err) }
   } finally {
-    endMaintenance()
     compacting = false
   }
 }
@@ -255,10 +305,10 @@ export async function compactDatabase(): Promise<CompactResult> {
 // fragmentation. Default 512 MB — well above a healthy steady-state size but
 // far below the 1.7 GB the churn bug produced.
 const COMPACT_THRESHOLD_MB = Number(process.env.OCB_DB_COMPACT_MB || 512)
-// Hard ceiling: above this the file is compacted EVEN mid-session (idle gate
-// bypassed). Carrying a multi-GB DB — and the churn that got it there — is worse
-// than the sub-second write stall a compaction costs. This is the backstop for
-// "user worked all day, server was never idle, file ballooned". Default 2 GB.
+// Above this size an active server is warned about, but NOT compacted: the COPY
+// of a multi-GB file holds the exclusive window for minutes, and doing that
+// under live sessions stalled every writer (and used to race them). The file is
+// compacted at the next idle tick instead. Default 2 GB.
 const COMPACT_HARD_MB = Number(process.env.OCB_DB_COMPACT_HARD_MB || 2048)
 const MAINT_INTERVAL_MS = Number(process.env.OCB_DB_MAINT_INTERVAL_MS || 60 * 60_000) // hourly
 let maintTimer: ReturnType<typeof setInterval> | null = null
@@ -268,8 +318,10 @@ let lastRetentionDay = ''
 async function serverIsIdle(): Promise<boolean> {
   try {
     const { getAllSessions } = await import('../../pty/session-manager')
-    return getAllSessions().every(s => s.state !== 'running')
-  } catch { return true }
+    return getAllSessions().every((s) => s.state !== 'running')
+  } catch {
+    return true
+  }
 }
 
 async function maintenanceTick(): Promise<void> {
@@ -289,26 +341,32 @@ async function maintenanceTick(): Promise<void> {
     // idle compaction reclaimed it to ~67 MB). A plain CHECKPOINT is cheap and
     // caps that growth by letting new versions reuse freed space in-file.
     try {
-      const db = await getDb()
-      await db.run(`CHECKPOINT`)
+      // Only inside the exclusive window: "Cannot CHECKPOINT: there are other
+      // write transactions active" was this call racing live writers.
+      await withExclusiveDb((db) => db.run(`CHECKPOINT`))
     } catch (err) {
       warnLog('[db-maint] periodic checkpoint failed', { error: String(err) })
     }
 
-    // Compaction (shrinks the file below its high-water mark). Normal path: only
-    // when fragmented AND the server is quiet, since it briefly stalls DB writes.
-    // Hard-ceiling path: if the file grew past COMPACT_HARD_MB anyway (active use
-    // meant "idle" never came), compact regardless — a big file is worse than
-    // the stall.
+    // Compaction (shrinks the file below its high-water mark) only when no
+    // session is running: it holds the exclusive window for the whole COPY.
     const diag = await dbDiag()
     const fragmented = diag.freeBlockRatio === null || diag.freeBlockRatio > 0.2
     const idle = await serverIsIdle()
     const overHardCeiling = diag.fileMB >= COMPACT_HARD_MB
-    if ((diag.fileMB >= COMPACT_THRESHOLD_MB && fragmented && idle) || overHardCeiling) {
-      infoLog('[db-maint] compacting', {
-        fileMB: diag.fileMB, freeBlockRatio: diag.freeBlockRatio, idle, hardCeiling: overHardCeiling,
-      })
-      await compactDatabase()
+    if (diag.fileMB >= COMPACT_THRESHOLD_MB && (fragmented || overHardCeiling)) {
+      if (idle) {
+        infoLog('[db-maint] compacting', {
+          fileMB: diag.fileMB,
+          freeBlockRatio: diag.freeBlockRatio,
+          hardCeiling: overHardCeiling,
+        })
+        await compactDatabase()
+      } else if (overHardCeiling) {
+        warnLog('[db-maint] file over the hard ceiling; compaction deferred until no session is running', {
+          fileMB: diag.fileMB,
+        })
+      }
     }
   } catch (err) {
     warnLog('[db-maint] tick failed', { error: String(err) })
@@ -318,11 +376,18 @@ async function maintenanceTick(): Promise<void> {
 export function startDbMaintenance(): void {
   if (maintTimer) clearInterval(maintTimer)
   // First tick after a short delay so it doesn't pile onto boot.
-  setTimeout(() => { void maintenanceTick() }, 60_000)
-  maintTimer = setInterval(() => { void maintenanceTick() }, MAINT_INTERVAL_MS)
+  setTimeout(() => {
+    void maintenanceTick()
+  }, 60_000)
+  maintTimer = setInterval(() => {
+    void maintenanceTick()
+  }, MAINT_INTERVAL_MS)
   infoLog('[db-maint] scheduler started', { intervalMs: MAINT_INTERVAL_MS, thresholdMB: COMPACT_THRESHOLD_MB })
 }
 
 export function stopDbMaintenance(): void {
-  if (maintTimer) { clearInterval(maintTimer); maintTimer = null }
+  if (maintTimer) {
+    clearInterval(maintTimer)
+    maintTimer = null
+  }
 }

@@ -1,24 +1,34 @@
-// Lightweight tail-watcher for a single subagent JSONL file. Extracted from
-// `jsonl-watcher.ts` (Sprint 2 / Stage C, C7) — the parent file shed a
-// self-contained class without losing any functionality. Delegates parsing
-// to `parseJsonlLine` (no `file-history-snapshot` lines apply here, but the
-// helper keeps that defensive byte-skip logic in one place anyway).
+// Lightweight tail-watcher for a single subagent JSONL file.
+//
+// One delivery path for the initial replay and the live tail (INC-2026-0078,
+// F09): the watch, the safety poll and the retry timer are armed BEFORE the
+// first delivery, so a refused first frame can never leave the watcher with no
+// way to continue. The cursor advances per DELIVERED batch (partial progress
+// is kept), only past complete records (a torn last line is re-read), and on
+// byte-framed lines (multi-byte characters never split). Temporary pressure is
+// retried on a timer; a record that can never fit a frame is replaced by an
+// explicit stub instead of being retried forever.
 
 import fs from 'fs'
 import fsp from 'fs/promises'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
+import { readJsonlLines } from './jsonl-lines'
+import {
+  normalizeOutcome,
+  oversizedStub,
+  REPLAY_BATCH_BYTES,
+  REPLAY_BATCH_RECORDS,
+  type SendOutcome,
+  type Tagged,
+} from './jsonl-replay'
 
 const DISCOVERY_POLL_MS = 1000
 const SUBAGENT_POLL_MS = 1000
-// Chunk the initial subagent replay instead of one giant WS frame — a large
-// team/subagent transcript sent whole floods the client + spikes the WebView2
-// renderer heap (prod OOM class). Same size/gap as the main watcher's replay.
-const REPLAY_CHUNK = 200
-const REPLAY_CHUNK_DELAY_MS = 10
-// Safety-net poll cadence when fs.watch is live — pure backup, so slow (10s).
-// Mirrors the main watcher's constant: how soon to re-try a tail read after the
-// WS refused a frame (16MB bufferedAmount cap).
+// Pause between delivered batches of a large backlog, so a subagent replay
+// never floods the client in one burst.
+const BATCH_GAP_MS = 10
+// Re-try after the WS refused a frame (temporary pressure / not attached yet).
 const TAIL_BACKPRESSURE_RETRY_MS = 400
 const WATCH_SAFETY_POLL_MS = 10_000
 const SUBAGENT_DISCOVERY_TIMEOUT_MS = 120_000
@@ -35,10 +45,7 @@ async function pathExists(p: string): Promise<boolean> {
 export class SubagentJsonlWatcher {
   private agentToolUseId: string
   private filePath: string
-  // Returns false when the WS dropped the frame (bufferedAmount past the 16MB
-  // cap). Typed `void` before, which SILENTLY DISCARDED that signal — see the
-  // offset handling in tailOnce/startTailing.
-  private sendEntries: (entries: JsonlEntry[]) => boolean | void
+  private sendEntries: (entries: JsonlEntry[]) => boolean | void | SendOutcome
   private stopped = false
   private lastOffset = 0
   private reading = false
@@ -55,7 +62,7 @@ export class SubagentJsonlWatcher {
   constructor(
     agentToolUseId: string,
     filePath: string,
-    sendEntries: (entries: JsonlEntry[]) => boolean | void,
+    sendEntries: (entries: JsonlEntry[]) => boolean | void | SendOutcome,
     private options: { startOffset?: number } = {},
   ) {
     this.agentToolUseId = agentToolUseId
@@ -134,30 +141,7 @@ export class SubagentJsonlWatcher {
 
   private async startTailing(): Promise<void> {
     if (this.stopped) return
-
-    if (this.options.startOffset === undefined)
-      try {
-        const stat = await fsp.stat(this.filePath)
-        if (stat.size > 0) {
-          const entries = await this.readEntries(0)
-          for (let i = 0; i < entries.length; i += REPLAY_CHUNK) {
-            if (this.stopped) return
-            const chunk = entries.slice(i, i + REPLAY_CHUNK)
-            // Same deliver-then-advance rule as the tail below: a dropped chunk
-            // must NOT be counted as consumed. Leave lastOffset where it is and
-            // bail — the tail poll re-reads from there and re-sends the rest.
-            if (chunk.length > 0 && this.sendEntries(chunk) === false) return
-            if (i + REPLAY_CHUNK < entries.length) {
-              await new Promise((r) => setTimeout(r, REPLAY_CHUNK_DELAY_MS))
-            }
-          }
-          this.lastOffset = stat.size
-        }
-      } catch {
-        /* file may be empty or briefly locked */
-      }
-
-    // Prefer native fs.watch + lazy poll fallback; see main-session watcher above.
+    // Arm every way of continuing FIRST; only then deliver anything.
     try {
       let debounceTimer: ReturnType<typeof setTimeout> | null = null
       const schedule = () => {
@@ -193,7 +177,6 @@ export class SubagentJsonlWatcher {
     } catch {
       this.tailWatcher = null
     }
-
     this.tailTimer = setInterval(
       () => {
         if (this.stopped || this.reading) return
@@ -201,80 +184,116 @@ export class SubagentJsonlWatcher {
       },
       this.tailWatcher ? WATCH_SAFETY_POLL_MS : SUBAGENT_POLL_MS,
     )
-    // Resumed files use the normal deliver-then-advance tail path, including
-    // its backpressure retry; never replay the already consumed prefix.
-    if (this.options.startOffset !== undefined) await this.checkForNew()
+    // Initial replay (from 0, or the resumed offset) is the same tail path.
+    await this.checkForNew()
+  }
+
+  private scheduleRetry(): void {
+    if (this.stopped) return
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      if (!this.stopped && !this.reading) void this.checkForNew()
+    }, TAIL_BACKPRESSURE_RETRY_MS)
+  }
+
+  /** Complete records from `offset` to the current end, tagged with byte
+   *  positions (diagnostics/tests; delivery uses the batched path below). */
+  async readEntries(offset: number): Promise<Tagged[]> {
+    const out: Tagged[] = []
+    for await (const line of readJsonlLines(this.filePath, { start: offset })) {
+      if (line.text.includes(SKIP_LINE_MARKER)) continue
+      try {
+        const e = JSON.parse(line.text) as Tagged
+        e._pos = line.start
+        e._posEnd = line.end
+        out.push(e)
+      } catch {
+        /* torn or malformed */
+      }
+    }
+    return out
+  }
+
+  /** Try one batch; true when it was delivered (or explicitly stubbed). */
+  private deliver(batch: Tagged[]): boolean {
+    const r = normalizeOutcome(this.sendEntries(batch))
+    if (r === 'sent') return true
+    if (r !== 'oversized') return false
+    // Never fits: split, and stub a single record that cannot fit alone.
+    if (batch.length > 1) {
+      const mid = batch.length >> 1
+      return this.deliver(batch.slice(0, mid)) && this.deliver(batch.slice(mid))
+    }
+    const e = batch[0]!
+    const stub = oversizedStub(e, (e._posEnd ?? 0) - (e._pos ?? 0))
+    const s = normalizeOutcome(this.sendEntries([stub]))
+    return s === 'sent' || s === 'oversized'
   }
 
   private async checkForNew(): Promise<void> {
-    if (this.stopped) return
+    if (this.stopped || this.reading) return
+    this.reading = true
     try {
-      const stat = await fsp.stat(this.filePath)
-      if (stat.size <= this.lastOffset) return
+      const size = (await fsp.stat(this.filePath)).size
+      if (size < this.lastOffset) this.lastOffset = 0 // rewritten/truncated: start over
+      if (size <= this.lastOffset) return
       this.lastActivityAt = Date.now()
-      this.reading = true
-      const entries = await this.readEntries(this.lastOffset)
-      if (entries.length === 0) {
-        this.lastOffset = stat.size
-        return
+      let batch: Tagged[] = []
+      let batchBytes = 0
+      let batchEnd = this.lastOffset
+      let nextBatchAt = 0
+      const flush = async (): Promise<boolean> => {
+        if (batch.length > 0) {
+          // Space consecutive batches of a backlog; the first goes at once.
+          // Reader completion (including closing the file) may itself consume
+          // the gap. Measure from delivery, not from when EOF becomes visible.
+          const remainingGap = nextBatchAt - Date.now()
+          if (remainingGap > 0) await new Promise((r) => setTimeout(r, remainingGap))
+          if (this.stopped || !this.deliver(batch)) return false
+          nextBatchAt = Date.now() + BATCH_GAP_MS
+        }
+        // Delivered: the cursor moves past exactly this batch.
+        this.lastOffset = batchEnd
+        batch = []
+        batchBytes = 0
+        return !this.stopped
       }
-      // Deliver BEFORE advancing the offset — the same rule the MAIN watcher was
-      // given in 6.3.25 (jsonl-watcher.ts). `sendEntries` returns false when the
-      // WS dropped the frame (bufferedAmount past the 16MB cap, or a frozen
-      // client); advancing then strands these lines FOREVER, because the tail
-      // never re-reads a consumed range. This file advanced first and typed the
-      // callback `void`, so a backpressured client silently lost subagent
-      // transcript lines — the identical bug, in the sibling watcher.
-      if (this.sendEntries(entries) === false) {
-        if (this.retryTimer) clearTimeout(this.retryTimer)
-        this.retryTimer = setTimeout(() => {
-          this.retryTimer = null
-          if (!this.stopped && !this.reading) void this.checkForNew()
-        }, TAIL_BACKPRESSURE_RETRY_MS)
-        return
+      for await (const line of readJsonlLines(this.filePath, { start: this.lastOffset, end: size })) {
+        if (this.stopped) return
+        if (!line.terminated) {
+          let complete = true
+          try {
+            JSON.parse(line.text)
+          } catch {
+            complete = false
+          }
+          if (!complete) break // torn write: re-read once complete
+        }
+        batchEnd = line.end
+        if (line.text.includes(SKIP_LINE_MARKER)) continue
+        let parsed: Tagged
+        try {
+          parsed = JSON.parse(line.text) as Tagged
+        } catch {
+          continue
+        }
+        parsed._pos = line.start
+        parsed._posEnd = line.end
+        batch.push(parsed)
+        batchBytes += line.end - line.start
+        if (batch.length >= REPLAY_BATCH_RECORDS || batchBytes >= REPLAY_BATCH_BYTES) {
+          if (!(await flush())) {
+            this.scheduleRetry()
+            return
+          }
+        }
       }
-      this.lastOffset = stat.size
+      if (!(await flush())) this.scheduleRetry()
     } catch {
-      /* ignore */
+      /* briefly unavailable — the poll/watch try again */
     } finally {
       this.reading = false
     }
-  }
-
-  private async readEntries(offset: number): Promise<JsonlEntry[]> {
-    // Buffered tail-read; see jsonl-watcher.ts for why we don't use
-    // fs.createReadStream + readline (libuv threadpool starvation hangs
-    // the async iterator silently).
-    const stat = await fsp.stat(this.filePath)
-    if (stat.size <= offset) return []
-    const fd = await fsp.open(this.filePath, 'r')
-    let chunkText: string
-    try {
-      const buf = Buffer.alloc(stat.size - offset)
-      await fd.read(buf, 0, buf.length, offset)
-      chunkText = buf.toString('utf8')
-    } finally {
-      await fd.close()
-    }
-    const entries: JsonlEntry[] = []
-    let position = offset
-    for (const line of chunkText.split('\n')) {
-      const lineStart = position
-      position += Buffer.byteLength(line, 'utf8') + 1
-      if (!line.trim()) continue
-      if (line.includes(SKIP_LINE_MARKER)) continue
-      try {
-        const parsed = JSON.parse(line) as JsonlEntry
-        const positioned: JsonlEntry & { _pos: number; _posEnd: number } = {
-          ...parsed,
-          _pos: lineStart,
-          _posEnd: Math.min(position, stat.size),
-        }
-        entries.push(positioned)
-      } catch {
-        /* skip */
-      }
-    }
-    return entries
   }
 }

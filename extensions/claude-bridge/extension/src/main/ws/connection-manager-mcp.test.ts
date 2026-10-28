@@ -62,3 +62,33 @@ describe('INC-2026-0057 manager lifecycle', () => {
     expect(a.publish.mock.calls.some(call => call[2]?.status === 'completed')).toBe(false)
   })
 })
+
+
+describe('INC-2026-0080 delivery budget', () => {
+  it('waits for enough socket capacity for the whole frame', async () => {
+    execute.mockResolvedValue('x'.repeat(2 * 1024 * 1024))
+    const m = manager('s')
+    m.socket.bufferedAmount = 3 * 1024 * 1024
+    m.internal.dispatchMessage({ type: 'mcp:call', requestId: 'r', toolName: 'Read', input: {} })
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce())
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(m.frames).toHaveLength(0)
+    m.socket.bufferedAmount = 0
+    m.internal.mcpResults.attach('s')
+    expect(m.frames).toHaveLength(1)
+    m.internal.dispatchMessage({ type: 'mcp:result-ack', sessionId: 's', requestId: 'r', accepted: true })
+    await vi.waitFor(() => expect(m.manager.hasPendingMcp('r')).toBe(false))
+  })
+
+  it('publishes the bounded error actually acknowledged by the server', async () => {
+    execute.mockResolvedValue({ content: [{ type: 'image', data: 'x'.repeat(5 * 1024 * 1024), mimeType: 'image/png' }] })
+    const m = manager('s')
+    m.internal.dispatchMessage({ type: 'mcp:call', requestId: 'r', toolName: 'Read', input: {} })
+    await vi.waitFor(() => expect(m.frames).toHaveLength(1))
+    const frame = JSON.parse(m.frames[0]!)
+    expect(frame.result.isError).toBe(true)
+    m.internal.dispatchMessage({ type: 'mcp:result-ack', sessionId: 's', requestId: 'r', accepted: true })
+    await vi.waitFor(() => expect(m.manager.hasPendingMcp('r')).toBe(false))
+    expect(m.publish.mock.calls.find(call => call[2]?.status === 'completed')?.[2].result).toEqual(frame.result)
+  })
+})

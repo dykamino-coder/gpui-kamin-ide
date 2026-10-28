@@ -1,6 +1,7 @@
 import type { RequestLogEntry, ServerConfig, ExtendedStats, UserTimeSeriesEntry } from '../types'
 import { getSessionToken, isAuthenticated } from '../signals/auth'
 import type { PlanUsageData as UsageData } from '../../../shared/plan-usage'
+import type { McpUsageReport } from '../../../shared/mcp-report'
 
 function authHeaders(): Record<string, string> {
   const token = getSessionToken()
@@ -37,6 +38,7 @@ async function deleteJson<T>(path: string): Promise<T> {
 }
 
 export const api = {
+  getMcpReport: () => fetchJson<McpUsageReport>('/api/dashboard/mcp-report'),
   getSessions: () =>
     fetchJson<{
       sessions: Array<{

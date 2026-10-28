@@ -5,11 +5,16 @@
 // SESSIONS_BASE token-dir layout.
 
 import fs from 'fs'
+import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import { debugLog, warnLog } from '../logging'
 import { SESSIONS_BASE } from './session-settings'
 import { archiveTranscript, restoreArchivedTranscript } from './transcript-archive'
+import { NO_REPAIR, repairJsonlTail, type JsonlRepairStats } from './jsonl-repair'
+import { readJsonlLines, readRange } from './jsonl-lines'
+
+export type { JsonlRepairStats } from './jsonl-repair'
 
 /** Cross-platform basename: handles both / and \ separators (server may
  *  run on Linux with Windows paths inside JSONL). */
@@ -30,20 +35,24 @@ export function xbasename(p: string): string {
  * 3. If not found (e.g. /tmp cleared after container restart), reverse-
  *    compute the settingsDir path from the slug and recreate the dir.
  */
-export function findOrRecreateSettingsDir(conversationId: string, tokenId: string): string | null {
+export async function findOrRecreateSettingsDir(conversationId: string, tokenId: string): Promise<string | null> {
   const projectsDir = path.join(os.homedir(), '.claude', 'projects')
-  const found = locateSettingsDir(projectsDir, conversationId, tokenId)
+  const found = await locateSettingsDir(projectsDir, conversationId, tokenId)
   if (found) return found
 
   // Nothing under projects/ holds this conversation. Claude Code sweeps that
   // tree by `cleanupPeriodDays`, so an idle conversation Bridge still lists can
   // simply have expired. Put our durable copy back and look once more — without
   // it the only outcome is a fresh session and a lost history (INC-2026-0054).
-  if (restoreArchivedTranscript(projectsDir, conversationId) === null) return null
+  if ((await restoreArchivedTranscript(projectsDir, conversationId)) === null) return null
   return locateSettingsDir(projectsDir, conversationId, tokenId)
 }
 
-function locateSettingsDir(projectsDir: string, conversationId: string, tokenId?: string): string | null {
+async function locateSettingsDir(
+  projectsDir: string,
+  conversationId: string,
+  tokenId?: string,
+): Promise<string | null> {
   const jsonlFilename = `${conversationId}.jsonl`
 
   try {
@@ -59,12 +68,12 @@ function locateSettingsDir(projectsDir: string, conversationId: string, tokenId?
       // or choke on a torn line / broken parentUuid chain left by a
       // mid-write kill (network drop → instant reconnect).
       try {
-        repairJsonl(jsonlPath)
+        await repairJsonl(jsonlPath)
       } catch (e) {
         warnLog('repairJsonl failed', { jsonlPath, error: String(e) })
       }
       // Archive AFTER the repair, so the durable copy is the resumable one.
-      archiveTranscript(jsonlPath, conversationId)
+      await archiveTranscript(jsonlPath, conversationId)
 
       const slug = slugDir.name
       const existing = scanForSettingsDirBySlug(slug)
@@ -171,160 +180,13 @@ export function reverseSlugToPath(slug: string, tokenId?: string): string | null
 // JSONL repair on resume
 // ---------------------------------------------------------------------------
 
-export interface JsonlRepairStats {
-  repaired: boolean
-  droppedUnparseable: number
-  droppedSynthetic: number
-  relinkedParents: number
-  truncatedTail: number
-}
-
-const NO_REPAIR: JsonlRepairStats = {
-  repaired: false,
-  droppedUnparseable: 0,
-  droppedSynthetic: 0,
-  relinkedParents: 0,
-  truncatedTail: 0,
-}
-
 /**
- * Repair a Claude CLI conversation JSONL before --resume.
- *
- * Corruption sources observed in production:
- *  - A mid-write kill (WS drop used to hard-kill the PTY; instant reconnect
- *    spawned a second writer) leaves a torn (unparseable) trailing line
- *    and/or entries whose parentUuid points at a uuid that never got
- *    persisted.
- *  - When a streaming response is cut off mid-flight (network drop, 90s
- *    watchdog, corp-proxy RST), CLI persists the partial `assistant` entry
- *    with `stop_reason: null`, then keeps writing local "synthetic"
- *    placeholders (`model: "<synthetic>"`) with **UUID** ids that don't
- *    start with `msg_`. On the next request CLI grabs the latest assistant
- *    `message.id` for `diagnostics.previous_message_id` and Anthropic 400s
- *    (`must be the id from a prior /v1/messages response`) — the session is
- *    then permanently stuck in a retry loop.
- *
- * Repair passes (all in one read → one atomic write):
- *  1. Drop unparseable lines (torn writes).
- *  2. Drop entries whose message.id is set but is not a real `msg_*` id
- *     (the CLI's synthetic error placeholders).
- *  3. Relink parentUuid: any entry pointing at a uuid that no longer exists
- *     (dropped above, or never persisted) is re-parented to the nearest
- *     preceding kept entry — restores chain connectivity so CLI can walk it.
- *  4. Tail truncation: if a broken assistant remains after the last real
- *     completed assistant turn (msg_ id + stop_reason set), cut there — the
- *     follow-up request then uses a real msg_id as previous_message_id.
- *
- * Always backs up the original as `<name>.bak-<ts>` before writing; the
- * write itself is tmp-file + rename so a crash mid-repair can't tear the
- * transcript again.
+ * Repair a Claude CLI conversation JSONL before --resume. Bounded to the
+ * transcript tail and fully asynchronous — see `jsonl-repair.ts` for the
+ * corruption model and why the whole file is never read here.
  */
-export function repairJsonl(jsonlPath: string): JsonlRepairStats {
-  let content: string
-  try {
-    content = fs.readFileSync(jsonlPath, 'utf8')
-  } catch {
-    return NO_REPAIR
-  }
-
-  const rawLines = content.split('\n').filter((l) => l.trim().length > 0)
-  if (rawLines.length === 0) return NO_REPAIR
-
-  // Pass 1+2: parse, drop torn lines and synthetic-id entries.
-  type Parsed = { obj: Record<string, unknown>; line: string }
-  const kept: Parsed[] = []
-  let droppedUnparseable = 0
-  let droppedSynthetic = 0
-  for (const line of rawLines) {
-    let obj: Record<string, unknown>
-    try {
-      obj = JSON.parse(line)
-    } catch {
-      droppedUnparseable++
-      continue
-    }
-    const mid = (obj as { message?: { id?: unknown } }).message?.id
-    if (typeof mid === 'string' && mid.length > 0 && !mid.startsWith('msg_') && !isCompactCheckpoint(line)) {
-      droppedSynthetic++
-      continue
-    }
-    kept.push({ obj, line })
-  }
-  if (kept.length === 0) return NO_REPAIR
-
-  // Pass 3: relink parentUuid to the nearest preceding kept entry.
-  const uuids = new Set<string>()
-  let relinkedParents = 0
-  let lastUuid: string | null = null
-  for (const p of kept) {
-    const o = p.obj as { uuid?: unknown; parentUuid?: unknown }
-    if (typeof o.parentUuid === 'string' && o.parentUuid && !uuids.has(o.parentUuid)) {
-      o.parentUuid = lastUuid
-      relinkedParents++
-      p.line = JSON.stringify(p.obj)
-    }
-    if (typeof o.uuid === 'string' && o.uuid) {
-      uuids.add(o.uuid)
-      lastUuid = o.uuid
-    }
-  }
-
-  // Pass 4: tail truncation of a genuinely-torn last turn only. The "last good"
-  // anchor is the last COMPLETED assistant OR a compaction checkpoint — so an
-  // interrupted stream that lands right after a compact_boundary can no longer
-  // drag the whole compacted segment (+ everything after it) into the bin. Only
-  // the broken trailing entries past that checkpoint are removed.
-  let lastGoodIdx = -1
-  for (let i = kept.length - 1; i >= 0; i--) {
-    if (isCompletedRealAssistant(kept[i]!.line) || isCompactCheckpoint(kept[i]!.line)) {
-      lastGoodIdx = i
-      break
-    }
-  }
-  let truncatedTail = 0
-  let final = kept
-  if (lastGoodIdx >= 0) {
-    let hasBadTail = false
-    for (let i = lastGoodIdx + 1; i < kept.length; i++) {
-      if (isBrokenAssistant(kept[i]!.line)) {
-        hasBadTail = true
-        break
-      }
-    }
-    if (hasBadTail) {
-      // Drop everything after the last good assistant entry. We deliberately
-      // also drop trailing user/meta entries — CLI rebuilds those on resume,
-      // and orphan references to the dropped tail would break the chain.
-      truncatedTail = kept.length - lastGoodIdx - 1
-      final = kept.slice(0, lastGoodIdx + 1)
-    }
-  }
-
-  const changed = droppedUnparseable > 0 || droppedSynthetic > 0 || relinkedParents > 0 || truncatedTail > 0
-  if (!changed) return NO_REPAIR
-
-  try {
-    fs.copyFileSync(jsonlPath, `${jsonlPath}.bak-${Date.now()}`)
-  } catch (e) {
-    warnLog('repairJsonl backup failed; skipping repair to avoid data loss', {
-      jsonlPath,
-      error: String(e),
-    })
-    return NO_REPAIR
-  }
-  const tmpPath = `${jsonlPath}.repair-tmp`
-  fs.writeFileSync(tmpPath, final.map((p) => p.line).join('\n') + '\n')
-  fs.renameSync(tmpPath, jsonlPath)
-
-  const stats: JsonlRepairStats = {
-    repaired: true,
-    droppedUnparseable,
-    droppedSynthetic,
-    relinkedParents,
-    truncatedTail,
-  }
-  debugLog('repairJsonl: transcript repaired', { jsonlPath, ...stats })
-  return stats
+export async function repairJsonl(jsonlPath: string): Promise<JsonlRepairStats> {
+  return repairJsonlTail(jsonlPath)
 }
 
 /**
@@ -339,43 +201,56 @@ export function repairJsonl(jsonlPath: string): JsonlRepairStats {
  * том же каталоге стартует позже и uuid не разделяет. Не уверены — null
  * (fail-safe: резюмим что просили).
  */
-export function resolveNewestInChain(settingsDir: string, conversationId: string): string | null {
+export async function resolveNewestInChain(settingsDir: string, conversationId: string): Promise<string | null> {
   try {
     const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
     const dir = path.join(os.homedir(), '.claude', 'projects', slug)
-    if (!fs.existsSync(dir)) return null
-    const files = fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith('.jsonl'))
-      .map((f) => {
-        const st = fs.statSync(path.join(dir, f))
-        return { id: f.slice(0, -'.jsonl'.length), mtime: st.mtimeMs, size: st.size }
-      })
-      .filter((f) => f.size > 0)
-      .sort((a, b) => b.mtime - a.mtime)
+    let names: string[]
+    try {
+      names = await fsp.readdir(dir)
+    } catch {
+      return null
+    }
+    const files: { id: string; mtime: number; size: number }[] = []
+    for (const f of names) {
+      if (!f.endsWith('.jsonl')) continue
+      try {
+        const st = await fsp.stat(path.join(dir, f))
+        if (st.size > 0) files.push({ id: f.slice(0, -'.jsonl'.length), mtime: st.mtimeMs, size: st.size })
+      } catch {
+        /* vanished */
+      }
+    }
+    files.sort((a, b) => b.mtime - a.mtime)
     const newest = files[0]
     if (!newest) return null
     if (newest.id === conversationId) return null // уже tip
     const basePath = path.join(dir, `${conversationId}.jsonl`)
     if (!fs.existsSync(basePath)) return null // базы нет — не с чем сверять
-    const uuidsOf = (p: string, max: number): Set<string> => {
+    // Первые `max` uuid — потоково, без чтения всего файла: проба нужна только
+    // голове, а целый 100+ МБ кандидат раньше читался синхронно на каждом резюме.
+    const uuidsOf = async (p: string, max: number): Promise<Set<string>> => {
       const out = new Set<string>()
-      const text = fs.readFileSync(p, 'utf-8')
-      for (const line of text.split('\n')) {
-        if (out.size >= max) break
-        const m = line.match(/"uuid":"([0-9a-f-]{36})"/)
-        if (m?.[1]) out.add(m[1])
+      const ac = new AbortController()
+      try {
+        for await (const line of readJsonlLines(p, { signal: ac.signal })) {
+          const m = line.text.match(/"uuid":"([0-9a-f-]{36})"/)
+          if (m?.[1]) out.add(m[1])
+          if (out.size >= max) break
+        }
+      } catch {
+        /* unreadable — what we have is the answer */
       }
       return out
     }
-    const firstTs = (p: string): string | null => {
-      const head = fs.readFileSync(p, 'utf-8').slice(0, 64 * 1024)
+    const firstTs = async (p: string): Promise<string | null> => {
+      const head = (await readRange(p, 0, 64 * 1024)).toString('utf8')
       const m = head.match(/"timestamp":"([^"]+)"/)
       return m?.[1] ?? null
     }
     const candPath = path.join(dir, `${newest.id}.jsonl`)
-    const baseUuids = uuidsOf(basePath, 200)
-    const candUuids = uuidsOf(candPath, 200)
+    const baseUuids = await uuidsOf(basePath, 200)
+    const candUuids = await uuidsOf(candPath, 200)
     let related = false
     for (const u of candUuids) {
       if (baseUuids.has(u)) {
@@ -384,8 +259,8 @@ export function resolveNewestInChain(settingsDir: string, conversationId: string
       }
     }
     if (!related) {
-      const bt = firstTs(basePath)
-      const ct = firstTs(candPath)
+      const bt = await firstTs(basePath)
+      const ct = await firstTs(candPath)
       related = bt !== null && ct !== null && ct <= bt
     }
     return related ? newest.id : null
@@ -400,13 +275,16 @@ export function resolveNewestInChain(settingsDir: string, conversationId: string
  * (model/effort restart). The projects/ slug is derived from the settingsDir
  * the same way CLI derives it, so we can locate the JSONL without scanning.
  */
-export function repairTranscriptForResume(settingsDir: string, conversationId: string): JsonlRepairStats {
+export async function repairTranscriptForResume(
+  settingsDir: string,
+  conversationId: string,
+): Promise<JsonlRepairStats> {
   const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
   const jsonlPath = path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`)
   if (!fs.existsSync(jsonlPath)) return NO_REPAIR
   try {
-    const stats = repairJsonl(jsonlPath)
-    archiveTranscript(jsonlPath, conversationId)
+    const stats = await repairJsonl(jsonlPath)
+    await archiveTranscript(jsonlPath, conversationId)
     return stats
   } catch (e) {
     warnLog('repairTranscriptForResume failed', { jsonlPath, error: String(e) })
@@ -470,72 +348,4 @@ export function lastModelEntryForResume(
 ): { model: string; timestamp: string } | null {
   const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
   return lastModelEntryFromJsonlTail(path.join(os.homedir(), '.claude', 'projects', slug, `${conversationId}.jsonl`))
-}
-
-/** True iff the JSONL line is an assistant entry that came from a real
- *  /v1/messages response that completed successfully. */
-function isCompletedRealAssistant(line: string): boolean {
-  if (!line || !line.trim()) return false
-  let entry: { type?: string; message?: { id?: unknown; model?: unknown; stop_reason?: unknown } }
-  try {
-    entry = JSON.parse(line)
-  } catch {
-    return false
-  }
-  if (entry.type !== 'assistant') return false
-  const m = entry.message
-  if (!m) return false
-  if (typeof m.id !== 'string' || !m.id.startsWith('msg_')) return false
-  if (m.model === '<synthetic>') return false
-  // stop_reason: null means the stream was interrupted before message_stop;
-  // Anthropic doesn't recognise the msg_id as a completed response.
-  if (m.stop_reason === null || m.stop_reason === undefined) return false
-  return true
-}
-
-/** True iff the line is an assistant entry that would break the
- *  previous_message_id chain on the next CLI request. */
-/** A CLI-written compaction checkpoint: the `compact_boundary` system marker or
- *  its summary. These are LEGITIMATE, resumable state — the repair must never
- *  treat them as corruption or truncate across them, or it silently destroys a
- *  whole compacted segment (+ everything after) that the user still needs.
- *
- *  Detects EVERY on-disk shape the rest of the codebase recognises, because a
- *  miss here re-opens the exact data-loss bug: the `compact_boundary` system
- *  entry, the `type:"compact-summary"` variant, the `isCompactSummary` flag,
- *  and — since some CLI versions omit the flag — the literal summary marker text
- *  the renderer also keys on. */
-function isCompactCheckpoint(line: string): boolean {
-  if (!line || !line.trim()) return false
-  let e: { type?: string; subtype?: string; isCompactSummary?: unknown; message?: { content?: unknown } } | null
-  try {
-    e = JSON.parse(line)
-  } catch {
-    return false
-  }
-  if (!e || typeof e !== 'object') return false
-  if (e.type === 'system' && e.subtype === 'compact_boundary') return true
-  if (e.type === 'compact-summary') return true
-  if (e.isCompactSummary === true) return true
-  const c = e.message?.content
-  const text =
-    typeof c === 'string' ? c : Array.isArray(c) ? c.map((b) => (b as { text?: string }).text ?? '').join(' ') : ''
-  return /compacted\s*\(ctrl[+\s]*o/i.test(text)
-}
-
-function isBrokenAssistant(line: string): boolean {
-  if (!line || !line.trim()) return false
-  let entry: { type?: string; message?: { id?: unknown; model?: unknown; stop_reason?: unknown } }
-  try {
-    entry = JSON.parse(line)
-  } catch {
-    return false
-  }
-  if (entry.type !== 'assistant') return false
-  const m = entry.message
-  if (!m) return false
-  if (m.model === '<synthetic>') return true
-  if (typeof m.id !== 'string' || !m.id.startsWith('msg_')) return true
-  if (m.stop_reason === null) return true
-  return false
 }

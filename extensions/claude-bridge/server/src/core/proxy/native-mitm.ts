@@ -94,6 +94,8 @@ export interface NativeMitmOptions {
   /** Session-level model the user picked (for side-quest detection by
    *  model-family comparison). */
   mainModel?: string
+  /** Учёт не зависит от видимости side-calls и версии UI-протокола. */
+  onUsage?: (entry: SynthAssistantEntry) => void
   onEntryUpdate: (entry: SynthAssistantEntry, isSideQuest: boolean) => void
   /** Rate-limit / overload surfaced to the client so the chat can show
    *  "retrying in Ns" instead of stalling silently during CLI backoff. */
@@ -559,6 +561,43 @@ async function handleRequest(
       })
     }
     const src = Readable.fromWeb(upstream.body)
+    // Observe small non-streaming side-calls (titles, summaries) too. Forward
+    // bytes unchanged; oversized responses still have canonical JSONL usage.
+    if (opts.onUsage && isMessages && !(req.url ?? '').includes('/count_tokens')) {
+      let chunks: Buffer[] = []
+      let bytes = 0
+      src.on('data', (chunk: Buffer) => {
+        bytes += chunk.length
+        if (bytes <= 1024 * 1024) chunks.push(chunk)
+        else chunks = []
+      })
+      src.on('end', () => {
+        if (bytes > 1024 * 1024) return
+        try {
+          const message = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+          if (message.type !== 'message' || typeof message.id !== 'string' || !message.usage) return
+          opts.onUsage?.({
+            type: 'assistant',
+            uuid: message.id,
+            timestamp: new Date().toISOString(),
+            parentUuid: null,
+            isSidechain: true,
+            __streaming: false,
+            message: {
+              id: message.id,
+              role: 'assistant',
+              model: String(message.model ?? ''),
+              content: [],
+              usage: message.usage,
+            },
+          })
+        } catch {
+          /* Accounting must never affect response delivery. */
+        } finally {
+          chunks = []
+        }
+      })
+    }
     // pipe() auto-destroys res on source error, but an unhandled 'error' on
     // `src` would still throw; handle it + recycle the pool on a reset.
     src.on('error', (err: Error) => {
@@ -649,7 +688,10 @@ async function handleRequest(
     mainModel: opts.mainModel,
     ...(subagentId ? { markSidechain: true, subagentId } : {}),
     callbacks: {
-      onUpdate: (entry) => opts.onEntryUpdate(entry, !!entry.isSidechain),
+      onUpdate: (entry) => {
+        if (!entry.__streaming) opts.onUsage?.(entry)
+        opts.onEntryUpdate(entry, !!entry.isSidechain)
+      },
       ...(opts.onSnapshot ? { onSnapshot: opts.onSnapshot } : {}),
       ...(opts.onDelta ? { onDelta: opts.onDelta } : {}),
     },

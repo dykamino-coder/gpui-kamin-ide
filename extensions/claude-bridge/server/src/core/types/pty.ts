@@ -58,6 +58,7 @@ export interface PtySession {
   /** Last MCP error */
   mcpLastError: string | null
   /** Secret token for MCP HTTP auth (per-session) */
+  mcpEndpoint?: { id: string; token: string }
   mcpToken: string
   /** Open only between `destroySession()` and the finalizer. The CLI fires
    *  `SessionEnd` while it is already exiting, so its relay call has to keep
