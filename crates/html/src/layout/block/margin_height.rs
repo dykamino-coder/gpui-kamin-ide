@@ -7,7 +7,7 @@
 use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
-use crate::layout::block::struts::{margin_px, pin_inherited_margins};
+use crate::layout::block::struts::{margin_px_in, pin_inherited_margins};
 use crate::layout::box_kind::{in_flow, inline_level_box};
 use crate::style::values::value::Len;
 
@@ -16,7 +16,7 @@ pub(super) use lowers::lowers;
 mod zero_floats;
 pub(crate) use zero_floats::{used_style, zero_float_blocks};
 
-pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
+pub(super) fn separate(e: &mut Element, vcx: crate::layout::block::margins::MarginCx<'_>) -> bool {
     if !lowers(e, vcx) {
         return false;
     }
@@ -35,11 +35,11 @@ pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>
     true
 }
 
-pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
+pub(super) fn raises(e: &Element, vcx: crate::layout::block::margins::MarginCx<'_>) -> bool {
     let st = e.style.used();
     let sizes = BoxDimensions::for_element(e, &st);
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-    match margin_px(sizes.minimum[1], &st, vcx) {
+    match margin_px_in(sizes.minimum[1], &st, vcx) {
         None => !zero(sizes.minimum[1]),
         Some(mh) if mh <= 0.0 => false,
         Some(mh) => {
@@ -61,7 +61,7 @@ pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
                             _ => None,
                         };
                         let own = match (
-                            margin_px(child_sizes.preferred[1], &cs, vcx),
+                            margin_px_in(child_sizes.preferred[1], &cs, vcx),
                             side(cs.padding.top),
                             side(cs.padding.bottom),
                             side(b.top),

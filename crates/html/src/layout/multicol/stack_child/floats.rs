@@ -20,7 +20,7 @@ pub(super) fn normalize(
     // пустого хоста до конца float; clear или рамка препятствуют сквозной струне.
     let zero = (!vertical || logical.is_some())
         && (empty || (!vertical && crate::layout::float::float_only_box(flow).is_some()))
-        && through_strut(flow, vcx).is_some();
+        && through_strut(flow, crate::layout::block::margins::MarginCx::new(vcx)).is_some();
     if zero {
         if vertical {
             copy.style.used_mut().width = Some(Len::Px(0.0));

@@ -2,7 +2,7 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
-use crate::layout::block::struts::margin_px;
+use crate::layout::block::struts::margin_px_in;
 use crate::style::values::value::Len;
 
 // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую
@@ -16,12 +16,12 @@ pub(crate) fn absorb_margin(
     e: &mut Element,
     tail_side: bool,
     reverse: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> f32 {
     let own = if tail_side == reverse {
-        margin_px(e.style.used().margin.left, &e.style.used(), vcx)
+        margin_px_in(e.style.used().margin.left, &e.style.used(), vcx)
     } else {
-        margin_px(e.style.used().margin.right, &e.style.used(), vcx)
+        margin_px_in(e.style.used().margin.right, &e.style.used(), vcx)
     }
     .unwrap_or(0.0);
     // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
@@ -36,8 +36,8 @@ pub(crate) fn absorb_margin(
     } else {
         (b.right, e.style.used().padding.right)
     };
-    let sealed = margin_px(border, &e.style.used(), vcx).unwrap_or(0.0) > 0.0
-        || margin_px(pad, &e.style.used(), vcx).unwrap_or(0.0) > 0.0;
+    let sealed = margin_px_in(border, &e.style.used(), vcx).unwrap_or(0.0) > 0.0
+        || margin_px_in(pad, &e.style.used(), vcx).unwrap_or(0.0) > 0.0;
     if sealed {
         return own;
     }

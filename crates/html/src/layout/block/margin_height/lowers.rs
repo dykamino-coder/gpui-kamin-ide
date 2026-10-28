@@ -3,7 +3,7 @@ use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::struts::{
-    adjoin, margin_or_bail, margin_px, solve, strut_of, through_strut, top_edge_open, zero_len,
+    adjoin, margin_or_bail, margin_px_in, solve, strut_of, through_strut, top_edge_open, zero_len,
 };
 use crate::layout::box_kind::{in_flow, inline_level_box, replaced_inline};
 use crate::style::computed::Computed;
@@ -13,7 +13,7 @@ use crate::style::values::value::Len;
 /// Blink block_layout_algorithm.cc:1459-1466 отделяет конечное поле, когда
 /// используемая высота отличается от intrinsic. Доказательство применимо
 /// к стопке с вычислимыми border edges; неизвестное содержимое её не даёт.
-pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
+pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'_>) -> bool {
     let st = e.style.used();
     let sizes = BoxDimensions::for_element(e, &st);
     if !matches!(
@@ -24,7 +24,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
     ) {
         return false;
     }
-    let Some(mut cap) = margin_px(sizes.maximum[1], &st, vcx) else {
+    let Some(mut cap) = margin_px_in(sizes.maximum[1], &st, vcx) else {
         return false;
     };
     let edges = |style: &Computed| -> Option<f32> {
@@ -43,7 +43,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
         };
         cap = (cap - inset).max(0.0);
     }
-    if let Some(min) = margin_px(sizes.minimum[1], &st, vcx) {
+    if let Some(min) = margin_px_in(sizes.minimum[1], &st, vcx) {
         cap = cap.max(min);
     } else if !zero_len(sizes.minimum[1]) {
         return false;
@@ -70,7 +70,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> b
             previous_margin = adjoin(previous_margin, through);
             continue;
         }
-        let height = match margin_px(child_sizes.preferred[1], &cs, vcx) {
+        let height = match margin_px_in(child_sizes.preferred[1], &cs, vcx) {
             Some(height) => height,
             // Пустой блочный контейнер без строк имеет auto-высоту 0
             // (CSS2 §10.6.3/§10.6.7), в том числе пустой flow-root.
@@ -141,9 +141,15 @@ mod tests {
                 vec![],
             ))],
         );
-        assert!(!lowers(&parent, doc.values()));
+        assert!(!lowers(
+            &parent,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
         parent.style.used_mut().flow_root = Some(true);
-        assert!(lowers(&parent, doc.values()));
+        assert!(lowers(
+            &parent,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
     }
 
     #[test]
@@ -178,15 +184,27 @@ mod tests {
             Default::default(),
             children,
         );
-        assert!(lowers(&parent, doc.values()));
-        assert!(super::super::separate(&mut parent, doc.values()));
+        assert!(lowers(
+            &parent,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
+        assert!(super::super::separate(
+            &mut parent,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
         let Node::Element(first) = &parent.children[0] else {
             panic!("first")
         };
         assert_eq!(first.style.used().margin.bottom, Some(Len::Px(10.0)));
         parent.style.used_mut().max_height = Some(Len::Px(170.0));
-        assert!(!lowers(&parent, doc.values()));
+        assert!(!lowers(
+            &parent,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
         parent.style.used_mut().max_height = Some(Len::Px(169.0));
-        assert!(lowers(&parent, doc.values()));
+        assert!(lowers(
+            &parent,
+            crate::layout::block::margins::MarginCx::new(doc.values())
+        ));
     }
 }

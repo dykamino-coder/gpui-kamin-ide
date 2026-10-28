@@ -19,7 +19,7 @@ use crate::style::values::value::Len;
 pub(super) fn collapse_top(
     e: &mut Element,
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top
     // parent-child collapse; bottom collapse has its own edge conditions.
@@ -53,7 +53,7 @@ pub(super) fn collapse_top(
     }
 }
 
-pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) {
+pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::layout::block::margins::MarginCx<'_>) {
     let mut eat = ZeroPaths::default();
     let chain = with_inner_dimensions(
         &e.style.used(),
@@ -75,7 +75,7 @@ pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::document::state::Valu
 fn bottom_chain(
     children: &[Node],
     eat: &mut ZeroPaths,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     let mut cache = ThroughCache::default();
     let mut parent = 0;
