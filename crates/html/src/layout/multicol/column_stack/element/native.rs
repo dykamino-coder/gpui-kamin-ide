@@ -42,7 +42,7 @@ impl ColumnStack {
         let viewport = window.viewport_size();
         let spill = f32::from(viewport.width.max(viewport.height).max(bounds.size.width));
         let scale = window.scale_factor();
-        let mut admission = Admission::new(self.axis.is_vertical());
+        let mut admission = Admission::new(self.axis.is_vertical()).snapping(scale);
         for f in oof.iter() {
             let id = *sources
                 .get(f.kid)
@@ -74,6 +74,7 @@ impl ColumnStack {
             let destination =
                 geometry::slice(self.axis, actual.rect, inline.into(), inline_size, f.y, f.h)
                     .origin;
+            let exact = destination;
             let destination = source + snapped(destination - source, scale);
             // Unbroken edges keep their ink overflow; a break edge cuts it.
             let siblings = || oof.iter().filter(|g| g.kid == f.kid);
@@ -115,6 +116,7 @@ impl ColumnStack {
                 segment: PaintSegmentId(f.col as u64),
                 source,
                 destination: destination + shift,
+                exact: exact + shift,
                 clip,
                 decoration,
                 copied,

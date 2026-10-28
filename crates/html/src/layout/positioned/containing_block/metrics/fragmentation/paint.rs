@@ -35,6 +35,10 @@ pub(crate) struct Admission {
     hit_families: HashMap<u64, Vec<PaintSegmentSlice>>,
     own: Vec<(u64, Own)>,
     vertical: bool,
+    /// Unsnapped destination of each placement and the device scale its own
+    /// decorations snap at (`slices::boxes`).
+    exact: HashMap<(PaintSegmentId, u32), Point<Pixels>>,
+    scale: f32,
 }
 
 /// Routes and admission of one native source: hit testing, then paint.
@@ -55,6 +59,8 @@ pub(crate) struct Placement {
     pub(crate) segment: PaintSegmentId,
     pub(crate) source: Point<Pixels>,
     pub(crate) destination: Point<Pixels>,
+    /// The destination before device snapping of the translation.
+    pub(crate) exact: Point<Pixels>,
     /// Content admission in source coordinates.
     pub(crate) clip: Bounds<Pixels>,
     /// The box's own decoration: the whole fragment (css-break-3 §5.4).
@@ -74,6 +80,12 @@ impl Admission {
             vertical,
             ..Self::default()
         }
+    }
+
+    /// Own decorations land on the device edges of their exact destination.
+    pub(crate) fn snapping(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
     }
 
     fn ordinal(&mut self, segment: PaintSegmentId) -> Result<u32, PaintRecordError> {
@@ -101,6 +113,7 @@ impl Admission {
             source_clip: p.decoration,
         };
         self.hits.push(placement);
+        self.exact.insert((p.segment, placement.ordinal), p.exact);
         self.hit_roots.push((p.segment, placement.ordinal, p.root));
         self.hit_families.entry(p.family).or_default().push(slice);
         let index = match self.own.iter().position(|(root, _)| *root == p.root) {
@@ -184,7 +197,12 @@ impl Admission {
             paint.nodes.insert(root, Rc::from(identity));
             let mut boxes = HashMap::new();
             for (&family, slices) in &own.decorations {
-                boxes.extend(self::boxes(snapshot, family, slices));
+                boxes.extend(self::boxes(
+                    snapshot,
+                    family,
+                    slices,
+                    (&self.exact, self.scale),
+                ));
             }
             // Decoration layers are laid out at prepaint from the same placements.
             hits.boxes

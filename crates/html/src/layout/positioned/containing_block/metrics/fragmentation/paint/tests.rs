@@ -10,6 +10,7 @@ fn rect(y: f32) -> Bounds<Pixels> {
 
 fn placement(family: u64, root: u64, segment: u64, dx: f32, copied: bool) -> Placement {
     Placement {
+        exact: point(px(dx), px(20.)),
         family,
         root,
         segment: PaintSegmentId(segment),

@@ -115,6 +115,7 @@ impl PageStack {
             };
             let page = self.page_area(bounds, f.col);
             let to = geometry::slice(self.axis, page, offset.into(), inline, f.y, f.h).origin;
+            let exact = to;
             let to = from + snapped(to - from, scale);
             // Unbroken edges keep their ink overflow; a break edge cuts it.
             let siblings = || plan.iter().filter(|g| g.kid == f.kid);
@@ -157,7 +158,7 @@ impl PageStack {
                     entries.push((
                         *owner,
                         snapshot.clone(),
-                        Admission::new(self.axis.is_vertical()),
+                        Admission::new(self.axis.is_vertical()).snapping(scale),
                     ));
                     entries.len() - 1
                 }
@@ -168,6 +169,7 @@ impl PageStack {
                 segment: PaintSegmentId(f.col as u64),
                 source: from,
                 destination: to + shift,
+                exact: exact + shift,
                 clip,
                 decoration,
                 copied,
