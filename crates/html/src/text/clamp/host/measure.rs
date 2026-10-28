@@ -138,24 +138,7 @@ mod tests {
     }
 
     fn line_probe(measure: &ClampMeasure, seq: u32) -> AnyElement {
-        measure.record(move |bounds| ClampEntry {
-            bounds,
-            line: 20.,
-            skip_count: false,
-            fixed_height: false,
-            bp_after: 0.,
-            end_margin: 0.,
-            min_end: 0.,
-            capped: false,
-            node: 0,
-            seq: Some(seq),
-            clamped: None,
-            empty: false,
-            span: None,
-            bt_before: 0.,
-            positioned: false,
-            float: false,
-        })
+        measure.record(move |bounds| ClampEntry::paragraph(bounds, 20., seq))
     }
 
     /// A fragment copy is laid out inside its fragmentainer's element offset:
