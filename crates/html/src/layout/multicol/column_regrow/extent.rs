@@ -8,7 +8,7 @@ pub(super) fn measure(
     height: f32,
     content: Size<Pixels>,
     size: Size<Pixels>,
-    axis: StackAxis,
+    (axis, fills): (StackAxis, bool),
     window: &mut Window,
 ) {
     // css-break-3 §fragmentation-model и css-overflow-3 §overflow-properties:
@@ -27,6 +27,11 @@ pub(super) fn measure(
         content.height
     }));
     if let Some(w) = &c.watched {
+        // Абсолютные коробки ребёнка продолжаются в колонках переполнения; на
+        // высоту балансируемых колонок они не влияют.
+        if fills && let Some(end) = w.positioned_end(axis.is_vertical(), window) {
+            c.over = c.over.max(end);
+        }
         let flow = w.flow.at(point(px(0.0), px(0.0)), size, axis, window);
         c.over = flow
             .floats

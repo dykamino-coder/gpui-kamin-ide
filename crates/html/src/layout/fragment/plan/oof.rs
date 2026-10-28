@@ -99,7 +99,16 @@ impl Flow {
             true,
         )?;
         self.shortage = (shortage < f32::MAX && shortage > 0.).then_some(shortage);
-        let fragment = plan.fragments.into_iter().next();
+        let mut fragment = plan.fragments.into_iter().next();
+        // css-break-3 §box-splitting: a positioned box whose content moves on to
+        // the next fragmentainer still begins where it is positioned; its first
+        // fragment holds only its own decorations to the fragmentainer end (Blink
+        // lays the box out there with a break before its first child).
+        let leading = fragment.is_none()
+            && previous.is_none()
+            && start > 0.
+            && !kid.monolith
+            && !cursor.complete;
         let next = if cursor.complete {
             None
         } else {
@@ -107,15 +116,28 @@ impl Flow {
             if cursor.from < from || (fragment.is_some() && cursor.from == from) {
                 return Err(Error::NoProgress);
             }
-            let seq = u32::try_from(cursor.copy).map_err(|_| Error::ResourceExhausted)?;
+            let seq = u32::try_from(cursor.copy + usize::from(leading))
+                .map_err(|_| Error::ResourceExhausted)?;
             let mut token = previous.unwrap_or_else(|| Token::new(fc.clone()));
             token.consumed = cursor.from;
             token.fc = fc;
             token.seq = seq;
             token.at_block_end = cursor.from >= kid.h;
-            token.flags.break_before = fragment.is_none();
+            token.flags.break_before = fragment.is_none() && !leading;
             Some(store.push(token)?)
         };
+        if leading {
+            fragment = Some(Frag {
+                kid: 0,
+                copy,
+                col: 0,
+                y: start,
+                from,
+                h: 0.,
+                head: 0.,
+                foot: 0.,
+            });
+        }
         Ok(Child { fragment, next })
     }
 }

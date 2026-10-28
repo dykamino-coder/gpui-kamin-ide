@@ -19,7 +19,7 @@ fn table_pieces(cx: &mut gpui::TestAppContext, width: f32) -> Vec<(usize, f32, f
         crate::style::cascade::materialize::materialize(&tree, opts.root_style().style_rc(), opts.cx.vcx());
         let host = super::tests::section(&tree);
         let merged = crate::style::cascade::materialize::box_style(&opts.root_style(), &host.style, opts.cx.vcx());
-        let recipe = Recipe::new(host, &merged, &opts, 2, 0., Some(100.), StackAxis::Horizontal, None).expect("table recipe");
+        let recipe = Recipe::new(host, &merged, &opts, 2, Some(100.), StackAxis::Horizontal, None).expect("table recipe");
         let mut stack = ColumnStack::new(Vec::new(), 2, 0., Some(100.), None, None, None, Default::default());
         recipe.prepare(&mut stack, width / 2., window, app);
         let (_, _, plan, _) = stack.balance(&stack.kid_geoms());

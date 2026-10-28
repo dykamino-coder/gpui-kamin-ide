@@ -1,8 +1,7 @@
 //! Мера строк для фрагментации: ширина содержимого блока в потоке родителя (`line_content_w`,
 //! CSS 2.1 §10.3.3) и род ширины детей flex/сетки (`items_kind`) для кадров `LineFrame`,
-//! база элемента колонки flex (`basis_sized`), сплошной строчный набор как монолит до меры
-//! строк (`inline_content`) и заливка хвоста разорванного фрагмента (`slack_fill`,
-//! css-break-3 §box-splitting). Подмодули: прогон строк (`run`), вложенные ряды (`nested`,
+//! сплошной строчный набор (`inline_content`) и заливка хвоста разорванного фрагмента
+//! (`slack_fill`, css-break-3 §box-splitting). Подмодули: вложенные ряды (`nested`,
 //! `nested_kid`), группировка строчных прогонов (`inline_runs`).
 
 use crate::dom::whitespace::is_blank;
@@ -16,8 +15,6 @@ use crate::style::computed::{Align, Display};
 use crate::style::values::value::Len;
 mod continuation;
 pub(crate) use continuation::line_state;
-mod run;
-pub(super) use run::line_run_shape;
 mod nested;
 mod nested_kid;
 mod resolved_lengths;
@@ -26,7 +23,6 @@ pub(crate) use nested::nested_rows_box;
 pub(crate) use nested_kid::layout_unit;
 pub(crate) use resolved_lengths::{LengthFacts, resolved_lengths};
 mod inline_runs;
-pub(crate) use crate::layout::fragment::flow::transpose_tree;
 pub(crate) use inline_runs::group_inline_runs;
 pub(crate) use inline_runs::side_margin_wrap;
 
@@ -80,34 +76,6 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
         }
         _ => None,
     }
-}
-
-/// Элемент КОЛОНКИ flex без переноса с главным размером по `flex-basis`
-/// (css-flexbox-1 §9.2 шаг 3): `flex-basis: content` — по содержимому, и
-/// `height` при этом не действует. Контейнер `height: auto` свободного места не
-/// даёт, и гибкость базу не меняет (§9.7). `None` — мера по `height`
-/// элемента, как прежде.
-pub(super) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
-    use crate::style::computed::FlexDir;
-    let s = &*c.style.used();
-    if k.inline
-        || s.display != Some(Display::Flex)
-        || s.webkit_box == Some(true)
-        || s.wm().vertical()
-        || s.flex_wrap == Some(true)
-        || !matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
-        || !matches!(s.height, None | Some(Len::Auto))
-    {
-        return None;
-    }
-    let mut kk = k.clone();
-    // База в точках здесь не ставится: при `min-height: auto` элемент не
-    // меньше своего содержимого (§4.5), а этой меры у нас нет.
-    if k.style.used().basis_content != Some(true) {
-        return None;
-    }
-    kk.style.used_mut().height = None;
-    Some(kk)
 }
 
 /// Хвост непоследнего фрагмента обычной коробки (`flow::StackChild::slack`):
@@ -169,7 +137,7 @@ pub(super) fn items_kind(c: &Element) -> u8 {
 }
 
 /// Сплошной строчный набор (без блочных детей) — монолит в стопке, ПОКА его
-/// строки не измерены (`line_run_shape` дала точки разреза).
+/// строки не измерены раскладкой копии (точки разреза).
 pub(crate) fn inline_content(k: &Element) -> bool {
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)

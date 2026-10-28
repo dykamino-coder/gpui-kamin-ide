@@ -127,11 +127,14 @@ impl PageStack {
             // overflow up to the page area's end (overflow is visible,
             // css-overflow-3 §2; `block-001-wm-vrl`: a negative block-end
             // margin shrinks the margin box under the border box).
-            let ext = self.mask_extent(&g, &f);
+            // The fragment that starts its box likewise shows the box's
+            // block-start ink overflow up to the page area's start (a glyph
+            // rising above its line box; `page-size-012-print`).
+            let (top, ext) = super::axis::mask_span(&f, self.mask_extent(&g, &f));
             let (x, y, w, h) = if self.axis.is_vertical() {
-                self.area_slice(&g, f.y, ext)
+                self.area_slice(&g, top, ext)
             } else {
-                (ax, ay + f.y, g.area.0, ext)
+                (ax, ay + top, g.area.0, ext)
             };
             let mask = gpui::ContentMask {
                 bounds: Bounds {

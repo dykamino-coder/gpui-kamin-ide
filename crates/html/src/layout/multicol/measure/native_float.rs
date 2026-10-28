@@ -7,7 +7,7 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::cx::FrameCx;
 use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
-use crate::layout::fragment::{Shape, paginate};
+use crate::layout::fragment::{FlowMargins, paginate};
 use crate::style::computed::{BoxStyle, Display};
 use std::cell::RefCell;
 
@@ -41,7 +41,7 @@ pub(crate) fn pending(
     host: &Element,
     merged: &BoxStyle,
     vcx: FrameCx<'_>,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     prepare(host, merged, vcx, None, &RefCell::default())
 }
 
@@ -51,7 +51,7 @@ pub(crate) fn children(
     vcx: FrameCx<'_>,
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     prepare(host, merged, vcx, Some(width), measured)
 }
 
@@ -61,7 +61,7 @@ fn prepare(
     vcx: FrameCx<'_>,
     width: Option<f32>,
     measured: &RefCell<Vec<(u64, f32)>>,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     if merged.text_box_trim_start || merged.text_box_trim_end {
         return None;
     }
@@ -79,7 +79,7 @@ fn prepare(
             let Some(w) = width else {
                 // Поля разрешаются по настоящей ширине в children(), как у
                 // остальных native-копий; pending не нуждается в их оценке.
-                return Some((c, Shape::default()));
+                return Some((c, FlowMargins::default()));
             };
             c = fragment_box(c, w, vcx.values);
             if !independent {
@@ -88,10 +88,9 @@ fn prepare(
             let (margin_top, margin_bottom) = fragment_margins(&c)?;
             Some((
                 c,
-                Shape {
+                FlowMargins {
                     margin_top,
                     margin_bottom,
-                    ..Shape::default()
                 },
             ))
         })

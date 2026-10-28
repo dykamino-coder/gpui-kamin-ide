@@ -12,6 +12,7 @@ use crate::tolerance::COORD_EPS;
 mod float_tests;
 mod growth;
 mod line;
+mod outer;
 mod run;
 pub(crate) mod search;
 
@@ -79,6 +80,11 @@ impl ColumnStack {
             return (h, vec![(0.0, h)], plan, Vec::new());
         };
         let limit = self.copies;
+        if let Some(outer) = rows.outer
+            && !kids.iter().any(|k| k.span)
+        {
+            return self.balance_outer_rows(kids, rows, outer);
+        }
         let Some(h) = rows.h else {
             // Ряд без потолка: колонки балансируются одной линией, а лишние
             // (от принудительных разрывов) идут рядами ниже; высота ряда — по

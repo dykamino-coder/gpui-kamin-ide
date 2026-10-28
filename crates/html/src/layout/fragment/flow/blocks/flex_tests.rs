@@ -139,7 +139,8 @@ fn forced_break_inside_one_row_item_stays_in_its_parallel_flow() {
         .breaks(100.0, &laid)
         .finish(FlowGeometry::default(), 100.0);
     assert!(m.forced.is_empty());
-    let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 40.0, 40.0);
+    let grows =
+        crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 40.0, 40.0, false);
     assert_eq!(grows.len(), 1);
     assert_eq!(
         (grows[0].at, grows[0].amount, grows[0].forced),
@@ -185,7 +186,8 @@ fn forced_zero_height_rows_keep_distinct_growth_targets() {
             order: vec![(index as u32, Some(index as u64 + 1))],
         })
         .collect();
-    let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 0.0, 100.0);
+    let grows =
+        crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 0.0, 100.0, false);
     assert_eq!(grows.len(), 2);
     assert_eq!(
         grows[0].target,
@@ -224,7 +226,8 @@ fn column_avoid_pushes_only_its_own_parallel_flow() {
         .breaks(150.0, &laid)
         .finish(FlowGeometry::default(), 150.0);
     assert!(m.keep.is_empty());
-    let grows = crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 100.0, 100.0);
+    let grows =
+        crate::layout::fragment::push::flex_flow::growths(&b, &laid, 0.0, 100.0, 100.0, false);
     assert_eq!(grows.len(), 1);
     assert_eq!(grows[0].target, Pushed::Box(2));
     assert_eq!(grows[0].amount, 20.0);

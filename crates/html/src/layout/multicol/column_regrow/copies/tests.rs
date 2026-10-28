@@ -55,13 +55,13 @@ fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &m
         gap: 10.0,
         wrap: true,
         cap: false,
+        outer: None,
     };
     let recipe = Recipe::new(
         host(&tree),
         &BoxStyle::default(),
         &opts,
         2,
-        0.0,
         Some(100.0),
         axis,
         Some(rows),
@@ -101,19 +101,11 @@ fn reserve_views(axis: StackAxis, mode: &str, window: &mut gpui::Window, app: &m
         crate::layout::fragment::plan::Completion::Complete
     );
     assert_eq!(plan.iter().map(|f| f.col).max(), Some(61));
-    #[cfg(feature = "wpt-harness")]
-    assert!(
-        opts.frag
-            .probe
-            .take()
-            .values()
-            .all(|p| p.estimate_calls == 0)
-    );
 }
 
 #[cfg(feature = "wpt-harness")]
 #[gpui::test]
-fn flex_stack_children_bypass_shape_and_direct_measure_calls(cx: &mut gpui::TestAppContext) {
+fn flex_stack_children_are_measured_by_their_copy_layout(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     for direction in ["row", "row-reverse", "column", "column-reverse"] {
         for wrap in ["nowrap", "wrap", "wrap-reverse"] {
@@ -135,7 +127,6 @@ fn flex_stack_children_bypass_shape_and_direct_measure_calls(cx: &mut gpui::Test
                 &BoxStyle::default(),
                 &opts,
                 2,
-                0.0,
                 Some(100.0),
                 StackAxis::Horizontal,
                 None,
@@ -149,14 +140,6 @@ fn flex_stack_children_bypass_shape_and_direct_measure_calls(cx: &mut gpui::Test
                     assert_eq!(children.len(), 1, "{direction}/{wrap}");
                     assert_eq!(children[0].measure, Some(100.0));
                     assert!(children[0].regrow.is_some());
-                    assert!(
-                        opts.frag
-                            .probe
-                            .take()
-                            .values()
-                            .all(|p| p.estimate_calls == 0),
-                        "shape_full or direct measure reached for {direction}/{wrap}"
-                    );
                     gpui::div()
                 },
             );

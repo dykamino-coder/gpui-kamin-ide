@@ -84,8 +84,6 @@ impl PageKid {
 // A page shape stores height, cuts, forced breaks and monolithic intervals together.
 #[allow(clippy::type_complexity)]
 pub struct PageKid {
-    #[cfg(feature = "wpt-harness")]
-    pub(crate) probe: crate::FragmentProbes,
     pub el: AnyElement,
     /// Повторная раскладка flex после роста независимого потока.
     pub(crate) regrow: Option<crate::layout::fragment::push::Regrow>,
@@ -115,10 +113,6 @@ pub struct PageKid {
     /// Смена имени страницы создаёт собственный разрыв перед группой.
     pub(crate) renamed: bool,
     pub force_after: bool,
-    /// Мера поддерева от `render::shape_full` (css-break-4 §possible-breaks):
-    /// высота, точки разреза `(need, from)`, принудительные разрывы и монолиты
-    /// — как у `StackChild`; `None` — высота измеренная, разрезов нет.
-    pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
     /// Имя страницы, с которого коробка начинается (css-page-3 §using-named-pages:
     /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
     /// это имя для своего `@page <имя>` (`PageStack::geom_for`).

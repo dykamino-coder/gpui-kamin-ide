@@ -9,13 +9,8 @@ use crate::layout::block::margins::fragment_margins as measured_margins;
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
-use crate::layout::fragment::flow::blocks::table_tree;
-use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::fragment::line_shape::{
-    inline_content, nested_rows_box, resolved_lengths, transpose_tree,
-};
-use crate::layout::fragment::probe::forced_inside;
-use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::fragment::FlowMargins;
+use crate::layout::fragment::line_shape::{inline_content, nested_rows_box, resolved_lengths};
 use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
@@ -31,7 +26,6 @@ pub(crate) fn measure_children(
     last_flow: Option<*const Node>,
     outer_frag: Option<f32>,
     (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
-    nested_auto: &RefCell<Vec<u64>>,
     whole_ok: bool,
     nested_whole: &RefCell<Vec<u64>>,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
@@ -39,7 +33,7 @@ pub(crate) fn measure_children(
     col_rl: bool,
     measure_ok: bool,
     pag_ok: bool,
-) -> Option<Vec<(Element, Shape)>> {
+) -> Option<Vec<(Element, FlowMargins)>> {
     let vcx = opts.cx.frame();
     ge.children
         .iter()
@@ -58,21 +52,18 @@ pub(crate) fn measure_children(
             {
                 let c = resolved_lengths(c, merged, vcx);
                 let (mt, mb) = measured_margins(&c)?;
-                nested_auto.borrow_mut().push(c.node_id);
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((
                     c,
-                    Shape {
+                    FlowMargins {
                         margin_top: mt,
                         margin_bottom: mb,
-                        ..Shape::default()
                     },
                 ))
             }
             // Вложенный многоколоночник `height: auto` во внешних колонках с
             // заданной высотой: его блочный размер — СБАЛАНСИРОВАННЫЕ колонки
-            // (css-multicol-1 §7.1), а не сумма детей, которую даёт
-            // `shape_full`. Высоту даёт раскладка копии (`StackChild::
+            // (css-multicol-1 §7.1), а не сумма детей. Высоту даёт раскладка копии (`StackChild::
             // measure`), разрез — краем внешней колонки (`multicol-nested-
             // 022…024`: внутренний 200 в двух колонках — коробка 100, а не 200,
             // и следующий за ним блок уезжал в третью внешнюю колонку).
@@ -96,8 +87,7 @@ pub(crate) fn measure_children(
                     && nested_rows_box(c) =>
             {
                 // Высоту даёт раскладка самой копии (`StackChild::measure`):
-                // внутренний многоколоночник балансирует себя сам, и мера
-                // `shape_full` его колонок не видит (сумма детей).
+                // внутренний многоколоночник балансирует себя сам.
                 let c = resolved_lengths(c, merged, vcx);
                 measured_nested(&c, line_col_w?, measured_kids, nested_whole)
             }
@@ -120,10 +110,9 @@ pub(crate) fn measure_children(
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((
                     c,
-                    Shape {
+                    FlowMargins {
                         margin_top: mt,
                         margin_bottom: mb,
-                        ..Shape::default()
                     },
                 ))
             }
@@ -164,53 +153,20 @@ pub(crate) fn measure_children(
                         c.marks.host_trim_end = true;
                     }
                 }
-                let c = &c;
                 if col_vert {
-                    let t = transpose_tree(c, col_rl)?;
-                    // TRANSITIONAL(F2-4): Вертикальная смешанная группа оценивается через временный root; удалить в P21 после child resume в логических осях и OOF поверх P08/P10/P16.
-                    shape_full(&t, 4, ShapeCx::COLUMNS, vcx).map(|h| ((*c).clone(), h))
+                    super::laid::vertical_kid(c, vcx, line_col_w?, col_rl, measured_kids)
                 } else {
-                    // TRANSITIONAL(F2-6): Смешанная горизонтальная группа попадает в preplan без clamp scope и child resume; удалить в P21 после typed dispatch поверх P05/P08/P10/P16.
-                    shape_full(c, 4, ShapeCx::COLUMNS, vcx)
-                        .map(|h| ((*c).clone(), h))
-                        .or_else(|| {
-                            // Мера `shape_full` не выразила ребёнка (флоаты,
-                            // внепоточные потомки, таблица со сросшимися
-                            // рамками …). Прежде отказ ОДНОГО ребёнка
-                            // отправлял весь многоколоночник в сетку без
-                            // фрагментации — содержимое вовсе не переходило
-                            // в следующую колонку. css-break-3 §4: любая
-                            // блочная коробка фрагментируема; её высоту даёт
-                            // сама раскладка копии в колонку (`StackChild::
-                            // measure`, Blink меряет ребёнка тем же
-                            // алгоритмом, что и кладёт), а разрез — по краю
-                            // колонки (`slice`, без точек класса A).
-                            // Только колонки с заданной высотой
-                            // (`column-fill: auto`): у баланса высота
-                            // коробки сама зависит от меры, а раскладка
-                            // копии флоаты в высоту не берёт (а коробка
-                            // многоколоночника — корень контекста — берёт).
-                            // Принудительного разрыва внутри мера без
-                            // точек тоже не видит.
-                            // Таблицу из обычных блоков мерит раскладка копии
-                            // целиком, с её принудительными разрывами
-                            // (`flow::blocks::table`).
-                            let table = table_tree(c);
-                            if !measure_ok || (forced_inside(c, 6) && !table) {
-                                return None;
-                            }
-                            let w = kid_layout_w(c, line_col_w, layout_col_w)?;
-                            let (mt, mb) = measured_margins(c)?;
-                            measured_kids.borrow_mut().push((c.node_id, w));
-                            Some((
-                                (*c).clone(),
-                                Shape {
-                                    margin_top: mt,
-                                    margin_bottom: mb,
-                                    ..Shape::default()
-                                },
-                            ))
-                        })
+                    let w = kid_layout_w(&c, line_col_w, layout_col_w)?;
+                    let c = crate::layout::block::margins::fragment_box(c, w, vcx.values);
+                    let (mt, mb) = measured_margins(&c)?;
+                    measured_kids.borrow_mut().push((c.node_id, w));
+                    Some((
+                        c,
+                        FlowMargins {
+                            margin_top: mt,
+                            margin_bottom: mb,
+                        },
+                    ))
                 }
             }
             _ => None,
@@ -224,16 +180,15 @@ fn measured_nested(
     w: f32,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
     nested_whole: &RefCell<Vec<u64>>,
-) -> Option<(Element, Shape)> {
+) -> Option<(Element, FlowMargins)> {
     let (mt, mb) = measured_margins(c)?;
     nested_whole.borrow_mut().push(c.node_id);
     measured_kids.borrow_mut().push((c.node_id, w));
     Some((
         c.clone(),
-        Shape {
+        FlowMargins {
             margin_top: mt,
             margin_bottom: mb,
-            ..Shape::default()
         },
     ))
 }

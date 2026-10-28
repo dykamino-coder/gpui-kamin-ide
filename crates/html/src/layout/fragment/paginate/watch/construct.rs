@@ -47,6 +47,15 @@ impl Watched {
         })
     }
 
+    /// Наблюдать и абсолютные коробки копии с содержащим блоком внутри неё.
+    pub(crate) fn with_positioned(self: Rc<Self>, ids: Vec<u64>) -> Rc<Self> {
+        if !ids.is_empty() {
+            // Рекордер только что создан для этой копии: список задаётся один раз.
+            let _ = self.positioned.set(ids);
+        }
+        self
+    }
+
     pub(crate) fn for_lines() -> Rc<Self> {
         Self::with_flow(Rc::new(FlowMeasure::for_lines()))
     }

@@ -37,6 +37,7 @@ fn empty_multicol_keeps_the_original_box_without_column_tracks() {
                 None,
                 0.,
                 None,
+                None,
             );
             let Ok((mut d, _)) = result else {
                 panic!("empty multicol must keep its original box");

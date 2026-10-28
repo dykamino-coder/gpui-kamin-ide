@@ -3,15 +3,20 @@ use super::Growth;
 use crate::layout::fragment::flow::FlowGeometry;
 use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed};
 use crate::tolerance::COORD_EPS;
+mod items;
+use items::{column_item, open_row_items, pushed_past_edge, row_item_line_start, row_item_top};
 
 /// Точка роста относится к одному потоку: соседний flex-item с той же координатой
-/// не должен получить его распорку или принудительный разрыв.
+/// не должен получить его распорку или принудительный разрыв. `open` — фрагмент
+/// начинается с верха колонки ряда не с начала внешнего фрагментаинера: неделимое и
+/// пожелания с его верха переносятся туда, где места больше (Blink `LayoutRow`).
 pub(crate) fn growths(
     blocks: &BlockBox,
     laid: &Laid,
     from: f32,
     end: f32,
     edge: f32,
+    open: bool,
 ) -> Vec<Growth> {
     let mut flows = Vec::new();
     blocks.flex_flows(laid, &mut flows);
@@ -30,7 +35,10 @@ pub(crate) fn growths(
     }
     let mut gaps = Vec::new();
     blocks.suppressed_row_gaps(laid, from, end, edge, &mut gaps);
-    flow_growths(&flows, laid, from, end, edge, &mut out);
+    flow_growths(&flows, laid, from, end, edge, open, &mut out);
+    if open {
+        open_row_items(blocks, laid, from, edge, &mut out);
+    }
     // Линия, чей элемент сам растёт в этом фрагменте (принудительный разрыв
     // внутри, перенос монолита), ещё не кончилась: промежуток после неё лежит
     // за её продолжением, а не у этого края (css-flexbox-1 §10).
@@ -69,10 +77,13 @@ fn flow_growths(
     from: f32,
     end: f32,
     edge: f32,
+    open: bool,
     out: &mut Vec<Growth>,
 ) {
+    let after_start = |a: f32| a > from + COORD_EPS || (open && a > from - COORD_EPS);
     for flow in flows {
-        if let Some(growth) = pushed_past_edge(&flow, laid, from, edge) {
+        // В открытом ряду перенос за край — в следующий ряд, не к этому краю.
+        if let Some(growth) = pushed_past_edge(&flow, laid, from, edge).filter(|_| !open) {
             out.push(growth);
             continue;
         }
@@ -116,7 +127,7 @@ fn flow_growths(
             .chain(avoid.iter().filter(|_| boundary))
             .filter(|&&(a, b)| {
                 overflow_edge
-                    && a > from + COORD_EPS
+                    && after_start(a)
                     && a <= end + COORD_EPS
                     && a < edge - COORD_EPS
                     && b > edge + COORD_EPS
@@ -129,7 +140,7 @@ fn flow_growths(
                     .iter()
                     .chain(&avoid)
                     .filter(|&&(a, b)| {
-                        a > from + COORD_EPS && a < point - COORD_EPS && point < b - COORD_EPS
+                        after_start(a) && a < point - COORD_EPS && point < b - COORD_EPS
                     })
                     .map(|p| p.0)
                     .min_by(f32::total_cmp);
@@ -152,9 +163,11 @@ fn flow_growths(
         if let Some(top) = row_item_top(laid, flow.id)
             && point <= top + COORD_EPS
         {
-            // Элемент, выровненный ниже начала линии, переносится сам.
+            // Элемент, выровненный ниже начала линии, переносится сам; в открытом
+            // ряду линию с верха колонки не перенести — тоже сам (Blink: ряд у начала
+            // фрагментаинера не переносится, ранний разрыв — перед элементом).
             if let Some(start) = row_item_line_start(laid, flow.id)
-                && laid.margin_box(flow.id).map_or(top, |m| m.0) > start + COORD_EPS
+                && (open || laid.margin_box(flow.id).map_or(top, |m| m.0) > start + COORD_EPS)
                 && edge > point + COORD_EPS
             {
                 out.push(Growth {
@@ -187,62 +200,4 @@ fn flow_growths(
             out.push(growth);
         }
     }
-}
-
-/// Элемент колонки, начинающийся за краем фрагментаинера после содержимого
-/// этого фрагмента: разрыв перед ним, а промежуток между ними (row-gap и место
-/// `justify-content`), не поместившийся до края, гасится — элемент встаёт на
-/// начало следующего фрагментаинера (Blink
-/// `UpdateOffsetAdjustmentForSuppressedRowGap`, эффективный промежуток
-/// `effective_gap_between_items`). Сдвиг отрицательный; заданный размер
-/// контейнера он не меняет.
-fn pushed_past_edge(flow: &BlockBox, laid: &Laid, from: f32, edge: f32) -> Option<Growth> {
-    flow.flex_gap?;
-    let mut prev_end: Option<f32> = None;
-    for kid in &flow.kids {
-        let (top, bottom) = laid.margin_box(kid.id).or_else(|| laid.at(kid.id))?;
-        if top >= edge - COORD_EPS {
-            let ended = prev_end.is_some_and(|e| e > from + COORD_EPS && e <= edge + COORD_EPS);
-            if ended && top > edge + COORD_EPS {
-                return Some(Growth {
-                    target: Pushed::Box(kid.id),
-                    at: top,
-                    amount: edge - top,
-                    forced: false,
-                });
-            }
-            return None;
-        }
-        prev_end = Some(bottom);
-    }
-    None
-}
-
-/// Верх элемента ряда flex или элемента сетки, чей поток — `id`: его первую неделимую часть
-/// переносит линия или ряд (`FlexBox::breaks`, `GridBox::breaks`).
-fn row_item_top(laid: &Laid, id: u64) -> Option<f32> {
-    (laid.placements.contains_key(&id)
-        || laid
-            .flexes
-            .values()
-            .any(|f| !f.column && f.lines.iter().any(|l| l.items.contains(&id))))
-    .then(|| laid.at(id).map(|p| p.0))
-    .flatten()
-}
-
-/// Начало линии ряда, в которой стоит элемент `id`.
-fn row_item_line_start(laid: &Laid, id: u64) -> Option<f32> {
-    laid.flexes
-        .values()
-        .filter(|f| !f.column)
-        .flat_map(|f| &f.lines)
-        .find(|l| l.items.contains(&id))
-        .map(|l| l.start)
-}
-
-/// Элемент колонки flex: сдвигается своим смещением, а не распоркой.
-fn column_item(laid: &Laid, id: u64) -> bool {
-    laid.flexes
-        .values()
-        .any(|f| f.column && f.lines.iter().any(|l| l.items.contains(&id)))
 }

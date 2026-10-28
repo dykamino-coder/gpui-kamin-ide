@@ -21,6 +21,10 @@ pub struct StackChild {
     pub(crate) fragment_builders: Vec<super::FragmentHandle>,
     /// Исходный normal-владелец OOF, независимо от вида рекордера.
     pub(crate) source: Option<u64>,
+    /// Щуп статической позиции прямого OOF с этим id (`static_probes`): место его
+    /// заместителя во фрагментированном потоке; второе — блочное начальное поле
+    /// OOF (от края поля до border box).
+    pub(crate) static_of: Option<(u64, f32)>,
     /// Первый замер сравнивается с оценкой до замены геометрии на измеренную.
     #[cfg(feature = "wpt-harness")]
     pub(crate) probe_pending: bool,
@@ -29,8 +33,8 @@ pub struct StackChild {
     /// Recorder of the main copy (`Watched::for_blocks`): measured breaks.
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
-    /// (`Some(ширина колонки)`), а не мера `render::shape_full`: та ребёнка не
-    /// выразила (флоаты, внепоточные потомки …). Ставится в
+    /// (`Some(ширина колонки)`): флоаты, внепоточные потомки и строки ребёнка
+    /// выражает только она. Ставится в
     /// `request_column_layout` до укладки. BandFlow добавляет измеренные границы
     /// строк; без них ребёнок режется краем колонки.
     pub measure: Option<f32>,
@@ -112,6 +116,11 @@ pub struct StackChild {
     /// высоты (`render.rs::clone_fragment`): её не поднимают на срез и не
     /// режут маской.
     pub clone_dec: Option<(f32, f32)>,
+    /// См. `Kid::clone_fixed`.
+    pub clone_fixed: bool,
+    /// Срез строк `text-box-trim` у разрывов: `(начало строки после разрыва,
+    /// конец строки до разрыва, точка перед первой строкой)`.
+    pub line_trim: Option<(f32, f32, bool)>,
     /// Монолит-ПОТОМОК, начатый на верху колонки, переполняет её, а не режется
     /// краем (`fill_at`, `overflow_to`). Только `column-fill: auto` без рядов и
     /// только ребёнку без элементов ряда (`render::parallel_items_inside`):
@@ -139,16 +148,41 @@ pub struct StackChild {
     /// фрагментаинера не тянутся, а коробка таблицы — тянется (css-break-3
     /// §box-splitting; Blink `table_layout_algorithm.cc` — фрагмент таблицы
     /// занимает остаток, `fragmentation_utils.cc:563` «Consumed block-size …
-    /// is always stretched to the fragmentainers»). Распорка роста
-    /// (`grow_pushed`) в пустой ячейке коробки не находит, и в хвосте было
-    /// пусто. Хвост красится цветом фона по ширине разложенной копии.
+    /// is always stretched to the fragmentainers»). Хвост красится цветом фона по ширине разложенной копии.
     pub slack: Option<gpui::Hsla>,
     /// Ширина разложенной копии (для `slack`), ставится в `prepaint`.
     pub laid_w: std::cell::Cell<f32>,
     /// Paginated by its own layout (`fragment::paginate`): the stack lays the
     /// copy out against the fragmentainer grid and rebuilds it with struts.
     pub paginate: Option<crate::layout::fragment::paginate::Paginate>,
+    /// Геометрия копий `box-decoration-break: clone` по итоговому плану
+    /// (`CloneGeom`).
+    pub(crate) clone_frags: Option<CloneGeom>,
+    /// Построитель копии `part` (0 — главная): число копий решает план по
+    /// измеренной протяжённости ребёнка, а не предварительная оценка.
+    pub(crate) copier: Option<std::rc::Rc<dyn Fn(usize) -> AnyElement>>,
+    /// Ряды вложенного многоколоночника во внешних колонках: `(высота ряда,
+    /// начало ребёнка во внешнем фрагментаинере)`.
+    pub(crate) nest: Option<(f32, f32)>,
+    /// Отчёт рядов вложенного многоколоночника (`Nested::first_row`).
+    pub(crate) nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    /// Сборка того же ребёнка в другом внешнем пространстве (`nest`): его
+    /// начало решает раскладка предшествующих детей.
+    pub(crate) resume: Option<ResumeChild>,
 }
+
+/// Сборка ребёнка заново в пространстве `(высота фрагментаинера, фаза)`.
+pub(crate) type ResumeChild = std::rc::Rc<dyn Fn(Option<(f32, f32)>) -> StackChild>;
+
+/// Фрагменты `clone` знают свои `(from, h)` только из итогового плана укладки:
+/// мера ребёнка — раскладка всей коробки, а копия фрагмента — коробка своей
+/// высоты со своими краями (css-break-3 §5.4). `None` — план коробку не
+/// разрезал; иначе декорация `(верх, низ)`, `(from, h)` каждой копии и конец
+/// видимого потока коробки для последнего фрагмента. План меняет геометрию —
+/// копии строятся заново.
+#[allow(clippy::type_complexity)]
+pub(crate) type CloneGeom =
+    std::rc::Rc<std::cell::RefCell<Option<((f32, f32), Vec<(f32, f32)>, f32)>>>;
 
 impl StackChild {
     /// Геометрия ребёнка для укладки (`Kid`).
@@ -173,6 +207,7 @@ impl StackChild {
             span: self.span,
             over: self.over,
             clone_dec: self.clone_dec,
+            clone_fixed: self.clone_fixed,
             overflow_top: self.overflow_top,
             repeat: self
                 .repeat

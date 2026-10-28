@@ -37,8 +37,6 @@ fn page_margin_regression_keeps_wrapper_margin_out_of_overflow(cx: &mut gpui::Te
                     let el =
                         watch::wrap(7, div().mt(px(top)).h(px(100.)).into_any_element(), &opts);
                     let mut kid = PageKid {
-                        #[cfg(feature = "wpt-harness")]
-                        probe: Default::default(),
                         el: div().flex().flex_col().child(el).into_any_element(),
                         regrow: None,
                         percentages: None,
@@ -53,7 +51,6 @@ fn page_margin_regression_keeps_wrapper_margin_out_of_overflow(cx: &mut gpui::Te
                         force_before: false,
                         renamed: false,
                         force_after: false,
-                        shape: None,
                         page: String::new(),
                         mt: top,
                         mb: 0.,

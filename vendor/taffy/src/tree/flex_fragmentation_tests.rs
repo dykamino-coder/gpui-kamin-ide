@@ -207,3 +207,22 @@ fn line_growth_is_not_free_space_of_a_definite_container() {
     assert_eq!(tree.layout(b).unwrap().location.y, 180.0);
     assert_eq!(tree.layout(root).unwrap().size.height, 200.0);
 }
+
+#[test]
+fn column_break_offset_counts_toward_max_size() {
+    // A pushed item consumes the container's block size; max-height still
+    // limits the box and the item overflows its last fragment.
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    tree.disable_rounding();
+    let style = Style { size: Size::from_lengths(40.0, 30.0), flex_shrink: 0.0, ..Style::DEFAULT };
+    let a = tree.new_leaf(style.clone()).unwrap();
+    let b = tree.new_leaf(style).unwrap();
+    let root = tree.new_with_children(Style { flex_direction: crate::FlexDirection::Column,
+        size: Size { width: Dimension::length(40.0), height: Dimension::auto() },
+        max_size: Size { width: crate::LengthPercentageAuto::auto(), height: crate::LengthPercentageAuto::length(80.0) },
+        ..Style::DEFAULT }, &[a, b]).unwrap();
+    tree.set_flex_item_fragmentation_offset(b, 50.0).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(root).unwrap().size.height, 80.0);
+    assert_eq!(tree.layout(b).unwrap().location.y, 80.0);
+}

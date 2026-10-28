@@ -11,8 +11,6 @@ use std::rc::Rc;
 
 fn kid(source: PageSource) -> super::super::PageKid {
     super::super::PageKid {
-        #[cfg(feature = "wpt-harness")]
-        probe: Default::default(),
         el: gpui::div().into_any_element(),
         regrow: None,
         percentages: None,
@@ -27,7 +25,6 @@ fn kid(source: PageSource) -> super::super::PageKid {
         force_before: false,
         renamed: false,
         force_after: false,
-        shape: None,
         page: String::new(),
         mt: 0.,
         mb: 0.,
