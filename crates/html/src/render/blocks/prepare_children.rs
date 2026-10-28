@@ -193,7 +193,7 @@ pub(crate) fn prepare_children(
         // предикатом, что у слитого стиля (`style::cascade::inherit`): он зависит
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
         let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
-        let vcx = vcx.with_collapse(CollapseInputs {
+        let mcx = crate::layout::block::margins::MarginCx::new(vcx).with_collapse(CollapseInputs {
             font: base,
             width: cb_w,
             height_def: cb_h_def,
@@ -209,7 +209,7 @@ pub(crate) fn prepare_children(
                         | Some(crate::style::computed::Position::Fixed)
                 ),
                 opts.cx.constraints.cb_width,
-                vcx,
+                mcx,
             )
         };
         margin_height::zero_float_blocks(&mut out, inherited, vcx);

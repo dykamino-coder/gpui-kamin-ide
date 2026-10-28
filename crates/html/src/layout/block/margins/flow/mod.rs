@@ -2,7 +2,7 @@
 
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
-use crate::layout::block::struts::margin_px;
+use crate::layout::block::struts::margin_px_in;
 use crate::layout::box_kind::inline_level;
 use crate::style::values::value::Len;
 mod absorb;
@@ -23,7 +23,7 @@ pub(crate) fn collapse_flow_margins(
     children: Vec<Node>,
     reverse: bool,
     lead: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Vec<Node> {
     let mut out = children;
     let trailing: Option<f32> = lead.filter(|m| *m >= 0.0);
@@ -35,7 +35,7 @@ pub(super) fn collapse_flow_kids(
     reverse: bool,
     out: &mut [Node],
     mut trailing: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     for node in out.iter_mut() {
         let child = match node {
@@ -107,7 +107,7 @@ pub(super) fn collapse_flow_kids(
         // Доли кегля разрешаются здесь же: голый разбор точек считал `1em`
         // нулём и ЗАПИСЫВАЛ ноль — поле абзаца вдоль вертикального потока
         // пропадало вовсе (wm-propagation-body-*).
-        let lead_px = margin_px(lead, &child.style.used(), vcx).unwrap_or(0.0);
+        let lead_px = margin_px_in(lead, &child.style.used(), vcx).unwrap_or(0.0);
         // Пустой блок пропускает поля СКВОЗЬ себя: хвост предыдущего брата,
         // его ведущее и его хвостовое поле сливаются в одно (наибольшее из
         // неотрицательных), и оно же становится хвостом для следующего.
@@ -123,7 +123,7 @@ pub(super) fn collapse_flow_kids(
         } else {
             child.style.used().margin.right
         };
-        let tail_px = margin_px(tail, &child.style.used(), vcx).unwrap_or(0.0);
+        let tail_px = margin_px_in(tail, &child.style.used(), vcx).unwrap_or(0.0);
         let prev = trailing.unwrap_or(0.0);
         if tail_px > 0.0 && lead_px >= 0.0 && prev >= 0.0 && collapses_through(child) {
             let combined = prev.max(lead_px).max(tail_px);
