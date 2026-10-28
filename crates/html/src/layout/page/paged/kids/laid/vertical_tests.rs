@@ -2,6 +2,7 @@
 
 use super::tests::authored;
 use super::*;
+use crate::layout::cx::FrameCx;
 use crate::style::values::value::Len;
 
 #[test]
@@ -14,8 +15,15 @@ fn vertical_empty_page_floats_keep_bandflow_extent_and_physical_tree() {
             "",
         );
         let nodes = [Node::Element(authored(&tree).clone())];
-        let p = vertical_group(&nodes, &BoxStyle::default(), 120.0, 0.0, rl, tree.values())
-            .expect("native empty floats");
+        let p = vertical_group(
+            &nodes,
+            &BoxStyle::default(),
+            120.0,
+            0.0,
+            rl,
+            FrameCx::new(tree.values()),
+        )
+        .expect("native empty floats");
         assert!(p.blocks && p.float_extent);
         let Node::Element(e) = &p.nodes[0] else {
             panic!("host")
@@ -39,9 +47,15 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
             );
             let nodes = [Node::Element(authored(&tree).clone())];
             for head in [0.0, 11.0] {
-                let p =
-                    vertical_group(&nodes, &BoxStyle::default(), 100.0, head, rl, tree.values())
-                        .expect("independent vertical page group");
+                let p = vertical_group(
+                    &nodes,
+                    &BoxStyle::default(),
+                    100.0,
+                    head,
+                    rl,
+                    FrameCx::new(tree.values()),
+                )
+                .expect("independent vertical page group");
                 let (start, end) = if rl { (7.0, 13.0) } else { (13.0, 7.0) };
                 assert_eq!(
                     p.margins,
@@ -68,7 +82,7 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
                     false,
                     true,
                     cx,
-                    tree.values(),
+                    FrameCx::new(tree.values()),
                 );
                 let blocks = w.blocks().expect("vertical block recorder");
                 assert_eq!(blocks.id, physical.node_id);
@@ -98,8 +112,15 @@ fn vertical_page_grid_table_and_flex_use_native_recorders_without_an_estimate() 
                 "",
             );
             let nodes = [Node::Element(authored(&tree).clone())];
-            let p = vertical_group(&nodes, &BoxStyle::default(), 100.0, 0.0, rl, tree.values())
-                .unwrap();
+            let p = vertical_group(
+                &nodes,
+                &BoxStyle::default(),
+                100.0,
+                0.0,
+                rl,
+                FrameCx::new(tree.values()),
+            )
+            .unwrap();
             let w = super::super::breaks::recorder(
                 &p.nodes,
                 &p.nodes[0],
@@ -107,7 +128,7 @@ fn vertical_page_grid_table_and_flex_use_native_recorders_without_an_estimate() 
                 false,
                 true,
                 crate::layout::fragment::ShapeCx::COLUMNS,
-                tree.values(),
+                FrameCx::new(tree.values()),
             );
             let blocks = w.blocks().unwrap();
             if body.starts_with("<table") {

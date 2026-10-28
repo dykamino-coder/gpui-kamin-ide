@@ -6,8 +6,8 @@
 //! блочного контекста, устройство таблицы — `table`). Возможности разрыва класса A между
 //! соседями-блоками (css-break-3 §4.3) и усечение полей на разрыве (§5.2) — в `geometry`.
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 
 mod collect;
@@ -131,7 +131,7 @@ pub(crate) struct BlockKid {
 impl BlockBox {
     /// Стопка копии `e` в условиях меры `cx`: у страниц (`paged`) — имена
     /// страниц, `viewport` решает единицы окна рамок (как у меры формы).
-    pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> Self {
         collect(e, false, cx, vcx)
     }
 
@@ -187,8 +187,8 @@ impl BlockBox {
     /// Стопка блочного контейнера по определению — ячейки или подписи
     /// таблицы (CSS 2.1 §17.4, §17.5): дети кладутся блочной стопкой, какое
     /// бы значение `display` ни несла коробка.
-    pub(crate) fn container(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
-        let mut out = frame(e, cx, vcx);
+    pub(crate) fn container(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> Self {
+        let mut out = frame(e, cx, vcx.values);
         let mut adjoins = false;
         push_kids(&e.children, &mut out.kids, &mut adjoins, cx, vcx);
         out

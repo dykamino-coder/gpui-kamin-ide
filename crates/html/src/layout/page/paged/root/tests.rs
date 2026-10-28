@@ -1,6 +1,7 @@
 //! Границы общего пробега обтекания при принудительном разрыве страницы.
 use super::*;
 use crate::dom::Element;
+use crate::layout::cx::FrameCx;
 
 fn body(nodes: &[Node]) -> &Element {
     fn find(nodes: &[Node]) -> Option<&Element> {
@@ -30,7 +31,7 @@ fn forced_float_after_ends_its_shared_inline_run() {
             |n| matches!(n, Node::Element(e) if e.tag == "br"),
             floated,
             &mut groups,
-            tree.values(),
+            FrameCx::new(tree.values()),
         );
         assert_eq!(groups.len(), if forced { 2 } else { 1 });
     }
@@ -48,7 +49,7 @@ fn forced_boundary_does_not_carry_float_run_into_next_page() {
         |n| matches!(n, Node::Element(e) if matches!(e.tag.as_str(), "br" | "span")),
         |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
         &mut groups,
-        tree.values(),
+        FrameCx::new(tree.values()),
     );
     assert_eq!(groups.len(), 3);
 }
@@ -68,7 +69,7 @@ fn named_page_transition_closes_the_float_run_but_ignores_float_name() {
             |_| false,
             |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
             &mut groups,
-            tree.values(),
+            FrameCx::new(tree.values()),
         );
         assert_eq!(groups.len(), if next == "a" { 2 } else { 3 });
         assert!(

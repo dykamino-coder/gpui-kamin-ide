@@ -8,9 +8,9 @@
 //! `min-height` побеждает, когда больше `max-height`.
 //! Таблица меру высоты ведёт сама (CSS Tables 3).
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::block::sizing::BoxDimensions;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::shape_contents::shape_contents;
 use crate::layout::fragment::table_bands::table_box;
@@ -23,7 +23,7 @@ pub(crate) fn shape_full(
     element: &Element,
     depth: u8,
     cx: ShapeCx,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Shape> {
     measure(element, depth, cx, vcx).map(|m| m.shape)
 }
@@ -35,7 +35,7 @@ pub(crate) fn measure(
     element: &Element,
     depth: u8,
     cx: ShapeCx,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Measure> {
     #[cfg(feature = "wpt-harness")]
     if let Some(probe) = cx
@@ -63,7 +63,7 @@ pub(crate) fn measure(
     let shape = &mut m.shape;
     // Рамка и отступ: нерешённое ничего не добавляет к мере.
     let lens = LenCx::box_viewport(cx.viewport, &element.style.used());
-    let resolve = |value: Option<Len>| lens.px_lossy_zero(value, vcx);
+    let resolve = |value: Option<Len>| lens.px_lossy_zero(value, vcx.values);
     let border = element.style.used().borders();
     let decoration = resolve(element.style.used().padding.top)
         + resolve(element.style.used().padding.bottom)
@@ -107,13 +107,13 @@ pub(super) fn constrain(
     decoration: f32,
     viewport: Option<(f32, f32)>,
     overflow_extent: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> f32 {
     let style = &element.style.used();
     let sizes = BoxDimensions::for_element(element, style);
     // Предел, который не решается, не ограничивает.
     let lens = LenCx::box_viewport(viewport, style);
-    let resolve = |length: Option<Len>| lens.px_strict(length, vcx);
+    let resolve = |length: Option<Len>| lens.px_strict(length, vcx.values);
     let border_size = |v: f32| border_size(v, &sizes, decoration);
     let minimum = resolve(sizes.minimum[1]).map(border_size);
     let maximum = resolve(sizes.maximum[1]).map(border_size);

@@ -170,7 +170,7 @@ pub(super) fn multicol_stack_child(
         whole,
         build,
         measured_table,
-        opts.cx.vcx(),
+        opts.cx.frame(),
     );
     let measured = regrow::Measured {
         paginate,

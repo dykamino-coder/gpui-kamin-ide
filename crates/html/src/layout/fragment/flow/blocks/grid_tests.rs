@@ -21,7 +21,7 @@ pub(super) fn grid(html: &str) -> (BlockBox, Vec<u64>) {
     let b = BlockBox::collect(
         root,
         crate::layout::fragment::ShapeCx::COLUMNS,
-        doc.values(),
+        crate::layout::cx::FrameCx::new(doc.values()),
     );
     let ids = b
         .grid

@@ -4,15 +4,15 @@
 
 use super::container::main_size;
 use super::line_layout::collect_lines;
-use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 
 pub(crate) fn row_break_edge(
     c: &Element,
     last: bool,
     avoid: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<bool> {
     // Кадр строк нужен только многострочному flex-ряду. В остальных коробках
     // collect_lines всё равно отказывает; клонирование пути предков было лишним.

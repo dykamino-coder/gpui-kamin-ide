@@ -1,17 +1,17 @@
 //! Отложенная ширина не требует оценки: floats меряет тот же решатель продолжения.
 
-use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::{fragment_box, fragment_margins};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::layout::fragment::{Shape, paginate};
 use crate::style::computed::{BoxStyle, Display};
 use std::cell::RefCell;
 
-pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
+pub(crate) fn float_copy(e: &Element, vcx: FrameCx<'_>) -> bool {
     fn separate(e: &Element) -> bool {
         e.style.used().bdb_clone
             || e.style.used().text_box_trim_start
@@ -40,7 +40,7 @@ pub(crate) fn float_copy(e: &Element, vcx: ValueCx<'_>) -> bool {
 pub(crate) fn pending(
     host: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Option<Vec<(Element, Shape)>> {
     prepare(host, merged, vcx, None, &RefCell::default())
 }
@@ -48,7 +48,7 @@ pub(crate) fn pending(
 pub(crate) fn children(
     host: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
@@ -58,7 +58,7 @@ pub(crate) fn children(
 fn prepare(
     host: &Element,
     merged: &BoxStyle,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
     width: Option<f32>,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
@@ -81,7 +81,7 @@ fn prepare(
                 // остальных native-копий; pending не нуждается в их оценке.
                 return Some((c, Shape::default()));
             };
-            c = fragment_box(c, w, vcx);
+            c = fragment_box(c, w, vcx.values);
             if !independent {
                 c.marks.paginate = true;
             }

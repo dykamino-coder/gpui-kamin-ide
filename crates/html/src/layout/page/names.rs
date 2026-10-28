@@ -4,7 +4,7 @@
 //! которых меняется имя или стоит принудительный разрыв, чтобы стопка страниц видела
 //! разрыв между их детьми. Здесь же типы объявлений листа для марджин-боксов.
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -99,7 +99,7 @@ fn renames_inside(e: &Element) -> bool {
 /// `None`), и разрыв внутри такого ребёнка стопки иначе терялся
 /// (`page-name-propagated-002-print-ref`: `break-before: page` у второго
 /// ребёнка обёртки).
-fn breaks_inside(e: &Element, vcx: ValueCx<'_>) -> bool {
+fn breaks_inside(e: &Element, vcx: FrameCx<'_>) -> bool {
     // Только блочный поток: внутри таблицы разрыв режет ряды и группы
     // (`rowgroup-page-break-inside-avoid-5-print-ref`: `thead { break-after }`
     // — таблица не обёртка, снимать её нельзя).
@@ -189,7 +189,7 @@ fn plain_wrapper(e: &Element) -> bool {
 /// §using-named-pages п. 4) ставится между ними, как между детьми корня.
 /// Мера фрагментации (`shape_full`) у коробок с текстом неизвестна, и
 /// разрыв внутри такого ребёнка стопки иначе не ставится вовсе.
-pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>, vcx: ValueCx<'_>) {
+pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>, vcx: FrameCx<'_>) {
     loop {
         let mut changed = false;
         let mut out = Vec::with_capacity(nodes.len());

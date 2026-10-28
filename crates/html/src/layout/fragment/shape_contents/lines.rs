@@ -1,8 +1,8 @@
 //! Признаки строчных детей и оси рядов (flex/grid) для формы содержимого.
 
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::style::computed::Display;
@@ -12,7 +12,7 @@ pub(super) fn line_inner_kids(
     c: &Element,
     kids: &Vec<&Node>,
     avoid_chains: bool,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> Vec<bool> {
     let main_gap0 = match c.style.used().gap {
         None | Some((_, None)) => true,

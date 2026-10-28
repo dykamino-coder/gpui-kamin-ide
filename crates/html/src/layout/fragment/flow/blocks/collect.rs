@@ -9,6 +9,7 @@ use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
+use crate::layout::cx::FrameCx;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_box;
@@ -23,7 +24,7 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
     e: &Element,
     blockified: bool,
     cx: ShapeCx,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) -> BlockBox {
     // Метаданные в логической блочной оси: вертикальный рекордер передаёт
     // logical_copy. Обёртка таблицы без своих рамки и отбивки, её границы —
@@ -42,7 +43,7 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
             ..Default::default()
         };
     }
-    let mut out = frame(e, cx, vcx);
+    let mut out = frame(e, cx, vcx.values);
     // The clamp host lays out the container's content as one unit and
     // publishes its line breaks itself (`text::clamp::ClampFlow`).
     if crate::layout::box_kind::clamp_host(e, &e.style.used()) {
@@ -108,7 +109,7 @@ pub(super) fn push_kids(
     out: &mut Vec<BlockKid>,
     adjoins: &mut bool,
     cx: ShapeCx,
-    vcx: ValueCx<'_>,
+    vcx: FrameCx<'_>,
 ) {
     for n in children(nodes).filter(|n| !is_blank(n)) {
         let k = match n {
