@@ -43,8 +43,13 @@ import { getDb, getDbByIndex } from './database/lifecycle'
 import { withStatsWrite } from './database/write-lock'
 import { dedupeByUuid } from './jsonl-batch'
 import { debugLog, warnLog } from '../logging'
+import { readJsonlLines } from '../pty/jsonl-lines'
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
+// One write transaction never exceeds this many rows; a checkpoint also
+// commits the durable byte cursor after this many source bytes.
+const SWEEP_BATCH_ROWS = 500
+const SWEEP_BATCH_BYTES = 8 * 1024 * 1024
 
 interface UsageBlock {
   input_tokens?: number
@@ -64,11 +69,12 @@ function isValidIso(tsStr: string): boolean {
   return Boolean(t) && !Number.isNaN(t)
 }
 
-const SQL_INSERT_EVENT = `
+const INSERT_CHUNK_ROWS = 100
+const insertEventsSql = (rows: number): string => `
   INSERT INTO jsonl_events
     (uuid, session_id, timestamp, type, model, input_tokens, output_tokens,
      cache_read_tokens, cache_write_tokens, tool_name, message_id)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES ${Array.from({ length: rows }, () => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
   ON CONFLICT (uuid) DO NOTHING
 `
 
@@ -115,18 +121,20 @@ const SQL_LOOKUP_TOKEN = `
 // bloating to 1.7 GB. The extra predicate makes the UPDATE a true no-op (0 rows
 // matched) once a session is fully attributed, so steady-state sweeps stop
 // churning. Bind order: SET(?,?,?,?) then WHERE(session_id, is_subagent, parent).
-const SQL_APPLY_TOKEN_AND_SUBAGENT = `
+export const SQL_APPLY_TOKEN_AND_SUBAGENT = `
   UPDATE jsonl_events
-  SET token_id = CASE WHEN token_id IS NULL OR token_id = '' THEN ? ELSE token_id END,
-      user_name = CASE WHEN user_name IS NULL OR user_name = '' THEN ? ELSE user_name END,
-      is_subagent = ?,
-      parent_session_id = COALESCE(parent_session_id, ?)
-  WHERE session_id = ?
+  SET token_id = CASE WHEN token_id IS NULL OR token_id = '' THEN COALESCE(NULLIF($1, ''), token_id) ELSE token_id END,
+      user_name = CASE WHEN user_name IS NULL OR user_name = '' THEN COALESCE(NULLIF($2, ''), user_name) ELSE user_name END,
+      is_subagent = $3,
+      parent_session_id = COALESCE(parent_session_id, $4)
+  WHERE session_id = $5
     AND (
-      token_id IS NULL OR token_id = ''
-      OR user_name IS NULL OR user_name = ''
-      OR is_subagent IS DISTINCT FROM ?
-      OR (parent_session_id IS NULL AND ? IS NOT NULL)
+      -- Only rows this statement actually changes: an unknown (NULL/empty)
+      -- attribution must not re-select the same rows on every sweep.
+      ((token_id IS NULL OR token_id = '') AND NULLIF($1, '') IS NOT NULL)
+      OR ((user_name IS NULL OR user_name = '') AND NULLIF($2, '') IS NOT NULL)
+      OR is_subagent IS DISTINCT FROM $3
+      OR (parent_session_id IS NULL AND $4 IS NOT NULL)
     )
 `
 
@@ -180,7 +188,11 @@ async function* listJsonlFiles(): AsyncGenerator<JsonlFileInfo> {
     if (!slug.isDirectory()) continue
     const slugDir = path.join(PROJECTS_DIR, slug.name)
     let entries: fs.Dirent[]
-    try { entries = await fsp.readdir(slugDir, { withFileTypes: true }) } catch { continue }
+    try {
+      entries = await fsp.readdir(slugDir, { withFileTypes: true })
+    } catch {
+      continue
+    }
     for (const e of entries) {
       if (e.isFile() && e.name.endsWith('.jsonl')) {
         yield { path: path.join(slugDir, e.name), isSubagent: false, parentSessionId: null }
@@ -192,7 +204,11 @@ async function* listJsonlFiles(): AsyncGenerator<JsonlFileInfo> {
         const parentSessionId = e.name
         const subDir = path.join(slugDir, e.name, 'subagents')
         let subFiles: string[]
-        try { subFiles = await fsp.readdir(subDir) } catch { continue }
+        try {
+          subFiles = await fsp.readdir(subDir)
+        } catch {
+          continue
+        }
         for (const f of subFiles) {
           if (f.endsWith('.jsonl')) {
             yield { path: path.join(subDir, f), isSubagent: true, parentSessionId }
@@ -216,14 +232,22 @@ async function* listJsonlFiles(): AsyncGenerator<JsonlFileInfo> {
  *  jsonl_events but won't be attributed to any user. */
 let cachedTokens: Array<{ id: string; name: string }> | null = null
 let cachedTokensAt = 0
-async function tokenInfoFromSlug(db: DuckDBConnection, slug: string): Promise<{ tokenId: string; userName: string } | null> {
+async function tokenInfoFromSlug(
+  db: DuckDBConnection,
+  slug: string,
+): Promise<{ tokenId: string; userName: string } | null> {
   const now = Date.now()
   if (!cachedTokens || now - cachedTokensAt > 30_000) {
     try {
-      const rows = (await db.runAndReadAll('SELECT id, name FROM api_tokens')).getRowObjects() as Array<{ id: string; name: string }>
+      const rows = (await db.runAndReadAll('SELECT id, name FROM api_tokens')).getRowObjects() as Array<{
+        id: string
+        name: string
+      }>
       cachedTokens = rows
       cachedTokensAt = now
-    } catch { cachedTokens = [] }
+    } catch {
+      cachedTokens = []
+    }
   }
   for (const t of cachedTokens) {
     // UUID is hex+dashes — slugifying turns dashes into dashes, no
@@ -250,20 +274,30 @@ async function processOneFile(info: JsonlFileInfo, dedicatedDb?: DuckDBConnectio
   return run
 }
 
-async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDBConnection): Promise<{ inserted: number }> {
+async function processOneFileUnguarded(
+  info: JsonlFileInfo,
+  dedicatedDb?: DuckDBConnection,
+): Promise<{ inserted: number }> {
   const filePath = info.path
   // Use dedicated connection if caller provided one (sweeper worker pool
   // — one conn per worker so parallel files don't share a conn). Falls
   // back to round-robin pool for ad-hoc callers.
-  const db = dedicatedDb ?? await getDb()
+  const db = dedicatedDb ?? (await getDb())
   // Single-statement write on this connection, serialised with every other
   // writer of the stats DB (see header: a failed COMMIT is fatal).
   const write = (sql: string, args: unknown[]) => withStatsWrite(() => db.run(sql, args as any[]))
   let stat: fs.Stats
-  try { stat = await fsp.stat(filePath) } catch { return { inserted: 0 } }
+  try {
+    stat = await fsp.stat(filePath)
+  } catch {
+    return { inserted: 0 }
+  }
   const size = stat.size
 
-  const offsetRows = (await db.runAndReadAll(SQL_GET_OFFSET, [filePath])).getRowObjects() as Array<{ last_offset: bigint | number; last_size: bigint | number }>
+  const offsetRows = (await db.runAndReadAll(SQL_GET_OFFSET, [filePath])).getRowObjects() as Array<{
+    last_offset: bigint | number
+    last_size: bigint | number
+  }>
   const offsetRow = offsetRows[0]
   let startByte = offsetRow ? Number(offsetRow.last_offset ?? 0) : 0
   if (offsetRow && Number(offsetRow.last_size ?? 0) > size) {
@@ -279,16 +313,18 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
   // works uniformly.
   const slug = path.basename(path.dirname(filePath))
   const slugInfo = await tokenInfoFromSlug(db, slug)
-  const tokenRows = (await db.runAndReadAll(SQL_LOOKUP_TOKEN, [sessionId])).getRowObjects() as Array<{ token_id: string | null; user_name: string | null; deleted: number | bigint | null }>
+  const tokenRows = (await db.runAndReadAll(SQL_LOOKUP_TOKEN, [sessionId])).getRowObjects() as Array<{
+    token_id: string | null
+    user_name: string | null
+    deleted: number | bigint | null
+  }>
   const tokenRow = tokenRows[0]
 
   // Prefer existing session_tokens.user_name when set; fall back to slug.
-  const userName = (tokenRow?.user_name && tokenRow.user_name.length > 0)
-    ? tokenRow.user_name
-    : slugInfo?.userName ?? null
+  const userName =
+    tokenRow?.user_name && tokenRow.user_name.length > 0 ? tokenRow.user_name : (slugInfo?.userName ?? null)
   // For token_id, slug UUID is authoritative — heal '' rows.
-  const tokenId = slugInfo?.tokenId
-    ?? (tokenRow?.token_id && tokenRow.token_id.length > 0 ? tokenRow.token_id : null)
+  const tokenId = slugInfo?.tokenId ?? (tokenRow?.token_id && tokenRow.token_id.length > 0 ? tokenRow.token_id : null)
 
   // Auto-create the session_tokens row for any non-subagent JSONL whose
   // slug carries a known token UUID. Subagent files share the parent
@@ -304,7 +340,7 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
   }
 
   const subFlag = info.isSubagent ? 1 : 0
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId, subFlag, info.parentSessionId])
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
 
   if (startByte >= size) {
     // Only touch jsonl_offsets when the position actually moved — an
@@ -314,21 +350,11 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
     }
     return { inserted: 0 }
   }
-  // Buffered read of the byte range. We previously used
-  // fs.createReadStream + readline async-iterator, which hung
-  // intermittently on Node 22 in our Linux container — the iterator
-  // never yielded the first line for some files. Files are <100KB so
-  // buffering is cheap and avoids the streaming bug entirely.
-  const fd = await fsp.open(filePath, 'r')
-  let chunkText: string
-  try {
-    const buf = Buffer.alloc(size - startByte)
-    await fd.read(buf, 0, buf.length, startByte)
-    chunkText = buf.toString('utf8')
-  } finally {
-    await fd.close()
-  }
-  const lines = chunkText.split('\n')
+  // The unread range is STREAMED (fd.read into a fixed buffer, byte-framed
+  // lines, see jsonl-lines.ts) — never loaded whole. An unread tail is not
+  // "<100KB": after a restart it is the entire transcript, and eight workers
+  // each holding a 100+ MiB Buffer, its string and its line array was a
+  // multi-GiB spike on the server's only process.
 
   // DuckDB transaction wrapper — flush a buffer of N rows atomically.
   // The pre-DuckDB SQLite path used `db.transaction(fn)(rows)` for the
@@ -342,12 +368,20 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
     await withStatsWrite(async () => {
       await db.run('BEGIN')
       try {
-        for (const args of rows) {
-          await db.run(SQL_INSERT_EVENT, args as any[])
+        // One multi-row statement per chunk instead of one round trip per row:
+        // per-row INSERTs held the single write lock ~10 ms per row, i.e.
+        // minutes per large transcript, stalling every other writer.
+        for (let i = 0; i < rows.length; i += INSERT_CHUNK_ROWS) {
+          const chunk = rows.slice(i, i + INSERT_CHUNK_ROWS)
+          await db.run(insertEventsSql(chunk.length), chunk.flat() as any[])
         }
         await db.run('COMMIT')
       } catch (err) {
-        try { await db.run('ROLLBACK') } catch { /* ignore */ }
+        try {
+          await db.run('ROLLBACK')
+        } catch {
+          /* ignore */
+        }
         throw err
       }
     })
@@ -367,7 +401,11 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
   let metaTitle: string | null = metaRow?.title ?? null
   let metaCompactBoundaries: number = Number(metaRow?.compact_boundaries ?? 0)
   let metaPreBoundarySnapshots: number[] = (() => {
-    try { return JSON.parse(metaRow?.pre_boundary_snapshots ?? '[]') as number[] } catch { return [] }
+    try {
+      return JSON.parse(metaRow?.pre_boundary_snapshots ?? '[]') as number[]
+    } catch {
+      return []
+    }
   })()
   // peakInSegment continues across sweep runs — was last_context from
   // previous sweep (peak so far in the current segment).
@@ -376,19 +414,67 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
 
   let inserted = 0
   let buffer: unknown[][] = []
-  for (const line of lines) {
-    if (!line || !line.trim()) continue
-    if (line.includes('"type":"file-history-snapshot"')) continue
+  // Durable cursor: the byte just past the last line whose rows (and the
+  // session metadata derived so far) are committed. A torn last line is never
+  // consumed, so the record completes on a later sweep instead of being lost.
+  let consumed = startByte
+  let lastCheckpoint = startByte
+  const checkpoint = async (upTo: number): Promise<void> => {
+    if (buffer.length > 0) {
+      await insertMany(buffer)
+      inserted += buffer.length
+      buffer = []
+    }
+    if (upTo === lastCheckpoint) return
+    if (!info.isSubagent) await persistMeta()
+    await write(SQL_UPSERT_OFFSET, [filePath, upTo, size, new Date().toISOString()])
+    lastCheckpoint = upTo
+  }
+  const persistMeta = async (): Promise<void> => {
+    const conversationContext = metaPeakInSegment + metaPreBoundarySnapshots.reduce((a, b) => a + b, 0)
+    await write(SQL_UPDATE_SESSION_META, [
+      metaTitleChanged ? metaTitle : null,
+      metaPeakInSegment,
+      metaCompactBoundaries,
+      JSON.stringify(metaPreBoundarySnapshots),
+      conversationContext,
+      sessionId,
+    ])
+  }
+  for await (const rawLine of readJsonlLines(filePath, { start: startByte, end: size })) {
+    // Bounded transactions on EVERY path (the tool_result branch used to
+    // `continue` past the size check and grow one transaction without limit).
+    if (buffer.length >= SWEEP_BATCH_ROWS || rawLine.start - lastCheckpoint >= SWEEP_BATCH_BYTES) {
+      await checkpoint(consumed)
+    }
+    const line = rawLine.text
     let e: any
-    try { e = JSON.parse(line) } catch { continue }
+    if (line.includes('"type":"file-history-snapshot"')) {
+      consumed = rawLine.end
+      continue
+    }
+    try {
+      e = JSON.parse(line)
+    } catch {
+      if (!rawLine.terminated) break // still being written — retry next sweep
+      consumed = rawLine.end
+      continue
+    }
+    consumed = rawLine.end
     // Capture per-session metadata from auxiliary entry types — they
     // don't go into jsonl_events but drive the sessions list UI.
     if (e?.type === 'ai-title' && typeof e.aiTitle === 'string') {
-      if (e.aiTitle !== metaTitle) { metaTitle = e.aiTitle; metaTitleChanged = true }
+      if (e.aiTitle !== metaTitle) {
+        metaTitle = e.aiTitle
+        metaTitleChanged = true
+      }
       continue
     }
     if (e?.type === 'custom-title' && typeof e.customTitle === 'string') {
-      if (!metaTitle && e.customTitle) { metaTitle = e.customTitle; metaTitleChanged = true }
+      if (!metaTitle && e.customTitle) {
+        metaTitle = e.customTitle
+        metaTitleChanged = true
+      }
       continue
     }
     if (e?.type === 'system' && e.subtype === 'compact_boundary') {
@@ -417,9 +503,15 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
         buffer.push([uuid, sessionId, tsStr, 'tool_result', null, 0, 0, 0, 0, null, toolUseId ?? null])
         continue
       }
-      const text = typeof c === 'string'
-        ? c
-        : Array.isArray(c) ? c.filter((b: any) => b?.type === 'text').map((b: any) => b.text || '').join('\n') : ''
+      const text =
+        typeof c === 'string'
+          ? c
+          : Array.isArray(c)
+            ? c
+                .filter((b: any) => b?.type === 'text')
+                .map((b: any) => b.text || '')
+                .join('\n')
+            : ''
       const trimmed = text.trim()
       if (!trimmed) continue
       if (trimmed.startsWith('[Caveat:')) continue
@@ -465,59 +557,54 @@ async function processOneFileUnguarded(info: JsonlFileInfo, dedicatedDb?: DuckDB
           }
         }
       }
-      buffer.push([uuid, sessionId, tsStr, 'assistant', model || null, inT, outT, cacheR, cacheW, null, messageId ?? null])
-    }
-
-    if (buffer.length >= 500) {
-      await insertMany(buffer)
-      inserted += buffer.length
-      buffer = []
+      buffer.push([
+        uuid,
+        sessionId,
+        tsStr,
+        'assistant',
+        model || null,
+        inT,
+        outT,
+        cacheR,
+        cacheW,
+        null,
+        messageId ?? null,
+      ])
     }
   }
   if (buffer.length > 0) {
     await insertMany(buffer)
     inserted += buffer.length
+    buffer = []
   }
 
   // Backfill model for user-rows (next-assistant lookup, per session).
-  try { await write(SQL_FILL_USER_MODELS, [sessionId]) } catch (err) {
+  try {
+    await write(SQL_FILL_USER_MODELS, [sessionId])
+  } catch (err) {
     warnLog('fillUserModels failed', { sessionId, error: String(err) })
   }
 
   // Re-apply token + subagent flag in case the live onConversationId
   // callback raced with this sweep and inserted session_tokens mid-flight.
-  const tokenRowsAfter = (await db.runAndReadAll(SQL_LOOKUP_TOKEN, [sessionId])).getRowObjects() as Array<{ token_id: string | null; user_name: string | null }>
+  const tokenRowsAfter = (await db.runAndReadAll(SQL_LOOKUP_TOKEN, [sessionId])).getRowObjects() as Array<{
+    token_id: string | null
+    user_name: string | null
+  }>
   const tokenRowAfter = tokenRowsAfter[0]
-  const userNameAfter = (tokenRowAfter?.user_name && tokenRowAfter.user_name.length > 0)
-    ? tokenRowAfter.user_name
-    : slugInfo?.userName ?? null
-  const tokenIdAfter = slugInfo?.tokenId
-    ?? (tokenRowAfter?.token_id && tokenRowAfter.token_id.length > 0 ? tokenRowAfter.token_id : null)
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [
-    tokenIdAfter,
-    userNameAfter,
-    subFlag,
-    info.parentSessionId,
-    sessionId,
-    subFlag,
-    info.parentSessionId,
-  ])
+  const userNameAfter =
+    tokenRowAfter?.user_name && tokenRowAfter.user_name.length > 0
+      ? tokenRowAfter.user_name
+      : (slugInfo?.userName ?? null)
+  const tokenIdAfter =
+    slugInfo?.tokenId ?? (tokenRowAfter?.token_id && tokenRowAfter.token_id.length > 0 ? tokenRowAfter.token_id : null)
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenIdAfter, userNameAfter, subFlag, info.parentSessionId, sessionId])
 
   // Persist accumulated session metadata (only for non-subagent files —
   // subagents share parent's title etc).
-  if (!info.isSubagent) {
-    const conversationContext = metaPeakInSegment + metaPreBoundarySnapshots.reduce((a, b) => a + b, 0)
-    await write(SQL_UPDATE_SESSION_META, [
-      metaTitleChanged ? metaTitle : null,
-      metaPeakInSegment,
-      metaCompactBoundaries,
-      JSON.stringify(metaPreBoundarySnapshots),
-      conversationContext,
-      sessionId,
-    ])
-  }
+  if (!info.isSubagent) await persistMeta()
 
-  await write(SQL_UPSERT_OFFSET, [filePath, size, size, new Date().toISOString()])
+  await write(SQL_UPSERT_OFFSET, [filePath, consumed, size, new Date().toISOString()])
   return { inserted }
 }
 
@@ -547,15 +634,19 @@ export async function sweepAll(): Promise<{ files: number; inserted: number }> {
     // boot and serial fsp.stat (one threadpool task each) used to add
     // many seconds of stall before any worker started. Promise.all
     // batches them across the libuv pool.
-    const stated = await Promise.all(collected.map(async info => {
-      try {
-        const mtimeMs = (await fsp.stat(info.path)).mtimeMs
-        return { info, mtimeMs }
-      } catch { return null }
-    }))
+    const stated = await Promise.all(
+      collected.map(async (info) => {
+        try {
+          const mtimeMs = (await fsp.stat(info.path)).mtimeMs
+          return { info, mtimeMs }
+        } catch {
+          return null
+        }
+      }),
+    )
     const drained = stated.filter((x): x is { info: JsonlFileInfo; mtimeMs: number } => x !== null)
     drained.sort((a, b) => b.mtimeMs - a.mtimeMs)
-    const queue: JsonlFileInfo[] = drained.map(d => d.info)
+    const queue: JsonlFileInfo[] = drained.map((d) => d.info)
 
     // Worker pool — N parallel readers pull from the shared queue.
     // Each worker gets a DEDICATED DuckDB connection (via getDbByIndex)
@@ -568,7 +659,13 @@ export async function sweepAll(): Promise<{ files: number; inserted: number }> {
         const idx = cursor++
         if (idx >= queue.length) return
         const info = queue[idx]!
-        const r = await processOneFile(info, conn).catch((err) => { warnLog('jsonl-sweeper processOneFile failed', { path: info.path, error: err instanceof Error ? err.message : String(err) }); return { inserted: 0 } })
+        const r = await processOneFile(info, conn).catch((err) => {
+          warnLog('jsonl-sweeper processOneFile failed', {
+            path: info.path,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return { inserted: 0 }
+        })
         files++
         inserted += r.inserted
       }
@@ -589,8 +686,12 @@ export async function sweepAll(): Promise<{ files: number; inserted: number }> {
  *  idempotent on uuid (INSERT … ON CONFLICT DO NOTHING) and on offset
  *  (last_offset advances atomically), so concurrent invocations on
  *  different files are safe. */
-export async function sweepOneByPath(filePath: string, isSubagent = false, parentSessionId: string | null = null): Promise<void> {
-  await processOneFile({ path: filePath, isSubagent, parentSessionId }).catch(err => {
+export async function sweepOneByPath(
+  filePath: string,
+  isSubagent = false,
+  parentSessionId: string | null = null,
+): Promise<void> {
+  await processOneFile({ path: filePath, isSubagent, parentSessionId }).catch((err) => {
     warnLog('sweepOneByPath failed', { filePath, error: String(err) })
   })
 }
@@ -598,13 +699,16 @@ export async function sweepOneByPath(filePath: string, isSubagent = false, paren
 export function startJsonlSweeper(intervalMs = 5 * 60_000): void {
   // Initial catch-up on boot — fire-and-forget, don't block server start.
   // session_tokens auto-populates inside processOneFile via tokenInfoFromSlug.
-  sweepAll().catch(err => warnLog('initial sweep failed', { error: String(err) }))
+  sweepAll().catch((err) => warnLog('initial sweep failed', { error: String(err) }))
   if (timer) clearInterval(timer)
   timer = setInterval(() => {
-    sweepAll().catch(err => warnLog('periodic sweep failed', { error: String(err) }))
+    sweepAll().catch((err) => warnLog('periodic sweep failed', { error: String(err) }))
   }, intervalMs)
 }
 
 export function stopJsonlSweeper(): void {
-  if (timer) { clearInterval(timer); timer = null }
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
 }

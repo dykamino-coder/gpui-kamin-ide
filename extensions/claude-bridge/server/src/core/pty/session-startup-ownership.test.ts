@@ -66,6 +66,12 @@ vi.mock('./session-manager', () => ({
   deleteSessionByConversationId: h.deleteData,
 }))
 // Inert boundaries for the opt-in real PTY test. No user settings/provider.
+vi.mock('./mcp-tasks', () => ({
+  mcpIdentity: async () => ({ id: 'synthetic-endpoint', token: 'synthetic-endpoint-token' }),
+  startMcpTaskDelivery: vi.fn(),
+  settleMcpTask: vi.fn(async () => false),
+  mcpTasks: { hasWorkingOwner: () => false },
+}))
 vi.mock('./session-settings', () => ({
   get SESSIONS_BASE() {
     return h.root

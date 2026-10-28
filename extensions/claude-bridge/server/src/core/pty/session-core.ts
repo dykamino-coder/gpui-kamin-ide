@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { devCli, waitForDevCliStartup } from './dev-cli'
+import { mcpIdentity, startMcpTaskDelivery } from './mcp-tasks'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import { ResumeNotFoundError } from './session-resume-not-found'
@@ -18,6 +19,8 @@ import { JsonlWatcher } from './jsonl-watcher'
 import { leanEntries } from './jsonl-projection'
 import {
   sendToClient,
+  trySendToClient,
+  socketWritable,
   writeInputToSession,
   submitTextToSession,
   resizeSessionTerminal,
@@ -162,12 +165,12 @@ async function createAdmittedSession(
     // Same repair as the find-path below — the restart path used to skip it,
     // so a transcript corrupted mid-turn kept 400-ing after model/effort change.
     if (config.resumeConversationId) {
-      repairTranscriptForResume(settingsDir, config.resumeConversationId)
+      await repairTranscriptForResume(settingsDir, config.resumeConversationId)
     }
   } else if (config.resumeConversationId) {
     // Resume from UI: find or recreate the settingsDir whose slug matches
     // the one in ~/.claude/projects/ containing <conversationId>.jsonl.
-    const found = findOrRecreateSettingsDir(config.resumeConversationId, tokenId)
+    const found = await findOrRecreateSettingsDir(config.resumeConversationId, tokenId)
     if (found) {
       settingsDir = found
       settingsDirSource = 'found'
@@ -207,12 +210,12 @@ async function createAdmittedSession(
   // старой точки — «после перезагрузки пропал кусок чата и консоли». Резюмим
   // самый свежий файл цепочки — ровно тот, что будет тейлить watcher.
   if (config.resumeConversationId) {
-    const newest = resolveNewestInChain(settingsDir, config.resumeConversationId)
+    const newest = await resolveNewestInChain(settingsDir, config.resumeConversationId)
     if (newest && newest !== config.resumeConversationId) {
       infoLog('Resume: newer file in chain — resuming tip', { requested: config.resumeConversationId, tip: newest })
       recordCompactLink(config.resumeConversationId, newest) // самолечение карты
       config.resumeConversationId = newest
-      repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
+      await repairTranscriptForResume(settingsDir, newest) // ремонт по ФИНАЛЬНОМУ id
     }
   }
 
@@ -234,7 +237,8 @@ async function createAdmittedSession(
 
   // Create session directory + settings (overwrites existing on restart)
   fs.mkdirSync(settingsDir, { recursive: true })
-  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash)
+  const mcpEndpoint = await mcpIdentity(tokenId, settingsDir)
+  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash, mcpEndpoint)
 
   // Write CLAUDE.md with user's real working directory info
   const userCwd = config.cwd
@@ -476,6 +480,7 @@ async function createAdmittedSession(
     mcpInitialized: false,
     mcpLastError: null,
     mcpToken,
+    mcpEndpoint,
     outputBuffer: [],
     outputBufferBytes: 0,
     lastResizeAt: Date.now(),
@@ -500,6 +505,7 @@ async function createAdmittedSession(
   }
 
   sessions.set(sessionId, session)
+  startMcpTaskDelivery(() => [...sessions.values()])
   registered(session)
 
   // Auto-answer interactive startup prompts:
@@ -522,7 +528,7 @@ async function createAdmittedSession(
     // `replay: true` — батч истории/превью вне файла-порядка: клиент не должен
     // двигать по нему курсор зеркала (прод-дыра «сообщение не отрисовалось»).
     (entries, replay) =>
-      sendToClient(session.ws, {
+      trySendToClient(session.ws, {
         type: 'jsonl:entries',
         entries: leanEntries(entries),
         ...(replay ? { replay: true } : {}),
@@ -591,9 +597,17 @@ async function createAdmittedSession(
       })()
     },
     (agentName, entries, agentId) =>
-      sendToClient(session.ws, { type: 'jsonl:subagent-entries', agentName, agentId, entries: leanEntries(entries) }),
+      trySendToClient(session.ws, {
+        type: 'jsonl:subagent-entries',
+        agentName,
+        agentId,
+        entries: leanEntries(entries),
+      }),
     () => resetJsonlStats(session),
     (entry) => accumulateJsonlStats(session, entry),
+    // Bulk replay only goes out while the CURRENT socket (reattach swaps it)
+    // is open and under the replay high-water mark.
+    () => socketWritable(session.ws),
   )
   session.jsonlWatcher = jsonlWatcher
   jsonlWatcher.start()
@@ -908,15 +922,16 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   const chainDir = session.settingsDir
   if (chainBase && chainDir) {
     setTimeout(() => {
-      try {
-        const tip = resolveNewestInChain(chainDir, chainBase)
-        if (tip && tip !== chainBase) {
-          infoLog('Post-kill chain scan: recording missed edge', { from: chainBase, tip })
-          recordCompactLink(chainBase, tip)
-        }
-      } catch {
-        /* best-effort */
-      }
+      void resolveNewestInChain(chainDir, chainBase)
+        .then((tip) => {
+          if (tip && tip !== chainBase) {
+            infoLog('Post-kill chain scan: recording missed edge', { from: chainBase, tip })
+            recordCompactLink(chainBase, tip)
+          }
+        })
+        .catch(() => {
+          /* best-effort */
+        })
     }, KILL_ESCALATE_MS + 2000)
   }
   // Backstop: a CLI that never fires SessionEnd (no hook, or it died first)
@@ -973,7 +988,7 @@ function finalizeTeardownFor(
   // резюма не скопировал бы никогда, и уборка CLI унесла бы её вместе с
   // возможностью резюма (INC-2026-0054).
   if (session.cliConversationId) {
-    archiveTranscriptForSession(session.settingsDir, session.cliConversationId)
+    void archiveTranscriptForSession(session.settingsDir, session.cliConversationId)
   }
   cancelSessionLocalExecs(sessionId)
   clearHookSession(sessionId)
@@ -1200,13 +1215,18 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number): v
 // ---------------------------------------------------------------------------
 
 /**
- * Send an MCP tool call to Electron via WebSocket. Resolves when Electron
+ * Send an MCP tool call to the client host via WebSocket. Resolves when it
  * responds (or rejects on timeout/denial).
  */
-export function sendMcpCall(sessionId: string, toolName: string, input: Record<string, unknown>): Promise<unknown> {
+export function sendMcpCall(
+  sessionId: string,
+  toolName: string,
+  input: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const session = sessions.get(sessionId)
   if (!session) return Promise.reject(new Error(`Session ${sessionId} not found`))
-  return sendMcpCallToSession(session, toolName, input)
+  return sendMcpCallToSession(session, toolName, input, signal)
 }
 
 // ---------------------------------------------------------------------------

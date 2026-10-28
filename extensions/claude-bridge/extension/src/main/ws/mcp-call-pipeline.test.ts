@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { handleMcpCall, type McpCallCtx } from './mcp-call-pipeline'
+import { cancelMcpCall, handleMcpCall, type McpCallCtx } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
 
 const execute = vi.hoisted(() => vi.fn())
@@ -53,5 +53,48 @@ describe('INC-2026-0057 result delivery', () => {
     expect(ctx.pendingMcpCalls.size).toBe(0)
     expect(publish.mock.calls.filter(call => call[2]?.status === 'completed')).toHaveLength(1)
     outbox.dispose()
+  })
+})
+describe('task execution cancellation', () => {
+  it('aborts only the addressed owner and returns the outcome through the existing delivery channel', async () => {
+    execute.mockImplementation(
+      (_tool, _input, context) =>
+        new Promise((resolve) =>
+          context.signal.addEventListener('abort', () => resolve('cancelled'), {
+            once: true,
+          }),
+        ),
+    )
+    const delivered = vi.fn().mockResolvedValue(undefined)
+    const ctx = {
+      window: { webContents: { send: vi.fn() } },
+      tabId: 'tab',
+      send: vi.fn(),
+      pendingMcpCalls: new Map(),
+      pendingPermissions: new Map(),
+      permissionMode: () => 'bypassPermissions',
+      permissionManager: {},
+      denyMcp: vi.fn(),
+      reportDeliveryFailure: vi.fn(),
+      deliverResult: delivered,
+    } as unknown as McpCallCtx
+    const running = handleMcpCall(ctx, {
+      requestId: 'task',
+      taskOwner: 'owner',
+      toolName: 'Bash',
+      input: {},
+    })
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce())
+    cancelMcpCall(ctx, 'task', 'other')
+    expect(ctx.pendingMcpCalls.get('task')!.controller!.signal.aborted).toBe(false)
+    cancelMcpCall(ctx, 'task', 'owner')
+    await running
+    expect(delivered).toHaveBeenCalledWith({
+      type: 'mcp:response',
+      requestId: 'task',
+      taskOwner: 'owner',
+      result: 'cancelled',
+    })
+    expect(ctx.pendingMcpCalls.size).toBe(0)
   })
 })

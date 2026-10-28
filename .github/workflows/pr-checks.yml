@@ -117,7 +117,7 @@ jobs:
           set_scope root_node '^(src/|tests/|package(-lock)?\.json$|tsconfig\.json$|eslint\.config\.mjs$|vitest\.config\.[^/]+$|vite\.[^/]*\.config\.[^/]+$|scripts/.*\.(js|mjs|ts)$|\.github/(main-ruleset\.json|workflows/pr-metadata\.yml)$)'
           set_scope bridge_server '^extensions/claude-bridge/server/'
           set_scope bridge_dashboard '^extensions/claude-bridge/server/src/ui/'
-          set_scope bridge_extension '^(extensions/claude-bridge/extension/|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'
+          set_scope bridge_extension '^(extensions/claude-bridge/(extension/|server/)|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'
           set_scope bridge_webview '^(extensions/claude-bridge/webview/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/check_(event_routing|conventions|engine_test_support)\.py$|(clippy|rustfmt)\.toml$)'
           set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
@@ -238,8 +238,13 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: extensions/claude-bridge/extension/package-lock.json
+          cache-dependency-path: |
+            extensions/claude-bridge/extension/package-lock.json
+            extensions/claude-bridge/server/package-lock.json
 
+      - name: Install server dependencies for cross-runtime MCP acceptance
+        working-directory: extensions/claude-bridge/server
+        run: npm ci --no-audit --no-fund
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test

@@ -1,13 +1,28 @@
 import 'reflect-metadata'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { buildClaudeArgs, modelForResume } from './session-env'
+import { buildClaudeArgs, buildSessionEnv, modelForResume } from './session-env'
 import { lastModelFromJsonlTail } from './session-resume-helpers'
 import type { SessionConfig } from '../types/pty'
 
 const session = (model?: string): SessionConfig => ({ cwd: '/repo', model }) as SessionConfig
+vi.mock('../config/settings', () => ({ injectProxyEnv: vi.fn() }))
+
+it('permits MCP Tasks feature discovery while preserving native-agent and renderer controls', () => {
+  vi.stubEnv('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', '1')
+  vi.stubEnv('DISABLE_NONESSENTIAL_TRAFFIC', '1')
+  try {
+    const env = buildSessionEnv('synthetic-session', 'synthetic-user')
+    expect(env).not.toHaveProperty('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
+    expect(env).not.toHaveProperty('DISABLE_NONESSENTIAL_TRAFFIC')
+    expect(env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS).toBe('1')
+    expect(env.CLAUDE_CODE_NO_FLICKER).toBe('1')
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})
 
 describe('Claude CLI model selection', () => {
   it('launches new sessions with Opus 5.5 and keeps an explicit user choice', () => {

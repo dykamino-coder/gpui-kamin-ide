@@ -80,6 +80,13 @@ describe('live switch commands', () => {
 })
 
 describe('cache-warning dialog detection', () => {
+  it('accepts the 2.1.312 warning without the old next-message promise', () => {
+    const current = EFFORT_DIALOG.replace(' gets re-read on your next message.', ' gets re-read.')
+    expect(isCacheWarningDialog(normalizeScreenText(current), 'effort', 'high')).toBe(true)
+    expect(isCacheWarningDialog(normalizeScreenText(current), 'effort', 'low')).toBe(false)
+    expect(isCacheWarningDialog(normalizeScreenText(HOOK_ASK_DIALOG), 'model')).toBe(false)
+  })
+
   it('normalizes cursor-positioned full-screen output', () => {
     expect(normalizeScreenText('Change\x1b[1Ceffort\x1b[1Clevel?')).toBe('changeeffortlevel?')
   })

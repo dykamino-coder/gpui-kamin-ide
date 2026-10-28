@@ -13,10 +13,24 @@
 import type { DuckDBConnection } from '@duckdb/node-api'
 
 async function tryExec(db: DuckDBConnection, sql: string): Promise<void> {
-  try { await db.run(sql) } catch { /* idempotent migration — swallow */ }
+  try {
+    await db.run(sql)
+  } catch {
+    /* idempotent migration — swallow */
+  }
 }
 
 export async function initSchema(db: DuckDBConnection): Promise<void> {
+  await db.run(`CREATE TABLE IF NOT EXISTS mcp_tool_observations (
+    bridge_session_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    project TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    schema_bytes INTEGER NOT NULL,
+    timestamp TEXT NOT NULL,
+    calls BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (bridge_session_id, tool_name)
+  )`)
   await db.run(`
     CREATE TABLE IF NOT EXISTS requests (
       id TEXT PRIMARY KEY,
@@ -194,8 +208,8 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   `)
 
   // Drop legacy tables that aren't used in PTY mode.
-  await tryExec(db, 'DROP TABLE IF EXISTS sessions')          // old SDK session table
-  await tryExec(db, 'DROP TABLE IF EXISTS pty_sessions')       // unused under new sweeper
+  await tryExec(db, 'DROP TABLE IF EXISTS sessions') // old SDK session table
+  await tryExec(db, 'DROP TABLE IF EXISTS pty_sessions') // unused under new sweeper
   await tryExec(db, 'DROP TABLE IF EXISTS counters')
 
   // ── OTel telemetry — metrics + events from Claude Code CLI via OTLP receiver
@@ -240,10 +254,17 @@ export async function initSchema(db: DuckDBConnection): Promise<void> {
   // One-shot post-migration: reset offsets so sweeper re-scans every
   // JSONL once and populates new metadata columns. Idempotent via flag.
   try {
-    const rows = (await db.runAndReadAll(`SELECT value FROM settings WHERE key = 'session_meta_v1_seeded'`)).getRowObjects()
+    const rows = (
+      await db.runAndReadAll(`SELECT value FROM settings WHERE key = 'session_meta_v1_seeded'`)
+    ).getRowObjects()
     if (rows.length === 0) {
       await db.run('DELETE FROM jsonl_offsets')
-      await db.run(`INSERT INTO settings (key, value) VALUES ('session_meta_v1_seeded', ?) ON CONFLICT DO UPDATE SET value = excluded.value`, [new Date().toISOString()])
+      await db.run(
+        `INSERT INTO settings (key, value) VALUES ('session_meta_v1_seeded', ?) ON CONFLICT DO UPDATE SET value = excluded.value`,
+        [new Date().toISOString()],
+      )
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
