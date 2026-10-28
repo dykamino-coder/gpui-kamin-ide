@@ -31,7 +31,7 @@ pub(crate) fn solve(s: Strut) -> f32 {
 /// насквозь-потомков: это и есть транзитивность примыкания.
 pub(crate) fn through_strut(
     e: &Element,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     through_strut_inner(e, false, vcx)
 }
@@ -40,7 +40,7 @@ pub(crate) fn through_strut(
 /// вовсе» от «схлопнулась бы, если бы не клиренс».
 pub(crate) fn through_strut_no_clear(
     e: &Element,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     through_strut_inner(e, true, vcx)
 }
@@ -48,7 +48,7 @@ pub(crate) fn through_strut_no_clear(
 pub(super) fn through_strut_inner(
     e: &Element,
     ignore_clear: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     ThroughCache::default().get(e, ignore_clear, vcx)
 }
@@ -59,7 +59,7 @@ pub(crate) use cache::ThroughCache;
 fn own_strut(
     e: &Element,
     ignore_clear: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     // Строчная пометка у блочной коробки (псевдоэлемент) — не строчный.
     if (e.inline && !inline_marked_block(e)) || !in_flow(&e.style.used()) || own_context(e) {

@@ -5,7 +5,7 @@ use crate::layout::block::containing::with_inner_dimensions;
 use crate::layout::block::inline_splits::split_block_in_inline;
 use crate::layout::block::sizing::BoxDimensions;
 use crate::layout::block::struts::{
-    ZeroPaths, first_in_flow, leading_chain, margin_px, pin_inherited_margins, trailing_chain,
+    ZeroPaths, first_in_flow, leading_chain, margin_px_in, pin_inherited_margins, trailing_chain,
     zero_paths,
 };
 use crate::layout::block::{margin_edges, margin_height};
@@ -19,7 +19,7 @@ pub(super) use struts::emit_margin_struts;
 pub(super) fn collapse_kid_margins(
     out: &mut [Node],
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     for node in out.iter_mut() {
         let Node::Element(e) = node else { continue };
@@ -146,7 +146,7 @@ pub(super) fn collapse_kid_margins(
                     &e.style.used(),
                     &BoxDimensions::for_element(e, &e.style.used()),
                     vcx,
-                    |vcx| margin_px(ch.style.used().margin.bottom, &ch.style.used(), vcx),
+                    |vcx| margin_px_in(ch.style.used().margin.bottom, &ch.style.used(), vcx),
                 )
                 .map(|_| i)
             });
