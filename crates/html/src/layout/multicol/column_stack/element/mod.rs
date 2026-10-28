@@ -48,6 +48,7 @@ impl Hooks for ColumnStack {
         self.plan_oof(&plan, bounds);
         let step = col_w + self.gap;
         self.assign_flex_owners(&plan);
+        self.assign_grid_items(&plan);
         self.prepaint_frags(window, cx, bounds, col_w, &plan, step);
         if self.prepaint_native(bounds, &plan, window, cx).is_err() {
             plan.failure = Some(crate::layout::fragment::token::Error::InvalidGeometry);
