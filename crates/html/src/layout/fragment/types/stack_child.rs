@@ -114,6 +114,9 @@ pub struct StackChild {
     pub clone_dec: Option<(f32, f32)>,
     /// См. `Kid::clone_fixed`.
     pub clone_fixed: bool,
+    /// Срез строк `text-box-trim` у разрывов: `(начало строки после разрыва,
+    /// конец строки до разрыва, точка перед первой строкой)`.
+    pub line_trim: Option<(f32, f32, bool)>,
     /// Монолит-ПОТОМОК, начатый на верху колонки, переполняет её, а не режется
     /// краем (`fill_at`, `overflow_to`). Только `column-fill: auto` без рядов и
     /// только ребёнку без элементов ряда (`render::parallel_items_inside`):

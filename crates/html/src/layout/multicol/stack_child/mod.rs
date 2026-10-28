@@ -25,6 +25,7 @@ mod frag_div;
 mod paginate;
 mod regrow;
 mod through_top;
+mod trim;
 use crate::style::cascade::materialize::box_style;
 use frag_div::frag_box_div;
 
@@ -73,6 +74,25 @@ pub(super) fn multicol_stack_child(
     // (css-break-3 §5.5): его кладёт `ColumnStack`
     // вместе со срезом.
     let rel = hoist_relative(&mut copy);
+    let line_trim = {
+        let inner = box_style(&merged, &copy.style, opts.cx.vcx());
+        let (from, need) = trim::break_trim(&copy, &merged, &inner, opts);
+        // Своя первая строка коробки уже срезана (`blocks()`), верхний край
+        // держит её на месте: точки перед ней нет.
+        let s = copy.style.used();
+        let edge = |l: &Option<crate::style::values::value::Len>| {
+            !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0)))
+        };
+        let top = !s.text_box_trim_start
+            && !copy.marks.host_trim_start
+            && !edge(&s.padding.top)
+            && !edge(&s.borders().top)
+            && matches!(
+                s.height,
+                None | Some(crate::style::values::value::Len::Auto)
+            );
+        (from > 0.0 || need > 0.0).then_some((from, need, top))
+    };
     // Срез строки хоста (`Marks::host_trim_*`) — рисует
     // `blocks()` копии по её флагам.
     if copy.marks.host_trim_start {
@@ -156,6 +176,7 @@ pub(super) fn multicol_stack_child(
         opts.cx.frame(),
     );
     child.clone_frags = dec.map(|_| frag_geom);
+    child.line_trim = line_trim;
     let source = copy.clone();
     child.copier = Some(std::rc::Rc::new(move |part| {
         factory::copy(build.clone(), &source, col_vert, part)

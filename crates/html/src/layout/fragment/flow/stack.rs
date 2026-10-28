@@ -27,6 +27,9 @@ impl StackChild {
         self.keep = m.keep;
         self.line_keep = m.line_keep;
         self.table_rows = m.table_rows;
+        if let Some(trim) = self.line_trim {
+            trim_cuts(&mut self.cuts, trim);
+        }
         self.cuts
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
         self.forced.sort_by(f32::total_cmp);
@@ -51,6 +54,9 @@ impl StackChild {
             self.probe_pending = false;
         }
         self.cuts = m.cuts;
+        if let Some(trim) = self.line_trim {
+            trim_cuts(&mut self.cuts, trim);
+        }
         self.forced = m.forced;
         self.solid = m.solid;
         self.avoid = m.avoid;
@@ -101,4 +107,17 @@ fn copy_breaks(
             )
         })
         .finish(flow, end)
+}
+
+/// Точки разрыва строк со срезом `text-box-trim` (css-inline-3 §4.2; csswg-drafts#5335):
+/// продолжение после разрыва — с метрики края следующей строки, кусок до разрыва — до
+/// метрики края предыдущей; перед первой строкой коробки без верхнего края — точка,
+/// уводящая её к верху следующей колонки уже срезанной (`text-box-trim-multicol-012`).
+fn trim_cuts(cuts: &mut Vec<(f32, f32)>, (from, need, top): (f32, f32, bool)) {
+    for cut in cuts.iter_mut() {
+        *cut = ((cut.0 - need).max(0.0), cut.1 + from);
+    }
+    if from > 0.0 && top && !cuts.iter().any(|c| c.0 <= 0.0) {
+        cuts.insert(0, (0.0, from));
+    }
 }

@@ -84,6 +84,7 @@ pub(in crate::layout::multicol) fn insert_static_probes(
             rel: (0.0, 0.0),
             clone_dec: None,
             clone_fixed: false,
+            line_trim: None,
             overflow_top: false,
             nested_cols: false,
             repeat: None,

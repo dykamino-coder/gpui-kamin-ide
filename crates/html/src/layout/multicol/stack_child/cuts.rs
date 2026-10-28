@@ -75,6 +75,7 @@ pub(super) fn stack_child_of(
         over,
         rel,
         clone_dec: dec,
+        line_trim: None,
         clone_fixed: dec.is_some()
             && crate::layout::block::sizing::BoxDimensions::for_element(copy, &copy.style.used())
                 .border_box
