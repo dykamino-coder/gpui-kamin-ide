@@ -69,6 +69,34 @@ mod tests {
             .expect("named inline anchor");
         assert_eq!(anchor.own_cb, parent.node_id);
     }
+
+    /// `multicol-fill-balance-031`: the white space closing a ruby container
+    /// swallows the space after it (css-text-3 §4.1.1, css-ruby-1 §2.4).
+    #[test]
+    fn ruby_trailing_space_collapses_the_following_space() {
+        let parsed = parse("<div><ruby>\n <rt>x</rt>\n </ruby>\n FAIL</div>", "");
+        fn div(nodes: &[Node]) -> Option<&crate::dom::Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => div(&e.children),
+                Node::Text(_) => None,
+            })
+        }
+        let pieces = inline::collect(
+            &div(&parsed.nodes).expect("div").children,
+            &BoxStyle::default(),
+            &mut |e, _| (e.tag == "ruby").then(|| Piece::Atom(gpui::Empty.into_any_element())),
+            &LayoutCx::default(),
+        );
+        let text: String = pieces
+            .iter()
+            .filter_map(|p| match p {
+                Piece::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text.trim_end(), "FAIL");
+    }
 }
 use crate::text::inline::collect::element_nodes::collect_element;
 
@@ -96,6 +124,11 @@ pub(crate) struct CollectCx {
     pub(super) inline_parents: Vec<BoxStyle>,
     /// How many of them establish a containing block (positioned inlines).
     pub(super) inline_cb_depth: usize,
+    /// A ruby container just closed on collapsible white space: that space
+    /// swallows the leading collapsible space after the container
+    /// (css-text-3 §4.1.1, across inline boundaries) and is itself discarded
+    /// at the container's end (css-ruby-1 §2.4).
+    pub(super) ruby_space: bool,
 }
 
 impl CollectCx {
@@ -138,6 +171,14 @@ async fn collect_stack(
         let from = out.len();
         match child {
             Node::Text(t) => {
+                let after_ruby_space = std::mem::take(&mut cx.ruby_space);
+                let collapsible = inherited.keep_spaces != Some(true)
+                    && inherited.preserve_newlines != Some(true);
+                let t = if after_ruby_space && collapsible {
+                    t.trim_start_matches([' ', '\t', '\n', '\r'])
+                } else {
+                    t
+                };
                 collect_text(t, inherited, &mut cx.case, &mut out);
             }
             Node::Element(e) => {
@@ -155,6 +196,13 @@ async fn collect_stack(
                     )
                 })
                 .await;
+                cx.ruby_space = if crate::text::ruby::ruby_role(e)
+                    == Some(crate::style::computed::RubyRole::Container)
+                {
+                    matches!(e.children.last(), Some(Node::Text(t)) if t.ends_with(char::is_whitespace))
+                } else {
+                    cx.ruby_space && out.len() == from
+                };
             }
         }
     }

@@ -171,6 +171,7 @@ mod tests {
             margin_offset: 0.,
             start_open: true,
             shape: None,
+            rtl: false,
         };
         let slot = Slot {
             b: 200.,

@@ -1,4 +1,4 @@
-//! Буквица `initial-letter` — float записанных строк: копия остаётся нативной.
+//! Буквица `initial-letter` и ruby — содержимое записанных строк: копия остаётся нативной.
 
 use super::{independent_copy, vertical_copy};
 use crate::dom::{Element, Node};
@@ -15,23 +15,15 @@ fn sample(children: Vec<Node>, letter: bool) -> Element {
 }
 
 #[test]
-fn initial_letter_keeps_the_native_copy() {
-    let e = sample(vec![Node::Text("ABC ABC ABC".into())], true);
-    assert!(independent_copy(&e));
-    assert!(vertical_copy(&e, true));
-    assert!(vertical_copy(&e, false));
-}
-
-#[test]
-fn ruby_still_refuses_the_native_copy() {
-    // The F2-6 refusal in `continuation.rs` stays until ruby line breaking is fixed.
-    let ruby = Element::synthetic(
-        "ruby",
-        Computed::default(),
-        Default::default(),
-        vec![Node::Text("ABC".into())],
-    );
-    let e = sample(vec![Node::Element(ruby)], false);
-    assert!(!independent_copy(&e));
-    assert!(!vertical_copy(&e, true));
+fn initial_letter_and_ruby_keep_the_native_copy() {
+    let text = || vec![Node::Text("ABC ABC ABC".into())];
+    let ruby = Element::synthetic("ruby", Computed::default(), Default::default(), text());
+    for e in [
+        sample(text(), true),
+        sample(vec![Node::Element(ruby)], false),
+    ] {
+        assert!(independent_copy(&e), "{}", e.tag);
+        assert!(vertical_copy(&e, true));
+        assert!(vertical_copy(&e, false));
+    }
 }

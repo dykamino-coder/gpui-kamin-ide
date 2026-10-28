@@ -16,6 +16,7 @@ mod line_growth;
 mod measurements;
 mod normalize;
 mod row_lines;
+pub(crate) mod soft_keep;
 pub(crate) use continuation::ContentLine;
 pub(crate) use line_growth::LinePush;
 mod stack;

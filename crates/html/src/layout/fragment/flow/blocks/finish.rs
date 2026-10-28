@@ -31,8 +31,20 @@ impl BlockBreaks {
             ..Default::default()
         };
         g.cuts.extend(lines.cuts);
-        g.solid.extend(lines.solid);
         let mut keep = self.keep;
+        // Строки корневого IFC и рядов атомов: группы orphans/widows — пожелание
+        // (`soft_keep`), а не монолит поверх строк, уже разделённых стопкой.
+        let line_boxes: Vec<(f32, f32, f32)> = lines
+            .inline
+            .iter()
+            .flat_map(|p| &p.lines)
+            .map(|l| (l.top, l.bottom, l.consumed_before))
+            .chain(lines.line_boxes.iter().map(|&(t, b)| (t, b, 0.0)))
+            .collect();
+        let soft = crate::layout::fragment::flow::soft_keep::soften(&lines.solid, &line_boxes);
+        g.solid.extend(soft.solid);
+        g.cuts.extend(soft.cuts);
+        keep.extend(soft.keep);
         let mut avoid_inside = self.avoid_inside;
         for p in self.pending {
             match p {

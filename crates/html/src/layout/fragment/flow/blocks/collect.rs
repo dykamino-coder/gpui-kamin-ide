@@ -62,7 +62,14 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         return out;
     }
     let mut adjoins = false;
-    push_kids(&e.children, &mut out.kids, &mut adjoins, cx, vcx);
+    push_kids(
+        &e.children,
+        &mut out.kids,
+        &mut adjoins,
+        &mut false,
+        cx,
+        vcx,
+    );
     out
 }
 
@@ -107,6 +114,8 @@ pub(super) fn push_kids(
     nodes: &[Node],
     out: &mut Vec<BlockKid>,
     adjoins: &mut bool,
+    // Inline content since the last block of this sequence.
+    lines: &mut bool,
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) {
@@ -120,13 +129,17 @@ pub(super) fn push_kids(
             }
             Node::Element(k) if !k.inline && k.style.used().display != Some(Display::Contents) => k,
             Node::Element(k) if k.inline && k.style.used().display.is_none() && holds_blocks(k) => {
-                push_kids(&k.children, out, adjoins, cx, vcx);
+                push_kids(&k.children, out, adjoins, lines, cx, vcx);
                 continue;
             }
             // Строчное содержимое между блоками — анонимный блок строк: его
             // границы дают измеренные строки, не эта стопка.
             _ => {
+                if *adjoins && let Some(prev) = out.last_mut() {
+                    prev.lines_around.1 = true;
+                }
                 *adjoins = false;
+                *lines = true;
                 continue;
             }
         };
@@ -134,6 +147,7 @@ pub(super) fn push_kids(
         out.push(BlockKid {
             id: k.node_id,
             adjoins: *adjoins,
+            lines_around: (std::mem::take(lines), false),
             force_before: edge_break(k, false, vcx),
             force_after: edge_break(k, true, vcx),
             avoid_before: edge_avoid(k, false, vcx),

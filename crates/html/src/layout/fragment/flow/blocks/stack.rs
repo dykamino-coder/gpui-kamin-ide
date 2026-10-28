@@ -64,6 +64,18 @@ pub(super) fn walk_kids(
                 column_avoid.reset();
             }
         }
+        // Строки рядом с блоком — анонимный блок (CSS 2.1 §9.2.1.1): граница с
+        // ним — точка класса A, и `break-before`/`break-after` блока рвут там
+        // (css-break-3 §3.1, §4.1; `block-in-inline-000`). Без строк разрыв
+        // крайнего ребёнка переносится к родителю (`edge_break`).
+        if k.lines_around.0 && k.edge(false, laid).0 {
+            out.cuts.push((kt, kt));
+            out.forced.push(kt);
+        }
+        if k.lines_around.1 && k.edge(true, laid).0 {
+            out.cuts.push((kb, kb));
+            out.forced.push(kb);
+        }
         if k.monolith {
             out.hold((kt, kb));
         } else if let Some(inner) = &k.inner {

@@ -40,11 +40,6 @@
     "reason": "Допуск independent_copy отделяет clone/OOF/nested от native дерева; удалить общий gate в P22 после child token dispatch P04–P21."
   },
   {
-    "file": "crates/html/src/layout/fragment/flow/independent/continuation.rs",
-    "task": "F2-6",
-    "reason": "Ruby ломает строку после контейнера руби без точки переноса (css-ruby-1 §2.4, multicol-fill-balance-031); удалить отказ после исправления переноса руби."
-  },
-  {
     "file": "crates/html/src/layout/fragment/flow/logical.rs",
     "task": "F2-3",
     "reason": "Transpose отказывает ортогональным потокам и оценочным RTL строкам; удалить отказ в P10 после child logical Space и собственного resume."
@@ -68,11 +63,6 @@
     "file": "crates/html/src/layout/fragment/paginate/mod.rs",
     "task": "F2-7",
     "reason": "Rebuild повторно строит полные копии с распорками вместо продолжения; удалить callback в P22 после перевода consumers P13–P21 на child tokens."
-  },
-  {
-    "file": "crates/html/src/layout/fragment/push/measured.rs",
-    "task": "F2-6",
-    "reason": "Atomic inline лежит внутри строки, а measured_tree знает стопку блоков; удалить отказ в P20 после токена строки с конечным краем поверх P03."
   },
   {
     "file": "crates/html/src/layout/fragment/push/mod.rs",

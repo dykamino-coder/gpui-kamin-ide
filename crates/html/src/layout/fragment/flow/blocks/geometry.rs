@@ -131,26 +131,11 @@ fn walk_contents(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut Blo
             .map(|l| (l.top, l.bottom, l.consumed_before))
             .chain(flow.line_boxes.iter().map(|&(t, b)| (t, b, 0.0)))
             .collect();
-        for &(top, bottom) in &flow.solid {
-            let inside: Vec<_> = lines
-                .iter()
-                .filter(|l| l.0 >= top - COORD_EPS && l.1 <= bottom + COORD_EPS)
-                .collect();
-            if inside.len() < 2 {
-                out.solid.push((top, bottom));
-                continue;
-            }
-            // Строки, сведённые `orphans`/`widows` (`FlowGeometry::keep_lines`),
-            // — пожелание, а не монолит: правило 3 css-break-3 §4.4 снимается,
-            // если иначе содержимое не помещается во фрагментаинер (Blink
-            // `kBreakAppealViolatingOrphansAndWidows`).
-            out.keep.push((top, bottom));
-            for pair in inside.windows(2) {
-                out.cuts.push((pair[0].1 + pair[1].2, pair[1].0));
-            }
-            out.solid
-                .extend(inside.iter().map(|l| (l.0.max(top), l.1.min(bottom))));
-        }
+        // Строки, сведённые `orphans`/`widows`, — пожелание (`soft_keep`).
+        let soft = crate::layout::fragment::flow::soft_keep::soften(&flow.solid, &lines);
+        out.solid.extend(soft.solid);
+        out.cuts.extend(soft.cuts);
+        out.keep.extend(soft.keep);
     }
     if let Some(t) = &b.table {
         t.walk(top, laid, out);

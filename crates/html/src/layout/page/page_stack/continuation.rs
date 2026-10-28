@@ -181,10 +181,14 @@ impl PageStack {
         let offset = if from <= COORD_EPS {
             0.0
         } else {
-            let root = inline::offset(&inline_addresses, &next_inline.paragraphs);
+            let root = inline::offset(&inline_addresses, &next_inline.paragraphs, from);
             root.into_iter()
                 .chain(inline::float_offset(&old.inline, &next_inline, from))
-                .chain(normal.and_then(|cursor| cursor.offset(&fresh, &next_inline.paragraphs)))
+                .chain(
+                    normal
+                        .as_ref()
+                        .and_then(|cursor| cursor.offset(&fresh, &next_inline.paragraphs)),
+                )
                 .chain(token.offset(&fresh))
                 .chain(
                     parallel
@@ -194,6 +198,7 @@ impl PageStack {
                 .min_by(f32::total_cmp)
                 .unwrap_or(next.h)
         };
+
         own.laid = fresh.clone();
         own.space = fresh_space;
         self.continuations.insert((index, copy), own);

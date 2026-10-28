@@ -111,6 +111,9 @@ pub(crate) struct BlockKid {
     /// Граница с предыдущим ребёнком — граница соседей-блоков (класс A).
     /// Ложно, если между ними строчное содержимое или коробка без записи.
     pub(crate) adjoins: bool,
+    /// Строчное содержимое (анонимный блок, CSS 2.1 §9.2.1.1) прямо перед
+    /// ребёнком и прямо после него: граница с ним — точка класса A.
+    pub(crate) lines_around: (bool, bool),
     /// Принудительные разрывы и запреты на краях с переносом с крайних
     /// потомков (css-break-3 §3.1 break propagation: `edge_break`,
     /// `edge_avoid`).
@@ -190,7 +193,14 @@ impl BlockBox {
     pub(crate) fn container(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
         let mut out = frame(e, cx, vcx);
         let mut adjoins = false;
-        push_kids(&e.children, &mut out.kids, &mut adjoins, cx, vcx);
+        push_kids(
+            &e.children,
+            &mut out.kids,
+            &mut adjoins,
+            &mut false,
+            cx,
+            vcx,
+        );
         out
     }
 }

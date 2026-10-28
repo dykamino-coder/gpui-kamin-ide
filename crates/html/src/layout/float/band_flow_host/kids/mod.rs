@@ -160,6 +160,7 @@ pub(crate) fn band_kids(
         if first_layer.is_some() {
             node.first_line = first_layer.map(Into::into);
         }
+        let rtl_cb = vert.is_none() && inherited.wm().rtl();
         let inherited = inherited.clone();
         let pagination_offset = opts.frag.float_struts.get(&c.node_id).map_or(0.0, |s| s.by);
         let shape_values = opts.cx.vcx().keep();
@@ -203,6 +204,7 @@ pub(crate) fn band_kids(
             margin_offset: c.style.used().float_margin_offset.unwrap_or(0.0),
             start_open,
             shape,
+            rtl: rtl_cb,
         });
     }
     kids

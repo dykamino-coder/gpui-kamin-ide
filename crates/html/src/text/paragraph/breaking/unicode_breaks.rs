@@ -43,13 +43,18 @@ impl Paragraph {
             // `linebreaks_uax`); соседний атом читается знаком-заместителем.
             let atom_at = |at: usize| self.atom_boxes.iter().any(|x| x.at == at);
             let skip = |at: usize| self.spacers.binary_search(&at).is_ok();
+            // Руби — строчная коробка: соседом служит знак её базы, пустая
+            // база прозрачна (`text::ruby::base_edges`).
             let prev_of = |mut at: usize| -> Option<char> {
                 loop {
                     let (i, ch) = self.text[..at].char_indices().next_back()?;
                     if atom_at(i) {
-                        return Some('\u{fffc}');
-                    }
-                    if !skip(i) {
+                        match self.ruby_edges(i) {
+                            Some((_, Some(last))) => return Some(last),
+                            Some((_, None)) => {}
+                            None => return Some('\u{fffc}'),
+                        }
+                    } else if !skip(i) {
                         return Some(ch);
                     }
                     at = i;
@@ -59,9 +64,12 @@ impl Paragraph {
                 loop {
                     let ch = self.text.get(at..)?.chars().next()?;
                     if atom_at(at) {
-                        return Some('\u{fffc}');
-                    }
-                    if !skip(at) {
+                        match self.ruby_edges(at) {
+                            Some((Some(first), _)) => return Some(first),
+                            Some((None, _)) => {}
+                            None => return Some('\u{fffc}'),
+                        }
+                    } else if !skip(at) {
                         return Some(ch);
                     }
                     at += ch.len_utf8();
@@ -69,6 +77,23 @@ impl Paragraph {
             };
             for b in &self.atom_boxes {
                 let end = b.at + 3;
+                // Края руби — точки UAX #14 между знаками баз и соседями
+                // (css-ruby-1 §2.1: руби не атомарна; Blink и WebKit не рвут
+                // `<ruby>a<rt>x</rt></ruby>b`); пустая база точек не даёт.
+                if let Some((first, last)) = self.ruby_edges(b.at) {
+                    let first = first.or_else(|| next_of(end));
+                    if let (Some(a), Some(z)) = (prev_of(b.at), first)
+                        && pair_breaks(a, z)
+                    {
+                        out.push((b.at, unicode_linebreak::BreakOpportunity::Allowed));
+                    }
+                    if let (Some(a), Some(z)) = (last, next_of(end))
+                        && pair_breaks(a, z)
+                    {
+                        out.push((end, unicode_linebreak::BreakOpportunity::Allowed));
+                    }
+                    continue;
+                }
                 if let Some(prev) = prev_of(b.at)
                     && !space(prev)
                     && !glue(prev)
@@ -101,7 +126,9 @@ impl Paragraph {
         } else {
             let mut t = self.text.to_string();
             for b in &self.atom_boxes {
-                if t.get(b.at..b.at + 3) == Some("\u{feff}") {
+                // Руби остаётся распоркой WJ: свои точки она получает от
+                // знаков баз (`linebreaks`).
+                if t.get(b.at..b.at + 3) == Some("\u{feff}") && self.ruby_edges(b.at).is_none() {
                     t.replace_range(b.at..b.at + 3, "\u{fffc}");
                 }
             }
@@ -140,6 +167,22 @@ impl Paragraph {
     }
 }
 
+impl Paragraph {
+    /// Base-level edge characters of the ruby container atom at `at`.
+    fn ruby_edges(&self, at: usize) -> Option<(Option<char>, Option<char>)> {
+        self.atoms
+            .iter()
+            .find(|a| a.at == at)
+            .and_then(|a| a.extents.base_edges)
+    }
+}
+
+/// Whether UAX #14 allows a break between `a` and `b`.
+fn pair_breaks(a: char, b: char) -> bool {
+    let pair: String = [a, b].into_iter().collect();
+    unicode_linebreak::linebreaks(&pair).any(|(at, _)| at == a.len_utf8())
+}
+
 /// Feed the ID class to the UAX iterator without altering the shaped text.
 /// AI resolves to AL; Hebrew letters are typographic letter units too.
 pub(super) fn break_all_class(ch: char) -> char {
@@ -147,5 +190,18 @@ pub(super) fn break_all_class(ch: char) -> char {
     match unicode_linebreak::break_property(ch as u32) {
         Alphabetic | Numeric | ComplexContext | HebrewLetter | Ambiguous => '一',
         _ => ch,
+    }
+}
+
+#[cfg(test)]
+mod ruby_tests {
+    /// Ruby edges break like the base text: `<ruby>a<rt>x</rt></ruby>b` has
+    /// no opportunity, a space or CJK neighbours do.
+    #[test]
+    fn ruby_edges_follow_uax14_between_base_and_neighbour() {
+        assert!(!super::pair_breaks('a', 'b'));
+        assert!(super::pair_breaks(' ', 'a'));
+        assert!(super::pair_breaks('漢', '字'));
+        assert!(!super::pair_breaks('a', ','));
     }
 }

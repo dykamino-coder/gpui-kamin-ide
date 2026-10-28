@@ -114,4 +114,7 @@ pub struct Kid {
     pub start_open: bool,
     /// The float's `shape-outside` line exclusion.
     pub shape: Option<ShapeOf>,
+    /// `direction: rtl` of the containing block: a block narrower than it
+    /// stands at its right edge (CSS 2.1 §10.3.3, over-constrained margins).
+    pub rtl: bool,
 }
