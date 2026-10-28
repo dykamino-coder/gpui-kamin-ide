@@ -100,6 +100,6 @@ fn marker_box_colors_pass_the_subtree_filter_once() {
     // Filter Effects 1 §5: the marker inherits the list item's colour, which
     // passed the list's filter once; re-entering the marker box keeps it.
     let marker_box = box_style(&merged, &span.style, vcx);
-    let (marker, item) = (marker_box.paint.unwrap(), merged.paint.clone().unwrap());
+    let (marker, item) = (marker_box.paint.unwrap(), merged.paint.unwrap());
     assert_eq!(marker.foreground.color, item.foreground.color);
 }
