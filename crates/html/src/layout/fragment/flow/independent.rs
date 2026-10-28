@@ -3,11 +3,9 @@
 use crate::dom::{Element, Node};
 use crate::layout::fragment::push::measured_tree;
 use crate::style::computed::{Display, Position};
-mod continuation;
 mod parallel;
 pub(crate) use parallel::{Parallel, flow_end};
 mod percentages;
-use continuation::continuation;
 pub(crate) use percentages::PagePercentages;
 pub(crate) use percentages::{column_percentages, column_percentages_in, page_percentages};
 
@@ -32,10 +30,7 @@ pub(crate) fn page_copy(c: &Element, growth: bool) -> bool {
 /// Рост по записанным границам не требует продолжения внутри атомарной строки.
 /// Ограничения отдельных потоков и собственных декораций остаются общими.
 pub(crate) fn regrow_copy(c: &Element) -> bool {
-    !c.inline
-        && crate::layout::fragment::push::recorded_tree(c)
-        && !separate(c, false)
-        && !continuation(c)
+    !c.inline && crate::layout::fragment::push::recorded_tree(c) && !separate(c, false)
 }
 
 /// Блоки, сетки и таблицы одного вертикального потока.
@@ -51,7 +46,6 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
         && crate::layout::fragment::clone::clone_dec(c).is_none()
         && (super::empty_floats(&logical)
             || (!separate(c, true)
-                && !continuation::inline_continuation(c)
                 && (stacked_tree(&logical)
                     || table_tree(&logical)
                     || grid_tree(&logical)
@@ -229,3 +223,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod inline_tests;

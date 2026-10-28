@@ -47,6 +47,7 @@ impl FlowNode {
                 growth: self.growth.clone(),
                 starts: self.starts.clone(),
                 content: self.content.clone(),
+                row: None,
             },
             window,
         );
@@ -72,6 +73,8 @@ pub(crate) struct Record {
     growth: ParagraphGrowth,
     starts: Rc<RefCell<Vec<(usize, f32)>>>,
     pub(super) content: Rc<RefCell<Vec<super::ContentLine>>>,
+    /// Physical row whose line boxes are read after layout (`row_lines`).
+    row: Option<super::row_lines::RowLines>,
 }
 
 impl FlowMeasure {
@@ -159,6 +162,9 @@ impl FlowMeasure {
         let mut result = FlowGeometry::default();
         self.records.for_each(window, |bounds, record| {
             if let Some(offset) = record.offset(origin, size, axis, bounds) {
+                if let Some(row) = &record.row {
+                    result.append(&row.geometry(bounds, axis, window), offset);
+                }
                 result.append(&record.geometry.borrow(), offset);
                 result
                     .line_pushes
@@ -181,6 +187,17 @@ impl FlowMeasure {
 }
 
 impl Record {
+    pub(super) fn row(axis: StackAxis, row: super::row_lines::RowLines) -> Self {
+        Self {
+            axis,
+            geometry: Rc::default(),
+            growth: Rc::default(),
+            starts: Rc::default(),
+            content: Rc::default(),
+            row: Some(row),
+        }
+    }
+
     pub(super) fn offset(
         &self,
         origin: Point<Pixels>,

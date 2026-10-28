@@ -70,7 +70,13 @@ fn column_flow_in(
     // в абзац, и разрезы мерились не по тем строкам, что рисуются
     // (`line-clamp-fragmentation-001-ref`: 5/5/2 вместо 4/4/4 в `height: 4lh`).
     // Такой поток идёт стопкой, где строки раскладывает сам абзац.
-    if inherited.preserve_newlines == Some(true) || inherited.nowrap == Some(true) {
+    // `::first-letter`/`::first-line` (CSS 2 §5.12) style parts of the first
+    // formatted line; the text path paints raw text and would drop them.
+    if inherited.preserve_newlines == Some(true)
+        || inherited.nowrap == Some(true)
+        || e.first_letter.is_some()
+        || e.first_line.is_some()
+    {
         return None;
     }
     let all_inline = e.children.iter().all(|n| match n {
