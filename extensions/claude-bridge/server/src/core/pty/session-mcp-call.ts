@@ -143,12 +143,20 @@ export function resendUndeliveredMcpCalls(session: PtySession): void {
 function trySendMcpCall(session: PtySession, requestId: string, pending: PendingMcpCall): void {
   if (pending.delivered || pendingMcpCalls.get(requestId) !== pending) return
   pending.delivered = sendToClient(session.ws, {
-    type: 'mcp:call', requestId, toolName: pending.toolName, input: pending.input,
+    type: 'mcp:call',
+    requestId,
+    toolName: pending.toolName,
+    input: pending.input,
   })
   if (pending.delivered && pending.retryTimer) {
     clearInterval(pending.retryTimer)
     pending.retryTimer = undefined
-    debugLog('MCP request transport accepted', { sessionId: session.id, requestId, toolName: pending.toolName, elapsedMs: Date.now() - pending.createdAt })
+    debugLog('MCP request transport accepted', {
+      sessionId: session.id,
+      requestId,
+      toolName: pending.toolName,
+      elapsedMs: Date.now() - pending.createdAt,
+    })
   }
 }
 

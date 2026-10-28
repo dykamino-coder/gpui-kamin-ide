@@ -1,6 +1,13 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 
-import { pendingMcpCalls, resendUndeliveredMcpCalls, sendMcpCall, rejectAllPending, rejectPendingForSession, handleMcpResponse } from './session-mcp-call.js'
+import {
+  pendingMcpCalls,
+  resendUndeliveredMcpCalls,
+  sendMcpCall,
+  rejectAllPending,
+  rejectPendingForSession,
+  handleMcpResponse,
+} from './session-mcp-call.js'
 import type { PtySession } from './types.js'
 
 /** Сокет, повторяющий поведение настоящего при переполнении буфера: он
@@ -52,7 +59,10 @@ describe('INC-2026-0011: состояние доставки интеракти�
     vi.useFakeTimers()
   })
 
-  afterEach(() => { rejectAllPending('test cleanup'); vi.useRealTimers() })
+  afterEach(() => {
+    rejectAllPending('test cleanup')
+    vi.useRealTimers()
+  })
 
   it('отброшенный по переполнению буфера вызов НЕ считается доставленным', () => {
     const live = socket({ buffered: OVER_CAP })
@@ -118,10 +128,12 @@ describe('INC-2026-0011: состояние доставки интеракти�
   })
 })
 
-
 describe('INC-2026-0080 request backpressure', () => {
   beforeEach(() => vi.useFakeTimers())
-  afterEach(() => { rejectAllPending('test cleanup'); vi.useRealTimers() })
+  afterEach(() => {
+    rejectAllPending('test cleanup')
+    vi.useRealTimers()
+  })
 
   it('retries after buffer drain without a reconnect, then stops after enqueue', async () => {
     const live = socket({ buffered: OVER_CAP })
@@ -147,10 +159,12 @@ describe('INC-2026-0080 request backpressure', () => {
   })
 })
 
-
 describe('MCP retry ownership cleanup', () => {
   beforeEach(() => vi.useFakeTimers())
-  afterEach(() => { rejectAllPending('test cleanup'); vi.useRealTimers() })
+  afterEach(() => {
+    rejectAllPending('test cleanup')
+    vi.useRealTimers()
+  })
 
   it('clears an undelivered interactive retry when its owning session ends', async () => {
     const live = socket({ buffered: OVER_CAP })
