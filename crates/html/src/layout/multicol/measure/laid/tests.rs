@@ -141,6 +141,18 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
 }
 
 #[test]
+fn float_wider_than_the_column_is_a_stack_block_but_a_narrower_one_is_not() {
+    for (width, lifted) in [("300%", true), ("50%", false)] {
+        let html = format!(
+            "<div><div style='height:5px'></div><div style='float:left;width:{width};height:20px'></div><div style='height:5px'></div></div>"
+        );
+        let tree = crate::dom::parse(&html, "");
+        let host = super::super::block_floats(root(&tree), |_| false, Some(100.0), frame(&tree));
+        assert_eq!(host.is_some(), lifted, "{width}");
+    }
+}
+
+#[test]
 fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
     let tree = crate::dom::parse(
         "<div><div style='margin:calc(10% + 3px) 0 0'><div style='height:20px;margin:calc(20% + 7px) 0 0'>x</div></div></div>",
