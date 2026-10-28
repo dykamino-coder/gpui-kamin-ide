@@ -29,6 +29,10 @@ impl StackChild {
         self.table_rows = m.table_rows;
         if let Some(trim) = self.line_trim {
             trim_cuts(&mut self.cuts, trim);
+            let end = self.h.max(self.over);
+            for ranges in [&mut self.solid, &mut self.keep, &mut self.line_keep] {
+                trim_ends(ranges, trim.1, end);
+            }
         }
         self.cuts
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
@@ -54,15 +58,19 @@ impl StackChild {
             self.probe_pending = false;
         }
         self.cuts = m.cuts;
-        if let Some(trim) = self.line_trim {
-            trim_cuts(&mut self.cuts, trim);
-        }
         self.forced = m.forced;
         self.solid = m.solid;
         self.avoid = m.avoid;
         self.keep = m.keep;
         self.line_keep = m.line_keep;
         self.table_rows = m.table_rows;
+        if let Some(trim) = self.line_trim {
+            trim_cuts(&mut self.cuts, trim);
+            let end = self.h.max(self.over);
+            for ranges in [&mut self.solid, &mut self.keep, &mut self.line_keep] {
+                trim_ends(ranges, trim.1, end);
+            }
+        }
         m.sections
     }
 
@@ -119,5 +127,13 @@ fn trim_cuts(cuts: &mut Vec<(f32, f32)>, (from, need, top): (f32, f32, bool)) {
     }
     if from > 0.0 && top && !cuts.iter().any(|c| c.0 <= 0.0) {
         cuts.insert(0, (0.0, from));
+    }
+}
+
+/// Неделимые строки и группы строк со срезом конца у разрыва кончаются на метрике
+/// края своей последней строки: до разрыва им нужно меньше места.
+fn trim_ends(ranges: &mut [(f32, f32)], need: f32, end: f32) {
+    for r in ranges.iter_mut().filter(|r| r.1 < end - 0.01) {
+        r.1 = (r.1 - need).max(r.0);
     }
 }
