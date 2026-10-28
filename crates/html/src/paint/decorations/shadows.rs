@@ -1,6 +1,6 @@
 //! Внешние и внутренние резкие тени коробки (css-backgrounds-3 §7.1).
 
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 
 use crate::hooks::IntoHooked;
 use crate::paint::decorations::rect_minus::paint_rect_minus;
@@ -8,7 +8,8 @@ use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{IntoElement, Styled, div, px};
 
-pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
+pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame: FrameCx<'_>) {
+    let vcx = frame.values;
     // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
     // вырождается в шейдере, поэтому она рисуется слоем-квадом, раздутым на
     // разлёт. Радиус фигуры — по спеке (css-backgrounds-3 §7.1): нулевой
@@ -72,7 +73,7 @@ pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, vcx: 
             // preserve translucent blending and offsets larger than spread.
             let (dx, dy) = (sh.x, sh.y);
             let fill = colour.to_hsla();
-            let paint = vcx.paint.cloned();
+            let paint = frame.paint.cloned();
             out.push(
                 crate::paint::background::exact_layer::ExactLayer::inset(
                     [-bt, -br, -bb, -bl],
@@ -126,7 +127,8 @@ pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, vcx: 
     }
 }
 
-pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
+pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame: FrameCx<'_>) {
+    let vcx = frame.values;
     // РЕЗКАЯ ВНУТРЕННЯЯ тень (без размытия). §7.1: «An inner box-shadow casts
     // a shadow as if everything outside the padding edge were opaque» — тень =
     // padding-box МИНУС фигура, сжатая на разлёт и сдвинутая на смещение.

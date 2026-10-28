@@ -19,7 +19,7 @@ pub(super) async fn build(
     layer_ok: bool,
     root_box: Option<crate::paint::background::RootMeasurement>,
 ) -> AnyElement {
-    let vcx = opts.cx.vcx();
+    let built_frame = opts.cx.frame();
     let kw_len = |l: Option<Len>| {
         matches!(
             l,
@@ -82,7 +82,7 @@ pub(super) async fn build(
             animated(stk, e, inherited, opts).await,
             e,
             inherited,
-            vcx,
+            built_frame,
         )
     };
     let built = match root_box {

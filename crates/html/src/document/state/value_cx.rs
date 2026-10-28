@@ -17,7 +17,6 @@ pub struct ValueCx<'a> {
     pub(crate) doc: &'a DocState,
     pub(crate) frame: bool,
     pub(crate) viewport: (f32, f32),
-    pub(crate) paint: Option<&'a Rc<crate::layout::cx::deferred::Deferred>>,
     pub(crate) scheme: crate::style::values::value::Scheme,
 }
 
@@ -27,7 +26,6 @@ impl DocState {
         ValueCx {
             doc: self,
             viewport: (0.0, 0.0),
-            paint: None,
             frame: false,
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
@@ -38,7 +36,6 @@ impl DocState {
         ValueCx {
             doc: self,
             viewport: (0.0, 0.0),
-            paint: None,
             frame: true,
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
@@ -60,7 +57,6 @@ pub struct ValueDoc {
     doc: Rc<DocState>,
     frame: bool,
     viewport: (f32, f32),
-    paint: Option<Rc<crate::layout::cx::deferred::Deferred>>,
     scheme: crate::style::values::value::Scheme,
 }
 
@@ -68,7 +64,6 @@ impl ValueDoc {
     pub fn vcx(&self) -> ValueCx<'_> {
         ValueCx {
             doc: &self.doc,
-            paint: self.paint.as_ref(),
             frame: self.frame,
             viewport: self.viewport,
             scheme: self.scheme,
@@ -79,14 +74,6 @@ impl ValueDoc {
 impl<'a> ValueCx<'a> {
     pub(crate) fn with_viewport(mut self, viewport: (f32, f32)) -> Self {
         self.viewport = viewport;
-        self
-    }
-
-    pub(crate) fn with_paint(
-        mut self,
-        paint: Option<&'a Rc<crate::layout::cx::deferred::Deferred>>,
-    ) -> Self {
-        self.paint = paint;
         self
     }
 
@@ -115,7 +102,6 @@ impl<'a> ValueCx<'a> {
             frame: self.frame,
             viewport: self.viewport,
             scheme: self.scheme,
-            paint: self.paint.cloned(),
         }
     }
 }

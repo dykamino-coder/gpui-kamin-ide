@@ -36,7 +36,7 @@ fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
         &e.style.used(),
         inherited,
         e.node_id,
-        opts.cx.vcx(),
+        opts.cx.frame(),
     )
 }
 
@@ -55,7 +55,7 @@ async fn painted_stack(
         &e.style.used(),
         inherited,
         e.node_id,
-        opts.cx.vcx(),
+        opts.cx.frame(),
     )
 }
 

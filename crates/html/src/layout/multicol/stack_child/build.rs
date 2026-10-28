@@ -42,7 +42,8 @@ pub(super) fn build_copy(
     part: usize,
     band: bool,
 ) -> gpui::AnyElement {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
+    let vcx = frame.values;
     let build = &opts.cx.contracts.build;
     // `box-decoration-break: clone`: копия — САМ
     // фрагмент (`clone_fragment`), и корень, и
@@ -230,7 +231,7 @@ pub(super) fn build_copy(
         d.children(body).into_any_element(),
         opts,
     );
-    let el = build.effects(root, Effect::transform(inner, merged, vcx));
+    let el = build.effects(root, Effect::transform(inner, merged, frame));
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
     let el = if inner.clip_inset.is_some()
@@ -238,7 +239,7 @@ pub(super) fn build_copy(
         || inner.clip_polygon.is_some()
         || inner.mask_image.is_some()
     {
-        build.effects(el, Effect::group(inner, vcx))
+        build.effects(el, Effect::group(inner, frame))
     } else {
         el
     };

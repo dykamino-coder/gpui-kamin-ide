@@ -49,7 +49,12 @@ pub(crate) fn insets(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
     }))
 }
 
-pub(crate) fn new(c: &BoxStyle, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<CornerClip> {
+pub(crate) fn new(
+    c: &BoxStyle,
+    mask: Option<&str>,
+    frame: crate::layout::cx::FrameCx<'_>,
+) -> Option<CornerClip> {
+    let vcx = frame.values;
     let insets = insets(c, vcx)?;
     let mask = mask?;
     if !mask.starts_with("shape:rrect(") {
@@ -67,9 +72,9 @@ pub(crate) fn new(c: &BoxStyle, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<
         .border_b(px(side(b.bottom)))
         .border_l(px(side(b.left)));
     let layer = crate::paint::apply::apply_paint(layer, &own, vcx).children(
-        crate::paint::decorations::decorations(&own, false, vcx, None),
+        crate::paint::decorations::decorations(&own, false, frame, None),
     );
-    let mut decoration = super::grouped_element::Grouped::new(layer.into_any_element(), vcx);
+    let mut decoration = super::grouped_element::Grouped::new(layer.into_any_element(), frame);
     decoration.mask = Some(super::grouped_element::GroupMask::Geometry(
         mask.to_string(),
     ));

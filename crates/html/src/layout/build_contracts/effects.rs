@@ -6,6 +6,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::cx::FrameCx;
 use crate::layout::cx::deferred::Deferred;
 use crate::style::box_input::BoxStyleInput;
 use crate::style::computed::{BoxStyle, Computed};
@@ -31,14 +32,14 @@ pub(crate) enum Effect<'a> {
     /// needs the finished picture.
     Group {
         style: BoxStyleInput,
-        vcx: ValueCx<'a>,
+        frame: FrameCx<'a>,
     },
     /// The group of a replaced box with shaped corners (css-borders-4
     /// §corner-shape-rendering): its content clipped by the inner contour,
     /// the border ring over it.
     GroupReplaced {
         style: BoxStyleInput,
-        vcx: ValueCx<'a>,
+        frame: FrameCx<'a>,
     },
     /// The transform of `style` (css-transforms-1/2) under `parent`, with a
     /// reference box shared by the cells of a table row or row group
@@ -47,7 +48,7 @@ pub(crate) enum Effect<'a> {
         style: &'a Computed,
         parent: &'a Computed,
         ref_box: Option<RefBox>,
-        vcx: ValueCx<'a>,
+        frame: FrameCx<'a>,
     },
     /// A negative `z-index` (CSS 2.1 §9.9, step 3): the box stays in its
     /// slot, its paint goes under the content painted before it.
@@ -60,21 +61,21 @@ pub(crate) enum Effect<'a> {
 
 impl<'a> Effect<'a> {
     /// The grouped effects of `style`.
-    pub(crate) fn group(style: impl Into<BoxStyleInput>, vcx: ValueCx<'a>) -> Self {
+    pub(crate) fn group(style: impl Into<BoxStyleInput>, frame: FrameCx<'a>) -> Self {
         Effect::Group {
             style: style.into(),
-            vcx,
+            frame,
         }
     }
 
     /// The transform of `style` under `parent` against the box's own
     /// reference box.
-    pub(crate) fn transform(style: &'a Computed, parent: &'a Computed, vcx: ValueCx<'a>) -> Self {
+    pub(crate) fn transform(style: &'a Computed, parent: &'a Computed, frame: FrameCx<'a>) -> Self {
         Effect::Transform {
             style,
             parent,
             ref_box: None,
-            vcx,
+            frame,
         }
     }
 }
@@ -83,7 +84,7 @@ pub(crate) type PaintBody<'a> = &'a mut dyn FnMut(&mut Window, &mut App);
 type OutlineFlow = fn(&Rc<Deferred>, &mut Window, &mut App, PaintBody<'_>);
 
 type ApplyEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
-type PaintGroup = fn(gpui::Div, &Element, &BoxStyle, ValueCx<'_>) -> AnyElement;
+type PaintGroup = fn(gpui::Div, &Element, &BoxStyle, FrameCx<'_>) -> AnyElement;
 type PaintResources = fn(&[Node], ValueCx<'_>);
 
 /// The paint operations of [`ChildBuild`](super::ChildBuild).
@@ -129,9 +130,9 @@ impl EffectBuild {
         container: gpui::Div,
         e: &Element,
         inherited: &BoxStyle,
-        vcx: ValueCx<'_>,
+        frame: FrameCx<'_>,
     ) -> AnyElement {
-        (self.paint_group)(container, e, inherited, vcx)
+        (self.paint_group)(container, e, inherited, frame)
     }
 
     pub(super) fn paint_resources(&self, nodes: &[Node], vcx: ValueCx<'_>) {

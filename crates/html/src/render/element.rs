@@ -67,7 +67,8 @@ async fn element_inner(
 ) -> AnyElement {
     let viewport_opts = opts.inner(|cx| cx.values.viewport = opts.viewport);
     let opts = &*viewport_opts;
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
+    let vcx = frame.values;
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized = crate::layout::replaced::media::resolve(
@@ -168,7 +169,7 @@ async fn element_inner(
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::paint::controls::element(e, &merged, opts) {
-        let el = transformed(el, &merged, inherited, vcx);
+        let el = transformed(el, &merged, inherited, frame);
         let el = match geometry {
             Some(geometry) => geometry.wrap(el),
             None => el,

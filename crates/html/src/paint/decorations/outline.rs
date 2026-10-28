@@ -5,12 +5,13 @@
 //! двумя кольцами и узоры `dotted`/`dashed`; слой уходит в отложенную фазу контуров.
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
-use crate::document::state::ValueCx;
+use crate::layout::cx::FrameCx;
 use crate::style::computed::{BoxStyle, OUTLINE_DOUBLE};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
-pub(super) fn decorations(c: &BoxStyle, vcx: ValueCx<'_>) -> Vec<AnyElement> {
+pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
+    let vcx = frame.values;
     let mut out = Vec::new();
     // `outline`: рамка ВНЕ коробки и без влияния на раскладку — отдельный
     // абсолютный слой с отрицательным отступом ровно на её толщину.
@@ -116,12 +117,12 @@ pub(super) fn decorations(c: &BoxStyle, vcx: ValueCx<'_>) -> Vec<AnyElement> {
                 // Blink core/paint/border_shape_painter.cc:312-326.
                 out.push(super::outline_phase::outline(
                     ring_at(off + w, third, corner).into_any_element(),
-                    vcx.paint,
+                    frame.paint,
                 ));
                 let inner_corner = (corner - w + third).max(0.0);
                 out.push(super::outline_phase::outline(
                     ring_at(off + third, third, inner_corner).into_any_element(),
-                    vcx.paint,
+                    frame.paint,
                 ));
                 return out;
             }
@@ -136,7 +137,7 @@ pub(super) fn decorations(c: &BoxStyle, vcx: ValueCx<'_>) -> Vec<AnyElement> {
             }
             out.push(super::outline_phase::outline(
                 ring.into_any_element(),
-                vcx.paint,
+                frame.paint,
             ));
         }
     }

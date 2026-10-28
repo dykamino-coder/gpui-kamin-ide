@@ -27,7 +27,7 @@ pub(super) fn masked_layer(
     style: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
-    let vcx = opts.cx.vcx();
+    let frame = opts.cx.frame();
     let on = block.resolved() == group;
     let ink = if on {
         shadow.used_color(style.current_color())
@@ -42,7 +42,7 @@ pub(super) fn masked_layer(
     let masked = mask_nodes(nodes, block, group, shadow, opts.cx.vcx());
     let copy = opts.cx.contracts.build.paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
-        let mut g = crate::paint::effects::grouped_element::Grouped::new(copy, vcx);
+        let mut g = crate::paint::effects::grouped_element::Grouped::new(copy, frame);
         g.blur = shadow.blur * 0.5;
         g.hooked()
     } else {
