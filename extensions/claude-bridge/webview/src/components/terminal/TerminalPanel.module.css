@@ -28,20 +28,6 @@
   padding: 4px;
 }
 
-.xtermContainer :global(.xterm) {
-  height: 100%;
-}
-
-/* xterm 6 owns its scrollbar and hit testing. Keep it visible when history
-   exists; its zero-sized alternate-screen thumb needs no outer panel scroll. */
-.xtermContainer :global(.xterm-scrollable-element > .scrollbar.vertical) {
-  opacity: 1;
-  pointer-events: auto;
-}
-.xtermContainer :global(.xterm-scrollable-element > .scrollbar > .slider) {
-  border-radius: 999px;
-}
-
 /* "Connecting to session…" cover shown until the terminal gets its first
    content (snapshot restore or first PTY chunk) — so a fresh session's attach
    window reads as connecting, not a dead black surface. */

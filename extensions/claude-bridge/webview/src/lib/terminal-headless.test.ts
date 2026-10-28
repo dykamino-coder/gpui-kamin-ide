@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Terminal } from '@xterm/headless'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { CONSOLE_SCROLLBACK } from './terminal-interaction'
+import { CONSOLE_SCROLLBACK, configureTerminalInteraction } from './terminal-interaction'
+import type { Terminal as BrowserTerminal } from '@xterm/xterm'
 
 const terminals: Terminal[] = []
 function create(): Terminal {
@@ -28,6 +29,33 @@ describe('console normal and alternate buffers (real xterm 6)', () => {
     terminal.resize(60, 18)
     expect(terminal.buffer.active.length).toBeLessThanOrEqual(CONSOLE_SCROLLBACK + 18)
     expect(terminal.rows).toBe(18)
+  })
+
+  it('updates scrollbar visibility from parsed buffer switches, history clearing and reset', async () => {
+    const terminal = create()
+    const container = {
+      dataset: {} as Record<string, string>, classList: { add() {}, remove() {} },
+      addEventListener() {}, removeEventListener() {},
+    }
+    const browser = Object.assign(terminal, { attachCustomWheelEventHandler() {} })
+    const dispose = configureTerminalInteraction(browser as unknown as BrowserTerminal, container as unknown as HTMLElement)
+    expect(container.dataset).toEqual({ terminalScreen: 'normal', terminalHistory: 'false' })
+    await write(terminal, 'history\r\n'.repeat(100))
+    expect(container.dataset.terminalHistory).toBe('true')
+    terminal.scrollToTop()
+    expect(terminal.buffer.active.viewportY).toBe(0)
+    await write(terminal, '\x1b[?1049h\x1b[?1000;1006h')
+    expect(container.dataset).toEqual({ terminalScreen: 'alternate', terminalHistory: 'false' })
+    expect(terminal.modes.mouseTrackingMode).toBe('vt200')
+    await write(terminal, '\x1b[?1049l')
+    expect(container.dataset).toEqual({ terminalScreen: 'normal', terminalHistory: 'true' })
+    await write(terminal, '\x1b[3J')
+    expect(container.dataset.terminalHistory).toBe('false')
+    await write(terminal, '\x1b[?1049h')
+    terminal.reset()
+    expect(container.dataset.terminalScreen).toBe('normal')
+    dispose()
+    expect(container.dataset).toEqual({})
   })
 
   it('parses split DECSET/DECRST and preserves app mouse ownership without alternate history', async () => {

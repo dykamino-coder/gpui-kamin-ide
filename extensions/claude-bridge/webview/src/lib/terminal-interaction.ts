@@ -1,39 +1,74 @@
 import type { Terminal } from '@xterm/xterm'
 
 export const CONSOLE_SCROLLBACK = 5000
+// xterm and FitAddon read this same public option for scrollbar hit testing
+// and column allocation. CSS must not narrow the hit target independently.
+export const CONSOLE_OVERVIEW_RULER = { width: 8, showTopBorder: false, showBottomBorder: false }
 
-/** Keep application mouse protocols intact. Shift+drag selects text; in a
- * non-reporting screen we gate selection explicitly as well. Scrollbar gestures
- * bypass this policy and continue to use xterm's own hit testing. */
+/** Normal-screen drag selects text. Alternate-screen applications retain mouse
+ * ownership; their explicit selection modifier is handled by xterm. */
 export function configureTerminalInteraction(terminal: Terminal, container: HTMLElement): () => void {
+  container.classList.add('bridge-console')
   const forwarded = new WeakSet<Event>()
-  const select = (event: MouseEvent): void => {
+  const mouseDown = (event: MouseEvent): void => {
+    if (event.button === 2) {
+      // The console menu owns secondary clicks, including in reporting apps.
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      terminal.focus()
+      return
+    }
     if (forwarded.has(event) || event.button !== 0) return
     const target = event.target as Element | null
     if (!target?.closest('.xterm-screen')) return
-    // xterm already implements modifier selection in mouse-reporting modes.
-    if (terminal.modes.mouseTrackingMode !== 'none') return
+    const normal = terminal.buffer.active.type === 'normal'
+    const reporting = terminal.modes.mouseTrackingMode !== 'none'
+    if (normal && !reporting) return
+    if (terminal.buffer.active.type === 'alternate' && (reporting || event.shiftKey)) {
+      // Without reporting, Shift means "extend" to xterm; remove it so the
+      // first modifier-drag can start a selection without an existing anchor.
+      if (reporting) return
+    } else if (!normal) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      terminal.focus()
+      return
+    }
 
     event.preventDefault()
     event.stopImmediatePropagation()
     terminal.focus()
-    if (!event.shiftKey) return
-
-    // In normal mode xterm treats Shift as "extend an existing selection".
-    // Forward an ordinary initial click only after the explicit modifier gate,
-    // so Shift+drag also starts a fresh selection when there is no prior anchor.
+    const mac = /Mac/.test(container.ownerDocument.defaultView?.navigator.platform ?? '')
     const initial = new MouseEvent('mousedown', {
       bubbles: true, cancelable: true, view: event.view, detail: event.detail,
       screenX: event.screenX, screenY: event.screenY,
       clientX: event.clientX, clientY: event.clientY,
       button: event.button, buttons: event.buttons,
-      ctrlKey: event.ctrlKey, altKey: event.altKey, metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey, metaKey: event.metaKey,
+      shiftKey: reporting && !mac, altKey: reporting && mac ? true : event.altKey,
     })
     forwarded.add(initial)
     target.dispatchEvent(initial)
   }
-  container.addEventListener('mousedown', select, true)
+  const mouseUp = (event: MouseEvent): void => {
+    if (event.button !== 2) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+  container.addEventListener('mousedown', mouseDown, true)
+  container.addEventListener('mouseup', mouseUp, true)
 
+  const syncScreen = (): void => {
+    container.dataset.terminalScreen = terminal.buffer.active.type
+    container.dataset.terminalHistory = String(terminal.buffer.active.baseY > 0)
+  }
+  syncScreen()
+  const subscriptions = [
+    terminal.buffer.onBufferChange(syncScreen),
+    terminal.onWriteParsed(syncScreen),
+    terminal.onScroll(syncScreen),
+    terminal.onResize(syncScreen),
+  ]
   terminal.attachCustomWheelEventHandler(event => {
     const mode = terminal.modes.mouseTrackingMode
     if (terminal.buffer.active.type === 'alternate' && (mode === 'none' || mode === 'x10')) {
@@ -42,9 +77,15 @@ export function configureTerminalInteraction(terminal: Terminal, container: HTML
       event.stopPropagation()
       return false
     }
-    // Normal history uses xterm's viewport; reporting apps use its encoder.
     return true
   })
 
-  return () => container.removeEventListener('mousedown', select, true)
+  return () => {
+    container.removeEventListener('mousedown', mouseDown, true)
+    container.removeEventListener('mouseup', mouseUp, true)
+    subscriptions.forEach(subscription => subscription.dispose())
+    container.classList.remove('bridge-console')
+    delete container.dataset.terminalScreen
+    delete container.dataset.terminalHistory
+  }
 }
