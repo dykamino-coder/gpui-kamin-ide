@@ -123,3 +123,27 @@ pub enum BorderImageWidth {
     Pct(f32),
     Auto,
 }
+
+/// Ширина куска рамки: число — во столько раз толще самой рамки, длина — как
+/// есть, доля — от стороны коробки (css-backgrounds-3 §6.5).
+impl BorderImageWidth {
+    pub fn px(self, border: f32, side: f32) -> f32 {
+        match self {
+            BorderImageWidth::Times(k) => k * border,
+            BorderImageWidth::Px(v) => v,
+            BorderImageWidth::Pct(k) => k * side,
+            // `auto` — своя величина куска образа; её мы приравниваем к рамке.
+            BorderImageWidth::Auto => border,
+        }
+    }
+}
+
+/// Срез образа: число — в его собственных точках, доля — от его стороны.
+impl BorderImageSlice {
+    pub fn px(self, side: f32) -> f32 {
+        match self {
+            BorderImageSlice::Px(v) => v,
+            BorderImageSlice::Pct(k) => k * side,
+        }
+    }
+}
