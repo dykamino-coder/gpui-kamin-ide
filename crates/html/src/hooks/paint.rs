@@ -22,7 +22,18 @@ pub(crate) fn paint_reopen<R>(window: &mut Window, f: impl FnOnce(&mut Window) -
     crate::paint::coordinator::reopen(window, f)
 }
 
-pub(crate) use crate::layout::fragment::paint_source::{BareRecords, SlotScopes, SourceSlices};
+pub(crate) use crate::layout::fragment::paint_source::{
+    BareRecords, Replay, SlotScopes, SourceSlices,
+};
+
+/// Paint a sliced copy whose slots replay under its fragmentainer clip.
+pub(crate) fn with_copy_area(
+    area: gpui::ContentMask<gpui::Pixels>,
+    window: &mut Window,
+    paint: impl FnOnce(&mut Window),
+) {
+    crate::paint::continuation::with_copy_area(area, window, paint)
+}
 
 /// Paint a legacy copy for `segment`: its slots replay their continuation records.
 pub(crate) fn with_copy_segment(

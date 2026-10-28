@@ -14,7 +14,9 @@ mod paint;
 pub(crate) use paint::{paint_collect, paint_inline};
 mod painter;
 pub(crate) use paint::BareRecords;
-pub(crate) use paint::{SlotScopes, presented_hit_scopes, with_copy_hits, with_copy_segment};
+pub(crate) use paint::{
+    Replay, SlotScopes, presented_hit_scopes, with_copy_area, with_copy_hits, with_copy_segment,
+};
 pub(crate) use paint::{
     SourceSlices, paint_source_node, paint_source_record, prepaint_source_record,
 };

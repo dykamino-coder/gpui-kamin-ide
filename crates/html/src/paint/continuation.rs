@@ -54,6 +54,21 @@ pub(crate) fn with_copy_segment(
     }
 }
 
+/// The clip of a fragmentainer whose copy is cut to its own slice: a continued
+/// root replayed in that copy is cut by its fragmentainer, not by the slice
+/// of the box that holds it (a table fragment ends above its repeated footer).
+struct CopyArea(gpui::ContentMask<Pixels>);
+
+/// Paint a sliced copy whose slots replay under `area` (window coordinates,
+/// as `Window::content_mask` reports them).
+pub(crate) fn with_copy_area(
+    area: gpui::ContentMask<Pixels>,
+    window: &mut Window,
+    paint: impl FnOnce(&mut Window),
+) {
+    window.with_render_context(Some(Rc::new(CopyArea(area))), paint)
+}
+
 pub(crate) fn slot(id: Option<u64>, child: AnyElement) -> AnyElement {
     match id {
         Some(id) => Slot { id, child }.hooked(),
@@ -113,6 +128,15 @@ impl Wrap for Slot {
         if records.is_empty() {
             return;
         }
+        match window.render_context::<CopyArea>() {
+            Some(area) => window.with_content_mask_exact(area.0, |window| replay(records, window)),
+            None => replay(records, window),
+        }
+    }
+}
+
+fn replay(records: Vec<crate::hooks::Replay>, window: &mut Window) {
+    {
         // The copy's own transform (CSS transforms of the copied ancestors, the
         // page sheet) presents the replayed records; the root's own per-fragment
         // transform applies first.

@@ -65,6 +65,7 @@ impl ColumnStack {
             } else {
                 bounds.size.width
             };
+            let area = self.fragmentainer_area(f.col, bounds, spill, window);
             let k0 = &self.children[f.kid];
             let (nested_cols, over) = (k0.nested_cols, k0.over);
             // Таблица и вложенная фрагментация задают свои границы. Одна
@@ -213,12 +214,18 @@ impl ColumnStack {
                         }),
                         || {
                             gap_fragment::with(&self.paint, scope, || {
-                                crate::hooks::with_copy_segment(
-                                    gpui::PaintSegmentId(f.col as u64),
-                                    records.as_ref(),
-                                    window,
-                                    |window| el.paint(window, cx),
-                                )
+                                let mut paint = |window: &mut Window| {
+                                    crate::hooks::with_copy_segment(
+                                        gpui::PaintSegmentId(f.col as u64),
+                                        records.as_ref(),
+                                        window,
+                                        |window| el.paint(window, cx),
+                                    )
+                                };
+                                match area {
+                                    Some(area) => crate::hooks::with_copy_area(area, window, paint),
+                                    None => paint(window),
+                                }
                             })
                         },
                     );

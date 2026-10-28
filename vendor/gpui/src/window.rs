@@ -4366,6 +4366,22 @@ impl Window {
         self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
     }
 
+    /// KaminIDE patch: восстановить маску, прочитанную `content_mask` (уже в
+    /// итоговых координатах окна), без пересечения с текущей и без повторного
+    /// масштаба стопки страниц. Продолжение OOF в копии фрагмента режет его
+    /// фрагментаинер, а не срез копии (`paint::continuation`).
+    pub fn with_content_mask_exact<R>(
+        &mut self,
+        mask: ContentMask<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+        let _clip_scope = self.segment_clip_scope(mask, true);
+        let depth = self.content_mask_stack.len();
+        self.content_mask_stack.push(mask);
+        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
+    }
+
     /// KaminIDE patch: перевести маску ребёнка в итоговые координаты окна,
     /// когда стопка страниц рисует под масштабом (`with_mask_scale`). Вне
     /// стопки — тождество.

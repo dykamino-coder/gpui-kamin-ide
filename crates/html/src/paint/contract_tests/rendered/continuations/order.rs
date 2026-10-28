@@ -49,3 +49,24 @@ fn continuations_at_fractional_column_offsets_leave_no_device_pixel_between_colu
         assert!(is(top(&found, x, 50.), 0x00ff00), "({x}, 50): {found:?}");
     }
 }
+
+#[test]
+fn box_in_a_table_fragment_is_cut_by_its_column_not_by_the_repeated_footer() {
+    // css-break forced-break-before-repeated-footer-003: the box lies in the
+    // first fragment of its table, beside and over the repeated footer band.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:4;gap:0;column-fill:auto;width:100px;height:100px;background:#ff0000'>\
+<div style='position:relative;display:table;width:100%'>\
+<div style='position:absolute;top:70px;left:25px;width:25px;height:30px;background:#00ff00'></div>\
+<div style='display:table-row;break-after:column'><div style='height:130px;background:#00ff00'></div></div>\
+<div style='height:160px;background:#00ff00'></div>\
+<div style='display:table-footer-group;break-inside:avoid'><div style='height:20px;background:#00ff00'></div></div>\
+</div></div>",
+        200.,
+        200.,
+    );
+    for y in [72., 85., 98.] {
+        assert!(is(top(&found, 37., y), 0x00ff00), "(37, {y}): {found:?}");
+    }
+}
