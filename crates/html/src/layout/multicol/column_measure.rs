@@ -150,6 +150,7 @@ impl ColumnStack {
         let deferred = self.deferred.clone();
         let nest_report = self.nest_report.clone();
         let lead_report = self.lead_report.clone();
+        let discard = self.discard;
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
@@ -172,6 +173,7 @@ impl ColumnStack {
                     copies,
                     gap_items: None,
                     intrinsic: None,
+                    discard,
                     plan: std::cell::RefCell::new(Plan::default()),
                     static_places: Default::default(),
                     oof: oof.fresh(),

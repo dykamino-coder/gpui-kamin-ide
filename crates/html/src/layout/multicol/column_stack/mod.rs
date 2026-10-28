@@ -74,6 +74,9 @@ pub struct ColumnStack {
     pub(crate) nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
     /// Рекордер копии, в которой лежит эта стопка, и id её коробки (`lead`).
     pub(crate) lead_report: Option<lead::LeadReport>,
+    /// `continue: discard` (css-overflow-4 §discarding-content): переполняющие
+    /// колонки и всё после них не выводятся; линии стоят рядами `col / count`.
+    pub(crate) discard: bool,
 }
 
 impl ColumnStack {
@@ -139,6 +142,7 @@ impl ColumnStack {
             spans_plan: std::cell::RefCell::new(Vec::new()),
             nest_report: None,
             lead_report: None,
+            discard: false,
         }
     }
 
@@ -157,6 +161,18 @@ impl ColumnStack {
     ) -> Self {
         self.nest_report = report;
         self
+    }
+
+    /// Отбрасывание переполнения (см. `discard`).
+    pub(crate) fn with_discard(mut self, on: bool) -> Self {
+        self.discard = on;
+        self
+    }
+
+    /// Колонка `col` стоит в линии `col / count`: ряды с переносом либо линии
+    /// между спаннерами без переполняющих колонок (`discard`).
+    pub(crate) fn wraps(&self) -> bool {
+        self.rows.is_some_and(|r| r.wrap) || self.discard
     }
 
     /// Коробка по самой высокой занятой колонке (см. `fill_shrink`).
@@ -210,15 +226,14 @@ impl ColumnStack {
     /// Где стоит колонка `col`: номер в линии и смещение линии. Без рядов и
     /// при `nowrap` колонки идут вбок сплошь (переполняющие — за край).
     pub(crate) fn place(&self, col: usize) -> (usize, f32) {
-        match self.rows {
-            Some(r) if r.wrap => {
-                let lines = self.lines_plan.borrow();
-                (
-                    col % self.count,
-                    lines.get(col / self.count).map_or(0.0, |l| l.0),
-                )
-            }
-            _ => (col, 0.0),
+        if self.wraps() {
+            let lines = self.lines_plan.borrow();
+            (
+                col % self.count,
+                lines.get(col / self.count).map_or(0.0, |l| l.0),
+            )
+        } else {
+            (col, 0.0)
         }
     }
 }

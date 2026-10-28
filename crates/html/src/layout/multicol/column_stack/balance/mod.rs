@@ -8,6 +8,7 @@ use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
+mod discard;
 #[cfg(test)]
 mod float_tests;
 mod growth;
@@ -50,6 +51,18 @@ impl ColumnStack {
         // выше высоты коробки; копий — сколько построил `render::generic_box::multicol`, лишние
         // колонки переполняют вбок (`place`: `(col, 0.0)`). Линия — высотой
         // в баланс, не в потолок: по ней `growths` меряет рост.
+        if self.discard {
+            // Потолок баланса (`Rows::cap`) — та же единственная сетка линий.
+            let cap = self.rows.and_then(|r| r.h).map(|lim| lim.max(1.0));
+            let limit = if cap.is_some() {
+                self.copies
+            } else if self.fixed_height.is_some() {
+                self.copies.max(count)
+            } else {
+                count
+            };
+            return self.balance_discard(kids, limit, cap);
+        }
         if let Some(Rows {
             h: Some(lim),
             cap: true,

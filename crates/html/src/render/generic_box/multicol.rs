@@ -108,7 +108,11 @@ fn settled(
     let seg_open = false;
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
     let nest_report = outer_space.as_ref().map(|n| n.first_row.clone());
-    let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
+    // `continue: discard` без рядов (или с потолком баланса): линии и спаннеры одним проходом стопки — только
+    // раскладка узнаёт, есть ли у линии переполняющие колонки (`balance_discard`).
+    let discard = rows.is_none_or(|r| r.cap) && e.style.used().clamp_discard == Some(true);
+    let unified =
+        (rows.is_some_and(|r| r.wrap && r.h.is_some()) || discard) && !opts.frag.in_stack_copy;
     if e.children.iter().any(&is_span) && !unified {
         let d = ClampScope::close(scope, d, e, &merged);
         return Err(multicol_spanner_segments(
