@@ -60,6 +60,7 @@ FIXES = {
         "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
         "Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.",
+        "Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.",
     ],
     "gpui-windows": [
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",

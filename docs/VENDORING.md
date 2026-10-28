@@ -106,6 +106,15 @@ StackSafe. Для component передавать также список tree-si
 `workspace.dependencies.gpui-component`, иначе проверки подсветки могут не
 попасть в сборку.
 
+Для GPUI это делает `python scripts/check_vendor_gpui.py`: сборка всех целей
+(`--all-targets`, включая примеры) и unit/integration tests с корневыми
+patches, на копии корневого `Cargo.lock`, которую скрипт удаляет. CI запускает
+его отдельным job `vendor GPUI standalone targets` при изменениях GPUI, его
+платформы и зависимых форков. Архив crates.io `gpui-pre` 0.3.8 не содержит
+upstream `[dev-dependencies]` (они были path-зависимостями монорепозитория),
+хотя сохраняет примеры; форк восстанавливает их опубликованными крейтами того
+же snapshot (`gpui-pre-platform`, `gpui-pre-reqwest-client` и др.).
+
 ## Taffy: поддерживаемый форк
 
 Taffy — поддерживаемый форк, а не временная замена до следующего релиза.

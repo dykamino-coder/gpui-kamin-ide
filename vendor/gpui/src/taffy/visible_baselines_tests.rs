@@ -1,6 +1,7 @@
 //! Intermediate lines are extracted from completed native leaf geometry with actual insets.
 
 use super::*;
+use crate::taffy::node_measure;
 use crate::px;
 use std::{cell::RefCell, rc::Rc};
 use taffy::style_helpers::TaffyMaxContent;

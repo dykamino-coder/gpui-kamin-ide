@@ -31,6 +31,7 @@ jobs:
       rust: ${{ steps.changes.outputs.rust }}
       vendor: ${{ steps.changes.outputs.vendor }}
       vendor_taffy: ${{ steps.changes.outputs.vendor_taffy }}
+      vendor_gpui: ${{ steps.changes.outputs.vendor_gpui }}
       release_pipeline: ${{ steps.changes.outputs.release_pipeline }}
       release_candidate: ${{ steps.changes.outputs.release_candidate }}
       installer_candidate: ${{ steps.changes.outputs.installer_candidate }}
@@ -121,6 +122,7 @@ jobs:
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/check_(event_routing|conventions|engine_test_support)\.py$|(clippy|rustfmt)\.toml$)'
           set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
           set_scope vendor_taffy '^(vendor/taffy/|vendor/taffy-kaminide\.patch$|rust-toolchain\.toml$)'
+          set_scope vendor_gpui '^(vendor/(gpui|gpui-windows|taffy|resvg|usvg|tendril|xml-rs)/|Cargo\.(toml|lock)$|rust-toolchain\.toml$|scripts/check_vendor_gpui\.py$)'
           set_scope release_pipeline '^(\.github/workflows/docker\.yml$|scripts/release/|extensions/claude-bridge/server/)'
 
           {
@@ -712,6 +714,51 @@ jobs:
           cargo clippy --manifest-path vendor/taffy/Cargo.toml --locked --all-targets -j 6 -- -D warnings
           cargo test --manifest-path vendor/taffy/Cargo.toml --locked -j 6
 
+  vendor-gpui:
+    name: vendor GPUI standalone targets
+    needs: scope
+    if: needs.scope.outputs.vendor_gpui == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Restore Cargo inputs and standalone GPUI build output
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/vendor-gpui
+          key: windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-
+            windows-vendor-gpui-v1-
+
+      # GPUI is excluded from the root workspace: workspace clippy/test never
+      # compile its unit tests and examples, and its dev-dependencies resolve
+      # only when it is the root package. Build all its targets and run its tests.
+      - name: Build all GPUI targets and run its tests standalone
+        run: python scripts/check_vendor_gpui.py --jobs 4
+
+      - name: Save the standalone GPUI cache from main
+        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/vendor-gpui
+          key: windows-vendor-gpui-v1-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+
   quality-gate:
     name: required quality gate
     needs:
@@ -726,6 +773,7 @@ jobs:
       - html-transitional
       - vendor-patches
       - vendor-taffy
+      - vendor-gpui
       - windows-installer
       - release-dry-run
     if: ${{ always() }}
@@ -745,6 +793,7 @@ jobs:
           HTML_TRANSITIONAL_RESULT: ${{ needs.html-transitional.result }}
           VENDOR_RESULT: ${{ needs.vendor-patches.result }}
           TAFFY_RESULT: ${{ needs.vendor-taffy.result }}
+          GPUI_RESULT: ${{ needs.vendor-gpui.result }}
           INSTALLER_RESULT: ${{ needs.windows-installer.result }}
           RELEASE_RESULT: ${{ needs.release-dry-run.result }}
         shell: bash
@@ -762,6 +811,7 @@ jobs:
             "$HTML_TRANSITIONAL_RESULT" \
             "$VENDOR_RESULT" \
             "$TAFFY_RESULT" \
+            "$GPUI_RESULT" \
             "$INSTALLER_RESULT" \
             "$RELEASE_RESULT"; do
             case "$result" in
