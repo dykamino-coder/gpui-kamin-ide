@@ -8,7 +8,7 @@
 use crate::dom::Node;
 use crate::dom::whitespace::blank_text;
 use crate::layout::block::struts::{
-    adjoin, margin_px, pin_inherited_margins, solve, strut_of, through_strut,
+    adjoin, margin_px_in, pin_inherited_margins, solve, strut_of, through_strut,
     through_strut_no_clear,
 };
 use crate::layout::box_kind::{in_flow, inline_level_box};
@@ -20,7 +20,7 @@ pub(crate) fn emit_margin_struts(
     strut: &mut Option<(f32, f32)>,
     emitted: &mut f32,
     cleared_run: &mut Option<usize>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     for (idx, node) in out.iter_mut().enumerate() {
         let Node::Element(e) = node else {
@@ -49,8 +49,9 @@ pub(crate) fn emit_margin_struts(
             band_clearance::remember_float_margin(e, *strut, *emitted);
             continue;
         }
-        let top = margin_px(e.style.used().margin.top, &e.style.used(), vcx).unwrap_or(0.0);
-        let bottom = margin_px(e.style.used().margin.bottom, &e.style.used(), vcx).unwrap_or(0.0);
+        let top = margin_px_in(e.style.used().margin.top, &e.style.used(), vcx).unwrap_or(0.0);
+        let bottom =
+            margin_px_in(e.style.used().margin.bottom, &e.style.used(), vcx).unwrap_or(0.0);
         let through = through_strut(e, vcx);
         let mut merged = match *strut {
             Some(s) => {

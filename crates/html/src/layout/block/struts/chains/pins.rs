@@ -20,7 +20,7 @@ pub(crate) fn pin_inherited_margins(
     e: &mut Element,
     top: bool,
     bottom: bool,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) {
     // Не отделять общий список детей, если закреплять нечего.
     if !e.children.iter().any(|node| {
@@ -50,7 +50,7 @@ pub(crate) fn pin_inherited_margins(
             }
             let pinned = match src {
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    margin_px(Some(l), &e.style.used(), vcx)
+                    margin_px_in(Some(l), &e.style.used(), vcx)
                         .map(Len::Px)
                         .or(Some(l))
                 }
@@ -73,10 +73,10 @@ pub(crate) fn pin_inherited_margins(
 /// отступах, и блоки уезжали вниз на целый отступ. Кегль берётся свой, если
 /// элемент его задал, иначе базовый — унаследованного здесь ещё нет.
 /// Доли, в том числе в calc(), требуют известной ширины содержащего блока.
-pub(crate) fn margin_px(
+pub(crate) fn margin_px_in(
     l: Option<Len>,
     style: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<f32> {
     // Кегль элемента: свой, если задан, иначе унаследованный от уровня
     // (из входов уровня схлопывания). Прежде вместо унаследованного брались
@@ -101,16 +101,26 @@ pub(crate) fn margin_px(
             Some(l),
             &style.font_family.clone().unwrap_or_default(),
             base,
-            vcx,
+            vcx.values,
         )),
         // Процент — от ширины содержащего блока, когда она известна в точках
         // (`margin-top-103`, `margin-bottom-113`); иначе поле пропускается.
         Len::Pct(k) => vcx.collapse.width.map(|w| k * w),
         l @ Len::Calc(_) => crate::style::computed::LenCx {
             basis: vcx.collapse.width,
-            ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), style)
+            ..crate::style::computed::LenCx::box_viewport(Some(vcx.values.viewport), style)
         }
-        .px(l, vcx),
+        .px(l, vcx.values),
         _ => None,
     }
+}
+
+/// The same margin outside any collapse descent (absolutely positioned and other boxes
+/// whose margins do not take part in collapsing): the default level inputs.
+pub(crate) fn margin_px(
+    l: Option<Len>,
+    style: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<f32> {
+    margin_px_in(l, style, crate::layout::block::margins::MarginCx::new(vcx))
 }

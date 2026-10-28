@@ -11,7 +11,7 @@ use crate::layout::block::struts::{Strut, solve, through_strut_no_clear};
 use crate::style::values::value::Len;
 pub(crate) mod facts;
 mod inputs;
-pub(crate) use inputs::CollapseInputs;
+pub(crate) use inputs::{CollapseInputs, MarginCx};
 mod flow;
 pub(super) use flow::collapse_flow_margins;
 mod kids;
@@ -24,16 +24,18 @@ pub(crate) fn fragment_box(
     width: f32,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> crate::dom::Element {
-    let vcx = vcx.with_collapse(CollapseInputs {
+    // A fragment box is laid out outside its parent's collapse descent: the level starts
+    // from the default inputs with the fragmentainer's width.
+    let mcx = MarginCx::new(vcx).with_collapse(CollapseInputs {
         width: Some(width),
-        ..vcx.collapse
+        ..CollapseInputs::default()
     });
     let mut nodes = [Node::Element(element)];
-    collapse_kid_margins(&mut nodes, Some(width), vcx);
+    collapse_kid_margins(&mut nodes, Some(width), mcx);
     let [Node::Element(mut element)] = nodes else {
         unreachable!("margin collapse preserves the box")
     };
-    crate::layout::block::struts::pin_inherited_margins(&mut element, true, true, vcx);
+    crate::layout::block::struts::pin_inherited_margins(&mut element, true, true, mcx);
     let lengths = crate::style::computed::LenCx {
         basis: Some(width),
         ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.used())
@@ -54,12 +56,12 @@ pub(crate) fn vertical_fragment_box(
     reverse: bool,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> crate::dom::Element {
-    let vcx = vcx.with_collapse(CollapseInputs {
+    let mcx = MarginCx::new(vcx).with_collapse(CollapseInputs {
         width: Some(width),
-        ..vcx.collapse
+        ..CollapseInputs::default()
     });
-    flow::absorb_margin(&mut element, false, reverse, vcx);
-    flow::absorb_margin(&mut element, true, reverse, vcx);
+    flow::absorb_margin(&mut element, false, reverse, mcx);
+    flow::absorb_margin(&mut element, true, reverse, mcx);
     let lengths = crate::style::computed::LenCx {
         basis: Some(width),
         ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style.used())
@@ -101,7 +103,7 @@ pub(crate) fn collapse_margins(
     nodes: &[Node],
     abs_parent: bool,
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: MarginCx<'_>,
 ) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
     margin_inline_boxes::prepare(&mut out);

@@ -14,8 +14,8 @@ use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::px_margin_w;
 use crate::style::values::value::Len;
 mod pins;
-pub(crate) use pins::margin_px;
 pub(crate) use pins::pin_inherited_margins;
+pub(crate) use pins::{margin_px, margin_px_in};
 mod zero;
 pub(crate) use zero::{ZeroPaths, zero_paths};
 
@@ -23,7 +23,7 @@ pub(crate) fn leading_chain(
     children: &[Node],
     eat: &mut ZeroPaths,
     cb: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     let mut cache = ThroughCache::default();
     let mut parent = 0;
@@ -154,7 +154,7 @@ pub(crate) fn leading_chain(
 pub(crate) fn trailing_chain(
     children: &[Node],
     eat: &mut ZeroPaths,
-    vcx: crate::document::state::ValueCx<'_>,
+    vcx: crate::layout::block::margins::MarginCx<'_>,
 ) -> Option<Strut> {
     let mut cache = ThroughCache::default();
     let mut parent = 0;

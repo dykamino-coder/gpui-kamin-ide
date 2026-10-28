@@ -124,11 +124,15 @@ pub(super) fn band_nest(
     crate::layout::box_tree::pseudo_line_layers::install(c, &mut merged, vcx);
     // The first formatted line may belong to a nested in-flow block;
     // floats and positioned children cannot consume its pseudo layer.
-    let children = opts
-        .cx
-        .contracts
-        .build
-        .first_line_route(collapse_margins(&c.children, false, cb, vcx), &merged);
+    let children = opts.cx.contracts.build.first_line_route(
+        collapse_margins(
+            &c.children,
+            false,
+            cb,
+            crate::layout::block::margins::MarginCx::new(vcx),
+        ),
+        &merged,
+    );
     let mut seq = band_seq(
         children,
         inner_em,

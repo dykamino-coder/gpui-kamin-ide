@@ -1,8 +1,8 @@
 //! Мемоизация сквозных струн в пределах неизменяемого обхода цепочки полей.
 
 use super::{Strut, adjoin, own_strut};
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::block::margins::MarginCx;
 use crate::layout::box_kind::{in_flow, inline_marked_block};
 use crate::style::computed::Display;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ type Key = (usize, bool, u32, Option<u32>, bool);
 #[derive(Default)]
 pub(crate) struct ThroughCache(HashMap<Key, Option<Strut>>);
 
-fn key(e: &Element, ignore: bool, vcx: ValueCx<'_>) -> Key {
+fn key(e: &Element, ignore: bool, vcx: MarginCx<'_>) -> Key {
     (
         std::ptr::from_ref(e) as usize,
         ignore,
@@ -26,7 +26,7 @@ enum Work<'a> {
     Leave(Key, Strut, Vec<Key>, bool),
 }
 impl ThroughCache {
-    pub(crate) fn get(&mut self, e: &Element, ignore: bool, vcx: ValueCx<'_>) -> Option<Strut> {
+    pub(crate) fn get(&mut self, e: &Element, ignore: bool, vcx: MarginCx<'_>) -> Option<Strut> {
         let root = key(e, ignore, vcx);
         let mut pending = vec![Work::Enter(e, ignore)];
         while let Some(work) = pending.pop() {
