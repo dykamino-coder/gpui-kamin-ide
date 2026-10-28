@@ -1,5 +1,9 @@
 # Claude Bridge runtime reliability backlog
 
+Текущий CLI pin и аудит перехода `2.1.296` → `2.1.312`:
+[CLI compatibility](server/CLAUDE_CODE_COMPATIBILITY.md). Старые versioned gates
+ниже сохраняют исходную версию и не заменяют приёмку нового binary.
+
 Остатки на 2026-10-12, доступный evidence и конкретные следующие gates собраны
 в [RUNTIME_BACKLOG.md](RUNTIME_BACKLOG.md). Технические описания ниже сохраняют
 свои исходные source baselines; слово `ready` в старой BR-карточке не отменяет

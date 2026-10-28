@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 # handshake → hook round-trip) before shipping a new pin.
 # + tsx (a devDependency, but the runtime CMD invokes it via npx; install it
 # globally so the container doesn't pull it from the network on first start).
-ARG CLAUDE_CODE_VERSION=2.1.296
+ARG CLAUDE_CODE_VERSION=2.1.312
 ARG CLAUDE_CODE_CACHE_BUST=1
 RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" tsx@4 \
     && npm cache clean --force \
