@@ -52,7 +52,11 @@ fn paragraph_routed(
         if !plain.trim().is_empty() {
             let size = own_size(&base, opts);
             let line = base.numeric_line_px(opts.base_size()).unwrap_or_else(|| {
-                crate::text::metrics::normal_px(normal_fraction(&base, opts), size, opts.cx.vcx())
+                crate::text::metrics::normal_px(
+                    normal_fraction(&base, opts),
+                    size,
+                    opts.cx.text_fonts(),
+                )
             });
             let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
             let base_lh = base.line_height;

@@ -93,22 +93,27 @@ pub(crate) fn line_run_shape(
     let lh = match inh.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        None => crate::text::metrics::normal_px(normal_fraction(&inh, &opts), size, opts.cx.vcx()),
+        None => crate::text::metrics::normal_px(
+            normal_fraction(&inh, &opts),
+            size,
+            opts.cx.text_fonts(),
+        ),
         _ => return None,
     };
     if lh <= 0.0 {
         return None;
     }
     let font = measure_font(&inh, &opts);
-    let lines = crate::text::metrics::line_count(&font, size, &text, w, opts.cx.vcx())?.max(1);
+    let lines =
+        crate::text::metrics::line_count(&font, size, &text, w, opts.cx.text_fonts())?.max(1);
     let orphans = inh.orphans.unwrap_or(2).max(1) as usize;
     let widows = inh.widows.unwrap_or(2).max(1) as usize;
     // Свой срез первой/последней строки (`blocks()` кладёт его отрицательным
     // полем у первого и последнего ребёнка — коробка ужимается) и срез у
     // разрыва: строка до разрыва кончается на своей метрике, строка после —
     // с неё начинается (`text-box-trim-multicol-001…012`).
-    let tt = trim_amount(&inh, size, lh, true, opts.cx.vcx());
-    let tb = trim_amount(&inh, size, lh, false, opts.cx.vcx());
+    let tt = trim_amount(&inh, size, lh, true, opts.cx.text_fonts(), opts.cx.vcx());
+    let tb = trim_amount(&inh, size, lh, false, opts.cx.text_fonts(), opts.cx.vcx());
     let shift = if c.style.used().text_box_trim_start || c.marks.host_trim_start {
         tt
     } else {

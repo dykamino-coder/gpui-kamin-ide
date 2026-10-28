@@ -12,6 +12,7 @@ fn document(log: Rc<RefCell<Vec<char>>>) -> Rc<DocState> {
             h.borrow_mut().push('h');
             (size * 0.3, size * 0.45, size * 1.23, size * 1.1)
         },
+        &doc.text,
         doc.values(),
     );
     metrics::install_vprobe(
@@ -19,6 +20,7 @@ fn document(log: Rc<RefCell<Vec<char>>>) -> Rc<DocState> {
             log.borrow_mut().push('v');
             (size * 0.81, size * 0.19, size * 0.68)
         },
+        &doc.text,
         doc.values(),
     );
     doc
@@ -47,13 +49,15 @@ fn scoped_queries_preserve_cold_warm_order_and_generation() {
     assert_eq!(*log.borrow(), vec!['v', 'h']);
     assert_eq!(
         horizontal.zero_advance.unwrap().px.to_bits(),
-        metrics::ch_ex_px("Ahem", 19.3, doc.values()).0.to_bits()
+        metrics::ch_ex_px("Ahem", 19.3, &doc.text, doc.values())
+            .0
+            .to_bits()
     );
     assert_eq!(
         ic.ideographic_advance.unwrap().px.to_bits(),
-        metrics::ic_px("Ahem", 19.3, doc.values()).to_bits()
+        metrics::ic_px("Ahem", 19.3, &doc.text, doc.values()).to_bits()
     );
-    metrics::install_probe(|_, size| (size, size, size, size), doc.values());
+    metrics::install_probe(|_, size| (size, size, size, size), &doc.text, doc.values());
     assert_eq!(
         provider.metrics(r, &snapshot),
         Err(FontFactsError::StaleSnapshot)
@@ -73,28 +77,28 @@ fn unit_and_normal_readers_remain_bit_exact_in_both_cache_states() {
             for _ in 0..2 {
                 let old = direct.values();
                 let new = adapted.values();
-                let (ch, ex) = metrics::ch_ex_px(family, size, old);
+                let (ch, ex) = metrics::ch_ex_px(family, size, &direct.text, old);
                 assert_eq!(
                     crate::style::font_metrics::horizontal(family, size, new),
                     (ch, ex)
                 );
-                let ic = metrics::ic_px(family, size, old);
+                let ic = metrics::ic_px(family, size, &direct.text, old);
                 assert_eq!(
                     crate::style::font_metrics::ideographic(family, size, new).to_bits(),
                     ic.to_bits()
                 );
-                let v = metrics::vmetrics_px(family, size, old);
+                let v = metrics::vmetrics_px(family, size, &direct.text, old);
                 assert_eq!(crate::style::font_metrics::vertical(family, size, new), v);
-                let fraction = metrics::normal_line(family, old);
+                let fraction = metrics::normal_line(family, &direct.text, old);
                 let facts = crate::style::font_metrics::normal(family, size, new);
                 assert_eq!(facts.fraction.unwrap().to_bits(), fraction.to_bits());
                 assert_eq!(
                     facts.height.unwrap().px.to_bits(),
-                    metrics::normal_px(fraction, size, old).to_bits()
+                    metrics::normal_px(fraction, size, &direct.text).to_bits()
                 );
                 assert_eq!(
                     facts.content_height.map(|m| m.px),
-                    metrics::content_px(fraction, size, old)
+                    metrics::content_px(fraction, size, &direct.text)
                 );
             }
         }

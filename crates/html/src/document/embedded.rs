@@ -107,13 +107,14 @@ pub(crate) fn parse_embedded_sized(
     state.admit_revision(revision, None);
     state.traversal.set_embedded();
     let vcx = state.values();
-    fonts.install(vcx);
+    fonts.install(&state.text, vcx);
     let sheets = crate::dom::style_sources::collect(&input, theme_css).map_err(|error| {
         let mut failure = super::DocumentFailure::from(error);
         failure.scope = super::FailureScope::EmbeddedDocument;
         failure
     })?;
-    crate::text::fonts::load_faces_sheets(&sheets, None, vcx).map_err(embedded_failure)?;
+    crate::text::fonts::load_faces_sheets(&sheets, None, &state.text, vcx)
+        .map_err(embedded_failure)?;
     crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx)
         .map_err(embedded_failure)?;
     let parsed = crate::dom::convert(&input, theme_css, media, &state).map_err(|mut failure| {

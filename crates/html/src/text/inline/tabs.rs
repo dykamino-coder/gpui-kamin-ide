@@ -14,6 +14,7 @@ pub fn tab_stops(
     pieces: &[Piece],
     block: &Computed,
     base: &gpui::TextStyle,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TabStops {
     let size = block
@@ -30,8 +31,8 @@ pub fn tab_stops(
         }
     });
     let font = super::strut_font(block, base, vcx);
-    let space = metrics::space_advance(&font, size, vcx)
-        .unwrap_or_else(|| metrics::ch_ex_px(family, size, vcx).0)
+    let space = metrics::space_advance(&font, size, fonts)
+        .unwrap_or_else(|| metrics::ch_ex_px(family, size, fonts, vcx).0)
         + metrics::spacing_px(block.letter_spacing, family, size, vcx)
         + metrics::spacing_px(block.word_spacing, family, size, vcx);
     let step = |style: &Computed| match style.tab_size_len {
@@ -40,7 +41,7 @@ pub fn tab_stops(
     };
     let mut stops = TabStops::uniform(step(block));
     // §4.2: позиция ближе `0.5ch` пропускается — следующая.
-    stops.min_gap = 0.5 * metrics::ch_ex_px(family, size, vcx).0;
+    stops.min_gap = 0.5 * metrics::ch_ex_px(family, size, fonts, vcx).0;
     let mut byte = 0;
     for piece in pieces {
         if let Piece::Text { text, style } = piece {
@@ -68,6 +69,7 @@ mod tests {
                 assert_eq!(font.weight, gpui::FontWeight(700.0));
                 size * 0.25
             },
+            &doc.text,
             vcx,
         );
         let block = {
@@ -92,7 +94,7 @@ mod tests {
                 BoxStyle::from(with_inherited)
             },
         }];
-        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);
+        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), &doc.text, vcx);
         assert_eq!(stops.default, 40.0);
         assert_eq!(stops.next(0, 0.0), 40.0);
     }
@@ -107,6 +109,7 @@ mod tests {
                 let ch = if family == expected { 0.75 } else { 0.25 };
                 (size * ch, size * 0.5, size, size)
             },
+            &doc.text,
             vcx,
         );
         let block = {
@@ -123,7 +126,7 @@ mod tests {
             style: BoxStyle::from(block.clone()),
         }];
         assert_eq!(
-            tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx).next(0, 0.0),
+            tab_stops(&pieces, &block, &gpui::TextStyle::default(), &doc.text, vcx).next(0, 0.0),
             30.0
         );
     }
@@ -176,7 +179,7 @@ mod tests {
                 BoxStyle::from(with_inherited)
             },
         }];
-        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);
+        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), &doc.text, vcx);
         assert_eq!(stops.default, 30.0);
         assert_eq!(stops.next(3, 0.0), 75.0);
     }

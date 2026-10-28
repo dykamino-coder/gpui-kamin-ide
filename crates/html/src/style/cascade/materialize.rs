@@ -39,7 +39,7 @@ type Inputs = (u64, [u32; 2]);
 
 fn inputs(vcx: ValueCx<'_>) -> Inputs {
     (
-        vcx.doc.metrics.generation(),
+        vcx.doc.font_generation(),
         [vcx.viewport.0.to_bits(), vcx.viewport.1.to_bits()],
     )
 }

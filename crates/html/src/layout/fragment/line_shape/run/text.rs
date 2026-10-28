@@ -120,10 +120,11 @@ pub(crate) fn trim_amount(
     size: f32,
     lh: f32,
     start: bool,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> f32 {
     let family = s.font_family.clone().unwrap_or_default();
-    let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size, vcx);
+    let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size, fonts, vcx);
     let half = (lh - (ascent + descent)) / 2.0;
     let edge =
         crate::text::text_box::edge_inset(s, &family, size, (ascent, descent, cap), start, vcx);

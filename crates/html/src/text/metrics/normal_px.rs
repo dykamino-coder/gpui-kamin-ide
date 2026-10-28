@@ -4,24 +4,23 @@
 //! интерлиньяж. Доли регистрирует замер семейства; без них — доля × кегль. Здесь же высота
 //! области содержимого полосы фона строчной коробки.
 
-use crate::document::state::ValueCx;
+use crate::text::text_fonts::TextFonts;
 use crate::tolerance::COORD_EPS;
 
-pub(super) fn register(line: f32, ascent: f32, descent: f32, vcx: ValueCx<'_>) {
+pub(super) fn register(line: f32, ascent: f32, descent: f32, fonts: &TextFonts) {
     if ascent <= 0.0 || descent < 0.0 {
         return;
     }
     let gap = (line - ascent - descent).max(0.0);
-    vcx.doc
+    fonts
         .metrics
         .parts
         .borrow_mut()
         .insert(line.to_bits(), (ascent, descent, gap));
 }
 
-pub fn normal_px(fraction: f32, size: f32, vcx: ValueCx<'_>) -> f32 {
-    let parts = vcx
-        .doc
+pub(crate) fn normal_px(fraction: f32, size: f32, fonts: &TextFonts) -> f32 {
+    let parts = fonts
         .metrics
         .parts
         .borrow()
@@ -39,8 +38,8 @@ pub fn normal_px(fraction: f32, size: f32, vcx: ValueCx<'_>) -> f32 {
 /// normal line fraction is `fraction`, at `size`: ascent + descent as the
 /// glyphs are laid out, or, for a font with a line gap metric, the whole-pixel
 /// normal line (the band GPUI paints, `paint_line_background`).
-pub fn content_px(fraction: f32, size: f32, vcx: ValueCx<'_>) -> Option<f32> {
-    vcx.doc
+pub(crate) fn content_px(fraction: f32, size: f32, fonts: &TextFonts) -> Option<f32> {
+    fonts
         .metrics
         .parts
         .borrow()
@@ -48,7 +47,7 @@ pub fn content_px(fraction: f32, size: f32, vcx: ValueCx<'_>) -> Option<f32> {
         .copied()
         .map(|(a, d, g)| {
             if g * size > COORD_EPS {
-                normal_px(fraction, size, vcx)
+                normal_px(fraction, size, fonts)
             } else {
                 (a + d) * size
             }
@@ -62,13 +61,13 @@ mod tests {
     #[test]
     fn rounds_each_metric_separately() {
         let doc = crate::document::state::DocState::new(Default::default());
-        let vcx = doc.values();
+        let fonts = &*doc.text;
         // Times New Roman: 1825 + 443 + 87 units of 2048.
         let (a, d, g) = (1825.0 / 2048.0, 443.0 / 2048.0, 87.0 / 2048.0);
         let line = a + d + g;
-        register(line, a, d, vcx);
-        assert_eq!(normal_px(line, 40.0, vcx), 47.0);
-        assert_eq!(normal_px(line, 16.0, vcx), 18.0);
-        assert_eq!(normal_px(1.5, 10.0, vcx), 15.0);
+        register(line, a, d, fonts);
+        assert_eq!(normal_px(line, 40.0, fonts), 47.0);
+        assert_eq!(normal_px(line, 16.0, fonts), 18.0);
+        assert_eq!(normal_px(1.5, 10.0, fonts), 15.0);
     }
 }

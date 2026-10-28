@@ -1,17 +1,18 @@
-//! CSS-имена font-face, дескрипторы и загруженные источники, принадлежащие одному документу.
+//! Реестр `@font-face` одного документа: CSS-имена, дескрипторы и загруженные источники.
+//! Читают его загрузчик и подбор лиц text; неизменяемый снимок — `font_facts::Registry`.
 
 use std::{cell::RefCell, collections::HashMap};
 
 #[derive(Default)]
 pub(crate) struct FontFaces {
-    pub(super) aliases: RefCell<HashMap<String, String>>,
-    pub(super) features: RefCell<HashMap<String, Vec<(String, u32)>>>,
-    pub(super) faces: RefCell<HashMap<String, Vec<super::matching::Face>>>,
-    pub(super) has_space: RefCell<HashMap<String, bool>>,
-    pub(super) size_adjust: RefCell<HashMap<String, Vec<(u8, f32)>>>,
-    pub(super) loaded: RefCell<HashMap<String, Option<String>>>,
-    pub(super) romn_by_src: RefCell<HashMap<String, Option<f32>>>,
-    pub(super) romn: RefCell<HashMap<String, f32>>,
+    pub(crate) aliases: RefCell<HashMap<String, String>>,
+    pub(crate) features: RefCell<HashMap<String, Vec<(String, u32)>>>,
+    pub(crate) faces: RefCell<HashMap<String, Vec<crate::font_facts::matching::Face>>>,
+    pub(crate) has_space: RefCell<HashMap<String, bool>>,
+    pub(crate) size_adjust: RefCell<HashMap<String, Vec<(u8, f32)>>>,
+    pub(crate) loaded: RefCell<HashMap<String, Option<String>>>,
+    pub(crate) romn_by_src: RefCell<HashMap<String, Option<f32>>>,
+    pub(crate) romn: RefCell<HashMap<String, f32>>,
 }
 
 impl FontFaces {

@@ -89,26 +89,32 @@ pub(crate) fn initial_letter_float(
         _ => opts.base_size(),
     };
     let family = inherited.font_family.clone().unwrap_or_default();
-    let (asc, desc, cap) = crate::text::metrics::vmetrics_px(&family, font_px, opts.cx.vcx());
+    let (asc, desc, cap) =
+        crate::text::metrics::vmetrics_px(&family, font_px, opts.cx.text_fonts(), opts.cx.vcx());
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font_px,
         _ => crate::text::metrics::normal_px(
             normal_fraction(inherited, opts),
             font_px,
-            opts.cx.vcx(),
+            opts.cx.text_fonts(),
         ),
     };
     // Доля прописной — у шрифта БУКВИЦЫ: слой может сменить семейство.
     let letter_family = first.font_family.clone().unwrap_or_else(|| family.clone());
-    let (_, _, cap_frac) = crate::text::metrics::vmetrics_px(&letter_family, 1.0, opts.cx.vcx());
+    let (_, _, cap_frac) =
+        crate::text::metrics::vmetrics_px(&letter_family, 1.0, opts.cx.text_fonts(), opts.cx.vcx());
     if cap_frac <= 0.0 || line <= 0.0 {
         return nodes;
     }
     let want_cap = (size_lines - 1.0) * line + cap;
     let letter_px = want_cap / cap_frac;
-    let (l_asc, l_desc, _) =
-        crate::text::metrics::vmetrics_px(&letter_family, letter_px, opts.cx.vcx());
+    let (l_asc, l_desc, _) = crate::text::metrics::vmetrics_px(
+        &letter_family,
+        letter_px,
+        opts.cx.text_fonts(),
+        opts.cx.vcx(),
+    );
     let box_h = l_asc + l_desc;
     let half_leading = (line - (asc + desc)) / 2.0;
     // Размер меньше осадки (`3 5`) — выравнивание по верху
@@ -197,6 +203,7 @@ pub(crate) fn initial_letter_float(
         para_indent,
         indent,
         lead,
+        opts.cx.text_fonts(),
         opts.cx.vcx(),
     );
     let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
