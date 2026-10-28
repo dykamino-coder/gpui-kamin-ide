@@ -23,7 +23,7 @@ fn dissolved_contents_hand_down_their_computed_font_size() {
         })
     }
     let table = table(&parsed.nodes).expect("table");
-    let flat = flatten_contents(&table.children, vcx);
+    let flat = flatten_contents(&table.children);
     let row = flat
         .iter()
         .find_map(|n| match n {

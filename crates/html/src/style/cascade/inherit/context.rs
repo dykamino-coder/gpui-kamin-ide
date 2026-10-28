@@ -6,7 +6,13 @@ use super::*;
 use crate::style::computed::BoxStyle;
 
 /// TRANSITIONAL(cascade-7b-R10): Запись box context ребёнка копирует общий Computed через BoxStyle::DerefMut; удалить после переноса этих полей в BoxStyle и перевода paint/layout-made readers.
-pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyle) {
+pub(super) fn inherit_context(parents: super::BoxParents<'_>, own: &Computed, c: &mut BoxStyle) {
+    // Распространяемое по дереву элементов — от его родителя, ограничения
+    // ортогонального потока и `line-clamp` — от коробки-родителя (`BoxParents`).
+    let super::BoxParents {
+        layout,
+        tree: parent,
+    } = parents;
     c.inline_contents(parent, own.ruby_unit);
     set!(
         c.text_shadow_ink,
@@ -18,8 +24,8 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
         own.ruby_suppress_breaks || parent.ruby_suppress_breaks
     );
     set!(c.turned_line, own.turned_line || parent.turned_line);
-    set!(c.ortho_limit, own.ortho_limit.or(parent.ortho_limit));
-    set!(c.orthogonal_scrollport, parent.orthogonal_scrollport);
+    set!(c.ortho_limit, own.ortho_limit.or(layout.ortho_limit));
+    set!(c.orthogonal_scrollport, layout.orthogonal_scrollport);
     // An absolutely positioned box sizes its inline axis against its own
     // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
     // the in-flow inline measure of the paragraph it was written in.
@@ -32,7 +38,7 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
         ) {
             None
         } else {
-            parent.orthogonal_inline
+            layout.orthogonal_inline
         }
     );
     // A `-webkit-box` that is not a block container (no vertical orient)
@@ -41,7 +47,7 @@ pub(super) fn inherit_context(parent: &BoxStyle, own: &Computed, c: &mut BoxStyl
     set!(
         c.line_clamp,
         c.line_clamp
-            .or(parent.line_clamp.filter(|_| parent.clamp_block_container()))
+            .or(layout.line_clamp.filter(|_| layout.clamp_block_container()))
     );
     c.inline_decoration = c.inline_decoration.under(parent.inline_decoration);
     // css-ui-4 §6.1: `user-select` не наследуется; используемое значение

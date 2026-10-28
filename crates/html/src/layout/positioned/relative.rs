@@ -7,7 +7,6 @@ use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::real_inline;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::style::box_input::{BoxOrigin, LayoutBoxInput};
 use crate::style::cascade::materialize::box_style_unpainted;
 use crate::style::values::value::{Len, px_strict};
 
@@ -50,18 +49,15 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &BoxStyle, vcx: ValueCx
             && !crate::text::inline::establishes_cb(&e.style.used())
     }
     fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &BoxStyle, vcx: ValueCx<'_>) {
-        let parent = box_style_unpainted(inherited, &e.style, vcx);
+        let parent = std::rc::Rc::new(box_style_unpainted(inherited, &e.style, vcx));
         let kids = std::mem::take(&mut e.children);
         for n in kids {
             match n {
                 Node::Element(mut k) if movable(&k) => {
                     // Hoisting changes the layout parent, never the CSS
-                    // inheritance parent (CSS Cascade 4 §7). Resolve inherited
-                    // values before passing through the inline ancestor.
-                    k.set_layout_box(LayoutBoxInput::new(
-                        BoxOrigin::Moved,
-                        box_style_unpainted(&parent, &k.style, vcx),
-                    ));
+                    // inheritance parent (CSS Cascade 5 §7.2): the element
+                    // keeps its style, the inline's box stays its tree parent.
+                    k.set_moved_box(parent.clone());
                     out.push(Node::Element(k));
                 }
                 Node::Element(mut k) if passable(&k) => {

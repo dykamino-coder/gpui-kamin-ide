@@ -1,7 +1,5 @@
 //! Охватчики колонок `column-span` и контейнер колонок.
 
-use crate::document::state::ValueCx;
-
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow, real_inline};
 use crate::layout::fragment::grid_bands::grid_stack;
@@ -28,13 +26,12 @@ pub(crate) use hoist::multicol_container;
 /// в переполнение и соседей по ряду, поэтому `Kid::overflow_top` им не дают.
 /// Атомарные строчные (`inline-flex`/`inline-grid`) — монолиты, но внутрь них
 /// спуск всё равно идёт: гейт осторожный.
-pub(crate) fn parallel_items_inside(c: &Element, depth: u8, vcx: ValueCx<'_>) -> bool {
-    if let Some(parallel) = crate::layout::fragment::table_bands::serial_table_parallel(
-        c,
-        depth,
-        |c, d| parallel_items_inside(c, d, vcx),
-        vcx,
-    ) {
+pub(crate) fn parallel_items_inside(c: &Element, depth: u8) -> bool {
+    if let Some(parallel) =
+        crate::layout::fragment::table_bands::serial_table_parallel(c, depth, |c, d| {
+            parallel_items_inside(c, d)
+        })
+    {
         return parallel;
     }
     // Элементы, идущие СТОПКОЙ по блочной оси, рядом не стоят: колонка flex
@@ -81,7 +78,7 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8, vcx: ValueCx<'_>) ->
     own || (depth > 0
         && c.children
             .iter()
-            .any(|n| matches!(n, Node::Element(k) if parallel_items_inside(k, depth - 1, vcx))))
+            .any(|n| matches!(n, Node::Element(k) if parallel_items_inside(k, depth - 1))))
 }
 
 /// Есть ли в поддереве (вместе с самой коробкой) многоколоночник. Свою
