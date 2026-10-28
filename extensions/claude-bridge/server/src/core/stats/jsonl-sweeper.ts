@@ -121,18 +121,20 @@ const SQL_LOOKUP_TOKEN = `
 // bloating to 1.7 GB. The extra predicate makes the UPDATE a true no-op (0 rows
 // matched) once a session is fully attributed, so steady-state sweeps stop
 // churning. Bind order: SET(?,?,?,?) then WHERE(session_id, is_subagent, parent).
-const SQL_APPLY_TOKEN_AND_SUBAGENT = `
+export const SQL_APPLY_TOKEN_AND_SUBAGENT = `
   UPDATE jsonl_events
-  SET token_id = CASE WHEN token_id IS NULL OR token_id = '' THEN ? ELSE token_id END,
-      user_name = CASE WHEN user_name IS NULL OR user_name = '' THEN ? ELSE user_name END,
-      is_subagent = ?,
-      parent_session_id = COALESCE(parent_session_id, ?)
-  WHERE session_id = ?
+  SET token_id = CASE WHEN token_id IS NULL OR token_id = '' THEN COALESCE(NULLIF($1, ''), token_id) ELSE token_id END,
+      user_name = CASE WHEN user_name IS NULL OR user_name = '' THEN COALESCE(NULLIF($2, ''), user_name) ELSE user_name END,
+      is_subagent = $3,
+      parent_session_id = COALESCE(parent_session_id, $4)
+  WHERE session_id = $5
     AND (
-      token_id IS NULL OR token_id = ''
-      OR user_name IS NULL OR user_name = ''
-      OR is_subagent IS DISTINCT FROM ?
-      OR (parent_session_id IS NULL AND ? IS NOT NULL)
+      -- Only rows this statement actually changes: an unknown (NULL/empty)
+      -- attribution must not re-select the same rows on every sweep.
+      ((token_id IS NULL OR token_id = '') AND NULLIF($1, '') IS NOT NULL)
+      OR ((user_name IS NULL OR user_name = '') AND NULLIF($2, '') IS NOT NULL)
+      OR is_subagent IS DISTINCT FROM $3
+      OR (parent_session_id IS NULL AND $4 IS NOT NULL)
     )
 `
 
@@ -338,15 +340,7 @@ async function processOneFileUnguarded(
   }
 
   const subFlag = info.isSubagent ? 1 : 0
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [
-    tokenId,
-    userName,
-    subFlag,
-    info.parentSessionId,
-    sessionId,
-    subFlag,
-    info.parentSessionId,
-  ])
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenId, userName, subFlag, info.parentSessionId, sessionId])
 
   if (startByte >= size) {
     // Only touch jsonl_offsets when the position actually moved — an
@@ -604,15 +598,7 @@ async function processOneFileUnguarded(
       : (slugInfo?.userName ?? null)
   const tokenIdAfter =
     slugInfo?.tokenId ?? (tokenRowAfter?.token_id && tokenRowAfter.token_id.length > 0 ? tokenRowAfter.token_id : null)
-  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [
-    tokenIdAfter,
-    userNameAfter,
-    subFlag,
-    info.parentSessionId,
-    sessionId,
-    subFlag,
-    info.parentSessionId,
-  ])
+  await write(SQL_APPLY_TOKEN_AND_SUBAGENT, [tokenIdAfter, userNameAfter, subFlag, info.parentSessionId, sessionId])
 
   // Persist accumulated session metadata (only for non-subagent files —
   // subagents share parent's title etc).
