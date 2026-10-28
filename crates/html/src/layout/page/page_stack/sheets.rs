@@ -2,6 +2,7 @@
 
 use super::PageStack;
 use crate::layout::fragment::types::Frag;
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl PageStack {
@@ -127,11 +128,19 @@ impl PageStack {
             // overflow up to the page area's end (overflow is visible,
             // css-overflow-3 §2; `block-001-wm-vrl`: a negative block-end
             // margin shrinks the margin box under the border box).
+            // The fragment that starts its box likewise shows the box's
+            // block-start ink overflow up to the page area's start (a glyph
+            // rising above its line box; `page-size-012-print`).
             let ext = self.mask_extent(&g, &f);
-            let (x, y, w, h) = if self.axis.is_vertical() {
-                self.area_slice(&g, f.y, ext)
+            let (top, ext) = if f.from <= COORD_EPS {
+                (0.0, ext + f.y.max(0.0))
             } else {
-                (ax, ay + f.y, g.area.0, ext)
+                (f.y, ext)
+            };
+            let (x, y, w, h) = if self.axis.is_vertical() {
+                self.area_slice(&g, top, ext)
+            } else {
+                (ax, ay + top, g.area.0, ext)
             };
             let mask = gpui::ContentMask {
                 bounds: Bounds {
