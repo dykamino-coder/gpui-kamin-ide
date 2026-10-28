@@ -8,20 +8,23 @@ use super::space;
 
 use crate::document::state::ValueCx;
 
-pub(crate) fn install_font_loader(loader: crate::text::fonts::Loader, vcx: ValueCx<'_>) {
-    vcx.doc.metrics.platform.borrow_mut().loader =
-        Some(std::rc::Rc::from(super::font_loader::deduplicated(loader)));
-}
-
-pub(crate) fn load_font(bytes: Vec<u8>, vcx: ValueCx<'_>) -> Option<String> {
-    let loader = vcx.doc.metrics.platform.borrow().loader.clone();
+pub(crate) fn load_font(
+    bytes: Vec<u8>,
+    fonts: &crate::text::text_fonts::TextFonts,
+) -> Option<String> {
+    let loader = fonts.metrics.platform.borrow().loader.clone();
     loader.as_ref().and_then(|load| load(bytes))
 }
 
 /// Ruby's content edge uses the selected face, including generic family,
 /// weight and style (CSS Ruby 1 §3.4; Blink ruby_utils.cc ComputeEmHeight).
-pub(crate) fn font_extents(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f32, f32) {
-    let system = vcx.doc.metrics.platform.borrow();
+pub(crate) fn font_extents(
+    font: &gpui::Font,
+    size: f32,
+    fonts: &crate::text::text_fonts::TextFonts,
+    vcx: ValueCx<'_>,
+) -> (f32, f32) {
+    let system = fonts.metrics.platform.borrow();
     if let Some(system) = system.system.as_ref() {
         let id = system.resolve_font(font);
         crate::text::fonts::metric_overrides::extents(
@@ -33,14 +36,18 @@ pub(crate) fn font_extents(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f
             ),
         )
     } else {
-        let (ascent, descent, _) = super::vmetrics_px(&font.family, size, vcx);
+        let (ascent, descent, _) = super::vmetrics_px(&font.family, size, fonts, vcx);
         (ascent, descent)
     }
 }
 
 /// MathML fallback constants use the math face's x-height and rule thickness.
-pub(crate) fn math_metrics(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f32, f32) {
-    if let Some(system) = vcx.doc.metrics.platform.borrow().system.as_ref() {
+pub(crate) fn math_metrics(
+    font: &gpui::Font,
+    size: f32,
+    fonts: &crate::text::text_fonts::TextFonts,
+) -> (f32, f32) {
+    if let Some(system) = fonts.metrics.platform.borrow().system.as_ref() {
         let id = system.resolve_font(font);
         (
             f32::from(system.x_height(id, gpui::px(size))),
@@ -51,22 +58,14 @@ pub(crate) fn math_metrics(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f
     }
 }
 
-/// Поставить щуп поверх системы шрифтов GPUI.
-///
-/// Вызывается для документа после регистрации шрифтов приложения:
-/// до неё `Ahem` ещё не найден и замер вернул бы метрики подмены.
-pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>, vcx: ValueCx<'_>) {
-    let previous = vcx.doc.metrics.platform.borrow().clone();
-    let mut platform = super::FontContext::new(text_system);
-    platform.loader = previous.loader;
-    platform.facts_factory = previous.facts_factory;
-    platform.install(vcx);
-}
-
-pub(super) fn bind_measurements(text_system: std::sync::Arc<gpui::TextSystem>, vcx: ValueCx<'_>) {
-    space::use_text_system(text_system.clone(), vcx);
+pub(super) fn bind_measurements(
+    text_system: std::sync::Arc<gpui::TextSystem>,
+    fonts: &crate::text::text_fonts::TextFonts,
+    vcx: ValueCx<'_>,
+) {
+    space::use_text_system(text_system.clone(), fonts, vcx);
     let text_system3 = text_system;
-    *vcx.doc.metrics.wrap.borrow_mut() = Some(Box::new(
+    *fonts.metrics.wrap.borrow_mut() = Some(Box::new(
         move |font: &gpui::Font, size: f32, text: &str, width: f32| {
             let mut wrapper = text_system3.line_wrapper(font.clone(), gpui::px(size));
             let mut lines = 0usize;
@@ -85,9 +84,9 @@ pub(super) fn bind_measurements(text_system: std::sync::Arc<gpui::TextSystem>, v
 pub(super) fn horizontal(
     family: &str,
     size: f32,
-    vcx: ValueCx<'_>,
+    fonts: &crate::text::text_fonts::TextFonts,
 ) -> Option<(f32, f32, f32, f32)> {
-    let system = vcx.doc.metrics.platform.borrow();
+    let system = fonts.metrics.platform.borrow();
     let text_system = system.system.as_ref()?;
 
     // Родовое имя системе шрифтов отдавать нельзя: `sans-serif` — это не
@@ -128,8 +127,12 @@ pub(super) fn horizontal(
     Some((ch, f32::from(text_system.x_height(id, size)), line, ic))
 }
 
-pub(super) fn vertical(family: &str, size: f32, vcx: ValueCx<'_>) -> Option<(f32, f32, f32)> {
-    let system = vcx.doc.metrics.platform.borrow();
+pub(super) fn vertical(
+    family: &str,
+    size: f32,
+    fonts: &crate::text::text_fonts::TextFonts,
+) -> Option<(f32, f32, f32)> {
+    let system = fonts.metrics.platform.borrow();
     let text_system = system.system.as_ref()?;
 
     let name: gpui::SharedString = if family.is_empty() {

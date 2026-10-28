@@ -17,7 +17,7 @@ pub(crate) fn clamp_probe(
     clamped: Option<usize>,
     span: Option<super::ClampSpan>,
     bt_before: f32,
-    positioned: bool,
+    (positioned, float): (bool, bool),
 ) -> AnyElement {
     let entry = move |bounds| ClampEntry {
         bounds,
@@ -35,6 +35,7 @@ pub(crate) fn clamp_probe(
         span: span.as_ref().map(|s| s.get()),
         bt_before,
         positioned,
+        float,
     };
     measure.record(entry)
 }
@@ -60,6 +61,7 @@ pub(crate) fn clamp_empty_probe(measure: super::ClampMeasure) -> AnyElement {
         span: None,
         bt_before: 0.0,
         positioned: false,
+        float: false,
     };
     measure.record(entry)
 }

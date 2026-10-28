@@ -24,24 +24,30 @@ fn original_indices_survive_missing_rules_and_remember_only_selected_properties(
         .borrow_mut()
         .insert("--fit".into(), parse_decls("height: 71px; width: 29px"));
     let c = base();
-    let opts = Options::new(&c, &BoxStyle::default(), doc.values());
+    let opts = Options::new(&c, &BoxStyle::default(), doc.values(), &doc.layout);
     assert_eq!(
         opts.styles.iter().map(|s| s.0).collect::<Vec<_>>(),
         [0, 2, 3]
     );
     opts.record(1, doc.values());
-    let next = Options::new(&c, &BoxStyle::default(), doc.values());
+    let next = Options::new(&c, &BoxStyle::default(), doc.values(), &doc.layout);
     assert_eq!(next.styles[0].0, 2);
     assert_eq!(next.styles[0].1.height, Some(Len::Px(71.)));
     assert_eq!(next.styles.iter().filter(|s| s.0 == 2).count(), 1);
     assert!(next.styles.iter().any(|s| s.0 == 0));
     let mut changed = c.clone();
     changed.width = Some(Len::Px(101.));
-    assert_eq!(Options::new(&changed, &c, doc.values()).styles[0].0, 0);
+    assert_eq!(
+        Options::new(&changed, &c, doc.values(), &doc.layout).styles[0].0,
+        0
+    );
     doc.try_rules
         .borrow_mut()
         .insert("--fit".into(), parse_decls("height: 72px"));
-    assert_eq!(Options::new(&c, &c, doc.values()).styles[0].0, 0);
+    assert_eq!(
+        Options::new(&c, &c, doc.values(), &doc.layout).styles[0].0,
+        0
+    );
 }
 
 #[test]
@@ -49,7 +55,7 @@ fn all_overflow_keeps_current_and_sorting_keeps_source_order_on_ties() {
     let doc = DocState::new(Default::default());
     let mut c = base();
     c.position_try_order = 2;
-    let opts = Options::new(&c, &c, doc.values());
+    let opts = Options::new(&c, &c, doc.values(), &doc.layout);
     let p = |overflow, height| {
         Some(Placement {
             dx: 0.,
@@ -73,7 +79,7 @@ fn all_overflow_keeps_current_and_sorting_keeps_source_order_on_ties() {
     );
     assert_eq!(opts.choose_placements(&[p(false, 5.), p(false, 9.)]), 1);
     opts.record(1, doc.values());
-    let remembered = Options::new(&c, &c, doc.values());
+    let remembered = Options::new(&c, &c, doc.values(), &doc.layout);
     assert_eq!(
         remembered.choose_placements(&[p(false, 5.), p(false, 9.)]),
         0
@@ -146,7 +152,7 @@ fn transposed_inherit_keeps_the_value_of_the_original_axis() {
         height: Some(Len::Px(19.)),
         ..Default::default()
     });
-    let opts = Options::new(&c, &parent, doc.values());
+    let opts = Options::new(&c, &parent, doc.values(), &doc.layout);
     let mut raw = Computed::default();
     apply_style(&mut raw, &opts.styles[1].1);
     let own = crate::style::cascade::inherit::inherit(&parent, &raw, doc.values());

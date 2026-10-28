@@ -18,9 +18,9 @@ impl Plan {
         target: f32,
         vertical: bool,
         window: &Window,
-        vcx: crate::document::state::ValueCx<'_>,
+        fonts: &crate::text::text_fonts::TextFonts,
     ) -> Option<Self> {
-        let Some(bytes) = math::font_bytes(&font.family, vcx) else {
+        let Some(bytes) = math::font_bytes(&font.family, fonts) else {
             return Self::fallback(font, size, ch, window);
         };
         let face = Face::parse(&bytes, 0).ok()?;

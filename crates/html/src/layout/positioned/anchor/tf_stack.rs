@@ -1,23 +1,25 @@
 //! Стек трансформаций якорей: границы содержащего блока и отображение точек.
 
-use crate::document::state::ValueCx;
+use super::AnchorState;
+use crate::layout::layout_state::LayoutState;
 use gpui::{Bounds, Pixels, px};
+use std::rc::Rc;
 
 /// Окружение исходного слоя для работы, завершённой у ICB в том же кадре.
 #[derive(Clone)]
 pub(crate) struct TransformContext {
-    values: crate::document::state::ValueDoc,
+    layout: Rc<LayoutState>,
     stack: Vec<(u32, [[f32; 3]; 2])>,
 }
 
 impl TransformContext {
-    pub(crate) fn capture(values: crate::document::state::ValueDoc) -> Self {
-        let stack = values.vcx().doc.anchor_frame.tf.borrow().clone();
-        Self { values, stack }
+    pub(crate) fn capture(layout: Rc<LayoutState>) -> Self {
+        let stack = layout.anchors.tf.borrow().clone();
+        Self { layout, stack }
     }
 
     pub(crate) fn enter<R>(&self, f: impl FnOnce() -> R) -> R {
-        let tf = &self.values.vcx().doc.anchor_frame.tf;
+        let tf = &self.layout.anchors.tf;
         let previous = tf.replace(self.stack.clone());
         let result = f();
         tf.replace(previous);
@@ -26,25 +28,25 @@ impl TransformContext {
 }
 
 /// Read the actual padding box of an absolute containing block in this frame.
-pub(crate) fn containing_bounds(node: u64, vcx: ValueCx<'_>) -> Option<Bounds<Pixels>> {
-    vcx.doc.anchor_frame.cb.borrow().get(&node).copied()
+pub(crate) fn containing_bounds(node: u64, anchors: &AnchorState) -> Option<Bounds<Pixels>> {
+    anchors.cb.borrow().get(&node).copied()
 }
 
 /// Положить плоский трансформ на стек подготовки (`Transformed::prepaint`).
-pub fn tf_push(m: [[f32; 3]; 2], vcx: ValueCx<'_>) {
+pub(crate) fn tf_push(m: [[f32; 3]; 2], anchors: &AnchorState) {
     let id = {
-        let n = &vcx.doc.anchor_frame.tf_next;
+        let n = &anchors.tf_next;
         let v = n.get() + 1;
         n.set(v);
         v
     };
-    vcx.doc.anchor_frame.tf.borrow_mut().push((id, m));
+    anchors.tf.borrow_mut().push((id, m));
 }
 
 /// Снять трансформ со стека подготовки.
-pub fn tf_pop(vcx: ValueCx<'_>) {
+pub(crate) fn tf_pop(anchors: &AnchorState) {
     {
-        let s = &vcx.doc.anchor_frame.tf;
+        let s = &anchors.tf;
         s.borrow_mut().pop();
     };
 }
@@ -53,9 +55,9 @@ pub fn tf_pop(vcx: ValueCx<'_>) {
 /// (экран = внешний(…внутренний(p))), результат — объемлющий прямоугольник
 /// (§2: «axis-aligned bounding rectangle»). Второе — номер внутреннего
 /// трансформа (0 — стек пуст).
-pub(super) fn tf_map(r: Bounds<Pixels>, vcx: ValueCx<'_>) -> (Bounds<Pixels>, u32) {
+pub(super) fn tf_map(r: Bounds<Pixels>, anchors: &AnchorState) -> (Bounds<Pixels>, u32) {
     {
-        let s = &vcx.doc.anchor_frame.tf;
+        let s = &anchors.tf;
         let s = s.borrow();
         let Some(&(top, _)) = s.last() else {
             return (r, 0);
@@ -87,11 +89,6 @@ pub(super) fn tf_map(r: Bounds<Pixels>, vcx: ValueCx<'_>) -> (Bounds<Pixels>, u3
 
 /// Лежит ли трансформ `id` на текущем стеке — то есть предок ли он коробки,
 /// которая сейчас готовится.
-pub(super) fn tf_under(id: u32, vcx: ValueCx<'_>) -> bool {
-    vcx.doc
-        .anchor_frame
-        .tf
-        .borrow()
-        .iter()
-        .any(|(i, _)| *i == id)
+pub(super) fn tf_under(id: u32, anchors: &AnchorState) -> bool {
+    anchors.tf.borrow().iter().any(|(i, _)| *i == id)
 }

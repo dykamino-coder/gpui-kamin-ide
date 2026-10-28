@@ -11,7 +11,7 @@ mod flex;
 pub(crate) use flex::{flex_row, flex_row_nowrap};
 
 mod contexts;
-pub(crate) use contexts::{bfc_root, own_context};
+pub(crate) use contexts::{bfc_root, clamp_host, own_context};
 
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Display};

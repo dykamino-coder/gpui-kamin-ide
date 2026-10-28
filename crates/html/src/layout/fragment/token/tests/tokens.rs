@@ -1,10 +1,10 @@
-//! Токены: продолжение по контекстам форматирования, бюджет строк, хранилище вложенных токенов.
+//! Токены: продолжение по контекстам форматирования, хранилище вложенных токенов.
 
 use crate::layout::fragment::token::fc::{
     BlockState, ChildToken, FcState, FlexState, FloatExclusion, FloatSide, GridState, InlineState,
     MulticolState, TablePhase, TableState,
 };
-use crate::layout::fragment::token::resume::{ClampBudget, OofResume};
+use crate::layout::fragment::token::resume::OofResume;
 use crate::layout::fragment::token::{Token, TokenFlags, TokenId, TokenStore};
 
 #[test]
@@ -16,10 +16,6 @@ fn advance_accumulates_consumed_size_and_keeps_shared_state() {
         })
     };
     let mut first = Token::new(block(1));
-    first.clamp = Some(ClampBudget {
-        lines_left: 2,
-        discard: true,
-    });
     first.at_block_end = true;
     first.monolithic_overflow = 12.0;
     first.flags = TokenFlags {
@@ -35,21 +31,9 @@ fn advance_accumulates_consumed_size_and_keeps_shared_state() {
         .advance(0.0, block(4))
         .unwrap();
     assert_eq!((next.consumed, next.seq), (80.0, 3));
-    assert_eq!(next.clamp, first.clamp);
     assert!(!next.at_block_end && next.monolithic_overflow == 0.0);
     assert_eq!(next.flags, TokenFlags::default());
     assert!(matches!(next.fc, FcState::Block(ref b) if b.child_idx == 4));
-}
-
-#[test]
-fn clamp_budget_runs_across_fragmentainers() {
-    let mut budget = ClampBudget {
-        lines_left: 3,
-        discard: false,
-    };
-    assert_eq!(budget.take(2), (2, false));
-    assert_eq!(budget.take(5), (1, true));
-    assert_eq!((budget.take(1), budget.discard), ((0, true), false));
 }
 
 #[test]

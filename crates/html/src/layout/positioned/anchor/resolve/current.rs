@@ -52,8 +52,9 @@ pub(crate) fn current_inputs(
     bounds: Bounds<Pixels>,
     window: &Window,
     vcx: ValueCx<'_>,
+    layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
 ) -> SizeInputs {
-    match AnchorPlan::of(c, inherited, vcx) {
+    match AnchorPlan::of(c, inherited, vcx, layout) {
         Some(plan) => {
             let has_area = plan.area.is_some() && plan.rec_current(None).is_some();
             let p = plan.compute(bounds, window, vcx);
@@ -72,8 +73,9 @@ pub(crate) fn resolve_current(
     inherited: &BoxStyle,
     inputs: SizeInputs,
     vcx: ValueCx<'_>,
+    layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
 ) {
-    super::resolve_with(c, inherited, Some(inputs), vcx);
+    super::resolve_with(c, inherited, Some(inputs), vcx, layout);
 }
 
 #[cfg(test)]
@@ -91,8 +93,8 @@ pub(crate) fn prepare(c: &mut BoxStyle, inherited: &BoxStyle, cx: &crate::layout
     if let Some((key, inputs)) = cx.position.oof_sizes
         && key == c.anchor_key
     {
-        resolve_current(c, inherited, inputs, vcx);
+        resolve_current(c, inherited, inputs, vcx, cx.layout());
     } else {
-        super::resolve_sizes(c, inherited, vcx);
+        super::resolve_sizes(c, inherited, vcx, cx.layout());
     }
 }

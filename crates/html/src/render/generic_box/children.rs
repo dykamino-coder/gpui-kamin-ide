@@ -13,9 +13,7 @@ use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
 use crate::layout::grid::place_named_areas;
 use crate::layout::multicol::gap_rules::prepare_children;
-use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::absolute_overflow;
-use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
@@ -121,11 +119,7 @@ pub(crate) async fn generic_children(
     // Многоколонник клэмпом не режется (`continue: collapse` там как
     // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
     // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
-    let is_clamp = (e.style.used().clamp_lines().is_some()
-        || (e.style.used().clamp_by_height()
-            && e.style.used().clamp_block_container()
-            && auto_clamp_limit(&merged).is_some()))
-        && !multicol_container(&e.style.used());
+    let is_clamp = crate::layout::box_kind::clamp_host(e, &merged);
     let clamp_outer = if is_clamp {
         Some((e.node_id, false))
     } else {
@@ -228,7 +222,7 @@ pub(crate) async fn generic_children(
     // коробка возвращается как есть.
     let child = d.children(kids).into_any_element();
     let child = match overflow_plan {
-        Some(plan) => plan.wrap(child, vcx, opts.cx.contracts.build),
+        Some(plan) => plan.wrap(child, vcx, opts.cx.layout(), opts.cx.contracts.build),
         None => child,
     };
     crate::layout::positioned::anchor::place::place_in_context(child, &merged, inherited, &opts.cx)

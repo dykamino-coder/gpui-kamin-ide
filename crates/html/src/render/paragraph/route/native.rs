@@ -57,6 +57,7 @@ pub(crate) fn native_paragraph(
             own_size(inherited, opts),
             opts.base_size(),
             normal_fraction(inherited, opts),
+            opts.cx.text_fonts(),
             opts.cx.vcx(),
         )),
     };
@@ -181,6 +182,7 @@ pub(crate) fn native_paragraph(
             &pieces,
             inherited,
             &opts.text,
+            opts.cx.text_fonts(),
             opts.cx.vcx(),
         ))
         .overlays(inline::overlays(pieces))

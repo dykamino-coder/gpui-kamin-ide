@@ -105,8 +105,8 @@ use crate::text::fonts::face_rules::{declaration, faces, source};
 use crate::text::fonts::font_faces::is_quote;
 use crate::text::fonts::font_faces::read_font;
 pub use crate::text::fonts::loading::covers_space;
-pub use crate::text::fonts::loading::load_faces;
-pub use crate::text::fonts::loading::load_faces_additive;
+#[cfg(test)]
+pub(crate) use crate::text::fonts::loading::load_faces;
 pub(crate) use crate::text::fonts::loading::load_faces_sheets;
 pub use crate::text::fonts::loading::size_adjust;
 pub use crate::text::fonts::sfnt_metrics::sfnt_family;
@@ -115,9 +115,7 @@ pub use crate::text::fonts::stretch::alias_stretch;
 use crate::text::fonts::stretch::stretch_desc;
 use crate::text::fonts::windows_names::ensure_windows_names;
 
-mod state;
 use crate::document::state::ValueCx;
-pub(crate) use state::FontFaces;
 
 /// Тег `cssw`: текст документа просит у gpui подбор веса грани по CSS
 /// (css-fonts-4 §5.2 шаг 4; `gpui-windows` `direct_write/css_weight.rs`).
@@ -136,11 +134,6 @@ pub fn with_css_weight(features: &gpui::FontFeatures) -> gpui::FontFeatures {
 
 /// Загрузчик: получает содержимое файла, отдаёт имя семейства в системе.
 pub(crate) type Loader = Box<dyn Fn(Vec<u8>) -> Option<String>>;
-
-/// Поставить загрузчик шрифтов. Зовут там, где живёт система шрифтов.
-pub fn install_loader(loader: impl Fn(Vec<u8>) -> Option<String> + 'static, vcx: ValueCx<'_>) {
-    crate::text::metrics::install_font_loader(Box::new(loader), vcx);
-}
 
 /// Настоящее имя семейства за именем из разметки.
 pub fn alias(family: &str, vcx: ValueCx<'_>) -> Option<String> {

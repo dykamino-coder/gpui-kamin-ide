@@ -1,6 +1,6 @@
 //! Геометрическое окружение исходного слоя для завершения у ICB.
 
-use crate::document::state::ValueDoc;
+use crate::layout::layout_state::LayoutState;
 use crate::layout::positioned::anchor::TransformContext;
 use gpui::{ContentMask, PaintCtx, Pixels, Window};
 
@@ -12,11 +12,11 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    pub(super) fn capture(values: Option<ValueDoc>, window: &Window) -> Self {
+    pub(super) fn capture(layout: Option<std::rc::Rc<LayoutState>>, window: &Window) -> Self {
         Self {
             mask: window.content_mask(),
             paint: window.paint_ctx(),
-            anchors: values.map(TransformContext::capture),
+            anchors: layout.map(TransformContext::capture),
         }
     }
 

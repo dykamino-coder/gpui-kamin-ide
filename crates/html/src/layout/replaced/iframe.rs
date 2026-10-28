@@ -172,7 +172,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             preferred_dark: st.embedding_dark_scheme,
             owner_dark: st.dark_color_scheme,
         }),
-        &opts.cx.doc().metrics.font_context(),
+        &opts.cx.text_fonts().metrics.font_context(),
         opts.cx.doc().input_context(),
     ) {
         Ok(embedded) => embedded,

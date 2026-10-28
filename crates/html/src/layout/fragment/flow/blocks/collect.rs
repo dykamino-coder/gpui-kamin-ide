@@ -43,6 +43,11 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         };
     }
     let mut out = frame(e, cx, vcx);
+    // The clamp host lays out the container's content as one unit and
+    // publishes its line breaks itself (`text::clamp::ClampFlow`).
+    if crate::layout::box_kind::clamp_host(e, &e.style.used()) {
+        return out;
+    }
     if grid_container(e) {
         out.grid = Some(grid::collect_grid(e, cx, vcx));
         return out;

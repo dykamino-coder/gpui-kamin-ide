@@ -9,6 +9,7 @@ pub(crate) fn style_pieces(
     inherited: &BoxStyle,
     first_line_at: usize,
     first_line: &Computed,
+    fonts: &crate::text::text_fonts::TextFonts,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<inline::Piece> {
     // Свой `unicode-bidi` у самого абзаца знаками не обрамлялся: их ставит
@@ -100,7 +101,7 @@ pub(crate) fn style_pieces(
         if first.italic == inherited.italic {
             first.italic = None;
         }
-        pieces = inline::split_first_letter(pieces, &first, vcx);
+        pieces = inline::split_first_letter(pieces, &first, fonts, vcx);
     }
     if first_line_at > 0 {
         pieces = inline::style_first_line(pieces, first_line_at, first_line, inherited);

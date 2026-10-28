@@ -67,7 +67,7 @@ pub(super) fn prepare(
         (f32::from(origin.x).to_bits(), f32::from(origin.y).to_bits()).hash(&mut hasher);
         (w.to_bits(), h.to_bits(), window.scale_factor().to_bits()).hash(&mut hasher);
         let key = hasher.finish();
-        let cached = vcx.doc.foreign_rasters.borrow().get(&key).cloned();
+        let cached = vcx.doc.foreign_rasters.get(key);
         let element = if cached.is_none() {
             let mut html = e.clone();
             html.tag = "div".into();
@@ -178,13 +178,7 @@ pub(super) fn cache(key: u64, png: &[u8], vcx: ValueCx<'_>) -> String {
     for byte in png {
         let _ = write!(uri, "%{byte:02X}");
     }
-    {
-        let mut cache = vcx.doc.foreign_rasters.borrow_mut();
-        if cache.len() >= 64 {
-            cache.clear();
-        }
-        cache.insert(key, uri.clone());
-    }
+    vcx.doc.foreign_rasters.remember(key, uri.clone());
     uri
 }
 

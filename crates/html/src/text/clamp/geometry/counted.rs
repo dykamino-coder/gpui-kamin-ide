@@ -129,6 +129,7 @@ mod tests {
             span: None,
             bt_before: 0.0,
             positioned: false,
+            float: false,
         }
     }
 

@@ -124,8 +124,8 @@ fn collect_in(
         build(&kids, parent, width, page, opts, window, cx);
     if settle {
         let settling = Rc::new(super::super::record::Settling(recorder.clone()));
-        let vcx = opts.cx.vcx();
-        let missed = crate::layout::positioned::anchor::misses_of(vcx, || {
+        let layout = opts.cx.layout().clone();
+        let missed = crate::layout::positioned::anchor::misses_of(&layout.anchors, || {
             let _ = window.transact(|window| {
                 window.with_render_context(Some(settling), |window| {
                     root.prepaint_at(gpui::point(px(0.), px(0.)), window, cx)
