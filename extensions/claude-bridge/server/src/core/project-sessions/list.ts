@@ -80,7 +80,7 @@ export async function listSessions(ctx: CallerContext, args: Record<string, unkn
       }
     }
     conversations.push({
-      conversation_id: ref.conversationId,
+      session_id: ref.conversationId,
       title: s.title,
       started_at: s.startedAt,
       last_activity_at: new Date(mtimeMs).toISOString(),
@@ -112,7 +112,7 @@ export async function listSessions(ctx: CallerContext, args: Record<string, unkn
 export async function listSubagents(ctx: CallerContext, args: Record<string, unknown>): Promise<ToolOutput> {
   const limit = intArg(args.limit, 'limit', 100, 1, 500)
   const offset = intArg(args.offset, 'offset', 0, 0, 1_000_000)
-  const target = await resolveTarget(ctx, { conversation_id: args.conversation_id })
+  const target = await resolveTarget(ctx, { session_id: args.session_id })
   const dir = subagentDir(target.ref)
   const found: Array<{ id: string; file: string; size: number; mtimeMs: number }> = []
   if (dir) {
@@ -150,7 +150,7 @@ export async function listSubagents(ctx: CallerContext, args: Record<string, unk
   }
   const body = JSON.stringify(
     {
-      conversation_id: target.ref.conversationId,
+      session_id: target.ref.conversationId,
       total: found.length,
       offset,
       returned: agents.length,

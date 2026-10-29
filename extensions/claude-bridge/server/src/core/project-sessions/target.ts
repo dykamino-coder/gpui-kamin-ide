@@ -1,4 +1,4 @@
-// Resolve a tool's (conversation_id, agent_id) arguments to one transcript file
+// Resolve a tool's (session_id, agent_id) arguments to one transcript file
 // inside the caller's scope, plus the shared start-position logic of paged tools.
 
 import type fsp from 'node:fs/promises'
@@ -15,7 +15,7 @@ export interface Target {
 
 export async function resolveTarget(ctx: CallerContext, args: Record<string, unknown>): Promise<Target> {
   const scope = resolveScope(ctx)
-  const ref = await locateTranscript(ctx, scope, args.conversation_id)
+  const ref = await locateTranscript(ctx, scope, args.session_id)
   const self = ctx.selfIds.includes(ref.conversationId)
   if (args.agent_id === undefined || args.agent_id === null || args.agent_id === '') {
     return { ref, file: ref.file, agentId: null, self }
