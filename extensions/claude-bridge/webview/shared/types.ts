@@ -370,7 +370,9 @@ export interface KaminBridgeApi {
   /** Stop: abort the in-flight upstream stream on the server + SIGINT the CLI. */
   interruptSession(tabId: string): void
   /** Submit a full user message via server-side paste + quiet-window Enter gate. */
-  submitText(tabId: string, text: string): void
+  submitText(tabId: string, text: string, submissionId?: string): void
+  submissionAction(tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt'): void
+  onSubmission(callback: (tabId: string, data: SubmissionUpdate) => void): () => void
   resize(tabId: string, cols: number, rows: number): void
   onOutput(callback: (tabId: string, data: string) => void): () => void
   onExit(callback: (tabId: string, code: number) => void): () => void
@@ -1015,3 +1017,13 @@ export interface KaminBridgeApi {
 
 /** @deprecated Use KaminBridgeApi. */
 export type ElectronBridge = KaminBridgeApi
+
+export interface SubmissionUpdate {
+  id: string
+  text?: string
+  state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
+  uuid?: string
+  cancelable?: boolean
+  warning?: string
+  capable?: boolean
+}

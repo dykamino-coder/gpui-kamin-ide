@@ -38,6 +38,8 @@ interface SessionInputState {
   promptReady: boolean
   rawInputDirty: boolean
   rawPasteMode: boolean
+  rawEscape: string
+  rawControlString: boolean
   lastRawInputAt: number
   queue: QueuedSubmission[]
   active: ActiveSubmission | null
@@ -56,6 +58,8 @@ function inputState(session: PtySession): SessionInputState {
       promptReady: false,
       rawInputDirty: false,
       rawPasteMode: false,
+      rawEscape: '',
+      rawControlString: false,
       lastRawInputAt: 0,
       queue: [],
       active: null,
@@ -119,23 +123,47 @@ function schedulePendingMaintenance(
   }, delay)
 }
 
-function updateRawInputState(state: SessionInputState, data: string): void {
-  const pasteStart = '\x1b[200~'
-  const pasteEnd = '\x1b[201~'
-  for (let i = 0; i < data.length; ) {
-    if (data.startsWith(pasteStart, i)) {
-      state.rawPasteMode = true
-      i += pasteStart.length
-      continue
-    }
-    if (data.startsWith(pasteEnd, i)) {
-      state.rawPasteMode = false
-      i += pasteEnd.length
-      continue
-    }
+/** Replies and focus reports contain no composer edits. Incomplete frames stay conservative. */
+export function isTerminalResponseInput(data: string): boolean {
+  return data.length > 0 && /^(?:\x1b\[(?:[IO]|[?>]?[\d;]*c|[\d;]+R)|\x1b\]7501;\?(?:\x07|\x1b\\))+$/.test(data)
+}
 
-    const ch = data[i]!
-    i++
+function updateRawInputState(state: SessionInputState, data: string): void {
+  for (const ch of data) {
+    if (state.rawControlString) {
+      if (ch === '\x07' || (state.rawEscape === '\x1b' && ch === '\\')) {
+        state.rawControlString = false
+        state.rawEscape = ''
+      } else state.rawEscape = ch === '\x1b' ? ch : ''
+      continue
+    }
+    if (state.rawEscape) {
+      state.rawEscape += ch
+      if (state.rawEscape === '\x1b]') {
+        state.rawControlString = true
+        state.rawEscape = ''
+      } else if (state.rawEscape === '\x1b[' || state.rawEscape === '\x1bO') {
+        continue
+      } else if (state.rawEscape.startsWith('\x1b[') && ch >= '@' && ch <= '~') {
+        const sequence = state.rawEscape
+        state.rawEscape = ''
+        if (sequence === '\x1b[200~') state.rawPasteMode = true
+        else if (sequence === '\x1b[201~') state.rawPasteMode = false
+        // Up/history can restore text whose length the server cannot observe.
+        else if (sequence === '\x1b[A' || state.rawPasteMode) state.rawInputDirty = true
+      } else if (state.rawEscape.startsWith('\x1bO') && state.rawEscape.length === 3) {
+        if (ch === 'A' || state.rawPasteMode) state.rawInputDirty = true
+        state.rawEscape = ''
+      } else if (!state.rawEscape.startsWith('\x1b[') || state.rawEscape.length > 64) {
+        if (ch >= ' ' && ch !== '\x7f') state.rawInputDirty = true
+        state.rawEscape = ''
+      }
+      continue
+    }
+    if (ch === '\x1b') {
+      state.rawEscape = ch
+      continue
+    }
     if (state.rawPasteMode) {
       state.rawInputDirty = true
       continue
@@ -149,7 +177,6 @@ function updateRawInputState(state: SessionInputState, data: string): void {
       state.promptReady = false
       continue
     }
-    // Navigation/control sequences do not prove that the line contains text.
     // Backspace stays conservative because the server cannot count graphemes.
     if (ch >= ' ' && ch !== '\x7f') state.rawInputDirty = true
   }

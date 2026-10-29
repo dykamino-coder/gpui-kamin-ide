@@ -60,6 +60,23 @@ afterEach(() => {
 })
 
 describe('PTY input coordinator', () => {
+  it('ignores split terminal replies without losing pasted or restored drafts', () => {
+    const f = fakePty()
+    setSessionPromptReady(f.session, true)
+    for (const chunk of ['\x1b[O', '\x1b[?', '1;2c', '\x1b[12;80R', '\x1b]7501;?', '\x07']) {
+      writeInputToSession(f.session, chunk)
+    }
+    expect(getSessionInputSnapshot(f.session)).toMatchObject({ rawInputDirty: false, promptReady: true })
+    writeInputToSession(f.session, '\x1b[20')
+    writeInputToSession(f.session, '0~draft\ntext\x1b[201~')
+    writeInputToSession(f.session, '\x1b[I')
+    expect(getSessionInputSnapshot(f.session).rawInputDirty).toBe(true)
+    writeInputToSession(f.session, '\x15')
+    expect(getSessionInputSnapshot(f.session).rawInputDirty).toBe(false)
+    writeInputToSession(f.session, '\x1b[A')
+    expect(getSessionInputSnapshot(f.session).rawInputDirty).toBe(true)
+  })
+
   it('serializes two submissions as separate clear/paste/Enter transactions', () => {
     const f = fakePty()
     submitTextToSession(f.session, 'first')

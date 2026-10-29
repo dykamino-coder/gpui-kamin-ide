@@ -14,7 +14,8 @@ export type ClientMessage =
     }
   | { type: 'session:input'; data: string }
   | { type: 'session:interrupt' }
-  | { type: 'session:submitText'; data: string }
+  | { type: 'session:submitText'; data: string; submissionId?: string }
+  | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
   | { type: 'session:resize'; cols: number; rows: number }
   | {
       type: 'mcp:response'
@@ -201,6 +202,7 @@ export type ServerMessage =
       fileName: string | null
       error?: string
     }
+  | ({ type: 'session:submission'; sessionId: string } & import('./types').SubmissionUpdate)
   | { type: 'jsonl:download-begin'; fileName: string | null; total: number }
   | { type: 'jsonl:download-chunk'; chunk: string; sent: number; total: number }
   | { type: 'jsonl:download-end'; fileName: string | null; total: number }

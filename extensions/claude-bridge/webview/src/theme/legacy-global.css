@@ -1021,7 +1021,7 @@ select.mcp-input { cursor: pointer; }
   align-items: center;
   gap: 6px;
 }
-.jsonl-entry-user .entry-role { color: var(--accent-primary); font-weight: 600; }
+.jsonl-entry-user .entry-role { color: var(--accent-primary); font-weight: 600; flex-wrap: wrap; }
 .jsonl-entry-assistant .entry-role { color: var(--accent-maroon); font-weight: 600; }
 /* Shared text body — type-specific tone overrides below. */
 .jsonl-entry-user .entry-text,

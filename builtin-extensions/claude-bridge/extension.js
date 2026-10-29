@@ -42266,6 +42266,9 @@ function handleServerMessage(msg, ctx) {
     case "session:tree-update":
       ctx.notifyTreeUpdate(msg.tree);
       break;
+    case "session:submission":
+      ctx.window.webContents.send("session:submission", ctx.tabId, msg);
+      break;
     case "session:activity": {
       const m = msg;
       const rawTitle = m.rawTitle;
@@ -42962,8 +42965,11 @@ var ConnectionManager = class _ConnectionManager {
   /** Submit a full user message — server wraps it in bracketed paste and
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
-  submitText(text) {
-    this.send({ type: "session:submitText", data: text });
+  submitText(text, submissionId) {
+    this.send({ type: "session:submitText", data: text, submissionId });
+  }
+  submissionAction(id, action) {
+    this.send({ type: "session:submission-action", id, action });
   }
   resize(cols, rows) {
     this.send({ type: "session:resize", cols, rows });
@@ -44283,8 +44289,11 @@ var TabManager = class {
     this.tabs.get(tabId)?.connection.sendInput(data);
   }
   /** Submit a user message via the server-side quiet-window Enter gate. */
-  submitText(tabId, text) {
-    this.tabs.get(tabId)?.connection.submitText(text);
+  submitText(tabId, text, submissionId) {
+    this.tabs.get(tabId)?.connection.submitText(text, submissionId);
+  }
+  submissionAction(tabId, id, action) {
+    this.tabs.get(tabId)?.connection.submissionAction(id, action);
   }
   /**
    * Resize terminal for a specific tab.
@@ -44790,8 +44799,11 @@ function registerSessionsIPC(ctx) {
   ipcMain.on("pty-input", (_event, tabId, data) => {
     tm()?.sendInput(tabId, data);
   });
-  ipcMain.on("pty-submit-text", (_event, tabId, text) => {
-    tm()?.submitText(tabId, text);
+  ipcMain.on("pty-submit-text", (_event, tabId, text, submissionId) => {
+    tm()?.submitText(tabId, text, submissionId);
+  });
+  ipcMain.on("submission-action", (_event, tabId, id, action) => {
+    tm()?.submissionAction(tabId, id, action);
   });
   ipcMain.on("pty-resize", (_event, tabId, cols, rows) => {
     tm()?.resize(tabId, cols, rows);

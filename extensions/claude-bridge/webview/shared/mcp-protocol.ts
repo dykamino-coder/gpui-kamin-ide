@@ -2,7 +2,8 @@
 export type ClientMessage =
   | { type: 'session:create'; token: string; cwd?: string; cols?: number; rows?: number }
   | { type: 'session:input'; data: string }
-  | { type: 'session:submitText'; data: string }
+  | { type: 'session:submitText'; data: string; submissionId?: string }
+  | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
   | { type: 'session:resize'; cols: number; rows: number }
   | { type: 'mcp:response'; sessionId?: string; requestId: string; result: unknown }
   | { type: 'mcp:denied'; sessionId?: string; requestId: string; reason: string }
@@ -31,6 +32,7 @@ export type ServerMessage =
   | { type: 'session:title'; title: string }
   | { type: 'session:usage'; sessionId: string; usage: unknown }
   | { type: 'session:conversation-id'; sessionId: string; conversationId: string }
+  | ({ type: 'session:submission'; sessionId: string } & import('./types').SubmissionUpdate)
   | { type: 'session:activity'; sessionId: string; rawTitle: string; isWorking: boolean }
   | { type: 'jsonl:download-response'; content: string | null; fileName: string | null; error?: string }
   | { type: 'hook:execute'; requestId: string; sessionId: string; hookId: string; event: string; command: string; shell?: 'bash' | 'powershell' | 'sh' | 'zsh'; cwd?: string; env?: Record<string, string>; payload: Record<string, unknown>; timeoutMs?: number }
