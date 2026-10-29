@@ -22,10 +22,6 @@ If a subagent or teammate you started has not returned for a long time, do not w
 - \`project_session_read\` with that subagent or teammate id reads its own transcript; read the latest entries to see what it is doing or where it is stuck.
 
 Then decide from what you read: keep waiting, send it a follow-up, or tell the user what is blocking it. Do not cancel or replace work only because time has passed.
-
-## Waiting while a goal is active
-
-When a goal is set, ending the turn does not stop you: the goal check sends you straight back. If all that is left is waiting for background work (a CI pipeline, a merge, a task or subagent), do not end turns with "waiting" messages. Wait in short tool calls instead: a bounded poll with sleep of at most about two minutes per call, or a read of the progress with the tools above, then check again or continue with the result. Keep each wait short so the user's messages reach you between calls; never block for tens of minutes in one command.
 `
 
 /** Tenant-agnostic preamble describing Open Claude Bridge's split architecture
