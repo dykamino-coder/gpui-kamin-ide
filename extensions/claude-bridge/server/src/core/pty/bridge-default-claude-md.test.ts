@@ -45,6 +45,7 @@ describe('subagent progress guidance', () => {
     expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('project_session_subagents')
     expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('project_session_read')
     expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('do not start a duplicate')
+    expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('Wait in short tool calls')
     expect(BRIDGE_DEFAULT_CLAUDE_MD).toContain(SUBAGENT_PROGRESS_GUIDANCE)
   })
 })
