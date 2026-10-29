@@ -121,7 +121,8 @@ export const register = (on) => {
     if (!state.active) return next(e)
     let id = null
     if (!e.agentId && e.door === 'prompt') {
-      if (e.origin.kind === 'plugin' && e.origin.name === 'kamin-bridge') id = state.submitting.shift() ?? null
+      if (e.origin.kind === 'plugin' && 'name' in e.origin && e.origin.name === 'kamin-bridge')
+        id = state.submitting.shift() ?? null
       else if (e.origin.kind === 'composer') id = state.composer.shift()?.submissionId ?? null
     } else if (
       !e.agentId &&
@@ -132,7 +133,7 @@ export const register = (on) => {
       id = state.composer.shift()?.submissionId ?? null
     }
     const result = await next(e)
-    if (id) state.reads.push({ submissionId: id, uuid: result.uuid })
+    if (id && typeof result.uuid === 'string') state.reads.push({ submissionId: id, uuid: result.uuid })
     return result
   })
   on('session.start', async ($, e, next) => {
@@ -165,4 +166,5 @@ export const register = (on) => {
     }
     return next(e)
   })
+  return undefined
 }
