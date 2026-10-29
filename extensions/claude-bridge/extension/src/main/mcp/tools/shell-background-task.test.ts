@@ -28,6 +28,28 @@ vi.mock('../../utils/command-runtime', () => ({
 }))
 
 describe('background task execution policy', () => {
+  it('keeps Windows legacy PowerShell attached so it executes its command', async () => {
+    const proc = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      unref: vi.fn(),
+      pid: undefined,
+    })
+    mock.spawn.mockReturnValue(proc)
+    vi.stubGlobal('process', { ...process, platform: 'win32' })
+    try {
+      await powerShellExecute({ command: 'Start-Sleep -Seconds 180', run_in_background: true })
+      expect(mock.spawn.mock.lastCall?.[1]).toEqual([
+        '-NoLogo',
+        '-NonInteractive',
+        '-Command',
+        'Start-Sleep -Seconds 180',
+      ])
+      expect(mock.spawn.mock.lastCall?.[2]).toMatchObject({ detached: false, windowsHide: true })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
   it.each([bashExecute, powerShellExecute])(
     'waits for full task output beyond the foreground timeout',
     async (execute) => {

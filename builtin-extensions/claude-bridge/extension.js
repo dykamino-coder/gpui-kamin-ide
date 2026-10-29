@@ -12031,7 +12031,9 @@ function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"],
   const bgId = nextBgId++;
   const child = (0, import_node_child_process3.spawn)(shell2, [...shellFlags, command], {
     stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
+    // Windows PowerShell exits without executing -Command when started with
+    // DETACHED_PROCESS. Keep its console hidden without detaching it.
+    detached: tool !== "PowerShell" || process.platform !== "win32",
     // Suppress any child-console window flashing on Windows. Modal dialogs
     // from misbehaving tools like nvm-windows are handled separately via
     // WINDOWS_MODAL_SHIM — `windowsHide` only covers console windows.
