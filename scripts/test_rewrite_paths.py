@@ -26,7 +26,8 @@ class RewriteTests(unittest.TestCase):
     def test_inline_modules_and_super_paths(self):
         source = 'mod inner { use super::Thing; let x: super::super::style::A; }'
         actual = self.change(source, 'layout/mod.rs')
-        self.assertEqual(actual, 'mod inner { use crate::layout::Thing; '
+        # Paths inside the package stay as written; only the crossing one changes.
+        self.assertEqual(actual, 'mod inner { use super::Thing; '
                          'let x: kamin_style::style::A; }')
 
     def test_external_imports_preserved(self):

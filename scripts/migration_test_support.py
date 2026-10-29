@@ -49,6 +49,22 @@ def scope_at(filename, offset, declarations, file_modules, masks):
     return max(candidates, key=len)
 
 
+IDENT = re.compile(r'(?:r#)?[A-Za-z_]\w*')
+
+
+def trait_impl(words, index):
+    """Return the end of `Trait for Type {` (plain paths only), else None."""
+    while index < len(words) and IDENT.fullmatch(words[index][0]):
+        if index + 1 < len(words) and words[index + 1][0] == '::':
+            index += 2
+            continue
+        if (index + 3 < len(words) and words[index + 1][0] == 'for'
+                and IDENT.fullmatch(words[index + 2][0]) and words[index + 3][0] == '{'):
+            return index + 3
+        return None
+    return None
+
+
 def item_identities(source, match, module):
     """Find the item governed by an exact test cfg; reject unknown syntax."""
     words = [word for word in lexemes(source[match.end():]) if word[0] is not None]
@@ -76,13 +92,20 @@ def item_identities(source, match, module):
                 raise ValueError('Incomplete test-contract item')
             return {module + (words[index + 1][0],)}
         if word == 'impl':
+            trait = trait_impl(words, index + 1)
+            if trait is not None:
+                # A test-only trait impl has no path of its own: upper tests
+                # reach it through values of its type. It belongs to the test
+                # contract of its declaring module and is widened with any
+                # contract reached there. Generic impls stay rejected.
+                return {module}
             # Associated fixtures are governed by the impl's cfg, not by the
-            # production type's identity. Reject generic/trait impls until
-            # their ownership can be represented without broadening a gate.
+            # production type's identity. Reject generic impls until their
+            # ownership can be represented without broadening a gate.
             if index + 2 >= len(words) or words[index + 2][0] != '{':
                 raise ValueError('Unsupported test-contract impl header')
             owner = words[index + 1][0]
-            if not re.fullmatch(r'(?:r#)?[A-Za-z_]\w*', owner):
+            if not IDENT.fullmatch(owner):
                 raise ValueError('Unsupported test-contract impl owner')
             depth, identities = 1, set()
             for offset in range(index + 3, len(words)):
