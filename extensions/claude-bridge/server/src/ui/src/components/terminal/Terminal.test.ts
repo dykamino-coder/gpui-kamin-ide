@@ -4,7 +4,7 @@ const h = vi.hoisted(() => {
   class Node {
     children: Node[] = []
     parent?: Node
-    dataset = {}
+    dataset: Record<string, string> = {}
     classList = { add: vi.fn(), remove: vi.fn() }
     style = {}
     className = ''
@@ -57,6 +57,8 @@ const h = vi.hoisted(() => {
     resize: null as null | (() => void),
     disposeSubscription: vi.fn(),
     options: null as any,
+    osc52: null as any,
+    parsed: null as null | (() => void),
   }
 })
 // The server suite installs only server dependencies; dashboard rendering is mocked.
@@ -99,7 +101,8 @@ vi.mock('@xterm/xterm', () => ({
     onData(callback: (data: string) => void) {
       this.input = callback
     }
-    onWriteParsed() {
+    onWriteParsed(callback: () => void) {
+      h.parsed = callback
       return { dispose: h.disposeSubscription }
     }
     onScroll() {
@@ -136,12 +139,20 @@ vi.mock('@xterm/addon-fit', () => ({
     fit() {}
   },
 }))
+vi.mock('@xterm/addon-clipboard', () => ({
+  ClipboardAddon: class {
+    constructor(_base64: unknown, provider: unknown) {
+      h.osc52 = provider
+    }
+  },
+}))
 import { Terminal } from './Terminal'
 
 beforeEach(() => {
   vi.useFakeTimers()
   h.refs = 0
   h.term = null
+  h.osc52 = null
   h.ws = null
   h.disposeSubscription.mockClear()
   h.disconnect.mockClear()
@@ -192,6 +203,61 @@ async function mount() {
 }
 
 describe('dashboard terminal shared console integration', () => {
+  it('shows only terminal-owned history, including a normal-buffer CLI repainting with mouse reporting', async () => {
+    await mount()
+    h.term.buffer.active.baseY = 25
+    h.parsed!()
+    expect(h.container.dataset).toMatchObject({ terminalScreen: 'normal', terminalHistory: 'true' })
+    h.term.modes.mouseTrackingMode = 'any'
+    h.parsed!()
+    expect(h.container.dataset.terminalHistory).toBe('false')
+    h.term.buffer.active.type = 'alternate'
+    h.parsed!()
+    expect(h.container.dataset).toMatchObject({ terminalScreen: 'alternate', terminalHistory: 'false' })
+    h.term.buffer.active.type = 'normal'
+    h.term.modes.mouseTrackingMode = 'none'
+    h.parsed!()
+    expect(h.container.dataset.terminalHistory).toBe('true')
+  })
+
+  it('uses the same clipboard for OSC 52 and one selection color', async () => {
+    await mount()
+    await h.osc52.writeText('c', 'CLI копирует exact text')
+    expect(h.clipboard.writeText).toHaveBeenCalledExactlyOnceWith('CLI копирует exact text')
+    expect(h.osc52.readText('c')).toBe('')
+    expect(h.options.theme.selectionInactiveBackground).toBe(h.options.theme.selectionBackground)
+  })
+
+  it('selects an ordinary alternate-screen drag before the CLI can receive it', async () => {
+    await mount()
+    vi.stubGlobal(
+      'MouseEvent',
+      class {
+        constructor(
+          public type: string,
+          init: MouseEventInit,
+        ) {
+          Object.assign(this, init)
+        }
+      },
+    )
+    h.term.modes.mouseTrackingMode = 'any'
+    h.term.buffer.active.type = 'alternate'
+    const target = { isConnected: true, closest: () => ({}), dispatchEvent: vi.fn() }
+    h.container.listeners.get('mousedown')!(
+      event({ target, button: 0, buttons: 1, detail: 1, clientX: 12, clientY: 24 }),
+    )
+    expect(target.dispatchEvent.mock.calls[0][0]).toMatchObject({ type: 'mousedown', shiftKey: true })
+    h.document.listeners.get('mousemove')!(event({ buttons: 1, clientX: 100, clientY: 24 }))
+    h.term.selection = 'drag-selected CLI text'
+    h.document.listeners.get('mouseup')!(event({ button: 0, buttons: 0 }))
+    expect(target.dispatchEvent).toHaveBeenCalledOnce()
+    h.container.listeners.get('contextmenu')!(event({ clientX: 10, clientY: 20 }))
+    const copy = h.document.body.children[0].children[0]
+    expect(copy.disabled).toBe(false)
+    copy.onclick!()
+    expect(h.clipboard.writeText).toHaveBeenCalledExactlyOnceWith('drag-selected CLI text')
+  })
   it.each(['c', '\u0441'])(
     'installs the bounded console, pastes once and copies native Ctrl+C in layout %s',
     async (key) => {

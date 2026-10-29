@@ -19,7 +19,7 @@
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: transparent;
+  background: var(--term-bg);
 }
 
 .xtermContainer {
@@ -38,7 +38,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: var(--editor-bg, var(--bg-mantle, #262533));
+  background: var(--term-bg);
   color: var(--text-muted, #838aa0);
   font-size: var(--fs-sm, 12px);
   pointer-events: none;

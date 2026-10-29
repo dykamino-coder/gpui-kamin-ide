@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Terminal } from '@xterm/headless'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { CONSOLE_SCROLLBACK, configureTerminalInteraction } from '../../../server/src/ui/src/lib/terminal-console/interaction'
 import type { Terminal as BrowserTerminal } from '@xterm/xterm'
+import { createOsc52ClipboardProvider } from '../../../server/src/ui/src/lib/terminal-console/clipboard'
 
 const terminals: Terminal[] = []
 function create(): Terminal {
@@ -13,9 +14,27 @@ function create(): Terminal {
 function write(terminal: Terminal, data: string): Promise<void> {
   return new Promise(resolve => terminal.write(data, resolve))
 }
-afterEach(() => terminals.splice(0).forEach(t => t.dispose()))
+afterEach(() => { terminals.splice(0).forEach(t => t.dispose()); vi.unstubAllGlobals() })
 
 describe('console normal and alternate buffers (real xterm 6)', () => {
+  it('decodes OSC 52 with the real clipboard addon into the native provider without exposing clipboard reads', async () => {
+    vi.stubGlobal('self', globalThis)
+    const { ClipboardAddon, Base64 } = await import('@xterm/addon-clipboard')
+    const base64 = new Base64()
+    const terminal = create()
+    const writeText = vi.fn()
+    const readText = vi.fn(async () => 'private clipboard')
+    terminal.loadAddon(new ClipboardAddon(undefined, createOsc52ClipboardProvider({} as Document, { writeText, readText })) as never)
+    const text = '  CLI копирует\nexact text  '
+    await write(terminal, `\x1b]52;c;${base64.encodeText(text)}\x07`)
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(text)
+    await write(terminal, `\x1b]52;;${base64.encodeText('default clipboard')}\x1b\\`)
+    expect(writeText).toHaveBeenLastCalledWith('default clipboard')
+    await write(terminal, '\x1b]52;c;?\x07')
+    expect(readText).not.toHaveBeenCalled()
+    await write(terminal, '\x1b]52;p;aWdub3JlZA==\x07')
+    expect(writeText).toHaveBeenCalledTimes(2)
+  })
   it('retains bounded normal history, reaches its ends and keeps viewport fitting after resize', async () => {
     const terminal = create()
     await write(terminal, Array.from({ length: CONSOLE_SCROLLBACK + 100 }, (_, i) => `line-${i}\r\n`).join(''))
@@ -36,6 +55,7 @@ describe('console normal and alternate buffers (real xterm 6)', () => {
     const container = {
       dataset: {} as Record<string, string>, classList: { add() {}, remove() {} },
       addEventListener() {}, removeEventListener() {},
+      ownerDocument: { addEventListener() {}, removeEventListener() {} },
     }
     const browser = Object.assign(terminal, { attachCustomWheelEventHandler() {} })
     const dispose = configureTerminalInteraction(browser as unknown as BrowserTerminal, container as unknown as HTMLElement)
@@ -48,6 +68,8 @@ describe('console normal and alternate buffers (real xterm 6)', () => {
     expect(container.dataset).toEqual({ terminalScreen: 'alternate', terminalHistory: 'false' })
     expect(terminal.modes.mouseTrackingMode).toBe('vt200')
     await write(terminal, '\x1b[?1049l')
+    expect(container.dataset).toEqual({ terminalScreen: 'normal', terminalHistory: 'false' })
+    await write(terminal, '\x1b[?1000l')
     expect(container.dataset).toEqual({ terminalScreen: 'normal', terminalHistory: 'true' })
     await write(terminal, '\x1b[3J')
     expect(container.dataset.terminalHistory).toBe('false')
@@ -56,6 +78,29 @@ describe('console normal and alternate buffers (real xterm 6)', () => {
     expect(container.dataset.terminalScreen).toBe('normal')
     dispose()
     expect(container.dataset).toEqual({})
+  })
+
+  it('hides stale normal-buffer history while the application owns wheel reports and restores it afterwards', async () => {
+    const terminal = create()
+    const container = {
+      dataset: {} as Record<string, string>, classList: { add() {}, remove() {} },
+      addEventListener() {}, removeEventListener() {},
+      ownerDocument: { addEventListener() {}, removeEventListener() {} },
+    }
+    const dispose = configureTerminalInteraction(Object.assign(terminal, { attachCustomWheelEventHandler() {} }) as unknown as BrowserTerminal, container as unknown as HTMLElement)
+    await write(terminal, 'retained history\r\n'.repeat(80))
+    const history = terminal.buffer.active.baseY
+    expect(history).toBeGreaterThan(0)
+    for (const mode of [1000, 1002, 1003]) {
+      await write(terminal, `\x1b[?${mode}h\x1b[Hrepainted CLI`)
+      expect(container.dataset.terminalHistory).toBe('false')
+      expect(terminal.buffer.active.baseY).toBe(history)
+      await write(terminal, `\x1b[?${mode}l`)
+      expect(container.dataset.terminalHistory).toBe('true')
+    }
+    await write(terminal, '\x1b[?9h')
+    expect(container.dataset.terminalHistory).toBe('true')
+    dispose()
   })
 
   it('parses split DECSET/DECRST and preserves app mouse ownership without alternate history', async () => {

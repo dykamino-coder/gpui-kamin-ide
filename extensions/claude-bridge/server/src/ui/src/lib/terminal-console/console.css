@@ -1,3 +1,12 @@
+/* Подложка и отступы совпадают с темой; viewport xterm по умолчанию чёрный. */
+.bridge-console {
+  background: var(--term-bg, var(--bg-terminal, #0a0c0f));
+}
+.bridge-console .xterm,
+.bridge-console .xterm-viewport {
+  background-color: inherit;
+}
+
 /* FitAddon measures padding on the xterm element, not its parent. */
 .bridge-console .xterm {
   height: 100%;

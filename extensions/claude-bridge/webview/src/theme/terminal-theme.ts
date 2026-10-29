@@ -23,6 +23,7 @@ export function buildTerminalTheme(): ITheme {
     foreground: v('--term-fg', '#cfd4e2'),
     cursor: v('--term-cursor', '#f5e0dc'),
     selectionBackground: v('--term-selection', '#515567'),
+    selectionInactiveBackground: v('--term-selection', '#515567'),
     selectionForeground: v('--term-fg', '#cfd4e2'),
     black: v('--term-black', '#515567'),
     red: v('--term-red', '#f38ba8'),
