@@ -12,6 +12,13 @@ use gpui::{Bounds, ContentMask, Pixels, point};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Окна элементов сеток по (копии, элементу) и израсходованная часть элементов flex
+/// `(расход, элемент кончился)`.
+pub(crate) type PieceWindows = (
+    HashMap<(usize, u64), crate::layout::fragment::flow::blocks::ItemWindow>,
+    HashMap<u64, (f32, bool)>,
+);
+
 /// Как копия рисует наблюдаемую коробку.
 pub(super) enum Access {
     /// Коробка не из фрагментов этой копии.
@@ -34,6 +41,19 @@ impl Watched {
     /// Первый фрагмент каждого flex-элемента по плану стопки.
     pub(crate) fn set_flex_owners(&self, owners: HashMap<u64, usize>) {
         *self.paint_owners.borrow_mut() = owners;
+    }
+
+    /// Первый фрагмент каждого элемента по плану стопки (`set_flex_owners`).
+    pub(crate) fn owners(&self) -> HashMap<u64, usize> {
+        self.paint_owners.borrow().clone()
+    }
+
+    /// Окна элементов сеток по копиям и израсходованная часть элементов flex.
+    pub(crate) fn piece_windows(&self) -> PieceWindows {
+        (
+            self.item_windows.borrow().clone(),
+            self.flex_consumed.borrow().clone(),
+        )
     }
 
     /// Окна элементов сеток по копиям (`flow::blocks::grid_items`).

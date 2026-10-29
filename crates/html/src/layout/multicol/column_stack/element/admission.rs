@@ -2,12 +2,13 @@
 //! кусок своего начала, рисуется целиком в этом фрагментаинере и ни в каком другом
 //! (css-break-3 §4.1; Blink кладёт монолит в фрагмент его начала, переполнение — его
 //! ink overflow, `BoxFragmentPainter` рисует его там). Остальные узлы наследуют срез
-//! своего куска.
+//! своего куска. Элементы flex и сетки — как их копии (`items`).
 
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
 use gpui::{Bounds, PaintSegment, PaintSegmentSlice, Pixels, point, px};
+mod items;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -15,6 +16,8 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(super) struct Nodes {
     pub(super) slices: HashMap<u64, Rc<[PaintSegmentSlice]>>,
+    /// Размещения сверх размещений кусков: элементы, сдвинутые окном копии.
+    pub(super) routes: Vec<PaintSegment>,
     /// Маска воспроизведения куска (по номеру копии) поверх его среза, в координатах окна.
     pub(super) masks: HashMap<usize, Bounds<Pixels>>,
 }
@@ -67,6 +70,7 @@ impl ColumnStack {
                 }]),
             );
         }
+        self.item_admission(pieces, (w, &r.laid), spill, &mut out);
         out
     }
 }

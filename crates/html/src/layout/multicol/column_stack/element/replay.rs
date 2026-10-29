@@ -91,6 +91,7 @@ impl ColumnStack {
             });
         }
         let nodes = self.node_admission(kid, &pieces, spill);
+        routes.extend(nodes.routes.iter().copied());
         let extent = nodes
             .slices
             .values()
