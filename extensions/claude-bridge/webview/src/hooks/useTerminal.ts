@@ -3,9 +3,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { CONSOLE_SCROLLBACK, CONSOLE_OVERVIEW_RULER, configureTerminalInteraction } from '../lib/terminal-interaction'
-import { configureTerminalClipboard } from '../lib/terminal-clipboard'
-import '../lib/terminal-console.css'
+import { CONSOLE_OPTIONS, configureConsole } from '../../../server/src/ui/src/lib/terminal-console'
+import '../../../server/src/ui/src/lib/terminal-console/console.css'
 import { buildTerminalTheme } from '../theme/terminal-theme'
 import { resolvedTheme, themeNonce } from '../theme/apply-theme'
 import { useBridge } from './useBridge'
@@ -62,12 +61,7 @@ export function useTerminal(tabId: string): TerminalRefs {
       cursorBlink: true,
       cursorStyle: 'block',
       theme: buildTerminalTheme(),
-      allowProposedApi: true,
-      // Normal-screen history is bounded; xterm's alternate buffer has no
-      // scrollback. FitAddon reserves the real scrollbar width inside the panel.
-      scrollback: CONSOLE_SCROLLBACK,
-      overviewRuler: CONSOLE_OVERVIEW_RULER,
-      macOptionClickForcesSelection: true,
+      ...CONSOLE_OPTIONS,
     })
 
     const fitAddon = new FitAddon()
@@ -78,32 +72,7 @@ export function useTerminal(tabId: string): TerminalRefs {
     const serializeAddon = new SerializeAddon()
     terminal.loadAddon(serializeAddon)
     terminal.open(container)
-    const disposeInteraction = configureTerminalInteraction(terminal, container)
-    fitAddon.fit()
-
-    // Clear the "Connecting…" overlay only once the terminal has REAL visible
-    // content (restored snapshot or actual PTY output). Gate on visible text —
-    // NOT on any write (a bare cursor-move/clear escape carries no text) and NOT
-    // on a timer: an empty black console reads as "frozen", so the spinner must
-    // stay up until something actually paints (a spinning overlay looks like
-    // loading; a blank panel looks hung). onWriteParsed is a read-only observer.
-    const firstOutput = terminal.onWriteParsed(() => {
-      if (!terminalHasVisibleContent(terminal)) return
-      setHasOutput(true)
-      firstOutput.dispose()
-    })
-
-    // Restore a prior mount in this document before attaching PTY output.
-    // Document recreation/restart starts fresh; reconnect clears this cache.
-    try {
-      const stored = terminalSnapshots.get(tabId)
-      // Restore application mouse modes together with the screen contents.
-      if (stored) terminal.write(stored)
-    } catch { /* malformed historical snapshot */ }
-
-    const disposeRenderer = enableTerminalRenderer(terminal)
-
-    const disposeClipboard = configureTerminalClipboard(terminal, container, {
+    const disposeConsole = configureConsole(terminal, container, {
       writeText: text => bridge.writeClipboard(text),
       readText: () => bridge.readClipboard(),
       handleKey: (ev: KeyboardEvent): boolean => {
@@ -132,6 +101,29 @@ export function useTerminal(tabId: string): TerminalRefs {
         return true
       },
     })
+    fitAddon.fit()
+
+    // Clear the "Connecting…" overlay only once the terminal has REAL visible
+    // content (restored snapshot or actual PTY output). Gate on visible text —
+    // NOT on any write (a bare cursor-move/clear escape carries no text) and NOT
+    // on a timer: an empty black console reads as "frozen", so the spinner must
+    // stay up until something actually paints (a spinning overlay looks like
+    // loading; a blank panel looks hung). onWriteParsed is a read-only observer.
+    const firstOutput = terminal.onWriteParsed(() => {
+      if (!terminalHasVisibleContent(terminal)) return
+      setHasOutput(true)
+      firstOutput.dispose()
+    })
+
+    // Restore a prior mount in this document before attaching PTY output.
+    // Document recreation/restart starts fresh; reconnect clears this cache.
+    try {
+      const stored = terminalSnapshots.get(tabId)
+      // Restore application mouse modes together with the screen contents.
+      if (stored) terminal.write(stored)
+    } catch { /* malformed historical snapshot */ }
+
+    const disposeRenderer = enableTerminalRenderer(terminal)
 
     // Forward terminal input to server
     terminal.onData((data: string) => {
@@ -231,8 +223,7 @@ export function useTerminal(tabId: string): TerminalRefs {
       // immediately so a fast tab-recreate doesn't pile up zombie GL
       // contexts.
       disposeRenderer()
-      disposeInteraction()
-      disposeClipboard()
+      disposeConsole()
       try { serializeAddon.dispose() } catch { /* ignore */ }
       terminal.dispose()
       terminalRef.current = null

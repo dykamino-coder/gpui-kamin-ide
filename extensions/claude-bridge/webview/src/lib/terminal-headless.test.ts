@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Terminal } from '@xterm/headless'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { CONSOLE_SCROLLBACK, configureTerminalInteraction } from './terminal-interaction'
+import { CONSOLE_SCROLLBACK, configureTerminalInteraction } from '../../../server/src/ui/src/lib/terminal-console/interaction'
 import type { Terminal as BrowserTerminal } from '@xterm/xterm'
 
 const terminals: Terminal[] = []

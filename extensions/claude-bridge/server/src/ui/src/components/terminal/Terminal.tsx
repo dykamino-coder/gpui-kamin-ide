@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import '@xterm/xterm/css/xterm.css'
+import { CONSOLE_OPTIONS, configureConsole } from '../../lib/terminal-console'
+import '../../lib/terminal-console/console.css'
 import styles from './Terminal.module.css'
 
 export function Terminal() {
@@ -31,11 +33,13 @@ export function Terminal() {
       setStatus('connected')
       if (termRef.current && fitRef.current) {
         fitRef.current.fit()
-        ws.send(JSON.stringify({
-          type: 'resize',
-          cols: termRef.current.cols,
-          rows: termRef.current.rows,
-        }))
+        ws.send(
+          JSON.stringify({
+            type: 'resize',
+            cols: termRef.current.cols,
+            rows: termRef.current.rows,
+          }),
+        )
         // Clear shell banner, then run pending command if any
         suppressOutputRef.current = true
         setTimeout(() => {
@@ -68,7 +72,10 @@ export function Terminal() {
     let writeTimer = 0
     function flushWrites() {
       writeTimer = 0
-      if (suppressOutputRef.current) { writeBuf = ''; return }
+      if (suppressOutputRef.current) {
+        writeBuf = ''
+        return
+      }
       if (writeBuf && termRef.current) {
         termRef.current.write(writeBuf)
         writeBuf = ''
@@ -116,6 +123,7 @@ export function Terminal() {
       if (disposed || !containerRef.current) return
 
       const term = new Terminal({
+        ...CONSOLE_OPTIONS,
         cursorBlink: true,
         fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace",
         fontSize: 14,
@@ -149,98 +157,11 @@ export function Terminal() {
       const fitAddon = new FitAddon()
       term.loadAddon(fitAddon)
       term.open(containerRef.current)
+      const disposeConsole = configureConsole(term, containerRef.current)
       fitAddon.fit()
 
       termRef.current = term
       fitRef.current = fitAddon
-
-      // ── Clipboard: paste via native paste event on xterm's textarea ──
-      // This works on all contexts (HTTP/HTTPS) — no permissions needed.
-      // xterm has its own paste listener that calls stopPropagation,
-      // so we must intercept in capture phase with stopImmediatePropagation.
-      const xtermTextarea = containerRef.current.querySelector('textarea')
-      if (xtermTextarea) {
-        xtermTextarea.addEventListener('paste', (e) => {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-          const text = (e as ClipboardEvent).clipboardData?.getData('text/plain')
-          if (text) {
-            const ws = wsRef.current
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'input', data: text }))
-            }
-          }
-        }, true) // capture phase — runs before xterm's handler
-      }
-
-      // ── Clipboard: copy via hidden textarea fallback ──
-      function copyText(text: string) {
-        // Try modern API first
-        if (navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(text).catch(() => fallbackCopy(text))
-        } else {
-          fallbackCopy(text)
-        }
-      }
-      function fallbackCopy(text: string) {
-        const ta = document.createElement('textarea')
-        ta.value = text
-        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
-        document.body.appendChild(ta)
-        ta.select()
-        document.execCommand('copy')
-        document.body.removeChild(ta)
-      }
-
-      // ── Key handler: Ctrl+C/X/V ──
-      term.attachCustomKeyEventHandler((ev: KeyboardEvent) => {
-        if (ev.type !== 'keydown') return true
-
-        // Ctrl+C / Ctrl+Shift+C: copy selection (or SIGINT if no selection)
-        if (ev.ctrlKey && (ev.key === 'c' || ev.key === 'C')) {
-          const sel = term.getSelection()
-          if (sel) {
-            copyText(sel)
-            term.clearSelection()
-            return false
-          }
-          // No selection: Ctrl+C → SIGINT, Ctrl+Shift+C → ignore
-          return ev.key === 'c'
-        }
-
-        // Ctrl+X: copy selection
-        if (ev.ctrlKey && ev.key === 'x') {
-          const sel = term.getSelection()
-          if (sel) {
-            copyText(sel)
-            term.clearSelection()
-            return false
-          }
-          return true
-        }
-
-        // Ctrl+V / Ctrl+Shift+V: stop xterm from handling (it sends raw \x16),
-        // let the browser trigger native paste event on the focused textarea.
-        // Our capture-phase paste listener above will intercept and send to PTY.
-        if (ev.ctrlKey && (ev.key === 'v' || ev.key === 'V')) {
-          // Try clipboard API as primary (works in secure contexts)
-          if (navigator.clipboard?.readText) {
-            navigator.clipboard.readText().then((text) => {
-              if (text) {
-                const ws = wsRef.current
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: 'input', data: text }))
-                }
-              }
-            }).catch(() => {})
-          }
-          // return false → xterm skips processing, browser fires native paste event
-          // on the textarea → our capture-phase paste handler sends to PTY (HTTP fallback)
-          return false
-        }
-
-        return true
-      })
 
       // Input → WS
       term.onData((data) => {
@@ -265,11 +186,13 @@ export function Terminal() {
           if (term.cols !== prevCols || term.rows !== prevRows) {
             const ws = wsRef.current
             if (ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'resize',
-                cols: term.cols,
-                rows: term.rows,
-              }))
+              ws.send(
+                JSON.stringify({
+                  type: 'resize',
+                  cols: term.cols,
+                  rows: term.rows,
+                }),
+              )
             }
           }
         }, 150)
@@ -277,12 +200,17 @@ export function Terminal() {
       resizeObs.observe(containerRef.current)
 
       return () => {
+        if (resizeTimer) clearTimeout(resizeTimer)
         resizeObs.disconnect()
+        disposeConsole()
       }
     }
 
     let cleanupResize: (() => void) | undefined
-    init().then((fn) => { cleanupResize = fn })
+    init().then((fn) => {
+      if (disposed) fn?.()
+      else cleanupResize = fn
+    })
 
     // Listen for external command events (e.g. from Login button on Account card)
     const handleExternalCmd = (e: Event) => {
@@ -329,12 +257,42 @@ export function Terminal() {
   }
 
   const quickCommands = [
-    { label: 'Claude', icon: 'fa-solid fa-rocket', cmd: 'claude --dangerously-skip-permissions', color: 'var(--accent-blue)' },
-    { label: 'Resume', icon: 'fa-solid fa-rotate-left', cmd: 'claude --dangerously-skip-permissions --resume', color: 'var(--accent-purple)' },
-    { label: 'Auth Status', icon: 'fa-solid fa-circle-check', cmd: 'claude --dangerously-skip-permissions auth status', color: 'var(--accent-green)' },
-    { label: 'Usage', icon: 'fa-solid fa-chart-pie', cmd: 'claude --dangerously-skip-permissions /usage', color: 'var(--accent-yellow)' },
-    { label: 'Login', icon: 'fa-solid fa-right-to-bracket', cmd: 'claude --dangerously-skip-permissions /login', color: 'var(--accent-cyan)' },
-    { label: 'Logout', icon: 'fa-solid fa-right-from-bracket', cmd: 'claude --dangerously-skip-permissions /logout', color: 'var(--accent-red)' },
+    {
+      label: 'Claude',
+      icon: 'fa-solid fa-rocket',
+      cmd: 'claude --dangerously-skip-permissions',
+      color: 'var(--accent-blue)',
+    },
+    {
+      label: 'Resume',
+      icon: 'fa-solid fa-rotate-left',
+      cmd: 'claude --dangerously-skip-permissions --resume',
+      color: 'var(--accent-purple)',
+    },
+    {
+      label: 'Auth Status',
+      icon: 'fa-solid fa-circle-check',
+      cmd: 'claude --dangerously-skip-permissions auth status',
+      color: 'var(--accent-green)',
+    },
+    {
+      label: 'Usage',
+      icon: 'fa-solid fa-chart-pie',
+      cmd: 'claude --dangerously-skip-permissions /usage',
+      color: 'var(--accent-yellow)',
+    },
+    {
+      label: 'Login',
+      icon: 'fa-solid fa-right-to-bracket',
+      cmd: 'claude --dangerously-skip-permissions /login',
+      color: 'var(--accent-cyan)',
+    },
+    {
+      label: 'Logout',
+      icon: 'fa-solid fa-right-from-bracket',
+      cmd: 'claude --dangerously-skip-permissions /logout',
+      color: 'var(--accent-red)',
+    },
   ]
 
   function sendExit() {
@@ -353,7 +311,18 @@ export function Terminal() {
     <div class={styles.container}>
       <div class={styles.toolbar}>
         <div class={styles.toolbarLeft}>
-          <span class={styles.statusDot} data-status={status === 'connected' ? 'connected' : status === 'idle' ? 'idle' : status === 'connecting' ? undefined : 'disconnected'} />
+          <span
+            class={styles.statusDot}
+            data-status={
+              status === 'connected'
+                ? 'connected'
+                : status === 'idle'
+                  ? 'idle'
+                  : status === 'connecting'
+                    ? undefined
+                    : 'disconnected'
+            }
+          />
           <span>
             {status === 'idle' && 'Terminal'}
             {status === 'connecting' && 'Connecting...'}
@@ -381,21 +350,12 @@ export function Terminal() {
       {(status === 'idle' || status === 'connected') && (
         <div class={styles.quickActions}>
           {quickCommands.map((qc) => (
-            <button
-              key={qc.label}
-              class={styles.quickBtn}
-              onClick={() => sendCommand(qc.cmd)}
-              title={qc.cmd}
-            >
+            <button key={qc.label} class={styles.quickBtn} onClick={() => sendCommand(qc.cmd)} title={qc.cmd}>
               <i class={qc.icon} style={{ color: qc.color }} />
               {qc.label}
             </button>
           ))}
-          <button
-            class={styles.quickBtn}
-            onClick={sendExit}
-            title="Ctrl+C x2 — kill current process"
-          >
+          <button class={styles.quickBtn} onClick={sendExit} title="Ctrl+C x2 — kill current process">
             <i class="fa-solid fa-xmark" style={{ color: 'var(--text-muted)' }} />
             Exit
           </button>
@@ -406,7 +366,9 @@ export function Terminal() {
 
       {(status === 'idle' || (status === 'connected' && !hasOutput)) && (
         <div class={styles.placeholder}>
-          <pre class={styles.asciiBanner}>{`██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗     ██████╗ ██████╗ ██████╗ ███████╗     ██████╗██╗     ██╗
+          <pre
+            class={styles.asciiBanner}
+          >{`██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗     ██████╗ ██████╗ ██████╗ ███████╗     ██████╗██╗     ██╗
 ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝    ██╔════╝██╔═══██╗██╔══██╗██╔════╝    ██╔════╝██║     ██║
 ██║     ██║     ███████║██║   ██║██║  ██║█████╗      ██║     ██║   ██║██║  ██║█████╗      ██║     ██║     ██║
 ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝      ██║     ██║   ██║██║  ██║██╔══╝      ██║     ██║     ██║
@@ -416,8 +378,12 @@ export function Terminal() {
             <span>Use the quick actions above to get started</span>
           </div>
           <div class={styles.placeholderShortcuts}>
-            <div class={styles.shortcutRow}><kbd>Ctrl+C</kbd> Interrupt / Exit</div>
-            <div class={styles.shortcutRow}><kbd>Ctrl+V</kbd> Paste</div>
+            <div class={styles.shortcutRow}>
+              <kbd>Ctrl+C</kbd> Interrupt / Exit
+            </div>
+            <div class={styles.shortcutRow}>
+              <kbd>Ctrl+V</kbd> Paste
+            </div>
           </div>
         </div>
       )}

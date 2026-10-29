@@ -25,7 +25,6 @@
 .xtermContainer {
   position: absolute;
   inset: 0;
-  padding: 4px;
 }
 
 /* "Connecting to session…" cover shown until the terminal gets its first

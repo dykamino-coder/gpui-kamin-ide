@@ -46,7 +46,7 @@ export function TerminalContainer({ tabId, active, fill = false }: TerminalConta
       <div
         ref={containerRef as any}
         class={styles.xtermContainer}
-        style={fill ? 'inset:8px 14px 10px 14px;padding:0' : undefined}
+        style={fill ? 'inset:8px 14px 10px 14px' : undefined}
       />
       {!hasOutput && (
         <div class={styles.connecting} role="status">

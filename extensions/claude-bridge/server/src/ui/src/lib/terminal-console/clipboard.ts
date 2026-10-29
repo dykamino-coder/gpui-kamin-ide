@@ -1,6 +1,6 @@
-import type { Terminal } from '@xterm/xterm'
+import type { ConsoleClipboardTerminal } from './types'
 
-interface ClipboardOptions {
+export interface ClipboardOptions {
   writeText?: (text: string) => unknown
   readText?: () => Promise<string>
   handleKey?: (event: KeyboardEvent) => boolean
@@ -14,17 +14,29 @@ function fallbackCopy(document: Document, text: string): void {
   textarea.value = text
   textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
   document.body.appendChild(textarea)
-  try { textarea.select(); document.execCommand('copy') }
-  finally { textarea.remove(); previous?.focus() }
+  try {
+    textarea.select()
+    document.execCommand('copy')
+  } finally {
+    textarea.remove()
+    previous?.focus()
+  }
 }
 
 /** One clipboard/menu policy for the console. Native paste is the sole keyboard
  * paste path, avoiding a second send from an asynchronous clipboard read. */
-export function configureTerminalClipboard(terminal: Terminal, container: HTMLElement, options: ClipboardOptions = {}): () => void {
+export function configureTerminalClipboard(
+  terminal: ConsoleClipboardTerminal,
+  container: HTMLElement,
+  options: ClipboardOptions = {},
+): () => void {
   const document = container.ownerDocument
   const clipboard = document.defaultView?.navigator.clipboard
   const copy = (text: string): void => {
-    if (options.writeText) { void options.writeText(text); return }
+    if (options.writeText) {
+      void options.writeText(text)
+      return
+    }
     if (clipboard?.writeText) {
       void clipboard.writeText(text).catch(() => fallbackCopy(document, text))
     } else fallbackCopy(document, text)
@@ -42,9 +54,13 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
       // Inspecting a menu must not trigger a browser permission prompt. The
       // native console supplies the host reader; browser clients can still
       // paste with the trusted clipboard event when permission is unavailable.
-      const permission = await document.defaultView?.navigator.permissions?.query({ name: 'clipboard-read' as PermissionName })
-      return permission?.state === 'granted' ? await clipboard?.readText() ?? '' : ''
-    } catch { return '' }
+      const permission = await document.defaultView?.navigator.permissions?.query({
+        name: 'clipboard-read' as PermissionName,
+      })
+      return permission?.state === 'granted' ? ((await clipboard?.readText()) ?? '') : ''
+    } catch {
+      return ''
+    }
   }
   const readClipboard = async (): Promise<void> => {
     const text = await clipboardText()
@@ -59,7 +75,7 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
     else void readClipboard()
   }
   container.addEventListener('paste', paste, true)
-  terminal.attachCustomKeyEventHandler(event => {
+  terminal.attachCustomKeyEventHandler((event) => {
     if (event.type !== 'keydown') return true
     if (event.ctrlKey && !event.altKey && !event.metaKey) {
       // CEF can omit code when native input has no scan code. Its Windows
@@ -114,14 +130,35 @@ export function configureTerminalClipboard(terminal: Terminal, container: HTMLEl
       glyph.className = `fas fa-${icon}`
       glyph.setAttribute('aria-hidden', 'true')
       button.append(glyph, document.createTextNode(label))
-      button.onclick = () => { action(); close(); terminal.focus() }
+      button.onclick = () => {
+        action()
+        close()
+        terminal.focus()
+      }
       menu.appendChild(button)
       return button
     }
-    item('Copy', 'copy', () => { if (selection) { copy(selection); terminal.clearSelection() } }, !selection)
+    item(
+      'Copy',
+      'copy',
+      () => {
+        if (selection) {
+          copy(selection)
+          terminal.clearSelection()
+        }
+      },
+      !selection,
+    )
     let pasteText = ''
-    const pasteItem = item('Paste', 'paste', () => { if (pasteText) terminal.paste(pasteText) }, true)
-    void clipboardText().then(text => {
+    const pasteItem = item(
+      'Paste',
+      'paste',
+      () => {
+        if (pasteText) terminal.paste(pasteText)
+      },
+      true,
+    )
+    void clipboardText().then((text) => {
       if (closed || disposed) return
       pasteText = text
       pasteItem.disabled = !text

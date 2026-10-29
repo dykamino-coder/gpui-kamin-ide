@@ -1,4 +1,4 @@
-import type { Terminal } from '@xterm/xterm'
+import type { ConsoleInteractionTerminal } from './types'
 
 export const CONSOLE_SCROLLBACK = 5000
 // xterm and FitAddon read this same public option for scrollbar hit testing
@@ -7,7 +7,7 @@ export const CONSOLE_OVERVIEW_RULER = { width: 8, showTopBorder: false, showBott
 
 /** Normal-screen drag selects text. Alternate-screen applications retain mouse
  * ownership; their explicit selection modifier is handled by xterm. */
-export function configureTerminalInteraction(terminal: Terminal, container: HTMLElement): () => void {
+export function configureTerminalInteraction(terminal: ConsoleInteractionTerminal, container: HTMLElement): () => void {
   container.classList.add('bridge-console')
   const forwarded = new WeakSet<Event>()
   const mouseDown = (event: MouseEvent): void => {
@@ -40,12 +40,20 @@ export function configureTerminalInteraction(terminal: Terminal, container: HTML
     terminal.focus()
     const mac = /Mac/.test(container.ownerDocument.defaultView?.navigator.platform ?? '')
     const initial = new MouseEvent('mousedown', {
-      bubbles: true, cancelable: true, view: event.view, detail: event.detail,
-      screenX: event.screenX, screenY: event.screenY,
-      clientX: event.clientX, clientY: event.clientY,
-      button: event.button, buttons: event.buttons,
-      ctrlKey: event.ctrlKey, metaKey: event.metaKey,
-      shiftKey: reporting && !mac, altKey: reporting && mac ? true : event.altKey,
+      bubbles: true,
+      cancelable: true,
+      view: event.view,
+      detail: event.detail,
+      screenX: event.screenX,
+      screenY: event.screenY,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      button: event.button,
+      buttons: event.buttons,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      shiftKey: reporting && !mac,
+      altKey: reporting && mac ? true : event.altKey,
     })
     forwarded.add(initial)
     target.dispatchEvent(initial)
@@ -76,7 +84,7 @@ export function configureTerminalInteraction(terminal: Terminal, container: HTML
     terminal.onScroll(syncScreen),
     terminal.onResize(syncScreen),
   ]
-  terminal.attachCustomWheelEventHandler(event => {
+  terminal.attachCustomWheelEventHandler((event) => {
     const mode = terminal.modes.mouseTrackingMode
     if (terminal.buffer.active.type === 'alternate' && (mode === 'none' || mode === 'x10')) {
       // No declared wheel protocol: do not let xterm synthesize cursor keys.
@@ -91,7 +99,7 @@ export function configureTerminalInteraction(terminal: Terminal, container: HTML
     container.removeEventListener('mousedown', mouseDown, true)
     container.removeEventListener('mouseup', mouseUp, true)
     container.removeEventListener('mousemove', mouseMove, true)
-    subscriptions.forEach(subscription => subscription.dispose())
+    subscriptions.forEach((subscription) => subscription.dispose())
     container.classList.remove('bridge-console')
     delete container.dataset.terminalScreen
     delete container.dataset.terminalHistory
