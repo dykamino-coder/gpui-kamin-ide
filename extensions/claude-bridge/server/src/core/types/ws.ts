@@ -21,6 +21,7 @@ export interface WsMsgSessionCreate {
    *  `streaming:delta` frames between boundary snapshots instead of a full
    *  snapshot every tick. Absent/0 → legacy full-snapshot streaming. */
   protocolVersion?: number
+  history?: { mode?: 'paged'; cursor?: { head: string; pos: number; lastPos?: number; lastUuid?: string } }
   /** The user's standing instructions for this token. APPENDED to the technical
    *  system prompt (buildSystemPrompt) — never replaces it. Rides the session
    *  message so nothing has to be stored or synced server-side. */
@@ -103,6 +104,7 @@ export interface WsMsgSessionResume {
   externalTools?: ToolDefinition[]
   /** Client streaming-protocol version — see WsMsgSessionCreate. */
   protocolVersion?: number
+  history?: { mode?: 'paged'; cursor?: { head: string; pos: number; lastPos?: number; lastUuid?: string } }
   /** See WsMsgSessionCreate. A resume respawns the CLI, so it must carry the
    *  prompt too — otherwise the instructions would only ever reach brand-new
    *  sessions and silently vanish on every reconnect. */
@@ -175,6 +177,8 @@ export interface WsMsgJsonlSegmentRequest {
   type: 'jsonl:segment-request'
   fromTs: string
   toTs: string
+  beforePos?: number
+  paged?: boolean
 }
 
 /** VSIX bridge host's reply to a server-initiated `hook:execute` — local-host shell
@@ -211,6 +215,7 @@ export type ClientToServerMsg =
   | WsMsgJsonlDownloadRequest
   | WsMsgJsonlSyncRequest
   | WsMsgJsonlSegmentRequest
+  | { type: 'jsonl:subagent-select'; agentId: string | null }
   | WsMsgHookResponse
 
 // -- Server → client host --

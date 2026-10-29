@@ -117,10 +117,12 @@ export function useChatScrollPin(
   function requestSnap(): void {
     if (pendingSnapRef.current) return
     pendingSnapRef.current = true
+    const tab = tabRef.current
     requestAnimationFrame(() => {
       pendingSnapRef.current = false
+      if (tab !== tabRef.current) return
       snap()
-      requestAnimationFrame(snap)
+      requestAnimationFrame(() => { if (tab === tabRef.current) snap() })
     })
   }
 
@@ -128,10 +130,13 @@ export function useChatScrollPin(
   // actually landed (not from the stale saved flag).
   useEffect(() => {
     if (!currentTabId) return
+    let cancelled = false
+    anchorRef.current = null
     const saved = tabScrollMemory.get(currentTabId)
     restoringRef.current = true
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        if (cancelled || tabRef.current !== currentTabId) return
         const el = host()
         if (!el) { restoringRef.current = false; return }
         if (saved && !saved.atBottom) {
@@ -144,9 +149,10 @@ export function useChatScrollPin(
         stickRef.current = atBottom
         chatAtBottom.value = atBottom
         prevTopRef.current = el.scrollTop
-        requestAnimationFrame(() => { restoringRef.current = false })
+        requestAnimationFrame(() => { if (!cancelled) restoringRef.current = false })
       })
     })
+    return () => { cancelled = true }
   }, [currentTabId])
 
   // New entries arrived OR a streaming entry was replaced in place — snap if

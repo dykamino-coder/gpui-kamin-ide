@@ -21,7 +21,8 @@ import os from 'os'
 import type { JsonlEntry, JsonlStatus } from '../../shared/jsonl-types'
 import { SubagentJsonlWatcher } from './subagent-jsonl-watcher'
 import { compactionScanner, type CompactionSub } from './compaction-scanner'
-import { fingerprintTranscript } from './jsonl-fingerprint'
+import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
+import { readHistoryPage } from './jsonl-page'
 import { SegmentIndexBuilder, type SegmentIndex } from './segment-index'
 import { readJsonlLines, readRange } from './jsonl-lines'
 import {
@@ -224,6 +225,7 @@ export class JsonlWatcher {
   // lands mid-rebuild sets `Again` to trigger exactly one more pass afterwards.
   private rebuildingIndex = false
   private rebuildIndexAgain = false
+  private pendingStatsEnd: number | undefined
 
   /** Active subagent JSONL watchers (keyed by file path) */
   private subagentWatchers = new Map<string, SubagentJsonlWatcher>()
@@ -252,6 +254,7 @@ export class JsonlWatcher {
     onReplayReset?: () => void,
     onStatsEntry?: (entry: JsonlEntry) => void,
     writable?: () => boolean,
+    private history?: { mode?: 'paged'; cursor?: { head: string; pos: number; lastPos?: number; lastUuid?: string } },
   ) {
     this.writable = writable
     this.sessionCreatedAt = sessionCreatedAt
@@ -307,6 +310,9 @@ export class JsonlWatcher {
   }
 
   private async scanSubagentFiles(): Promise<void> {
+    // Paged clients explicitly subscribe to the reader they opened. Directory
+    // discovery must not replay hundreds of unrelated transcripts in the background.
+    if (this.history?.mode === 'paged' && !this.activeSubagentId) return
     // Retire watchers for subagents that finished (JSONL is append-only +
     // terminal, so no growth for SUBAGENT_RETIRE_MS means done). Without this
     // every subagent a session ever spawned kept a live 2s stat timer + inotify
@@ -366,6 +372,7 @@ export class JsonlWatcher {
       for (const file of files) {
         if (this.stopped) return
         if (!file.endsWith('.jsonl')) continue
+        if (this.history?.mode === 'paged' && file !== `${this.activeSubagentId}.jsonl`) continue
         const jsonlPath = path.join(subagentsDir, file)
         // Already watching this file?
         if (this.subagentWatchers.has(jsonlPath)) continue
@@ -409,6 +416,7 @@ export class JsonlWatcher {
           /* use fallback name */
         }
         if (this.stopped) return
+        if (this.history?.mode === 'paged' && agentId !== this.activeSubagentId) continue
 
         console.log(`[subagent] watcher start: ${agentName} (${path.basename(jsonlPath)})`)
         const watcher = new SubagentJsonlWatcher(
@@ -418,7 +426,7 @@ export class JsonlWatcher {
             console.log(`[subagent] send ${agentName}: ${entries.length} entries`)
             return this.sendSubagentEntries!(agentName, entries, agentId)
           },
-          { startOffset },
+          { startOffset, tailOnly: this.history?.mode === 'paged' },
         )
         this.retiredSubagents.delete(jsonlPath)
         this.subagentWatchers.set(jsonlPath, watcher)
@@ -438,6 +446,18 @@ export class JsonlWatcher {
       if (this.stopped) return
       void this.scanSubagents()
     }, 4000)
+  }
+
+  private activeSubagentId: string | null = null
+
+  selectSubagent(agentId: string | null): void {
+    if (agentId !== null && !/^[a-zA-Z0-9_-]{1,160}$/.test(agentId)) return
+    if (this.activeSubagentId === agentId) return
+    this.activeSubagentId = agentId
+    for (const watcher of this.subagentWatchers.values()) watcher.stop()
+    this.subagentWatchers.clear()
+    this.retiredSubagents.clear()
+    void this.scanSubagents()
   }
 
   getFilePath(): string | null {
@@ -739,6 +759,9 @@ export class JsonlWatcher {
     }
 
     this.filePath = newPath
+    this.historyIndex = undefined
+    this.indexBuilder = undefined
+    this.indexOffset = 0
     this.lastOffset = 0
     this.reading = false
     // Keep the shared compaction scanner pointed at the file we now tail, so it
@@ -752,7 +775,8 @@ export class JsonlWatcher {
     }
 
     // Notify client about the switch — compacted flag tells renderer to clear old entries
-    this.sendStatus({ status: 'watching', filePath: newPath, compacted: true })
+    if (this.history?.mode !== 'paged') this.sendStatus({ status: 'watching', filePath: newPath, compacted: true })
+    else this.replaceOnPage = true
 
     // Read new file from beginning
     this.readInitialContent()
@@ -767,8 +791,9 @@ export class JsonlWatcher {
    *
    *  Coalesced: a boundary arriving mid-rebuild sets a re-run flag rather than
    *  overlapping two parses (which could deliver stale-then-fresh out of order). */
-  private async rebuildSegmentIndex(): Promise<void> {
+  private async rebuildSegmentIndex(statsEnd?: number): Promise<void> {
     if (!this.filePath || this.stopped) return
+    if (statsEnd !== undefined) this.pendingStatsEnd = statsEnd
     if (this.rebuildingIndex) {
       this.rebuildIndexAgain = true
       return
@@ -780,20 +805,32 @@ export class JsonlWatcher {
         const filePath = this.filePath
         if (!filePath || this.stopped) return
         const gen = this.replayGen
+        const seedEnd = this.pendingStatsEnd
+        this.pendingStatsEnd = undefined
         const signal = this.replayAbort?.signal
         const live = () => !this.stopped && this.filePath === filePath && this.replayGen === gen
-        const builder = new SegmentIndexBuilder()
+        const builder = this.indexBuilder?.clone() ?? new SegmentIndexBuilder()
+        const start = this.indexBuilder ? this.indexOffset : 0
+        let end = start
         try {
-          for await (const line of readJsonlLines(filePath, { signal })) {
+          for await (const line of readJsonlLines(filePath, { signal, start })) {
             if (!live()) return
+            if (!line.terminated) break
             const parsed = parseJsonlLine(line.text)
-            if (parsed) builder.add(parsed)
+            if (parsed) {
+              builder.add(parsed, line.start)
+              if (seedEnd !== undefined && line.end <= seedEnd) this.onStatsEntry?.(parsed)
+            }
+            end = line.end
           }
         } catch {
           return
         }
         if (!live()) return
-        this.sendStatus({ status: 'watching', filePath, segmentIndex: builder.build() })
+        this.indexBuilder = builder
+        this.indexOffset = end
+        this.historyIndex = builder.build()
+        this.sendStatus({ status: 'watching', filePath, segmentIndex: this.historyIndex })
       } while (this.rebuildIndexAgain && !this.stopped)
     } finally {
       this.rebuildingIndex = false
@@ -945,7 +982,7 @@ export class JsonlWatcher {
 
     // Full replay restarts the live dashboard counters from zero — the reads
     // below re-accumulate the whole file, so a reattach won't double-count.
-    this.onReplayReset?.()
+    if (this.history?.mode !== 'paged' || !this.indexBuilder) this.onReplayReset?.()
 
     try {
       const stat = await fsp.stat(filePath)
@@ -958,6 +995,50 @@ export class JsonlWatcher {
         // An empty transcript still has to SAY it finished: `replayComplete` is
         // the client's only signal that the chat is done loading.
         this.sendStatus({ status: 'watching', filePath, replayComplete: true })
+        return
+      }
+
+      if (this.history?.mode === 'paged') {
+        const fp = await fingerprintTranscript(filePath)
+        const cursor = this.history.cursor
+        this.history.cursor = undefined
+        const resume =
+          cursor &&
+          canResume(fp, cursor.head, cursor.pos) &&
+          (await isRecordBoundary(filePath, cursor.pos)) &&
+          (await recordUuidMatches(filePath, cursor.lastPos, cursor.lastUuid))
+        if (!live()) return
+        if (resume && stat.size - cursor.pos <= 512 * 1024) {
+          this.lastOffset = await this.streamFrom(cursor.pos, live)
+        } else {
+          const page = await readHistoryPage(filePath, stat.size)
+          if (!live()) return
+          const current = await fsp.stat(filePath)
+          if (!live()) return
+          if (current.dev !== stat.dev || current.ino !== stat.ino || current.size < page.endPos) {
+            this.replayAbort = null
+            void this.readInitialContent()
+            return
+          }
+          // A mismatching mirror remains visible until its replacement is ready.
+          if ((cursor && !resume) || this.replaceOnPage)
+            this.sendStatus({ status: 'watching', filePath, compacted: true })
+          this.replaceOnPage = false
+          if (!(await this.deliver(page.records, true, live))) return
+          this.lastOffset = page.endPos
+        }
+        if (!live()) return
+        this.timing('page.delivered')
+        this.sendStatus({
+          status: 'watching',
+          filePath,
+          replayComplete: true,
+          ...(fp ? { fileHead: fp.head, fileSize: fp.size } : {}),
+        })
+        // Metadata is indexed independently. Older records are requested by
+        // byte cursor; they never flood and evict the visible newest window.
+        this.startPolling()
+        void this.rebuildSegmentIndex(this.lastOffset)
         return
       }
 
@@ -998,7 +1079,7 @@ export class JsonlWatcher {
           bounds.push(idx.length)
         }
         idx.push(line.start, line.end)
-        builder.add(parsed)
+        builder.add(parsed, line.start)
         if (!live()) return
         // Stats are reset per replay and re-accumulated, so they fold every
         // record. `onUserEntry` is NOT fired for history: it records a NEW
@@ -1024,6 +1105,7 @@ export class JsonlWatcher {
       // pre-read stat.size, which raced with concurrent CLI appends.
       this.lastOffset = endPos
       segmentIndex = builder.build()
+      this.historyIndex = segmentIndex
       const ranges: Array<[number, number]> = []
       let segStart = 0
       for (const b of bounds) {
@@ -1111,7 +1193,11 @@ export class JsonlWatcher {
    * needs the same replay a fresh resume would get. Tailing continues; the
    * generation bump cancels any still-running previous replay.
    */
-  replayAll(): void {
+  replayAll(history?: {
+    mode?: 'paged'
+    cursor?: { head: string; pos: number; lastPos?: number; lastUuid?: string }
+  }): void {
+    if (history) this.history = history
     if (this.stopped || !this.filePath) return
     // Stop the live tail BEFORE re-reading from byte 0 (like switchToFile does):
     // otherwise the running poller/watcher and this full replay both parse any
@@ -1137,11 +1223,8 @@ export class JsonlWatcher {
     // The new replay owns subsequent reads. An old tail continuation must not
     // keep the new poller locked or clear its lock on eventual completion.
     this.reading = false
-    // Субагенты ТОЖЕ с нуля: живой watcher — skip в scanSubagents (его реплей
-    // не повторится), завершённый — retired через 5 мин. В обоих случаях
-    // реаттачнутый клиент открывал агента на «No messages from this agent
-    // yet» — история агента живёт только в этих файлах. Пересоздание
-    // watcher'ов реплеит их целиком; клиент дедупит по uuid.
+    // Recreate only the selected reader for paged clients; old clients still
+    // receive the legacy discovery replay. Never open unselected transcripts.
     for (const w of this.subagentWatchers.values()) w.stop()
     this.subagentWatchers.clear()
     this.retiredSubagents.clear()
@@ -1149,12 +1232,32 @@ export class JsonlWatcher {
     void this.readInitialContent()
   }
 
+  private historyIndex: SegmentIndex | undefined
+  private indexBuilder: SegmentIndexBuilder | undefined
+  private indexOffset = 0
+  private replaceOnPage = false
+
+  async segmentRange(fromTs: string, toTs: string): Promise<{ lower: number; upper: number } | null> {
+    if (!this.filePath) return null
+    const boundaries = this.historyIndex?.boundaries
+    if (!boundaries) return null
+    const lower = fromTs ? boundaries.find((b) => b.ts === fromTs)?.pos : 0
+    const upper = toTs ? boundaries.find((b) => b.ts === toTs)?.pos : (await fsp.stat(this.filePath)).size
+    if (lower === undefined || upper === undefined) return null
+    return { lower, upper }
+  }
+
   private replayRewrittenFile(filePath: string): void {
     if (this.stopped || this.filePath !== filePath) return
     // Reuse the existing cache/mirror reset event, without changing the
     // conversation identity: a same-path repair still belongs to this chat.
-    this.sendStatus({ status: 'watching', filePath, compacted: true, replayComplete: false })
+    if (this.history?.mode !== 'paged')
+      this.sendStatus({ status: 'watching', filePath, compacted: true, replayComplete: false })
+    else this.replaceOnPage = true
     this.lastOffset = 0
+    this.historyIndex = undefined
+    this.indexBuilder = undefined
+    this.indexOffset = 0
     this.replayAll()
   }
 

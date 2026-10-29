@@ -41273,11 +41273,11 @@ var TranscriptMirror = class {
     try {
       const raw = await import_promises6.default.readFile(this.sidecar, "utf8");
       const parsed = JSON.parse(raw);
-      if (parsed.v !== 2 || typeof parsed.pos !== "number" || !parsed.head) return null;
+      if (parsed.v !== 3 || typeof parsed.pos !== "number" || !parsed.head) return null;
       const stat = await import_promises6.default.stat(this.file);
       if (stat.size === 0) return null;
       if (typeof parsed.size === "number" && stat.size < parsed.size) return null;
-      this.cursor = { head: parsed.head, pos: parsed.pos, lastUuid: parsed.lastUuid };
+      this.cursor = { head: parsed.head, pos: parsed.pos, lastUuid: parsed.lastUuid, lastPos: parsed.lastPos };
       return this.cursor;
     } catch {
       return null;
@@ -41288,24 +41288,23 @@ var TranscriptMirror = class {
    *  foundation for scroll-up: the chat holds only a recent window in the webview
    *  heap, and pulls the preceding page from this disk copy on demand.
    *
-   *  Reads only a BYTE WINDOW ending at `beforePos`, never the whole file — `_pos`
-   *  IS the byte offset, so an older page is a bounded seek+read in the host
-   *  process, not a full parse that would churn the host heap on every scroll. A
-   *  window too small to hold `count` records just returns fewer; the caller asks
-   *  again as the user keeps scrolling. */
+   *  Server offsets refer to the source JSONL, not this serialized mirror.
+   *  Locate the preceding local row by its stored source offset, then read a
+   *  bounded byte window in the host process. */
   async readRange(beforePos, count) {
+    const localEnd = await this.localPosition(beforePos);
     let window9 = Math.max(256 * 1024, count * 4096);
     for (let attempt = 0; attempt < 3; attempt++) {
-      const out = await this.readRangeWindow(beforePos, count, window9);
-      if (out.length > 0 || beforePos <= window9) return out;
+      const out = await this.readRangeWindow(beforePos, count, window9, localEnd);
+      if (out.length > 0 || localEnd <= window9) return out;
       window9 *= 4;
     }
     return [];
   }
-  async readRangeWindow(beforePos, count, windowSize) {
+  async readRangeWindow(beforePos, count, windowSize, localEnd) {
     if (beforePos <= 0 || count <= 0) return [];
-    const window9 = Math.min(beforePos, windowSize);
-    const start = beforePos - window9;
+    const window9 = Math.min(localEnd, windowSize);
+    const start = localEnd - window9;
     let text;
     try {
       const fh = await import_promises6.default.open(this.file, "r");
@@ -41373,7 +41372,6 @@ var TranscriptMirror = class {
       } catch {
       }
     }
-    recs.sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
     return recs.slice(-maxRecords);
   }
   /** Append records as they arrive. Never rewrites the file: an append-only
@@ -41396,7 +41394,8 @@ var TranscriptMirror = class {
       this.cursor = {
         head,
         pos: last._posEnd ?? this.cursor?.pos ?? 0,
-        lastUuid: last.uuid ?? this.cursor?.lastUuid
+        lastUuid: last.uuid ?? this.cursor?.lastUuid,
+        lastPos: last._pos
       };
       this.scheduleSidecar();
     }).catch(() => {
@@ -41425,22 +41424,27 @@ var TranscriptMirror = class {
       if (r.uuid) byUuid.set(r.uuid, r);
       else noUuid.push(r);
     }
-    const tsOf = (r) => r.timestamp ?? "";
     const ordered = [...byUuid.values(), ...noUuid].sort(
-      (a, b) => tsOf(a).localeCompare(tsOf(b)) || (a._pos ?? 0) - (b._pos ?? 0)
+      (a, b) => (a._pos ?? 0) - (b._pos ?? 0)
     );
     if (ordered.length === 0) return;
     this.queue = this.queue.then(async () => {
-      try {
-        const st = await import_promises6.default.stat(this.file);
-        if (st.size > 0) return;
-      } catch {
+      const existing = await this.readCursor();
+      if (existing?.head === head) {
+        const fresh = ordered.filter((r) => r._pos >= Math.max(existing.pos, (existing.lastPos ?? -1) + 1));
+        if (fresh.length === 0) return;
+        await this.close();
+        await import_promises6.default.appendFile(this.file, fresh.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
+        const last2 = fresh.at(-1);
+        this.cursor = { head, pos: last2._posEnd ?? existing.pos, lastUuid: last2.uuid, lastPos: last2._pos };
+        await this.writeSidecar();
+        return;
       }
       await this.close();
       const payload = ordered.map((r) => JSON.stringify(r)).join("\n") + "\n";
       await import_promises6.default.writeFile(this.file, payload, "utf8");
       const last = ordered[ordered.length - 1];
-      this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid };
+      this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid, lastPos: last._pos };
       await this.writeSidecar();
     }).catch(() => {
     });
@@ -41475,6 +41479,52 @@ var TranscriptMirror = class {
     });
   }
   sidecarTimer = null;
+  /** Server offsets address the original JSONL, not JSON.stringify's mirror.
+   * Locate their local byte position without parsing the entire disk cache. */
+  async localPosition(beforePos) {
+    const fh = await import_promises6.default.open(this.file, "r").catch(() => null);
+    if (!fh) return 0;
+    try {
+      let low = 0;
+      let high = (await fh.stat()).size;
+      const buf = Buffer.alloc(64 * 1024);
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        let rowStart = mid;
+        while (rowStart > low) {
+          const from = Math.max(low, rowStart - buf.length);
+          const read = await fh.read(buf, 0, rowStart - from, from);
+          const nl = buf.subarray(0, read.bytesRead).lastIndexOf(10);
+          rowStart = nl >= 0 ? from + nl + 1 : from;
+          if (nl >= 0) break;
+        }
+        let at = rowStart;
+        let text = "";
+        let found = false;
+        for (let n = 0; n < 256; n++) {
+          const { bytesRead } = await fh.read(buf, 0, buf.length, at);
+          if (!bytesRead) break;
+          const a = 0;
+          const nl = buf.subarray(0, bytesRead).indexOf(10, a);
+          text += buf.toString("utf8", a, nl < 0 ? bytesRead : nl);
+          if (nl >= 0) {
+            const row = JSON.parse(text);
+            if (typeof row._pos === "number" && row._pos < beforePos) low = at + nl + 1;
+            else high = rowStart;
+            found = true;
+            break;
+          }
+          at += bytesRead;
+        }
+        if (!found) high = mid;
+      }
+      return low;
+    } catch {
+      return 0;
+    } finally {
+      await fh.close();
+    }
+  }
   /** Дебаунс-запись sidecar (~1с): курсор двигается часто, диск — редко. */
   scheduleSidecar() {
     if (this.sidecarTimer) return;
@@ -41487,7 +41537,7 @@ var TranscriptMirror = class {
   async writeSidecar() {
     if (!this.cursor) return;
     const st = await import_promises6.default.stat(this.file).catch(() => null);
-    const body = { v: 2, ...this.cursor, ...st ? { size: st.size } : {} };
+    const body = { v: 3, ...this.cursor, ...st ? { size: st.size } : {} };
     const tmp = `${this.sidecar}.tmp`;
     await import_promises6.default.writeFile(tmp, JSON.stringify(body), "utf8");
     await import_promises6.default.rename(tmp, this.sidecar);
@@ -41957,9 +42007,9 @@ var JSONL_CACHE_SLACK = 1e3;
 function trimJsonlCache(cached) {
   const over = cached.length - JSONL_CACHE_MAX;
   if (over < JSONL_CACHE_SLACK) return;
-  const ords = cached.map((e) => e._ord ?? 0).sort((a, b) => a - b);
+  const ords = cached.map((e) => e._pos ?? e._ord ?? 0).sort((a, b) => a - b);
   const cutoff = ords[over - 1] ?? 0;
-  const kept = cached.filter((e) => (e._ord ?? 0) > cutoff);
+  const kept = cached.filter((e) => (e._pos ?? e._ord ?? 0) > cutoff);
   cached.length = kept.length;
   for (let i = 0; i < kept.length; i++) cached[i] = kept[i];
 }
@@ -41968,7 +42018,6 @@ function handleServerMessage(msg, ctx) {
     case "session:created": {
       ctx.resetReconnectAttempt();
       ctx.noteSessionCreated();
-      ctx.clearJsonlCache();
       ctx.window.webContents.send("jsonl-status", ctx.tabId, { status: "searching" });
       ctx.noteIdentityConfirmed();
       ctx.setState({ status: "authenticated", sessionId: msg.sessionId });
@@ -42082,10 +42131,15 @@ function handleServerMessage(msg, ctx) {
       break;
     }
     case "jsonl:segment-response": {
+      if (msg.beforePos !== void 0) {
+        ctx.window.webContents.send("jsonl:older-page", ctx.tabId, msg);
+        break;
+      }
       ctx.window.webContents.send("jsonl:segment-page", ctx.tabId, {
         fromTs: msg.fromTs,
         toTs: msg.toTs,
-        records: msg.records ?? []
+        records: msg.records ?? [],
+        nextPos: msg.nextPos
       });
       break;
     }
@@ -42209,7 +42263,7 @@ function handleServerMessage(msg, ctx) {
 }
 
 // src/main/ws/connection-manager.ts
-var MIRROR_PAINT_RECORDS = 2e3;
+var MIRROR_PAINT_RECORDS = 200;
 var REPLAY_TAIL_MAX = 4500;
 var CLIENT_STREAM_PROTOCOL = 1;
 var RECONNECT_BASE_MS = 1e3;
@@ -42518,6 +42572,7 @@ var ConnectionManager = class _ConnectionManager {
       await _ConnectionManager.whenExternalToolsReady?.();
     } catch {
     }
+    const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null;
     if (this.ws !== sock || sock.readyState !== wrapper_default.OPEN) return;
     const externalTools = _ConnectionManager.getExternalToolSchemas?.() ?? [];
     const basePrompt = _ConnectionManager.getBasePrompt?.() ?? "";
@@ -42534,6 +42589,7 @@ var ConnectionManager = class _ConnectionManager {
         cols: 120,
         rows: 40,
         protocolVersion: CLIENT_STREAM_PROTOCOL,
+        history: { mode: "paged", ...cursor ? { cursor } : {} },
         ...basePrompt ? { basePrompt } : {},
         ...transcriptMirrorDir ? { transcriptMirrorDir } : {},
         ...externalTools.length > 0 ? { externalTools } : {}
@@ -42546,6 +42602,7 @@ var ConnectionManager = class _ConnectionManager {
         cols: 120,
         rows: 40,
         protocolVersion: CLIENT_STREAM_PROTOCOL,
+        history: { mode: "paged" },
         ...basePrompt ? { basePrompt } : {},
         ...transcriptMirrorDir ? { transcriptMirrorDir } : {},
         ...externalTools.length > 0 ? { externalTools } : {}
@@ -42911,12 +42968,16 @@ var ConnectionManager = class _ConnectionManager {
    *  unreadable, or belongs to a file the server has since rewritten — every
    *  one of which falls back to the network path unchanged. */
   async replayFromMirror(maxRecords = MIRROR_PAINT_RECORDS) {
+    if (this.cachedJsonlEntries.length > 0) return 0;
+    const conversationId = this.conversationId;
     const records = await this.readMirrorTail(maxRecords);
+    if (conversationId !== this.conversationId || this.cachedJsonlEntries.length > 0) return 0;
     if (records.length === 0) return 0;
     this.window.webContents.send("jsonl-entries", this.tabId, records);
     return records.length;
   }
   replayJsonlToRenderer() {
+    this.requestedSegment = null;
     this.batcher.flushMain();
     this.batcher.flushSubagent();
     this.window.webContents.send("jsonl-status", this.tabId, { status: "watching", replayComplete: false });
@@ -42943,7 +43004,7 @@ var ConnectionManager = class _ConnectionManager {
     };
     let toReplay = this.cachedJsonlEntries;
     if (toReplay.length > REPLAY_TAIL_MAX) {
-      const ord = (e) => e._ord ?? 0;
+      const ord = (e) => e._pos ?? e._ord ?? 0;
       toReplay = [...toReplay].sort((a, b) => ord(a) - ord(b)).slice(-REPLAY_TAIL_MAX);
     }
     if (toReplay.length > 0) this.batcher.drainMainThen([...toReplay], tail);
@@ -43004,7 +43065,8 @@ var ConnectionManager = class _ConnectionManager {
       cwd: this.config.cwd,
       cols: 120,
       rows: 40,
-      protocolVersion: CLIENT_STREAM_PROTOCOL
+      protocolVersion: CLIENT_STREAM_PROTOCOL,
+      history: { mode: "paged" }
     });
   }
   /** Request raw JSONL file content from the server for download.
@@ -43027,25 +43089,28 @@ var ConnectionManager = class _ConnectionManager {
   async getMirrorCursor() {
     this.ensureMirror();
     const cursor = await this.mirror?.readCursor();
-    return cursor ? { head: cursor.head, pos: cursor.pos } : null;
+    return cursor ?? null;
   }
   /** The tail of the local copy, for painting the chat before the network
    *  answers at all. */
   async readMirrorTail(maxRecords) {
     this.ensureMirror();
+    if (!await this.mirror?.readCursor()) return [];
     return await this.mirror?.readTail(maxRecords) ?? [];
   }
   /** Serve the page of records just OLDER than `beforePos` (the webview's oldest
    *  held byte offset) so a windowed chat can grow upward on scroll. Delivered on
    *  a DEDICATED channel — the renderer prepends them as-is (they are already in
    *  file order and entirely older than the window), never re-sorting the store.
-   *  Mirror-backed: it is populated as batches arrive + at replay-complete, so a
-   *  session long enough to need windowing has it. An empty result (start of file
-   *  reached, or no mirror) simply tells the renderer there is nothing more. */
+   *  The server owns byte positions; the disk mirror is a fallback while offline. */
   async loadOlderPage(beforePos, count) {
+    if (this.ws?.readyState === wrapper_default.OPEN) {
+      this.sendRaw({ type: "jsonl:segment-request", ...this.requestedSegment ?? { fromTs: "", toTs: "" }, beforePos, paged: true });
+      return;
+    }
     this.ensureMirror();
     const records = await this.mirror?.readRange(beforePos, count) ?? [];
-    this.window.webContents.send("jsonl:older-page", this.tabId, { beforePos, records });
+    this.window.webContents.send("jsonl:older-page", this.tabId, { beforePos, records, ...this.requestedSegment ?? {} });
   }
   /** The FULL compact-segment index — every segment with visible-message counts,
    *  not just the ones in the renderer's resident window. Computed server-side
@@ -43056,14 +43121,19 @@ var ConnectionManager = class _ConnectionManager {
     const index = this.lastSegmentIndex ?? { boundaries: [], counts: [] };
     this.window.webContents.send("jsonl:boundaries-result", this.tabId, index);
   }
-  /** One archived compact segment loaded whole by TIMESTAMP range — the renderer
+  /** The newest page of an archived compact segment, identified by its boundaries — the renderer
    *  replaces its window with it (the "view an old conversation" path). Served by
    *  the SERVER from the authoritative file (the local mirror is a bounded tail
    *  and may not hold an old range); the response arrives on `jsonl:segment-response`
    *  and is forwarded to the renderer. Empty fromTs = from the start; empty
    *  toTs = to the newest. */
+  requestedSegment = null;
   loadSegment(fromTs, toTs) {
-    this.sendRaw({ type: "jsonl:segment-request", fromTs, toTs });
+    this.requestedSegment = { fromTs, toTs };
+    this.sendRaw({ type: "jsonl:segment-request", fromTs, toTs, paged: true });
+  }
+  selectSubagent(agentId) {
+    this.sendRaw({ type: "jsonl:subagent-select", agentId });
   }
   requestJsonlDownload(agentId) {
     if (this._downloadResolve) return Promise.resolve({ content: null, fileName: null, error: "Another transcript download is already in progress" });
@@ -43184,7 +43254,18 @@ var ConnectionManager = class _ConnectionManager {
         }
       },
       pushJsonlCache: (entries2, replay) => {
-        this.cachedJsonlEntries.push(...entries2);
+        const known = new Set(this.cachedJsonlEntries.map((entry) => {
+          const row = entry;
+          return row._pos ?? row.uuid;
+        }));
+        this.cachedJsonlEntries.push(...entries2.filter((entry) => {
+          const row = entry;
+          const key2 = row._pos ?? row.uuid;
+          if (key2 === void 0) return true;
+          if (known.has(key2)) return false;
+          known.add(key2);
+          return true;
+        }));
         if (!replay && this.mirrorHead) void this.mirror?.append(entries2, this.mirrorHead);
       },
       getCachedJsonl: () => this.cachedJsonlEntries,
@@ -44656,6 +44737,9 @@ function registerSessionsIPC(ctx) {
   ipcMain.on("jsonl:load-segment", (_event, tabId, fromTs, toTs) => {
     const conn = tm()?.getConnection(tabId);
     if (conn) void conn.loadSegment(fromTs, toTs);
+  });
+  ipcMain.on("jsonl:subagent-select", (_event, tabId, agentId) => {
+    tm()?.getConnection(tabId)?.selectSubagent(agentId);
   });
   ipcMain.handle("toolusage:entries", (_event, tabId, toolName) => {
     const conn = tm()?.getConnection(tabId);

@@ -2,7 +2,7 @@ import type { JSX } from 'preact'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { compactSegments, activeSegmentIdx } from '../../signals/compact-segments'
 import { activeTabId, tabs } from '../../signals/tabs'
-import { jsonlEntriesByTab, getJsonlStructureVersion, tabNeedsRefill, clearRefillDebt, prependJsonlEntries, trimTabToWindow, STORE_WINDOW, STORE_SLACK, SCROLL_UP_MAX } from '../../signals/jsonl'
+import { jsonlEntriesByTab, getJsonlStructureVersion, tabNeedsRefill, clearRefillDebt, prependJsonlEntries, trimTabToWindow, archivedViewTs, STORE_WINDOW, STORE_SLACK, SCROLL_UP_MAX } from '../../signals/jsonl'
 import { boundTabId } from '../../signals/session-binding'
 import { useBridge } from '../../hooks/useBridge'
 import { JsonlEntry } from './JsonlEntry'
@@ -103,6 +103,15 @@ export function JsonlViewer(): JSX.Element {
   // switch below.
   const olderLoadingRef = useRef(false)
   const reachedStartRef = useRef(false)
+  const pageCursorRef = useRef<number | null>(null)
+  const pendingPageRef = useRef<{ tab: string; segment: string | null; before: number } | null>(null)
+  const segment = currentTabId ? archivedViewTs(currentTabId) : null
+  useEffect(() => {
+    pageCursorRef.current = null
+    pendingPageRef.current = null
+    olderLoadingRef.current = false
+    reachedStartRef.current = false
+  }, [currentTabId, segment])
 
   const onNearTop = useCallback(() => {
     if (loadingMoreRef.current || olderLoadingRef.current) return
@@ -120,23 +129,37 @@ export function JsonlViewer(): JSX.Element {
     // Don't grow the store past the scroll-up ceiling (would re-OOM — the trim
     // only fires at the bottom). Stop asking for older pages here.
     if (store.length >= SCROLL_UP_MAX) { reachedStartRef.current = true; return }
-    const oldestPos = (store[0] as { _pos?: number } | undefined)?._pos
+    const oldestPos = pageCursorRef.current ?? (store[0] as { _pos?: number } | undefined)?._pos
     if (typeof oldestPos !== 'number' || oldestPos <= 0) { reachedStartRef.current = true; return }
     olderLoadingRef.current = true
+    pendingPageRef.current = { tab: currentTabId, segment: archivedViewTs(currentTabId) ?? null, before: oldestPos }
     bridge.loadOlderPage(currentTabId, oldestPos, OLDER_PAGE)
   }, [currentTabId, bridge])
 
   // The older page requested above. Prepend it and grow the DOM window to show
   // it; an empty page means the start of the transcript was reached.
   useEffect(() => {
-    const unsub = bridge.onOlderPage((tabId: string, p: { records: any[] }) => {
-      olderLoadingRef.current = false
+    const unsub = bridge.onOlderPage((tabId: string, p: { records: any[]; fromTs?: string; beforePos?: number; nextPos?: number }) => {
       if (tabId !== activeTabId.value) return
+      const pending = pendingPageRef.current
+      if (!pending || pending.tab !== tabId || pending.segment !== (archivedViewTs(tabId) ?? null)) return
+      if (p.beforePos !== undefined && (p.beforePos !== pending.before || (p.fromTs ?? '') !== (pending.segment ?? ''))) return
+      olderLoadingRef.current = false
+      pendingPageRef.current = null
       // If the reader scrolled back to the bottom while this was in flight, don't
       // prepend rows they're no longer looking at (and don't grow the cap the
       // bottom-trim is about to shrink) — the request is stale.
       if (chatAtBottom.peek()) return
-      if (!p?.records || p.records.length === 0) { reachedStartRef.current = true; return }
+      pageCursorRef.current = p.nextPos ?? null
+      if (!p?.records || p.records.length === 0) {
+        reachedStartRef.current = p.nextPos === undefined || p.nextPos <= 0 || p.nextPos >= pending.before
+        if (!reachedStartRef.current) {
+          olderLoadingRef.current = true
+          pendingPageRef.current = { ...pending, before: p.nextPos! }
+          bridge.loadOlderPage(tabId, p.nextPos!, OLDER_PAGE)
+        }
+        return
+      }
       if (prependJsonlEntries(tabId, p.records)) setRenderCap((c) => c + p.records.length)
     })
     return unsub
@@ -180,6 +203,8 @@ export function JsonlViewer(): JSX.Element {
     loadingMoreRef.current = false // drop any in-flight scroll-up load from the old tab
     olderLoadingRef.current = false // …and any in-flight older-page fetch
     reachedStartRef.current = false // re-evaluate whether older pages exist for THIS tab
+    pageCursorRef.current = null
+    pendingPageRef.current = null
     const existing = jsonlEntriesByTab.value.get(currentTabId)
     // A tab we cleared ourselves OWES a refill even if it is no longer empty: a
     // single live entry landing after the clear (a /reload-skills echo will do)

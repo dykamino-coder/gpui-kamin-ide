@@ -86,8 +86,10 @@ export interface PtySession {
   jsonlWatcher?: {
     stop(): void
     getFilePath(): string | null
-    replayAll?(): void
+    replayAll?(history?: SessionConfig['history']): void
+    segmentRange?(fromTs: string, toTs: string): Promise<{ lower: number; upper: number } | null>
     scanSubagents?(): Promise<void>
+    selectSubagent?(agentId: string | null): void
     /** Send everything after a byte offset — the incremental catch-up for a
      *  client that already mirrors the transcript. Callers must verify the
      *  file's fingerprint first. */
@@ -217,6 +219,7 @@ export interface SessionConfig {
   bearerHash?: string
   /** Client streaming-protocol version negotiated at connect (>=1 → deltas). */
   protocolVersion?: number
+  history?: { mode?: 'paged'; cursor?: { head: string; pos: number; lastPos?: number; lastUuid?: string } }
   /** Absolute dir on the CLIENT machine where the full transcript is mirrored.
    *  Surfaced in the system prompt so Claude can read its own history (the
    *  user-tools file MCP runs on that same machine). */

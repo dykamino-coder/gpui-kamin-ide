@@ -253,6 +253,10 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (conn) void conn.loadSegment(fromTs, toTs)
   })
 
+  ipcMain.on('jsonl:subagent-select', (_event: IpcMainEvent, tabId: string, agentId: string | null) => {
+    tm()?.getConnection(tabId)?.selectSubagent(agentId)
+  })
+
   // Применения тула для инлайн-просмотра в панели Tools (панельный стор —
   // только plan/todo-срез, полные записи живут в кэше хоста).
   ipcMain.handle('toolusage:entries', (_event: IpcMainInvokeEvent, tabId: string, toolName: string) => {

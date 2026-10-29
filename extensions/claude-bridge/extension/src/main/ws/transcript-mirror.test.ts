@@ -131,4 +131,17 @@ describe('transcript mirror', () => {
     expect(cursor?.head).toBe('newhead')
     expect(cursor?.lastUuid).toBe('u9')
   })
+  it('pages by source positions when serialized mirror offsets differ and keeps a warm tail', async () => {
+    const dir = await freshDir()
+    const m = new TranscriptMirror(dir, 'conv')
+    const rows = Array.from({ length: 500 }, (_, i) => ({ ...rec(i, i * 10000), timestamp: i % 2 ? undefined : '2000-01-01', message: { content: 'я'.repeat(i % 40) } }))
+    await m.rewriteInOrder(rows, HEAD)
+    const page = await m.readRange(4000000, 20)
+    expect(page.map((r) => (r as { uuid: string }).uuid)).toEqual(rows.slice(380, 400).map((r) => r.uuid))
+    await m.rewriteInOrder(rows.slice(-10), HEAD)
+    expect((await m.readTail(10)).map((r) => (r as { uuid: string }).uuid)).toEqual(rows.slice(-10).map((r) => r.uuid))
+    expect((await m.readCursor())?.lastPos).toBe(4990000)
+    await m.close()
+  })
+
 })

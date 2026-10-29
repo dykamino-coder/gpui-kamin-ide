@@ -629,6 +629,7 @@ async function createAdmittedSession(
     // Bulk replay only goes out while the CURRENT socket (reattach swaps it)
     // is open and under the replay high-water mark.
     () => socketWritable(session.ws),
+    config.history,
   )
   session.jsonlWatcher = jsonlWatcher
   jsonlWatcher.start()

@@ -301,7 +301,7 @@ export const displaySegments = computed<DisplaySegment[]>(() => {
   // `fromTs`/`toTs`) — NOT matched back to a resident index. The resident segment
   // ts marks the boundary that ENDS a segment, while here it marks the one that
   // STARTS it, so matching by ts is off by one and would show the wrong dialog.
-  const b = [...index.boundaries].sort((x, y) => x.ts.localeCompare(y.ts))
+  const b = index.boundaries // counts and dividers share authoritative FILE order
   const counts = index.counts
   const n = b.length // n >= 1 here (empty index took the resident branch above)
   const out: DisplaySegment[] = []
@@ -332,4 +332,3 @@ export function setActiveSegment(idx: number): void {
   else next.set(id, ts)
   activeSegmentTsByTab.value = next
 }
-
