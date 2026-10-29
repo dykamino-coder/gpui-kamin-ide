@@ -2,9 +2,17 @@
   max-width: 800px;
   width: 100%;
   margin: 0 auto;
-  flex: 1;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
   padding: 12px;
   min-height: 0;
+}
+
+/* Записи и хвост занимают естественную высоту; пустая заглушка получает
+   остаток вместо height:100% поверх padding и хвостового отступа. */
+.container > * {
+  flex-shrink: 0;
 }
 
 /* History-still-loading bar: sticks to the top of the chat while older turns
@@ -20,7 +28,7 @@
   overflow: visible;
 }
 .replayBarFill {
-  height: 100%;
+  flex: 1;
   background: var(--accent-primary, #6c8cff);
   transition: width 180ms ease-out;
 }

@@ -2,6 +2,7 @@ import type { JSX } from 'preact'
 import { useState } from 'preact/hooks'
 import { extractTag, extractTeammateMessages } from './utils'
 import { CollapsibleBlock } from './CollapsibleBlock'
+import { TaskNotificationEntry } from './TaskNotificationEntry'
 
 export function CliXmlContent({ text }: { text: string }): JSX.Element {
   const clean = text.replace(/\x1b\[[0-9;]*m/g, '')
@@ -86,7 +87,7 @@ export function CliXmlContent({ text }: { text: string }): JSX.Element {
       {fastMode && <CollapsibleBlock label="fast-mode-info" content={fastMode} color="var(--accent-pink)" />}
       {envBlock && <CollapsibleBlock label="environment" content={envBlock} color="var(--accent-primary)" />}
       {envDetails && <CollapsibleBlock label="environment-details" content={envDetails} color="var(--accent-primary)" />}
-      {taskNotif && <CollapsibleBlock label="task-notification" content={taskNotif} color="var(--accent-green)" />}
+      {taskNotif && <TaskNotificationEntry text={`<task-notification>${taskNotif}</task-notification>`} />}
       {userMsg && (
         <div style="font-size:13px;color:var(--text-primary);padding:4px 0;">{userMsg}</div>
       )}

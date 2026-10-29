@@ -198,6 +198,7 @@ pub(crate) fn handle_input(cmd: &str, req: &Value) -> Option<Value> {
             }
         }
         // {"cmd":"webkey","id":"browser","key":"a","char":"a","ctrl":false}
+        // keyCode (1..255) задаёт физический VK независимо от раскладки ОС.
         // — клавиша прямо в CEF-вью (нажатие+отпускание). Нужна стендам:
         // probe не умеет доставлять клавиши через gpui (см. память).
         "webkey" => {
@@ -205,7 +206,22 @@ pub(crate) fn handle_input(cmd: &str, req: &Value) -> Option<Value> {
             let key = req.get("key").and_then(Value::as_str).unwrap_or("");
             let ch = req.get("char").and_then(Value::as_str);
             let flag = |name: &str| req.get(name).and_then(Value::as_bool).unwrap_or(false);
-            if key.is_empty() {
+            if let Some(code) = req.get("keyCode") {
+                match code.as_u64().filter(|code| (1..=255).contains(code)) {
+                    Some(code) => {
+                        crate::web::probe_key_code(
+                            id,
+                            code as i32,
+                            ch,
+                            flag("ctrl"),
+                            flag("shift"),
+                            flag("alt"),
+                        );
+                        json!({"ok": true, "delivery": "cef-host", "keyCode": code})
+                    }
+                    None => json!({"ok": false, "err": "keyCode must be 1..255"}),
+                }
+            } else if key.is_empty() {
                 json!({"ok": false, "err": "нет клавиши"})
             } else {
                 crate::web::probe_key(id, key, ch, flag("ctrl"), flag("shift"), flag("alt"));

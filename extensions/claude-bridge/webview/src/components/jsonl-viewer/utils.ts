@@ -1,5 +1,7 @@
 import type { JsonlEntryData, ContentBlock } from '../../types/jsonl'
 import { stripMcpPrefix } from '../../lib/mcp-tool-name'
+import { taskNotificationText } from './task-notification'
+import { systemEntryDraws } from './entry-draws'
 
 /** A ShowWidget renders as its own clean visual — it must never be folded into a
  *  collapsed tool burst, so an entry carrying one is kept standalone. */
@@ -349,9 +351,20 @@ export function groupConsecutiveToolCalls(entries: JsonlEntryData[]): JsonlEntry
     if (isToolOnlyAssistantEntry(head) && !hasWidgetTool(head)) {
       if (split) out.push(split.prose)
       const groupEntries: JsonlEntryData[] = [head]
+      const notices: JsonlEntryData[] = []
       let j = i + 1
       while (j < entries.length) {
         const n = entries[j]
+        if (n.__streaming === true) break
+        // Служебные события сохраняют собственный рендер, но не делят пакет.
+        // message.id относится к API-ответу, а не ко всему ходу с инструментами.
+        if (taskNotificationText(n) !== null) { notices.push(n); j++; continue }
+        if (n.type === 'user' && n.isMeta) { groupEntries.push(n); j++; continue }
+        if (n.type === 'system' && !['compact_boundary', 'away_summary', 'model_fallback'].includes(n.subtype || '')) {
+          if (systemEntryDraws(n)) notices.push(n)
+          else groupEntries.push(n)
+          j++; continue
+        }
         // Continuers — strictly part of the tool-call protocol or UI-invisible.
         // Anything that would render a visible bubble (real user message,
         // visible assistant text) ends the burst so it renders standalone.
@@ -362,12 +375,6 @@ export function groupConsecutiveToolCalls(entries: JsonlEntryData[]): JsonlEntry
         // local-command-caveat, environment_details, etc.) are invisible
         // in the viewer and must not break the burst.
         if (n.type === 'user' && isCaveatOnlyEntry(n)) { groupEntries.push(n); j++; continue }
-        // Bare system entries with no message/content render nothing.
-        if (n.type === 'system' && !n.message) { groupEntries.push(n); j++; continue }
-        // Transient api_error retry banners (ECONNRESET/ConnectionRefused
-        // back-off retries) are tool-call plumbing noise, not conversation —
-        // fold them into the burst instead of splitting it.
-        if (n.type === 'system' && n.subtype === 'api_error') { groupEntries.push(n); j++; continue }
         // Bookkeeping rows render nothing, so they must not split a tool burst.
         if (NON_RENDERING_ENTRY_TYPES.has(n.type)) { groupEntries.push(n); j++; continue }
         // Attachment entries — invisible except for `queued_command` and
@@ -385,6 +392,7 @@ export function groupConsecutiveToolCalls(entries: JsonlEntryData[]): JsonlEntry
           _groupEntries: groupEntries,
         }
         out.push(synthetic)
+        out.push(...notices)
         i = j
         continue
       }

@@ -135,6 +135,46 @@ pub(crate) fn probe_key(id: &str, key: &str, ch: Option<&str>, ctrl: bool, shift
     input::key(id, &keystroke, true);
 }
 
+/// Прямая доставка VK в CEF для debug-приёмки раскладок без OS-фокуса.
+/// Не меняет раскладку и не использует глобальный SendInput.
+#[cfg(feature = "probe")]
+pub(crate) fn probe_key_code(
+    id: &str,
+    code: i32,
+    ch: Option<&str>,
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+) {
+    use cef::{ImplBrowserHost, KeyEvent, KeyEventType};
+    let flags = input::modifiers(
+        &gpui::Modifiers {
+            control: ctrl,
+            shift,
+            alt,
+            ..Default::default()
+        },
+        None,
+    );
+    let character = ch.and_then(|s| s.encode_utf16().next()).unwrap_or(0);
+    input::on_browser(id, move |host| {
+        for type_ in [KeyEventType::RAWKEYDOWN, KeyEventType::KEYUP] {
+            let event = KeyEvent {
+                size: std::mem::size_of::<cef::sys::_cef_key_event_t>(),
+                type_,
+                modifiers: flags,
+                windows_key_code: code,
+                native_key_code: 0,
+                is_system_key: 0,
+                character,
+                unmodified_character: character,
+                focus_on_editable_field: 0,
+            };
+            host.send_key_event(Some(&event));
+        }
+    });
+}
+
 /// Стендовый фокус клавиатуры в вью (probe `webfocus`).
 pub(crate) fn probe_focus(id: &str) {
     input::focus_view(id);

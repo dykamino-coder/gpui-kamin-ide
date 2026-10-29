@@ -85,14 +85,15 @@ pub fn scroll(x: f32, y: f32, lines: i32) -> Result<(), String> {
 /// не проверяется вовсе.
 pub fn resize_main(w: f32, h: f32) -> Result<(), String> {
     use windows::Win32::UI::WindowsAndMessaging::{
-        SW_RESTORE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SetWindowPos, ShowWindow,
+        SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SetWindowPos, ShowWindow,
     };
     let hwnd = crate::probe::shot::find_window(false).ok_or("main window not found")?;
     let scale = unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0;
     let scale = if scale <= 0.0 { 1.0 } else { scale };
     unsafe {
-        // Развёрнутое окно SetWindowPos игнорирует
-        let _ = ShowWindow(hwnd, SW_RESTORE);
+        // Развёрнутое окно SetWindowPos игнорирует. Стенд восстанавливает
+        // только своё окно, не забирая foreground у работающего владельца.
+        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         SetWindowPos(
             hwnd,
             None,
