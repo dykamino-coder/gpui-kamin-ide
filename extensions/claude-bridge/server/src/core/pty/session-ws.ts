@@ -45,6 +45,7 @@ import {
 } from './session-manager'
 import { settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
+import { sessionCliControl } from './session-cli-control'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { replaceRegisteredTools } from './mcp-tool-notify'
@@ -310,6 +311,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Abort the in-flight upstream request directly so the stream stops NOW,
           // then SIGINT the CLI to end the turn.
           if (!authenticatedSessionId) return
+          const interruptSession = getSession(authenticatedSessionId)
+          if (interruptSession && sessionCliControl(interruptSession)?.interrupt()) break
           try {
             getSession(authenticatedSessionId)?.streamingProxy?.interrupt()
           } catch {
@@ -324,7 +327,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Not authenticated — send session:create first')
             return
           }
-          submitText(authenticatedSessionId, msg.data)
+          submitText(authenticatedSessionId, msg.data, msg.submissionId)
+          break
+        }
+
+        case 'session:submission-action': {
+          if (!authenticatedSessionId) return
+          const session = getSession(authenticatedSessionId)
+          if (session && typeof msg.id === 'string') sessionCliControl(session)?.action(msg.id, msg.action)
           break
         }
 

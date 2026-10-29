@@ -21,8 +21,6 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 interface PendingHookExec {
   sessionId: string
   resolve: (r: HookExecutionResult) => void
-  reject: (err: Error) => void
-  timer: NodeJS.Timeout | null
   startedAt: number
 }
 const pendingLocalExecs: Map<string, PendingHookExec> = new Map()
@@ -44,7 +42,7 @@ export async function dispatchHook(
   try {
     if (reg.effectiveHost === 'local') {
       if (!ws) {
-        result = errorResult('No active client-host WS — local hook unavailable', start)
+        result = errorResult('No active client-host WS — local hook unavailable', start, reg)
       } else {
         result = await dispatchLocal(reg, payload, ws)
       }
@@ -81,48 +79,64 @@ export async function dispatchHook(
   return result
 }
 
-async function dispatchLocal(
-  reg: RegisteredHook,
-  payload: HookInputPayload,
-  ws: WS,
-): Promise<HookExecutionResult> {
+async function dispatchLocal(reg: RegisteredHook, payload: HookInputPayload, ws: WS): Promise<HookExecutionResult> {
   if (reg.handler.type !== 'command') {
     return errorResult(`Only command hooks dispatch to local; got type ${reg.handler.type}`)
+  }
+  if (ws.readyState !== 1) {
+    return errorResult('Client-host WS is not open — local hook unavailable', Date.now(), reg)
   }
   const start = Date.now()
   const requestId = randomUUID()
   const timeoutMs = (reg.handler.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000
-  return new Promise<HookExecutionResult>((resolve, reject) => {
+  return new Promise<HookExecutionResult>((resolve) => {
+    // Закрытие WS не закрывает HTTP relay: возвращаем результат ровно один
+    // раз. Повтор на новом WS опасен: команда могла уже выполнить побочный эффект.
+    const finish = (result: HookExecutionResult) => {
+      if (!pendingLocalExecs.delete(requestId)) return
+      clearTimeout(timer)
+      ws.off('close', disconnected)
+      ws.off('error', disconnected)
+      resolve(result)
+    }
+    const disconnected = () => finish(errorResult('Client-host WS disconnected during local hook', start, reg))
     const timer = setTimeout(() => {
-      pendingLocalExecs.delete(requestId)
-      resolve({
-        stdout: '', stderr: `Hook timeout after ${timeoutMs}ms`,
-        exitCode: 124, outcome: 'timeout', durationMs: Date.now() - start,
+      finish({
+        stdout: '',
+        stderr: `Hook timeout after ${timeoutMs}ms`,
+        exitCode: 124,
+        outcome: 'timeout',
+        durationMs: Date.now() - start,
       })
     }, timeoutMs)
-    pendingLocalExecs.set(requestId, { sessionId: reg.sessionId, resolve, reject, timer, startedAt: start })
+    pendingLocalExecs.set(requestId, { sessionId: reg.sessionId, resolve: finish, startedAt: start })
+    ws.once('close', disconnected)
+    ws.once('error', disconnected)
     try {
-      ws.send(JSON.stringify({
-        type: 'hook:execute',
-        requestId,
-        sessionId: reg.sessionId,
-        hookId: reg.id,
-        event: reg.event,
-        command: (reg.handler as { command: string }).command,
-        args: (reg.handler as { args?: string[] }).args,
-        pluginId: reg.source.kind === 'plugin' ? reg.source.pluginId : undefined,
-        // Preserve "unspecified": the Windows client may fall back from Git
-        // Bash to PowerShell. An explicit shell remains strict.
-        shell: (reg.handler as { shell?: string }).shell,
-        cwd: payload.cwd,
-        env: { CLAUDE_BRIDGE_HOOK: '1' },
-        payload,
-        timeoutMs,
-      }))
-    } catch (err) {
-      clearTimeout(timer)
-      pendingLocalExecs.delete(requestId)
-      reject(err instanceof Error ? err : new Error(String(err)))
+      ws.send(
+        JSON.stringify({
+          type: 'hook:execute',
+          requestId,
+          sessionId: reg.sessionId,
+          hookId: reg.id,
+          event: reg.event,
+          command: (reg.handler as { command: string }).command,
+          args: (reg.handler as { args?: string[] }).args,
+          pluginId: reg.source.kind === 'plugin' ? reg.source.pluginId : undefined,
+          // Preserve "unspecified": the Windows client may fall back from Git
+          // Bash to PowerShell. An explicit shell remains strict.
+          shell: (reg.handler as { shell?: string }).shell,
+          cwd: payload.cwd,
+          env: { CLAUDE_BRIDGE_HOOK: '1' },
+          payload,
+          timeoutMs,
+        }),
+        (err) => {
+          if (err) disconnected()
+        },
+      )
+    } catch {
+      disconnected()
     }
   })
 }
@@ -134,20 +148,19 @@ export function handleLocalHookResponse(requestId: string, result: HookExecution
     warnLog('Hook response for unknown requestId', { requestId })
     return
   }
-  if (pending.timer) clearTimeout(pending.timer)
-  pendingLocalExecs.delete(requestId)
   pending.resolve(result)
 }
 
 /** Cancel any pending local execs for a session (called on PTY teardown). */
 export function cancelSessionLocalExecs(sessionId: string): void {
-  for (const [id, p] of pendingLocalExecs) {
+  for (const p of pendingLocalExecs.values()) {
     if (p.sessionId !== sessionId) continue
-    if (p.timer) clearTimeout(p.timer)
-    pendingLocalExecs.delete(id)
     p.resolve({
-      stdout: '', stderr: `Session ${sessionId} cancelled`,
-      exitCode: 130, outcome: 'cancelled', durationMs: Date.now() - p.startedAt,
+      stdout: '',
+      stderr: `Session ${sessionId} cancelled`,
+      exitCode: 130,
+      outcome: 'cancelled',
+      durationMs: Date.now() - p.startedAt,
     })
   }
 }
@@ -175,14 +188,25 @@ async function dispatchServer(
     // stuck loop) would otherwise grow these strings until the server OOMs.
     // 1 MiB is far more than any legitimate hook JSON/log; excess is dropped.
     const MAX_HOOK_OUTPUT = 1024 * 1024
-    proc.stdout?.on('data', d => { if (stdout.length < MAX_HOOK_OUTPUT) stdout += d.toString() })
-    proc.stderr?.on('data', d => { if (stderr.length < MAX_HOOK_OUTPUT) stderr += d.toString() })
+    proc.stdout?.on('data', (d) => {
+      if (stdout.length < MAX_HOOK_OUTPUT) stdout += d.toString()
+    })
+    proc.stderr?.on('data', (d) => {
+      if (stderr.length < MAX_HOOK_OUTPUT) stderr += d.toString()
+    })
 
     const killer = setTimeout(() => {
-      try { proc.kill('SIGKILL') } catch { /* ok */ }
+      try {
+        proc.kill('SIGKILL')
+      } catch {
+        /* ok */
+      }
       resolve({
-        stdout, stderr: stderr + `\n[hook killed after ${timeoutMs}ms]`,
-        exitCode: 124, outcome: 'timeout', durationMs: Date.now() - start,
+        stdout,
+        stderr: stderr + `\n[hook killed after ${timeoutMs}ms]`,
+        exitCode: 124,
+        outcome: 'timeout',
+        durationMs: Date.now() - start,
       })
     }, timeoutMs)
 
@@ -193,10 +217,13 @@ async function dispatchServer(
         try {
           const trimmed = stdout.trim()
           if (trimmed.startsWith('{')) jsonOutput = JSON.parse(trimmed)
-        } catch { /* not JSON */ }
+        } catch {
+          /* not JSON */
+        }
       }
       resolve({
-        stdout, stderr,
+        stdout,
+        stderr,
         exitCode: code ?? 0,
         outcome: code === 0 ? 'success' : 'error',
         jsonOutput,
@@ -207,8 +234,11 @@ async function dispatchServer(
     proc.on('error', (err) => {
       clearTimeout(killer)
       resolve({
-        stdout, stderr: stderr + `\nspawn error: ${err.message}`,
-        exitCode: 127, outcome: 'error', durationMs: Date.now() - start,
+        stdout,
+        stderr: stderr + `\nspawn error: ${err.message}`,
+        exitCode: 127,
+        outcome: 'error',
+        durationMs: Date.now() - start,
       })
     })
 
@@ -216,11 +246,15 @@ async function dispatchServer(
     // async 'error' (EPIPE) on the stdin stream — the try/catch below only
     // covers the synchronous write, so without this listener EPIPE escapes as
     // an uncaughtException.
-    proc.stdin?.on('error', () => { /* ignore EPIPE — hook didn't read stdin */ })
+    proc.stdin?.on('error', () => {
+      /* ignore EPIPE — hook didn't read stdin */
+    })
     try {
       proc.stdin?.write(JSON.stringify(payload))
       proc.stdin?.end()
-    } catch { /* ignore EPIPE */ }
+    } catch {
+      /* ignore EPIPE */
+    }
   })
 }
 
@@ -241,7 +275,8 @@ async function dispatchHttp(
     })
     const stdout = await response.text()
     return {
-      stdout, stderr: '',
+      stdout,
+      stderr: '',
       exitCode: response.ok ? 0 : 1,
       outcome: response.ok ? 'success' : 'error',
       durationMs: Date.now() - start,
@@ -251,11 +286,17 @@ async function dispatchHttp(
   }
 }
 
-function errorResult(msg: string, start: number = Date.now()): HookExecutionResult {
+function errorResult(msg: string, start: number = Date.now(), reg?: RegisteredHook): HookExecutionResult {
+  if (reg) {
+    const context = { event: reg.event, type: reg.handler.type, host: reg.effectiveHost }
+    msg = `Bridge hook dispatch ${JSON.stringify(context)}: ${msg}`
+  }
   debugLog('Hook dispatch error', { msg })
   return {
-    stdout: '', stderr: msg,
-    exitCode: 1, outcome: 'error',
+    stdout: '',
+    stderr: msg,
+    exitCode: 1,
+    outcome: 'error',
     durationMs: Date.now() - start,
   }
 }

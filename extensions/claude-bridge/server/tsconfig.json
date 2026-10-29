@@ -20,5 +20,5 @@
     "noPropertyAccessFromIndexSignature": false
   },
   "include": ["src/**/*", "bin/**/*"],
-  "exclude": ["node_modules", "dist", "src/ui"]
+  "exclude": ["node_modules", "dist", "src/ui", "src/cli-mod/tests", "src/cli-mod/.claude-plugin/types"]
 }

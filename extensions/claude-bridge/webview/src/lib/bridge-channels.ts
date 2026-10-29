@@ -160,6 +160,7 @@ export const SEND: Record<string, string> = {
   respondPermission: 'permission-response',
   requestJsonlReplay: 'jsonl:request-replay',
   loadOlderPage: 'jsonl:load-older',
+  submissionAction: 'submission-action',
   // Full compact-boundary index (all segments, incl. out-of-window) + on-demand
   // load of one archived segment by byte range. Mirror-backed, like loadOlderPage.
   requestBoundaries: "jsonl:boundaries",
@@ -258,6 +259,7 @@ export const EVENT: Record<string, string> = {
   onPtyExit: 'pty:exit',
   onFileViewerExternalChange: 'file-viewer:external-change',
   onFileTreeChange: 'file-tree:change',
+  onSubmission: 'session:submission',
   // KaminIDE host Monaco editor's active file + selection (for the composer's
   // "attach file" toggle). Pushed by the extension's editor-context observer.
   onEditorSelection: 'editor-selection',

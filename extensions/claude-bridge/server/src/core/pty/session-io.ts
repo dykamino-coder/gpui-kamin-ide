@@ -8,6 +8,7 @@ import { eventBus } from '../events/bus'
 import { debugLog } from '../logging'
 import { setSessionPromptReady, submitCoordinatedText, writeCoordinatedInput } from './session-input-coordinator'
 import type { SendOutcome } from './jsonl-replay'
+import { sessionCliControl } from './session-cli-control'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -145,6 +146,8 @@ export function writeInputToSession(session: PtySession, data: string): boolean 
   // не получил (INC-2026-0053).
   if (session.state !== 'running') return false
   session.lastActivityAt = new Date()
+  if (data === '\x03' && sessionCliControl(session)?.interrupt()) return true
+  sessionCliControl(session)?.rawInput(data)
   writeCoordinatedInput(session, data)
 
   // Ctrl+C (\x03) is the user's interrupt (Stop button / Esc → sendInput). The
@@ -153,7 +156,7 @@ export function writeInputToSession(session: PtySession, data: string): boolean 
   // idle fallback on the client — would stay stuck "working" (spinner + Stop
   // button never clear). Push an authoritative idle so the chat activity
   // indicator AND the native session-row dot both clear immediately on interrupt.
-  if (data.includes('\x03')) {
+  if (data.includes('\x03') && !sessionCliControl(session)?.authoritative()) {
     setSessionPromptReady(session, true)
     sendToClient(session.ws, {
       type: 'session:activity',
@@ -194,9 +197,20 @@ export function writeInputToSession(session: PtySession, data: string): boolean 
  *   3. A hard ceiling of 2000ms guarantees an eventual Enter if no echo arrives.
  *      Raw input and additional submissions stay serialized around this unit.
  */
-export function submitTextToSession(session: PtySession, text: string): void {
+export function submitTextToSession(session: PtySession, text: string, submissionId?: string): void {
   if (session.state !== 'running') return
   session.lastActivityAt = new Date()
+  if (sessionCliControl(session)?.submit(text, submissionId)) return
+  if (submissionId)
+    sendToClient(session.ws, {
+      type: 'session:submission',
+      sessionId: session.id,
+      id: submissionId,
+      text,
+      state: 'fallback',
+      cancelable: false,
+      warning: 'Using native terminal delivery for this message.',
+    })
   submitCoordinatedText(session, text)
 }
 
@@ -319,6 +333,7 @@ export function attachOutputDebounce(session: PtySession): void {
 
   const subscription = session.pty.onData((data: string) => {
     if (disposed) return
+    sessionCliControl(session)?.parser.feed(data)
 
     // Capture Anthropic API retry errors from the output stream — they
     // surface in CLI's terminal output well before any JSONL entry, so
@@ -409,12 +424,13 @@ export function attachOutputDebounce(session: PtySession): void {
         // Emit a standalone activity event so the UI stays in sync even when the
         // OSC title hasn't changed (CLI updates OSC less often than the status
         // line, so without this the spinner text freezes on old data).
-        sendToClient(session.ws, {
-          type: 'session:activity',
-          sessionId: session.id,
-          rawTitle: statusText,
-          isWorking: true,
-        })
+        if (!sessionCliControl(session)?.authoritative())
+          sendToClient(session.ws, {
+            type: 'session:activity',
+            sessionId: session.id,
+            rawTitle: statusText,
+            isWorking: true,
+          })
       }
 
       // OSC title — only run the regex when the chunk actually contains an
@@ -432,12 +448,13 @@ export function attachOutputDebounce(session: PtySession): void {
       // Prefer the live CLI status line ("Shenaniganing… (58s · ↓ 219 tokens)")
       // when present — it's what the user sees in-terminal. Fall back to OSC title.
       const reportedTitle = isWorking ? (statusText ?? session.lastStatusText ?? rawOscTitle) : rawOscTitle
-      sendToClient(session.ws, {
-        type: 'session:activity',
-        sessionId: session.id,
-        rawTitle: reportedTitle,
-        isWorking,
-      })
+      if (!sessionCliControl(session)?.authoritative())
+        sendToClient(session.ws, {
+          type: 'session:activity',
+          sessionId: session.id,
+          rawTitle: reportedTitle,
+          isWorking,
+        })
 
       let title = rawOscTitle
       // Filter out default/status titles: anything that is just "Claude Code" with

@@ -9,6 +9,7 @@ export default defineConfig({
     // Сьют co-located в src/ (tests/ каталога в этом репо никогда не было —
     // старый include указывал в пустоту, `npm test` падал "No test files").
     include: ['src/**/*.test.ts'],
+    exclude: ['src/cli-mod/tests/**'],
     // Coverage configuration. CI gate (Sprint 1 D7) enforces:
     //   - ≥40% global lines/branches/functions
     //   - ≥70% on critical-path modules (PTY, MCP routing, JSONL parsing)

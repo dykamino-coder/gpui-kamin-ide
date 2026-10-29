@@ -1,3 +1,4 @@
+import { submissions, pendingSubmissionRows } from '../../signals/submissions'
 import type { JSX } from 'preact'
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import { compactSegments, activeSegmentIdx } from '../../signals/compact-segments'
@@ -359,9 +360,14 @@ export function JsonlViewer(): JSX.Element {
   // is what stops a huge session freezing mid-answer — the recompute no longer
   // runs over the whole segment on every stream frame.
   const structureVersion = currentTabId ? getJsonlStructureVersion(currentTabId) : 0
-  const { toolResults, visibleMerged, ver } = getRenderModel(
+  const { toolResults, visibleMerged: committedVisible, ver: committedVer } = getRenderModel(
     currentTabId ?? '', currentEntries, segs, segIdx, structureVersion,
   )
+
+  const pending = currentTabId ? (submissions.value.get(currentTabId) ?? []) : []
+  const pendingRows = segIdx >= segs.length - 1 ? pendingSubmissionRows(currentEntries, pending) : []
+  const visibleMerged = [...committedVisible, ...pendingRows]
+  const ver = `${committedVer}:${pending.map(item => `${item.id}:${item.state}:${item.uuid ?? ''}`).join(',')}`
 
   const replayPct = currentTabId ? replayProgressByTab.value.get(currentTabId) : undefined
   // ONE loading rule: the cover shows only when there is NOTHING to paint.
@@ -373,7 +379,7 @@ export function JsonlViewer(): JSX.Element {
   // so the tail it paints IS the real end of the chat.
   const mcpUp = mcpLoading.value
   const loadingUnderway = replayPct !== undefined || replayingTab === currentTabId
-  const showCover = loadingUnderway && currentEntries.length === 0
+  const showCover = loadingUnderway && currentEntries.length === 0 && pendingRows.length === 0
   // History still streaming in behind visible content — show only a thin
   // unobtrusive progress strip (rendered outside the scroller below).
   const silentTopUpPct = currentEntries.length > 0 ? replayPct : undefined
@@ -438,7 +444,7 @@ export function JsonlViewer(): JSX.Element {
             )}
           </LoadingCue>
         </div>
-      ) : currentEntries.length === 0 ? (
+      ) : currentEntries.length === 0 && pendingRows.length === 0 ? (
         <div class={styles.empty}>
           <i class="fas fa-comments" style="font-size:32px;color:var(--text-disabled)" />
           <span style="color:var(--text-muted);font-size: var(--fs-md);font-weight:500">Session Log</span>

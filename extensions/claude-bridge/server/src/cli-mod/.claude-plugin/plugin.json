@@ -1,0 +1,7 @@
+{
+  "name": "kamin-bridge",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": { "name": "KaminIDE contributors" },
+  "description": "Private transport for interactive KaminIDE Bridge sessions"
+}

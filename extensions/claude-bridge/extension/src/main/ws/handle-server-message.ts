@@ -393,6 +393,10 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       ctx.notifyTreeUpdate((msg as any).tree)
       break
 
+    case 'session:submission':
+      ctx.window.webContents.send('session:submission', ctx.tabId, msg)
+      break
+
     case 'session:activity': {
       const m = msg as any
       const rawTitle = m.rawTitle as string | undefined

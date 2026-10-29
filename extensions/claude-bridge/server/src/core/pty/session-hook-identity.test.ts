@@ -109,7 +109,7 @@ function launchHooks(call: (typeof h.spawn.mock.calls)[number]) {
 
 async function hookStatus(call: (typeof h.spawn.mock.calls)[number], event: string, token?: string) {
   const relay = launchHooks(call)[event]![0]!.hooks[0]!.args[1]!
-  const url = relay.match(/fetch\(("[^" ]+")/)![1]!
+  const url = relay.match(/request\(("[^" ]+")/)![1]!
   return (
     await app.request(
       new Request(JSON.parse(url), {
@@ -225,7 +225,7 @@ it('always acknowledges Bridge Stop and SubagentStop status hooks during an acti
   const call = h.spawn.mock.calls[0]!
   for (const event of ['Stop', 'SubagentStop']) {
     const relay = launchHooks(call)[event]![0]!.hooks[0]!.args[1]!
-    const url = JSON.parse(relay.match(/fetch\(("[^" ]+")/)![1]!)
+    const url = JSON.parse(relay.match(/request\(("[^" ]+")/)![1]!)
     for (const commandRelay of [true, false]) {
       const response = await app.request(
         new Request(url, {

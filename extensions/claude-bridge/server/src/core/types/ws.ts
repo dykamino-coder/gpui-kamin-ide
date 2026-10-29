@@ -51,6 +51,7 @@ export interface WsMsgSessionInterrupt {
 export interface WsMsgSessionSubmitText {
   type: 'session:submitText'
   data: string
+  submissionId?: string
 }
 
 export interface WsMsgSessionResize {
@@ -208,6 +209,7 @@ export type ClientToServerMsg =
   | WsMsgSessionEnd
   | WsMsgSessionInput
   | WsMsgSessionInterrupt
+  | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
   | WsMsgSessionSubmitText
   | WsMsgSessionResize
   | WsMsgMcpResponse
