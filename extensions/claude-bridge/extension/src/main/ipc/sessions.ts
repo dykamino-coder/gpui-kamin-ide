@@ -112,8 +112,12 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     tm()?.sendInput(tabId, data)
   })
 
-  ipcMain.on('pty-submit-text', (_event: IpcMainEvent, tabId: string, text: string) => {
-    tm()?.submitText(tabId, text)
+  ipcMain.on('pty-submit-text', (_event: IpcMainEvent, tabId: string, text: string, submissionId?: string) => {
+    tm()?.submitText(tabId, text, submissionId)
+  })
+
+  ipcMain.on('submission-action', (_event: IpcMainEvent, tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt') => {
+    tm()?.submissionAction(tabId, id, action)
   })
 
   ipcMain.on('pty-resize', (_event: IpcMainEvent, tabId: string, cols: number, rows: number) => {

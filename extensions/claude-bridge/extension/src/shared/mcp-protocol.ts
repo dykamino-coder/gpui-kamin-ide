@@ -3,7 +3,8 @@ export type ClientMessage =
   | { type: 'session:create'; token: string; cwd?: string; cols?: number; rows?: number; protocolVersion?: number }
   | { type: 'session:input'; data: string }
   | { type: 'session:interrupt' }
-  | { type: 'session:submitText'; data: string }
+  | { type: 'session:submitText'; data: string; submissionId?: string }
+  | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
   | { type: 'session:resize'; cols: number; rows: number }
   | { type: 'mcp:response'; taskOwner?: string
       sessionId?: string; requestId: string; result: unknown }
@@ -51,6 +52,7 @@ export type ServerMessage =
   | { type: 'session:title'; title: string }
   | { type: 'session:usage'; sessionId: string; usage: unknown }
   | { type: 'session:conversation-id'; sessionId: string; conversationId: string }
+  | ({ type: 'session:submission'; sessionId: string } & import('./types').SubmissionUpdate)
   | { type: 'session:activity'; sessionId: string; rawTitle: string; isWorking: boolean }
   | { type: 'jsonl:download-response'; content: string | null; fileName: string | null; error?: string }
   | { type: 'jsonl:download-begin'; fileName: string | null; total: number }

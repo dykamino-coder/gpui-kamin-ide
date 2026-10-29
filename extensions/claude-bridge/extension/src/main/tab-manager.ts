@@ -285,8 +285,12 @@ export class TabManager {
   }
 
   /** Submit a user message via the server-side quiet-window Enter gate. */
-  submitText(tabId: string, text: string): void {
-    this.tabs.get(tabId)?.connection.submitText(text)
+  submitText(tabId: string, text: string, submissionId?: string): void {
+    this.tabs.get(tabId)?.connection.submitText(text, submissionId)
+  }
+
+  submissionAction(tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt'): void {
+    this.tabs.get(tabId)?.connection.submissionAction(id, action)
   }
 
   /**

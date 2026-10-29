@@ -5,6 +5,7 @@
 import type { KaminBridgeApi } from '../../shared/types'
 import { tabPromptReady, lastSendAt } from '../signals/connection'
 import { tabActivity } from '../signals/ui'
+import { modCapabilities, optimisticSubmission } from '../signals/submissions'
 import { enqueueLocal } from '../signals/queue'
 
 /** Ship `message` to `tabId`'s PTY.
@@ -20,7 +21,8 @@ export function sendMessageToTab(bridge: KaminBridgeApi, tabId: string, message:
   // a scripted send queues exactly like a click; while it sat in `InputBar` a
   // command-driven send silently skipped the queue.
   const busy = (tabActivity.value.get(tabId)?.isWorking ?? false) || !(tabPromptReady.value.get(tabId) ?? false)
-  if (busy) enqueueLocal(tabId, message)
+  const submissionId = modCapabilities.value.get(tabId) ? optimisticSubmission(tabId, message) : undefined
+  if (busy && !submissionId) enqueueLocal(tabId, message)
 
   const nextSend = new Map(lastSendAt.value)
   nextSend.set(tabId, Date.now())
@@ -29,5 +31,6 @@ export function sendMessageToTab(bridge: KaminBridgeApi, tabId: string, message:
   next.set(tabId, false)
   tabPromptReady.value = next
 
-  bridge.submitText(tabId, message)
+  if (submissionId) bridge.submitText(tabId, message, submissionId)
+  else bridge.submitText(tabId, message)
 }

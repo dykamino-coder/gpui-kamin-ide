@@ -801,7 +801,11 @@ export class ConnectionManager {
   /** Submit a full user message — server wraps it in bracketed paste and
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
-  submitText(text: string): void { this.send({ type: 'session:submitText', data: text }) }
+  submitText(text: string, submissionId?: string): void { this.send({ type: 'session:submitText', data: text, submissionId }) }
+
+  submissionAction(id: string, action: 'cancel' | 'push' | 'interrupt'): void {
+    this.send({ type: 'session:submission-action', id, action })
+  }
 
   resize(cols: number, rows: number): void { this.send({ type: 'session:resize', cols, rows }) }
 
