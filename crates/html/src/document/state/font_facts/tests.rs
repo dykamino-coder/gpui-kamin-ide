@@ -54,7 +54,7 @@ impl FontFactsProvider for Fake {
     }
 }
 
-fn unit(doc: &DocState, name: &str) -> f32 {
+fn unit(doc: &crate::document::state::DocState, name: &str) -> f32 {
     calc_pct_px(&format!("calc(1r{name})"), doc.values())
         .unwrap()
         .1
@@ -73,8 +73,8 @@ fn fake_provider_drives_root_units_and_normal_through_public_bootstrap() {
         .build()
         .unwrap();
     let doc = &doc.state;
-    set_root_family(doc, "root-test-wide");
-    set_root_metrics(doc, 20.0, 25.0);
+    set_root_family(&doc.values, "root-test-wide");
+    set_root_metrics(&doc.values, 20.0, 25.0);
     assert_eq!(
         [
             unit(doc, "cap"),
@@ -85,9 +85,9 @@ fn fake_provider_drives_root_units_and_normal_through_public_bootstrap() {
         [15.0, 20.0, 16.0, 20.0]
     );
     assert_eq!(root_normal_line_px("Face", 20.0, doc.values()), 20.0);
-    set_root_metrics(doc, 40.0, 50.0);
+    set_root_metrics(&doc.values, 40.0, 50.0);
     assert_eq!(unit(doc, "ch"), 40.0);
-    set_root_family(doc, "root-test-narrow");
+    set_root_family(&doc.values, "root-test-narrow");
     assert_eq!(
         [unit(doc, "ch"), unit(doc, "ex"), unit(doc, "ic")],
         [20.0, 16.0, 20.0]
@@ -113,40 +113,46 @@ fn two_live_documents_keep_facts_across_other_document_bootstrap_reset_and_updat
         .fonts(&fonts)
         .build()
         .unwrap();
-    let snapshot = a.state.font_snapshot();
+    let snapshot = a.state.values.font_snapshot();
     let mut b = crate::Document::builder("<p>B</p>", "")
         .fonts(&fonts)
         .build()
         .unwrap();
     for doc in [&a, &b] {
-        set_root_metrics(&doc.state, 20.0, 25.0);
+        set_root_metrics(&doc.state.values, 20.0, 25.0);
     }
     assert_eq!((unit(&a.state, "ch"), unit(&b.state, "ch")), (10.0, 20.0));
-    assert_ne!(snapshot.environment, b.state.font_snapshot().environment);
+    assert_ne!(
+        snapshot.environment,
+        b.state.values.font_snapshot().environment
+    );
     assert!(b.update("<p>B updated</p>", "").unwrap().changed());
     assert_eq!(instances.get(), 3);
-    set_root_metrics(&b.state, 20.0, 25.0);
+    set_root_metrics(&b.state.values, 20.0, 25.0);
     assert_eq!(unit(&b.state, "ch"), 30.0);
     // Разбор и повторный bootstrap сбрасывают только реестры/кэши своего документа.
-    b.state.reset_font_alternates();
+    b.state.values.reset_font_alternates();
     FontContext::default().install(&b.state.text, b.state.values());
     drop(b);
-    let fresh = DocState::new(Default::default());
-    assert_ne!(snapshot.environment, fresh.font_snapshot().environment);
-    assert_eq!(snapshot, a.state.font_snapshot());
-    set_root_metrics(&a.state, 20.0, 25.0);
+    let fresh = crate::document::state::DocState::new(Default::default());
+    assert_ne!(
+        snapshot.environment,
+        fresh.values.font_snapshot().environment
+    );
+    assert_eq!(snapshot, a.state.values.font_snapshot());
+    set_root_metrics(&a.state.values, 20.0, 25.0);
     assert_eq!(unit(&a.state, "ch"), 10.0);
     assert_eq!(root_normal_line_px("Face", 20.0, a.state.values()), 20.0);
 }
 
 #[test]
 fn resolver_distinguishes_missing_metrics_from_zero_and_uses_ascent_for_cap() {
-    let doc = DocState::new(Default::default());
-    doc.install_font_facts(Some(Rc::new(Fake {
+    let doc = crate::document::state::DocState::new(Default::default());
+    doc.values.install_font_facts(Some(Rc::new(Fake {
         scale: 1.0,
         missing: true,
     })));
-    set_root_metrics(&doc, 20.0, 25.0);
+    set_root_metrics(&doc.values, 20.0, 25.0);
     assert_eq!(
         [
             unit(&doc, "cap"),
@@ -161,23 +167,23 @@ fn resolver_distinguishes_missing_metrics_from_zero_and_uses_ascent_for_cap() {
 
 #[test]
 fn backend_rejects_foreign_stale_and_expired_document_snapshots() {
-    let a = DocState::new(Default::default());
-    let b = DocState::new(Default::default());
-    let backend = a.font_provider();
+    let a = crate::document::state::DocState::new(Default::default());
+    let b = crate::document::state::DocState::new(Default::default());
+    let backend = a.values.font_provider();
     let request = FontRequest::new("Face", 20.0);
     assert_eq!(
-        backend.metrics(request, &b.font_snapshot()),
+        backend.metrics(request, &b.values.font_snapshot()),
         Err(FontFactsError::WrongEnvironment)
     );
-    let old = a.font_snapshot();
+    let old = a.values.font_snapshot();
     metrics::install_probe(|_, size| (size, size, size, size), &a.text, a.values());
     assert_eq!(
         backend.metrics(request, &old),
         Err(FontFactsError::StaleSnapshot)
     );
-    let current = a.font_snapshot();
+    let current = a.values.font_snapshot();
     assert!(backend.metrics(request, &current).is_ok());
-    a.install_font_facts(None);
+    a.values.install_font_facts(None);
     assert_eq!(
         backend.metrics(request, &current),
         Err(FontFactsError::StaleSnapshot)
@@ -193,7 +199,7 @@ fn backend_rejects_foreign_stale_and_expired_document_snapshots() {
 
 #[test]
 fn adapter_retains_exact_metrics_and_normal_rounding() {
-    let doc = DocState::new(Default::default());
+    let doc = crate::document::state::DocState::new(Default::default());
     let vcx = doc.values();
     metrics::install_probe(
         |_, size| (size * 0.63, size * 0.47, size * 1.17, size * 1.03),
@@ -209,8 +215,9 @@ fn adapter_retains_exact_metrics_and_normal_rounding() {
         for size in [0.0, 16.0, 19.3, 40.0] {
             let request = FontRequest::new(family, size);
             let facts = doc
+                .values
                 .font_provider()
-                .metrics(request, &doc.font_snapshot())
+                .metrics(request, &doc.values.font_snapshot())
                 .unwrap();
             let (ch, ex) = metrics::ch_ex_px(family, size, &doc.text, vcx);
             assert_eq!(facts.zero_advance.unwrap().px.to_bits(), ch.to_bits());

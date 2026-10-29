@@ -105,7 +105,7 @@ mod tests {
                 11.0,
                 false,
                 axis,
-                crate::layout::cx::FrameCx::new(tree.values())
+                crate::layout::cx::FrameCx::new(&tree.doc)
             ));
             let Node::Element(child) = &host.children[0] else {
                 panic!("child")
@@ -143,7 +143,7 @@ mod tests {
                 13.0,
                 true,
                 axis,
-                crate::layout::cx::FrameCx::new(tree.values())
+                crate::layout::cx::FrameCx::new(&tree.doc)
             ));
             let Node::Element(previous) = &host.children[0] else {
                 panic!("previous")

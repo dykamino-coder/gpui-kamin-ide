@@ -15,6 +15,7 @@ mod arena;
 mod budget;
 mod diagnostics;
 mod font_facts;
+mod phases;
 mod property_registry;
 mod readiness;
 mod scoped;
@@ -32,13 +33,15 @@ use std::rc::{Rc, Weak};
 
 pub use arena::ArenaKey;
 pub(crate) use arena::{Arena, load, store};
+pub use phases::DocState;
 pub use scoped::Scoped;
 pub use value_cx::{ValueCx, ValueDoc};
 
-/// Данные одного документа. Поля пишет его разбор, читают разбор, сборка
-/// кадра и фазы GPUI этого документа.
-#[derive(Default)]
-pub struct DocState {
+/// Нижние данные одного документа: арены значений, at-правила, метрики корня,
+/// носитель, ресурсы, готовность кадра и провайдер шрифтовых фактов (ADR3).
+/// Поля пишет его разбор, читают разбор, сборка кадра и фазы GPUI; состояния
+/// фаз раскладки и текста держит верхний `DocState`.
+pub struct DocumentValues {
     /// Ревизия и её document owner живут с отложенными ValueDoc/кадрами.
     pub(crate) budget: RefCell<Option<crate::budget::RevisionBudget>>,
     pub(crate) font_facts: font_facts::DocumentFonts,
@@ -49,14 +52,8 @@ pub struct DocState {
     diagnostics: RefCell<crate::diagnostics::DiagnosticLog>,
     /// Следующий ключ синтетической коробки, независимо от авторских node_id.
     synthetic_id: RefCell<Vec<u8>>,
-    /// Anchor registries and root frame geometry of the layout phase of this document.
-    pub(crate) layout: Rc<crate::layout::layout_state::LayoutState>,
     /// Font-face descriptors and source caches belonging to this document.
     pub(crate) font_faces: font_facts::FontFaces,
-    /// Platform font context, measurement caches and MATH tables of the text backend.
-    pub(crate) text: Rc<crate::text::text_fonts::TextFonts>,
-    /// Paragraph and vertical-text measurements of the text phase of this document.
-    pub(crate) paragraph: crate::text::paragraph_state::ParagraphState,
     /// CSS font-face metric descriptors, scoped to this document.
     pub(crate) font_metric_faces: RefCell<crate::text::fonts::metric_overrides::MetricFaces>,
     /// Named font-feature definitions owned by this document.
@@ -98,30 +95,61 @@ pub struct DocState {
     painted: Cell<bool>,
     /// Наблюдение за незавершённой работой кадра; не управляет раскладкой.
     readiness: readiness::FrameState,
-    this: Weak<DocState>,
+    this: Weak<DocumentValues>,
 }
 
-impl DocState {
-    /// Пустое состояние документа, разбираемого носителем `media`.
-    pub fn new(media: Media) -> Rc<Self> {
+impl DocumentValues {
+    /// Нижние данные документа, разбираемого носителем `media`. `fonts` строит
+    /// провайдер шрифтовых фактов по умолчанию от слабой ручки этих данных:
+    /// его выбирает верхний документ (бэкенд text), нижний его не называет.
+    pub(crate) fn new(
+        media: Media,
+        fonts: impl FnOnce(Weak<DocumentValues>) -> Rc<dyn crate::font_facts::FontFactsProvider>,
+    ) -> Rc<Self> {
         let doc = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             media: Cell::new(media),
             owner: Cell::new(arena::new_owner()),
             frame_owner: Cell::new(arena::new_owner()),
-            ..Self::default()
+            budget: Default::default(),
+            font_facts: font_facts::DocumentFonts::new(fonts(this.clone())),
+            traversal: Default::default(),
+            embedded_failure: Default::default(),
+            diagnostics: Default::default(),
+            synthetic_id: Default::default(),
+            font_faces: Default::default(),
+            font_metric_faces: Default::default(),
+            font_alternates: Default::default(),
+            foreign_rasters: Default::default(),
+            masks: Default::default(),
+            quirks: Default::default(),
+            root: Default::default(),
+            page_rules: Default::default(),
+            try_rules: Default::default(),
+            property_rules: Default::default(),
+            counter_styles: Default::default(),
+            profiles: Default::default(),
+            images: Default::default(),
+            background_images: Default::default(),
+            calc: Default::default(),
+            anchor: Default::default(),
+            painted: Default::default(),
+            readiness: Default::default(),
         });
         doc.install_font_facts(None);
         doc.root.borrow_mut().resolve_units(doc.values());
         doc
     }
 
-    /// Начало сборки кадра хостом: область кадра прошлого, уже покрашенного
-    /// кадра больше никто не читает — сбросить.
-    pub(crate) fn begin_frame(&self) {
+    /// Начало сборки кадра: наблюдение готовности и перепроверка картинок.
+    pub(crate) fn begin_frame_inputs(&self) {
         self.readiness.begin();
         self.images.borrow_mut().revalidate();
-        self.paragraph.begin_frame();
+    }
+
+    /// Область кадра прошлого, уже покрашенного кадра больше никто не читает —
+    /// сбросить.
+    pub(crate) fn reset_painted_frame(&self) {
         if self.painted.replace(false) {
             self.frame_owner.set(arena::new_owner());
             self.calc.clear_frame();

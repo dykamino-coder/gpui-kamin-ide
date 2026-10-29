@@ -70,7 +70,7 @@ fn test_frame() -> crate::layout::cx::FrameCx<'static> {
     let doc = Box::leak(Box::new(crate::document::state::DocState::new(
         crate::style::css::Media::default(),
     )));
-    crate::layout::cx::FrameCx::new(doc.values())
+    crate::layout::cx::FrameCx::new(doc)
 }
 
 fn transformed(lin: [[f32; 2]; 2], clicked: Rc<RefCell<Vec<Point<Pixels>>>>) -> gpui::Div {

@@ -104,7 +104,7 @@ mod tests {
             |n| matches!(n, Node::Element(e) if e.style.used().float.is_some_and(|f| f != 0)),
             group,
             &group[0],
-            crate::layout::cx::FrameCx::new(tree.values()),
+            crate::layout::cx::FrameCx::new(&tree.doc),
         );
         assert!(after);
     }

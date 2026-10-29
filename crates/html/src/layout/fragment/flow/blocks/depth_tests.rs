@@ -52,7 +52,7 @@ fn deep_native_groups_record_the_innermost_box() {
             let b = BlockBox::collect(
                 &logical,
                 ShapeCx::COLUMNS,
-                crate::layout::cx::FrameCx::new(tree.values()),
+                crate::layout::cx::FrameCx::new(&tree.doc),
             );
             assert!(b.ids().contains(&last(&logical)), "{mode}: {body}");
             assert!(b.ids().len() > 24, "{mode}: {body}");

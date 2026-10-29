@@ -2,11 +2,11 @@
 //! пределов. Одна ревизия на состояние: хранилище картинок, шрифты, профили и подстановки
 //! делят её aggregate; отказы приходят в журнал документа с его областью.
 
-use super::DocState;
+use super::DocumentValues;
 use crate::budget::RevisionBudget;
 use crate::diagnostics::Diagnostic;
 
-impl DocState {
+impl DocumentValues {
     /// Committed или собираемая ревизия. Состояние без Document (фикстуры, вложенные
     /// документы без ревизии родителя) использует конечный профиль своего хранилища картинок.
     pub(crate) fn revision_budget(&self) -> RevisionBudget {

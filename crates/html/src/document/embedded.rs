@@ -104,8 +104,8 @@ pub(crate) fn parse_embedded_sized(
         media.dark = scheme.preferred_dark;
     }
     let state = DocState::new(media);
-    state.admit_revision(revision, None);
-    state.traversal.set_embedded();
+    state.values.admit_revision(revision, None);
+    state.values.traversal.set_embedded();
     let vcx = state.values();
     fonts.install(&state.text, vcx);
     let sheets = crate::dom::style_sources::collect(&input, theme_css).map_err(|error| {
@@ -134,8 +134,8 @@ pub(crate) fn parse_embedded_sized(
     // дереву живёт здесь, а не в разборе стиля, и без этой строки
     // `<iframe>` потерял бы всё, что раньше работало.
     crate::animation::motion::settle(&mut nodes, vcx);
-    state.masks.collect(&nodes, vcx);
-    state.traversal.retain(input);
+    state.values.masks.collect(&nodes, vcx);
+    state.values.traversal.retain(input);
     Ok(Embedded { nodes, state })
 }
 
