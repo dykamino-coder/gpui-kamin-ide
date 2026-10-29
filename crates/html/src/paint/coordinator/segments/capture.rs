@@ -33,7 +33,9 @@ pub(super) fn own_capture(
                 let own = |window: &mut Window| {
                     window.with_paint_segment_slices(slices, |window| {
                         window.with_render_context(Some(Rc::new(CurrentNode(id))), |window| {
-                            paint(window, cx)
+                            crate::layout::fragment::line_admission::outside(window, |window| {
+                                paint(window, cx)
+                            })
                         })
                     })
                 };

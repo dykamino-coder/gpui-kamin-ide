@@ -4,10 +4,11 @@
 
 use crate::hooks::{BareRecords, IntoHooked, SlotScopes, Wrap};
 use gpui::{
-    AnyElement, App, Bounds, PaintPlacement, PaintPlan, PaintSegmentId, Pixels,
+    AnyElement, App, Bounds, PaintPlacement, PaintPlan, PaintSegmentId, Pixels, Point,
     TransformationMatrix, Window, point, px,
 };
 use std::rc::Rc;
+pub(crate) mod replayed;
 
 struct CopyHits {
     segment: PaintSegmentId,
@@ -99,8 +100,12 @@ impl Wrap for Slot {
         // The native placement replayed here is hit through this copy's scope.
         match window.render_context::<CopyHits>() {
             Some(copy) if copy.scopes.natives().contains(self.id) => {
-                copy.scopes
-                    .push(copy.segment, self.id, window.paint_hit_scope());
+                // The recorded main copy holds every fragmentainer of its pieces.
+                for segment in
+                    std::iter::once(copy.segment).chain(replayed::columns(window, copy.segment))
+                {
+                    copy.scopes.push(segment, self.id, window.paint_hit_scope());
+                }
             }
             // A root no native source replays stays with its copy.
             _ => {
@@ -120,22 +125,28 @@ impl Wrap for Slot {
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let copy = window.render_context::<CopySegment>();
         let Some(copy) = copy.filter(|copy| copy.records.natives().contains(self.id)) else {
-            self.child.paint(window, cx);
+            if !replayed::paint(self.id, window) {
+                self.child.paint(window, cx);
+            }
             return;
         };
 
         let records = copy.records.get(copy.segment, self.id);
+        let origin = point(px(0.), px(0.));
         if records.is_empty() {
             return;
         }
         match window.render_context::<CopyArea>() {
-            Some(area) => window.with_content_mask_exact(area.0, |window| replay(records, window)),
-            None => replay(records, window),
+            Some(area) => {
+                window.with_content_mask_exact(area.0, |window| replay(records, origin, window))
+            }
+            None => replay(records, origin, window),
         }
     }
 }
 
-fn replay(records: Vec<crate::hooks::Replay>, window: &mut Window) {
+/// Replay `records` moved by `shift` (inside a recording: back to its source).
+fn replay(records: Vec<crate::hooks::Replay>, shift: Point<Pixels>, window: &mut Window) {
     {
         // The copy's own transform (CSS transforms of the copied ancestors, the
         // page sheet) presents the replayed records; the root's own per-fragment
@@ -146,6 +157,16 @@ fn replay(records: Vec<crate::hooks::Replay>, window: &mut Window) {
             rotation_scale: device.rotation_scale,
             translation: [device.translation[0] / k, device.translation[1] / k],
         });
+        // The shift applies under the copy's transform and before the root's own.
+        let moved = TransformationMatrix {
+            rotation_scale: [[1., 0.], [0., 1.]],
+            translation: [f32::from(shift.x), f32::from(shift.y)],
+        };
+        let copy = match copy {
+            _ if moved == TransformationMatrix::unit() => copy,
+            Some(matrix) => Some(matrix.compose(moved)),
+            None => Some(moved),
+        };
         for (record, own) in records {
             let origin = point(px(0.), px(0.));
             let placement = PaintPlacement {
