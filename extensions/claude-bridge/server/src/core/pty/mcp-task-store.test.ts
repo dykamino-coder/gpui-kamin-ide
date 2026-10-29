@@ -93,3 +93,42 @@ describe('durable bounded task lifecycle', () => {
     expect(await fs.readdir(directory)).toEqual([])
   })
 })
+
+describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
+  async function settledTask(owner: string): Promise<string> {
+    const task = await store.create(owner, 'Bash', { command: 'echo' })
+    clock += 1
+    await store.settle(owner, task.taskId, 'done')
+    return task.taskId
+  }
+
+  it('admits a fresh owner into a store full of settled tasks and evicts the oldest settled one', async () => {
+    const ids: string[] = []
+    for (let i = 0; i < TASK_LIMITS.retained; i++) ids.push(await settledTask('owner-' + (i % 8)))
+    const fresh = await store.create('fresh-owner', 'Bash', {})
+    expect(fresh.status).toBe('working')
+    expect(await store.get('owner-0', ids[0]!)).toBeUndefined()
+    expect(await store.get('owner-1', ids[1]!)).toMatchObject({ status: 'completed' })
+    expect((await fs.readdir(directory)).length).toBe(TASK_LIMITS.retained)
+  }, 60_000)
+
+  it('lets an owner with a full settled history start new commands', async () => {
+    for (let i = 0; i < TASK_LIMITS.perOwner; i++) await settledTask('owner')
+    await expect(store.create('owner', 'Bash', {})).resolves.toHaveProperty('taskId')
+  }, 60_000)
+
+  it('admits after restart over an already full settled store', async () => {
+    for (let i = 0; i < TASK_LIMITS.retained; i++) await settledTask('owner-' + (i % 8))
+    store = new McpTaskStore(directory, () => clock)
+    await expect(store.create('fresh-owner', 'Bash', {})).resolves.toHaveProperty('taskId')
+  }, 60_000)
+
+  it('never evicts working tasks', async () => {
+    for (let i = TASK_LIMITS.active; i < TASK_LIMITS.retained; i++) await settledTask('done-' + (i % 8))
+    for (let i = 0; i < TASK_LIMITS.active; i++)
+      await store.create('busy-' + Math.floor(i / TASK_LIMITS.activePerOwner), 'Bash', {})
+    await expect(store.create('fresh-owner', 'Bash', {})).rejects.toThrow('capacity')
+    expect(await store.working()).toHaveLength(TASK_LIMITS.active)
+    expect((await fs.readdir(directory)).length).toBe(TASK_LIMITS.retained)
+  }, 60_000)
+})

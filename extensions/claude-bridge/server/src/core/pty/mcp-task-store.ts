@@ -122,8 +122,33 @@ export class McpTaskStore {
   private async expire(): Promise<void> {
     for (const [id, task] of this.records) {
       if (this.now() < Date.parse(task.createdAt) + task.ttlMs) continue
-      await fs.unlink(path.join(this.directory, `${id}.json`))
-      this.records.delete(id)
+      await this.remove(id)
+    }
+  }
+  private async remove(id: string): Promise<void> {
+    await fs.unlink(path.join(this.directory, `${id}.json`)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error
+    })
+    this.records.delete(id)
+  }
+  // Retention bounds storage, not admission: settled outcomes stay readable until
+  // room is needed, then the least recently settled ones make way for new work.
+  // Only working tasks count against admission (INC-2026-0082).
+  private async evictSettled(owner: string, incomingBytes: number): Promise<void> {
+    const settled = [...this.records.values()]
+      .filter((task) => task.status !== 'working')
+      .sort((a, b) => Date.parse(a.lastUpdatedAt) - Date.parse(b.lastUpdatedAt))
+    let bytes = incomingBytes
+    for (const task of this.records.values()) bytes += Buffer.byteLength(JSON.stringify(task))
+    const ownCount = () => [...this.records.values()].filter((task) => task.owner === owner).length
+    for (const task of settled) {
+      const full =
+        this.records.size >= TASK_LIMITS.retained ||
+        (task.owner === owner && ownCount() >= TASK_LIMITS.perOwner) ||
+        bytes > TASK_LIMITS.bytes
+      if (!full) continue
+      bytes -= Buffer.byteLength(JSON.stringify(task))
+      await this.remove(task.taskId)
     }
   }
   private async save(task: TaskRecord): Promise<void> {
@@ -161,14 +186,19 @@ export class McpTaskStore {
   }
   create(owner: string, toolName: string, input: Record<string, unknown>): Promise<TaskRecord> {
     return this.run(async () => {
-      if (Buffer.byteLength(JSON.stringify(input)) > TASK_LIMITS.inputBytes) throw new Error('Task input too large')
+      const inputBytes = Buffer.byteLength(JSON.stringify(input))
+      if (inputBytes > TASK_LIMITS.inputBytes) throw new Error('Task input too large')
+      const working = [...this.records.values()].filter((task) => task.status === 'working')
+      if (
+        working.length >= TASK_LIMITS.active ||
+        working.filter((task) => task.owner === owner).length >= TASK_LIMITS.activePerOwner
+      )
+        throw new Error('Task capacity exceeded')
+      await this.evictSettled(owner, inputBytes + 2048)
       const all = [...this.records.values()]
-      const own = all.filter((task) => task.owner === owner)
       if (
         all.length >= TASK_LIMITS.retained ||
-        own.length >= TASK_LIMITS.perOwner ||
-        all.filter((task) => task.status === 'working').length >= TASK_LIMITS.active ||
-        own.filter((task) => task.status === 'working').length >= TASK_LIMITS.activePerOwner
+        all.filter((task) => task.owner === owner).length >= TASK_LIMITS.perOwner
       )
         throw new Error('Task capacity exceeded')
       const timestamp = new Date(this.now()).toISOString()
