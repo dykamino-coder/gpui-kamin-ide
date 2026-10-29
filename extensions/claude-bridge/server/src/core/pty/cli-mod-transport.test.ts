@@ -37,12 +37,15 @@ async function setup() {
   return { transport, call }
 }
 
+// The transport is Linux-only in production (createCliModTransport); Windows has no AF_UNIX path listen.
+const socketIt = it.skipIf(process.platform === 'win32')
+
 describe('private mod transport', () => {
   it('is off by default', async () => {
     vi.stubEnv('BRIDGE_CLI_MOD', '')
     expect(await createCliModTransport('unused')).toBeUndefined()
   })
-  it('requires a session/version handshake and protects socket permissions', async () => {
+  socketIt('requires a session/version handshake and protects socket permissions', async () => {
     const { transport, call } = await setup()
     expect((await call('/poll')).status).toBe(409)
     expect((await call('/hello', { session: 'other' })).status).toBe(409)
@@ -53,7 +56,7 @@ describe('private mod transport', () => {
     expect(fs.statSync(transport.directory).mode & 0o777).toBe(0o700)
     expect(fs.statSync(transport.socketPath).mode & 0o777).toBe(0o600)
   })
-  it('claims once, keeps heartbeat alive for queued prompts, and forwards boundaries in order', async () => {
+  socketIt('claims once, keeps heartbeat alive for queued prompts, and forwards boundaries in order', async () => {
     const { transport, call } = await setup()
     const turns: Array<string | null> = []
     transport.onTurn = (turn) => turns.push(turn)
@@ -67,7 +70,7 @@ describe('private mod transport', () => {
     expect(transport.abort('a', vi.fn())).toBe(true)
     expect((await call('/poll')).commands).toEqual([{ kind: 'abort', id: 2, turnId: 'a' }])
   })
-  it('falls back only for unclaimed commands and reports uncertain claimed delivery', async () => {
+  socketIt('falls back only for unclaimed commands and reports uncertain claimed delivery', async () => {
     const { transport, call } = await setup()
     const fallback = vi.fn(),
       uncertain = vi.fn()
@@ -84,7 +87,7 @@ describe('private mod transport', () => {
     expect(transport.submit('next', fallback)).toBe(false)
     expect((await call('/poll')).status).toBe(409)
   })
-  it('bounds queue/text and cleans only its own paths', async () => {
+  socketIt('bounds queue/text and cleans only its own paths', async () => {
     const { transport, call } = await setup()
     await call('/hello')
     expect(transport.submit('x'.repeat(131_073), vi.fn())).toBe(false)
