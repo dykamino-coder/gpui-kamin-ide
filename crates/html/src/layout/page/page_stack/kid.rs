@@ -101,6 +101,8 @@ pub struct PageKid {
     pub(crate) float_id: Option<u64>,
     /// Корневые floats задают измеренную протяжённость за пределами normal flow.
     pub(crate) float_extent: bool,
+    /// Куски рисует запись главной копии (`stack_child::replay::page_replayable`).
+    pub(crate) replay: bool,
     /// Repeated table sections reserved by the common fragmentation planner.
     pub repeat: Option<crate::layout::fragment::types::Repeat>,
     /// Копии на случай разреза между страницами (см. `StackChild::frags`).

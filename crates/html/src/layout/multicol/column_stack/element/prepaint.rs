@@ -215,7 +215,7 @@ impl ColumnStack {
             let (paint, scopes) = (&self.paint, &self.oof.slot_scopes);
             match replay {
                 Some(routes) => {
-                    let _ = Self::prepaint_replayed(&routes, window, cx, |window, cx| {
+                    let _ = routes.prepaint(window, cx, |window, cx| {
                         prepaint_frag(el, paint, scopes, mapping, segment, window, cx)
                     });
                 }
