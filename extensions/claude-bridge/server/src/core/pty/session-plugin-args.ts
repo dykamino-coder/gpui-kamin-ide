@@ -2,29 +2,25 @@
 // PTY Session — materialized plugin roots and Claude CLI launch arguments
 // ============================================================================
 
-import fs from "fs";
-import path from "path";
-import { buildClaudeArgs } from "./session-env";
-import type { SessionConfig } from "./types";
+import fs from 'fs'
+import path from 'path'
+import { buildClaudeArgs } from './session-env'
+import type { SessionConfig } from './types'
 
 /** Absolute proxy-plugin roots to pass as repeated `--plugin-dir` arguments. */
 export function getSessionPluginDirs(settingsDir: string): string[] {
-  const root = path.join(settingsDir, ".bridge-plugins");
-  if (!fs.existsSync(root)) return [];
+  const root = path.join(settingsDir, '.bridge-plugins')
+  if (!fs.existsSync(root)) return []
   try {
     return fs
       .readdirSync(root, { withFileTypes: true })
       .filter(
-        (entry) =>
-          entry.isDirectory() &&
-          fs.existsSync(
-            path.join(root, entry.name, ".claude-plugin", "plugin.json"),
-          ),
+        (entry) => entry.isDirectory() && fs.existsSync(path.join(root, entry.name, '.claude-plugin', 'plugin.json')),
       )
       .map((entry) => path.join(root, entry.name))
-      .sort();
+      .sort()
   } catch {
-    return [];
+    return []
   }
 }
 
@@ -32,7 +28,7 @@ export function getSessionPluginDirs(settingsDir: string): string[] {
  * the session directory so it is thrown away with the session and never grows
  * unbounded across restarts. */
 export function cliDebugLogPath(settingsDir: string): string {
-  return path.join(settingsDir, "cli-debug.log");
+  return path.join(settingsDir, 'cli-debug.log')
 }
 
 /** Opt-in CLI debug log, off unless BRIDGE_CLI_DEBUG_LOG is set.
@@ -46,18 +42,16 @@ export function cliDebugLogPath(settingsDir: string): string {
  *
  * Off by default: the log is chatty and holds prompt text. */
 function cliDebugArgs(settingsDir: string): string[] {
-  if (!process.env.BRIDGE_CLI_DEBUG_LOG) return [];
-  return ["--debug-file", cliDebugLogPath(settingsDir)];
+  if (!process.env.BRIDGE_CLI_DEBUG_LOG) return []
+  return ['--debug-file', cliDebugLogPath(settingsDir)]
 }
 
 /** Keep plugin discovery wired to the actual spawn path, not only to the
  * lower-level argument builder used by unit tests. */
-export function buildSessionClaudeArgs(
-  config: SessionConfig,
-  settingsDir: string,
-): string[] {
+export function buildSessionClaudeArgs(config: SessionConfig, settingsDir: string, cliSettingsFile?: string): string[] {
   return [
     ...buildClaudeArgs(config, getSessionPluginDirs(settingsDir)),
+    ...(cliSettingsFile ? ['--settings', cliSettingsFile] : []),
     ...cliDebugArgs(settingsDir),
-  ];
+  ]
 }

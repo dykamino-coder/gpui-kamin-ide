@@ -31,7 +31,7 @@ vi.mock('./session-settings', () => ({
     return h.root
   },
   sanitizeDirName: () => 'cwd',
-  writeSessionSettings: vi.fn(),
+  writeSessionSettings: vi.fn(() => '{}'),
   writeSessionClaudeMd: vi.fn(),
   applySyncData: vi.fn(),
 }))
