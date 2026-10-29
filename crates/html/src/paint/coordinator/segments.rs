@@ -97,6 +97,14 @@ fn capture_key(window: &Window) -> u64 {
     window.render_context::<Capture>().map_or(0, |c| c.0)
 }
 
+/// Prepaint or record of another segment set inside a source (the recorded main copy of a split
+/// column child): its nodes and their clip chains belong to that set, not to the source.
+pub(crate) fn outside_source<R>(window: &mut Window, f: impl FnOnce(&mut Window) -> R) -> R {
+    window.with_render_context::<Source, R>(None, |window| {
+        window.with_render_context::<CurrentNode, R>(None, f)
+    })
+}
+
 pub(crate) fn record(
     extent: Bounds<Pixels>,
     segments: Rc<[PaintSegment]>,
@@ -114,7 +122,9 @@ pub(crate) fn record(
         // Only admitted nodes reach a segment: a box the source lays out in a
         // layer of its own (a fixed box whose block is the viewport) is not one.
         let unadmitted = window.with_paint_segment_slices(Rc::from([]), |window| {
-            window.with_render_context(Some(source.clone()), |window| paint(window, cx))
+            window.with_render_context(Some(source.clone()), |window| {
+                crate::layout::fragment::line_admission::outside(window, |w| paint(w, cx))
+            })
         });
         if let Err(error) = unadmitted {
             source.fail(error);
