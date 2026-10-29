@@ -13,6 +13,7 @@ pub(in crate::layout::multicol) use finish::nest_candidate;
 mod cuts;
 use cuts::stack_child_of;
 mod prepare;
+pub(crate) mod replay;
 pub(in crate::layout::multicol) use prepare::{Prepared, prepare};
 mod breaks;
 mod build;

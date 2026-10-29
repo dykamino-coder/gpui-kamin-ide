@@ -150,7 +150,17 @@ impl ColumnStack {
     ) {
         self.record_places(bounds, plan, step);
         let places = self.static_places.clone();
+        let spill = Self::spill(bounds, window);
         for f in plan {
+            // Ребёнок, чьи куски рисует запись главной копии, раскладывает только её.
+            let replay = self.replays(f.kid, plan).then(|| {
+                let geometry = (col_w, step, spill);
+                self.replay_routes(f.kid, plan, bounds, geometry, window.scale_factor())
+            });
+            let replay = replay.flatten();
+            if replay.is_some() && f.copy != 0 {
+                continue;
+            }
             // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
             // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
             // на полную высоту коробки и поднимать на срез нельзя.
@@ -187,15 +197,15 @@ impl ColumnStack {
                 .filter(|_| !clone)
                 .map(|places| (f.kid, point(x, y - px(f.from)), places.clone()));
             let segment = gpui::PaintSegmentId(f.col as u64);
-            prepaint_frag(
-                el,
-                &self.paint,
-                &self.oof.slot_scopes,
-                mapping,
-                segment,
-                window,
-                cx,
-            );
+            let (paint, scopes) = (&self.paint, &self.oof.slot_scopes);
+            match replay {
+                Some(routes) => {
+                    let _ = Self::prepaint_replayed(&routes, window, cx, |window, cx| {
+                        prepaint_frag(el, paint, scopes, mapping, segment, window, cx)
+                    });
+                }
+                None => prepaint_frag(el, paint, scopes, mapping, segment, window, cx),
+            }
             // Retain the actual root width for fragment decoration bounds.
             kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
         }
