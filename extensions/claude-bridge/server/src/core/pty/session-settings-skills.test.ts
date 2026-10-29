@@ -142,6 +142,7 @@ describe("session settings skills integration", () => {
     expect(localSettings.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe("1");
     expect(localSettings.env.CLAUDE_CODE_PROMPT_CACHE_TTL).toBe("1h");
     expect(localSettings.env.CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL).toBe("1h");
+    expect(localSettings.env.CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS).toBe("350000");
 
     const settings = JSON.parse(
       fs.readFileSync(
