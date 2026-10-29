@@ -26,9 +26,8 @@ fn failed(error: crate::layout::fragment::token::Error) -> Plan {
 
 impl ColumnStack {
     /// Укладка стопки: её высота, линии колонок `(y, высота)`, план кусков и
-    /// спаннеры `(ребёнок, y)`. Без рядов — одна линия, как в css-multicol-1
-    /// (прежний `balance`).
-    ///
+    /// спаннеры `(ребёнок, y)`. Без рядов — одна линия, как в css-multicol-1;
+    /// при `continue: discard` — линии между спаннерами (`balance_discard`).
     /// Не брать порознь ни переполняющие колонки (число копий не упирается в
     /// `column-count` при `column-fill: auto` с заданной высотой,
     /// css-multicol-1 §Overflow), ни статическую позицию прямого
@@ -40,7 +39,6 @@ impl ColumnStack {
     /// `multicol-fill-balance-038`, `multi-line-*-flex-fragmentation-*`).
     /// Вернуть можно только с разделением «переполнение» и «балансировка»
     /// в самой `balance`.
-    // Балансировка возвращает геометрию колонок и статус продолжения плана.
     #[allow(clippy::type_complexity)]
     pub(crate) fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Plan, Vec<(usize, f32)>) {
         if let Some(error) = self.balance_failure {
@@ -52,16 +50,7 @@ impl ColumnStack {
         // колонки переполняют вбок (`place`: `(col, 0.0)`). Линия — высотой
         // в баланс, не в потолок: по ней `growths` меряет рост.
         if self.discard {
-            // Потолок баланса (`Rows::cap`) — та же единственная сетка линий.
-            let cap = self.rows.and_then(|r| r.h).map(|lim| lim.max(1.0));
-            let limit = if cap.is_some() {
-                self.copies
-            } else if self.fixed_height.is_some() {
-                self.copies.max(count)
-            } else {
-                count
-            };
-            return self.balance_discard(kids, limit, cap);
+            return self.balance_discard(kids);
         }
         if let Some(Rows {
             h: Some(lim),

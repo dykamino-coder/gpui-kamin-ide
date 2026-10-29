@@ -19,10 +19,17 @@ impl ColumnStack {
     pub(super) fn balance_discard(
         &self,
         kids: &[Kid],
-        limit: usize,
-        cap: Option<f32>,
     ) -> (f32, Vec<(f32, f32)>, Plan, Vec<(usize, f32)>) {
         let count = self.count;
+        // Потолок баланса (`Rows::cap`) — та же единственная сетка линий.
+        let cap = self.rows.and_then(|r| r.h).map(|lim| lim.max(1.0));
+        let limit = if cap.is_some() {
+            self.copies
+        } else if self.fixed_height.is_some() {
+            self.copies.max(count)
+        } else {
+            count
+        };
         let mut y = 0.0f32;
         let mut lines: Vec<(f32, f32)> = Vec::new();
         let mut plan = Plan::default();
