@@ -93,16 +93,59 @@ afterAll(async () => {
   await fs.rm(mock.home, { recursive: true, force: true })
 })
 describe('MCP Tasks HTTP / WS lifecycle', () => {
-  it('advertises Tasks and recommends foreground commands only for opted-in clients', async () => {
+  it('advertises immediate background Tasks only for opted-in clients', async () => {
     const discovery = (await (await request('server/discover')).json()).result
     expect(discovery).toMatchObject({
       resultType: 'complete',
       supportedVersions: [MODERN_MCP],
       capabilities: { extensions: { [TASK_EXTENSION]: {} } },
     })
-    expect(discovery.instructions).toContain('Leave run_in_background false or omitted')
+    expect(discovery.instructions).toContain('immediate durable MCP task')
     const ordinary = (await (await request('server/discover', {}, false)).json()).result
     expect(ordinary.instructions).toContain('For long-running jobs pass run_in_background:true')
+  })
+  it.each(['Bash', 'PowerShell'])(
+    'admits explicit background %s without grace and sends a protocol deadline',
+    async (tool) => {
+      const started = Date.now()
+      const response = await request('tools/call', {
+        name: tool,
+        arguments: { command: 'background-' + tool, run_in_background: true, timeout: 1 },
+      })
+      expect(response.headers.get('content-type')).toContain('application/json')
+      const handle = rpcResult(await response.text())
+      expect(handle).toMatchObject({ resultType: 'task', status: 'working' })
+      expect(Date.now() - started).toBeLessThan(2000)
+      await vi.waitFor(() =>
+        expect(mock.send).toHaveBeenCalledWith(
+          session.ws,
+          expect.objectContaining({
+            type: 'mcp:call',
+            requestId: handle.taskId,
+            taskDeadlineMs: expect.any(Number),
+            input: { command: 'background-' + tool, run_in_background: true, timeout: 1 },
+          }),
+        ),
+      )
+      const task = (await tasks.mcpTasks.get(session.mcpEndpoint!.id, handle.taskId))!
+      expect(task.executionDeadlineMs! - started).toBeGreaterThan(TASK_LIMITS.executionMs)
+      await tasks.settleMcpTask(session, {
+        type: 'mcp:response',
+        requestId: handle.taskId,
+        taskOwner: session.mcpEndpoint!.id,
+        result: 'full background output',
+      })
+      expect((await (await request('tasks/get', { taskId: handle.taskId })).json()).result).toMatchObject({
+        status: 'completed',
+        result: { content: [{ text: 'full background output' }] },
+      })
+    },
+  )
+  it('preserves legacy background calls for clients without Tasks', async () => {
+    const input = { command: 'legacy', run_in_background: true }
+    const response = await request('tools/call', { name: 'Bash', arguments: input }, false)
+    expect(await response.text()).toContain('ordinary result')
+    expect(mock.call).toHaveBeenCalledWith(session.id, 'Bash', input, expect.any(AbortSignal))
   })
   it('returns a handle before execution settles, then retains output through PTY replacement and lost ack', async () => {
     const id = await create()

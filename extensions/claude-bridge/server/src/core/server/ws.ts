@@ -2,6 +2,8 @@ import { WebSocketServer, WebSocket as WS } from 'ws'
 import type { Server as HttpServer } from 'http'
 import type { IncomingMessage } from 'http'
 import type { Duplex } from 'stream'
+import { isDashboardAuthEnabled, validateDashboardSession } from '../auth/dashboard-auth'
+import { commandSnapshot, commandOutput, stopCommand } from '../pty/commands'
 import { eventBus } from '../events/bus'
 import { getTerminalSessionCount } from './terminal'
 import { getAllSessions } from '../pty/session-manager'
@@ -13,14 +15,28 @@ import { getDb } from '../stats/database/lifecycle'
  *  full conversation history of a /resume'd chat). Context column is
  *  still the absolute last-turn pressure (it's a snapshot, not a delta).
  */
-async function getPtyAggregates(sessions: Array<{ id: string; conversationId: string; createdAt: string }>): Promise<Map<string, {
-  userMessages: number
-  assistantMessages: number
-  totalTokens: number
-  contextTokens: number
-  model: string | null
-}>> {
-  const out = new Map<string, { userMessages: number; assistantMessages: number; totalTokens: number; contextTokens: number; model: string | null }>()
+async function getPtyAggregates(sessions: Array<{ id: string; conversationId: string; createdAt: string }>): Promise<
+  Map<
+    string,
+    {
+      userMessages: number
+      assistantMessages: number
+      totalTokens: number
+      contextTokens: number
+      model: string | null
+    }
+  >
+> {
+  const out = new Map<
+    string,
+    {
+      userMessages: number
+      assistantMessages: number
+      totalTokens: number
+      contextTokens: number
+      model: string | null
+    }
+  >()
   if (sessions.length === 0) return out
   const db = await getDb()
   // Context = PEAK effective input (input + cache_read + cache_write)
@@ -73,10 +89,17 @@ async function getPtyAggregates(sessions: Array<{ id: string; conversationId: st
   `
   for (const s of sessions) {
     try {
-      const rows = (await db.runAndReadAll(sql, [
-        s.createdAt, s.createdAt, s.createdAt,
-        s.conversationId, s.conversationId, s.conversationId, s.conversationId,
-      ])).getRowObjects() as Array<{
+      const rows = (
+        await db.runAndReadAll(sql, [
+          s.createdAt,
+          s.createdAt,
+          s.createdAt,
+          s.conversationId,
+          s.conversationId,
+          s.conversationId,
+          s.conversationId,
+        ])
+      ).getRowObjects() as Array<{
         user_messages: bigint | number | null
         assistant_messages: bigint | number | null
         total_tokens: bigint | number | null
@@ -93,7 +116,9 @@ async function getPtyAggregates(sessions: Array<{ id: string; conversationId: st
           model: r.model,
         })
       }
-    } catch { /* skip session on error */ }
+    } catch {
+      /* skip session on error */
+    }
   }
   return out
 }
@@ -114,7 +139,10 @@ eventBus.on('health:updated', (event) => {
   lastHealthAt = Date.now()
   // Also cache account data from health updates
   const h = event.data as { account?: unknown }
-  if (h?.account) { lastAccount = h.account; lastAccountAt = Date.now() }
+  if (h?.account) {
+    lastAccount = h.account
+    lastAccountAt = Date.now()
+  }
 })
 
 eventBus.on('account:updated', (event) => {
@@ -187,8 +215,8 @@ export function attachWebSocket(_server: HttpServer): void {
       try {
         const aggregates = await getPtyAggregates(
           allSessions
-            .filter(s => !!s.cliConversationId)
-            .map(s => ({ id: s.id, conversationId: s.cliConversationId!, createdAt: s.createdAt.toISOString() }))
+            .filter((s) => !!s.cliConversationId)
+            .map((s) => ({ id: s.id, conversationId: s.cliConversationId!, createdAt: s.createdAt.toISOString() })),
         )
 
         const initData = {
@@ -201,7 +229,7 @@ export function attachWebSocket(_server: HttpServer): void {
           accountCheckedAt: lastAccountAt,
           usage: lastUsage,
           terminalSessions: getTerminalSessionCount(),
-          ptySessions: allSessions.map(s => {
+          ptySessions: allSessions.map((s) => {
             const agg = s.cliConversationId ? aggregates.get(s.cliConversationId) : undefined
             return {
               id: s.id,
@@ -232,6 +260,57 @@ export function attachWebSocket(_server: HttpServer): void {
       }
     })()
 
+    let commandToken: string | undefined
+    let subscribed = false
+    let sendingCommands = false
+    const allowed = async (token?: string): Promise<boolean> =>
+      !isDashboardAuthEnabled() || (!!token && !!(await validateDashboardSession(token)))
+    const sendCommands = async (): Promise<void> => {
+      if (!subscribed || sendingCommands || ws.readyState !== WS.OPEN || ws.bufferedAmount > 1024 * 1024) return
+      sendingCommands = true
+      try {
+        if (!(await allowed(commandToken))) {
+          subscribed = false
+          return
+        }
+        const snapshots = []
+        for (const session of getAllSessions()) snapshots.push(await commandSnapshot(session))
+        if (ws.readyState === WS.OPEN)
+          ws.send(JSON.stringify({ type: 'commands:snapshots', data: snapshots, timestamp: Date.now() }))
+      } finally {
+        sendingCommands = false
+      }
+    }
+    const commandTimer = setInterval(() => {
+      void sendCommands().catch(() => {})
+    }, 1000)
+    commandTimer.unref?.()
+    ws.once('close', () => clearInterval(commandTimer))
+    ws.on('message', (raw) => {
+      void (async () => {
+        if (Buffer.byteLength(raw.toString()) > 8192) return
+        const msg = JSON.parse(raw.toString()) as { type: string; token?: string; sessionId?: string; id?: string }
+        if (!msg.type.startsWith('commands:') || !(await allowed(msg.token))) return
+        if (msg.type === 'commands:subscribe') {
+          commandToken = msg.token
+          subscribed = true
+          await sendCommands()
+          return
+        }
+        const session = getAllSessions().find((s) => s.id === msg.sessionId)
+        if (!session || typeof msg.id !== 'string' || msg.id.length > 100) return
+        if (msg.type === 'commands:stop') await stopCommand(session, msg.id)
+        if (msg.type === 'commands:output' && ws.readyState === WS.OPEN)
+          ws.send(
+            JSON.stringify({
+              type: 'commands:output',
+              data: { sessionId: session.id, id: msg.id, output: await commandOutput(session, msg.id) },
+              timestamp: Date.now(),
+            }),
+          )
+      })().catch(() => {})
+    })
+
     // No per-client wildcard listener needed — broadcast handles all forwarding
     ws.on('error', () => {})
   })
@@ -245,7 +324,11 @@ export function attachWebSocket(_server: HttpServer): void {
     for (const client of wss.clients) {
       if (client.readyState !== WS.OPEN) continue
       if (client.bufferedAmount > MAX_DASH_BUFFERED) continue
-      try { client.send(json) } catch { /* client gone mid-iteration */ }
+      try {
+        client.send(json)
+      } catch {
+        /* client gone mid-iteration */
+      }
     }
   }
 

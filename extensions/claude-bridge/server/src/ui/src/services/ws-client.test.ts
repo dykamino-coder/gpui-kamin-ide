@@ -15,6 +15,7 @@ vi.mock('../signals/server', () => ({
   accountCheckedAt: { value: null },
   cachedUsage: { value: null },
 }))
+vi.mock('../signals/auth', () => ({ getSessionToken: () => 'synthetic-token' }))
 vi.mock('../signals/requests', () => ({
   addRequest: vi.fn(),
   updateRequest: vi.fn(),
@@ -107,7 +108,8 @@ describe('dashboard socket lifecycle (INC-2026-0014)', () => {
     vi.advanceTimersByTime(9000)
     wsClient.send({ type: 'synthetic' })
     expect(Socket.instances).toHaveLength(2)
-    expect(latest().send).toHaveBeenCalledOnce()
+    expect(latest().send).toHaveBeenCalledWith(JSON.stringify({ type: 'commands:subscribe', token: 'synthetic-token' }))
+    expect(latest().send).toHaveBeenCalledWith(JSON.stringify({ type: 'synthetic' }))
     expect(old.send).not.toHaveBeenCalled()
   })
 
