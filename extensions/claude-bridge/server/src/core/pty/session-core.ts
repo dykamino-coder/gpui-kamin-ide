@@ -241,11 +241,9 @@ async function createAdmittedSession(
   const mcpEndpoint = await mcpIdentity(tokenId, settingsDir)
   const cliSettings = writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash, mcpEndpoint)
 
-  // Write CLAUDE.md with user's real working directory info
+  // Правила нужны и сессии без выбранной папки; cwd передаётся в динамическом промпте.
   const userCwd = config.cwd
-  if (userCwd) {
-    writeSessionClaudeMd(settingsDir, userCwd)
-  }
+  writeSessionClaudeMd(settingsDir)
 
   // Apply per-token synced data (skills, agents, CLAUDE.md, project files)
   if (config.bearerHash) {
