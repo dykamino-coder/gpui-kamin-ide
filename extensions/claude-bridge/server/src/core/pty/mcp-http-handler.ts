@@ -23,6 +23,7 @@ import type { PtySession, ToolDefinition } from './types'
 import { getSessionWs } from './session-ws'
 import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
+import { mcpInstructions } from './mcp-instructions'
 import { matchesResourceTemplate } from './resource-template'
 import { notifyTaskChanged, openToolNotificationStream } from './mcp-tool-notify'
 import { PROJECT_SESSION_TOOLS, isProjectSessionTool, projectSessionToolsEnabled } from '../project-sessions/tools'
@@ -30,25 +31,6 @@ import { runForSession } from '../project-sessions/session-glue'
 import { observeMcpCatalog, observeMcpCall } from '../stats/mcp-catalog'
 
 export { MCP_TOOLS } from './mcp-tools-defs'
-
-function mcpInstructions(tasks = false): string {
-  return `This MCP server provides tools that execute on the user's local machine. All file, shell, and search operations run locally, not on the server.
-
-Key tool capabilities:
-- **Read**: Reads any file. Supports images (PNG, JPG, GIF, WebP) — image contents are presented visually. Also reads PDFs (use pages parameter for large files) and Jupyter notebooks (.ipynb). ALWAYS use Read to view screenshots or image files the user mentions.
-- **Write**: Creates or overwrites files. Use Read first for existing files. Prefer Edit for modifications.
-- **Edit**: Exact string replacement in files. Must Read the file first. Use replace_all for bulk replacements.
-- **Glob**: Fast file pattern matching (e.g. "**/*.ts"). Returns paths sorted by modification time.
-- **Grep**: Powerful ripgrep-based search. ALWAYS use this instead of grep/rg via Bash.
-- **Bash**: Execute shell commands. Default timeout 25 min, max 30 min. ${tasks ? 'Leave run_in_background false or omitted to run long commands as durable MCP Tasks; completion is delivered asynchronously. Explicit run_in_background:true instead uses BashOutput (poll by bash_id) and KillShell.' : 'For long-running jobs pass run_in_background:true, then read output with **BashOutput** (poll by bash_id) and stop it with **KillShell** — NOT TaskOutput, which cannot see these processes.'}
-- **PowerShell**: Execute PowerShell commands (Windows). Same background/BashOutput/KillShell semantics as Bash.
-- **BashOutput**: Read new stdout/stderr from a background Bash/PowerShell shell started with run_in_background (by bash_id).
-- **KillShell**: Terminate a background shell by bash_id.
-- **WebFetch**: Fetch URL content, convert HTML to markdown, process with a prompt.
-- **NotebookEdit**: Edit Jupyter notebook cells. Read the notebook first.
-- **EnterWorktree**: Create isolated git worktree (only when user explicitly asks).
-- **AskUserQuestion**: ALWAYS use this tool to ask the user questions — shows an interactive widget with clickable buttons. NEVER print questions as plain text.`
-}
 
 const MCP_LOG_MAX = 50 // keep last N entries per session
 
@@ -458,9 +440,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             prompts: {},
             extensions: { [TASK_EXTENSION]: {} },
           },
-          instructions:
-            mcpInstructions(supportsTasks(body.params)) +
-            '\nForeground Bash and PowerShell commands answer inline; one still running after 2 minutes returns a durable MCP task instead; use tasks/get to follow it and tasks/cancel to stop it. Explicit run_in_background commands retain BashOutput/KillShell semantics.',
+          instructions: mcpInstructions(supportsTasks(body.params)),
         }),
       )
     }
@@ -552,7 +532,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             name: 'open-claude-bridge-user-tools',
             version: '4.0.0',
           },
-          instructions: mcpInstructions(),
+          instructions: mcpInstructions(supportsTasks(body.params)),
         }),
       )
     }
@@ -635,18 +615,14 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       }
       observeMcpCall(session, toolName)
 
-      if (
-        modern &&
-        supportsTasks(body.params) &&
-        ['Bash', 'PowerShell'].includes(toolName) &&
-        toolInput.run_in_background !== true
-      ) {
+      if (modern && supportsTasks(body.params) && ['Bash', 'PowerShell'].includes(toolName)) {
         let handle: Record<string, unknown>
         try {
           handle = await createMcpTask(session, toolName, toolInput)
         } catch {
           return jsonResponse(jsonRpcError(body.id, -32000, 'Task admission unavailable or capacity exceeded'), 503)
         }
+        if (toolInput.run_in_background === true) return jsonResponse(jsonRpcResponse(body.id, handle))
         // The task keeps the run durable, but a command that finishes within the
         // grace window answers inline: returning a handle for every short command
         // makes the CLI background it and the agent wait on a notification.
@@ -658,6 +634,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
           }
           if (task?.status === 'failed' && task.error) return jsonRpcError(body.id, task.error.code, task.error.message)
+          if (task?.status === 'working')
+            await mcpTasks.update(owner, task.taskId, (record) => {
+              record.background = true
+            })
           return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
         })
       }

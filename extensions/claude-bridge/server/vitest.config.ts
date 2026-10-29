@@ -9,6 +9,7 @@ export default defineConfig({
     // Сьют co-located в src/ (tests/ каталога в этом репо никогда не было —
     // старый include указывал в пустоту, `npm test` падал "No test files").
     include: ['src/**/*.test.ts'],
+    exclude: ['src/cli-mod/tests/**'],
     // Coverage configuration. CI gate (Sprint 1 D7) enforces:
     //   - ≥40% global lines/branches/functions
     //   - ≥70% on critical-path modules (PTY, MCP routing, JSONL parsing)
@@ -19,11 +20,7 @@ export default defineConfig({
       // Only count code we actually exercise from tests. Excluding electron
       // renderer (no renderer-side tests yet — D6 Playwright covers that)
       // and the dashboard React app (`src/ui/`) which has its own surface.
-      include: [
-        'src/core/**/*.ts',
-        'electron/main/mcp/discovery.ts',
-        'electron/renderer/utils/render-markdown.ts',
-      ],
+      include: ['src/core/**/*.ts', 'electron/main/mcp/discovery.ts', 'electron/renderer/utils/render-markdown.ts'],
       exclude: [
         '**/*.d.ts',
         '**/*.test.ts',

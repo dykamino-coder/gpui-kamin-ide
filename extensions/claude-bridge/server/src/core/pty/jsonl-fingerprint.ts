@@ -43,7 +43,9 @@ export async function fingerprintTranscript(filePath: string): Promise<Transcrip
   } catch {
     return null // missing/unreadable — caller treats it as "cannot resume"
   } finally {
-    await fd?.close().catch(() => { /* already gone */ })
+    await fd?.close().catch(() => {
+      /* already gone */
+    })
   }
 }
 
@@ -64,7 +66,7 @@ export function canResume(
 ): boolean {
   if (!current || !clientHead || clientPos === undefined) return false
   if (current.head !== clientHead) return false
-  return clientPos <= current.size
+  return Number.isSafeInteger(clientPos) && clientPos >= 0 && clientPos <= current.size
 }
 
 /** Does a record actually START at this offset?
@@ -109,7 +111,10 @@ export async function recordUuidMatches(
       if (bytesRead === 0) break
       const slice = buf.subarray(0, bytesRead)
       const nl = slice.indexOf(0x0a)
-      if (nl >= 0) { chunks.push(slice.subarray(0, nl)); break }
+      if (nl >= 0) {
+        chunks.push(slice.subarray(0, nl))
+        break
+      }
       chunks.push(slice)
       at += bytesRead
     }
@@ -120,7 +125,9 @@ export async function recordUuidMatches(
   } catch {
     return false // unparseable at that offset is itself a mismatch
   } finally {
-    await fd?.close().catch(() => { /* already gone */ })
+    await fd?.close().catch(() => {
+      /* already gone */
+    })
   }
 }
 
@@ -144,6 +151,8 @@ export async function isRecordBoundary(filePath: string, pos: number): Promise<b
   } catch {
     return false
   } finally {
-    await fd?.close().catch(() => { /* already gone */ })
+    await fd?.close().catch(() => {
+      /* already gone */
+    })
   }
 }

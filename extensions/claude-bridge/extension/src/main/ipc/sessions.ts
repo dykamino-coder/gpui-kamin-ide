@@ -19,13 +19,24 @@ export interface SessionsIpcContext {
 export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   const tm = () => ctx.getTabManager()
 
+  ipcMain.on(
+    'commands:action',
+    (_event: IpcMainEvent, tabId: string, action: 'list' | 'stop' | 'output', id?: string) => {
+      if (['list', 'stop', 'output'].includes(action)) tm()?.getConnection(tabId)?.commandAction(action, id)
+    },
+  )
+
   // ─── Tabs ──────────────────────────────────────────
   ipcMain.handle('tab:create', (_event: IpcMainInvokeEvent, config: ConnectionConfig) => {
     const userCwd = ctx.getUserCwd()
     if (!('cwd' in config) && userCwd) {
       config.cwd = userCwd
     }
-    ctx.configStore.set({ ...ctx.configStore.get(), serverUrl: config.serverUrl, token: config.token })
+    ctx.configStore.set({
+      ...ctx.configStore.get(),
+      serverUrl: config.serverUrl,
+      token: config.token,
+    })
     const tabId = tm()?.createTab(config) ?? null
     if (tabId) updateUiToolsActiveTab(tabId)
     return tabId
@@ -73,7 +84,11 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (!('cwd' in config) && userCwd) {
       config.cwd = userCwd
     }
-    ctx.configStore.set({ ...ctx.configStore.get(), serverUrl: config.serverUrl, token: config.token })
+    ctx.configStore.set({
+      ...ctx.configStore.get(),
+      serverUrl: config.serverUrl,
+      token: config.token,
+    })
     tm()?.createTab(config)
   })
 
@@ -99,8 +114,23 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   ipcMain.handle('get-connection-state', () => {
     const mgr = tm()
     const activeId = mgr?.getActiveTabId()
-    if (!activeId) return { status: 'disconnected', authority: 'missing', authorityGeneration: 0, authoritySequence: 0, revision: 0 }
-    return mgr?.getConnectionState(activeId) ?? { status: 'disconnected', authority: 'missing', authorityGeneration: 0, authoritySequence: 0, revision: 0 }
+    if (!activeId)
+      return {
+        status: 'disconnected',
+        authority: 'missing',
+        authorityGeneration: 0,
+        authoritySequence: 0,
+        revision: 0,
+      }
+    return (
+      mgr?.getConnectionState(activeId) ?? {
+        status: 'disconnected',
+        authority: 'missing',
+        authorityGeneration: 0,
+        authoritySequence: 0,
+        revision: 0,
+      }
+    )
   })
 
   // ─── PTY / Terminal (per-tab) ──────────────────────
@@ -112,8 +142,12 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     tm()?.sendInput(tabId, data)
   })
 
-  ipcMain.on('pty-submit-text', (_event: IpcMainEvent, tabId: string, text: string) => {
-    tm()?.submitText(tabId, text)
+  ipcMain.on('pty-submit-text', (_event: IpcMainEvent, tabId: string, text: string, submissionId?: string) => {
+    tm()?.submitText(tabId, text, submissionId)
+  })
+
+  ipcMain.on('submission-action', (_event: IpcMainEvent, tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt') => {
+    tm()?.submissionAction(tabId, id, action)
   })
 
   ipcMain.on('pty-resize', (_event: IpcMainEvent, tabId: string, cols: number, rows: number) => {
@@ -134,9 +168,12 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   })
 
   // ─── Elicitation ──────────────────────────────────
-  ipcMain.on('elicitation-response', (_event: IpcMainEvent, requestId: string, action: string, content?: Record<string, unknown>) => {
-    tm()?.respondElicitation(requestId, action as 'accept' | 'deny' | 'dismiss', content)
-  })
+  ipcMain.on(
+    'elicitation-response',
+    (_event: IpcMainEvent, requestId: string, action: string, content?: Record<string, unknown>) => {
+      tm()?.respondElicitation(requestId, action as 'accept' | 'deny' | 'dismiss', content)
+    },
+  )
 
   // ─── Permission mode / effort / model ─────────────
   ipcMain.on('change-permission-mode', (_event: IpcMainEvent, tabId: string, mode: string) => {
@@ -160,14 +197,21 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   })
 
   // ─── Session Resume ───────────────────────────────
-  ipcMain.handle('session:resume', async (_event: IpcMainInvokeEvent, config: ConnectionConfig & { conversationId: string }) => {
-    const userCwd = ctx.getUserCwd()
-    if (!config.cwd && userCwd) {
-      config.cwd = userCwd
-    }
-    ctx.configStore.set({ ...ctx.configStore.get(), serverUrl: config.serverUrl, token: config.token })
-    return tm()?.resumeSession(config) ?? null
-  })
+  ipcMain.handle(
+    'session:resume',
+    async (_event: IpcMainInvokeEvent, config: ConnectionConfig & { conversationId: string }) => {
+      const userCwd = ctx.getUserCwd()
+      if (!config.cwd && userCwd) {
+        config.cwd = userCwd
+      }
+      ctx.configStore.set({
+        ...ctx.configStore.get(),
+        serverUrl: config.serverUrl,
+        token: config.token,
+      })
+      return tm()?.resumeSession(config) ?? null
+    },
+  )
 
   ipcMain.handle('session:get-saved', () => {
     return ctx.configStore.getSavedSessions()
@@ -216,7 +260,11 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
         // "nothing will come" so the viewer settles into the empty state.
         const win = ctx.getMainWindow()
         if (win && !win.isDestroyed()) {
-          win.webContents.send('jsonl-status', id, { status: 'watching', replayComplete: true, unknownTab: true })
+          win.webContents.send('jsonl-status', id, {
+            status: 'watching',
+            replayComplete: true,
+            unknownTab: true,
+          })
         }
         continue
       }
@@ -225,8 +273,14 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
       // so the overlap is free; what the user gets is a chat that is already
       // there instead of a spinner. An empty or untrusted mirror simply serves
       // nothing and the path below is unchanged.
-      void conn.replayFromMirror().then(() => { conn.replayJsonlToRenderer() })
-        .catch(() => { conn.replayJsonlToRenderer() })
+      void conn
+        .replayFromMirror()
+        .then(() => {
+          conn.replayJsonlToRenderer()
+        })
+        .catch(() => {
+          conn.replayJsonlToRenderer()
+        })
     }
   })
 
@@ -253,6 +307,10 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (conn) void conn.loadSegment(fromTs, toTs)
   })
 
+  ipcMain.on('jsonl:subagent-select', (_event: IpcMainEvent, tabId: string, agentId: string | null) => {
+    tm()?.getConnection(tabId)?.selectSubagent(agentId)
+  })
+
   // Применения тула для инлайн-просмотра в панели Tools (панельный стор —
   // только plan/todo-срез, полные записи живут в кэше хоста).
   ipcMain.handle('toolusage:entries', (_event: IpcMainInvokeEvent, tabId: string, toolName: string) => {
@@ -276,7 +334,12 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (!win) return { success: false, error: 'No main window' }
     const convId = conn.getConversationId()
     const { canceled, filePath } = await dialog.showSaveDialog(win, {
-      defaultPath: agentId && /^[a-zA-Z0-9_-]{1,128}$/.test(agentId) ? `${agentId}.jsonl` : convId ? `${convId}.jsonl` : 'session.jsonl',
+      defaultPath:
+        agentId && /^[a-zA-Z0-9_-]{1,128}$/.test(agentId)
+          ? `${agentId}.jsonl`
+          : convId
+            ? `${convId}.jsonl`
+            : 'session.jsonl',
       filters: [{ name: 'JSONL', extensions: ['jsonl'] }],
     })
     if (canceled || !filePath) return { success: false, error: 'Cancelled' }
@@ -315,11 +378,25 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
 
     let transcripts: { conversationId: string; size: number }[]
     try {
-      const res = await fetch(`${httpBase}/api/dashboard/transcripts`, { headers })
-      if (!res.ok) return { success: false, error: `List failed (HTTP ${String(res.status)})` }
-      transcripts = ((await res.json()) as { transcripts?: { conversationId: string; size: number }[] }).transcripts ?? []
+      const res = await fetch(`${httpBase}/api/dashboard/transcripts`, {
+        headers,
+      })
+      if (!res.ok)
+        return {
+          success: false,
+          error: `List failed (HTTP ${String(res.status)})`,
+        }
+      transcripts =
+        (
+          (await res.json()) as {
+            transcripts?: { conversationId: string; size: number }[]
+          }
+        ).transcripts ?? []
     } catch (err) {
-      return { success: false, error: `List failed: ${err instanceof Error ? err.message : String(err)}` }
+      return {
+        success: false,
+        error: `List failed: ${err instanceof Error ? err.message : String(err)}`,
+      }
     }
     if (transcripts.length === 0) return { success: true, dir, count: 0 }
 
@@ -345,7 +422,11 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
             await fh.write(chunk)
             offset += chunk.length
             win.webContents.send('jsonl:download-all-progress', {
-              fileIndex: done, fileTotal: transcripts.length, conversationId: t.conversationId, bytes: offset, size: t.size,
+              fileIndex: done,
+              fileTotal: transcripts.length,
+              conversationId: t.conversationId,
+              bytes: offset,
+              size: t.size,
             })
             if (chunk.length < BATCH) break // last (short) range
           }
@@ -357,11 +438,20 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
       }
       done++
       win.webContents.send('jsonl:download-all-progress', {
-        fileIndex: done, fileTotal: transcripts.length, conversationId: t.conversationId, bytes: t.size, size: t.size,
+        fileIndex: done,
+        fileTotal: transcripts.length,
+        conversationId: t.conversationId,
+        bytes: t.size,
+        size: t.size,
       })
     }
     if (errors.length > 0) {
-      return { success: false, dir, count: done - errors.length, error: `${String(errors.length)}/${String(transcripts.length)} failed: ${errors.slice(0, 3).join('; ')}` }
+      return {
+        success: false,
+        dir,
+        count: done - errors.length,
+        error: `${String(errors.length)}/${String(transcripts.length)} failed: ${errors.slice(0, 3).join('; ')}`,
+      }
     }
     return { success: true, dir, count: transcripts.length }
   })

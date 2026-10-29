@@ -21,6 +21,7 @@ export interface WsMsgSessionCreate {
    *  `streaming:delta` frames between boundary snapshots instead of a full
    *  snapshot every tick. Absent/0 → legacy full-snapshot streaming. */
   protocolVersion?: number
+  history?: { mode?: 'paged'; cursor?: { head: string; pos: number; lastPos?: number; lastUuid?: string } }
   /** The user's standing instructions for this token. APPENDED to the technical
    *  system prompt (buildSystemPrompt) — never replaces it. Rides the session
    *  message so nothing has to be stored or synced server-side. */
@@ -50,6 +51,7 @@ export interface WsMsgSessionInterrupt {
 export interface WsMsgSessionSubmitText {
   type: 'session:submitText'
   data: string
+  submissionId?: string
 }
 
 export interface WsMsgSessionResize {
@@ -103,6 +105,7 @@ export interface WsMsgSessionResume {
   externalTools?: ToolDefinition[]
   /** Client streaming-protocol version — see WsMsgSessionCreate. */
   protocolVersion?: number
+  history?: { mode?: 'paged'; cursor?: { head: string; pos: number; lastPos?: number; lastUuid?: string } }
   /** See WsMsgSessionCreate. A resume respawns the CLI, so it must carry the
    *  prompt too — otherwise the instructions would only ever reach brand-new
    *  sessions and silently vanish on every reconnect. */
@@ -175,6 +178,8 @@ export interface WsMsgJsonlSegmentRequest {
   type: 'jsonl:segment-request'
   fromTs: string
   toTs: string
+  beforePos?: number
+  paged?: boolean
 }
 
 /** VSIX bridge host's reply to a server-initiated `hook:execute` — local-host shell
@@ -192,11 +197,19 @@ export interface WsMsgHookResponse {
   }
 }
 
+export type CommandClientMessage =
+  | { type: 'commands:list' }
+  | { type: 'commands:stop'; id: string }
+  | { type: 'commands:output'; id: string }
+  | { type: 'commands:report'; report: import('../../shared/commands').CommandReport }
+
 export type ClientToServerMsg =
+  | CommandClientMessage
   | WsMsgSessionCreate
   | WsMsgSessionEnd
   | WsMsgSessionInput
   | WsMsgSessionInterrupt
+  | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
   | WsMsgSessionSubmitText
   | WsMsgSessionResize
   | WsMsgMcpResponse
@@ -211,6 +224,7 @@ export type ClientToServerMsg =
   | WsMsgJsonlDownloadRequest
   | WsMsgJsonlSyncRequest
   | WsMsgJsonlSegmentRequest
+  | { type: 'jsonl:subagent-select'; agentId: string | null }
   | WsMsgHookResponse
 
 // -- Server → client host --
@@ -242,6 +256,7 @@ export interface WsMsgSessionError {
 
 export interface WsMsgMcpCall {
   type: 'mcp:call'
+  taskDeadlineMs?: number
   taskOwner?: string
   requestId: string
   toolName: string
@@ -346,6 +361,10 @@ export interface WsMsgJsonlDownloadResponse {
 }
 
 export type ServerToClientMsg =
+  | { type: 'commands:request' }
+  | { type: 'commands:snapshot'; snapshot: import('../../shared/commands').CommandSnapshot }
+  | { type: 'commands:output'; id: string; output: string }
+  | { type: 'commands:stop-shell'; id: string; owner: string }
   | { type: 'session:resume-not-found' }
   | WsMsgSessionCreated
   | WsMsgSessionOutput

@@ -57,9 +57,25 @@ export const SCROLL_UP_MAX = 16000
 // mirror and reappear when the user returns to Current (which clears this and
 // re-requests the live tail). Non-reactive: read as a gate, set by the loader.
 const archivedViewByTab = new Map<string, string>()
+const liveWindows = new Map<string, JsonlEntryData[]>()
+const archivedLiveEntries = new Map<string, JsonlEntryData[]>()
+const archivedStreams = new Map<string, Map<string, JsonlEntryData>>()
 export function setArchivedView(tabId: string, ts: string | null): void {
-  if (ts === null) archivedViewByTab.delete(tabId)
-  else archivedViewByTab.set(tabId, ts)
+  if (ts === null) {
+    archivedViewByTab.delete(tabId)
+    const live = liveWindows.get(tabId)
+    const pending = archivedLiveEntries.get(tabId)
+    liveWindows.delete(tabId)
+    archivedLiveEntries.delete(tabId)
+    if (live) replaceWindowWithSegment(tabId, live)
+    if (pending) appendJsonlEntries(tabId, pending)
+    const streams = archivedStreams.get(tabId)
+    archivedStreams.delete(tabId)
+    if (streams) for (const entry of streams.values()) applyStreamingEntry(tabId, entry)
+  } else {
+    if (!archivedViewByTab.has(tabId)) liveWindows.set(tabId, jsonlEntriesByTab.value.get(tabId) ?? [])
+    archivedViewByTab.set(tabId, ts)
+  }
 }
 export function archivedViewTs(tabId: string): string | undefined {
   return archivedViewByTab.get(tabId)
@@ -169,6 +185,13 @@ export function applyStreamingEntry(tabId: string, entry: JsonlEntryData): void 
   const msgId = entry.message?.id
   if (!msgId) return
   if (abortedStreamIds.has(msgId)) return // user interrupted this turn — freeze
+  if (archivedViewByTab.has(tabId)) {
+    const streams = archivedStreams.get(tabId) ?? new Map<string, JsonlEntryData>()
+    streams.set(msgId, entry)
+    while (streams.size > 100) streams.delete(streams.keys().next().value!)
+    archivedStreams.set(tabId, streams)
+    return
+  }
   const existing = jsonlEntriesByTab.value.get(tabId) ?? []
   const idx = findByMsgIdFromTail(existing, msgId)
   // Canonical always wins: once the watcher delivered the real entry
@@ -435,7 +458,11 @@ export function appendJsonlEntries(tabId: string, entries: JsonlEntryData[]): bo
   // segment, not this snapshot — dropping them here keeps the archived view
   // intact (they persist server-side and return when the user goes back to
   // Current). See archivedViewByTab.
-  if (archivedViewByTab.has(tabId)) return false
+  if (archivedViewByTab.has(tabId)) {
+    const pending = archivedLiveEntries.get(tabId) ?? []
+    archivedLiveEntries.set(tabId, pending.concat(entries).slice(-STORE_WINDOW))
+    return false
+  }
   entries = entries.filter((e) => !UNREAD_ENTRY_TYPES.has(e.type))
   if (entries.length === 0) return false
   // Offload the bytes of fat tool_result bodies before they enter the store —
@@ -558,6 +585,10 @@ export function clearRefillDebt(tabId: string): void {
 }
 
 export function clearJsonlEntries(tabId: string): void {
+  liveWindows.delete(tabId)
+  archivedLiveEntries.delete(tabId)
+  archivedStreams.delete(tabId)
+  archivedViewByTab.delete(tabId)
   needsRefill.add(tabId)
   const nextMap = new Map(jsonlEntriesByTab.value)
   nextMap.delete(tabId)

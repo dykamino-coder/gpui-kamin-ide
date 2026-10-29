@@ -23,8 +23,16 @@ vi.mock('../sync/routes', () => ({
   getProjectSyncDir: () => syncRoots.project,
 }))
 
-import { applySyncData, pickInstructionFile, settingsDenyRules } from './session-settings'
-import { getDisallowedBuiltinTools } from './session-env'
+import {
+  applySyncData,
+  pickInstructionFile,
+  settingsDenyRules,
+  writeSessionClaudeMd,
+  ensureGlobalBridgeClaudeMd,
+  GLOBAL_BRIDGE_CLAUDE_MD,
+} from './session-settings'
+import { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
+import { BRIDGE_ONLY_MCP_TOOLS, getDisallowedBuiltinTools } from './session-env'
 
 const tempDirs: string[] = []
 
@@ -59,6 +67,24 @@ afterEach(() => {
 })
 
 describe('AGENTS.md sync', () => {
+  it('installs one full standing prompt even without a user working directory', () => {
+    writeSessionClaudeMd(settingsDir)
+    write(syncRoots.user, 'CLAUDE.md', 'user-rule')
+    applySyncData(settingsDir, '0123456789abcdef', undefined)
+    applySyncData(settingsDir, '0123456789abcdef', undefined)
+    const session = read(settingsDir, 'CLAUDE.md')
+    expect(session.split(BRIDGE_DEFAULT_CLAUDE_MD)).toHaveLength(2)
+    expect(session.split('user-rule')).toHaveLength(2)
+    expect(session).not.toContain('undefined')
+  })
+
+  it('replaces the obsolete global full prompt with an idempotent pointer', () => {
+    write(syncRoots.home, '.claude/CLAUDE.md', BRIDGE_DEFAULT_CLAUDE_MD)
+    ensureGlobalBridgeClaudeMd()
+    ensureGlobalBridgeClaudeMd()
+    expect(read(syncRoots.home, '.claude/CLAUDE.md')).toBe(GLOBAL_BRIDGE_CLAUDE_MD)
+    expect(GLOBAL_BRIDGE_CLAUDE_MD).not.toContain('## Where things run')
+  })
   it('uses project AGENTS.md pair in the CLAUDE.md slots when the project has no CLAUDE.md', () => {
     write(syncRoots.project, 'AGENTS.md', 'agents-root-rule\n')
     write(syncRoots.project, '.claude/AGENTS.md', 'agents-dot-rule\n')
@@ -138,5 +164,12 @@ describe('AGENTS.md sync', () => {
     expect(flag).toContain('Read')
     expect(settingsDenyRules()).not.toContain('Read')
     expect(settingsDenyRules()).toEqual(flag.filter((t) => t !== 'Read'))
+  })
+
+  it('denies only names that shadow a native tool', () => {
+    const flag = getDisallowedBuiltinTools()
+    for (const name of BRIDGE_ONLY_MCP_TOOLS) expect(flag).not.toContain(name)
+    for (const name of ['Bash', 'PowerShell', 'Edit', 'Write', 'Glob', 'Grep', 'WebFetch', 'TodoWrite', 'Monitor'])
+      expect(flag).toContain(name)
   })
 })

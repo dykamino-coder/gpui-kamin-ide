@@ -32,14 +32,13 @@ export interface MirrorCursor {
   /** uuid of the last record — a second, independent check that the server's
    *  view and ours agree at that offset. */
   lastUuid?: string
+  lastPos?: number
 }
 
-// v2: зеркала, записанные ДО фикса out-of-order курсора (#82), могут нести
-// завышенный pos и дырявый файл НАВСЕГДА — синк с такого курсора молча теряет
-// хвост при каждом рестарте. Бамп версии отвергает все v1-сайдкары: одна цена —
-// один полный реплей на сессию, зеркало пересоздаётся честным rewriteInOrder.
+// v3 preserves physical file order. Older timestamp-sorted mirrors cannot be
+// searched by server byte position; replace them with a bounded tail snapshot.
 interface Sidecar extends MirrorCursor {
-  v: 2
+  v: 3
   /** Local mirror size (bytes) at sidecar write — `pos` is the SERVER offset,
    *  so it can't validate the local file. A mirror shorter than this means we
    *  died mid-write and lost a tail the cursor claims to hold (audit #70 C9).
@@ -66,7 +65,7 @@ export class TranscriptMirror {
     try {
       const raw = await fsp.readFile(this.sidecar, 'utf8')
       const parsed = JSON.parse(raw) as Sidecar
-      if (parsed.v !== 2 || typeof parsed.pos !== 'number' || !parsed.head) return null
+      if (parsed.v !== 3 || typeof parsed.pos !== 'number' || !parsed.head) return null
       // A sidecar claiming more than the file holds means we died mid-write;
       // trusting it would ask the server to resume past records we never stored.
       const stat = await fsp.stat(this.file)
@@ -76,7 +75,7 @@ export class TranscriptMirror {
       // permanent history hole. `>=` is fine — appends after the debounced
       // sidecar write only make the file longer.
       if (typeof parsed.size === 'number' && stat.size < parsed.size) return null
-      this.cursor = { head: parsed.head, pos: parsed.pos, lastUuid: parsed.lastUuid }
+      this.cursor = { head: parsed.head, pos: parsed.pos, lastUuid: parsed.lastUuid, lastPos: parsed.lastPos }
       return this.cursor
     } catch {
       return null // no mirror yet, or unreadable — caller falls back to a full pull
@@ -88,12 +87,11 @@ export class TranscriptMirror {
    *  foundation for scroll-up: the chat holds only a recent window in the webview
    *  heap, and pulls the preceding page from this disk copy on demand.
    *
-   *  Reads only a BYTE WINDOW ending at `beforePos`, never the whole file — `_pos`
-   *  IS the byte offset, so an older page is a bounded seek+read in the host
-   *  process, not a full parse that would churn the host heap on every scroll. A
-   *  window too small to hold `count` records just returns fewer; the caller asks
-   *  again as the user keeps scrolling. */
+   *  Server offsets refer to the source JSONL, not this serialized mirror.
+   *  Locate the preceding local row by its stored source offset, then read a
+   *  bounded byte window in the host process. */
   async readRange(beforePos: number, count: number): Promise<unknown[]> {
+    const localEnd = await this.localPosition(beforePos)
     // Одна запись КРУПНЕЕ окна (жирный tool_result: зеркало хранит полные
     // записи, trimHeavyToolResults живёт только в webview-сторе) давала
     // пустую страницу — рендерер трактовал её как «начало файла» и навсегда
@@ -101,19 +99,19 @@ export class TranscriptMirror {
     // больше окна → повторить с удвоенным окном, до 3 попыток.
     let window = Math.max(256 * 1024, count * 4096)
     for (let attempt = 0; attempt < 3; attempt++) {
-      const out = await this.readRangeWindow(beforePos, count, window)
-      if (out.length > 0 || beforePos <= window) return out
+      const out = await this.readRangeWindow(beforePos, count, window, localEnd)
+      if (out.length > 0 || localEnd <= window) return out
       window *= 4
     }
     return []
   }
 
-  private async readRangeWindow(beforePos: number, count: number, windowSize: number): Promise<unknown[]> {
+  private async readRangeWindow(beforePos: number, count: number, windowSize: number, localEnd: number): Promise<unknown[]> {
     if (beforePos <= 0 || count <= 0) return []
     // Sized to comfortably hold `count` records; the first (partial) line of a
     // mid-file read is dropped below.
-    const window = Math.min(beforePos, windowSize)
-    const start = beforePos - window
+    const window = Math.min(localEnd, windowSize)
+    const start = localEnd - window
     let text: string
     try {
       const fh = await fsp.open(this.file, 'r')
@@ -175,13 +173,7 @@ export class TranscriptMirror {
       if (!line) continue
       try { recs.push(JSON.parse(line) as { timestamp?: string }) } catch { /* torn line — skip */ }
     }
-    // Chronological by `timestamp`, NOT file byte order. The mirror is written in
-    // `_pos` (server byte-offset) order, and `_pos` RESETS to 0 on every resume
-    // file — so a resumed session's pre-resume (ancient) turns sink to the tail of
-    // the mirror file and a naive "last lines" read paints them as the current
-    // chat. `timestamp` is monotonic across resumes; sort the window by it and
-    // return the NEWEST `maxRecords`, so the fast tail-paint is the real end.
-    recs.sort((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''))
+    // Records share a source fingerprint and retain physical file order.
     return recs.slice(-maxRecords)
   }
 
@@ -232,6 +224,7 @@ export class TranscriptMirror {
         head,
         pos: last._posEnd ?? this.cursor?.pos ?? 0,
         lastUuid: last.uuid ?? this.cursor?.lastUuid,
+        lastPos: last._pos,
       }
       // Дебаунс: writeFile+rename на КАЖДЫЙ батч — сотни пар fs-операций за
       // реплей (аудит #70 B8). Курсор в памяти всегда актуален; отставший на
@@ -264,31 +257,30 @@ export class TranscriptMirror {
       if (typeof r._pos !== 'number') continue
       if (r.uuid) byUuid.set(r.uuid, r); else noUuid.push(r)
     }
-    // Chronological by `timestamp` (tie-break `_pos`), NOT raw `_pos`. `_pos` is a
-    // per-FILE byte offset that resets on every resume, so ordering a resumed
-    // session's history by it interleaves the files and sinks old turns to the
-    // tail (→ readTail paints ancient content). `timestamp` is monotonic across
-    // resumes. For a single-file session ts-order == _pos-order, so this is a
-    // no-op there and readRange (still byte-seek) is unaffected.
-    const tsOf = (r: unknown): string => (r as { timestamp?: string }).timestamp ?? ''
+    // Source positions preserve final replies with absent or skewed timestamps.
     const ordered = [...byUuid.values(), ...noUuid].sort(
-      (a, b) => tsOf(a).localeCompare(tsOf(b)) || (a._pos ?? 0) - (b._pos ?? 0),
+      (a, b) => (a._pos ?? 0) - (b._pos ?? 0),
     )
     if (ordered.length === 0) return
     this.queue = this.queue.then(async () => {
-      // NEVER shrink an existing mirror. A session lived from the start builds a
-      // full, UNCAPPED copy via append(), while `records` here is the ~20k-capped
-      // in-process cache. This fires on every replay-complete (reconnect, reattach,
-      // resume) — overwriting then would truncate history the mirror already holds
-      // and the store can still scroll to: silent, permanent data loss. So only
-      // populate a mirror that is EMPTY — precisely the resumed-session case where
-      // the streamed history was never appended in the first place.
-      try { const st = await fsp.stat(this.file); if (st.size > 0) return } catch { /* absent → write it */ }
+      // Preserve earlier cached pages when the server identity still matches.
+      // A different identity replaces the snapshot instead of mixing files.
+      const existing = await this.readCursor()
+      if (existing?.head === head) {
+        const fresh = ordered.filter((r) => r._pos! >= Math.max(existing.pos, (existing.lastPos ?? -1) + 1))
+        if (fresh.length === 0) return
+        await this.close()
+        await fsp.appendFile(this.file, fresh.map((r) => JSON.stringify(r)).join('\n') + '\n', 'utf8')
+        const last = fresh.at(-1)!
+        this.cursor = { head, pos: last._posEnd ?? existing.pos, lastUuid: last.uuid, lastPos: last._pos }
+        await this.writeSidecar()
+        return
+      }
       await this.close() // drop any append stream — we're initialising the file
       const payload = ordered.map((r) => JSON.stringify(r)).join('\n') + '\n'
       await fsp.writeFile(this.file, payload, 'utf8') // fresh, in order
       const last = ordered[ordered.length - 1]!
-      this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid }
+      this.cursor = { head, pos: last._posEnd ?? 0, lastUuid: last.uuid, lastPos: last._pos }
       await this.writeSidecar()
     }).catch(() => { /* mirror is an optimisation: never break the session */ })
     return this.queue
@@ -321,6 +313,50 @@ export class TranscriptMirror {
 
   private sidecarTimer: ReturnType<typeof setTimeout> | null = null
 
+  /** Server offsets address the original JSONL, not JSON.stringify's mirror.
+   * Locate their local byte position without parsing the entire disk cache. */
+  private async localPosition(beforePos: number): Promise<number> {
+    const fh = await fsp.open(this.file, 'r').catch(() => null)
+    if (!fh) return 0
+    try {
+      let low = 0
+      let high = (await fh.stat()).size
+      const buf = Buffer.alloc(64 * 1024)
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2)
+        let rowStart = mid
+        while (rowStart > low) {
+          const from = Math.max(low, rowStart - buf.length)
+          const read = await fh.read(buf, 0, rowStart - from, from)
+          const nl = buf.subarray(0, read.bytesRead).lastIndexOf(10)
+          rowStart = nl >= 0 ? from + nl + 1 : from
+          if (nl >= 0) break
+        }
+        let at = rowStart
+        let text = ''
+        let found = false
+        // Bound pathological records; the normal case takes one read.
+        for (let n = 0; n < 256; n++) {
+          const { bytesRead } = await fh.read(buf, 0, buf.length, at)
+          if (!bytesRead) break
+          const a = 0
+          const nl = buf.subarray(0, bytesRead).indexOf(10, a)
+          text += buf.toString('utf8', a, nl < 0 ? bytesRead : nl)
+          if (nl >= 0) {
+            const row = JSON.parse(text) as { _pos?: number }
+            if (typeof row._pos === 'number' && row._pos < beforePos) low = at + nl + 1
+            else high = rowStart
+            found = true
+            break
+          }
+          at += bytesRead
+        }
+        if (!found) high = mid
+      }
+      return low
+    } catch { return 0 } finally { await fh.close() }
+  }
+
   /** Дебаунс-запись sidecar (~1с): курсор двигается часто, диск — редко. */
   private scheduleSidecar(): void {
     if (this.sidecarTimer) return
@@ -333,7 +369,7 @@ export class TranscriptMirror {
   private async writeSidecar(): Promise<void> {
     if (!this.cursor) return
     const st = await fsp.stat(this.file).catch(() => null)
-    const body: Sidecar = { v: 2, ...this.cursor, ...(st ? { size: st.size } : {}) }
+    const body: Sidecar = { v: 3, ...this.cursor, ...(st ? { size: st.size } : {}) }
     // Write-then-rename: a torn sidecar would be read as a valid cursor and send
     // us asking for the wrong offset.
     const tmp = `${this.sidecar}.tmp`

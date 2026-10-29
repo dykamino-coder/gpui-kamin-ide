@@ -5,6 +5,7 @@ import { ConnectionStatusBadge } from './ConnectionStatusBadge'
 import { activePlan } from '../../signals/plan'
 import { PlanProgress } from './PlanProgress'
 import { DisconnectButton } from './DisconnectButton'
+import { CommandsButton } from './CommandsButton'
 import { DiagnosticButton } from './DiagnosticButton'
 import { MemoryInfoButton } from './MemoryInfoButton'
 import { ReconnectButton } from './ReconnectButton'
@@ -20,7 +21,7 @@ export function ChatHeaderStrip(): JSX.Element | null {
   const bridge = useBridge()
   const tabId = activeTabId.value
   if (!tabId) return null
-  const activeTab = tabs.value.find(t => t.id === tabId) ?? null
+  const activeTab = tabs.value.find((t) => t.id === tabId) ?? null
   const status = (activeTab?.status ?? 'disconnected') as 'connected' | 'connecting' | 'disconnected' | 'error'
   const connected = status === 'connected' || status === 'connecting'
   // `sessionTitle` is the CLI's auto-generated topic ("Fix auth bug") and only
@@ -39,19 +40,25 @@ export function ChatHeaderStrip(): JSX.Element | null {
       style="flex-direction:column;align-items:stretch;gap:5px;padding:6px 12px"
     >
       <div style="display:flex;align-items:center;gap:var(--space-2);min-width:0">
-        <ConnectionStatusBadge status={status} error={activeTab?.error} nextRetryAt={activeTab?.nextRetryAt} retryAttempt={activeTab?.retryAttempt} />
+        <ConnectionStatusBadge
+          status={status}
+          error={activeTab?.error}
+          nextRetryAt={activeTab?.nextRetryAt}
+          retryAttempt={activeTab?.retryAttempt}
+        />
         {/* Session name next to the status dot. Falls back to the folder (then
             the "#1" label) until the CLI has generated a topic. Ellipsises so a
             long topic can never push the control buttons out of the row. */}
         <span
           data-tooltip={sessionName}
-          style={`font-size:12px;font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(${activeTab?.sessionTitle ? "--text-secondary" : "--text-muted"})`}
+          style={`font-size:12px;font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(${activeTab?.sessionTitle ? '--text-secondary' : '--text-muted'})`}
         >
           {sessionName}
         </span>
         <div class="header-btn-group" style="margin-left:auto;flex:none">
           {/* #78 diagnostic — always available (diagnose AFTER a drop, even once
               disconnected): copies chat-store + drop-log to the clipboard. */}
+          <CommandsButton tabId={tabId} />
           <DiagnosticButton tabId={tabId} />
           {/* Live memory readout (renderer heap + retained entries/tabs) — the
               same figures an OOM report leads with, next to the diagnostic dump. */}

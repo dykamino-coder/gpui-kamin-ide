@@ -10,29 +10,22 @@ export const MCP_TOOLS = [
   // ── File system ─────────────────────────────────────
   {
     name: 'Read',
-    description: `Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+    description: `Reads text files from the user's filesystem, or returns supported images (PNG, JPG, GIF, WebP) as image content. Read screenshots with this tool. PDF rendering is not implemented; extract PDF content with an appropriate host utility first.
 
-Usage:
-- The file_path parameter must be an absolute path, not a relative path
-- By default, it reads up to 2000 lines starting from the beginning of the file
-- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- Any lines longer than 2000 characters will be truncated
-- Results are returned using cat -n format, with line numbers starting at 1
-- This tool allows reading images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as a multimodal LLM capability.
-- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
-- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
-- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
-- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
-- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-- OUTPUT SIZE LIMIT: responses are hard-capped at ~720 KB. For big files, pass \`offset\` + \`limit\` and page through — if the reply ends with "[Output truncated by bridge…]" later lines are missing.`,
+Pass an absolute file_path. Text defaults to the first 2000 lines; use offset (1-based) and limit for a smaller range. Lines longer than 2000 characters are truncated. Text is returned with line numbers. Jupyter notebooks are returned as cells with their source and outputs.
+Text results are capped at about 720,000 characters; a result containing "[Output truncated by bridge" is incomplete. Narrow the range and read again.`,
     inputSchema: {
       type: 'object',
       properties: {
         file_path: { type: 'string', description: 'The absolute path to the file to read' },
-        offset: { type: 'number', description: 'The line number to start reading from. Only provide if the file is too large to read at once' },
-        limit: { type: 'number', description: 'The number of lines to read. Only provide if the file is too large to read at once.' },
-        pages: { type: 'string', description: 'Page range for PDF files (e.g., "1-5", "3", "10-20"). Only applicable to PDF files. Maximum 20 pages per request.' },
+        offset: {
+          type: 'number',
+          description: 'The line number to start reading from. Only provide if the file is too large to read at once',
+        },
+        limit: {
+          type: 'number',
+          description: 'The number of lines to read. Only provide if the file is too large to read at once.',
+        },
       },
       required: ['file_path'],
     },
@@ -43,13 +36,16 @@ Usage:
 
 Usage:
 - This tool will overwrite the existing file if there is one at the provided path.
-- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Read an existing file before overwriting it so you can preserve the user's changes.
 - Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
 - NEVER create documentation files (*.md) or README files unless explicitly requested by the User.`,
     inputSchema: {
       type: 'object',
       properties: {
-        file_path: { type: 'string', description: 'The absolute path to the file to write (must be absolute, not relative)' },
+        file_path: {
+          type: 'string',
+          description: 'The absolute path to the file to write (must be absolute, not relative)',
+        },
         content: { type: 'string', description: 'The content to write to the file' },
       },
       required: ['file_path', 'content'],
@@ -69,7 +65,11 @@ Usage:
         file_path: { type: 'string', description: 'The absolute path to the file to modify' },
         old_string: { type: 'string', description: 'The text to replace' },
         new_string: { type: 'string', description: 'The text to replace it with (must be different from old_string)' },
-        replace_all: { type: 'boolean', description: 'Replace all occurrences of old_string (default false)', default: false },
+        replace_all: {
+          type: 'boolean',
+          description: 'Replace all occurrences of old_string (default false)',
+          default: false,
+        },
       },
       required: ['file_path', 'old_string', 'new_string'],
     },
@@ -81,12 +81,15 @@ Usage:
 - Returns matching file paths sorted by modification time
 - Use this tool when you need to find files by name patterns
 - When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
-- OUTPUT SIZE LIMIT: responses are hard-capped at ~720 KB. A root-level \`**/*\` over a big tree will be truncated — pass a tighter \`path\` or a more specific pattern first.`,
+- OUTPUT SIZE LIMIT: responses are hard-capped at about 720,000 characters. A root-level \`**/*\` over a big tree will be truncated — pass a tighter \`path\` or a more specific pattern first.`,
     inputSchema: {
       type: 'object',
       properties: {
         pattern: { type: 'string', description: 'The glob pattern to match files against' },
-        path: { type: 'string', description: 'The directory to search in. Defaults to current working directory if not specified.' },
+        path: {
+          type: 'string',
+          description: 'The directory to search in. Defaults to current working directory if not specified.',
+        },
       },
       required: ['pattern'],
     },
@@ -105,7 +108,7 @@ Usage:
 - Multiline matching: By default patterns match within single lines only. For cross-line patterns, use multiline: true
 
 OUTPUT SIZE LIMIT:
-- Responses are hard-capped at ~720 KB. If you hit the cap, the reply ends with a "[Output truncated by bridge…]" marker and later matches are missing.
+- Responses are hard-capped at about 720,000 characters. If you hit the cap, the reply ends with a "[Output truncated by bridge" marker and later matches are missing.
 - To avoid truncation: narrow \`path\`, add \`glob\`/\`type\`, use \`head_limit\` + \`offset\` for pagination, or switch to \`output_mode: "files_with_matches"\` / \`"count"\` first and drill in afterwards.
 - Prefer small \`-C\`/\`-A\`/\`-B\` (<=5) on big repos — every context line multiplies the payload.`,
     inputSchema: {
@@ -113,18 +116,47 @@ OUTPUT SIZE LIMIT:
       properties: {
         pattern: { type: 'string', description: 'The regular expression pattern to search for in file contents' },
         path: { type: 'string', description: 'File or directory to search in. Defaults to current working directory.' },
-        output_mode: { type: 'string', enum: ['content', 'files_with_matches', 'count'], description: 'Output mode. Defaults to files_with_matches.' },
+        output_mode: {
+          type: 'string',
+          enum: ['content', 'files_with_matches', 'count'],
+          description: 'Output mode. Defaults to files_with_matches.',
+        },
         glob: { type: 'string', description: 'Glob pattern to filter files (e.g. "*.js", "*.{ts,tsx}")' },
-        type: { type: 'string', description: 'File type to search (e.g., js, py, rust). More efficient than glob for standard file types.' },
-        multiline: { type: 'boolean', description: 'Enable multiline mode where . matches newlines and patterns can span lines. Default: false.' },
+        type: {
+          type: 'string',
+          description: 'File type to search (e.g., js, py, rust). More efficient than glob for standard file types.',
+        },
+        multiline: {
+          type: 'boolean',
+          description: 'Enable multiline mode where . matches newlines and patterns can span lines. Default: false.',
+        },
         '-i': { type: 'boolean', description: 'Case insensitive search' },
-        '-A': { type: 'number', description: 'Number of lines to show after each match. Requires output_mode: content.' },
-        '-B': { type: 'number', description: 'Number of lines to show before each match. Requires output_mode: content.' },
+        '-A': {
+          type: 'number',
+          description: 'Number of lines to show after each match. Requires output_mode: content.',
+        },
+        '-B': {
+          type: 'number',
+          description: 'Number of lines to show before each match. Requires output_mode: content.',
+        },
         '-C': { type: 'number', description: 'Alias for context.' },
-        context: { type: 'number', description: 'Number of lines to show before and after each match (rg -C). Requires output_mode: content, ignored otherwise.' },
-        '-n': { type: 'boolean', description: 'Show line numbers in output. Requires output_mode: content. Defaults to true.' },
-        head_limit: { type: 'number', description: 'Limit output to first N lines/entries. Defaults to 0 (unlimited).' },
-        offset: { type: 'number', description: 'Skip first N lines/entries before applying head_limit. Defaults to 0.' },
+        context: {
+          type: 'number',
+          description:
+            'Number of lines to show before and after each match (rg -C). Requires output_mode: content, ignored otherwise.',
+        },
+        '-n': {
+          type: 'boolean',
+          description: 'Show line numbers in output. Requires output_mode: content. Defaults to true.',
+        },
+        head_limit: {
+          type: 'number',
+          description: 'Limit output to first N lines/entries. Defaults to 0 (unlimited).',
+        },
+        offset: {
+          type: 'number',
+          description: 'Skip first N lines/entries before applying head_limit. Defaults to 0.',
+        },
       },
       required: ['pattern'],
     },
@@ -134,7 +166,7 @@ OUTPUT SIZE LIMIT:
     name: 'Bash',
     description: `Executes a given bash command and returns its output.
 
-The working directory persists between commands, but shell state does not.
+Each command starts in the session's working directory. Changes made with cd inside a command do not persist to the next call. Shell state does not persist.
 
 IMPORTANT: Avoid using this tool to run commands when a dedicated tool exists:
 - File search: Use Glob (NOT find or ls)
@@ -146,20 +178,23 @@ IMPORTANT: Avoid using this tool to run commands when a dedicated tool exists:
 Instructions:
 - Always quote file paths that contain spaces with double quotes
 - You may specify an optional timeout in milliseconds (up to 1800000ms / 30 minutes). Default timeout: 1500000ms (25 minutes).
-- Use run_in_background to run commands in the background. You will be notified when it finishes.
+- With MCP Tasks support, foreground commands finish inline within two minutes or return a durable MCP task. Use run_in_background for background commands. With MCP Tasks support, the task returns immediately and the CLI handles completion notifications and tasks/get results. Without Tasks support, poll BashOutput with bash_id; there is no automatic completion notification.
 - Write a clear, concise description of what your command does.
 
 OUTPUT SIZE LIMIT:
-- Stdout + stderr combined are hard-capped at ~720 KB. Commands that dump whole logs/dumps will be truncated — pipe through head/tail/grep, or redirect to a file and Read it in chunks.
-- If the reply ends with "[Output truncated by bridge…]", later output is missing; re-run with a narrower filter.`,
+- Output is bounded to 100 KB per stream, including MCP task results. Commands that dump whole logs/dumps will be truncated — filter the output, or redirect to a file and Read it in chunks.
+- If the reply contains an output truncation notice, re-run with a narrower filter.`,
     inputSchema: {
       type: 'object',
       properties: {
         command: { type: 'string', description: 'The command to execute' },
         timeout: { type: 'number', description: 'Optional timeout in milliseconds (max 1800000 / 30 min)' },
         description: { type: 'string', description: 'Clear, concise description of what this command does' },
-        run_in_background: { type: 'boolean', description: 'Set to true to run in the background. Read its output later with BashOutput (by bash_id) and stop it with KillShell — NOT TaskOutput.' },
-        dangerouslyDisableSandbox: { type: 'boolean', description: 'Set this to true to dangerously override sandbox mode and run commands without sandboxing.' },
+        run_in_background: {
+          type: 'boolean',
+          description:
+            'Set to true to run in the background. With MCP Tasks support, returns a task immediately; completion notifies the agent, output is available through tasks/get, cancellation through tasks/cancel (up to 24 hours). Otherwise use BashOutput (bash_id) and KillShell.',
+        },
       },
       required: ['command'],
     },
@@ -179,7 +214,8 @@ Notes:
 Restrictions:
 - Runs with \`-NonInteractive\`. Never use \`Read-Host\`, \`Get-Credential\`, \`pause\`, or interactive editors.
 - Add \`-Confirm:$false\` for destructive cmdlets that prompt.
-- Default timeout: 1500000ms (25 min); max 1800000ms (30 min). Use \`run_in_background\` for longer jobs.
+- Each call starts a new process in the session working directory; cd and environment changes do not persist.
+- Foreground timeout: 1500000ms (25 min) by default, max 1800000ms (30 min). With MCP Tasks support, output returns inline within two minutes or as a durable task. Explicit background tasks return immediately and can run for almost 24 hours.
 - For file ops use Read/Write/Edit, for content search use Grep, for file search use Glob — not PowerShell equivalents.`,
     inputSchema: {
       type: 'object',
@@ -187,15 +223,18 @@ Restrictions:
         command: { type: 'string', description: 'The PowerShell command to execute' },
         timeout: { type: 'number', description: 'Optional timeout in milliseconds (max 1800000 / 30 min)' },
         description: { type: 'string', description: 'Clear, concise description of what this command does' },
-        run_in_background: { type: 'boolean', description: 'Set to true to run in the background. Read its output later with BashOutput (by bash_id) and stop it with KillShell — NOT TaskOutput.' },
-        dangerouslyDisableSandbox: { type: 'boolean', description: 'Override sandbox mode (rare).' },
+        run_in_background: {
+          type: 'boolean',
+          description:
+            'Set to true to run in the background. With MCP Tasks support, returns a task immediately; completion notifies the agent, output is available through tasks/get, cancellation through tasks/cancel (up to 24 hours). Otherwise use BashOutput (bash_id) and KillShell.',
+        },
       },
       required: ['command'],
     },
   },
   {
     name: 'BashOutput',
-    description: `Read output from a background shell started with Bash/PowerShell run_in_background:true. Returns the stdout/stderr produced SINCE THE LAST BashOutput call (a per-shell cursor), plus the shell's status (running or exited with code). Call repeatedly to follow a long-running command (dev server, build, watcher). Use the bash_id from the run_in_background result — NOT TaskOutput, which cannot see these client-side background shells.`,
+    description: `Read output from a legacy background shell started without MCP Tasks support by Bash/PowerShell run_in_background:true. Returns the stdout/stderr produced SINCE THE LAST BashOutput call (a per-shell cursor), plus the shell's status (running or exited with code). Call repeatedly to follow a long-running command (dev server, build, watcher). Use the bash_id from the run_in_background result — NOT TaskOutput, which cannot see these client-side background shells.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -207,27 +246,35 @@ Restrictions:
   },
   {
     name: 'KillShell',
-    description: `Terminate a background shell started with Bash/PowerShell run_in_background:true, by its bash_id. Sends SIGTERM to the process group (so child workers a dev server spawned are killed too). Use this to stop a server/watcher you started earlier.`,
+    description: `Terminate a legacy background shell started without MCP Tasks support by Bash/PowerShell run_in_background:true, by its bash_id. On POSIX, sends SIGTERM to the process group; on Windows, terminates the shell process. Use this to stop a server/watcher you started earlier.`,
     inputSchema: {
       type: 'object',
       properties: {
-        shell_id: { type: 'string', description: 'The background shell id to terminate (from run_in_background).' },
+        bash_id: { type: 'string', description: 'The bash_id returned by run_in_background, for Bash or PowerShell.' },
       },
-      required: ['shell_id'],
+      required: ['bash_id'],
     },
   },
   // ── Notebook ────────────────────────────────────────
   {
     name: 'NotebookEdit',
-    description: 'Edit, insert, or delete a cell in a Jupyter notebook (.ipynb file). Supports code and markdown cells. You must Read the notebook first.',
+    description:
+      'Edit, insert, or delete a cell in a Jupyter notebook (.ipynb file). Supports code and markdown cells. You must Read the notebook first.',
     inputSchema: {
       type: 'object',
       properties: {
         notebook_path: { type: 'string', description: 'Absolute path to the notebook file' },
-        cell_id: { type: 'string', description: 'The ID of the cell to edit (optional — uses cell index if not provided)' },
+        cell_id: {
+          type: 'string',
+          description: 'The ID of the cell to edit (optional — uses cell index if not provided)',
+        },
         new_source: { type: 'string', description: 'New source content for the cell' },
         cell_type: { type: 'string', enum: ['code', 'markdown'], description: 'Type of cell' },
-        edit_mode: { type: 'string', enum: ['replace', 'insert', 'delete'], description: 'Edit mode: replace existing cell, insert new cell, or delete cell' },
+        edit_mode: {
+          type: 'string',
+          enum: ['replace', 'insert', 'delete'],
+          description: 'Edit mode: replace existing cell, insert new cell, or delete cell',
+        },
       },
       required: ['notebook_path', 'new_source'],
     },
@@ -235,21 +282,22 @@ Restrictions:
   // ── Web ─────────────────────────────────────────────
   {
     name: 'WebFetch',
-    description: `Fetches content from a specified URL, converts HTML to markdown, and processes it.
+    description: `Fetches public URL content on the user's machine and returns it, converting HTML to markdown. No separate model processes the prompt: inspect the returned content yourself. Large content is truncated, not summarized.
 
-Usage:
-- The URL must be a fully-formed valid URL
-- HTTP URLs are upgraded to HTTPS unless allow_http is true (e.g. intranet hosts with no TLS)
-- The prompt should describe what information you want to extract from the page
-- This tool is read-only and does not modify any files
-- Results may be summarized if the content is very large
-- For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api)`,
+HTTP is upgraded to HTTPS unless allow_http is true. Localhost and private/internal addresses are blocked, including redirect targets; allow_http does not bypass this protection. This tool is read-only.`,
     inputSchema: {
       type: 'object',
       properties: {
         url: { type: 'string', description: 'The URL to fetch content from', format: 'uri' },
-        prompt: { type: 'string', description: 'A prompt describing what information to extract from the page' },
-        allow_http: { type: 'boolean', description: 'Set true to fetch http:// URLs without upgrading to https (for intranet/internal hosts that have no TLS). Default false.' },
+        prompt: {
+          type: 'string',
+          description: 'Context for the fetch request; returned with the content, without model processing',
+        },
+        allow_http: {
+          type: 'boolean',
+          description:
+            'Set true to fetch public http:// URLs without upgrading to HTTPS. Private/internal hosts remain blocked. Default false.',
+        },
       },
       required: ['url', 'prompt'],
     },
@@ -257,14 +305,14 @@ Usage:
   // ── Git ─────────────────────────────────────────────
   {
     name: 'EnterWorktree',
-    description: `Creates an isolated git worktree and switches the current session into it. Use this ONLY when the user explicitly asks to work in a worktree.
-
-Requirements: Must be in a git repository. Must not already be in a worktree.
-Behavior: Creates a new git worktree with a new branch based on HEAD. Switches the session's working directory to the new worktree.`,
+    description: `Creates a git worktree under the host repository's .claude/worktrees directory, with a worktree/<name> branch based on HEAD. Returns the path and branch; does not switch the session working directory. Use the returned path explicitly in subsequent operations. Use ONLY when the user explicitly asks for a worktree. Requires the host process working directory to be inside a git repository.`,
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'Optional name for the worktree. If not provided, a random name is generated.' },
+        name: {
+          type: 'string',
+          description: 'Optional name for the worktree. If not provided, a random name is generated.',
+        },
       },
     },
   },
@@ -276,7 +324,10 @@ Use only after the user is finished with the worktree. Use \`git worktree remove
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Absolute path of the worktree to remove. Same value EnterWorktree returned in its result.' },
+        path: {
+          type: 'string',
+          description: 'Absolute path of the worktree to remove. Same value EnterWorktree returned in its result.',
+        },
       },
       required: ['path'],
     },
@@ -291,7 +342,7 @@ Use only after the user is finished with the worktree. Use \`git worktree remove
 4. Offer choices to the user about what direction to take
 
 Usage notes:
-- ALWAYS use this tool instead of printing questions as plain text — it provides a much better interactive experience
+- Use this tool when an answer is needed; if unavailable or failing, ask briefly in text. Failure is not an answer or approval.
 - Users will always be able to type a custom answer
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end
 - The user sees a styled widget with clickable buttons`,
@@ -340,7 +391,10 @@ Usage notes:
     inputSchema: {
       type: 'object',
       properties: {
-        message: { type: 'string', description: 'Notification body. Keep under ~200 chars — it must fit a small toast.' },
+        message: {
+          type: 'string',
+          description: 'Notification body. Keep under ~200 chars — it must fit a small toast.',
+        },
         title: { type: 'string', description: 'Optional notification title. Defaults to "Claude".' },
       },
       required: ['message'],
@@ -348,28 +402,33 @@ Usage notes:
   },
   {
     name: 'ShowWidget',
-    description: `Render an HTML/CSS/SVG widget INLINE in the chat — it appears as a live visual right inside your reply, not as code. Reach for it FREELY and proactively whenever a picture beats prose: charts & graphs (draw with SVG), data tables, diagrams/flowcharts, timelines, dashboards & stat cards, comparison grids, UI mockups, math/geometry, color swatches, progress bars, CSS animations. Don't hold back — if a visual would help the user, show one.
+    description: `Render an HTML/CSS/SVG widget inline in the chat when a picture is clearly easier to understand than text: charts, diagrams or visual comparisons. Do not duplicate a table that Markdown can express clearly. Keep HTML/SVG concise: it consumes output tokens.
 
-Rules for the HTML:
-• Self-contained ONLY. Inline all CSS. External URLs (styles, fonts, images) are BLOCKED — embed images as data: URIs, draw with inline SVG or CSS.
-• DECLARATIVE — HTML + CSS + SVG. \`<script>\` does NOT run (rendered in a style-isolated Shadow DOM, not a JS sandbox), so build visuals with SVG/CSS, not JavaScript. CSS animations/transitions DO work.
-• Pass an HTML fragment (no <html>/<head> needed). The chat is dark; style for a dark background (light text) — or set your own.
-• \`height\` caps the frame (it scrolls if taller); omit for natural height.
-
-This is the way to communicate visually in this chat — prefer it over ASCII art or describing a chart in words.`,
+Pass a self-contained HTML fragment with inline CSS. External resources are blocked; embed images as data: URIs or draw with SVG/CSS. Script elements do not execute in the style-isolated Shadow DOM; use declarative HTML/CSS/SVG. CSS animations and transitions work.
+Theme CSS variables inherit into the Shadow DOM: use var(--text-primary), var(--text-secondary), var(--bg-surface), var(--bg-overlay), var(--accent-primary) and var(--accent-action). Reserve literal colors for contrasting data marks. The host text and links follow the active theme.
+The height parameter caps the frame with scrolling; omit it for natural height.`,
     inputSchema: {
       type: 'object',
       properties: {
-        html: { type: 'string', description: 'The self-contained HTML to render inline. Inline all CSS/JS; no external resources.' },
+        html: {
+          type: 'string',
+          description:
+            'The self-contained HTML to render inline. Inline all CSS; use declarative HTML/SVG and no external resources.',
+        },
         title: { type: 'string', description: 'Optional caption shown above the widget.' },
-        height: { type: 'number', description: 'Optional cap on the widget height in px — it scrolls if the content is taller. Omit for natural height.' },
+        height: {
+          type: 'number',
+          description:
+            'Optional cap on the widget height in px — it scrolls if the content is taller. Omit for natural height.',
+        },
       },
       required: ['html'],
     },
   },
   {
     name: 'TodoList',
-    description: 'Return the most recent todo list (as written by TodoWrite) for this session. Use sparingly — on each turn the prior TodoWrite\'s result is already visible in your context, so reading is rarely necessary.',
+    description:
+      "Return the most recent todo list (as written by TodoWrite) for this session. Use sparingly — on each turn the prior TodoWrite's result is already visible in your context, so reading is rarely necessary.",
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -386,7 +445,10 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
             properties: {
               content: { type: 'string', description: 'Imperative description of the step.' },
               status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] },
-              activeForm: { type: 'string', description: 'Optional present-tense form shown while in_progress (e.g. "Reading files").' },
+              activeForm: {
+                type: 'string',
+                description: 'Optional present-tense form shown while in_progress (e.g. "Reading files").',
+              },
             },
             required: ['content', 'status'],
           },
@@ -404,7 +466,8 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
   // internal file tools.
   {
     name: 'LspDiagnostics',
-    description: 'Current diagnostics (errors, warnings) for a file, via a plugin-provided LSP server. File extension determines which LSP is used (e.g. .go → gopls, .py → pyright). Returns a JSON array of LSP Diagnostic objects with range/severity/message.',
+    description:
+      'Current diagnostics (errors, warnings) for a file, via a plugin-provided LSP server. File extension determines which LSP is used (e.g. .go → gopls, .py → pyright). Returns a JSON array of LSP Diagnostic objects with range/severity/message.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -415,7 +478,8 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
   },
   {
     name: 'LspHover',
-    description: 'Type/documentation for the symbol at a position, via the LSP server registered for this file extension. Use after Grep to understand an unfamiliar symbol without having to read its entire definition.',
+    description:
+      'Type/documentation for the symbol at a position, via the LSP server registered for this file extension. Use after Grep to understand an unfamiliar symbol without having to read its entire definition.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -428,7 +492,8 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
   },
   {
     name: 'LspDefinition',
-    description: 'Location(s) where the symbol under cursor is defined, via LSP. Returns a JSON array of LSP Location objects {uri, range}. Jumps across files.',
+    description:
+      'Location(s) where the symbol under cursor is defined, via LSP. Returns a JSON array of LSP Location objects {uri, range}. Jumps across files.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -441,7 +506,8 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
   },
   {
     name: 'LspReferences',
-    description: 'All call sites / references for the symbol under cursor, via LSP. Useful before refactoring — checks impact radius without a slow project-wide Grep.',
+    description:
+      'All call sites / references for the symbol under cursor, via LSP. Useful before refactoring — checks impact radius without a slow project-wide Grep.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -459,4 +525,4 @@ This is the way to communicate visually in this chat — prefer it over ASCII ar
  *  automatically appears here, and `session-core.ts:DISALLOWED_BUILTIN_TOOLS`
  *  picks it up to deny the matching CLI native (so the model uses our MCP
  *  version instead of the CLI's own implementation). */
-export const MCP_TOOL_NAMES: readonly string[] = MCP_TOOLS.map(t => t.name)
+export const MCP_TOOL_NAMES: readonly string[] = MCP_TOOLS.map((t) => t.name)

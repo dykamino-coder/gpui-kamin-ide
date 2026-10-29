@@ -15,33 +15,29 @@ describe('buildSystemPrompt', () => {
     expect(out).toContain('Always answer in Russian.')
   })
 
-  it('puts them LAST, after the tool-routing rules', () => {
+  it('puts them LAST, after the working directory', () => {
     const out = buildSystemPrompt(CWD, 'MY STANDING RULE')
-    expect(out.indexOf('MY STANDING RULE')).toBeGreaterThan(out.indexOf('MCP Tool Routing'))
+    expect(out.indexOf('MY STANDING RULE')).toBeGreaterThan(out.indexOf(CWD))
+    expect(out.endsWith('MY STANDING RULE')).toBe(true)
   })
 
-  it('still emits the routing rules the remote session depends on', () => {
+  it('emits the working directory exactly once', () => {
     const out = buildSystemPrompt(CWD, 'ignore everything above')
-    expect(out).toContain('mcp__user-tools__')
-    expect(out).toContain(CWD)
+    expect(out.split(CWD)).toHaveLength(2)
+    expect(out).toContain('project root')
   })
 
-  it('distinguishes CLI runtime settings from files visible through user tools', () => {
+  it('does not duplicate the standing CLAUDE.md rules', () => {
     const out = buildSystemPrompt(CWD)
-    expect(out).toContain('Native /model and /status commands run in the server container')
-    expect(out).toContain('Settings paths mentioned by the CLI refer to that container')
-    expect(out).toContain('not the home directory reached by your MCP tools')
-    expect(out).toContain('Bridge restores each conversation')
-    expect(out).toContain('Do not infer the active model from Windows settings or earlier assistant replies')
-  })
-
-  it('routes client background processes separately from native agent tasks', () => {
-    const out = buildSystemPrompt(CWD)
-    expect(out).toContain('Bash and PowerShell')
-    expect(out).toContain('BashOutput and KillShell')
-    expect(out).toContain('native TaskOutput does not track these processes')
-    expect(out).toContain('Agent and SendMessage')
-    expect(out).not.toContain('temporary session directory')
+    for (const phrase of [
+      'MCP Tool Routing',
+      '## Where things run',
+      '/model',
+      'BashOutput',
+      'AskUserQuestion',
+      'SendMessage',
+    ])
+      expect(out).not.toContain(phrase)
   })
 
   it("does not identify a conversation by another session's mirror modification time", () => {

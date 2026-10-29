@@ -10,6 +10,11 @@
 уже merged implementation или последующую обязательную verification из
 [исполняемого реестра](RUNTIME_EXECUTION.md). Это не новый запуск задач.
 
+Связанный маршрут для long-history/compact/subagent recovery и отдельного
+MCP Task capacity: [выборочная сверка 2026-10-29](RUNTIME_BACKLOG.md#выборочная-системная-сверка--2026-10-29).
+Прежние BR/INC и принятые исправления сохраняются; это не запуск новой пачки
+и не утверждение единственной причины всех полевых зависаний.
+
 ## Scope and evidence policy
 
 Здесь ведутся только проблемы KaminIDE/Claude Bridge runtime. Содержимое и

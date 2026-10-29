@@ -57,9 +57,9 @@ export interface ConnectionState {
 export interface TabInfo {
   id: string
   cwd: string
-  label: string           // "#1", "#2", etc.
-  folderName: string      // basename(cwd) for grouping
-  createdAt: string       // ISO timestamp
+  label: string // "#1", "#2", etc.
+  folderName: string // basename(cwd) for grouping
+  createdAt: string // ISO timestamp
   status: ConnectionState['status']
   connectionAuthority: string
   connectionAuthorityGeneration: number
@@ -71,13 +71,13 @@ export interface TabInfo {
    *  pending reconnect (see ConnectionStatusBadge). */
   nextRetryAt?: number
   retryAttempt?: number
-  effort?: string         // current effort level (high, low, medium, default)
-  model?: string          // current model (opus, sonnet, haiku)
-  sessionTitle?: string   // auto-generated topic ("Fix auth bug")
+  effort?: string // current effort level (high, low, medium, default)
+  model?: string // current model (opus, sonnet, haiku)
+  sessionTitle?: string // auto-generated topic ("Fix auth bug")
   conversationId?: string // CLI conversation UUID (for resume dedup)
-  sessionId?: string      // server-side PTY session ID
-  settingsDir?: string    // server-side settings directory path
-  pinned?: boolean        // user-pinned tab (persisted per-token)
+  sessionId?: string // server-side PTY session ID
+  settingsDir?: string // server-side settings directory path
+  pinned?: boolean // user-pinned tab (persisted per-token)
 }
 
 export interface PersistedTabState {
@@ -345,35 +345,73 @@ export interface KaminBridgeApi {
   readClipboard(): Promise<string>
 
   // ─── App log collector (Customize → Logs) ─────────────
-  listLogs(): Promise<Array<{ ts: number; level: 'error' | 'warn' | 'info'; source: string; message: string; stack?: string }>>
+  listLogs(): Promise<
+    Array<{
+      ts: number
+      level: 'error' | 'warn' | 'info'
+      source: string
+      message: string
+      stack?: string
+    }>
+  >
   clearLogs(): Promise<void>
-  onLogEntry(callback: (entry: { ts: number; level: 'error' | 'warn' | 'info'; source: string; message: string; stack?: string }) => void): () => void
-
+  onLogEntry(
+    callback: (entry: {
+      ts: number
+      level: 'error' | 'warn' | 'info'
+      source: string
+      message: string
+      stack?: string
+    }) => void,
+  ): () => void
 
   // ─── PTY (per-tab) ────────────────────────────────────
   sendInput(tabId: string, data: string): void
   /** Stop: abort the in-flight upstream stream on the server + SIGINT the CLI. */
   interruptSession(tabId: string): void
   /** Submit a full user message via server-side paste + quiet-window Enter gate. */
-  submitText(tabId: string, text: string): void
+  submitText(tabId: string, text: string, submissionId?: string): void
+  submissionAction(tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt'): void
+  onSubmission(callback: (tabId: string, data: SubmissionUpdate) => void): () => void
   resize(tabId: string, cols: number, rows: number): void
   onOutput(callback: (tabId: string, data: string) => void): () => void
   onExit(callback: (tabId: string, code: number) => void): () => void
 
   // KaminIDE host Monaco editor's active file + selection, for the composer's
   // "attach file" toggle. null when no text editor is active.
-  onEditorSelection(callback: (sel: { path: string; startLine: number; endLine: number; text: string } | null) => void): () => void
+  onEditorSelection(
+    callback: (
+      sel: {
+        path: string
+        startLine: number
+        endLine: number
+        text: string
+      } | null,
+    ) => void,
+  ): () => void
   // Pull the current host-editor selection on mount (seeds before the first
   // onEditorSelection event fires).
-  getEditorSelection(): Promise<{ path: string; startLine: number; endLine: number; text: string } | null>
-
+  getEditorSelection(): Promise<{
+    path: string
+    startLine: number
+    endLine: number
+    text: string
+  } | null>
 
   // ─── MCP permissions ──────────────────────────────────
   onPermissionRequest(callback: (tabId: string, req: PermissionRequest) => void): () => void
   respondPermission(requestId: string, decision: PermissionDecision): void
 
   // ─── MCP activity (per-tab) ───────────────────────────
-  onMcpActivity(callback: (tabId: string, call: McpToolCall & { status: 'pending' | 'completed' | 'denied'; result?: unknown }) => void): () => void
+  onMcpActivity(
+    callback: (
+      tabId: string,
+      call: McpToolCall & {
+        status: 'pending' | 'completed' | 'denied'
+        result?: unknown
+      },
+    ) => void,
+  ): () => void
 
   // ─── JSONL Viewer (per-tab) ──────────────────────────
   onJsonlEntries(cb: (tabId: string, entries: any[]) => void): () => void
@@ -383,7 +421,17 @@ export interface KaminBridgeApi {
   // ─── Live MITM streaming (replaces by message.id) ────
   onStreamingEntry?(cb: (tabId: string, entry: any) => void): () => void
   /** Incremental text/thinking append between boundary snapshots (protocol>=1). */
-  onStreamingDelta?(cb: (tabId: string, d: { msgId: string; blockIdx: number; appendText: string; kind: 'text' | 'thinking' }) => void): () => void
+  onStreamingDelta?(
+    cb: (
+      tabId: string,
+      d: {
+        msgId: string
+        blockIdx: number
+        appendText: string
+        kind: 'text' | 'thinking'
+      },
+    ) => void,
+  ): () => void
   /** Rate-limit / overload surfaced from the proxy while the CLI retries. */
   onStreamingStatus?(cb: (tabId: string, info: { code: number; retryAfterMs?: number }) => void): () => void
 
@@ -410,19 +458,28 @@ export interface KaminBridgeApi {
    *  mirror (empty toTs = to newest). Answer on `onSegmentPage`; the renderer
    *  REPLACES its window with these records. */
   loadSegment(tabId: string, fromTs: string, toTs: string): void
+  selectSubagent(tabId: string, agentId: string | null): void
   onSegmentPage(cb: (tabId: string, p: { fromTs: string; toTs: string; records: any[] }) => void): () => void
   /** Chunked-download progress for the session transcript. */
   onJsonlDownloadProgress(cb: (tabId: string, p: { received: number; total: number }) => void): () => void
-  onJsonlDownloadAllProgress(cb: (p: {
-    fileIndex: number; fileTotal: number; conversationId: string; bytes: number; size: number
-  }) => void): () => void
+  onJsonlDownloadAllProgress(
+    cb: (p: { fileIndex: number; fileTotal: number; conversationId: string; bytes: number; size: number }) => void,
+  ): () => void
 
   // ─── JSONL Download ───────────────────────────────────
+  commandAction(tabId: string, action: 'list' | 'stop' | 'output', id?: string): void
+  onCommandsSnapshot(callback: (tabId: string, snapshot: import('./commands').CommandSnapshot) => void): () => void
+  onCommandOutput(callback: (tabId: string, result: { id: string; output: string }) => void): () => void
   downloadJsonl(tabId: string, agentId?: string): Promise<{ success: boolean; filePath?: string; error?: string }>
   /** Bulk export: pick a folder, then download EVERY transcript tied to the
    *  current token into it, each pulled in byte-range batches. Progress rides
    *  onJsonlDownloadAllProgress. */
-  downloadAllJsonl(): Promise<{ success: boolean; dir?: string; count?: number; error?: string }>
+  downloadAllJsonl(): Promise<{
+    success: boolean
+    dir?: string
+    count?: number
+    error?: string
+  }>
   /** Save the session diagnostic JSON to a user-chosen file (was clipboard-only:
    *  a big session's dump is megabytes, which the clipboard handles badly and a
    *  bug report can't carry). */
@@ -436,7 +493,11 @@ export interface KaminBridgeApi {
   // ─── Settings ─────────────────────────────────────────
   getConfig(): Promise<ConnectionConfig>
   setConfig(config: ConnectionConfig): void
-  forceSync(): Promise<{ ok: boolean; error?: string; projectPath?: string | null }>
+  forceSync(): Promise<{
+    ok: boolean
+    error?: string
+    projectPath?: string | null
+  }>
   getMachineId(): Promise<string>
   applyUpdate(): Promise<{ ok: boolean; error?: string }>
   quitAndInstallUpdate(): Promise<{ ok: boolean; error?: string }>
@@ -453,27 +514,129 @@ export interface KaminBridgeApi {
   // ─── Clipboard image ─────────────────────────────────
   saveClipboardImage(base64Data: string, mimeType: string): Promise<string>
   openImageDialog(): Promise<Array<{ path: string; base64: string; mimeType: string }>>
-  openFileDialog(): Promise<Array<{ path: string; name: string; ext: string; base64: string; mimeType: string; isImage: boolean }>>
+  openFileDialog(): Promise<
+    Array<{
+      path: string
+      name: string
+      ext: string
+      base64: string
+      mimeType: string
+      isImage: boolean
+    }>
+  >
   /** Не-image drop/paste: байты файла → temp с исходным именем → путь
    *  (замена getDroppedFilePath Electron-эпохи, аудит #70 A3). */
   saveDroppedFile(base64Data: string, name: string): Promise<string>
-  readFileAsBase64(filePath: string): Promise<{ ok: boolean; base64?: string; mimeType?: string; error?: string }>
+  readFileAsBase64(filePath: string): Promise<{
+    ok: boolean
+    base64?: string
+    mimeType?: string
+    error?: string
+  }>
 
   // Hooks
-  hooksList(): Promise<{ hooks: Record<string, Array<{ matcher?: string; hooks: Array<Record<string, unknown>> }>> }>
-  hooksListAll(cwd?: string): Promise<{ hooks: Array<{ event: string; matcherIdx: number; matcher?: string; handler: Record<string, unknown>; source: { kind: string; pluginId?: string; manifestPath?: string; projectPath?: string } }> }>
-  hooksGetLibrary(): Promise<{ templates: Array<{ id: string; title: string; description: string; event: string; matcher?: string; handler: Record<string, unknown>; rationale: string; category: string; recommendedHost?: string }> }>
-  hooksGetLog(limit?: number): Promise<{ entries: Array<{ ts: number; sessionId: string; hookId: string; event: string; matcher?: string; source: { kind: string; pluginId?: string; projectPath?: string }; effectiveHost: string; outcome: string; exitCode: number; durationMs: number; stdoutPreview?: string; stderrPreview?: string }> }>
+  hooksList(): Promise<{
+    hooks: Record<string, Array<{ matcher?: string; hooks: Array<Record<string, unknown>> }>>
+  }>
+  hooksListAll(cwd?: string): Promise<{
+    hooks: Array<{
+      event: string
+      matcherIdx: number
+      matcher?: string
+      handler: Record<string, unknown>
+      source: {
+        kind: string
+        pluginId?: string
+        manifestPath?: string
+        projectPath?: string
+      }
+    }>
+  }>
+  hooksGetLibrary(): Promise<{
+    templates: Array<{
+      id: string
+      title: string
+      description: string
+      event: string
+      matcher?: string
+      handler: Record<string, unknown>
+      rationale: string
+      category: string
+      recommendedHost?: string
+    }>
+  }>
+  hooksGetLog(limit?: number): Promise<{
+    entries: Array<{
+      ts: number
+      sessionId: string
+      hookId: string
+      event: string
+      matcher?: string
+      source: { kind: string; pluginId?: string; projectPath?: string }
+      effectiveHost: string
+      outcome: string
+      exitCode: number
+      durationMs: number
+      stdoutPreview?: string
+      stderrPreview?: string
+    }>
+  }>
   hooksClearLog(): Promise<{ ok: boolean; error?: string }>
   hooksActive(sessionId: string): Promise<{ hooks: Array<Record<string, unknown>> }>
   hooksInstallTemplate(templateId: string): Promise<{ ok: boolean; error?: string }>
   hooksDelete(event: string, matcherIdx: number, handlerIdx: number): Promise<{ ok: boolean; error?: string }>
-  hooksSave(draft: { event: string; matcher?: string; handler: Record<string, unknown>; index?: { matcherIdx: number; handlerIdx: number } }): Promise<{ ok: boolean; error?: string }>
-  hooksTest(draft: { event: string; matcher?: string; handler: Record<string, unknown>; mockPayload?: Record<string, unknown> }): Promise<{ ok: boolean; error?: string; result?: { stdout: string; stderr: string; exitCode: number; outcome: string; durationMs: number }; effectiveHost?: string }>
+  hooksSave(draft: {
+    event: string
+    matcher?: string
+    handler: Record<string, unknown>
+    index?: { matcherIdx: number; handlerIdx: number }
+  }): Promise<{ ok: boolean; error?: string }>
+  hooksTest(draft: {
+    event: string
+    matcher?: string
+    handler: Record<string, unknown>
+    mockPayload?: Record<string, unknown>
+  }): Promise<{
+    ok: boolean
+    error?: string
+    result?: {
+      stdout: string
+      stderr: string
+      exitCode: number
+      outcome: string
+      durationMs: number
+    }
+    effectiveHost?: string
+  }>
   hooksGetPluginApproval(pluginId: string): Promise<{ approved: boolean; hashes: string[] }>
-  hooksListPendingPluginApprovals(): Promise<Array<{ pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }>; approvedHashes: string[] }>>
-  hooksSetPluginApproval(pluginId: string, hashes: string[]): Promise<{ ok: boolean; error?: string; restartRequired?: boolean }>
-  onPluginHooksAwaitingApproval(cb: (data: { pluginId: string; hooks: Array<{ event: string; matcher?: string; handler: Record<string, unknown>; hash: string }>; approvedHashes?: string[] }) => void): () => void
+  hooksListPendingPluginApprovals(): Promise<
+    Array<{
+      pluginId: string
+      hooks: Array<{
+        event: string
+        matcher?: string
+        handler: Record<string, unknown>
+        hash: string
+      }>
+      approvedHashes: string[]
+    }>
+  >
+  hooksSetPluginApproval(
+    pluginId: string,
+    hashes: string[],
+  ): Promise<{ ok: boolean; error?: string; restartRequired?: boolean }>
+  onPluginHooksAwaitingApproval(
+    cb: (data: {
+      pluginId: string
+      hooks: Array<{
+        event: string
+        matcher?: string
+        handler: Record<string, unknown>
+        hash: string
+      }>
+      approvedHashes?: string[]
+    }) => void,
+  ): () => void
   openExternal(url: string): Promise<void>
 
   // ─── Chrome mic proxy (works around endpoint protection on Windows) ──
@@ -499,7 +662,18 @@ export interface KaminBridgeApi {
   respondElicitation(requestId: string, action: 'accept' | 'deny' | 'dismiss', content?: Record<string, unknown>): void
 
   // ─── AskUserQuestion widget ───────────────────────
-  onAskUserQuestion(callback: (tabId: string, data: { requestId: string; question: string; options?: string[]; plan?: string; isPlanApproval?: boolean }) => void): () => void
+  onAskUserQuestion(
+    callback: (
+      tabId: string,
+      data: {
+        requestId: string
+        question: string
+        options?: string[]
+        plan?: string
+        isPlanApproval?: boolean
+      },
+    ) => void,
+  ): () => void
   respondAskUser(requestId: string, answer: string): void
 
   // ─── Session Title ─────────────────────────────────
@@ -510,7 +684,17 @@ export interface KaminBridgeApi {
 
   // ─── Session Tree ──────────────────────────────────
   onTreeUpdate(callback: (tree: TreeNode[]) => void): () => void
-  onAgentSpawned(callback: (tabId: string, data: { parentSessionId: string; childSessionId: string; agentName: string; description: string }) => void): () => void
+  onAgentSpawned(
+    callback: (
+      tabId: string,
+      data: {
+        parentSessionId: string
+        childSessionId: string
+        agentName: string
+        description: string
+      },
+    ) => void,
+  ): () => void
   requestTreeUpdate(): void
   onMcpLoading(callback: () => void): () => void
   onMcpReady(callback: () => void): () => void
@@ -529,7 +713,17 @@ export interface KaminBridgeApi {
   changeEffort(tabId: string, effort: string): void
   /** `inPlace` — горячая смена модели: PTY не перезапускался, консоль
    *  чистить нечего. Отсутствие признака означает настоящий перезапуск. */
-  onSessionRestarted(callback: (tabId: string, data: { sessionId: string; effort?: string; model?: string; inPlace?: boolean }) => void): () => void
+  onSessionRestarted(
+    callback: (
+      tabId: string,
+      data: {
+        sessionId: string
+        effort?: string
+        model?: string
+        inPlace?: boolean
+      },
+    ) => void,
+  ): () => void
   // Fired when the user manually Reconnects a tab: the server ended the old
   // session and `--resume`s a BRAND-NEW PTY, so the console must wipe the dead
   // session's screen (broadcast → every iframe clears its own terminal).
@@ -544,7 +738,10 @@ export interface KaminBridgeApi {
   // ─── External MCP Servers ────────────────────────
   getMcpServers(): Promise<ExternalMcpServerInfo[]>
   addMcpServer(config: Omit<ExternalMcpServerConfig, 'id'>): Promise<ExternalMcpServerInfo>
-  updateMcpServer(id: string, config: Partial<Omit<ExternalMcpServerConfig, 'id'>>): Promise<ExternalMcpServerInfo | null>
+  updateMcpServer(
+    id: string,
+    config: Partial<Omit<ExternalMcpServerConfig, 'id'>>,
+  ): Promise<ExternalMcpServerInfo | null>
   removeMcpServer(id: string): Promise<void>
   toggleMcpServer(id: string, enabled: boolean): Promise<void>
   testMcpServer(id: string): Promise<{ ok: boolean; tools: string[]; error?: string }>
@@ -558,20 +755,54 @@ export interface KaminBridgeApi {
   getMcpResources(id: string): Promise<McpResourceInfo[]>
   readMcpResource(id: string, uri: string): Promise<{ ok: boolean; result?: unknown; error?: string }>
   getMcpPrompts(id: string): Promise<McpPromptInfo[]>
-  getMcpPrompt(id: string, name: string, args?: Record<string, unknown>): Promise<{ ok: boolean; result?: unknown; error?: string }>
+  getMcpPrompt(
+    id: string,
+    name: string,
+    args?: Record<string, unknown>,
+  ): Promise<{ ok: boolean; result?: unknown; error?: string }>
   listMcpRegistry(): Promise<{ ok: boolean; servers: any[]; error?: string }>
-  onMcpElicitation(callback: (req: { requestId: string; serverId: string; serverName: string; message?: string; requestedSchema?: unknown }) => void): () => void
+  onMcpElicitation(
+    callback: (req: {
+      requestId: string
+      serverId: string
+      serverName: string
+      message?: string
+      requestedSchema?: unknown
+    }) => void,
+  ): () => void
   respondMcpElicitation(requestId: string, payload: unknown): void
-  onMcpProgress(callback: (p: { serverId: string; serverName: string; progressToken: unknown; progress: number; total?: number; message?: string }) => void): () => void
+  onMcpProgress(
+    callback: (p: {
+      serverId: string
+      serverName: string
+      progressToken: unknown
+      progress: number
+      total?: number
+      message?: string
+    }) => void,
+  ): () => void
   onMcpServersChanged(callback: (servers: ExternalMcpServerInfo[]) => void): () => void
 
   // ─── Skills ─────────────────────────────────────────
   listSkills(): Promise<{ name: string; fileName: string; description: string; path: string }[]>
-  listAgents(): Promise<Array<{
-    name: string; fileName: string; description: string; model: string | null; tools: string[]; path: string; source: string
-    color?: string; effort?: string | number; maxTurns?: number; disallowedTools?: string[]
-    memory?: string; isolation?: string; background?: boolean
-  }>>
+  listAgents(): Promise<
+    Array<{
+      name: string
+      fileName: string
+      description: string
+      model: string | null
+      tools: string[]
+      path: string
+      source: string
+      color?: string
+      effort?: string | number
+      maxTurns?: number
+      disallowedTools?: string[]
+      memory?: string
+      isolation?: string
+      background?: boolean
+    }>
+  >
   listOutputStyles(): Promise<Array<{ name: string; description: string; path: string; source: string }>>
   createSkill(name: string, content: string): Promise<{ name: string; fileName: string; path: string }>
   deleteSkill(skillPath: string): Promise<void>
@@ -583,7 +814,16 @@ export interface KaminBridgeApi {
   sendTeamMessage(teamName: string, agentName: string, message: string): Promise<void>
 
   // ─── Plugins ──────────────────────────────────────────
-  listInstalledPlugins(): Promise<{ name: string; marketplace: string; version: string; scope: string; installPath: string; isCached: boolean }[]>
+  listInstalledPlugins(): Promise<
+    {
+      name: string
+      marketplace: string
+      version: string
+      scope: string
+      installPath: string
+      isCached: boolean
+    }[]
+  >
   getPluginContents(pluginDir: string): Promise<{
     skills: { name: string; description?: string }[]
     agents: { name: string; description?: string }[]
@@ -599,27 +839,94 @@ export interface KaminBridgeApi {
   // ─── Marketplace / Plugin Browser ────────────────────
   listMarketplaces(): Promise<MarketplaceInfo[]>
   browseMarketplace(marketplaceName: string): Promise<MarketplacePlugin[]>
-  onPluginsBrowseProgress(cb: (p: { marketplace: string; done: number; total: number; current: string | null }) => void): () => void
+  onPluginsBrowseProgress(
+    cb: (p: { marketplace: string; done: number; total: number; current: string | null }) => void,
+  ): () => void
   browseNestedMarketplace(pluginPath: string): Promise<MarketplacePlugin[]>
   installPlugin(pluginName: string, marketplace: string, pluginPath: string): Promise<void>
-  installLocalPlugin(): Promise<{ name: string; marketplace: string; version: string; installPath: string } | null>
+  installLocalPlugin(): Promise<{
+    name: string
+    marketplace: string
+    version: string
+    installPath: string
+  } | null>
   uninstallPlugin(pluginName: string, marketplace: string): Promise<void>
-  setPluginEnabled(pluginId: string, enabled: boolean): Promise<{ ok: boolean; restartRequired?: boolean; error?: string }>
-  addMarketplace(name: string, gitUrl: string, auth?: { username?: string; token?: string } | null): Promise<MarketplaceInfo>
-  setMarketplaceAuth(name: string, auth: { username?: string; token?: string } | null): Promise<{ ok: boolean; error?: string; warning?: string }>
+  setPluginEnabled(
+    pluginId: string,
+    enabled: boolean,
+  ): Promise<{ ok: boolean; restartRequired?: boolean; error?: string }>
+  addMarketplace(
+    name: string,
+    gitUrl: string,
+    auth?: { username?: string; token?: string } | null,
+  ): Promise<MarketplaceInfo>
+  setMarketplaceAuth(
+    name: string,
+    auth: { username?: string; token?: string } | null,
+  ): Promise<{ ok: boolean; error?: string; warning?: string }>
   removeMarketplace(name: string): Promise<void>
-  updateMarketplace(name: string): Promise<{ ok: boolean; lastUpdated?: string; error?: string; changed?: boolean }>
-  getPluginOptionsSchema(pluginId: string): Promise<{ schema: Record<string, any>; values: Record<string, unknown>; sensitiveKeys: string[] }>
+  updateMarketplace(name: string): Promise<{
+    ok: boolean
+    lastUpdated?: string
+    error?: string
+    changed?: boolean
+  }>
+  getPluginOptionsSchema(pluginId: string): Promise<{
+    schema: Record<string, any>
+    values: Record<string, unknown>
+    sensitiveKeys: string[]
+  }>
   savePluginOptions(pluginId: string, values: Record<string, unknown>): Promise<{ ok: boolean }>
-  listMonitors(): Promise<Array<{ id: string; tabId: string; pluginId: string; pluginName: string; monitorName: string; description: string; command: string; status: 'running' | 'exited' | 'error'; startedAt: number; exitCode?: number | null }>>
+  listMonitors(): Promise<
+    Array<{
+      id: string
+      tabId: string
+      pluginId: string
+      pluginName: string
+      monitorName: string
+      description: string
+      command: string
+      status: 'running' | 'exited' | 'error'
+      startedAt: number
+      exitCode?: number | null
+    }>
+  >
   getMonitorLog(id: string): Promise<Array<{ ts: number; stream: 'stdout' | 'stderr' | 'meta'; text: string }>>
-  onMonitorOutput(cb: (payload: { id: string; entry: { ts: number; stream: string; text: string } }) => void): () => void
-  onMonitorStarted(cb: (payload: { id: string; tabId: string; pluginId: string; pluginName: string; monitorName: string; description: string; command: string }) => void): () => void
+  onMonitorOutput(
+    cb: (payload: { id: string; entry: { ts: number; stream: string; text: string } }) => void,
+  ): () => void
+  onMonitorStarted(
+    cb: (payload: {
+      id: string
+      tabId: string
+      pluginId: string
+      pluginName: string
+      monitorName: string
+      description: string
+      command: string
+    }) => void,
+  ): () => void
   onMonitorStopped(cb: (payload: { id: string }) => void): () => void
   onMonitorStatus(cb: (payload: { id: string; status: string; exitCode?: number | null }) => void): () => void
-  listLspServers(): Promise<Array<{ id: string; pluginId: string; serverKey: string; extensions: string[]; initialized: boolean }>>
+  listLspServers(): Promise<
+    Array<{
+      id: string
+      pluginId: string
+      serverKey: string
+      extensions: string[]
+      initialized: boolean
+    }>
+  >
   restartLspServers(): Promise<{ ok: boolean }>
-  refreshAllMarketplaces(): Promise<{ ok: boolean; results?: Array<{ name: string; ok: boolean; changed?: boolean; error?: string }> }>
+  refreshAllMarketplaces(): Promise<{
+    ok: boolean
+    results?: Array<{
+      name: string
+      ok: boolean
+      changed?: boolean
+      error?: string
+    }>
+  }>
   setMarketplaceAutoUpdate(name: string, autoUpdate: boolean): Promise<{ ok: boolean; error?: string }>
   /** Событие ЗАВЕРШЕНИЯ, не успеха: `ok` отсутствует у прежних отправителей,
    *  поэтому его отсутствие читается как «исход неизвестен», а не как отказ. */
@@ -641,8 +948,25 @@ export interface KaminBridgeApi {
   onWindowMaximized(callback: (maximized: boolean) => void): () => void
 
   // ─── FilePanel terminal (PTY) ────────────────────────
-  shellsList(): Promise<Array<{ id: string; label: string; command: string; args: string[]; icon?: string }>>
-  ptySpawn(opts: { shellId?: string; cwd: string; cols: number; rows: number }): Promise<{ ptyId: string; profile: { id: string; label: string; command: string; args: string[]; icon?: string } }>
+  shellsList(): Promise<
+    Array<{
+      id: string
+      label: string
+      command: string
+      args: string[]
+      icon?: string
+    }>
+  >
+  ptySpawn(opts: { shellId?: string; cwd: string; cols: number; rows: number }): Promise<{
+    ptyId: string
+    profile: {
+      id: string
+      label: string
+      command: string
+      args: string[]
+      icon?: string
+    }
+  }>
   ptyWrite(ptyId: string, data: string): void
   ptyResize(ptyId: string, cols: number, rows: number): void
   ptyKill(ptyId: string): void
@@ -658,7 +982,15 @@ export interface KaminBridgeApi {
   onFileViewerExternalChange(callback: (e: { path: string; content: string; mtimeMs: number }) => void): () => void
 
   // ─── FilePanel project tree ──────────────────────────
-  fileTreeListDir(dir: string): Promise<Array<{ name: string; path: string; isDir: boolean; mtimeMs: number; size: number }>>
+  fileTreeListDir(dir: string): Promise<
+    Array<{
+      name: string
+      path: string
+      isDir: boolean
+      mtimeMs: number
+      size: number
+    }>
+  >
   fileTreeRename(oldPath: string, newPath: string): Promise<{ mtimeMs: number; size: number }>
   fileTreeWatch(root: string): void
   fileTreeUnwatch(root: string): void
@@ -668,7 +1000,14 @@ export interface KaminBridgeApi {
   refreshPluginSource(
     pluginName: string,
     marketplace: string,
-  ): Promise<{ ok: boolean; changed?: boolean; version?: string; skipped?: string; error?: string; note?: string }>
+  ): Promise<{
+    ok: boolean
+    changed?: boolean
+    version?: string
+    skipped?: string
+    error?: string
+    note?: string
+  }>
   retryPluginSource(pluginName: string, marketplace: string): Promise<{ ok: boolean; error?: string }>
 
   /** Generic IPC pass-through used by a few panels that talk to dynamic
@@ -679,3 +1018,13 @@ export interface KaminBridgeApi {
 
 /** @deprecated Use KaminBridgeApi. */
 export type ElectronBridge = KaminBridgeApi
+
+export interface SubmissionUpdate {
+  id: string
+  text?: string
+  state?: 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
+  uuid?: string
+  cancelable?: boolean
+  warning?: string
+  capable?: boolean
+}

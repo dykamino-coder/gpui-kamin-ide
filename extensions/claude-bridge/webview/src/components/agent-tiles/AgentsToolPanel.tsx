@@ -129,6 +129,11 @@ function AgentReader({ info, onBack }: { info: AgentInfo; onBack: () => void }):
   const entries = agentEntriesWithLive(tabId, name, info.agentType, info.agentId, info.teamName) as JsonlEntryData[]
   const bridge = useBridge()
   const downloadId = agentTranscriptDownloadId(tabId, name, info.agentType, info.agentId)
+  useEffect(() => {
+    if (!tabId || !downloadId) return
+    bridge.selectSubagent?.(tabId, downloadId)
+    return () => bridge.selectSubagent?.(tabId, null)
+  }, [bridge, tabId, downloadId])
 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const prevLenRef = useRef(0)

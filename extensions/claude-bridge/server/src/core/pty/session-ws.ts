@@ -2,6 +2,7 @@
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
 
+import { acceptCommandReport, commandSnapshot, commandOutput, stopCommand, rememberCommandResult } from './commands'
 import { settleMcpTask } from './mcp-tasks'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { WebSocketServer, WebSocket as WS } from 'ws'
@@ -19,6 +20,7 @@ import { streamFileChunks, waitForDrain, type DrainOutcome } from './download-ba
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
 import { readJsonlLines } from './jsonl-lines'
+import { readHistoryPage } from './jsonl-page'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import { registerWsRoute } from '../server/ws'
 import { resolveToken } from '../auth/tokens'
@@ -43,6 +45,7 @@ import {
 } from './session-manager'
 import { settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
+import { sessionCliControl } from './session-cli-control'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
 import { replaceRegisteredTools } from './mcp-tool-notify'
@@ -177,6 +180,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
       }
     }, 15_000)
 
+    const commandsTimer = setInterval(() => {
+      if (authenticatedSessionId && sessionWsMap.get(authenticatedSessionId) === ws)
+        sendToClient(ws, { type: 'commands:request' })
+    }, 1000)
+    commandsTimer.unref?.()
+    ws.once('close', () => clearInterval(commandsTimer))
     ws.on('message', async (raw: Buffer | string) => {
       if (socketGone || ws.readyState !== WS.OPEN) return
       let msg: ClientToServerMsg
@@ -215,6 +224,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
+                history: msg.history,
               })
 
               if (!ownsStartup(operation)) {
@@ -301,6 +311,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // Abort the in-flight upstream request directly so the stream stops NOW,
           // then SIGINT the CLI to end the turn.
           if (!authenticatedSessionId) return
+          const interruptSession = getSession(authenticatedSessionId)
+          if (interruptSession && sessionCliControl(interruptSession)?.interrupt()) break
           try {
             getSession(authenticatedSessionId)?.streamingProxy?.interrupt()
           } catch {
@@ -315,13 +327,38 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Not authenticated — send session:create first')
             return
           }
-          submitText(authenticatedSessionId, msg.data)
+          submitText(authenticatedSessionId, msg.data, msg.submissionId)
+          break
+        }
+
+        case 'session:submission-action': {
+          if (!authenticatedSessionId) return
+          const session = getSession(authenticatedSessionId)
+          if (session && typeof msg.id === 'string') sessionCliControl(session)?.action(msg.id, msg.action)
           break
         }
 
         case 'session:resize': {
           if (!authenticatedSessionId) return
           resizeTerminal(authenticatedSessionId, msg.cols, msg.rows)
+          break
+        }
+
+        case 'commands:list':
+        case 'commands:report':
+        case 'commands:stop':
+        case 'commands:output': {
+          if (!authenticatedSessionId || sessionWsMap.get(authenticatedSessionId) !== ws) return
+          const session = getSession(authenticatedSessionId)
+          if (!session) return
+          if (msg.type === 'commands:report') await acceptCommandReport(session, msg.report)
+          if (msg.type === 'commands:stop' && typeof msg.id === 'string') await stopCommand(session, msg.id)
+          if (msg.type === 'commands:output') {
+            if (typeof msg.id === 'string')
+              sendToClient(ws, { type: 'commands:output', id: msg.id, output: await commandOutput(session, msg.id) })
+            break
+          }
+          sendToClient(ws, { type: 'commands:snapshot', snapshot: await commandSnapshot(session) })
           break
         }
 
@@ -334,6 +371,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             accepted = msg.taskOwner
               ? msg.sessionId === authenticatedSessionId && !!session && (await settleMcpTask(session, msg))
               : settleMcpResult(authenticatedSessionId, msg)
+            if (accepted && session)
+              rememberCommandResult(session, msg.requestId, msg.type === 'mcp:response' ? msg.result : msg.reason)
           } catch {
             break
           } // no ack until durable settlement; outbox retries
@@ -483,7 +522,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               }
               // Re-emit the full transcript so the fresh client rebuilds its
               // chat state (same contract as a real resume).
-              live.jsonlWatcher?.replayAll?.()
+              live.jsonlWatcher?.replayAll?.(msg.history)
 
               broadcastTree(resolved.tokenId)
               debugLog('Session reattached via WS', {
@@ -509,6 +548,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
+                history: msg.history,
               })
 
               if (!ownsStartup(operation)) {
@@ -938,6 +978,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
+        case 'jsonl:subagent-select': {
+          if (!authenticatedSessionId) return
+          getSession(authenticatedSessionId)?.jsonlWatcher?.selectSubagent?.(msg.agentId)
+          break
+        }
+
         case 'jsonl:download-request': {
           if (!authenticatedSessionId) {
             sendError(ws, 'Not authenticated')
@@ -1029,6 +1075,42 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return
           }
           const { fromTs, toTs } = msg // WsMsgJsonlSegmentRequest — already narrowed
+          if (msg.paged) {
+            if (msg.beforePos !== undefined && (!Number.isSafeInteger(msg.beforePos) || msg.beforePos < 0)) {
+              sendError(ws, 'Invalid history cursor')
+              break
+            }
+            const sessionId = authenticatedSessionId
+            const watcher = getSession(sessionId)?.jsonlWatcher
+            const file = watcher?.getFilePath()
+            try {
+              const range = fromTs || toTs ? await watcher?.segmentRange?.(fromTs, toTs) : { lower: 0, upper: Infinity }
+              const page =
+                file && range
+                  ? await readHistoryPage(file, Math.min(msg.beforePos ?? Infinity, range.upper), range.lower)
+                  : { records: [], nextPos: 0, bytesRead: 0 }
+              // A switch or rewrite invalidates the positions captured above.
+              if (
+                authenticatedSessionId !== sessionId ||
+                getSession(sessionId)?.jsonlWatcher !== watcher ||
+                watcher?.getFilePath() !== file
+              )
+                break
+              if (ws.readyState === ws.OPEN)
+                ws.send(
+                  JSON.stringify({
+                    type: 'jsonl:segment-response',
+                    fromTs,
+                    toTs,
+                    ...page,
+                    ...(msg.beforePos === undefined ? {} : { beforePos: msg.beforePos }),
+                  }),
+                )
+            } catch {
+              if (ws.readyState === ws.OPEN) sendError(ws, 'History page unavailable')
+            }
+            break
+          }
           const segPath = getSession(authenticatedSessionId)?.jsonlWatcher?.getFilePath()
           const records: JsonlEntry[] = []
           let truncated = false

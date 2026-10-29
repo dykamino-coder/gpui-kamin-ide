@@ -1,3 +1,4 @@
+import { SubmissionBadge } from './SubmissionBadge'
 import type { JSX } from 'preact'
 import type { JsonlEntryData, ContentBlock } from '../../types/jsonl'
 import { hasCliXmlTags } from './utils'
@@ -89,6 +90,7 @@ export function UserEntry({ entry }: { entry: JsonlEntryData }): JSX.Element | n
       <div class="entry-role">
         <i class="fas fa-user" style="font-size:10px" />
         {' '}User{' '}
+        <SubmissionBadge entry={entry} />
         {entry.timestamp && <JsonlTimestamp timestamp={entry.timestamp} />}
         {ctxFile && (
           <span

@@ -4,20 +4,24 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 
+// Sized for one server's ceiling of about 50 Bridge sessions. Commands run on the
+// users' machines, so a working task costs the server only its record.
+const SESSION_CEILING = 50
 export const TASK_LIMITS = {
-  active: 16,
-  activePerOwner: 4,
-  retained: 256,
-  perOwner: 64,
-  bytes: 64 * 1024 * 1024,
+  activePerOwner: 8,
+  active: SESSION_CEILING * 8,
+  retained: 2048,
+  perOwner: 256,
+  bytes: 128 * 1024 * 1024,
   resultBytes: 512 * 1024,
   inputBytes: 64 * 1024,
   ttlMs: 86_400_000,
   executionMs: 1_800_000,
+  backgroundExecutionMs: 86_340_000, // Leave cancellation grace before the 24-hour retention expires.
   // A foreground command that settles within this window answers inline, like
   // native Bash's default 2-minute timeout; only longer runs stay a task.
   foregroundGraceMs: 120_000,
-  queued: 32,
+  queued: 1024,
 }
 export interface TaskRecord {
   taskId: string
@@ -29,6 +33,9 @@ export interface TaskRecord {
   lastUpdatedAt: string
   ttlMs: number
   pollIntervalMs: number
+  executionDeadlineMs?: number
+  background?: boolean
+  command?: string
   cancelRequested?: boolean
   delivered?: boolean
   result?: Record<string, unknown>
@@ -41,13 +48,22 @@ export function taskView(task: TaskRecord): Record<string, unknown> {
     toolName: _tool,
     delivered: _delivered,
     cancelRequested: _cancel,
+    executionDeadlineMs: _deadline,
+    background: _background,
+    command: _command,
     ...view
   } = task
   return view
 }
 
+export function taskDeadline(task: TaskRecord): number {
+  return task.executionDeadlineMs ?? Date.parse(task.createdAt) + TASK_LIMITS.executionMs
+}
+
 export class McpTaskStore {
   private records = new Map<string, TaskRecord>()
+  private sizes = new Map<string, number>()
+  private bytes = 0
   private tail: Promise<unknown> = Promise.resolve()
   private queued = 0
   private loaded = false
@@ -77,6 +93,7 @@ export class McpTaskStore {
     const files = (await fs.readdir(this.directory)).filter((name) => /^[a-f0-9-]{36}\.json$/.test(name))
     if (files.length > TASK_LIMITS.retained) throw new Error('Task storage capacity exceeded')
     const loaded = new Map<string, TaskRecord>()
+    const sizes = new Map<string, number>()
     let bytes = 0
     for (const name of files) {
       const file = path.join(this.directory, name)
@@ -96,27 +113,60 @@ export class McpTaskStore {
         !Number.isFinite(task.ttlMs) ||
         task.ttlMs <= 0 ||
         task.ttlMs > TASK_LIMITS.ttlMs ||
+        (task.executionDeadlineMs !== undefined &&
+          (!Number.isFinite(task.executionDeadlineMs) ||
+            task.executionDeadlineMs > Date.parse(task.createdAt) + task.ttlMs ||
+            task.executionDeadlineMs < Date.parse(task.createdAt))) ||
         !['working', 'completed', 'failed', 'cancelled'].includes(task.status)
       )
         throw new Error('Invalid task record')
       loaded.set(task.taskId, task)
+      sizes.set(task.taskId, size)
     }
     this.records = loaded
+    this.sizes = sizes
+    this.bytes = bytes
     this.loaded = true
   }
   private async expire(): Promise<void> {
     for (const [id, task] of this.records) {
       if (this.now() < Date.parse(task.createdAt) + task.ttlMs) continue
-      await fs.unlink(path.join(this.directory, `${id}.json`))
-      this.records.delete(id)
+      await this.remove(id)
+    }
+  }
+  private async remove(id: string): Promise<void> {
+    await fs.unlink(path.join(this.directory, `${id}.json`)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error
+    })
+    this.records.delete(id)
+    this.bytes -= this.sizes.get(id) ?? 0
+    this.sizes.delete(id)
+  }
+  // Retention bounds storage, not admission: settled outcomes stay readable until
+  // room is needed, then the least recently settled ones make way for new work.
+  // Only working tasks count against admission (INC-2026-0082).
+  private async evictSettled(owner: string | undefined, incomingBytes: number, keep?: string): Promise<void> {
+    const settled = [...this.records.values()]
+      .filter((task) => task.status !== 'working' && task.taskId !== keep)
+      .sort((a, b) => Date.parse(a.lastUpdatedAt) - Date.parse(b.lastUpdatedAt))
+    let ownCount = owner === undefined ? 0 : [...this.records.values()].filter((task) => task.owner === owner).length
+    for (const task of settled) {
+      const full =
+        (owner !== undefined && this.records.size >= TASK_LIMITS.retained) ||
+        (task.owner === owner && ownCount >= TASK_LIMITS.perOwner) ||
+        this.bytes + incomingBytes > TASK_LIMITS.bytes
+      if (!full) continue
+      if (task.owner === owner) ownCount--
+      await this.remove(task.taskId)
     }
   }
   private async save(task: TaskRecord): Promise<void> {
     const text = JSON.stringify(task)
-    let bytes = Buffer.byteLength(text)
-    for (const other of this.records.values())
-      if (other.taskId !== task.taskId) bytes += Buffer.byteLength(JSON.stringify(other))
-    if (bytes > TASK_LIMITS.bytes) throw new Error('Task storage byte capacity exceeded')
+    const size = Buffer.byteLength(text)
+    const growth = size - (this.sizes.get(task.taskId) ?? 0)
+    // A settling result may need room too; only other settled outcomes make way.
+    if (this.bytes + growth > TASK_LIMITS.bytes) await this.evictSettled(undefined, growth, task.taskId)
+    if (this.bytes + growth > TASK_LIMITS.bytes) throw new Error('Task storage byte capacity exceeded')
     const file = path.join(this.directory, `${task.taskId}.json`)
     const temporary = file + '.tmp'
     try {
@@ -143,17 +193,24 @@ export class McpTaskStore {
       })
     }
     this.records.set(task.taskId, task)
+    this.bytes += growth
+    this.sizes.set(task.taskId, size)
   }
   create(owner: string, toolName: string, input: Record<string, unknown>): Promise<TaskRecord> {
     return this.run(async () => {
-      if (Buffer.byteLength(JSON.stringify(input)) > TASK_LIMITS.inputBytes) throw new Error('Task input too large')
+      const inputBytes = Buffer.byteLength(JSON.stringify(input))
+      if (inputBytes > TASK_LIMITS.inputBytes) throw new Error('Task input too large')
+      const working = [...this.records.values()].filter((task) => task.status === 'working')
+      if (
+        working.length >= TASK_LIMITS.active ||
+        working.filter((task) => task.owner === owner).length >= TASK_LIMITS.activePerOwner
+      )
+        throw new Error('Task capacity exceeded')
+      await this.evictSettled(owner, inputBytes + 2048)
       const all = [...this.records.values()]
-      const own = all.filter((task) => task.owner === owner)
       if (
         all.length >= TASK_LIMITS.retained ||
-        own.length >= TASK_LIMITS.perOwner ||
-        all.filter((task) => task.status === 'working').length >= TASK_LIMITS.active ||
-        own.filter((task) => task.status === 'working').length >= TASK_LIMITS.activePerOwner
+        all.filter((task) => task.owner === owner).length >= TASK_LIMITS.perOwner
       )
         throw new Error('Task capacity exceeded')
       const timestamp = new Date(this.now()).toISOString()
@@ -167,6 +224,10 @@ export class McpTaskStore {
         lastUpdatedAt: timestamp,
         ttlMs: TASK_LIMITS.ttlMs,
         pollIntervalMs: 2000,
+        background: input.run_in_background === true,
+        command: typeof input.command === 'string' ? input.command.slice(0, 512) : toolName,
+        executionDeadlineMs:
+          this.now() + (input.run_in_background === true ? TASK_LIMITS.backgroundExecutionMs : TASK_LIMITS.executionMs),
       }
       await this.save(task)
       return structuredClone(task)
@@ -180,10 +241,7 @@ export class McpTaskStore {
   }
   hasWorkingOwner(owner: string): boolean {
     return [...this.records.values()].some(
-      (task) =>
-        task.owner === owner &&
-        task.status === 'working' &&
-        this.now() < Date.parse(task.createdAt) + TASK_LIMITS.executionMs + 60_000,
+      (task) => task.owner === owner && task.status === 'working' && this.now() < taskDeadline(task) + 60_000,
     )
   }
   working(): Promise<TaskRecord[]> {

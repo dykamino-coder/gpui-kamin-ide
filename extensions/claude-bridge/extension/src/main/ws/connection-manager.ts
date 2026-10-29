@@ -6,6 +6,7 @@ import type { ConnectionConfig, ConnectionState, PermissionDecision } from '../.
 import type { ClientMessage, ServerMessage } from '../../shared/mcp-protocol'
 import { PermissionManager } from '../mcp/permission-manager'
 import { JsonlBatcher } from './jsonl-batcher'
+import { backgroundShellSnapshot, stopBackgroundShellForOwner } from '../mcp/tools/shell'
 import { cancelMcpCall, type PendingMcpExecution } from './mcp-call-pipeline'
 import { McpResultOutbox } from './mcp-result-outbox'
 import { TranscriptMirror } from './transcript-mirror'
@@ -15,7 +16,7 @@ import { recordConversationIdentity, type IdentityAction } from '../../incident-
 /** How much of the local copy is painted before the network answers. The chat
  *  windows ~150 rows and grows on scroll, so a couple of thousand records is
  *  already more than the first screens need. */
-const MIRROR_PAINT_RECORDS = 2000
+const MIRROR_PAINT_RECORDS = 200
 // Cap on how many cached records a reload replays into the renderer. The store
 // is windowed there (STORE_WINDOW in JsonlViewer); older pages come back from the
 // mirror on scroll-up. Kept a touch above the renderer window so the tail is
@@ -25,11 +26,7 @@ import fs from 'fs'
 import path from 'path'
 import { SessionIdleTracker } from './session-idle-tracker'
 import { handleServerMessage } from './handle-server-message'
-import {
-  handleHookExecute as runHookExecute,
-  handleMcpCall as runMcpCall,
-  type McpCallCtx,
-} from './mcp-call-pipeline'
+import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, type McpCallCtx } from './mcp-call-pipeline'
 
 export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
 
@@ -110,9 +107,8 @@ const RESUME_LOOP_ALIVE_MS = 8000
 // into every child. A local sequence orders replacement managers created inside
 // one healthy child without depending on wall-clock time.
 const parsedHostGeneration = Number.parseInt(process.env.KAMIN_EXTHOST_GENERATION ?? '0', 10)
-const CONNECTION_AUTHORITY_GENERATION = Number.isSafeInteger(parsedHostGeneration) && parsedHostGeneration >= 0
-  ? parsedHostGeneration
-  : 0
+const CONNECTION_AUTHORITY_GENERATION =
+  Number.isSafeInteger(parsedHostGeneration) && parsedHostGeneration >= 0 ? parsedHostGeneration : 0
 let lastConnectionAuthoritySequence = 0
 
 export class ConnectionManager {
@@ -132,7 +128,13 @@ export class ConnectionManager {
   // Optional callback when session is authenticated — used to send external tool schemas
   static onAuthenticated: ((connection: ConnectionManager) => void) | null = null
   // Optional callback to get external MCP tool schemas for session:create
-  static getExternalToolSchemas: (() => Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>) | null = null
+  static getExternalToolSchemas:
+    | (() => Array<{
+        name: string
+        description: string
+        inputSchema: Record<string, unknown>
+      }>)
+    | null = null
   // The user's standing instructions for the current token. Read at session
   // start (create AND resume — a resume respawns the CLI, so it must carry them
   // too) and APPENDED server-side to the technical system prompt. A hook rather
@@ -151,7 +153,8 @@ export class ConnectionManager {
   static whenExternalToolsReady: (() => Promise<void>) | null = null
   // Notification hooks — fired so main/index.ts can spawn background-toast
   // mini-windows when the user is not looking at the main window.
-  static onElicitationRequest: ((tabId: string, payload: { requestId: string; toolName: string; message: string }) => void) | null = null
+  static onElicitationRequest:
+    ((tabId: string, payload: { requestId: string; toolName: string; message: string }) => void) | null = null
   static onElicitationResolved: ((tabId: string, requestId: string) => void) | null = null
   static onSessionIdle: ((tabId: string, title: string) => void) | null = null
   // VSIX: per-tab connection status + working state → mirrored onto the owning
@@ -228,8 +231,9 @@ export class ConnectionManager {
   private readonly recentMcpCalls = new Map<string, number>()
   private mcpSessionId: string | null = null
   private mcpTaskOwner: string | undefined
-  private readonly mcpResults = new McpResultOutbox(frame => {
-    if (this.ws?.readyState !== WebSocket.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024) return false
+  private readonly mcpResults = new McpResultOutbox((frame) => {
+    if (this.ws?.readyState !== WebSocket.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024)
+      return false
     this.ws.send(frame)
     return true
   })
@@ -255,7 +259,10 @@ export class ConnectionManager {
   // Held so an on-demand `loadBoundaries` re-request answers instantly; nulled on
   // compaction. Replaces the old mirror-computed index, which was blind to
   // out-of-window segments and inflated by resume-duplicated records.
-  private lastSegmentIndex: { boundaries: { ts: string }[]; counts: number[] } | null = null
+  private lastSegmentIndex: {
+    boundaries: { ts: string }[]
+    counts: number[]
+  } | null = null
   // The latest in-flight streaming assistant entry (proxy stub). JSONL replay
   // only recovers CANONICAL entries; a turn still generating has no canonical
   // yet, so a webview reload mid-turn (startup re-resolve, reconnect, settings
@@ -278,7 +285,8 @@ export class ConnectionManager {
   lastEffort: string | null = null
   private conversationId: string | null = null
   private settingsDir: string | null = null
-  private _downloadResolve: ((result: { content: string | null; fileName: string | null; error?: string }) => void) | null = null
+  private _downloadResolve:
+    ((result: { content: string | null; fileName: string | null; error?: string }) => void) | null = null
   private _downloadTimeout: NodeJS.Timeout | null = null
   /** Chunks of an in-flight transcript download, joined once at the end. */
   private _downloadParts: string[] | null = null
@@ -313,26 +321,50 @@ export class ConnectionManager {
     this.batcher.setMuted(muted)
   }
 
-  getLastModel(): string | null { return this.lastModel }
-  getTabId(): string { return this.tabId }
-  getSettingsDir(): string | null { return this.settingsDir }
-  setPermissionMode(mode: PermissionMode): void { this.permissionMode = mode }
-  getSessionId(): string | undefined { return this.state.sessionId }
+  getLastModel(): string | null {
+    return this.lastModel
+  }
+  getTabId(): string {
+    return this.tabId
+  }
+  getSettingsDir(): string | null {
+    return this.settingsDir
+  }
+  setPermissionMode(mode: PermissionMode): void {
+    this.permissionMode = mode
+  }
+  getSessionId(): string | undefined {
+    return this.state.sessionId
+  }
 
   /** The CLI conversation id — also the JSONL's basename on the server, so a
    *  download can name its file WITHOUT first fetching the transcript. */
-  getConversationId(): string | null { return this.conversationId }
+  getConversationId(): string | null {
+    return this.conversationId
+  }
 
   /** True while the server runs a fresh conversation the tab has not adopted. */
-  isIdentityHeld(): boolean { return this.identityHold !== null }
+  isIdentityHeld(): boolean {
+    return this.identityHold !== null
+  }
 
   private logIdentity(
     action: IdentityAction,
-    extra: { next?: string | null; reason?: Parameters<typeof recordConversationIdentity>[1]['reason']; count?: number } = {},
+    extra: {
+      next?: string | null
+      reason?: Parameters<typeof recordConversationIdentity>[1]['reason']
+      count?: number
+    } = {},
   ): void {
     try {
-      recordConversationIdentity(this.tabId, { action, stored: this.conversationId, ...extra })
-    } catch { /* diagnostics never affect the session */ }
+      recordConversationIdentity(this.tabId, {
+        action,
+        stored: this.conversationId,
+        ...extra,
+      })
+    } catch {
+      /* diagnostics never affect the session */
+    }
   }
 
   /**
@@ -363,7 +395,10 @@ export class ConnectionManager {
       this.ws = new WebSocket(wsUrl)
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      this.setState({ status: 'error', error: `Failed to create WebSocket: ${errMsg}` })
+      this.setState({
+        status: 'error',
+        error: `Failed to create WebSocket: ${errMsg}`,
+      })
       this.scheduleReconnect()
       return
     }
@@ -391,9 +426,17 @@ export class ConnectionManager {
       // at most once per debounce window so a flapping link can't storm re-subs.
       // A suppressed resync is safe: the socket is back and streaming resumes;
       // the last resync already re-established the subs.
-      if (isReconnect && sinceLastOpen > RECONNECT_RELOAD_GRACE_MS && now - this.lastReloadAt > RECONNECT_RELOAD_DEBOUNCE_MS) {
+      if (
+        isReconnect &&
+        sinceLastOpen > RECONNECT_RELOAD_GRACE_MS &&
+        now - this.lastReloadAt > RECONNECT_RELOAD_DEBOUNCE_MS
+      ) {
         this.lastReloadAt = now
-        try { this.window.webContents.send('bridge:reconnected') } catch { /* window gone */ }
+        try {
+          this.window.webContents.send('bridge:reconnected')
+        } catch {
+          /* window gone */
+        }
       }
       // Defer session:create/resume until the external MCP servers have settled
       // so the CLI's initial tool set is complete (see whenExternalToolsReady).
@@ -416,8 +459,12 @@ export class ConnectionManager {
       }
     })
 
-    this.ws.on('pong', () => { this.lastHeartbeatAt = Date.now() })
-    this.ws.on('ping', () => { this.lastHeartbeatAt = Date.now() })
+    this.ws.on('pong', () => {
+      this.lastHeartbeatAt = Date.now()
+    })
+    this.ws.on('ping', () => {
+      this.lastHeartbeatAt = Date.now()
+    })
 
     this.ws.on('close', (code, reason) => {
       this.stopHeartbeat()
@@ -450,6 +497,7 @@ export class ConnectionManager {
    *  deferred-tools churn). Bounded wait — instant on warm start / reconnect. */
   private async startSession(sock: WebSocket): Promise<void> {
     try { await ConnectionManager.whenExternalToolsReady?.() } catch { /* proceed with whatever connected */ }
+    const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null
     // A reconnect may have swapped the socket while we waited — never write to a
     // stale or closed pipe (the current socket runs its own startSession).
     if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
@@ -473,6 +521,7 @@ export class ConnectionManager {
         cols: 120,
         rows: 40,
         protocolVersion: CLIENT_STREAM_PROTOCOL,
+        history: { mode: 'paged', ...(cursor ? { cursor } : {}) },
         ...(basePrompt ? { basePrompt } : {}),
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
@@ -485,6 +534,7 @@ export class ConnectionManager {
         cols: 120,
         rows: 40,
         protocolVersion: CLIENT_STREAM_PROTOCOL,
+        history: { mode: 'paged' },
         ...(basePrompt ? { basePrompt } : {}),
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
@@ -507,12 +557,19 @@ export class ConnectionManager {
       if (this.conversationId && this.establishFailures >= MAX_RESUME_FAILURES_BEFORE_FRESH) {
         this.offerIdentityChoice('establish')
       }
-      try { this.ws?.terminate() } catch { /* already gone */ }
+      try {
+        this.ws?.terminate()
+      } catch {
+        /* already gone */
+      }
     }, SESSION_ESTABLISH_TIMEOUT_MS)
   }
 
   private clearEstablishTimer(): void {
-    if (this.establishTimer) { clearTimeout(this.establishTimer); this.establishTimer = null }
+    if (this.establishTimer) {
+      clearTimeout(this.establishTimer)
+      this.establishTimer = null
+    }
   }
 
   /** session:created arrived — mark the moment so a fast following session:exit is
@@ -560,7 +617,12 @@ export class ConnectionManager {
     this.clearEstablishTimer()
     this.cancelReconnect()
     this.resumeParked = true
-    this.setState({ status: 'error', resumeNotFound: true, error: 'This conversation was not found on the Bridge server. Choose Retry or Start new conversation to continue.' })
+    this.setState({
+      status: 'error',
+      resumeNotFound: true,
+      error:
+        'This conversation was not found on the Bridge server. Choose Retry or Start new conversation to continue.',
+    })
   }
 
   /** A session:created that resumed (or freshly created) as requested. */
@@ -571,7 +633,10 @@ export class ConnectionManager {
       this.mirror = null
       this.mirrorHead = null
       ConnectionManager.onConversationId?.(this.tabId, null)
-      this.window.webContents.send('jsonl-status', this.tabId, { status: 'searching', compacted: true })
+      this.window.webContents.send('jsonl-status', this.tabId, {
+        status: 'searching',
+        compacted: true,
+      })
       this.window.webContents.send('bridge:console-reset', this.tabId)
       this.pendingNewConversation = false
     }
@@ -590,11 +655,18 @@ export class ConnectionManager {
     if (this.identityHold) {
       this.identityHold.pendingId = id
       this.logIdentity('hold', { next: id, reason: 'not-found' })
-      try { ConnectionManager.onDetachedConversation?.(this.tabId, id) } catch { /* history only */ }
+      try {
+        ConnectionManager.onDetachedConversation?.(this.tabId, id)
+      } catch {
+        /* history only */
+      }
       return false
     }
     const previous = this.conversationId
-    this.logIdentity('adopt', { next: id, reason: !previous ? 'discovered' : previous === id ? 'confirmed' : 'changed' })
+    this.logIdentity('adopt', {
+      next: id,
+      reason: !previous ? 'discovered' : previous === id ? 'confirmed' : 'changed',
+    })
     // A DIFFERENT conversation (compact chain, explicit new conversation) must
     // not keep writing into the OLD conversation's mirror file — that corrupted
     // A.jsonl with B's transcript and left B with no mirror at all.
@@ -616,16 +688,26 @@ export class ConnectionManager {
     this.logIdentity('notice', { reason })
     const NEW = 'Start new conversation'
     const RETRY = 'Retry'
-    const message = reason === 'rapid-exit'
+    const message =
+      reason === 'rapid-exit'
         ? 'Resuming this conversation keeps failing. The tab stays linked to it; reconnect is paused until you choose.'
         : 'Still trying to resume this conversation after a server restart. The tab stays linked to it.'
     const items = reason === 'establish' ? [NEW] : [NEW, RETRY]
     let shown: Thenable<string | undefined> | undefined
-    try { shown = vscode.window.showWarningMessage(message, ...items) } catch { shown = undefined }
-    void Promise.resolve(shown).then((choice) => {
-      if (choice === NEW) this.chooseNewConversation()
-      else if (choice === RETRY) this.retryStoredConversation()
-    }, () => { /* notice dismissed */ })
+    try {
+      shown = vscode.window.showWarningMessage(message, ...items)
+    } catch {
+      shown = undefined
+    }
+    void Promise.resolve(shown).then(
+      (choice) => {
+        if (choice === NEW) this.chooseNewConversation()
+        else if (choice === RETRY) this.retryStoredConversation()
+      },
+      () => {
+        /* notice dismissed */
+      },
+    )
   }
 
   /** Explicit user choice: bind this tab to a new conversation. */
@@ -660,7 +742,11 @@ export class ConnectionManager {
     this.cancelReconnect()
     if (this.ws) {
       // close → scheduleReconnect → startSession with the current identity.
-      try { this.ws.terminate() } catch { /* already gone */ }
+      try {
+        this.ws.terminate()
+      } catch {
+        /* already gone */
+      }
       return
     }
     this.connect()
@@ -678,7 +764,10 @@ export class ConnectionManager {
   }
 
   private clearStabilityTimer(): void {
-    if (this.stabilityTimer) { clearTimeout(this.stabilityTimer); this.stabilityTimer = null }
+    if (this.stabilityTimer) {
+      clearTimeout(this.stabilityTimer)
+      this.stabilityTimer = null
+    }
   }
 
   private startHeartbeat(): void {
@@ -691,13 +780,21 @@ export class ConnectionManager {
         // Two server-side ping cycles missed — socket is dead. Pull the plug
         // ourselves so 'close' fires and the existing reconnect logic kicks
         // in (otherwise we'd sit in OPEN-state purgatory).
-        try { this.ws.terminate() } catch { /* ignore */ }
+        try {
+          this.ws.terminate()
+        } catch {
+          /* ignore */
+        }
         return
       }
       // Spontaneous ping from the client side too — server may have suspended
       // its ping timer (idle path) but the OS still routes pings/pongs that
       // prove liveness. Cheap insurance.
-      try { this.ws.ping() } catch { /* ignore */ }
+      try {
+        this.ws.ping()
+      } catch {
+        /* ignore */
+      }
     }, 15_000)
   }
 
@@ -726,7 +823,11 @@ export class ConnectionManager {
 
     if (this.ws) {
       if (opts.endSession && this.ws.readyState === WebSocket.OPEN) {
-        try { this.ws.send(JSON.stringify({ type: 'session:end' })) } catch { /* closing anyway */ }
+        try {
+          this.ws.send(JSON.stringify({ type: 'session:end' }))
+        } catch {
+          /* closing anyway */
+        }
       }
       // Remove listeners to avoid triggering reconnect on close
       this.ws.removeAllListeners()
@@ -734,7 +835,9 @@ export class ConnectionManager {
       // before the connection was established»); после removeAllListeners его
       // некому ловить — uncaughtException и тост «Extension crashed» на
       // старте приложения (гонка тёплого пула). Глушим осознанно.
-      this.ws.on('error', () => { /* teardown: сокет и так закрываем */ })
+      this.ws.on('error', () => {
+        /* teardown: сокет и так закрываем */
+      })
       if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
         this.ws.close()
       }
@@ -767,7 +870,11 @@ export class ConnectionManager {
     // висит на await навсегда (утечка замыкания; сервер отваливается по
     // своему таймауту без ответа).
     for (const resolve of this.pendingPermissions.values()) {
-      try { resolve('deny') } catch { /* ignore */ }
+      try {
+        resolve('deny')
+      } catch {
+        /* ignore */
+      }
     }
     this.pendingPermissions.clear()
     // reconnectAttempt здесь НЕ сбрасывается: connect() при живом сокете
@@ -792,18 +899,32 @@ export class ConnectionManager {
   }
 
   /** Returns internal extended state (includes 'authenticated'). */
-  getExtendedState(): ExtendedConnectionState { return { ...this.state } }
+  getExtendedState(): ExtendedConnectionState {
+    return { ...this.state }
+  }
 
-  sendInput(data: string): void { this.send({ type: 'session:input', data }) }
+  sendInput(data: string): void {
+    this.send({ type: 'session:input', data })
+  }
   /** Stop: abort the in-flight upstream stream on the server AND SIGINT the CLI. */
-  interruptSession(): void { this.send({ type: 'session:interrupt' }) }
+  interruptSession(): void {
+    this.send({ type: 'session:interrupt' })
+  }
 
   /** Submit a full user message — server wraps it in bracketed paste and
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
    *  paste+retry dance. */
-  submitText(text: string): void { this.send({ type: 'session:submitText', data: text }) }
+  submitText(text: string, submissionId?: string): void {
+    this.send({ type: 'session:submitText', data: text, submissionId })
+  }
 
-  resize(cols: number, rows: number): void { this.send({ type: 'session:resize', cols, rows }) }
+  submissionAction(id: string, action: 'cancel' | 'push' | 'interrupt'): void {
+    this.send({ type: 'session:submission-action', id, action })
+  }
+
+  resize(cols: number, rows: number): void {
+    this.send({ type: 'session:resize', cols, rows })
+  }
 
   /** Respond to a permission request from the renderer. */
   respondPermission(requestId: string, decision: PermissionDecision): void {
@@ -832,16 +953,26 @@ export class ConnectionManager {
   }
 
   private reportMcpDeliveryFailure(): void {
-    void vscode.window.showWarningMessage('Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.')
+    void vscode.window.showWarningMessage(
+      'Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.',
+    )
   }
 
-  private async deliverMcpResult(outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>): Promise<void> {
+  private async deliverMcpResult(
+    outcome: Extract<ClientMessage, { type: 'mcp:response' | 'mcp:denied' }>,
+  ): Promise<void> {
     if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return
     try {
-      outcome = await this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner })
+      outcome = await this.mcpResults.deliver(this.mcpSessionId, {
+        ...outcome,
+        taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner,
+      })
       if (!this.pendingMcpCalls.has(outcome.requestId)) return
       this.window.webContents.send('mcp-activity', this.tabId, {
-        requestId: outcome.requestId, toolName: '', input: {}, timestamp: Date.now(),
+        requestId: outcome.requestId,
+        toolName: '',
+        input: {},
+        timestamp: Date.now(),
         status: outcome.type === 'mcp:denied' ? 'denied' : 'completed',
         result: outcome.type === 'mcp:response' ? outcome.result : outcome.reason,
       })
@@ -849,10 +980,16 @@ export class ConnectionManager {
       if (!this.pendingMcpCalls.has(outcome.requestId)) return
       this.reportMcpDeliveryFailure()
       this.window.webContents.send('mcp-activity', this.tabId, {
-        requestId: outcome.requestId, toolName: '', input: {}, timestamp: Date.now(),
-        status: 'denied', result: `Delivery failed: ${String(error)}`,
+        requestId: outcome.requestId,
+        toolName: '',
+        input: {},
+        timestamp: Date.now(),
+        status: 'denied',
+        result: `Delivery failed: ${String(error)}`,
       })
-    } finally { this.pendingMcpCalls.delete(outcome.requestId) }
+    } finally {
+      this.pendingMcpCalls.delete(outcome.requestId)
+    }
   }
 
   /** Replay all cached JSONL entries/status/subagent data to the renderer.
@@ -868,7 +1005,10 @@ export class ConnectionManager {
    *  unreadable, or belongs to a file the server has since rewritten — every
    *  one of which falls back to the network path unchanged. */
   async replayFromMirror(maxRecords = MIRROR_PAINT_RECORDS): Promise<number> {
+    if (this.cachedJsonlEntries.length > 0) return 0 // memory is newer than the disk snapshot
+    const conversationId = this.conversationId
     const records = await this.readMirrorTail(maxRecords)
+    if (conversationId !== this.conversationId || this.cachedJsonlEntries.length > 0) return 0
     if (records.length === 0) return 0
     // Straight to the renderer, not through the batcher: these are already
     // ordered and bounded, and the point is to be on screen immediately.
@@ -877,6 +1017,7 @@ export class ConnectionManager {
   }
 
   replayJsonlToRenderer(): void {
+    this.requestedSegment = null
     // Flush any in-flight IPC batches FIRST. Otherwise the renderer sees the
     // stale cache first and a 50ms-later batch with overlapping entries
     // second, which confuses dedup + scroll-pinning.
@@ -889,7 +1030,10 @@ export class ConnectionManager {
     // in the sidebar. The cached replayComplete is re-sent at the end, so
     // the renderer transitions back to live after all replay entries are
     // parsed.
-    this.window.webContents.send('jsonl-status', this.tabId, { status: 'watching', replayComplete: false })
+    this.window.webContents.send('jsonl-status', this.tabId, {
+      status: 'watching',
+      replayComplete: false,
+    })
 
     // Everything after the entries must run as the drain's CONTINUATION, not on
     // the next line: the transcript now leaves in bounded, yielding chunks, so a
@@ -898,7 +1042,13 @@ export class ConnectionManager {
     const tail = (): void => {
       for (const [cacheKey, slot] of this.cachedSubagentEntries) {
         if (slot.entries.length > 0) {
-          this.window.webContents.send('jsonl-subagent-entries', this.tabId, slot.agentName, slot.entries, slot.agentId ?? cacheKey)
+          this.window.webContents.send(
+            'jsonl-subagent-entries',
+            this.tabId,
+            slot.agentName,
+            slot.entries,
+            slot.agentId ?? cacheKey,
+          )
         }
       }
       // Replay actual cached status LAST so replayComplete transition happens
@@ -952,7 +1102,7 @@ export class ConnectionManager {
     // is the server's file-order counter, so the largest `_ord`s are the newest.
     let toReplay = this.cachedJsonlEntries
     if (toReplay.length > REPLAY_TAIL_MAX) {
-      const ord = (e: unknown): number => (e as { _ord?: number })._ord ?? 0
+      const ord = (e: { _pos?: number; _ord?: number }): number => e._pos ?? e._ord ?? 0
       toReplay = [...toReplay].sort((a, b) => ord(a) - ord(b)).slice(-REPLAY_TAIL_MAX)
     }
     if (toReplay.length > 0) this.batcher.drainMainThen([...toReplay], tail)
@@ -973,7 +1123,11 @@ export class ConnectionManager {
       if (!Array.isArray(content)) continue
       if (e.type === 'assistant') {
         let hit = false
-        for (const b of content as Array<{ type?: string; id?: string; name?: unknown }>) {
+        for (const b of content as Array<{
+          type?: string
+          id?: string
+          name?: unknown
+        }>) {
           if (b?.type === 'tool_use' && typeof b.name === 'string' && strip(b.name) === toolName) {
             if (b.id) useIds.add(b.id)
             hit = true
@@ -981,7 +1135,10 @@ export class ConnectionManager {
         }
         if (hit) out.push(raw)
       } else if (e.type === 'user') {
-        for (const b of content as Array<{ type?: string; tool_use_id?: string }>) {
+        for (const b of content as Array<{
+          type?: string
+          tool_use_id?: string
+        }>) {
           if (b?.type === 'tool_result' && b.tool_use_id && useIds.has(b.tool_use_id)) {
             out.push(raw)
             break
@@ -993,16 +1150,24 @@ export class ConnectionManager {
   }
 
   /** Send an elicitation response back to the server. */
-  respondElicitation(requestId: string, action: 'accept' | 'deny' | 'dismiss', content?: Record<string, unknown>): void {
+  respondElicitation(
+    requestId: string,
+    action: 'accept' | 'deny' | 'dismiss',
+    content?: Record<string, unknown>,
+  ): void {
     this.send({ type: 'elicitation:response', requestId, action, content })
     ConnectionManager.onElicitationResolved?.(this.tabId, requestId)
   }
 
   /** Request effort level change (triggers PTY restart on server). */
-  changeEffort(effort: string): void { this.send({ type: 'session:change-effort', effort }) }
+  changeEffort(effort: string): void {
+    this.send({ type: 'session:change-effort', effort })
+  }
 
   /** Request model change (triggers PTY restart on server). */
-  changeModel(model: string): void { this.send({ type: 'session:change-model', model }) }
+  changeModel(model: string): void {
+    this.send({ type: 'session:change-model', model })
+  }
 
   /** Resume a previous session by conversationId. */
   resume(conversationId: string): void {
@@ -1015,6 +1180,7 @@ export class ConnectionManager {
       cols: 120,
       rows: 40,
       protocolVersion: CLIENT_STREAM_PROTOCOL,
+      history: { mode: 'paged' },
     })
   }
 
@@ -1038,16 +1204,17 @@ export class ConnectionManager {
 
   /** What our local copy can prove it holds — the resume point handed to the
    *  server. `null` means "send me everything". */
-  async getMirrorCursor(): Promise<{ head: string; pos: number } | null> {
+  async getMirrorCursor(): Promise<{ head: string; pos: number; lastPos?: number; lastUuid?: string } | null> {
     this.ensureMirror()
     const cursor = await this.mirror?.readCursor()
-    return cursor ? { head: cursor.head, pos: cursor.pos } : null
+    return cursor ?? null
   }
 
   /** The tail of the local copy, for painting the chat before the network
    *  answers at all. */
   async readMirrorTail(maxRecords: number): Promise<unknown[]> {
     this.ensureMirror()
+    if (!(await this.mirror?.readCursor())) return []
     return (await this.mirror?.readTail(maxRecords)) ?? []
   }
 
@@ -1055,13 +1222,15 @@ export class ConnectionManager {
    *  held byte offset) so a windowed chat can grow upward on scroll. Delivered on
    *  a DEDICATED channel — the renderer prepends them as-is (they are already in
    *  file order and entirely older than the window), never re-sorting the store.
-   *  Mirror-backed: it is populated as batches arrive + at replay-complete, so a
-   *  session long enough to need windowing has it. An empty result (start of file
-   *  reached, or no mirror) simply tells the renderer there is nothing more. */
+   *  The server owns byte positions; the disk mirror is a fallback while offline. */
   async loadOlderPage(beforePos: number, count: number): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.sendRaw({ type: 'jsonl:segment-request', ...(this.requestedSegment ?? { fromTs: '', toTs: '' }), beforePos, paged: true })
+      return
+    }
     this.ensureMirror()
     const records = (await this.mirror?.readRange(beforePos, count)) ?? []
-    this.window.webContents.send('jsonl:older-page', this.tabId, { beforePos, records })
+    this.window.webContents.send('jsonl:older-page', this.tabId, { beforePos, records, ...(this.requestedSegment ?? {}) })
   }
 
   /** The FULL compact-segment index — every segment with visible-message counts,
@@ -1074,18 +1243,34 @@ export class ConnectionManager {
     this.window.webContents.send('jsonl:boundaries-result', this.tabId, index)
   }
 
-  /** One archived compact segment loaded whole by TIMESTAMP range — the renderer
+  /** The newest page of an archived compact segment, identified by its boundaries — the renderer
    *  replaces its window with it (the "view an old conversation" path). Served by
    *  the SERVER from the authoritative file (the local mirror is a bounded tail
    *  and may not hold an old range); the response arrives on `jsonl:segment-response`
    *  and is forwarded to the renderer. Empty fromTs = from the start; empty
    *  toTs = to the newest. */
+  private requestedSegment: { fromTs: string; toTs: string } | null = null
+
   loadSegment(fromTs: string, toTs: string): void {
-    this.sendRaw({ type: 'jsonl:segment-request', fromTs, toTs })
+    this.requestedSegment = { fromTs, toTs }
+    this.sendRaw({ type: 'jsonl:segment-request', fromTs, toTs, paged: true })
   }
 
-  requestJsonlDownload(agentId?: string): Promise<{ content: string | null; fileName: string | null; error?: string }> {
-    if (this._downloadResolve) return Promise.resolve({ content: null, fileName: null, error: 'Another transcript download is already in progress' })
+  selectSubagent(agentId: string | null): void {
+    this.sendRaw({ type: 'jsonl:subagent-select', agentId })
+  }
+
+  requestJsonlDownload(agentId?: string): Promise<{
+    content: string | null
+    fileName: string | null
+    error?: string
+  }> {
+    if (this._downloadResolve)
+      return Promise.resolve({
+        content: null,
+        fileName: null,
+        error: 'Another transcript download is already in progress',
+      })
     return new Promise((resolve) => {
       this._downloadResolve = resolve
       this.sendRaw({ type: 'jsonl:download-request', agentId })
@@ -1100,7 +1285,11 @@ export class ConnectionManager {
       this._downloadTimeout = setTimeout(() => {
         this._downloadTimeout = null
         if (this._downloadResolve) {
-          this._downloadResolve({ content: null, fileName: null, error: 'No response from the server (30s) — the session may have no active JSONL watcher' })
+          this._downloadResolve({
+            content: null,
+            fileName: null,
+            error: 'No response from the server (30s) — the session may have no active JSONL watcher',
+          })
           this._downloadResolve = null
         }
       }, DOWNLOAD_TIMEOUT_MS)
@@ -1108,6 +1297,15 @@ export class ConnectionManager {
   }
 
   // ─── Private ────────────────────────────────────────────
+
+  commandAction(action: 'list' | 'stop' | 'output', id = ''): void {
+    if (action === 'list') this.send({ type: 'commands:list' })
+    else
+      this.send({
+        type: action === 'stop' ? 'commands:stop' : 'commands:output',
+        id,
+      })
+  }
 
   private dispatchMessage(msg: ServerMessage): void {
     if (msg.type === 'session:resume-not-found' || (msg.type === 'session:created' && msg.resumeNotFound)) {
@@ -1122,6 +1320,31 @@ export class ConnectionManager {
     if (this.identityHold && msg.type !== 'session:created' && msg.type !== 'session:error') return
 
     if (msg.type === 'session:created' || msg.type === 'session:restarted') this.mcpTaskOwner = msg.mcpTaskOwner
+    if (msg.type === 'commands:request') {
+      this.send({
+        type: 'commands:report',
+        report: {
+          calls: [...this.pendingMcpCalls]
+            .filter(([, call]) => !call.taskOwner || call.taskOwner === this.mcpTaskOwner)
+            .slice(0, 128)
+            .map(([id, call]) => ({ id, output: call.output ?? '' })),
+          shells: backgroundShellSnapshot(this.tabId, this.mcpTaskOwner),
+        },
+      })
+      return
+    }
+    if (msg.type === 'commands:stop-shell') {
+      if (msg.owner === this.mcpTaskOwner) void stopBackgroundShellForOwner(this.tabId, this.mcpTaskOwner, msg.id)
+      return
+    }
+    if (msg.type === 'commands:snapshot' || msg.type === 'commands:output') {
+      this.window.webContents.send(
+        msg.type,
+        this.tabId,
+        msg.type === 'commands:snapshot' ? msg.snapshot : { id: msg.id, output: msg.output },
+      )
+      return
+    }
     if (msg.type === 'mcp:cancel') {
       cancelMcpCall(this.mcpCallCtx(), msg.requestId, msg.taskOwner)
       return
@@ -1147,14 +1370,26 @@ export class ConnectionManager {
       batcher: this.batcher,
       setState: (s) => this.setState(s),
       terminateSessionWithError: (error) => this.terminateSessionWithError(error),
-      setLastModel: (m) => { this.lastModel = m },
-      setSettingsDir: (d) => { this.settingsDir = d },
+      setLastModel: (m) => {
+        this.lastModel = m
+      },
+      setSettingsDir: (d) => {
+        this.settingsDir = d
+      },
       setConversationId: (id) => this.adoptConversationId(id),
       scheduleReconnect: () => this.scheduleReconnect(),
-      resetReconnectAttempt: () => { this.armStabilityReset() },
-      noteSessionCreated: () => { this.noteSessionCreated() },
-      noteSessionExit: () => { this.noteSessionExit() },
-      noteIdentityConfirmed: () => { this.noteIdentityConfirmed() },
+      resetReconnectAttempt: () => {
+        this.armStabilityReset()
+      },
+      noteSessionCreated: () => {
+        this.noteSessionCreated()
+      },
+      noteSessionExit: () => {
+        this.noteSessionExit()
+      },
+      noteIdentityConfirmed: () => {
+        this.noteIdentityConfirmed()
+      },
       clearJsonlCache: () => {
         this.cachedJsonlEntries = []
         this.cachedSubagentEntries.clear()
@@ -1174,7 +1409,14 @@ export class ConnectionManager {
         // lived-from-start session: its first replay-complete has an empty cache,
         // so this no-ops and live appends build the mirror as before.
         if (this.cachedJsonlEntries.length > 0) {
-          void this.mirror?.rewriteInOrder(this.cachedJsonlEntries as { _pos?: number; _posEnd?: number; uuid?: string }[], head)
+          void this.mirror?.rewriteInOrder(
+            this.cachedJsonlEntries as {
+              _pos?: number
+              _posEnd?: number
+              uuid?: string
+            }[],
+            head,
+          )
         }
       },
       resetTranscriptMirror: () => {
@@ -1193,11 +1435,17 @@ export class ConnectionManager {
       },
       beginDownload: (total) => {
         this._downloadParts = []
-        this.window.webContents.send('jsonl:download-progress', this.tabId, { received: 0, total })
+        this.window.webContents.send('jsonl:download-progress', this.tabId, {
+          received: 0,
+          total,
+        })
       },
       appendDownloadChunk: (chunk, sent, total) => {
         this._downloadParts?.push(chunk)
-        this.window.webContents.send('jsonl:download-progress', this.tabId, { received: sent, total })
+        this.window.webContents.send('jsonl:download-progress', this.tabId, {
+          received: sent,
+          total,
+        })
       },
       endDownload: (fileName) => {
         if (this._downloadTimeout) {
@@ -1215,7 +1463,18 @@ export class ConnectionManager {
         }
       },
       pushJsonlCache: (entries, replay) => {
-        this.cachedJsonlEntries.push(...entries)
+        const known = new Set(this.cachedJsonlEntries.map((entry) => {
+          const row = entry as { _pos?: number; uuid?: string }
+          return row._pos ?? row.uuid
+        }))
+        this.cachedJsonlEntries.push(...entries.filter((entry) => {
+          const row = entry as { _pos?: number; uuid?: string }
+          const key = row._pos ?? row.uuid
+          if (key === undefined) return true
+          if (known.has(key)) return false
+          known.add(key)
+          return true
+        }))
         // Persist as they arrive. Never a bulk dump: an append-only mirror can
         // be resumed after a crash, and writing the whole transcript at once is
         // exactly the stall this is meant to remove.
@@ -1227,12 +1486,19 @@ export class ConnectionManager {
         // фильтром «_pos >= cursor» (прод: «моё сообщение не отрисовалось»,
         // дыра строк 7092-7116). Историю зеркалу отдаёт rewriteInOrder на
         // replayComplete — целиком и в порядке файла.
-        if (!replay && this.mirrorHead) void this.mirror?.append(entries as { _pos?: number; uuid?: string }[], this.mirrorHead)
+        if (!replay && this.mirrorHead)
+          void this.mirror?.append(entries as { _pos?: number; uuid?: string }[], this.mirrorHead)
       },
       getCachedJsonl: () => this.cachedJsonlEntries,
-      setCachedStreamingEntry: (e) => { this.cachedStreamingEntry = e },
+      setCachedStreamingEntry: (e) => {
+        this.cachedStreamingEntry = e
+      },
       pushSubagentCache: (key, agentName, agentId, entries) => {
-        const slot = this.cachedSubagentEntries.get(key) ?? { agentName, agentId, entries: [] }
+        const slot = this.cachedSubagentEntries.get(key) ?? {
+          agentName,
+          agentId,
+          entries: [],
+        }
         slot.entries.push(...entries)
         // Крышка на слот (аналог trimJsonlCache для основного кэша): реплей
         // повторяется на каждый resync, а чистка была ТОЛЬКО на реконнекте
@@ -1243,9 +1509,13 @@ export class ConnectionManager {
         }
         this.cachedSubagentEntries.set(key, slot)
       },
-      setCachedJsonlStatus: (s) => { this.cachedJsonlStatus = s },
+      setCachedJsonlStatus: (s) => {
+        this.cachedJsonlStatus = s
+      },
       isRendererMuted: () => this.rendererMuted,
-      setSegmentIndex: (index) => { this.lastSegmentIndex = index },
+      setSegmentIndex: (index) => {
+        this.lastSegmentIndex = index
+      },
       isIntentionallyDisconnected: () => this.intentionalDisconnect,
       notifyAuthenticated: () => ConnectionManager.onAuthenticated?.(this),
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),
@@ -1262,11 +1532,16 @@ export class ConnectionManager {
         ConnectionManager.lastTree = tree
         this.window.webContents.send('tree-update', tree)
       },
-      trackActivityForIdle: (rawTitle, isWorking, hookDriven) => this.idleTracker.track(rawTitle, isWorking, hookDriven),
+      trackActivityForIdle: (rawTitle, isWorking, hookDriven) =>
+        this.idleTracker.track(rawTitle, isWorking, hookDriven),
       noteReplayCompleteForIdle: () => this.idleTracker.noteReplayComplete(),
       notifyActivity: (working, hookDriven) => ConnectionManager.onActivity?.(this.tabId, working, hookDriven),
-      handleMcpCall: (m) => { void runMcpCall(this.mcpCallCtx(), m) },
-      handleHookExecute: (m) => { void runHookExecute(this.mcpCallCtx(), m) },
+      handleMcpCall: (m) => {
+        void runMcpCall(this.mcpCallCtx(), m)
+      },
+      handleHookExecute: (m) => {
+        void runHookExecute(this.mcpCallCtx(), m)
+      },
     })
   }
 
@@ -1274,13 +1549,19 @@ export class ConnectionManager {
    *  pipeline helpers need to peek at. */
   private mcpCallCtx(): McpCallCtx {
     return {
+      workingDirectory: () => this.config.cwd,
+      commandOwner: () => this.mcpTaskOwner,
       window: this.window,
       tabId: this.tabId,
       send: (m) => this.send(m),
       reportDeliveryFailure: () => this.reportMcpDeliveryFailure(),
-      deliverResult: (outcome) => this.mcpSessionId
-        ? this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner })
-        : Promise.reject(new Error('MCP server session ended')),
+      deliverResult: (outcome) =>
+        this.mcpSessionId
+          ? this.mcpResults.deliver(this.mcpSessionId, {
+              ...outcome,
+              taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner,
+            })
+          : Promise.reject(new Error('MCP server session ended')),
       pendingMcpCalls: this.pendingMcpCalls,
       pendingPermissions: this.pendingPermissions,
       permissionMode: () => this.permissionMode,
@@ -1313,7 +1594,8 @@ export class ConnectionManager {
     this.stateRevision++
     // Session confirmed — the establish watchdog did its job; disarm + reset.
     if (state.status === 'authenticated') {
-      this.clearEstablishTimer(); this.establishFailures = 0
+      this.clearEstablishTimer()
+      this.establishFailures = 0
       if (state.sessionId) {
         if (this.mcpSessionId && this.mcpSessionId !== state.sessionId) {
           for (const [id, call] of this.pendingMcpCalls) {
@@ -1352,14 +1634,15 @@ export class ConnectionManager {
     if (this.resumeParked) {
       // INC-2026-0070: repeated fast exits of the resumed CLI. Re-resuming would
       // loop; a fresh session would silently rebind the tab. Wait for the user.
-      this.setState({ status: 'error', resumeNotFound: this.identityHold !== null, error: 'Resume keeps failing — choose Retry or Start new conversation' })
+      this.setState({
+        status: 'error',
+        resumeNotFound: this.identityHold !== null,
+        error: 'Resume keeps failing — choose Retry or Start new conversation',
+      })
       return
     }
 
-    const delay = Math.min(
-      RECONNECT_BASE_MS * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempt),
-      RECONNECT_MAX_MS,
-    )
+    const delay = Math.min(RECONNECT_BASE_MS * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempt), RECONNECT_MAX_MS)
     this.reconnectAttempt++
 
     this.setState({

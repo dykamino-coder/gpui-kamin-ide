@@ -2,8 +2,8 @@
 // lifecycle events instead of scraping OSC spinner glyphs off the PTY stream.
 //
 // We inject a no-op `command` hook (host:'local' so proxy-rewriter turns it
-// into an http webhook — a 'server' host would run in-container and never call
-// back) for each of the five events that map 1:1 onto session status. The
+// into a command relay over HTTP — a 'server' host would run in-container and
+// never call back) for each lifecycle event below. The
 // FIRING of the webhook is the signal: routes.ts emits an authoritative
 // `session:activity` and skips the no-op dispatch. This runs ALONGSIDE any
 // user/project/plugin hooks for the same event — the CLI runs every matcher.
@@ -20,13 +20,19 @@ import type { HookMatcher, HookSource, HookInputPayload } from './types'
 import { sendToClient } from '../pty/session-io'
 import { setSessionPromptReady } from '../pty/session-input-coordinator'
 import type { PtySession } from '../types/pty'
+import { sessionCliControl } from '../pty/session-cli-control'
 
 export const BRIDGE_STATUS_EVENTS = [
-  'UserPromptSubmit', 'Stop', 'SubagentStop', 'SessionStart', 'Notification',
+  'UserPromptSubmit',
+  'Stop',
+  'SubagentStop',
+  'SessionStart',
+  'Notification',
   // SubagentStart fires the instant the CLI creates a subagent's transcript —
   // we use it to kick an immediate subagent-file scan instead of waiting up to
   // 2s for the periodic sweep. SessionEnd gives a deterministic idle at teardown.
-  'SubagentStart', 'SessionEnd',
+  'SubagentStart',
+  'SessionEnd',
 ] as const
 
 export function isBridgeStatusEvent(event: string): boolean {
@@ -35,9 +41,9 @@ export function isBridgeStatusEvent(event: string): boolean {
 
 /** The matchers to splice into the merged hook settings (with their source so
  *  rewriteHooksForCli tags the registered hook `bridge`). host:'local' forces
- *  the http-webhook rewrite even for SERVER_PREFERRED events. */
+ *  the command relay rewrite even for SERVER_PREFERRED events. */
 export function bridgeStatusHookMatchers(): Array<{ event: string; matcher: HookMatcher; source: HookSource }> {
-  return BRIDGE_STATUS_EVENTS.map(event => ({
+  return BRIDGE_STATUS_EVENTS.map((event) => ({
     event,
     matcher: { hooks: [{ type: 'command' as const, command: ':', host: 'local' as const }] },
     source: { kind: 'bridge' as const },
@@ -48,9 +54,7 @@ export function bridgeStatusHookMatchers(): Array<{ event: string; matcher: Hook
  *  for EVERY webhook of these events (idempotent — a user Stop hook firing too
  *  just re-asserts idle). `hookDriven:true` tells the client this beats the
  *  ❯-glyph heuristic. */
-export function applyDeterministicStatus(
-  session: PtySession, event: string, payload: HookInputPayload,
-): void {
+export function applyDeterministicStatus(session: PtySession, event: string, payload: HookInputPayload): void {
   // SubagentStart is ws-independent: the CLI just wrote a new subagents/*.jsonl,
   // so trigger an immediate discovery scan (the tile then appears at once rather
   // than after the periodic 2s sweep). Runs even if no client is attached.
@@ -58,6 +62,7 @@ export function applyDeterministicStatus(
     void session.jsonlWatcher?.scanSubagents?.()
     return
   }
+  if (sessionCliControl(session)?.authoritative()) return
   if (event === 'UserPromptSubmit' || event === 'SessionEnd') setSessionPromptReady(session, false)
   else if (event === 'Stop' || event === 'SessionStart') setSessionPromptReady(session, true)
 
@@ -70,7 +75,13 @@ export function applyDeterministicStatus(
       break
     case 'Stop': {
       const last = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : undefined
-      sendToClient(ws, { ...base, isWorking: false, promptReady: true, waiting: false, ...(last ? { lastMessage: last } : {}) })
+      sendToClient(ws, {
+        ...base,
+        isWorking: false,
+        promptReady: true,
+        waiting: false,
+        ...(last ? { lastMessage: last } : {}),
+      })
       break
     }
     case 'SessionStart':

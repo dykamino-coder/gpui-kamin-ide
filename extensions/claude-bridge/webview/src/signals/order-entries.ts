@@ -23,6 +23,7 @@ interface Orderable {
   uuid?: string
   parentUuid?: string
   _ord?: number
+  _pos?: number
   timestamp?: string
   /** Ленивый кэш Date.parse(timestamp): записи иммутабельны, а parse гонялся
    *  по ВСЕМУ стору на каждый батч (аудит #70 B2). NaN тоже кэшируется. */
@@ -72,7 +73,8 @@ export function orderEntries<T extends Orderable>(entries: T[]): T[] {
   // the heap comparisons — computing it n times up front instead turns that into
   // one parse per row, the dominant cost on a full 4000-row window.
   const keys = new Float64Array(n)
-  for (let i = 0; i < n; i++) keys[i] = sortKey(entries[i]!)
+  const positioned = entries.some((e) => typeof e._pos === 'number')
+  for (let i = 0; i < n; i++) keys[i] = positioned ? entries[i]!._pos ?? MAX : sortKey(entries[i]!)
 
   // First occurrence wins (uuid dedup happens upstream, but be defensive).
   const idxByUuid = new Map<string, number>()
