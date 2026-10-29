@@ -56,8 +56,10 @@ pub(super) fn build_copy(
     // (`over`, `clone-002`). Лишние копии (фрагментов
     // меньше, чем копий) не ставятся и остаются
     // исходной коробкой.
+    // Главная копия корня clone, рисуемого записью, — непрерывная коробка (`clone_record`).
+    let record = first && part == 0 && super::replay::clone_record(copy);
     let frag = match (dec, frag_geom.get(part)) {
-        (Some((dt, db)), Some(&(from, fh))) => {
+        (Some((dt, db)), Some(&(from, fh))) if !record => {
             let clip = frag_geom
                 .get(part + 1)
                 .map_or((over - dt - db - from).max(fh - dt - db), |n| n.0 - from);

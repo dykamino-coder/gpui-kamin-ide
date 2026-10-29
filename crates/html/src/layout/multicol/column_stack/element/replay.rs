@@ -14,6 +14,7 @@ use gpui::{
     PaintSegmentSlice, Pixels, Window, point, px,
 };
 use std::rc::Rc;
+mod clone;
 mod play;
 mod scopes;
 mod slots;
@@ -32,6 +33,8 @@ pub(super) struct Routes {
     /// Фрагмент каждого куска по блочной оси в координатах источника (`line_admission`).
     frags: Vec<(f32, f32)>,
     spill: Pixels,
+    /// Корень clone: его собственная краска в записи скрыта (`clone_hidden`).
+    clone_root: Option<u64>,
 }
 
 /// Запись главной копии и расширенные маски её кусков.
@@ -50,7 +53,7 @@ impl ColumnStack {
         let c = &self.children[kid];
         self.replay
             && c.replay
-            && c.clone_dec.is_none()
+            && (c.clone_dec.is_none() || c.clone_deco.is_some())
             && plan.iter().any(|f| f.kid == kid && f.copy == 0)
             && plan.iter().filter(|f| f.kid == kid).count() > 1
     }
@@ -94,6 +97,9 @@ impl ColumnStack {
             };
             slots.push(self.slot_piece(f, placement, (clip, mask), (bounds, spill, scale)));
             let source_clip = Bounds::new(mask.origin - (destination - source), mask.size);
+            let across = (source_clip.left(), source_clip.right());
+            let source_clip =
+                (self.clone_slice(f, plan_all, source, across)).unwrap_or(source_clip);
             extent = Some(extent.map_or(source_clip, |e| e.union(&source_clip)));
             pieces.push((f, placement, source_clip));
             let fragment = Bounds::new(at, gpui::size(px(col_w), px(f.h)));
@@ -141,6 +147,7 @@ impl ColumnStack {
             slots: slots.into(),
             frags,
             spill,
+            clone_root: self.children[kid].clone_deco.as_ref().map(|d| d.node),
         })
     }
 
@@ -213,6 +220,12 @@ impl ColumnStack {
         let mut mask = crate::layout::fragment::fragment_mask::snap(clip, scale);
         if let Some(extra) = masks.get(&f.copy) {
             mask.bounds = mask.bounds.union(extra);
+        }
+        // Фрагмент clone самодостаточен: украшения — копией без содержимого, маски нет.
+        let decos = self.children[f.kid].clone_deco.as_mut();
+        if let Some(deco) = decos.and_then(|d| d.decos.iter_mut().nth(f.copy)) {
+            deco.paint(window, cx);
+            mask = parent;
         }
         window.with_content_mask(Some(mask), |window| {
             let _ = Self::paint_replayed(records, f.copy, window);

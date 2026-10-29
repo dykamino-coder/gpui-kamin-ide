@@ -48,3 +48,30 @@ background:#00ff00'></span>",
         199.,
     );
 }
+
+#[test]
+fn replayed_clone_fragments_are_boxes_of_their_own_height() {
+    // css-break-4 §break-decoration: каждый фрагмент — своя коробка с рамкой и фоном.
+    let found = quads(
+        "<style>body{margin:0}</style>\
+<div style='columns:2;gap:0;width:200px;height:100px;column-fill:auto'>\
+<div style='box-decoration-break:clone;border:10px solid #0000ff;background:#00ff00;height:120px'>\
+</div></div>",
+        400.,
+        400.,
+    );
+    // Фрагмент 1 — вся колонка (80 содержимого + рамки), фрагмент 2 — 40 + рамки;
+    // непрерывной коробки 140px нет.
+    let boxes: Vec<_> = found
+        .iter()
+        .filter(|(_, c)| is(Some(*c), 0x00ff00))
+        .map(|(b, _)| {
+            (
+                f32::from(b.origin.x),
+                f32::from(b.origin.y),
+                f32::from(b.size.height),
+            )
+        })
+        .collect();
+    assert_eq!(boxes, [(0., 0., 100.), (100., 0., 60.)], "{found:?}");
+}

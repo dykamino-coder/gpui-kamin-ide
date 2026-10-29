@@ -21,7 +21,7 @@ pub(crate) use paint::{
     SourceSlices, paint_source_node, paint_source_record, prepaint_source_record,
 };
 pub(crate) use paint::{paint_atomic, paint_last, paint_reopen, paint_root};
-pub(crate) use paint::{with_late_jobs, with_replay_pieces};
+pub(crate) use paint::{with_clone_hidden, with_late_jobs, with_replay_pieces};
 pub(crate) use painter::{PaintOnly, Painter};
 
 use gpui::{
