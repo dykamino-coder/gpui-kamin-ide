@@ -23,6 +23,23 @@ function fallbackCopy(document: Document, text: string): void {
   }
 }
 
+function writeClipboard(document: Document, options: ClipboardOptions, text: string): void | Promise<void> {
+  if (options.writeText) return Promise.resolve(options.writeText(text)).then(() => {})
+  const clipboard = document.defaultView?.navigator.clipboard
+  if (clipboard?.writeText) return clipboard.writeText(text).catch(() => fallbackCopy(document, text))
+  fallbackCopy(document, text)
+}
+
+/** OSC 52 записывает через тот же clipboard, что и меню. Чтение из PTY не разрешено. */
+export function createOsc52ClipboardProvider(document: Document, options: ClipboardOptions = {}) {
+  return {
+    readText: () => '',
+    writeText: (selection: string, text: string): void | Promise<void> => {
+      if (selection === 'c' || selection === '') return writeClipboard(document, options, text)
+    },
+  }
+}
+
 /** One clipboard/menu policy for the console. Native paste is the sole keyboard
  * paste path, avoiding a second send from an asynchronous clipboard read. */
 export function configureTerminalClipboard(
@@ -33,13 +50,7 @@ export function configureTerminalClipboard(
   const document = container.ownerDocument
   const clipboard = document.defaultView?.navigator.clipboard
   const copy = (text: string): void => {
-    if (options.writeText) {
-      void options.writeText(text)
-      return
-    }
-    if (clipboard?.writeText) {
-      void clipboard.writeText(text).catch(() => fallbackCopy(document, text))
-    } else fallbackCopy(document, text)
+    void writeClipboard(document, options, text)
   }
   const copySelection = (): boolean => {
     const text = terminal.getSelection()
@@ -103,6 +114,9 @@ export function configureTerminalClipboard(
     let closed = false
     menu.className = 'terminal-context-menu'
     menu.setAttribute('role', 'menu')
+    // Keep xterm focused: DEC 1004 blur/focus can make the CLI repaint and
+    // clear Select All after the action has already created its selection.
+    menu.addEventListener('mousedown', (event) => event.preventDefault())
     const close = (): void => {
       closed = true
       menu.remove()
@@ -131,9 +145,11 @@ export function configureTerminalClipboard(
       glyph.setAttribute('aria-hidden', 'true')
       button.append(glyph, document.createTextNode(label))
       button.onclick = () => {
-        action()
         close()
+        // Focus reporting is terminal input and can clear an existing selection.
+        // Restore focus before Select All creates the selection to preserve it.
         terminal.focus()
+        action()
       }
       menu.appendChild(button)
       return button

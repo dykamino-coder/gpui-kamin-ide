@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import '@xterm/xterm/css/xterm.css'
-import { CONSOLE_OPTIONS, configureConsole } from '../../lib/terminal-console'
+import { CONSOLE_OPTIONS, configureConsole, createOsc52ClipboardProvider } from '../../lib/terminal-console'
 import '../../lib/terminal-console/console.css'
 import styles from './Terminal.module.css'
 
@@ -119,6 +119,7 @@ export function Terminal() {
     async function init() {
       const { Terminal } = await import('@xterm/xterm')
       const { FitAddon } = await import('@xterm/addon-fit')
+      const { ClipboardAddon } = await import('@xterm/addon-clipboard')
 
       if (disposed || !containerRef.current) return
 
@@ -134,6 +135,7 @@ export function Terminal() {
           cursor: '#58a6ff',
           cursorAccent: '#0a0c0f',
           selectionBackground: '#264f78',
+          selectionInactiveBackground: '#264f78',
           selectionForeground: '#e6edf3',
           black: '#484f58',
           red: '#ff7b72',
@@ -156,6 +158,7 @@ export function Terminal() {
 
       const fitAddon = new FitAddon()
       term.loadAddon(fitAddon)
+      term.loadAddon(new ClipboardAddon(undefined, createOsc52ClipboardProvider(containerRef.current.ownerDocument)))
       term.open(containerRef.current)
       const disposeConsole = configureConsole(term, containerRef.current)
       fitAddon.fit()

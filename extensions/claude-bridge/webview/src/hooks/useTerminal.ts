@@ -3,7 +3,8 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { SerializeAddon } from '@xterm/addon-serialize'
-import { CONSOLE_OPTIONS, configureConsole } from '../../../server/src/ui/src/lib/terminal-console'
+import { ClipboardAddon } from '@xterm/addon-clipboard'
+import { CONSOLE_OPTIONS, configureConsole, createOsc52ClipboardProvider } from '../../../server/src/ui/src/lib/terminal-console'
 import '../../../server/src/ui/src/lib/terminal-console/console.css'
 import { buildTerminalTheme } from '../theme/terminal-theme'
 import { resolvedTheme, themeNonce } from '../theme/apply-theme'
@@ -67,6 +68,9 @@ export function useTerminal(tabId: string): TerminalRefs {
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(new WebLinksAddon())
+    terminal.loadAddon(new ClipboardAddon(undefined, createOsc52ClipboardProvider(container.ownerDocument, {
+      writeText: text => bridge.writeClipboard(text),
+    })))
 
     // A document-local remount cache, not durable CEF/app persistence.
     const serializeAddon = new SerializeAddon()

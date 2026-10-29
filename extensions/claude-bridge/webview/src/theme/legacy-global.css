@@ -1355,6 +1355,25 @@ select.mcp-input { cursor: pointer; }
 }
 .block-tool-result.expanded .result-body { display: block; }
 
+/* Уведомление задачи — служебная строка без карточки пользователя. */
+.task-notification { margin: 6px 12px; color: var(--text-primary); font-size: var(--fs-base); }
+.task-notification-header {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 0;
+  border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.task-notification-summary { flex: 1; overflow-wrap: anywhere; }
+.task-notification-header small { color: var(--text-secondary); overflow-wrap: anywhere; }
+.task-notification-status { border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--fs-sm); background: var(--bg-surface); }
+.task-notification-status.completed { color: var(--accent-green); }
+.task-notification-status.failed { color: var(--accent-red); }
+.task-notification-status.running { color: var(--accent-blue); }
+.task-notification-details .block-tool-result { margin: 4px 0; }
+.task-notification-details .result-body { color: var(--text-primary); word-break: normal; overflow-wrap: anywhere; }
+.task-notification-details dl { margin: 8px 0; font-size: var(--fs-sm); }
+.task-notification-details dl > div { display: grid; grid-template-columns: minmax(80px, auto) 1fr; gap: 12px; padding: 3px 0; }
+.task-notification-details dt { color: var(--text-secondary); }
+.task-notification-details dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* Inline tool result (merged into tool_use block) — sits under the body with a
  * soft divider; no second surface colour so the whole block reads as one card. */
 .tool-result-inline {
