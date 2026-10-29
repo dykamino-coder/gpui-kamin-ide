@@ -220,6 +220,13 @@ export function writeSessionSettings(
     env: {
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+      // One-hour prompt cache for the main loop and for subagents/teammates.
+      // The CLI already uses 1h for the main loop on subscriptions, but caches
+      // subagent requests for 5m only: every pause longer than that (a build,
+      // CI, a long tool) rewrote the whole subagent context at the write price.
+      // Read by name in 2.1.308+ (`promptCacheTtl` / `subagentPromptCacheTtl`).
+      CLAUDE_CODE_PROMPT_CACHE_TTL: '1h',
+      CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL: '1h',
       // Default CLI value is ~27.8h; pin explicitly so future CLI updates don't shrink it.
       MCP_TOOL_TIMEOUT: '100000000',
     },
