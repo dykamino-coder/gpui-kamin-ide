@@ -2,6 +2,7 @@ import { CONSOLE_SCROLLBACK, CONSOLE_OVERVIEW_RULER, configureTerminalInteractio
 import { configureTerminalClipboard } from './clipboard'
 import type { ClipboardOptions } from './clipboard'
 import type { ConsoleInteractionTerminal, ConsoleClipboardTerminal } from './types'
+export { createOsc52ClipboardProvider } from './clipboard'
 
 /** Geometry and input policy shared by the CEF console and server dashboard. */
 export const CONSOLE_OPTIONS = {

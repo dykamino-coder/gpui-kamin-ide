@@ -35,6 +35,24 @@ pub(crate) fn with_copy_area(
     crate::paint::continuation::with_copy_area(area, window, paint)
 }
 
+/// Prepaint or record of a split child's main copy whose slots see all its `pieces`.
+pub(crate) fn with_replay_pieces<R>(
+    pieces: std::rc::Rc<crate::layout::fragment::replay_pieces::ReplayPieces>,
+    window: &mut Window,
+    f: impl FnOnce(&mut Window) -> R,
+) -> R {
+    crate::paint::continuation::replayed::with_pieces(pieces, window, f)
+}
+
+/// Record of a split child's main copy whose own positioned jobs paint into `late`.
+pub(crate) fn with_late_jobs<R>(
+    late: std::rc::Rc<[gpui::PaintSegmentSlice]>,
+    window: &mut Window,
+    record: impl FnOnce(&mut Window) -> R,
+) -> R {
+    crate::paint::coordinator::with_late_jobs(late, window, record)
+}
+
 /// Paint a legacy copy for `segment`: its slots replay their continuation records.
 pub(crate) fn with_copy_segment(
     segment: gpui::PaintSegmentId,

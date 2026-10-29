@@ -3,6 +3,7 @@
 
 import { isInvisibleAssistantEntry, isToolResultEntry, isCaveatOnlyEntry, isVisibleAttachment, NON_RENDERING_ENTRY_TYPES } from './utils'
 import type { JsonlEntryData, ContentBlock } from '../../types/jsonl'
+import { taskNotificationText } from './task-notification'
 
 export interface CompactSegmentRange { from: number; to: number }
 
@@ -139,6 +140,7 @@ export function entryIsVisible(e: JsonlEntryData, ctx: VisibilityCtx): boolean {
     if (typeof u === 'string' && !ctx.chainUuids.has(u)) return false
   }
   if (e.type === 'user') {
+    if (taskNotificationText(e) !== null) return true
     if ((e as any).isMeta) return false
     if (isCaveatOnlyEntry(e)) return false
     if (isToolResultEntry(e) && ctx.toolResults && ctx.toolResults.size > 0) {

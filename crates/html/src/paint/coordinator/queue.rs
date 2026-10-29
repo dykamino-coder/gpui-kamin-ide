@@ -83,6 +83,36 @@ impl CssPaintPass {
         }
     }
 
+    /// Слив кадра записи `depth`, чьи позиционированные задания рисуются в сегментах
+    /// `late` (`recording::with_late_jobs`); задание, чьи сегменты другие, — на своём месте.
+    pub(super) fn drain_late(
+        &self,
+        depth: usize,
+        late: &Rc<[gpui::PaintSegmentSlice]>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        loop {
+            self.drain_inline(depth, window, cx);
+            let next = self.jobs.pop_min(depth);
+            let Some(Positioned {
+                mut child, context, ..
+            }) = next
+            else {
+                break;
+            };
+            window
+                .with_paint_ctx(context, |window| {
+                    let moved =
+                        window.with_paint_segment_slices(late.clone(), |w| child.paint(w, cx));
+                    if moved.is_err() {
+                        child.paint(window, cx);
+                    }
+                })
+                .expect("CSS positioned job stays in its live GPUI scope");
+        }
+    }
+
     pub(super) fn finish_atomic(&self, depth: usize, window: &mut Window, cx: &mut App) {
         self.drain_inline(depth, window, cx);
         // Atomic открывается только внутри живого внешнего collector.

@@ -7,11 +7,13 @@ pub mod flex_lines;
 pub(crate) mod flow;
 pub(crate) mod geometry;
 pub mod grid_bands;
+pub(crate) mod line_admission;
 pub mod line_shape;
 pub(crate) mod paginate;
 pub(crate) mod plan;
 pub mod probe;
 pub mod push;
+pub(crate) mod replay_pieces;
 pub(crate) mod static_coordinates;
 pub mod table_bands;
 // Модель токенов вводится раньше потребителей: укладка читает из неё

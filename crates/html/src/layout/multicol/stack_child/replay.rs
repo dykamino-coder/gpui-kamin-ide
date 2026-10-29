@@ -12,15 +12,15 @@ use crate::style::computed::{Display, Position};
 /// записью: его ряды разложены в главной копии по внешним фрагментаинерам
 /// (`column_regrow::nest`), и срез внешнего куска отделяет ряд своего фрагментаинера.
 /// Остаются на копиях: объёмные преобразования и перспектива (их плоскости решаются на
-/// отрисовке по накопленной матрице), фильтры по ссылке и фона, внепоточные коробки
-/// (продолжаются своими слотами); сросшиеся кромки таблицы
-/// решают стыки по маске своего куска (`EdgePainter`). Таблица с раздельными рамками
+/// отрисовке по накопленной матрице), фильтры по ссылке и фона; сросшиеся кромки таблицы
+/// решают стыки по маске своего куска (`EdgePainter`). Внепоточные коробки
+/// продолжаются своими слотами и в записи (`continuation::replayed`). Таблица с раздельными рамками
 /// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
 /// Обход — итеративный.
 pub(crate) fn replayable(root: &Element) -> (bool, bool) {
-    let mut stack = vec![root];
+    let mut stack = vec![(root, false)];
     let mut effects = false;
-    while let Some(e) = stack.pop() {
+    while let Some((e, planed)) = stack.pop() {
         let s = e.style.used();
         // Владение, окна и расход элементов flex и сетки переносит допуск узлов записи
         // (`element::admission::items`).
@@ -28,12 +28,16 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         // Относительные и липкие коробки и контексты наложения рисуются отложенно, в фазе
         // своего контекста (CSS 2.1 Appendix E, `PaintLast`), но этот контекст закрыт
         // корнем главной копии, как у копии, — их краска входит в запись. Внепоточные
-        // коробки продолжаются своими слотами и местами по сегментам (P08).
-        let deferred = matches!(s.position, Some(Position::Absolute | Position::Fixed));
+        // коробки продолжаются своими слотами: в записи слот кладёт нативную запись
+        // фрагментаинера каждого куска в его сегмент (`continuation::replayed`); под
+        // плоским преобразованием поддерево пишется вложенной записью кусков, куда
+        // сегменты слотов не входят, — такой ребёнок остаётся на копиях.
+        let oof = matches!(s.position, Some(Position::Absolute | Position::Fixed));
+        let plane = s.transform.is_some() || s.rotate_prop.is_some() || s.scale_prop.is_some();
         let solid = s.transform.is_some_and(|t| t.has_3d)
             || s.perspective.is_some()
             || s.preserve_3d == Some(true);
-        if per_copy || deferred || solid || s.filter_ref.is_some() || s.backdrop_filter_set {
+        if per_copy || (oof && planed) || solid || s.filter_ref.is_some() || s.backdrop_filter_set {
             return (false, false);
         }
         effects |= !s.shadows.is_empty()
@@ -46,7 +50,7 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
             || s.row_rule_width.is_some()
             || s.row_rule_styles.is_some();
         stack.extend(e.children.iter().filter_map(|n| match n {
-            Node::Element(c) => Some(c),
+            Node::Element(c) => Some((c, planed || plane)),
             _ => None,
         }));
     }
@@ -147,6 +151,12 @@ mod tests {
         );
         assert_eq!(
             of("<section><div style='position:absolute'>a</div></section>"),
+            (true, false)
+        );
+        assert_eq!(
+            of(
+                "<section><div style='transform:translateX(0)'><p style='position:fixed'>a</p></div></section>"
+            ),
             (false, false)
         );
         assert_eq!(

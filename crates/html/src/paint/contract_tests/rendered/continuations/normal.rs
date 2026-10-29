@@ -171,3 +171,47 @@ fn replayed_relative_box_paints_in_its_own_columns() {
         "nothing at the source below the column"
     );
 }
+
+/// Внепоточный корень в ребёнке, нарисованном записью: после потока всех кусков.
+const OOF_OVER_FLOW: &str = "<style>body{margin:0}</style><div style='columns:2;height:100px;width:100px;gap:0;column-fill:auto;position:relative'><div style='display:grid;height:200px'><div style='position:absolute;width:100px;height:100px;background:#00ff00'></div><div style='width:50px;height:200px;background:#ff0000'></div></div></div>";
+
+#[test]
+fn replayed_child_paints_its_out_of_flow_root_after_the_flow_of_every_piece() {
+    let found = quads(OOF_OVER_FLOW, 400., 200.);
+    assert!(is(top(&found, 25., 50.), 0x00ff00), "column 1");
+    assert!(
+        is(top(&found, 75., 50.), 0x00ff00),
+        "over the flow of column 2"
+    );
+}
+
+/// Вложенный многоколоночник со своим внепоточным корнем внутри внепоточного корня
+/// внешнего: его запись внутри нативного источника внешней стопки.
+const NESTED_IN_SOURCE: &str = "<style>body{margin:0}</style><div style='columns:2;gap:0;column-fill:auto;width:100px;height:100px;background:#ff0000'><div style='position:relative'><div style='position:absolute;columns:2;gap:0;column-fill:auto;width:100%;height:100px'><div style='position:relative'><div style='position:absolute;width:100%;height:400px;background:#00ff00'></div></div></div></div></div>";
+
+#[test]
+fn nested_multicol_records_its_pieces_inside_the_outer_native_source() {
+    let found = quads(NESTED_IN_SOURCE, 400., 200.);
+    for x in [12., 37., 62., 87.] {
+        assert!(is(top(&found, x, 50.), 0x00ff00), "column at {x}");
+    }
+}
+
+#[test]
+fn replayed_table_rows_resume_under_the_repeated_header() {
+    let html = "<style>body{margin:0}td{padding:0}</style>\
+<div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'>\
+<table style='width:100%;border-spacing:0'>\
+<thead><tr><td style='height:20px;background:#0000ff'></td></tr></thead>\
+<tr><td style='height:70px;background:#00ff00'></td></tr>\
+<tr><td style='height:70px;background:#ff00ff'></td></tr></table></div>";
+    let found = quads(html, 400., 300.);
+    assert!(is(top(&found, 25., 10.), 0x0000ff), "header, column 1");
+    assert!(is(top(&found, 25., 50.), 0x00ff00), "row 1, column 1");
+    assert!(is(top(&found, 75., 10.), 0x0000ff), "repeated header");
+    assert!(
+        is(top(&found, 75., 50.), 0xff00ff),
+        "row 2 under the header"
+    );
+    assert!(!is(top(&found, 75., 95.), 0xff00ff), "row 2 ends at 90");
+}

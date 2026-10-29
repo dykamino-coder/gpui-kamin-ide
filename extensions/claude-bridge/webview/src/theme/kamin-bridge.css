@@ -45,11 +45,8 @@
   /* No borders/dividers carving up the panel. */
   --divider-soft: transparent;
 
-  /* CLI terminal (Bridge Console tool) paints the SAME surface as KaminIDE's
-     native terminal: its xterm reads `--editor-bg/-fg/-cursor` (injected by
-     webview-theme.ts). Mirror them onto our `--term-*` tokens so buildTerminalTheme
-     produces an identical console look. */
-  --term-bg: var(--editor-bg, #1d1c25);
+  /* Консоль и её отступы используют поверхность панели IDE. */
+  --term-bg: var(--bg-primary);
   --term-fg: var(--editor-fg, #dcdce4);
   --term-cursor: var(--editor-cursor, #a0a0d0);
 }

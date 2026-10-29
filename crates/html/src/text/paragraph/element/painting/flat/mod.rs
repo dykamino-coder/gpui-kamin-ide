@@ -8,6 +8,7 @@
 
 mod rows;
 
+use crate::layout::fragment::line_admission;
 use crate::text::paragraph::*;
 use gpui::{App, Bounds, GlobalElementId, Hitbox, Pixels, Window, point, px, size};
 
@@ -43,7 +44,11 @@ impl Paragraph {
         let mut rev_off = self.reversed_offset(count, &step);
         let mut y = bounds.origin.y + px(rev_off);
         let runs = self.selection_runs(id, window);
+        // Строка неделима: в записи главной копии кусков она допускается целиком.
+        let mut bands = Vec::with_capacity(count);
         for (i, line) in self.lines.clone().into_iter().enumerate() {
+            let band = (y + above(i), y + above(i) + self.line_height);
+            bands.push(band);
             // Перевод строки в набор не отдаём: он уже сработал разрывом.
             let body = self.text[line.range.clone()].trim_end_matches('\n');
             let range = line.range.start..line.range.start + body.len();
@@ -109,18 +114,20 @@ impl Paragraph {
                 // Набор строки опускается на её верхнюю надбавку: поднятый
                 // кусок занимает добавленное место, а остальной текст
                 // остаётся на своей базовой линии.
-                self.paint_justified_line(
-                    &line,
-                    &range,
-                    &segs,
-                    free,
-                    bounds,
-                    y + above(i),
-                    pads.get(i).copied().unwrap_or((0.0, 0.0)),
-                    dx,
-                    window,
-                    cx,
-                );
+                line_admission::paint(window, band, |window| {
+                    self.paint_justified_line(
+                        &line,
+                        &range,
+                        &segs,
+                        free,
+                        bounds,
+                        y + above(i),
+                        pads.get(i).copied().unwrap_or((0.0, 0.0)),
+                        dx,
+                        window,
+                        cx,
+                    )
+                });
                 if self.lines_reversed {
                     rev_off -= f32::from(step(i + 1));
                     y = bounds.origin.y + px(rev_off);
@@ -185,28 +192,19 @@ impl Paragraph {
                     origin: point(mask_x, bounds.origin.y - px(1000.)),
                     size: size(cut, bounds.size.height + px(2000.)),
                 };
-                let (base, exact) = window
-                    .with_content_mask(Some(gpui::ContentMask { bounds: mask }), |window| {
-                        self.paint_line(&visible, &runs, point(x0, at.y), "", window, cx)
-                    });
-                self.paint_suffix(
-                    &mark,
-                    line.range.start,
-                    point(mark_x, at.y),
-                    base,
-                    exact,
-                    window,
-                    cx,
-                );
+                line_admission::paint(window, band, |window| {
+                    let (base, exact) = window
+                        .with_content_mask(Some(gpui::ContentMask { bounds: mask }), |window| {
+                            self.paint_line(&visible, &runs, point(x0, at.y), "", window, cx)
+                        });
+                    let at = point(mark_x, at.y);
+                    self.paint_suffix(&mark, line.range.start, at, base, exact, window, cx);
+                });
             } else {
-                self.paint_line(
-                    &visible,
-                    &runs,
-                    point(at.x - hanging, at.y),
-                    &mark,
-                    window,
-                    cx,
-                );
+                line_admission::paint(window, band, |window| {
+                    let at = point(at.x - hanging, at.y);
+                    self.paint_line(&visible, &runs, at, &mark, window, cx)
+                });
             }
             if self.lines_reversed {
                 rev_off -= f32::from(step(i + 1));
@@ -216,8 +214,14 @@ impl Paragraph {
             }
         }
         window.replace_glyph_offset(outer_nudge);
-        for slot in self.atoms.iter_mut().filter(|s| !s.hidden) {
-            slot.el.paint(window, cx);
+        // Атом — со своей строкой (той, что держит его место, как в `atom_placement`).
+        for (k, slot) in self.atoms.iter_mut().enumerate().filter(|(_, s)| !s.hidden) {
+            let at = self.atom_boxes.get(k).map(|b| b.at);
+            let row = at.and_then(|at| self.lines.iter().position(|l| at < l.range.end));
+            match row.and_then(|row| bands.get(row)) {
+                Some(&band) => line_admission::paint(window, band, |w| slot.el.paint(w, cx)),
+                None => slot.el.paint(window, cx),
+            }
         }
         for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
             if !self.overlay_hidden.get(i).copied().unwrap_or(false) {
