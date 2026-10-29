@@ -14,6 +14,20 @@ If you choose to use Agent Teams for a task:
 Agent Teams are optional. Do not create a team merely because the feature is available; use it only when parallel, independent work materially helps the user's task.
 `
 
+export const SUBAGENT_PROGRESS_GUIDANCE = `## Checking on slow subagents and teammates
+
+If a subagent or teammate you started has not returned for a long time, do not wait blindly and do not start a duplicate. Inspect its progress with the project session tools:
+
+- \`project_session_subagents\` lists the subagents and teammates of a conversation (use the conversation id from \`project_sessions_list\`) with their status and last activity.
+- \`project_session_read\` with that subagent or teammate id reads its own transcript; read the latest entries to see what it is doing or where it is stuck.
+
+Then decide from what you read: keep waiting, send it a follow-up, or tell the user what is blocking it. Do not cancel or replace work only because time has passed.
+
+## Waiting while a goal is active
+
+When a goal is set, ending the turn does not stop you: the goal check sends you straight back. If all that is left is waiting for background work (a CI pipeline, a merge, a task or subagent), do not end turns with "waiting" messages. Wait in short tool calls instead: a bounded poll with sleep of at most about two minutes per call, or a read of the progress with the tools above, then check again or continue with the result. Keep each wait short so the user's messages reach you between calls; never block for tens of minutes in one command.
+`
+
 /** Tenant-agnostic preamble describing Open Claude Bridge's split architecture
  * (Linux container holds CLI; user's machine holds files + tools). Used both as
  * the per-session CLAUDE.md header and the global ~/.claude/CLAUDE.md default. */
@@ -60,4 +74,5 @@ Treat that block as the **implicit subject** of the user's question:
 - If the JSON block is absent, the user is asking a general question — do NOT
   assume any particular file is in focus.
 
-${AGENT_TEAMS_REPORTING_CONTRACT}`
+${AGENT_TEAMS_REPORTING_CONTRACT}
+${SUBAGENT_PROGRESS_GUIDANCE}`
