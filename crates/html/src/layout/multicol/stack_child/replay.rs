@@ -62,6 +62,20 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
     (true, effects)
 }
 
+/// Корень `box-decoration-break: clone`, чьи куски рисует запись главной копии: главная
+/// копия раскладывается непрерывной коробкой, украшения каждого фрагмента рисует стопка
+/// (`StackChild::clone_deco`). Вложенная clone-коробка в поддереве оставляет ребёнка на
+/// копиях: её фрагменты тоже свои.
+pub(crate) fn clone_record(root: &Element) -> bool {
+    use crate::layout::fragment::clone::clone_dec;
+    fn nested(e: &Element) -> bool {
+        e.children
+            .iter()
+            .any(|n| matches!(n, Node::Element(c) if clone_dec(c).is_some() || nested(c)))
+    }
+    clone_dec(root).is_some() && replayable(root).0 && !nested(root)
+}
+
 /// Часть таблицы (её сросшиеся кромки решают стыки по маске своего куска).
 fn table_part(e: &Element) -> bool {
     matches!(
