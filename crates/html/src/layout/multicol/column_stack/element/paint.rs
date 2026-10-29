@@ -212,5 +212,6 @@ impl ColumnStack {
                 );
             }
         }
+        Self::paint_late(&replayed, window);
     }
 }

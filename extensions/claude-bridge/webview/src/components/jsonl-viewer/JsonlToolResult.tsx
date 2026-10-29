@@ -14,11 +14,11 @@ interface JsonlToolResultProps {
   /** Original char count when `content` was truncated in-memory (heavy-tool-
    *  result offload). Falsy = content is whole; label falls back to its length. */
   fullLen?: number
+  initiallyExpanded?: boolean
 }
 
-export function JsonlToolResult({ content, isError, fullLen }: JsonlToolResultProps): JSX.Element {
-  const [expanded, setExpanded] = useState(false)
-  const truncated = content.length > 2000 ? content.slice(0, 2000) + '\n... (truncated)' : content
+export function JsonlToolResult({ content, isError, fullLen, initiallyExpanded = false }: JsonlToolResultProps): JSX.Element {
+  const [expanded, setExpanded] = useState(initiallyExpanded)
 
   return (
     <div class={`block-tool-result ${expanded ? 'expanded' : ''}`}>
@@ -32,7 +32,7 @@ export function JsonlToolResult({ content, isError, fullLen }: JsonlToolResultPr
         </span>
       </div>
       <div class="result-body" style={isError ? 'color:var(--accent-red)' : undefined}>
-        {truncated}
+        {expanded ? content : ''}
       </div>
     </div>
   )

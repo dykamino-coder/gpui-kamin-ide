@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const h = vi.hoisted(() => ({ effects: [] as Array<() => void>, ref: 0, serialize: vi.fn(() => 'screen'), terminals: [] as any[], writes: vi.fn(), container: { dataset:{}, classList:{add:()=>{},remove:()=>{}}, ownerDocument:{}, querySelector: () => null, addEventListener: () => {}, removeEventListener: () => {} } }))
+const h = vi.hoisted(() => ({ effects: [] as Array<() => void>, ref: 0, serialize: vi.fn(() => 'screen'), terminals: [] as any[], writes: vi.fn(), container: { dataset:{}, classList:{add:()=>{},remove:()=>{}}, ownerDocument:{addEventListener:()=>{},removeEventListener:()=>{}}, querySelector: () => null, addEventListener: () => {}, removeEventListener: () => {} } }))
 vi.mock('preact/hooks', () => ({ useRef: () => ({ current: h.ref++ % 3 === 0 ? h.container : null }), useState: () => [false, () => {}], useEffect: (fn: () => (() => void) | undefined) => { const end=fn(); if(end) h.effects.push(end) } }))
 vi.mock('@bridge/storage', () => ({ storage: { getItem: () => null, setItem: h.writes, removeItem: () => {} } }))
 vi.mock('./useBridge', () => ({ useBridge: () => ({ resize: () => {}, sendInput: () => {} }) }))
 vi.mock('../theme/terminal-theme', () => ({ buildTerminalTheme: () => ({}) }))
 vi.mock('../theme/apply-theme', () => ({ resolvedTheme: { value: 'dark' }, themeNonce: { value: 0 } }))
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
-  callbacks = new Set<() => void>(); cols=80; rows=24; options={}; buffer={ onBufferChange:()=>({dispose:()=>{}}), active: { length: 1, viewportY:0, baseY:0, getLine:()=>({translateToString:()=> 'screen'}) } };
+  callbacks = new Set<() => void>(); cols=80; rows=24; options={}; modes={mouseTrackingMode:'none'}; buffer={ onBufferChange:()=>({dispose:()=>{}}), active: { length: 1, viewportY:0, baseY:0, getLine:()=>({translateToString:()=> 'screen'}) } };
   constructor(){h.terminals.push(this)}
   loadAddon(){} open(){} attachCustomKeyEventHandler(){} attachCustomWheelEventHandler(){} onData(){} onResize(){return {dispose:()=>{}}} onScroll(){return {dispose:()=>{}}} onRender(){} dispose(){}
   onWriteParsed(callback:()=>void){this.callbacks.add(callback);return {dispose:()=>this.callbacks.delete(callback)}}
@@ -17,6 +17,7 @@ vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }))
 vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss(){} dispose(){} } }))
 vi.mock('@xterm/addon-canvas', () => ({ CanvasAddon: class {} }))
 vi.mock('@xterm/addon-serialize', () => ({ SerializeAddon: class { serialize = h.serialize; dispose(){} } }))
+vi.mock('@xterm/addon-clipboard', () => ({ ClipboardAddon: class {} }))
 import { useTerminal } from './useTerminal'
 import { terminalSnapshots } from '../signals/terminal-snapshots'
 import { terminalRegistry, resetConsoleForReconnect } from '../signals/terminal-registry'

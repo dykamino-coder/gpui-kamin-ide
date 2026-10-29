@@ -46,12 +46,14 @@ pub(crate) fn paint_transformed(
             source_clip: p.clip,
         })
         .collect();
-    let recorded = window.record_paint_segments(extent, routes, cx, |window, cx| {
-        if clip_before {
-            let _ = window.with_paint_segment_slices(before, |window| paint(window, cx));
-        } else {
-            paint(window, cx);
-        }
+    let recorded = crate::layout::fragment::line_admission::outside(window, |window| {
+        window.record_paint_segments(extent, routes, cx, |window, cx| {
+            if clip_before {
+                let _ = window.with_paint_segment_slices(before, |window| paint(window, cx));
+            } else {
+                paint(window, cx);
+            }
+        })
     });
     let Ok((_, records)) = recorded else { return };
     for (p, device) in &list {

@@ -103,7 +103,7 @@ export async function readConversation(ctx: CallerContext, args: Record<string, 
       }
     }
     const footer = pageFooter({
-      conversation_id: target.ref.conversationId,
+      session_id: target.ref.conversationId,
       agent_id: target.agentId,
       source: target.ref.source,
       entries,
@@ -207,7 +207,7 @@ export async function readRaw(ctx: CallerContext, args: Record<string, unknown>)
       }
     }
     const footer = pageFooter({
-      conversation_id: target.ref.conversationId,
+      session_id: target.ref.conversationId,
       agent_id: target.agentId,
       source: target.ref.source,
       lines,

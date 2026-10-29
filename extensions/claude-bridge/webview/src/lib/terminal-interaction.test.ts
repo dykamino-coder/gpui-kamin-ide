@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Terminal } from '@xterm/xterm'
 import { configureTerminalInteraction, CONSOLE_OVERVIEW_RULER } from '../../../server/src/ui/src/lib/terminal-console/interaction'
 
-function fixture(mode = 'none', screen = 'normal') {
+function fixture(mode = 'none', screen = 'normal', platform = 'Win32') {
   const callbacks: Record<string, () => void> = {}
   const disposals = Array.from({ length: 4 }, () => ({ dispose: vi.fn() }))
   const container = {
     dataset: {} as Record<string, string>, classList: { add: vi.fn(), remove: vi.fn() },
-    ownerDocument: { defaultView: { navigator: { platform: 'Win32' } } },
+    ownerDocument: { defaultView: { navigator: { platform } }, addEventListener: vi.fn(), removeEventListener: vi.fn() },
     addEventListener: vi.fn(), removeEventListener: vi.fn(),
   }
   const subscribe = (name: string, index: number) => (callback: () => void) => {
@@ -26,6 +26,8 @@ function fixture(mode = 'none', screen = 'normal') {
     mouse: container.addEventListener.mock.calls[0][1] as (e: MouseEvent) => void,
     mouseUp: container.addEventListener.mock.calls[1][1] as (e: MouseEvent) => void,
     mouseMove: container.addEventListener.mock.calls[2][1] as (e: MouseEvent) => void,
+    documentMove: container.ownerDocument.addEventListener.mock.calls[0][1] as (e: MouseEvent) => void,
+    documentUp: container.ownerDocument.addEventListener.mock.calls[1][1] as (e: MouseEvent) => void,
     wheel: term.attachCustomWheelEventHandler.mock.calls[0][0] as (e: WheelEvent) => boolean,
   }
 }
@@ -33,7 +35,7 @@ function mouseEvent(shiftKey: boolean, onScreen = true, button = 0) {
   return {
     button, buttons: 1, shiftKey, detail: 1, clientX: 12, clientY: 34,
     preventDefault: vi.fn(), stopImmediatePropagation: vi.fn(),
-    target: { closest: vi.fn(() => onScreen ? {} : null), dispatchEvent: vi.fn() },
+    target: { isConnected: true, closest: vi.fn(() => onScreen ? {} : null), dispatchEvent: vi.fn() },
   }
 }
 afterEach(() => vi.unstubAllGlobals())
@@ -77,43 +79,75 @@ describe('console mouse ownership', () => {
     }
   })
 
-  it('requires Shift in a non-reporting alternate screen and starts a fresh modifier selection', () => {
-    vi.stubGlobal('MouseEvent', class {
-      constructor(public type: string, init: MouseEventInit) { Object.assign(this, init) }
-    })
+  it('allows ordinary selection in a non-reporting alternate screen', () => {
     const f = fixture('none', 'alternate')
     const ordinary = mouseEvent(false)
     f.mouse(ordinary as unknown as MouseEvent)
-    expect(ordinary.stopImmediatePropagation).toHaveBeenCalledOnce()
+    expect(ordinary.stopImmediatePropagation).not.toHaveBeenCalled()
     expect(ordinary.target.dispatchEvent).not.toHaveBeenCalled()
-    const e = mouseEvent(true)
-    e.target.dispatchEvent.mockImplementation(initial => { f.mouse(initial); return true })
-    f.mouse(e as unknown as MouseEvent)
-    expect(e.target.dispatchEvent).toHaveBeenCalledOnce()
-    const initial = e.target.dispatchEvent.mock.calls[0][0]
-    expect(initial.shiftKey).toBeFalsy()
-    expect(initial.clientX).toBe(12)
-    expect(initial.detail).toBe(1)
   })
 
-  it('forces normal-screen selection without resetting residual application modes', () => {
+  it.each(['Win32', 'MacIntel'])('forces normal-screen selection on %s without resetting application modes', platform => {
     vi.stubGlobal('MouseEvent', class {
       constructor(public type: string, init: MouseEventInit) { Object.assign(this, init) }
     })
-    const f = fixture('vt200')
+    const f = fixture('vt200', 'normal', platform)
     const e = mouseEvent(false)
     f.mouse(e as unknown as MouseEvent)
-    expect(e.target.dispatchEvent.mock.calls[0][0].shiftKey).toBe(true)
+    expect(e.target.dispatchEvent.mock.calls[0][0]).toMatchObject({ shiftKey: platform === 'Win32', altKey: platform === 'MacIntel' })
     expect(f.term.modes.mouseTrackingMode).toBe('vt200')
   })
 
-  it.each(['x10', 'vt200', 'drag', 'any'])('leaves %s alternate primary clicks and modifier selection to xterm', mode => {
-    const f = fixture(mode, 'alternate')
-    for (const shift of [false, true]) {
-      const e = mouseEvent(shift)
+  it.each(['x10', 'vt200', 'drag', 'any'])('selects before %s can receive a drag, including release outside the console', mode => {
+    vi.stubGlobal('MouseEvent', class {
+      constructor(public type: string, init: MouseEventInit) { Object.assign(this, init) }
+    })
+    for (const screen of ['normal', 'alternate']) {
+      const f = fixture(mode, screen)
+      const e = mouseEvent(false)
       f.mouse(e as unknown as MouseEvent)
-      expect(e.stopImmediatePropagation).not.toHaveBeenCalled()
+      expect(e.stopImmediatePropagation).toHaveBeenCalledOnce()
+      expect(e.target.dispatchEvent.mock.calls[0][0]).toMatchObject({ type: 'mousedown', shiftKey: true, clientX: 12, clientY: 34 })
+      f.documentMove({ clientX: 90, clientY: 34 } as MouseEvent)
+      f.documentUp({ button: 0 } as MouseEvent)
+      expect(e.target.dispatchEvent).toHaveBeenCalledOnce()
+      expect(f.term.modes.mouseTrackingMode).toBe(mode)
+      f.dispose()
+      expect(f.container.ownerDocument.removeEventListener).toHaveBeenCalledTimes(2)
     }
+  })
+
+  it('replays a short click to the application, but never replays a double click', () => {
+    vi.stubGlobal('MouseEvent', class {
+      constructor(public type: string, init: MouseEventInit) { Object.assign(this, init) }
+    })
+    const f = fixture('any', 'alternate')
+    const e = mouseEvent(false)
+    f.mouse(e as unknown as MouseEvent)
+    f.documentUp({ button: 0, buttons: 0, clientX: 12, clientY: 34 } as MouseEvent)
+    expect(e.target.dispatchEvent.mock.calls.map(([event]) => [event.type, event.shiftKey])).toEqual([
+      ['mousedown', true], ['mousedown', false], ['mouseup', false],
+    ])
+    e.target.dispatchEvent.mockClear()
+    e.detail = 2
+    f.mouse(e as unknown as MouseEvent)
+    f.documentUp({ button: 0 } as MouseEvent)
+    expect(e.target.dispatchEvent).toHaveBeenCalledOnce()
+  })
+
+  it.each(['Win32', 'MacIntel'])('routes Alt gestures to the application on %s without the routing modifier', platform => {
+    vi.stubGlobal('MouseEvent', class {
+      constructor(public type: string, init: MouseEventInit) { Object.assign(this, init) }
+    })
+    const f = fixture('drag', 'alternate', platform)
+    const e = { ...mouseEvent(false), altKey: true }
+    f.mouse(e as unknown as MouseEvent)
+    const move = { ...mouseEvent(false), altKey: true, clientX: 50 }
+    f.documentMove(move as unknown as MouseEvent)
+    f.documentUp({ ...move, buttons: 0 } as unknown as MouseEvent)
+    expect(e.target.dispatchEvent.mock.calls.map(([event]) => [event.type, event.altKey, event.shiftKey])).toEqual([
+      ['mousedown', false, false], ['mousemove', false, false], ['mouseup', false, false],
+    ])
   })
 
   it('never intercepts scrollbar drags', () => {
