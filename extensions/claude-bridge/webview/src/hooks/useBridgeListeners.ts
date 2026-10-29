@@ -27,7 +27,7 @@ import { parseAgentEntries, markAllAgentsExited, scheduleCleanup, mergeAgentTree
 import { beginAgentReplay, stageAgentEntries, publishAgentReplay, abandonAgentReplay } from '../signals/agent-replay'
 
 // Queue: auto-send queued messages when CLI becomes idle
-import { appendJsonlEntries, applyStreamingEntry, applyStreamingDelta, clearJsonlEntries, jsonlEntriesByTab, replaceWindowWithSegment, setArchivedView } from '../signals/jsonl'
+import { appendJsonlEntries, applyStreamingEntry, applyStreamingDelta, clearJsonlEntries, jsonlEntriesByTab, replaceWindowWithSegment, setArchivedView, archivedViewTs } from '../signals/jsonl'
 import { setSegmentIndex, dropSegmentIndex, type SegmentIndex } from '../signals/all-segments'
 import { setReplayProgress } from '../signals/replay-progress'
 import { touchTab, sweepTabMemory, forgetTabRecency } from '../signals/jsonl-eviction'
@@ -478,7 +478,8 @@ export function useBridgeListeners(
     // One archived compact segment loaded from the mirror → REPLACE the window
     // with it. The pill click already set the archived-view gate + ts pin, so
     // live entries are held off and the view resolves to this segment.
-    const unsubSegmentPage = role === 'customize' ? (() => {}) : bridge.onSegmentPage?.((tabId: string, p: { records: any[] }) => {
+    const unsubSegmentPage = role === 'customize' ? (() => {}) : bridge.onSegmentPage?.((tabId: string, p: { records: any[]; fromTs?: string }) => {
+      if (archivedViewTs(tabId) !== p.fromTs) return
       // An empty segment (all-system rows, or ts-less) must NOT leave the tab
       // stuck in archived mode with live updates gated off and the old window
       // still showing — revert to Current instead of silently no-op'ing.

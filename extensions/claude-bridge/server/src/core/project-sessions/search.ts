@@ -6,7 +6,7 @@
 // transcript never changes, so a cursor keyed by transcript stays valid while
 // files grow; conversations started after the first page are not revisited.
 
-import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import path from 'node:path'
 import {
   ArgError,
@@ -20,7 +20,7 @@ import {
   timeArg,
   type Cursor,
 } from './args'
-import { headTail, isLineStart, openTranscript, readLines } from './line-reader'
+import { isLineStart, openTranscript, readLines } from './line-reader'
 import { redact } from './redact'
 import { KINDS, classify, inTimeRange, parseEntry, searchableText, timestampOf, type Kind } from './render'
 import {
@@ -34,7 +34,7 @@ import {
 import type { ToolOutput } from './types'
 
 /** Bytes of transcript scanned per call before returning a cursor. */
-export const SCAN_BUDGET_BYTES = 256 * 1024 * 1024
+export const SCAN_BUDGET_BYTES = 8 * 1024 * 1024
 const MAX_PATTERN = 256
 const MAX_TEXT_PER_ENTRY = 2 * 1024 * 1024
 const SNIPPETS_PER_ENTRY = 3
@@ -97,15 +97,38 @@ export function compileSearch(query: string, isRegex: boolean, caseSensitive: bo
   }
 }
 
+const starts = new Map<string, { identity: string; size: number; mtime: number; value: string }>()
 async function startedAt(file: string): Promise<string> {
   try {
+    const st = await fsp.stat(file)
+    const identity = `${st.dev}:${st.ino}:${st.birthtimeMs}`
+    const cached = starts.get(file)
+    // Appending does not change a conversation's first timestamp.
+    if (
+      cached?.identity === identity &&
+      st.size >= cached.size &&
+      (st.size > cached.size || st.mtimeMs === cached.mtime)
+    ) {
+      cached.size = st.size
+      cached.mtime = st.mtimeMs
+      return cached.value
+    }
     const fh = await openTranscript(file)
     try {
-      const { head } = await headTail(fh, 16 * 1024)
-      for (const line of head) {
+      const b = Buffer.alloc(Math.min(st.size, 16 * 1024))
+      const { bytesRead } = await fh.read(b, 0, b.length, 0)
+      let value = ''
+      for (const line of b.toString('utf8', 0, bytesRead).split('\n')) {
         const t = timestampOf(parseEntry(line) ?? {})
-        if (t) return t
+        if (t) {
+          value = t
+          break
+        }
       }
+      starts.delete(file)
+      starts.set(file, { identity, size: st.size, mtime: st.mtimeMs, value })
+      if (starts.size > 512) starts.delete(starts.keys().next().value!)
+      return value
     } finally {
       await fh.close()
     }
@@ -119,7 +142,8 @@ async function targets(ctx: CallerContext, ids: Set<string> | null, withSubagent
   const scope = resolveScope(ctx)
   const refs = listTranscripts(ctx, scope, true).filter((r) => !ids || ids.has(r.conversationId))
   const out: SearchTarget[] = []
-  const withStart = await Promise.all(refs.map(async (ref) => ({ ref, started: await startedAt(ref.file) })))
+  const withStart = []
+  for (const ref of refs) withStart.push({ ref, started: await startedAt(ref.file) })
   withStart.sort((a, b) =>
     a.started === b.started ? a.ref.conversationId.localeCompare(b.ref.conversationId) : a.started < b.started ? 1 : -1,
   )
@@ -127,7 +151,7 @@ async function targets(ctx: CallerContext, ids: Set<string> | null, withSubagent
     out.push({ key: ref.conversationId, conversationId: ref.conversationId, agentId: null, file: ref.file, started })
     const dir = withSubagents ? subagentDir(ref) : null
     if (!dir) continue
-    for (const name of fs.readdirSync(dir).sort()) {
+    for (const name of (await fsp.readdir(dir)).sort()) {
       const m = /^agent-([A-Za-z0-9_-]{1,128})\.jsonl$/.exec(name)
       const file = path.join(dir, name)
       if (m && isPlainFile(file)) {

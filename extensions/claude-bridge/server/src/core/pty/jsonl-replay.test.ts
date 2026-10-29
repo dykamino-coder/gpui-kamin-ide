@@ -176,7 +176,11 @@ describe('bounded replay pipeline', () => {
     expect(h.stats).toEqual(rows.map((r) => r.uuid))
     const bounds = rows.flatMap((r, i) => (r.subtype === 'compact_boundary' ? [i] : []))
     const final = h.statuses.filter((s) => s.replayComplete).at(-1)!
-    expect(final.segmentIndex).toEqual(buildSegmentIndex(rows as unknown as JsonlEntry[], bounds))
+    const expectedIndex = buildSegmentIndex(rows as unknown as JsonlEntry[], bounds)
+    expectedIndex.boundaries.forEach((b, i) => {
+      b.pos = ordered[bounds[i]!]!._pos
+    })
+    expect(final.segmentIndex).toEqual(expectedIndex)
   })
 
   it('records user inputs only for live appends, never for replayed history', async () => {

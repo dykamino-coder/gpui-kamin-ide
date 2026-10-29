@@ -5,7 +5,7 @@
 import type { KaminBridgeApi } from '../../shared/types'
 import type { DisplaySegment } from '../signals/compact-segments'
 import { setActiveSegment } from '../signals/compact-segments'
-import { clearJsonlEntries, setArchivedView, archivedViewTs } from '../signals/jsonl'
+import { setArchivedView, archivedViewTs } from '../signals/jsonl'
 import { activeTabId } from '../signals/tabs'
 
 /** Show `seg`. Resident (in-window) → just move the index. Out-of-window → load
@@ -20,7 +20,6 @@ export function openDisplaySegment(
   if (seg.isLatest) {
     if (wasArchived) {
       setArchivedView(id, null)
-      clearJsonlEntries(id)
       try { bridge.requestJsonlReplay(id) } catch { /* offline — nothing to reload */ }
     }
     setActiveSegment(seg.residentIdx >= 0 ? seg.residentIdx : totalSegments - 1)
@@ -32,6 +31,6 @@ export function openDisplaySegment(
   }
   // Out-of-window (or switching between archived views): load it whole by ts
   // range. The gate holds live entries off; onSegmentPage replaces the window.
-  setArchivedView(id, seg.ts ?? '')
+  setArchivedView(id, seg.fromTs)
   try { bridge.loadSegment(id, seg.fromTs, seg.toTs) } catch { setArchivedView(id, null) }
 }

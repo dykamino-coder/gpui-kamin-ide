@@ -27,6 +27,11 @@ export function SubagentFullscreen(): JSX.Element | null {
   const entries = name ? (agentEntriesWithLive(tabId, name, info?.agentType, info?.agentId, info?.teamName) as JsonlEntryData[]) : []
   const bridge = useBridge()
   const downloadId = name ? agentTranscriptDownloadId(tabId, name, info?.agentType, info?.agentId) : undefined
+  useEffect(() => {
+    if (!tabId || !downloadId) return
+    bridge.selectSubagent?.(tabId, downloadId)
+    return () => bridge.selectSubagent?.(tabId, null)
+  }, [bridge, tabId, downloadId])
 
   // Switching sessions must drop the overlay — the expanded agent belongs to the
   // tab we just left. (Hook runs before the early return so order stays stable.)

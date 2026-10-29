@@ -458,6 +458,7 @@ export interface KaminBridgeApi {
    *  mirror (empty toTs = to newest). Answer on `onSegmentPage`; the renderer
    *  REPLACES its window with these records. */
   loadSegment(tabId: string, fromTs: string, toTs: string): void
+  selectSubagent(tabId: string, agentId: string | null): void
   onSegmentPage(cb: (tabId: string, p: { fromTs: string; toTs: string; records: any[] }) => void): () => void
   /** Chunked-download progress for the session transcript. */
   onJsonlDownloadProgress(cb: (tabId: string, p: { received: number; total: number }) => void): () => void

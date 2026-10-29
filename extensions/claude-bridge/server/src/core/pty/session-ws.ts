@@ -20,6 +20,7 @@ import { streamFileChunks, waitForDrain, type DrainOutcome } from './download-ba
 import { fingerprintTranscript, canResume, isRecordBoundary, recordUuidMatches } from './jsonl-fingerprint'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
 import { readJsonlLines } from './jsonl-lines'
+import { readHistoryPage } from './jsonl-page'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import { registerWsRoute } from '../server/ws'
 import { resolveToken } from '../auth/tokens'
@@ -223,6 +224,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
+                history: msg.history,
               })
 
               if (!ownsStartup(operation)) {
@@ -520,7 +522,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               }
               // Re-emit the full transcript so the fresh client rebuilds its
               // chat state (same contract as a real resume).
-              live.jsonlWatcher?.replayAll?.()
+              live.jsonlWatcher?.replayAll?.(msg.history)
 
               broadcastTree(resolved.tokenId)
               debugLog('Session reattached via WS', {
@@ -546,6 +548,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
+                history: msg.history,
               })
 
               if (!ownsStartup(operation)) {
@@ -975,6 +978,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           break
         }
 
+        case 'jsonl:subagent-select': {
+          if (!authenticatedSessionId) return
+          getSession(authenticatedSessionId)?.jsonlWatcher?.selectSubagent?.(msg.agentId)
+          break
+        }
+
         case 'jsonl:download-request': {
           if (!authenticatedSessionId) {
             sendError(ws, 'Not authenticated')
@@ -1066,6 +1075,42 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             return
           }
           const { fromTs, toTs } = msg // WsMsgJsonlSegmentRequest — already narrowed
+          if (msg.paged) {
+            if (msg.beforePos !== undefined && (!Number.isSafeInteger(msg.beforePos) || msg.beforePos < 0)) {
+              sendError(ws, 'Invalid history cursor')
+              break
+            }
+            const sessionId = authenticatedSessionId
+            const watcher = getSession(sessionId)?.jsonlWatcher
+            const file = watcher?.getFilePath()
+            try {
+              const range = fromTs || toTs ? await watcher?.segmentRange?.(fromTs, toTs) : { lower: 0, upper: Infinity }
+              const page =
+                file && range
+                  ? await readHistoryPage(file, Math.min(msg.beforePos ?? Infinity, range.upper), range.lower)
+                  : { records: [], nextPos: 0, bytesRead: 0 }
+              // A switch or rewrite invalidates the positions captured above.
+              if (
+                authenticatedSessionId !== sessionId ||
+                getSession(sessionId)?.jsonlWatcher !== watcher ||
+                watcher?.getFilePath() !== file
+              )
+                break
+              if (ws.readyState === ws.OPEN)
+                ws.send(
+                  JSON.stringify({
+                    type: 'jsonl:segment-response',
+                    fromTs,
+                    toTs,
+                    ...page,
+                    ...(msg.beforePos === undefined ? {} : { beforePos: msg.beforePos }),
+                  }),
+                )
+            } catch {
+              if (ws.readyState === ws.OPEN) sendError(ws, 'History page unavailable')
+            }
+            break
+          }
           const segPath = getSession(authenticatedSessionId)?.jsonlWatcher?.getFilePath()
           const records: JsonlEntry[] = []
           let truncated = false

@@ -14,6 +14,7 @@ import fsp from 'fs/promises'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 import { SKIP_LINE_MARKER } from './jsonl-watcher'
 import { readJsonlLines } from './jsonl-lines'
+import { readHistoryPage } from './jsonl-page'
 import {
   normalizeOutcome,
   oversizedStub,
@@ -63,7 +64,7 @@ export class SubagentJsonlWatcher {
     agentToolUseId: string,
     filePath: string,
     sendEntries: (entries: JsonlEntry[]) => boolean | void | SendOutcome,
-    private options: { startOffset?: number } = {},
+    private options: { startOffset?: number; tailOnly?: boolean } = {},
   ) {
     this.agentToolUseId = agentToolUseId
     this.filePath = filePath
@@ -141,6 +142,11 @@ export class SubagentJsonlWatcher {
 
   private async startTailing(): Promise<void> {
     if (this.stopped) return
+    if (this.options.tailOnly && this.options.startOffset === undefined) {
+      const page = await readHistoryPage(this.filePath, (await fsp.stat(this.filePath)).size)
+      if (this.stopped) return
+      this.lastOffset = (page.records[0] as Tagged | undefined)?._pos ?? page.endPos
+    }
     // Arm every way of continuing FIRST; only then deliver anything.
     try {
       let debounceTimer: ReturnType<typeof setTimeout> | null = null

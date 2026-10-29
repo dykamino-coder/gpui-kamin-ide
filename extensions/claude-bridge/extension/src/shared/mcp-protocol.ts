@@ -4,49 +4,19 @@ export type ClientMessage =
   | { type: 'commands:stop'; id: string }
   | { type: 'commands:output'; id: string }
   | { type: 'commands:report'; report: import('./commands').CommandReport }
-  | {
-      type: 'session:create'
-      token: string
-      cwd?: string
-      cols?: number
-      rows?: number
-      protocolVersion?: number
-    }
+  | { type: 'jsonl:subagent-select'; agentId: string | null }
+  | { type: 'session:create'; token: string; cwd?: string; cols?: number; rows?: number; protocolVersion?: number }
   | { type: 'session:input'; data: string }
   | { type: 'session:interrupt' }
   | { type: 'session:submitText'; data: string; submissionId?: string }
   | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
   | { type: 'session:resize'; cols: number; rows: number }
-  | {
-      type: 'mcp:response'
-      taskOwner?: string
-      sessionId?: string
-      requestId: string
-      result: unknown
-    }
-  | {
-      type: 'mcp:denied'
-      taskOwner?: string
-      sessionId?: string
-      requestId: string
-      reason: string
-    }
-  | {
-      type: 'elicitation:response'
-      requestId: string
-      action: 'accept' | 'deny' | 'dismiss'
-      content?: Record<string, unknown>
-    }
-  | {
-      type: 'session:resume'
-      noSpawnOnNotFound?: boolean
-      token: string
-      conversationId: string
-      cwd?: string
-      cols?: number
-      rows?: number
-      protocolVersion?: number
-    }
+  | { type: 'mcp:response'; taskOwner?: string
+      sessionId?: string; requestId: string; result: unknown }
+  | { type: 'mcp:denied'; taskOwner?: string
+      sessionId?: string; requestId: string; reason: string }
+  | { type: 'elicitation:response'; requestId: string; action: 'accept' | 'deny' | 'dismiss'; content?: Record<string, unknown> }
+  | { type: 'session:resume'; noSpawnOnNotFound?: boolean; token: string; conversationId: string; cwd?: string; cols?: number; rows?: number; protocolVersion?: number; history?: { mode: 'paged' } }
   | { type: 'session:change-effort'; effort: string }
   | { type: 'session:change-model'; model: string }
   | { type: 'session:delete-data'; conversationId: string }
@@ -127,38 +97,10 @@ export type ServerMessage =
       input: Record<string, unknown>
     }
   | { type: 'jsonl:entries'; entries: unknown[] }
-  | {
-      type: 'jsonl:status'
-      status: string
-      filePath?: string
-      error?: string
-      compacted?: boolean
-      replayComplete?: boolean
-      fileHead?: string
-      fileSize?: number
-      replayProgress?: { sent: number; total: number }
-      segmentIndex?: { boundaries: { ts: string }[]; counts: number[] }
-    }
-  | {
-      type: 'jsonl:segment-response'
-      fromTs: string
-      toTs: string
-      records: unknown[]
-    }
-  | {
-      type: 'elicitation:request'
-      requestId: string
-      toolName: string
-      message: string
-      requestedSchema?: Record<string, unknown>
-    }
-  | {
-      type: 'session:agent-spawned'
-      parentSessionId: string
-      childSessionId: string
-      agentName: string
-      description: string
-    }
+  | { type: 'jsonl:status'; status: string; filePath?: string; error?: string; compacted?: boolean; replayComplete?: boolean; fileHead?: string; fileSize?: number; replayProgress?: { sent: number; total: number }; segmentIndex?: { boundaries: { ts: string }[]; counts: number[] } }
+  | { type: 'jsonl:segment-response'; fromTs: string; toTs: string; records: unknown[]; beforePos?: number; nextPos?: number }
+  | { type: 'elicitation:request'; requestId: string; toolName: string; message: string; requestedSchema?: Record<string, unknown> }
+  | { type: 'session:agent-spawned'; parentSessionId: string; childSessionId: string; agentName: string; description: string }
   | { type: 'session:tree-update'; tree: unknown[] }
   | {
       type: 'session:restarted'

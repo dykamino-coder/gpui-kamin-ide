@@ -22,7 +22,7 @@ import type { JsonlEntry, ContentBlock } from '../../shared/jsonl-types'
 
 export interface SegmentIndex {
   /** compact_boundary timestamps, in file (chronological) order. */
-  boundaries: { ts: string }[]
+  boundaries: { ts: string; pos?: number }[]
   /** One MORE entry than `boundaries`: counts[0] is the original pre-compaction
    *  segment; counts[k+1] is the segment starting AFTER boundaries[k]. Boundary
    *  rows themselves are dividers and are never counted. */
@@ -190,16 +190,24 @@ export function buildSegmentIndex(all: JsonlEntry[], boundaryIdx: number[]): Seg
  *  only the running counts — never the entries themselves. Produces the same
  *  index as `buildSegmentIndex(all, boundaryIdx)` for the same sequence. */
 export class SegmentIndexBuilder {
-  private boundaries: { ts: string }[] = []
+  private boundaries: { ts: string; pos?: number }[] = []
   private counts: number[] = []
   private current = 0
 
-  add(e: JsonlEntry): void {
+  clone(): SegmentIndexBuilder {
+    const copy = new SegmentIndexBuilder()
+    copy.boundaries = [...this.boundaries]
+    copy.counts = [...this.counts]
+    copy.current = this.current
+    return copy
+  }
+
+  add(e: JsonlEntry, pos?: number): void {
     if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') {
       const ts = String(e.timestamp ?? '')
       if (ts) {
         this.counts.push(this.current)
-        this.boundaries.push({ ts })
+        this.boundaries.push({ ts, ...(pos === undefined ? {} : { pos }) })
         this.current = 0
       }
       // ts-less divider: no split — the next segment folds into this slot.

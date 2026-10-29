@@ -163,8 +163,9 @@ export const SEND: Record<string, string> = {
   submissionAction: 'submission-action',
   // Full compact-boundary index (all segments, incl. out-of-window) + on-demand
   // load of one archived segment by byte range. Mirror-backed, like loadOlderPage.
-  requestBoundaries: 'jsonl:boundaries',
-  loadSegment: 'jsonl:load-segment',
+  requestBoundaries: "jsonl:boundaries",
+  loadSegment: "jsonl:load-segment",
+  selectSubagent: "jsonl:subagent-select",
   // What the chat is ACTUALLY showing. The host repaints its session list and
   // titlebar the instant a session is clicked, while the iframe still holds the
   // previous transcript until its replay lands — and nothing told the host that,

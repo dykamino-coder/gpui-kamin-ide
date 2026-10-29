@@ -16,7 +16,7 @@ import { recordConversationIdentity, type IdentityAction } from '../../incident-
 /** How much of the local copy is painted before the network answers. The chat
  *  windows ~150 rows and grows on scroll, so a couple of thousand records is
  *  already more than the first screens need. */
-const MIRROR_PAINT_RECORDS = 2000
+const MIRROR_PAINT_RECORDS = 200
 // Cap on how many cached records a reload replays into the renderer. The store
 // is windowed there (STORE_WINDOW in JsonlViewer); older pages come back from the
 // mirror on scroll-up. Kept a touch above the renderer window so the tail is
@@ -496,11 +496,8 @@ export class ConnectionManager {
    *  so the CLI builds its context with the complete tool set (no mid-turn
    *  deferred-tools churn). Bounded wait — instant on warm start / reconnect. */
   private async startSession(sock: WebSocket): Promise<void> {
-    try {
-      await ConnectionManager.whenExternalToolsReady?.()
-    } catch {
-      /* proceed with whatever connected */
-    }
+    try { await ConnectionManager.whenExternalToolsReady?.() } catch { /* proceed with whatever connected */ }
+    const cursor = this.conversationId && !this.pendingNewConversation ? await this.getMirrorCursor() : null
     // A reconnect may have swapped the socket while we waited — never write to a
     // stale or closed pipe (the current socket runs its own startSession).
     if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
@@ -524,6 +521,7 @@ export class ConnectionManager {
         cols: 120,
         rows: 40,
         protocolVersion: CLIENT_STREAM_PROTOCOL,
+        history: { mode: 'paged', ...(cursor ? { cursor } : {}) },
         ...(basePrompt ? { basePrompt } : {}),
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
@@ -536,6 +534,7 @@ export class ConnectionManager {
         cols: 120,
         rows: 40,
         protocolVersion: CLIENT_STREAM_PROTOCOL,
+        history: { mode: 'paged' },
         ...(basePrompt ? { basePrompt } : {}),
         ...(transcriptMirrorDir ? { transcriptMirrorDir } : {}),
         ...(externalTools.length > 0 ? { externalTools } : {}),
@@ -1006,7 +1005,10 @@ export class ConnectionManager {
    *  unreadable, or belongs to a file the server has since rewritten — every
    *  one of which falls back to the network path unchanged. */
   async replayFromMirror(maxRecords = MIRROR_PAINT_RECORDS): Promise<number> {
+    if (this.cachedJsonlEntries.length > 0) return 0 // memory is newer than the disk snapshot
+    const conversationId = this.conversationId
     const records = await this.readMirrorTail(maxRecords)
+    if (conversationId !== this.conversationId || this.cachedJsonlEntries.length > 0) return 0
     if (records.length === 0) return 0
     // Straight to the renderer, not through the batcher: these are already
     // ordered and bounded, and the point is to be on screen immediately.
@@ -1015,6 +1017,7 @@ export class ConnectionManager {
   }
 
   replayJsonlToRenderer(): void {
+    this.requestedSegment = null
     // Flush any in-flight IPC batches FIRST. Otherwise the renderer sees the
     // stale cache first and a 50ms-later batch with overlapping entries
     // second, which confuses dedup + scroll-pinning.
@@ -1099,7 +1102,7 @@ export class ConnectionManager {
     // is the server's file-order counter, so the largest `_ord`s are the newest.
     let toReplay = this.cachedJsonlEntries
     if (toReplay.length > REPLAY_TAIL_MAX) {
-      const ord = (e: unknown): number => (e as { _ord?: number })._ord ?? 0
+      const ord = (e: { _pos?: number; _ord?: number }): number => e._pos ?? e._ord ?? 0
       toReplay = [...toReplay].sort((a, b) => ord(a) - ord(b)).slice(-REPLAY_TAIL_MAX)
     }
     if (toReplay.length > 0) this.batcher.drainMainThen([...toReplay], tail)
@@ -1177,6 +1180,7 @@ export class ConnectionManager {
       cols: 120,
       rows: 40,
       protocolVersion: CLIENT_STREAM_PROTOCOL,
+      history: { mode: 'paged' },
     })
   }
 
@@ -1200,16 +1204,17 @@ export class ConnectionManager {
 
   /** What our local copy can prove it holds — the resume point handed to the
    *  server. `null` means "send me everything". */
-  async getMirrorCursor(): Promise<{ head: string; pos: number } | null> {
+  async getMirrorCursor(): Promise<{ head: string; pos: number; lastPos?: number; lastUuid?: string } | null> {
     this.ensureMirror()
     const cursor = await this.mirror?.readCursor()
-    return cursor ? { head: cursor.head, pos: cursor.pos } : null
+    return cursor ?? null
   }
 
   /** The tail of the local copy, for painting the chat before the network
    *  answers at all. */
   async readMirrorTail(maxRecords: number): Promise<unknown[]> {
     this.ensureMirror()
+    if (!(await this.mirror?.readCursor())) return []
     return (await this.mirror?.readTail(maxRecords)) ?? []
   }
 
@@ -1217,16 +1222,15 @@ export class ConnectionManager {
    *  held byte offset) so a windowed chat can grow upward on scroll. Delivered on
    *  a DEDICATED channel — the renderer prepends them as-is (they are already in
    *  file order and entirely older than the window), never re-sorting the store.
-   *  Mirror-backed: it is populated as batches arrive + at replay-complete, so a
-   *  session long enough to need windowing has it. An empty result (start of file
-   *  reached, or no mirror) simply tells the renderer there is nothing more. */
+   *  The server owns byte positions; the disk mirror is a fallback while offline. */
   async loadOlderPage(beforePos: number, count: number): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.sendRaw({ type: 'jsonl:segment-request', ...(this.requestedSegment ?? { fromTs: '', toTs: '' }), beforePos, paged: true })
+      return
+    }
     this.ensureMirror()
     const records = (await this.mirror?.readRange(beforePos, count)) ?? []
-    this.window.webContents.send('jsonl:older-page', this.tabId, {
-      beforePos,
-      records,
-    })
+    this.window.webContents.send('jsonl:older-page', this.tabId, { beforePos, records, ...(this.requestedSegment ?? {}) })
   }
 
   /** The FULL compact-segment index — every segment with visible-message counts,
@@ -1239,14 +1243,21 @@ export class ConnectionManager {
     this.window.webContents.send('jsonl:boundaries-result', this.tabId, index)
   }
 
-  /** One archived compact segment loaded whole by TIMESTAMP range — the renderer
+  /** The newest page of an archived compact segment, identified by its boundaries — the renderer
    *  replaces its window with it (the "view an old conversation" path). Served by
    *  the SERVER from the authoritative file (the local mirror is a bounded tail
    *  and may not hold an old range); the response arrives on `jsonl:segment-response`
    *  and is forwarded to the renderer. Empty fromTs = from the start; empty
    *  toTs = to the newest. */
+  private requestedSegment: { fromTs: string; toTs: string } | null = null
+
   loadSegment(fromTs: string, toTs: string): void {
-    this.sendRaw({ type: 'jsonl:segment-request', fromTs, toTs })
+    this.requestedSegment = { fromTs, toTs }
+    this.sendRaw({ type: 'jsonl:segment-request', fromTs, toTs, paged: true })
+  }
+
+  selectSubagent(agentId: string | null): void {
+    this.sendRaw({ type: 'jsonl:subagent-select', agentId })
   }
 
   requestJsonlDownload(agentId?: string): Promise<{
@@ -1452,7 +1463,18 @@ export class ConnectionManager {
         }
       },
       pushJsonlCache: (entries, replay) => {
-        this.cachedJsonlEntries.push(...entries)
+        const known = new Set(this.cachedJsonlEntries.map((entry) => {
+          const row = entry as { _pos?: number; uuid?: string }
+          return row._pos ?? row.uuid
+        }))
+        this.cachedJsonlEntries.push(...entries.filter((entry) => {
+          const row = entry as { _pos?: number; uuid?: string }
+          const key = row._pos ?? row.uuid
+          if (key === undefined) return true
+          if (known.has(key)) return false
+          known.add(key)
+          return true
+        }))
         // Persist as they arrive. Never a bulk dump: an append-only mirror can
         // be resumed after a crash, and writing the whole transcript at once is
         // exactly the stall this is meant to remove.

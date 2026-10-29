@@ -83,14 +83,14 @@ const JSONL_CACHE_SLACK = 1_000
  *  looking), which puts the freshest entries at the FRONT: dropping from there
  *  would evict exactly the conversation in view, and the next renderer reload
  *  would replay old history with today's turns missing. */
-export function trimJsonlCache(cached: { _ord?: number }[]): void {
+export function trimJsonlCache(cached: { _ord?: number; _pos?: number }[]): void {
   const over = cached.length - JSONL_CACHE_MAX
   if (over < JSONL_CACHE_SLACK) return
   // Sorting the ORDS (plain numbers) is far cheaper than sorting the entry
   // objects, and `_ord` is unique per entry, so the cutoff drops exactly `over`.
-  const ords = cached.map((e) => e._ord ?? 0).sort((a, b) => a - b)
+  const ords = cached.map((e) => e._pos ?? e._ord ?? 0).sort((a, b) => a - b)
   const cutoff = ords[over - 1] ?? 0
-  const kept = cached.filter((e) => (e._ord ?? 0) > cutoff)
+  const kept = cached.filter((e) => (e._pos ?? e._ord ?? 0) > cutoff)
   // Не push(...kept): spread на ~20k элементов упирается в лимит аргументов V8.
   cached.length = kept.length
   for (let i = 0; i < kept.length; i++) cached[i] = kept[i]
@@ -101,7 +101,6 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
     case 'session:created': {
       ctx.resetReconnectAttempt()
       ctx.noteSessionCreated()
-      ctx.clearJsonlCache()
       // NOTE: do NOT send `{compacted:true}` here. session:created fires on
       // every reconnect/restart; renderer's appendJsonlEntries already
       // dedupes by uuid, so a replay of cached entries is a no-op when the
@@ -288,6 +287,10 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
     }
 
     case 'jsonl:segment-response': {
+      if (msg.beforePos !== undefined) {
+        ctx.window.webContents.send('jsonl:older-page', ctx.tabId, msg)
+        break
+      }
       // One archived segment, read by the server from the authoritative file →
       // straight to the renderer's "view an old conversation" channel. Stateless:
       // the response carries its own range, so no pending-request bookkeeping.
@@ -295,6 +298,7 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
         fromTs: (msg as any).fromTs,
         toTs: (msg as any).toTs,
         records: (msg as any).records ?? [],
+        nextPos: msg.nextPos,
       })
       break
     }
