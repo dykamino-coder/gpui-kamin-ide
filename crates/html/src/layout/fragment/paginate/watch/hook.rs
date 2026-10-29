@@ -144,7 +144,10 @@ impl Hooks for Watch {
         if let Slot::Box(id) = self.slot
             && let Some(slices) = self.rec.admitted(id)
         {
-            admitted_paint(&mut self.inner, *prepaint, slices, window, cx);
+            let inner = &mut self.inner;
+            self.rec.with_admitted(slices.clone(), || {
+                admitted_paint(inner, *prepaint, slices, window, cx)
+            });
             return;
         }
         match access {

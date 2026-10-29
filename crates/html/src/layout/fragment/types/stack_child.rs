@@ -154,6 +154,9 @@ pub struct StackChild {
     pub laid_w: std::cell::Cell<f32>,
     /// Куски рисует запись главной копии (`stack_child::replay::replayable`).
     pub(crate) replay: bool,
+    /// В поддереве есть художники, читающие границы фрагмента (тени, плоские
+    /// преобразования, фильтры): в записи они режут себя по кускам сами.
+    pub(crate) effects: bool,
     /// Paginated by its own layout (`fragment::paginate`): the stack lays the
     /// copy out against the fragmentainer grid and rebuilds it with struts.
     pub paginate: Option<crate::layout::fragment::paginate::Paginate>,

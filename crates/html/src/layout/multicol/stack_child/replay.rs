@@ -4,51 +4,58 @@
 use crate::dom::{Element, Node};
 use crate::style::computed::{Display, Position};
 
-/// Поддерево рисуется одинаково в любом куске: ни один его художник не читает границы
-/// фрагмента. Такие художники — срез тени по внутренним краям (css-break-3 §5.4,
-/// `effect_fragment::paint_shadow`), опорная коробка трансформации и фильтра во фрагменте
-/// (§5.5, `effect_fragment::reference_box`), линейки промежутков (`gap_fragment`) и
-/// вложенная фрагментация (многоколоночник рисует свои куски сам); отложенная краска позиционированных и контекстов наложения
-/// идёт вне записи; сросшиеся кромки таблицы решают стыки по маске своего куска
-/// (`EdgePainter`). Таблица с раздельными рамками рисуется одинаково в любом куске:
-/// ячейки — параллельные потоки одной раскладки. Обход — итеративный.
-pub(crate) fn replayable(root: &Element) -> bool {
+/// Поддерево рисуется записью главной копии: первое — допуск, второе — в нём есть
+/// художники, читающие границы фрагмента, которые в записи режут себя по кускам сами
+/// (`effect_fragment::pieces`): срез тени по внутренним краям (css-break-3 §5.4),
+/// опорная коробка плоского преобразования во фрагменте (§5.5), фильтр, линейки
+/// промежутков (CSS Gaps 1 §fragmentation). Остаются на копиях: объёмные преобразования и
+/// перспектива (их плоскости решаются на отрисовке по накопленной матрице), фильтры по
+/// ссылке и фона, вложенная фрагментация (многоколоночник рисует свои куски сам),
+/// внепоточные коробки (продолжаются своими слотами); сросшиеся кромки таблицы
+/// решают стыки по маске своего куска (`EdgePainter`). Таблица с раздельными рамками
+/// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
+/// Обход — итеративный.
+pub(crate) fn replayable(root: &Element) -> (bool, bool) {
     let mut stack = vec![root];
+    let mut effects = false;
     while let Some(e) = stack.pop() {
         let s = e.style.used();
         // Владение, окна и расход элементов flex и сетки переносит допуск узлов записи
         // (`element::admission::items`).
         let per_copy = table_part(e) && s.border_collapse == Some(true);
-        // Позиционированные коробки и контексты наложения рисуются отложенно, в фазе
-        // своего контекста (CSS 2.1 Appendix E, `PaintLast`), а не внутри записи копии.
-        let deferred = !matches!(s.position, None | Some(Position::Static))
-            || s.z_index.is_some()
-            || s.opacity.is_some_and(|o| o < 1.0);
+        // Относительные и липкие коробки и контексты наложения рисуются отложенно, в фазе
+        // своего контекста (CSS 2.1 Appendix E, `PaintLast`), но этот контекст закрыт
+        // корнем главной копии, как у копии, — их краска входит в запись. Внепоточные
+        // коробки продолжаются своими слотами и местами по сегментам (P08).
+        let deferred = matches!(s.position, Some(Position::Absolute | Position::Fixed));
+        let solid = s.transform.is_some_and(|t| t.has_3d)
+            || s.perspective.is_some()
+            || s.preserve_3d == Some(true);
         if per_copy
             || deferred
-            || !s.shadows.is_empty()
-            || s.transform.is_some()
-            || s.translate.is_some()
-            || s.rotate_prop.is_some()
-            || s.scale_prop.is_some()
-            || s.filter.is_some()
+            || solid
             || s.filter_ref.is_some()
             || s.backdrop_filter_set
             || s.column_count.is_some()
             || s.column_width.is_some()
+        {
+            return (false, false);
+        }
+        effects |= !s.shadows.is_empty()
+            || s.transform.is_some()
+            || s.rotate_prop.is_some()
+            || s.scale_prop.is_some()
+            || s.filter.is_some()
             || s.column_rule_width.is_some()
             || s.column_rule_styles.is_some()
             || s.row_rule_width.is_some()
-            || s.row_rule_styles.is_some()
-        {
-            return false;
-        }
+            || s.row_rule_styles.is_some();
         stack.extend(e.children.iter().filter_map(|n| match n {
             Node::Element(c) => Some(c),
             _ => None,
         }));
     }
-    true
+    (true, effects)
 }
 
 /// Часть таблицы (её сросшиеся кромки решают стыки по маске своего куска).
@@ -122,23 +129,38 @@ mod tests {
 
     #[test]
     fn fragment_aware_painters_keep_their_copies() {
-        assert!(replayable(&first(
-            "<section><p style='background:green'>a</p></section>"
-        )));
-        assert!(!replayable(&first(
-            "<section><p style='box-shadow:0 0 4px red'>a</p></section>"
-        )));
-        assert!(!replayable(&first(
-            "<section><div style='transform:rotate(1deg)'>a</div></section>"
-        )));
-        assert!(!replayable(&first(
-            "<section><div style='columns:2'>a</div></section>"
-        )));
-        assert!(!replayable(&first(
-            "<section><div style='position:absolute'>a</div></section>"
-        )));
-        assert!(replayable(&first(
-            "<section><div style='display:grid'>a</div></section>"
-        )));
+        let of = |html: &str| replayable(&first(html));
+        assert_eq!(
+            of("<section><p style='background:green'>a</p></section>"),
+            (true, false)
+        );
+        assert_eq!(
+            of("<section><p style='box-shadow:0 0 4px red'>a</p></section>"),
+            (true, true)
+        );
+        assert_eq!(
+            of("<section><div style='transform:rotate(1deg)'>a</div></section>"),
+            (true, true)
+        );
+        assert_eq!(
+            of("<section><div style='transform:rotateX(1deg)'>a</div></section>"),
+            (false, false)
+        );
+        assert_eq!(
+            of("<section><div style='columns:2'>a</div></section>"),
+            (false, false)
+        );
+        assert_eq!(
+            of("<section><div style='position:absolute'>a</div></section>"),
+            (false, false)
+        );
+        assert_eq!(
+            of("<section><div style='position:relative;opacity:0.5'>a</div></section>"),
+            (true, false)
+        );
+        assert_eq!(
+            of("<section><div style='display:grid'>a</div></section>"),
+            (true, false)
+        );
     }
 }

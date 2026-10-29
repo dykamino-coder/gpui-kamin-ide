@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+mod admission;
 mod axis;
 mod construct;
 mod hook;
@@ -85,19 +86,10 @@ pub(crate) struct Watched {
     leads: Rc<RefCell<HashMap<u64, f32>>>,
     /// Собственный допуск узлов в записи главной копии, воспроизводимой по кускам
     /// (`ColumnStack::replay_routes`): монолит — только в фрагментаинере начала.
-    admission: Rc<RefCell<HashMap<u64, Rc<[gpui::PaintSegmentSlice]>>>>,
+    admission: Rc<admission::Admission>,
 }
 
 impl Watched {
-    /// Допуск узлов на время записи или prepaint главной копии (пустой — снят).
-    pub(crate) fn set_admission(&self, nodes: HashMap<u64, Rc<[gpui::PaintSegmentSlice]>>) {
-        *self.admission.borrow_mut() = nodes;
-    }
-
-    pub(super) fn admitted(&self, id: u64) -> Option<Rc<[gpui::PaintSegmentSlice]>> {
-        self.admission.borrow().get(&id).cloned()
-    }
-
     pub(super) fn axis(&self) -> StackAxis {
         self.axis.unwrap_or(StackAxis::Horizontal)
     }
