@@ -164,6 +164,21 @@ describe('project session tools over MCP', () => {
     expect(journal).not.toContain(TOKEN)
   })
 
+  it('names a misspelled or missing argument instead of reporting not found', async () => {
+    const misspelled = await rpc('s-mine', 'tools/call', {
+      name: 'project_session_read',
+      arguments: { session_id: NEIGHBOUR, from: 1 },
+    })
+    expect(misspelled.result.isError).toBe(true)
+    const text = misspelled.result.content![0]!.text
+    expect(text).toContain('unknown argument session_id, from')
+    expect(text).toContain('conversation_id')
+    expect(text).not.toContain('not found')
+
+    const missing = await rpc('s-mine', 'tools/call', { name: 'project_session_read', arguments: {} })
+    expect(missing.result.content![0]!.text).toContain('conversation_id is required')
+  })
+
   it('can be switched off', async () => {
     process.env.KAMIN_PROJECT_SESSION_TOOLS = 'off'
     try {
