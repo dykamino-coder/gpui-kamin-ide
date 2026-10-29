@@ -10,7 +10,9 @@ use crate::style::computed::{Display, Position};
 /// (§5.5, `effect_fragment::reference_box`), линейки промежутков (`gap_fragment`) и
 /// вложенная фрагментация (многоколоночник рисует свои куски сам); элементы flex и сетки
 /// распределены между копиями; отложенная краска позиционированных и контекстов наложения
-/// идёт вне записи. Обход — итеративный.
+/// идёт вне записи; сросшиеся кромки таблицы решают стыки по маске своего куска
+/// (`EdgePainter`). Таблица с раздельными рамками рисуется одинаково в любом куске:
+/// ячейки — параллельные потоки одной раскладки. Обход — итеративный.
 pub(crate) fn replayable(root: &Element) -> bool {
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
@@ -27,7 +29,7 @@ pub(crate) fn replayable(root: &Element) -> bool {
                     | Display::GridLanes
             )
         ) || s.webkit_box == Some(true)
-            || table_part(e);
+            || (table_part(e) && s.border_collapse == Some(true));
         // Позиционированные коробки и контексты наложения рисуются отложенно, в фазе
         // своего контекста (CSS 2.1 Appendix E, `PaintLast`), а не внутри записи копии.
         let deferred = !matches!(s.position, None | Some(Position::Static))
@@ -60,8 +62,7 @@ pub(crate) fn replayable(root: &Element) -> bool {
     true
 }
 
-/// Часть таблицы: её сросшиеся кромки решают стыки по маске своего куска, а стопка
-/// раскладывает таблицу и анонимными обёртками своих частей.
+/// Часть таблицы (её сросшиеся кромки решают стыки по маске своего куска).
 fn table_part(e: &Element) -> bool {
     matches!(
         e.style.used().display,
@@ -78,17 +79,38 @@ fn table_part(e: &Element) -> bool {
     )
 }
 
-/// Хост стопки без таблиц в поддереве: её дети могут рисоваться записью главной копии.
+/// Часть таблицы без таблицы-родителя: стопка раскладывает её анонимной обёрткой
+/// (CSS 2.1 §17.2.1), а не элементом ребёнка.
+fn orphan_part(parent: &Element, e: &Element) -> bool {
+    let table = |e: &Element| {
+        matches!(
+            e.style.used().display,
+            Some(
+                Display::Table | Display::InlineTable | Display::TableRowGroup | Display::TableRow
+            )
+        ) || matches!(e.tag.as_str(), "table" | "thead" | "tbody" | "tfoot" | "tr")
+    };
+    let whole = matches!(
+        e.style.used().display,
+        Some(Display::Table | Display::InlineTable)
+    ) || e.tag == "table";
+    table_part(e) && !whole && !table(parent)
+}
+
+/// Хост стопки, чьи дети могут рисоваться записью главной копии: в поддереве нет
+/// частей таблицы, раскладываемых анонимной обёрткой.
 pub(crate) fn table_free(root: &Element) -> bool {
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
-        if table_part(e) {
-            return false;
-        }
-        stack.extend(e.children.iter().filter_map(|n| match n {
+        for c in e.children.iter().filter_map(|n| match n {
             Node::Element(c) => Some(c),
             _ => None,
-        }));
+        }) {
+            if orphan_part(e, c) {
+                return false;
+            }
+            stack.push(c);
+        }
     }
     true
 }

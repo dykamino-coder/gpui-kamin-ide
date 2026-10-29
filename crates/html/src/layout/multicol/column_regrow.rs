@@ -74,7 +74,15 @@ impl ColumnStack {
             let edge = f.from + height - f.y;
             // Колонка первого ряда, начатого под содержимым внешней колонки.
             let open = f.y <= COORD_EPS && self.row_phase > COORD_EPS && f.col < self.count;
-            let local = r.fragment_growths(blocks, f.from, f.from + f.h, edge, height, open);
+            let mut local = r.fragment_growths(blocks, f.from, f.from + f.h, edge, height, open);
+            if plan.iter().any(|g| g.kid == f.kid && g.copy == f.copy + 1) {
+                local.extend(crate::layout::fragment::push::monolith_flow::pulls(
+                    blocks,
+                    &r.laid,
+                    f.from,
+                    f.from + f.h,
+                ));
+            }
             tagged[f.kid].extend(local.into_iter().map(|g| (f.copy, g)));
         }
         for &(kid, at, grow, forced) in &grows {

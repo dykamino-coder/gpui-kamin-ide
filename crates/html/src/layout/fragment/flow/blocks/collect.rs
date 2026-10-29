@@ -161,6 +161,7 @@ pub(super) fn push_kids(
             avoid_before: edge_avoid(k, false, vcx),
             avoid_after: edge_avoid(k, true, vcx),
             monolith,
+            unbreakable: crate::layout::fragment::clone::unbreakable_box(k),
             inner: (!monolith
                 && (stacks_blocks(k) || table_box(k) || grid_container(k) || flex_container(k)))
             .then(|| collect(k, false, cx, vcx)),
