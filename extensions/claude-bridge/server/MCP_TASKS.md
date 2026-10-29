@@ -7,11 +7,14 @@ and the [core schema](https://github.com/modelcontextprotocol/modelcontextprotoc
 
 Each modern request carries protocol version and client capabilities in
 `params._meta`, with matching HTTP version, method and resource/tool-name
-headers. `server/discover` advertises the extension. A foreground `Bash` or
-`PowerShell` call returns a flat `resultType: "task"` handle only when that
-request opts into Tasks. Other tools and clients without that capability keep
-their existing behavior. Explicit `run_in_background` shell calls retain their
-`BashOutput` / `KillShell` contract.
+headers. `server/discover` advertises the extension. For clients that opt into Tasks, `Bash` and `PowerShell` with
+`run_in_background: true` return a flat `resultType: "task"` handle immediately.
+The client executes the command to completion and returns the same bounded full
+output as foreground execution. The CLI registers an `mcp_task`, frees the chat,
+and delivers its own completion notification. Foreground commands retain their
+120-second inline grace, becoming a task only when they outlive that window.
+Other tools and clients without Tasks keep their existing behavior, including
+the legacy `BashOutput` / `KillShell` background-shell contract.
 
 `tasks/get` returns current status and the terminal tool result or JSON-RPC
 error. `tasks/cancel` acknowledges a cooperative cancellation request; a
@@ -61,7 +64,8 @@ unacknowledged result. A WS reconnect with the host still running retains it.
 | Input / terminal result                   | 64 KiB / 512 KiB per task                     |
 | Persistence operations waiting or running | 32                                            |
 | Task retention from creation              | 24 hours                                      |
-| Execution deadline / cancellation grace   | 30 minutes / 1 minute                         |
+| Foreground deadline / cancellation grace  | 30 minutes / 1 minute                         |
+| Explicit background execution deadline    | 24 hours minus 1-minute cancellation grace    |
 | Suggested polling interval                | 2 seconds                                     |
 | Notification subscription                 | One stream per live PTY, 64 task IDs          |
 | Notification queue                        | 4 frames plus one controlled closing response |
@@ -78,7 +82,16 @@ do not bypass session startup or absolute lifetime limits.
 Cancellation reaches the existing tool pipeline through `AbortSignal`. On
 Windows the foreground shell's own process tree is terminated; on POSIX its
 own process group receives TERM followed by KILL after one second. Explicit
-background-shell management is unchanged.
+background-shell management remains available to clients without Tasks. The
+server passes a background task deadline in `mcp:call.taskDeadlineMs`, outside
+model-controlled tool input; it overrides the client foreground timeout cap.
+
+The session header Commands button and the server dashboard show all running
+MCP calls, durable tasks and legacy shells, with background work first. The
+header badge counts only background work. Server snapshots use the existing WS;
+legacy shell snapshots do not consume BashOutput cursors. Stop routes to the
+existing owner-scoped cancellation path, and output views retain a bounded
+16-KiB live tail (terminal task output remains available through tasks/get).
 
 ## Real CLI acceptance
 
@@ -90,28 +103,30 @@ fetching; Bridge removes inherited `DISABLE_NONESSENTIAL_TRAFFIC` and
 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. Other existing session controls,
 including the fullscreen renderer setting, remain applicable.
 
-Acceptance uses a separately named temporary container built from the candidate,
-the authorized `kamin-acc-302-auth` volume, a free localhost port and a fresh test
-conversation. Leave the owner's containers and IDE profiles untouched; remove
-only the temporary container by its exact name after the gate.
+Acceptance uses a separately named temporary Podman container based on the
+pinned Bridge image plus candidate source. Use a fresh synthetic CLI profile,
+a loopback-only model fixture and synthetic credentials; never mount the
+owner's authentication volume or touch their containers or IDE profiles.
+An isolated cached beta flag can exercise the actual CLI Tasks implementation,
+but does not establish any real account's beta eligibility.
 
-1. Confirm CLI version, valid test authentication, modern discovery and Tasks
-   capability on the actual `tools/call`. Record a missing beta flag separately
-   from server failures. Use interactive PTY; a stream-json driver additionally
-   requires `CLAUDE_AUTO_BACKGROUND_TASKS=1` and open stdin.
-2. Ask the agent to invoke a foreground local command that waits 45 seconds and
-   prints a unique test marker. Confirm a task handle arrives before completion,
-   another user turn completes while it works, and the agent receives the
-   terminal marker without a `BashOutput` poll or duplicate command execution.
-3. Repeat with a longer command; cancel through `/tasks` or `tasks/cancel`.
-   Confirm the executor process tree stops and status becomes `cancelled`.
-4. Disconnect/reconnect WS during execution and again after output but before
-   acknowledgement. Confirm a single execution and eventual persisted output.
-   Cold-resume the same conversation and retrieve its retained result.
-5. Repeat without Tasks client capability and confirm ordinary tool calls still
-   work. Check MCP tools, hooks, statusline and resume against the CLI update's
-   acceptance scenario. Native GPUI/CEF acceptance belongs to the lead.
+1. Confirm CLI 2.1.312, modern discovery and Tasks capability on the actual
+   `tools/call`. Record missing capability separately from server failures.
+   A stream-json driver requires `CLAUDE_AUTO_BACKGROUND_TASKS=1` and open stdin.
+2. Return a model tool call with `run_in_background: true` and delay completion.
+   Compare baseline and candidate using the same fixture: the candidate must
+   return the task immediately, register `mcp_task`, finish the agent turn and
+   deliver a later `task-notification` without a BashOutput poll.
+3. Cancel another task through `tasks/cancel`; confirm executor termination
+   and terminal status. Check WS replacement and late acknowledgement against
+   the integration tests, with a single execution and retained terminal result.
+4. Repeat without Tasks capability and verify legacy BashOutput/KillShell.
+   Foreground calls retain their 120-second inline grace and 30-minute deadline.
+5. On a separate native GPUI/CEF profile, inspect the Commands button left of
+   diagnostics, background-only badge, all-command ordering, output and Stop.
+   Capture only that test window through its own kamin-probe port.
 
-Unit and HTTP/WS integration tests exercise synthetic tools, persistence,
-ownership, cancellation and reconnect boundaries; they do not establish the
-account-gated real CLI acceptance above.
+Unit and HTTP/WS integration tests exercise persistence, ownership,
+cancellation and reconnect boundaries. Synthetic real-CLI acceptance exercises
+the pinned binary with controlled model output; production account eligibility
+remains an independent prerequisite.

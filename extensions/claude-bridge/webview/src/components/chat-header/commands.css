@@ -1,0 +1,87 @@
+.commands-control {
+  position: relative;
+  display: inline-flex;
+}
+.commands-toggle {
+  position: relative;
+}
+.commands-badge {
+  position: absolute;
+  top: -4px;
+  right: -5px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--accent-primary, #7c6cf0);
+  color: #fff;
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+}
+.commands-popover {
+  position: fixed;
+  z-index: var(--z-titlebar-popover, 10001);
+  width: min(420px, calc(100vw - 32px));
+  max-height: 65vh;
+  overflow: auto;
+  padding: 10px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--divider-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+}
+.commands-heading,
+.commands-meta,
+.commands-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.commands-heading {
+  justify-content: space-between;
+  font-weight: 600;
+}
+.commands-popover button {
+  color: var(--text-secondary);
+  background: var(--bg-elevated, transparent);
+  border: 1px solid var(--divider-soft);
+  border-radius: 4px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.commands-popover button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.commands-row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--divider-soft);
+}
+.commands-meta {
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.commands-row code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 6px 0;
+}
+.commands-empty {
+  color: var(--text-muted);
+}
+.commands-output {
+  margin-top: 10px;
+}
+.commands-output pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  user-select: text;
+}
