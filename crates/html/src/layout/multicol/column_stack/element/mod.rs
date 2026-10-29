@@ -11,6 +11,7 @@ mod copies;
 mod native;
 mod paint;
 mod prepaint;
+mod replay;
 
 impl ColumnStack {
     /// Горизонтальная укладка в колонки. Кадры, живые во время вложенных

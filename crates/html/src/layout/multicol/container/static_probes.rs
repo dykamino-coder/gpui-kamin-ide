@@ -92,6 +92,7 @@ pub(in crate::layout::multicol) fn insert_static_probes(
             par: crate::layout::fragment::types::Par::default(),
             slack: None,
             laid_w: Default::default(),
+            replay: false,
             paginate: None,
             clone_frags: None,
             copier: None,

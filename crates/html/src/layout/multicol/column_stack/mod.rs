@@ -77,6 +77,9 @@ pub struct ColumnStack {
     /// `continue: discard` (css-overflow-4 §discarding-content): переполняющие
     /// колонки и всё после них не выводятся; линии стоят рядами `col / count`.
     pub(crate) discard: bool,
+    /// Куски детей можно рисовать записью главной копии (`element::replay`): стопка не
+    /// в листах печати — их копии представлены матрицей листа.
+    pub(crate) replay: bool,
 }
 
 impl ColumnStack {
@@ -143,6 +146,7 @@ impl ColumnStack {
             nest_report: None,
             lead_report: None,
             discard: false,
+            replay: false,
         }
     }
 
@@ -166,6 +170,12 @@ impl ColumnStack {
     /// Отбрасывание переполнения (см. `discard`).
     pub(crate) fn with_discard(mut self, on: bool) -> Self {
         self.discard = on;
+        self
+    }
+
+    /// Допуск записи главной копии (см. `replay`).
+    pub(crate) fn with_replay(mut self, on: bool) -> Self {
+        self.replay = on;
         self
     }
 

@@ -14,4 +14,4 @@ pub(crate) mod dimensions;
 pub mod gap_rules;
 pub mod measure;
 pub mod spanner;
-mod stack_child;
+pub(crate) mod stack_child;
