@@ -65,6 +65,8 @@ import { getStreamingSettings } from '../proxy/streaming-settings'
 import { SessionAdmission } from './session-admission'
 import { withSyncSnapshotLock } from '../sync/lock'
 import { closeToolNotificationStream } from './mcp-tool-notify'
+import { createCliModTransport, CLI_MOD_PLUGIN } from './cli-mod-transport'
+import { SessionCliControl, sessionCliControl } from './session-cli-control'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -453,9 +455,15 @@ async function createAdmittedSession(
     }
   }
   let pty: ReturnType<typeof import('node-pty').spawn>
+  const cliMod = await createCliModTransport(sessionId)
+  if (cliMod) {
+    env.BRIDGE_CLI_MOD_SOCKET = cliMod.socketPath
+    env.BRIDGE_CLI_MOD_SESSION = sessionId
+  }
   try {
     fs.writeFileSync(cliSettingsFile, cliSettings, { mode: 0o600, flag: 'wx' })
     const args = buildSessionClaudeArgs(config, settingsDir, cliSettingsFile)
+    if (cliMod) args.push('--plugin-dir', CLI_MOD_PLUGIN)
     pty = nodePty.spawn(claudeCmd, [...(developmentCli?.prefix ?? []), ...args], {
       name: 'xterm-256color',
       cols: config.cols ?? 120,
@@ -464,7 +472,9 @@ async function createAdmittedSession(
       env,
     })
     pty.onExit(removeCliSettings)
+    pty.onExit(() => cliMod?.dispose())
   } catch (err) {
+    cliMod?.dispose()
     removeCliSettings()
     // Spawn failed (claude binary missing, cwd gone, EAGAIN). The streaming
     // proxy was started above and would otherwise leak its listening socket +
@@ -525,6 +535,7 @@ async function createAdmittedSession(
   }
 
   sessions.set(sessionId, session)
+  new SessionCliControl(session, cliMod)
   startMcpTaskDelivery(() => [...sessions.values()])
   registered(session)
 
@@ -778,6 +789,7 @@ export function reattachSession(session: PtySession, ws: WS): void {
   session.outputDebounce?.reset()
   session.detachedAt = null
   session.ws = ws
+  sessionCliControl(session)?.replay()
   session.lastActivityAt = new Date()
   notifySessionAttachmentChanged(session)
   resendSessionUsage(session)
@@ -1216,10 +1228,10 @@ export function writeInput(sessionId: string, data: string): boolean {
 /**
  * Submit a full user message (bracketed paste + quiet-window gated CR).
  */
-export function submitText(sessionId: string, text: string): void {
+export function submitText(sessionId: string, text: string, submissionId?: string): void {
   const session = sessions.get(sessionId)
   if (!session) return
-  submitTextToSession(session, text)
+  submitTextToSession(session, text, submissionId)
 }
 
 /**

@@ -16,7 +16,10 @@ async function shellEnv(): Promise<NodeJS.ProcessEnv> {
   }
 }
 
-export type McpResult = { isError?: boolean; content: Array<{ type: string; text: string }> }
+export type McpResult = {
+  isError?: boolean
+  content: Array<{ type: string; text: string }>
+}
 
 function textResult(text: string): McpResult {
   return { content: [{ type: 'text', text }] }
@@ -38,9 +41,12 @@ function errorResult(message: string): McpResult {
  * function (return 127, print to stderr) and the `|| echo` fallback still
  * fires. Add new shims here when other tools show similar modal popups.
  */
-const WINDOWS_MODAL_SHIM = process.platform === 'win32' ? `\
+const WINDOWS_MODAL_SHIM =
+  process.platform === 'win32'
+    ? `\
 nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells — use fnm, volta, or a direct Node installer" >&2; return 127; }
-` : ''
+`
+    : ''
 
 /** Track background processes so BashOutput can poll them and KillShell can
  *  terminate them. `stdoutCursor`/`stderrCursor` mark how much each stream the
@@ -54,6 +60,10 @@ interface BackgroundOutput {
   stdoutCursor: number
   stderrCursor: number
   command: string
+  owner?: string
+  tabId?: string | null
+  startedAt: number
+  tool: string
 }
 const backgroundProcesses = new Map<number, ChildProcess>()
 const backgroundOutput = new Map<number, BackgroundOutput>()
@@ -99,6 +109,15 @@ async function findBashAsync(): Promise<string> {
 /**
  * PowerShell tool — Windows preview. Uses pwsh or powershell.exe.
  */
+function shellTimeout(input: Record<string, unknown>, context?: ToolCallContext): number {
+  if (typeof context?.taskDeadlineMs === 'number' && Number.isFinite(context.taskDeadlineMs)) {
+    return Math.max(1, Math.min(context.taskDeadlineMs - Date.now(), 86_400_000))
+  }
+  return typeof input.timeout === 'number' && Number.isFinite(input.timeout)
+    ? Math.max(1, Math.min(input.timeout, 1_800_000))
+    : 1_500_000
+}
+
 export async function powerShellExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
   const command = input.command as string
   if (!command) return errorResult('command is required')
@@ -107,7 +126,7 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
   // long commands like `npm install` / `podman build` / test suites that
   // legitimately run for many minutes. Cap matches HEAVY_TOOL_TIMEOUT_MS
   // and BASH_MAX_TIMEOUT_MS so we don't get cut off by either layer.
-  const timeout = typeof input.timeout === 'number' && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 1_800_000)) : 1_500_000
+  const timeout = shellTimeout(input, context)
 
   let pwshPath: string
   try {
@@ -115,7 +134,12 @@ export async function powerShellExecute(input: Record<string, unknown>, context?
   } catch (err) {
     return errorResult(err instanceof Error ? err.message : String(err))
   }
-  return runForegroundCommand(command, pwshPath, timeout, ['-c'], await shellEnv(), context?.signal)
+  const flags = ['-NoLogo', '-NonInteractive', '-Command']
+  const env = await shellEnv()
+  if (input.run_in_background === true && context?.taskDeadlineMs === undefined) {
+    return runBackgroundCommand(command, pwshPath, String(input.description ?? ''), flags, env, context, 'PowerShell')
+  }
+  return runForegroundCommand(command, pwshPath, timeout, flags, env, context?.signal, context?.onOutput, context?.cwd)
 }
 
 export async function bashExecute(input: Record<string, unknown>, context?: ToolCallContext): Promise<McpResult> {
@@ -126,8 +150,8 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
   // long commands like `npm install` / `podman build` / test suites that
   // legitimately run for many minutes. Cap matches HEAVY_TOOL_TIMEOUT_MS
   // and BASH_MAX_TIMEOUT_MS so we don't get cut off by either layer.
-  const timeout = typeof input.timeout === 'number' && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 1_800_000)) : 1_500_000
-  const runInBackground = input.run_in_background === true
+  const timeout = shellTimeout(input, context)
+  const runInBackground = input.run_in_background === true && context?.taskDeadlineMs === undefined
   const description = (input.description as string) || ''
 
   let shell: string
@@ -148,10 +172,19 @@ export async function bashExecute(input: Record<string, unknown>, context?: Tool
   const env = await shellEnv()
 
   if (runInBackground) {
-    return runBackgroundCommand(wrapped, shell, description, shellFlags, env)
+    return runBackgroundCommand(wrapped, shell, description, shellFlags, env, context, 'Bash', command)
   }
 
-  return runForegroundCommand(wrapped, shell, timeout, shellFlags, env, context?.signal)
+  return runForegroundCommand(
+    wrapped,
+    shell,
+    timeout,
+    shellFlags,
+    env,
+    context?.signal,
+    context?.onOutput,
+    context?.cwd,
+  )
 }
 
 const BG_OUTPUT_CAP = 100 * 1024
@@ -172,13 +205,24 @@ function appendBounded(chunks: Buffer[], lengthRef: { size: number }, chunk: Buf
   }
 }
 
-function runBackgroundCommand(command: string, shell: string, description: string, shellFlags: string[] = ['-c'], env: NodeJS.ProcessEnv = process.env): McpResult {
+function runBackgroundCommand(
+  command: string,
+  shell: string,
+  description: string,
+  shellFlags: string[] = ['-c'],
+  env: NodeJS.ProcessEnv = process.env,
+  context?: ToolCallContext,
+  tool = 'Bash',
+  displayCommand = command,
+): McpResult {
   evictOldBackgroundOutput()
   const bgId = nextBgId++
 
   const child = spawn(shell, [...shellFlags, command], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
+    // Windows PowerShell exits without executing -Command when started with
+    // DETACHED_PROCESS. Keep its console hidden without detaching it.
+    detached: tool !== 'PowerShell' || process.platform !== 'win32',
     // Suppress any child-console window flashing on Windows. Modal dialogs
     // from misbehaving tools like nvm-windows are handled separately via
     // WINDOWS_MODAL_SHIM — `windowsHide` only covers console windows.
@@ -187,6 +231,7 @@ function runBackgroundCommand(command: string, shell: string, description: strin
     // (commit without -m, merge w/o --no-edit). CLAUDECODE=1 is a marker
     // some plugin-provided scripts check for to adjust behaviour.
     env,
+    cwd: context?.cwd,
   })
 
   if (child.pid) {
@@ -196,8 +241,17 @@ function runBackgroundCommand(command: string, shell: string, description: strin
     const stdoutLen = { size: 0 }
     const stderrLen = { size: 0 }
     const output: BackgroundOutput = {
-      stdout: '', stderr: '', exitCode: null, running: true,
-      stdoutCursor: 0, stderrCursor: 0, command,
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      running: true,
+      stdoutCursor: 0,
+      stderrCursor: 0,
+      command: displayCommand,
+      owner: context?.shellOwner,
+      tabId: context?.tabId,
+      startedAt: Date.now(),
+      tool,
     }
     backgroundOutput.set(bgId, output)
 
@@ -222,9 +276,9 @@ function runBackgroundCommand(command: string, shell: string, description: strin
 
   return textResult(
     `Background process started (bash_id: ${bgId}, pid: ${child.pid || 'unknown'}).\n` +
-    (description ? `Description: ${description}\n` : '') +
-    `The command is running in the background. Read its output with BashOutput ` +
-    `(bash_id: ${bgId}) and stop it with KillShell.`
+      (description ? `Description: ${description}\n` : '') +
+      `The command is running in the background. Read its output with BashOutput ` +
+      `(bash_id: ${bgId}) and stop it with KillShell.`,
   )
 }
 
@@ -247,8 +301,13 @@ export async function readBackgroundOutput(input: Record<string, unknown>): Prom
   if (filter && newStdout) {
     try {
       const re = new RegExp(filter)
-      newStdout = newStdout.split('\n').filter(l => re.test(l)).join('\n')
-    } catch { /* invalid regex — return unfiltered */ }
+      newStdout = newStdout
+        .split('\n')
+        .filter((l) => re.test(l))
+        .join('\n')
+    } catch {
+      /* invalid regex — return unfiltered */
+    }
   }
 
   const status = out.running ? 'running' : `exited (code ${out.exitCode ?? 'unknown'})`
@@ -261,9 +320,9 @@ export async function readBackgroundOutput(input: Record<string, unknown>): Prom
 
 /** KillShell — terminate a background shell by bash_id. */
 export async function killBackgroundShell(input: Record<string, unknown>): Promise<McpResult> {
-  const raw = input.shell_id ?? input.bash_id ?? input.id
+  const raw = input.bash_id ?? input.shell_id ?? input.id
   const bgId = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10)
-  if (!Number.isFinite(bgId)) return errorResult('shell_id is required (the numeric id from run_in_background)')
+  if (!Number.isFinite(bgId)) return errorResult('bash_id is required (the numeric id from run_in_background)')
   const child = backgroundProcesses.get(bgId)
   const out = backgroundOutput.get(bgId)
   if (!child && !out) return errorResult(`No background shell with bash_id ${bgId}.`)
@@ -274,7 +333,11 @@ export async function killBackgroundShell(input: Record<string, unknown>): Promi
     // detached:true spawns the child in its own process group (negative pid) so
     // killing the group takes down grandchildren too (dev servers spawn workers).
     if (typeof child.pid === 'number' && process.platform !== 'win32') {
-      try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') }
+      try {
+        process.kill(-child.pid, 'SIGTERM')
+      } catch {
+        child.kill('SIGTERM')
+      }
     } else {
       child.kill()
     }
@@ -295,4 +358,28 @@ async function resolvePowerShell(): Promise<string> {
     return cachedPwsh
   })()
   return pwshLookupInFlight
+}
+
+/** Read-only UI snapshot: does not advance the model's BashOutput cursors. */
+export function backgroundShellSnapshot(
+  tabId: string,
+  owner?: string,
+): import('../../../shared/commands').ShellSnapshot[] {
+  return [...backgroundOutput]
+    .filter(([, out]) => out.tabId === tabId && out.owner === owner)
+    .slice(-100)
+    .map(([id, out]) => ({
+      id: `shell:${id}`,
+      tool: out.tool,
+      command: out.command.slice(0, 512),
+      startedAt: out.startedAt,
+      running: out.running,
+      output: (out.stdout + (out.stderr ? '\n--- stderr ---\n' + out.stderr : '')).slice(-16384),
+    }))
+}
+export async function stopBackgroundShellForOwner(tabId: string, owner: string | undefined, id: string): Promise<void> {
+  if (!/^shell:[0-9]+$/.test(id)) return
+  const out = backgroundOutput.get(Number(id.slice(6)))
+  if (out?.tabId !== tabId || out.owner !== owner) return
+  await killBackgroundShell({ bash_id: Number(id.slice(6)) })
 }

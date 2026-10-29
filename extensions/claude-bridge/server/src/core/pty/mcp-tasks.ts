@@ -6,7 +6,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto'
 import type { PtySession } from './types'
 import { notifyTaskChanged } from './mcp-tool-notify'
 import { sendToClient } from './session-io'
-import { McpTaskStore, TASK_LIMITS, taskView, type TaskRecord } from './mcp-task-store'
+import { McpTaskStore, taskDeadline, taskView, type TaskRecord } from './mcp-task-store'
 
 const root = path.join(os.homedir(), '.claude', 'bridge-mcp')
 export const mcpTasks = new McpTaskStore(path.join(root, 'tasks'))
@@ -71,6 +71,7 @@ async function dispatch(task: TaskRecord, session: PtySession): Promise<void> {
         toolName: task.toolName,
         input: task.input,
         taskOwner: task.owner,
+        ...(task.input.run_in_background === true ? { taskDeadlineMs: taskDeadline(task) } : {}),
       })
     ) {
       await mcpTasks.update(task.owner, task.taskId, (record) => {
@@ -84,7 +85,7 @@ async function drainTasks(): Promise<void> {
   draining = true
   try {
     for (let task of await mcpTasks.working()) {
-      if (Date.now() >= Date.parse(task.createdAt) + TASK_LIMITS.executionMs + 60_000) {
+      if (Date.now() >= taskDeadline(task) + 60_000) {
         const session = resolveMcpEndpoint(task.owner)
         if (session) sendToClient(session.ws, { type: 'mcp:cancel', requestId: task.taskId, taskOwner: task.owner })
         const ended = await mcpTasks.update(task.owner, task.taskId, (record) => {
@@ -99,7 +100,7 @@ async function drainTasks(): Promise<void> {
         if (session && ended) notifyTaskChanged(session.id, taskView(ended))
         continue
       }
-      if (Date.now() >= Date.parse(task.createdAt) + TASK_LIMITS.executionMs && !task.cancelRequested) {
+      if (Date.now() >= taskDeadline(task) && !task.cancelRequested) {
         task = (await mcpTasks.update(task.owner, task.taskId, (record) => {
           record.cancelRequested = true
         }))!

@@ -40,10 +40,10 @@ Key tool capabilities:
 - **Edit**: Exact string replacement in files. Must Read the file first. Use replace_all for bulk replacements.
 - **Glob**: Fast file pattern matching (e.g. "**/*.ts"). Returns paths sorted by modification time.
 - **Grep**: Powerful ripgrep-based search. ALWAYS use this instead of grep/rg via Bash.
-- **Bash**: Execute shell commands. Default timeout 25 min, max 30 min. ${tasks ? 'Leave run_in_background false or omitted to run long commands as durable MCP Tasks; completion is delivered asynchronously. Explicit run_in_background:true instead uses BashOutput (poll by bash_id) and KillShell.' : 'For long-running jobs pass run_in_background:true, then read output with **BashOutput** (poll by bash_id) and stop it with **KillShell** — NOT TaskOutput, which cannot see these processes.'}
-- **PowerShell**: Execute PowerShell commands (Windows). Same background/BashOutput/KillShell semantics as Bash.
-- **BashOutput**: Read new stdout/stderr from a background Bash/PowerShell shell started with run_in_background (by bash_id).
-- **KillShell**: Terminate a background shell by bash_id.
+- **Bash**: Execute shell commands. Default timeout 25 min, max 30 min. ${tasks ? 'Use run_in_background:true for an immediate durable MCP task; completion wakes the agent automatically. Use tasks/get for output and tasks/cancel to stop it. Foreground calls keep their 2-minute inline grace. Background tasks can run for up to 24 hours.' : 'For long-running jobs pass run_in_background:true, then read output with **BashOutput** (poll by bash_id) and stop it with **KillShell** — NOT TaskOutput, which cannot see these processes.'}
+- **PowerShell**: Execute PowerShell commands (Windows). ${tasks ? 'Same MCP task semantics as Bash.' : 'Same background/BashOutput/KillShell semantics and timeout limits as Bash.'}
+- **BashOutput**: Read new stdout/stderr from a legacy background shell by bash_id. ${tasks ? 'MCP task output is available through tasks/get instead.' : 'Use for Bash/PowerShell run_in_background shells.'}
+- **KillShell**: Terminate a legacy background shell by bash_id. ${tasks ? 'Cancel MCP tasks through tasks/cancel.' : ''}
 - **WebFetch**: Fetch URL content, convert HTML to markdown, process with a prompt.
 - **NotebookEdit**: Edit Jupyter notebook cells. Read the notebook first.
 - **EnterWorktree**: Create isolated git worktree (only when user explicitly asks).
@@ -460,7 +460,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           },
           instructions:
             mcpInstructions(supportsTasks(body.params)) +
-            '\nForeground Bash and PowerShell commands answer inline; one still running after 2 minutes returns a durable MCP task instead; use tasks/get to follow it and tasks/cancel to stop it. Explicit run_in_background commands retain BashOutput/KillShell semantics.',
+            '\nForeground Bash and PowerShell commands answer inline; one still running after 2 minutes returns a durable MCP task instead; use tasks/get to follow it and tasks/cancel to stop it. With Tasks capability, run_in_background:true returns a task immediately, with full output on completion; cancel through tasks/cancel. Without Tasks capability it retains BashOutput/KillShell semantics.',
         }),
       )
     }
@@ -635,18 +635,14 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       }
       observeMcpCall(session, toolName)
 
-      if (
-        modern &&
-        supportsTasks(body.params) &&
-        ['Bash', 'PowerShell'].includes(toolName) &&
-        toolInput.run_in_background !== true
-      ) {
+      if (modern && supportsTasks(body.params) && ['Bash', 'PowerShell'].includes(toolName)) {
         let handle: Record<string, unknown>
         try {
           handle = await createMcpTask(session, toolName, toolInput)
         } catch {
           return jsonResponse(jsonRpcError(body.id, -32000, 'Task admission unavailable or capacity exceeded'), 503)
         }
+        if (toolInput.run_in_background === true) return jsonResponse(jsonRpcResponse(body.id, handle))
         // The task keeps the run durable, but a command that finishes within the
         // grace window answers inline: returning a handle for every short command
         // makes the CLI background it and the agent wait on a notification.
@@ -658,6 +654,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
           }
           if (task?.status === 'failed' && task.error) return jsonRpcError(body.id, task.error.code, task.error.message)
+          if (task?.status === 'working')
+            await mcpTasks.update(owner, task.taskId, (record) => {
+              record.background = true
+            })
           return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
         })
       }

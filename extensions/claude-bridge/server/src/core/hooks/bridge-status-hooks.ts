@@ -20,6 +20,7 @@ import type { HookMatcher, HookSource, HookInputPayload } from './types'
 import { sendToClient } from '../pty/session-io'
 import { setSessionPromptReady } from '../pty/session-input-coordinator'
 import type { PtySession } from '../types/pty'
+import { sessionCliControl } from '../pty/session-cli-control'
 
 export const BRIDGE_STATUS_EVENTS = [
   'UserPromptSubmit',
@@ -61,6 +62,7 @@ export function applyDeterministicStatus(session: PtySession, event: string, pay
     void session.jsonlWatcher?.scanSubagents?.()
     return
   }
+  if (sessionCliControl(session)?.authoritative()) return
   if (event === 'UserPromptSubmit' || event === 'SessionEnd') setSessionPromptReady(session, false)
   else if (event === 'Stop' || event === 'SessionStart') setSessionPromptReady(session, true)
 

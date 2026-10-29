@@ -1,3 +1,4 @@
+import { RunningCommands } from './components/RunningCommands'
 import { useEffect, useState } from 'preact/compat'
 import { signal } from '@preact/signals'
 import { StatusCard } from './components/dashboard/StatusCard'
@@ -396,6 +397,8 @@ export function SingleDashboard() {
           })()}
         />
       </div>
+
+      <RunningCommands />
 
       {/* Active PTY Sessions — header lives inside the card, matching the
           Usage chart layout above. */}

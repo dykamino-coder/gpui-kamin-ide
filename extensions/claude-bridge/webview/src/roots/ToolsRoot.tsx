@@ -66,8 +66,8 @@ export function ToolsRoot(): JSX.Element {
   // same PTY broadcast as the chat. Full-bleed (no padding/overflow wrapper) so
   // xterm owns its own scroll + fit.
   if (section === 'console') {
-    // Paint the whole tool surface the editor/console colour so it matches the
-    // native terminal (the KaminIDE card frame has no bg of its own — a webview
+    // Paint the whole tool surface the terminal colour, including the rounded
+    // panel corners (the KaminIDE card frame has no bg of its own — a webview
     // owns its backdrop). `fill` makes xterm span the full width, no 800px cap.
     // Its OWN loading state: with no tabs yet (app boot / session restore) the
     // TerminalPanel renders nothing, so the console read as a dead black panel
@@ -77,12 +77,16 @@ export function ToolsRoot(): JSX.Element {
     const noTabs = tabs.value.length === 0
     return (
       <Fragment>
-        <div style="display:flex;flex-direction:column;height:100%;width:100%;box-sizing:border-box;background:var(--editor-bg, #1d1c25)">
-          {noTabs
-            ? (initializing.value
-              ? <RestoringContent />
-              : <EmptyState icon="fa-terminal" title="Console" hint="The active session's terminal appears here." />)
-            : <TerminalPanel visible={true} showResizeHandle={false} fill={true} />}
+        <div style="display:flex;flex-direction:column;height:100%;width:100%;box-sizing:border-box;background:var(--term-bg)">
+          {noTabs ? (
+            initializing.value ? (
+              <RestoringContent />
+            ) : (
+              <EmptyState icon="fa-terminal" title="Console" hint="The active session's terminal appears here." />
+            )
+          ) : (
+            <TerminalPanel visible={true} showResizeHandle={false} fill={true} />
+          )}
         </div>
         <Tooltip />
         <ConfirmModalHost />
@@ -95,12 +99,18 @@ export function ToolsRoot(): JSX.Element {
       <div style="display:flex;flex-direction:column;height:100%;width:100%;overflow:auto;padding:8px;gap:10px;box-sizing:border-box">
         {section === 'agents' && <AgentsToolPanel />}
         {section === 'toolsUsage' && <ToolsUsagePanel />}
-        {section === 'plan' && (hasPlan
-          ? <PlanList />
-          : <EmptyState icon="fa-list-check" title="Plan" hint="The active session's plan appears here." />)}
-        {section === 'todos' && (hasTodos
-          ? <TodoList />
-          : <EmptyState icon="fa-square-check" title="Todos" hint="The active session's todos appear here." />)}
+        {section === 'plan' &&
+          (hasPlan ? (
+            <PlanList />
+          ) : (
+            <EmptyState icon="fa-list-check" title="Plan" hint="The active session's plan appears here." />
+          ))}
+        {section === 'todos' &&
+          (hasTodos ? (
+            <TodoList />
+          ) : (
+            <EmptyState icon="fa-square-check" title="Todos" hint="The active session's todos appear here." />
+          ))}
       </div>
       <Tooltip />
       <ConfirmModalHost />
