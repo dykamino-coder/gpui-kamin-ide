@@ -8,8 +8,7 @@ use crate::style::computed::{Display, Position};
 /// фрагмента. Такие художники — срез тени по внутренним краям (css-break-3 §5.4,
 /// `effect_fragment::paint_shadow`), опорная коробка трансформации и фильтра во фрагменте
 /// (§5.5, `effect_fragment::reference_box`), линейки промежутков (`gap_fragment`) и
-/// вложенная фрагментация (многоколоночник рисует свои куски сам); элементы сетки
-/// сдвигаются и обрезаются окнами копий; отложенная краска позиционированных и контекстов наложения
+/// вложенная фрагментация (многоколоночник рисует свои куски сам); отложенная краска позиционированных и контекстов наложения
 /// идёт вне записи; сросшиеся кромки таблицы решают стыки по маске своего куска
 /// (`EdgePainter`). Таблица с раздельными рамками рисуется одинаково в любом куске:
 /// ячейки — параллельные потоки одной раскладки. Обход — итеративный.
@@ -17,12 +16,9 @@ pub(crate) fn replayable(root: &Element) -> bool {
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
         let s = e.style.used();
-        // Элементы сетки копии сдвигают и обрезают по окнам (`assign_grid_items`);
-        // владение элементов flex переносит допуск узлов записи.
-        let per_copy = matches!(
-            s.display,
-            Some(Display::Grid | Display::InlineGrid | Display::GridLanes)
-        ) || (table_part(e) && s.border_collapse == Some(true));
+        // Владение, окна и расход элементов flex и сетки переносит допуск узлов записи
+        // (`element::admission::items`).
+        let per_copy = table_part(e) && s.border_collapse == Some(true);
         // Позиционированные коробки и контексты наложения рисуются отложенно, в фазе
         // своего контекста (CSS 2.1 Appendix E, `PaintLast`), а не внутри записи копии.
         let deferred = !matches!(s.position, None | Some(Position::Static))
@@ -141,7 +137,7 @@ mod tests {
         assert!(!replayable(&first(
             "<section><div style='position:absolute'>a</div></section>"
         )));
-        assert!(!replayable(&first(
+        assert!(replayable(&first(
             "<section><div style='display:grid'>a</div></section>"
         )));
     }

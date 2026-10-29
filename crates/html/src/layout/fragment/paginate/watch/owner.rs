@@ -41,11 +41,17 @@ impl Watched {
         self.paint_owners.borrow().clone()
     }
 
-    /// Копии рисуют элементы по-разному не только владением: окна элементов сеток
-    /// (сдвиг и обрезка по копии) или израсходованная часть элементов flex (маска по
-    /// маске куска, `axis::consumed_mask`).
-    pub(crate) fn windows_per_copy(&self) -> bool {
-        !self.item_windows.borrow().is_empty() || !self.flex_consumed.borrow().is_empty()
+    /// Окна элементов сеток по копиям и израсходованная часть элементов flex.
+    pub(crate) fn piece_windows(
+        &self,
+    ) -> (
+        HashMap<(usize, u64), crate::layout::fragment::flow::blocks::ItemWindow>,
+        HashMap<u64, (f32, bool)>,
+    ) {
+        (
+            self.item_windows.borrow().clone(),
+            self.flex_consumed.borrow().clone(),
+        )
     }
 
     /// Окна элементов сеток по копиям (`flow::blocks::grid_items`).

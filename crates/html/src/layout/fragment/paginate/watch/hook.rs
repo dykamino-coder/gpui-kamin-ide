@@ -87,6 +87,18 @@ impl Hooks for Watch {
             Slot::Box(id) => Some(id),
             Slot::Table(..) => None,
         };
+        // Допущенный узел записи главной копии: окна копий и израсходованную часть
+        // переносят его собственные размещения и срезы.
+        if let Some(slices) = id.and_then(|id| self.rec.admitted(id)) {
+            admitted_prepaint(
+                &mut self.inner,
+                (None, gpui::Point::default()),
+                slices,
+                window,
+                cx,
+            );
+            return None;
+        }
         let consumed = id.and_then(|id| self.rec.flex_consumed.borrow().get(&id).copied());
         let item = id.and_then(|id| self.rec.item_window(id));
         let mask = consumed
@@ -111,10 +123,6 @@ impl Hooks for Watch {
                 })
             });
         let shift = gpui::point(gpui::px(0.0), gpui::px(item.map_or(0.0, |w| w.shift)));
-        if let Some(slices) = id.and_then(|id| self.rec.admitted(id)) {
-            admitted_prepaint(&mut self.inner, (mask, shift), slices, window, cx);
-            return mask;
-        }
         window.with_content_mask(mask, |window| {
             window.with_element_offset(shift, |window| self.inner.prepaint(window, cx))
         });

@@ -45,7 +45,6 @@ impl ColumnStack {
             && self.static_places.is_none()
             && plan.iter().any(|f| f.kid == kid && f.copy == 0)
             && plan.iter().filter(|f| f.kid == kid).count() > 1
-            && !c.watched.as_ref().is_some_and(|w| w.windows_per_copy())
     }
 
     /// Размещения всех кусков ребёнка `kid`: источник — место главной копии, срез —
@@ -92,6 +91,7 @@ impl ColumnStack {
             });
         }
         let nodes = self.node_admission(kid, &pieces, spill);
+        routes.extend(nodes.routes.iter().copied());
         let extent = nodes
             .slices
             .values()
