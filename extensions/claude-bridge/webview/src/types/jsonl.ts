@@ -32,6 +32,7 @@ export interface JsonlMessage {
 }
 
 export interface JsonlEntryData {
+  submissionId?: string
   type: string
   uuid?: string
   /** parentUuid→uuid chain — used by orderEntries to keep a child after its

@@ -1,3 +1,4 @@
+import { receiveSubmission, noteSubmissionRows, forgetSubmissions } from '../signals/submissions'
 import { setTabUsage } from '../signals/session-usage'
 import { useEffect, useRef } from 'preact/hooks'
 
@@ -138,6 +139,7 @@ export function useBridgeListeners(
     const unsubTabClosed = bridge.onTabClosed((tabId: string) => {
       terminalSnapshots.close(tabId)
       forgetTabConnection(tabId)
+      forgetSubmissions(tabId)
       const closedTab = tabs.value.find(t => t.id === tabId)
       const remaining = tabs.value.filter(t => t.id !== tabId)
       tabs.value = remaining
@@ -340,6 +342,7 @@ export function useBridgeListeners(
     const unsubJsonlEntries = role === 'customize' ? (() => {}) : bridge.onJsonlEntries((tabId: string, entries: any[]) => {
       const toStore = role === 'tools' ? projectPlanTodoEntries(entries as any) : (entries as any)
       appendJsonlEntries(tabId, toStore)
+      noteSubmissionRows(tabId, toStore)
       // Счётчики панели Tools: из ПОЛНОГО батча (не среза), записей не хранит —
       // только имя→count с дедупом по id tool_use.
       recordToolUsage(tabId, entries)
@@ -557,6 +560,12 @@ export function useBridgeListeners(
     // Live 5h / 7d limits + context fill from the CLI status line.
     const unsubSessionUsage = bridge.onSessionUsage((tabId: string, usage) => {
       setTabUsage(tabId, usage)
+    })
+
+    const unsubSubmission = bridge.onSubmission((tabId, data) => {
+      receiveSubmission(tabId, data)
+      if (data.warning && (data.state === 'fallback' || data.capable === false))
+        showToast({ type: 'info', title: 'Message delivery', message: data.warning })
     })
 
     const unsubSessionActivity = bridge.onSessionActivity((tabId: string, data) => {
@@ -778,6 +787,7 @@ export function useBridgeListeners(
       unsubSessionTitle()
       unsubSessionUsage()
       unsubSessionActivity()
+      unsubSubmission()
       unsubMcpActivity()
       unsubMcpServersChanged()
       unsubMcpLoading()
