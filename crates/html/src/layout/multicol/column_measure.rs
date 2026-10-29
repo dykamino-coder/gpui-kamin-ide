@@ -174,6 +174,7 @@ impl ColumnStack {
                     gap_items: None,
                     intrinsic: None,
                     discard,
+                    replay: false,
                     plan: std::cell::RefCell::new(Plan::default()),
                     static_places: Default::default(),
                     oof: oof.fresh(),

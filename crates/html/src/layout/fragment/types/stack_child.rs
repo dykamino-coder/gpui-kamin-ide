@@ -152,6 +152,8 @@ pub struct StackChild {
     pub slack: Option<gpui::Hsla>,
     /// Ширина разложенной копии (для `slack`), ставится в `prepaint`.
     pub laid_w: std::cell::Cell<f32>,
+    /// Куски рисует запись главной копии (`stack_child::replay::replayable`).
+    pub(crate) replay: bool,
     /// Paginated by its own layout (`fragment::paginate`): the stack lays the
     /// copy out against the fragmentainer grid and rebuilds it with struts.
     pub paginate: Option<crate::layout::fragment::paginate::Paginate>,

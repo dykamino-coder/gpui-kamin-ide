@@ -22,7 +22,14 @@ impl ColumnStack {
     ) {
         let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
         let records = self.copy_records();
+        let mut replayed = std::collections::HashMap::new();
         for f in plan {
+            let geometry = (bounds, col_w, step);
+            if self.replays(f.kid, &plan_all)
+                && self.paint_piece_replayed(&f, &plan_all, geometry, &mut replayed, window, cx)
+            {
+                continue;
+            }
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
             // маска, оставленная на месте колонки, съедала его целиком
@@ -54,20 +61,22 @@ impl ColumnStack {
             // на ширину окна (у стопки нулевой ширины своей ширины нет); дальше режет
             // маска предка. Ребёнок с вложенным многоколоночником — так же: его
             // колонки выходят вбок своим переполнением (`multicol-nested-021`).
-            let win_w = window.viewport_size().width;
-            let spill = if win_w > bounds.size.width {
-                win_w
-            } else {
-                bounds.size.width
-            };
+            let spill = Self::spill(bounds, window);
             let band = self.fragmentainer_band(f.col, bounds, spill);
             let wraps = self.wraps();
             let k0 = &self.children[f.kid];
-            let (nested_cols, over) = (k0.nested_cols, k0.over);
+            let nested_cols = k0.nested_cols;
             // Таблица и вложенная фрагментация задают свои границы. Одна
             // лишь мера размера не обрезает тень на краю без разрыва
             // (css-break-3 §5.4; Blink BoxFragmentPainter::SidesToInclude).
             let table_like = k0.repeat.is_some() || k0.slack.is_some() || nested_frag;
+            let (clip, continued) = self.piece_clip(
+                &f,
+                point(x, y),
+                (col_w, spill),
+                &plan_all,
+                nested_cols || table_like,
+            );
             let kid = &mut self.children[f.kid];
             // Полосы повтора таблицы — каждая своей маской по своей полосе.
             if let Some(r) = kid.repeat.as_mut() {
@@ -142,39 +151,10 @@ impl ColumnStack {
             if split {
                 let line = if wraps { f.col / self.count } else { 0 };
                 let line_h = self.lines_plan.borrow().get(line).map_or(0.0, |l| l.1);
-                let continued = plan_all
-                    .iter()
-                    .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
                 let parent = window.content_mask();
                 if let Some(w) = &kid.watched {
                     w.set_paint_outer(Some(parent));
                 }
-                // Разрез режет только ВНУТРЕННИЕ края фрагментов: чернильное
-                // переполнение над первым фрагментом и под последним (тень,
-                // контур) видно (css-break-3 §5.4 «slice»: края без разрыва
-                // рисуются как у целой коробки; Blink красит переполнение
-                // фрагмента без обрезки фрагментаинером). Под последним — до
-                // низа колонки: дальше переполнение — поток следующей.
-                let (up, down) = if nested_cols || table_like {
-                    (0.0, 0.0)
-                } else {
-                    (
-                        if f.copy == 0 && f.from <= COORD_EPS {
-                            f32::from(spill)
-                        } else {
-                            0.0
-                        },
-                        if continued || f.from + f.h < over - COORD_EPS {
-                            0.0
-                        } else {
-                            (line_h - f.y - f.h).max(0.0)
-                        },
-                    )
-                };
-                let clip = Bounds {
-                    origin: point(x - spill, y - px(up)),
-                    size: size(px(col_w) + spill + spill, px(f.h + up + down)),
-                };
                 // Continued roots replay under the column and the copy's own slice.
                 let area = band.map(|band| {
                     let area = fragment_mask::snap(band.union(&clip), window.scale_factor());
