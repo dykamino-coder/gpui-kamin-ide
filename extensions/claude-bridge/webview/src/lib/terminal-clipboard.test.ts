@@ -50,6 +50,16 @@ function fixture(readText = vi.fn(async () => 'clipboard')) {
 }
 
 describe('console clipboard and context menu', () => {
+  it('creates Select All after returning focus to a reporting application', () => {
+    const f = fixture()
+    f.term.focus.mockImplementation(() => f.select(''))
+    f.term.selectAll.mockImplementation(() => f.select('entire terminal'))
+    f.context()
+    f.document.body.children[0].children[2].onclick!()
+    expect(f.term.getSelection()).toBe('entire terminal')
+    f.dispose()
+  })
+
   it.each(['c', 'с'])('copies native Ctrl+C in layout %s without forwarding interrupt', key => {
     const f = fixture()
     f.select('exact\r\n  selected text ')
@@ -134,6 +144,7 @@ describe('console clipboard and context menu', () => {
     expect(e.stopImmediatePropagation).toHaveBeenCalledOnce()
     const menu = f.document.body.children[0]
     expect(menu.className).toBe('terminal-context-menu')
+    expect(f.emit(menu, 'mousedown').preventDefault).toHaveBeenCalledOnce()
     expect(menu.children).toHaveLength(3)
     expect(menu.children[0].disabled).toBe(true)
     expect(menu.children[2].disabled).toBe(false)

@@ -7,6 +7,8 @@ import { AssistantEntry, ToolResultUserEntry } from './AssistantEntry'
 import { TeammateEntry } from './TeammateEntry'
 import { CompactSummaryEntry } from './CompactSummaryEntry'
 import { ToolGroupEntry } from './ToolGroupEntry'
+import { taskNotificationText } from './task-notification'
+import { TaskNotificationEntry } from './TaskNotificationEntry'
 import { assistantHasVisibleContent, compactSummaryText, systemEntryDraws, toolGroupDraws } from './entry-draws'
 
 interface JsonlEntryProps {
@@ -25,6 +27,8 @@ export function JsonlEntry({ entry, toolResults }: JsonlEntryProps): JSX.Element
   // honest if one ever slips through.
   if (NON_RENDERING_ENTRY_TYPES.has(entry.type)) return null
   if (entry.type === 'tool_group') return toolGroupDraws(entry) ? <ToolGroupEntry entry={entry} toolResults={toolResults} /> : null
+  const taskNotification = taskNotificationText(entry)
+  if (taskNotification !== null) return <TaskNotificationEntry text={taskNotification} />
 
   // CLI 2.1.116+ writes several message kinds as `type:"attachment"` with a
   // nested `attachment.type`. Most are housekeeping that only the model sees

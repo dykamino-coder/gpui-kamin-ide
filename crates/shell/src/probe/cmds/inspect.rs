@@ -180,7 +180,10 @@ pub(crate) fn handle_inspect(cmd: &str, req: &Value) -> Option<Value> {
                 #[cfg(windows)]
                 {
                     let g = |k: &str| req.get(k).and_then(Value::as_f64).unwrap_or(0.0) as f32;
-                    match crate::probe::input::resize_main(g("w"), g("h")) {
+                    // Optional placement keeps the acceptance window off the
+                    // owner's desktop while CEF receives probe input directly.
+                    let position = req.get("x").and(req.get("y")).map(|_| (g("x"), g("y")));
+                    match crate::probe::input::resize_main(g("w"), g("h"), position) {
                         Ok(()) => json!({"ok": true}),
                         Err(e) => json!({"ok": false, "err": e}),
                     }
