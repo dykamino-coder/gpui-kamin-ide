@@ -101,10 +101,13 @@ export const register = (on) => {
       // The server arms exactly one serialized PTY transaction; never compare text.
       const id = state.armed
       state.armed = null
-      // Native queued prompts survive abort and become door:prompt user rows,
-      // without another prompt.submit. Both delivery forms consume this FIFO.
-      pending = { submissionId: id }
-      state.composer.push(pending)
+      // After abort, CLI can promote a queued prompt with or without another
+      // idle submit. The unarmed replay already has a slot; do not enqueue it twice.
+      if (!id && !e.turnId && state.composer.length) pending = state.composer[0]
+      else {
+        pending = { submissionId: id }
+        state.composer.push(pending)
+      }
     }
     const result = await next(e)
     // A gate may refuse a composer prompt. It has no later delivery receipt.
