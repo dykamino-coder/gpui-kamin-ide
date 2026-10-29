@@ -123,6 +123,8 @@ export function ensureTrustFlags(settingsDir: string): void {
   }
 }
 
+/** Общие файлы беседы обновляются на диске, hooks возвращаются отдельным
+ * снимком для --settings того же процесса, которому передаётся mcpToken. */
 export function writeSessionSettings(
   sessionId: string,
   settingsDir: string,
@@ -130,7 +132,7 @@ export function writeSessionSettings(
   userCwd?: string,
   bearerHash?: string,
   mcpEndpoint?: { id: string; token: string },
-): void {
+): string {
   const port = config.port
   const mcpUrl = `http://127.0.0.1:${port}/mcp/${mcpEndpoint?.id ?? sessionId}`
 
@@ -196,7 +198,10 @@ export function writeSessionSettings(
   // client round-trip, so it is added after the rewrite.
   const cliHooks: Record<string, unknown[]> = { ...(rewrittenHooks as Record<string, unknown[]>) }
   cliHooks.PreModelSwitch = [...(cliHooks.PreModelSwitch ?? []), preModelSwitchAllowMatcher()]
-  settings.hooks = cliHooks
+  // Каталог беседы переиспользуется при resume. CLI получает hooks через
+  // --settings: чужой запуск и перезагрузка project settings не должны
+  // подменять URL при неизменном Bearer в окружении живого процесса.
+  // Перезапись settings.json также удаляет hooks от предыдущих версий Bridge.
   // Live subscription limits / context fill for the chat (session-statusline.ts).
   settings.statusLine = writeStatusLineScript(claudeDir)
   fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings, null, 2))
@@ -228,6 +233,7 @@ export function writeSessionSettings(
     mcpUrl,
     settings: path.join(claudeDir, 'settings.json'),
   })
+  return JSON.stringify({ hooks: cliHooks })
 }
 
 /**
