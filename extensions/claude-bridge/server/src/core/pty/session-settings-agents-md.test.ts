@@ -24,7 +24,7 @@ vi.mock('../sync/routes', () => ({
 }))
 
 import { applySyncData, pickInstructionFile, settingsDenyRules } from './session-settings'
-import { getDisallowedBuiltinTools } from './session-env'
+import { BRIDGE_ONLY_MCP_TOOLS, getDisallowedBuiltinTools } from './session-env'
 
 const tempDirs: string[] = []
 
@@ -138,5 +138,12 @@ describe('AGENTS.md sync', () => {
     expect(flag).toContain('Read')
     expect(settingsDenyRules()).not.toContain('Read')
     expect(settingsDenyRules()).toEqual(flag.filter((t) => t !== 'Read'))
+  })
+
+  it('denies only names that shadow a native tool', () => {
+    const flag = getDisallowedBuiltinTools()
+    for (const name of BRIDGE_ONLY_MCP_TOOLS) expect(flag).not.toContain(name)
+    for (const name of ['Bash', 'PowerShell', 'Edit', 'Write', 'Glob', 'Grep', 'WebFetch', 'TodoWrite', 'Monitor'])
+      expect(flag).toContain(name)
   })
 })
