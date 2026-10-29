@@ -95,6 +95,15 @@ describe('durable bounded task lifecycle', () => {
 })
 
 describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
+  // Real limits are sized for ~50 sessions; the contract is the same at a small scale.
+  const real = { ...TASK_LIMITS }
+  beforeEach(() => {
+    Object.assign(TASK_LIMITS, { retained: 48, perOwner: 16, active: 8, activePerOwner: 2 })
+  })
+  afterEach(() => {
+    Object.assign(TASK_LIMITS, real)
+  })
+
   async function settledTask(owner: string): Promise<string> {
     const task = await store.create(owner, 'Bash', { command: 'echo' })
     clock += 1
@@ -104,7 +113,7 @@ describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
 
   it('admits a fresh owner into a store full of settled tasks and evicts the oldest settled one', async () => {
     const ids: string[] = []
-    for (let i = 0; i < TASK_LIMITS.retained; i++) ids.push(await settledTask('owner-' + (i % 8)))
+    for (let i = 0; i < TASK_LIMITS.retained; i++) ids.push(await settledTask('owner-' + (i % 4)))
     const fresh = await store.create('fresh-owner', 'Bash', {})
     expect(fresh.status).toBe('working')
     expect(await store.get('owner-0', ids[0]!)).toBeUndefined()
@@ -118,17 +127,32 @@ describe('settled outcomes do not consume admission (INC-2026-0082)', () => {
   }, 60_000)
 
   it('admits after restart over an already full settled store', async () => {
-    for (let i = 0; i < TASK_LIMITS.retained; i++) await settledTask('owner-' + (i % 8))
+    for (let i = 0; i < TASK_LIMITS.retained; i++) await settledTask('owner-' + (i % 4))
     store = new McpTaskStore(directory, () => clock)
     await expect(store.create('fresh-owner', 'Bash', {})).resolves.toHaveProperty('taskId')
   }, 60_000)
 
   it('never evicts working tasks', async () => {
-    for (let i = TASK_LIMITS.active; i < TASK_LIMITS.retained; i++) await settledTask('done-' + (i % 8))
+    for (let i = TASK_LIMITS.active; i < TASK_LIMITS.retained; i++) await settledTask('done-' + (i % 4))
     for (let i = 0; i < TASK_LIMITS.active; i++)
       await store.create('busy-' + Math.floor(i / TASK_LIMITS.activePerOwner), 'Bash', {})
     await expect(store.create('fresh-owner', 'Bash', {})).rejects.toThrow('capacity')
     expect(await store.working()).toHaveLength(TASK_LIMITS.active)
     expect((await fs.readdir(directory)).length).toBe(TASK_LIMITS.retained)
   }, 60_000)
+
+  it('makes byte room for a settling result from older settled outcomes', async () => {
+    const big = 'x'.repeat(TASK_LIMITS.resultBytes - 1024)
+    TASK_LIMITS.bytes = 2.5 * TASK_LIMITS.resultBytes
+    const first = await store.create('owner-a', 'Bash', {})
+    await store.settle('owner-a', first.taskId, big)
+    clock += 1
+    const second = await store.create('owner-b', 'Bash', {})
+    await store.settle('owner-b', second.taskId, big)
+    clock += 1
+    const third = await store.create('owner-c', 'Bash', {})
+    expect((await store.settle('owner-c', third.taskId, big))?.status).toBe('completed')
+    expect(await store.get('owner-a', first.taskId)).toBeUndefined()
+    expect(await store.get('owner-b', second.taskId)).toMatchObject({ status: 'completed' })
+  })
 })
