@@ -1,3 +1,5 @@
+import { commandSnapshots, commandOutput } from '../signals/commands'
+import { getSessionToken } from '../signals/auth'
 import {
   serverHealth,
   healthCheckedAt,
@@ -39,6 +41,8 @@ class DashboardWSClient {
     this.ws = null
     socket?.close()
     isConnected.value = false
+    commandSnapshots.value = []
+    commandOutput.value = null
   }
 
   send(msg: object) {
@@ -53,11 +57,16 @@ class DashboardWSClient {
       // Logout/login and retry replacement invalidate every old socket callback.
       const current = () => !this.stopped && generation === this.generation && this.ws === socket
       socket.onopen = () => {
-        if (current()) isConnected.value = true
+        if (current()) {
+          isConnected.value = true
+          this.send({ type: 'commands:subscribe', token: getSessionToken() })
+        }
       }
       socket.onclose = () => {
         if (!current()) return
         this.ws = null
+        commandSnapshots.value = []
+        commandOutput.value = null
         isConnected.value = false
         this.scheduleReconnect(generation)
       }
@@ -85,6 +94,12 @@ class DashboardWSClient {
 
   private handleMessage(msg: BridgeEvent) {
     switch (msg.type) {
+      case 'commands:snapshots':
+        commandSnapshots.value = msg.data as typeof commandSnapshots.value
+        break
+      case 'commands:output':
+        commandOutput.value = msg.data as typeof commandOutput.value
+        break
       case 'init': {
         const d = msg.data as InitData & {
           terminalSessions?: number

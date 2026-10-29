@@ -14,6 +14,7 @@ export const TASK_LIMITS = {
   inputBytes: 64 * 1024,
   ttlMs: 86_400_000,
   executionMs: 1_800_000,
+  backgroundExecutionMs: 86_340_000, // Leave cancellation grace before the 24-hour retention expires.
   // A foreground command that settles within this window answers inline, like
   // native Bash's default 2-minute timeout; only longer runs stay a task.
   foregroundGraceMs: 120_000,
@@ -29,6 +30,9 @@ export interface TaskRecord {
   lastUpdatedAt: string
   ttlMs: number
   pollIntervalMs: number
+  executionDeadlineMs?: number
+  background?: boolean
+  command?: string
   cancelRequested?: boolean
   delivered?: boolean
   result?: Record<string, unknown>
@@ -41,9 +45,16 @@ export function taskView(task: TaskRecord): Record<string, unknown> {
     toolName: _tool,
     delivered: _delivered,
     cancelRequested: _cancel,
+    executionDeadlineMs: _deadline,
+    background: _background,
+    command: _command,
     ...view
   } = task
   return view
+}
+
+export function taskDeadline(task: TaskRecord): number {
+  return task.executionDeadlineMs ?? Date.parse(task.createdAt) + TASK_LIMITS.executionMs
 }
 
 export class McpTaskStore {
@@ -96,6 +107,10 @@ export class McpTaskStore {
         !Number.isFinite(task.ttlMs) ||
         task.ttlMs <= 0 ||
         task.ttlMs > TASK_LIMITS.ttlMs ||
+        (task.executionDeadlineMs !== undefined &&
+          (!Number.isFinite(task.executionDeadlineMs) ||
+            task.executionDeadlineMs > Date.parse(task.createdAt) + task.ttlMs ||
+            task.executionDeadlineMs < Date.parse(task.createdAt))) ||
         !['working', 'completed', 'failed', 'cancelled'].includes(task.status)
       )
         throw new Error('Invalid task record')
@@ -167,6 +182,10 @@ export class McpTaskStore {
         lastUpdatedAt: timestamp,
         ttlMs: TASK_LIMITS.ttlMs,
         pollIntervalMs: 2000,
+        background: input.run_in_background === true,
+        command: typeof input.command === 'string' ? input.command.slice(0, 512) : toolName,
+        executionDeadlineMs:
+          this.now() + (input.run_in_background === true ? TASK_LIMITS.backgroundExecutionMs : TASK_LIMITS.executionMs),
       }
       await this.save(task)
       return structuredClone(task)
@@ -180,10 +199,7 @@ export class McpTaskStore {
   }
   hasWorkingOwner(owner: string): boolean {
     return [...this.records.values()].some(
-      (task) =>
-        task.owner === owner &&
-        task.status === 'working' &&
-        this.now() < Date.parse(task.createdAt) + TASK_LIMITS.executionMs + 60_000,
+      (task) => task.owner === owner && task.status === 'working' && this.now() < taskDeadline(task) + 60_000,
     )
   }
   working(): Promise<TaskRecord[]> {

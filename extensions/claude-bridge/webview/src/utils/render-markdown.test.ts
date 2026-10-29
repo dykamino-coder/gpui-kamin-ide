@@ -45,6 +45,14 @@ describe('renderMarkdown — lists', () => {
   })
 })
 
+describe('renderMarkdown — text color', () => {
+  it('lets list items and table cells inherit the message text color', () => {
+    const out = renderMarkdown('- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |')
+    for (const tag of out.match(/<(?:ul|li|td)\b[^>]*>/g) ?? []) expect(tag).not.toMatch(/color:/)
+    expect(out).toMatch(/<td\b/)
+  })
+})
+
 describe('renderMarkdown — paragraphs', () => {
   it('keeps single newlines inside prose as hard breaks', () => {
     expect(html('line one\nline two')).toContain('line one<br>line two')
