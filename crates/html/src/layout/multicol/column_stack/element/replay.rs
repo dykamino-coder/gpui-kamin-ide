@@ -34,8 +34,9 @@ pub(super) type Replayed = (
 
 impl ColumnStack {
     /// Ребёнок, чьи куски рисует запись главной копии: без собственной геометрии копий
-    /// (`clone`, полосы повтора, хвост таблицы), без слотов OOF и статических мест по
-    /// сегментам и без художников, читающих границы фрагмента (`StackChild::replay`).
+    /// (`clone`, полосы повтора, хвост таблицы) и без внепоточных коробок в поддереве
+    /// (`StackChild::replay`); внепоточные других детей той же стопки продолжаются своими
+    /// слотами и местами по сегментам и записи не мешают.
     /// Решение одно для prepaint и paint: от контекста краски оно не зависит.
     pub(super) fn replays(&self, kid: usize, plan: &[Frag]) -> bool {
         let c = &self.children[kid];
@@ -45,8 +46,6 @@ impl ColumnStack {
             && c.repeat.is_none()
             && c.slack.is_none()
             && !c.nested_cols
-            && self.copy_records().is_none()
-            && self.static_places.is_none()
             && plan.iter().any(|f| f.kid == kid && f.copy == 0)
             && plan.iter().filter(|f| f.kid == kid).count() > 1
     }
