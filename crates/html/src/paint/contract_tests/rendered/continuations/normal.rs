@@ -83,3 +83,19 @@ fn replayed_flex_items_paint_from_their_own_fragments() {
         "first item stays in column 1"
     );
 }
+
+#[test]
+fn replayed_grid_items_paint_in_their_own_windows() {
+    // The second row's item is unbreakable: the grid pushes it to column 2.
+    let html = "<style>body{margin:0}</style><div style='columns:2;gap:0;width:100px;height:100px;column-fill:auto'><div style='display:grid'><div style='height:70px;background:#00ff00'></div><div style='contain:size;height:70px;background:#0000ff'></div></div></div>";
+    let found = quads(html, 400., 300.);
+    assert!(is(top(&found, 25., 35.), 0x00ff00), "first item");
+    assert!(
+        !is(top(&found, 25., 85.), 0x0000ff),
+        "pushed item not in column 1"
+    );
+    assert!(
+        is(top(&found, 75., 35.), 0x0000ff),
+        "pushed item at the top of column 2"
+    );
+}
