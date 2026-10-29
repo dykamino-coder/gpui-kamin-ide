@@ -7,6 +7,7 @@ import { Hono } from 'hono'
 import type { PtySession } from './types'
 import { MODERN_MCP, TASK_EXTENSION } from './mcp-modern'
 import { TASK_LIMITS } from './mcp-task-store'
+import { mcpInstructions } from './mcp-instructions'
 
 const mock = vi.hoisted(() => ({ home: '', sessions: [] as PtySession[], send: vi.fn(), call: vi.fn() }))
 vi.mock('node:os', async (original) => ({
@@ -100,9 +101,16 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
       supportedVersions: [MODERN_MCP],
       capabilities: { extensions: { [TASK_EXTENSION]: {} } },
     })
-    expect(discovery.instructions).toContain('immediate durable MCP task')
+    expect(discovery.instructions).toContain('returns a task immediately')
     const ordinary = (await (await request('server/discover', {}, false)).json()).result
-    expect(ordinary.instructions).toContain('For long-running jobs pass run_in_background:true')
+    expect(ordinary.instructions).toContain('client-side bash_id')
+  })
+  it.each([true, false])('shares initialize/discover instructions with Tasks support = %s', async (optIn) => {
+    const initialized = (await (await request('initialize', {}, optIn)).json()).result
+    const discovered = (await (await request('server/discover', {}, optIn)).json()).result
+    expect(initialized.instructions).toBe(mcpInstructions(optIn))
+    expect(discovered.instructions).toBe(initialized.instructions)
+    expect(discovered.instructions.split('Shell:')).toHaveLength(2)
   })
   it.each(['Bash', 'PowerShell'])(
     'admits explicit background %s without grace and sends a protocol deadline',
