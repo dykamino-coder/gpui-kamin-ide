@@ -83,13 +83,20 @@ pub fn scroll(x: f32, y: f32, lines: i32) -> Result<(), String> {
 /// Изменить размер ГЛАВНОГО окна (логические px). Нужен парити-гейту:
 /// адаптер вьюпорта (масштабирование колонок, пол размеров, дебаунс) иначе
 /// не проверяется вовсе.
-pub fn resize_main(w: f32, h: f32) -> Result<(), String> {
+pub fn resize_main(w: f32, h: f32, position: Option<(f32, f32)>) -> Result<(), String> {
     use windows::Win32::UI::WindowsAndMessaging::{
         SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SetWindowPos, ShowWindow,
     };
     let hwnd = crate::probe::shot::find_window(false).ok_or("main window not found")?;
     let scale = unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0;
     let scale = if scale <= 0.0 { 1.0 } else { scale };
+    let (x, y) = position.unwrap_or_default();
+    let flags = SWP_NOZORDER | SWP_NOACTIVATE;
+    let flags = if position.is_none() {
+        flags | SWP_NOMOVE
+    } else {
+        flags
+    };
     unsafe {
         // Развёрнутое окно SetWindowPos игнорирует. Стенд восстанавливает
         // только своё окно, не забирая foreground у работающего владельца.
@@ -97,11 +104,11 @@ pub fn resize_main(w: f32, h: f32) -> Result<(), String> {
         SetWindowPos(
             hwnd,
             None,
-            0,
-            0,
+            (x * scale) as i32,
+            (y * scale) as i32,
             (w * scale) as i32,
             (h * scale) as i32,
-            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            flags,
         )
         .map_err(|e| e.to_string())
     }

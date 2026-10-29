@@ -142,9 +142,11 @@ export function configureTerminalClipboard(
       glyph.setAttribute('aria-hidden', 'true')
       button.append(glyph, document.createTextNode(label))
       button.onclick = () => {
-        action()
         close()
+        // Focus reporting is terminal input and can clear an existing selection.
+        // Restore focus before Select All creates the selection to preserve it.
         terminal.focus()
+        action()
       }
       menu.appendChild(button)
       return button
