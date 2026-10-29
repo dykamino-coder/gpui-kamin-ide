@@ -27,8 +27,8 @@ export function WidgetBlock({ input }: { input: unknown }): JSX.Element | null {
     if (!el || !html) return
     const root = el.shadowRoot ?? el.attachShadow({ mode: 'open' })
     root.innerHTML =
-      '<style>:host{display:block;color:#e6e6ee;font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5}'
-      + 'img,svg,canvas,video,table{max-width:100%}a{color:#8ab4f8}</style>'
+      '<style>:host{display:block;color:var(--text-primary);font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5}'
+      + 'img,svg,canvas,video,table{max-width:100%}a{color:var(--accent-action)}</style>'
       + html
   }, [html])
 

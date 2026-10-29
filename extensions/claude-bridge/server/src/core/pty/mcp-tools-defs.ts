@@ -10,22 +10,10 @@ export const MCP_TOOLS = [
   // ── File system ─────────────────────────────────────
   {
     name: 'Read',
-    description: `Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+    description: `Reads text files from the user's filesystem, or returns supported images (PNG, JPG, GIF, WebP) as image content. Read screenshots with this tool. PDF rendering is not implemented; extract PDF content with an appropriate host utility first.
 
-Usage:
-- The file_path parameter must be an absolute path, not a relative path
-- By default, it reads up to 2000 lines starting from the beginning of the file
-- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- Any lines longer than 2000 characters will be truncated
-- Results are returned using cat -n format, with line numbers starting at 1
-- This tool allows reading images (eg PNG, JPG, etc). When reading an image file the contents are presented visually as a multimodal LLM capability.
-- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.
-- This tool can read Jupyter notebooks (.ipynb files) and returns all cells with their outputs, combining code, text, and visualizations.
-- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
-- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths.
-- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-- OUTPUT SIZE LIMIT: responses are hard-capped at ~720 KB. For big files, pass \`offset\` + \`limit\` and page through — if the reply ends with "[Output truncated by bridge…]" later lines are missing.`,
+Pass an absolute file_path. Text defaults to the first 2000 lines; use offset (1-based) and limit for a smaller range. Lines longer than 2000 characters are truncated. Text is returned with line numbers. Jupyter notebooks are returned as cells with their source and outputs.
+Text results are capped at about 720,000 characters; a result containing "[Output truncated by bridge" is incomplete. Narrow the range and read again.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -38,11 +26,6 @@ Usage:
           type: 'number',
           description: 'The number of lines to read. Only provide if the file is too large to read at once.',
         },
-        pages: {
-          type: 'string',
-          description:
-            'Page range for PDF files (e.g., "1-5", "3", "10-20"). Only applicable to PDF files. Maximum 20 pages per request.',
-        },
       },
       required: ['file_path'],
     },
@@ -53,7 +36,7 @@ Usage:
 
 Usage:
 - This tool will overwrite the existing file if there is one at the provided path.
-- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
+- Read an existing file before overwriting it so you can preserve the user's changes.
 - Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
 - NEVER create documentation files (*.md) or README files unless explicitly requested by the User.`,
     inputSchema: {
@@ -98,7 +81,7 @@ Usage:
 - Returns matching file paths sorted by modification time
 - Use this tool when you need to find files by name patterns
 - When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
-- OUTPUT SIZE LIMIT: responses are hard-capped at ~720 KB. A root-level \`**/*\` over a big tree will be truncated — pass a tighter \`path\` or a more specific pattern first.`,
+- OUTPUT SIZE LIMIT: responses are hard-capped at about 720,000 characters. A root-level \`**/*\` over a big tree will be truncated — pass a tighter \`path\` or a more specific pattern first.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -125,7 +108,7 @@ Usage:
 - Multiline matching: By default patterns match within single lines only. For cross-line patterns, use multiline: true
 
 OUTPUT SIZE LIMIT:
-- Responses are hard-capped at ~720 KB. If you hit the cap, the reply ends with a "[Output truncated by bridge…]" marker and later matches are missing.
+- Responses are hard-capped at about 720,000 characters. If you hit the cap, the reply ends with a "[Output truncated by bridge" marker and later matches are missing.
 - To avoid truncation: narrow \`path\`, add \`glob\`/\`type\`, use \`head_limit\` + \`offset\` for pagination, or switch to \`output_mode: "files_with_matches"\` / \`"count"\` first and drill in afterwards.
 - Prefer small \`-C\`/\`-A\`/\`-B\` (<=5) on big repos — every context line multiplies the payload.`,
     inputSchema: {
@@ -195,7 +178,7 @@ IMPORTANT: Avoid using this tool to run commands when a dedicated tool exists:
 Instructions:
 - Always quote file paths that contain spaces with double quotes
 - You may specify an optional timeout in milliseconds (up to 1800000ms / 30 minutes). Default timeout: 1500000ms (25 minutes).
-- Use run_in_background for background commands. With MCP Tasks support, the task returns immediately and the CLI handles completion notifications and tasks/get results. Without Tasks support, poll BashOutput with bash_id; there is no automatic completion notification.
+- With MCP Tasks support, foreground commands finish inline within two minutes or return a durable MCP task. Use run_in_background for background commands. With MCP Tasks support, the task returns immediately and the CLI handles completion notifications and tasks/get results. Without Tasks support, poll BashOutput with bash_id; there is no automatic completion notification.
 - Write a clear, concise description of what your command does.
 
 OUTPUT SIZE LIMIT:
@@ -211,10 +194,6 @@ OUTPUT SIZE LIMIT:
           type: 'boolean',
           description:
             'Set to true to run in the background. With MCP Tasks support, returns a task immediately; completion notifies the agent, output is available through tasks/get, cancellation through tasks/cancel (up to 24 hours). Otherwise use BashOutput (bash_id) and KillShell.',
-        },
-        dangerouslyDisableSandbox: {
-          type: 'boolean',
-          description: 'Set this to true to dangerously override sandbox mode and run commands without sandboxing.',
         },
       },
       required: ['command'],
@@ -235,7 +214,8 @@ Notes:
 Restrictions:
 - Runs with \`-NonInteractive\`. Never use \`Read-Host\`, \`Get-Credential\`, \`pause\`, or interactive editors.
 - Add \`-Confirm:$false\` for destructive cmdlets that prompt.
-- Default timeout: 1500000ms (25 min); max 1800000ms (30 min). Use \`run_in_background\` for longer jobs.
+- Each call starts a new process in the session working directory; cd and environment changes do not persist.
+- Foreground timeout: 1500000ms (25 min) by default, max 1800000ms (30 min). With MCP Tasks support, output returns inline within two minutes or as a durable task. Explicit background tasks return immediately and can run for almost 24 hours.
 - For file ops use Read/Write/Edit, for content search use Grep, for file search use Glob — not PowerShell equivalents.`,
     inputSchema: {
       type: 'object',
@@ -248,7 +228,6 @@ Restrictions:
           description:
             'Set to true to run in the background. With MCP Tasks support, returns a task immediately; completion notifies the agent, output is available through tasks/get, cancellation through tasks/cancel (up to 24 hours). Otherwise use BashOutput (bash_id) and KillShell.',
         },
-        dangerouslyDisableSandbox: { type: 'boolean', description: 'Override sandbox mode (rare).' },
       },
       required: ['command'],
     },
@@ -303,24 +282,21 @@ Restrictions:
   // ── Web ─────────────────────────────────────────────
   {
     name: 'WebFetch',
-    description: `Fetches content from a specified URL, converts HTML to markdown, and processes it.
+    description: `Fetches public URL content on the user's machine and returns it, converting HTML to markdown. No separate model processes the prompt: inspect the returned content yourself. Large content is truncated, not summarized.
 
-Usage:
-- The URL must be a fully-formed valid URL
-- HTTP URLs are upgraded to HTTPS unless allow_http is true (e.g. intranet hosts with no TLS)
-- The prompt should describe what information you want to extract from the page
-- This tool is read-only and does not modify any files
-- Results may be summarized if the content is very large
-- For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api)`,
+HTTP is upgraded to HTTPS unless allow_http is true. Localhost and private/internal addresses are blocked, including redirect targets; allow_http does not bypass this protection. This tool is read-only.`,
     inputSchema: {
       type: 'object',
       properties: {
         url: { type: 'string', description: 'The URL to fetch content from', format: 'uri' },
-        prompt: { type: 'string', description: 'A prompt describing what information to extract from the page' },
+        prompt: {
+          type: 'string',
+          description: 'Context for the fetch request; returned with the content, without model processing',
+        },
         allow_http: {
           type: 'boolean',
           description:
-            'Set true to fetch http:// URLs without upgrading to https (for intranet/internal hosts that have no TLS). Default false.',
+            'Set true to fetch public http:// URLs without upgrading to HTTPS. Private/internal hosts remain blocked. Default false.',
         },
       },
       required: ['url', 'prompt'],
@@ -329,10 +305,7 @@ Usage:
   // ── Git ─────────────────────────────────────────────
   {
     name: 'EnterWorktree',
-    description: `Creates an isolated git worktree and switches the current session into it. Use this ONLY when the user explicitly asks to work in a worktree.
-
-Requirements: Must be in a git repository. Must not already be in a worktree.
-Behavior: Creates a new git worktree with a new branch based on HEAD. Switches the session's working directory to the new worktree.`,
+    description: `Creates a git worktree under the host repository's .claude/worktrees directory, with a worktree/<name> branch based on HEAD. Returns the path and branch; does not switch the session working directory. Use the returned path explicitly in subsequent operations. Use ONLY when the user explicitly asks for a worktree. Requires the host process working directory to be inside a git repository.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -369,7 +342,7 @@ Use only after the user is finished with the worktree. Use \`git worktree remove
 4. Offer choices to the user about what direction to take
 
 Usage notes:
-- ALWAYS use this tool instead of printing questions as plain text — it provides a much better interactive experience
+- Use this tool when an answer is needed; if unavailable or failing, ask briefly in text. Failure is not an answer or approval.
 - Users will always be able to type a custom answer
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end
 - The user sees a styled widget with clickable buttons`,
@@ -429,21 +402,18 @@ Usage notes:
   },
   {
     name: 'ShowWidget',
-    description: `Render an HTML/CSS/SVG widget INLINE in the chat — it appears as a live visual right inside your reply, not as code. Reach for it FREELY and proactively whenever a picture beats prose: charts & graphs (draw with SVG), data tables, diagrams/flowcharts, timelines, dashboards & stat cards, comparison grids, UI mockups, math/geometry, color swatches, progress bars, CSS animations. Don't hold back — if a visual would help the user, show one.
+    description: `Render an HTML/CSS/SVG widget inline in the chat when a picture is clearly easier to understand than text: charts, diagrams or visual comparisons. Do not duplicate a table that Markdown can express clearly. Keep HTML/SVG concise: it consumes output tokens.
 
-Rules for the HTML:
-• Self-contained ONLY. Inline all CSS. External URLs (styles, fonts, images) are BLOCKED — embed images as data: URIs, draw with inline SVG or CSS.
-• DECLARATIVE — HTML + CSS + SVG. \`<script>\` does NOT run (rendered in a style-isolated Shadow DOM, not a JS sandbox), so build visuals with SVG/CSS, not JavaScript. CSS animations/transitions DO work.
-• Pass an HTML fragment (no <html>/<head> needed). The chat is dark; style for a dark background (light text) — or set your own.
-• \`height\` caps the frame (it scrolls if taller); omit for natural height.
-
-This is the way to communicate visually in this chat — prefer it over ASCII art or describing a chart in words.`,
+Pass a self-contained HTML fragment with inline CSS. External resources are blocked; embed images as data: URIs or draw with SVG/CSS. Script elements do not execute in the style-isolated Shadow DOM; use declarative HTML/CSS/SVG. CSS animations and transitions work.
+Theme CSS variables inherit into the Shadow DOM: use var(--text-primary), var(--text-secondary), var(--bg-surface), var(--bg-overlay), var(--accent-primary) and var(--accent-action). Reserve literal colors for contrasting data marks. The host text and links follow the active theme.
+The height parameter caps the frame with scrolling; omit it for natural height.`,
     inputSchema: {
       type: 'object',
       properties: {
         html: {
           type: 'string',
-          description: 'The self-contained HTML to render inline. Inline all CSS/JS; no external resources.',
+          description:
+            'The self-contained HTML to render inline. Inline all CSS; use declarative HTML/SVG and no external resources.',
         },
         title: { type: 'string', description: 'Optional caption shown above the widget.' },
         height: {
