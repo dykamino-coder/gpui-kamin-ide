@@ -29,16 +29,17 @@ pub(crate) struct FrameCx<'a> {
 }
 
 impl<'a> FrameCx<'a> {
-    /// Values only: no fragmented ancestor, no memoized facts and no deferred paint owner.
+    /// The values and layout state of `doc` only: no fragmented ancestor, no memoized facts
+    /// and no deferred paint owner.
     #[cfg(test)]
-    pub(crate) fn new(values: ValueCx<'a>) -> Self {
+    pub(crate) fn new(doc: &'a crate::document::state::DocState) -> Self {
         Self {
-            values,
+            values: doc.values(),
             lines: None,
             lengths: None,
             subtrees: None,
             paint: None,
-            layout: &values.doc.layout,
+            layout: &doc.layout,
         }
     }
 

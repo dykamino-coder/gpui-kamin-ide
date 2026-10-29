@@ -76,12 +76,8 @@ fn parallel_float_continuations_are_not_silently_replaced() {
         "<div><div><div style='height:100px'><div style='float:left;width:100%;height:100px;break-inside:avoid'></div></div></div></div>",
         "",
     );
-    let kids = pending(
-        host(&tree),
-        &BoxStyle::default(),
-        FrameCx::new(tree.values()),
-    )
-    .expect("fixed-height empty float host keeps its parallel continuation");
+    let kids = pending(host(&tree), &BoxStyle::default(), FrameCx::new(&tree.doc))
+        .expect("fixed-height empty float host keeps its parallel continuation");
     assert!(!kids[0].0.marks.paginate);
     assert!(empty_floats(&kids[0].0));
     for special in [
@@ -92,12 +88,7 @@ fn parallel_float_continuations_are_not_silently_replaced() {
     ] {
         let tree = crate::dom::parse(&format!("<div><div>{special}</div></div>"), "");
         assert!(
-            pending(
-                host(&tree),
-                &BoxStyle::default(),
-                FrameCx::new(tree.values())
-            )
-            .is_some(),
+            pending(host(&tree), &BoxStyle::default(), FrameCx::new(&tree.doc)).is_some(),
             "{special}"
         );
     }
@@ -109,12 +100,7 @@ fn parallel_float_continuations_are_not_silently_replaced() {
     ] {
         let tree = crate::dom::parse(&format!("<div><div>{special}</div></div>"), "");
         assert!(
-            pending(
-                host(&tree),
-                &BoxStyle::default(),
-                FrameCx::new(tree.values())
-            )
-            .is_none(),
+            pending(host(&tree), &BoxStyle::default(), FrameCx::new(&tree.doc)).is_none(),
             "{special}"
         );
     }

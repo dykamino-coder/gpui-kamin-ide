@@ -36,7 +36,7 @@ fn item(width: f32, height: f32) -> Element {
 #[test]
 fn break_before_on_the_second_item_of_the_first_row_reaches_the_container() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = crate::layout::cx::FrameCx::new(doc.values());
+    let vcx = crate::layout::cx::FrameCx::new(&doc);
     let mut second = item(25.0, 25.0);
     second.style.used_mut().break_before_force = true;
     let c = element(

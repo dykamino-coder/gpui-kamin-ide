@@ -24,11 +24,11 @@ impl DocumentValues {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::document::state::DocState;
 
     #[test]
     fn carry_extends_the_key_without_reusing_zero() {
-        let doc = crate::document::state::DocState::new(Default::default());
+        let doc = DocState::new(Default::default());
         assert_eq!(doc.values.next_synthetic_id(), "0");
         *doc.values.synthetic_id.borrow_mut() = vec![9; 24];
         assert_eq!(doc.values.next_synthetic_id(), "9".repeat(24));
