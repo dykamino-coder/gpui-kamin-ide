@@ -62,7 +62,7 @@ pub(crate) struct TableRowBox {
 impl TableBox {
     /// Потоки подписей и ячеек: их вложенные сетки тоже требуют записи
     /// дорожек, а принадлежность потомков не выводится из координат.
-    pub(super) fn flows(&self) -> impl Iterator<Item = &BlockBox> {
+    pub(crate) fn flows(&self) -> impl Iterator<Item = &BlockBox> {
         self.caps_top
             .iter()
             .chain(&self.caps_bot)
@@ -202,6 +202,7 @@ fn caption_kid(cap: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> BlockKid {
         avoid_before: edge_avoid(cap, false, vcx),
         avoid_after: edge_avoid(cap, true, vcx),
         monolith,
+        unbreakable: crate::layout::fragment::clone::unbreakable_box(cap),
         inner: (!monolith).then(|| BlockBox::container(cap, cx, vcx)),
         page: None,
     }

@@ -83,9 +83,21 @@ pub(crate) struct Watched {
     /// Ведущая неделимая протяжённость вложенных многоколоночников копии по id
     /// их коробки (`ColumnStack::report_lead`).
     leads: Rc<RefCell<HashMap<u64, f32>>>,
+    /// Собственный допуск узлов в записи главной копии, воспроизводимой по кускам
+    /// (`ColumnStack::replay_routes`): монолит — только в фрагментаинере начала.
+    admission: Rc<RefCell<HashMap<u64, Rc<[gpui::PaintSegmentSlice]>>>>,
 }
 
 impl Watched {
+    /// Допуск узлов на время записи или prepaint главной копии (пустой — снят).
+    pub(crate) fn set_admission(&self, nodes: HashMap<u64, Rc<[gpui::PaintSegmentSlice]>>) {
+        *self.admission.borrow_mut() = nodes;
+    }
+
+    pub(super) fn admitted(&self, id: u64) -> Option<Rc<[gpui::PaintSegmentSlice]>> {
+        self.admission.borrow().get(&id).cloned()
+    }
+
     pub(super) fn axis(&self) -> StackAxis {
         self.axis.unwrap_or(StackAxis::Horizontal)
     }
@@ -176,6 +188,7 @@ impl Watched {
             monolithic_ids: self.monolithic_ids_of().clone().into(),
             positioned: self.positioned.clone(),
             leads: self.leads.clone(),
+            admission: self.admission.clone(),
         })
     }
 

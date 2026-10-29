@@ -36,3 +36,33 @@ fn replayed_pieces_paint_and_hit_in_their_own_columns() {
         "source position below the column"
     );
 }
+
+/// Ячейка 2 начинается монолитом выше колонки, за ним — блок; ячейка 1 тянется на весь ряд.
+const MONOLITH: &str = "<style>body{margin:0}</style><div style='columns:2;column-fill:auto;gap:0;width:100px;height:100px;background:#ff0000'><div style='display:table;width:100%;height:200px'><div style='display:table-cell;width:50%'><div style='height:100%;background:#00ff00'></div></div><div style='display:table-cell;width:50%'><div style='contain:size;height:130px'><div style='height:130px;background:#ff00ff'></div></div><div style='height:100px;background:#0000ff'></div></div></div></div>";
+
+#[test]
+fn monolith_overflows_only_its_own_column_and_the_cell_resumes_at_the_next_top() {
+    let found = quads(MONOLITH, 400., 300.);
+    assert!(is(top(&found, 12., 50.), 0x00ff00), "cell 1, column 1");
+    assert!(is(top(&found, 37., 50.), 0xff00ff), "monolith, column 1");
+    assert!(
+        is(top(&found, 37., 115.), 0xff00ff),
+        "monolith overflow below its own column"
+    );
+    assert!(
+        is(top(&found, 62., 95.), 0x00ff00),
+        "cell 1 continues to 200"
+    );
+    assert!(
+        is(top(&found, 87., 5.), 0x0000ff),
+        "cell 2 resumes at the top of column 2"
+    );
+    assert!(is(top(&found, 87., 95.), 0x0000ff), "row height 200");
+    assert!(
+        !found
+            .iter()
+            .any(|(b, c)| f32::from(b.origin.x) >= 50. && super::opaque(*c) == 0xff00ff),
+        "no monolith in column 2"
+    );
+    assert_eq!(top(&found, 125., 50.), None, "no overflow column");
+}

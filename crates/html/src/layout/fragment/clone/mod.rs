@@ -118,7 +118,13 @@ pub(crate) fn solid_box(k: &Element) -> bool {
 /// fragmentable, as Blink fragments the remaining block-size of a block
 /// once its content has ended (`FinishFragmentation`).
 pub(crate) fn monolith_box(k: &Element) -> bool {
-    monolith_blockified(k)
+    k.style.used().break_inside_avoid || unbreakable_box(k)
+}
+
+/// `monolith_box` без `break-inside: avoid`: физически неделимая коробка, которая
+/// выше фрагментаинера его переполняет (css-break-3 §4.1), а не режется.
+pub(crate) fn unbreakable_box(k: &Element) -> bool {
+    content_monolith_blockified(k)
         // Таблица и ячейка монолитами НЕ являются
         // (css-break-4 §4.1: монолитен замещаемый,
         // прокручиваемый и `break-inside: avoid`);

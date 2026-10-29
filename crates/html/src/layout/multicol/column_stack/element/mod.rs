@@ -7,9 +7,11 @@ use crate::hooks::Hooks;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px};
+mod admission;
 mod copies;
 mod native;
 mod paint;
+mod piece;
 mod prepaint;
 mod replay;
 
