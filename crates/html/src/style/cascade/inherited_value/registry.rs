@@ -199,7 +199,7 @@ properties! {
     MaskComposite: "mask-composite" => [mask_composite];
     MaskBorderMode: "mask-border-mode" => [mask_border_luminance];
     MaxLines: "max-lines" => [line_clamp, clamp_auto];
-    Continue: "continue" => [clamp_continue, clamp_legacy];
+    Continue: "continue" => [clamp_continue, clamp_legacy, clamp_discard];
     TextBoxTrim: "text-box-trim" => [text_box_trim_start, text_box_trim_end];
     UserSelect: "user-select" => [user_select];
 }

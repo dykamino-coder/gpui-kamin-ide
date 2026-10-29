@@ -84,6 +84,7 @@ pub(super) fn collect_cands(cells: &[EdgeCell]) -> (Vec<Cand>, Vec<Cand>) {
 pub(super) fn draw_cands(
     cands: &mut [Cand],
     vertical: bool,
+    cut_top: Option<f32>,
     grid_lo: Option<f32>,
     half_at: &dyn Fn(f32, f32) -> f32,
     half_at_h: &dyn Fn(f32, f32) -> f32,
@@ -160,9 +161,17 @@ pub(super) fn draw_cands(
             // продление пунктирных рисовало лишние усы. Обе оси
             // тянутся на полуширину ПЕРПЕНДИКУЛЯРНОЙ кромки; кто из
             // них накроет угол, решает порядок по ключу (см. `segs`).
+            // Полукромка на верхней границе фрагментации (css-break-3 §5;
+            // Blink `ComputeEdgeJoints`): стык там нулевой высоты, вертикаль
+            // ниже не подрезается и красится после кромки слева от стыка
+            // (порядок кромок сетки), поэтому угол справа от такой
+            // горизонтали достаётся вертикали.
+            let at_cut = !vertical && cut_top.is_some_and(|t| (line - t).abs() < 0.75);
             let (a, b) = if win.style >= 9 {
                 if vertical {
                     (a - half_at_h(a, line), b + half_at_h(b, line))
+                } else if at_cut {
+                    (a - half_at(a, line), b - half_at(b, line))
                 } else {
                     (a - half_at(a, line), b + half_at(b, line))
                 }
@@ -187,43 +196,5 @@ pub(super) fn draw_cands(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Cand, Seg, draw_cands, key_order};
-    use crate::style::values::value::Color;
-
-    #[test]
-    fn nan_widths_and_lines_keep_a_total_order() {
-        // 64 candidates, every third with a NaN line or width: the sorts and
-        // the winner choice must not panic (`sort_by` checks total order).
-        let mut cands: Vec<Cand> = (0..64u32)
-            .map(|i| {
-                let nan = i % 3 == 0;
-                Cand {
-                    line: if nan {
-                        f32::NAN
-                    } else {
-                        ((i * 37) % 101) as f32
-                    },
-                    a: 0.0,
-                    b: 10.0,
-                    w: if nan { f32::NAN } else { 1.0 + (i % 4) as f32 },
-                    style: 9,
-                    source: 0,
-                    doc_ix: i,
-                    colour: Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    },
-                    outward: 0,
-                }
-            })
-            .collect();
-        let mut segs: Vec<Seg> = vec![];
-        draw_cands(&mut cands, true, None, &|_, _| 0.5, &|_, _| 0.5, &mut segs);
-        assert!(!segs.is_empty());
-        segs.sort_by(|p, q| key_order(&p.0, &q.0));
-        assert!(segs.windows(2).all(|w| key_order(&w[0].0, &w[1].0).is_le()));
-    }
-}
+#[path = "edge_segments_tests.rs"]
+mod tests;

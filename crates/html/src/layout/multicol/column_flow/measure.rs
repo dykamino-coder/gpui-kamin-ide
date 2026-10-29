@@ -13,6 +13,7 @@ pub(super) fn measure_columns(
     font_size: f32,
     line_height: f32,
     fill_height: Option<f32>,
+    cap: Option<f32>,
     whole: bool,
     line_breaks: (usize, usize),
     width: Pixels,
@@ -102,10 +103,41 @@ pub(super) fn measure_columns(
     // до высоты фрагментатора, а не делятся поровну. Пока высота не
     // учитывалась вовсе, и заданная высота коробки не влияла на разрезы:
     // строки распределялись ровно по числу колонок.
+    let (ks, per_col) = column_ends(lines, count, line_height, fill_height, cap, line_breaks);
+    let cuts: Vec<usize> = ks
+        .iter()
+        .filter_map(|&k| boundaries.get(k - 1).copied())
+        .collect();
+    // Строк в первой колонке — по фактическому первому разрыву (после
+    // поправки на `orphans`/`widows`), без разрывов — все строки блока.
+    let first = ks.first().copied().unwrap_or(lines);
+    Ok((cuts, count, px(per_col as f32 * line_height), first))
+}
+
+/// Разрывы колонок одного потока строк: после скольких строк кончается каждая
+/// колонка, и сколько строк в полной колонке. `fill_height` — `column-fill:
+/// auto` с высотой, `cap` — высота содержимого коробки при балансе.
+pub(super) fn column_ends(
+    lines: usize,
+    count: usize,
+    line_height: f32,
+    fill_height: Option<f32>,
+    cap: Option<f32>,
+    line_breaks: (usize, usize),
+) -> (Vec<usize>, usize) {
     let per_col = match fill_height {
         Some(h) if h >= line_height => ((h / line_height).floor() as usize).max(1),
         _ => lines.div_ceil(count).max(1),
     };
+    // `column-fill: balance` при заданной высоте (css-multicol-1 §7.1, §8.2):
+    // колонка не выше коробки, а что не влезло в `count` колонок — переполняющие
+    // колонки вбок, а не вниз (Blink `ConstrainColumnBlockSize` ограничивает
+    // сбалансированную высоту и раскладывает остаток в новых фрагментаинерах).
+    let per_col = match (fill_height, cap) {
+        (None, Some(h)) if h > 0.0 => per_col.min(((h / line_height).floor() as usize).max(1)),
+        _ => per_col,
+    };
+    let capped = fill_height.is_none() && per_col * count < lines;
     // Разрыв после `k` строк. `orphans`/`widows` (css-break-3 §4.4): в колонке
     // до разрыва не меньше `orphans` строк блока, после — не меньше `widows`.
     // Строки идут одним блоком, и нарушить можно лишь `widows` у последнего
@@ -123,7 +155,7 @@ pub(super) fn measure_columns(
     // «additional column boxes are created in the inline direction»; Blink
     // заводит column box на каждый фрагментаинер; `multicol-height-001`: 24
     // строки по 8 — третья колонка за коробкой, и линейка перед ней).
-    let max_cols = if fill_height.is_some() {
+    let max_cols = if fill_height.is_some() || capped {
         lines.max(count)
     } else {
         count
@@ -149,15 +181,8 @@ pub(super) fn measure_columns(
     // Баланс делит строки поровну на `count` колонок: перенос разрыва, после
     // которого хвост в последнюю колонку не влезает, ему не годится (высоту
     // колонки он не поднимает) — тогда прежние разрезы.
-    if fill_height.is_none() && lines - s > per_col {
+    if fill_height.is_none() && !capped && lines - s > per_col {
         ks = plain;
     }
-    let cuts: Vec<usize> = ks
-        .iter()
-        .filter_map(|&k| boundaries.get(k - 1).copied())
-        .collect();
-    // Строк в первой колонке — по фактическому первому разрыву (после
-    // поправки на `orphans`/`widows`), без разрывов — все строки блока.
-    let first = ks.first().copied().unwrap_or(lines);
-    Ok((cuts, count, px(per_col as f32 * line_height), first))
+    (ks, per_col)
 }

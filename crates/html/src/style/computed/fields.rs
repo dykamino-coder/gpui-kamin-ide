@@ -1242,6 +1242,10 @@ pub struct Computed {
     /// `continue: collapse` (css-overflow-4 §5.4): коробка — контейнер
     /// обрезки строк. Не наследуется; `-webkit-legacy` — `clamp_legacy`.
     pub(crate) clamp_continue: Option<bool>,
+    /// `continue: discard` (css-overflow-4 §continue): содержимое после
+    /// первого разрыва региона коробки (у многоколоночника — переполняющие
+    /// колонки) не рисуется. Не наследуется.
+    pub(crate) clamp_discard: Option<bool>,
     /// Наследуемые значения — одной группой за общим указателем (копия при
     /// записи): дети без своих наследуемых объявлений делят её с родителем.
     pub(crate) inh: InheritedGroup,

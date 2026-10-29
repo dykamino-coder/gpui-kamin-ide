@@ -44,6 +44,12 @@ impl LayerPaint for EdgePainter {
         // фрагментации соседняя кромка пуста).
         let mask = window.content_mask().bounds;
         let fragment = Fragment::of(mask);
+        // Верх фрагмента — граница фрагментации, если таблица продолжается
+        // сверху: какая-то вертикаль целиком выше маски.
+        let cut_top = vert
+            .iter()
+            .any(|c| c.b <= fragment.y.0 + PAINT_EDGE_EPS && c.a < fragment.y.0 - PAINT_EDGE_EPS)
+            .then_some(fragment.y.0);
         vert.retain(|c| fragment.reaches(c.a, c.b, true));
         horiz.retain(|c| fragment.reaches(c.a, c.b, false));
         // Снимок вертикалей для стыков: горизонталь тянется в угол на
@@ -104,6 +110,7 @@ impl LayerPaint for EdgePainter {
         draw_cands(
             &mut vert,
             true,
+            None,
             grid_lo.map(|g| g.0),
             &half_at,
             &half_at_h,
@@ -112,6 +119,7 @@ impl LayerPaint for EdgePainter {
         draw_cands(
             &mut horiz,
             false,
+            cut_top,
             grid_lo.map(|g| g.1),
             &half_at,
             &half_at_h,

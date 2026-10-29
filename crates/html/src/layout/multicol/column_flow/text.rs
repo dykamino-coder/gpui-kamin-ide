@@ -78,6 +78,7 @@ pub(super) fn build_text_columns(
     used: usize,
     width: gpui::Pixels,
     rows: &[super::rows::Row],
+    discard: bool,
 ) -> AnyElement {
     // Куски текста по местам разрезов: каждый — своя колонка.
     let mut parts: Vec<Vec<Node>> = vec![];
@@ -101,6 +102,12 @@ pub(super) fn build_text_columns(
         rest = tail;
     }
     parts.push(rest);
+    // `continue: discard` (css-overflow-4 §discarding-content): «any overflow
+    // columns are also not rendered» — куски сверх `used` колонок единственной
+    // линии отбрасываются.
+    if discard && rows.is_empty() {
+        parts.truncate(used.max(1));
+    }
     // Разрез по жёсткому разрыву оставляет сам <br> в начале хвоста
     // (нулевая длина ставит его после разреза) — новая колонка
     // начиналась бы с пустой строки.

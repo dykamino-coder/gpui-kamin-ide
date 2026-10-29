@@ -87,6 +87,11 @@ pub(super) fn column_stack_div(
                 && matches!(e.style.used().height, None | Some(Len::Auto)),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
+        .with_row_limit(
+            nest_rows.and_then(|_| {
+                super::fixed_height::box_block_limit(merged, e, &opts.cx.constraints)
+            }),
+        )
         // Линейки последней линии — до блочного конца содержимого коробки заданного размера
         // (Blink `PaintColumnRules`), без спаннеров и рядов (`multicol-rule-nested-balancing-001`).
         .with_rule_stretch(

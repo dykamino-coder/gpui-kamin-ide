@@ -45,6 +45,31 @@ pub(super) fn fixed_column_height(
     content_block_size_with_dimensions(style, sizes, col_vert, preferred, outer, inline)
 }
 
+/// Блочный размер содержимого коробки по `height` и `max-height` в точках
+/// (меньший): предел рядов вложенного многоколоночника.
+pub(super) fn box_block_limit(
+    style: &Computed,
+    e: &crate::dom::Element,
+    parent: &BoxConstraints,
+) -> Option<f32> {
+    let sizes = BoxDimensions::for_element(e, style);
+    let content = |l: Option<Len>| match l {
+        Some(Len::Px(_)) => content_block_size_with_dimensions(
+            style,
+            &sizes,
+            false,
+            l,
+            parent.avail_h,
+            parent.cb_width,
+        ),
+        _ => None,
+    };
+    match (content(sizes.preferred[1]), content(sizes.maximum[1])) {
+        (Some(p), Some(m)) => Some(p.min(m)),
+        (p, m) => p.or(m),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

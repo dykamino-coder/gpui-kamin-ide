@@ -96,8 +96,12 @@ pub(super) async fn generic_box_stack(
         height_driven,
         lone_span,
     } = column_plan(e, &merged, opts);
+    // `column-count: 1` — тоже многоколоночник (css-multicol-1 §2): вложенный в
+    // чужую фрагментацию, он сам контекст фрагментации со своими рядами
+    // (`variable-fragmentainer-size-001`); вне её — та же коробка, что блок.
+    let nested = outer_space.is_some();
     if let Some(cols) = used_count
-        .filter(|n| *n > 1)
+        .filter(|n| *n > 1 || nested)
         .or(width_driven.then_some(0))
         .or(height_driven.then_some(1))
         .or(lone_span.then_some(1))
