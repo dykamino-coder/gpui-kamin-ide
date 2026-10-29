@@ -193,7 +193,14 @@ export interface WsMsgHookResponse {
   }
 }
 
+export type CommandClientMessage =
+  | { type: 'commands:list' }
+  | { type: 'commands:stop'; id: string }
+  | { type: 'commands:output'; id: string }
+  | { type: 'commands:report'; report: import('../../shared/commands').CommandReport }
+
 export type ClientToServerMsg =
+  | CommandClientMessage
   | WsMsgSessionCreate
   | WsMsgSessionEnd
   | WsMsgSessionInput
@@ -244,6 +251,7 @@ export interface WsMsgSessionError {
 
 export interface WsMsgMcpCall {
   type: 'mcp:call'
+  taskDeadlineMs?: number
   taskOwner?: string
   requestId: string
   toolName: string
@@ -348,6 +356,10 @@ export interface WsMsgJsonlDownloadResponse {
 }
 
 export type ServerToClientMsg =
+  | { type: 'commands:request' }
+  | { type: 'commands:snapshot'; snapshot: import('../../shared/commands').CommandSnapshot }
+  | { type: 'commands:output'; id: string; output: string }
+  | { type: 'commands:stop-shell'; id: string; owner: string }
   | { type: 'session:resume-not-found' }
   | WsMsgSessionCreated
   | WsMsgSessionOutput

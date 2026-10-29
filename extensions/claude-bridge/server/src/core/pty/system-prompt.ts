@@ -31,7 +31,7 @@ export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcr
     "All file and shell operations execute on the USER's local machine via MCP tools (user-tools server), not on this server.",
   )
   lines.push(
-    'Use the mcp__user-tools__ prefixed file and shell tools exposed in this session: for example Read, Write, Edit, Glob, Grep, Bash and PowerShell. For client background shells use BashOutput and KillShell with the returned bash_id; native TaskOutput does not track these processes. Other native CLI tools, such as Agent and SendMessage, retain their own routing.',
+    'Use the mcp__user-tools__ prefixed file and shell tools exposed in this session: for example Read, Write, Edit, Glob, Grep, Bash and PowerShell. With MCP Tasks support, run_in_background:true returns an MCP task immediately; use tasks/get for output and tasks/cancel to stop it. Without Tasks support, client background shells use BashOutput and KillShell with the returned bash_id; native TaskOutput does not track these processes. Other native CLI tools, such as Agent and SendMessage, retain their own routing.',
   )
   lines.push(
     "The current server-side directory is a Bridge-managed session directory, not the user's project directory — do NOT access files directly on the server filesystem.",

@@ -3843,6 +3843,227 @@ var require_websocket_server = __commonJS({
   }
 });
 
+// src/main/mcp/tools/shell-foreground.ts
+function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env, signal, onOutput, cwd) {
+  if (signal?.aborted)
+    return Promise.resolve({
+      ...errorResult("Command cancelled"),
+      isError: true
+    });
+  return new Promise((resolve) => {
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let totalBytes = 0;
+    let stderrBytes = 0;
+    let truncated = false;
+    let timedOut = false;
+    let cancelled = false;
+    let settled = false;
+    let forceTimer;
+    const finish = (code, failure) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!timedOut && !cancelled) clearTimeout(forceTimer);
+      signal?.removeEventListener("abort", abort);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      if (failure) {
+        resolve(errorResult(failure));
+        return;
+      }
+      const parts = [];
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      if (stdout) parts.push(stdout);
+      if (stderr) parts.push(`
+--- stderr ---
+${stderr}`);
+      if (truncated || stderrBytes > MAX_OUTPUT_BYTES)
+        parts.push(`
+[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB per stream]`);
+      if (cancelled) parts.push("\n[Command cancelled; termination requested]");
+      if (timedOut)
+        parts.push(
+          `
+[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`
+        );
+      if (code !== null && code !== 0) parts.push(`
+[Exit code: ${code}]`);
+      const result = textResult(parts.join("") || `Command completed with exit code ${code ?? 0}`);
+      if (timedOut || cancelled) result.isError = true;
+      resolve(result);
+    };
+    const child = (0, import_node_child_process.spawn)(shell2, [...shellFlags, command], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
+      // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
+      // identifies our session so plugins/scripts can adapt. See CLI's
+      // `utils/Shell.ts` — same two flags.
+      env: env4,
+      cwd
+    });
+    const signalTree = (signal2) => {
+      if (process.platform !== "win32" && child.pid) {
+        try {
+          process.kill(-child.pid, signal2);
+          return;
+        } catch {
+        }
+      }
+      try {
+        child.kill(signal2);
+      } catch {
+      }
+    };
+    const terminate = () => {
+      if (forceTimer) return;
+      forceTimer = setTimeout(() => {
+        signalTree("SIGKILL");
+        finish(child.exitCode);
+      }, TERMINATION_GRACE_MS);
+      if (process.platform === "win32" && child.pid) {
+        try {
+          const killer = (0, import_node_child_process.spawn)("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+            windowsHide: true,
+            stdio: "ignore"
+          });
+          killer.on("error", () => {
+          });
+        } catch {
+        }
+      }
+      signalTree("SIGTERM");
+    };
+    const abort = () => {
+      cancelled = true;
+      terminate();
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      terminate();
+    }, timeout);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    child.stdout?.on("data", (chunk) => {
+      onOutput?.(chunk.toString("utf8"));
+      if (truncated) return;
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_OUTPUT_BYTES) {
+        truncated = true;
+        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length);
+        if (remaining > 0) {
+          stdoutChunks.push(chunk.subarray(0, remaining));
+        }
+      } else {
+        stdoutChunks.push(chunk);
+      }
+    });
+    child.stderr?.on("data", (chunk) => {
+      onOutput?.(chunk.toString("utf8"));
+      if (stderrBytes >= MAX_OUTPUT_BYTES) return;
+      const remaining = MAX_OUTPUT_BYTES - stderrBytes;
+      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
+      stderrBytes += chunk.length;
+    });
+    child.on("error", (err) => finish(null, `Failed to execute command: ${err.message}`));
+    child.on("close", (code) => finish(code));
+  });
+}
+var import_node_child_process, MAX_OUTPUT_BYTES, TERMINATION_GRACE_MS, textResult, errorResult;
+var init_shell_foreground = __esm({
+  "src/main/mcp/tools/shell-foreground.ts"() {
+    "use strict";
+    import_node_child_process = require("node:child_process");
+    MAX_OUTPUT_BYTES = 100 * 1024;
+    TERMINATION_GRACE_MS = 1e3;
+    textResult = (text) => ({
+      content: [{ type: "text", text }]
+    });
+    errorResult = (message) => textResult(`Error: ${message}`);
+  }
+});
+
+// src/main/mcp/tools/shell-snapshot.ts
+function buildSnapshotScript() {
+  return [
+    "# open-claude-bridge shell snapshot (auto-generated)",
+    "declare -p 2>/dev/null || true",
+    "declare -fp 2>/dev/null || true",
+    "alias -p 2>/dev/null || true"
+  ].join("\n");
+}
+function captureSnapshot(bashPath) {
+  const tmpFile = import_path.default.join(import_os.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
+  return new Promise((resolve) => {
+    const proc = (0, import_child_process.spawn)(bashPath, ["-ilc", buildSnapshotScript()], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+      }
+      resolve(null);
+    }, 1e4);
+    proc.stdout?.on("data", (d) => {
+      stdout += d.toString("utf-8");
+    });
+    proc.stderr?.on("data", () => {
+    });
+    proc.on("error", () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0 || !stdout) return resolve(null);
+      try {
+        import_fs.default.writeFileSync(tmpFile, stdout, "utf-8");
+      } catch {
+        return resolve(null);
+      }
+      resolve(tmpFile);
+    });
+  });
+}
+async function getOrCreateSnapshot(bashPath) {
+  if (snapshotAttempted) return snapshotAvailable ? snapshotPath : null;
+  if (snapshotPromise) return snapshotPromise;
+  snapshotPromise = (async () => {
+    snapshotPath = await captureSnapshot(bashPath);
+    snapshotAvailable = Boolean(snapshotPath);
+    snapshotAttempted = true;
+    return snapshotPath;
+  })();
+  return snapshotPromise;
+}
+function wrapCommandWithSnapshot(command, snapshotFile) {
+  if (!snapshotFile) return command;
+  return `source '${snapshotFile.replace(/'/g, "'\\''")}' 2>/dev/null || true
+${command}`;
+}
+function shouldUseLoginShell(snapshotFile) {
+  return !snapshotFile;
+}
+var import_fs, import_os, import_path, import_child_process, snapshotPath, snapshotAttempted, snapshotAvailable, snapshotPromise;
+var init_shell_snapshot = __esm({
+  "src/main/mcp/tools/shell-snapshot.ts"() {
+    "use strict";
+    import_fs = __toESM(require("fs"), 1);
+    import_os = __toESM(require("os"), 1);
+    import_path = __toESM(require("path"), 1);
+    import_child_process = require("child_process");
+    snapshotPath = null;
+    snapshotAttempted = false;
+    snapshotAvailable = false;
+    snapshotPromise = null;
+  }
+});
+
 // node_modules/yaml/dist/nodes/identity.js
 var require_identity = __commonJS({
   "node_modules/yaml/dist/nodes/identity.js"(exports2) {
@@ -11176,10 +11397,10 @@ var require_dist = __commonJS({
 // src/main/plugin-helpers.ts
 async function loadEnabledPluginsMap() {
   const out = /* @__PURE__ */ new Map();
-  const settingsPath = import_path.default.join(import_os.default.homedir(), ".claude", "settings.json");
+  const settingsPath = import_path2.default.join(import_os2.default.homedir(), ".claude", "settings.json");
   let raw;
   try {
-    raw = await import_fs.default.promises.readFile(settingsPath, "utf-8");
+    raw = await import_fs2.default.promises.readFile(settingsPath, "utf-8");
   } catch {
     return out;
   }
@@ -11300,10 +11521,10 @@ function matchYamlField(fm, key2) {
   }
 }
 async function readPluginManifest(pluginRoot) {
-  const manifestPath = import_path.default.join(pluginRoot, ".claude-plugin", "plugin.json");
+  const manifestPath = import_path2.default.join(pluginRoot, ".claude-plugin", "plugin.json");
   let raw;
   try {
-    raw = await import_fs.default.promises.readFile(manifestPath, "utf-8");
+    raw = await import_fs2.default.promises.readFile(manifestPath, "utf-8");
   } catch {
     return null;
   }
@@ -11316,13 +11537,13 @@ async function readPluginManifest(pluginRoot) {
 async function readMarketplacePluginEntry(pluginName, marketplace) {
   if (!pluginName || !marketplace || marketplace === "local") return null;
   try {
-    const known = JSON.parse(await import_fs.default.promises.readFile(
-      import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
+    const known = JSON.parse(await import_fs2.default.promises.readFile(
+      import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
       "utf-8"
     ));
     const root = known?.[marketplace]?.installLocation;
     if (typeof root !== "string") return null;
-    const catalog = JSON.parse(await import_fs.default.promises.readFile(import_path.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+    const catalog = JSON.parse(await import_fs2.default.promises.readFile(import_path2.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
     const entry = Array.isArray(catalog?.plugins) ? catalog.plugins.find((candidate) => candidate?.name === pluginName) : null;
     return entry && typeof entry === "object" && !Array.isArray(entry) ? entry : null;
   } catch {
@@ -11359,7 +11580,7 @@ function mergePluginDeclarations(pluginRoot, pluginName, entry, manifest) {
     if (merged !== void 0) effective[key2] = merged;
   }
   if (typeof entry?.defaultEnabled === "boolean") effective.defaultEnabled = entry.defaultEnabled;
-  effective.name = pluginName || manifest?.name || entry?.name || import_path.default.basename(pluginRoot);
+  effective.name = pluginName || manifest?.name || entry?.name || import_path2.default.basename(pluginRoot);
   return effective;
 }
 async function readEffectivePluginManifest(pluginRoot, pluginName, marketplace) {
@@ -11373,18 +11594,18 @@ function readEffectivePluginManifestSync(pluginRoot, pluginName, marketplace) {
   let manifest = null;
   let entry = null;
   try {
-    manifest = JSON.parse(import_fs.default.readFileSync(import_path.default.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf-8"));
+    manifest = JSON.parse(import_fs2.default.readFileSync(import_path2.default.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf-8"));
   } catch {
   }
   if (marketplace && marketplace !== "local") {
     try {
-      const known = JSON.parse(import_fs.default.readFileSync(
-        import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
+      const known = JSON.parse(import_fs2.default.readFileSync(
+        import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "known_marketplaces.json"),
         "utf-8"
       ));
       const root = known?.[marketplace]?.installLocation;
       if (typeof root === "string") {
-        const catalog = JSON.parse(import_fs.default.readFileSync(import_path.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
+        const catalog = JSON.parse(import_fs2.default.readFileSync(import_path2.default.join(root, ".claude-plugin", "marketplace.json"), "utf-8"));
         const match = Array.isArray(catalog?.plugins) ? catalog.plugins.find((candidate) => candidate?.name === pluginName) : null;
         if (match && typeof match === "object" && !Array.isArray(match)) entry = match;
       }
@@ -11439,7 +11660,7 @@ async function listEnabledInstalledPlugins() {
     if (!entry.installPath) continue;
     let exists = false;
     try {
-      exists = import_fs.default.existsSync(entry.installPath);
+      exists = import_fs2.default.existsSync(entry.installPath);
     } catch {
     }
     if (!exists) continue;
@@ -11465,9 +11686,9 @@ async function listEnabledInstalledPlugins() {
 }
 async function listEnabledPluginBinDirs() {
   const plugins = await listEnabledInstalledPlugins();
-  return plugins.map((plugin) => import_path.default.join(plugin.installPath, "bin")).filter((binDir) => {
+  return plugins.map((plugin) => import_path2.default.join(plugin.installPath, "bin")).filter((binDir) => {
     try {
-      return import_fs.default.statSync(binDir).isDirectory();
+      return import_fs2.default.statSync(binDir).isDirectory();
     } catch {
       return false;
     }
@@ -11476,8 +11697,8 @@ async function listEnabledPluginBinDirs() {
 function loadPluginOptions(pluginId) {
   const out = {};
   try {
-    const installedPath = import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "installed_plugins.json");
-    const installed3 = JSON.parse(import_fs.default.readFileSync(installedPath, "utf-8"));
+    const installedPath = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+    const installed3 = JSON.parse(import_fs2.default.readFileSync(installedPath, "utf-8"));
     const root = installed3?.plugins?.[pluginId]?.[0]?.installPath;
     if (typeof root === "string") {
       const at = pluginId.lastIndexOf("@");
@@ -11492,9 +11713,9 @@ function loadPluginOptions(pluginId) {
     }
   } catch {
   }
-  const settingsPath = import_path.default.join(import_os.default.homedir(), ".claude", "settings.json");
+  const settingsPath = import_path2.default.join(import_os2.default.homedir(), ".claude", "settings.json");
   try {
-    const raw = import_fs.default.readFileSync(settingsPath, "utf-8");
+    const raw = import_fs2.default.readFileSync(settingsPath, "utf-8");
     const data = JSON.parse(raw);
     const opts = data?.pluginConfigs?.[pluginId]?.options;
     if (opts && typeof opts === "object" && !Array.isArray(opts)) {
@@ -11502,9 +11723,9 @@ function loadPluginOptions(pluginId) {
     }
   } catch {
   }
-  const credsPath = import_path.default.join(import_os.default.homedir(), ".claude", ".credentials.json");
+  const credsPath = import_path2.default.join(import_os2.default.homedir(), ".claude", ".credentials.json");
   try {
-    const raw = import_fs.default.readFileSync(credsPath, "utf-8");
+    const raw = import_fs2.default.readFileSync(credsPath, "utf-8");
     const data = JSON.parse(raw);
     const opts = data?.pluginSecrets?.[pluginId];
     if (opts && typeof opts === "object" && !Array.isArray(opts)) {
@@ -11522,10 +11743,10 @@ function substituteUserConfig(value, options) {
 }
 async function loadInstalledPluginsMap() {
   const out = /* @__PURE__ */ new Map();
-  const filePath = import_path.default.join(import_os.default.homedir(), ".claude", "plugins", "installed_plugins.json");
+  const filePath = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "installed_plugins.json");
   let raw;
   try {
-    raw = await import_fs.default.promises.readFile(filePath, "utf-8");
+    raw = await import_fs2.default.promises.readFile(filePath, "utf-8");
   } catch {
     return out;
   }
@@ -11542,16 +11763,430 @@ async function loadInstalledPluginsMap() {
   }
   return out;
 }
-var import_fs, import_path, import_os, import_yaml, FM_CACHE_CAP, fmCache;
+var import_fs2, import_path2, import_os2, import_yaml, FM_CACHE_CAP, fmCache;
 var init_plugin_helpers = __esm({
   "src/main/plugin-helpers.ts"() {
     "use strict";
-    import_fs = __toESM(require("fs"), 1);
-    import_path = __toESM(require("path"), 1);
-    import_os = __toESM(require("os"), 1);
+    import_fs2 = __toESM(require("fs"), 1);
+    import_path2 = __toESM(require("path"), 1);
+    import_os2 = __toESM(require("os"), 1);
     import_yaml = __toESM(require_dist(), 1);
     FM_CACHE_CAP = 200;
     fmCache = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/main/utils/command-runtime.ts
+function whichExecutable(command, platform = process.platform, timeoutMs = 5e3) {
+  return new Promise((resolve) => {
+    const finder = platform === "win32" ? "where" : "which";
+    const child = (0, import_node_child_process2.spawn)(finder, [command], {
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true
+    });
+    const chunks = [];
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+      }
+      finish(null);
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.on("error", () => finish(null));
+    child.on("close", (code) => {
+      if (code !== 0) return finish(null);
+      const first = Buffer.concat(chunks).toString("utf8").trim().split(/\r?\n/)[0];
+      finish(first || null);
+    });
+  });
+}
+function lookupOptions(options) {
+  const platform = options.platform ?? process.platform;
+  return {
+    platform,
+    env: options.env ?? process.env,
+    exists: options.exists ?? import_node_fs2.default.existsSync,
+    which: options.which ?? ((command) => whichExecutable(command, platform))
+  };
+}
+async function findBashExecutable(options = {}) {
+  const { platform, env: env4, exists, which } = lookupOptions(options);
+  if (platform !== "win32") {
+    const bash = await which("bash");
+    if (bash) return bash;
+    if (exists("/bin/bash")) return "/bin/bash";
+    throw new Error("Bash is not installed or is not available in PATH");
+  }
+  const configured = env4.CLAUDE_CODE_GIT_BASH_PATH;
+  if (configured && exists(configured)) return configured;
+  const gitPath = await which("git");
+  if (gitPath) {
+    const derived = import_node_path2.default.win32.resolve(import_node_path2.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
+    if (exists(derived)) return derived;
+  }
+  const candidates = [
+    env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
+    env4["ProgramFiles(x86)"] && import_node_path2.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
+    env4.LOCALAPPDATA && import_node_path2.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
+  ].filter((candidate) => Boolean(candidate));
+  for (const candidate of candidates) {
+    if (exists(candidate)) return candidate;
+  }
+  throw new Error("Git Bash was not found. Install Git for Windows or set CLAUDE_CODE_GIT_BASH_PATH; the Windows System32 bash.exe WSL launcher is not supported.");
+}
+async function findPowerShellExecutable(options = {}) {
+  const { platform, env: env4, exists, which } = lookupOptions(options);
+  const pwsh = await which("pwsh");
+  if (pwsh) return pwsh;
+  if (platform === "win32") {
+    const candidates = [
+      env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
+      env4.SystemRoot && import_node_path2.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    ].filter((candidate) => Boolean(candidate));
+    for (const candidate of candidates) {
+      if (exists(candidate)) return candidate;
+    }
+    const legacy = await which("powershell");
+    if (legacy) return legacy;
+    throw new Error("PowerShell was not found (tried pwsh.exe and Windows PowerShell)");
+  }
+  throw new Error("PowerShell (pwsh) is not installed or is not available in PATH");
+}
+async function resolveHookShell(requested, options = {}) {
+  const platform = options.platform ?? process.platform;
+  if (platform === "win32") {
+    if (requested === "sh" || requested === "zsh") {
+      throw new Error(`${requested} hooks are not supported natively on Windows; use bash (Git Bash) or powershell`);
+    }
+    if (requested === "powershell") {
+      return {
+        bin: await findPowerShellExecutable(options),
+        args: ["-NoProfile", "-NonInteractive", "-Command"],
+        kind: "powershell"
+      };
+    }
+    if (requested === "bash") {
+      return {
+        bin: await findBashExecutable(options),
+        args: ["-c"],
+        kind: "bash"
+      };
+    }
+    try {
+      return {
+        bin: await findBashExecutable(options),
+        args: ["-c"],
+        kind: "bash"
+      };
+    } catch {
+      return {
+        bin: await findPowerShellExecutable(options),
+        args: ["-NoProfile", "-NonInteractive", "-Command"],
+        kind: "powershell"
+      };
+    }
+  }
+  if (requested === "powershell") {
+    return {
+      bin: await findPowerShellExecutable(options),
+      args: ["-NoProfile", "-NonInteractive", "-Command"],
+      kind: "powershell"
+    };
+  }
+  const kind = requested ?? "bash";
+  const bin = kind === "bash" ? await findBashExecutable(options) : await (options.which ?? ((command) => whichExecutable(command, platform)))(kind) ?? kind;
+  return { bin, args: ["-c"], kind };
+}
+function toPosixShellPath(value, platform = process.platform) {
+  if (platform !== "win32") return value;
+  if (value.startsWith("\\\\")) return `//${value.slice(2).replace(/\\/g, "/")}`;
+  return value.replace(/\\/g, "/");
+}
+function shellSingleQuote(value) {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+function powerShellSingleQuote(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+var import_node_child_process2, import_node_fs2, import_node_path2;
+var init_command_runtime = __esm({
+  "src/main/utils/command-runtime.ts"() {
+    "use strict";
+    import_node_child_process2 = require("node:child_process");
+    import_node_fs2 = __toESM(require("node:fs"), 1);
+    import_node_path2 = __toESM(require("node:path"), 1);
+  }
+});
+
+// src/main/mcp/tools/shell.ts
+async function shellEnv() {
+  const binDirs = await listEnabledPluginBinDirs();
+  return {
+    ...process.env,
+    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path3.default.delimiter),
+    GIT_EDITOR: "true",
+    CLAUDECODE: "1"
+  };
+}
+function textResult2(text) {
+  return { content: [{ type: "text", text }] };
+}
+function errorResult2(message) {
+  return { content: [{ type: "text", text: `Error: ${message}` }] };
+}
+function evictOldBackgroundOutput() {
+  if (backgroundOutput.size <= MAX_BG_RETAINED) return;
+  for (const [id, out] of backgroundOutput) {
+    if (backgroundOutput.size <= MAX_BG_RETAINED) break;
+    if (!out.running) backgroundOutput.delete(id);
+  }
+}
+async function findBashAsync() {
+  if (cachedBash) return cachedBash;
+  if (bashLookupInFlight) return bashLookupInFlight;
+  bashLookupInFlight = (async () => {
+    cachedBash = await findBashExecutable();
+    return cachedBash;
+  })();
+  return bashLookupInFlight;
+}
+function shellTimeout(input, context) {
+  if (typeof context?.taskDeadlineMs === "number" && Number.isFinite(context.taskDeadlineMs)) {
+    return Math.max(1, Math.min(context.taskDeadlineMs - Date.now(), 864e5));
+  }
+  return typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
+}
+async function powerShellExecute(input, context) {
+  const command = input.command;
+  if (!command) return errorResult2("command is required");
+  const timeout = shellTimeout(input, context);
+  let pwshPath;
+  try {
+    pwshPath = await resolvePowerShell();
+  } catch (err) {
+    return errorResult2(err instanceof Error ? err.message : String(err));
+  }
+  const flags = ["-NoLogo", "-NonInteractive", "-Command"];
+  const env4 = await shellEnv();
+  if (input.run_in_background === true && context?.taskDeadlineMs === void 0) {
+    return runBackgroundCommand(command, pwshPath, String(input.description ?? ""), flags, env4, context, "PowerShell");
+  }
+  return runForegroundCommand(command, pwshPath, timeout, flags, env4, context?.signal, context?.onOutput, context?.cwd);
+}
+async function bashExecute(input, context) {
+  const command = input.command;
+  if (!command) return errorResult2("command is required");
+  const timeout = shellTimeout(input, context);
+  const runInBackground = input.run_in_background === true && context?.taskDeadlineMs === void 0;
+  const description = input.description || "";
+  let shell2;
+  try {
+    shell2 = await findBashAsync();
+  } catch (err) {
+    return errorResult2(err instanceof Error ? err.message : String(err));
+  }
+  const snapshot2 = await getOrCreateSnapshot(shell2);
+  const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot2);
+  const shellFlags = shouldUseLoginShell(snapshot2) ? ["-lc"] : ["-c"];
+  const env4 = await shellEnv();
+  if (runInBackground) {
+    return runBackgroundCommand(wrapped, shell2, description, shellFlags, env4, context, "Bash", command);
+  }
+  return runForegroundCommand(
+    wrapped,
+    shell2,
+    timeout,
+    shellFlags,
+    env4,
+    context?.signal,
+    context?.onOutput,
+    context?.cwd
+  );
+}
+function appendBounded(chunks, lengthRef, chunk) {
+  lengthRef.size += chunk.length;
+  chunks.push(chunk);
+  while (lengthRef.size > BG_OUTPUT_CAP && chunks.length > 0) {
+    const head = chunks[0];
+    if (lengthRef.size - head.length >= BG_OUTPUT_CAP) {
+      lengthRef.size -= head.length;
+      chunks.shift();
+    } else {
+      const keep = BG_OUTPUT_CAP - (lengthRef.size - head.length);
+      chunks[0] = head.subarray(head.length - keep);
+      lengthRef.size = BG_OUTPUT_CAP;
+    }
+  }
+}
+function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"], env4 = process.env, context, tool = "Bash", displayCommand = command) {
+  evictOldBackgroundOutput();
+  const bgId = nextBgId++;
+  const child = (0, import_node_child_process3.spawn)(shell2, [...shellFlags, command], {
+    stdio: ["ignore", "pipe", "pipe"],
+    // Windows PowerShell exits without executing -Command when started with
+    // DETACHED_PROCESS. Keep its console hidden without detaching it.
+    detached: tool !== "PowerShell" || process.platform !== "win32",
+    // Suppress any child-console window flashing on Windows. Modal dialogs
+    // from misbehaving tools like nvm-windows are handled separately via
+    // WINDOWS_MODAL_SHIM — `windowsHide` only covers console windows.
+    windowsHide: true,
+    // Match CLI: GIT_EDITOR=true silences interactive git editor prompts
+    // (commit without -m, merge w/o --no-edit). CLAUDECODE=1 is a marker
+    // some plugin-provided scripts check for to adjust behaviour.
+    env: env4,
+    cwd: context?.cwd
+  });
+  if (child.pid) {
+    backgroundProcesses.set(bgId, child);
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    const stdoutLen = { size: 0 };
+    const stderrLen = { size: 0 };
+    const output = {
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      running: true,
+      stdoutCursor: 0,
+      stderrCursor: 0,
+      command: displayCommand,
+      owner: context?.shellOwner,
+      tabId: context?.tabId,
+      startedAt: Date.now(),
+      tool
+    };
+    backgroundOutput.set(bgId, output);
+    child.stdout?.on("data", (chunk) => {
+      appendBounded(stdoutChunks, stdoutLen, chunk);
+      output.stdout = Buffer.concat(stdoutChunks).toString("utf8");
+    });
+    child.stderr?.on("data", (chunk) => {
+      appendBounded(stderrChunks, stderrLen, chunk);
+      output.stderr = Buffer.concat(stderrChunks).toString("utf8");
+    });
+    child.on("exit", (code) => {
+      output.exitCode = code;
+      output.running = false;
+      backgroundProcesses.delete(bgId);
+    });
+    child.unref();
+  }
+  return textResult2(
+    `Background process started (bash_id: ${bgId}, pid: ${child.pid || "unknown"}).
+` + (description ? `Description: ${description}
+` : "") + `The command is running in the background. Read its output with BashOutput (bash_id: ${bgId}) and stop it with KillShell.`
+  );
+}
+async function readBackgroundOutput(input) {
+  const raw = input.bash_id ?? input.shell_id ?? input.id;
+  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+  if (!Number.isFinite(bgId)) return errorResult2("bash_id is required (the numeric id from run_in_background)");
+  const out = backgroundOutput.get(bgId);
+  if (!out) return errorResult2(`No background shell with bash_id ${bgId} (it may have been evicted).`);
+  let newStdout = out.stdout.slice(out.stdoutCursor);
+  const newStderr = out.stderr.slice(out.stderrCursor);
+  out.stdoutCursor = out.stdout.length;
+  out.stderrCursor = out.stderr.length;
+  const filter = typeof input.filter === "string" ? input.filter : null;
+  if (filter && newStdout) {
+    try {
+      const re = new RegExp(filter);
+      newStdout = newStdout.split("\n").filter((l) => re.test(l)).join("\n");
+    } catch {
+    }
+  }
+  const status = out.running ? "running" : `exited (code ${out.exitCode ?? "unknown"})`;
+  const parts = [`Status: ${status}`];
+  if (newStdout) parts.push(`
+<stdout>
+${newStdout}
+</stdout>`);
+  if (newStderr) parts.push(`
+<stderr>
+${newStderr}
+</stderr>`);
+  if (!newStdout && !newStderr) parts.push(out.running ? "\n(no new output yet)" : "\n(no more output)");
+  return textResult2(parts.join(""));
+}
+async function killBackgroundShell(input) {
+  const raw = input.bash_id ?? input.shell_id ?? input.id;
+  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+  if (!Number.isFinite(bgId)) return errorResult2("bash_id is required (the numeric id from run_in_background)");
+  const child = backgroundProcesses.get(bgId);
+  const out = backgroundOutput.get(bgId);
+  if (!child && !out) return errorResult2(`No background shell with bash_id ${bgId}.`);
+  if (!child || child.killed || out && !out.running) {
+    return textResult2(`Background shell ${bgId} already exited (code ${out?.exitCode ?? "unknown"}).`);
+  }
+  try {
+    if (typeof child.pid === "number" && process.platform !== "win32") {
+      try {
+        process.kill(-child.pid, "SIGTERM");
+      } catch {
+        child.kill("SIGTERM");
+      }
+    } else {
+      child.kill();
+    }
+  } catch (e) {
+    return errorResult2(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  return textResult2(`Killed background shell ${bgId}.`);
+}
+async function resolvePowerShell() {
+  if (cachedPwsh) return cachedPwsh;
+  if (pwshLookupInFlight) return pwshLookupInFlight;
+  pwshLookupInFlight = (async () => {
+    cachedPwsh = await findPowerShellExecutable();
+    return cachedPwsh;
+  })();
+  return pwshLookupInFlight;
+}
+function backgroundShellSnapshot(tabId, owner) {
+  return [...backgroundOutput].filter(([, out]) => out.tabId === tabId && out.owner === owner).slice(-100).map(([id, out]) => ({
+    id: `shell:${id}`,
+    tool: out.tool,
+    command: out.command.slice(0, 512),
+    startedAt: out.startedAt,
+    running: out.running,
+    output: (out.stdout + (out.stderr ? "\n--- stderr ---\n" + out.stderr : "")).slice(-16384)
+  }));
+}
+async function stopBackgroundShellForOwner(tabId, owner, id) {
+  if (!/^shell:[0-9]+$/.test(id)) return;
+  const out = backgroundOutput.get(Number(id.slice(6)));
+  if (out?.tabId !== tabId || out.owner !== owner) return;
+  await killBackgroundShell({ bash_id: Number(id.slice(6)) });
+}
+var import_node_child_process3, import_node_path3, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var init_shell = __esm({
+  "src/main/mcp/tools/shell.ts"() {
+    "use strict";
+    import_node_child_process3 = require("node:child_process");
+    init_shell_foreground();
+    import_node_path3 = __toESM(require("node:path"), 1);
+    init_shell_snapshot();
+    init_plugin_helpers();
+    init_command_runtime();
+    WINDOWS_MODAL_SHIM = process.platform === "win32" ? `nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells \u2014 use fnm, volta, or a direct Node installer" >&2; return 127; }
+` : "";
+    backgroundProcesses = /* @__PURE__ */ new Map();
+    backgroundOutput = /* @__PURE__ */ new Map();
+    nextBgId = 1;
+    MAX_BG_RETAINED = 100;
+    cachedBash = null;
+    bashLookupInFlight = null;
+    BG_OUTPUT_CAP = 100 * 1024;
+    cachedPwsh = null;
+    pwshLookupInFlight = null;
   }
 });
 
@@ -11711,11 +12346,11 @@ function substituteAll(str, pluginRoot, pluginId, projectCwd) {
   }
   let out = str;
   out = out.replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot);
-  out = out.replace(/\$\{CLAUDE_PROJECT_DIR\}/g, projectCwd || import_os2.default.homedir());
+  out = out.replace(/\$\{CLAUDE_PROJECT_DIR\}/g, projectCwd || import_os3.default.homedir());
   if (pluginId && out.includes("${CLAUDE_PLUGIN_DATA}")) {
-    const dataDir = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+    const dataDir = import_path3.default.join(import_os3.default.homedir(), ".claude", "plugins", "data", pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
-      import_fs2.default.mkdirSync(dataDir, { recursive: true });
+      import_fs3.default.mkdirSync(dataDir, { recursive: true });
     } catch {
     }
     out = out.replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir);
@@ -11728,7 +12363,7 @@ function substituteAll(str, pluginRoot, pluginId, projectCwd) {
 }
 function spawnMonitor(inst) {
   try {
-    const proc = (0, import_child_process.spawn)(inst.command, {
+    const proc = (0, import_child_process2.spawn)(inst.command, {
       shell: true,
       cwd: inst.cwd,
       env: { ...process.env, ...inst.env },
@@ -11771,11 +12406,11 @@ function spawnMonitor(inst) {
 }
 async function loadMonitorDeclarations(pluginRoot, manifest) {
   const readFile2 = async (ref2) => {
-    const resolved = import_path2.default.resolve(pluginRoot, ref2);
-    const relative = import_path2.default.relative(pluginRoot, resolved);
-    if (relative === ".." || relative.startsWith(".." + import_path2.default.sep) || import_path2.default.isAbsolute(relative)) return [];
+    const resolved = import_path3.default.resolve(pluginRoot, ref2);
+    const relative = import_path3.default.relative(pluginRoot, resolved);
+    if (relative === ".." || relative.startsWith(".." + import_path3.default.sep) || import_path3.default.isAbsolute(relative)) return [];
     try {
-      const parsed = JSON.parse(await import_fs2.default.promises.readFile(resolved, "utf-8"));
+      const parsed = JSON.parse(await import_fs3.default.promises.readFile(resolved, "utf-8"));
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
@@ -11828,9 +12463,9 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
         broadcast("monitor:error", { tabId, pluginId: plugin.key, monitorName, error: message });
         continue;
       }
-      const pluginDataDir = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+      const pluginDataDir = import_path3.default.join(import_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
       try {
-        import_fs2.default.mkdirSync(pluginDataDir, { recursive: true });
+        import_fs3.default.mkdirSync(pluginDataDir, { recursive: true });
       } catch {
       }
       const inst = {
@@ -11841,11 +12476,11 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
         monitorName,
         description,
         command,
-        cwd: projectCwd || import_os2.default.homedir(),
+        cwd: projectCwd || import_os3.default.homedir(),
         env: Object.fromEntries([
           ["CLAUDE_PLUGIN_ROOT", pluginRoot],
           ["CLAUDE_PLUGIN_DATA", pluginDataDir],
-          ["CLAUDE_PROJECT_DIR", projectCwd || import_os2.default.homedir()]
+          ["CLAUDE_PROJECT_DIR", projectCwd || import_os3.default.homedir()]
         ]),
         notifyClaude: notifyClaude ? (line) => notifyClaude(plugin.key, monitorName, line) : void 0,
         pendingNotifications: [],
@@ -11856,8 +12491,8 @@ async function startMonitorsForTab(tabId, projectCwd, notifyClaude) {
         startedAt: Date.now(),
         status: "running"
       };
-      const pluginBin = import_path2.default.join(pluginRoot, "bin");
-      if (import_fs2.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path2.default.delimiter}${process.env.PATH ?? ""}`;
+      const pluginBin = import_path3.default.join(pluginRoot, "bin");
+      if (import_fs3.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path3.default.delimiter}${process.env.PATH ?? ""}`;
       monitors.set(id, inst);
       if (!tabOwners.has(tabId)) tabOwners.set(tabId, /* @__PURE__ */ new Set());
       tabOwners.get(tabId).add(id);
@@ -11891,7 +12526,7 @@ function stopMonitorsForTab(tabId) {
     if (inst.process && !inst.process.killed) {
       try {
         if (process.platform === "win32" && inst.process.pid) {
-          (0, import_child_process.spawn)("taskkill", ["/pid", String(inst.process.pid), "/T", "/F"], { windowsHide: true });
+          (0, import_child_process2.spawn)("taskkill", ["/pid", String(inst.process.pid), "/T", "/F"], { windowsHide: true });
         } else if (inst.process.pid) {
           try {
             process.kill(-inst.process.pid, "SIGTERM");
@@ -11950,9 +12585,9 @@ async function handleMonitorTriggerCommand(tabId, command, payload, sourcePlugin
     broadcast("monitor:error", { tabId, pluginId: plugin.key, monitorName, error: message });
     return true;
   }
-  const pluginDataDir = import_path2.default.join(import_os2.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+  const pluginDataDir = import_path3.default.join(import_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"));
   try {
-    import_fs2.default.mkdirSync(pluginDataDir, { recursive: true });
+    import_fs3.default.mkdirSync(pluginDataDir, { recursive: true });
   } catch {
   }
   const inst = {
@@ -11963,11 +12598,11 @@ async function handleMonitorTriggerCommand(tabId, command, payload, sourcePlugin
     monitorName,
     description: typeof declaration.description === "string" ? declaration.description : "",
     command: resolvedCommand,
-    cwd: tabContext.projectCwd || import_os2.default.homedir(),
+    cwd: tabContext.projectCwd || import_os3.default.homedir(),
     env: Object.fromEntries([
       ["CLAUDE_PLUGIN_ROOT", plugin.installPath],
       ["CLAUDE_PLUGIN_DATA", pluginDataDir],
-      ["CLAUDE_PROJECT_DIR", tabContext.projectCwd || import_os2.default.homedir()]
+      ["CLAUDE_PROJECT_DIR", tabContext.projectCwd || import_os3.default.homedir()]
     ]),
     notifyClaude: tabContext.notifyClaude ? (line) => tabContext.notifyClaude(plugin.key, monitorName, line) : void 0,
     pendingNotifications: [],
@@ -11978,8 +12613,8 @@ async function handleMonitorTriggerCommand(tabId, command, payload, sourcePlugin
     startedAt: Date.now(),
     status: "running"
   };
-  const pluginBin = import_path2.default.join(plugin.installPath, "bin");
-  if (import_fs2.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path2.default.delimiter}${process.env.PATH ?? ""}`;
+  const pluginBin = import_path3.default.join(plugin.installPath, "bin");
+  if (import_fs3.default.existsSync(pluginBin)) inst.env.PATH = `${pluginBin}${import_path3.default.delimiter}${process.env.PATH ?? ""}`;
   monitors.set(id, inst);
   if (!tabOwners.has(tabId)) tabOwners.set(tabId, /* @__PURE__ */ new Set());
   tabOwners.get(tabId).add(id);
@@ -12013,14 +12648,14 @@ function getMonitorLog(id) {
   const inst = monitors.get(id);
   return inst ? inst.ring.toArray() : [];
 }
-var import_fs2, import_os2, import_path2, import_child_process, RING_CAP, MAX_PENDING_LINE_CHARS, MAX_NOTIFICATION_LINES, MAX_NOTIFICATION_CHARS, NOTIFICATION_DEBOUNCE_MS, NOTIFICATION_MIN_INTERVAL_MS, monitors, tabOwners, tabContexts, tabLoadTokens, mainWindow, TRIGGER_COMMAND;
+var import_fs3, import_os3, import_path3, import_child_process2, RING_CAP, MAX_PENDING_LINE_CHARS, MAX_NOTIFICATION_LINES, MAX_NOTIFICATION_CHARS, NOTIFICATION_DEBOUNCE_MS, NOTIFICATION_MIN_INTERVAL_MS, monitors, tabOwners, tabContexts, tabLoadTokens, mainWindow, TRIGGER_COMMAND;
 var init_plugin_monitors = __esm({
   "src/main/plugin-monitors.ts"() {
     "use strict";
-    import_fs2 = __toESM(require("fs"), 1);
-    import_os2 = __toESM(require("os"), 1);
-    import_path2 = __toESM(require("path"), 1);
-    import_child_process = require("child_process");
+    import_fs3 = __toESM(require("fs"), 1);
+    import_os3 = __toESM(require("os"), 1);
+    import_path3 = __toESM(require("path"), 1);
+    import_child_process2 = require("child_process");
     init_plugin_helpers();
     init_circular_buffer();
     RING_CAP = 200;
@@ -12035,156 +12670,6 @@ var init_plugin_monitors = __esm({
     tabLoadTokens = /* @__PURE__ */ new Map();
     mainWindow = null;
     TRIGGER_COMMAND = "__bridge_monitor_start__:";
-  }
-});
-
-// src/main/utils/command-runtime.ts
-function whichExecutable(command, platform = process.platform, timeoutMs = 5e3) {
-  return new Promise((resolve) => {
-    const finder = platform === "win32" ? "where" : "which";
-    const child = (0, import_node_child_process.spawn)(finder, [command], {
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true
-    });
-    const chunks = [];
-    let settled = false;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    };
-    const timer = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {
-      }
-      finish(null);
-    }, timeoutMs);
-    child.stdout.on("data", (chunk) => chunks.push(chunk));
-    child.on("error", () => finish(null));
-    child.on("close", (code) => {
-      if (code !== 0) return finish(null);
-      const first = Buffer.concat(chunks).toString("utf8").trim().split(/\r?\n/)[0];
-      finish(first || null);
-    });
-  });
-}
-function lookupOptions(options) {
-  const platform = options.platform ?? process.platform;
-  return {
-    platform,
-    env: options.env ?? process.env,
-    exists: options.exists ?? import_node_fs2.default.existsSync,
-    which: options.which ?? ((command) => whichExecutable(command, platform))
-  };
-}
-async function findBashExecutable(options = {}) {
-  const { platform, env: env4, exists, which } = lookupOptions(options);
-  if (platform !== "win32") {
-    const bash = await which("bash");
-    if (bash) return bash;
-    if (exists("/bin/bash")) return "/bin/bash";
-    throw new Error("Bash is not installed or is not available in PATH");
-  }
-  const configured = env4.CLAUDE_CODE_GIT_BASH_PATH;
-  if (configured && exists(configured)) return configured;
-  const gitPath = await which("git");
-  if (gitPath) {
-    const derived = import_node_path2.default.win32.resolve(import_node_path2.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
-    if (exists(derived)) return derived;
-  }
-  const candidates = [
-    env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
-    env4["ProgramFiles(x86)"] && import_node_path2.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
-    env4.LOCALAPPDATA && import_node_path2.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
-  ].filter((candidate) => Boolean(candidate));
-  for (const candidate of candidates) {
-    if (exists(candidate)) return candidate;
-  }
-  throw new Error("Git Bash was not found. Install Git for Windows or set CLAUDE_CODE_GIT_BASH_PATH; the Windows System32 bash.exe WSL launcher is not supported.");
-}
-async function findPowerShellExecutable(options = {}) {
-  const { platform, env: env4, exists, which } = lookupOptions(options);
-  const pwsh = await which("pwsh");
-  if (pwsh) return pwsh;
-  if (platform === "win32") {
-    const candidates = [
-      env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
-      env4.SystemRoot && import_node_path2.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-    ].filter((candidate) => Boolean(candidate));
-    for (const candidate of candidates) {
-      if (exists(candidate)) return candidate;
-    }
-    const legacy = await which("powershell");
-    if (legacy) return legacy;
-    throw new Error("PowerShell was not found (tried pwsh.exe and Windows PowerShell)");
-  }
-  throw new Error("PowerShell (pwsh) is not installed or is not available in PATH");
-}
-async function resolveHookShell(requested, options = {}) {
-  const platform = options.platform ?? process.platform;
-  if (platform === "win32") {
-    if (requested === "sh" || requested === "zsh") {
-      throw new Error(`${requested} hooks are not supported natively on Windows; use bash (Git Bash) or powershell`);
-    }
-    if (requested === "powershell") {
-      return {
-        bin: await findPowerShellExecutable(options),
-        args: ["-NoProfile", "-NonInteractive", "-Command"],
-        kind: "powershell"
-      };
-    }
-    if (requested === "bash") {
-      return {
-        bin: await findBashExecutable(options),
-        args: ["-c"],
-        kind: "bash"
-      };
-    }
-    try {
-      return {
-        bin: await findBashExecutable(options),
-        args: ["-c"],
-        kind: "bash"
-      };
-    } catch {
-      return {
-        bin: await findPowerShellExecutable(options),
-        args: ["-NoProfile", "-NonInteractive", "-Command"],
-        kind: "powershell"
-      };
-    }
-  }
-  if (requested === "powershell") {
-    return {
-      bin: await findPowerShellExecutable(options),
-      args: ["-NoProfile", "-NonInteractive", "-Command"],
-      kind: "powershell"
-    };
-  }
-  const kind = requested ?? "bash";
-  const bin = kind === "bash" ? await findBashExecutable(options) : await (options.which ?? ((command) => whichExecutable(command, platform)))(kind) ?? kind;
-  return { bin, args: ["-c"], kind };
-}
-function toPosixShellPath(value, platform = process.platform) {
-  if (platform !== "win32") return value;
-  if (value.startsWith("\\\\")) return `//${value.slice(2).replace(/\\/g, "/")}`;
-  return value.replace(/\\/g, "/");
-}
-function shellSingleQuote(value) {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-function powerShellSingleQuote(value) {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-var import_node_child_process, import_node_fs2, import_node_path2;
-var init_command_runtime = __esm({
-  "src/main/utils/command-runtime.ts"() {
-    "use strict";
-    import_node_child_process = require("node:child_process");
-    import_node_fs2 = __toESM(require("node:fs"), 1);
-    import_node_path2 = __toESM(require("node:path"), 1);
   }
 });
 
@@ -12203,7 +12688,7 @@ function localizeHookPayload(payload, cacheDir = process.env.KAMIN_CACHE_DIR) {
   for (const key2 of ["transcript_path", "agent_transcript_path"]) {
     const remotePath = localized[key2];
     if (typeof remotePath === "string" && remotePath.length > 0) {
-      localized[key2] = import_node_path3.default.join(cacheDir, "transcripts", portableBasename(remotePath));
+      localized[key2] = import_node_path4.default.join(cacheDir, "transcripts", portableBasename(remotePath));
     }
   }
   return localized;
@@ -12229,7 +12714,7 @@ async function killProcessTree(proc) {
   if (!proc.pid) return;
   if (process.platform === "win32") {
     await new Promise((resolve) => {
-      const killer = (0, import_node_child_process2.spawn)("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
+      const killer = (0, import_node_child_process4.spawn)("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
         windowsHide: true,
         stdio: "ignore"
       });
@@ -12288,7 +12773,7 @@ async function executeHook(req) {
       };
     }
     const options = loadPluginOptions(req.pluginId);
-    const dataDir = import_node_path3.default.join(import_node_os2.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+    const dataDir = import_node_path4.default.join(import_node_os2.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
       import_node_fs3.default.mkdirSync(dataDir, { recursive: true });
     } catch {
@@ -12311,8 +12796,8 @@ async function executeHook(req) {
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
     pluginEnv.CLAUDE_PLUGIN_DATA = shell2 ? shellPluginEnvValue(dataDir, shell2) : dataDir;
-    const pluginBin = import_node_path3.default.join(pluginRoot, "bin");
-    if (import_node_fs3.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path3.default.delimiter}${process.env.PATH ?? ""}`;
+    const pluginBin = import_node_path4.default.join(pluginRoot, "bin");
+    if (import_node_fs3.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path4.default.delimiter}${process.env.PATH ?? ""}`;
   }
   pluginEnv.CLAUDE_PROJECT_DIR = shell2 ? shellPluginEnvValue(cwd, shell2) : cwd;
   if (execForm) command = nativeNodeCommand(command);
@@ -12327,13 +12812,13 @@ async function executeHook(req) {
       resolve(result);
     };
     try {
-      proc = execForm ? (0, import_node_child_process2.spawn)(command, args ?? [], {
+      proc = execForm ? (0, import_node_child_process4.spawn)(command, args ?? [], {
         cwd,
         env: { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" },
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32"
-      }) : (0, import_node_child_process2.spawn)(shell2.bin, [...shell2.args, command], {
+      }) : (0, import_node_child_process4.spawn)(shell2.bin, [...shell2.args, command], {
         cwd,
         env: { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" },
         windowsHide: true,
@@ -12409,14 +12894,14 @@ spawn error: ${err.message}`,
     }
   });
 }
-var import_node_child_process2, import_node_os2, import_node_fs3, import_node_path3, DEFAULT_TIMEOUT_MS;
+var import_node_child_process4, import_node_os2, import_node_fs3, import_node_path4, DEFAULT_TIMEOUT_MS;
 var init_executor = __esm({
   "src/main/hooks/executor.ts"() {
     "use strict";
-    import_node_child_process2 = require("node:child_process");
+    import_node_child_process4 = require("node:child_process");
     import_node_os2 = __toESM(require("node:os"), 1);
     import_node_fs3 = __toESM(require("node:fs"), 1);
-    import_node_path3 = __toESM(require("node:path"), 1);
+    import_node_path4 = __toESM(require("node:path"), 1);
     init_plugin_helpers();
     init_command_runtime();
     DEFAULT_TIMEOUT_MS = 10 * 60 * 1e3;
@@ -18176,20 +18661,20 @@ async function readNotebookCapped(path46) {
   }
   return import_promises.default.readFile(path46, "utf8");
 }
-function textResult(text) {
+function textResult3(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult(message) {
+function errorResult3(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
 async function notebookRead(input) {
   const notebookPath = input.notebook_path || input.file_path;
-  if (!notebookPath) return errorResult("notebook_path is required");
+  if (!notebookPath) return errorResult3("notebook_path is required");
   try {
     const raw = await readNotebookCapped(notebookPath);
     const notebook = JSON.parse(raw);
     if (!notebook.cells || !Array.isArray(notebook.cells)) {
-      return errorResult("Invalid notebook format: no cells array found");
+      return errorResult3("Invalid notebook format: no cells array found");
     }
     const lines = [];
     lines.push(`Notebook: ${notebookPath}`);
@@ -18223,17 +18708,17 @@ async function notebookRead(input) {
       }
       lines.push("");
     }
-    return textResult(lines.join("\n"));
+    return textResult3(lines.join("\n"));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("ENOENT")) return errorResult(`Notebook not found: ${notebookPath}`);
-    if (msg.includes("JSON")) return errorResult(`Failed to parse notebook: ${msg}`);
-    return errorResult(msg);
+    if (msg.includes("ENOENT")) return errorResult3(`Notebook not found: ${notebookPath}`);
+    if (msg.includes("JSON")) return errorResult3(`Failed to parse notebook: ${msg}`);
+    return errorResult3(msg);
   }
 }
 async function notebookEdit(input) {
   const notebookPath = input.notebook_path;
-  if (!notebookPath) return errorResult("notebook_path is required");
+  if (!notebookPath) return errorResult3("notebook_path is required");
   const newSource = input.new_source;
   const cellType = input.cell_type || void 0;
   const editMode = input.edit_mode || "replace";
@@ -18244,24 +18729,24 @@ async function notebookEdit(input) {
     const raw = await readNotebookCapped(notebookPath);
     const notebook = JSON.parse(raw);
     if (!notebook.cells || !Array.isArray(notebook.cells)) {
-      return errorResult("Invalid notebook format: no cells array found");
+      return errorResult3("Invalid notebook format: no cells array found");
     }
     if (cellId && cellNumber === void 0) {
       const idx = notebook.cells.findIndex((c) => c.id === cellId);
       if (idx === -1) {
-        return errorResult(`Cell with id "${cellId}" not found in notebook`);
+        return errorResult3(`Cell with id "${cellId}" not found in notebook`);
       }
       cellNumber = idx;
     }
     switch (editMode) {
       case "replace": {
-        if (cellNumber === void 0) return errorResult("cell_number is required for replace mode");
+        if (cellNumber === void 0) return errorResult3("cell_number is required for replace mode");
         if (cellNumber < 0 || cellNumber >= notebook.cells.length) {
-          return errorResult(
+          return errorResult3(
             `cell_number ${cellNumber} is out of range (notebook has ${notebook.cells.length} cells)`
           );
         }
-        if (typeof newSource !== "string") return errorResult("new_source is required for replace mode");
+        if (typeof newSource !== "string") return errorResult3("new_source is required for replace mode");
         const cell = notebook.cells[cellNumber];
         cell.source = newSource.split("\n").map(
           (line, i, arr) => i < arr.length - 1 ? line + "\n" : line
@@ -18274,14 +18759,14 @@ async function notebookEdit(input) {
           cell.execution_count = null;
         }
         await import_promises.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
-        return textResult(`Replaced cell ${cellNumber} in ${notebookPath}`);
+        return textResult3(`Replaced cell ${cellNumber} in ${notebookPath}`);
       }
       case "insert": {
-        if (!cellType) return errorResult("cell_type is required for insert mode");
-        if (typeof newSource !== "string") return errorResult("new_source is required for insert mode");
+        if (!cellType) return errorResult3("cell_type is required for insert mode");
+        if (typeof newSource !== "string") return errorResult3("new_source is required for insert mode");
         const insertIndex = cellNumber !== void 0 ? cellNumber : notebook.cells.length;
         if (insertIndex < 0 || insertIndex > notebook.cells.length) {
-          return errorResult(
+          return errorResult3(
             `cell_number ${insertIndex} is out of range for insert (valid: 0-${notebook.cells.length})`
           );
         }
@@ -18298,29 +18783,29 @@ async function notebookEdit(input) {
         }
         notebook.cells.splice(insertIndex, 0, newCell);
         await import_promises.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
-        return textResult(`Inserted ${cellType} cell at position ${insertIndex} in ${notebookPath}`);
+        return textResult3(`Inserted ${cellType} cell at position ${insertIndex} in ${notebookPath}`);
       }
       case "delete": {
-        if (cellNumber === void 0) return errorResult("cell_number is required for delete mode");
+        if (cellNumber === void 0) return errorResult3("cell_number is required for delete mode");
         if (cellNumber < 0 || cellNumber >= notebook.cells.length) {
-          return errorResult(
+          return errorResult3(
             `cell_number ${cellNumber} is out of range (notebook has ${notebook.cells.length} cells)`
           );
         }
         const deleted = notebook.cells.splice(cellNumber, 1)[0];
         await import_promises.default.writeFile(notebookPath, JSON.stringify(notebook, null, 1) + "\n", "utf8");
-        return textResult(
+        return textResult3(
           `Deleted ${deleted.cell_type} cell at position ${cellNumber} from ${notebookPath}`
         );
       }
       default:
-        return errorResult(`Unknown edit_mode: ${editMode}. Valid modes: replace, insert, delete`);
+        return errorResult3(`Unknown edit_mode: ${editMode}. Valid modes: replace, insert, delete`);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("ENOENT")) return errorResult(`Notebook not found: ${notebookPath}`);
-    if (msg.includes("JSON")) return errorResult(`Failed to parse notebook JSON: ${msg}`);
-    return errorResult(msg);
+    if (msg.includes("ENOENT")) return errorResult3(`Notebook not found: ${notebookPath}`);
+    if (msg.includes("JSON")) return errorResult3(`Failed to parse notebook JSON: ${msg}`);
+    return errorResult3(msg);
   }
 }
 var import_promises, MAX_NOTEBOOK_BYTES;
@@ -18387,10 +18872,10 @@ var init_file_read_cache = __esm({
 });
 
 // src/main/mcp/tools/fs-shared.ts
-function textResult2(text) {
+function textResult4(text) {
   return { content: [{ type: "text", text }] };
 }
-function errorResult2(message) {
+function errorResult4(message) {
   return {
     content: [
       {
@@ -18435,7 +18920,7 @@ var init_fs_shared = __esm({
 async function ripgrepStream(args, target, signal, onLines) {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("aborted"));
-    const child = (0, import_node_child_process3.spawn)("rg", [...args, target], {
+    const child = (0, import_node_child_process5.spawn)("rg", [...args, target], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       signal
@@ -18470,7 +18955,7 @@ async function ripgrepStream(args, target, signal, onLines) {
 async function spawnRipgrep(args, timeoutMs, singleThread = false) {
   return new Promise((resolve, reject) => {
     const extraArgs = singleThread ? ["-j", "1"] : [];
-    const child = (0, import_node_child_process3.spawn)("rg", [...extraArgs, ...args], {
+    const child = (0, import_node_child_process5.spawn)("rg", [...extraArgs, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
     });
@@ -18538,7 +19023,7 @@ function isEagainError(stderr) {
 }
 async function grepSearch(input) {
   const pattern = input.pattern;
-  if (!pattern) return errorResult2("pattern is required");
+  if (!pattern) return errorResult4("pattern is required");
   const searchPath = input.path || process.cwd();
   const outputMode = input.output_mode || "files_with_matches";
   const glob = input.glob;
@@ -18599,13 +19084,13 @@ async function grepSearch(input) {
         const result2 = collected.slice(0, headLimit).map((l) => l.replace(/\r$/, "")).join("\n");
         if (timedOut && (!result2 || result2.trim().length === 0)) {
           const seconds = Math.round(RIPGREP_TIMEOUT_MS / 1e3);
-          return errorResult2(
+          return errorResult4(
             `Ripgrep search timed out after ${seconds}s with no matches captured. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
           );
         }
         const suffix2 = timedOut ? `
 [Search timed out after ${Math.round(RIPGREP_TIMEOUT_MS / 1e3)}s \u2014 partial results above]` : "";
-        return textResult2((result2 || "No matches found.") + suffix2);
+        return textResult4((result2 || "No matches found.") + suffix2);
       }
     }
     let res = await spawnRipgrep(args, RIPGREP_TIMEOUT_MS);
@@ -18624,7 +19109,7 @@ async function grepSearch(input) {
     if (headLimit > 0) result = result.split("\n").slice(0, headLimit).join("\n");
     if (res.timedOut && (!result || result.trim().length === 0)) {
       const seconds = Math.round(RIPGREP_TIMEOUT_MS / 1e3);
-      return errorResult2(
+      return errorResult4(
         `Ripgrep search timed out after ${seconds}s with no matches captured. The search may have partially matched files but did not complete in time. Try narrowing the path or pattern, or pass --type/--glob to scope the file set.`
       );
     }
@@ -18634,7 +19119,7 @@ async function grepSearch(input) {
       res.timedOut ? `
 [Search timed out after ${Math.round(RIPGREP_TIMEOUT_MS / 1e3)}s \u2014 partial results above; try a narrower path or pattern]` : ""
     ].join("");
-    return textResult2((result || "No matches found.") + suffix);
+    return textResult4((result || "No matches found.") + suffix);
   } catch {
     return grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset);
   }
@@ -18644,7 +19129,7 @@ function hasNestedQuantifier(p) {
 }
 async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, headLimit, offset) {
   if (hasNestedQuantifier(pattern)) {
-    return errorResult2(
+    return errorResult4(
       `Pattern "${pattern}" has a nested quantifier that can hang the JS search engine, and ripgrep isn't available on this machine to run it safely. Simplify the pattern (avoid nested quantifiers like (a+)+ / (.*x){n}) or install ripgrep on PATH.`
     );
   }
@@ -18653,7 +19138,7 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
   try {
     regex = new RegExp(pattern, flags);
   } catch (e) {
-    return errorResult2(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`);
+    return errorResult4(`Invalid regex pattern: ${e instanceof Error ? e.message : String(e)}`);
   }
   const results = [];
   async function searchDir(dir) {
@@ -18666,7 +19151,7 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
     for (const entry of entries2) {
       if (headLimit > 0 && results.length >= headLimit) return;
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-      const fullPath = import_node_path4.default.join(dir, entry.name);
+      const fullPath = import_node_path5.default.join(dir, entry.name);
       if (entry.isDirectory()) {
         await searchDir(fullPath);
       } else if (entry.isFile()) {
@@ -18704,8 +19189,8 @@ ${matchingLines.join("\n")}`);
         if (regex.test(line) && outputMode === "content") results.push(`${i + 1}:${line}`);
         regex.lastIndex = 0;
       }
-      if (results.length > 0 && outputMode === "files_with_matches") return textResult2(searchPath);
-      if (outputMode === "count") return textResult2(`${searchPath}:${results.length}`);
+      if (results.length > 0 && outputMode === "files_with_matches") return textResult4(searchPath);
+      if (outputMode === "count") return textResult4(`${searchPath}:${results.length}`);
     } else {
       await searchDir(searchPath);
     }
@@ -18715,15 +19200,15 @@ ${matchingLines.join("\n")}`);
   let output = results.join("\n");
   if (offset > 0) output = output.split("\n").slice(offset).join("\n");
   if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
-  return textResult2(output || "No matches found.");
+  return textResult4(output || "No matches found.");
 }
-var import_promises3, import_node_path4, import_node_child_process3;
+var import_promises3, import_node_path5, import_node_child_process5;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
     import_promises3 = __toESM(require("node:fs/promises"), 1);
-    import_node_path4 = __toESM(require("node:path"), 1);
-    import_node_child_process3 = require("node:child_process");
+    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_child_process5 = require("node:child_process");
     init_fs_shared();
   }
 });
@@ -18789,12 +19274,12 @@ function preserveQuoteStyle(oldString, actualOldString, newString) {
 }
 async function readFile(input) {
   const filePath = input.file_path;
-  if (!filePath) return errorResult2("file_path is required");
-  if (isBlockedDevicePath(filePath)) return errorResult2(`Refusing to read blocking device path: ${filePath}`);
+  if (!filePath) return errorResult4("file_path is required");
+  if (isBlockedDevicePath(filePath)) return errorResult4(`Refusing to read blocking device path: ${filePath}`);
   try {
-    const ext = import_node_path5.default.extname(filePath).toLowerCase();
+    const ext = import_node_path6.default.extname(filePath).toLowerCase();
     if (ext === ".pdf") {
-      return textResult2(
+      return textResult4(
         "PDF reading requires the pdf-parse package. Use `Bash` tool with `pdftotext` or similar to extract PDF text."
       );
     }
@@ -18802,9 +19287,9 @@ async function readFile(input) {
       return notebookRead({ file_path: filePath });
     }
     const stat = await import_promises4.default.stat(filePath);
-    if (!stat.isFile()) return errorResult2(`Not a file: ${filePath}`);
+    if (!stat.isFile()) return errorResult4(`Not a file: ${filePath}`);
     if (stat.size > MAX_READ_BYTES) {
-      return errorResult2(
+      return errorResult4(
         `File too large (${Math.round(stat.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit). Use offset+limit to read a range, or use Bash with head/tail/sed.`
       );
     }
@@ -18816,7 +19301,7 @@ async function readFile(input) {
     }
     const raw = await readFileCached(filePath);
     if (raw.length === 0 || raw.trim().length === 0) {
-      return textResult2("<system-reminder>Warning: File exists but has empty contents.</system-reminder>");
+      return textResult4("<system-reminder>Warning: File exists but has empty contents.</system-reminder>");
     }
     const allLines = raw.split("\n");
     const offset = typeof input.offset === "number" ? Math.max(0, input.offset - 1) : 0;
@@ -18834,26 +19319,26 @@ async function readFile(input) {
 
 <system-reminder>File is ${Math.round(stat.size / 1024)} KB (${allLines.length} lines). Consider using offset/limit for targeted reads.</system-reminder>`;
     }
-    return textResult2(formatted + suffix);
+    return textResult4(formatted + suffix);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("ENOENT")) return errorResult2(`File not found: ${filePath}`);
-    return errorResult2(msg);
+    if (msg.includes("ENOENT")) return errorResult4(`File not found: ${filePath}`);
+    return errorResult4(msg);
   }
 }
 async function writeFile(input) {
   const filePath = input.file_path;
   const content = input.content;
-  if (!filePath) return errorResult2("file_path is required");
-  if (typeof content !== "string") return errorResult2("content is required");
+  if (!filePath) return errorResult4("file_path is required");
+  if (typeof content !== "string") return errorResult4("content is required");
   try {
-    const dir = import_node_path5.default.dirname(filePath);
+    const dir = import_node_path6.default.dirname(filePath);
     await import_promises4.default.mkdir(dir, { recursive: true });
     await import_promises4.default.writeFile(filePath, content, "utf8");
     invalidateFileCache(filePath);
-    return textResult2(`Successfully wrote ${Buffer.byteLength(content, "utf8")} bytes to ${filePath}`);
+    return textResult4(`Successfully wrote ${Buffer.byteLength(content, "utf8")} bytes to ${filePath}`);
   } catch (err) {
-    return errorResult2(err instanceof Error ? err.message : String(err));
+    return errorResult4(err instanceof Error ? err.message : String(err));
   }
 }
 function detectLineEnding(content) {
@@ -18874,14 +19359,14 @@ async function editFile(input) {
   const oldString = input.old_string;
   const newString = input.new_string;
   const replaceAll = input.replace_all === true;
-  if (!filePath) return errorResult2("file_path is required");
-  if (typeof oldString !== "string") return errorResult2("old_string is required");
-  if (typeof newString !== "string") return errorResult2("new_string is required");
-  if (oldString === newString) return errorResult2("Original and edited file match exactly. Failed to apply edit.");
+  if (!filePath) return errorResult4("file_path is required");
+  if (typeof oldString !== "string") return errorResult4("old_string is required");
+  if (typeof newString !== "string") return errorResult4("new_string is required");
+  if (oldString === newString) return errorResult4("Original and edited file match exactly. Failed to apply edit.");
   try {
     const stat = await import_promises4.default.stat(filePath);
     if (stat.size > MAX_READ_BYTES) {
-      return errorResult2(
+      return errorResult4(
         `File too large to edit (${Math.round(stat.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit)`
       );
     }
@@ -18906,18 +19391,18 @@ async function editFile(input) {
       result = content.replace(effectiveOld, () => effectiveNew);
     }
     if (result === content) {
-      return errorResult2("String not found in file. Failed to apply edit.");
+      return errorResult4("String not found in file. Failed to apply edit.");
     }
     if (lineEnding === "CRLF") {
       result = result.replaceAll("\n", "\r\n");
     }
     await import_promises4.default.writeFile(filePath, result, "utf8");
     invalidateFileCache(filePath);
-    return textResult2(`The file ${filePath} has been updated successfully.`);
+    return textResult4(`The file ${filePath} has been updated successfully.`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("ENOENT")) return errorResult2(`File not found: ${filePath}`);
-    return errorResult2(msg);
+    if (msg.includes("ENOENT")) return errorResult4(`File not found: ${filePath}`);
+    return errorResult4(msg);
   }
 }
 async function batchedStat(files) {
@@ -18943,10 +19428,10 @@ function isFsRoot(p) {
 }
 async function globSearch(input) {
   const pattern = input.pattern;
-  if (!pattern) return errorResult2("pattern is required");
+  if (!pattern) return errorResult4("pattern is required");
   const basePath = input.path || process.cwd();
   if (isFsRoot(basePath) && /^\*\*?(\/\*+)?$/.test(pattern.trim())) {
-    return errorResult2("Refusing an unbounded glob from a filesystem root \u2014 scope `path` to a project or narrow the pattern.");
+    return errorResult4("Refusing an unbounded glob from a filesystem root \u2014 scope `path` to a project or narrow the pattern.");
   }
   try {
     const files = [];
@@ -18972,17 +19457,17 @@ async function globSearch(input) {
     const result = withStats.map((s) => s.file).join("\n");
     const suffix = capped ? `
 [Showing first ${MAX_GLOB_RESULTS} matches \u2014 narrow the pattern/path for the rest]` : "";
-    return textResult2((result || "No files matched the pattern.") + suffix);
+    return textResult4((result || "No files matched the pattern.") + suffix);
   } catch (err) {
-    return errorResult2(err instanceof Error ? err.message : String(err));
+    return errorResult4(err instanceof Error ? err.message : String(err));
   }
 }
-var import_promises4, import_node_path5, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
+var import_promises4, import_node_path6, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
 var init_file_system = __esm({
   "src/main/mcp/tools/file-system.ts"() {
     "use strict";
     import_promises4 = __toESM(require("node:fs/promises"), 1);
-    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_path6 = __toESM(require("node:path"), 1);
     import_fast_glob = __toESM(require_out4(), 1);
     init_notebook();
     init_file_read_cache();
@@ -18993,432 +19478,6 @@ var init_file_system = __esm({
     LEFT_DOUBLE_CURLY_QUOTE = "\u201C";
     RIGHT_DOUBLE_CURLY_QUOTE = "\u201D";
     MAX_GLOB_RESULTS = 1e4;
-  }
-});
-
-// src/main/mcp/tools/shell-foreground.ts
-function runForegroundCommand(command, shell2, timeout, shellFlags = ["-c"], env4 = process.env, signal) {
-  if (signal?.aborted) return Promise.resolve({ ...errorResult3("Command cancelled"), isError: true });
-  return new Promise((resolve) => {
-    const stdoutChunks = [];
-    const stderrChunks = [];
-    let totalBytes = 0;
-    let stderrBytes = 0;
-    let truncated = false;
-    let timedOut = false;
-    let cancelled = false;
-    let settled = false;
-    let forceTimer;
-    const finish = (code, failure) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (!timedOut && !cancelled) clearTimeout(forceTimer);
-      signal?.removeEventListener("abort", abort);
-      child.stdout?.destroy();
-      child.stderr?.destroy();
-      if (failure) {
-        resolve(errorResult3(failure));
-        return;
-      }
-      const parts = [];
-      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
-      const stderr = Buffer.concat(stderrChunks).toString("utf8");
-      if (stdout) parts.push(stdout);
-      if (stderr) parts.push(`
---- stderr ---
-${stderr}`);
-      if (truncated || stderrBytes > MAX_OUTPUT_BYTES) parts.push(`
-[Output truncated: exceeded ${MAX_OUTPUT_BYTES / 1024}KB per stream]`);
-      if (cancelled) parts.push("\n[Command cancelled; termination requested]");
-      if (timedOut) parts.push(`
-[Command timed out after ${timeout}ms; termination requested. Check for surviving processes before retrying.]`);
-      if (code !== null && code !== 0) parts.push(`
-[Exit code: ${code}]`);
-      const result = textResult3(parts.join("") || `Command completed with exit code ${code ?? 0}`);
-      if (timedOut || cancelled) result.isError = true;
-      resolve(result);
-    };
-    const child = (0, import_node_child_process4.spawn)(shell2, [...shellFlags, command], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      detached: process.platform !== "win32",
-      // Match CLI: GIT_EDITOR=true blocks interactive git editor; CLAUDECODE=1
-      // identifies our session so plugins/scripts can adapt. See CLI's
-      // `utils/Shell.ts` — same two flags.
-      env: env4
-    });
-    const signalTree = (signal2) => {
-      if (process.platform !== "win32" && child.pid) {
-        try {
-          process.kill(-child.pid, signal2);
-          return;
-        } catch {
-        }
-      }
-      try {
-        child.kill(signal2);
-      } catch {
-      }
-    };
-    const terminate = () => {
-      if (forceTimer) return;
-      forceTimer = setTimeout(() => {
-        signalTree("SIGKILL");
-        finish(child.exitCode);
-      }, TERMINATION_GRACE_MS);
-      if (process.platform === "win32" && child.pid) {
-        try {
-          const killer = (0, import_node_child_process4.spawn)("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
-          killer.on("error", () => {
-          });
-        } catch {
-        }
-      }
-      signalTree("SIGTERM");
-    };
-    const abort = () => {
-      cancelled = true;
-      terminate();
-    };
-    const timer = setTimeout(() => {
-      timedOut = true;
-      terminate();
-    }, timeout);
-    signal?.addEventListener("abort", abort, { once: true });
-    if (signal?.aborted) abort();
-    child.stdout?.on("data", (chunk) => {
-      if (truncated) return;
-      totalBytes += chunk.length;
-      if (totalBytes > MAX_OUTPUT_BYTES) {
-        truncated = true;
-        const remaining = MAX_OUTPUT_BYTES - (totalBytes - chunk.length);
-        if (remaining > 0) {
-          stdoutChunks.push(chunk.subarray(0, remaining));
-        }
-      } else {
-        stdoutChunks.push(chunk);
-      }
-    });
-    child.stderr?.on("data", (chunk) => {
-      if (stderrBytes >= MAX_OUTPUT_BYTES) return;
-      const remaining = MAX_OUTPUT_BYTES - stderrBytes;
-      stderrChunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk);
-      stderrBytes += chunk.length;
-    });
-    child.on("error", (err) => finish(null, `Failed to execute command: ${err.message}`));
-    child.on("close", (code) => finish(code));
-  });
-}
-var import_node_child_process4, MAX_OUTPUT_BYTES, TERMINATION_GRACE_MS, textResult3, errorResult3;
-var init_shell_foreground = __esm({
-  "src/main/mcp/tools/shell-foreground.ts"() {
-    "use strict";
-    import_node_child_process4 = require("node:child_process");
-    MAX_OUTPUT_BYTES = 100 * 1024;
-    TERMINATION_GRACE_MS = 1e3;
-    textResult3 = (text) => ({ content: [{ type: "text", text }] });
-    errorResult3 = (message) => textResult3(`Error: ${message}`);
-  }
-});
-
-// src/main/mcp/tools/shell-snapshot.ts
-function buildSnapshotScript() {
-  return [
-    "# open-claude-bridge shell snapshot (auto-generated)",
-    "declare -p 2>/dev/null || true",
-    "declare -fp 2>/dev/null || true",
-    "alias -p 2>/dev/null || true"
-  ].join("\n");
-}
-function captureSnapshot(bashPath) {
-  const tmpFile = import_path3.default.join(import_os3.default.tmpdir(), `ocb-shell-snapshot-${process.pid}.sh`);
-  return new Promise((resolve) => {
-    const proc = (0, import_child_process2.spawn)(bashPath, ["-ilc", buildSnapshotScript()], {
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    let stdout = "";
-    const timer = setTimeout(() => {
-      try {
-        proc.kill("SIGKILL");
-      } catch {
-      }
-      resolve(null);
-    }, 1e4);
-    proc.stdout?.on("data", (d) => {
-      stdout += d.toString("utf-8");
-    });
-    proc.stderr?.on("data", () => {
-    });
-    proc.on("error", () => {
-      clearTimeout(timer);
-      resolve(null);
-    });
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0 || !stdout) return resolve(null);
-      try {
-        import_fs3.default.writeFileSync(tmpFile, stdout, "utf-8");
-      } catch {
-        return resolve(null);
-      }
-      resolve(tmpFile);
-    });
-  });
-}
-async function getOrCreateSnapshot(bashPath) {
-  if (snapshotAttempted) return snapshotAvailable ? snapshotPath : null;
-  if (snapshotPromise) return snapshotPromise;
-  snapshotPromise = (async () => {
-    snapshotPath = await captureSnapshot(bashPath);
-    snapshotAvailable = Boolean(snapshotPath);
-    snapshotAttempted = true;
-    return snapshotPath;
-  })();
-  return snapshotPromise;
-}
-function wrapCommandWithSnapshot(command, snapshotFile) {
-  if (!snapshotFile) return command;
-  return `source '${snapshotFile.replace(/'/g, "'\\''")}' 2>/dev/null || true
-${command}`;
-}
-function shouldUseLoginShell(snapshotFile) {
-  return !snapshotFile;
-}
-var import_fs3, import_os3, import_path3, import_child_process2, snapshotPath, snapshotAttempted, snapshotAvailable, snapshotPromise;
-var init_shell_snapshot = __esm({
-  "src/main/mcp/tools/shell-snapshot.ts"() {
-    "use strict";
-    import_fs3 = __toESM(require("fs"), 1);
-    import_os3 = __toESM(require("os"), 1);
-    import_path3 = __toESM(require("path"), 1);
-    import_child_process2 = require("child_process");
-    snapshotPath = null;
-    snapshotAttempted = false;
-    snapshotAvailable = false;
-    snapshotPromise = null;
-  }
-});
-
-// src/main/mcp/tools/shell.ts
-async function shellEnv() {
-  const binDirs = await listEnabledPluginBinDirs();
-  return {
-    ...process.env,
-    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path6.default.delimiter),
-    GIT_EDITOR: "true",
-    CLAUDECODE: "1"
-  };
-}
-function textResult4(text) {
-  return { content: [{ type: "text", text }] };
-}
-function errorResult4(message) {
-  return { content: [{ type: "text", text: `Error: ${message}` }] };
-}
-function evictOldBackgroundOutput() {
-  if (backgroundOutput.size <= MAX_BG_RETAINED) return;
-  for (const [id, out] of backgroundOutput) {
-    if (backgroundOutput.size <= MAX_BG_RETAINED) break;
-    if (!out.running) backgroundOutput.delete(id);
-  }
-}
-async function findBashAsync() {
-  if (cachedBash) return cachedBash;
-  if (bashLookupInFlight) return bashLookupInFlight;
-  bashLookupInFlight = (async () => {
-    cachedBash = await findBashExecutable();
-    return cachedBash;
-  })();
-  return bashLookupInFlight;
-}
-async function powerShellExecute(input, context) {
-  const command = input.command;
-  if (!command) return errorResult4("command is required");
-  const timeout = typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
-  let pwshPath;
-  try {
-    pwshPath = await resolvePowerShell();
-  } catch (err) {
-    return errorResult4(err instanceof Error ? err.message : String(err));
-  }
-  return runForegroundCommand(command, pwshPath, timeout, ["-c"], await shellEnv(), context?.signal);
-}
-async function bashExecute(input, context) {
-  const command = input.command;
-  if (!command) return errorResult4("command is required");
-  const timeout = typeof input.timeout === "number" && Number.isFinite(input.timeout) ? Math.max(1, Math.min(input.timeout, 18e5)) : 15e5;
-  const runInBackground = input.run_in_background === true;
-  const description = input.description || "";
-  let shell2;
-  try {
-    shell2 = await findBashAsync();
-  } catch (err) {
-    return errorResult4(err instanceof Error ? err.message : String(err));
-  }
-  const snapshot2 = await getOrCreateSnapshot(shell2);
-  const wrapped = wrapCommandWithSnapshot(WINDOWS_MODAL_SHIM + command, snapshot2);
-  const shellFlags = shouldUseLoginShell(snapshot2) ? ["-lc"] : ["-c"];
-  const env4 = await shellEnv();
-  if (runInBackground) {
-    return runBackgroundCommand(wrapped, shell2, description, shellFlags, env4);
-  }
-  return runForegroundCommand(wrapped, shell2, timeout, shellFlags, env4, context?.signal);
-}
-function appendBounded(chunks, lengthRef, chunk) {
-  lengthRef.size += chunk.length;
-  chunks.push(chunk);
-  while (lengthRef.size > BG_OUTPUT_CAP && chunks.length > 0) {
-    const head = chunks[0];
-    if (lengthRef.size - head.length >= BG_OUTPUT_CAP) {
-      lengthRef.size -= head.length;
-      chunks.shift();
-    } else {
-      const keep = BG_OUTPUT_CAP - (lengthRef.size - head.length);
-      chunks[0] = head.subarray(head.length - keep);
-      lengthRef.size = BG_OUTPUT_CAP;
-    }
-  }
-}
-function runBackgroundCommand(command, shell2, description, shellFlags = ["-c"], env4 = process.env) {
-  evictOldBackgroundOutput();
-  const bgId = nextBgId++;
-  const child = (0, import_node_child_process5.spawn)(shell2, [...shellFlags, command], {
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
-    // Suppress any child-console window flashing on Windows. Modal dialogs
-    // from misbehaving tools like nvm-windows are handled separately via
-    // WINDOWS_MODAL_SHIM — `windowsHide` only covers console windows.
-    windowsHide: true,
-    // Match CLI: GIT_EDITOR=true silences interactive git editor prompts
-    // (commit without -m, merge w/o --no-edit). CLAUDECODE=1 is a marker
-    // some plugin-provided scripts check for to adjust behaviour.
-    env: env4
-  });
-  if (child.pid) {
-    backgroundProcesses.set(bgId, child);
-    const stdoutChunks = [];
-    const stderrChunks = [];
-    const stdoutLen = { size: 0 };
-    const stderrLen = { size: 0 };
-    const output = {
-      stdout: "",
-      stderr: "",
-      exitCode: null,
-      running: true,
-      stdoutCursor: 0,
-      stderrCursor: 0,
-      command
-    };
-    backgroundOutput.set(bgId, output);
-    child.stdout?.on("data", (chunk) => {
-      appendBounded(stdoutChunks, stdoutLen, chunk);
-      output.stdout = Buffer.concat(stdoutChunks).toString("utf8");
-    });
-    child.stderr?.on("data", (chunk) => {
-      appendBounded(stderrChunks, stderrLen, chunk);
-      output.stderr = Buffer.concat(stderrChunks).toString("utf8");
-    });
-    child.on("exit", (code) => {
-      output.exitCode = code;
-      output.running = false;
-      backgroundProcesses.delete(bgId);
-    });
-    child.unref();
-  }
-  return textResult4(
-    `Background process started (bash_id: ${bgId}, pid: ${child.pid || "unknown"}).
-` + (description ? `Description: ${description}
-` : "") + `The command is running in the background. Read its output with BashOutput (bash_id: ${bgId}) and stop it with KillShell.`
-  );
-}
-async function readBackgroundOutput(input) {
-  const raw = input.bash_id ?? input.shell_id ?? input.id;
-  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult4("bash_id is required (the numeric id from run_in_background)");
-  const out = backgroundOutput.get(bgId);
-  if (!out) return errorResult4(`No background shell with bash_id ${bgId} (it may have been evicted).`);
-  let newStdout = out.stdout.slice(out.stdoutCursor);
-  const newStderr = out.stderr.slice(out.stderrCursor);
-  out.stdoutCursor = out.stdout.length;
-  out.stderrCursor = out.stderr.length;
-  const filter = typeof input.filter === "string" ? input.filter : null;
-  if (filter && newStdout) {
-    try {
-      const re = new RegExp(filter);
-      newStdout = newStdout.split("\n").filter((l) => re.test(l)).join("\n");
-    } catch {
-    }
-  }
-  const status = out.running ? "running" : `exited (code ${out.exitCode ?? "unknown"})`;
-  const parts = [`Status: ${status}`];
-  if (newStdout) parts.push(`
-<stdout>
-${newStdout}
-</stdout>`);
-  if (newStderr) parts.push(`
-<stderr>
-${newStderr}
-</stderr>`);
-  if (!newStdout && !newStderr) parts.push(out.running ? "\n(no new output yet)" : "\n(no more output)");
-  return textResult4(parts.join(""));
-}
-async function killBackgroundShell(input) {
-  const raw = input.shell_id ?? input.bash_id ?? input.id;
-  const bgId = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
-  if (!Number.isFinite(bgId)) return errorResult4("shell_id is required (the numeric id from run_in_background)");
-  const child = backgroundProcesses.get(bgId);
-  const out = backgroundOutput.get(bgId);
-  if (!child && !out) return errorResult4(`No background shell with bash_id ${bgId}.`);
-  if (!child || child.killed || out && !out.running) {
-    return textResult4(`Background shell ${bgId} already exited (code ${out?.exitCode ?? "unknown"}).`);
-  }
-  try {
-    if (typeof child.pid === "number" && process.platform !== "win32") {
-      try {
-        process.kill(-child.pid, "SIGTERM");
-      } catch {
-        child.kill("SIGTERM");
-      }
-    } else {
-      child.kill();
-    }
-  } catch (e) {
-    return errorResult4(`Failed to kill shell ${bgId}: ${e instanceof Error ? e.message : String(e)}`);
-  }
-  return textResult4(`Killed background shell ${bgId}.`);
-}
-async function resolvePowerShell() {
-  if (cachedPwsh) return cachedPwsh;
-  if (pwshLookupInFlight) return pwshLookupInFlight;
-  pwshLookupInFlight = (async () => {
-    cachedPwsh = await findPowerShellExecutable();
-    return cachedPwsh;
-  })();
-  return pwshLookupInFlight;
-}
-var import_node_child_process5, import_node_path6, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
-var init_shell = __esm({
-  "src/main/mcp/tools/shell.ts"() {
-    "use strict";
-    import_node_child_process5 = require("node:child_process");
-    init_shell_foreground();
-    import_node_path6 = __toESM(require("node:path"), 1);
-    init_shell_snapshot();
-    init_plugin_helpers();
-    init_command_runtime();
-    WINDOWS_MODAL_SHIM = process.platform === "win32" ? `nvm() { echo "[bridge] nvm-windows blocked: shows a modal GUI prompt in non-interactive shells \u2014 use fnm, volta, or a direct Node installer" >&2; return 127; }
-` : "";
-    backgroundProcesses = /* @__PURE__ */ new Map();
-    backgroundOutput = /* @__PURE__ */ new Map();
-    nextBgId = 1;
-    MAX_BG_RETAINED = 100;
-    cachedBash = null;
-    bashLookupInFlight = null;
-    BG_OUTPUT_CAP = 100 * 1024;
-    cachedPwsh = null;
-    pwshLookupInFlight = null;
   }
 });
 
@@ -38187,13 +38246,17 @@ function setExternalMcpManager(manager) {
 }
 async function executeTool(toolName, input, context) {
   if (toolName === "__bridge_mcp_resource_read") {
-    if (!externalManager || typeof input.uri !== "string") throw new Error("External MCP resource bridge is unavailable");
+    if (!externalManager || typeof input.uri !== "string")
+      throw new Error("External MCP resource bridge is unavailable");
     const templateServerId = typeof input.serverId === "string" ? input.serverId : void 0;
     return await externalManager.readCatalogResource(input.uri, templateServerId);
   }
   if (toolName === "__bridge_mcp_prompt_get") {
     if (!externalManager || typeof input.name !== "string") throw new Error("External MCP prompt bridge is unavailable");
-    return await externalManager.getCatalogPrompt(input.name, input.arguments);
+    return await externalManager.getCatalogPrompt(
+      input.name,
+      input.arguments
+    );
   }
   const handler2 = toolRegistry.get(toolName);
   if (handler2) {
@@ -38203,13 +38266,15 @@ async function executeTool(toolName, input, context) {
       const message = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? err.stack : void 0;
       return {
-        content: [{
-          type: "text",
-          text: `Error executing tool "${toolName}": ${message}${stack ? `
+        content: [
+          {
+            type: "text",
+            text: `Error executing tool "${toolName}": ${message}${stack ? `
 
 Stack trace:
 ${stack}` : ""}`
-        }]
+          }
+        ]
       };
     }
   }
@@ -38219,20 +38284,24 @@ ${stack}` : ""}`
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
-        content: [{
-          type: "text",
-          text: `Error executing external tool "${toolName}": ${message}`
-        }]
+        content: [
+          {
+            type: "text",
+            text: `Error executing external tool "${toolName}": ${message}`
+          }
+        ]
       };
     }
   }
   const builtinTools = Array.from(toolRegistry.keys()).join(", ");
   const externalTools = externalManager ? ` External tools: (check MCP settings)` : "";
   return {
-    content: [{
-      type: "text",
-      text: `Error: Unknown tool "${toolName}". Built-in tools: ${builtinTools}.${externalTools}`
-    }]
+    content: [
+      {
+        type: "text",
+        text: `Error: Unknown tool "${toolName}". Built-in tools: ${builtinTools}.${externalTools}`
+      }
+    ]
   };
 }
 var externalManager;
@@ -41003,6 +41072,9 @@ var JsonlBatcher = class {
   }
 };
 
+// src/main/ws/connection-manager.ts
+init_shell();
+
 // src/main/ws/mcp-diagnostics.ts
 function mcpDiagnostic(phase, metadata) {
   if (process.env.KAMIN_BRIDGE_MCP_DIAGNOSTICS !== "1") return;
@@ -41052,7 +41124,13 @@ async function handleHookExecute(ctx, msg) {
       ctx.send({
         type: "hook:response",
         requestId: msg.requestId,
-        result: { stdout: "", stderr: "", exitCode: 0, outcome: "success", durationMs: 0 }
+        result: {
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+          outcome: "success",
+          durationMs: 0
+        }
       });
       return;
     }
@@ -41078,7 +41156,12 @@ async function handleMcpCall(ctx, msg) {
   const correlation = { requestId: msg.requestId, toolName: msg.toolName };
   mcpDiagnostic("request-received", correlation);
   const controller = new AbortController();
-  ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input, taskOwner: msg.taskOwner, controller });
+  ctx.pendingMcpCalls.set(msg.requestId, {
+    toolName: msg.toolName,
+    input: msg.input,
+    taskOwner: msg.taskOwner,
+    controller
+  });
   ctx.window.webContents.send("mcp-activity", ctx.tabId, {
     requestId: msg.requestId,
     toolName: msg.toolName,
@@ -41097,14 +41180,32 @@ async function handleMcpCall(ctx, msg) {
   let result;
   try {
     const { executeTool: executeTool2 } = await Promise.resolve().then(() => (init_executor2(), executor_exports2));
-    result = await executeTool2(msg.toolName, msg.input, { tabId: ctx.tabId, signal: controller.signal });
+    result = await executeTool2(msg.toolName, msg.input, {
+      tabId: ctx.tabId,
+      cwd: ctx.workingDirectory?.(),
+      signal: controller.signal,
+      taskDeadlineMs: msg.taskOwner ? msg.taskDeadlineMs : void 0,
+      shellOwner: ctx.commandOwner?.(),
+      onOutput: (chunk) => {
+        const call = ctx.pendingMcpCalls.get(msg.requestId);
+        if (call) call.output = ((call.output ?? "") + chunk).slice(-16384);
+      }
+    });
   } catch (err) {
     result = `Error: ${err instanceof Error ? err.message : String(err)}`;
   }
-  mcpDiagnostic("execution-finished", { ...correlation, durationMs: Date.now() - start });
+  mcpDiagnostic("execution-finished", {
+    ...correlation,
+    durationMs: Date.now() - start
+  });
   if (!ctx.pendingMcpCalls.has(msg.requestId)) return;
   try {
-    const delivery = ctx.deliverResult({ type: "mcp:response", requestId: msg.requestId, result, taskOwner: msg.taskOwner });
+    const delivery = ctx.deliverResult({
+      type: "mcp:response",
+      requestId: msg.requestId,
+      result,
+      taskOwner: msg.taskOwner
+    });
     result = void 0;
     const delivered = await delivery;
     result = delivered.type === "mcp:response" ? delivered.result : delivered.reason;
@@ -42339,7 +42440,8 @@ var ConnectionManager = class _ConnectionManager {
   mcpSessionId = null;
   mcpTaskOwner;
   mcpResults = new McpResultOutbox((frame) => {
-    if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024) return false;
+    if (this.ws?.readyState !== wrapper_default.OPEN || this.ws.bufferedAmount + Buffer.byteLength(frame) > 4 * 1024 * 1024)
+      return false;
     this.ws.send(frame);
     return true;
   });
@@ -42437,7 +42539,11 @@ var ConnectionManager = class _ConnectionManager {
   }
   logIdentity(action, extra = {}) {
     try {
-      recordConversationIdentity(this.tabId, { action, stored: this.conversationId, ...extra });
+      recordConversationIdentity(this.tabId, {
+        action,
+        stored: this.conversationId,
+        ...extra
+      });
     } catch {
     }
   }
@@ -42455,7 +42561,10 @@ var ConnectionManager = class _ConnectionManager {
       this.ws = new wrapper_default(wsUrl);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      this.setState({ status: "error", error: `Failed to create WebSocket: ${errMsg}` });
+      this.setState({
+        status: "error",
+        error: `Failed to create WebSocket: ${errMsg}`
+      });
       this.scheduleReconnect();
       return;
     }
@@ -42622,7 +42731,11 @@ var ConnectionManager = class _ConnectionManager {
     this.clearEstablishTimer();
     this.cancelReconnect();
     this.resumeParked = true;
-    this.setState({ status: "error", resumeNotFound: true, error: "This conversation was not found on the Bridge server. Choose Retry or Start new conversation to continue." });
+    this.setState({
+      status: "error",
+      resumeNotFound: true,
+      error: "This conversation was not found on the Bridge server. Choose Retry or Start new conversation to continue."
+    });
   }
   /** A session:created that resumed (or freshly created) as requested. */
   noteIdentityConfirmed() {
@@ -42632,7 +42745,10 @@ var ConnectionManager = class _ConnectionManager {
       this.mirror = null;
       this.mirrorHead = null;
       _ConnectionManager.onConversationId?.(this.tabId, null);
-      this.window.webContents.send("jsonl-status", this.tabId, { status: "searching", compacted: true });
+      this.window.webContents.send("jsonl-status", this.tabId, {
+        status: "searching",
+        compacted: true
+      });
       this.window.webContents.send("bridge:console-reset", this.tabId);
       this.pendingNewConversation = false;
     }
@@ -42656,7 +42772,10 @@ var ConnectionManager = class _ConnectionManager {
       return false;
     }
     const previous = this.conversationId;
-    this.logIdentity("adopt", { next: id, reason: !previous ? "discovered" : previous === id ? "confirmed" : "changed" });
+    this.logIdentity("adopt", {
+      next: id,
+      reason: !previous ? "discovered" : previous === id ? "confirmed" : "changed"
+    });
     if (previous && previous !== id && this.mirror) {
       void this.mirror.close();
       this.mirror = null;
@@ -42682,11 +42801,14 @@ var ConnectionManager = class _ConnectionManager {
     } catch {
       shown = void 0;
     }
-    void Promise.resolve(shown).then((choice) => {
-      if (choice === NEW) this.chooseNewConversation();
-      else if (choice === RETRY) this.retryStoredConversation();
-    }, () => {
-    });
+    void Promise.resolve(shown).then(
+      (choice) => {
+        if (choice === NEW) this.chooseNewConversation();
+        else if (choice === RETRY) this.retryStoredConversation();
+      },
+      () => {
+      }
+    );
   }
   /** Explicit user choice: bind this tab to a new conversation. */
   chooseNewConversation() {
@@ -42874,12 +42996,17 @@ var ConnectionManager = class _ConnectionManager {
     void this.deliverMcpResult({ type: "mcp:denied", requestId, reason });
   }
   reportMcpDeliveryFailure() {
-    void vscode4.window.showWarningMessage("Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing.");
+    void vscode4.window.showWarningMessage(
+      "Bridge did not acknowledge a tool result. Delivery stopped; the session may still be waiting. Check the session and tool outcome before continuing."
+    );
   }
   async deliverMcpResult(outcome) {
     if (!this.pendingMcpCalls.has(outcome.requestId) || !this.mcpSessionId) return;
     try {
-      outcome = await this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner });
+      outcome = await this.mcpResults.deliver(this.mcpSessionId, {
+        ...outcome,
+        taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner
+      });
       if (!this.pendingMcpCalls.has(outcome.requestId)) return;
       this.window.webContents.send("mcp-activity", this.tabId, {
         requestId: outcome.requestId,
@@ -42925,11 +43052,20 @@ var ConnectionManager = class _ConnectionManager {
   replayJsonlToRenderer() {
     this.batcher.flushMain();
     this.batcher.flushSubagent();
-    this.window.webContents.send("jsonl-status", this.tabId, { status: "watching", replayComplete: false });
+    this.window.webContents.send("jsonl-status", this.tabId, {
+      status: "watching",
+      replayComplete: false
+    });
     const tail = () => {
       for (const [cacheKey, slot] of this.cachedSubagentEntries) {
         if (slot.entries.length > 0) {
-          this.window.webContents.send("jsonl-subagent-entries", this.tabId, slot.agentName, slot.entries, slot.agentId ?? cacheKey);
+          this.window.webContents.send(
+            "jsonl-subagent-entries",
+            this.tabId,
+            slot.agentName,
+            slot.entries,
+            slot.agentId ?? cacheKey
+          );
         }
       }
       if (this.cachedJsonlStatus) {
@@ -43051,7 +43187,10 @@ var ConnectionManager = class _ConnectionManager {
   async loadOlderPage(beforePos, count) {
     this.ensureMirror();
     const records = await this.mirror?.readRange(beforePos, count) ?? [];
-    this.window.webContents.send("jsonl:older-page", this.tabId, { beforePos, records });
+    this.window.webContents.send("jsonl:older-page", this.tabId, {
+      beforePos,
+      records
+    });
   }
   /** The FULL compact-segment index — every segment with visible-message counts,
    *  not just the ones in the renderer's resident window. Computed server-side
@@ -43072,7 +43211,12 @@ var ConnectionManager = class _ConnectionManager {
     this.sendRaw({ type: "jsonl:segment-request", fromTs, toTs });
   }
   requestJsonlDownload(agentId) {
-    if (this._downloadResolve) return Promise.resolve({ content: null, fileName: null, error: "Another transcript download is already in progress" });
+    if (this._downloadResolve)
+      return Promise.resolve({
+        content: null,
+        fileName: null,
+        error: "Another transcript download is already in progress"
+      });
     return new Promise((resolve) => {
       this._downloadResolve = resolve;
       this.sendRaw({ type: "jsonl:download-request", agentId });
@@ -43080,13 +43224,25 @@ var ConnectionManager = class _ConnectionManager {
       this._downloadTimeout = setTimeout(() => {
         this._downloadTimeout = null;
         if (this._downloadResolve) {
-          this._downloadResolve({ content: null, fileName: null, error: "No response from the server (30s) \u2014 the session may have no active JSONL watcher" });
+          this._downloadResolve({
+            content: null,
+            fileName: null,
+            error: "No response from the server (30s) \u2014 the session may have no active JSONL watcher"
+          });
           this._downloadResolve = null;
         }
       }, DOWNLOAD_TIMEOUT_MS);
     });
   }
   // ─── Private ────────────────────────────────────────────
+  commandAction(action, id = "") {
+    if (action === "list") this.send({ type: "commands:list" });
+    else
+      this.send({
+        type: action === "stop" ? "commands:stop" : "commands:output",
+        id
+      });
+  }
   dispatchMessage(msg) {
     if (msg.type === "session:resume-not-found" || msg.type === "session:created" && msg.resumeNotFound) {
       if (msg.type === "session:created") this.sendRaw({ type: "session:end" });
@@ -43097,6 +43253,28 @@ var ConnectionManager = class _ConnectionManager {
     if (msg.type === "session:output" && this.state.status !== "authenticated") return;
     if (this.identityHold && msg.type !== "session:created" && msg.type !== "session:error") return;
     if (msg.type === "session:created" || msg.type === "session:restarted") this.mcpTaskOwner = msg.mcpTaskOwner;
+    if (msg.type === "commands:request") {
+      this.send({
+        type: "commands:report",
+        report: {
+          calls: [...this.pendingMcpCalls].filter(([, call]) => !call.taskOwner || call.taskOwner === this.mcpTaskOwner).slice(0, 128).map(([id, call]) => ({ id, output: call.output ?? "" })),
+          shells: backgroundShellSnapshot(this.tabId, this.mcpTaskOwner)
+        }
+      });
+      return;
+    }
+    if (msg.type === "commands:stop-shell") {
+      if (msg.owner === this.mcpTaskOwner) void stopBackgroundShellForOwner(this.tabId, this.mcpTaskOwner, msg.id);
+      return;
+    }
+    if (msg.type === "commands:snapshot" || msg.type === "commands:output") {
+      this.window.webContents.send(
+        msg.type,
+        this.tabId,
+        msg.type === "commands:snapshot" ? msg.snapshot : { id: msg.id, output: msg.output }
+      );
+      return;
+    }
     if (msg.type === "mcp:cancel") {
       cancelMcpCall(this.mcpCallCtx(), msg.requestId, msg.taskOwner);
       return;
@@ -43152,7 +43330,10 @@ var ConnectionManager = class _ConnectionManager {
         this.mirrorHead = head;
         this.ensureMirror();
         if (this.cachedJsonlEntries.length > 0) {
-          void this.mirror?.rewriteInOrder(this.cachedJsonlEntries, head);
+          void this.mirror?.rewriteInOrder(
+            this.cachedJsonlEntries,
+            head
+          );
         }
       },
       resetTranscriptMirror: () => {
@@ -43171,11 +43352,17 @@ var ConnectionManager = class _ConnectionManager {
       },
       beginDownload: (total) => {
         this._downloadParts = [];
-        this.window.webContents.send("jsonl:download-progress", this.tabId, { received: 0, total });
+        this.window.webContents.send("jsonl:download-progress", this.tabId, {
+          received: 0,
+          total
+        });
       },
       appendDownloadChunk: (chunk, sent, total) => {
         this._downloadParts?.push(chunk);
-        this.window.webContents.send("jsonl:download-progress", this.tabId, { received: sent, total });
+        this.window.webContents.send("jsonl:download-progress", this.tabId, {
+          received: sent,
+          total
+        });
       },
       endDownload: (fileName) => {
         if (this._downloadTimeout) {
@@ -43191,14 +43378,19 @@ var ConnectionManager = class _ConnectionManager {
       },
       pushJsonlCache: (entries2, replay) => {
         this.cachedJsonlEntries.push(...entries2);
-        if (!replay && this.mirrorHead) void this.mirror?.append(entries2, this.mirrorHead);
+        if (!replay && this.mirrorHead)
+          void this.mirror?.append(entries2, this.mirrorHead);
       },
       getCachedJsonl: () => this.cachedJsonlEntries,
       setCachedStreamingEntry: (e) => {
         this.cachedStreamingEntry = e;
       },
       pushSubagentCache: (key2, agentName, agentId, entries2) => {
-        const slot = this.cachedSubagentEntries.get(key2) ?? { agentName, agentId, entries: [] };
+        const slot = this.cachedSubagentEntries.get(key2) ?? {
+          agentName,
+          agentId,
+          entries: []
+        };
         slot.entries.push(...entries2);
         if (slot.entries.length > _ConnectionManager.SUBAGENT_CACHE_CAP) {
           slot.entries.splice(0, slot.entries.length - _ConnectionManager.SUBAGENT_CACHE_CAP);
@@ -43242,11 +43434,16 @@ var ConnectionManager = class _ConnectionManager {
    *  pipeline helpers need to peek at. */
   mcpCallCtx() {
     return {
+      workingDirectory: () => this.config.cwd,
+      commandOwner: () => this.mcpTaskOwner,
       window: this.window,
       tabId: this.tabId,
       send: (m) => this.send(m),
       reportDeliveryFailure: () => this.reportMcpDeliveryFailure(),
-      deliverResult: (outcome) => this.mcpSessionId ? this.mcpResults.deliver(this.mcpSessionId, { ...outcome, taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner }) : Promise.reject(new Error("MCP server session ended")),
+      deliverResult: (outcome) => this.mcpSessionId ? this.mcpResults.deliver(this.mcpSessionId, {
+        ...outcome,
+        taskOwner: this.pendingMcpCalls.get(outcome.requestId)?.taskOwner
+      }) : Promise.reject(new Error("MCP server session ended")),
       pendingMcpCalls: this.pendingMcpCalls,
       pendingPermissions: this.pendingPermissions,
       permissionMode: () => this.permissionMode,
@@ -43311,13 +43508,14 @@ var ConnectionManager = class _ConnectionManager {
     if (this.intentionalDisconnect) return;
     if (this.reconnectTimer) return;
     if (this.resumeParked) {
-      this.setState({ status: "error", resumeNotFound: this.identityHold !== null, error: "Resume keeps failing \u2014 choose Retry or Start new conversation" });
+      this.setState({
+        status: "error",
+        resumeNotFound: this.identityHold !== null,
+        error: "Resume keeps failing \u2014 choose Retry or Start new conversation"
+      });
       return;
     }
-    const delay = Math.min(
-      RECONNECT_BASE_MS * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempt),
-      RECONNECT_MAX_MS
-    );
+    const delay = Math.min(RECONNECT_BASE_MS * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempt), RECONNECT_MAX_MS);
     this.reconnectAttempt++;
     this.setState({
       status: "connecting",
@@ -44510,12 +44708,22 @@ function clearDisplayedTab() {
 // src/main/ipc/sessions.ts
 function registerSessionsIPC(ctx) {
   const tm = () => ctx.getTabManager();
+  ipcMain.on(
+    "commands:action",
+    (_event, tabId, action, id) => {
+      if (["list", "stop", "output"].includes(action)) tm()?.getConnection(tabId)?.commandAction(action, id);
+    }
+  );
   ipcMain.handle("tab:create", (_event, config) => {
     const userCwd = ctx.getUserCwd();
     if (!("cwd" in config) && userCwd) {
       config.cwd = userCwd;
     }
-    ctx.configStore.set({ ...ctx.configStore.get(), serverUrl: config.serverUrl, token: config.token });
+    ctx.configStore.set({
+      ...ctx.configStore.get(),
+      serverUrl: config.serverUrl,
+      token: config.token
+    });
     const tabId = tm()?.createTab(config) ?? null;
     if (tabId) updateUiToolsActiveTab(tabId);
     return tabId;
@@ -44544,7 +44752,11 @@ function registerSessionsIPC(ctx) {
     if (!("cwd" in config) && userCwd) {
       config.cwd = userCwd;
     }
-    ctx.configStore.set({ ...ctx.configStore.get(), serverUrl: config.serverUrl, token: config.token });
+    ctx.configStore.set({
+      ...ctx.configStore.get(),
+      serverUrl: config.serverUrl,
+      token: config.token
+    });
     tm()?.createTab(config);
   });
   ipcMain.on("disconnect", (_event) => {
@@ -44565,8 +44777,21 @@ function registerSessionsIPC(ctx) {
   ipcMain.handle("get-connection-state", () => {
     const mgr = tm();
     const activeId = mgr?.getActiveTabId();
-    if (!activeId) return { status: "disconnected", authority: "missing", authorityGeneration: 0, authoritySequence: 0, revision: 0 };
-    return mgr?.getConnectionState(activeId) ?? { status: "disconnected", authority: "missing", authorityGeneration: 0, authoritySequence: 0, revision: 0 };
+    if (!activeId)
+      return {
+        status: "disconnected",
+        authority: "missing",
+        authorityGeneration: 0,
+        authoritySequence: 0,
+        revision: 0
+      };
+    return mgr?.getConnectionState(activeId) ?? {
+      status: "disconnected",
+      authority: "missing",
+      authorityGeneration: 0,
+      authoritySequence: 0,
+      revision: 0
+    };
   });
   ipcMain.on("session:interrupt", (_event, tabId) => {
     tm()?.interruptSession(tabId);
@@ -44592,9 +44817,12 @@ function registerSessionsIPC(ctx) {
   ipcMain.on("mcp-deny", (_event, requestId, reason) => {
     tm()?.denyMcp(requestId, reason);
   });
-  ipcMain.on("elicitation-response", (_event, requestId, action, content) => {
-    tm()?.respondElicitation(requestId, action, content);
-  });
+  ipcMain.on(
+    "elicitation-response",
+    (_event, requestId, action, content) => {
+      tm()?.respondElicitation(requestId, action, content);
+    }
+  );
   ipcMain.on("change-permission-mode", (_event, tabId, mode) => {
     const conn = tm()?.getConnection(tabId);
     if (conn) conn.setPermissionMode(mode);
@@ -44611,14 +44839,21 @@ function registerSessionsIPC(ctx) {
     const conn = tm()?.getConnection(tabId);
     return conn?.getLastModel() ?? null;
   });
-  ipcMain.handle("session:resume", async (_event, config) => {
-    const userCwd = ctx.getUserCwd();
-    if (!config.cwd && userCwd) {
-      config.cwd = userCwd;
+  ipcMain.handle(
+    "session:resume",
+    async (_event, config) => {
+      const userCwd = ctx.getUserCwd();
+      if (!config.cwd && userCwd) {
+        config.cwd = userCwd;
+      }
+      ctx.configStore.set({
+        ...ctx.configStore.get(),
+        serverUrl: config.serverUrl,
+        token: config.token
+      });
+      return tm()?.resumeSession(config) ?? null;
     }
-    ctx.configStore.set({ ...ctx.configStore.get(), serverUrl: config.serverUrl, token: config.token });
-    return tm()?.resumeSession(config) ?? null;
-  });
+  );
   ipcMain.handle("session:get-saved", () => {
     return ctx.configStore.getSavedSessions();
   });
@@ -44646,7 +44881,11 @@ function registerSessionsIPC(ctx) {
       if (!conn) {
         const win = ctx.getMainWindow();
         if (win && !win.isDestroyed()) {
-          win.webContents.send("jsonl-status", id, { status: "watching", replayComplete: true, unknownTab: true });
+          win.webContents.send("jsonl-status", id, {
+            status: "watching",
+            replayComplete: true,
+            unknownTab: true
+          });
         }
         continue;
       }
@@ -44708,11 +44947,20 @@ function registerSessionsIPC(ctx) {
     const dir = picked.filePaths[0];
     let transcripts;
     try {
-      const res = await fetch(`${httpBase}/api/dashboard/transcripts`, { headers });
-      if (!res.ok) return { success: false, error: `List failed (HTTP ${String(res.status)})` };
+      const res = await fetch(`${httpBase}/api/dashboard/transcripts`, {
+        headers
+      });
+      if (!res.ok)
+        return {
+          success: false,
+          error: `List failed (HTTP ${String(res.status)})`
+        };
       transcripts = (await res.json()).transcripts ?? [];
     } catch (err) {
-      return { success: false, error: `List failed: ${err instanceof Error ? err.message : String(err)}` };
+      return {
+        success: false,
+        error: `List failed: ${err instanceof Error ? err.message : String(err)}`
+      };
     }
     if (transcripts.length === 0) return { success: true, dir, count: 0 };
     const BATCH = 4 * 1024 * 1024;
@@ -44757,7 +45005,12 @@ function registerSessionsIPC(ctx) {
       });
     }
     if (errors.length > 0) {
-      return { success: false, dir, count: done - errors.length, error: `${String(errors.length)}/${String(transcripts.length)} failed: ${errors.slice(0, 3).join("; ")}` };
+      return {
+        success: false,
+        dir,
+        count: done - errors.length,
+        error: `${String(errors.length)}/${String(transcripts.length)} failed: ${errors.slice(0, 3).join("; ")}`
+      };
     }
     return { success: true, dir, count: transcripts.length };
   });

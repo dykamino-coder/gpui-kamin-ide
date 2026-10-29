@@ -220,6 +220,17 @@ export function writeSessionSettings(
     env: {
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',
       CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+      // One-hour prompt cache for the main loop and for subagents/teammates.
+      // The CLI already uses 1h for the main loop on subscriptions, but caches
+      // subagent requests for 5m only: every pause longer than that (a build,
+      // CI, a long tool) rewrote the whole subagent context at the write price.
+      // Read by name in 2.1.308+ (`promptCacheTtl` / `subagentPromptCacheTtl`).
+      CLAUDE_CODE_PROMPT_CACHE_TTL: '1h',
+      CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL: '1h',
+      // Idle compaction (2.1.290+) summarizes a conversation left idle ~54 min
+      // before its 1h cache expires. The default floor of 200k loses detail in
+      // mid-size chats; only large ones are worth summarizing ahead of time.
+      CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS: '350000',
       // Default CLI value is ~27.8h; pin explicitly so future CLI updates don't shrink it.
       MCP_TOOL_TIMEOUT: '100000000',
     },
