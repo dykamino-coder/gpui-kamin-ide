@@ -8,10 +8,12 @@ use crate::style::computed::{Display, Position};
 /// художники, читающие границы фрагмента, которые в записи режут себя по кускам сами
 /// (`effect_fragment::pieces`): срез тени по внутренним краям (css-break-3 §5.4),
 /// опорная коробка плоского преобразования во фрагменте (§5.5), фильтр, линейки
-/// промежутков (CSS Gaps 1 §fragmentation). Остаются на копиях: объёмные преобразования и
-/// перспектива (их плоскости решаются на отрисовке по накопленной матрице), фильтры по
-/// ссылке и фона, вложенная фрагментация (многоколоночник рисует свои куски сам),
-/// внепоточные коробки (продолжаются своими слотами); сросшиеся кромки таблицы
+/// промежутков (CSS Gaps 1 §fragmentation). Вложенный многоколоночник тоже рисуется
+/// записью: его ряды разложены в главной копии по внешним фрагментаинерам
+/// (`column_regrow::nest`), и срез внешнего куска отделяет ряд своего фрагментаинера.
+/// Остаются на копиях: объёмные преобразования и перспектива (их плоскости решаются на
+/// отрисовке по накопленной матрице), фильтры по ссылке и фона, внепоточные коробки
+/// (продолжаются своими слотами); сросшиеся кромки таблицы
 /// решают стыки по маске своего куска (`EdgePainter`). Таблица с раздельными рамками
 /// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
 /// Обход — итеративный.
@@ -31,14 +33,7 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
         let solid = s.transform.is_some_and(|t| t.has_3d)
             || s.perspective.is_some()
             || s.preserve_3d == Some(true);
-        if per_copy
-            || deferred
-            || solid
-            || s.filter_ref.is_some()
-            || s.backdrop_filter_set
-            || s.column_count.is_some()
-            || s.column_width.is_some()
-        {
+        if per_copy || deferred || solid || s.filter_ref.is_some() || s.backdrop_filter_set {
             return (false, false);
         }
         effects |= !s.shadows.is_empty()
@@ -148,7 +143,7 @@ mod tests {
         );
         assert_eq!(
             of("<section><div style='columns:2'>a</div></section>"),
-            (false, false)
+            (true, false)
         );
         assert_eq!(
             of("<section><div style='position:absolute'>a</div></section>"),

@@ -45,7 +45,6 @@ impl ColumnStack {
             && c.clone_dec.is_none()
             && c.repeat.is_none()
             && c.slack.is_none()
-            && !c.nested_cols
             && plan.iter().any(|f| f.kid == kid && f.copy == 0)
             && plan.iter().filter(|f| f.kid == kid).count() > 1
     }
