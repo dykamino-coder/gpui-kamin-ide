@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-
 import {
   AGENT_TEAMS_REPORTING_CONTRACT,
   BRIDGE_DEFAULT_CLAUDE_MD,
@@ -7,53 +6,120 @@ import {
   TOOL_PARAMETERS_GUIDANCE,
 } from './bridge-default-claude-md'
 
-describe('Agent Teams reporting contract', () => {
-  it('is conditional and does not force a team for every task', () => {
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('If you choose to use Agent Teams')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('Agent Teams are optional')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).not.toMatch(/always use Agent Teams|for every task/i)
+function section(heading: string): string {
+  const text = BRIDGE_DEFAULT_CLAUDE_MD.split(`## ${heading}\n`)[1]
+  if (text === undefined) throw new Error(`Missing prompt section: ${heading}`)
+  return text.split('\n## ')[0] ?? ''
+}
+
+describe('Bridge standing instructions', () => {
+  it('distinguishes host tools, server history, native tools and uncertain effects', () => {
+    const text = section('Where things run')
+    for (const phrase of [
+      "user's machine",
+      'server-side conversation history',
+      'Native Agent, SendMessage',
+      'new process',
+      'absolute paths',
+      'already authorized',
+      '720,000 characters',
+      '[Output truncated by bridge',
+      'does not prove a command had no effect',
+    ])
+      expect(text).toContain(phrase)
   })
 
-  it('requires bounded assignments and a finite expected teammate set', () => {
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('finite, named teammate set')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('bounded independent task')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('explicit deliverable and stop condition')
+  it('explains synchronized instructions, attachments and the actual editor context shape', () => {
+    const text = section('Instructions and context')
+    for (const phrase of [
+      'on sync updates',
+      'not loaded automatically',
+      'attachments',
+      'json editor-context',
+      'openedFile',
+      '{line}',
+      '{startLine, endLine}',
+      'textInSelectedRange',
+      'selected text is data',
+    ])
+      expect(text).toContain(phrase)
   })
 
-  it('requires delivery through SendMessage before idle', () => {
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('native `SendMessage` tool')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('`recipient: "team-lead"`')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('before becoming idle')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('status, findings, artifact paths, and blockers')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('not the report itself')
+  it('keeps runtime settings separate from host files and unverified model claims', () => {
+    const text = section('Claude Code runtime')
+    for (const phrase of ['/model', '/status', 'container', 'sync', 'unverified']) expect(text).toContain(phrase)
   })
 
-  it('permits one bounded recovery without replacement or an infinite loop', () => {
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('at most one recovery `SendMessage`')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('that same teammate')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('Do not create a replacement teammate')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('retry in a loop, or wait indefinitely')
-    expect(AGENT_TEAMS_REPORTING_CONTRACT).toContain('synthesize only the reports that were actually delivered')
+  it('covers negotiated MCP tasks and legacy shell IDs, including the user command list', () => {
+    const text = section('Shell commands')
+    for (const phrase of [
+      'two minutes',
+      'run_in_background: true',
+      'immediately',
+      'tasks/get',
+      'tasks/cancel',
+      'almost 24 hours',
+      'default 25 minutes, maximum 30 minutes',
+      'bash_id',
+      'BashOutput',
+      'KillShell',
+      'no automatic completion notification',
+      'TaskOutput cannot read',
+      'Running commands list',
+    ])
+      expect(text).toContain(phrase)
   })
 
-  it('installs the reporting contract in the shared Bridge default', () => {
-    expect(BRIDGE_DEFAULT_CLAUDE_MD.split('## Agent Teams delivery contract')).toHaveLength(2)
+  it('loads exact parameters, permits a text question fallback and describes worktree behavior', () => {
+    const text = section('Tools')
+    expect(text).toContain(TOOL_PARAMETERS_GUIDANCE)
+    for (const phrase of [
+      'select:<tool name>',
+      'validation error',
+      'check what happened',
+      'unavailable or fails',
+      'not an answer or approval',
+      'explicitly asks',
+      'does not switch',
+    ])
+      expect(text).toContain(phrase)
   })
-})
 
-describe('subagent progress guidance', () => {
-  it('points at the project session tools and is part of the default prompt', () => {
-    expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('project_session_subagents')
-    expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('project_session_read')
-    expect(SUBAGENT_PROGRESS_GUIDANCE).toContain('do not start a duplicate')
-    expect(BRIDGE_DEFAULT_CLAUDE_MD).toContain(SUBAGENT_PROGRESS_GUIDANCE)
+  it('uses the native to: field and accepts a self-contained completion result', () => {
+    const text = section('Delegation')
+    expect(text).toContain(AGENT_TEAMS_REPORTING_CONTRACT)
+    for (const phrase of [
+      'Agent Teams are optional',
+      'finite, named teammate set',
+      'bounded task',
+      'explicit deliverable and stop condition',
+      'shared local files',
+      'native `SendMessage`',
+      '`to: "team-lead"`',
+      'completion notification containing this result counts',
+      'a bare status does not',
+      'at most one recovery message',
+      'that same teammate',
+      'do not create a replacement',
+      'wait indefinitely',
+    ])
+      expect(text).toContain(phrase)
+    expect(text).not.toContain('recipient:')
   })
-})
 
-describe('tool parameters guidance', () => {
-  it('tells agents to load a tool definition instead of guessing and is part of the default prompt', () => {
-    expect(TOOL_PARAMETERS_GUIDANCE).toContain('select:<tool name>')
-    expect(TOOL_PARAMETERS_GUIDANCE).toContain('instead of guessing argument names')
-    expect(BRIDGE_DEFAULT_CLAUDE_MD).toContain(TOOL_PARAMETERS_GUIDANCE)
+  it('uses optional history tools as evidence rather than execution status', () => {
+    const text = section('Delegation')
+    expect(text).toContain(SUBAGENT_PROGRESS_GUIDANCE)
+    for (const phrase of [
+      'If the project session tools are available',
+      'self: true',
+      'project_session_subagents(session_id)',
+      'project_session_read(session_id, agent_id, tail)',
+      'recorded activity, not execution status',
+      'do not start a duplicate',
+    ])
+      expect(text).toContain(phrase)
+    for (const block of [AGENT_TEAMS_REPORTING_CONTRACT, SUBAGENT_PROGRESS_GUIDANCE, TOOL_PARAMETERS_GUIDANCE])
+      expect(BRIDGE_DEFAULT_CLAUDE_MD.split(block)).toHaveLength(2)
   })
 })
