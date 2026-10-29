@@ -5,13 +5,24 @@ import { runForegroundCommand } from './shell-foreground'
 
 const spawn = vi.hoisted(() => vi.fn())
 vi.mock('node:child_process', () => ({ spawn }))
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.clearAllMocks() })
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.clearAllMocks()
+})
 
 function child() {
   return Object.assign(new EventEmitter(), {
-    stdout: new PassThrough(), stderr: new PassThrough(), pid: 123456,
-    killed: false, exitCode: null, signalCode: null,
-    kill: vi.fn(function (this: { killed: boolean }) { this.killed = true; return true }),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    pid: 123456,
+    killed: false,
+    exitCode: null,
+    signalCode: null,
+    kill: vi.fn(function (this: { killed: boolean }) {
+      this.killed = true
+      return true
+    }),
   })
 }
 
@@ -25,7 +36,9 @@ describe('foreground shell deadline', () => {
     proc.stdout.write('synthetic output')
     proc.emit('exit', 0, null)
     let settled = false
-    void pending.then(() => { settled = true })
+    void pending.then(() => {
+      settled = true
+    })
     await vi.advanceTimersByTimeAsync(6100)
     expect(settled).toBe(true)
     expect((await pending).content[0]?.text).toContain('timed out')
@@ -41,5 +54,22 @@ describe('foreground shell deadline', () => {
     proc.emit('close', 0)
     await pending
     expect(vi.getTimerCount()).toBe(0)
+  })
+  it('starts each process in the session directory, including paths with spaces', async () => {
+    const proc = child()
+    spawn.mockReturnValue(proc)
+    const pending = runForegroundCommand(
+      'pwd',
+      'synthetic-shell',
+      1000,
+      [],
+      {},
+      undefined,
+      undefined,
+      '/session project',
+    )
+    expect(spawn.mock.lastCall?.[2].cwd).toBe('/session project')
+    proc.emit('close', 0)
+    await pending
   })
 })

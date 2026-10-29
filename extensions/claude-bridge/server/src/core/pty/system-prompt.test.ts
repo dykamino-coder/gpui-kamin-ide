@@ -39,6 +39,8 @@ describe('buildSystemPrompt', () => {
     const out = buildSystemPrompt(CWD)
     expect(out).toContain('Bash and PowerShell')
     expect(out).toContain('BashOutput and KillShell')
+    expect(out).toContain('run_in_background:true returns an MCP task immediately')
+    expect(out).toContain('Without Tasks support')
     expect(out).toContain('native TaskOutput does not track these processes')
     expect(out).toContain('Agent and SendMessage')
     expect(out).not.toContain('temporary session directory')

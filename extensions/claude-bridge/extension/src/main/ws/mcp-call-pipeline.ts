@@ -16,6 +16,7 @@ export interface PendingMcpExecution {
   input: Record<string, unknown>
   taskOwner?: string
   controller?: AbortController
+  output?: string
 }
 
 export function cancelMcpCall(ctx: McpCallCtx, requestId: string, taskOwner?: string): void {
@@ -34,6 +35,8 @@ export interface McpCallCtx {
   deliverResult: (outcome: McpOutcome) => Promise<McpOutcome>
   pendingMcpCalls: Map<string, PendingMcpExecution>
   pendingPermissions: Map<string, (decision: PermissionDecision) => void>
+  workingDirectory?: () => string | undefined
+  commandOwner?: () => string | undefined
   permissionMode: () => PermissionMode
   permissionManager: PermissionManager
   denyMcp: (requestId: string, reason: string) => void
@@ -92,8 +95,15 @@ export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void
     const { handleMonitorTriggerCommand } = await import('../plugin-monitors')
     if (await handleMonitorTriggerCommand(ctx.tabId, String(msg.command ?? ''), msg.payload ?? {}, msg.pluginId)) {
       ctx.send({
-        type: 'hook:response', requestId: msg.requestId,
-        result: { stdout: '', stderr: '', exitCode: 0, outcome: 'success', durationMs: 0 },
+        type: 'hook:response',
+        requestId: msg.requestId,
+        result: {
+          stdout: '',
+          stderr: '',
+          exitCode: 0,
+          outcome: 'success',
+          durationMs: 0,
+        },
       })
       return
     }
@@ -120,13 +130,24 @@ export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void
  *  pending → completed/denied so the renderer can paint the call row. */
 export async function handleMcpCall(
   ctx: McpCallCtx,
-  msg: { requestId: string; toolName: string; input: Record<string, unknown>; taskOwner?: string },
+  msg: {
+    requestId: string
+    toolName: string
+    input: Record<string, unknown>
+    taskOwner?: string
+    taskDeadlineMs?: number
+  },
 ): Promise<void> {
   if (ctx.pendingMcpCalls.has(msg.requestId)) return
   const correlation = { requestId: msg.requestId, toolName: msg.toolName }
   mcpDiagnostic('request-received', correlation)
   const controller = new AbortController()
-  ctx.pendingMcpCalls.set(msg.requestId, { toolName: msg.toolName, input: msg.input, taskOwner: msg.taskOwner, controller })
+  ctx.pendingMcpCalls.set(msg.requestId, {
+    toolName: msg.toolName,
+    input: msg.input,
+    taskOwner: msg.taskOwner,
+    controller,
+  })
 
   ctx.window.webContents.send('mcp-activity', ctx.tabId, {
     requestId: msg.requestId,
@@ -148,29 +169,56 @@ export async function handleMcpCall(
   let result: unknown
   try {
     const { executeTool } = await import('../mcp/executor')
-    result = await executeTool(msg.toolName, msg.input, { tabId: ctx.tabId, signal: controller.signal })
+    result = await executeTool(msg.toolName, msg.input, {
+      tabId: ctx.tabId,
+      cwd: ctx.workingDirectory?.(),
+      signal: controller.signal,
+      taskDeadlineMs: msg.taskOwner ? msg.taskDeadlineMs : undefined,
+      shellOwner: ctx.commandOwner?.(),
+      onOutput: (chunk) => {
+        const call = ctx.pendingMcpCalls.get(msg.requestId)
+        if (call) call.output = ((call.output ?? '') + chunk).slice(-16384)
+      },
+    })
   } catch (err) {
     result = `Error: ${err instanceof Error ? err.message : String(err)}`
   }
-  mcpDiagnostic('execution-finished', { ...correlation, durationMs: Date.now() - start })
+  mcpDiagnostic('execution-finished', {
+    ...correlation,
+    durationMs: Date.now() - start,
+  })
   if (!ctx.pendingMcpCalls.has(msg.requestId)) return
   try {
-    const delivery = ctx.deliverResult({ type: 'mcp:response', requestId: msg.requestId, result, taskOwner: msg.taskOwner })
+    const delivery = ctx.deliverResult({
+      type: 'mcp:response',
+      requestId: msg.requestId,
+      result,
+      taskOwner: msg.taskOwner,
+    })
     // The outbox owns its bounded serialized frame while awaiting an ack.
     result = undefined
     const delivered = await delivery
     result = delivered.type === 'mcp:response' ? delivered.result : delivered.reason
     if (!ctx.pendingMcpCalls.has(msg.requestId)) return
     ctx.window.webContents.send('mcp-activity', ctx.tabId, {
-      requestId: msg.requestId, toolName: msg.toolName, input: msg.input,
-      timestamp: Date.now(), status: 'completed', result, durationMs: Date.now() - start,
+      requestId: msg.requestId,
+      toolName: msg.toolName,
+      input: msg.input,
+      timestamp: Date.now(),
+      status: 'completed',
+      result,
+      durationMs: Date.now() - start,
     })
   } catch (error) {
     if (!ctx.pendingMcpCalls.has(msg.requestId)) return
     ctx.reportDeliveryFailure()
     ctx.window.webContents.send('mcp-activity', ctx.tabId, {
-      requestId: msg.requestId, toolName: msg.toolName, input: msg.input,
-      timestamp: Date.now(), status: 'denied', result: `Delivery failed: ${String(error)}`,
+      requestId: msg.requestId,
+      toolName: msg.toolName,
+      input: msg.input,
+      timestamp: Date.now(),
+      status: 'denied',
+      result: `Delivery failed: ${String(error)}`,
     })
   } finally {
     ctx.pendingMcpCalls.delete(msg.requestId)

@@ -27,6 +27,12 @@ export interface ToolCallContext {
   tabId?: string | null
   /** Cancellation requested by the owning MCP task or session. */
   signal?: AbortSignal
+  /** Explicit server deadline for a background MCP task, outside model input. */
+  taskDeadlineMs?: number
+  /** Session working directory supplied by the connection, never model input. */
+  cwd?: string
+  shellOwner?: string
+  onOutput?: (chunk: string) => void
 }
 
 export async function executeTool(
@@ -35,13 +41,17 @@ export async function executeTool(
   context?: ToolCallContext,
 ): Promise<McpResult> {
   if (toolName === '__bridge_mcp_resource_read') {
-    if (!externalManager || typeof input.uri !== 'string') throw new Error('External MCP resource bridge is unavailable')
+    if (!externalManager || typeof input.uri !== 'string')
+      throw new Error('External MCP resource bridge is unavailable')
     const templateServerId = typeof input.serverId === 'string' ? input.serverId : undefined
-    return await externalManager.readCatalogResource(input.uri, templateServerId) as McpResult
+    return (await externalManager.readCatalogResource(input.uri, templateServerId)) as McpResult
   }
   if (toolName === '__bridge_mcp_prompt_get') {
     if (!externalManager || typeof input.name !== 'string') throw new Error('External MCP prompt bridge is unavailable')
-    return await externalManager.getCatalogPrompt(input.name, input.arguments as Record<string, unknown> | undefined) as McpResult
+    return (await externalManager.getCatalogPrompt(
+      input.name,
+      input.arguments as Record<string, unknown> | undefined,
+    )) as McpResult
   }
   // 1. Check built-in tool registry
   const handler = toolRegistry.get(toolName)
@@ -54,10 +64,12 @@ export async function executeTool(
       const stack = err instanceof Error ? err.stack : undefined
 
       return {
-        content: [{
-          type: 'text',
-          text: `Error executing tool "${toolName}": ${message}${stack ? `\n\nStack trace:\n${stack}` : ''}`,
-        }],
+        content: [
+          {
+            type: 'text',
+            text: `Error executing tool "${toolName}": ${message}${stack ? `\n\nStack trace:\n${stack}` : ''}`,
+          },
+        ],
       }
     }
   }
@@ -69,23 +81,25 @@ export async function executeTool(
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       return {
-        content: [{
-          type: 'text',
-          text: `Error executing external tool "${toolName}": ${message}`,
-        }],
+        content: [
+          {
+            type: 'text',
+            text: `Error executing external tool "${toolName}": ${message}`,
+          },
+        ],
       }
     }
   }
 
   // 3. Unknown tool
   const builtinTools = Array.from(toolRegistry.keys()).join(', ')
-  const externalTools = externalManager
-    ? ` External tools: (check MCP settings)`
-    : ''
+  const externalTools = externalManager ? ` External tools: (check MCP settings)` : ''
   return {
-    content: [{
-      type: 'text',
-      text: `Error: Unknown tool "${toolName}". Built-in tools: ${builtinTools}.${externalTools}`,
-    }],
+    content: [
+      {
+        type: 'text',
+        text: `Error: Unknown tool "${toolName}". Built-in tools: ${builtinTools}.${externalTools}`,
+      },
+    ],
   }
 }

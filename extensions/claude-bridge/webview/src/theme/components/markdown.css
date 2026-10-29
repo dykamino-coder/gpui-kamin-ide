@@ -1,0 +1,15 @@
+/* Markdown text needs its own ink colors, independent of button fills. */
+.block-text blockquote {
+  /* Secondary text is too faint on the gray message background. */
+  color: inherit;
+}
+
+:root {
+  --markdown-link: var(--accent-action);
+  --markdown-inline-code: var(--accent-yellow);
+}
+
+[data-theme='light'] {
+  --markdown-link: var(--accent-blue);
+  --markdown-inline-code: var(--accent-yellow-dark);
+}
