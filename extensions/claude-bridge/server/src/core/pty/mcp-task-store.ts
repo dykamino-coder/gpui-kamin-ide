@@ -14,6 +14,9 @@ export const TASK_LIMITS = {
   inputBytes: 64 * 1024,
   ttlMs: 86_400_000,
   executionMs: 1_800_000,
+  // A foreground command that settles within this window answers inline, like
+  // native Bash's default 2-minute timeout; only longer runs stay a task.
+  foregroundGraceMs: 120_000,
   queued: 32,
 }
 export interface TaskRecord {

@@ -14,8 +14,8 @@
 import type { Context } from 'hono'
 import crypto from 'crypto'
 import { MODERN_MCP, TASK_EXTENSION, modernRequest, record, supportsTasks } from './mcp-modern'
-import { createMcpTask, mcpTasks, resolveMcpEndpoint } from './mcp-tasks'
-import { taskView } from './mcp-task-store'
+import { awaitMcpTask, createMcpTask, mcpTasks, resolveMcpEndpoint } from './mcp-tasks'
+import { TASK_LIMITS, taskView } from './mcp-task-store'
 import { debugLog, warnLog, errorLog } from '../logging'
 import { getSession, sendMcpCall } from './session-manager'
 import { eventBus } from '../events/bus'
@@ -460,7 +460,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           },
           instructions:
             mcpInstructions(supportsTasks(body.params)) +
-            '\nForeground Bash and PowerShell commands may return a durable MCP task; use tasks/get to follow it and tasks/cancel to stop it. Explicit run_in_background commands retain BashOutput/KillShell semantics.',
+            '\nForeground Bash and PowerShell commands answer inline; one still running after 2 minutes returns a durable MCP task instead; use tasks/get to follow it and tasks/cancel to stop it. Explicit run_in_background commands retain BashOutput/KillShell semantics.',
         }),
       )
     }
@@ -641,11 +641,25 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         ['Bash', 'PowerShell'].includes(toolName) &&
         toolInput.run_in_background !== true
       ) {
+        let handle: Record<string, unknown>
         try {
-          return jsonResponse(jsonRpcResponse(body.id, await createMcpTask(session, toolName, toolInput)))
+          handle = await createMcpTask(session, toolName, toolInput)
         } catch {
           return jsonResponse(jsonRpcError(body.id, -32000, 'Task admission unavailable or capacity exceeded'), 503)
         }
+        // The task keeps the run durable, but a command that finishes within the
+        // grace window answers inline: returning a handle for every short command
+        // makes the CLI background it and the agent wait on a notification.
+        return sseStreamResponse(body.id ?? null, async () => {
+          const owner = session.mcpEndpoint!.id
+          const task = await awaitMcpTask(owner, String(handle.taskId), TASK_LIMITS.foregroundGraceMs, requestSignal)
+          if (task?.status === 'completed' && task.result) {
+            logMcpRequest(session, `tools/call:${toolName}`, 'ok', undefined, Date.now() - reqStart, false)
+            return jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+          }
+          if (task?.status === 'failed' && task.error) return jsonRpcError(body.id, task.error.code, task.error.message)
+          return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
+        })
       }
 
       // Stream the response as SSE so the headers reach the CLI within

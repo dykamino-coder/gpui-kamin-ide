@@ -6,6 +6,7 @@ import path from 'node:path'
 import { Hono } from 'hono'
 import type { PtySession } from './types'
 import { MODERN_MCP, TASK_EXTENSION } from './mcp-modern'
+import { TASK_LIMITS } from './mcp-task-store'
 
 const mock = vi.hoisted(() => ({ home: '', sessions: [] as PtySession[], send: vi.fn(), call: vi.fn() }))
 vi.mock('node:os', async (original) => ({
@@ -44,10 +45,20 @@ function request(method: string, params: Record<string, unknown> = {}, optIn = t
     }),
   })
 }
+function rpcResult(text: string) {
+  const data = text
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => JSON.parse(line.slice(6)))
+  return data.length ? data[data.length - 1].result : JSON.parse(text).result
+}
 async function create(command = 'synthetic long command') {
+  const grace = TASK_LIMITS.foregroundGraceMs
+  TASK_LIMITS.foregroundGraceMs = 0
   const response = await request('tools/call', { name: 'Bash', arguments: { command } })
+  TASK_LIMITS.foregroundGraceMs = grace
   expect(response.status).toBe(200)
-  const handle = (await response.json()).result
+  const handle = rpcResult(await response.text())
   expect(handle).toMatchObject({ resultType: 'task', status: 'working', ttlMs: 86_400_000 })
   return handle.taskId as string
 }
@@ -123,6 +134,23 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
     expect(
       mock.send.mock.calls.filter(([, frame]) => frame.type === 'mcp:call' && frame.requestId === id),
     ).toHaveLength(1)
+  })
+  it('answers a foreground command inline when it settles within the grace window', async () => {
+    const pending = request('tools/call', { name: 'Bash', arguments: { command: 'quick' } })
+    let frame: { requestId: string } | undefined
+    await vi.waitFor(() => {
+      frame = mock.send.mock.calls.map(([, f]) => f).find((f) => f.type === 'mcp:call' && f.input?.command === 'quick')
+      expect(frame).toBeDefined()
+    })
+    await tasks.settleMcpTask(session, {
+      type: 'mcp:response',
+      requestId: frame!.requestId,
+      taskOwner: session.mcpEndpoint!.id,
+      result: 'quick output',
+    })
+    const result = rpcResult(await (await pending).text())
+    expect(result).toMatchObject({ resultType: 'complete', content: [{ text: 'quick output' }] })
+    expect(result.taskId).toBeUndefined()
   })
   it('preserves synchronous calls when the client omits task opt-in', async () => {
     const response = await request('tools/call', { name: 'Bash', arguments: { command: 'short' } }, false)
