@@ -112,7 +112,9 @@ it('reattaches by verified offset, retains the tail and reads records arriving d
   expect(entries.every((r) => !r.uuid?.startsWith('row-0'))).toBe(true)
   await growing
   await (w as unknown as { checkForNewContent(): Promise<void> }).checkForNewContent()
-  expect(entries.filter((r) => r.uuid === 'arrived-during-replay')).toHaveLength(1)
+  // fs.watch can already own the read; a concurrent manual check returns
+  // immediately. Wait for its observable delivery before reconnecting.
+  await expect.poll(() => entries.filter((r) => r.uuid === 'arrived-during-replay')).toHaveLength(1)
   // Warm reconnect: only the delta after the persisted complete-line cursor.
   entries.length = 0
   statuses.length = 0

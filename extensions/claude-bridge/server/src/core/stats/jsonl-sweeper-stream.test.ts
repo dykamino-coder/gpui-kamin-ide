@@ -1,5 +1,6 @@
 // Тянет logging → потоковый прокси → @peculiar/x509 → tsyringe (нужен reflect).
 import 'reflect-metadata'
+import { DuckDBConnection } from '@duckdb/node-api'
 
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -13,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
  */
 
 const batches = vi.hoisted(() => ({ sizes: [] as number[] }))
+let insertCalls = 0
 vi.mock('./jsonl-batch', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./jsonl-batch')>()
   return {
@@ -35,6 +37,11 @@ beforeAll(async () => {
   lc = await import('./database/lifecycle')
   sweeper = await import('./jsonl-sweeper')
   await lc.initStatsDb()
+  const run = DuckDBConnection.prototype.run
+  vi.spyOn(DuckDBConnection.prototype, 'run').mockImplementation(function (this: DuckDBConnection, sql, ...args) {
+    if (/INSERT INTO jsonl_events\s/.test(sql)) insertCalls++
+    return run.call(this, sql, ...args)
+  })
 }, 60_000)
 
 afterAll(async () => {
@@ -45,6 +52,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   batches.sizes.length = 0
+  insertCalls = 0
 })
 
 let n = 0
@@ -123,6 +131,9 @@ describe('jsonl sweeper — streamed, bounded, durable', { timeout: 120_000 }, (
     await sweeper.sweepOneByPath(p)
     expect(await rows('s1')).toBe(1200)
     expect(Math.max(...batches.sizes)).toBeLessThanOrEqual(500)
+    // One INSERT per bounded batch preserves yielding without preparing
+    // additional statements for smaller chunks of the same transaction.
+    expect(insertCalls).toBe(3)
   })
 
   it('keeps a record written in two halves and indexes it once complete', async () => {
@@ -138,7 +149,7 @@ describe('jsonl sweeper — streamed, bounded, durable', { timeout: 120_000 }, (
 
   it('reads multi-byte text across read-chunk boundaries intact', async () => {
     let body = ''
-    for (let i = 0; i < 3000; i++) body += userText('s3', `привет 😀 ${'é'.repeat(300)} ${i}`)
+    for (let i = 0; i < 3000; i++) body += userText('s3', `привет 😀 ${'é'.repeat(1500)} ${i}`)
     const p = transcript('s3', body)
     let result = await sweeper.sweepOneByPath(p)
     expect(result.pending).toBe(true)
@@ -147,7 +158,7 @@ describe('jsonl sweeper — streamed, bounded, durable', { timeout: 120_000 }, (
       await db.runAndReadAll('SELECT last_offset FROM jsonl_offsets WHERE file_path = ?', [p])
     ).getRowObjects()[0]!
     expect(Number(cursor.last_offset)).toBeGreaterThanOrEqual(sweeper.SWEEP_SLICE_BYTES)
-    expect(Number(cursor.last_offset)).toBeLessThan(sweeper.SWEEP_SLICE_BYTES + 2048)
+    expect(Number(cursor.last_offset)).toBeLessThan(sweeper.SWEEP_SLICE_BYTES + 4096)
     while (result.pending) result = await sweeper.sweepOneByPath(p)
     expect(await rows('s3')).toBe(3000)
   })

@@ -21,11 +21,9 @@
 //  - Optionally also driven by JsonlWatcher per-tail event (live mode).
 //
 // DuckDB notes:
-//  - No `db.prepare()` reuse — we build SQL strings + bind args per call.
-//    DuckDB's plan cache amortises this; the pre-DuckDB SQLite handle had
-//    explicit prepared statements but DuckDB Neo's API isn't structured
-//    around long-lived statements. For batch inserts we wrap in a single
-//    BEGIN / COMMIT so the 500-row buffer flushes atomically.
+//  - Neo prepares and destroys each parameterized db.run() statement. Insert
+//    a bounded row batch in one statement, rather than paying that overhead
+//    repeatedly for smaller chunks. BEGIN / COMMIT keeps the batch atomic.
 //  - Every WRITE goes through `withStatsWrite` (database/write-lock.ts).
 //    Two concurrent write transactions can fail each other's COMMIT, and a
 //    failed COMMIT whose rollback touches an index is a FatalException that
@@ -50,9 +48,10 @@ const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
 // commits the durable byte cursor after this many source bytes.
 const SWEEP_BATCH_ROWS = 500
 const SWEEP_BATCH_BYTES = 8 * 1024 * 1024
-// Historical accounting is eventual. One background turn reads one MiB (plus
-// its final record), then gives live replay/HTTP and other files a turn.
-export const SWEEP_SLICE_BYTES = 1024 * 1024
+// Historical accounting is eventual. Amortize per-file SQL and reader setup
+// over eight MiB, still yielding inside the reader and between 500-row writes.
+// Each complete-line turn then gives other files a turn and pauses.
+export const SWEEP_SLICE_BYTES = SWEEP_BATCH_BYTES
 const SWEEP_PAUSE_MS = 100
 const unchanged = new Map<string, { signature: string; attribution: string; checkedAt: number }>()
 const UNCHANGED_LIMIT = 2048
@@ -76,7 +75,7 @@ function isValidIso(tsStr: string): boolean {
   return Boolean(t) && !Number.isNaN(t)
 }
 
-const INSERT_CHUNK_ROWS = 100
+const INSERT_CHUNK_ROWS = SWEEP_BATCH_ROWS
 const insertEventsSql = (rows: number): string => `
   INSERT INTO jsonl_events
     (uuid, session_id, timestamp, type, model, input_tokens, output_tokens,
