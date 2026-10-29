@@ -95,6 +95,8 @@ impl ColumnStack {
                 fragment: Bounds::new(fragment.origin - delta, fragment.size),
                 clip: Bounds::new(clip.origin - delta, clip.size),
                 slice: source_clip,
+                tail: px(self.gap_tail(f, plan_all)),
+                admitted: false,
             });
             // Возвращённые записи художников фрагмента стоят уже на месте куска.
             if self.children[kid].effects {
@@ -112,11 +114,7 @@ impl ColumnStack {
             });
         }
         let nodes = self.node_admission(kid, &pieces, spill);
-        // Срез художника фрагмента заменил бы допуск узла-предка.
         let fx = self.children[kid].effects;
-        if fx && !nodes.slices.is_empty() {
-            return None;
-        }
         routes.extend(nodes.routes.iter().copied());
         let extent = nodes
             .slices
@@ -163,7 +161,7 @@ impl ColumnStack {
         cx: &mut App,
     ) -> Result<Replayed, PaintRecordError> {
         let slices = routes.slices.clone();
-        let fx = routes.pieces.clone().map(|p| Rc::new(Pieces::new(p)));
+        let fx = (routes.pieces.clone()).map(|p| Rc::new(Pieces::new(p, routes.watched.clone())));
         routes.admit(true);
         let recorded = pieces::with(owner, fx.clone(), || {
             window.record_paint_segments(routes.extent, routes.routes.clone(), cx, |window, cx| {

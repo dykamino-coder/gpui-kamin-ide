@@ -21,8 +21,8 @@ pub(super) fn pieces(
         origin: raw_origin,
         size: exact,
     };
-    let matrices: Vec<TransformationMatrix> = all
-        .pieces
+    let list = all.current();
+    let matrices: Vec<TransformationMatrix> = list
         .iter()
         .map(|p| {
             let r = plane::reference(group, raw_origin, exact, Some(p.reference(own)));
@@ -34,12 +34,18 @@ pub(super) fn pieces(
     let clip_before = axes && !group.fragment_clip_ancestor;
     let paint = group.paint.clone();
     let child = &mut group.child;
-    paint_transformed(all, &matrices, clip_before, (window, cx), |window, cx| {
-        crate::paint::decorations::outline_phase::scoped(
-            paint.as_ref(),
-            window,
-            cx,
-            |window, cx| child.paint(window, cx),
-        )
-    });
+    paint_transformed(
+        all,
+        (&list, &matrices),
+        clip_before,
+        (window, cx),
+        |window, cx| {
+            crate::paint::decorations::outline_phase::scoped(
+                paint.as_ref(),
+                window,
+                cx,
+                |window, cx| child.paint(window, cx),
+            )
+        },
+    );
 }

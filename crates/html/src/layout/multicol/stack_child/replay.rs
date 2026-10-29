@@ -7,10 +7,10 @@ use crate::style::computed::{Display, Position};
 /// Поддерево рисуется записью главной копии: первое — допуск, второе — в нём есть
 /// художники, читающие границы фрагмента, которые в записи режут себя по кускам сами
 /// (`effect_fragment::pieces`): срез тени по внутренним краям (css-break-3 §5.4),
-/// опорная коробка плоского преобразования во фрагменте (§5.5), фильтр. Остаются на
-/// копиях: объёмные преобразования и перспектива (их плоскости решаются на отрисовке по
-/// накопленной матрице), фильтры по ссылке и фона, линейки промежутков и вложенная
-/// фрагментация (многоколоночник рисует свои куски сам); отложенная краска
+/// опорная коробка плоского преобразования во фрагменте (§5.5), фильтр, линейки
+/// промежутков (CSS Gaps 1 §fragmentation). Остаются на копиях: объёмные преобразования и
+/// перспектива (их плоскости решаются на отрисовке по накопленной матрице), фильтры по
+/// ссылке и фона, вложенная фрагментация (многоколоночник рисует свои куски сам); отложенная краска
 /// позиционированных и контекстов наложения идёт вне записи; сросшиеся кромки таблицы
 /// решают стыки по маске своего куска (`EdgePainter`). Таблица с раздельными рамками
 /// рисуется одинаково в любом куске: ячейки — параллельные потоки одной раскладки.
@@ -38,10 +38,6 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
             || s.backdrop_filter_set
             || s.column_count.is_some()
             || s.column_width.is_some()
-            || s.column_rule_width.is_some()
-            || s.column_rule_styles.is_some()
-            || s.row_rule_width.is_some()
-            || s.row_rule_styles.is_some()
         {
             return (false, false);
         }
@@ -49,7 +45,11 @@ pub(crate) fn replayable(root: &Element) -> (bool, bool) {
             || s.transform.is_some()
             || s.rotate_prop.is_some()
             || s.scale_prop.is_some()
-            || s.filter.is_some();
+            || s.filter.is_some()
+            || s.column_rule_width.is_some()
+            || s.column_rule_styles.is_some()
+            || s.row_rule_width.is_some()
+            || s.row_rule_styles.is_some();
         stack.extend(e.children.iter().filter_map(|n| match n {
             Node::Element(c) => Some(c),
             _ => None,
