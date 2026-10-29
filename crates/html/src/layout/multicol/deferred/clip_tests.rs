@@ -59,39 +59,12 @@ fn measured_stack(
         &source, &merged, 100., &opts, window, app,
     );
     opts.cx.position.geometry = Some(geometry.clone());
-    let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(
-        &merged,
-        kids,
-        count,
-        0.,
-        false,
-        None,
-        count as usize,
-        Some(height),
-        (Some(100.), Some(100.)),
-        &opts,
-    );
+    let (parents, _, parallel, kids) = crate::layout::multicol::container::kids::column_kids(kids);
     let prepared = kids
         .iter()
-        .enumerate()
-        .map(|(i, (e, shape))| {
-            crate::layout::multicol::stack_child::prepare(
-                i,
-                e,
-                shape,
-                parents[i].as_ref().unwrap_or(&merged),
-                &opts,
-                &parallel,
-                false,
-                false,
-                Some(100.),
-                Some(height),
-                &measured.measured_kids,
-            )
-        })
+        .map(|(e, _)| crate::layout::multicol::stack_child::prepare(e, &opts, false, false))
         .collect();
     let children = crate::layout::multicol::container::kids::stack_children(
-        host,
         &merged,
         &opts,
         count,
@@ -99,7 +72,6 @@ fn measured_stack(
         false,
         (Some(100.), Some(100.)),
         None,
-        measured.nested_auto,
         measured.nested_whole,
         measured.measured_kids,
         count as usize,
@@ -107,7 +79,6 @@ fn measured_stack(
         parents,
         parallel,
         kids,
-        Vec::new(),
         prepared,
     );
     let mut stack = ColumnStack::new(

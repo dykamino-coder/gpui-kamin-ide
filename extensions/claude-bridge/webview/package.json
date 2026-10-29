@@ -46,6 +46,7 @@
   "devDependencies": {
     "vite": "^8.3.2",
     "@preact/preset-vite": "^2.10.6",
+    "@xterm/headless": "^6.0.0",
     "vite-plugin-singlefile": "^2.3.3",
     "typescript": "^6.0.3",
     "vitest": "^5.0.3"

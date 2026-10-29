@@ -125,8 +125,7 @@ pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     // ряда — в блочном направлении «первый» и «последний» это каждый из них
     // (css-flexbox-1 §pagination: принудительный разрыв элемента поднимается
     // на контейнер; Blink `flex_layout_algorithm.cc` — разрыв элемента рвёт
-    // весь ряд). Мерка ряда — та же, что в `shape_full` и `pushed_box_at`
-    // (`single-line-row-flex-fragmentation-018`: `break-after: column`
+    // весь ряд; `single-line-row-flex-fragmentation-018`: `break-after: column`
     // со ВТОРОГО элемента поднимается на `#flex`).
     // ВНИМАНИЕ: `edge_break` зовут и СТРАНИЦЫ (`render_paged`, строки
     // 956-963) — контроль обязан включать `single-line-row-flex-
@@ -146,11 +145,9 @@ pub(crate) fn edge_break(e: &Element, last: bool, vcx: FrameCx<'_>) -> bool {
     // переноса: в блочном направлении «первой» и «последней» служит КАЖДАЯ
     // (css-break-4 §break-propagation вместе с css-tables-3 §fragmentation;
     // Blink рвёт весь ряд, если разрыв стоит в любой его ячейке). Без этой
-    // ветки `break-after` ПЕРВОЙ из двух ячеек терялся, и пары спасал
-    // только отказ меры на таблице с голыми ячейками (комментарий
-    // `shape_full` перед `table_box(c)`: перенос принудительного разрыва
-    // ячейки на таблицу, `break-after-table-cell`, `-child`). Мера таблицы
-    // этот отказ снимает, значит перенос обязан жить здесь.
+    // ветки `break-after` ПЕРВОЙ из двух ячеек терялся (перенос
+    // принудительного разрыва ячейки на таблицу, `break-after-table-cell`,
+    // `-child`).
     let cells_abreast = e
         .children
         .iter()

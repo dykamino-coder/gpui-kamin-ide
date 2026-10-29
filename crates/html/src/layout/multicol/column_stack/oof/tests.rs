@@ -15,6 +15,7 @@ fn stack(axis: StackAxis, wrap: bool) -> ColumnStack {
             gap: 13.,
             wrap,
             cap: false,
+            outer: None,
         }),
         None,
         None,

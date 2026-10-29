@@ -10,9 +10,6 @@ export interface TerminalEntry {
   pendingOutput: string[]
   /** Active rAF handle (if any) for the scheduled flush. */
   rafHandle: number | null
-  /** Trailing partial escape sequence held back by the mouse-tracking filter
-   *  (a DECSET split across flushes) — prepended to the next flush. */
-  outputCarry: string
 }
 
 /** Global registry: tabId → terminal entry. Used by bridge.onOutput routing in App.tsx */
@@ -32,7 +29,6 @@ export function resetConsoleForReconnect(tabId: string): void {
   if (entry) {
     entry.needsClear = true
     entry.pendingOutput.length = 0
-    entry.outputCarry = ''
   }
   terminalSnapshots.reset(tabId)
 }

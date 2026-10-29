@@ -3,6 +3,7 @@
 use super::LayerPaint;
 use super::edge_segments::{Seg, collect_cands, draw_cands};
 use crate::layout::table::probes::{CellEdges, GRID_BOX};
+use crate::tolerance::PAINT_EDGE_EPS;
 use gpui::{Bounds, Pixels, Window};
 
 /// Слой сросшихся кромок: рисует рамки всех ячеек таблицы, центрируя
@@ -37,6 +38,20 @@ impl LayerPaint for EdgePainter {
             .find(|c| c.source == GRID_BOX)
             .map(|c| (f32::from(c.bounds.origin.x), f32::from(c.bounds.origin.y)));
         let (mut vert, mut horiz) = collect_cands(&cells);
+        // Фрагмент таблицы в колонке/на странице рисуется копией под маской
+        // фрагмента: кромки за его краем принадлежат другому фрагменту и в
+        // стыках этого не участвуют (Blink `ComputeEdgeJoints`: за границей
+        // фрагментации соседняя кромка пуста).
+        let mask = window.content_mask().bounds;
+        let fragment = Fragment::of(mask);
+        // Верх фрагмента — граница фрагментации, если таблица продолжается
+        // сверху: какая-то вертикаль целиком выше маски.
+        let cut_top = vert
+            .iter()
+            .any(|c| c.b <= fragment.y.0 + PAINT_EDGE_EPS && c.a < fragment.y.0 - PAINT_EDGE_EPS)
+            .then_some(fragment.y.0);
+        vert.retain(|c| fragment.reaches(c.a, c.b, true));
+        horiz.retain(|c| fragment.reaches(c.a, c.b, false));
         // Снимок вертикалей для стыков: горизонталь тянется в угол на
         // половину ВЕРТИКАЛЬНОЙ кромки, а не своей (§17.6.2: кромки
         // центрированы на линиях сетки, и ширина стыка задаётся
@@ -95,6 +110,7 @@ impl LayerPaint for EdgePainter {
         draw_cands(
             &mut vert,
             true,
+            None,
             grid_lo.map(|g| g.0),
             &half_at,
             &half_at_h,
@@ -103,6 +119,7 @@ impl LayerPaint for EdgePainter {
         draw_cands(
             &mut horiz,
             false,
+            cut_top,
             grid_lo.map(|g| g.1),
             &half_at,
             &half_at_h,
@@ -127,5 +144,44 @@ impl LayerPaint for EdgePainter {
             };
             window.paint_quad(gpui::fill(rect, colour.to_hsla()));
         }
+    }
+}
+
+/// Края видимого фрагмента (маска копии) по обеим осям.
+struct Fragment {
+    x: (f32, f32),
+    y: (f32, f32),
+}
+
+impl Fragment {
+    fn of(mask: Bounds<Pixels>) -> Self {
+        let (x, y) = (f32::from(mask.origin.x), f32::from(mask.origin.y));
+        Fragment {
+            x: (x, x + f32::from(mask.size.width)),
+            y: (y, y + f32::from(mask.size.height)),
+        }
+    }
+
+    /// Отрезок `[a, b]` вдоль своей оси заходит внутрь фрагмента.
+    fn reaches(&self, a: f32, b: f32, vertical: bool) -> bool {
+        let (lo, hi) = if vertical { self.y } else { self.x };
+        b > lo + PAINT_EDGE_EPS && a < hi - PAINT_EDGE_EPS
+    }
+}
+
+#[cfg(test)]
+mod fragment_tests {
+    use super::Fragment;
+    use gpui::{Bounds, point, px, size};
+
+    #[test]
+    fn edges_beyond_the_fragment_take_no_joint_in_it() {
+        let f = Fragment::of(Bounds {
+            origin: point(px(0.), px(100.)),
+            size: size(px(90.), px(100.)),
+        });
+        // The next row's vertical starts on the fragment's block-end line.
+        assert!(!f.reaches(200., 300., true));
+        assert!(f.reaches(150., 200., true));
     }
 }

@@ -11,6 +11,7 @@ impl ColumnStack {
             .filter(|source| {
                 source.policy
                     != crate::layout::fragment::token::resume::oof::FixedPolicy::RepeatPages
+                    && source.owner != 0
             })
             .fold(normal, |bound, source| {
                 let start = crate::layout::fragment::flow::coordinates::block_offset(
@@ -30,7 +31,10 @@ impl ColumnStack {
         height: f32,
         columns: usize,
     ) -> Result<(bool, Option<f32>), Error> {
-        let (_, inputs) = self.oof_inputs(normal)?;
+        let (_, mut inputs) = self.oof_inputs(normal)?;
+        // Целая коробка в колонке своего якоря не участвует в балансе:
+        // она переполняет колонку, а не продолжается в следующих.
+        inputs.retain(|input| !input.unfragmented);
         if inputs.is_empty() {
             return Ok((true, None));
         }

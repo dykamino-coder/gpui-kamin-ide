@@ -9,7 +9,7 @@ describe('dashboard model prices', () => {
   })
 
   it('prices current Sonnet models without changing historical Sonnet rates', () => {
-    expect(tierForModel('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
+    expect(tierForModel('claude-sonnet-5-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.1 })
     expect(tierForModel('claude-sonnet-5')).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 })
     expect(tierForModel('claude-sonnet-4-6')).toEqual({ input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 })
   })

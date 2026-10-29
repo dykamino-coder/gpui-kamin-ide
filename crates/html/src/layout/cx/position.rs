@@ -9,6 +9,13 @@ pub(crate) struct PositioningContext {
     pub(crate) geometry_record:
         Option<Rc<crate::layout::positioned::containing_block::metrics::record::Recorder>>,
     pub(crate) geometry: Option<Rc<crate::layout::positioned::containing_block::metrics::Snapshot>>,
+    /// Исходные OOF-источники рядов многоколоночника между спаннерами, по ряду
+    /// (css-multicol-1 §6.1: каждый ряд — свой набор колонок); первое — хост.
+    #[allow(clippy::type_complexity)]
+    pub(crate) row_geometry: Option<(
+        u64,
+        Rc<[Option<Rc<crate::layout::positioned::containing_block::metrics::Snapshot>>]>,
+    )>,
     /// Legacy normal-flow copies under a native source: these absolute/fixed
     /// roots replay their own continuation records instead of painting themselves.
     pub(crate) continuation_slots: Option<Rc<[u64]>>,

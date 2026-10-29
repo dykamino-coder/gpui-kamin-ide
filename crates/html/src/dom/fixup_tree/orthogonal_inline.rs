@@ -21,39 +21,45 @@ pub(crate) type Mode = (bool, bool, bool);
 /// (grid-self-baseline-horiz-004-ref). Floats, absolutes and flex/grid items
 /// are blockified instead, so they are left alone.
 pub(crate) fn orthogonal_inlines_become_flow_roots(
+    admission: &crate::budget::admission::Admission,
     nodes: &mut [Node],
     parent: Mode,
     parent_display: Option<Display>,
-) {
-    let blockifying = matches!(
-        parent_display,
-        Some(
-            Display::Flex
-                | Display::InlineFlex
-                | Display::Grid
-                | Display::InlineGrid
-                | Display::GridLanes
-        )
-    );
-    for node in nodes.iter_mut() {
-        let Node::Element(e) = node else { continue };
-        let st = e.style.cascaded_mut();
-        // `writing-mode` is inherited.
-        let mode = match st.vertical_decl() {
-            Some(vertical) => (vertical, st.wm().block_rl(), st.wm().sideways()),
-            None => parent,
-        };
-        if mode != parent
-            && !blockifying
-            && st.inline_display == Some(true)
-            && st.display == Some(Display::InlineBlock)
-            && st.ruby_role.is_none()
-            && st.float.is_none_or(|f| f == 0)
-            && !matches!(st.position, Some(Position::Absolute | Position::Fixed))
-        {
-            st.inline_display = None;
-        }
-        let display = st.display;
-        orthogonal_inlines_become_flow_roots(&mut e.children, mode, display);
-    }
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(
+        admission,
+        nodes,
+        (parent, parent_display),
+        |e, &(parent, parent_display)| {
+            let blockifying = matches!(
+                parent_display,
+                Some(
+                    Display::Flex
+                        | Display::InlineFlex
+                        | Display::Grid
+                        | Display::InlineGrid
+                        | Display::GridLanes
+                )
+            );
+
+            let st = e.style.cascaded_mut();
+            // `writing-mode` is inherited.
+            let mode = match st.vertical_decl() {
+                Some(vertical) => (vertical, st.wm().block_rl(), st.wm().sideways()),
+                None => parent,
+            };
+            if mode != parent
+                && !blockifying
+                && st.inline_display == Some(true)
+                && st.display == Some(Display::InlineBlock)
+                && st.ruby_role.is_none()
+                && st.float.is_none_or(|f| f == 0)
+                && !matches!(st.position, Some(Position::Absolute | Position::Fixed))
+            {
+                st.inline_display = None;
+            }
+            let display = st.display;
+            Some((mode, display))
+        },
+    )
 }

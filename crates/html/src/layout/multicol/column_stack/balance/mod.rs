@@ -12,6 +12,7 @@ use crate::tolerance::COORD_EPS;
 mod float_tests;
 mod growth;
 mod line;
+mod outer;
 mod run;
 pub(crate) mod search;
 
@@ -79,6 +80,11 @@ impl ColumnStack {
             return (h, vec![(0.0, h)], plan, Vec::new());
         };
         let limit = self.copies;
+        if let Some(outer) = rows.outer
+            && !kids.iter().any(|k| k.span)
+        {
+            return self.balance_outer_rows(kids, rows, outer);
+        }
         let Some(h) = rows.h else {
             // Ряд без потолка: колонки балансируются одной линией, а лишние
             // (от принудительных разрывов) идут рядами ниже; высота ряда — по
@@ -190,8 +196,9 @@ impl ColumnStack {
             // decorations-011`: 120px в трёх колонках по 40, а не 60 + 60).
             let balance_last = self.fixed_height.is_none() || j < kids.len();
             let base = lines.len() * count;
+            let room = self.row_limit.map(|lim| lim - (y - phase0));
             let (n, frags, tail) =
-                self.balance_run(&kids[i..j], first, cap, balance_last, not_at_start);
+                self.balance_run(&kids[i..j], (first, cap, room), balance_last, not_at_start);
             if frags.completion == crate::layout::fragment::plan::Completion::Incomplete {
                 plan.incomplete();
             }
@@ -211,10 +218,8 @@ impl ColumnStack {
                 };
                 let lh = if l + 1 == n {
                     tail
-                } else if l == 0 {
-                    first
                 } else {
-                    cap
+                    Self::run_line(l, first, cap, room)
                 };
                 lines.push((ly, lh));
             }

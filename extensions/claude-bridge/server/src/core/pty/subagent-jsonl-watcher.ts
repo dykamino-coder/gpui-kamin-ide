@@ -242,13 +242,16 @@ export class SubagentJsonlWatcher {
       let batch: Tagged[] = []
       let batchBytes = 0
       let batchEnd = this.lastOffset
-      let sentBatches = 0
+      let nextBatchAt = 0
       const flush = async (): Promise<boolean> => {
         if (batch.length > 0) {
           // Space consecutive batches of a backlog; the first goes at once.
-          if (sentBatches > 0) await new Promise((r) => setTimeout(r, BATCH_GAP_MS))
+          // Reader completion (including closing the file) may itself consume
+          // the gap. Measure from delivery, not from when EOF becomes visible.
+          const remainingGap = nextBatchAt - Date.now()
+          if (remainingGap > 0) await new Promise((r) => setTimeout(r, remainingGap))
           if (this.stopped || !this.deliver(batch)) return false
-          sentBatches++
+          nextBatchAt = Date.now() + BATCH_GAP_MS
         }
         // Delivered: the cursor moves past exactly this batch.
         this.lastOffset = batchEnd

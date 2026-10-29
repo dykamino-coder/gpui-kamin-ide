@@ -12,7 +12,7 @@ use crate::document::state::ValueCx;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::*;
 use crate::style::css::{LayerRegistry, Media, Rule, parse_document_sheet};
-use crate::style::select::has::{HasArg, collect_has_args, parse_has_arg};
+use crate::style::select::has::{HasArg, parse_has_arg, retain_valid_rules};
 use crate::style::select::{Ancestor, census_of};
 use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
@@ -68,7 +68,7 @@ pub(super) fn shadow_scope(
     let sheets = try_collect_style_tags(root, &admission)?;
     for css in sheets.iter() {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(css, media, layers, vcx)
+        for (i, r) in parse_document_sheet(css, media, layers, vcx)?
             .into_iter()
             .enumerate()
         {
@@ -81,7 +81,7 @@ pub(super) fn shadow_scope(
         frames.extend(crate::style::css::parse_keyframes_in(css, Some(media), vcx));
     }
     let mut raw: Vec<String> = vec![];
-    rules.retain(|r| collect_has_args(&r.sel, &mut raw));
+    retain_valid_rules(&admission, &mut rules, &mut raw)?;
     let args = raw.iter().filter_map(|a| parse_has_arg(a)).collect();
     Ok((
         Rc::new(Scope {

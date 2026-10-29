@@ -22,13 +22,17 @@ impl Element {
 
 /// До кадровых клонов закрепить идентичность всех сгенерированных DOM-коробок.
 /// Поздние layout-коробки получают её лениво при первом запросе состояния.
-pub(super) fn finalize(nodes: &[Node], vcx: ValueCx<'_>) {
-    for node in nodes {
-        if let Node::Element(e) = node {
+pub(super) fn finalize(
+    admission: &crate::budget::admission::Admission,
+    nodes: &[Node],
+    vcx: ValueCx<'_>,
+) -> Result<(), crate::budget::admission::Error> {
+    for node in super::traversal::nodes(admission, nodes, |_| true) {
+        if let Node::Element(e) = node? {
             if e.node_id == 0 {
                 e.synthetic_state_id(vcx);
             }
-            finalize(&e.children, vcx);
         }
     }
+    Ok(())
 }

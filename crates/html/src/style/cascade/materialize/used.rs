@@ -111,7 +111,8 @@ lay_used! {
     align_content_unsafe, inline_control, band_kid, mathml, math_layout,
     math_depth, math_font_size, svg_geometry, declaration_parse, turned_line, shape_image, icb,
     calc_size_basis, calc_size_max, svg_path_length, css_wide_value,
-    color_function, mask_border, mask_border_luminance, font_variant_set, clamp_continue, inh,
+    color_function, mask_border, mask_border_luminance, font_variant_set, clamp_continue, clamp_discard,
+    inh,
 }
 
 lay_inherited! {

@@ -8,6 +8,7 @@
 //! делает негодными одни и те же свойства при каждом вычислении.
 
 use super::{Registered, VarMap};
+use crate::budget::admission::Buffer;
 use std::collections::{HashMap, HashSet};
 
 pub(crate) fn compute(
@@ -22,7 +23,7 @@ pub(crate) fn compute(
         parent,
         registered,
         accepts,
-        stack: Vec::new(),
+        stack: Buffer::default(),
         cyclic: HashSet::new(),
         cache: HashMap::new(),
     };
@@ -42,7 +43,7 @@ struct Resolver<'a, F> {
     parent: &'a VarMap,
     registered: &'a HashMap<String, Registered>,
     accepts: F,
-    stack: Vec<String>,
+    stack: Buffer<String>,
     cyclic: HashSet<String>,
     cache: HashMap<String, Option<String>>,
 }
@@ -52,16 +53,94 @@ impl<F: Fn(&str, &str) -> bool> Resolver<'_, F> {
         if let Some(value) = self.cache.get(name) {
             return value.clone();
         }
-        if let Some(at) = self.stack.iter().position(|entry| entry == name) {
-            // CSS Values 5 §substitution-context: invalidate every participant,
-            // including a property whose var() fallback would mask the cycle.
-            self.cyclic.extend(self.stack[at..].iter().cloned());
-            return None;
-        }
         let raw = self.raw.get(name)?.clone();
-        self.stack.push(name.to_string());
-        let value = substitute(&raw, &mut |dependency| self.value(dependency, work), work).ok();
-        self.stack.pop();
+        self.run(name, &raw, work)
+    }
+
+    fn run(&mut self, name: &str, raw: &str, work: &Work<'_>) -> Option<String> {
+        let value = self.run_frames(name, raw, work);
+        // Отказ admission не оставляет active path для следующего корня DAG.
+        self.stack = Buffer::default();
+        value
+    }
+
+    fn run_frames(&mut self, name: &str, raw: &str, work: &Work<'_>) -> Option<String> {
+        use substitution::{Expansion, Step};
+        struct Frame {
+            name: String,
+            expansion: Result<Expansion, Unsubstituted>,
+        }
+        let mut frames = Buffer::default();
+        work.admit(frames.push(
+            Frame {
+                name: name.into(),
+                expansion: Expansion::start(raw, work),
+            },
+            work.admission(),
+        ))
+        .ok()?;
+        work.admit(self.stack.push(name.into(), work.admission()))
+            .ok()?;
+        loop {
+            let step = match &mut frames.last_mut().expect("active variable frame").expansion {
+                Ok(expansion) => expansion.step(work),
+                Err(error) => Err(*error),
+            };
+            if let Ok(Step::Need(dependency)) = step {
+                let cached = self.cache.get(&dependency).cloned();
+                let value = if let Some(value) = cached {
+                    value
+                } else {
+                    if let Some(at) = self.stack.iter().position(|entry| entry == &dependency) {
+                        // Негодны все участники текущего substitution-context; не весь visited DAG.
+                        self.cyclic.extend(self.stack[at..].iter().cloned());
+                    } else if let Some(raw) = self.raw.get(&dependency) {
+                        work.admit(self.stack.push(dependency.clone(), work.admission()))
+                            .ok()?;
+                        work.admit(frames.push(
+                            Frame {
+                                name: dependency,
+                                expansion: Expansion::start(raw, work),
+                            },
+                            work.admission(),
+                        ))
+                        .ok()?;
+                        continue;
+                    }
+                    None
+                };
+                let frame = frames.last_mut().expect("requesting variable frame");
+                if let Ok(expansion) = &mut frame.expansion
+                    && let Err(error) = expansion.supply(value, work)
+                {
+                    frame.expansion = Err(error);
+                }
+                continue;
+            }
+            let frame = frames.pop().expect("completed variable frame");
+            self.stack.pop();
+            let value = match step {
+                Ok(Step::Done(value)) => Some(value),
+                _ => None,
+            };
+            let value = if frame.name.is_empty() {
+                value
+            } else {
+                self.computed(&frame.name, value)
+            };
+            if frames.is_empty() {
+                return value;
+            }
+            let parent = frames.last_mut().expect("variable parent");
+            if let Ok(expansion) = &mut parent.expansion
+                && let Err(error) = expansion.supply(value, work)
+            {
+                parent.expansion = Err(error);
+            }
+        }
+    }
+
+    fn computed(&mut self, name: &str, value: Option<String>) -> Option<String> {
         let reg = self.registered.get(name);
         let initial = reg.and_then(|r| r.initial.as_deref());
         let inherits = reg.is_none_or(|r| r.inherits);
@@ -104,7 +183,25 @@ impl<F: Fn(&str, &str) -> bool> Resolver<'_, F> {
 }
 
 mod substitution;
-pub(crate) use substitution::{Work, has_var, substitute};
+mod work;
+pub(crate) use substitution::has_var;
+#[cfg(test)]
+pub(crate) use substitution::substitute;
+pub(crate) use work::{Unsubstituted, Work};
+
+/// Обычное свойство использует тот же resolver, что custom properties: без потолка цепочки.
+pub(crate) fn resolve(raw: &str, vars: &VarMap, work: &Work<'_>) -> Option<String> {
+    Resolver {
+        raw: vars,
+        parent: &VarMap::new(),
+        registered: &HashMap::new(),
+        accepts: |_: &str, _: &str| true,
+        stack: Buffer::default(),
+        cyclic: HashSet::new(),
+        cache: HashMap::new(),
+    }
+    .run("", raw, work)
+}
 
 #[cfg(test)]
 #[path = "variable_values/tests.rs"]
@@ -117,3 +214,7 @@ mod limits_tests;
 #[cfg(test)]
 #[path = "variable_values/budget_tests.rs"]
 mod budget_tests;
+
+#[cfg(test)]
+#[path = "variable_values/graph_tests.rs"]
+mod graph_tests;

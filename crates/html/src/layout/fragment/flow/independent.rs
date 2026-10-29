@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn rtl_metadata_projects_sides_without_enabling_the_legacy_line_estimator() {
+    fn rtl_metadata_projects_sides_in_the_logical_copy() {
         use crate::style::values::value::Len;
         for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
             let tree = crate::dom::parse(
@@ -207,7 +207,6 @@ mod tests {
             physical.style.used_mut().border_visible =
                 [Some(true), Some(true), Some(false), Some(false)];
             assert!(vertical_copy(&physical, rl));
-            assert!(super::super::transpose_tree(&physical, rl).is_none());
             let logical = logical_copy(&physical, rl).unwrap();
             assert_eq!(
                 logical.style.used().margin.top,

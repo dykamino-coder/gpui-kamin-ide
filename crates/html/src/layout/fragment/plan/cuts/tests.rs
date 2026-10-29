@@ -57,14 +57,18 @@ fn forced_break_skips_margin_and_growth_uses_the_same_plan() {
     assert_eq!(plan.len(), 2);
     assert_eq!((plan[0].from, plan[0].h), (0.0, 40.0));
     assert_eq!((plan[1].from, plan[1].h), (50.0, 70.0));
-    assert_eq!(
-        ColumnStack::frags_of(&kids, 2, Some(100.0), None, 2),
-        vec![vec![(0.0, 40.0), (50.0, 70.0)]]
+    let mut stack = ColumnStack::new(
+        Vec::new(),
+        2,
+        0.0,
+        Some(100.0),
+        None,
+        None,
+        None,
+        Default::default(),
     );
-    assert_eq!(
-        ColumnStack::growths(&kids, 2, Some(100.0), None, 2),
-        vec![(0, 50.0, 60.0, true)]
-    );
+    stack.copies = 2;
+    assert_eq!(stack.grow_points(&kids), vec![(0, 50.0, 60.0, true)]);
 }
 
 #[test]

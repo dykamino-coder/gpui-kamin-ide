@@ -145,7 +145,6 @@ impl Recorder {
                     ShapeCx {
                         paged: false,
                         viewport: Some(opts.viewport),
-                        ..ShapeCx::COLUMNS
                     },
                     opts.cx.frame(),
                 );

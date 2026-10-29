@@ -27,6 +27,13 @@ impl StackChild {
         self.keep = m.keep;
         self.line_keep = m.line_keep;
         self.table_rows = m.table_rows;
+        if let Some(trim) = self.line_trim {
+            trim_cuts(&mut self.cuts, trim);
+            let end = self.h.max(self.over);
+            for ranges in [&mut self.solid, &mut self.keep, &mut self.line_keep] {
+                trim_ends(ranges, trim.1, end);
+            }
+        }
         self.cuts
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
         self.forced.sort_by(f32::total_cmp);
@@ -57,6 +64,13 @@ impl StackChild {
         self.keep = m.keep;
         self.line_keep = m.line_keep;
         self.table_rows = m.table_rows;
+        if let Some(trim) = self.line_trim {
+            trim_cuts(&mut self.cuts, trim);
+            let end = self.h.max(self.over);
+            for ranges in [&mut self.solid, &mut self.keep, &mut self.line_keep] {
+                trim_ends(ranges, trim.1, end);
+            }
+        }
         m.sections
     }
 
@@ -90,15 +104,33 @@ fn copy_breaks(
     let flow = watched.flow.at(origin, size, axis, window);
     regrow.floats = super::empty_floats::separate(&flow);
     regrow.float_leads = flow.float_leads.clone();
-    watched
+    let laid = watched
+        .laid_axis(origin, size, axis, window)
+        .with_flow(&flow);
+    let mut blocks = watched
         .blocks()
-        .map_or_else(Default::default, |blocks| {
-            blocks.breaks(
-                end,
-                &watched
-                    .laid_axis(origin, size, axis, window)
-                    .with_flow(&flow),
-            )
-        })
-        .finish(flow, end)
+        .map_or_else(Default::default, |blocks| blocks.breaks(end, &laid));
+    watched.hold_leads(&mut blocks, &laid);
+    blocks.finish(flow, end)
+}
+
+/// Точки разрыва строк со срезом `text-box-trim` (css-inline-3 §4.2; csswg-drafts#5335):
+/// продолжение после разрыва — с метрики края следующей строки, кусок до разрыва — до
+/// метрики края предыдущей; перед первой строкой коробки без верхнего края — точка,
+/// уводящая её к верху следующей колонки уже срезанной (`text-box-trim-multicol-012`).
+fn trim_cuts(cuts: &mut Vec<(f32, f32)>, (from, need, top): (f32, f32, bool)) {
+    for cut in cuts.iter_mut() {
+        *cut = ((cut.0 - need).max(0.0), cut.1 + from);
+    }
+    if from > 0.0 && top && !cuts.iter().any(|c| c.0 <= 0.0) {
+        cuts.insert(0, (0.0, from));
+    }
+}
+
+/// Неделимые строки и группы строк со срезом конца у разрыва кончаются на метрике
+/// края своей последней строки: до разрыва им нужно меньше места.
+fn trim_ends(ranges: &mut [(f32, f32)], need: f32, end: f32) {
+    for r in ranges.iter_mut().filter(|r| r.1 < end - 0.01) {
+        r.1 = (r.1 - need).max(r.0);
+    }
 }

@@ -41,7 +41,6 @@ fn table_rows_and_cells_come_from_the_laid_copy() {
             None,
             None,
             (Some(50.0), Some(50.0)),
-            &RefCell::default(),
             whole_ok,
             &RefCell::default(),
             &measured,
@@ -52,18 +51,8 @@ fn table_rows_and_cells_come_from_the_laid_copy() {
         )
         .expect("table child");
         assert_eq!(kids.len(), 1);
-        assert_eq!(kids[0].1.height, 0.0, "height comes from layout");
-        assert!(kids[0].1.cuts.is_empty() && kids[0].1.solid.is_empty());
         assert_eq!(*measured.borrow(), vec![(table.node_id, 50.0)]);
     }
-    #[cfg(feature = "wpt-harness")]
-    assert!(
-        opts.frag
-            .probe
-            .take()
-            .values()
-            .all(|p| p.estimate_calls == 0)
-    );
 }
 
 #[test]
@@ -115,7 +104,6 @@ fn nested_columns_preserve_the_roots_fragmentation_dispatch() {
             None,
             None,
             (Some(80.0), Some(80.0)),
-            &RefCell::default(),
             false,
             &RefCell::default(),
             &measured,
@@ -127,15 +115,8 @@ fn nested_columns_preserve_the_roots_fragmentation_dispatch() {
         .expect("supported fragmentation subtree");
         assert_eq!(kids.len(), 1);
         assert_eq!(kids[0].0.marks.paginate, paginate, "{style}");
-        if !independent && !paginate {
-            assert!(measured.borrow().is_empty(), "specialized shape planner");
-            assert!(
-                kids[0].1.height > 0.0,
-                "flex/grid retains fragmentation geometry"
-            );
-        } else {
-            assert_eq!(*measured.borrow(), vec![(root.node_id, 80.0)], "{style}");
-            assert_eq!(kids[0].1.height, 0.0, "height comes from layout");
-        }
+        // Каждый ребёнок измеряется раскладкой своей копии, как бы его ни
+        // фрагментировали дальше.
+        assert_eq!(*measured.borrow(), vec![(root.node_id, 80.0)], "{style}");
     }
 }

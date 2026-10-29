@@ -1,96 +1,13 @@
-//! Статические места позиционированных детей, div стопки колонок и его завершение.
+//! Div стопки колонок и его завершение.
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::block::sizing::BoxDimensions;
-use crate::layout::fragment::types::StackChild;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::options::RenderOpts;
-use crate::layout::positioned::containing_block::SpotCell;
-use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
-
-pub(super) fn place_oof_statics(
-    merged: &Computed,
-    opts: &RenderOpts,
-    oof_static: &[(usize, Element)],
-    kid_starts: Vec<usize>,
-    children: Vec<StackChild>,
-) -> (Vec<StackChild>, Vec<SpotCell>) {
-    let mut children = children;
-    let oof_spots: Vec<SpotCell> = oof_static.iter().map(|_| Default::default()).collect();
-    for (i, (at, oof)) in oof_static.iter().enumerate().rev() {
-        // Щуп правит только пустую ось; заданную считает CB (CSS 2.1 §10.3.7), как fixed_axes.
-        oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
-            fixed_axes: (
-                edge_set(oof.style.used().inset.left) || edge_set(oof.style.used().inset.right),
-                edge_set(oof.style.used().inset.top) || edge_set(oof.style.used().inset.bottom),
-            ),
-            rtl: merged.wm().rtl(),
-            vertical: merged.wm().vertical(),
-            vertical_rl: merged.wm().block_rl(),
-            own_vertical: oof.style.cascaded().wm().vertical(),
-            ..Default::default()
-        });
-        let probe = StackChild {
-            #[cfg(feature = "wpt-harness")]
-            probe_pending: false,
-            #[cfg(feature = "wpt-harness")]
-            probe: opts.frag.probe.clone(),
-            fragment_builders: Vec::new(),
-            source: None,
-            watched: None,
-            breaks_w: None,
-            regrow: None,
-            measure: None,
-            el: crate::layout::positioned::containing_block::spot_probe(
-                oof_spots[i].clone(),
-                true,
-                None,
-                &opts.cx,
-            ),
-            frags: Vec::new(),
-            monolith: false,
-            fit_whole: false,
-            cuts: Vec::new(),
-            force_before: false,
-            force_after: false,
-            avoid_before: false,
-            avoid_after: false,
-            forced: Vec::new(),
-            solid: Vec::new(),
-            avoid: Vec::new(),
-            keep: Vec::new(),
-            line_keep: Vec::new(),
-            table_rows: Vec::new(),
-            h: 0.0,
-            mt: 0.0,
-            mb: 0.0,
-            span: false,
-            over: 0.0,
-            rel: (0.0, 0.0),
-            clone_dec: None,
-            overflow_top: false,
-            nested_cols: false,
-            repeat: None,
-            par: crate::layout::fragment::types::Par::default(),
-            slack: None,
-            laid_w: Default::default(),
-            paginate: None,
-            positioned: false,
-        };
-        // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).
-        let at = kid_starts
-            .get(*at)
-            .copied()
-            .unwrap_or(children.len())
-            .min(children.len());
-        children.insert(at, probe);
-    }
-    (children, oof_spots)
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn column_stack_div(
@@ -107,6 +24,7 @@ pub(super) fn column_stack_div(
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
+    nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
     fixed: Option<f32>,
     gap_items: &Option<crate::layout::multicol::gap_rules::GapItems>,
     children: Vec<crate::layout::fragment::types::StackChild>,
@@ -150,6 +68,8 @@ pub(super) fn column_stack_div(
             opts.cx.deferred.paint.clone(),
         )
         .with_deferred(deferred)
+        .with_nest_report(nest_report)
+        .with_lead_report(opts.frag.watch.clone().map(|w| (w, e.node_id)))
         .with_row_extent(if nest_rows.is_some() {
             crate::layout::multicol::measure::RowExtent::Content
         } else {
@@ -167,6 +87,11 @@ pub(super) fn column_stack_div(
                 && matches!(e.style.used().height, None | Some(Len::Auto)),
         )
         .with_row_phase(if nest_rows.is_some() { nest_phase } else { 0.0 })
+        .with_row_limit(
+            nest_rows.and_then(|_| {
+                super::fixed_height::box_block_limit(merged, e, &opts.cx.constraints)
+            }),
+        )
         // Линейки последней линии — до блочного конца содержимого коробки заданного размера
         // (Blink `PaintColumnRules`), без спаннеров и рядов (`multicol-rule-nested-balancing-001`).
         .with_rule_stretch(
@@ -199,6 +124,7 @@ pub(super) fn finish_column_stack(
     merged: BoxStyle,
     opts: &RenderOpts,
     col_vert: bool,
+    native: &[u64],
     oof_static: Vec<(usize, Element)>,
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
@@ -225,6 +151,9 @@ pub(super) fn finish_column_stack(
         })
         .flatten();
     for (i, (_, oof)) in oof_static.iter().enumerate() {
+        if native.contains(&oof.node_id) {
+            continue;
+        }
         let mut oof = oof.clone();
         if let Some(ch) = cb_h
             && oof.style.used().position == Some(crate::style::computed::Position::Absolute)
@@ -246,4 +175,21 @@ pub(super) fn finish_column_stack(
         ));
     }
     d.into_any_element()
+}
+
+/// Прямые OOF хоста, которые рисует исходная native-раскладка его колонок.
+pub(super) fn native_flows(opts: &RenderOpts, merged: &BoxStyle, col_vert: bool) -> Vec<u64> {
+    opts.cx
+        .position
+        .geometry
+        .as_ref()
+        .filter(|g| g.native_along(col_vert).is_some() && g.host == merged.self_node)
+        .map(|g| {
+            g.flows
+                .iter()
+                .filter(|s| s.owner == 0 && s.native)
+                .map(|s| s.id)
+                .collect()
+        })
+        .unwrap_or_default()
 }

@@ -1,59 +1,85 @@
-//! Деление DOM-узлов по байтовому смещению в тексте поддерева.
+//! Деление DOM по байтовому смещению: один проход с явными кадрами родителей.
 
-use super::gather_text;
-use crate::dom::Node;
+use crate::budget::admission::{Admission, Buffer, Error};
+use crate::dom::{Element, Node};
 
-/// Разрезать список узлов по смещению в их общем тексте.
-///
-/// Смещение считается по тому же тексту, что уходит в переносчик, поэтому
-/// элементы режутся вместе с ним: `<b>` на границе разреза становится двумя.
-pub(crate) fn split_nodes(nodes: &[Node], at: usize) -> (Vec<Node>, Vec<Node>) {
-    let mut before = vec![];
-    let mut after = vec![];
-    let mut seen = 0usize;
-    for node in nodes {
-        if seen >= at {
-            after.push(node.clone());
-            continue;
+/// Смещение измеряется в исходном тексте; разрез сдвигается к концу UTF-8 символа.
+pub(crate) fn split_nodes(
+    admission: &Admission,
+    nodes: &[Node],
+    at: usize,
+) -> Result<(Vec<Node>, Vec<Node>), Error> {
+    struct Frame<'a> {
+        nodes: std::slice::Iter<'a, Node>,
+        before: Vec<Node>,
+        after: Vec<Node>,
+        owner: Option<&'a Element>,
+        start: usize,
+    }
+    fn frame<'a>(nodes: &'a [Node], owner: Option<&'a Element>, start: usize) -> Frame<'a> {
+        Frame {
+            nodes: nodes.iter(),
+            before: vec![],
+            after: vec![],
+            owner,
+            start,
         }
+    }
+    let mut stack = Buffer::default();
+    stack.push(frame(nodes, None, 0), admission)?;
+    let mut seen = 0usize;
+    loop {
+        let current = stack.last_mut().expect("active text split");
+        let Some(node) = current.nodes.next() else {
+            let done = stack.pop().expect("completed text split");
+            let Some(owner) = done.owner else {
+                return Ok((done.before, done.after));
+            };
+            let parent = stack.last_mut().expect("text split parent");
+            if done.start >= at {
+                parent.after.push(Node::Element(owner.clone()));
+            } else if seen <= at {
+                parent.before.push(Node::Element(owner.clone()));
+            } else {
+                let mut a = owner.clone();
+                a.children = done.before.into();
+                let mut b = owner.clone();
+                b.children = done.after.into();
+                parent.before.push(Node::Element(a));
+                parent.after.push(Node::Element(b));
+            }
+            continue;
+        };
+        admission.work(1)?;
         match node {
-            Node::Text(t) => {
-                let len = t.len();
-                if seen + len <= at {
-                    before.push(node.clone());
+            Node::Text(text) => {
+                let end = seen
+                    .checked_add(text.len())
+                    .ok_or(Error::CapacityOverflow)?;
+                if seen >= at {
+                    current.after.push(node.clone());
+                } else if end <= at {
+                    current.before.push(node.clone());
                 } else {
-                    // Режем по границе символа, ближайшей к месту разреза.
                     let mut cut = at - seen;
-                    while cut < t.len() && !t.is_char_boundary(cut) {
+                    while cut < text.len() && !text.is_char_boundary(cut) {
                         cut += 1;
                     }
                     if cut > 0 {
-                        before.push(Node::Text(t[..cut].to_string()));
+                        current.before.push(Node::Text(text[..cut].into()));
                     }
-                    if cut < t.len() {
-                        after.push(Node::Text(t[cut..].to_string()));
+                    if cut < text.len() {
+                        current.after.push(Node::Text(text[cut..].into()));
                     }
                 }
-                seen += len;
+                seen = end;
             }
-            Node::Element(e) => {
-                let mut text = String::new();
-                gather_text(&e.children, &mut text);
-                let len = text.len();
-                if seen + len <= at {
-                    before.push(node.clone());
-                } else {
-                    let (head, tail) = split_nodes(&e.children, at - seen);
-                    let mut a = e.clone();
-                    a.children = head.into();
-                    let mut b = e.clone();
-                    b.children = tail.into();
-                    before.push(Node::Element(a));
-                    after.push(Node::Element(b));
-                }
-                seen += len;
+            Node::Element(element) => {
+                stack.push(frame(&element.children, Some(element), seen), admission)?
             }
         }
     }
-    (before, after)
 }
+
+#[cfg(test)]
+mod tests;

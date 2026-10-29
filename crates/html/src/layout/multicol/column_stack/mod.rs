@@ -11,6 +11,7 @@ mod axis;
 pub mod balance;
 pub mod element;
 mod gap_geometry;
+mod lead;
 pub(crate) mod oof;
 mod paginate;
 
@@ -29,6 +30,10 @@ pub struct ColumnStack {
     /// FragmentainerSpaceLeftForChildren() − line_offset`). Ставится
     /// `with_row_phase`; ноль — ряды от верха.
     pub(crate) row_phase: f32,
+    /// Блочный размер содержимого вложенного многоколоночника (`height`/
+    /// `max-height` в точках): ряды во внешних фрагментаинерах не идут за него
+    /// (Blink `ConstrainColumnBlockSize`). Ставится `with_row_limit`.
+    pub(crate) row_limit: Option<f32>,
     pub(crate) row_extent: super::measure::RowExtent,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
@@ -65,6 +70,10 @@ pub struct ColumnStack {
     pub(crate) lines_plan: std::cell::RefCell<Vec<(f32, f32)>>,
     /// Спаннеры после укладки: `(ребёнок, y)`.
     pub(crate) spans_plan: std::cell::RefCell<Vec<(usize, f32)>>,
+    /// Отчёт рядов внешней стопке, когда эта стопка — вложенный ряд (`Nested`).
+    pub(crate) nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    /// Рекордер копии, в которой лежит эта стопка, и id её коробки (`lead`).
+    pub(crate) lead_report: Option<lead::LeadReport>,
 }
 
 impl ColumnStack {
@@ -117,6 +126,7 @@ impl ColumnStack {
             rows,
             axis: StackAxis::Horizontal,
             row_phase: 0.0,
+            row_limit: None,
             row_extent: Default::default(),
             copies,
             gap_items,
@@ -127,6 +137,8 @@ impl ColumnStack {
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
+            nest_report: None,
+            lead_report: None,
         }
     }
 
@@ -135,6 +147,15 @@ impl ColumnStack {
         recipe: Option<std::rc::Rc<super::deferred::Recipe>>,
     ) -> Self {
         self.deferred = recipe;
+        self
+    }
+
+    /// Отчёт первого ряда внешней стопке (`Nested::first_row`).
+    pub(crate) fn with_nest_report(
+        mut self,
+        report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    ) -> Self {
+        self.nest_report = report;
         self
     }
 
@@ -152,6 +173,11 @@ impl ColumnStack {
 
     pub(crate) fn with_row_extent(mut self, extent: super::measure::RowExtent) -> Self {
         self.row_extent = extent;
+        self
+    }
+
+    pub(crate) fn with_row_limit(mut self, limit: Option<f32>) -> Self {
+        self.row_limit = limit;
         self
     }
 

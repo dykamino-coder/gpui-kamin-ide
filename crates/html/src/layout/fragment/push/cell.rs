@@ -3,10 +3,9 @@
 use crate::dom::{Element, Node};
 use crate::style::values::value::Len;
 
-/// Распорка роста: `margin-top += grow` у потомка `id`. Поле ложится в
-/// `lead` меры (`shape_full`) и в раскладку копии одинаково; недобор от
-/// схлопывания с большим нижним полем соседа добирает следующий заход
-/// `grow_pushed`.
+/// Распорка роста: `margin-top += grow` у потомка `id` в разложенной копии
+/// (`Regrow`); недобор от схлопывания с большим нижним полем соседа добирает
+/// следующий заход роста.
 pub(super) fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
     for n in c.children.iter_mut() {
         let Node::Element(k) = n else {

@@ -15,7 +15,7 @@ mod leaf;
 mod oof;
 mod paint;
 mod shape;
-pub(super) use shape::group_shape;
+use shape::group_margins;
 mod names;
 use names::group_break_names;
 #[allow(clippy::too_many_arguments)]
@@ -72,16 +72,15 @@ pub(super) fn page_kids_from_groups(
             .as_ref()
             .map_or(group.as_slice(), |p| p.nodes.as_slice());
         let n = &group[0];
-        let (margins, shape) = match (&prepared, vertical) {
-            (Some(p), _) => (p.margins, None),
-            (_, Some(_)) => ((0.0, 0.0, 0.0), None),
-            _ => group_shape(root, shape_cx, group, n, pad_top, vcx),
+        let margins = match (&prepared, vertical) {
+            (Some(p), _) => p.margins,
+            (_, Some(_)) => (0.0, 0.0, 0.0),
+            _ => group_margins(root, group, n, pad_top, vcx),
         };
         let watched = breaks::recorder(
             group,
             n,
             vertical,
-            shape.is_some(),
             prepared.as_ref().is_some_and(|p| p.blocks),
             shape_cx,
             vcx,
@@ -140,8 +139,6 @@ pub(super) fn page_kids_from_groups(
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.
         kids.push(crate::layout::page::page_stack::PageKid {
-            #[cfg(feature = "wpt-harness")]
-            probe: opts.frag.probe.clone(),
             // Повтор шапки и подвала — только у таблицы, чьи секции записала
             // раскладка копии: полосы решаются по ним (`page_stack::kid`).
             repeat: measured_table
@@ -175,7 +172,6 @@ pub(super) fn page_kids_from_groups(
             force_before: fb || renamed,
             renamed,
             force_after: fa,
-            shape,
             page: start_name,
             mt: margins.0,
             mb: margins.1,

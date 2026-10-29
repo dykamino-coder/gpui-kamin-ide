@@ -12,14 +12,16 @@ use crate::style::computed::{Display, Position};
 /// CSS Ruby 1 §2.2 and CSS Display 4 §2.7: an inline propagates
 /// inlinification, while a flow root keeps its own block formatting context.
 /// Blink style_adjuster.cc:804 also clears floats in this context.
-pub(crate) fn inlinify(nodes: &mut [Node]) {
-    for node in nodes {
-        let Node::Element(e) = node else { continue };
+pub(crate) fn inlinify(
+    admission: &crate::budget::admission::Admission,
+    nodes: &mut [Node],
+) -> Result<(), crate::budget::admission::Error> {
+    crate::dom::traversal::preorder(admission, nodes, (), |e, _| {
         if matches!(
             e.style.cascaded().position,
             Some(Position::Absolute | Position::Fixed)
         ) {
-            continue;
+            return None;
         }
         e.style.cascaded_mut().float = None;
         let role = super::ruby_boxes::ruby_box_role(&e.tag, e.style.cascaded());
@@ -28,8 +30,7 @@ pub(crate) fn inlinify(nodes: &mut [Node]) {
                 e.style.cascaded_mut().display = None;
                 e.style.cascaded_mut().inline_display = Some(true);
             }
-            inlinify(&mut e.children);
-            continue;
+            return Some(());
         }
         let block = e.style.cascaded().display == Some(Display::Block)
             || (e.style.cascaded().display.is_none()
@@ -47,7 +48,8 @@ pub(crate) fn inlinify(nodes: &mut [Node]) {
             None | Some(Display::Contents | Display::ListItem)
         ) {
             e.style.cascaded_mut().inline_display = Some(true);
-            inlinify(&mut e.children);
+            return Some(());
         }
-    }
+        None
+    })
 }

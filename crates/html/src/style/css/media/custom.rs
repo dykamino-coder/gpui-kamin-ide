@@ -26,30 +26,22 @@ pub(crate) fn custom_media_of(css: &str) -> HashMap<String, String> {
     map
 }
 
-/// Значение `(--имя)`: неизвестное имя — ложь (§5.1 «evaluates to false»).
-/// Глубина подстановки ограничена: циклическая ссылка не уходит в
-/// бесконечность (§5.1 «cyclic … are invalid» — результатом служит ложь).
+/// Неопределённый alias остаётся unknown, включая отрицание (MQ §3.2).
 pub(super) fn eval_custom(
-    media: &Media,
+    _media: &Media,
     name: &str,
     custom: CustomMedia,
-    vcx: ValueCx<'_>,
+    _vcx: ValueCx<'_>,
 ) -> SupTri {
-    let Some(query) = custom.aliases.and_then(|a| a.get(name)) else {
-        return SupTri::False;
-    };
-    let v = match query.as_str() {
-        "true" => true,
-        "false" => false,
-        _ if custom.depth < 8 => media.matches_in(
-            query,
-            CustomMedia {
-                depth: custom.depth + 1,
-                ..custom
-            },
-            vcx,
-        ),
-        _ => false,
-    };
-    if v { SupTri::True } else { SupTri::False }
+    custom
+        .aliases
+        .and_then(|a| a.get(name))
+        .copied()
+        .unwrap_or(SupTri::Unknown)
 }
+
+mod graph;
+pub(crate) use graph::resolve_custom_media;
+
+#[cfg(test)]
+mod tests;

@@ -50,11 +50,11 @@ describe('compact boundary → context meter (INC-2026-0045)',()=>{
   add([boundary(2,15098),summary(3)]);expect(text(SessionStats())).toContain('15.1K')
   clearJsonlEntries('a');add([boundary(4),summary(5)]);expect(text(SessionStats())).toContain('Context pending')
  })
- it('preserves archived cost accounting and ignores later subagent usage',()=>{
+ it('preserves archived cost and includes subagent cost without changing parent context',()=>{
   const pre=computeContextStats([turn(1,978010)],false,model)!
   const archive=computeContextStats([turn(1,978010),boundary(2,15098)],false,model)!;expect(archive.used).toBe(pre.used);expect(archive.cost).toBe(pre.cost)
   const current=computeContextStats([boundary(2,15098),summary(3),turn(4,900000,{isSidechain:true})],true,model)!
-  expect(current.used).toBe(15098);expect(current.cost).toBe(0)
+  expect(current.used).toBe(15098);expect(current.cost).toBeCloseTo(4.500025, 9)
  })
 
 })
