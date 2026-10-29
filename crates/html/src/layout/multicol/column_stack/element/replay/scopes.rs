@@ -28,7 +28,10 @@ impl Routes {
         let lines = Lines::new(lines, self.watched.clone(), self.spill);
         let result = crate::hooks::with_replay_pieces(slots, window, |window| {
             crate::hooks::with_late_jobs(late, window, |window| {
-                line_admission::with(lines.clone(), window, record)
+                let hidden: std::collections::HashSet<u64> = self.clone_root.into_iter().collect();
+                crate::hooks::with_clone_hidden(Rc::new(hidden), window, |window| {
+                    line_admission::with(lines.clone(), window, record)
+                })
             })
         });
         (result, lines)
