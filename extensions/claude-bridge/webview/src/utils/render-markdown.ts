@@ -1,4 +1,5 @@
 import hljs from 'highlight.js/lib/common'
+import '../theme/components/markdown.css'
 
 // Bounded LRU cache so repeatedly re-rendering the same message text
 // (Preact re-renders the JSONL viewer on every scroll/reflow) doesn't keep
@@ -77,7 +78,7 @@ const URL_ONLY_RE = /^(?:https?:\/\/|www\.)\S+$/i
 // out of the sandboxed webview iframe. www.* is normalized to https://.
 function extAnchor(url: string, label: string): string {
   const href = escapeAttr(/^www\./i.test(url) ? `https://${url}` : url)
-  return `<a data-ext-link href="${href}" title="${href}" style="color:var(--accent-action);text-decoration:underline;cursor:pointer;">${label}</a>`
+  return `<a data-ext-link href="${href}" title="${href}" style="color:var(--markdown-link);text-decoration:underline;cursor:pointer;">${label}</a>`
 }
 // Turn markdown links AND bare URLs into external anchors. Runs after HTML
 // escaping + inline-code, so it operates on escaped text; the preceding-char
@@ -113,16 +114,13 @@ function linkify(text: string): string {
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+|www\.[^)\s]+)\)/g,
     (_m, label: string, url: string) => extAnchor(stripUrlTrail(url), label),
   )
-  text = text.replace(
-    /(^|[^"'>=/\]])((?:https?:\/\/|www\.)[^\s<>"'\])]+)/g,
-    (_m, pre: string, url: string) => {
-      // Отрезанный хвост ВОЗВРАЩАЕТСЯ в текст, а не исчезает. Раньше он
-      // пропадал вместе с точкой в конце предложения, а знаки эмфазы,
-      // проглоченные адресом, лишали пару открывающему `**` (INC-2026-0051).
-      const clean = stripUrlTrail(url)
-      return pre + extAnchor(clean, clean) + url.slice(clean.length)
-    },
-  )
+  text = text.replace(/(^|[^"'>=/\]])((?:https?:\/\/|www\.)[^\s<>"'\])]+)/g, (_m, pre: string, url: string) => {
+    // Отрезанный хвост ВОЗВРАЩАЕТСЯ в текст, а не исчезает. Раньше он
+    // пропадал вместе с точкой в конце предложения, а знаки эмфазы,
+    // проглоченные адресом, лишали пару открывающему `**` (INC-2026-0051).
+    const clean = stripUrlTrail(url)
+    return pre + extAnchor(clean, clean) + url.slice(clean.length)
+  })
   return text
 }
 
@@ -165,7 +163,8 @@ export function renderMarkdown(md: string): string {
   // Escape HTML
   text = escapeHtml(text)
 
-  const CODE_STYLE = 'font-family:var(--font-mono);font-size:13px;color:var(--accent-yellow);background:var(--bg-surface);padding:2px 10px;border-radius:var(--radius-xs);'
+  const CODE_STYLE =
+    'font-family:var(--font-mono);font-size:13px;color:var(--markdown-inline-code);background:var(--bg-surface);padding:2px 10px;border-radius:var(--radius-xs);'
   text = text.replace(/`([^`]+)`/g, (_m, inner: string) => {
     // A URL sealed in a backtick — `http://localhost:3094/...` — is the ONE code
     // span worth making clickable: the model wraps action URLs this way, and the
@@ -189,9 +188,15 @@ export function renderMarkdown(md: string): string {
 
   // Headers
   text = text.replace(/^#### (.+)$/gm, '<h4 style="font-size:13px;color:var(--text-primary);margin:8px 0 2px;">$1</h4>')
-  text = text.replace(/^### (.+)$/gm, '<h3 style="font-size: var(--fs-md);color:var(--text-primary);margin:10px 0 4px;">$1</h3>')
+  text = text.replace(
+    /^### (.+)$/gm,
+    '<h3 style="font-size: var(--fs-md);color:var(--text-primary);margin:10px 0 4px;">$1</h3>',
+  )
   text = text.replace(/^## (.+)$/gm, '<h2 style="font-size:16px;color:var(--text-primary);margin:12px 0 5px;">$1</h2>')
-  text = text.replace(/^# (.+)$/gm, '<h1 style="font-size: var(--fs-lg);color:var(--text-primary);margin:12px 0 6px;font-weight:700;">$1</h1>')
+  text = text.replace(
+    /^# (.+)$/gm,
+    '<h1 style="font-size: var(--fs-lg);color:var(--text-primary);margin:12px 0 6px;font-weight:700;">$1</h1>',
+  )
 
   // Bold and italic. Замены идут по строке, где ТЕГИ СКРЫТЫ: раньше они шли по
   // всему HTML, включая значения атрибутов, и вставляли закрывающий тег прямо
@@ -199,9 +204,7 @@ export function renderMarkdown(md: string): string {
   // (INC-2026-0051). Скрытие, а не разбиение по тегам: эмфаза вокруг ссылки
   // (`**[метка](url)**`) обязана продолжать работать.
   text = withTagsMasked(text, (masked) =>
-    masked
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>'),
+    masked.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>'),
   )
 
   // Unordered lists (with nesting). Items are tight by default. Nesting is 2+
@@ -218,8 +221,10 @@ export function renderMarkdown(md: string): string {
   // `.trim()` on the captured run matters: the trailing `\s*` otherwise pulls the
   // blank line that FOLLOWS the list inside the wrapper, which split `</ul>` into
   // a block of its own and left it orphaned inside an empty <p>.
-  text = text.replace(/((?:<li[^>]*>.*<\/li>\s*)+)/g,
-    (m) => `<ul style="margin:6px 0;padding-left:20px;">${m.trim()}</ul>`)
+  text = text.replace(
+    /((?:<li[^>]*>.*<\/li>\s*)+)/g,
+    (m) => `<ul style="margin:6px 0;padding-left:20px;">${m.trim()}</ul>`,
+  )
   // Belt-and-suspenders: merge any adjacent <ul> blocks that slipped through.
   text = text.replace(/<\/ul>\s*<ul[^>]*>/g, '')
   // Put every list in a block of its OWN. The paragraph pass below leaves a
@@ -243,32 +248,60 @@ export function renderMarkdown(md: string): string {
 
   // Tables (| col | col | format)
   text = text.replace(/((?:^\|.+\|$\n?)+)/gm, (tableBlock) => {
-    const rows = tableBlock.trim().split('\n').filter(r => r.trim())
+    const rows = tableBlock
+      .trim()
+      .split('\n')
+      .filter((r) => r.trim())
     if (rows.length < 2) return tableBlock
     // Check for separator row: every cell must be only dashes with
     // optional leading/trailing alignment colons. Splitting and checking
     // per-cell is more reliable than a single big regex against the raw
     // row, which over-matched (header rows survive `[\s:-]` cleanup).
-    const sepIdx = rows.findIndex(r => {
-      const cells = r.split('|').slice(1, -1).map(c => c.trim())
-      return cells.length > 0 && cells.every(c => /^:?-+:?$/.test(c))
+    const sepIdx = rows.findIndex((r) => {
+      const cells = r
+        .split('|')
+        .slice(1, -1)
+        .map((c) => c.trim())
+      return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c))
     })
     const headerRow = sepIdx > 0 ? rows[0] : null
     const dataRows = headerRow ? rows.filter((_, i) => i !== 0 && i !== sepIdx) : rows.filter((_, i) => i !== sepIdx)
 
-    const parseRow = (row: string) => row.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => c.trim())
+    const parseRow = (row: string) =>
+      row
+        .split('|')
+        .filter((_, i, a) => i > 0 && i < a.length - 1)
+        .map((c) => c.trim())
 
-    let html = '<table style="border-collapse:separate;border-spacing:0;width:max-content;margin:8px 0;font-size:12px;background:var(--bg-mantle);border-radius:var(--radius-sm);">'
+    let html =
+      '<table style="border-collapse:separate;border-spacing:0;width:max-content;margin:8px 0;font-size:12px;background:var(--bg-mantle);border-radius:var(--radius-sm);">'
     if (headerRow) {
-      html += '<thead><tr>' + parseRow(headerRow).map(c =>
-        `<th style="padding:10px 14px;background:var(--bg-surface);color:var(--text-primary);text-align:left;font-weight:600;border-bottom:1px solid var(--bg-overlay);white-space:nowrap;">${c}</th>`
-      ).join('') + '</tr></thead>'
+      html +=
+        '<thead><tr>' +
+        parseRow(headerRow)
+          .map(
+            (c) =>
+              `<th style="padding:10px 14px;background:var(--bg-surface);color:var(--text-primary);text-align:left;font-weight:600;border-bottom:1px solid var(--bg-overlay);white-space:nowrap;">${c}</th>`,
+          )
+          .join('') +
+        '</tr></thead>'
     }
-    html += '<tbody>' + dataRows.map((row, i) =>
-      `<tr style="background:${i % 2 ? 'color-mix(in srgb, var(--bg-surface) 35%, transparent)' : 'transparent'}">` + parseRow(row).map(c =>
-        `<td style="padding:8px 14px;border-top:1px solid color-mix(in srgb, var(--bg-surface) 50%, transparent);">${c}</td>`
-      ).join('') + '</tr>'
-    ).join('') + '</tbody></table>'
+    html +=
+      '<tbody>' +
+      dataRows
+        .map(
+          (row, i) =>
+            `<tr style="background:${i % 2 ? 'color-mix(in srgb, var(--bg-surface) 35%, transparent)' : 'transparent'}">` +
+            parseRow(row)
+              .map(
+                (c) =>
+                  `<td style="padding:8px 14px;border-top:1px solid color-mix(in srgb, var(--bg-surface) 50%, transparent);">${c}</td>`,
+              )
+              .join('') +
+            '</tr>',
+        )
+        .join('') +
+      '</tbody></table>'
     return html
   })
 
@@ -279,20 +312,23 @@ export function renderMarkdown(md: string): string {
   // rather than CommonMark prose collapse-to-space which mangles dialog.
   // `  \n` (two trailing spaces) is also a hard break (no-op here since
   // we now treat all `\n` as breaks).
-  text = text.split('\n\n').map(block => {
-    const trimmed = block.trim()
-    if (!trimmed) return ''
-    // Pass through blocks that ALREADY start with a BLOCK-level tag (an earlier
-    // pass emitted a heading/list/table/etc.) — those must not be re-wrapped in
-    // <p>. But an inline tag (<strong>, <em>, <code>, <a>, <img>…) is NOT a block:
-    // a paragraph like "**20. Ca.** …" is bolded to "<strong>20. Ca.</strong> …"
-    // here, and the old `startsWith('<')` returned it unwrapped, so consecutive
-    // \n\n items joined into one run-on line. Wrap those in <p> like any prose.
-    if (/^<(?:ul|ol|li|h[1-6]|pre|table|thead|tbody|tr|td|th|hr|blockquote|div|p)\b/i.test(trimmed)) return trimmed
-    if (/^\x00CODEBLOCK\d+\x00$/.test(trimmed)) return trimmed
-    const withHardBreaks = trimmed.replace(/ {2,}\n/g, '<br>').replace(/\n/g, '<br>')
-    return `<p style="margin:4px 0;line-height:1.55;">${withHardBreaks}</p>`
-  }).join('\n')
+  text = text
+    .split('\n\n')
+    .map((block) => {
+      const trimmed = block.trim()
+      if (!trimmed) return ''
+      // Pass through blocks that ALREADY start with a BLOCK-level tag (an earlier
+      // pass emitted a heading/list/table/etc.) — those must not be re-wrapped in
+      // <p>. But an inline tag (<strong>, <em>, <code>, <a>, <img>…) is NOT a block:
+      // a paragraph like "**20. Ca.** …" is bolded to "<strong>20. Ca.</strong> …"
+      // here, and the old `startsWith('<')` returned it unwrapped, so consecutive
+      // \n\n items joined into one run-on line. Wrap those in <p> like any prose.
+      if (/^<(?:ul|ol|li|h[1-6]|pre|table|thead|tbody|tr|td|th|hr|blockquote|div|p)\b/i.test(trimmed)) return trimmed
+      if (/^\x00CODEBLOCK\d+\x00$/.test(trimmed)) return trimmed
+      const withHardBreaks = trimmed.replace(/ {2,}\n/g, '<br>').replace(/\n/g, '<br>')
+      return `<p style="margin:4px 0;line-height:1.55;">${withHardBreaks}</p>`
+    })
+    .join('\n')
 
   // Safety net: strip any orphan <br> that somehow landed between block
   // elements (e.g. <h2><br><br><h3> sequences from malformed input).

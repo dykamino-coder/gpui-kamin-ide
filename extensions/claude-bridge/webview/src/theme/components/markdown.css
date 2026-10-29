@@ -1,0 +1,10 @@
+/* Markdown text needs its own ink colors, independent of button fills. */
+:root {
+  --markdown-link: var(--accent-action);
+  --markdown-inline-code: var(--accent-yellow);
+}
+
+[data-theme='light'] {
+  --markdown-link: var(--accent-blue);
+  --markdown-inline-code: var(--accent-yellow-dark);
+}
