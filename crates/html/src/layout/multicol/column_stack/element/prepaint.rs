@@ -158,9 +158,6 @@ impl ColumnStack {
                 self.replay_routes(f.kid, plan, bounds, geometry, window.scale_factor())
             });
             let replay = replay.flatten();
-            if replay.is_some() && f.copy != 0 {
-                continue;
-            }
             // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
             // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
             // на полную высоту коробки и поднимать на срез нельзя.
@@ -181,6 +178,9 @@ impl ColumnStack {
             // совпадает с местом во фрагменте; видимой полосу делает маска.
             if let Some(r) = kid.repeat.as_mut() {
                 prepaint_bands(r, f, point(x, y), (col_w, full_h), window, cx);
+            }
+            if replay.is_some() && f.copy != 0 {
+                continue;
             }
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)

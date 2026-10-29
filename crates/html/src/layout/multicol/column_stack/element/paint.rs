@@ -24,12 +24,6 @@ impl ColumnStack {
         let records = self.copy_records();
         let mut replayed = std::collections::HashMap::new();
         for f in plan {
-            let geometry = (bounds, col_w, step);
-            if self.replays(f.kid, &plan_all)
-                && self.paint_piece_replayed(&f, &plan_all, geometry, &mut replayed, window, cx)
-            {
-                continue;
-            }
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
             // маска, оставленная на месте колонки, съедала его целиком
@@ -141,6 +135,13 @@ impl ColumnStack {
                     ));
                 }
             }
+            let geometry = (bounds, col_w, step);
+            if self.replays(f.kid, &plan_all)
+                && self.paint_piece_replayed(&f, &plan_all, geometry, &mut replayed, window, cx)
+            {
+                continue;
+            }
+            let kid = &mut self.children[f.kid];
             let Some(el) =
                 crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
             else {
